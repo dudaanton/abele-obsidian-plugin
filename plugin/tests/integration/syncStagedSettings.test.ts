@@ -122,6 +122,10 @@ function seamReload(available = true): void {
   }
 }
 
+/** The versions the open question shows: what a press of its buttons answers for. */
+const shown = (): string[] =>
+  (service.settingsPrompt.asking.value?.changes ?? []).map((change) => change.version_id)
+
 function start(): void {
   service.init(app as unknown as App, plugin, {
     fetch: (input, init) => server.fetch(input, init),
@@ -208,9 +212,9 @@ describe('settings changed on another device', () => {
     await service.syncNow()
     await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
 
-    const outcome = await service.applySettingsAndReload()
+    const outcome = await service.applySettingsAndReload(shown())
 
-    expect(outcome).toEqual({ applied: [HOTKEYS], skipped: [], reloaded: true })
+    expect(outcome).toEqual({ applied: [HOTKEYS], skipped: [], reloaded: true, unshown: [] })
     expect(await read(HOTKEYS)).toBe('{"there":true}')
     expect(reloads).toBe(1)
     expect(service.status.value.deferred).toBe(0)
@@ -223,9 +227,9 @@ describe('settings changed on another device', () => {
     await service.syncNow()
     await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
 
-    const outcome = await service.applySettingsAndReload()
+    const outcome = await service.applySettingsAndReload(shown())
 
-    expect(outcome).toEqual({ applied: [HOTKEYS], skipped: [], reloaded: false })
+    expect(outcome).toEqual({ applied: [HOTKEYS], skipped: [], reloaded: false, unshown: [] })
     expect(await read(HOTKEYS)).toBe('{"there":true}')
     expect(reloads).toBe(0)
   })
@@ -235,8 +239,8 @@ describe('settings changed on another device', () => {
     await service.syncNow()
     await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
 
-    const kept = await service.keepLocalSettings()
-    expect(kept).toEqual({ kept: [HOTKEYS], left: [], blocked: [] })
+    const kept = await service.keepLocalSettings(undefined, shown())
+    expect(kept).toEqual({ kept: [HOTKEYS], left: [], blocked: [], unshown: [] })
     await service.syncNow()
 
     expect(await read(HOTKEYS)).toBe('{"here":true}')
@@ -294,5 +298,81 @@ describe('settings changed on another device', () => {
 
     expect(await read(APP)).toBe('{"a":1}')
     expect(service.settingsPrompt.asking.value!.changes.map((change) => change.path)).toContain(APP)
+  })
+
+  /**
+   * A press answers for what the question showed (pi review #3): a setting staged while it was
+   * open, or a newer version of one it showed, is neither written nor kept, and Obsidian is not
+   * reloaded into it — it is asked about instead.
+   */
+  describe('answered after more arrived', () => {
+    it('Reload now writes only what was shown, reloads nothing, and asks about the rest', async () => {
+      await modify(HOTKEYS, '{"there":true}')
+      await service.syncNow()
+      await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
+      const answered = shown()
+
+      await modify(APP, '{"a":2}')
+      await service.syncNow()
+      await waitFor('both staged', () => service.status.value.deferred === 2)
+
+      const outcome = await service.applySettingsAndReload(answered)
+
+      expect(outcome).toMatchObject({ applied: [HOTKEYS], skipped: [], reloaded: false })
+      expect(outcome?.unshown).toEqual([APP])
+      expect(await read(HOTKEYS)).toBe('{"there":true}')
+      expect(await read(APP)).toBe('{"a":1}')
+      expect(reloads).toBe(0)
+      expect(service.settingsPrompt.asking.value?.changes.map((change) => change.path)).toEqual([
+        APP,
+      ])
+    })
+
+    it('a newer version of a shown file is not applied, and is asked about', async () => {
+      await modify(HOTKEYS, '{"there":true}')
+      await service.syncNow()
+      await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
+      const answered = shown()
+
+      await modify(HOTKEYS, '{"there":"again"}')
+      await service.syncNow()
+      await waitFor(
+        'the newer version staged',
+        () => service.settingsPrompt.staged.value[0]?.version_id !== answered[0]
+      )
+
+      const outcome = await service.applySettingsAndReload(answered)
+
+      expect(outcome).toMatchObject({ applied: [], reloaded: false, unshown: [HOTKEYS] })
+      expect(await read(HOTKEYS)).toBe('{"here":true}')
+      expect(reloads).toBe(0)
+      const asked = service.settingsPrompt.asking.value
+      expect(asked?.changes.map((change) => change.version_id)).not.toEqual(answered)
+      expect(asked?.changes.map((change) => change.path)).toEqual([HOTKEYS])
+    })
+
+    it('Keep this device’s does not send this device’s file over a newer version', async () => {
+      await modify(HOTKEYS, '{"there":true}')
+      await service.syncNow()
+      await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
+      const answered = shown()
+
+      await modify(HOTKEYS, '{"there":"again"}')
+      await service.syncNow()
+      await waitFor(
+        'the newer version staged',
+        () => service.settingsPrompt.staged.value[0]?.version_id !== answered[0]
+      )
+
+      const kept = await service.keepLocalSettings([HOTKEYS], answered)
+      await service.syncNow()
+
+      expect(kept).toMatchObject({ kept: [], unshown: [HOTKEYS] })
+      expect(await serverSha(HOTKEYS)).toBe(await shaOf('{"there":"again"}'))
+      expect(service.status.value.deferred).toBe(1)
+      expect(service.settingsPrompt.asking.value?.changes.map((change) => change.path)).toEqual([
+        HOTKEYS,
+      ])
+    })
   })
 })

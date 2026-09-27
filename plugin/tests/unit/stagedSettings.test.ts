@@ -19,6 +19,9 @@ import { DISCONNECTED_STATUS, statusOf, statusTooltip, type SyncStatus } from '@
  */
 
 let seq = 0
+/** The version a change stands for: what a press of the dialog's buttons answers for. */
+const versionOf = (item: ChangeItem): string => item.version_id
+
 const change = (path: string, from = 'Laptop', over: Partial<ChangeItem> = {}): ChangeItem => ({
   seq: ++seq,
   file_id: `f-${path}`,
@@ -114,40 +117,42 @@ describe('what the question says', () => {
 
 describe('what is said afterwards', () => {
   it('says a reload is under way, or that Obsidian has to be restarted', () => {
-    expect(appliedNotice({ applied: ['a'], skipped: [], reloaded: true })).toBe(
+    expect(appliedNotice({ applied: ['a'], skipped: [], reloaded: true, unshown: [] })).toBe(
       'Settings applied; Obsidian is reloading.'
     )
-    expect(appliedNotice({ applied: ['a'], skipped: [], reloaded: false })).toBe(
+    expect(appliedNotice({ applied: ['a'], skipped: [], reloaded: false, unshown: [] })).toBe(
       'Settings applied. Restart Obsidian to use them, and change no setting before you do: its save would put the old values back everywhere.'
     )
   })
 
   it('names the files changed here since, whose version goes out instead', () => {
-    expect(appliedNotice({ applied: [], skipped: ['a', 'b'], reloaded: false })).toBe(
+    expect(appliedNotice({ applied: [], skipped: ['a', 'b'], reloaded: false, unshown: [] })).toBe(
       "2 files changed on this device since, so this device's version of them goes to the other devices instead."
     )
   })
 
   it('says nothing was applied without an engine or with nothing waiting', () => {
     expect(appliedNotice(null)).toMatch(/not running/)
-    expect(appliedNotice({ applied: [], skipped: [], reloaded: false })).toMatch(/no longer/)
+    expect(appliedNotice({ applied: [], skipped: [], reloaded: false, unshown: [] })).toMatch(
+      /no longer/
+    )
   })
 
   it('says what stayed on the other device when this device’s were kept', () => {
-    expect(keptNotice({ kept: ['a'], left: ['b', 'c', 'd'], blocked: [] })).toBe(
+    expect(keptNotice({ kept: ['a'], left: ['b', 'c', 'd'], blocked: [], unshown: [] })).toBe(
       "This device's settings stay as they are; where they differ, they go to the other devices at the next sync. 3 files exist only on the other device and were left there."
     )
-    expect(keptNotice({ kept: [], left: ['b'], blocked: [] })).toBe(
+    expect(keptNotice({ kept: [], left: ['b'], blocked: [], unshown: [] })).toBe(
       '1 file exists only on the other device and was left there.'
     )
   })
 
   /** Review of task 12, #4: a blocked keep left the files staged and said they no longer wait. */
   it('says which files could not be kept, rather than that nothing waits', () => {
-    expect(keptNotice({ kept: [], left: [], blocked: ['a', 'b'] })).toBe(
+    expect(keptNotice({ kept: [], left: [], blocked: ['a', 'b'], unshown: [] })).toBe(
       '2 files could not be kept: another file is at that path here. See the sync log.'
     )
-    expect(keptNotice({ kept: [], left: [], blocked: [] })).toBe(
+    expect(keptNotice({ kept: [], left: [], blocked: [], unshown: [] })).toBe(
       'These settings are no longer waiting.'
     )
   })
@@ -194,9 +199,14 @@ describe('when the question is asked', () => {
     await p.noticed(status(2))
     host.keep.mockResolvedValue({ kept: ['.obsidian/app.json'], left: [] })
 
-    const kept = await p.keepLocal([hotkeys.path, appJson.path])
+    const kept = await p.keepLocal([hotkeys.path, appJson.path], [hotkeys, appJson].map(versionOf))
 
-    expect(kept).toEqual({ kept: ['.obsidian/app.json'], left: [], blocked: [hotkeys.path] })
+    expect(kept).toEqual({
+      kept: ['.obsidian/app.json'],
+      left: [],
+      blocked: [hotkeys.path],
+      unshown: [],
+    })
   })
 
   it('pauses the engine before it reloads, and resumes it when the reload did not start', async () => {
@@ -211,10 +221,34 @@ describe('when the question is asked', () => {
     })
     host.resume.mockImplementation(() => order.push('resume'))
 
-    const outcome = await p.applyAndReload()
+    const outcome = await p.applyAndReload(waiting.map(versionOf))
 
     expect(order).toEqual(['pause', 'reload', 'resume'])
     expect(outcome?.reloaded).toBe(false)
+  })
+
+  /** pi review #3: a change nobody was shown is never reloaded into, and is asked about. */
+  it('reloads nothing when a change was staged after the question was shown', async () => {
+    const shownOne = change('.obsidian/app.json')
+    const arrived = change('.obsidian/plugins/x/main.js')
+    const { host, reloader, prompt: p } = prompt([[shownOne], [shownOne, arrived], [arrived]])
+    await p.noticed(status(1))
+    await p.noticed(status(2))
+    host.apply.mockResolvedValue({ applied: [shownOne.path], skipped: [], unshown: [arrived] })
+
+    const outcome = await p.applyAndReload([shownOne.version_id])
+
+    expect(host.apply).toHaveBeenCalledWith([shownOne.version_id])
+    expect(reloader.reload).not.toHaveBeenCalled()
+    expect(outcome).toEqual({
+      applied: [shownOne.path],
+      skipped: [],
+      reloaded: false,
+      unshown: [arrived.path],
+    })
+    expect(p.asking.value?.changes).toEqual([arrived])
+    expect(appliedNotice(outcome)).toMatch(/was not reloaded/)
+    expect(appliedNotice(outcome)).toMatch(/1 file changed again while you were looking/)
   })
 
   it('asks about what waits at a start, once', async () => {

@@ -40,10 +40,16 @@ export interface StagedHost {
   visible(): boolean
   /** The names of the plugins in these folders, read from their `manifest.json` here. */
   names(ids: string[]): Promise<Record<string, string>>
-  /** Write what is staged (`SyncEngine.applyDeferred`); null with no engine. */
-  apply(): Promise<DeferredApplied | null>
-  /** Keep this device's files over what is staged (`SyncEngine.keepLocal`); null with no engine. */
-  keep(paths?: string[]): Promise<DeferredKept | null>
+  /**
+   * Write what is staged at the versions shown (`SyncEngine.applyDeferred`); null with no
+   * engine. The rest stays staged and comes back in `unshown`.
+   */
+  apply(versionIds: readonly string[]): Promise<DeferredApplied | null>
+  /**
+   * Keep this device's files over what is staged at the versions shown, at `paths` or all
+   * (`SyncEngine.keepLocal`); null with no engine.
+   */
+  keep(paths: string[] | undefined, versionIds: readonly string[]): Promise<DeferredKept | null>
   /** A line for the sync log. */
   note(text: string): void
   /** Stop the running engine taking up more work: a reload is about to end it. */
@@ -166,23 +172,32 @@ export class StagedSettingsPrompt {
   }
 
   /**
-   * Reload now: write every staged settings change — but a file changed here since, which is
-   * this device's edit and goes out as one — and then reload Obsidian, which reads its settings
-   * only when a vault opens. Where Obsidian has no reload command, or nothing was written, it is
-   * not reloaded, and the answer says so. Null with no engine to apply them.
+   * Reload now: write the staged settings changes at the versions the person was shown
+   * (`versionIds`) — but a file changed here since, which is this device's edit and goes out as
+   * one — and then reload Obsidian, which reads its settings only when a vault opens. Where
+   * Obsidian has no reload command, or nothing was written, it is not reloaded, and the answer
+   * says so. Null with no engine to apply them.
+   *
+   * Only what was shown (pi review #3): a setting staged while the question was open, or a newer
+   * version of one it showed, stays staged and unwritten. Then Obsidian is not reloaded either —
+   * a reload would start whatever that change was, plugin code included, before anyone saw it —
+   * and the question is asked again about those.
    */
-  async applyAndReload(): Promise<AppliedSettings | null> {
-    const result = await this.host.apply()
+  async applyAndReload(versionIds: readonly string[]): Promise<AppliedSettings | null> {
+    const result = await this.host.apply(versionIds)
+    const unshown = result?.unshown ?? []
+    this.askAgain(unshown)
     // Closed first: what the read finds that nobody was shown is asked about afresh.
     this.later()
     await this.refresh()
     if (result === null) return null
     this.host.note(
       `applied ${result.applied.length} staged settings file(s)` +
-        (result.skipped.length > 0 ? `; ${result.skipped.length} changed here since` : '')
+        (result.skipped.length > 0 ? `; ${result.skipped.length} changed here since` : '') +
+        (unshown.length > 0 ? `; ${unshown.length} changed since they were shown, asked again` : '')
     )
     let reloaded = false
-    if (result.applied.length > 0 && this.reloader.available()) {
+    if (result.applied.length > 0 && unshown.length === 0 && this.reloader.available()) {
       this.host.note('reloading Obsidian to read the settings that were applied')
       // Nothing more is started under a reload that is about to end it: a sync that began
       // after the apply would be cut off, and relies only on its journal to come back whole.
@@ -190,26 +205,39 @@ export class StagedSettingsPrompt {
       reloaded = this.reloader.reload()
       if (!reloaded) this.host.resume()
     }
-    return { applied: result.applied, skipped: result.skipped, reloaded }
+    return {
+      applied: result.applied,
+      skipped: result.skipped,
+      reloaded,
+      unshown: unshown.map((change) => change.path),
+    }
   }
 
   /**
-   * Keep this device's: this device's settings files go out over the staged changes — those at
-   * `paths`, or all of them — as edits on the server's head, so every other device is asked
-   * about them in turn. A file only the other device has is left there; nothing is deleted on
-   * any device. Null with no engine.
+   * Keep this device's: this device's settings files go out over the staged changes at the
+   * versions shown — those at `paths`, or all of them — as edits on the server's head, so every
+   * other device is asked about them in turn. A file only the other device has is left there;
+   * nothing is deleted on any device. A newer version than the one shown is not kept over: it
+   * stays staged and is asked about. Null with no engine.
    */
-  async keepLocal(paths?: string[]): Promise<KeptSettings | null> {
+  async keepLocal(
+    paths: string[] | undefined,
+    versionIds: readonly string[]
+  ): Promise<KeptSettings | null> {
     // The versions asked about, as the list stood: whichever of them is still staged afterwards
     // was not kept — another file holds its path here (the engine says so in the log).
     const wanted = paths === undefined ? null : new Set(paths)
+    const answered = new Set(versionIds)
     const asked = this.staged.value.filter(
       (change) =>
-        wanted === null ||
-        wanted.has(change.path) ||
-        (change.prev_path !== null && wanted.has(change.prev_path))
+        answered.has(change.version_id) &&
+        (wanted === null ||
+          wanted.has(change.path) ||
+          (change.prev_path !== null && wanted.has(change.prev_path)))
     )
-    const kept = await this.host.keep(paths)
+    const kept = await this.host.keep(paths, versionIds)
+    const unshown = kept?.unshown ?? []
+    this.askAgain(unshown)
     this.later()
     await this.refresh()
     if (kept === null) return null
@@ -220,9 +248,20 @@ export class StagedSettingsPrompt {
     this.host.note(
       `keeping this device's settings: ${kept.kept.length} file(s) go out` +
         (kept.left.length > 0 ? `, ${kept.left.length} exist only elsewhere and stay there` : '') +
-        (blocked.length > 0 ? `, ${blocked.length} could not be kept` : '')
+        (blocked.length > 0 ? `, ${blocked.length} could not be kept` : '') +
+        (unshown.length > 0 ? `, ${unshown.length} changed since they were shown` : '')
     )
-    return { ...kept, blocked }
+    return {
+      kept: kept.kept,
+      left: kept.left,
+      blocked,
+      unshown: unshown.map((change) => change.path),
+    }
+  }
+
+  /** Changes an answer did not cover, asked about again as though nobody had seen them. */
+  private askAgain(unshown: readonly ChangeItem[]): void {
+    for (const change of unshown) this.shown.delete(change.version_id)
   }
 
   /** Later: the dialog closes and the changes stay staged, asked about at the next start or batch. */
@@ -344,33 +383,49 @@ export function stagedSummary(groups: StagedGroups): string {
 const filesOf = (count: number): string => (count === 1 ? '1 file' : `${count} files`)
 
 /** What "Keep this device's" did: the engine's answer, and the shown files it left staged. */
-export interface KeptSettings extends DeferredKept {
+export interface KeptSettings extends Omit<DeferredKept, 'unshown'> {
   /** Still staged afterwards: another file holds the path here. */
   blocked: string[]
+  /** Changed since they were shown, so not kept over: asked about again. */
+  unshown: string[]
 }
 
 /** What "Reload now" did, as `SyncService.applySettingsAndReload` answers it. */
 export interface AppliedSettings {
   applied: string[]
   skipped: string[]
-  /** Whether Obsidian was reloaded; false where it has no reload command, or nothing was written. */
+  /**
+   * Whether Obsidian was reloaded; false where it has no reload command, where nothing was
+   * written, or where something changed since it was shown.
+   */
   reloaded: boolean
+  /** Changed since they were shown, so not written: asked about again. */
+  unshown: string[]
 }
 
 /** What is said once "Reload now" has run. */
 export function appliedNotice(outcome: AppliedSettings | null): string {
   if (outcome === null) return 'Sync is not running on this device, so nothing was applied.'
-  const { applied, skipped, reloaded } = outcome
+  const { applied, skipped, reloaded, unshown } = outcome
   const lines: string[] = []
-  if (applied.length === 0 && skipped.length === 0) {
+  if (applied.length === 0 && skipped.length === 0 && unshown.length === 0) {
     return 'These settings are no longer waiting, so nothing was applied.'
   }
   if (applied.length > 0) {
     lines.push(
       reloaded
         ? 'Settings applied; Obsidian is reloading.'
-        : 'Settings applied. Restart Obsidian to use them, and change no setting before you ' +
+        : unshown.length > 0
+          ? 'Settings applied, but Obsidian was not reloaded: answer about the settings that ' +
+            'changed meanwhile first, and change no setting until it is reloaded.'
+          : 'Settings applied. Restart Obsidian to use them, and change no setting before you ' +
             'do: its save would put the old values back everywhere.'
+    )
+  }
+  if (unshown.length > 0) {
+    lines.push(
+      `${filesOf(unshown.length)} changed again while you were looking, so ` +
+        `${unshown.length === 1 ? 'it was' : 'they were'} left waiting and asked about again.`
     )
   }
   if (skipped.length > 0) {
@@ -404,6 +459,13 @@ export function keptNotice(kept: KeptSettings | null): string {
     lines.push(
       `${filesOf(kept.blocked.length)} could not be kept: another file is at that path here. ` +
         'See the sync log.'
+    )
+  }
+  if (kept.unshown.length > 0) {
+    lines.push(
+      `${filesOf(kept.unshown.length)} changed again while you were looking, so ` +
+        `${kept.unshown.length === 1 ? 'it was' : 'they were'} not kept over and ` +
+        `${kept.unshown.length === 1 ? 'is' : 'are'} asked about again.`
     )
   }
   return lines.length > 0 ? lines.join(' ') : 'These settings are no longer waiting.'

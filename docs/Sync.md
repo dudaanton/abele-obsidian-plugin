@@ -217,6 +217,11 @@ arrive, because Abele reloads them itself.
   notice says how many were left. A file whose path is taken here by another synced file cannot be
   kept until that is sorted out; the notice says how many, and the log names them.
 
+Both answers are for exactly what the dialog showed. A settings file that arrives while it is open,
+or a newer version of one it shows, is neither written nor kept over: it stays waiting and the
+question is asked again about it. **Reload now** then applies what was shown but does not reload,
+so no plugin starts with code nobody was shown; answer the new question and it reloads then.
+
 Changing settings here before reloading keeps this device's version everywhere: the change is
 sent as usual, and the one that was waiting for that file is dropped, with a line in the log
 ("your change to hotkeys.json on this device replaced the one from Laptop"). The command-line

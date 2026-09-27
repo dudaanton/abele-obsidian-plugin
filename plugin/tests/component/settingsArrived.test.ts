@@ -69,8 +69,14 @@ beforeEach(() => {
     applied: CHANGES.map((c) => c.path),
     skipped: [],
     reloaded: true,
+    unshown: [],
   })
-  service.keepLocalSettings.mockResolvedValue({ kept: CHANGES.map((c) => c.path), left: [] })
+  service.keepLocalSettings.mockResolvedValue({
+    kept: CHANGES.map((c) => c.path),
+    left: [],
+    blocked: [],
+    unshown: [],
+  })
   vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
 })
 
@@ -104,6 +110,7 @@ describe('the settings-arrived dialog', () => {
     await flushPromises()
 
     expect(service.applySettingsAndReload).toHaveBeenCalledTimes(1)
+    expect(service.applySettingsAndReload).toHaveBeenCalledWith(CHANGES.map((c) => c.version_id))
     expect(Notice.shown).toContain('Settings applied; Obsidian is reloading.')
     expect(view.emitted('close')).toBeTruthy()
   })
@@ -114,6 +121,7 @@ describe('the settings-arrived dialog', () => {
       applied: ['.obsidian/app.json'],
       skipped: [],
       reloaded: false,
+      unshown: [],
     })
     const view = open()
 
@@ -132,6 +140,7 @@ describe('the settings-arrived dialog', () => {
       kept: ['.obsidian/app.json'],
       left: ['.obsidian/plugins/obsidian-tasks-plugin/data.json'],
       blocked: [],
+      unshown: [],
     })
     const view = open()
 
@@ -139,7 +148,10 @@ describe('the settings-arrived dialog', () => {
     await button(view, "Keep this device's")!.trigger('click')
     await flushPromises()
 
-    expect(service.keepLocalSettings).toHaveBeenCalledWith(CHANGES.map((c) => c.path))
+    expect(service.keepLocalSettings).toHaveBeenCalledWith(
+      CHANGES.map((c) => c.path),
+      CHANGES.map((c) => c.version_id)
+    )
     expect(
       Notice.shown.some((text) =>
         text.includes('1 file exists only on the other device and was left there.')

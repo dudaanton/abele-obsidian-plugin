@@ -118,12 +118,20 @@ async function run(work: () => Promise<string>): Promise<void> {
   }
 }
 
+/** The versions this block shows: what either answer is for, and nothing staged since. */
+const shownVersions = (): string[] => props.changes.map((change) => change.version_id)
+
 const apply = (): Promise<void> =>
-  run(async () => appliedNotice(await sync.applySettingsAndReload()))
+  run(async () => appliedNotice(await sync.applySettingsAndReload(shownVersions())))
 
 const keep = (): Promise<void> =>
   run(async () =>
-    keptNotice(await sync.keepLocalSettings(props.changes.map((change) => change.path)))
+    keptNotice(
+      await sync.keepLocalSettings(
+        props.changes.map((change) => change.path),
+        shownVersions()
+      )
+    )
   )
 </script>
 

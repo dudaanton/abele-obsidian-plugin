@@ -227,14 +227,23 @@ export class EngineRunner {
     return (await this.engine?.deferred()) ?? []
   }
 
-  /** Write what is staged (`SyncService.applySettingsAndReload`); null with no engine. */
-  async applyDeferred(): Promise<DeferredApplied | null> {
-    return (await this.engine?.applyDeferred()) ?? null
+  /**
+   * Write what is staged at the versions shown (`SyncService.applySettingsAndReload`); null with
+   * no engine.
+   */
+  async applyDeferred(versionIds: readonly string[]): Promise<DeferredApplied | null> {
+    return (await this.engine?.applyDeferred(versionIds)) ?? null
   }
 
-  /** Keep this device's files over what is staged (`SyncService.keepLocalSettings`). */
-  async keepLocal(paths?: string[]): Promise<DeferredKept | null> {
-    return (await this.engine?.keepLocal(paths)) ?? null
+  /**
+   * Keep this device's files over what is staged at the versions shown
+   * (`SyncService.keepLocalSettings`).
+   */
+  async keepLocal(
+    paths: string[] | undefined,
+    versionIds: readonly string[]
+  ): Promise<DeferredKept | null> {
+    return (await this.engine?.keepLocal(paths, versionIds)) ?? null
   }
 
   /** Pause the running engine, if there is one. */

@@ -111,8 +111,8 @@ export function wireParts(host: PartsHost): ServiceParts {
   const settingsPrompt = new StagedSettingsPrompt(
     {
       list: () => runner.deferred(),
-      apply: () => runner.applyDeferred(),
-      keep: (paths) => runner.keepLocal(paths),
+      apply: (versionIds) => runner.applyDeferred(versionIds),
+      keep: (paths, versionIds) => runner.keepLocal(paths, versionIds),
       visible,
       names: (ids) => pluginNamesIn(host.app(), ids),
       note: (text) => host.note(text),

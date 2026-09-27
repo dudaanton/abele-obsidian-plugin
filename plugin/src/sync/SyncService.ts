@@ -322,14 +322,23 @@ export class SyncService {
     return this.runner.deferred()
   }
 
-  /** Reload now: see `StagedSettingsPrompt.applyAndReload`. Null with no engine. */
-  applySettingsAndReload(): Promise<AppliedSettings | null> {
-    return this.settingsPrompt.applyAndReload()
+  /**
+   * Reload now, for the staged versions shown: see `StagedSettingsPrompt.applyAndReload`. Null
+   * with no engine.
+   */
+  applySettingsAndReload(versionIds: readonly string[]): Promise<AppliedSettings | null> {
+    return this.settingsPrompt.applyAndReload(versionIds)
   }
 
-  /** Keep this device's: see `StagedSettingsPrompt.keepLocal`. Null with no engine. */
-  keepLocalSettings(paths?: string[]): Promise<KeptSettings | null> {
-    return this.settingsPrompt.keepLocal(paths)
+  /**
+   * Keep this device's, for the staged versions shown: see `StagedSettingsPrompt.keepLocal`.
+   * Null with no engine.
+   */
+  keepLocalSettings(
+    paths: string[] | undefined,
+    versionIds: readonly string[]
+  ): Promise<KeptSettings | null> {
+    return this.settingsPrompt.keepLocal(paths, versionIds)
   }
 
   /** Walk the whole manifest again and then sync: for when this device widened what it takes. */
