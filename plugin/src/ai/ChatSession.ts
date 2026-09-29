@@ -76,6 +76,11 @@ import { ReadGuard } from './readGuard'
 import { ChatRewind } from './rewind/ChatRewind'
 import { ResultStore, createReadResultTool, READ_RESULT } from './resultStore'
 import { linkedNotesNote } from './linkedNotes'
+import { TurnPolicy } from './interceptor/turnPolicy'
+import type { ToolPolicy } from './interceptor/policy'
+import type { InterceptSource } from './interceptor/context'
+import { sendThroughScript, type ScriptSendHost } from './interceptor/scriptSend'
+import type { InterceptRoute } from './ChatInterceptor'
 import {
   getPathToLeaf,
   findDeepestLeaf,
@@ -203,6 +208,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
   private generation = 0
+  /** What an interceptor script said about the tool calls of the turn running now. */
+  private readonly turnPolicy = new TurnPolicy()
   private lastModelId = ''
 
   /** What the chat's file already holds, so a save writes only the difference. */
@@ -280,7 +287,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       this.isStreaming.value ||
       this.isCompacting.value ||
       this.isExecutingTool.value ||
-      this.retrying.value !== null
+      this.retrying.value !== null ||
+      // A script deciding about a message: what is sent meanwhile waits for its decision.
+      this.interceptor.working.value
     )
   }
 
@@ -296,6 +305,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   get isMidTurn(): boolean {
     if (this.isStreaming.value || this.isCompacting.value) return true
+    if (this.interceptor.working.value) return true
     return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
   }
 
@@ -497,10 +507,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   defaultInterceptor(): InterceptorChoice {
     if (this.kind === 'run') return NO_INTERCEPTOR
     const agent = this.agent.value
-    if (!agent?.interceptorAgentId || agent.interceptorAgentId === agent.id) return NO_INTERCEPTOR
+    if (!agent) return NO_INTERCEPTOR
+    const agentId = agent.interceptorAgentId === agent.id ? '' : agent.interceptorAgentId || ''
+    const script = agent.interceptorScript || ''
+    if (!agentId && !script) return NO_INTERCEPTOR
     return {
-      agentId: agent.interceptorAgentId,
+      agentId,
       contextDepth: normaliseContextDepth(agent.interceptorContextDepth),
+      script,
+      pattern: agent.interceptorPattern || '',
     }
   }
 
@@ -1341,6 +1356,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           if (this.kind === 'run') {
             return { block: true, reason: this.refusalReason(toolName, args) }
           }
+          const decided = await this.policyFor(_id, toolName, args)
+          if (decided.kind === 'deny') return { block: true, reason: decided.reason }
+          if (decided.kind === 'approve') {
+            this.widenScopeFor(args)
+            return
+          }
           return { pause: true }
         },
       })
@@ -1392,9 +1413,23 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         const tc = this.pendingToolCalls.value[0]
 
         if (!head && this.needsApproval(tc.name, tc.arguments)) {
-          this.ensurePendingToolCallMessage(tc)
-          this.markDirty()
-          return // Wait for user approve/reject
+          // The interceptor script may answer for the person: the same question, decided once.
+          const decided = await this.policyFor(tc.id, tc.name, tc.arguments)
+          if (decided.kind === 'deny') {
+            this.ensurePendingToolCallMessage(tc)
+            this.recordRefusal(tc, decided.reason)
+            continue
+          }
+          if (decided.kind === 'ask') {
+            this.ensurePendingToolCallMessage(tc)
+            this.markDirty()
+            return // Wait for user approve/reject
+          }
+          this.widenScopeFor(tc.arguments)
+          this.updateChatMessage(
+            (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
+            (m) => ({ ...m, toolStatus: 'approved' as const })
+          )
         }
 
         this.ensurePendingToolCallMessage(tc)
@@ -1569,16 +1604,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       return
     }
 
-    // Draft mode: interceptor is active → create draft, don't send to main AI. Never in a run,
-    // where nobody is there to send the draft on.
-    if (this.kind !== 'run' && this.interceptor.isActive) {
-      return this.sendDraftMessage(content, attachments)
-    }
+    // The interceptor looks first, when there is one and the message is its kind. Never in a
+    // run, where nobody is there to send a draft on.
+    const route = this.interceptRoute(content)
+    if (route.kind === 'agent') return this.sendDraftMessage(content, attachments)
+    if (route.kind === 'script') return this.sendThroughScript(route, content, attachments)
 
     const gen = this.generation
     this.error.value = null
     this.userMessageCount++
     this.wroteThisTurn = false
+    this.turnPolicy.clear()
 
     this.allInternalMessages.push(await this.userMessage(content, attachments))
 
@@ -1592,10 +1628,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
       await this.afterTurn()
     } finally {
+      this.endTurnPolicy()
       // Whatever became of the turn — an answer, a bare tool call, an error, a title that
       // failed to generate — what was typed while it ran is what comes next.
       await this.drainQueue()
     }
+  }
+
+  /** Where a message goes: straight to the agent, or first to this chat's interceptor. */
+  private interceptRoute(content: string): InterceptRoute {
+    if (this.kind === 'run') return { kind: 'none' }
+    return this.interceptor.route(content)
   }
 
   /**
@@ -1687,7 +1730,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
     this.appendChatMessage(userMsg)
     this.updateVisibleMessages()
+    return this.modelMessage(userMsg)
+  }
 
+  /**
+   * The message the model is shown for a person's bubble: what it says, where its links point,
+   * and what is attached to it, read. One builder for a message sent at once and for a draft
+   * sent after its interceptor, so the two never differ in what the agent is told.
+   */
+  private async modelMessage(bubble: ChatMessage): Promise<Message> {
+    const content = bubble.content
+    const attachments = bubble.attachments
     // The model is told where each link points; the bubble keeps what was typed.
     const text =
       content + linkedNotesNote(content, GlobalStore.getInstance().app, this.scopeResolver)
@@ -1704,11 +1757,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         role: 'user',
         content: allParts,
         timestamp: Date.now(),
-        chatMessageId: userMsg.id,
+        chatMessageId: bubble.id,
         ...(reads.length ? { reads } : {}),
       }
     }
-    return { role: 'user', content: text, timestamp: Date.now(), chatMessageId: userMsg.id }
+    return { role: 'user', content: text, timestamp: Date.now(), chatMessageId: bubble.id }
   }
 
   /**
@@ -1719,11 +1772,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   private async takeQueued(): Promise<Message[]> {
     const queued = this.queuedMessages.value
-    if (!queued.length) return []
-    this.queuedMessages.value = []
+    // Only the run of messages at the front that the interceptor would not look at: one it
+    // would look at waits for its own turn, through `drainQueue` and `sendMessage`, rather
+    // than slipping into this one past it. Order is kept, so nothing behind it goes first.
+    const cut = queued.findIndex((q) => this.interceptRoute(q.content).kind !== 'none')
+    const taken = cut === -1 ? queued : queued.slice(0, cut)
+    if (!taken.length) return []
+    this.queuedMessages.value = cut === -1 ? [] : queued.slice(cut)
+
+    // The interceptor script's say was about the message it saw; this one it never saw.
+    this.turnPolicy.clear()
 
     const messages: Message[] = []
-    for (const q of queued) messages.push(await this.userMessage(q.content, q.attachments))
+    for (const q of taken) messages.push(await this.userMessage(q.content, q.attachments))
     return messages
   }
 
@@ -1748,19 +1809,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (m) => ({ ...m, toolStatus: 'approved' as const })
     )
 
-    // Add out-of-scope file paths to scope on approval
-    const approvedArgs = modifiedArgs || tc.arguments
-    if (approvedArgs) {
-      const path = (approvedArgs.path || approvedArgs.from) as string
-      if (path && !this.scopeResolver.isInScope(path)) {
-        this.scopeResolver.addFile(path)
-      }
-    }
+    this.widenScopeFor(modifiedArgs || tc.arguments)
 
     try {
       await this.processAllPendingToolCalls({ args: modifiedArgs })
       this.markDirty()
     } finally {
+      this.endTurnPolicy()
       // The agent carries on after the answer and may finish there: whatever was typed
       // meanwhile is what comes next.
       await this.drainQueue()
@@ -1776,8 +1831,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const tc = this.pendingToolCalls.value[0]
     if (!tc) return
 
-    const reasonText = reason || 'User rejected this action'
+    this.recordRefusal(tc, reason || 'User rejected this action')
 
+    try {
+      await this.processAllPendingToolCalls()
+      this.markDirty()
+    } finally {
+      this.endTurnPolicy()
+      await this.drainQueue()
+    }
+  }
+
+  /**
+   * The call at the head of the queue, refused: its bubble says why, the model is told the same,
+   * and the queue moves on. Refused by the person or, for them, by an interceptor script.
+   */
+  private recordRefusal(tc: ToolCallContent, reasonText: string): void {
     const toolChatMsg = this.allChatMessages.find(
       (m) => m.toolCallId === tc.id && m.toolStatus === 'pending'
     )
@@ -1797,13 +1866,23 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     })
 
     this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
+  }
 
-    try {
-      await this.processAllPendingToolCalls()
-      this.markDirty()
-    } finally {
-      await this.drainQueue()
-    }
+  /** An approved call outside the scope brings its file into it, as it always has. */
+  private widenScopeFor(args: Record<string, unknown> | undefined): void {
+    if (!args) return
+    const path = (args.path || args.from) as string
+    if (path && !this.scopeResolver.isInScope(path)) this.scopeResolver.addFile(path)
+  }
+
+  /** What the interceptor script said about a call that would ask; `ask` when it said nothing. */
+  private policyFor(id: string, name: string, args: Record<string, unknown> | undefined) {
+    return this.turnPolicy.decide(id, name, args ?? {}, !!this.outOfScopePath(name, args))
+  }
+
+  /** The turn is over once nothing is left to answer; the script's say ends with it. */
+  private endTurnPolicy(): void {
+    if (!this.pendingToolCalls.value.length) this.turnPolicy.clear()
   }
 
   // ── Questions tool ──────────────────────────────────────────────
@@ -1875,6 +1954,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   abort(): void {
     this.cancelAutoRetry()
     this.agentLoop?.abort()
+    // A script deciding about a message stops too; the message is kept back as a draft.
+    this.interceptor.abort()
+    this.turnPolicy.clear()
     this.isStreaming.value = false
     // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —
     // the chat hands it back to the input rather than dropping it.
@@ -1969,13 +2051,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   private restoreInterceptor(metadata: ChatMetadata | null | undefined): void {
     const stored = metadata?.interceptorAgentId ?? (metadata?.activeInterceptorId || undefined)
-    if (typeof stored !== 'string') {
+    const script = metadata?.interceptorScript
+    if (typeof stored !== 'string' && typeof script !== 'string') {
       this.interceptor.followAgent()
       return
     }
     this.interceptor.override.value = {
-      agentId: stored,
+      agentId: typeof stored === 'string' ? stored : '',
       contextDepth: normaliseContextDepth(metadata?.interceptorContextDepth),
+      script: typeof script === 'string' ? script : '',
+      pattern: typeof metadata?.interceptorPattern === 'string' ? metadata.interceptorPattern : '',
     }
   }
 
@@ -2105,6 +2190,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // whatever the agent's reviewer is the next time it is opened. An empty id is Off.
       interceptorAgentId: this.interceptor.override.value?.agentId,
       interceptorContextDepth: this.interceptor.override.value?.contextDepth,
+      interceptorScript: this.interceptor.override.value?.script || undefined,
+      interceptorPattern: this.interceptor.override.value?.pattern || undefined,
     }
 
     return {
@@ -2408,6 +2495,61 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.markDirty()
   }
 
+  /** A message an interceptor script decides about; see `interceptor/scriptSend.ts`. */
+  private sendThroughScript(
+    route: Extract<InterceptRoute, { kind: 'script' }>,
+    content: string,
+    attachments?: string[]
+  ): Promise<void> {
+    this.error.value = null
+    return sendThroughScript(this.scriptSendHost(), route, content, attachments)
+  }
+
+  private scriptSendHost(): ScriptSendHost {
+    return {
+      interceptor: this.interceptor,
+      generation: () => this.generation,
+      visible: () => this.messages.value,
+      source: (earlier) => this.interceptSource(earlier),
+      append: (message) => {
+        this.appendChatMessage(message)
+        this.updateVisibleMessages()
+      },
+      update: (id, change) => {
+        this.updateChatMessage((m) => m.id === id, change)
+        this.updateVisibleMessages()
+      },
+      find: (id) => this.findMessage(id),
+      save: () => this.save(),
+      modelMessage: (bubble) => this.modelMessage(bubble),
+      remember: (...messages) => void this.allInternalMessages.push(...messages),
+      countUserMessage: () => void this.userMessageCount++,
+      runTurnFor: (bubble, policy) => this.runTurnFor(bubble, policy),
+      drainQueue: () => this.drainQueue(),
+    }
+  }
+
+  /** What the chat knows, for an interceptor script to read. */
+  private interceptSource(earlier: ChatMessage[]): InterceptSource {
+    const { app } = GlobalStore.getInstance()
+    return {
+      id: this.id,
+      title: this.chatTitle.value,
+      kind: this.kind,
+      path: this.currentChatFile.value?.path ?? null,
+      messages: earlier,
+      activeNote: app?.workspace?.getActiveFile?.()?.path ?? null,
+      note: this.anchor.value?.note ?? null,
+      agent: this.agent.value,
+      overrides: {
+        providerId: this.activeProviderId.value,
+        modelId: this.activeModelId.value,
+        permissionMode: this.permissionMode.value,
+        toolModes: this.toolModes.value,
+      },
+    }
+  }
+
   abortInterceptor(): void {
     this.interceptor.abort()
   }
@@ -2433,7 +2575,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   async confirmDraft(draftMsgId: string): Promise<void> {
-    if (this.isStreaming.value || this.isCompacting.value) return
+    // A script still deciding about it: the person's send waits for, not over, its answer.
+    if (this.isStreaming.value || this.isCompacting.value || this.interceptor.working.value) return
 
     const draftMsg = this.allChatMessages.find((m) => m.id === draftMsgId)
     if (!draftMsg || !draftMsg.draft) return
@@ -2444,39 +2587,32 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (m) => ({ ...m, draft: false, interceptorCollapsed: true })
     )
 
-    // Now add to internal messages and run agent loop
+    await this.runTurnFor(this.findMessage(draftMsgId) ?? draftMsg)
+  }
+
+  /**
+   * A turn for a message already in the chat — a draft sent on, or one an interceptor script
+   * let through — with what the script said about the turn's tool calls, if anything.
+   */
+  private async runTurnFor(bubble: ChatMessage, policy?: ToolPolicy): Promise<void> {
     const gen = this.generation
     this.error.value = null
     this.userMessageCount++
     this.wroteThisTurn = false
+    this.turnPolicy.set(policy)
 
-    if (draftMsg.attachments?.length) {
-      const parts = await resolveAttachmentsForApi(draftMsg.attachments)
-      const allParts: UserContentPart[] = [{ type: 'text', text: draftMsg.content }, ...parts]
-      this.allInternalMessages.push({
-        role: 'user',
-        content: allParts,
-        timestamp: draftMsg.timestamp,
-        chatMessageId: draftMsg.id,
-      })
-    } else {
-      this.allInternalMessages.push({
-        role: 'user',
-        content: draftMsg.content,
-        timestamp: draftMsg.timestamp,
-        chatMessageId: draftMsg.id,
-      })
-    }
+    this.allInternalMessages.push(await this.modelMessage(bubble))
 
     try {
       await this.runAgentLoop()
 
       if (gen !== this.generation) return
 
-      this.markDirty()
+      await this.save()
 
       await this.afterTurn()
     } finally {
+      this.endTurnPolicy()
       await this.drainQueue()
     }
   }

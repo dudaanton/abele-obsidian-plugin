@@ -257,7 +257,7 @@ function enableAnalyticsTools(ai: AiSettings): boolean {
 }
 
 /**
- * Gives every agent a well-formed interceptor pair.
+ * Gives every agent a well-formed interceptor: reviewer, context, script and pattern.
  *
  * Filling in the missing fields is not reported as a change: agents saved before the field
  * existed mean "no interceptor", and that is what the blank says. What is reported is a value
@@ -271,7 +271,21 @@ function normaliseInterceptors(ai: AiSettings): boolean {
   let changed = false
 
   for (const agent of ai.agents || []) {
-    const raw = agent as { interceptorAgentId?: unknown; interceptorContextDepth?: unknown }
+    const raw = agent as {
+      interceptorAgentId?: unknown
+      interceptorContextDepth?: unknown
+      interceptorScript?: unknown
+      interceptorPattern?: unknown
+    }
+
+    // A script and a pattern are names and text; anything else in their place is dropped.
+    for (const key of ['interceptorScript', 'interceptorPattern'] as const) {
+      if (raw[key] === undefined) agent[key] = ''
+      else if (typeof raw[key] !== 'string') {
+        agent[key] = ''
+        changed = true
+      }
+    }
 
     if (raw.interceptorAgentId === undefined) {
       agent.interceptorAgentId = ''

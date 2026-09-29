@@ -3,6 +3,7 @@ import { toRaw } from 'vue'
 import { AbeleConfig, normalizeHeaderButton, normalizeLink } from '@/services/AbeleConfig'
 import { normalizeRule } from '@/automations/types'
 import { createAgent } from '../agents/types'
+import { patternError } from '../interceptor/pattern'
 import { Journal, type JournalDTO } from '@/entities/Journal'
 import {
   HIDDEN_VALUE,
@@ -46,6 +47,25 @@ export function refuseInterceptor(self: unknown, next: unknown): string | null {
     return `${JSON.stringify(next)} is not an agent id. Read \`ai.agents\` for the ids there are, or write "" for no interceptor.`
   }
   if (isRecord(self) && self.id === next) return 'An agent cannot be its own interceptor.'
+  return null
+}
+
+/** An interceptor's pattern has to compile, or it would quietly send everything to it. */
+export function refusePattern(next: unknown): string | null {
+  if (typeof next !== 'string') return null
+  const error = patternError(next)
+  return error
+    ? `${JSON.stringify(next)} is not a regular expression the interceptor can use: ${error}. Write it bare (^/todo) or as /source/flags, or "" for every message.`
+    : null
+}
+
+/** Both checks on the fields of an agent being written. */
+export function refuseInterceptorFields(self: unknown, fields: Record<string, unknown>): string | null {
+  if ('interceptorAgentId' in fields) {
+    const bad = refuseInterceptor(self, fields.interceptorAgentId)
+    if (bad) return bad
+  }
+  if ('interceptorPattern' in fields) return refusePattern(fields.interceptorPattern)
   return null
 }
 
@@ -132,8 +152,8 @@ export function updateItem(path: string, found: Resolved, patch: unknown): ItemR
 
   const problem = checkPatch(found.value, patch, path)
   if (problem) return refused(problem)
-  if (isAgent(found.value) && 'interceptorAgentId' in patch) {
-    const bad = refuseInterceptor(found.value, patch.interceptorAgentId)
+  if (isAgent(found.value)) {
+    const bad = refuseInterceptorFields(found.value, patch)
     if (bad) return refused(bad)
   }
 
@@ -172,7 +192,7 @@ export function addItem(
       item = { id: nanoid(), ...raw }
     }
     if (path === 'ai.agents') {
-      const bad = refuseInterceptor(item, (item as Record<string, unknown>).interceptorAgentId)
+      const bad = refuseInterceptorFields(item, item as Record<string, unknown>)
       if (bad) return refused(bad)
     }
   }

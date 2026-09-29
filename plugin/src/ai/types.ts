@@ -536,6 +536,8 @@ export interface ChatMessage {
   interceptorName?: string
   interceptorChat?: InterceptorChatMessage[]
   interceptorCollapsed?: boolean
+  /** The interceptor was a script: there is nobody to reply to in the side conversation. */
+  interceptorScript?: boolean
   subAgentRun?: SubAgentRunRef
 }
 
@@ -625,6 +627,10 @@ export interface ChatMetadata {
   customSystemPromptNotePath?: string
   interceptorAgentId?: string
   interceptorContextDepth?: number
+  /** The interceptor script this chat chose, by name; with `interceptorAgentId`, only as an override. */
+  interceptorScript?: string
+  /** Only messages matching this regular expression go to the interceptor; empty means all. */
+  interceptorPattern?: string
   /** @deprecated pre-agent chats stored the interceptor id here; migrated on load. */
   activeInterceptorId?: string
 }

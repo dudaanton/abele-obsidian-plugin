@@ -308,7 +308,9 @@
           </button>
         </div>
         <div
-          v-if="message.draft && !interceptorStreaming && !interceptorError"
+          v-if="
+            message.draft && !message.interceptorScript && !interceptorStreaming && !interceptorError
+          "
           class="abele-chat-msg__interceptor-input"
         >
           <textarea

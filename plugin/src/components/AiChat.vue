@@ -138,7 +138,7 @@
           :data-message-id="msg.id"
           :message="msg"
           :branch-info="branchInfoMap.get(msg.id)"
-          :interceptor-streaming="msg.draft ? interceptorStreaming : false"
+          :interceptor-streaming="msg.draft ? interceptorStreaming || interceptorWorking : false"
           :interceptor-streaming-content="msg.draft ? interceptorStreamingContent : ''"
           :interceptor-error="msg.draft ? interceptorError : null"
           :comments="commentsOn.get(msg.id)"
@@ -262,7 +262,7 @@
       <!-- Input -->
       <AiChatInput
         ref="chatInput"
-        :is-streaming="isStreaming || isExecutingTool"
+        :is-streaming="isStreaming || isExecutingTool || interceptorWorking"
         :is-busy="isBusy"
         :can-continue="showContinue"
         :token-display="tokenDisplay"
@@ -364,6 +364,8 @@ const interceptorStreamingContent = computed(
   () => session.value?.interceptor.streamingContent.value ?? ''
 )
 const interceptorError = computed(() => session.value?.interceptor.error.value ?? null)
+/** A script deciding about a message: the composer offers stop, which keeps the message back. */
+const interceptorWorking = computed(() => session.value?.interceptor.working?.value ?? false)
 const draftMessage = computed(() => session.value?.getDraftMessage() ?? null)
 
 // Questions tool

@@ -4,16 +4,37 @@ import { OpenAIClient } from './client/OpenAIClient'
 import type { Message } from './client'
 import { AgentRegistry } from './agents/AgentRegistry'
 import type { ChatMessage, InterceptorChatMessage } from './types'
+import { matchesPattern } from './interceptor/pattern'
+import { runInterceptorScript, type InterceptOutcome } from './interceptor/runScript'
+import type { InterceptInput } from './interceptor/context'
 
-/** Which agent reviews drafts and how much of the conversation it is shown. */
+/**
+ * What looks at a message before the chat's agent does: a reviewing agent, or a script that
+ * decides about it. Which messages it is shown is narrowed by `pattern`.
+ */
 export interface InterceptorChoice {
-  /** Empty means no review. */
+  /** The reviewing agent. Empty means none. */
   agentId: string
   /** 0 sends only the draft, -1 the whole visible history, N the last N messages. */
   contextDepth: number
+  /** The interceptor script, by its `@name`. Set, it wins over `agentId`. */
+  script: string
+  /** Only messages matching this regular expression are intercepted; empty means all. */
+  pattern: string
 }
 
-export const NO_INTERCEPTOR: InterceptorChoice = { agentId: '', contextDepth: 0 }
+export const NO_INTERCEPTOR: InterceptorChoice = {
+  agentId: '',
+  contextDepth: 0,
+  script: '',
+  pattern: '',
+}
+
+/** Where a message goes: straight on, to a reviewing agent, or through a script. */
+export type InterceptRoute =
+  | { kind: 'none' }
+  | { kind: 'agent'; broken?: string }
+  | { kind: 'script'; script: string; broken?: string }
 
 /** The slice of a chat the interceptor touches. */
 export interface InterceptorHost {
@@ -57,23 +78,37 @@ export class ChatInterceptor {
     () => this.override.value ?? this.agentDefault.value
   )
 
+  /** Records `patch` over the choice in force as this chat's own. */
+  private choose(patch: Partial<InterceptorChoice>): void {
+    this.override.value = { ...NO_INTERCEPTOR, ...this.choice.value, ...patch }
+  }
+
   /**
    * Empty means no review; the message goes straight to the main agent. Assigning records an
    * override, which is what every caller that assigns — the chat settings picker — means.
+   * Choosing an agent drops a script: one interceptor at a time.
    */
   public readonly agentId: WritableComputedRef<string> = computed({
-    get: () => this.choice.value.agentId,
-    set: (agentId) => {
-      this.override.value = { agentId, contextDepth: this.choice.value.contextDepth }
-    },
+    get: () => (this.choice.value.script ? '' : this.choice.value.agentId),
+    set: (agentId) => this.choose({ agentId, ...(agentId ? { script: '' } : {}) }),
+  })
+
+  /** The interceptor script by name; choosing one drops the reviewing agent. */
+  public readonly script: WritableComputedRef<string> = computed({
+    get: () => this.choice.value.script ?? '',
+    set: (script) => this.choose({ script, ...(script ? { agentId: '' } : {}) }),
   })
 
   /** 0 sends only the draft, -1 the whole visible history, N the last N messages. */
   public readonly contextDepth: WritableComputedRef<number> = computed({
     get: () => this.choice.value.contextDepth,
-    set: (contextDepth) => {
-      this.override.value = { agentId: this.choice.value.agentId, contextDepth }
-    },
+    set: (contextDepth) => this.choose({ contextDepth }),
+  })
+
+  /** Only messages matching it are intercepted; empty means all. */
+  public readonly pattern: WritableComputedRef<string> = computed({
+    get: () => this.choice.value.pattern ?? '',
+    set: (pattern) => this.choose({ pattern }),
   })
 
   get followsAgent(): boolean {
@@ -95,11 +130,45 @@ export class ChatInterceptor {
   constructor(private readonly host: InterceptorHost) {}
 
   get isActive(): boolean {
-    return Boolean(this.agentId.value && this.agent)
+    return Boolean(this.script.value || (this.agentId.value && this.agent))
   }
 
   get agentName(): string {
+    if (this.script.value) return this.script.value
     return this.agent?.name || 'Interceptor'
+  }
+
+  /**
+   * Where a message goes. A pattern that does not match sends it straight to the chat's agent;
+   * one that does not compile intercepts it anyway and says why (`broken`).
+   */
+  route(text: string): InterceptRoute {
+    if (!this.isActive) return { kind: 'none' }
+    const { matches, broken } = matchesPattern(this.pattern.value, text)
+    if (!matches) return { kind: 'none' }
+    const extra = broken ? { broken } : {}
+    return this.script.value
+      ? { kind: 'script', script: this.script.value, ...extra }
+      : { kind: 'agent', ...extra }
+  }
+
+  /** True while a script decides about a message; the chat is busy for that long. */
+  public readonly working = ref(false)
+  private scriptController: AbortController | null = null
+
+  /** Runs the chosen script on a message. Stopped by `abort()`. */
+  async runScript(script: string, input: InterceptInput): Promise<InterceptOutcome> {
+    const controller = new AbortController()
+    this.scriptController = controller
+    this.working.value = true
+    try {
+      return await runInterceptorScript(script, input, controller.signal)
+    } finally {
+      if (this.scriptController === controller) {
+        this.scriptController = null
+        this.working.value = false
+      }
+    }
   }
 
   private get agent() {
@@ -169,6 +238,7 @@ export class ChatInterceptor {
 
   abort(): void {
     this.abortController?.abort()
+    this.scriptController?.abort()
   }
 
   /**

@@ -64,18 +64,36 @@
 
           <Setting
             name="Interceptor"
-            desc="Reads each message in this agent's chats before it is sent, and says what it
-              thinks. A chat can pick another one or turn it off."
+            desc="Sees each message in this agent's chats before the agent does. An agent reads it
+              and says what it thinks; a script decides what becomes of it. A chat can pick
+              another one or turn it off."
           >
             <Dropdown
-              :model-value="agent.interceptorAgentId ?? ''"
+              :model-value="interceptorKey"
               :options="interceptorOptions"
-              @update:model-value="patch({ interceptorAgentId: $event })"
+              @update:model-value="selectInterceptor($event)"
             />
           </Setting>
 
+          <template v-if="interceptorKey">
+            <Setting
+              name="Only messages matching"
+              desc="A regular expression, bare or as /pattern/flags. Other messages go straight
+                to the agent. Empty means every message."
+            >
+              <Input
+                :model-value="patternText"
+                placeholder="^/todo"
+                @update:model-value="typePattern($event)"
+              />
+            </Setting>
+            <p v-if="patternProblem" class="setting-item-description mod-warning">
+              Not saved: {{ patternProblem }}
+            </p>
+          </template>
+
           <Setting
-            v-if="agent.interceptorAgentId"
+            v-if="agent.interceptorAgentId && !agent.interceptorScript"
             name="Interceptor context"
             desc="How much of the conversation the interceptor sees."
           >
@@ -265,6 +283,8 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { INTERCEPTOR_CONTEXT_OPTIONS, type AgentDefinition } from '@/ai/agents/types'
+import { interceptorScripts } from '@/ai/interceptor/runScript'
+import { patternError } from '@/ai/interceptor/pattern'
 import type { PermissionMode, ToolMode } from '@/ai/types'
 
 type SkillsMode = AgentDefinition['skillsMode']
@@ -383,13 +403,54 @@ function selectBackground(key: string): void {
  * one: an agent reviewing its own drafts is a loop with extra steps. A reviewer that was
  * deleted is not offered, so the picker shows "No review", which is what the chat will do.
  */
-const interceptorOptions = computed(() => [
-  { value: '', display: 'No review' },
-  ...registry
-    .list({ includeUtility: true })
-    .filter((a) => a.id !== props.agentId)
-    .map((a) => ({ value: a.id, display: a.utility ? `${a.name} · utility` : a.name })),
-])
+const interceptorOptions = computed(() => {
+  const chosen = agent.value?.interceptorScript
+  const scripts = interceptorScripts().map((s) => s.meta.name)
+  // A script chosen before it was renamed or deleted is still shown as what is chosen, so the
+  // picker does not claim "No review" while every message is going to a missing script.
+  if (chosen && !scripts.includes(chosen)) scripts.push(chosen)
+  return [
+    { value: '', display: 'No review' },
+    ...registry
+      .list({ includeUtility: true })
+      .filter((a) => a.id !== props.agentId)
+      .map((a) => ({ value: a.id, display: a.utility ? `${a.name} · utility` : a.name })),
+    ...scripts.map((name) => ({
+      value: `${SCRIPT_KEY}${name}`,
+      display: `Script: ${name}${interceptorScripts().some((s) => s.meta.name === name) ? '' : ' · missing'}`,
+    })),
+  ]
+})
+
+/** A script's option is its name after this; agent ids never contain a colon. */
+const SCRIPT_KEY = 'script:'
+
+const interceptorKey = computed(() => {
+  const a = agent.value
+  if (!a) return ''
+  if (a.interceptorScript) return `${SCRIPT_KEY}${a.interceptorScript}`
+  return a.interceptorAgentId ?? ''
+})
+
+function selectInterceptor(key: string): void {
+  if (key.startsWith(SCRIPT_KEY)) {
+    patch({ interceptorScript: key.slice(SCRIPT_KEY.length), interceptorAgentId: '' })
+  } else {
+    patch({ interceptorAgentId: key, interceptorScript: '' })
+  }
+}
+
+/** What is typed, kept here while it does not compile; the agent keeps its last good one. */
+const typedPattern = ref<string | null>(null)
+const patternText = computed(() => typedPattern.value ?? agent.value?.interceptorPattern ?? '')
+const patternProblem = computed(() =>
+  typedPattern.value === null ? null : patternError(typedPattern.value)
+)
+
+function typePattern(text: string): void {
+  typedPattern.value = text
+  if (!patternError(text)) patch({ interceptorPattern: text })
+}
 
 function selectFallback(key: string): void {
   if (!key) {

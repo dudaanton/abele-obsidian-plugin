@@ -10,6 +10,7 @@ import type { ScriptMeta, ScriptParam, StartupDevices } from './types'
  *   // @toolbar
  *   // @startup mobile
  *   // @lint warning
+ *   // @interceptor 60
  *
  * Returns null if @name is missing.
  */
@@ -25,6 +26,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
   let toolbar = false
   let startup: StartupDevices | undefined
   let lint: 'error' | 'warning' | undefined
+  let interceptor: number | undefined
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -49,6 +51,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       startup = word === 'desktop' || word === 'mobile' ? word : 'both'
     } else if (content === '@lint' || content.startsWith('@lint ')) {
       lint = content.slice(5).trim() === 'warning' ? 'warning' : 'error'
+    } else if (content === '@interceptor' || content.startsWith('@interceptor ')) {
+      interceptor = interceptorSeconds(content.slice(12).trim())
     } else if (content.startsWith('@param ')) {
       const param = parseParam(content.slice(7).trim())
       if (param) params.push(param)
@@ -67,7 +71,20 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
     ...(toolbar ? { toolbar } : {}),
     ...(startup ? { startup } : {}),
     ...(lint ? { lint } : {}),
+    ...(interceptor ? { interceptor } : {}),
   }
+}
+
+/** How long an interceptor script may take, when it does not say. */
+export const INTERCEPTOR_DEFAULT_SECONDS = 30
+/** The most it may ask for: the person is waiting on the message all that time. */
+export const INTERCEPTOR_MAX_SECONDS = 600
+
+/** The seconds after `@interceptor`: a whole number from 1 to the maximum, or the default. */
+function interceptorSeconds(word: string): number {
+  const n = Number(word)
+  if (!word || !Number.isFinite(n) || n <= 0) return INTERCEPTOR_DEFAULT_SECONDS
+  return Math.min(INTERCEPTOR_MAX_SECONDS, Math.max(1, Math.round(n)))
 }
 
 /**

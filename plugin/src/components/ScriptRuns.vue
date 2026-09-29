@@ -78,17 +78,20 @@
                   tooltip="Take this run off the list"
                   @click="ScriptRuns.getInstance().forget(run.id)"
                 />
-                <Button
-                  text="Run again"
-                  tooltip="Run it once more with the same values"
-                  @click="again(run)"
-                />
-                <Button
-                  text="Run as new"
-                  accent
-                  tooltip="Ask for the values again, starting from these"
-                  @click="asNew(run)"
-                />
+                <!-- An interceptor ran on a message a chat sent; without one there is nothing to run it on. -->
+                <template v-if="run.source !== 'interceptor'">
+                  <Button
+                    text="Run again"
+                    tooltip="Run it once more with the same values"
+                    @click="again(run)"
+                  />
+                  <Button
+                    text="Run as new"
+                    accent
+                    tooltip="Ask for the values again, starting from these"
+                    @click="asNew(run)"
+                  />
+                </template>
               </template>
             </div>
           </div>
@@ -142,6 +145,7 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   automation: 'automation',
   book: 'book',
   startup: 'startup',
+  interceptor: 'interceptor',
 }
 
 const store = ScriptRuns.getInstance()

@@ -16,6 +16,7 @@ import {
   isAgent,
   moveItem,
   refuseInterceptor,
+  refusePattern,
   removeItem,
   updateItem,
   type ItemResult,
@@ -271,6 +272,10 @@ function setValue(
 
   if (found.key === 'interceptorAgentId' && isAgent(found.parent)) {
     const refused = refuseInterceptor(found.parent, parsed)
+    if (refused) return { text: refused, changed: false }
+  }
+  if (found.key === 'interceptorPattern' && isAgent(found.parent)) {
+    const refused = refusePattern(parsed)
     if (refused) return { text: refused, changed: false }
   }
 

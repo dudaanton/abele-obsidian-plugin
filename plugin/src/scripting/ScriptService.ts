@@ -52,6 +52,8 @@ export interface ExecuteOptions {
   event?: AutomationEvent
   /** Told each path the script is about to write; see `buildScriptContext`. */
   onWrite?: (path: string) => void
+  /** The message an interceptor script decides about, and the chat around it. */
+  intercept?: { message: unknown; chat: unknown }
   /** What started the run, in words, for the list of runs: "Task completed · Tasks/Milk.md". */
   trigger?: string
   /** The words in a book the run was asked for from; the script reads it as `book`. */
@@ -104,6 +106,15 @@ const SCRIPT_GLOBALS = [
 
 const REDECLARED = /Identifier '(\w+)' has already been declared/
 
+/** A value as the list of runs shows it; one holding a function (an interceptor's `approve`) too. */
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_k, v: unknown) => (typeof v === 'function' ? '[function]' : v), 2)
+  } catch {
+    return String(value)
+  }
+}
+
 /**
  * Who asks for a run with a person right there, having just chosen the script: a script from
  * elsewhere is put in front of them to confirm. Everything else — automations, startup, agents,
@@ -117,16 +128,17 @@ const REVIEW_COMMAND = 'review-waiting-scripts'
 /**
  * The script as a function of its context. Throws what the engine threw, said better.
  *
- * `event`, `book` and `analytics` are given in the scope around the script rather than beside the
- * reserved names: they arrived after scripts had been written for years, and all are ordinary
- * names for a variable. Declared out there, a script's own `const event` simply shadows it.
+ * `event`, `book`, `analytics`, `message` and `chat` are given in the scope around the script
+ * rather than beside the reserved names: they arrived after scripts had been written for years,
+ * and all are ordinary names for a variable. Declared out there, a script's own `const event`
+ * simply shadows it.
  */
 function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
   try {
     return new Function(
       'ctx',
       `"use strict";
-      const { event, book, analytics } = ctx;
+      const { event, book, analytics, message, chat } = ctx;
       return (async () => {
         const { ${SCRIPT_GLOBALS.join(', ')} } = ctx;
         ${code}
@@ -418,6 +430,8 @@ export class ScriptService {
       return this.discovering
     }
     this.discovering = this.rebuild().finally(() => {
+      // Whoever asked for the index first — `init`, or a test — it has been read now.
+      this.markReady()
       this.discovering = null
       if (this.discoverAgain) {
         this.discoverAgain = false
@@ -465,8 +479,9 @@ export class ScriptService {
     this.unregisterAllCommands()
     this.scripts = next
     for (const parsed of next.values()) {
-      // A lint rule is not something to run: it gives the linter its `check` and `fix`.
-      if (parsed.meta.lint) continue
+      // A lint rule is not something to run: it gives the linter its `check` and `fix`. An
+      // interceptor needs a message to decide about, which only a chat sending one has.
+      if (parsed.meta.lint || parsed.meta.interceptor) continue
       try {
         plugin.addCommand({
           id: parsed.commandId,
@@ -610,7 +625,11 @@ export class ScriptService {
    */
   getEnabledToolScripts(): ParsedScript[] {
     return this.getAll().filter(
-      (s) => s.meta.enabled !== false && !s.meta.lint && this.verdict(s) === 'confirmed'
+      (s) =>
+        s.meta.enabled !== false &&
+        !s.meta.lint &&
+        !s.meta.interceptor &&
+        this.verdict(s) === 'confirmed'
     )
   }
 
@@ -781,10 +800,56 @@ export class ScriptService {
     options?: AbortSignal | ExecuteOptions,
     formHandler?: (fields: FormField[]) => Promise<Record<string, string> | null>
   ): Promise<string> {
-    const opts: ExecuteOptions =
-      options instanceof AbortSignal ? { signal: options, formHandler } : (options ?? {})
-    const signal = opts.signal
+    const given: ExecuteOptions =
+      options instanceof AbortSignal ? { signal: options } : (options ?? {})
+    const opts: ExecuteOptions = { ...given, formHandler: given.formHandler ?? formHandler }
     const script = await this.admit(path, opts.source ?? 'agent')
+    if (script.meta.interceptor) {
+      throw new Error(
+        `Script "${script.meta.name}" is an interceptor: it runs when a chat sends a message, with that message, and not by itself`
+      )
+    }
+    const { value, output } = await this.run(script, params, opts)
+    const resultStr =
+      value !== undefined ? (typeof value === 'object' ? safeJson(value) : String(value)) : ''
+    return output + resultStr
+  }
+
+  /**
+   * Runs an interceptor script on a message and hands back what it returned, as it returned it.
+   *
+   * Never puts the script in front of the person to confirm: they are in the middle of sending
+   * a message, and a dialog there would be a surprise. One that waits is refused, and the caller
+   * says so.
+   */
+  async intercept(
+    path: string,
+    input: { message: unknown; chat: unknown },
+    signal: AbortSignal
+  ): Promise<unknown> {
+    const script = await this.admit(path, 'interceptor')
+    if (!script.meta.interceptor) {
+      throw new Error(`Script "${script.meta.name}" is not an interceptor (no @interceptor line)`)
+    }
+    // Admission may have taken a moment; a send stopped meanwhile runs nothing.
+    if (signal.aborted) throw new Error('Script stopped')
+    const { value } = await this.run(script, {}, {
+      signal,
+      source: 'interceptor',
+      formHandler: showFormModal,
+      intercept: input,
+    })
+    return value
+  }
+
+  /** One run of an admitted script: its value as returned, and what it printed. */
+  private async run(
+    script: ParsedScript,
+    params: Record<string, unknown>,
+    opts: ExecuteOptions
+  ): Promise<{ value: unknown; output: string }> {
+    const path = script.path
+    const signal = opts.signal
 
     const combinedController = new AbortController()
 
@@ -806,7 +871,7 @@ export class ScriptService {
     const logs: string[] = []
 
     try {
-      const handler = opts.formHandler ?? formHandler
+      const handler = opts.formHandler
       const ctx = buildScriptContext({
         params,
         signal: combinedController.signal,
@@ -826,6 +891,7 @@ export class ScriptService {
         event: opts.event,
         book: opts.book,
         onWrite: opts.onWrite,
+        intercept: opts.intercept,
       })
 
       // Running the user's own script is the feature. The code comes from a `.js` file the
@@ -844,11 +910,11 @@ export class ScriptService {
       const resultStr =
         result !== undefined
           ? typeof result === 'object'
-            ? JSON.stringify(result, null, 2)
+            ? safeJson(result)
             : String(result)
           : ''
       runs.finish(runId, output + resultStr)
-      return output + resultStr
+      return { value: result, output }
     } catch (err) {
       // A script that was told to stop threw the same way a broken one does; the list should
       // not read the two alike, and only the controller knows which happened.

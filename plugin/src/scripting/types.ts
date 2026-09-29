@@ -25,6 +25,12 @@ export interface ScriptMeta {
    * is, `error` unless it says `warning`.
    */
   lint?: 'error' | 'warning'
+  /**
+   * `@interceptor`: the script reads each message a chat sends before its agent does, and decides
+   * what becomes of it (see `src/ai/interceptor/`). Not something to run by hand — no command, no
+   * agent tool. The number after it is how many seconds it may take, 30 unless it says.
+   */
+  interceptor?: number
 }
 
 /** Which devices a startup script runs on. */

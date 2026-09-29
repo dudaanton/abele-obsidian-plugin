@@ -130,6 +130,8 @@ export function buildScriptContext(opts: {
    * is recognised as its echo rather than a new event.
    */
   onWrite?: (path: string) => void
+  /** The message an interceptor script decides about, and the chat around it; see `src/ai/interceptor/`. */
+  intercept?: { message: unknown; chat: unknown }
 }) {
   const s = opts.signal
   const wrote = (...paths: Array<string | undefined>) => {
@@ -177,6 +179,10 @@ export function buildScriptContext(opts: {
     event: opts.event ?? null,
     /** The words in a book the run was asked for from; `null` for every other run. */
     book: opts.book ? { ...opts.book } : null,
+    /** The message an interceptor script is deciding about; `null` for every other run. */
+    message: opts.intercept?.message ?? null,
+    /** The chat that message is sent in, read-only; `null` for every other run. */
+    chat: opts.intercept?.chat ?? null,
 
     // ── Logging ──
 

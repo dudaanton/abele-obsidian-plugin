@@ -55,6 +55,13 @@ export interface AgentDefinition {
   interceptorAgentId: string
   /** How much of the conversation the interceptor sees: 0 the draft, -1 all of it, N the last N. */
   interceptorContextDepth: number
+  /**
+   * A script that decides about each message instead of a reviewing agent, by its `@name`; see
+   * `src/ai/interceptor/`. Empty means none. Set, it wins over `interceptorAgentId`.
+   */
+  interceptorScript: string
+  /** Only messages matching this regular expression go to the interceptor; empty means all. */
+  interceptorPattern: string
 
   /** Concatenated in order, blank line between blocks. */
   prompts: AgentPrompt[]
@@ -127,6 +134,8 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     memory: [],
     interceptorAgentId: '',
     interceptorContextDepth: 0,
+    interceptorScript: '',
+    interceptorPattern: '',
   }
 
   // Duplication spreads a source agent in and clears `id` to ask for a fresh one. Spreading an

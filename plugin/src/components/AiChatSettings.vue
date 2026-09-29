@@ -18,8 +18,24 @@
       </select>
     </Setting>
 
+    <template v-if="interceptorActive">
+      <Setting
+        name="Only messages matching"
+        desc="A regular expression, bare or as /pattern/flags. Other messages go straight to the agent."
+      >
+        <Input
+          :model-value="patternText"
+          placeholder="Every message"
+          @update:model-value="typePattern($event)"
+        />
+      </Setting>
+      <p v-if="patternProblem" class="setting-item-description mod-warning">
+        Not saved: {{ patternProblem }}
+      </p>
+    </template>
+
     <Setting
-      v-if="activeInterceptorId"
+      v-if="activeInterceptorId && !activeScript"
       name="Interceptor context"
       desc="How much of the conversation the reviewer sees."
     >
@@ -140,6 +156,9 @@ import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { INTERCEPTOR_CONTEXT_OPTIONS } from '@/ai/agents/types'
+import { interceptorScripts } from '@/ai/interceptor/runScript'
+import { patternError } from '@/ai/interceptor/pattern'
+import Input from './obsidian/Input.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
 import Icon from './obsidian/Icon.vue'
@@ -213,27 +232,62 @@ function resetModel() {
 
 // ── Interceptor ──
 
-// Any agent may review a draft, utility ones included — that is what most of them are for.
-const interceptorOptions = computed(() =>
-  AgentRegistry.getInstance()
-    .list({ includeUtility: true })
-    .map((a) => ({ id: a.id, name: a.name }))
-)
+/** A script's option is its name after this; agent ids never contain a colon. */
+const SCRIPT_KEY = 'script:'
+
+// Any agent may review a draft, utility ones included — that is what most of them are for —
+// and any script marked `@interceptor` may decide about one.
+const interceptorOptions = computed(() => {
+  const scripts = interceptorScripts().map((s) => s.meta.name)
+  const chosen = session.value?.interceptor.script.value
+  if (chosen && !scripts.includes(chosen)) scripts.push(chosen)
+  return [
+    ...AgentRegistry.getInstance()
+      .list({ includeUtility: true })
+      .map((a) => ({ id: a.id, name: a.name })),
+    ...scripts.map((name) => ({ id: `${SCRIPT_KEY}${name}`, name: `Script: ${name}` })),
+  ]
+})
 const activeInterceptorId = computed(() => session.value?.interceptor.agentId.value ?? '')
+const activeScript = computed(() => session.value?.interceptor.script.value ?? '')
+const interceptorActive = computed(() => !!(activeInterceptorId.value || activeScript.value))
+
+/** What is typed, kept here while it does not compile; the chat keeps its last good one. */
+const typedPattern = ref<string | null>(null)
+const patternText = computed(
+  () => typedPattern.value ?? session.value?.interceptor.pattern.value ?? ''
+)
+const patternProblem = computed(() =>
+  typedPattern.value === null ? null : patternError(typedPattern.value)
+)
+
+function typePattern(text: string) {
+  typedPattern.value = text
+  const s = session.value
+  if (!s || patternError(text)) return
+  s.interceptor.pattern.value = text
+  void s.save()
+}
 const interceptorContextDepth = computed(() => session.value?.interceptor.contextDepth.value ?? 0)
 
 /** Not an agent id — nanoid never produces a colon — so it cannot collide with one. */
 const FOLLOW_AGENT = ':agent'
 
 const followsAgent = computed(() => session.value?.interceptor.followsAgent ?? true)
-const interceptorKey = computed(() =>
-  followsAgent.value ? FOLLOW_AGENT : activeInterceptorId.value
-)
+const interceptorKey = computed(() => {
+  if (followsAgent.value) return FOLLOW_AGENT
+  return activeScript.value ? `${SCRIPT_KEY}${activeScript.value}` : activeInterceptorId.value
+})
 
 /** Names what "the agent's" means right now, so following it is not a blind choice. */
 const agentDefaultLabel = computed(() => {
-  const id = session.value?.interceptor.agentDefault.value.agentId ?? ''
-  const name = id ? AgentRegistry.getInstance().get(id)?.name : ''
+  const choice = session.value?.interceptor.agentDefault.value
+  const id = choice?.agentId ?? ''
+  const name = choice?.script
+    ? `script ${choice.script}`
+    : id
+      ? AgentRegistry.getInstance().get(id)?.name
+      : ''
   return `Agent default (${name || 'off'})`
 })
 
@@ -247,7 +301,12 @@ function setInterceptor(value: string) {
   const s = session.value
   if (!s) return
   if (value === FOLLOW_AGENT) s.interceptor.followAgent()
-  else s.interceptor.agentId.value = value
+  else if (value.startsWith(SCRIPT_KEY)) s.interceptor.script.value = value.slice(SCRIPT_KEY.length)
+  else {
+    s.interceptor.script.value = ''
+    s.interceptor.agentId.value = value
+  }
+  typedPattern.value = null
   void s.save()
 }
 
