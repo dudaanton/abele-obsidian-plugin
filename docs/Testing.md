@@ -220,6 +220,9 @@ Three files, three concerns:
   room the keyboard leaves, its body scrolls there, the time field is in sight and the buttons
   stand above the keyboard. Writes one task note for the run and removes it; pictures go to
   `/tmp/abele-phone/task-date-*.png`.
+- `composerActiveEditor.e2e.test.ts` — **editor commands after the chat was used**. A note is
+  open, the chat's composer is typed into, then the focus goes back into the note, or nowhere as
+  the command palette takes it: an editor command then changes the note, and never the composer.
 - `composerExpand.e2e.test.ts` — **the chat's composer**. The field is Obsidian's note editor in
   live preview; its button opens it out over the whole chat and back with the draft kept; `[[`
   brings up the link suggester; a pasted and a dropped file become attachments; Shift+Enter sends

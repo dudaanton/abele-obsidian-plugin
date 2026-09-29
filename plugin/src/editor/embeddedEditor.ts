@@ -209,6 +209,7 @@ export function createEmbeddedEditor(
             },
             blur: () => {
               deactivate()
+              giveBack()
               options.onBlur?.()
               return false
             },
@@ -281,6 +282,26 @@ export function createEmbeddedEditor(
     toolbar()?.update()
   }
 
+  /**
+   * The field is Obsidian's active editor only while it has the focus. Once it loses it, the
+   * field lets go, so that a command from the palette or a hotkey acts on the note the person
+   * is in, not on a field typed in a moment ago. A field that lives on, like the chat's
+   * composer, kept it: "Insert image gallery" wrote into the chat instead of the note.
+   *
+   * Letting go is clearing it. Obsidian's `activeEditor` answers with the active note whenever
+   * nothing else was set, and it refuses to be set to a note — a note written back into it was
+   * ignored, and the field stayed. Only an editor that is not a note (another field, still on
+   * screen) is put back by name.
+   */
+  function giveBack(): void {
+    if (workspace.activeEditor !== controller.owner) return
+    workspace.activeEditor = null
+    const previous = previousActive as { editor?: { cm?: EditorView } } | null | undefined
+    if (previous && previous !== controller.owner && previous.editor?.cm?.dom?.isConnected) {
+      workspace.activeEditor = previous
+    }
+  }
+
   function deactivate(): void {
     if (scopePushed) {
       keys.popScope(controller.scope)
@@ -324,9 +345,7 @@ export function createEmbeddedEditor(
     destroy: () => {
       host.removeEventListener('click', onClick, true)
       deactivate()
-      if (workspace.activeEditor === controller.owner) {
-        workspace.activeEditor = previousActive ?? null
-      }
+      giveBack()
       try {
         controller.unload?.()
         controller.destroy?.()

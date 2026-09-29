@@ -43,5 +43,11 @@ it whenever a leaf becomes active, so the field claims it back on `active-leaf-c
 when the keyboard comes up, for as long as it keeps the focus. The toolbar lives in the app
 container at the menu layer, above a dialog's.
 
+The field is the active editor only while it has the focus. When it loses it, the field clears
+itself out of `activeEditor` (Obsidian's getter then answers with the active note; its setter
+ignores a note, so a note cannot be written back in), and a command from the palette or a hotkey
+acts on the note, never on a field typed in earlier. `composerActiveEditor.e2e.test.ts` checks it
+with the chat's composer, the field that stays on screen.
+
 Under `emulateMobile` the toolbar comes up for the field in a dialog, over the dialog, and
 the e2e tier checks both. What an iPhone does with it is not something the emulator can show.
