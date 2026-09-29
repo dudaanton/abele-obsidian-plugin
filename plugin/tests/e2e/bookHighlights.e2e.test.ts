@@ -134,7 +134,7 @@ describe.skipIf(!available)('highlights, links and search', () => {
       recolored?: string | null
       commented?: string | null
       removed?: string | null
-      bar?: number
+      bar?: string[]
     }>(`
       const { leaf, view } = await open(${JSON.stringify(BOOK)})
       await view.engine.goTo(0)
@@ -149,7 +149,6 @@ describe.skipIf(!available)('highlights, links and search', () => {
       const tapped = view.model.active?.color
       const bar = [...view.contentEl.querySelectorAll('.abele-book-selection__actions .abele-obsidian-icon')]
         .map((el) => el.getAttribute('aria-label') ?? '')
-        .filter((label) => !label.startsWith('Ask the agent')).length
       await view.reading.save({ ...view.model.active, color: 'pink' })
       const recolored = await read(${JSON.stringify(BOOK_NOTE)})
       await view.reading.save({ ...view.model.active, comment: 'Worth a source.' })
@@ -162,7 +161,18 @@ describe.skipIf(!available)('highlights, links and search', () => {
     expect(r.error).toBeUndefined()
     expect(r.reopened).toBeGreaterThan(0)
     expect(r.tapped).toBe('green')
-    expect(r.bar).toBe(6)
+    // The actions a highlight offers, by name: how many buttons there are besides depends on
+    // the vault's scripts and the reader's mode, so the total is not the thing to hold.
+    expect(r.bar).toEqual(
+      expect.arrayContaining([
+        'Copy a link to this place',
+        'Open the highlights note',
+        'Remove the highlight',
+        'Close',
+      ])
+    )
+    expect(r.bar).toContainEqual(expect.stringMatching(/^(Underline this word|Change the words)/))
+    expect(r.bar).toContainEqual(expect.stringMatching(/^(Edit the comment|Highlight and write)/))
     expect(r.recolored).toContain('> [!quote|pink]')
     expect(r.commented).toMatch(/> claim\n>\n> Worth a source\./)
     expect(r.removed).not.toContain('[!quote')
