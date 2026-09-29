@@ -1,8 +1,8 @@
 /**
  * Pressing Send on a phone while the keyboard is up.
  *
- * The plugin closes the keyboard when a tap lands outside one of its fields, on the finger's
- * lift (`registerFocusRelease`). The Send button is outside the field, so the lift took the
+ * The plugin closes the keyboard when a tap lands outside one of its fields, once the finger
+ * has lifted and the click that follows has been handled (`registerFocusRelease`). The Send button is outside the field, so the lift took the
  * focus away — and the chat reacts to losing it by dropping its keyboard layout at once. The
  * composer moved, the click that follows a touch was hit-tested against the new layout, and it
  * no longer landed on the button: the tap closed the keyboard and sent nothing.
@@ -111,6 +111,8 @@ describe('a tap elsewhere in the composer', () => {
     const field = await typed(wrapper, 'hello')
 
     tap(wrapper.find('.abele-chat-input__tokens').element)
+    // The field is let go of once the click has been handled, not on the lift itself.
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(document.activeElement).not.toBe(field)
     expect(wrapper.emitted('send')).toBeUndefined()

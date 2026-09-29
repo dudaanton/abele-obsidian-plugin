@@ -17,9 +17,9 @@
  * a mouse never raises them — and deciding on the lift rather than the landing is what keeps
  * a scroll from being taken for a tap.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { Plugin } from 'obsidian'
-import { releasesFocus, registerFocusRelease } from '@/helpers/fieldFocus'
+import { releasesFocus, registerFocusRelease, RELEASE_AFTER_MS } from '@/helpers/fieldFocus'
 
 /** The plugin's own settings pane, holding one field, beside things a tap can land on. */
 function screen(): {
@@ -150,7 +150,77 @@ describe('the listener', () => {
       target,
       changedTouches: [{ clientX: to[0], clientY: to[1] }],
     } as unknown as Event)
+    // Whatever the lift decided is done by now: after the click a tap brings, or without one.
+    vi.advanceTimersByTime(RELEASE_AFTER_MS)
   }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // On an iPhone, letting go of the field as the finger lifts cost the tap its click: the
+  // attached chat that was tapped did not open, the button did nothing. So the focus goes once
+  // the click has been delivered, and the element tapped gets it with the field still focused.
+  it('lets the click the tap brings arrive before the focus goes', () => {
+    const { field, blank } = screen()
+    const { plugin, registered } = pluginSpy()
+    registerFocusRelease(plugin)
+    field.focus()
+    const focusedAtClick: (Element | null)[] = []
+    blank.addEventListener('click', () => focusedAtClick.push(document.activeElement))
+
+    registered.get('touchstart')!.handler({
+      target: blank,
+      touches: [{ clientX: 100, clientY: 100 }],
+    } as unknown as Event)
+    registered.get('touchend')!.handler({
+      target: blank,
+      changedTouches: [{ clientX: 100, clientY: 100 }],
+    } as unknown as Event)
+    expect(document.activeElement).toBe(field)
+
+    blank.click()
+    expect(focusedAtClick).toEqual([field])
+    vi.advanceTimersByTime(0)
+    expect(document.activeElement).not.toBe(field)
+  })
+
+  it('lets go of the field all the same when no click follows the tap', () => {
+    const { field, blank } = screen()
+    const { plugin, registered } = pluginSpy()
+    registerFocusRelease(plugin)
+    field.focus()
+
+    registered.get('touchstart')!.handler({
+      target: blank,
+      touches: [{ clientX: 100, clientY: 100 }],
+    } as unknown as Event)
+    registered.get('touchend')!.handler({
+      target: blank,
+      changedTouches: [{ clientX: 100, clientY: 100 }],
+    } as unknown as Event)
+    vi.advanceTimersByTime(RELEASE_AFTER_MS)
+
+    expect(document.activeElement).not.toBe(field)
+  })
+
+  it('leaves the focus where the click moved it', () => {
+    const { field, blank, otherField } = screen()
+    const { plugin, registered } = pluginSpy()
+    registerFocusRelease(plugin)
+    field.focus()
+    blank.addEventListener('click', () => otherField.focus())
+
+    touch(registered, blank, [100, 100])
+    blank.click()
+    vi.advanceTimersByTime(RELEASE_AFTER_MS)
+
+    expect(document.activeElement).toBe(otherField)
+  })
 
   it('listens for touches, so a desktop never reaches it', () => {
     const { plugin, registered } = pluginSpy()

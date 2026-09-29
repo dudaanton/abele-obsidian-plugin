@@ -63,6 +63,13 @@ export function releasesFocus(target: Element | null, active: Element | null): b
 export const TAP_SLOP_PX = 10
 
 /**
+ * How long a lift waits for the click a tap brings before letting go of the field without it.
+ * iOS delivers that click right after `touchend`; a tap on something with no click to deliver
+ * still closes the keyboard, a moment later.
+ */
+export const RELEASE_AFTER_MS = 400
+
+/**
  * Releases the focus of one of the plugin's fields when a tap lands outside it.
  *
  * A tap, decided when the finger lifts, not a touch, decided when it lands: a scroll starts
@@ -71,6 +78,12 @@ export const TAP_SLOP_PX = 10
  * phone). So the touch is remembered where it landed, and the focus goes on `touchend` only if
  * the finger has stayed within a tap of that point. A `touchcancel` — the system taking the
  * gesture — forgets it.
+ *
+ * And after the click the tap brings, not on the lift itself: on an iPhone a field let go of as
+ * the finger lifted cost the tap its click — a chat attached to a message, tapped with the
+ * chat's own field focused, did not open. So the focus goes once that click has been handled,
+ * or after `RELEASE_AFTER_MS` when none comes; and only if it is still where it was, since the
+ * click may have moved it.
  *
  * Touch events rather than pointer events on purpose: they are raised only by a touchscreen,
  * so a desktop never reaches this code and its selection behaviour is untouched. The listeners
@@ -108,7 +121,7 @@ export function registerFocusRelease(plugin: Plugin): void {
       // Still the field that was focused when the finger landed — a press on another field
       // in between has already moved the focus itself.
       if (document.activeElement !== tap.active) return
-      tap.active.blur()
+      releaseAfterClick(tap.active)
     },
     options
   )
@@ -121,4 +134,20 @@ export function registerFocusRelease(plugin: Plugin): void {
     },
     options
   )
+}
+
+/** Lets go of `field` once the click that follows a tap has been handled, or without one. */
+function releaseAfterClick(field: HTMLElement): void {
+  let done = false
+  const release = () => {
+    if (done) return
+    done = true
+    window.clearTimeout(timer)
+    document.removeEventListener('click', onClick, true)
+    if (document.activeElement === field) field.blur()
+  }
+  // After the click's own handlers, which run once this capturing listener has returned.
+  const onClick = () => window.setTimeout(release, 0)
+  document.addEventListener('click', onClick, { capture: true, once: true })
+  const timer = window.setTimeout(release, RELEASE_AFTER_MS)
 }
