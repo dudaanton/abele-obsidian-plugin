@@ -162,10 +162,12 @@ export class BookReading {
       const confirmed = await dialog.answer
       this.cancelRepair = null
       if (!confirmed || this.disposed) return
+      // A metadata event can reload the note and clear the old active key during the write.
+      const activeBeforeWrite = this.model.active?.cfi
       const result = await repairHighlightLinks(this.app, this.file, this.where(), selected)
       if (this.disposed) return
       if (result.applied.length) {
-        const remap = selected.find((r) => r.cfi === this.model.active?.cfi && result.applied.includes(r.cfi))
+        const remap = selected.find((r) => r.cfi === activeBeforeWrite && result.applied.includes(r.cfi))
         if (result.applied.some((cfi) => cfi === this.model.commenting?.cfi)) this.model.commenting = null
         if (result.applied.some((cfi) => cfi === this.model.wording?.cfi)) this.model.wording = null
         await this.loadHighlights()
