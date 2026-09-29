@@ -183,7 +183,13 @@ describe.skipIf(!available)('a counter property', () => {
     }, 180_000)
 
     it('is tapped the same way, with buttons a finger can hit', () => {
-      const r = run<{ error?: string; mobile: boolean; value: unknown; sizes: number[] }>(
+      const r = run<{
+        error?: string
+        mobile: boolean
+        value: unknown
+        sizes: number[]
+        placeholder: { need: number; room: number }
+      }>(
         `
         const leaf = await open()
         await until(() => cell(leaf)?.querySelector('.abele-property-counter'))
@@ -194,9 +200,19 @@ describe.skipIf(!available)('a counter property', () => {
           const box = b.getBoundingClientRect()
           return Math.min(box.width, box.height)
         })
+        // Emptied, the field shows its placeholder whole, not cut off at its edge.
+        const field = cell(leaf).querySelector('.abele-property-counter__value')
+        const kept = field.value
+        field.value = ''
+        const style = getComputedStyle(field)
+        const ctx2d = document.createElement('canvas').getContext('2d')
+        ctx2d.font = style.font
+        const room = field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+        const placeholder = { need: ctx2d.measureText(field.placeholder).width, room }
+        field.value = kept
         await wait(300)
         await shoot('phone')
-        return { mobile: app.isMobile, value, sizes }
+        return { mobile: app.isMobile, value, sizes, placeholder }
       `,
         90_000
       )
@@ -205,6 +221,8 @@ describe.skipIf(!available)('a counter property', () => {
       expect(r.value).toBe(2)
       expect(r.sizes).toHaveLength(2)
       for (const size of r.sizes) expect(size).toBeGreaterThanOrEqual(24)
+      // A pixel of rounding either way is not a cut-off letter.
+      expect(r.placeholder.room).toBeGreaterThanOrEqual(r.placeholder.need - 1)
     })
   })
 })
