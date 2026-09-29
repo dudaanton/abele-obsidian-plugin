@@ -1,10 +1,7 @@
 <template>
   <div class="abele-changelog">
     <div ref="scroller" class="abele-changelog__scroll">
-      <h1 v-if="model.range">
-        What's new since {{ model.range.from }} through {{ model.range.to }}
-      </h1>
-      <h1 v-else>All versions</h1>
+      <h1>{{ title }}</h1>
       <Button
         v-if="model.range"
         text="Show all versions"
@@ -45,6 +42,11 @@ import { ref, computed, watch, nextTick } from 'vue'
 import Button from '@/components/obsidian/Button.vue'
 import { selectReleases, type Release, type Range } from '@/changelog/model'
 const props = defineProps<{ releases: Release[]; model: { range: Range | null } }>()
+const title = computed(() =>
+  props.model.range
+    ? `What's new since ${props.model.range.from} through ${props.model.range.to}`
+    : 'All versions'
+)
 const limit = ref(10)
 const scroller = ref<HTMLElement | null>(null)
 const groups = [

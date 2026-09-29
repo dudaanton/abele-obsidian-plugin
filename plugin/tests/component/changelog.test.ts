@@ -33,6 +33,7 @@ it('pages every version newest first, filters before paging, escapes text and re
   expect(scroller.scrollTop).toBe(0)
   expect(wrapper.findAll('article')).toHaveLength(3)
   expect(wrapper.text()).toContain("What's new since 1.20.0 through 1.23.0")
+  expect(wrapper.find('h1').element.textContent).toBe("What's new since 1.20.0 through 1.23.0")
   await wrapper.find('button').trigger('click')
   expect(wrapper.findAll('article')).toHaveLength(10)
   wrapper.unmount()
