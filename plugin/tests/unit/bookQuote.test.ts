@@ -136,4 +136,13 @@ describe("a highlight's own words, against its place", () => {
     expect(ownWords(d, place, 'Th')).toBe(place)
     expect(ownWords(d, place, 'end of the second')).toBe(place)
   })
+
+  it('keep the place of a highlight that has no words, from an old note or a hand edit', () => {
+    const d = doc()
+    const place = tail(d, 'b', 'The end of the second.')
+    expect(ownWords(d, place, undefined)).toBe(place)
+    expect(ownWords(d, place, null)).toBe(place)
+    expect(ownWords(d, place, '')).toBe(place)
+    expect(ownWords(d, null, undefined)).toBeNull()
+  })
 })

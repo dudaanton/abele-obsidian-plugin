@@ -195,7 +195,13 @@ const tidy = (text: string) =>
  * or found nowhere in the page, leave the place as it is; so do words that overlap it (a quote
  * shortened by hand).
  */
-export function ownWords(doc: Document, place: Range | null, words: string): Range | null {
+export function ownWords(
+  doc: Document,
+  place: Range | null,
+  words: string | null | undefined
+): Range | null {
+  // A highlight with no words — an old note, a hand edit — is drawn at its place.
+  if (typeof words !== 'string') return place
   const wanted = quoteKey(words)
   if (wanted.length < MIN_QUOTE) return place
   if (place && quoteKey(place.toString()) === wanted) return place

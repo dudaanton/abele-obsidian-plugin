@@ -275,7 +275,17 @@ export class BookMarks {
 
   private async addEpub(h: Highlight): Promise<void> {
     try {
-      const at = this.drawnAt(h)
+      let at = h.cfi
+      try {
+        at = this.drawnAt(h)
+      } catch (e) {
+        // Its words could not be looked for: drawn at its place, as before they were.
+        console.debug(
+          '[Abele] a highlight is drawn at its place, its words not looked for',
+          h.cfi,
+          e
+        )
+      }
       await (
         this.engine as unknown as {
           addAnnotation(a: { value: string; cfi?: string }): Promise<unknown>
@@ -437,7 +447,12 @@ export class BookMarks {
   private placeIn(doc: Document, cfi: string): Range | null {
     const place = this.rangeIn(doc, cfi)
     const h = this.list.find((x) => x.cfi === cfi)
-    return h ? ownWords(doc, place, h.text) : place
+    if (!h) return place
+    try {
+      return ownWords(doc, place, h.text)
+    } catch {
+      return place
+    }
   }
 
   private rangeIn(doc: Document, cfi: string): Range | null {
