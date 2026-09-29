@@ -207,7 +207,9 @@ a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewe
 default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own,
 `propertyWidgets` (on by default) draws some properties itself — a wallet's balance, sums in
 number fields, file cards for File and Files properties and `cover` — `counterProperties` lists
-the property names drawn as a counter, the number with − and + beside it, while that is on — and
+the property names drawn as a counter, the number with − and + beside it, while that is on —
+`dateProperties` (`date`, `due`), `priorityProperties` (`priority`) and `labelProperties`
+(`labels`) the names drawn as a date stepped a day at a time, a task priority and labels — and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
 `headerButtons` are buttons on notes, each `{ id, name, icon, runs, commandId, scriptName, params,

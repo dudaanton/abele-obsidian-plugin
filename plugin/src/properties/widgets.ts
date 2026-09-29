@@ -16,6 +16,14 @@
  *   property of that type never turns "unknown" here; with the setting off it draws as a list.
  * - a property named in `counterProperties`, drawn as a number or as text (an empty one has no
  *   type of its own yet): − and + around the number (`counterWidget.ts`).
+ * - one named in `dateProperties`, drawn as a date, a date and time or text: a day back and on,
+ *   how far away it is, its daily note (`dateWidget.ts`).
+ * - one named in `priorityProperties`, drawn as text: the task scale, raised and lowered
+ *   (`priorityWidget.ts`).
+ * - one named in `labelProperties`, drawn as a list or text: pills, and a field that adds a label
+ *   from those the vault uses (`labelsWidget.ts`).
+ *
+ * A listed property holding what its kind cannot read — `someday` in a date — is left to Obsidian.
  *
  * Every patch is guarded. When the table is not there or not the shape it was in 1.13, nothing
  * is patched; when a patched render throws, the stock one draws the row instead.
@@ -25,8 +33,7 @@ import type { App } from 'obsidian'
 import PropertyFiles from '@/components/properties/PropertyFiles.vue'
 import { evaluateAmount } from '@/helpers/calculator'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { counterKeys, counterValue, isCounterKey } from './counter'
-import { renderCounter } from './counterWidget'
+import { pickKind, type KindLists } from './kinds'
 import { fileEntries, isCoverKey } from './values'
 import { walletBalance, type WalletSource } from './wallet'
 
@@ -303,10 +310,7 @@ function renderText(original: Render, el: HTMLElement, value: unknown, ctx: Widg
   return widget
 }
 
-export interface PropertyWidgetsOptions {
-  /** The property names drawn as counters, read each time a row is drawn. */
-  counterKeys?: () => readonly string[]
-}
+export type PropertyWidgetsOptions = KindLists
 
 /**
  * Keeps the originals and puts them back. `apply(true)` patches, `apply(false)` restores, and
@@ -368,14 +372,21 @@ export class PropertyWidgets {
       table,
       'number',
       (original, el, value, ctx) =>
-        this.renderCounter(el, value, ctx, 'number') ?? renderNumber(original, el, value, ctx)
+        this.renderKind(el, value, ctx, 'number') ?? renderNumber(original, el, value, ctx)
     )
     this.patch(
       table,
       'text',
       (original, el, value, ctx) =>
-        this.renderCounter(el, value, ctx, 'text') ?? renderText(original, el, value, ctx)
+        this.renderKind(el, value, ctx, 'text') ?? renderText(original, el, value, ctx)
     )
+    for (const type of ['date', 'datetime', 'multitext'])
+      this.patch(
+        table,
+        type,
+        (original, el, value, ctx) =>
+          this.renderKind(el, value, ctx, type) ?? original(el, value, ctx)
+      )
     this.patch(table, 'file', (_original, el, value, ctx) =>
       renderFiles(el, value, ctx, { multiple: false, type: 'file' })
     )
@@ -391,15 +402,17 @@ export class PropertyWidgets {
     }
   }
 
-  /** A counter's row, or null when the property is not one or holds something not a number. */
-  private renderCounter(el: HTMLElement, value: unknown, ctx: WidgetContext, type: string) {
-    const names = this.options.counterKeys?.() ?? []
-    if (!names.length || !isCounterKey(ctx.key, counterKeys(names))) return null
-    if (counterValue(value) === null) return null
+  /**
+   * The row of the kind the property is listed for — a counter, a date, a priority, labels — or
+   * null when it is listed for none, or holds something its kind cannot read.
+   */
+  private renderKind(el: HTMLElement, value: unknown, ctx: WidgetContext, type: string) {
+    const draw = pickKind(this.options, ctx.key, value, type)
+    if (!draw) return null
     forgetBadge(el)
     mounted.get(el)?.unmount()
     mounted.delete(el)
-    return renderCounter(el, value, ctx, type)
+    return draw(el, value, ctx, type)
   }
 
   get active(): boolean {

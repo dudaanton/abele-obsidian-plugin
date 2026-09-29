@@ -287,6 +287,9 @@ export const SECTIONS: Section[] = [
     'mermaidViewer',
     'propertyWidgets',
     'counterProperties',
+    'dateProperties',
+    'priorityProperties',
+    'labelProperties',
   ]),
 ]
 

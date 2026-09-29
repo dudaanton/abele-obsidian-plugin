@@ -96,6 +96,12 @@ export interface AbeleSettings {
   propertyWidgets?: boolean
   /** Property names drawn as a counter: the number with − and + beside it. Empty counts as 0. */
   counterProperties?: string[]
+  /** Property names drawn as a date: a day back and on, how far away, its daily note. */
+  dateProperties?: string[]
+  /** Property names drawn as a task priority, raised and lowered. */
+  priorityProperties?: string[]
+  /** Property names drawn as labels: pills, and a field adding one from those the vault uses. */
+  labelProperties?: string[]
   /**
    * A panel at the top of the screen showing what the page reports about the on-screen
    * keyboard. For finding out from a phone what no emulator shows; stays on its device.
@@ -294,6 +300,9 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   mermaidViewer: true,
   propertyWidgets: true,
   counterProperties: [],
+  dateProperties: ['date', 'due'],
+  priorityProperties: ['priority'],
+  labelProperties: ['labels'],
   keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
   reader: { ...DEFAULT_READER_SETTINGS },
@@ -345,6 +354,9 @@ export class AbeleConfig {
   public mermaidViewer: boolean
   public propertyWidgets: boolean
   public counterProperties: string[] = []
+  public dateProperties: string[] = []
+  public priorityProperties: string[] = []
+  public labelProperties: string[] = []
   public keyboardDiagnostics: boolean
   public github: GithubSettings
   public reader: ReaderSettings
@@ -672,6 +684,14 @@ export class AbeleConfig {
     this.counterProperties = Array.isArray(settings?.counterProperties)
       ? settings.counterProperties.filter((name): name is string => typeof name === 'string')
       : []
+    // A list never saved takes the default; one emptied by hand stays empty.
+    const names = (list: unknown, fallback: string[] = []) =>
+      Array.isArray(list)
+        ? list.filter((name): name is string => typeof name === 'string')
+        : [...fallback]
+    this.dateProperties = names(settings?.dateProperties, DEFAULT_SETTINGS.dateProperties)
+    this.priorityProperties = names(settings?.priorityProperties, DEFAULT_SETTINGS.priorityProperties)
+    this.labelProperties = names(settings?.labelProperties, DEFAULT_SETTINGS.labelProperties)
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
     this.reader = readerSettingsFrom(settings?.reader)
@@ -728,6 +748,9 @@ export class AbeleConfig {
       mermaidViewer: this.mermaidViewer,
       propertyWidgets: this.propertyWidgets,
       counterProperties: [...this.counterProperties],
+      dateProperties: [...this.dateProperties],
+      priorityProperties: [...this.priorityProperties],
+      labelProperties: [...this.labelProperties],
       keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
       reader: { ...this.reader },

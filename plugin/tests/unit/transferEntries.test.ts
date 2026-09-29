@@ -209,6 +209,22 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('carries the properties drawn as dates, priorities and labels', () => {
+    const entries = collectEntries(
+      settings({
+        dateProperties: ['deadline'],
+        priorityProperties: ['importance'],
+        labelProperties: ['tags2'],
+      })
+    )
+
+    expect(find(entries, 'other', 'other')?.data).toMatchObject({
+      dateProperties: ['deadline'],
+      priorityProperties: ['importance'],
+      labelProperties: ['tags2'],
+    })
+  })
+
   it('carries the GitHub settings and the token they point at', () => {
     const github = {
       enabled: true,

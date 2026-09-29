@@ -42,6 +42,19 @@
       />
     </Setting>
     <Setting
+      v-for="list in propertyLists"
+      :key="list.key"
+      :class="`abele-other-settings__${list.key}`"
+      :name="list.name"
+      :desc="list.desc"
+    >
+      <Input
+        :model-value="list.text.value"
+        :placeholder="list.placeholder"
+        @update:model-value="(value: string) => list.update(value)"
+      />
+    </Setting>
+    <Setting
       name="Keyboard diagnostics"
       desc="Show, at the top of the screen, what the app reports about the on-screen keyboard — for a screenshot when a dialog ends up under it. Stays on this device."
     >
@@ -177,6 +190,52 @@ const updateCounterProperties = (value: string) => {
   counterProperties.value = value
   saveCounterProperties(value)
 }
+
+type ListKey = 'dateProperties' | 'priorityProperties' | 'labelProperties'
+
+/** A comma-separated list of property names, saved as the list it spells. */
+const propertyList = (key: ListKey, name: string, desc: string, placeholder: string) => {
+  const text = ref((config[key] ?? []).join(', '))
+  const save = debounce(async (value: string) => {
+    config[key] = value
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0)
+    await config.saveSettings()
+  }, 500)
+  return {
+    key,
+    name,
+    desc,
+    placeholder,
+    text,
+    update: (value: string) => {
+      text.value = value
+      save(value)
+    },
+  }
+}
+
+const propertyLists = [
+  propertyList(
+    'dateProperties',
+    'Date properties',
+    'Comma-separated property names drawn as a date with buttons a day back and on, how far away it is, and a button to its daily note. Needs own drawing of properties on.',
+    'e.g. date, due'
+  ),
+  propertyList(
+    'priorityProperties',
+    'Priority properties',
+    'Comma-separated property names drawn as a task priority, low, medium or high, with buttons to raise and lower it. Needs own drawing of properties on.',
+    'e.g. priority'
+  ),
+  propertyList(
+    'labelProperties',
+    'Label properties',
+    'Comma-separated property names drawn as labels, added from those already used in the vault or typed. Needs own drawing of properties on.',
+    'e.g. labels'
+  ),
+]
 
 const toggleKeyboardDiagnostics = async () => {
   keyboardDiagnostics.value = !keyboardDiagnostics.value

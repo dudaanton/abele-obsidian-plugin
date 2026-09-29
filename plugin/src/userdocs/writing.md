@@ -48,6 +48,17 @@ The properties at the top of a note are drawn by the plugin in a few places:
   property name. Press a card to choose another file, the arrow to open it, the cross to take it
   out.
 - `cover` is a card too, with the picture on the right.
+- A counter, for the names listed in **Settings → Abele → Other**, has − and + beside its number.
+- `date` and `due` have arrows a day back and a day on, say how far away the day is ("in 3 days",
+  "in 1 d 5 h" when it has a time), and a calendar button that opens that day's daily note,
+  making it first when there is none. A date stays a date; a date with a time keeps its time.
+- `priority` is drawn as bars in the task colours, low, medium or high, with arrows to raise and
+  lower it.
+- `labels` are pills, coloured as in the task settings, each with a cross. Type in the field
+  beside them to add one: the labels already used in the vault are offered, or press Enter to
+  add a new one.
+
+Which names get dates, priorities and labels is set in **Settings → Abele → Other**.
 
 Nothing about the note changes: it is still ordinary properties, and a device without the plugin
 shows them the way Obsidian does. Turn this off in **Settings → Abele → Other**. It rests on

@@ -14,14 +14,26 @@ export function registerPropertyWidgets(plugin: Plugin): void {
   const config = AbeleConfig.getInstance()
   const widgets = new PropertyWidgets(plugin.app, {
     counterKeys: () => config.counterProperties,
+    dateKeys: () => config.dateProperties,
+    priorityKeys: () => config.priorityProperties,
+    labelKeys: () => config.labelProperties,
   })
   if (!widgets.load()) return
-  let counters = config.counterProperties.join('\n')
+  const lists = () =>
+    [
+      config.counterProperties,
+      config.dateProperties,
+      config.priorityProperties,
+      config.labelProperties,
+    ]
+      .map((names) => names.join('\n'))
+      .join('\0')
+  let counters = lists()
 
   const sync = (redraw: boolean) => {
     const on = config.propertyWidgets
-    // Another list of counters: the rows on screen are drawn again, with or without buttons.
-    const listed = config.counterProperties.join('\n')
+    // Another list of names: the rows on screen are drawn again, with or without buttons.
+    const listed = lists()
     if (listed !== counters) {
       counters = listed
       if (on && on === widgets.active && redraw) redrawProperties(plugin.app)

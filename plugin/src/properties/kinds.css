@@ -1,0 +1,159 @@
+/* Date, priority and labels rows: Obsidian's own buttons, fields and pills, laid out in a row
+   that wraps when the cell is narrow rather than pushing past it. */
+.abele-property-date,
+.abele-property-priority {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-2-1);
+  min-width: 0;
+}
+
+.abele-property-date .clickable-icon,
+.abele-property-priority .clickable-icon {
+  flex: 0 0 auto;
+}
+
+/* As wide as the date, so the next-day button stays beside it. Outranks the phone's own
+   `.is-mobile input[type="text"] { width: 100% }`. */
+.abele-property-date .abele-property-date__value.metadata-input {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.abele-property-date__relative {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+}
+
+.abele-property-date__relative.is-past {
+  color: var(--text-faint);
+}
+
+.abele-property-priority__level {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: 0 var(--size-2-2);
+  color: var(--text-muted);
+}
+
+.abele-property-priority__bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+
+.abele-property-priority__bar {
+  width: 4px;
+  border-radius: 1px;
+  background-color: var(--background-modifier-border);
+}
+
+.abele-property-priority__bar:nth-child(1) {
+  height: 6px;
+}
+
+.abele-property-priority__bar:nth-child(2) {
+  height: 10px;
+}
+
+.abele-property-priority__bar:nth-child(3) {
+  height: 14px;
+}
+
+.abele-property-priority__bar.is-on {
+  background-color: currentColor;
+}
+
+.abele-property-priority__name {
+  font-size: var(--font-ui-small);
+}
+
+.abele-property-priority__name.is-empty {
+  color: var(--text-faint);
+}
+
+.abele-property-priority_blue {
+  color: var(--color-blue);
+}
+
+.abele-property-priority_orange {
+  color: var(--color-orange);
+}
+
+.abele-property-priority_red {
+  color: var(--color-red);
+}
+
+.abele-property-priority .clickable-icon.is-disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.abele-property-labels {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-2-2);
+  min-width: 0;
+}
+
+.abele-property-labels__pills {
+  display: contents;
+}
+
+.abele-property-labels .abele-property-labels__input {
+  flex: 1 1 6ch;
+  min-width: 6ch;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--metadata-input-font-size);
+}
+
+.abele-property-labels .abele-property-labels__input:focus,
+.abele-property-labels .abele-property-labels__input:focus-visible {
+  box-shadow: none;
+}
+
+.abele-property-labels__pill_red {
+  --pill-color: var(--color-red);
+  --pill-background: rgba(var(--color-red-rgb), 0.15);
+}
+.abele-property-labels__pill_orange {
+  --pill-color: var(--color-orange);
+  --pill-background: rgba(var(--color-orange-rgb), 0.15);
+}
+.abele-property-labels__pill_yellow {
+  --pill-color: var(--color-yellow);
+  --pill-background: rgba(var(--color-yellow-rgb), 0.15);
+}
+.abele-property-labels__pill_green {
+  --pill-color: var(--color-green);
+  --pill-background: rgba(var(--color-green-rgb), 0.15);
+}
+.abele-property-labels__pill_cyan {
+  --pill-color: var(--color-cyan);
+  --pill-background: rgba(var(--color-cyan-rgb), 0.15);
+}
+.abele-property-labels__pill_blue {
+  --pill-color: var(--color-blue);
+  --pill-background: rgba(var(--color-blue-rgb), 0.15);
+}
+.abele-property-labels__pill_purple {
+  --pill-color: var(--color-purple);
+  --pill-background: rgba(var(--color-purple-rgb), 0.15);
+}
+.abele-property-labels__pill_pink {
+  --pill-color: var(--color-pink);
+  --pill-background: rgba(var(--color-pink-rgb), 0.15);
+}
