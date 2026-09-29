@@ -221,6 +221,13 @@ screen in the history. It is copied into the index the same way. A comment chat 
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 
+A chat that chose its own interceptor rather than following its agent's keeps the choice in its
+metadata: `interceptorAgentId` and `interceptorContextDepth` for a reviewing agent,
+`interceptorScript` for a script, `interceptorPattern` for the messages it is shown. A message a
+script held back, or one it was stopped on, stays in the chat as a draft (`draft: true`,
+`interceptorScript: true`), with the script's lines beside it in `interceptorChat`; so do the
+lines a script left on a message it rewrote or failed on.
+
 A tool result or message that showed the agent a file carries `reads`: the file's path, a hash
 of its text at that moment, the time, whether it was read, attached or written by the agent, and
 the lines when only a window was seen (with the file's length, so windows read one after another

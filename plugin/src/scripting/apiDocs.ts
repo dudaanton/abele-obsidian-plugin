@@ -32,6 +32,7 @@ Every script must start with a comment block declaring its metadata:
 // @toolbar
 // @startup
 // @lint warning
+// @interceptor 60
 \`\`\`
 
 - \`@icon\`: Lucide icon name for toolbar display (e.g. \`scroll-text\`, \`sparkles\`, \`wand\`). Defaults to \`scroll-text\` if omitted. See https://lucide.dev for available icons.
@@ -46,6 +47,7 @@ Every script must start with a comment block declaring its metadata:
 - \`@startup\`: the script runs each time the plugin starts, after the vault is open, with its parameter defaults and no forms (\`form()\` answers \`null\`); \`@startup desktop\` or \`@startup mobile\` runs it on those devices only. A script that needs a parameter without a default is skipped. The startup list in Settings → Scripts → Startup does the same and sets the order
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
 - \`@lint\` (or \`@lint warning\`): the script is a rule of the linter, not something to run — no command, no agent tool. Declare \`function check(note)\` returning what is wrong: a list of messages or of \`{ message, line, fixable }\` (line 1-based over the whole file). Optionally \`function fix(note)\` returning the note's whole new text, or \`null\`. (Or \`return { check, fix }\`.) \`note\` has \`path\`, \`name\`, \`folder\`, \`content\`, \`lines\`, \`frontmatter\` (parsed, or \`null\`), \`frontmatterError\`, \`frontmatterEnd\`, \`body\`, \`bodyStart\`, \`ctime\`, \`mtime\`. Only read: \`read\`, \`ls\`, \`find\`, \`noteInfo\`, \`listTemplates\`, \`log\`, \`dayjs\` work; anything that writes, asks, opens or fetches throws. Keep \`check\` fast and pure: it runs once per note over the whole vault. The rule is set up in Settings → Linter, with the built-in ones
+- \`@interceptor\` (or \`@interceptor 60\`): the script is a chat interceptor, not something to run — no command, no agent tool. Chosen as an agent's or a chat's interceptor, it runs on each message the person sends there (only those matching the interceptor's pattern, when one is set) before the agent sees it, and what it returns decides what becomes of the message; see \`message\` and \`chat\` below. The number is how many seconds it may take, 30 unless it says (at most 600)
 
 ---
 
@@ -318,6 +320,8 @@ await v.open()
 | \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
 | \`book\` | \`object \\| null\` | The words in a book the script was run on from the reader (see below) |
 | \`analytics\` | \`object\` | Statistics over finance, notes and bases (see Analytics above) |
+| \`message\` | \`object \\| null\` | The message an interceptor script decides about (see below) |
+| \`chat\` | \`object \\| null\` | The chat that message is sent in, read-only (see below) |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
 | \`dayjs\` | \`function\` | [Day.js](https://day.js.org) date library — \`dayjs()\`, \`dayjs('2026-01-01').add(7, 'day')\`, \`.format('YYYY-MM-DD')\`, etc. |
 | \`log(...args)\` | — | Append to script output. Objects are JSON-stringified |
@@ -393,6 +397,63 @@ if (!book) return 'Run it on words selected in a book'
 const translation = (await agent('Translate "' + params.word + '" into English as used here, answer with the translation only:\\n' + book.sentence)).trim()
 await create('Cards/' + params.word + '.md', '**' + params.word + '** — ' + translation + '\\n\\n> ' + book.sentence + '\\n> — ' + book.link + '\\n')
 \`\`\`
+
+### message and chat — when a script is a chat's interceptor
+
+A script with \`// @interceptor\` in its header, chosen as an interceptor (an agent's settings, or a
+chat's), runs on each message the person sends in that chat before the agent sees it. It finds
+the message in \`message\` and the chat around it in \`chat\`; any other run finds \`null\` in both.
+Both are read-only copies: changing them throws.
+
+\`\`\`js
+message.text         // what was typed
+message.attachments  // vault paths attached to it
+chat.id, chat.title, chat.path    // the chat, and its file (null before it has one)
+chat.kind            // 'chat', or 'comment' for a discussion on a note
+chat.messages        // the conversation so far: [{ role: 'user' | 'assistant', text, attachments?, timestamp }]
+chat.attachments     // every path attached in the chat so far
+chat.activeNote      // the note open in the editor, or null
+chat.note            // for a comment, the note it is about; otherwise null
+chat.agent           // { id, name, description, providerId, modelId, permissionMode,
+                     //   toolModes, fullVaultAccess, scope } as this chat runs it
+\`\`\`
+
+What it returns decides:
+
+| return | what happens |
+|---|---|
+| nothing, \`null\`, \`true\` | the message goes to the agent as written |
+| \`'text'\` | this text goes instead |
+| \`{ text?, attachments? }\` | sent, with either replaced |
+| \`{ reply: 'text' }\` | the agent is not asked: the message and this answer go into the chat |
+| \`{ hold: 'why' }\` | not sent: it stays as a draft with the reason beside it, for the person to send, change or delete |
+
+Beside a send, \`approve\` and \`deny\` answer for the person on the tool calls the agent makes in
+the turn this message starts, where they would have been asked: \`approve: true\` (every such
+call), \`approve: ['edit', 'write']\` (those tools), or \`approve: (call) => …\` — \`call\` is
+\`{ name, args, outOfScope }\`, and it answers \`true\` to run it, \`false\` to refuse it, anything else
+to ask the person as usual (within 5 seconds, or the person is asked). \`deny: ['rm']\` refuses
+those tools. Only a function can approve a call outside the chat's scope. The say ends with the
+turn, or when another message joins it. A tool switched off is never offered, whatever this says.
+
+A script that throws, returns something else, is not confirmed on this device or runs out of
+time does not stop the message: it is sent as written, and the reason is shown beside it. Stopped
+from the chat, the message is kept back as a draft. A stop or a timeout does not undo what the
+script already did.
+
+\`\`\`js
+// @name Quick tasks
+// @interceptor 10
+// Chosen with the pattern ^/todo — every other message goes straight to the agent.
+const task = message.text.replace(/^\\/todo\\s*/, '')
+const line = '- [ ] ' + task + '\\n'
+const text = await read('Tasks.md').catch(() => null)
+if (text === null) await create('Tasks.md', line)
+else await write('Tasks.md', text + line)
+return { reply: 'Added: ' + task }
+\`\`\`
+
+\`message\` and \`chat\` are not reserved names: a script with its own \`const message\` has its own.
 
 Every function and global in this reference, and \`view\` with the component classes of the
 view reference, is already declared in a script's scope: a script that declares one of those

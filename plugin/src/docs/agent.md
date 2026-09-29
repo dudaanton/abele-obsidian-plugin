@@ -36,14 +36,33 @@ The person then sends the draft on, edits it, or talks it over with the reviewer
 can be one, utility agents included, except the agent itself. **Interceptor context** says how
 much of the conversation the reviewer sees: the draft only, the last few messages, or all of it.
 
+The interceptor can also be a **script** whose header says `// @interceptor`. It is shown the
+message and the chat around it — the conversation so far, what was attached, the note open in
+the editor, the agent's settings — and what it returns decides: send the message as written,
+send a rewritten one, answer it itself without asking the agent, or hold it back as a draft for
+the person. Beside a send it can answer for the person on the tool calls of the turn that
+message starts — approve or refuse them where the person would have been asked. A script that
+fails, runs out of time or waits to be confirmed on this device never stops the message: it is
+sent as written, and the reason is shown under it. The script API reference (`script_api_docs`)
+has the whole contract under `message` and `chat`.
+
+**Only messages matching** narrows either kind to messages matching a regular expression, written
+bare (`^/todo`) or as `/pattern/flags`; the rest go straight to the agent. Empty means every
+message. A pattern that does not compile is refused when set and, if one arrives anyway, lets
+every message through to the interceptor.
+
 A chat follows its agent's interceptor until the person picks another one or Off in the chat's
 settings; that choice is the chat's own, and switching the chat to a different agent keeps it.
 A chat that never chose follows whichever agent it is on now. Interceptors never chain: the
 reviewer answers as one plain reply, so the reviewer's own interceptor is never asked. Delegated
-runs and scripts never use one — nobody is there to read the review.
+runs and scripts never use one — nobody is there to read the review. A message typed while the
+agent is working waits for its own turn when the interceptor would take it, rather than joining
+the running one past it.
 
-The setting is `interceptorAgentId` (an agent id, or empty for none) and
-`interceptorContextDepth` (0 the draft, -1 everything, N the last N messages) on the agent.
+The settings on the agent are `interceptorAgentId` (an agent id, or empty for none),
+`interceptorContextDepth` (0 the draft, -1 everything, N the last N messages; an agent reviewer
+only), `interceptorScript` (a script's `@name`, or empty; set, it wins over the agent) and
+`interceptorPattern` (the regular expression, or empty).
 
 ## Permissions
 

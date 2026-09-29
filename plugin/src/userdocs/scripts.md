@@ -181,6 +181,37 @@ not a command and not a tool for the agent: the linter is what runs it. It can r
 but not change it — writing, asking, opening or fetching stops it with an error — so a note only
 changes through the text its fix returns, when you or the agent apply the fix.
 
+## Chat interceptors
+
+A script whose header says `// @interceptor` can stand in front of an agent. Pick it as the
+**Interceptor** in the agent's settings, or in one chat's settings. Each message you send there
+reaches the script first, as `message`, with the chat around it as `chat`: the conversation so
+far, what is attached, the note open in the editor and the agent's settings. What the script
+returns decides what happens:
+
+```js
+// @name Quick tasks
+// @interceptor 10
+
+// Picked with "Only messages matching" set to ^/todo
+const task = message.text.replace(/^\/todo\s*/, '')
+const line = '- [ ] ' + task + '\n'
+const text = await read('Tasks.md').catch(() => null)
+if (text === null) await create('Tasks.md', line)
+else await write('Tasks.md', text + line)
+return { reply: 'Added: ' + task }
+```
+
+Return nothing to send the message as it is, a text to send that instead, `{ reply }` to answer
+it yourself, or `{ hold: 'why' }` to keep it back as a draft. Beside a send, `approve` and
+`deny` answer for you on the actions the agent takes for that message: `approve: ['edit']`,
+`approve: true`, or a function that looks at each one. The full list is in the script reference.
+
+The number after `@interceptor` is how many seconds the script may take, 30 if you leave it out.
+A script that fails, takes longer, or waits to be confirmed on this device never loses your
+message: it goes to the agent as you wrote it, with the reason under it. An interceptor script is
+not a command and not a tool for the agent.
+
 ## CSS snippets
 
 Choose a snippets folder in **Settings → Abele → Other**. The CSS files in it are loaded, and

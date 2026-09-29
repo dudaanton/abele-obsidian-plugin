@@ -133,6 +133,16 @@ An agent can name another agent as its interceptor: a reviewer that reads each m
 in that agent's chats before it is sent, and answers it on the side. You then send the draft,
 change it, or talk it over first.
 
+The interceptor can also be one of your [scripts](scripts#chat-interceptors). A script decides by
+itself: it lets the message through, rewrites it, answers it without asking the agent, or holds
+it back for you. It can also approve or refuse the actions the agent takes while answering that
+message, where you would otherwise be asked. If the script breaks or takes too long, your message
+is sent as you wrote it and the reason is shown under it. Stop it from the chat and the message
+waits as a draft.
+
+**Only messages matching** limits the interceptor to messages that match a regular expression,
+such as `^/todo`. Everything else goes straight to the agent. Leave it empty for every message.
+
 ## Delegation
 
 An agent with a delegation depth above zero can hand a task to another agent, or the same task to

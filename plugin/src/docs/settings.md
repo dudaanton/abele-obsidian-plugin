@@ -32,7 +32,8 @@ never by writing the whole list back:
 - `move` with `path` naming the item and `index` its new place.
 
 Each answers with the one item it touched, which is also where its new id is. The same rules as
-any write hold: types keep, keys stay out of reach, an interceptor has to be another agent.
+any write hold: types keep, keys stay out of reach, an interceptor has to be another agent and
+its pattern has to compile.
 `set` on a whole list still works, and a keychain id it was shown as `<hidden>` stays as it was.
 
 Three rules hold for every write. The setting has to exist already: this changes settings rather
@@ -81,7 +82,9 @@ providers with their models; `ai.activeProviderId` and `ai.activeModelId` are th
 chat starts on, and `ai.auxiliaryModelId` is the background model that writes titles, recaps,
 summaries and compactions. `ai.agents` are the agents themselves — each with its own prompt, scope, tools
 and model, its own background model (`auxiliaryProviderId`, `auxiliaryModelId`) and its own
-interceptor (`interceptorAgentId`, another agent's id or empty, and `interceptorContextDepth`) —
+interceptor (`interceptorAgentId`, another agent's id or empty, and `interceptorContextDepth`; or
+`interceptorScript`, the name of a script marked `@interceptor`; and `interceptorPattern`, a
+regular expression narrowing which messages it sees, refused when it does not compile) —
 and `ai.defaultAgentId` is the one a new chat opens with. `ai.commentAgentId` is
 the agent a comment starts on, and `ai.commentFolder` and `ai.chatFolder` are where comments
 and chats are written.
