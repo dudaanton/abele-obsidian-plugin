@@ -24,7 +24,8 @@ node scripts/repo-guard.mjs --staged
 # Private examples and identity checks stay outside the public repository.
 privacy_gate="$HOME/.config/abele/anonymous-check.mjs"
 if [ -f "$privacy_gate" ]; then
-  node "$privacy_gate" --staged
+  # From the repository's root, which is where it reads the manifest from.
+  (cd "$repo_root" && node "$privacy_gate" --staged)
 else
   echo "pre-commit: local privacy gate is not installed; agent must review the staged diff manually"
 fi
