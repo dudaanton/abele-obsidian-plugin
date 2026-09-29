@@ -39,6 +39,20 @@ describe('repair in the original source note', () => {
     expect(v.files.get('older.md')!.text).toBe(entry(10).replace('/4/10:1|Part', '/4/12:1|Part'))
   })
 
+  it('rechecks the other notes before each batch write when a newly arriving location collides', async () => {
+    const v = vault({ 'notes.md': entry(2), 'older.md': entry(10) })
+    const prepared = await prepareHighlightRepairs(v.app, book, where, [request(2, 4), request(10, 12)])
+    v.process.mockImplementationOnce(async (file, change) => {
+      const source = v.files.get(file.path)!
+      source.text = change(source.text) + `\n\n${entry(12)}` // A sync edit arrives while the first note is processed.
+      return source.text
+    })
+    const result = await repairHighlightLinks(v.app, book, where, prepared)
+    expect(result).toEqual({ applied: [cfi(2)], skipped: [cfi(10)], failed: [] })
+    expect(v.process).toHaveBeenCalledTimes(1)
+    expect(v.files.get('older.md')!.text).toBe(entry(10))
+  })
+
   it('skips changed quote or a duplicate origin in another source', async () => {
     const v = vault({ 'notes.md': entry(2), 'older.md': entry(2) })
     const prepared = await prepareHighlightRepairs(v.app, book, where, [request(2, 4)])

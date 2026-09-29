@@ -186,16 +186,29 @@ export async function repairHighlightLinks(
       result.skipped.push(...requests.map((r) => r.cfi))
       continue
     }
+    // Another source may acquire a proposed CFI while an earlier file is being processed.
+    // Check all sources again before this file's write; the callback checks its own live text.
+    let safe: PreparedHighlightRepair[]
+    try {
+      const stillValid = new Set((await prepareHighlightRepairs(app, book, where, requests))
+        .filter((r) => r.note === note).map((r) => r.cfi))
+      safe = requests.filter((r) => stillValid.has(r.cfi))
+      result.skipped.push(...requests.filter((r) => !stillValid.has(r.cfi)).map((r) => r.cfi))
+    } catch {
+      result.failed.push(...requests.map((r) => r.cfi))
+      continue
+    }
+    if (!safe.length) continue
     let patch: ReturnType<typeof patchHighlightLinks> | undefined
     try {
       await app.vault.process(note, (md) => {
-        patch = patchHighlightLinks(md, requests, linkingTo(app, book, note))
+        patch = patchHighlightLinks(md, safe, linkingTo(app, book, note))
         return patch.markdown
       })
       result.applied.push(...(patch?.applied ?? []))
       result.skipped.push(...(patch?.skipped ?? []))
     } catch {
-      result.failed.push(...requests.map((r) => r.cfi))
+      result.failed.push(...safe.map((r) => r.cfi))
     }
   }
   return result
