@@ -66,12 +66,11 @@ const PRELUDE = `
     const leaf = app.workspace.getLeaf(false)
     await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'preview' }, active: true })
     app.workspace.revealLeaf(leaf)
-    const img = await until(() => {
-      const i = leaf.view.containerEl.querySelector('.abele-gallery img.abele-gallery__image')
-      return i && i.complete && i.naturalWidth > 0 ? i : null
-    })
+    // The pictures load lazily: one off screen never would, so it is scrolled to first.
+    const img = await until(() => leaf.view.containerEl.querySelector('.abele-gallery img.abele-gallery__image'))
     if (!img) return { error: 'no gallery picture' }
     img.scrollIntoView({ block: 'center' })
+    if (!(await until(() => img.complete && img.naturalWidth > 0))) return { error: 'the gallery picture did not load' }
     img.click()
     const viewer = await until(() => document.querySelector('.abele-gallery-viewer img.abele-gallery-viewer__image'))
     if (!viewer) return { error: 'the viewer did not open' }
@@ -211,7 +210,7 @@ describe.skipIf(!available)('menus in the picture viewer', () => {
       const notice = notices.createDiv({ cls: 'notice', text: 'Sample notice' })
       const out = { menu: at(menu), notice: at(notice) }
       menu.remove(); notices.remove(); viewer.remove()
-      return JSON.stringify(out)
+      return out
     })()`)
     expect(r).toEqual({ menu: 'on top', notice: 'on top' })
   })
