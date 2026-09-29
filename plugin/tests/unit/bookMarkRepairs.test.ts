@@ -42,4 +42,36 @@ describe('known misplaced marks', () => {
     marks.set([])
     expect(marks.repairs()).toEqual([])
   })
+
+  it('does not revive a removed mark when its asynchronous drawing finishes late', async () => {
+    const doc = pageOf('<p>Ordinary beginning words.</p><p>Fabricated ending words.</p>')
+    const old = fromRange(findQuote(doc, 'Ordinary beginning words.')[0])
+    let finish: () => void = () => {}
+    const engine = Object.assign(new EventTarget(), {
+      renderer: { getContents: () => [{ index: 0, doc }] },
+      resolveNavigation: (cfi: string) => ({ index: 0, anchor: (d: Document) => toRange(d, parse(cfi)) }),
+      getCFI: (_: number, range: Range) => fromRange(range),
+      addAnnotation: () => new Promise<void>((resolve) => { finish = resolve }),
+      deleteAnnotation: async () => {},
+    })
+    const marks = new BookMarks(engine as never, document.body, false, () => {})
+    marks.set([h(old, 'Fabricated ending words.')])
+    marks.set([])
+    finish()
+    await flush()
+    expect(marks.repairs()).toEqual([])
+  })
+
+  it('does not offer repairs for fixed-page books', async () => {
+    const engine = Object.assign(new EventTarget(), {
+      renderer: { getContents: () => [] },
+      resolveNavigation: () => ({ index: 0 }),
+      addAnnotation: vi.fn(),
+    })
+    const marks = new BookMarks(engine as never, document.body, true, () => {})
+    marks.set([h('epubcfi(/4/2)', 'Invented quoted words.')])
+    await flush()
+    expect(marks.repairs()).toEqual([])
+    expect(engine.addAnnotation).not.toHaveBeenCalled()
+  })
 })

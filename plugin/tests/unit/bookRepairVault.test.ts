@@ -28,6 +28,17 @@ describe('repair in the original source note', () => {
     expect(v.files.get('older.md')!.text).toBe(entry(2).replace('/4/2:1|Part', '/4/4:1|Part') + '\r\nExtra comment.')
     expect(v.files.get('notes.md')!.text).toBe('Other notes.')
   })
+  it('groups a batch by source and reports a failed note without rolling back a successful note', async () => {
+    const v = vault({ 'notes.md': `${entry(2)}\n\n${entry(6)}`, 'older.md': entry(10) })
+    const prepared = await prepareHighlightRepairs(v.app, book, where, [request(2, 4), request(6, 8), request(10, 12)])
+    v.process.mockImplementationOnce(async () => { throw new Error('read-only source') })
+    const result = await repairHighlightLinks(v.app, book, where, prepared)
+    expect(result).toEqual({ applied: [cfi(10)], skipped: [], failed: [cfi(2), cfi(6)] })
+    expect(v.process).toHaveBeenCalledTimes(2)
+    expect(v.files.get('notes.md')!.text).toBe(`${entry(2)}\n\n${entry(6)}`)
+    expect(v.files.get('older.md')!.text).toBe(entry(10).replace('/4/10:1|Part', '/4/12:1|Part'))
+  })
+
   it('skips changed quote or a duplicate origin in another source', async () => {
     const v = vault({ 'notes.md': entry(2), 'older.md': entry(2) })
     const prepared = await prepareHighlightRepairs(v.app, book, where, [request(2, 4)])
