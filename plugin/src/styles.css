@@ -212,11 +212,6 @@ body.is-mobile .abele-footnote-ref-link {
   display: none !important;
 }
 
-/* Ensure notices appear above gallery viewer overlay */
-.notice-container {
-  z-index: 10000 !important;
-}
-
 /* Bases views — shared */
 .abele-bases-chart__empty {
   padding: 24px;

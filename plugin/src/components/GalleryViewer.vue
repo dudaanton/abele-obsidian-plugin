@@ -660,7 +660,9 @@ onUnmounted(() => {
 .abele-gallery-viewer {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  /* Obsidian's own layer for a full-window dialog: above the workspace, under the menus,
+     notices and tooltips it opens, which a hard-coded number here once hid behind it. */
+  z-index: var(--layer-modal);
   background: rgba(0, 0, 0, 0.9);
   display: flex;
   align-items: center;
