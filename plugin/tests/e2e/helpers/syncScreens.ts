@@ -250,7 +250,12 @@ export const joinScreens = (
     }
     const name = ${JSON.stringify(label)} + (w === ${widths[0]?.[0] ?? 0} ? '' : ' ' + w)
     out[name] = await screen(name, modal, modal.querySelector('.abele-modal__body'))
-    out[name].extra = { ...buttonFacts(modal, '.abele-join-vault__actions button'), cards: modal.querySelectorAll('.abele-card').length, lead: textOf(modal.querySelector('.abele-join-vault__lead')) }
+    const actions = modal.querySelector('.abele-join-vault__actions').getBoundingClientRect()
+    const sheet = modal.getBoundingClientRect()
+    const below = actions.bottom + (sheet.bottom - actions.bottom) / 2
+    const visibleBelowActions = sheet.bottom - actions.bottom > 12 &&
+      !!doc.elementFromPoint(actions.left + actions.width / 2, below)?.closest('.abele-obsidian-setting, .abele-card, .abele-join-vault__lead')
+    out[name].extra = { ...buttonFacts(modal, '.abele-join-vault__actions button'), cards: modal.querySelectorAll('.abele-card').length, lead: textOf(modal.querySelector('.abele-join-vault__lead')), visibleBelowActions }
   }
   if (win.getContentSize()[0] !== w0) {
     win.setContentSize(w0, h0)

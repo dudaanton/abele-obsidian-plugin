@@ -341,7 +341,9 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
       await server?.kill()
       if (workspace !== '') rmSync(workspace, { recursive: true, force: true })
     }
-  }, 300_000)
+    // Disposing the throwaway vault waits for other users of the app's pool to drain. That
+    // wait is not sync work; it may outlast the default five-minute hook timeout.
+  }, 700_000)
 
   /** Every screen asked for by name; the pages of the Sync tab after its first come on top. */
   const ON_PHONE = [
@@ -483,6 +485,10 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     expect(full.some((s) => s.startsWith('Settings waiting'))).toBe(true)
     expect(phone['sync tab joining']?.extra.sections).toContain('Choose how to join')
     expect(phone['sync tab waiting']?.extra.connectCard).toBe(true)
+  })
+
+  it('does not show join fields below the answer row on a narrow phone', () => {
+    expect(phone['join choose 320']?.extra.visibleBelowActions).toBe(false)
   })
 
   it('asks the join question each way it can be asked', () => {

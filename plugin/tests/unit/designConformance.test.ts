@@ -284,6 +284,16 @@ describe('the design standard', () => {
     expect(held).toContain('abele-held-deletes__actions abele-modal__actions')
   })
 
+  it('scrolls long join choices above the buttons instead of behind them', () => {
+    const source = readFileSync(join(ROOT, 'settings/sync/JoinVaultModal.vue'), 'utf8')
+    const css = styleBlock(source)
+    expect(source).toContain(":size=\"question.kind === 'choose' ? 'tall' : undefined\"")
+    expect(source).toContain('class="abele-join-vault__content"')
+    expect(css).toMatch(
+      /\.abele-modal_tall \.abele-join-vault__content\s*\{[^}]*overflow-y:\s*auto;/
+    )
+  })
+
   it('scrolls held paths inside a tall dialog, not behind its answer row', () => {
     const dialog = readFileSync(join(ROOT, 'sync/HeldDeletesModal.vue'), 'utf8')
     const css = styleBlock(readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8'))

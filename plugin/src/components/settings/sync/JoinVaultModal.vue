@@ -1,46 +1,53 @@
 <template>
-  <ObsidianModal :title="title" phone-sheet @close="emit('close')">
+  <ObsidianModal
+    :title="title"
+    :size="question.kind === 'choose' ? 'tall' : undefined"
+    phone-sheet
+    @close="emit('close')"
+  >
     <div class="abele-join-vault">
-      <p class="abele-join-vault__lead">{{ lead }}</p>
+      <div class="abele-join-vault__content">
+        <p class="abele-join-vault__lead">{{ lead }}</p>
 
-      <template v-if="question.kind === 'choose'">
-        <p class="abele-join-vault__counts">{{ counts }}</p>
-        <p v-if="onlySettings" class="abele-join-vault__counts">
-          This vault holds only Obsidian's own settings, as a vault just made does, so the server's
-          are chosen: kept as the newer copies, this vault's defaults would replace the settings of
-          every device.
-        </p>
-        <p class="abele-join-vault__lead">
-          Where both have a file with different contents, which one should be kept?
-        </p>
+        <template v-if="question.kind === 'choose'">
+          <p class="abele-join-vault__counts">{{ counts }}</p>
+          <p v-if="onlySettings" class="abele-join-vault__counts">
+            This vault holds only Obsidian's own settings, as a vault just made does, so the
+            server's are chosen: kept as the newer copies, this vault's defaults would replace the
+            settings of every device.
+          </p>
+          <p class="abele-join-vault__lead">
+            Where both have a file with different contents, which one should be kept?
+          </p>
 
-        <CardGrid stack>
-          <Card
-            v-for="option in OPTIONS"
-            :key="option.title"
-            :title="option.title"
-            :description="option.description"
-            clickable
-            :selected="chosen === option.prefer"
-            @click="chosen = option.prefer"
-          />
-        </CardGrid>
-      </template>
+          <CardGrid stack>
+            <Card
+              v-for="option in OPTIONS"
+              :key="option.title"
+              :title="option.title"
+              :description="option.description"
+              clickable
+              :selected="chosen === option.prefer"
+              @click="chosen = option.prefer"
+            />
+          </CardGrid>
+        </template>
 
-      <Setting
-        v-if="deviceName !== undefined"
-        name="This device's name"
-        desc="What the vault's device list will call this device."
-      >
-        <Input :model-value="name" :disabled="busy" @update:model-value="name = $event" />
-      </Setting>
+        <Setting
+          v-if="deviceName !== undefined"
+          name="This device's name"
+          desc="What the vault's device list will call this device."
+        >
+          <Input :model-value="name" :disabled="busy" @update:model-value="name = $event" />
+        </Setting>
 
-      <!--
+        <!--
         A device this one left while offline is told first, for up to ten seconds; said here so
         the wait does not read as a hang.
       -->
-      <p v-if="hint" class="abele-join-vault__counts">{{ hint }}</p>
-      <p v-if="error" class="abele-join-vault__error">{{ error }}</p>
+        <p v-if="hint" class="abele-join-vault__counts">{{ hint }}</p>
+        <p v-if="error" class="abele-join-vault__error">{{ error }}</p>
+      </div>
 
       <div class="abele-join-vault__actions abele-modal__actions">
         <Button
@@ -195,6 +202,26 @@ function connect(): void {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-3);
+}
+
+// The choice list and name can be taller than a phone sheet. Scroll the choices, not the
+// answer row; otherwise Obsidian can show the name field underneath that sticky row.
+.abele-modal_tall .abele-modal__body > .abele-join-vault {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.abele-join-vault__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.abele-modal_tall .abele-join-vault__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--size-4-1);
 }
 
 .abele-join-vault__lead,
