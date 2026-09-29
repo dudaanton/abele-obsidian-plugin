@@ -193,8 +193,12 @@ export function buildScriptContext(opts: {
         highlightCount: (path) => {
           const leaf = app.workspace.getLeavesOfType(BOOK_VIEW_TYPE)
             .find((l) => (l.view as { file?: TFile }).file?.path === path)
-          const model = (leaf?.view as { model?: { status: string; highlights: unknown[] } } | undefined)?.model
-          return model?.status === 'ready' ? model.highlights.length : null
+          const view = leaf?.view as {
+            model?: { status: string; highlights: unknown[] }
+            reading?: { highlightsLoaded: boolean }
+          } | undefined
+          return view?.model?.status === 'ready' && view.reading?.highlightsLoaded
+            ? view.model.highlights.length : null
         },
         getFile: (path) => {
           const file = app.vault.getAbstractFileByPath(path)

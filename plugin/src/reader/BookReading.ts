@@ -31,6 +31,7 @@ import { notesTargetFor, readerSettingsFrom } from './settings'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Overlayer } from '@/vendor/foliate-js/overlayer.js'
 import { emptySearch, type BookModel, type SearchGroup } from './model'
+import { bookPlaces } from './places'
 import type { PdfBookExtras, PdfPageDrawn } from './pdfBook'
 
 interface Engine extends FoliateView {
@@ -78,6 +79,8 @@ export class BookReading {
   private notePaths: string[] = []
   /** Where new highlights went when they were last read, to notice the choice change. */
   private targetSeen = ''
+  /** False until the reader has actually indexed this book's highlight notes. */
+  highlightsLoaded = false
   /** Told each time the highlights are read: the vocabulary some of them hold (`vocab/`). */
   onHighlights: () => void = () => {}
 
@@ -136,14 +139,17 @@ export class BookReading {
   /** Reads the book's highlights notes and shows what they hold. */
   async loadHighlights(): Promise<void> {
     const generation = ++this.loadGeneration
+    this.highlightsLoaded = false
     const where = this.where()
     this.targetSeen = JSON.stringify(where.target)
     this.notePaths = this.notes().map((n) => n.path)
     const list = await readHighlights(this.app, this.file, where)
     if (this.disposed || generation !== this.loadGeneration) return
     this.model.highlights = list
+    this.highlightsLoaded = true
     this.marks.set(list)
     this.onHighlights()
+    bookPlaces()?.invalidate()
     const pending = this.pendingRepairActive
     if (pending && this.model.active && ![pending.old, pending.suggested].includes(this.model.active.cfi))
       this.pendingRepairActive = null // The reader chose another highlight while the read was pending.

@@ -177,6 +177,19 @@ describe('reader library snapshots', () => {
     expect(JSON.parse(store.data!)['id:a'].openedAt).toBe(40)
   })
 
+  it('can invalidate readers of derived data without changing a position or following another device', async () => {
+    const { store, storage } = memory()
+    const places = new BookPlaces(storage)
+    const changed = vi.fn()
+    const newer = vi.fn()
+    places.onChange(changed)
+    places.onNewer(newer)
+    places.invalidate()
+    expect(changed).toHaveBeenCalledOnce()
+    expect(newer).not.toHaveBeenCalled()
+    expect(store.writes).toBe(0)
+  })
+
   it('does not treat a remote open at the same place as a new place to follow', async () => {
     const place = { cfi: 'same', fraction: 0.5, path: 'a.epub', at: 10, openedAt: 20 }
     const { store, storage } = shared({ 'id:a': place })

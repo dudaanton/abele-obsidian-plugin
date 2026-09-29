@@ -129,6 +129,11 @@ export class BookPlaces {
     }
   }
 
+  /** Derived reader data (such as highlights) changed without moving the saved place. */
+  invalidate(): void {
+    this.changed()
+  }
+
   /** Invalidation for dashboards, including local page turns (unlike onNewer). */
   onChange(listener: () => void): () => void {
     this.changes.add(listener)

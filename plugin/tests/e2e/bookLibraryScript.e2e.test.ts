@@ -89,8 +89,14 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
   it('lists an unopened file without parsing it and opens it without replacing the script tab', () => {
     const result = run<{
       error?: string
-      before: { progress: number | null; pageCount: number | null }
-      after: { pageCount: number; pageUnit: string; lastOpenedAt: number; progress: number }
+      before: { progress: number | null; pageCount: number | null; highlightCount: number | null }
+      after: {
+        pageCount: number
+        pageUnit: string
+        lastOpenedAt: number
+        progress: number
+        highlightCount: number | null
+      }
       tabs: number
       cards: number
     }>(`
@@ -107,16 +113,18 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
       const reader = await until(() => app.workspace.getLeavesOfType('abele-book')
         .find(l => l.view.file?.path === '${FILE}' && l.view.model?.status === 'ready')?.view)
         .catch(e => { throw new Error(String(e) + ': ' + JSON.stringify(app.workspace.getLeavesOfType('abele-book').map(l => ({ path: l.view.file?.path, status: l.view.model?.status, message: l.view.model?.message })))) })
-      const after = await until(() => window.__abeleBookSnapshot?.pageCount ? window.__abeleBookSnapshot : null)
+      const after = await until(() => window.__abeleBookSnapshot?.pageCount && window.__abeleBookSnapshot.highlightCount !== null ? window.__abeleBookSnapshot : null)
         .catch(e => { throw new Error(String(e) + ': ' + JSON.stringify(window.__abeleBookSnapshot)) })
       return { before, after, cards, tabs: app.workspace.getLeavesOfType('abele-script-view').length }
     `)
     expect(result.error).toBeUndefined()
     expect(result.before.progress).toBeNull()
     expect(result.before.pageCount).toBeNull()
+    expect(result.before.highlightCount).toBeNull()
     expect(result.cards).toBeGreaterThan(0)
     expect(result.tabs).toBe(1)
     expect(result.after).toMatchObject({
+      highlightCount: 0,
       pageUnit: 'pages',
       pageCount: 8,
       lastOpenedAt: expect.any(Number),
