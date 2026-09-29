@@ -231,7 +231,9 @@ describe('a day lists', () => {
     expect(small.reads).toBeGreaterThan(2500)
     expect(large.reads / small.reads).toBeLessThan(16)
     expect(large.placed.get('2026-09-26')!.length).toBeGreaterThan(0)
-  })
+    // The reads are what is checked, so the runner's clock must not be: building and sorting
+    // twenty thousand proxied notes outlasts the default five seconds on a machine under load.
+  }, 120_000)
 })
 
 describe('the week hours', () => {
