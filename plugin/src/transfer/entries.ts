@@ -291,17 +291,21 @@ export const SECTIONS: Section[] = [
         current.connections.length || (!incoming.keyId && !incoming.server)
           ? current.connections
           : githubSettingsFrom(incoming).connections
-      settings.github = projectLegacy({
-        ...current,
-        ...incoming,
-        connections:
-          hasList && !current.connections.length
-            ? githubSettingsFrom(incoming).connections
-            : connections,
-      })
+      settings.github = projectLegacy(
+        githubSettingsFrom({
+          ...current,
+          ...incoming,
+          connections:
+            hasList && !current.connections.length
+              ? githubSettingsFrom(incoming).connections
+              : connections,
+        })
+      )
     },
-    secretsOf: (settings) =>
-      settings.github?.notifications?.keyId ? [settings.github.notifications.keyId] : [],
+    secretsOf: (settings) => {
+      const id = settings.github?.notifications?.boundKeyId ?? settings.github?.notifications?.keyId
+      return id ? [id] : []
+    },
   }),
   {
     kind: 'list',

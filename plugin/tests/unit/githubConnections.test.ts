@@ -102,6 +102,26 @@ describe('GitHub connection migration', () => {
     ])
   })
 
+  it('binds a classic notifications credential to its original server after changing the projection', () => {
+    const settings = githubSettingsFrom({ ...legacy, notifications: { keyId: 'classic-key' } })
+    settings.connections = [
+      {
+        id: 'public',
+        name: 'Public',
+        server: '',
+        keyId: 'public-key',
+        owners: [],
+        isDefault: true,
+      },
+    ]
+    const saved = projectLegacy(settings)
+    expect(saved.server).toBe('')
+    expect(saved.notifications.keyId).toBe('') // an older version must not attach it to public GitHub
+    expect(saved.notifications.boundKeyId).toBe('classic-key')
+    expect(saved.notifications.boundServer).toBe(legacy.server)
+    expect(githubSettingsFrom(saved).notifications.boundKeyId).toBe('classic-key')
+  })
+
   it('keeps the migrated Enterprise server as the legacy projection when public is added', () => {
     const settings = githubSettingsFrom({ ...legacy, defaultRepo: 'sample/project' })
     settings.connections.push({

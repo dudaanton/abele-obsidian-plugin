@@ -398,7 +398,9 @@ contains the token. A migrated connection keeps the old `github.keyId` slot; the
 `server` fields are retained as a single-server compatibility projection. An explicitly empty
 list does not reimport an old token. Connection entries can be selected individually in settings
 transfer; keys travel only when the transfer includes keys. The separate notifications credential
-is still part of the GitHub general settings block.
+is still part of the GitHub general settings block. Its `boundKeyId` and `boundServer` retain
+its original server when the projected default moves to another host; the old-version
+`notifications.keyId` is blanked if the old plugin would send it to the wrong host.
 
 ## GitHub links
 

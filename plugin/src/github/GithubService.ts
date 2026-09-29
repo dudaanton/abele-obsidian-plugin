@@ -76,10 +76,13 @@ function cachedClient(ends: Endpoints, token: string, noTokenReason?: string): G
  */
 export function notificationsClient(): { client: GithubClient; separate: boolean } {
   const settings = githubSettings()
-  const keyId = settings.notifications?.keyId
+  const keyId = settings.notifications?.boundKeyId ?? settings.notifications?.keyId
   const token = keyId ? (secrets().get(keyId) ?? '').trim() : ''
   if (!token) return { client: githubClient(), separate: false }
-  return { client: cachedClient(endpoints(settings.server), token), separate: true }
+  return {
+    client: cachedClient(endpoints(settings.notifications?.boundServer ?? settings.server), token),
+    separate: true,
+  }
 }
 
 /**

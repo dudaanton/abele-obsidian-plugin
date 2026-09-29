@@ -56,7 +56,7 @@ export interface GithubSettings {
    * field is named `keyId` so the agent's settings tools treat it as a secret, and so that it can
    * become a connection of its own later.
    */
-  notifications: { keyId: string }
+  notifications: { keyId: string; boundKeyId?: string; boundServer?: string }
 }
 
 export interface PinnedRepo {
@@ -93,5 +93,16 @@ export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSett
     : [],
   notifications: {
     keyId: typeof stored?.notifications?.keyId === 'string' ? stored.notifications.keyId : '',
+    ...(stored?.notifications?.boundKeyId
+      ? {
+          boundKeyId: stored.notifications.boundKeyId,
+          boundServer: stored.notifications.boundServer ?? stored?.server ?? '',
+        }
+      : stored?.notifications?.keyId
+        ? {
+            boundKeyId: stored.notifications.keyId,
+            boundServer: stored.server ?? '',
+          }
+        : {}),
   },
 })

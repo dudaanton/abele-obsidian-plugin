@@ -109,7 +109,10 @@ function usesOf(settings: AbeleSettings): Map<string, Use[]> {
         continue
       }
       // The notifications panel's own token travels in the GitHub block, beside the main one.
-      if (entry.section === 'github' && id === settings.github?.notifications?.keyId) {
+      if (
+        entry.section === 'github' &&
+        id === (settings.github?.notifications?.boundKeyId ?? settings.github?.notifications?.keyId)
+      ) {
         add(id, { kind: 'GitHub', name: 'GitHub notifications' })
         continue
       }

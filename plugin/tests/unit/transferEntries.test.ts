@@ -316,9 +316,11 @@ describe('settings that arrived later than the transfer did', () => {
     expect(entry?.secretIds).toEqual(['abele-github-notifications-token'])
     const row = find(collectEntries(settings({ github })), 'github-connections', 'github-legacy')!
     expect(row.secretIds).toEqual(['abele-github-token'])
-    expect(applyEntries([entry!, row], settings()).github?.notifications).toEqual(
-      github.notifications
-    )
+    expect(applyEntries([entry!, row], settings()).github?.notifications).toMatchObject({
+      keyId: github.notifications.keyId,
+      boundKeyId: github.notifications.keyId,
+      boundServer: '',
+    })
   })
 
   it('carries each MCP server as its own entry, with the token it points at', () => {

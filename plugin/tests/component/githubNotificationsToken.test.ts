@@ -29,11 +29,10 @@ const tokenOf = (client: unknown) => (client as { token: string }).token
 beforeEach(() => {
   app = useVault([])
   vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue(undefined)
-  AbeleConfig.getInstance().github = {
-    ...DEFAULT_GITHUB_SETTINGS,
+  AbeleConfig.getInstance().github = githubSettingsFrom({
     enabled: true,
     keyId: GITHUB_TOKEN_KEY_ID,
-  }
+  })
   app.secretStorage.setSecret(GITHUB_TOKEN_KEY_ID, 'github_pat_main')
   resetGithubClients()
 })
@@ -49,6 +48,24 @@ describe('the notifications token setting', () => {
     })
   })
 
+  it('editing the legacy token updates the migrated connection rather than losing the saved key', async () => {
+    AbeleConfig.getInstance().github = githubSettingsFrom({
+      keyId: 'custom-slot',
+      enabled: true,
+    })
+    const view = mount(GithubSettings)
+    const field = view
+      .findAllComponents(SecretField)
+      .find((f) => f.props('placeholder') === 'github_pat_...')!
+    field.vm.$emit('update:model-value', 'github_pat_new')
+    await flushPromises()
+    field.vm.$emit('save')
+    await flushPromises()
+    expect(AbeleConfig.getInstance().github.connections[0].keyId).toBe('custom-slot')
+    expect(app.secretStorage.getSecret('custom-slot')).toBe('github_pat_new')
+    view.unmount()
+  })
+
   it('is saved into the keychain under its own id, and forgotten from there', async () => {
     const view = mount(GithubSettings)
     const field = view
@@ -61,7 +78,11 @@ describe('the notifications token setting', () => {
     await flushPromises()
 
     const config = AbeleConfig.getInstance()
-    expect(config.github?.notifications).toEqual({ keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID })
+    expect(config.github?.notifications).toEqual({
+      keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
+      boundKeyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
+      boundServer: '',
+    })
     expect(app.secretStorage.getSecret(GITHUB_NOTIFICATIONS_TOKEN_KEY_ID)).toBe('ghp_classic_one')
     // The main token is left as it was.
     expect(config.github?.keyId).toBe(GITHUB_TOKEN_KEY_ID)
@@ -86,7 +107,8 @@ describe('the notifications token setting', () => {
 describe('the Access section', () => {
   it('says the notifications need a classic token of their own', () => {
     const view = mount(GithubSettings)
-    const access = view.findAll('.setting-item-description, .abele-section__desc, p, div')
+    const access = view
+      .findAll('.setting-item-description, .abele-section__desc, p, div')
       .map((e) => e.text())
       .find((t) => t.startsWith('A fine-grained personal access token'))
     expect(access).toMatch(/classic token with the notifications scope/)
@@ -95,6 +117,20 @@ describe('the Access section', () => {
 })
 
 describe('which token the notifications are read with', () => {
+  it('keeps its server when the main connection moves to another host', () => {
+    const config = AbeleConfig.getInstance()
+    config.github = githubSettingsFrom({
+      server: 'http://git.example.test:8080',
+      keyId: GITHUB_TOKEN_KEY_ID,
+      notifications: { keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID },
+    })
+    app.secretStorage.setSecret(GITHUB_NOTIFICATIONS_TOKEN_KEY_ID, 'ghp_classic_one')
+    config.github = { ...config.github, server: '' }
+    const { client } = notificationsClient()
+    expect(client.endpoints.api).toBe('http://git.example.test:8080/api/v3')
+    expect(tokenOf(client)).toBe('ghp_classic_one')
+  })
+
   it('the notifications token when one is set, and only for them', () => {
     AbeleConfig.getInstance().github = {
       ...AbeleConfig.getInstance().github!,

@@ -249,6 +249,7 @@ import { checkGithubAccess, resetGithubClients } from '@/github/GithubService'
 import type { AccessReport } from '@/github/accessCheck'
 import { githubUsers } from '@/github/users'
 import { PAGE_WIDTH_MAX, PAGE_WIDTH_MIN } from '@/github/pageWidth'
+import { projectLegacy } from '@/github/connections'
 
 const config = AbeleConfig.getInstance()
 
@@ -275,12 +276,13 @@ const stored = computed(() => {
 const storedNotifications = computed(() => {
   void secretVersion.value
   void secrets().version.value
-  const id = settings.notifications.keyId
+  const id = settings.notifications.boundKeyId ?? settings.notifications.keyId
   return id ? secrets().get(id) : ''
 })
 
 const save = async () => {
-  config.github = { ...settings }
+  config.github = projectLegacy(githubSettingsFrom(settings))
+  Object.assign(settings, config.github)
   resetGithubClients()
   checkResult.value = ''
   report.value = null
@@ -347,7 +349,26 @@ const toggle = (key: 'enabled' | 'openLinks') => {
 const saveServer = debounce((): void => void save(), 500)
 
 const updateServer = (value: string) => {
+  const oldServer = settings.server
   settings.server = value.trim()
+  const active = settings.connections.find((c) => c.server === oldServer && c.isDefault)
+  if (active) {
+    active.server = settings.server
+    active.account = undefined
+    active.checkedAt = undefined
+    active.expiresAt = undefined
+  } else if (settings.server && !settings.connections.length) {
+    settings.connections = [
+      {
+        id: 'github-legacy',
+        name: 'GitHub Enterprise',
+        server: settings.server,
+        keyId: settings.keyId,
+        owners: [],
+        isDefault: true,
+      },
+    ]
+  }
   saveServer()
 }
 
@@ -386,8 +407,27 @@ const updateSearchLimit = (value: string) => {
 const saveToken = () => {
   const value = tokenInput.value.trim()
   if (!value) return
-  settings.keyId = GITHUB_TOKEN_KEY_ID
-  secrets().set(GITHUB_TOKEN_KEY_ID, value)
+  const active = settings.connections.find((c) => c.server === settings.server && c.isDefault)
+  const keyId = active?.keyId || settings.keyId || GITHUB_TOKEN_KEY_ID
+  settings.keyId = keyId
+  if (active) {
+    active.keyId = keyId
+    active.account = undefined
+    active.checkedAt = undefined
+    active.expiresAt = undefined
+  } else {
+    settings.connections = [
+      {
+        id: 'github-legacy',
+        name: settings.server ? 'GitHub Enterprise' : 'GitHub',
+        server: settings.server,
+        keyId,
+        owners: [],
+        isDefault: true,
+      },
+    ]
+  }
+  secrets().set(keyId, value)
   tokenInput.value = ''
   secretVersion.value++
   void save()
@@ -395,6 +435,13 @@ const saveToken = () => {
 
 const forgetToken = () => {
   if (settings.keyId) secrets().set(settings.keyId, '')
+  const active = settings.connections.find((c) => c.server === settings.server && c.isDefault)
+  if (active) {
+    active.keyId = ''
+    active.account = undefined
+    active.checkedAt = undefined
+    active.expiresAt = undefined
+  }
   settings.keyId = ''
   secretVersion.value++
   void save()
@@ -403,7 +450,11 @@ const forgetToken = () => {
 const saveNotificationsToken = () => {
   const value = notificationsInput.value.trim()
   if (!value) return
-  settings.notifications = { keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID }
+  settings.notifications = {
+    keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
+    boundKeyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
+    boundServer: settings.server,
+  }
   secrets().set(GITHUB_NOTIFICATIONS_TOKEN_KEY_ID, value)
   notificationsInput.value = ''
   secretVersion.value++
@@ -411,7 +462,8 @@ const saveNotificationsToken = () => {
 }
 
 const forgetNotificationsToken = () => {
-  if (settings.notifications.keyId) secrets().set(settings.notifications.keyId, '')
+  const keyId = settings.notifications.boundKeyId ?? settings.notifications.keyId
+  if (keyId) secrets().set(keyId, '')
   settings.notifications = { keyId: '' }
   secretVersion.value++
   void save()
