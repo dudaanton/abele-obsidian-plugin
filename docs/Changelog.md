@@ -55,6 +55,14 @@ with it cannot recover the previously installed version and establishes a quiet 
 Accurate automatic comparisons start with the following update. Synced settings are not
 evidence of this device's previous version.
 
+## Size
+
+The initial catalog contains 122 historical version boundaries and 774 user-facing bullets;
+its compact UTF-8 JSON is 90,518 bytes. No runtime dependency was added. The production
+build changed from 5,580,432 to 5,677,572 JavaScript bytes (+97,140) and from 297,955 to
+298,667 stylesheet bytes (+712), including the view, adapter and documentation. The budget
+increase is separate from the feature; paging limits DOM work, not shipped history.
+
 ## Verification
 
 Synthetic Git fixtures test pending/tagged equivalence, detached older builds with newer tags
@@ -70,5 +78,8 @@ live tests cover the view, settings action and update controls; the phone layout
 probes include them. A Notice is not registered as a modal or required to fill a sheet.
 
 A release check must use a complete clean clone, including tags, then `npm ci` and
-`npm run build` from `plugin/`. No untracked input is needed. The wider e2e batch and final
+`npm run build` from `plugin/`. No untracked input is needed.
+`node scripts/check-changelog-build.mjs` exercises `release.sh` only inside a disposable
+full clone, then builds that synthetic tag in two clean clones under different timezones
+and compares both release-file hashes. It never tags or commits in the source checkout. The wider e2e batch and final
 release clean-clone gate remain separate from focused feature verification.

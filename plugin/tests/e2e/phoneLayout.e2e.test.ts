@@ -829,6 +829,41 @@ const probeScript = `(async () => {
       }
     }
 
+    // A changelog is a tab, not a sheet; its Notice is transient, not a modal. The final
+    // bullet and paging control must be scrollable above Obsidian's mobile navigation.
+    app.commands.executeCommandById('abele:open-changelog')
+    const changelogLeaf = () => app.workspace.getLeavesOfType('abele-changelog')[0]
+    if (await until(() => changelogLeaf()?.view.contentEl.querySelector('.abele-changelog article'), 8000)) {
+      const content = changelogLeaf().view.contentEl
+      const scroller = content.querySelector('.abele-changelog__scroll')
+      const controlRings = root => [...root.querySelectorAll('button')].flatMap(button => {
+        button.focus(); const cuts=ringClipped(button); button.blur(); return cuts
+      })
+      await screen('changelog all', content)
+      report['changelog all'].clipped = controlRings(content)
+      const older = [...content.querySelectorAll('button')].find(b => b.textContent.includes('Show older versions'))
+      if (older) older.click()
+      await wait(150)
+      scroller.scrollTop = scroller.scrollHeight
+      await screen('changelog older', content)
+      const navbar = document.querySelector('.mobile-navbar')
+      const last = [...scroller.querySelectorAll('li, button')].pop()
+      report['changelog older'].covered = last && navbar && navbar.getBoundingClientRect().height
+        ? Math.max(0, Math.round(last.getBoundingClientRect().bottom - navbar.getBoundingClientRect().top)) : 0
+      await changelogLeaf().setViewState({ type: 'abele-changelog', state: { range: { from: '1.56.0', to: '1.58.0' } }, active: true })
+      await wait(200)
+      await screen('changelog filtered', content)
+      report['changelog filtered'].clipped = controlRings(content)
+      const hide = window.__abeleTest.showChangelogOffer(app, { from: '1.56.0', to: '1.58.0' })
+      try {
+        await wait(150)
+        const notice = [...document.querySelectorAll('.notice')].find(n => n.textContent.includes("What's new"))
+        if (notice) { await screen('changelog notice', notice); report['changelog notice'].clipped=controlRings(notice) }
+        else report['changelog notice'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'update notice did not open' }
+      } finally { hide() }
+      changelogLeaf().detach()
+    } else report['changelog all'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'changelog did not open' }
+
     // The documentation, a tab rather than a dialog: its text keeps a note's margins, and the
     // end of a page and of the contents can be scrolled out from under the floating bottom bar.
     // The last screen is a search result just opened, taken while its place still flashes.
@@ -1149,6 +1184,23 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(docs?.fileMargin).toBeGreaterThan(0)
     for (const side of docs?.margins ?? [0, 0])
       expect(side).toBeGreaterThanOrEqual(docs.fileMargin! - 1)
+  })
+
+  it.each(['changelog all', 'changelog older', 'changelog filtered'])(
+    '%s: one content scroller and no horizontal overflow',
+    (label) => {
+      expect(report[label]?.error ?? 'no report').toBe('')
+      expect(report[label].over).toEqual([])
+      expect(report[label].scrollers.length).toBe(1)
+      expect(report[label].clipped).toEqual([])
+    }
+  )
+
+  it('changelog: paging stays above navigation and the native update offer fits', () => {
+    expect((report['changelog older'] as Screen & { covered?: number })?.covered).toBe(0)
+    expect(report['changelog notice']?.error ?? 'no report').toBe('')
+    expect(report['changelog notice'].over).toEqual([])
+    expect(report['changelog notice'].clipped).toEqual([])
   })
 
   it('docs search result: lands on the place it found, lit up and in view', () => {

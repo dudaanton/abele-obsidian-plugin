@@ -44,6 +44,7 @@ import { openSecretsList } from './openSecretsList'
 import { openMcpServer } from './openMcpServer'
 import { openRewind } from './openRewind'
 import { openDialog, dialogNames } from './openDialog'
+import { showOffer } from '@/changelog/register'
 import { ChatRewind } from '@/ai/rewind/ChatRewind'
 import { memoryStore } from '@/ai/rewind/RewindStore'
 import { showFormModal } from '@/scripting/formModal'
@@ -126,6 +127,8 @@ interface AbeleTestApi {
   AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
   AbeleConfig: typeof AbeleConfig
+  /** A synthetic update notice; no installed manifest or local marker is modified. */
+  showChangelogOffer: typeof showOffer
   /** The synced secret store: status, lock, unlock — driven live. */
   secrets: typeof secrets
   /** A new drawing in a folder, opened ready to draw on. */
@@ -691,6 +694,7 @@ export function exposeTestApi(plugin: Plugin): void {
     showFormModal,
     openDialog,
     dialogNames,
+    showChangelogOffer: showOffer,
     embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
     noteFieldView: (el: HTMLElement) => embeddedViews.get(el) ?? null,
     composer: composerProbe,

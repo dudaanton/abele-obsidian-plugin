@@ -12,6 +12,11 @@ it('filters subjects, keeps Unicode and exact text inert', () => {
     expect(subjectBullet(`${type}: internal`)).toBeNull()
   expect(subjectBullet('feat: bump version to 1.0.0')).toBeNull()
   expect(subjectBullet('unknown change')).toBeNull()
+  expect(
+    subjectBullet('refactor: internal', { category: 'features', text: 'Readable feature' })
+  ).toEqual(['features', 'Readable feature'])
+  expect(subjectBullet('fix: misleading', false)).toBeNull()
+  expect(subjectBullet('perf: faster search')).toEqual(['improvements', 'Faster search'])
 })
 
 it('anchors tag history, includes pending bump, and reproduces bytes when tagged in a clone', () => {
@@ -33,7 +38,7 @@ it('anchors tag history, includes pending bump, and reproduces bytes when tagged
   const commit = (subject: string) => {
     writeFileSync(join(repo, 'subject'), subject)
     git('add', '.')
-    git('commit', '-qm', subject)
+    git('-c', 'core.hooksPath=/dev/null', 'commit', '-qm', subject)
   }
   try {
     git('init', '-q')

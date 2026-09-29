@@ -181,3 +181,44 @@ describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', ()
     expect(cuts.map((c) => `${c.screen}: ${c.field} — ${c.by.join(', ')}`)).toEqual([])
   })
 })
+
+describe.skipIf(!available)('changelog controls', () => {
+  it('keeps view and Notice focus rings inside their clipping ancestors', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms))
+      const cuts = []
+      const measure = root => {
+        for (const button of root.querySelectorAll('button')) {
+          button.focus()
+          const win = button.ownerDocument.defaultView
+          const style = win.getComputedStyle(button)
+          const nums = (style.boxShadow.match(/-?\\d+(\\.\\d+)?px/g) || []).map(parseFloat)
+          const shadow = nums.length >= 4 ? Math.max(0,nums[2]) + Math.max(0,nums[3]) : 0
+          const outline = style.outlineStyle !== 'none' ? parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset || '0') : 0
+          const reach = Math.max(shadow, outline), r = button.getBoundingClientRect()
+          for (let el=button.parentElement; el && el !== button.ownerDocument.documentElement; el=el.parentElement) {
+            const s=win.getComputedStyle(el)
+            if(s.overflowX === 'visible' && s.overflowY === 'visible') continue
+            const b=el.getBoundingClientRect(), left=b.left+el.clientLeft
+            if(Math.max(left-(r.left-reach), r.right+reach-(left+el.clientWidth)) > .5) cuts.push(button.textContent.trim())
+          }
+          button.blur()
+        }
+      }
+      app.commands.executeCommandById('abele:open-changelog'); await wait(300)
+      const leaf=app.workspace.getLeavesOfType('abele-changelog')[0]
+      if(!leaf) throw Error('changelog did not open')
+      try {
+        measure(leaf.view.contentEl)
+        await leaf.setViewState({type:'abele-changelog',state:{range:{from:'1.56.0',to:'1.58.0'}},active:true}); await wait(150)
+        measure(leaf.view.contentEl)
+        const hide=window.__abeleTest.showChangelogOffer(app,{from:'1.56.0',to:'1.58.0'})
+        try { const notice=[...document.querySelectorAll('.notice')].find(n=>n.textContent.includes("What's new")); if(!notice) throw Error('notice missing'); measure(notice) } finally {hide()}
+      } finally {leaf.detach()}
+      return JSON.stringify(cuts)
+    })()`)
+    ) as string[]
+    expect(result).toEqual([])
+  })
+})
