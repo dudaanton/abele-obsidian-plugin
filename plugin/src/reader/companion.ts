@@ -9,7 +9,8 @@
  * renamed or moved. In a shared note a book's highlights are the callouts whose place links to it.
  *
  * A template, when one is set, makes the note the first time, and its body is what each highlight
- * adds after that (`noteTemplate.ts`). Highlights written before the choice changed stay where they
+ * adds after that (`noteTemplate.ts`); a body with a comment field of its own has comments read
+ * from it and written to it (`entryComment.ts`). Highlights written before the choice changed stay where they
  * are: the book still shows them, and they are changed and removed there.
  */
 import { Notice, TFile, normalizePath, type App } from 'obsidian'
@@ -27,12 +28,14 @@ import {
   removeHighlight,
   upsertHighlight,
   withCompanionProps,
+  type EntryFrame,
   type Highlight,
   type OfBook,
 } from './highlights'
 import {
   entryFrame,
   entryFrom,
+  hasCommentField,
   newNoteFrom,
   parseNoteTemplate,
   type NoteTemplate,
@@ -124,8 +127,9 @@ export async function readHighlights(
   where: NotesPlace
 ): Promise<Highlight[]> {
   const out: Highlight[] = []
+  const frame = await frameOf(app, where)
   for (const { note, ofBook } of sources(app, book, where))
-    for (const h of parseHighlights(await app.vault.cachedRead(note), ofBook))
+    for (const h of parseHighlights(await app.vault.cachedRead(note), ofBook, frame))
       if (!out.some((x) => x.cfi === h.cfi)) out.push(h)
   return out
 }
@@ -137,9 +141,10 @@ async function holding(
   where: NotesPlace,
   cfi: string
 ): Promise<{ note: TFile; ofBook?: OfBook; found: Highlight } | null> {
+  const frame = await frameOf(app, where)
   for (const { note, ofBook } of sources(app, book, where)) {
     const md = await app.vault.cachedRead(note)
-    const found = parseHighlights(md, ofBook).find((h) => h.cfi === cfi)
+    const found = parseHighlights(md, ofBook, frame).find((h) => h.cfi === cfi)
     if (found) return { note, ofBook, found }
   }
   return null
@@ -170,16 +175,32 @@ export async function highlightAt(
   return null
 }
 
-/** The template set, read; null when there is none, or it is not there — which is said. */
-async function templateOf(app: App, where: NotesPlace): Promise<NoteTemplate | null> {
+/**
+ * The template set, read; null when there is none, or it is not there — which is said when a
+ * highlight is being written, not when they are only read.
+ */
+async function templateOf(
+  app: App,
+  where: NotesPlace,
+  quiet = false
+): Promise<NoteTemplate | null> {
   const path = where.target.template
   if (!path) return null
   const file = app.vault.getAbstractFileByPath(normalizePath(path))
   if (!(file instanceof TFile)) {
-    new Notice(`The highlights template ${path} is not there: the highlight is written without it.`)
+    if (!quiet)
+      new Notice(
+        `The highlights template ${path} is not there: the highlight is written without it.`
+      )
     return null
   }
   return parseNoteTemplate(await app.vault.cachedRead(file))
+}
+
+/** The frame of the template's body, if one is set: where it keeps a comment of its own. */
+async function frameOf(app: App, where: NotesPlace): Promise<EntryFrame | undefined> {
+  const template = await templateOf(app, where, true)
+  return template ? entryFrame(template) : undefined
 }
 
 /**
@@ -202,19 +223,32 @@ export async function saveHighlight(
     // The label as the note has it: in a shared note it names the book too. Never none — a link
     // with no label reads as the book's file name and its place.
     const kept = { ...h, label: held.found.label || chapter || title }
-    await write(app, book, held.note, held.ofBook, kept, chatPath)
+    await write(
+      app,
+      book,
+      held.note,
+      held.ofBook,
+      kept,
+      chatPath,
+      undefined,
+      await frameOf(app, where)
+    )
     return held.note
   }
   const template = await templateOf(app, where)
+  // A body with a field for the comment keeps it there, and the callout holds the words alone.
+  const callout = hasCommentField(template) ? { ...h, comment: '' } : h
   const own = where.target.to === 'book'
   const label = !chapter ? title : !own && !template ? `${title} · ${chapter}` : chapter
   const fresh = { ...h, label }
+  const block = { ...callout, label }
   const existing = targetNote(app, book, where)
   const path = existing?.path ?? (own ? companionPath(book) : normalizePath(where.target.path))
   const link = linkToPlace(app, book, { cfi: h.cfi }, fresh.label, path)
   const chat = fresh.discussion && chatPath ? chatLink(app, chatPath, path) : undefined
   // A wikilink whatever the link format: a property keeps its link tracked only as one.
   const bookLink = `[[${app.metadataCache.fileToLinktext(book, path, false)}]]`
+  const quote = highlightBlock(block, link, chat)
   const vars = {
     title,
     author: where.author,
@@ -222,7 +256,9 @@ export async function saveHighlight(
     chapter: h.label,
     color: h.color,
     link,
-    highlight: highlightBlock(fresh, link, chat),
+    highlight: quote,
+    quote,
+    comment: h.comment,
   }
   if (existing) {
     // A book's own note without a template keeps its highlights in the order of the book; any
@@ -235,7 +271,8 @@ export async function saveHighlight(
       own ? undefined : linkingTo(app, book, existing),
       fresh,
       chatPath,
-      entry
+      entry,
+      template ? entryFrame(template) : undefined
     )
     return existing
   }
@@ -260,12 +297,13 @@ async function write(
   ofBook: OfBook | undefined,
   h: Highlight,
   chatPath?: string,
-  entry?: string
+  entry?: string,
+  frame?: EntryFrame
 ): Promise<void> {
   const link = linkToPlace(app, book, { cfi: h.cfi }, h.label, note.path)
   const chat = h.discussion && chatPath ? chatLink(app, chatPath, note.path) : undefined
   await app.vault.process(note, (md) =>
-    upsertHighlight(md, h, link, compare, chat, { ofBook, entry })
+    upsertHighlight(md, h, link, compare, chat, { ofBook, entry, frame })
   )
 }
 
@@ -298,8 +336,7 @@ export async function deleteHighlight(
 ): Promise<void> {
   const held = await holding(app, book, where, cfi)
   if (!held) return
-  const template = await templateOf(app, where)
-  const frame = template ? entryFrame(template) : undefined
+  const frame = await frameOf(app, where)
   await app.vault.process(held.note, (md) =>
     removeHighlight(md, cfi, { ofBook: held.ofBook, frame })
   )

@@ -369,7 +369,29 @@ and a line right after it gets a blank line in between, or it would join the quo
 `{{ title }}`, `{{ author }}`, `{{ book }}` (a link to the book), `{{ chapter }}`, `{{ color }}`,
 `{{ link }}` (to the place), `{{ date }}` and `{{ date.format('D MMMM YYYY') }}`; anything else is
 left as written. A template without `{{#body}}` is written once and each highlight is added at the
-end. A book's own note made from a template still gets `type: book-highlights` and `book:` if the
+end.
+
+**The quote and the comment apart.** `{{ highlight }}` keeps the comment inside the callout, under
+the words. A body can give it a field of its own instead: `{{ quote }}` is the callout with the words
+alone, and `{{ comment }}`, on a line of its own, is the comment, with whatever the line puts around
+it:
+
+```markdown
+{{#body}}
+## {{ chapter }}
+{{ quote }}
+
+**Comment:** {{ comment }}
+{{/body}}
+```
+
+A comment added or changed later in the reader is written into that field and nothing else is
+touched; an empty one leaves the line as the body has it (`**Comment:**`). The reader finds the
+field by the lines around the callout, so it is found while they read as the body wrote them.
+A comment of several lines goes on the lines after the field's, carrying its `>` marks when the line
+has them (`> {{ comment }}` keeps blank lines as `>`); without them its blank lines are left out,
+since a blank line would end it. Highlights written before, or whose lines around no longer read as
+the body, keep their comment inside the callout, and it is read and changed there. A book's own note made from a template still gets `type: book-highlights` and `book:` if the
 template does not set them, so it is found again after either file moves. A template that is not
 there is said, and the highlight is written without it.
 

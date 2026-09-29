@@ -27,9 +27,22 @@
  * which Obsidian draws as an ordinary quote. Highlights are kept in the book's order. Anything else
  * in the note — a heading, the person's own paragraphs between callouts — is left where it is.
  *
+ * A note made from a template whose body gives the comment a field of its own keeps the comment
+ * there instead, outside the callout; it is read and written there while what is around the
+ * callout still reads as the body wrote it (`entryComment.ts`), and inside the callout otherwise.
+ *
  * Everything here works on the note's text, so the rules are tested without a vault.
  */
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
+import {
+  commentLines,
+  isBlankField,
+  matchEntry,
+  type EntryFrame,
+  type EntryMatch,
+} from './entryComment'
+
+export type { EntryFrame } from './entryComment'
 
 export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange'] as const
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
@@ -120,9 +133,17 @@ interface Block {
   /** Lines `[start, end)` of the note the callout takes. */
   start: number
   end: number
+  /** The entry the template's body wrote around it, when a frame is given and it still fits. */
+  entry?: EntryMatch
+  /** The comment as the callout itself has it. */
+  inner: string
 }
 
-function blocks(markdown: string, ofBook?: OfBook): { lines: string[]; blocks: Block[] } {
+function blocks(
+  markdown: string,
+  ofBook?: OfBook,
+  frame?: EntryFrame
+): { lines: string[]; blocks: Block[] } {
   const lines = markdown.replace(/\r\n?/g, '\n').split('\n')
   const found: Block[] = []
   for (let i = 0; i < lines.length; i++) {
@@ -159,15 +180,48 @@ function blocks(markdown: string, ofBook?: OfBook): { lines: string[]; blocks: B
       },
       start: i,
       end,
+      inner: comment,
     })
     i = end - 1
   }
+  if (frame) withEntries(lines, found, frame, markdown)
   return { lines, blocks: found }
 }
 
-/** Every highlight in the note — of the book asked about, if one is — in the order it has them. */
-export function parseHighlights(markdown: string, ofBook?: OfBook): Highlight[] {
-  return blocks(markdown, ofBook).blocks.map((b) => b.highlight)
+/**
+ * Each callout's entry, found by the frame; its comment is the field's, where the field has one,
+ * or the one the callout keeps from before. An entry reaches no further than the callouts around it.
+ */
+function withEntries(lines: string[], found: Block[], frame: EntryFrame, markdown: string): void {
+  // Every highlight callout bounds an entry, the other books' in a shared note too.
+  const all = found.length ? blocks(markdown).blocks : []
+  for (const b of found) {
+    const prev = all.filter((x) => x.end <= b.start).pop()
+    const next = all.find((x) => x.start >= b.end)
+    const entry = matchEntry(
+      lines,
+      b.start,
+      b.end,
+      frame,
+      prev?.end ?? 0,
+      next?.start ?? lines.length
+    )
+    if (!entry) continue
+    b.entry = entry
+    if (entry.comment?.text) b.highlight.comment = entry.comment.text
+  }
+}
+
+/**
+ * Every highlight in the note — of the book asked about, if one is — in the order it has them;
+ * with the frame of the template's body, comments kept in a field of their own too.
+ */
+export function parseHighlights(
+  markdown: string,
+  ofBook?: OfBook,
+  frame?: EntryFrame
+): Highlight[] {
+  return blocks(markdown, ofBook, frame).blocks.map((b) => b.highlight)
 }
 
 /**
@@ -223,6 +277,8 @@ type Compare = (a: string, b: string) => number
 /** How a note is written to: which book's callouts are asked about, and how a new one goes in. */
 export interface WriteOptions {
   ofBook?: OfBook
+  /** The template body's frame: where a comment with a field of its own is written. */
+  frame?: EntryFrame
   /**
    * What a new highlight adds, its callout in it, put at the end of the note; without it the
    * callout goes in the order of the book.
@@ -242,9 +298,13 @@ export function upsertHighlight(
   chatLink?: string,
   options: WriteOptions = {}
 ): string {
-  const { lines, blocks: found } = blocks(markdown, options.ofBook)
+  const { lines, blocks: found } = blocks(markdown, options.ofBook, options.frame)
   const block = highlightBlock(h, link, chatLink).split('\n')
   const same = found.find((b) => b.highlight.cfi === h.cfi)
+  if (same?.entry?.comment) {
+    writeField(lines, same, highlightBlock({ ...h, comment: '' }, link, chatLink), h.comment)
+    return lines.join('\n')
+  }
   if (same) {
     lines.splice(same.start, same.end - same.start, ...block)
     return lines.join('\n')
@@ -264,18 +324,45 @@ export function upsertHighlight(
   return atEnd(lines, block)
 }
 
+/**
+ * The callout and the comment written into an entry whose comment has a field of its own: the
+ * callout holding the words alone, the comment in its field. The later lines go first, so the
+ * earlier ones stay where they were found.
+ */
+function writeField(lines: string[], block: Block, callout: string, comment: string): void {
+  const region = block.entry!.comment!
+  let field = commentLines(comment, region.lead, region.carry, region.end)
+  // An empty field at the edge of the body is no line at all, as the body writes it.
+  if (region.edge && isBlankField(field)) field = []
+  const after = region.from >= block.end
+  const edits: [number, number, string[]][] = [
+    [block.start, block.end, callout.split('\n')],
+    [region.from, region.to, field],
+  ]
+  if (after) edits.reverse()
+  for (const [from, to, added] of edits) {
+    if (added === field && region.to === region.from && added.length) {
+      // Put where there was nothing: kept apart from what follows and what comes before.
+      const out = [...added]
+      if (from < lines.length && lines[from].trim()) out.push('')
+      if (from > 0 && lines[from - 1].trim()) out.unshift('')
+      lines.splice(from, 0, ...out)
+      continue
+    }
+    lines.splice(from, to - from, ...added)
+    if (added === field && !added.length && from > 0 && !lines[from - 1].trim()) {
+      // A field emptied at the edge of the body: its blank line goes with it.
+      if (from < lines.length && !lines[from].trim()) lines.splice(from, 1)
+    }
+  }
+}
+
 /** The note's lines with `added` at the end, after one blank line. */
 function atEnd(lines: string[], added: string[]): string {
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop()
   if (lines.length) lines.push('')
   lines.push(...added, '')
   return lines.join('\n')
-}
-
-/** The lines a template's body writes around a highlight, as `entryFrame` gives them. */
-export interface EntryFrame {
-  before: RegExp[]
-  after: RegExp[]
 }
 
 /**
@@ -287,19 +374,10 @@ export function removeHighlight(
   cfi: string,
   options: { ofBook?: OfBook; frame?: EntryFrame } = {}
 ): string {
-  const { lines, blocks: found } = blocks(markdown, options.ofBook)
+  const { lines, blocks: found } = blocks(markdown, options.ofBook, options.frame)
   const block = found.find((b) => b.highlight.cfi === cfi)
   if (!block) return markdown
-  let { start, end } = block
-  const { before = [], after = [] } = options.frame ?? {}
-  const fits = (from: number, patterns: RegExp[]) =>
-    from >= 0 &&
-    from + patterns.length <= lines.length &&
-    patterns.every((p, i) => p.test(lines[from + i]))
-  if ((before.length || after.length) && fits(start - before.length, before) && fits(end, after)) {
-    start -= before.length
-    end += after.length
-  }
+  let { start, end } = block.entry ?? block
   if (end < lines.length && !lines[end].trim() && start > 0 && !lines[start - 1].trim()) end++
   lines.splice(start, end - start)
   return lines.join('\n')

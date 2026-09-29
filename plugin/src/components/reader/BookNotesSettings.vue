@@ -31,7 +31,7 @@
       :desc="
         bookKey
           ? 'A note to make this book\'s highlights note from. Empty: as in settings.'
-          : 'A note a new highlights note is made from. Between {{#body}} and {{/body}} is what each highlight adds, {{ highlight }} being the highlight; also {{ title }}, {{ author }}, {{ book }}, {{ chapter }}, {{ date }}. Empty: none.'
+          : 'A note a new highlights note is made from. Between {{#body}} and {{/body}} is what each highlight adds, {{ highlight }} being the highlight; or {{ quote }} and {{ comment }} to put the quote and your comment apart; also {{ title }}, {{ author }}, {{ book }}, {{ chapter }}, {{ date }}. Empty: none.'
       "
     >
       <Search

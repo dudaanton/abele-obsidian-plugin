@@ -545,6 +545,15 @@ own); `{{ title }}`, `{{ author }}`, `{{ book }}` (a link to the book), `{{ chap
 anything else is left as written. A template without a body gets each highlight at the end.
 Removing a highlight removes the lines its body wrote around it while they still read as written.
 
+The quote and the comment can be fields of their own: `{{ quote }}` is the callout (on a line of its
+own) and `{{ comment }}` is the comment, on a line of its own with whatever the body puts around it
+(`**Comment:** {{ comment }}`, `> {{ comment }}`), before the quote or after it. With that field the
+callout holds the words alone and the comment is kept in the field — read from there and written
+there when it changes — for as long as the lines around the callout still read as the body wrote
+them; otherwise, and in notes written before, the comment is inside the callout as above. A comment
+of several lines goes on the lines after the field's, each with its `>` marks if it has them;
+without them its blank lines are left out, since a blank line ends it.
+
 The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or
 removing a highlight by editing the note is fine; keep the shape above or the reader will not see
 it. To highlight words, prefer `book_highlight`: it finds the exact place (a CFI a hand-written
