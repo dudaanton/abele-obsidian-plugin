@@ -111,7 +111,9 @@ $colors: red, orange, yellow, green, cyan, blue, purple, pink;
 .abele-calendar-event__content {
   flex: 1;
   min-width: 0;
-  overflow-wrap: break-word;
+  // `anywhere`, not `break-word`: only it lets a long run count as breakable when the list
+  // measures how narrow the event can get, so a title, place or link without spaces wraps.
+  overflow-wrap: anywhere;
 }
 
 .abele-calendar-event__info {
@@ -126,7 +128,6 @@ $colors: red, orange, yellow, green, cyan, blue, purple, pink;
 
 .abele-calendar-event__location {
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .abele-calendar-event__description {

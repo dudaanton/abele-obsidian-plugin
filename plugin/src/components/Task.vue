@@ -295,7 +295,8 @@ onMounted(() => {
 
 .abele-task-view__content {
   flex: 1;
-  overflow-wrap: break-word;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding-top: 1px;
 }
 

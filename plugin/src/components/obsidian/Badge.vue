@@ -29,6 +29,10 @@ defineProps<{
   color: var(--text-muted);
   font-size: var(--font-smallest);
   white-space: nowrap;
+  // A name longer than the row is cut with an ellipsis rather than pushed past its edge.
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .abele-badge_accent {

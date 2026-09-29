@@ -326,6 +326,9 @@ const getDateWikilink = (dateStr: string) => {
 
 .abele-timeline__block-content {
   flex: 1;
+  // Otherwise the column is as wide as the longest word under it — a link, an event's title
+  // with no spaces — and pushes the whole list past the sidebar's edge.
+  min-width: 0;
 }
 
 .abele-timeline__tasks {
