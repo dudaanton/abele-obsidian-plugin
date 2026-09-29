@@ -88,7 +88,7 @@ const props = defineProps<{
   atTimeline?: boolean
 }>()
 
-const taskEl = ref(null)
+const taskEl = ref<HTMLElement | null>(null)
 const isVisible = useElementVisibility(taskEl)
 const contentLoaded = ref(false)
 
@@ -234,6 +234,9 @@ const onCardClick = (e: MouseEvent) => {
     target.closest('label')
   )
     return
+  // A drag across the words to select them ends in a click too; it is not a request to open.
+  const selection = target.ownerDocument.getSelection()
+  if (selection && !selection.isCollapsed && taskEl.value?.contains(selection.anchorNode)) return
   openFile(props.task.taskPath)
 }
 

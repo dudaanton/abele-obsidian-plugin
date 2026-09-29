@@ -18,7 +18,9 @@
  * - the editor does not have the focus;
  * - the ticked task's file says it is done, the opened task shows its description.
  *
- * Source mode and reading view draw no list under the note; the probe checks that too. On a
+ * Then a mouse drag across an opened description still selects its words, the block having
+ * taken the focus the press would have given the editor (not on a phone, where a long press is
+ * the system's own). Source mode and reading view draw no list under the note; the probe checks that too. On a
  * desktop window and under `emulateMobile`; with `E2E_TARGET=phone` on the phone. Writes its own
  * folder of notes and removes it.
  */
@@ -49,6 +51,9 @@ interface Report {
     expand?: Press
     tickTyping?: Press
     expandTyping?: Press
+    /** What a mouse drag across an opened description selected, and whether the editor had the focus. */
+    selected?: string
+    selectFocus?: boolean
     error?: string
   }
   /** Rows of the list drawn in source mode and in reading view. */
@@ -193,6 +198,29 @@ const script = `(async () => {
       out.expand = await expand(12, false)
       out.tickTyping = await tick(true)
       out.expandTyping = await expand(14, true)
+
+      // The opened description's words can still be selected with the mouse, with the block
+      // taking the focus the press would have given the editor. A phone selects by a long
+      // press, which is the system's own, so only the mouse is tried.
+      if (!window.__e2eHost) {
+        const text = rows()[14].querySelector('.abele-task-view__description p')
+        if (!text) throw new Error('no description to select')
+        const a = document.activeElement
+        if (a && a !== document.body) a.blur()
+        window.getSelection().removeAllRanges()
+        const r = text.getBoundingClientRect()
+        const y = Math.round(r.top + r.height / 2)
+        const drag = (type, x, buttons) =>
+          cdp.sendCommand('Input.dispatchMouseEvent', { type, x: Math.round(x), y, button: 'left', buttons, clickCount: 1 })
+        await drag('mouseMoved', r.left + 1, 0)
+        await drag('mousePressed', r.left + 1, 1)
+        for (let i = 1; i <= 8; i++) { await drag('mouseMoved', r.left + 1 + ((r.width - 2) * i) / 8, 1); await wait(20) }
+        await drag('mouseReleased', r.right - 1, 0)
+        await wait(500)
+        out.selected = window.getSelection().toString()
+        out.selectFocus = leaf.view.editor.hasFocus()
+        window.getSelection().removeAllRanges()
+      }
     } catch (e) {
       out.error = String((e && e.message) || e)
     }
@@ -291,6 +319,11 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
 
     it('opening a task while writing in the note keeps it in place and takes the focus out', () => {
       stays(report.live?.expandTyping)
+    })
+
+    it.skipIf(onPhone())('a mouse drag across a description still selects its words', () => {
+      expect(report.live?.selected ?? '').toMatch(/The description of sample task \d+/)
+      expect(report.live?.selectFocus).toBe(false)
     })
 
     it('source mode and reading view draw no list under the note', () => {
