@@ -494,6 +494,29 @@ describe('the interceptor an agent carries', () => {
     expect(ai.agents[0].interceptorContextDepth).toBe(0)
   })
 
+  it('fills in no script and no pattern for agents saved before them, without a rewrite', () => {
+    const ai = withAgent({})
+    const raw = ai.agents[0] as unknown as Record<string, unknown>
+    delete raw.interceptorScript
+    delete raw.interceptorPattern
+
+    expect(migrateAgents(ai)).toBe(false)
+    expect(ai.agents[0].interceptorScript).toBe('')
+    expect(ai.agents[0].interceptorPattern).toBe('')
+  })
+
+  it('keeps a script and a pattern, and drops them when they are not text', () => {
+    const kept = withAgent({ interceptorScript: 'Guard', interceptorPattern: '^/todo' })
+    expect(migrateAgents(kept)).toBe(false)
+    expect(kept.agents[0].interceptorScript).toBe('Guard')
+    expect(kept.agents[0].interceptorPattern).toBe('^/todo')
+
+    const odd = withAgent({ interceptorScript: 7, interceptorPattern: ['x'] })
+    expect(migrateAgents(odd)).toBe(true)
+    expect(odd.agents[0].interceptorScript).toBe('')
+    expect(odd.agents[0].interceptorPattern).toBe('')
+  })
+
   it('takes an impossible depth as the draft only', () => {
     const ai = withAgent({ interceptorAgentId: 'r1', interceptorContextDepth: -5 })
 

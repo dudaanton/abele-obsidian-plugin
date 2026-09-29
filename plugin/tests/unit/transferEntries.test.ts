@@ -19,6 +19,7 @@ import {
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'
+import { createAgent } from '@/ai/agents/types'
 import type { TransferEntry } from '@/transfer/types'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 
@@ -140,6 +141,23 @@ describe('settings that arrived later than the transfer did', () => {
     expect(find(entries, 'scripts', 'scripts')?.data).toMatchObject({
       startupScripts,
       startupScriptsPaused: true,
+    })
+  })
+
+  it("carries an agent's interceptor script and pattern with the agent", () => {
+    const base = settings()
+    const agent = createAgent({
+      id: 'a1',
+      name: 'Guarded',
+      interceptorScript: 'Quick tasks',
+      interceptorPattern: '^/todo',
+    })
+    base.ai = { ...base.ai, agents: [agent] }
+    const entries = collectEntries(base)
+
+    expect(find(entries, 'ai-agents', 'a1')?.data).toMatchObject({
+      interceptorScript: 'Quick tasks',
+      interceptorPattern: '^/todo',
     })
   })
 

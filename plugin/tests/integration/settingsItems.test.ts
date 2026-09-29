@@ -179,6 +179,28 @@ describe('update: a partial patch', () => {
     expect(AbeleConfig.getInstance().ai.agents[0].interceptorAgentId).toBe('r1')
   })
 
+  it('takes an interceptor script and pattern, and refuses a pattern that does not compile', async () => {
+    await answer(write, {
+      op: 'update',
+      path: 'ai.agents.a1',
+      value: '{"interceptorScript":"Guard","interceptorPattern":"^/todo"}',
+    })
+    expect(AbeleConfig.getInstance().ai.agents[0].interceptorScript).toBe('Guard')
+    expect(AbeleConfig.getInstance().ai.agents[0].interceptorPattern).toBe('^/todo')
+
+    expect(
+      await answer(write, {
+        op: 'update',
+        path: 'ai.agents.a1',
+        value: '{"interceptorPattern":"([a-"}',
+      })
+    ).toMatch(/regular expression/)
+    expect(
+      await answer(write, { path: 'ai.agents.a1.interceptorPattern', value: '"([a-"' })
+    ).toMatch(/regular expression/)
+    expect(AbeleConfig.getInstance().ai.agents[0].interceptorPattern).toBe('^/todo')
+  })
+
   it('leaves a keychain id alone, whether echoed back hidden or written outright', async () => {
     await answer(write, {
       op: 'update',

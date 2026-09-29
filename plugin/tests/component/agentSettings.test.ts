@@ -10,6 +10,7 @@ import { mount } from '@vue/test-utils'
 import AgentsSettings from '@/components/settings/ai/AgentsSettings.vue'
 import AgentEditorModal from '@/components/settings/ai/AgentEditorModal.vue'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { ScriptService } from '@/scripting/ScriptService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import Input from '@/components/obsidian/Input.vue'
@@ -309,6 +310,52 @@ describe("the agent's interceptor", () => {
     const stored = AgentRegistry.getInstance().get(main.id)
     expect(stored?.interceptorAgentId).toBe(helper.id)
     expect(stored?.interceptorContextDepth).toBe(-1)
+  })
+
+  it('offers the scripts marked @interceptor, and a script chosen asks nothing about context', async () => {
+    const { main, helper } = seedAgents()
+    ScriptService.getInstance().scriptList.value = [
+      {
+        path: 'Scripts/guard.js',
+        meta: { name: 'Guard', description: '', params: [], interceptor: 30 },
+        code: '',
+        commandId: 'abele:script-guard',
+      },
+      {
+        path: 'Scripts/plain.js',
+        meta: { name: 'Plain', description: '', params: [] },
+        code: '',
+        commandId: 'abele:script-plain',
+      },
+    ]
+    AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })
+    const view = mountEditor(main.id)
+    const options = interceptorPicker(view)!.props('options') as Options
+    expect(options.map((o) => o.display)).toContain('Script: Guard')
+    expect(options.map((o) => o.display)).not.toContain('Script: Plain')
+
+    await interceptorPicker(view)!.vm.$emit('update:model-value', 'script:Guard')
+
+    const stored = AgentRegistry.getInstance().get(main.id)
+    expect(stored?.interceptorScript).toBe('Guard')
+    expect(stored?.interceptorAgentId).toBe('')
+    expect(contextPicker(view)).toBeUndefined()
+    ScriptService.getInstance().scriptList.value = []
+  })
+
+  it('keeps a pattern that compiles and says why it does not keep one that does not', async () => {
+    const { main, helper } = seedAgents()
+    AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })
+    const view = mountEditor(main.id)
+    const field = () =>
+      view.findAllComponents(Input).find((i) => i.props('placeholder') === '^/todo')!
+
+    await field().vm.$emit('update:model-value', '^/check')
+    expect(AgentRegistry.getInstance().get(main.id)?.interceptorPattern).toBe('^/check')
+
+    await field().vm.$emit('update:model-value', '([a-')
+    expect(AgentRegistry.getInstance().get(main.id)?.interceptorPattern).toBe('^/check')
+    expect(view.find('.mod-warning').text()).toMatch(/Not saved/)
   })
 
   it('turns review off again', async () => {

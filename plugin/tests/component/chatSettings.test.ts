@@ -15,6 +15,7 @@ import Button from '@/components/obsidian/Button.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { ChatService } from '@/ai/ChatService'
 import { ChatInterceptor } from '@/ai/ChatInterceptor'
+import { ScriptService } from '@/scripting/ScriptService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -177,5 +178,30 @@ describe('the interceptor picker', () => {
     await picker(view).setValue(':agent')
     expect(interceptor.followsAgent).toBe(true)
     expect(interceptor.agentId.value).toBe(reviewer.id)
+  })
+
+  it('offers interceptor scripts, and narrows this chat to messages matching a pattern', async () => {
+    const { interceptor } = withReviewer()
+    ScriptService.getInstance().scriptList.value = [
+      {
+        path: 'Scripts/guard.js',
+        meta: { name: 'Guard', description: '', params: [], interceptor: 30 },
+        code: '',
+        commandId: 'abele:script-guard',
+      },
+    ]
+    const view = mountSettings()
+
+    await picker(view).setValue('script:Guard')
+    expect(interceptor.script.value).toBe('Guard')
+    expect(interceptor.agentId.value).toBe('')
+
+    const field = view.find('input[placeholder="Every message"]')
+    await field.setValue('^/todo')
+    expect(interceptor.pattern.value).toBe('^/todo')
+    await field.setValue('([a-')
+    expect(interceptor.pattern.value).toBe('^/todo')
+    expect(view.find('.mod-warning').text()).toMatch(/Not saved/)
+    ScriptService.getInstance().scriptList.value = []
   })
 })
