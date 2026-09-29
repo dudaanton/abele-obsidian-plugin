@@ -200,44 +200,38 @@ describe('a day lists', () => {
     expect(days.get('2026-09-01')![0].fromBefore).toBe(true)
   })
 
-  // What quadratic means is that eight times the notes take sixty-four times as long, where the
-  // real code takes eight to twenty (sorting, the cache), so the ratio of the two sizes is what is
-  // checked, never a time, against a bound between the two.
-  // And the time is this process's own CPU time, not the clock: on a busy machine the clock runs
-  // on while the test waits for a core, and that wait landed on one size and not the other, which
-  // failed the wall-clock ratio beside a heavy check (2026-09-27). Each size is repeated until it
-  // has used a measurable amount of CPU, and the middle of five ratios is taken.
+  // What quadratic means is that eight times the notes cost sixty-four times the work, where the
+  // real code costs a little over eight (sorting each day), so the ratio of the two sizes is what
+  // is checked, against a bound between the two. The work is counted, not timed: every read of a
+  // note's fields goes through a counter, so the result is the same on an idle machine and on one
+  // running the whole e2e tier beside it, where any clock (wall or CPU) swung enough to fail it.
   it('places thousands of notes over a month without going quadratic', () => {
+    let reads = 0
     const notes = (n: number) =>
-      Array.from({ length: n }, (_, i) =>
-        item({ title: `n${i}`, start: addDays('2026-01-01', i % 365), startMinute: (i * 7) % 1440 })
+      Array.from(
+        { length: n },
+        (_, i) =>
+          new Proxy(
+            item({ title: `n${i}`, start: addDays('2026-01-01', i % 365), startMinute: (i * 7) % 1440 }),
+            {
+              get(target, key, receiver) {
+                reads++
+                return Reflect.get(target, key, receiver)
+              },
+            }
+          )
       )
-    const cpuMs = () => {
-      const u = process.cpuUsage()
-      return (u.user + u.system) / 1000
+    const work = (items: CalendarItem[]) => {
+      reads = 0
+      const placed = placeByDay(items, '2026-08-31', '2026-10-11')
+      return { reads, placed }
     }
-    /** CPU milliseconds one placement of these items takes, averaged over at least 20 ms. */
-    const cost = (items: CalendarItem[]) => {
-      const start = cpuMs()
-      let runs = 0
-      do {
-        placeByDay(items, '2026-08-31', '2026-10-11')
-        runs++
-      } while (cpuMs() - start < 20)
-      return (cpuMs() - start) / runs
-    }
-    const small = notes(2500)
-    const large = notes(20000)
-    cost(small)
-    cost(large)
-    const ratios: number[] = []
-    for (let run = 0; run < 5; run++) ratios.push(cost(large) / cost(small))
-    ratios.sort((x, y) => x - y)
-    expect(ratios[2]).toBeLessThan(32)
-    expect(placeByDay(large, '2026-08-31', '2026-10-11').get('2026-09-26')!.length).toBeGreaterThan(
-      0
-    )
-  }, 60_000)
+    const small = work(notes(2500))
+    const large = work(notes(20000))
+    expect(small.reads).toBeGreaterThan(2500)
+    expect(large.reads / small.reads).toBeLessThan(16)
+    expect(large.placed.get('2026-09-26')!.length).toBeGreaterThan(0)
+  })
 })
 
 describe('the week hours', () => {
