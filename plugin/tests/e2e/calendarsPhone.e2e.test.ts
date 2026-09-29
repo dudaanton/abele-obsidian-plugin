@@ -10,15 +10,10 @@
  * before. `emulateMobile` reloads the app, so the calendar is set up after the reloads.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { buildSync } from 'esbuild'
 import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { LINK_TOKEN } from '../helpers/fakeCalendarServer'
 import { onPhone, targets } from './helpers/target'
-import { exposeToPhone } from './helpers/phone'
+import { startCalendarProcess, type CalendarProcess } from './helpers/calendarProcess'
 
 targets('desktop', 'phone')
 
@@ -26,53 +21,6 @@ const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
 const KEY_ID = 'abele-e2e-calendar'
 const available = isObsidianRunning() && hasTestApi()
-
-interface CalendarProcess {
-  origin: string
-  stop(): void
-}
-
-/** The server in a process of its own, serving `ics`; see `helpers/fakeCalendarProcess.ts`. */
-async function startCalendarProcess(ics: string): Promise<CalendarProcess> {
-  const dir = mkdtempSync(join(tmpdir(), 'abele-fake-calendar-'))
-  const bundle = join(dir, 'server.mjs')
-  const file = join(dir, 'calendar.ics')
-  writeFileSync(file, ics)
-  buildSync({
-    entryPoints: [join(__dirname, 'helpers', 'fakeCalendarProcess.ts')],
-    bundle: true,
-    platform: 'node',
-    format: 'esm',
-    outfile: bundle,
-    logLevel: 'silent',
-  })
-  const child: ChildProcess = spawn(process.execPath, [bundle, file], {
-    stdio: ['ignore', 'pipe', 'inherit'],
-  })
-  const port = await new Promise<number>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('the fake calendar did not start')), 15_000)
-    let out = ''
-    child.stdout!.on('data', (chunk: Buffer) => {
-      out += chunk.toString()
-      const m = /listening (\d+)/.exec(out)
-      if (m) {
-        clearTimeout(timer)
-        resolve(Number(m[1]))
-      }
-    })
-    child.on('exit', (code) => reject(new Error(`the fake calendar exited with ${code}`)))
-  })
-  // On a real phone the same address has to lead here: see `exposeToPhone`.
-  const unexpose = onPhone() ? exposeToPhone(port) : () => {}
-  return {
-    origin: `http://127.0.0.1:${port}`,
-    stop: () => {
-      unexpose()
-      child.kill()
-      rmSync(dir, { recursive: true, force: true })
-    },
-  }
-}
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const evalAsync = <T>(script: string, timeoutMs = 60_000): T =>
