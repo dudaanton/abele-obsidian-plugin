@@ -139,6 +139,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       error?: string
       inSidebar?: boolean
       onScreen?: boolean
+      where?: unknown
       rows?: { id: string; title: string; unread: boolean }[]
       url?: string
       after?: { id: string; unread: boolean }[]
@@ -156,6 +157,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       await wait(document.body.classList.contains('is-phone') ? 1000 : 300)
       const box = panel().getBoundingClientRect()
       report.onScreen = !app.workspace.rightSplit.collapsed && box.width > 0 && box.left < innerWidth
+      report.where = { collapsed: app.workspace.rightSplit.collapsed, left: Math.round(box.left), width: Math.round(box.width), screen: innerWidth }
       report.shot = await shoot('desktop-unread.png')
       panel().querySelector('[data-id="101"] .tree-item-self').click()
       const leaf = await until(() => githubLeaves()[0], 20000)
@@ -171,7 +173,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
     })()`)
     expect(r.error).toBeUndefined()
     expect(r.inSidebar).toBe(true)
-    expect(r.onScreen).toBe(true)
+    expect(r.onScreen, JSON.stringify(r.where)).toBe(true)
     expect(r.rows).toEqual([
       { id: '101', title: 'Rework the widget loader', unread: true },
       { id: '102', title: 'Loader hangs on an empty list', unread: true },

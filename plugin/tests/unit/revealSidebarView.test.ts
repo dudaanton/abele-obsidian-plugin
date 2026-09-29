@@ -4,11 +4,19 @@
  * after it — is opened. Only when the reveal is done does the call resolve.
  */
 import { describe, it, expect, vi } from 'vitest'
-import type { App } from 'obsidian'
+import { Platform, type App } from 'obsidian'
 import { revealSidebarView } from '@/views/revealSidebarView'
 
 function fakeApp(opts: { revealOpens: boolean; existing?: boolean }) {
-  const rightSplit = { collapsed: true, expand: vi.fn(() => (rightSplit.collapsed = false)) }
+  const rightSplit = {
+    collapsed: true,
+    containerEl: { offsetWidth: 330 },
+    expand: vi.fn(() => {
+      rightSplit.collapsed = false
+      rightSplit.containerEl.offsetWidth = 330
+    }),
+    collapse: vi.fn(() => (rightSplit.collapsed = true)),
+  }
   const leftSplit = { collapsed: true, expand: vi.fn(() => (leftSplit.collapsed = false)) }
   const order: string[] = []
   const leaf = {
@@ -45,5 +53,35 @@ describe('revealing a sidebar panel', () => {
     expect(f.rightSplit.expand).toHaveBeenCalled()
     expect(f.rightSplit.collapsed).toBe(false)
     expect(f.leftSplit.expand).not.toHaveBeenCalled()
+  })
+
+  it('on a phone, opens again a drawer that hid itself while counting as open', async () => {
+    const f = fakeApp({ revealOpens: true, existing: true })
+    // A drawer that was closing when the reveal came: open by its flag, hidden on screen.
+    f.workspace.revealLeaf.mockImplementation(async () => {
+      f.rightSplit.collapsed = false
+      f.rightSplit.containerEl.offsetWidth = 0
+    })
+    Platform.isMobile = true
+    try {
+      await revealSidebarView(f.app, 'some-view')
+    } finally {
+      Platform.isMobile = false
+    }
+    expect(f.rightSplit.collapse).toHaveBeenCalled()
+    expect(f.rightSplit.expand).toHaveBeenCalled()
+    expect(f.rightSplit.containerEl.offsetWidth).toBe(330)
+    expect(f.rightSplit.collapsed).toBe(false)
+  })
+
+  it('on a phone, leaves a drawer that opened alone', async () => {
+    const f = fakeApp({ revealOpens: true, existing: true })
+    Platform.isMobile = true
+    try {
+      await revealSidebarView(f.app, 'some-view')
+    } finally {
+      Platform.isMobile = false
+    }
+    expect(f.rightSplit.collapse).not.toHaveBeenCalled()
   })
 })
