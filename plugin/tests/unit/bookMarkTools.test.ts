@@ -187,6 +187,19 @@ describe('an agent highlighting words', () => {
   })
 })
 
+describe('a highlight whose word is underlined everywhere', () => {
+  it('keeps its forms when the agent highlights the words again, and lists them', async () => {
+    const tool = createBookHighlightTool()
+    await call(tool, { book: 'Books/Dune.epub', text: 'the mind-killer' })
+    const file = app.vault.getAbstractFileByPath('Books/Dune highlights.md') as TFile
+    await app.vault.modify(file, (await note()).replace(/(> the mind-killer)\n/, '$1\n>\n> forms:: killer, killers\n'))
+    await call(tool, { book: 'Books/Dune.epub', text: 'the mind-killer', color: 'blue' })
+    expect(await note()).toContain('> forms:: killer, killers')
+    const list = await call(createBookHighlightsTool(), { book: 'Books/Dune.epub' })
+    expect(list).toContain('   Underlined everywhere: killer, killers')
+  })
+})
+
 describe('an agent going over the highlights', () => {
   it('lists them by link, changes their colour and note, and removes them', async () => {
     await call(createBookHighlightTool(), { book: 'Books/Dune.epub', text: 'the mind-killer' })

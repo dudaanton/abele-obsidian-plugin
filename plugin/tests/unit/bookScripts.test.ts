@@ -31,6 +31,7 @@ const BOOK: BookScriptContext = {
   chapter: 'Chapter 3',
   sentence: 'The spice melange is everywhere.',
   cfi: 'epubcfi(/6/8!/4/2,/1:0,/1:7)',
+  language: 'en',
 }
 
 const parsed = (source: string, path = 'Scripts/x.js'): ParsedScript => ({

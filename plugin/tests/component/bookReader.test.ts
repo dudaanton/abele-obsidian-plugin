@@ -366,19 +366,36 @@ describe('highlights', () => {
     expect(view.emitted('read-aloud')).toHaveLength(1)
   })
 
-  it('once tapped, can be recoloured, commented, removed and closed', async () => {
+  it('once tapped, can be recoloured, commented, underlined everywhere, removed and closed', async () => {
     const view = mount(BookReader, { props: { model: readyModel({ active: h }) } })
     const bar = view.find('.abele-book-selection')
     await bar.findAll('.abele-book-selection__colors .abele-obsidian-icon')[0].trigger('click')
     expect(view.emitted('recolor')).toEqual([[h, 'yellow']])
     const actions = bar.findAll('.abele-book-selection__actions .abele-obsidian-icon')
-    expect(actions).toHaveLength(6)
+    expect(actions).toHaveLength(7)
     await actions[0].trigger('click')
     expect(view.emitted('edit-comment')).toEqual([[h]])
-    await actions[4].trigger('click')
-    expect(view.emitted('delete-highlight')).toEqual([[h]])
+    expect(actions[3].attributes('aria-label')).toBe('Underline this word everywhere in the book')
+    await actions[3].trigger('click')
+    expect(view.emitted('edit-forms')).toEqual([[h]])
     await actions[5].trigger('click')
+    expect(view.emitted('delete-highlight')).toEqual([[h]])
+    await actions[6].trigger('click')
     expect(view.emitted('close-active')).toHaveLength(1)
+  })
+
+  it('opens the dialog of forms with the highlighted word, and saves what is written', async () => {
+    const model = readyModel({ wording: { ...h, text: ' Words, ' } })
+    const view = mount(BookReader, { props: { model }, attachTo: document.body })
+    await flushPromises()
+    const field = document.querySelector<HTMLTextAreaElement>('.abele-book-forms textarea')!
+    expect(field.value).toBe('Words')
+    field.value = 'word, words; Words'
+    field.dispatchEvent(new Event('input'))
+    await flushPromises()
+    document.querySelector<HTMLElement>('.modal .mod-cta')!.click()
+    expect(view.emitted('save-forms')).toEqual([[model.wording, ['word', 'words']]])
+    view.unmount()
   })
 })
 

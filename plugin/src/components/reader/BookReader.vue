@@ -88,6 +88,7 @@
           @comment="onComment"
           @copy-link="emit('copy-link', target())"
           @quote="emit('quote', quoteTarget())"
+          @forms="model.active && emit('edit-forms', model.active)"
           @open-note="emit('open-note', model.active ?? undefined, $event)"
           @delete="model.active && emit('delete-highlight', model.active)"
           @close="model.active ? emit('close-active') : emit('clear-selection')"
@@ -131,6 +132,13 @@
       @cancel="emit('cancel-comment')"
     />
 
+    <BookForms
+      v-if="model.wording"
+      :highlight="model.wording"
+      @save="emit('save-forms', model.wording!, $event)"
+      @cancel="emit('cancel-forms')"
+    />
+
     <BookFigureViewer v-if="model.figure" :figure="model.figure" @close="emit('figure-close')" />
 
     <ObsidianModal v-if="model.footnote" :title="noteTitle" @close="emit('footnote-close')">
@@ -168,6 +176,7 @@ import BookHighlights from './BookHighlights.vue'
 import BookBookmarks from './BookBookmarks.vue'
 import BookSelectionBar from './BookSelectionBar.vue'
 import BookComment from './BookComment.vue'
+import BookForms from './BookForms.vue'
 import BookSpeechBar from './BookSpeechBar.vue'
 import BookInkBar from './BookInkBar.vue'
 import BookEink from './BookEink.vue'
@@ -217,6 +226,9 @@ const emit = defineEmits<{
   (e: 'edit-comment', h: Highlight): void
   (e: 'save-comment', h: Highlight, comment: string): void
   (e: 'cancel-comment'): void
+  (e: 'edit-forms', h: Highlight): void
+  (e: 'save-forms', h: Highlight, forms: string[]): void
+  (e: 'cancel-forms'): void
   (e: 'delete-highlight', h: Highlight): void
   (e: 'open-note', h?: Highlight, evt?: MouseEvent): void
   (e: 'close-active'): void

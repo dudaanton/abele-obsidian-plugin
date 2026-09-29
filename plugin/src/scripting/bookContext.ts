@@ -17,4 +17,6 @@ export interface BookScriptContext {
   sentence: string
   /** The place itself, an EPUB CFI. */
   cfi: string
+  /** The book's language, as the book says it (`lv`, `en-GB`); empty when it says none. */
+  language: string
 }

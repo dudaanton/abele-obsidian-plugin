@@ -26,6 +26,10 @@
  * is written there again (`entryComment.ts`); without it the comment is inside the callout, as
  * `{{ highlight }}` has always had it.
  *
+ * `{{ forms }}`, on a line of its own the same way, holds the forms of the word the highlight
+ * underlines everywhere in the book (`vocab/rules.ts`), comma-separated, read and written there;
+ * without it they are a `forms::` line inside the callout.
+ *
  * Everything here works on text, so the rules are tested without a vault.
  */
 import dayjs from 'dayjs'
@@ -60,6 +64,8 @@ export interface NoteVars {
   quote: string
   /** The comment alone, for a body that gives it a field of its own. */
   comment: string
+  /** The forms underlined everywhere, `a, b, c`, for a body with a field for them. */
+  forms?: string
 }
 
 const OPEN = /\{\{\s*#\s*body\s*\}\}\n?/
@@ -69,6 +75,7 @@ const FILLS_IN = /\{\{[^}]*\}\}/
 const HIGHLIGHT_LINE = /^\s*\{\{\s*(?:highlight|quote)\s*\}\}\s*$/
 const HIGHLIGHT_VAR = /\{\{\s*(?:highlight|quote)\s*\}\}/
 const COMMENT_VAR = /\{\{\s*comment\s*\}\}/
+const FORMS_VAR = /\{\{\s*forms\s*\}\}/
 
 /** A template's text in its parts. */
 export function parseNoteTemplate(text: string): NoteTemplate {
@@ -115,6 +122,22 @@ function commentSlotOf(lines: string[]): { at: number; lead: string; end: string
   }
 }
 
+/** The line of a body its forms field is on, and what is written before and after it there. */
+function formsSlotOf(lines: string[]): { at: number; lead: string; end: string } | null {
+  if (!lines.some((l) => HIGHLIGHT_LINE.test(l))) return null
+  const at = lines.findIndex(
+    (l) => FORMS_VAR.test(l) && !HIGHLIGHT_VAR.test(l) && !COMMENT_VAR.test(l)
+  )
+  if (at < 0) return null
+  const m = FORMS_VAR.exec(lines[at])!
+  return { at, lead: lines[at].slice(0, m.index), end: lines[at].slice(m.index + m[0].length) }
+}
+
+/** Whether the template gives the forms a field of its own, outside the callout. */
+export function hasFormsField(template: NoteTemplate | null): boolean {
+  return template?.body != null && formsSlotOf(template.body.split('\n')) != null
+}
+
 /** Whether the template gives the comment a field of its own, outside the callout. */
 export function hasCommentField(template: NoteTemplate | null): boolean {
   return template?.body != null && commentSlotOf(template.body.split('\n')) != null
@@ -129,6 +152,8 @@ export function renderTemplate(text: string, vars: Partial<NoteVars>): string {
   return text.replace(VARIABLE, (raw, expr: string) => {
     const name = expr.trim()
     if (Object.hasOwn(vars, name)) return (vars as Record<string, string>)[name] ?? ''
+    // A body with a forms field made before the highlight had any: the field is there, empty.
+    if (name === 'forms') return ''
     const [variable] = parseTemplateVariables(raw).variables
     if (variable?.type !== 'date') return raw
     return dayjs()
@@ -141,7 +166,9 @@ export function renderTemplate(text: string, vars: Partial<NoteVars>): string {
 function renderBody(body: string, vars: NoteVars): string {
   const lines = body.split('\n')
   const slot = commentSlotOf(lines)
+  const forms = formsSlotOf(lines)
   const rendered = lines.map((line, i) => {
+    if (i === forms?.at) return renderTemplate(line, vars).trimEnd()
     if (i !== slot?.at) return renderTemplate(line, vars)
     const lead = renderTemplate(slot.lead, vars)
     const field = commentLines(vars.comment, lead, carryOf(lead), renderTemplate(slot.end, vars))
@@ -185,6 +212,20 @@ export function entryFrame(template: NoteTemplate): EntryFrame {
   const frame: EntryFrame = {
     before: lines.slice(0, at).map((l) => new RegExp(`^${patternOf(l)}$`)),
     after: lines.slice(at + 1).map((l) => new RegExp(`^${patternOf(l)}$`)),
+  }
+  const fields = formsSlotOf(lines)
+  if (fields) {
+    // The forms' line: its lead and end as written, anything between them, and the space after
+    // the lead gone with an empty field.
+    const lead = fields.lead.trimEnd()
+    const end = fields.end.trim()
+    const pattern = new RegExp(
+      `^${patternOf(lead)}[ \\t]*(.*?)${end ? `[ \\t]*${patternOf(end)}` : ''}[ \\t]*$`
+    )
+    const side = fields.at < at ? 'before' : 'after'
+    const index = fields.at < at ? fields.at : fields.at - at - 1
+    ;(side === 'before' ? frame.before : frame.after)[index] = pattern
+    frame.forms = { side, index, pattern, pad: fields.lead.slice(lead.length) }
   }
   const slot = commentSlotOf(lines)
   if (!slot) return frame

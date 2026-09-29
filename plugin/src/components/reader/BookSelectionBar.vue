@@ -94,6 +94,17 @@
       </template>
       <template v-if="highlight">
         <Icon
+          icon="underline"
+          :active="!!highlight.forms?.length"
+          :tooltip="
+            highlight.forms?.length
+              ? 'Change the words underlined everywhere in the book'
+              : 'Underline this word everywhere in the book'
+          "
+          class="abele-book-selection__forms"
+          @click="emit('forms')"
+        />
+        <Icon
           icon="file-text"
           tooltip="Open the highlights note"
           @click="emit('open-note', $event)"
@@ -157,6 +168,7 @@ const emit = defineEmits<{
   (e: 'quote'): void
   (e: 'script', name?: string): void
   (e: 'open-note', evt?: MouseEvent): void
+  (e: 'forms'): void
   (e: 'delete'): void
   (e: 'close'): void
 }>()

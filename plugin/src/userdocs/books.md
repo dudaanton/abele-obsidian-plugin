@@ -60,6 +60,34 @@ A link to a place in a book opens the book there, just like a link to a heading 
 And it works the other way too: words that any of your notes link to get a dotted underline in
 the book. Tap them to open the note; when several notes link there, pick one from a menu.
 
+## A word underlined everywhere
+
+A word you are learning can be underlined wherever it stands in the book, not only where you
+first met it. Tap its highlight and the **underline** button on the bar: the field is filled in with
+the word, and you add the other forms it takes, separated by commas (`māja, mājas, mājā`). Each
+form is underlined wherever it stands as a whole word in this book, with the same dotted line as
+words a note links to, and tapping one brings you to that highlight in its note. The forms are kept
+with the highlight, in a `forms::` line of its callout, or in a `{{ forms }}` field if your
+highlights template has one. **Stop underlining** in the same dialog takes the lines away and
+keeps the highlight.
+
+A note can hold the same rule in its properties, which is what a translation card does:
+
+```yaml
+word-forms: [māja, mājas, mājā]
+word-books: ["[[Books/Novel.epub]]"]
+```
+
+Then tapping the word opens the card. Put `word-language: lv` and `word-scope: language` to
+underline it in every book in that language, and `word-underline: false` to stop without losing
+the forms. When several cards or highlights name the same word, a tap offers a menu of them; on a
+word that is also highlighted, the menu offers the highlight too.
+
+Forms are matched whole and regardless of case; a letter with a diacritic is a different letter
+(`maja` is not `māja`), and other forms of a word are found only if you list them. This works in
+reflowing books (EPUB and the like), not in PDFs, and for single words, not phrases. A script can
+set it all up in one call, see below.
+
 ## Running a script on words
 
 With [scripts](scripts) turned on, the bar on selected words (and on a highlight) offers the
@@ -116,6 +144,16 @@ return `${params.word}: ${translation}`
 ```
 
 Without the AI agent, `fetch` can ask a translation service instead.
+
+To have the card's word underlined everywhere in the book, not only at this place, add one line
+at the end: it keeps the forms in the card's properties, for this book.
+
+```js
+await vocabulary.mark({ note: path, forms: [params.word] })
+```
+
+Ask the agent for the word's other forms too and pass them in `forms`. Calling it again for the
+same card adds only what is new.
 
 ## Asking about a passage
 

@@ -42,9 +42,13 @@ export function shortenPlace(range: Range, max = LONG_PLACE): Range {
 
 /** The engine's drawing of a link's mark: a dotted line under each line of the words. */
 export function linkMark(rects: DOMRect[], options: { color?: string } = {}): SVGGElement {
-  const color = options.color ?? 'currentColor'
+  return dottedLines(rects, options.color ?? 'currentColor', 'abele-link-mark')
+}
+
+/** A dotted line under each of `rects`, as a group of the class given. */
+export function dottedLines(rects: ArrayLike<DOMRect>, color: string, cls: string): SVGGElement {
   const g = document.createElementNS(SVG, 'g')
-  g.setAttribute('class', 'abele-link-mark')
+  g.setAttribute('class', cls)
   for (const r of Array.from(rects)) {
     if (!r.width) continue
     const line = document.createElementNS(SVG, 'line')

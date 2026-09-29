@@ -102,6 +102,8 @@ export interface BookModel {
   active: Highlight | null
   /** A highlight whose comment is being written. */
   commenting: Highlight | null
+  /** A highlight whose word's forms, underlined everywhere in the book, are being written. */
+  wording: Highlight | null
   search: BookSearch
   /** The AI side is on, so "Ask here" is offered. */
   canAsk: boolean
@@ -146,6 +148,7 @@ export const emptyBookModel = (): BookModel => ({
   selection: null,
   active: null,
   commenting: null,
+  wording: null,
   search: emptySearch(),
   canAsk: false,
   speech: 'idle',

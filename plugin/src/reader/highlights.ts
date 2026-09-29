@@ -31,16 +31,30 @@
  * there instead, outside the callout; it is read and written there while what is around the
  * callout still reads as the body wrote it (`entryComment.ts`), and inside the callout otherwise.
  *
+ * A highlight may also name forms of its word to underline everywhere in the book (`vocab/`): in
+ * the template's `{{ forms }}` field, the same way, or else as the callout's last line:
+ *
+ * ```markdown
+ * > [!quote|yellow] [[Books/Novel.epub#cfi=/6/8!/4/2,/1:0,/1:4|Chapter 3]]
+ * > māja
+ * >
+ * > forms:: māja, mājas, mājā
+ * ```
+ *
  * Everything here works on the note's text, so the rules are tested without a vault.
  */
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import {
   commentLines,
+  formsLineOf,
+  formsOnLine,
   isBlankField,
   matchEntry,
+  withForms,
   type EntryFrame,
   type EntryMatch,
 } from './entryComment'
+import { formsLine, parseForms } from './vocab/words'
 
 export type { EntryFrame } from './entryComment'
 
@@ -60,6 +74,8 @@ export interface Highlight {
   discussion?: string
   /** Asked about, never highlighted: drawn as a discussion only, with no colour of its own. */
   plain?: boolean
+  /** Forms of its word underlined everywhere in the book (`vocab/rules.ts`); none when unset. */
+  forms?: string[]
 }
 
 export const HIGHLIGHTS_TYPE = 'book-highlights'
@@ -79,6 +95,9 @@ const CHAT_LINK =
 /** The link in a callout title: a wikilink or a markdown link, its target and label. */
 const WIKI = /\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]/
 const MD = /\[([^\]]*)\]\(\s*<?([^)>\s]+)>?\s*\)/
+
+/** The callout line holding a highlight's forms, when the template has no field for them. */
+const FORMS_LINE = /^forms::[ \t]*(.*)$/i
 
 const colorOf = (value: string | undefined): HighlightColor =>
   (HIGHLIGHT_COLORS as readonly string[]).includes((value ?? '').toLowerCase())
@@ -137,6 +156,8 @@ interface Block {
   entry?: EntryMatch
   /** The comment as the callout itself has it. */
   inner: string
+  /** The line of the note the entry's forms field is on, when it has one. */
+  formsAt?: number
 }
 
 function blocks(
@@ -156,6 +177,15 @@ function blocks(
     while (end < lines.length && /^>/.test(lines[end])) {
       body.push(lines[end].replace(/^>\s?/, ''))
       end++
+    }
+    // The forms, kept as the callout's own line, are neither the words nor the comment.
+    let inlineForms: string[] = []
+    let formsAt = body.length - 1
+    while (formsAt > 0 && !FORMS_LINE.test(body[formsAt])) formsAt--
+    if (formsAt > 0) {
+      inlineForms = parseForms(FORMS_LINE.exec(body[formsAt])![1])
+      body.splice(formsAt, 1)
+      while (body.length && !body[body.length - 1].trim()) body.pop()
     }
     const blank = body.findIndex((line) => !line.trim())
     const quote = (blank < 0 ? body : body.slice(0, blank)).join('\n').trim()
@@ -177,6 +207,7 @@ function blocks(
         label: at.label,
         ...(discussion ? { discussion } : {}),
         ...(plain ? { plain } : {}),
+        ...(inlineForms.length ? { forms: inlineForms } : {}),
       },
       start: i,
       end,
@@ -209,6 +240,12 @@ function withEntries(lines: string[], found: Block[], frame: EntryFrame, markdow
     if (!entry) continue
     b.entry = entry
     if (entry.comment?.text) b.highlight.comment = entry.comment.text
+    const at = formsLineOf(entry, b.end, frame)
+    const written = at === null ? null : formsOnLine(lines[at], frame)
+    if (at === null || written === null) continue
+    b.formsAt = at
+    const forms = parseForms(written)
+    if (forms.length) b.highlight.forms = forms
   }
 }
 
@@ -245,6 +282,7 @@ export function highlightBlock(h: Highlight, link: string, chatLink?: string): s
   const lines = [`> [!${kind}] ${title}`, ...quote.split('\n').map((l) => `> ${l}`.trimEnd())]
   const comment = h.comment.replace(/\r\n?/g, '\n').trim()
   if (comment) lines.push('>', ...comment.split('\n').map((l) => `> ${l}`.trimEnd()))
+  if (h.forms?.length) lines.push('>', `> forms:: ${formsLine(h.forms)}`)
   return lines.join('\n')
 }
 
@@ -299,8 +337,27 @@ export function upsertHighlight(
   options: WriteOptions = {}
 ): string {
   const { lines, blocks: found } = blocks(markdown, options.ofBook, options.frame)
-  const block = highlightBlock(h, link, chatLink).split('\n')
   const same = found.find((b) => b.highlight.cfi === h.cfi)
+  if (same?.formsAt !== undefined && options.frame) {
+    // The forms go to their field, a line the callout's writing below does not move.
+    lines[same.formsAt] = withForms(lines[same.formsAt], formsLine(h.forms ?? []), options.frame)
+    return upsertIn(lines, same, { ...h, forms: undefined }, link, chatLink)
+  }
+  return upsertIn(lines, same, h, link, chatLink, found, compare, options)
+}
+
+/** `upsertHighlight` once the forms are where they go. */
+function upsertIn(
+  lines: string[],
+  same: Block | undefined,
+  h: Highlight,
+  link: string,
+  chatLink?: string,
+  found: Block[] = [],
+  compare?: Compare,
+  options: WriteOptions = {}
+): string {
+  const block = highlightBlock(h, link, chatLink).split('\n')
   if (same?.entry?.comment) {
     writeField(lines, same, highlightBlock({ ...h, comment: '' }, link, chatLink), h.comment)
     return lines.join('\n')
@@ -312,7 +369,7 @@ export function upsertHighlight(
   if (options.entry !== undefined) return atEnd(lines, options.entry.split('\n'))
   const after = found.find((b) => {
     try {
-      return compare(b.highlight.cfi, h.cfi) > 0
+      return !!compare && compare(b.highlight.cfi, h.cfi) > 0
     } catch {
       return false
     }

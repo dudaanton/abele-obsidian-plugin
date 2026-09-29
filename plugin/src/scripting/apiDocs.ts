@@ -320,6 +320,7 @@ await v.open()
 | \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
 | \`book\` | \`object \\| null\` | The words in a book the script was run on from the reader (see below) |
 | \`analytics\` | \`object\` | Statistics over finance, notes and bases (see Analytics above) |
+| \`vocabulary\` | \`object\` | Words a note's properties name, underlined in books (see below) |
 | \`message\` | \`object \\| null\` | The message an interceptor script decides about (see below) |
 | \`chat\` | \`object \\| null\` | The chat that message is sent in, read-only (see below) |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
@@ -384,6 +385,7 @@ book.path      // the book's path in the vault
 book.title     // the book's title
 book.chapter   // the chapter — "Page N" in a PDF
 book.cfi       // the place itself
+book.language  // the book's language as it says it ('lv', 'en-GB'); '' when it says none
 \`\`\`
 
 A note that holds \`book.link\` — in its text or in a property — is marked in the book: the words
@@ -396,6 +398,35 @@ get a dotted underline, and tapping them opens the note.
 if (!book) return 'Run it on words selected in a book'
 const translation = (await agent('Translate "' + params.word + '" into English as used here, answer with the translation only:\\n' + book.sentence)).trim()
 await create('Cards/' + params.word + '.md', '**' + params.word + '** — ' + translation + '\\n\\n> ' + book.sentence + '\\n> — ' + book.link + '\\n')
+\`\`\`
+
+### vocabulary — a word underlined everywhere in a book
+
+\`vocabulary\` keeps a rule in a note's properties: these forms of a word are underlined wherever
+they stand as whole words in a book (a reflowing one, not a PDF), and tapping one opens the note.
+Several notes naming the same word make the tap a menu. The rule is properties of the note
+(\`word-forms\`, \`word-language\`, \`word-books\`, \`word-scope\`, \`word-underline\`; see
+\`query_docs\` section \`vault\`, Books), so a person can edit it by hand too.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`vocabulary.mark({ note, forms, language?, books?, scope?, replace? })\` | \`rule\` | Adds the forms (an array, or one string with commas) and the books to the note's rule, each once: the same call twice changes nothing. Run on words in a book, \`books\` is that book and \`language\` its language unless given. \`scope: 'language'\` applies it to every book in the language. \`replace: true\` puts the forms in place of the note's |
+| \`vocabulary.get(note)\` | \`rule \\| null\` | \`{ note, forms, language, books, scope, on }\`, or null when the note names no forms |
+| \`vocabulary.off(note)\`, \`vocabulary.on(note)\` | — | Stops underlining the note's words, or starts again; the forms stay |
+
+The note must exist. Forms are matched whole, ignoring case; letters with and without a
+diacritic are different words, and nothing is reduced to a stem: list each form to underline.
+A form of several words is kept but underlines nothing yet.
+
+\`\`\`js
+// @name Translate word
+// @book
+// @param word string "Word" selection
+if (!book) return 'Run it on words selected in a book'
+const answer = await agent('Translate "' + params.word + '" as used here. First line: the translation. Second line: the word\\'s forms in ' + (book.language || 'its language') + ', separated by commas.\\n' + book.sentence)
+const [translation, forms = params.word] = answer.trim().split('\\n')
+const card = await create('Cards/' + params.word + '.md', '**' + params.word + '** — ' + translation + '\\n\\n> ' + book.sentence + '\\n> — ' + book.link + '\\n')
+await vocabulary.mark({ note: card, forms: [params.word, ...forms.split(',')] })
 \`\`\`
 
 ### message and chat — when a script is a chat's interceptor

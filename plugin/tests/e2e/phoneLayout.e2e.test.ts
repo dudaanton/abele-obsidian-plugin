@@ -57,6 +57,7 @@ const DIALOGS = [
   'recurrence',
   'date-range',
   'book-comment',
+  'book-forms',
   'model',
   'image-model',
   'template-select',

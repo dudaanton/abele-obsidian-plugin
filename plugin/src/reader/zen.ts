@@ -80,6 +80,7 @@ type Busy = Pick<
   | 'footnote'
   | 'figure'
   | 'commenting'
+  | 'wording'
   | 'zenPeek'
 >
 
@@ -102,7 +103,8 @@ export function escLeavesZen(m: Busy): boolean {
     m.settingsOpen ||
     m.footnote ||
     m.figure ||
-    m.commenting
+    m.commenting ||
+    m.wording
   )
 }
 

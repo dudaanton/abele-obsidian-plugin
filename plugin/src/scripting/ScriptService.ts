@@ -128,7 +128,7 @@ const REVIEW_COMMAND = 'review-waiting-scripts'
 /**
  * The script as a function of its context. Throws what the engine threw, said better.
  *
- * `event`, `book`, `analytics`, `message` and `chat` are given in the scope around the script
+ * `event`, `book`, `analytics`, `vocabulary`, `message` and `chat` are given in the scope around the script
  * rather than beside the reserved names: they arrived after scripts had been written for years,
  * and all are ordinary names for a variable. Declared out there, a script's own `const event`
  * simply shadows it.
@@ -138,7 +138,7 @@ function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
     return new Function(
       'ctx',
       `"use strict";
-      const { event, book, analytics, message, chat } = ctx;
+      const { event, book, analytics, vocabulary, message, chat } = ctx;
       return (async () => {
         const { ${SCRIPT_GLOBALS.join(', ')} } = ctx;
         ${code}

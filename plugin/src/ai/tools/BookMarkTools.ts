@@ -141,6 +141,7 @@ export function createBookHighlightsTool(): AgentTool {
         out.push(`${offset + i + 1}. ${highlightLine(file, h)}`)
         out.push(quoted(short(h.text, 200)))
         if (h.comment) out.push(`   Note: ${short(h.comment, 300)}`)
+        if (h.forms?.length) out.push(`   Underlined everywhere: ${h.forms.join(', ')}`)
       })
       if (offset + page.length < all.length)
         out.push(`[More: book_highlights with offset ${offset + page.length}.]`)
@@ -265,6 +266,8 @@ export function createBookHighlightTool(): AgentTool {
         comment: typeof params.note === 'string' ? params.note.trim() : (known?.comment ?? ''),
         label: await labelAt(loaded, index, doc, range),
         ...(known?.discussion ? { discussion: known.discussion } : {}),
+        // Forms of its word underlined everywhere stay with it.
+        ...(known?.forms ? { forms: known.forms } : {}),
       }
       const note = await saveHighlight(app(), file, where, h, await chatOf(h))
       const out = [

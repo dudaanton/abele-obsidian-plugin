@@ -32,6 +32,8 @@ import { setDocumentFonts, type FaceData } from './fontFaces'
 import type { PdfBookExtras } from './pdfBook'
 import { BookReading } from './BookReading'
 import { linkedNotesFor } from './bookLinkedNotes'
+import { vocabFor } from './vocab/bookVocab'
+import { languagesOf } from './vocab/rules'
 import type { LinkedNotes } from './linkedNotes'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
@@ -103,6 +105,8 @@ export class BookView extends FileView {
   bookmarks: PageBookmarks | null = null
   /** The notes linking to places in the book, marked on its pages. */
   linked: LinkedNotes | null = null
+  /** The book's vocabulary rules, followed while it is open (`vocab/bookVocab.ts`). */
+  vocab: { stop(): void } | null = null
   /** Drawing on a PDF's pages. */
   ink: PdfInk | null = null
   /** Zen mode's chrome for this tab: hidden, peeked at, Obsidian's phone navigation. */
@@ -281,6 +285,7 @@ export class BookView extends FileView {
       !!m.active ||
       m.selecting ||
       !!m.commenting ||
+      !!m.wording ||
       m.settingsOpen ||
       !!m.footnote ||
       (zen().on && !m.zenPeek)
@@ -384,6 +389,8 @@ export class BookView extends FileView {
     this.reading = null
     this.linked?.stop()
     this.linked = null
+    this.vocab?.stop()
+    this.vocab = null
     this.bookmarks?.stop()
     this.bookmarks = null
     this.ink?.destroy()
@@ -560,6 +567,9 @@ export class BookView extends FileView {
       )
       void this.reading.loadHighlights()
       this.linked = linkedNotesFor(this.app, file, this.reading)
+      // Words the vault's vocabulary names, underlined in a reflowing book.
+      if (!this.isPdf && !reader.isFixedLayout)
+        this.vocab = vocabFor(this.app, file, this.reading, languagesOf(meta?.language))
       this.bookmarks = bookmarksFor(this.key, this.model, reader, this.isPdf ? opened.book : null)
       this.ink = this.isPdf ? inkFor(this, file, reader, opened.book, () => this.stage) : null
       void this.ink?.load()

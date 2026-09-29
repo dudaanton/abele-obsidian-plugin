@@ -63,6 +63,7 @@ export function linkedNotesFor(app: App, book: TFile, reading: BookReading): Lin
     () => reading.marks.setLinks(index.places())
   )
   reading.marks.onLink = (cfi, at) => openLinkedNotes(app, index.at(cfi), at)
+  reading.marks.linkedAt = (cfi) => index.at(cfi).map((n) => n.path)
   void import('@/ai/CommentService')
     .then(({ CommentService }) => {
       const comments = CommentService.getInstance()

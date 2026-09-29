@@ -36,11 +36,13 @@ import {
   entryFrame,
   entryFrom,
   hasCommentField,
+  hasFormsField,
   newNoteFrom,
   parseNoteTemplate,
   type NoteTemplate,
 } from './noteTemplate'
 import type { BookNotesTarget } from './settings'
+import { formsLine } from './vocab/words'
 
 /** What writing a book's highlights needs beyond the book: its name, and where they go. */
 export interface NotesPlace {
@@ -236,8 +238,13 @@ export async function saveHighlight(
     return held.note
   }
   const template = await templateOf(app, where)
-  // A body with a field for the comment keeps it there, and the callout holds the words alone.
-  const callout = hasCommentField(template) ? { ...h, comment: '' } : h
+  // A body with a field for the comment keeps it there, and the callout holds the words alone;
+  // so with the forms.
+  const callout = {
+    ...h,
+    ...(hasCommentField(template) ? { comment: '' } : {}),
+    ...(hasFormsField(template) ? { forms: undefined } : {}),
+  }
   const own = where.target.to === 'book'
   const label = !chapter ? title : !own && !template ? `${title} · ${chapter}` : chapter
   const fresh = { ...h, label }
@@ -259,6 +266,7 @@ export async function saveHighlight(
     highlight: quote,
     quote,
     comment: h.comment,
+    forms: formsLine(h.forms ?? []),
   }
   if (existing) {
     // A book's own note without a template keeps its highlights in the order of the book; any

@@ -29,11 +29,25 @@ export interface CommentSlot {
   written: { lead: string; end: string }
 }
 
+/**
+ * Where a body has its `{{ forms }}`: a line of the frame like any other, its pattern capturing
+ * the forms, since they are always one line.
+ */
+export interface FormsSlot {
+  side: 'before' | 'after'
+  index: number
+  /** The line's pattern, the forms its first group. */
+  pattern: RegExp
+  /** The space the body writes after the lead, kept when the field is filled in again. */
+  pad: string
+}
+
 /** The lines a template's body writes around a highlight, as `entryFrame` gives them. */
 export interface EntryFrame {
   before: RegExp[]
   after: RegExp[]
   comment?: CommentSlot
+  forms?: FormsSlot
 }
 
 /** A comment's lines in a note: `[from, to)`, the text in them, and how they are written. */
@@ -190,4 +204,38 @@ export function matchEntry(
     else if (slot.side === 'after' || foreign(line)) break
   }
   return at(best)
+}
+
+/**
+ * The line of an entry its forms are on, when the frame has a field for them: counted from the
+ * entry's start, or from the callout's end (`calloutEnd`) for a field after it, the comment's
+ * lines on the same side taken into account.
+ */
+export function formsLineOf(entry: EntryMatch, calloutEnd: number, frame: EntryFrame): number | null {
+  const slot = frame.forms
+  if (!slot) return null
+  const c = frame.comment
+  const m = entry.comment ? entry.comment.to - entry.comment.from : 1
+  const shift = c && c.side === slot.side && c.index < slot.index ? m - 1 : 0
+  return (slot.side === 'before' ? entry.start : calloutEnd) + slot.index + shift
+}
+
+/** The forms written on an entry's line, as the field has them; null when it is not the field. */
+export function formsOnLine(line: string | undefined, frame: EntryFrame): string | null {
+  const m = frame.forms && line !== undefined ? frame.forms.pattern.exec(line) : null
+  return m ? (m[1] ?? '') : null
+}
+
+/**
+ * The entry's forms line with `forms` in its field: the line as written with only what is in the
+ * field replaced, and the lead's space put back when it had lost it.
+ */
+export function withForms(line: string, forms: string, frame: EntryFrame): string {
+  const slot = frame.forms
+  const m = slot ? new RegExp(slot.pattern.source, 'd').exec(line) : null
+  const at = m?.indices?.[1]
+  if (!slot || !at) return line
+  let lead = line.slice(0, at[0])
+  if (forms && slot.pad && !/\s$/.test(lead)) lead += slot.pad
+  return `${lead}${forms}${line.slice(at[1])}`.trimEnd()
 }

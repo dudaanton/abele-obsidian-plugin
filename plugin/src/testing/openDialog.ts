@@ -6,6 +6,7 @@ import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import RecurrencePickerModal from '@/components/RecurrencePickerModal.vue'
 import DateRangePickerModal from '@/components/DateRangePickerModal.vue'
 import BookComment from '@/components/reader/BookComment.vue'
+import BookForms from '@/components/reader/BookForms.vue'
 import ModelEditModal from '@/components/settings/ModelEditModal.vue'
 import ImageModelEditModal from '@/components/settings/ImageModelEditModal.vue'
 import TemplateSelectModal from '@/components/TemplateSelectModal.vue'
@@ -74,6 +75,8 @@ const DIALOGS: Record<string, () => void> = {
   recurrence: () => mountAlone(RecurrencePickerModal, {}),
   'date-range': () => mountAlone(DateRangePickerModal, {}),
   'book-comment': () => mountAlone(BookComment, { highlight: HIGHLIGHT }),
+  'book-forms': () =>
+    mountAlone(BookForms, { highlight: { ...HIGHLIGHT, forms: ['sample', 'samples'] } }),
   model: () =>
     mountAlone(ModelEditModal, {
       model: {

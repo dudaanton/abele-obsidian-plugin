@@ -70,5 +70,6 @@ export function bookScriptContext(args: {
     chapter: target.label,
     sentence: args.range ? sentenceOf(args.range, args.lang) : target.text,
     cfi: target.cfi,
+    language: args.lang ?? '',
   }
 }

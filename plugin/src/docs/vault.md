@@ -583,10 +583,39 @@ them; otherwise, and in notes written before, the comment is inside the callout 
 of several lines goes on the lines after the field's, each with its `>` marks if it has them;
 without them its blank lines are left out, since a blank line ends it.
 
+A highlight can also name **forms of its word to underline everywhere in the book**. With a
+`{{ forms }}` field in the template's body (on a line of its own, like `{{ comment }}`), they are
+kept there, comma-separated; otherwise as the callout's last line, `> forms:: māja, mājas, mājā`,
+after a blank `>` line. Keep either shape when editing; an empty field or no line means none.
+
 The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or
 removing a highlight by editing the note is fine; keep the shape above or the reader will not see
 it. To highlight words, prefer `book_highlight`: it finds the exact place (a CFI a hand-written
 link rarely gets right) and writes the callout where the settings send it, template included.
+
+### Words underlined everywhere
+
+A note whose properties name forms of a word is a **vocabulary rule**: the book reader underlines
+each form wherever it stands as a whole word in the books the rule applies to, and a tap on one
+opens the note. A translation card is the usual one:
+
+```yaml
+word-forms: [māja, mājas, mājā]
+word-language: lv
+word-books: ["[[Books/Novel.epub]]"]
+```
+
+- `word-forms` — a list; the note is a rule while it has one. Matched whole and case-insensitively;
+  letters with a diacritic are other letters, and nothing is stemmed, so list each form.
+- `word-books` — wikilinks to the books it applies to, extension included.
+- `word-scope` — `book` (the default: the books listed) or `language` (every book whose language
+  is `word-language`, by primary tag: `lv` matches `lv-LV`). With neither books nor the language
+  scope it applies nowhere.
+- `word-underline: false` — off, the forms kept.
+
+Several rules (notes, highlights with forms) for the same word make the tap a menu. Only reflowing
+books are underlined, not PDFs, and only single words. Scripts write these properties with
+`vocabulary.mark`; write them by hand the same way.
 
 ### Ink on PDF pages
 

@@ -85,6 +85,16 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
     onCancelComment: (): void => {
       model.commenting = null
     },
+    onEditForms: (h: Highlight): void => {
+      model.wording = { ...h }
+    },
+    onSaveForms: (h: Highlight, forms: string[]): void => {
+      model.wording = null
+      void a.reading()?.save({ ...h, forms: forms.length ? forms : undefined })
+    },
+    onCancelForms: (): void => {
+      model.wording = null
+    },
     onDeleteHighlight: (h: Highlight): void => void a.reading()?.remove(h),
     onOpenNote: (h?: Highlight, evt?: MouseEvent): void =>
       void a.reading()?.openNote(h, paneOf(evt)),

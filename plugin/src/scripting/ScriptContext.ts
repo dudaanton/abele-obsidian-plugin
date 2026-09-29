@@ -29,6 +29,7 @@ import { defaultViewHost } from './view/host'
 import { showFormModal } from './formModal'
 import { noteInfo as readNoteInfo, type NoteInfo } from './noteInfo'
 import { scriptAnalytics } from './analyticsApi'
+import { scriptVocabulary } from './vocabularyApi'
 import type { AutomationEvent } from '@/automations/types'
 import type { BookScriptContext } from './bookContext'
 
@@ -587,6 +588,9 @@ export function buildScriptContext(opts: {
 
     /** Statistics over finance, notes and bases — see `analyticsApi.ts`. Read-only. */
     analytics: scriptAnalytics(),
+
+    /** Vocabulary rules in notes, underlined in books — see `vocabularyApi.ts`. */
+    vocabulary: scriptVocabulary({ book: opts.book, wrote: (path) => wrote(path) }),
 
     // ── UI ──
 

@@ -329,6 +329,54 @@ merged with it.
 On a phone the text starts just under Obsidian's header and the line under the page sits above its
 navigation bar.
 
+## Words underlined everywhere
+
+A **vocabulary rule** says: underline these forms of a word wherever they stand in this book, and
+lead to this place. It lives in one of two places, and the reader gathers both
+(`src/reader/vocab/`):
+
+- **A note's properties** — a translation card, typically; the note is where a tap leads.
+  `word-forms` (a list; its presence makes the note a rule), `word-books` (links to the books it
+  applies to), `word-language` and `word-scope` (`book`, the default: the books listed;
+  `language`: every book whose `dc:language` has the same primary tag), `word-underline: false`
+  (off, forms kept). A rule for no book and not for a language applies nowhere. Found by
+  properties, not by links: every note's properties are looked at once when a book opens (from
+  Obsidian's cache), then the notes Obsidian says changed, were deleted or renamed.
+- **A highlight** with forms: a `{{ forms }}` field in the template's body (on a line of its own,
+  like `{{ comment }}`, `a, b, c`), or otherwise a `forms::` line at the end of its callout. It
+  applies to its own book, and a tap leads to its entry in its note, flashed, as **Open the
+  highlights note** does. Its own words are not underlined again. The highlight's bar has an
+  underline button that opens a dialog of forms, prefilled with the highlighted word; saving it
+  empty (or **Stop underlining**) takes the forms away.
+
+Scripts set a note's rule with `vocabulary.mark({ note, forms })` (the script API reference has the
+rest); run from a book it is for that book and in its language.
+
+**Matching.** A chapter's text is read as one string, text nodes joined across inline elements
+(`mā<em>ja</em>` is one word), with a space between blocks and at a line break or a picture;
+scripts, styles and ruby annotations are left out. A word is a run of letters, marks and digits; an
+apostrophe or a hyphen between letters joins a run, and its parts are words too when the whole is
+not a form (`homme` in `l'homme`). Soft hyphens and zero-width joiners inside a word are ignored.
+Words and forms are compared lowercased and NFC-normalised; diacritics are kept, nothing is
+stemmed. A form of several words has no effect yet. EPUBs and other reflowing books only: not
+PDFs, not fixed-layout books.
+
+**Drawing.** When a chapter's page is made its text is read and the forms' words kept as offsets,
+a few thousand words at a time with the thread handed back in between; the last eight chapters'
+are kept for the same text and forms. Only the words in the text on screen and about a page's worth
+either side are measured and drawn (a binary search on the offsets, bounded by the engine's visible
+range), so a chapter where every word is underlined costs a page turn about what one with a few
+does. They are one mark of the engine's on the chapter's overlay, whose range is empty — the
+engine's own tap test never finds it, so highlights answer as before — and whose drawing works out
+what is on screen each time: every path that draws the engine's marks again (a turn coming to rest,
+a block resizing, fonts and pictures arriving, the iPhone's relayout, theme and e-ink) draws these
+again with it. The line is the dotted one of words a note links to, black on e-ink.
+
+**A tap** on an underlined word, after links, selections and swipes have had their say: one rule
+opens its target; several open a menu of them; a highlight or a linked note's mark under the same
+words is offered first in that menu, and a rule that is the same thing (the highlight's own, the
+card that also links there) is not offered twice.
+
 ## Where highlights go
 
 **Settings → Abele → Books → Highlights** says it for every book; a book's own **Aa** dialog, under
@@ -369,7 +417,8 @@ and a line right after it gets a blank line in between, or it would join the quo
 `{{ title }}`, `{{ author }}`, `{{ book }}` (a link to the book), `{{ chapter }}`, `{{ color }}`,
 `{{ link }}` (to the place), `{{ date }}` and `{{ date.format('D MMMM YYYY') }}`; anything else is
 left as written. A template without `{{#body}}` is written once and each highlight is added at the
-end.
+end. `{{ forms }}`, on a line of its own, is where the forms of a word the highlight underlines
+everywhere are kept (see **Words underlined everywhere**).
 
 **The quote and the comment apart.** `{{ highlight }}` keeps the comment inside the callout, under
 the words. A body can give it a field of its own instead: `{{ quote }}` is the callout with the words

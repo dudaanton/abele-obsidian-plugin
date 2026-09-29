@@ -54,6 +54,8 @@ export class BookReading {
   private notePaths: string[] = []
   /** Where new highlights went when they were last read, to notice the choice change. */
   private targetSeen = ''
+  /** Told each time the highlights are read: the vocabulary some of them hold (`vocab/`). */
+  onHighlights: () => void = () => {}
 
   constructor(
     private readonly app: App,
@@ -113,6 +115,7 @@ export class BookReading {
     const list = await readHighlights(this.app, this.file, where)
     this.model.highlights = list
     this.marks.set(list)
+    this.onHighlights()
     if (this.model.active)
       this.model.active = list.find((h) => h.cfi === this.model.active?.cfi) ?? null
   }
@@ -120,6 +123,11 @@ export class BookReading {
   /** The settings changed: the highlights are read again if where they go did. */
   settingsChanged(): void {
     if (JSON.stringify(this.where().target) !== this.targetSeen) void this.loadHighlights()
+  }
+
+  /** The book's highlights, as last read. */
+  highlights(): Highlight[] {
+    return this.model.highlights
   }
 
   /** Whether a changed file is one of this book's highlights notes, which are then read again. */
@@ -149,6 +157,7 @@ export class BookReading {
       comment: comment ?? known?.comment ?? '',
       label: sel.label,
       ...(known?.discussion ? { discussion: known.discussion } : {}),
+      ...(known?.forms ? { forms: known.forms } : {}),
     }
     this.clearSelection()
     await this.save(h)

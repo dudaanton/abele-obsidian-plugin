@@ -16,7 +16,17 @@ import type { Highlight, HighlightColor } from './highlights'
 import { LINK_KEY, linkMark, pointInWindow, shortenPlace } from './linkMarks'
 import { eink, einkShape, type EinkShape } from './eink'
 import { einkBoxStyle, einkMark } from './einkMarks'
+import { VocabMarks } from './vocab/vocabMarks'
+import type { VocabRule } from './vocab/rules'
 
+/** The engine's key for a search result's mark, which a tap never opens. */
+const SEARCH_KEY = 'foliate-search:'
+
+/** A mark under the same words as vocabulary ones, offered beside them. */
+export interface MarkAlongside {
+  kind: 'highlight' | 'link'
+  open: () => void
+}
 /** The ink e-ink marks are drawn in: the page's own text colour, black on its white. */
 const EINK_INK = 'CanvasText'
 
@@ -169,6 +179,16 @@ export class BookMarks {
   private linksDrawn = new Set<string>()
   /** Words a note links to tapped, with where on the screen, for a menu of the notes. */
   onLink: (cfi: string, at: { x: number; y: number }) => void = () => {}
+  /** The notes linking to a place, by path: a vocabulary rule of one of them is the same mark. */
+  linkedAt: (cfi: string) => string[] = () => []
+  /** Words vocabulary rules underline, tapped: their rules, and a mark under them too, if any. */
+  onWords: (
+    rules: VocabRule[],
+    at: { x: number; y: number },
+    alongside: MarkAlongside | null
+  ) => void = () => {}
+  /** Words vocabulary rules name, underlined in a reflowing book; none in fixed pages. */
+  readonly vocab: VocabMarks | null = null
 
   constructor(
     private readonly engine: FoliateView,
@@ -177,6 +197,11 @@ export class BookMarks {
     private readonly onTap: (h: Highlight) => void
   ) {
     if (pdf) return
+    this.vocab = new VocabMarks(
+      engine,
+      () => (eink().on ? EINK_INK : this.accent()),
+      (cfi, index, doc) => (this.indexOf(cfi) === index ? this.rangeIn(doc, cfi) : null)
+    )
     engine.addEventListener('draw-annotation', (e) => {
       const { draw, annotation } = (e as CustomEvent).detail as {
         draw: (fn: unknown, opts: unknown) => void
@@ -207,16 +232,21 @@ export class BookMarks {
     })
     engine.addEventListener('show-annotation', (e) => {
       const { value, range } = (e as CustomEvent<{ value: string; range?: Range }>).detail
-      if (value.startsWith(LINK_KEY)) {
-        const rect = range?.getBoundingClientRect?.()
-        const doc = range?.startContainer.ownerDocument
-        const at = doc && rect ? pointInWindow(doc, rect.left, rect.bottom) : { x: 0, y: 0 }
-        this.onLink(value.slice(LINK_KEY.length), at)
-        return
-      }
-      const h = this.list.find((x) => x.cfi === value)
-      if (h) this.onTap(h)
+      this.shown(value, range)
     })
+  }
+
+  /** A mark of the engine's tapped: a highlight's bar, or the notes linking to the words. */
+  private shown(value: string, range?: Range): void {
+    if (value.startsWith(LINK_KEY)) {
+      const rect = range?.getBoundingClientRect?.()
+      const doc = range?.startContainer.ownerDocument
+      const at = doc && rect ? pointInWindow(doc, rect.left, rect.bottom) : { x: 0, y: 0 }
+      this.onLink(value.slice(LINK_KEY.length), at)
+      return
+    }
+    const h = this.list.find((x) => x.cfi === value)
+    if (h) this.onTap(h)
   }
 
   private resolve(cfi: string): Resolved | null {
@@ -337,6 +367,7 @@ export class BookMarks {
     const links = this.links
     this.setLinks([])
     this.setLinks(links)
+    this.vocab?.redraw()
   }
 
   /** A page of fixed size was drawn: its highlights go over it, over its fresh text layer. */
@@ -405,13 +436,51 @@ export class BookMarks {
     return false
   }
 
-  /** Whether a tap on a book's page landed on a highlight, which then answers it instead. */
-  hitEpub(e: MouseEvent): boolean {
+  /**
+   * Whether a tap on a book's page landed on a mark, which then answers it instead. A highlight or
+   * a linked note's mark is answered by the engine, which hears the tap next. Words vocabulary
+   * rules underline are answered here, the engine not told: their rules, with the highlight or
+   * linked notes under the same words offered beside them.
+   */
+  hitEpub(e: MouseEvent, doc?: Document): boolean {
     const contents = (
       this.engine.renderer as unknown as {
-        getContents(): { overlayer?: { hitTest(p: { x: number; y: number }): [string?] } }[]
+        getContents(): {
+          overlayer?: { hitTest(p: { x: number; y: number }): [string?, Range?] }
+        }[]
       }
     ).getContents()
-    return contents.some((c) => !!c.overlayer?.hitTest({ x: e.clientX, y: e.clientY })?.[0])
+    let value: string | undefined
+    let range: Range | undefined
+    for (const c of contents) {
+      const hit = c.overlayer?.hitTest({ x: e.clientX, y: e.clientY })
+      if (hit?.[0]) {
+        ;[value, range] = hit
+        break
+      }
+    }
+    const words = doc ? this.vocab?.at(doc, e.clientX, e.clientY) : null
+    if (!words || !doc) return !!value
+    let rules = words.rules
+    const mark = value && !value.startsWith(SEARCH_KEY) ? value : undefined
+    if (mark) {
+      // The same words marked twice for one thing: a highlight holding the rule, a card that
+      // links to them and names their forms. Only the rest are offered beside it.
+      const linked = mark.startsWith(LINK_KEY) ? this.linkedAt(mark.slice(LINK_KEY.length)) : []
+      rules = rules.filter((r) =>
+        r.target.kind === 'highlight' ? r.target.cfi !== mark : !linked.includes(r.target.path)
+      )
+      if (!rules.length) return true
+    }
+    e.stopImmediatePropagation()
+    const at = pointInWindow(doc, words.rect.left, words.rect.bottom)
+    const alongside: MarkAlongside | null = mark
+      ? {
+          kind: mark.startsWith(LINK_KEY) ? 'link' : 'highlight',
+          open: () => this.shown(mark, range),
+        }
+      : null
+    this.onWords(rules, at, alongside)
+    return true
   }
 }
