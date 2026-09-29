@@ -1,9 +1,9 @@
 import type { App } from 'obsidian'
 import { ShellModal } from '@/modal/ShellModal'
-import type { PreparedHighlightRepair } from './companion'
+import type { HighlightRepairCandidate } from './highlightRepair'
 
 /** No write or implicit confirmation: every way to close except the explicit button cancels. */
-export function askToRepairLinks(app: App, items: PreparedHighlightRepair[]): {
+export function askToRepairLinks(app: App, items: HighlightRepairCandidate[]): {
   answer: Promise<boolean>; cancel: () => void
 } {
   let settle: (accepted: boolean) => void = () => {}

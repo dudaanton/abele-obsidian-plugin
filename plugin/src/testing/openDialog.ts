@@ -32,13 +32,11 @@ import { askName } from '@/modal/askName'
 import { confirmAction } from '@/modal/confirm'
 import { askWhatToRemove } from '@/reader/bookDiscussions'
 import { askToRepairLinks } from '@/reader/highlightRepairDialog'
-import type { PreparedHighlightRepair } from '@/reader/companion'
-import { TFile } from 'obsidian'
+import type { HighlightRepairCandidate } from '@/reader/highlightRepair'
 import type { Highlight } from '@/reader/highlights'
 
-const repairExamples = (count: number): PreparedHighlightRepair[] =>
+export const repairExamples = (count: number): HighlightRepairCandidate[] =>
   Array.from({ length: count }, (_, i) => ({
-    note: new TFile(),
     cfi: `epubcfi(/6/2!/4/${i * 2 + 2}:1)`,
     suggested: `epubcfi(/6/2!/4/${i * 2 + 3}:1)`,
     text: `Fabricated sample passage ${i + 1} with enough words to wrap in a narrow dialog and describe a proposed location.`,
