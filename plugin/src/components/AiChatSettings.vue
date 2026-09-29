@@ -238,14 +238,20 @@ const SCRIPT_KEY = 'script:'
 // Any agent may review a draft, utility ones included — that is what most of them are for —
 // and any script marked `@interceptor` may decide about one.
 const interceptorOptions = computed(() => {
-  const scripts = interceptorScripts().map((s) => s.meta.name)
+  const known = interceptorScripts().map((s) => s.meta.name)
+  const scripts = [...known]
+  // A script chosen before it was renamed or deleted still shows, said to be missing, as the
+  // agent editor says it: every message is going to it and failing over to the agent.
   const chosen = session.value?.interceptor.script.value
   if (chosen && !scripts.includes(chosen)) scripts.push(chosen)
   return [
     ...AgentRegistry.getInstance()
       .list({ includeUtility: true })
       .map((a) => ({ id: a.id, name: a.name })),
-    ...scripts.map((name) => ({ id: `${SCRIPT_KEY}${name}`, name: `Script: ${name}` })),
+    ...scripts.map((name) => ({
+      id: `${SCRIPT_KEY}${name}`,
+      name: `Script: ${name}${known.includes(name) ? '' : ' · missing'}`,
+    })),
   ]
 })
 const activeInterceptorId = computed(() => session.value?.interceptor.agentId.value ?? '')

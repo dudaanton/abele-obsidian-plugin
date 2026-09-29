@@ -194,6 +194,7 @@ describe('the interceptor picker', () => {
 
     await picker(view).setValue('script:Guard')
     expect(interceptor.script.value).toBe('Guard')
+    expect(picker(view).text()).not.toContain('missing')
     expect(interceptor.agentId.value).toBe('')
 
     const field = view.find('input[placeholder="Every message"]')
@@ -203,5 +204,11 @@ describe('the interceptor picker', () => {
     expect(interceptor.pattern.value).toBe('^/todo')
     expect(view.find('.mod-warning').text()).toMatch(/Not saved/)
     ScriptService.getInstance().scriptList.value = []
+  })
+
+  it('names a chosen script that is no longer there as missing', () => {
+    const { interceptor } = withReviewer()
+    interceptor.script.value = 'Gone'
+    expect(picker(mountSettings()).text()).toContain('Script: Gone · missing')
   })
 })
