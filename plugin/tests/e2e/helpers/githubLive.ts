@@ -204,7 +204,7 @@ export const PRELUDE = `
     // Once the last tab has closed, the leaf Obsidian puts in its place has never been active,
     // and a new tab finds no group to go in ("No tab group found"): that leaf is used instead.
     let leaf
-    try { leaf = app.workspace.getLeaf(pane) } catch { leaf = app.workspace.getLeaf(false) }
+    try { leaf = app.workspace.getLeaf(pane) } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await leaf.setViewState({ type: 'abele-github', state: { url }, active: true })
     return leaf
   }

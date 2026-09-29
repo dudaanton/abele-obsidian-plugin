@@ -83,7 +83,7 @@ const PRELUDE = `
   const open = async (path) => {
     // A new tab, or the one Obsidian keeps when there is no tab group to put one in.
     let leaf
-    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 15000)
     const view = leaf.view

@@ -60,7 +60,7 @@ const PRELUDE = `
   const open = async () => {
     let leaf = app.workspace.getLeavesOfType('abele-book')[0]
     if (!leaf) {
-      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
       await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
     }
     await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading)
@@ -218,7 +218,7 @@ describe.skipIf(!available)('paragraphs are never drawn over each other', () => 
       else await app.vault.create(path, JSON.stringify(places))
       await wait(1500)
       let leaf
-      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
       await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
       await until(() => ['ready', 'error'].includes(leaf.view?.model?.status))
       await wait(500)

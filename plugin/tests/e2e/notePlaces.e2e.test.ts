@@ -48,7 +48,7 @@ const PRELUDE = `
   const notesOf = (path) => app.workspace.getLeavesOfType('markdown').filter((l) => l.view.file?.path === path)
   const scrollOf = (leaf) => leaf.view.currentMode.getScroll()
   /** A new tab, or the lone leaf when there is no tab group to add one to. */
-  const newLeaf = () => { try { return app.workspace.getLeaf('tab') } catch { return app.workspace.getLeaf(false) } }
+  const newLeaf = () => { try { return app.workspace.getLeaf('tab') } catch { return app.workspace.createLeafInParent(app.workspace.rootSplit, 0) } }
   /** The note scrolled so line \`line\` is at its top, then given time to be saved. */
   const scrollTo = async (leaf, line) => {
     const v = leaf.view

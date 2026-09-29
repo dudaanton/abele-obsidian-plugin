@@ -148,7 +148,9 @@ describe.skipIf(!available)('drawing on a picture from where it is looked at', (
       fromMenu?: { path: string } | null
     }>(`
       closeInks()
-      const leaf = app.workspace.getLeaf('tab')
+      // No tab group once the last tab went: the tab is then made in the main area directly.
+      let leaf
+      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
       await leaf.openFile(app.vault.getAbstractFileByPath(PIC))
       const pen = await until(() => leaf.view.containerEl.querySelector('.view-actions .abele-draw-on-picture'))
       const pens = leaf.view.containerEl.querySelectorAll('.abele-draw-on-picture').length
@@ -287,7 +289,9 @@ describe.skipIf(!available)('drawing on a picture from where it is looked at', (
     }>(`
       await until(() => app.workspace.layoutReady, 15000)
       closeInks()
-      const leaf = app.workspace.getLeaf('tab')
+      // No tab group once the last tab went: the tab is then made in the main area directly.
+      let leaf
+      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
       await leaf.openFile(app.vault.getAbstractFileByPath(PIC))
       const pen = await until(() => leaf.view.containerEl.querySelector('.abele-draw-on-picture'))
       if (!pen) return { error: 'no pen' }

@@ -71,7 +71,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
     before = run(`
       const open = async (path) => {
         let leaf
-        try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+        try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
         await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
         return ready(leaf)
       }

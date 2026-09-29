@@ -41,7 +41,7 @@ const PRELUDE = `
   const contents = () => view().engine.renderer.getContents()[0]
   const openBook = async () => {
     let leaf
-    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
     const v = await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading && leaf.view)
     if (v.model.panel) { v.model.panel = false; await wait(400) }

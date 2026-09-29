@@ -63,7 +63,7 @@ const PRELUDE = `
     app.workspace.iterateRootLeaves((l) => { if (!main) main = l })
     if (main) app.workspace.setActiveLeaf(main, { focus: false })
     let leaf
-    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = main ?? app.workspace.getLeaf(false) }
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = main ?? app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await Promise.race([
       leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true }),
       wait(15000),

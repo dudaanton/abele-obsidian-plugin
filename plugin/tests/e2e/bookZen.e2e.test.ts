@@ -53,7 +53,7 @@ const PRELUDE = `
   const open = async (path) => {
     const old = app.workspace.getLeavesOfType('abele-book')
     let leaf
-    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     for (const l of old) if (l !== leaf) l.detach()
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     const view = leaf.view

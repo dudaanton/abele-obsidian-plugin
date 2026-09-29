@@ -118,7 +118,7 @@ describe.skipIf(!available)('highlights follow their words', () => {
       shift?: number
     }>(`
       let leaf
-      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+      try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
       await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
       const view = await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading && leaf.view)
       if (view.model.panel) { view.model.panel = false; await wait(400) }

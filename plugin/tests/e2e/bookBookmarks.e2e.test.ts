@@ -44,7 +44,7 @@ const PRELUDE = `
   const open = async (path) => {
     for (const l of app.workspace.getLeavesOfType('abele-book')) l.detach()
     let leaf
-    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     const view = leaf.view
     await until(() => view.model?.status === 'ready', 15000)
