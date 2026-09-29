@@ -437,6 +437,12 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     }
   )
 
+  it('never shows held paths below the answer row', () => {
+    for (const label of ['held deletes', 'held deletes 320', 'held deletes desktop']) {
+      expect(all()[label]?.extra.visibleBelowActions, label).toBe(false)
+    }
+  })
+
   it('lists twenty held files and counts the rest', () => {
     expect(phone['held deletes']?.extra.more).toBe(`and ${HELD - 20} more`)
   })

@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Deletions held back" phone-sheet @close="emit('close')">
+  <ObsidianModal title="Deletions held back" size="tall" @close="emit('close')">
     <HeldDeletesBlock :held="held" @decided="emit('close')">
       <template #actions="{ busy }">
         <Button

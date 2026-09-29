@@ -284,6 +284,13 @@ describe('the design standard', () => {
     expect(held).toContain('abele-held-deletes__actions abele-modal__actions')
   })
 
+  it('scrolls held paths inside a tall dialog, not behind its answer row', () => {
+    const dialog = readFileSync(join(ROOT, 'sync/HeldDeletesModal.vue'), 'utf8')
+    const css = styleBlock(readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8'))
+    expect(dialog).toContain('size="tall"')
+    expect(css).toMatch(/\.abele-modal_tall \.abele-held-deletes__paths\s*\{[^}]*overflow-y:\s*auto;/)
+  })
+
   it('keeps the restore-since dropdown inside its narrow dialog row', () => {
     const css = styleBlock(readFileSync(join(ROOT, 'sync/RestoreSince.vue'), 'utf8'))
     expect(css).toMatch(/\.abele-restore-since \.abele-obsidian-dropdown\s*\{[^}]*box-sizing:\s*border-box;/)

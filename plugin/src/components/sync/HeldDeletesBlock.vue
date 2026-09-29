@@ -162,6 +162,19 @@ async function decide(kind: 'confirm' | 'restore', fileIds: string[]): Promise<v
   gap: var(--size-4-2);
 }
 
+// In the tall dialog the paths, not the entire sheet, scroll. Otherwise a sticky answer row
+// can float above paths still visible in the sheet below it at narrow phone widths.
+.abele-modal_tall .abele-modal__body > .abele-held-deletes {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.abele-modal_tall .abele-held-deletes__paths {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .abele-held-deletes__lead,
 .abele-held-deletes__more,
 .abele-held-deletes__error {

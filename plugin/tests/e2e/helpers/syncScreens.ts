@@ -62,7 +62,12 @@ export const heldScreens = (suffix: string): string => `
   const out = {}
   const label = 'held deletes' + ${JSON.stringify(suffix)}
   out[label] = await screen(label, modal, modal.querySelector('.abele-modal__body'))
-  out[label].extra = { ...buttonFacts(modal), more: textOf(modal.querySelector('.abele-held-deletes__more')) }
+  const actions = modal.querySelector('.abele-held-deletes__actions').getBoundingClientRect()
+  const sheet = modal.getBoundingClientRect()
+  const below = actions.bottom + (sheet.bottom - actions.bottom) / 2
+  const visibleBelowActions = sheet.bottom - actions.bottom > 12 &&
+    !!modal.ownerDocument.elementFromPoint(actions.left + actions.width / 2, below)?.closest('.abele-held-deletes__paths')
+  out[label].extra = { ...buttonFacts(modal), more: textOf(modal.querySelector('.abele-held-deletes__more')), visibleBelowActions }
   await press(modal, 'Delete everywhere')
   if (!(await until(() => modalOf('.abele-confirm'), 5000))) throw new Error('no confirmation')
   await wait(300)
