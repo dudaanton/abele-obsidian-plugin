@@ -111,7 +111,11 @@ describe.skipIf(!available)('the gallery while the note is being edited', () => 
     expectShown(
       step(
         'insert',
-        `ed().setCursor({ line: lineOf('![['), ch: 0 })
+        // In the note first, as a person running the command from it is: a field that still
+        // had the focus (the chat's composer is a note editor too) is the active editor else.
+        `app.workspace.setActiveLeaf(leaf(), { focus: true })
+         ed().focus()
+         ed().setCursor({ line: lineOf('![['), ch: 0 })
          app.commands.executeCommandById('abele:insert-gallery')`
       )
     )

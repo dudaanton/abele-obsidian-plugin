@@ -158,10 +158,14 @@ const desktopScript = `(async () => {
 
     const leaf = app.workspace.getLeaf(false)
     await leaf.openFile(file)
+    // Into the note, the way a person working in it would be: a field that still had the focus
+    // (the chat's composer, which is a note editor too) stays the active editor otherwise.
+    app.workspace.setActiveLeaf(leaf, { focus: true })
+    leaf.view.editor.focus()
     await wait(1000)
 
-    // editorCallback resolves through the active markdown view, not through DOM focus, so
-    // a selection set from here is the selection the command sees.
+    // editorCallback resolves through the active editor, so a selection set from here is the
+    // selection the command sees.
     const editor = app.workspace.activeEditor && app.workspace.activeEditor.editor
     if (!editor) throw new Error('no active editor after opening the probe note')
     const start = editor.getValue().indexOf(quote)
