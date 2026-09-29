@@ -342,3 +342,39 @@ export class ChatLogWriter {
     this.clean = true
   }
 }
+
+const MSG_START = '{"k":"msg"'
+
+/**
+ * When the conversation began and when it was last written in: the earliest and the latest of
+ * its messages' own timestamps, 0 for both in a chat with none.
+ *
+ * What the history is ordered by. The file's modification time is not: it moves for a new title,
+ * a summary, a recap, a note renamed, sync from another device — none of which is somebody
+ * writing in the chat. A message rewritten later — a tool's result arriving — keeps the time it
+ * was written at, so it moves nothing either. Only message records are parsed; the agent's own
+ * records, most of a long chat's file, are skipped by their first characters.
+ */
+export function messageTimes(content: string): { first: number; last: number } {
+  let first = 0
+  let last = 0
+  const take = (at: unknown) => {
+    if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return
+    if (!first || at < first) first = at
+    if (at > last) last = at
+  }
+
+  if (!content.startsWith(META_PREFIX)) {
+    for (const message of parseChat(content).messages) take(message.timestamp)
+    return { first, last }
+  }
+  for (const line of content.split('\n')) {
+    if (!line.startsWith(MSG_START)) continue
+    try {
+      take((JSON.parse(line) as { timestamp?: unknown }).timestamp)
+    } catch {
+      // A torn line: the chat skips it too.
+    }
+  }
+  return { first, last }
+}

@@ -11,6 +11,7 @@ import { readChat, rewriteChat } from './chatCopy'
 import { ChatService } from './ChatService'
 import {
   parseChat,
+  messageTimes,
   parseChatMetadata,
   serializeChat,
   serializeMetadata,
@@ -18,6 +19,18 @@ import {
   type ChatWritePlan,
   type ParsedChat,
 } from './ChatLog'
+
+/** The same dates `messageTimes` reads from a file, from a conversation in memory. */
+function snapshotTimes(snapshot: ChatSnapshot): { firstMessageAt: number; lastMessageAt: number } {
+  let first = 0
+  let last = 0
+  for (const { timestamp: at } of snapshot.messages) {
+    if (typeof at !== 'number' || at <= 0) continue
+    if (!first || at < first) first = at
+    if (at > last) last = at
+  }
+  return { firstMessageAt: first, lastMessageAt: last }
+}
 
 export class ChatStorage {
   private static instance: ChatStorage | null = null
@@ -64,6 +77,7 @@ export class ChatStorage {
         metadata.title || existingFile.basename,
         metadata.summary
       )
+      this.noteMessageTimes(existingFile.path, snapshot)
       return existingFile
     }
 
@@ -83,6 +97,7 @@ export class ChatStorage {
       title: metadata.title || title,
       created: metadata.created || dayjs().format('YYYY-MM-DD'),
       summary: metadata.summary || undefined,
+      ...snapshotTimes(snapshot),
     })
 
     return file
@@ -162,15 +177,18 @@ export class ChatStorage {
       if (entry) {
         // Ours and open in a tab writes through `linkNotes` as it goes, so the index is
         // already ahead of anything read here; everything else is judged by the clock.
-        if (entry.mtime === file.stat.mtime) continue
+        // An entry from before the dates were kept is read once more to fill them in.
+        if (entry.mtime === file.stat.mtime && entry.lastMessageAt !== undefined) continue
         changed = (await this.syncEntry(entry, file)) || changed
         continue
       }
 
       try {
         // Only the metadata is needed here, and in a log that is one line out of thousands.
-        const metadata = parseChatMetadata(await app.vault.read(file))
+        const content = await app.vault.read(file)
+        const metadata = parseChatMetadata(content)
         if (metadata?.type !== 'abele-chat') continue
+        const times = messageTimes(content)
         config.ai.chatHistory.push({
           path: file.path,
           title: metadata.title || file.basename,
@@ -181,6 +199,8 @@ export class ChatStorage {
           recap: metadata.recap || undefined,
           summary: metadata.summary || undefined,
           agentId: metadata.agentId || undefined,
+          firstMessageAt: times.first,
+          lastMessageAt: times.last,
           mtime: file.stat.mtime,
         })
         added++
@@ -230,8 +250,11 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
 
     let metadata
+    let times
     try {
-      metadata = parseChatMetadata(await app.vault.read(file))
+      const content = await app.vault.read(file)
+      metadata = parseChatMetadata(content)
+      times = messageTimes(content)
     } catch {
       return false
     }
@@ -255,8 +278,12 @@ export class ChatStorage {
       JSON.stringify(entry.notes) === JSON.stringify(notes) &&
       entry.recap === recap &&
       entry.summary === summary &&
-      entry.agentId === agentId
+      entry.agentId === agentId &&
+      entry.firstMessageAt === times.first &&
+      entry.lastMessageAt === times.last
 
+    entry.firstMessageAt = times.first
+    entry.lastMessageAt = times.last
     entry.notes = notes
     entry.recap = recap
     entry.summary = summary
@@ -485,6 +512,18 @@ export class ChatStorage {
     entry.title = title
     entry.summary = nextSummary
     this.saveHistory()
+  }
+
+  /**
+   * Keeps an open chat's dates current in its entry as it is written in, without a settings write
+   * of its own: the index is one file holding every chat, and a turn saves many times. The next
+   * write of the index for any reason carries them, and the file's changed time has the next
+   * `refreshHistory` read them from the file anyway.
+   */
+  private noteMessageTimes(path: string, snapshot: ChatSnapshot): void {
+    const entry = AbeleConfig.getInstance().ai.chatHistory?.find((e) => e.path === path)
+    if (!entry) return
+    Object.assign(entry, snapshotTimes(snapshot))
   }
 
   /** Records a summary written for a chat that is not open, into its index entry. */

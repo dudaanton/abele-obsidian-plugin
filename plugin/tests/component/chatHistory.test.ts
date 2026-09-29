@@ -23,6 +23,8 @@ import {
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
+import dayjs from 'dayjs'
+import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 
 vi.mock('@/editor/CommentPlugin', () => ({
   dispatchCommentsChanged: vi.fn(),
@@ -256,5 +258,92 @@ describe('searching the messages of every chat', () => {
     await type(view, 'n')
     expect(read).not.toHaveBeenCalled()
     expect(view.findAllComponents(Card).map((c) => c.attributes('data-path'))).toContain(NEW)
+  })
+})
+
+describe('the order of the history', () => {
+  const HOUR = 3_600_000
+  // Three chats: Garden started first but was written in last; Pond started second, written in
+  // second; Trip started last, written in once. Days apart, so each lands in a day of its own.
+  const DAY = 24 * HOUR
+  const T0 = new Date(2026, 0, 10, 9).getTime()
+  const chats = {
+    'AI/Chats/Garden.abchat': { title: 'Garden', first: T0, last: T0 + 5 * DAY },
+    'AI/Chats/Pond.abchat': { title: 'Pond', first: T0 + DAY, last: T0 + 3 * DAY },
+    'AI/Chats/Trip.abchat': { title: 'Trip', first: T0 + 2 * DAY, last: T0 + 2 * DAY + HOUR },
+  }
+  const file = (title: string, first: number, last: number) =>
+    serializeChat({
+      metadata: { type: 'abele-chat', providerId: 'p', modelId: 'm', created: '2026-01-01', title },
+      messages: [
+        { id: 'u', role: 'user', content: `About the ${title.toLowerCase()} plan`, timestamp: first },
+        { id: 'a', parentId: 'u', role: 'assistant', content: 'Noted.', timestamp: last },
+      ],
+      internalMessages: [],
+    })
+
+  beforeEach(() => {
+    app = useVault(
+      Object.entries(chats).map(([path, c]) => ({ path, raw: file(c.title, c.first, c.last) }))
+    )
+    // The files' own times say the opposite: Trip touched last (a summary, sync), Garden first.
+    const mtimes: Record<string, number> = {
+      'AI/Chats/Garden.abchat': 1000,
+      'AI/Chats/Pond.abchat': 2000,
+      'AI/Chats/Trip.abchat': 9000,
+    }
+    for (const [path, mtime] of Object.entries(mtimes)) {
+      const f = app.vault.getFileByPath(path)!
+      f.stat = { ...f.stat, mtime, ctime: mtime }
+    }
+    ChatStorage.destroy()
+    AbeleConfig.getInstance().ai.chatHistory = []
+  })
+
+  const titles = (view: VueWrapper) =>
+    view.findAllComponents(Card).map((c) => c.props('title') as string)
+  const days = (view: VueWrapper) =>
+    view.findAll('.abele-chat-history .abele-date-divider').map((d) => d.text())
+  const choose = async (view: VueWrapper, order: string) => {
+    await view.find('.abele-chat-history__order select').setValue(order)
+    await flushPromises()
+  }
+
+  it('is by the last message by default, whatever touched the files since', async () => {
+    const view = await open()
+    expect(titles(view)).toEqual(['Garden', 'Pond', 'Trip'])
+  })
+
+  it('can be by when each chat was started', async () => {
+    const view = await open()
+    await choose(view, 'created')
+    expect(titles(view)).toEqual(['Trip', 'Pond', 'Garden'])
+  })
+
+  it('puts a day over the chats of that day, by the date the list is ordered by', async () => {
+    const day = (d: number) => dayjs(new Date(2026, 0, d)).format(DISPLAY_DATE_FORMAT)
+    const view = await open()
+    expect(days(view)).toEqual([day(15), day(13), day(12)])
+    await choose(view, 'created')
+    expect(days(view)).toEqual([day(12), day(11), day(10)])
+  })
+
+  it('remembers the order chosen on this device', async () => {
+    const view = await open()
+    await choose(view, 'created')
+    view.unmount()
+    wrapper = null
+    expect(app.loadLocalStorage('abele-chat-history-order')).toBe('created')
+    expect(titles(await open())).toEqual(['Trip', 'Pond', 'Garden'])
+  })
+
+  it('keeps the same order for what a search finds', async () => {
+    const view = await open()
+    await view.find('.abele-chat-history__search').setValue('plan')
+    await new Promise((resolve) => setTimeout(resolve, 260))
+    await flushPromises()
+    expect(titles(view)).toEqual(['Garden', 'Pond', 'Trip'])
+    await choose(view, 'created')
+    expect(titles(view)).toEqual(['Trip', 'Pond', 'Garden'])
   })
 })

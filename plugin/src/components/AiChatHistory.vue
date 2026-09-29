@@ -1,14 +1,24 @@
 <template>
   <ObsidianModal title="Chat History" size="tall" @close="emit('close')">
     <div class="abele-chat-history">
-      <input
-        ref="searchRef"
-        type="text"
-        class="abele-chat-history__search"
-        placeholder="Search chats..."
-        :value="query"
-        @input="query = ($event.target as HTMLInputElement).value"
-      />
+      <div class="abele-chat-history__bar">
+        <input
+          ref="searchRef"
+          type="text"
+          class="abele-chat-history__search"
+          placeholder="Search chats..."
+          :value="query"
+          @input="query = ($event.target as HTMLInputElement).value"
+        />
+        <!-- Which date the list goes by: the last message, or when the chat was started. -->
+        <Dropdown
+          class="abele-chat-history__order"
+          aria-label="Order the chats by"
+          :options="HISTORY_ORDERS"
+          :model-value="order"
+          @update:model-value="setOrder"
+        />
+      </div>
 
       <div v-if="reading" class="abele-chat-history__status" aria-live="polite">
         Searching the messages… {{ reading.done }} of {{ reading.total }} chats
@@ -19,30 +29,32 @@
       </div>
 
       <div ref="listRef" class="abele-chat-history__list">
-        <Card
-          v-for="chat in visible"
-          :key="chat.path"
-          :ref="(card) => watchCard(card, chat)"
-          :data-path="chat.path"
-          :title="chat.title || chat.path"
-          :description="hits.get(chat.path) ? undefined : describe(chat)"
-          :meta="metaOf(chat)"
-          clickable
-          @click="select(chat.path)"
-        >
-          <template v-if="hits.get(chat.path)" #subtitle>
-            <span class="abele-chat-history__snippet"
-              >{{ hits.get(chat.path)!.snippet.before
-              }}<span class="search-result-file-matched-text">{{
-                hits.get(chat.path)!.snippet.match
-              }}</span
-              >{{ hits.get(chat.path)!.snippet.after }}</span
-            >
-          </template>
-          <template #actions>
-            <Icon icon="trash" tooltip="Delete chat" @click="remove(chat.path)" />
-          </template>
-        </Card>
+        <template v-for="(chat, i) in visible" :key="chat.path">
+          <!-- A day over the chats of that day, by the date the list goes by. -->
+          <DateDivider v-if="dayOf(chat) !== dayOf(visible[i - 1])" :date="dayOf(chat)" />
+          <Card
+            :ref="(card) => watchCard(card, chat)"
+            :data-path="chat.path"
+            :title="chat.title || chat.path"
+            :description="hits.get(chat.path) ? undefined : describe(chat)"
+            :meta="metaOf(chat)"
+            clickable
+            @click="select(chat.path)"
+          >
+            <template v-if="hits.get(chat.path)" #subtitle>
+              <span class="abele-chat-history__snippet"
+                >{{ hits.get(chat.path)!.snippet.before
+                }}<span class="search-result-file-matched-text">{{
+                  hits.get(chat.path)!.snippet.match
+                }}</span
+                >{{ hits.get(chat.path)!.snippet.after }}</span
+              >
+            </template>
+            <template #actions>
+              <Icon icon="trash" tooltip="Delete chat" @click="remove(chat.path)" />
+            </template>
+          </Card>
+        </template>
         <div v-if="hasMore" ref="sentinel" class="abele-chat-history__sentinel" />
       </div>
     </div>
@@ -64,6 +76,17 @@ import { TFile } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Card from './obsidian/Card.vue'
 import Icon from './obsidian/Icon.vue'
+import Dropdown from './obsidian/Dropdown.vue'
+import DateDivider from './obsidian/DateDivider.vue'
+import {
+  HISTORY_ORDERS,
+  HISTORY_ORDER_KEY,
+  historyDate,
+  isHistoryOrder,
+  sortHistory,
+  type HistoryOrder,
+} from '@/ai/chatHistoryOrder'
+import { DATE_FORMAT } from '@/constants/dates'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { CommentService } from '@/ai/CommentService'
 import { SummaryBackfill } from '@/ai/ChatDigest'
@@ -88,8 +111,33 @@ const listRef = ref<HTMLElement>()
 const allChats = ref<AiChatHistoryEntry[]>([])
 const query = ref('')
 
-// mtime cache to avoid repeated vault lookups
-const mtimeMap = new Map<string, number>()
+/** The chats' files, looked up once: their times stand in for a chat with no messages. */
+const files = new Map<string, TFile | null>()
+const fileOf = (path: string) => files.get(path) ?? null
+
+/** The date the list goes by, chosen on this device and kept there. */
+const order = ref<HistoryOrder>('last')
+{
+  const saved = GlobalStore.getInstance().app.loadLocalStorage(HISTORY_ORDER_KEY)
+  if (isHistoryOrder(saved)) order.value = saved
+}
+const setOrder = (value: string) => {
+  if (!isHistoryOrder(value)) return
+  order.value = value
+  GlobalStore.getInstance().app.saveLocalStorage(HISTORY_ORDER_KEY, value)
+}
+
+/** Every chat in the order chosen, newest first; what the search narrows keeps that order. */
+const sorted = computed(() => sortHistory(allChats.value, order.value, fileOf))
+
+/** A chat's moment in the order chosen. */
+const dateOf = (chat: AiChatHistoryEntry) => historyDate(chat, order.value, fileOf(chat.path))
+
+/** The day a chat falls on in that order, for the dividers; empty when nothing is known. */
+const dayOf = (chat: AiChatHistoryEntry | undefined): string => {
+  const at = chat ? dateOf(chat) : 0
+  return at ? dayjs(at).format(DATE_FORMAT) : ''
+}
 
 /**
  * A summary arriving for a card on screen. The entry is replaced rather than mutated: the list
@@ -106,12 +154,10 @@ onMounted(async () => {
 
   for (const entry of history) {
     const f = app.vault.getAbstractFileByPath(entry.path)
-    mtimeMap.set(entry.path, f instanceof TFile ? f.stat.mtime : 0)
+    files.set(entry.path, f instanceof TFile ? f : null)
   }
 
-  allChats.value = [...history]
-    .map((entry) => ({ ...entry }))
-    .sort((a, b) => (mtimeMap.get(b.path) || 0) - (mtimeMap.get(a.path) || 0))
+  allChats.value = history.map((entry) => ({ ...entry }))
 
   await nextTick()
   searchRef.value?.focus()
@@ -119,8 +165,8 @@ onMounted(async () => {
 
 const filtered = computed(() => {
   const q = query.value.toLowerCase().trim()
-  if (!q) return allChats.value
-  return allChats.value.filter(
+  if (!q) return sorted.value
+  return sorted.value.filter(
     (c) =>
       (c.title || '').toLowerCase().includes(q) ||
       (c.summary || '').toLowerCase().includes(q) ||
@@ -239,10 +285,10 @@ onBeforeUnmount(() => {
   backfill.dispose()
 })
 
-/** Only the date, small, under the summary: when the chat was last written to. */
+/** Only the date, small, under the summary: the one the list goes by. */
 const formatDate = (chat: AiChatHistoryEntry) => {
-  const mtime = mtimeMap.get(chat.path)
-  if (mtime) return dayjs(mtime).format('D MMM YYYY, HH:mm')
+  const at = dateOf(chat)
+  if (at) return dayjs(at).format('D MMM YYYY, HH:mm')
   return chat.created || ''
 }
 
@@ -261,7 +307,7 @@ const remove = async (path: string) => {
   await CommentService.getInstance().removeCommentsOn(path)
   await ChatStorage.getInstance().deleteChat(path)
   allChats.value = allChats.value.filter((c) => c.path !== path)
-  mtimeMap.delete(path)
+  files.delete(path)
 }
 </script>
 
@@ -279,9 +325,27 @@ const remove = async (path: string) => {
   min-width: min(400px, 90vw);
 }
 
-.abele-chat-history__search {
-  padding: var(--size-4-2) var(--size-4-3);
+.abele-chat-history__bar {
+  display: flex;
+  gap: var(--size-4-2);
+  align-items: center;
   margin-bottom: var(--size-4-2);
+}
+
+/** The order's own width, whole: the search field is the one that gives way on a phone. */
+.abele-chat-history__order {
+  flex: 0 0 auto;
+
+  select {
+    width: auto;
+    max-width: none;
+  }
+}
+
+.abele-chat-history__search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--size-4-2) var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   background: var(--background-primary);
