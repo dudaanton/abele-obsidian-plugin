@@ -67,6 +67,24 @@ describe('when a chat was started and last written in, from its file', () => {
     expect(messageTimes(legacy)).toEqual({ first: T0, last: T0 + HOUR })
   })
 
+  it('ignores maintenance, tools and unsent drafts in both file formats', () => {
+    const messages = [
+      m('u', T0),
+      m('a', T0 + HOUR, { role: 'assistant' }),
+      m('compact', T0 + 20 * HOUR, { role: 'system' }),
+      m('tool', T0 + 21 * HOUR, { role: 'tool-call' }),
+      m('draft', T0 + 22 * HOUR, { draft: true }),
+    ]
+    for (const content of [chat('Sample', messages), JSON.stringify({ messages })]) {
+      expect(messageTimes(content)).toEqual({ first: T0, last: T0 + HOUR })
+    }
+  })
+
+  it('answers zero for messages without dates', () => {
+    const undated = { id: 'old', role: 'user', content: 'A sample question' } as ChatMessage
+    expect(messageTimes(chat('Undated', [undated]))).toEqual({ first: 0, last: 0 })
+  })
+
   it('answers zero for a chat with no messages', () => {
     expect(messageTimes(chat('Empty', []))).toEqual({ first: 0, last: 0 })
   })
@@ -81,9 +99,14 @@ describe('the date a chat is ordered by', () => {
   })
   const file = { stat: { mtime: T0 + 50 * HOUR, ctime: T0 - 50 * HOUR } } as TFile
 
-  it('is the last message for the default order, the file only for a chat with none', () => {
+  it('is the last message, or a stable creation date when no message date is known', () => {
     expect(historyDate(entry({ lastMessageAt: T0 }), 'last', file)).toBe(T0)
-    expect(historyDate(entry({ lastMessageAt: 0 }), 'last', file)).toBe(T0 + 50 * HOUR)
+    // Modification time must never stand in for an undated conversation.
+    expect(historyDate(entry({ lastMessageAt: 0 }), 'last', file)).toBe(
+      new Date(2026, 0, 5).getTime()
+    )
+    expect(historyDate(entry({ lastMessageAt: 0, created: '' }), 'last', file)).toBe(T0 - 50 * HOUR)
+    expect(historyDate(entry({ lastMessageAt: 0, created: '' }), 'last', null)).toBe(0)
   })
 
   it('is the first message for the order by creation, then the created day, then the file', () => {
@@ -143,6 +166,50 @@ describe('the index keeps both dates', () => {
     expect(entry().lastMessageAt).toBe(T0 + 2 * HOUR)
     await ChatStorage.getInstance().refreshHistory()
     expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it('repairs dates cached from maintenance records even when the file has not changed', async () => {
+    await app.vault.modify(
+      fileAt(1000),
+      chat('Sample', [m('u', T0), m('compact', T0 + 20 * HOUR, { role: 'system' })])
+    )
+    fileAt(1000)
+    AbeleConfig.getInstance().ai.chatHistory = [
+      {
+        path: PATH,
+        title: 'Sample',
+        created: '2026-01-01',
+        mtime: 1000,
+        firstMessageAt: T0,
+        lastMessageAt: T0 + 20 * HOUR,
+      },
+    ]
+    const read = vi.spyOn(app.vault, 'read')
+    await ChatStorage.getInstance().refreshHistory()
+    expect(entry().lastMessageAt).toBe(T0)
+    await ChatStorage.getInstance().refreshHistory()
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an undated legacy chat in place when its summary is regenerated', async () => {
+    const metadata = { type: 'abele-chat', title: 'Sample', created: '2025-01-01' }
+    const messages = [{ id: 'old', role: 'user', content: 'A sample question' }]
+    await app.vault.modify(fileAt(1000), JSON.stringify({ metadata, messages }))
+    fileAt(1000)
+    await ChatStorage.getInstance().refreshHistory()
+    const before = historyDate(entry(), 'last', fileAt(1000))
+    await app.vault.modify(
+      fileAt(5000),
+      JSON.stringify({
+        metadata: { ...metadata, summary: 'A new summary' },
+        messages,
+      })
+    )
+    fileAt(5000)
+    await ChatStorage.getInstance().refreshHistory()
+    expect(entry().lastMessageAt).toBe(0)
+    expect(historyDate(entry(), 'last', fileAt(5000))).toBe(before)
+    expect(before).toBe(new Date(2025, 0, 1).getTime())
   })
 
   it('keeps them when the file is touched without a new message', async () => {

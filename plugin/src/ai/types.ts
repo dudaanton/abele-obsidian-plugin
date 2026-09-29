@@ -89,12 +89,14 @@ export interface AiChatHistoryEntry {
   /** Mirrored from the chat file's `agentId`, for the badge on the card. */
   agentId?: string
   /**
-   * When the chat's first and latest messages were written, read out of its messages
+   * When the chat's first and latest sent user/assistant turns were written, read out of its messages
    * (`messageTimes`) — what the history is ordered by. 0 for a chat with no messages; absent in
    * an entry made before they were kept, which has its file read once to fill them in.
    */
   firstMessageAt?: number
   lastMessageAt?: number
+  /** Version of the derivation: older cached dates are re-read once, even at the same mtime. */
+  messageTimesVersion?: number
   /**
    * The file's `mtime` when the three fields above were last read out of it.
    *

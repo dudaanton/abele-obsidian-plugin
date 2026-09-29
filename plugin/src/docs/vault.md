@@ -232,7 +232,11 @@ what draws the **Chats** list under a note: one card per linked chat, with its t
 what the chat is about, shown under its title in the chat history; the background model writes
 it from the text the person and the agent exchanged — never from what a tool returned — after
 the first turn and again as the chat grows, and for an older chat when its card first comes on
-screen in the history. It is copied into the index the same way. A comment chat carries the
+screen in the history. It is copied into the index the same way. The history's first/last
+message dates are cached from sent user and assistant turns only: system dividers, tool records
+and drafts do not move a chat. Cached dates are versioned and rebuilt once when their derivation
+changes. When no turn has a date, the history uses the chat's creation date (then the file's
+creation time), never its modification time or the current time. A comment chat carries the
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 

@@ -93,6 +93,44 @@ const fileOf = (session: ChatSession): TFile => {
 const contentOf = async (session: ChatSession): Promise<string> =>
   (await app.vault.read(fileOf(session))) as string
 
+describe('maintenance of an old conversation', () => {
+  it('does not advance its indexed last message when a compaction divider is saved', async () => {
+    const at = Date.UTC(2025, 0, 2)
+    const content = serializeChat({
+      metadata: {
+        type: 'abele-chat',
+        title: 'Sample archive',
+        created: '2025-01-02',
+        providerId: 'p1',
+        modelId: 'm1',
+      },
+      messages: [
+        { id: 'u', role: 'user', content: 'A sample question', timestamp: at },
+        {
+          id: 'a',
+          parentId: 'u',
+          role: 'assistant',
+          content: 'A sample answer',
+          timestamp: at + 1000,
+        },
+      ],
+      internalMessages: [],
+    })
+    await app.vault.createFolder('AI')
+    await app.vault.createFolder('AI/Chats')
+    const file = await app.vault.create('AI/Chats/Sample archive.abchat', content)
+    const storage = ChatStorage.getInstance()
+    await storage.refreshHistory()
+    const session = newSession()
+    await session.load(file)
+    session.applyCompactSummary('A sample recap')
+    await session.save()
+    expect(storage.getHistory()[0].lastMessageAt).toBe(at + 1000)
+    await storage.refreshHistory()
+    expect(storage.getHistory()[0].lastMessageAt).toBe(at + 1000)
+  })
+})
+
 describe('a new chat', () => {
   it('is created as a log, and says which version wrote it', async () => {
     const session = newSession()

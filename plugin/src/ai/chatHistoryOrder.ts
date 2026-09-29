@@ -4,7 +4,8 @@ import type { AiChatHistoryEntry } from './types'
 /**
  * How the history of chats is ordered: by when each was last written in (the default), or by
  * when each was started. Both dates come out of the chat's own messages (`messageTimes`), kept on
- * its index entry; the file's times stand in only for a chat that has no messages to go by.
+ * its index entry; the creation date stands in when no sent turn has a date. Modification time
+ * never dates a conversation: summaries and sync change it without anybody writing a message.
  */
 export type HistoryOrder = 'last' | 'created'
 
@@ -35,7 +36,7 @@ export function historyDate(
   order: HistoryOrder,
   file: TFile | null
 ): number {
-  if (order === 'last') return entry.lastMessageAt || file?.stat.mtime || 0
+  if (order === 'last' && entry.lastMessageAt) return entry.lastMessageAt
   return entry.firstMessageAt || createdTime(entry.created) || file?.stat.ctime || 0
 }
 

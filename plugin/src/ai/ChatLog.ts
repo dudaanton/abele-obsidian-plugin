@@ -345,9 +345,19 @@ export class ChatLogWriter {
 
 const MSG_START = '{"k":"msg"'
 
+/** Bump when the cached history dates need to be derived again from existing files. */
+export const MESSAGE_TIMES_VERSION = 2
+
+/** Only sent conversation turns date a chat, not maintenance, tools or unsent drafts. */
+export function conversationMessageTime(message: Partial<ChatMessage>): number {
+  const at = message.timestamp
+  if (message.role !== 'user' && message.role !== 'assistant') return 0
+  return !message.draft && typeof at === 'number' && Number.isFinite(at) && at > 0 ? at : 0
+}
+
 /**
  * When the conversation began and when it was last written in: the earliest and the latest of
- * its messages' own timestamps, 0 for both in a chat with none.
+ * its sent user and assistant messages' own timestamps, 0 when none have dates.
  *
  * What the history is ordered by. The file's modification time is not: it moves for a new title,
  * a summary, a recap, a note renamed, sync from another device — none of which is somebody
@@ -358,20 +368,21 @@ const MSG_START = '{"k":"msg"'
 export function messageTimes(content: string): { first: number; last: number } {
   let first = 0
   let last = 0
-  const take = (at: unknown) => {
-    if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return
+  const take = (message: Partial<ChatMessage>) => {
+    const at = conversationMessageTime(message)
+    if (!at) return
     if (!first || at < first) first = at
     if (at > last) last = at
   }
 
   if (!content.startsWith(META_PREFIX)) {
-    for (const message of parseChat(content).messages) take(message.timestamp)
+    for (const message of parseChat(content).messages) take(message)
     return { first, last }
   }
   for (const line of content.split('\n')) {
     if (!line.startsWith(MSG_START)) continue
     try {
-      take((JSON.parse(line) as { timestamp?: unknown }).timestamp)
+      take(JSON.parse(line) as Partial<ChatMessage>)
     } catch {
       // A torn line: the chat skips it too.
     }

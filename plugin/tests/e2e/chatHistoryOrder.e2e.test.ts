@@ -121,7 +121,8 @@ const script = `(async () => {
     // Touched later without a new message, as a summary or sync would touch it.
     await wait(1100)
     const trip = app.vault.getAbstractFileByPath(path(chats[2]))
-    await app.vault.append(trip, meta(chats[2], { summary: 'A summary written afterwards.' }) + '\\n')
+    await app.vault.append(trip, meta(chats[2], { summary: 'A summary written afterwards.' }) + '\\n' +
+      JSON.stringify({ k: 'msg', id: 'compact', parentId: 'a', role: 'system', content: 'A compaction recap', timestamp: Date.now() }) + '\\n')
     const mtimes = chats.map((c) => app.vault.getAbstractFileByPath(path(c)).stat.mtime)
     report.touchedNewest = mtimes[2] > mtimes[0] && mtimes[2] > mtimes[1]
 

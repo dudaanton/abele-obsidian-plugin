@@ -12,6 +12,8 @@ import { ChatService } from './ChatService'
 import {
   parseChat,
   messageTimes,
+  conversationMessageTime,
+  MESSAGE_TIMES_VERSION,
   parseChatMetadata,
   serializeChat,
   serializeMetadata,
@@ -21,15 +23,16 @@ import {
 } from './ChatLog'
 
 /** The same dates `messageTimes` reads from a file, from a conversation in memory. */
-function snapshotTimes(snapshot: ChatSnapshot): { firstMessageAt: number; lastMessageAt: number } {
+function snapshotTimes(snapshot: ChatSnapshot) {
   let first = 0
   let last = 0
-  for (const { timestamp: at } of snapshot.messages) {
-    if (typeof at !== 'number' || at <= 0) continue
+  for (const message of snapshot.messages) {
+    const at = conversationMessageTime(message)
+    if (!at) continue
     if (!first || at < first) first = at
     if (at > last) last = at
   }
-  return { firstMessageAt: first, lastMessageAt: last }
+  return { firstMessageAt: first, lastMessageAt: last, messageTimesVersion: MESSAGE_TIMES_VERSION }
 }
 
 export class ChatStorage {
@@ -178,7 +181,12 @@ export class ChatStorage {
         // Ours and open in a tab writes through `linkNotes` as it goes, so the index is
         // already ahead of anything read here; everything else is judged by the clock.
         // An entry from before the dates were kept is read once more to fill them in.
-        if (entry.mtime === file.stat.mtime && entry.lastMessageAt !== undefined) continue
+        if (
+          entry.mtime === file.stat.mtime &&
+          entry.lastMessageAt !== undefined &&
+          entry.messageTimesVersion === MESSAGE_TIMES_VERSION
+        )
+          continue
         changed = (await this.syncEntry(entry, file)) || changed
         continue
       }
@@ -201,6 +209,7 @@ export class ChatStorage {
           agentId: metadata.agentId || undefined,
           firstMessageAt: times.first,
           lastMessageAt: times.last,
+          messageTimesVersion: MESSAGE_TIMES_VERSION,
           mtime: file.stat.mtime,
         })
         added++
@@ -232,7 +241,11 @@ export class ChatStorage {
   async refreshEntry(file: TFile): Promise<void> {
     const config = AbeleConfig.getInstance()
     const entry = config.ai.chatHistory?.find((e) => e.path === file.path)
-    if (!entry || entry.mtime === file.stat.mtime) return
+    if (
+      !entry ||
+      (entry.mtime === file.stat.mtime && entry.messageTimesVersion === MESSAGE_TIMES_VERSION)
+    )
+      return
 
     if (await this.syncEntry(entry, file)) {
       GlobalStore.getInstance().chatLinksVersion.value++
@@ -280,8 +293,10 @@ export class ChatStorage {
       entry.summary === summary &&
       entry.agentId === agentId &&
       entry.firstMessageAt === times.first &&
-      entry.lastMessageAt === times.last
+      entry.lastMessageAt === times.last &&
+      entry.messageTimesVersion === MESSAGE_TIMES_VERSION
 
+    entry.messageTimesVersion = MESSAGE_TIMES_VERSION
     entry.firstMessageAt = times.first
     entry.lastMessageAt = times.last
     entry.notes = notes
