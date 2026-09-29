@@ -20,4 +20,4 @@ export const historical = [
     dateSource: 'history',
   },
 ]
-export const overrides = {}
+export { overrides } from './changelog-copy.mjs'

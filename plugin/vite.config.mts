@@ -1,5 +1,7 @@
 import { UserConfig, defineConfig } from 'vite'
 import path from 'path'
+import { readFileSync } from 'node:fs'
+import { generateChangelog } from './scripts/changelog.mjs'
 import { builtinModules } from 'node:module'
 import vue from '@vitejs/plugin-vue'
 import replace from '@rollup/plugin-replace'
@@ -54,7 +56,21 @@ export default defineConfig(async ({ mode }) => {
         '@': path.resolve(__dirname, 'src'),
       },
     },
-    plugins: [vue(), maplibreWorkerPlugin(prod)],
+    plugins: [
+      vue(),
+      maplibreWorkerPlugin(prod),
+      {
+        name: 'abele-changelog',
+        resolveId(id: string) {
+          return id === 'virtual:abele-changelog' ? '\0virtual:abele-changelog' : null
+        },
+        load(id: string) {
+          return id === '\0virtual:abele-changelog'
+            ? `export const runningVersion = ${JSON.stringify(JSON.parse(readFileSync(path.resolve(__dirname, '../manifest.json'), 'utf8')).version)}; export default ${JSON.stringify(generateChangelog())}`
+            : null
+        },
+      },
+    ],
     minify: prod,
     build: {
       lib: {

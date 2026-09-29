@@ -17,6 +17,7 @@ export default defineConfig({
       // The production build generates this module from MapLibre's worker entry. Tests do not
       // start WebGL, but Vite still has to resolve the dynamic import while collecting files.
       'virtual:maplibre-worker': path.resolve(__dirname, 'tests/mocks/maplibreWorker.ts'),
+      'virtual:abele-changelog': path.resolve(__dirname, 'tests/mocks/changelog.ts'),
     },
   },
   test: {

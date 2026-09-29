@@ -1,6 +1,6 @@
 import { gitAt } from './changelog-git.mjs'
 export { gitEnvironment } from './changelog-git.mjs'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { historical, overrides } from './changelog-history.mjs'
@@ -35,9 +35,10 @@ export function generateChangelog(root = project, options = {}) {
   if (git('rev-parse', '--is-shallow-repository') === 'true')
     fail('shallow repository; fetch full history and tags')
   const target = JSON.parse(readFileSync(resolve(root, 'manifest.json'), 'utf8')).version
-  const packageVersion = JSON.parse(
-    readFileSync(resolve(root, root === project ? 'plugin/package.json' : 'package.json'), 'utf8')
-  ).version
+  const packagePath = existsSync(resolve(root, 'plugin/package.json'))
+    ? 'plugin/package.json'
+    : 'package.json'
+  const packageVersion = JSON.parse(readFileSync(resolve(root, packagePath), 'utf8')).version
   if (target !== packageVersion || !version(target))
     fail('manifest and package versions differ or are invalid')
   const head = git('rev-parse', 'HEAD')
@@ -74,8 +75,17 @@ export function generateChangelog(root = project, options = {}) {
     /^chore: bump version to /.test(git('show', '-s', '--format=%s', head)) &&
     git('show', '-s', '--format=%s', head) === `chore: bump version to ${target}`
   ) {
+    if (
+      JSON.parse(git('show', `${head}:manifest.json`)).version !== target ||
+      JSON.parse(git('show', `${head}:${packagePath}`)).version !== target
+    )
+      fail('current version boundary is not committed')
     entries.set(target, { version: target, revision: head, dateSource: 'tag' })
   }
+  if (!entries.has(target))
+    fail(
+      `current version ${target} has no release boundary; fetch missing tags or commit the release bump`
+    )
   const bumps = git('log', '--first-parent', '--format=%H%x09%s', head).split('\n')
   for (const line of bumps) {
     const match = /^([^\t]+)\tchore: bump version to (\d+\.\d+\.\d+)$/.exec(line)
@@ -93,7 +103,8 @@ export function generateChangelog(root = project, options = {}) {
       fail(`non-linear release boundary ${ordered[i].version}`)
   }
   const changes = options.overrides ?? overrides
-  return ordered
+  const unrecognized = []
+  const releases = ordered
     .map((entry, i) => {
       const utcDate =
         entry.date ??
@@ -107,17 +118,32 @@ export function generateChangelog(root = project, options = {}) {
         improvements: [],
       }
       const range = i ? `${ordered[i - 1].revision}..${entry.revision}` : entry.revision
-      const commits = git('log', '--no-merges', '--reverse', '--format=%H%x09%s', range)
+      const commits = git('log', '--no-merges', '--format=%ct%x09%H%x09%s', range)
         .split('\n')
         .filter(Boolean)
+        .sort(
+          (a, b) =>
+            Number(a.split('\t')[0]) - Number(b.split('\t')[0]) || (a < b ? -1 : a > b ? 1 : 0)
+        )
       for (const line of commits) {
-        const [hash, subject] = line.split(/\t(.*)/s)
+        const [, hash, subject] = /^(\d+)\t([^\t]+)\t(.*)$/s.exec(line).slice(1)
         const bullet = subjectBullet(subject, changes[hash])
-        if (!bullet) continue
+        if (!bullet) {
+          if (
+            !(hash in changes) &&
+            !/^(?:feat|fix|perf|test|chore|ci|build|docs|refactor|style|wip)(?:\([^)]*\))?!?:/i.test(
+              subject
+            )
+          )
+            unrecognized.push({ revision: hash, subject })
+          continue
+        }
         const [category, text] = bullet
         if (!result[category].includes(text)) result[category].push(text)
       }
       return result
     })
     .reverse()
+  options.onUnrecognized?.(unrecognized)
+  return releases
 }
