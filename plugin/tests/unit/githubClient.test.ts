@@ -97,6 +97,68 @@ describe('requests', () => {
   })
 })
 
+describe('credential destination confinement', () => {
+  const hostile = [
+    'https://api.github.com.evil.test/repos/a/b',
+    'https://api.github.com:444/repos/a/b',
+    'http://api.github.com/repos/a/b',
+    'https://user:pass@api.github.com/repos/a/b',
+    'https://api.github.com@evil.test/repos/a/b',
+    'https://api.github.com/repos/../..//evil',
+  ]
+  it.each(hostile)('rejects unsafe REST URLs before every request: %s', async (url) => {
+    const { request } = fake({})
+    const c = client(request)
+    await expect(c.get(url)).rejects.toBeInstanceOf(GithubError)
+    await expect(c.bytes(url)).rejects.toBeInstanceOf(GithubError)
+    await expect(c.probe(url)).rejects.toBeInstanceOf(GithubError)
+    await expect(c.call('POST', url)).rejects.toBeInstanceOf(GithubError)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('does not allow caller headers to override or inject authorization in any casing', async () => {
+    const { request, calls } = fake({ '/x': { json: {} } })
+    await client(request).call('POST', '/x', {
+      headers: { authorization: 'Bearer injected', Authorization: 'Bearer injected' },
+    })
+    expect(Object.entries(calls[0].headers ?? {}).filter(([k]) => k.toLowerCase() === 'authorization')).toEqual([
+      ['Authorization', 'Bearer tkn'],
+    ])
+    const anonymous = client(request, '')
+    await anonymous.call('GET', '/x', { headers: { AUTHORIZATION: 'Bearer injected' } })
+    expect(Object.keys(calls[1].headers ?? {}).some((k) => k.toLowerCase() === 'authorization')).toBe(false)
+  })
+
+  it('accepts the Enterprise GraphQL endpoint, but not REST prefix lookalikes', async () => {
+    const calls: RequestUrlParam[] = []
+    const request = vi.fn(async (r: RequestUrlParam) => {
+      calls.push(r)
+      return respond({ json: { data: { ok: true } } })
+    })
+    const c = new GithubClient(endpoints('http://git.example.test:8080'), 'secret', request)
+    await c.graphql('query { ok }', {})
+    expect(calls[0].url).toBe('http://git.example.test:8080/api/graphql')
+    expect(calls[0].headers?.Authorization).toBe('Bearer secret')
+    await expect(c.get('http://git.example.test:8080/api/v3evil/repos')).rejects.toBeInstanceOf(GithubError)
+    await expect(c.get('https://git.example.test:8080/api/v3/repos')).rejects.toBeInstanceOf(GithubError)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('never sends an avatar token to a scheme downgrade, another port, or github.com', async () => {
+    const calls: RequestUrlParam[] = []
+    const request = vi.fn(async (r: RequestUrlParam) => {
+      calls.push(r)
+      return respond({ headers: { 'content-type': 'image/png' } })
+    })
+    const c = new GithubClient(endpoints('https://git.example.test:8443'), 'secret', request)
+    await c.image('https://avatars.git.example.test:8443/a.png')
+    await c.image('http://avatars.git.example.test:8443/a.png')
+    await c.image('https://avatars.git.example.test/a.png')
+    await c.image('https://github.com/a.png')
+    expect(calls.map((r) => r.headers?.Authorization)).toEqual(['Bearer secret', undefined, undefined, undefined])
+  })
+})
+
 describe('refusals say what to do', () => {
   it('401 with a token: the token is bad', () => {
     const e = errorFor(401, {}, null, true)

@@ -182,14 +182,47 @@ export class GithubClient {
     return headers
   }
 
-  private async send(request: RequestUrlParam): Promise<RequestUrlResponse> {
+  /** Validate the final destination, not a caller's relative/absolute path or host spelling. */
+  private async send(
+    request: RequestUrlParam,
+    purpose: 'rest' | 'graphql' | 'image' = 'rest'
+  ): Promise<RequestUrlResponse> {
+    let url: URL
+    try {
+      url = new URL(request.url)
+      const api = new URL(purpose === 'graphql' ? this.endpoints.graphql : this.endpoints.api)
+      // URL normalizes traversal before parsing; reject it in the original path as well.
+      const rawPath = request.url.split(/[?#]/, 1)[0].replace(/^https?:\/\/[^/]+/i, '')
+      if (/(?:^|\/)(?:\.{1,2}|%2e(?:%2e|\.)?|\.%2e)(?:\/|$)/i.test(rawPath)) {
+        throw new Error('path traversal')
+      }
+      if (url.username || url.password || !['http:', 'https:'].includes(url.protocol)) {
+        throw new Error('invalid URL')
+      }
+      if (purpose === 'graphql') {
+        if (url.origin !== api.origin || url.pathname !== api.pathname) throw new Error('endpoint')
+      } else if (purpose === 'rest') {
+        const base = api.pathname.replace(/\/$/, '')
+        if (
+          url.origin !== api.origin ||
+          !(url.pathname === base || url.pathname.startsWith(`${base}/`))
+        ) throw new Error('endpoint')
+      } else {
+        const web = new URL(this.endpoints.origin)
+        const own = this.endpoints.webHost !== 'github.com' &&
+          url.protocol === web.protocol && url.port === web.port &&
+          hostWithin(normaliseHost(url.hostname), this.endpoints.webHost)
+        // Public images can be read anonymously from arbitrary HTTPS hosts.
+        if (request.headers && 'Authorization' in request.headers && !own) throw new Error('avatar destination')
+      }
+    } catch {
+      throw new GithubError('other', 'GitHub request destination is not permitted.')
+    }
     try {
       return await this.request({ ...request, throw: false })
-    } catch (e) {
-      throw new GithubError(
-        'network',
-        `Could not reach ${new URL(request.url).host}: ${e instanceof Error ? e.message : String(e)}`
-      )
+    } catch {
+      // The transport may include request headers or URLs (including credentials) in its errors.
+      throw new GithubError('network', `Could not reach ${url.host}.`)
     }
   }
 
@@ -310,7 +343,9 @@ export class GithubClient {
   ): Promise<Probe<T>> {
     const url = path.startsWith('http') ? path : `${this.endpoints.api}${path}`
     const sent = { ...this.headers(options.accept ?? 'application/vnd.github+json') }
-    Object.assign(sent, options.headers ?? {})
+    for (const [name, value] of Object.entries(options.headers ?? {})) {
+      if (name.toLowerCase() !== 'authorization') sent[name] = value
+    }
     const request: RequestUrlParam = { url, method, headers: sent }
     if (options.body !== undefined) {
       sent['Content-Type'] = 'application/json'
@@ -355,11 +390,20 @@ export class GithubClient {
    * sit behind sign-in; github.com's avatars are public and never see it.
    */
   async image(url: string): Promise<string> {
-    const host = normaliseHost(new URL(url).hostname)
-    const own = this.endpoints.webHost !== 'github.com' && hostWithin(host, this.endpoints.webHost)
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new GithubError('other', 'Invalid picture URL.')
+    }
+    const web = new URL(this.endpoints.origin)
+    const host = normaliseHost(parsed.hostname)
+    const own = this.endpoints.webHost !== 'github.com' &&
+      parsed.protocol === web.protocol && parsed.port === web.port &&
+      !parsed.username && !parsed.password && hostWithin(host, this.endpoints.webHost)
     const headers: Record<string, string> = { Accept: 'image/*' }
     if (own && this.token) headers.Authorization = `Bearer ${this.token}`
-    const response = await this.send({ url, method: 'GET', headers })
+    const response = await this.send({ url, method: 'GET', headers }, 'image')
     if (response.status < 200 || response.status >= 300) {
       throw this.refusal(response.status, response.headers, null, 'the picture')
     }
@@ -392,7 +436,7 @@ export class GithubClient {
       method: 'POST',
       headers: { ...this.headers('application/json'), 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables }),
-    })
+    }, 'graphql')
 
     let body: { data?: T; errors?: { type?: string; message: string }[] } | null = null
     try {
