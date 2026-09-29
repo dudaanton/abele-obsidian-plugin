@@ -1010,10 +1010,61 @@ const holdSteady = () => {
   steady.at = at
 }
 
+/**
+ * The scroll range kept at least as long as it was before the page changed, until what changed
+ * has drawn again.
+ *
+ * A reply that ends moves its text into the message that replaces it, and for a moment the
+ * message is on the page with nothing drawn in it. WebKit, which a phone runs, clamps the scroll
+ * position the moment anything reads the layout, and in that moment the conversation ends where
+ * the reply began: a reader halfway down the reply was put there, on a short chat at its very
+ * top, and nothing put them back. A desktop's browser clamps with the frame, when the text is
+ * back, so it was seen on a phone only. A floor under the content, as tall as the content was,
+ * leaves the browser nothing to clamp.
+ */
+const FLOOR_CLASS = 'abele-ai-chat__messages_floor'
+const FLOOR_VAR = '--abele-chat-floor'
+let floorUntil = 0
+
+const releaseFloor = (container: HTMLElement) => {
+  container.classList.remove(FLOOR_CLASS)
+  container.style.removeProperty(FLOOR_VAR)
+}
+
+/** Where the content itself ends, below the top of the conversation, floor or no floor. */
+const contentEnd = (container: HTMLElement) => {
+  const last = container.lastElementChild
+  if (!last?.instanceOf(HTMLElement)) return 0
+  const pad = parseFloat(container.win.getComputedStyle(container).paddingBottom) || 0
+  return placeOf(last, container) + last.getBoundingClientRect().height + pad
+}
+
+const holdFloor = (container: HTMLElement) => {
+  const win = container.win
+  const fresh = !container.classList.contains(FLOOR_CLASS)
+  const floor = Math.max(
+    container.scrollHeight,
+    parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
+  )
+  container.style.setProperty(FLOOR_VAR, `${floor}px`)
+  container.classList.add(FLOOR_CLASS)
+  floorUntil = win.performance.now() + STEADY_MS
+  if (!fresh) return
+  const check = () => {
+    if (!container.classList.contains(FLOOR_CLASS)) return
+    const want = parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
+    if (closed || win.performance.now() > floorUntil || contentEnd(container) >= want - 1)
+      releaseFloor(container)
+    else nextFrame(win, check)
+  }
+  nextFrame(win, check)
+}
+
 /** Starts holding the reader's place, from before the change about to happen to the page. */
 const steadyReader = () => {
   const container = messagesContainer.value
   if (!container || shouldAutoScroll || closed) return
+  holdFloor(container)
   const el = blockAtTop(container)
   if (!el) return
   const win = container.win
@@ -1883,6 +1934,23 @@ const showDebug = () => {
 /* While the chat holds the reader's place itself, the browser does not hold it a second time. */
 .abele-ai-chat__messages_steady {
   overflow-anchor: none;
+}
+
+/* The scroll range kept from shrinking while a change draws again: see `holdFloor`. Absolutely
+   placed, it takes no room among the messages and only reaches down as far as they did. */
+.abele-ai-chat__messages_floor {
+  position: relative;
+}
+
+.abele-ai-chat__messages_floor::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: var(--abele-chat-floor, 0);
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .abele-ai-chat__empty {
