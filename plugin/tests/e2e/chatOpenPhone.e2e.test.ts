@@ -10,16 +10,16 @@
  * same notes, with the middle one still the tab in front.
  *
  * Under `emulateMobile` in a 390×844 window on the desktop the taps are clicks; on a real phone
- * they would be fingers, through the harness's host. Writes three notes and two
+ * (`E2E_TARGET=phone`) they are fingers, through the harness's host. The chat's own field has
+ * the focus when the attached chat is tapped, as it does after typing: on an iPhone letting go
+ * of that field on the lift cost the tap its click, and the chat did not open. Writes three notes and two
  * chats of its own and removes them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 
-// Written for the phone too (the taps go through the harness's host there), but not yet run
-// there, so it names only the desktop until it is green on a real phone.
-targets('desktop')
+targets('desktop', 'phone')
 
 const NOTES = ['Phone probe first', 'Phone probe note', 'Phone probe last']
 const CHAT = 'Phone open probe chat'
@@ -38,6 +38,7 @@ interface Road {
 type Report = Partial<Record<'attached' | 'explorer' | 'link', Road | string>> & {
   error?: string
   mobile?: boolean
+  hits?: Record<string, string>
 }
 
 const script = `(async () => {
@@ -52,13 +53,35 @@ const script = `(async () => {
     }
     return null
   }
-  // A finger on a phone, a click under emulation.
-  const tap = async (el) => {
+  // A finger on a phone, a click under emulation. On a phone the request that carries the touch
+  // now and then dies on the reversed port before it arrives; it is sent again only when the
+  // chat has not opened, so a touch that did arrive is never made twice. What was under the
+  // finger is kept for the report.
+  const hits = {}
+  const opened = () => !!svc.getSessionByFile(chatPath)
+  const tap = async (name, el) => {
     el.scrollIntoView({ block: 'center' })
-    await wait(200)
-    const r = el.getBoundingClientRect()
-    if (window.__e2eHost) await window.__e2eHost.tap(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2))
-    else el.click()
+    // A drawer slides in: the element is measured once it has stopped moving, or the finger
+    // lands where it was a moment ago.
+    let r = el.getBoundingClientRect()
+    for (let i = 0; i < 30; i++) {
+      await wait(150)
+      const next = el.getBoundingClientRect()
+      const still = next.left === r.left && next.top === r.top
+      r = next
+      if (still) break
+    }
+    const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)
+    const under = document.elementFromPoint(x, y)
+    hits[name] = under === el || el.contains(under) ? 'on it' : 'covered by ' + (under ? under.className : 'nothing')
+    if (!window.__e2eHost) return el.click()
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { await window.__e2eHost.tap(x, y); return } catch (e) {
+        if (!String(e && e.message).includes('connection was lost')) throw e
+        await wait(1500)
+        if (opened()) return
+      }
+    }
   }
   const report = { mobile: !!app.isMobile }
   const created = []
@@ -172,8 +195,10 @@ const script = `(async () => {
       const panel = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
       const chip = await until(() => panel?.view.containerEl.querySelector('.abele-chat-msg__attachment-chip'))
       if (!chip) throw new Error('no attached chat in the message')
+      // The chat's own field focused, as after typing in it.
+      panel.view.containerEl.querySelector('.abele-chat-input__textarea')?.focus()
       await wait(600)
-      await tap(chip)
+      await tap('attached', chip)
     })
 
     // A chat file tapped in the file list's drawer.
@@ -186,14 +211,14 @@ const script = `(async () => {
       const row = await until(() => document.querySelector('.nav-file-title[data-path="' + chatPath + '"]'))
       if (!row) throw new Error('no row for the chat in the file list')
       await wait(600)
-      await tap(row)
+      await tap('explorer', row)
     })
 
     // A link to the chat, tapped in the note in reading mode.
     await road('link', 'preview', async () => {
       const link = await until(() => middle().view.containerEl.querySelector('.markdown-preview-view a.internal-link'))
       if (!link) throw new Error('no link in the note')
-      await tap(link)
+      await tap('link', link)
     })
   } catch (e) {
     report.error = String((e && e.message) || e)
@@ -211,6 +236,7 @@ const script = `(async () => {
     }
     await storage.refreshHistory()
   }
+  report.hits = hits
   return JSON.stringify(report)
 })()`
 
