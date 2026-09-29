@@ -690,7 +690,9 @@ describe('SyncService — what this device syncs', () => {
  * daemon on a git or Syncthing folder sends exactly such files, and would get them deleted.
  */
 describe('SyncService — hidden paths', () => {
-  const HIDDEN = ['.gitignore', '.git/HEAD', '.DS_Store', '.stfolder', '.trash/x.md']
+  // The protocol rejects arbitrary leading-dot segments; .trash is the one hidden directory
+  // it accepts on the wire (beside .obsidian, which is handled as settings).
+  const HIDDEN = ['.trash/x.md']
 
   it('neither takes nor deletes a hidden file another device sent', async () => {
     const { accountToken } = await server.account(EMAIL)

@@ -55,6 +55,10 @@ const VOIDS = `
 export const heldScreens = (suffix: string): string => `
   ${BUTTON_FACTS}
   await closeDialog()
+  // A phone reload can surface the staged-settings question at the same moment as this
+  // manually opened hold. Leave it for the next screen instead of layering it over the hold.
+  svc.settingsPrompt.later()
+  await closeDialog()
   svc.heldPrompt.ask()
   if (!(await until(() => modalOf('.abele-held-deletes'), 10000))) throw new Error('the held-deletes dialog never opened')
   await wait(300)
