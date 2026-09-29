@@ -180,6 +180,13 @@ const script = (phone: boolean) => `(async () => {
     const el = box()
     const p = await until(() => el && reading(el), 5000)
     if (!p) throw new Error('the paragraph to read is not on screen')
+    ${phone ? `// The keyboard down, as it is for a reader reading back. The chat puts the cursor in its
+    // composer when it opens, which a phone takes as its keyboard coming up, and that cursor left
+    // at a moment of its own while the reply streamed: the chat grew back by the room it keeps
+    // for a keyboard, and moved the reader with it, as it does when a real keyboard goes.
+    const chatEl = el.closest('.abele-ai-chat')
+    if (chatEl.contains(document.activeElement)) document.activeElement.blur()
+    if (!(await until(() => !chatEl.classList.contains('abele-keyboard-open'), 3000))) throw new Error('the composer kept the keyboard up')` : ''}
     await wait(200)
 
     // The reader takes over and scrolls the paragraph to near the top.
