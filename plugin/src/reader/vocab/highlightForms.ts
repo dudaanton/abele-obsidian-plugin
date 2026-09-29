@@ -57,7 +57,6 @@ export async function setHighlightForms(
     replace?: boolean
     make?: NewHighlight
     wrote?: (path: string) => void
-    chatPath?: (h: Highlight) => Promise<string | undefined>
   } = {}
 ): Promise<{ highlight: Highlight; note: TFile | null; changed: boolean }> {
   const known = (await readHighlights(app, book, where)).find((h) => h.cfi === cfi)
@@ -77,7 +76,11 @@ export async function setHighlightForms(
     return { highlight: known, note: await noteFor(app, book, where, cfi), changed: false }
   const before = await noteFor(app, book, where, cfi)
   if (before) opts.wrote?.(before.path)
-  const note = await saveHighlight(app, book, where, h, await opts.chatPath?.(h))
+  // A discussion's chat stays linked from the highlight written again.
+  const chat = h.discussion
+    ? (await import('../bookDiscussions')).discussionPath(h.discussion)
+    : undefined
+  const note = await saveHighlight(app, book, where, h, chat)
   if (!before) opts.wrote?.(note.path)
   return { highlight: h, note, changed: true }
 }
