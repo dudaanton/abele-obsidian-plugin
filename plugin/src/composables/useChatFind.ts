@@ -8,7 +8,7 @@ import {
   type FindMatch,
   type FindPart,
 } from '@/ai/chatFind'
-import { clearMatches, openFolds, paintMatches, textRanges } from '@/ai/chatFindDom'
+import { createFindPainter, openFolds, textRanges, type FindPainter } from '@/ai/chatFindDom'
 
 /** What the chat lends the finder: its messages, its scroll box, and its ways of moving in it. */
 export interface ChatFindHost {
@@ -66,6 +66,19 @@ export function useChatFind(host: ChatFindHost) {
   /** Which showing is the latest, so a slow one that finishes late does not scroll. */
   let showing = 0
 
+  /** This chat's marks, made for the window its box is in — a popped-out one has its own. */
+  let painter: FindPainter | null = null
+  let painterDoc: Document | null = null
+  const painterFor = (doc: Document) => {
+    if (painterDoc !== doc) {
+      painter?.clear()
+      painter = createFindPainter(doc)
+      painterDoc = doc
+    }
+    return painter!
+  }
+  const unpaint = () => painter?.clear()
+
   const win = () => host.container()?.ownerDocument.defaultView ?? window
 
   /** The part elements of one message on the page. */
@@ -91,13 +104,13 @@ export function useChatFind(host: ChatFindHost) {
     if (!box) return
     const q = foldQuery(query.value)
     if (!isOpen.value || !q) {
-      clearMatches(box.ownerDocument)
+      unpaint()
       return
     }
     const all = Array.from(box.querySelectorAll<HTMLElement>('[data-find-part]')).flatMap((el) =>
       textRanges(el, q)
     )
-    paintMatches(box.ownerDocument, all, currentRange())
+    painterFor(box.ownerDocument).paint(all, currentRange())
   }
 
   const scheduleRepaint = () => {
@@ -256,7 +269,7 @@ export function useChatFind(host: ChatFindHost) {
     observer = null
     matches.value = []
     index.value = -1
-    clearMatches(host.container()?.ownerDocument)
+    unpaint()
   }
 
   // The conversation changing under an open bar — a message arriving, a branch switched — is
@@ -282,7 +295,7 @@ export function useChatFind(host: ChatFindHost) {
     if (typing) w.clearTimeout(typing)
     if (repaintTimer) w.clearTimeout(repaintTimer)
     observer?.disconnect()
-    clearMatches(host.container()?.ownerDocument)
+    unpaint()
   })
 
   return {

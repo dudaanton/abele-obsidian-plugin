@@ -63,9 +63,14 @@ export function openFolds(el: Element, stopAt: Element): void {
   }
 }
 
+interface RangeHighlight {
+  add(range: Range): unknown
+  delete(range: Range): boolean
+}
+
 interface HighlightWindow {
-  CSS?: { highlights?: Map<string, unknown> }
-  Highlight?: new (...ranges: Range[]) => unknown
+  CSS?: { highlights?: Map<string, RangeHighlight> }
+  Highlight?: new (...ranges: Range[]) => RangeHighlight
 }
 
 /** Whether this window can paint matches at all: Safari before 17.2 cannot. */
@@ -74,24 +79,55 @@ export function canHighlight(win: Window | null | undefined): boolean {
   return !!w?.CSS?.highlights && typeof w.Highlight === 'function'
 }
 
-/** Paints the matches in the chat's own window, which may be a popped-out one. */
-export function paintMatches(doc: Document, all: Range[], current: Range | null): void {
+/**
+ * The window's two highlights, shared by every chat finding in it.
+ *
+ * Shared rather than one each, because the stylesheet paints a highlight by its name and the
+ * names are fixed: two chat panels that each set their own under the same name took each other's
+ * marks away. Each chat adds its own ranges to the shared ones and takes back only those.
+ */
+function sharedHighlights(doc: Document): { all: RangeHighlight; current: RangeHighlight } | null {
   const win = doc.defaultView as unknown as HighlightWindow | null
-  if (!win || !canHighlight(doc.defaultView)) return
-  const Highlight = win.Highlight!
+  if (!win || !canHighlight(doc.defaultView)) return null
   const registry = win.CSS!.highlights!
-  const rest = current ? all.filter((r) => !sameRange(r, current)) : all
-  registry.set(FIND_HIGHLIGHT, new Highlight(...rest))
-  if (current) registry.set(FIND_CURRENT_HIGHLIGHT, new Highlight(current))
-  else registry.delete(FIND_CURRENT_HIGHLIGHT)
+  const get = (name: string) => {
+    let highlight = registry.get(name)
+    if (!highlight) {
+      highlight = new win.Highlight!()
+      registry.set(name, highlight)
+    }
+    return highlight
+  }
+  return { all: get(FIND_HIGHLIGHT), current: get(FIND_CURRENT_HIGHLIGHT) }
 }
 
-export function clearMatches(doc: Document | null | undefined): void {
-  const win = doc?.defaultView as unknown as HighlightWindow | null
-  if (!win || !canHighlight(doc?.defaultView)) return
-  win.CSS!.highlights!.delete(FIND_HIGHLIGHT)
-  win.CSS!.highlights!.delete(FIND_CURRENT_HIGHLIGHT)
+/** One chat's marks: painted over the chat's own window, and taken back without touching another's. */
+export function createFindPainter(doc: Document) {
+  let mine: { all: Range[]; current: Range | null } = { all: [], current: null }
+
+  const clear = () => {
+    const shared = sharedHighlights(doc)
+    if (shared) {
+      for (const range of mine.all) shared.all.delete(range)
+      if (mine.current) shared.current.delete(mine.current)
+    }
+    mine = { all: [], current: null }
+  }
+
+  const paint = (all: Range[], current: Range | null) => {
+    clear()
+    const shared = sharedHighlights(doc)
+    if (!shared) return
+    const rest = current ? all.filter((r) => !sameRange(r, current)) : all
+    for (const range of rest) shared.all.add(range)
+    if (current) shared.current.add(current)
+    mine = { all: rest, current }
+  }
+
+  return { paint, clear }
 }
+
+export type FindPainter = ReturnType<typeof createFindPainter>
 
 const sameRange = (a: Range, b: Range) =>
   a.startContainer === b.startContainer &&

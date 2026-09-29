@@ -15,6 +15,7 @@ import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -119,6 +120,8 @@ interface AbeleTestApi {
   ScopeResolver: typeof ScopeResolver
   ChatService: typeof ChatService
   ChatStorage: typeof ChatStorage
+  /** The words of every chat, for timing a search across them. */
+  ChatSearchIndex: typeof ChatSearchIndex
   CommentService: typeof CommentService
   AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
@@ -629,6 +632,7 @@ export function exposeTestApi(plugin: Plugin): void {
     ScopeResolver,
     ChatService,
     ChatStorage,
+    ChatSearchIndex,
     CommentService,
     AgentRegistry,
     GlobalStore,

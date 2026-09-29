@@ -198,7 +198,7 @@ const script = (phone: boolean) => `(async () => {
     key(input(), { key: 'Escape' })
     await wait(150)
     report.closed = !bar()
-    report.cleared = !CSS.highlights.get('abele-chat-find') && !CSS.highlights.get('abele-chat-find-current')
+    report.cleared = ['abele-chat-find', 'abele-chat-find-current'].every((n) => !CSS.highlights.get(n)?.size)
 
     // ── Every chat, from the command ──
     app.commands.executeCommandById('abele:search-all-chats')

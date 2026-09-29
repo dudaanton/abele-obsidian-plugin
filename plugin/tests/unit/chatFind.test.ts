@@ -12,7 +12,12 @@ import {
   snippetAt,
   startingMatch,
 } from '@/ai/chatFind'
-import { textRanges } from '@/ai/chatFindDom'
+import {
+  createFindPainter,
+  FIND_CURRENT_HIGHLIGHT,
+  FIND_HIGHLIGHT,
+  textRanges,
+} from '@/ai/chatFindDom'
 import type { ChatMessage } from '@/ai/types'
 
 const msg = (id: string, fields: Partial<ChatMessage>): ChatMessage =>
@@ -177,5 +182,60 @@ describe('matches on the page', () => {
     el.innerHTML = '<em>pond</em><span>side</span>'
     const [range] = textRanges(el, 'pond')
     expect(range.endContainer.parentElement?.tagName).toBe('EM')
+  })
+})
+
+describe('two chats finding at once', () => {
+  /** The browser's highlight registry, which happy-dom does not have. */
+  function fakeRegistry() {
+    const w = window as unknown as Record<string, unknown>
+    const saved = { Highlight: w.Highlight, CSS: w.CSS }
+    class Highlight extends Set<Range> {
+      constructor(...ranges: Range[]) {
+        super(ranges)
+      }
+    }
+    const highlights = new Map<string, Set<Range>>()
+    w.Highlight = Highlight
+    w.CSS = { ...(saved.CSS as object), highlights }
+    return { highlights, restore: () => Object.assign(w, saved) }
+  }
+
+  const rangesIn = (text: string) => {
+    const el = document.createElement('div')
+    el.textContent = text
+    document.body.appendChild(el)
+    return textRanges(el, 'pond')
+  }
+
+  it("keeps one chat's marks when the other paints or closes", () => {
+    const { highlights, restore } = fakeRegistry()
+    try {
+      const left = createFindPainter(document)
+      const right = createFindPainter(document)
+      const a = rangesIn('pond and pond')
+      const b = rangesIn('a pond')
+      left.paint(a, a[0])
+      right.paint(b, b[0])
+
+      const all = () => [...(highlights.get(FIND_HIGHLIGHT) ?? [])]
+      const current = () => [...(highlights.get(FIND_CURRENT_HIGHLIGHT) ?? [])]
+      expect(all()).toEqual([a[1]])
+      expect(current()).toEqual([a[0], b[0]])
+
+      right.clear()
+      expect(all()).toEqual([a[1]])
+      expect(current()).toEqual([a[0]])
+
+      left.paint(a, a[1])
+      expect(all()).toEqual([a[0]])
+      expect(current()).toEqual([a[1]])
+      left.clear()
+      expect(all()).toEqual([])
+      expect(current()).toEqual([])
+    } finally {
+      restore()
+      document.body.replaceChildren()
+    }
   })
 })
