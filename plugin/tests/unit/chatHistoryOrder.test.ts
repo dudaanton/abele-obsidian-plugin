@@ -105,7 +105,8 @@ describe('the date a chat is ordered by', () => {
     expect(historyDate(entry({ lastMessageAt: 0 }), 'last', file)).toBe(
       new Date(2026, 0, 5).getTime()
     )
-    expect(historyDate(entry({ lastMessageAt: 0, created: '' }), 'last', file)).toBe(T0 - 50 * HOUR)
+    // Imported undated chats may have been created on disk just now; that is not activity.
+    expect(historyDate(entry({ lastMessageAt: 0, created: '' }), 'last', file)).toBe(0)
     expect(historyDate(entry({ lastMessageAt: 0, created: '' }), 'last', null)).toBe(0)
   })
 

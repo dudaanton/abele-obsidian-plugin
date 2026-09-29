@@ -235,8 +235,9 @@ the first turn and again as the chat grows, and for an older chat when its card 
 screen in the history. It is copied into the index the same way. The history's first/last
 message dates are cached from sent user and assistant turns only: system dividers, tool records
 and drafts do not move a chat. Cached dates are versioned and rebuilt once when their derivation
-changes. When no turn has a date, the history uses the chat's creation date (then the file's
-creation time), never its modification time or the current time. A comment chat carries the
+changes. When no turn has a date, the last-message order uses the chat's stored creation date,
+or leaves its date unknown, never a file time or the current time. The creation-date order can
+use the file's creation time when neither a first turn nor a stored creation date is known. A comment chat carries the
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 

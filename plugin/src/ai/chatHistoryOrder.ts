@@ -36,7 +36,7 @@ export function historyDate(
   order: HistoryOrder,
   file: TFile | null
 ): number {
-  if (order === 'last' && entry.lastMessageAt) return entry.lastMessageAt
+  if (order === 'last') return entry.lastMessageAt || createdTime(entry.created)
   return entry.firstMessageAt || createdTime(entry.created) || file?.stat.ctime || 0
 }
 
