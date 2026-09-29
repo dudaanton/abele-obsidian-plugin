@@ -67,6 +67,25 @@ describe('ObsidianFileSystem — listing', () => {
     expect(infos.find((info) => info.path === 'Notes/Deep/second.md')?.mtime).toBe(2000)
   })
 
+  it('lists a pulled note before Obsidian has indexed its adapter rename', async () => {
+    const fs = useVault(VAULT)
+    await fs.writeAtomic('Pulled.md', text('from server'), 7000)
+    const index = app.vault.getFiles.bind(app.vault)
+    // The disk has the file, but the file index catches up after the engine's next scan.
+    let indexing = false
+    app.vault.getFiles = () => index().filter((file) => indexing || file.path !== 'Pulled.md')
+    expect((await listed(fs)).find((file) => file.path === 'Pulled.md')).toEqual({
+      path: 'Pulled.md',
+      size: 11,
+      mtime: 7000,
+    })
+    indexing = true
+    expect((await listed(fs)).filter((file) => file.path === 'Pulled.md')).toHaveLength(1)
+    indexing = false
+    await app.vault.adapter.remove('Pulled.md')
+    expect((await listed(fs)).map((file) => file.path)).not.toContain('Pulled.md')
+  })
+
   it('walks the configuration folder, which the file index never shows', async () => {
     const fs = useVault(VAULT)
     const paths = (await listed(fs)).map((info) => info.path).sort()

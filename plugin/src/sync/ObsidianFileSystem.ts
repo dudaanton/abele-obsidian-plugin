@@ -108,6 +108,8 @@ export class ObsidianFileSystem implements FileSystem {
    * what a `stat` compares against before it answers mtime 0 (`yieldsToServer`).
    */
   private readonly yielded = new Map<string, string>()
+  /** Pulls can finish before Obsidian's file index sees their adapter renames. */
+  private readonly awaitingIndex = new Set<string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
   private readonly writer: VaultWriter
@@ -160,7 +162,19 @@ export class ObsidianFileSystem implements FileSystem {
     await this.recovered
     for (const file of this.app.vault.getFiles()) {
       if (isAdapterTemp(file.path)) continue
+      this.awaitingIndex.delete(file.path)
       yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
+    }
+    // The engine scans immediately after a pull. An adapter rename has reached the disk but
+    // Obsidian may not yet have indexed it; omitting it here sends a delete right back out.
+    for (const path of this.awaitingIndex) {
+      if (path.startsWith(`${this.configDir}/`)) {
+        this.awaitingIndex.delete(path)
+        continue
+      }
+      const info = await this.fileAt(path)
+      if (info !== null) yield info
+      else this.awaitingIndex.delete(path) // A person really removed it before the next scan.
     }
     for await (const info of this.walkConfig(this.configDir)) yield await this.told(info, true)
   }
@@ -192,6 +206,7 @@ export class ObsidianFileSystem implements FileSystem {
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
     const standing = await this.onlyFileOrNothing(path)
     await this.writer.write(path, bytesOf(bytes), mtime, standing !== null)
+    this.awaitingIndex.add(path)
     this.wrote(path)
   }
 
@@ -217,6 +232,8 @@ export class ObsidianFileSystem implements FileSystem {
         throw new EngineError('conflict', `${to} is held by another file`)
       }
       await this.rename(from, to)
+      this.awaitingIndex.delete(from)
+      this.awaitingIndex.add(to)
       this.wrote(from, to)
       // Only a listing that says outright that the old spelling is still there sends this
       // round again; a listing that would not answer leaves the rename as done.
@@ -226,6 +243,8 @@ export class ObsidianFileSystem implements FileSystem {
     }
     await makeParents(this.adapter, to)
     await this.rename(from, to)
+    this.awaitingIndex.delete(from)
+    this.awaitingIndex.add(to)
     this.wrote(from, to)
     await pruneAbove(this.adapter, this.native, this.configDir, from)
   }
@@ -241,6 +260,7 @@ export class ObsidianFileSystem implements FileSystem {
       if ((await this.rawStat(path)) === null) return
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
+    this.awaitingIndex.delete(path)
     this.wrote(path)
     await pruneAbove(this.adapter, this.native, this.configDir, path)
   }
