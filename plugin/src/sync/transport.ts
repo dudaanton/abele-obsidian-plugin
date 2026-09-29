@@ -42,6 +42,10 @@ export function fetchViaRequestUrl(requestUrl: RequestUrlFn): typeof fetch {
     const url = urlOf(input)
     const method = (init?.method ?? 'GET').toUpperCase()
     const headers = headersOf(init?.headers)
+    // A blob HEAD is permission-scoped to the current device's vault, not just to its URL.
+    // Native HTTP caching can otherwise reuse another vault's 200 after switching tokens and
+    // make the engine skip an upload that the new vault still needs.
+    if (method === 'HEAD') headers['cache-control'] = 'no-cache'
     const body = bodyOf(init?.body)
     // Obsidian sends `contentType` as the header of that name, and some builds ignore one
     // passed in `headers` alone. Sending both says the same thing twice, which is safe.

@@ -339,7 +339,9 @@ describe.skipIf(why !== null)('joining a vault that already has files', () => {
     // ledger still asks, since a transfer cannot know that.
     expect(asked.kind).toBe('choose')
     await sync.waitIdle()
-    expect(sync.statusBar()).toBe('Fully synced')
+    expect(sync.statusBar(), JSON.stringify(sync.status()) + '\n' + sync.log().join('\n')).toBe(
+      'Fully synced'
+    )
     expect(sync.read(SHARED)).toBe(SERVER_TEXT)
   })
 

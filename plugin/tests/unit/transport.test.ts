@@ -116,6 +116,28 @@ describe('fetchViaRequestUrl', () => {
     expect(await response.text()).toBe('')
   })
 
+  it('does not reuse a native cached blob HEAD from a different device token', async () => {
+    let cached: RequestUrlResponse | undefined
+    const native: RequestUrlFn = async (request) => {
+      if (cached && request.headers?.['cache-control'] !== 'no-cache') return cached
+      const reply = answer({
+        status: request.headers?.authorization === 'Bearer first-device' ? 200 : 404,
+      })
+      cached = reply
+      return reply
+    }
+    const fetch = fetchViaRequestUrl(native)
+    const url = 'https://sync.example/v1/blobs/sample-sha'
+    expect(
+      (await fetch(url, { method: 'HEAD', headers: { authorization: 'Bearer first-device' } }))
+        .status
+    ).toBe(200)
+    expect(
+      (await fetch(url, { method: 'HEAD', headers: { authorization: 'Bearer second-device' } }))
+        .status
+    ).toBe(404)
+  })
+
   it('round-trips the status and reads a header back whatever its case', async () => {
     const { fetch } = fake(() =>
       answer({
