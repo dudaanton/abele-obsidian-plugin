@@ -80,8 +80,10 @@ const script = `(async () => {
 
   /** Selects the words in a rendered message and presses "Ask here" in its action row. */
   const askOn = async (messageId, words) => {
-    if (!(await until(() => row(messageId) && row(messageId).querySelector('.abele-markdown'), 5000)))
-      throw new Error('message ' + messageId + ' is not on screen')
+    // The words, not only the box: a message renders its markdown after its box is there, and on
+    // a busy machine the box was found still empty.
+    if (!(await until(() => row(messageId)?.querySelector('.abele-markdown')?.textContent.includes(words), 5000)))
+      throw new Error('message ' + messageId + ' is not on screen with "' + words + '" in it')
     const el = row(messageId)
     const md = el.querySelector('.abele-markdown')
     const walker = document.createTreeWalker(md, NodeFilter.SHOW_TEXT)
