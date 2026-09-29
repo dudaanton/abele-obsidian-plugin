@@ -2,6 +2,7 @@
   <div
     ref="chatContainer"
     class="abele-ai-chat"
+    :class="{ 'abele-ai-chat--composing': composing, 'abele-keyboard-open': keyboardOpen }"
     @dragover.prevent="onDragOver"
     @dragleave="onDragLeave"
     @drop.prevent="onFileDrop"
@@ -81,16 +82,19 @@
 
       <!-- "Ask here" over words selected on a touch screen, once the finger has let them go. -->
       <ChatSelectionBar
-        v-if="messagesContainer && canComment"
+        v-if="messagesContainer && canComment && !composing"
         :scroller="messagesContainer"
         @ask="onAskHere"
       />
 
       <!-- Over a comment on a message: the way down to it, every level a way back. -->
-      <AiCommentTrail v-if="session" :session="session" />
+      <AiCommentTrail v-if="session" v-show="!composing" :session="session" />
 
       <!-- Messages -->
+      <!-- Hidden, not taken away, while the composer is opened out over it: the conversation
+           keeps streaming into it and is where it was when the composer closes. -->
       <div
+        v-show="!composing"
         ref="messagesContainer"
         class="abele-ai-chat__messages"
         @scroll="onMessagesScroll"
@@ -262,6 +266,7 @@
       <!-- Input -->
       <AiChatInput
         ref="chatInput"
+        v-model:expanded="composing"
         :is-streaming="isStreaming || isExecutingTool || interceptorWorking"
         :is-busy="isBusy"
         :can-continue="showContinue"
@@ -1130,6 +1135,37 @@ const scrollOnUserSend = () => {
 watch([messages, streamingContent, streamingThinking], doScroll)
 
 /**
+ * The composer opened out over the whole chat, for writing at length (`AiChatInput`). The
+ * conversation is hidden under it, and put back where the reader left it when it closes — or
+ * at its end, if that is where they were.
+ */
+const composing = ref(false)
+let gapBeforeComposing = 0
+
+watch(composing, (open) => {
+  const el = messagesContainer.value
+  if (open) {
+    gapBeforeComposing = bottomGap
+    return
+  }
+  void nextTick(() => {
+    if (!el || !messagesContainer.value) return
+    boxHeight = el.clientHeight
+    if (shouldAutoScroll) scrollContainerTo(el, el.scrollHeight)
+    else scrollContainerTo(el, el.scrollHeight - el.clientHeight - gapBeforeComposing)
+  })
+})
+
+// Something the agent cannot go on without is shown in the conversation; it is not left
+// waiting under the composer. What was written stays in the field.
+watch(
+  () => !!pendingApprovalMessage.value || !!currentQuestion.value,
+  (waiting) => {
+    if (waiting) composing.value = false
+  }
+)
+
+/**
  * What was typed in each tab and not sent.
  *
  * The input is one component shared by every tab, so leaving it alone would show the message
@@ -1312,7 +1348,8 @@ let boxHeight: number | null = null
  */
 const onBoxResized = () => {
   const el = messagesContainer.value
-  if (!el) return
+  // Hidden under the opened composer: a box of nothing is not a change the reader made.
+  if (!el || composing.value) return
   if (el.clientHeight !== boxHeight) {
     boxHeight = el.clientHeight
     if (!shouldAutoScroll) scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap)
@@ -1323,6 +1360,8 @@ const onBoxResized = () => {
 
 const observe = (el: HTMLElement) => {
   mutObserver = new MutationObserver(() => {
+    // Hidden under the opened composer; it is put right when the composer closes.
+    if (composing.value) return
     // A message that has just rendered its markdown changes the subtree and the layout
     // with it — which is exactly when the anchor needs putting back.
     holdAnchor()
@@ -1437,9 +1476,16 @@ const onSend = async (content: string, attachments: string[] = []) => {
   await s.sendMessage(content, attachments)
 }
 
+/**
+ * The composer has the focus, and on a phone the keyboard with it. In the class binding, not
+ * put on the element by hand: the binding rewrites the class list whenever another of its
+ * classes changes, and opening the composer out took the keyboard layout away with it.
+ */
+const keyboardOpen = ref(false)
+
 const onInputFocus = (focused: boolean) => {
   if (focused) measureBottomGap()
-  chatContainer.value?.classList.toggle('abele-keyboard-open', focused)
+  keyboardOpen.value = focused
 }
 
 const onCommand = async (command: string) => {
@@ -1751,6 +1797,20 @@ const showDebug = () => {
       padding-bottom: 0;
       height: calc(100% - max(0px, var(--keyboard-height, 0px) - var(--abele-bottom-gap, 0px)));
     }
+  }
+
+  // The composer is Obsidian's note editor, so Obsidian's toolbar comes up over the keyboard
+  // for it, as for a note. It stands on the keyboard and covered the composer's own row of
+  // buttons, Send among them; the chat ends above it instead.
+  body.is-mobile.mod-toolbar-open &.abele-keyboard-open {
+    height: calc(
+      100% -
+        max(
+          0px,
+          var(--keyboard-height, 0px) + var(--mobile-toolbar-height, 0px) -
+            var(--abele-bottom-gap, 0px)
+        )
+    );
   }
 }
 

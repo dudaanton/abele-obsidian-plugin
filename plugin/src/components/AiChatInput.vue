@@ -1,7 +1,10 @@
 <template>
   <div
     class="abele-chat-input"
-    :class="{ 'abele-chat-input--dragover': isDragging }"
+    :class="{
+      'abele-chat-input--dragover': isDragging,
+      'abele-chat-input--expanded': expanded,
+    }"
     @dragover.prevent="onDragOver"
     @dragleave="onDragLeave"
     @drop.prevent="onDrop"
@@ -19,10 +22,22 @@
       </div>
     </div>
 
+    <!-- Obsidian's own note editor: live preview, the `[[` suggester, the formatting hotkeys,
+         and on a phone Obsidian's toolbar above the keyboard. A plain text box only where
+         that editor cannot be borrowed (see embeddedEditor.ts). -->
+    <div
+      v-if="!fallback"
+      ref="editorHost"
+      class="abele-chat-input__field abele-chat-input__editor"
+      @paste.capture="onPaste"
+      @drop.capture="onEditorDrop"
+      @mousedown="onEmptyPress"
+    />
     <textarea
+      v-else
       ref="inputEl"
       :value="text"
-      class="abele-chat-input__textarea"
+      class="abele-chat-input__field abele-chat-input__textarea"
       placeholder="Message..."
       rows="1"
       @input="onInput"
@@ -46,6 +61,18 @@
 
     <div class="abele-chat-input__toolbar">
       <div class="abele-chat-input__toolbar-left">
+        <!-- Opens the field out over the whole chat for writing at length, and back. It keeps
+             the field's focus like Send does, so a phone's keyboard stays up through it. -->
+        <Icon
+          :icon="expanded ? 'minimize-2' : 'maximize-2'"
+          with-bg
+          class="abele-chat-input__expand"
+          :tooltip="expandLabel"
+          :aria-label="expandLabel"
+          data-keeps-focus
+          @mousedown.prevent
+          @click="toggleExpanded"
+        />
         <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
       </div>
       <!-- `data-keeps-focus` on the buttons that act on what is typed: on a phone the field
@@ -125,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { Menu, TFile, Notice } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
@@ -140,6 +167,11 @@ import {
   ALLOWED_ACCEPT,
 } from '@/ai/attachments'
 import type { ChatDraft } from '@/ai/types'
+import {
+  createEmbeddedEditor,
+  isEmbeddedEditorAvailable,
+  type EmbeddedEditor,
+} from '@/editor/embeddedEditor'
 
 const props = defineProps<{
   isStreaming: boolean
@@ -189,14 +221,66 @@ const TEXTAREA_MAX_HEIGHT = 140
 
 const text = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
+const editorHost = ref<HTMLElement | null>(null)
+/**
+ * The note editor cannot be borrowed — an Obsidian that moved its insides, or a test with no
+ * Obsidian at all — and the field is the plain text box it used to be.
+ */
+const fallback = ref(!isEmbeddedEditorAvailable(GlobalStore.getInstance().app))
+let editor: EmbeddedEditor | null = null
+/** What the editor itself last reported, so writing it back does not move the cursor. */
+let echoed = ''
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const attachments = ref<TFile[]>([])
+
+/**
+ * Open out over the whole chat, for a message that takes more than a few lines to write. The
+ * field is the same element either way — only the room around it changes — so the draft, the
+ * cursor, the undo history and the attachments are all simply still there.
+ */
+const expanded = defineModel<boolean>('expanded', { default: false })
+const expandLabel = computed(() =>
+  expanded.value ? 'Collapse the message field' : 'Expand the message field'
+)
+
+const setExpanded = (value: boolean) => {
+  expanded.value = value
+}
+
+// However it changed — its button, a send, the chat taking the room back — the text box is
+// sized for the room it now has.
+watch(expanded, () => void nextTick(autoResize))
+
+const toggleExpanded = () => {
+  setExpanded(!expanded.value)
+  // Straight back to writing; the button is only a change of room.
+  void nextTick(() => focus())
+}
+
+/**
+ * Puts text in the field from outside — a draft coming back, a quote, a dictation, a send
+ * emptying it. Straight into the editor as well, not through a watcher: typed and cleared in
+ * one tick, the value a watcher sees has not changed, and the sent words stayed in the field.
+ */
+const write = (value: string) => {
+  text.value = value
+  if (editor && value !== echoed) {
+    echoed = value
+    editor.set(value)
+  }
+}
 
 const autoResize = () => {
   const el = inputEl.value
   // A hidden field — the chat's drawer on a phone, shut while text is put in — measures
   // nothing; it is sized when it is drawn (`watchDrawn`).
   if (!el || !el.getClientRects().length) return
+  // Opened out, the stylesheet gives it the chat's height, and it scrolls within that.
+  if (expanded.value) {
+    el.style.removeProperty('height')
+    el.style.removeProperty('overflow-y')
+    return
+  }
   el.style.height = `${TEXTAREA_MIN_HEIGHT}px`
   const newHeight = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)
   el.style.height = `${newHeight}px`
@@ -224,15 +308,18 @@ const send = () => {
     } else {
       emit('command', msg)
     }
-    text.value = ''
+    write('')
+    setExpanded(false)
     nextTick(autoResize)
     return
   }
 
   const paths = attachments.value.map((f) => f.path)
   emit('send', msg, paths)
-  text.value = ''
+  write('')
   attachments.value = []
+  // What was written is sent; what comes next is the answer, and it needs the room.
+  setExpanded(false)
   nextTick(autoResize)
 }
 
@@ -249,7 +336,8 @@ const keepNote = () => {
   if (noteDisabled.value) return
 
   emit('note', text.value.trim())
-  text.value = ''
+  write('')
+  setExpanded(false)
   nextTick(autoResize)
 }
 
@@ -266,20 +354,20 @@ const withDictated = (dictated: string) => {
 }
 
 const onVoiceText = (dictated: string) => {
-  text.value = withDictated(dictated)
+  write(withDictated(dictated))
   nextTick(() => {
     autoResize()
-    inputEl.value?.focus()
+    focus({ atEnd: true })
   })
 }
 
 const onVoiceSend = (dictated: string) => {
-  text.value = withDictated(dictated)
+  write(withDictated(dictated))
   nextTick(send)
 }
 
 const onVoiceNote = (dictated: string) => {
-  text.value = withDictated(dictated)
+  write(withDictated(dictated))
   keepNote()
 }
 
@@ -436,7 +524,7 @@ const onDrop = async (e: DragEvent) => {
 }
 
 const setText = (value: string) => {
-  text.value = value
+  write(value)
   nextTick(autoResize)
 }
 
@@ -444,7 +532,7 @@ const setText = (value: string) => {
 const takeDraft = (): ChatDraft => ({ text: text.value, attachments: attachments.value })
 
 const putDraft = (draft: ChatDraft) => {
-  text.value = draft.text
+  write(draft.text)
   attachments.value = draft.attachments
   nextTick(autoResize)
 }
@@ -458,6 +546,11 @@ const addAttachment = (file: TFile) => {
 
 /** `atEnd` puts the cursor after what is already typed — text somebody else put there. */
 function focus(options: { atEnd?: boolean } = {}) {
+  if (editor) {
+    if (options.atEnd) editor.focusEnd()
+    else editor.focus()
+    return
+  }
   const el = inputEl.value
   if (!el) return
   el.focus()
@@ -466,8 +559,9 @@ function focus(options: { atEnd?: boolean } = {}) {
 
 /** Whether the field has the cursor — a focus given to one not on screen yet is dropped. */
 function hasFocus(): boolean {
-  const el = inputEl.value
-  return !!el && el.ownerDocument.activeElement === el
+  const el = editor ? editor.contentEl : inputEl.value
+  const active = el?.ownerDocument.activeElement
+  return !!el && !!active && el.contains(active)
 }
 
 defineExpose({ setText, addAttachment, focus, hasFocus, takeDraft, putDraft })
@@ -488,11 +582,83 @@ const onKeydown = (e: KeyboardEvent) => {
 // Cmd/Ctrl+Enter: Obsidian intercepts this at document level,
 // so we catch it on the capture phase before Obsidian does
 const onCaptureKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && document.activeElement === inputEl.value) {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && hasFocus()) {
     e.preventDefault()
     e.stopImmediatePropagation()
     send()
   }
+}
+
+/**
+ * The keys the note editor is given before its own and Obsidian's: the same as the text box
+ * had. Enter is a new line, as in a note; Shift+Enter sends; Alt+Enter keeps a note, and only
+ * where there is one to keep — anywhere else Obsidian may have it.
+ */
+const EDITOR_KEYS = [
+  {
+    key: 'Shift-Enter',
+    run: () => {
+      send()
+      return true
+    },
+  },
+  {
+    key: 'Alt-Enter',
+    run: () => {
+      if (!props.canNote) return false
+      keepNote()
+      return true
+    },
+  },
+]
+
+const mountEditor = () => {
+  const host = editorHost.value
+  if (!host) return
+  echoed = text.value
+  editor = createEmbeddedEditor(GlobalStore.getInstance().app, host, {
+    value: text.value,
+    placeholder: 'Message...',
+    onChange: (value) => {
+      echoed = value
+      text.value = value
+    },
+    onSubmit: send,
+    onFocus: () => emit('focus', true),
+    onBlur: () => emit('focus', false),
+    keys: EDITOR_KEYS,
+  })
+  if (!editor) fallback.value = true
+}
+
+
+/** A press on the field below the last line puts the cursor at the end, as in a note. */
+const onEmptyPress = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!editor || target.closest('.cm-content')) return
+  event.preventDefault()
+  editor.focusEnd()
+}
+
+/**
+ * A file dropped on the note editor is an attachment, as it was on the text box — not a link
+ * written into the message, which is what the editor would make of it. Only the default is
+ * taken from the editor (it stands down for an event already handled); the drop goes on to the
+ * handlers above, which read what was dropped. Text dragged in is left to the editor.
+ */
+const onEditorDrop = (e: DragEvent) => {
+  const dt = e.dataTransfer
+  if (!dt) return
+  const plain = dt.getData('text/plain')?.trim() ?? ''
+  if (dt.files?.length || plain.startsWith('obsidian://') || isVaultPath(plain)) {
+    e.preventDefault()
+  }
+}
+
+const isVaultPath = (value: string): boolean => {
+  if (!value || value.includes('\n')) return false
+  const { app } = GlobalStore.getInstance()
+  return app.vault.getAbstractFileByPath(value.replace(/^\[\[|\]\]$/g, '')) instanceof TFile
 }
 
 /**
@@ -516,12 +682,20 @@ const watchDrawn = () => {
 
 onMounted(() => {
   window.addEventListener('keydown', onCaptureKeydown, true)
-  watchDrawn()
+  if (fallback.value) {
+    watchDrawn()
+    return
+  }
+  mountEditor()
+  // Built and refused after all: the text box is drawn on the next tick, and sized from then.
+  if (fallback.value) void nextTick(watchDrawn)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onCaptureKeydown, true)
   drawn?.disconnect()
+  editor?.destroy()
+  editor = null
 })
 </script>
 
@@ -593,6 +767,66 @@ onUnmounted(() => {
   &:focus {
     border-color: var(--interactive-accent);
     outline: none;
+  }
+}
+
+/**
+ * The note editor drawn as the composer's field: the text box's border and radius around it,
+ * the note's own typography inside. It grows with the text up to the text box's six lines or
+ * so and scrolls after that; opened out, it takes all the height the chat gives it.
+ */
+.abele-chat-input__editor {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  cursor: text;
+  overflow: hidden;
+
+  &:focus-within {
+    border-color: var(--interactive-accent);
+  }
+
+  .markdown-source-view.mod-cm6 .cm-scroller {
+    min-height: 34px;
+    max-height: 140px;
+    padding: var(--size-2-3) var(--size-4-2);
+    overflow-y: auto;
+  }
+
+  // A note centres a readable column in a wide pane; a field is the column.
+  .markdown-source-view.mod-cm6.is-readable-line-width .cm-sizer,
+  .markdown-source-view.mod-cm6 .cm-sizer {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/** Opened out over the whole chat: the conversation is hidden and the field has its height. */
+.abele-chat-input--expanded {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  > .abele-chat-input__field {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  > .abele-chat-input__textarea {
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .abele-chat-input__editor .markdown-source-view.mod-cm6,
+  .abele-chat-input__editor .cm-editor {
+    height: 100%;
+  }
+
+  .abele-chat-input__editor .markdown-source-view.mod-cm6 .cm-scroller {
+    height: 100%;
+    max-height: none;
   }
 }
 

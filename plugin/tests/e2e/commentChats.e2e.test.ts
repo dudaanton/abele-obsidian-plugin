@@ -271,7 +271,7 @@ const mobileScript = `(async () => {
     report.chatVisible = shown(chat)
     report.modalOpen = !!document.querySelector('.modal')
     if (chat) {
-      report.composerVisible = shown(chat.querySelector('.abele-chat-input__textarea'))
+      report.composerVisible = shown(chat.querySelector('.abele-chat-input__field'))
       report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
     }
   } catch (e) {

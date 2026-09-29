@@ -220,6 +220,12 @@ Three files, three concerns:
   room the keyboard leaves, its body scrolls there, the time field is in sight and the buttons
   stand above the keyboard. Writes one task note for the run and removes it; pictures go to
   `/tmp/abele-phone/task-date-*.png`.
+- `composerExpand.e2e.test.ts` — **the chat's composer**. The field is Obsidian's note editor in
+  live preview; its button opens it out over the whole chat and back with the draft kept; `[[`
+  brings up the link suggester; a pasted and a dropped file become attachments; Shift+Enter sends
+  the markdown as written to a scripted model. Then on a phone at 390×844, the keyboard written as
+  Obsidian's iPhone app writes it: opened out, the field, the line being typed and Send stand above
+  the keyboard and Obsidian's toolbar over it. Pictures in `/tmp/abele-phone/composer-*.png`.
 - `formKeyboard.e2e.test.ts` — **typing into a long form on a phone, keyboard up**. A script's
   `form()` of twelve text fields and a note field, under `emulateMobile` at 390×844 with the
   keyboard written as Obsidian's iPhone app does: the last text field and then the note field,

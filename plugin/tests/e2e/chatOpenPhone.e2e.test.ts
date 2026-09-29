@@ -196,7 +196,7 @@ const script = `(async () => {
       const chip = await until(() => panel?.view.containerEl.querySelector('.abele-chat-msg__attachment-chip'))
       if (!chip) throw new Error('no attached chat in the message')
       // The chat's own field focused, as after typing in it.
-      panel.view.containerEl.querySelector('.abele-chat-input__textarea')?.focus()
+      window.__abeleTest.composer(panel.view.containerEl)?.focus()
       await wait(600)
       await tap('attached', chip)
     })

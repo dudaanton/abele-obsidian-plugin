@@ -46,8 +46,7 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
         const saved = window.__abeleProseE2E
         const config = window.__abeleTest.AbeleConfig.getInstance()
         if (saved && config.ai) config.ai.enabled = saved.ai
-        const input = document.querySelector('.abele-chat-input__textarea')
-        if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })) }
+        window.__abeleTest.composer()?.set('')
         window.getSelection().removeAllRanges()
         // The chat opened the right sidebar; it goes back the way the run found it.
         if (window.__abeleGithubE2E?.right) app.workspace.rightSplit.collapse()
@@ -126,12 +125,12 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
     const chat = evalAsync<{ error?: string; text?: string; focused?: boolean }>(`(async () => {
       ${PRELUDE}
       const input = await until(() => {
-        const i = document.querySelector('.abele-chat-input__textarea')
-        return i && i.value.includes('discussioncomment') ? i : null
+        const i = window.__abeleTest.composer()
+        return i && i.get().includes('discussioncomment') ? i : null
       }, 8000)
       if (!input) return { error: 'the chat input never got the link' }
       await wait(300)
-      return { text: input.value, focused: document.activeElement === input }
+      return { text: input.get(), focused: input.hasFocus() }
     })()`)
     expect(chat.error).toBeUndefined()
     expect(chat.text).toBe(

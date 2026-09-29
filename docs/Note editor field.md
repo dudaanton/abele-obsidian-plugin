@@ -14,7 +14,10 @@ Scripts, and so agents, put it in front of a person two ways:
   Mod+Enter.
 
 The component is `src/components/NoteEditorField.vue`; the editor inside it is
-`src/editor/embeddedEditor.ts`.
+`src/editor/embeddedEditor.ts`. The chat's composer (`AiChatInput.vue`) builds the same editor
+directly, with keys of its own on top (Shift+Enter sends, Alt+Enter keeps a note over a
+comment); on a phone the chat ends above Obsidian's toolbar while it shows (`mod-toolbar-open`),
+so the toolbar does not cover the composer's buttons.
 
 ## The borrowed editor
 

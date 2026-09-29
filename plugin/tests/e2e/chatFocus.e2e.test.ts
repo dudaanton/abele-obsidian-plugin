@@ -30,7 +30,7 @@ const script = `(async () => {
   document.body.appendChild(decoy)
   const elsewhere = () => decoy.focus()
   const composerFocused = () =>
-    !!document.activeElement?.matches?.('.abele-ai-chat .abele-chat-input__textarea')
+    !!document.activeElement?.closest?.('.abele-ai-chat .abele-chat-input__field')
   const focusedWithin = async (ms = 3000) => {
     const deadline = Date.now() + ms
     while (Date.now() < deadline) {

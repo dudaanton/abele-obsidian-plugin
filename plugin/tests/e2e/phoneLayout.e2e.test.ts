@@ -143,7 +143,10 @@ const probeScript = `(async () => {
       // A scrolling box with a fixed ceiling lower than the sheet was sized for another
       // dialog; on a phone it is the list in the top half of an empty screen.
       const ceiling = parseFloat(s.maxHeight)
-      if (s.maxHeight.endsWith('px') && ceiling < hostBox.height - 1) capped.push(name(el) + ' ' + Math.round(ceiling) + 'px')
+      // Except the chat's composer: under the conversation it stops growing at a few lines on
+      // purpose, and its own button opens it out over the whole chat.
+      const composer = el.closest('.abele-chat-input:not(.abele-chat-input--expanded)')
+      if (!composer && s.maxHeight.endsWith('px') && ceiling < hostBox.height - 1) capped.push(name(el) + ' ' + Math.round(ceiling) + 'px')
       if (el.scrollHeight <= el.clientHeight + 1) continue
       const r = el.getBoundingClientRect()
       if (r.height === 0) continue

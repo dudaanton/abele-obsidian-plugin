@@ -124,14 +124,14 @@ const script = `(async () => {
       throw new Error('the answer to the refusal never started')
 
     // Typed into the chat's own input and sent the way a keyboard does.
-    const inputs = [...document.querySelectorAll('.abele-ai-chat .abele-chat-input__textarea')]
-      .filter((el) => el.getClientRects().length)
-    const input = inputs[inputs.length - 1]
+    const input = [...document.querySelectorAll('.abele-ai-chat')]
+      .map((chat) => window.__abeleTest.composer(chat))
+      .filter((c) => c && c.field.getClientRects().length)
+      .at(-1)
     if (!input) throw new Error('no chat input on screen')
     input.focus()
-    input.value = ${JSON.stringify(QUEUED)}
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }))
+    input.set(${JSON.stringify(QUEUED)})
+    input.keyTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, shiftKey: true, bubbles: true, cancelable: true }))
     await wait(50)
     report.queuedWhileAnswering = session.queuedMessages.value.map((q) => q.content)
 

@@ -103,8 +103,7 @@ describe.skipIf(!available)('the agent and books', () => {
           if (saved.rightCollapsed) app.workspace.rightSplit.collapse()
         }
         delete window.__abeleBookAgentE2E
-        const input = document.querySelector('.abele-chat-input__textarea')
-        if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })) }
+        window.__abeleTest.composer()?.set('')
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
         return 'ok'
@@ -244,14 +243,14 @@ describe.skipIf(!available)('the agent and books', () => {
       await wait(500)
       await view.reading.ask()
       const input = await until(() => {
-        const i = document.querySelector('.abele-chat-input__textarea')
-        return i && i.value.includes('rich.epub') ? i : null
+        const i = window.__abeleTest.composer()
+        return i && i.get().includes('rich.epub') ? i : null
       }, 8000)
       const chat = window.__abeleTest.ChatService.getInstance()
       const session = chat.activeSession?.value ?? chat.sessions?.value?.at?.(-1)
       const granted = session?.scopeResolver?.isInScope?.(${JSON.stringify(BOOK)})
       leaf.detach()
-      return { text: input?.value, granted }
+      return { text: input?.get(), granted }
     `)
     expect(r.error).toBeUndefined()
     expect(r.granted).toBe(true)

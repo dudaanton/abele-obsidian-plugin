@@ -95,7 +95,7 @@ describe('Send, tapped with the keyboard up', () => {
     const wrapper = composer({ isStreaming: true })
     const field = await typed(wrapper, 'and also')
 
-    const send = wrapper.findAll('[data-keeps-focus]')[0]
+    const send = wrapper.findAll('.abele-chat-input__toolbar-right [data-keeps-focus]')[0]
     tap(send.element)
 
     expect(document.activeElement).toBe(field)

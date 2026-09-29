@@ -184,7 +184,16 @@ The summary preserves key decisions, file paths, code changes, and pending tasks
 
 ### Sending Messages
 
-Press **Shift+Enter** to send a message. **Enter** inserts a new line.
+Press **Shift+Enter** (or **Mod+Enter**) to send a message. **Enter** inserts a new line.
+
+The input is Obsidian's own note editor: live preview, `[[` offering notes, the formatting
+hotkeys, and on a phone Obsidian's toolbar above the keyboard. The message is sent as the
+markdown written. Where Obsidian's editor cannot be borrowed, the input is a plain text box.
+
+For a long message, the expand button at the left of the input toolbar opens the input over the
+whole chat panel; the same button closes it again. The text, the cursor and the attachments stay
+as they are either way. Sending closes it, and so does a question or a tool approval from the
+agent, so it is not left waiting under the input.
 
 ### Token Display
 

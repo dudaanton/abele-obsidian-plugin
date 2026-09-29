@@ -219,6 +219,65 @@ interface AbeleTestApi {
   embeddedEditorAvailable(): boolean
   /** The note editor's view inside a note field, found by the field's element. */
   noteFieldView(el: HTMLElement): unknown
+  /**
+   * The field of the chat composer under `root` (the last one on screen, when there are several):
+   * its text, written as typing would, its focus. The same calls for the note editor and for
+   * the plain text box that stands in where the editor cannot be borrowed.
+   */
+  composer(root?: ParentNode): ComposerProbe | null
+}
+
+export interface ComposerProbe {
+  field: HTMLElement
+  get(): string
+  set(text: string): void
+  focus(): void
+  hasFocus(): boolean
+  /** The element keys are pressed on: the editor's content, or the text box. */
+  keyTarget: HTMLElement
+}
+
+function composerProbe(root: ParentNode = document): ComposerProbe | null {
+  const fields = Array.from(root.querySelectorAll<HTMLElement>('.abele-chat-input__field'))
+  const shown = fields.filter((el) => el.getClientRects().length)
+  const field = (shown.length ? shown : fields).at(-1)
+  if (!field) return null
+  const view = embeddedViews.get(field) as
+    | {
+        state: { doc: { toString(): string; length: number } }
+        dispatch(spec: unknown): void
+        focus(): void
+        contentDOM: HTMLElement
+      }
+    | undefined
+  if (view) {
+    return {
+      field,
+      get: () => view.state.doc.toString(),
+      set: (text) =>
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: text },
+          selection: { anchor: text.length },
+          scrollIntoView: true,
+          userEvent: 'input.type',
+        }),
+      focus: () => view.focus(),
+      hasFocus: () => view.contentDOM.contains(view.contentDOM.ownerDocument.activeElement),
+      keyTarget: view.contentDOM,
+    }
+  }
+  const box = field as HTMLTextAreaElement
+  return {
+    field,
+    get: () => box.value,
+    set: (text) => {
+      box.value = text
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    },
+    focus: () => box.focus(),
+    hasFocus: () => box.ownerDocument.activeElement === box,
+    keyTarget: box,
+  }
 }
 
 export interface AgentsSnapshot {
@@ -630,6 +689,7 @@ export function exposeTestApi(plugin: Plugin): void {
     dialogNames,
     embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
     noteFieldView: (el: HTMLElement) => embeddedViews.get(el) ?? null,
+    composer: composerProbe,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }

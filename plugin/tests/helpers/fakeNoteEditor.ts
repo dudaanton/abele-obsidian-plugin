@@ -19,6 +19,8 @@ export interface FakeNoteEditor {
   blur(): void
   /** Mod+Enter. */
   submit(): void
+  /** A key the field was given to answer (`Shift-Enter`); whether anything took it. */
+  press(key: string): boolean
   destroyed: boolean
 }
 
@@ -54,8 +56,11 @@ export function createEmbeddedEditor(
     },
     blur: () => options.onBlur?.(),
     submit: () => options.onSubmit?.(),
+    press: (key) => !!options.keys?.find((k) => k.key === key)?.run(),
     destroyed: false,
   }
+  content.addEventListener('focus', () => options.onFocus?.())
+  content.addEventListener('blur', () => options.onBlur?.())
   fakeNoteEditors.push(fake)
   return {
     get: () => fake.value,
