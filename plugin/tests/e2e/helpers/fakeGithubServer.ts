@@ -24,6 +24,8 @@ import {
   HEAD_FILES,
   HEAD_SHA,
   ISSUE,
+  ISSUE_COMMENT,
+  LATE_COMMENT,
   OWNER,
   PEOPLE,
   PULL,
@@ -104,6 +106,7 @@ const notFound = (res: ServerResponse) =>
 const searchWords = (q: string) =>
   q
     .toLowerCase()
+    .replace(/"/g, ' ')
     .split(/\s+/)
     .filter((w) => w && !w.includes(':'))
 
@@ -447,6 +450,101 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
   return send(res, 200, { errors: [{ type: 'NOT_FOUND', message: 'Could not resolve to a node' }] })
 }
 
+/**
+ * The account's notifications: a comment on the pull request, the issue, the discussion (which
+ * GitHub names by title only) and a read one on another repository. Marking read is remembered
+ * for the life of the server, and every change moves `Last-Modified`, so an unchanged list is
+ * answered 304 the way GitHub answers it.
+ */
+const readThreads = new Set<string>()
+let notificationsChanged = new Date('2026-09-05T10:00:00Z')
+
+function notificationList(web: string) {
+  const api = `${web}/api/v3/repos/${OWNER}/${REPO}`
+  const f = fixtures(web)
+  const all = [
+    {
+      id: '101',
+      reason: 'mention',
+      updated_at: '2026-09-04T10:00:00Z',
+      subject: {
+        title: f.pull.title,
+        url: `${api}/pulls/${PULL}`,
+        latest_comment_url: `${api}/issues/comments/${LATE_COMMENT}`,
+        type: 'PullRequest',
+      },
+      repository: { full_name: `${OWNER}/${REPO}` },
+    },
+    {
+      id: '102',
+      reason: 'assign',
+      updated_at: '2026-09-03T10:00:00Z',
+      subject: {
+        title: f.issue.title,
+        url: `${api}/issues/${ISSUE}`,
+        latest_comment_url: `${api}/issues/comments/${ISSUE_COMMENT}`,
+        type: 'Issue',
+      },
+      repository: { full_name: `${OWNER}/${REPO}` },
+    },
+    {
+      id: '103',
+      reason: 'subscribed',
+      updated_at: '2026-09-02T10:00:00Z',
+      subject: {
+        title: f.discussion.title,
+        url: null,
+        latest_comment_url: null,
+        type: 'Discussion',
+      },
+      repository: { full_name: `${OWNER}/${REPO}` },
+    },
+    {
+      id: '104',
+      reason: 'author',
+      updated_at: '2026-09-01T10:00:00Z',
+      subject: { title: 'An old question', url: null, latest_comment_url: null, type: 'Issue' },
+      repository: { full_name: 'other/gadgets' },
+      read: true,
+    },
+  ]
+  return all.map(({ read, ...n }) => ({ ...n, unread: !read && !readThreads.has(n.id) }))
+}
+
+function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
+  if (url.pathname === '/api/v3/notifications' && req.method === 'PUT') {
+    for (const n of notificationList(web)) readThreads.add(n.id)
+    notificationsChanged = new Date()
+    return send(res, 202, {
+      message: "Unread notifications couldn't be marked in a single request.",
+    })
+  }
+  const thread = /^\/api\/v3\/notifications\/threads\/(\d+)$/.exec(url.pathname)
+  if (thread && req.method === 'PATCH') {
+    readThreads.add(thread[1])
+    notificationsChanged = new Date()
+    res.writeHead(205)
+    return res.end()
+  }
+  if (url.pathname !== '/api/v3/notifications' || req.method !== 'GET') return notFound(res)
+  const lastModified = notificationsChanged.toUTCString()
+  const headers = { 'Last-Modified': lastModified, 'X-Poll-Interval': '60' }
+  const since = req.headers['if-modified-since']
+  if (since && Date.parse(String(since)) >= Date.parse(lastModified)) {
+    res.writeHead(304, headers)
+    return res.end()
+  }
+  const all = url.searchParams.get('all') === 'true'
+  const list = notificationList(web).filter((n) => all || n.unread)
+  const bytes = Buffer.from(JSON.stringify(page(url, list)))
+  res.writeHead(200, {
+    ...headers,
+    'Content-Type': 'application/json',
+    'Content-Length': String(bytes.length),
+  })
+  res.end(bytes)
+}
+
 const server = createServer((req, res) => {
   const host = req.headers.host ?? `127.0.0.1:${port}`
   const url = new URL(req.url ?? '/', `http://${host}`)
@@ -456,6 +554,7 @@ const server = createServer((req, res) => {
     graphql(req, res, web).catch((e) => send(res, 500, { message: String(e) }))
     return
   }
+  if (url.pathname.startsWith('/api/v3/notifications')) return notifications(req, res, url, web)
   if (req.method !== 'GET') return notFound(res)
   rest(req, res, url, web)
 })
