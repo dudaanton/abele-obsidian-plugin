@@ -22,8 +22,8 @@ export interface BooksHost {
   reveal(leaf: LeafRef): Promise<unknown>
   /** File inventory changed; returns an unsubscribe. */
   onFilesChanged?(listener: () => void): () => void
-  /** Plugin unload; optional in isolated clients. */
-  onDispose?(stop: () => void): void
+  /** Plugin unload; returns what removes the callback when its view closes first. */
+  onDispose?(stop: () => void): () => void
 }
 
 export function createBooksApi(host: BooksHost) {
@@ -62,15 +62,23 @@ export function createBooksApi(host: BooksHost) {
       const stopPlace = host.places?.onChange(notify)
       const stopFiles = host.onFilesChanged?.(notify)
       let active = true
+      let stopDispose: (() => void) | undefined
       const stop = () => {
         if (!active) return
         active = false
         stopPlace?.()
         stopFiles?.()
+        stopDispose?.()
+        stopDispose = undefined
         options.signal.removeEventListener('abort', stop)
       }
       options.signal.addEventListener('abort', stop, { once: true })
-      host.onDispose?.(stop)
+      stopDispose = host.onDispose?.(stop)
+      // An already-unloaded host can stop synchronously while registering.
+      if (!active) {
+        stopDispose?.()
+        stopDispose = undefined
+      }
       return stop
     },
   }

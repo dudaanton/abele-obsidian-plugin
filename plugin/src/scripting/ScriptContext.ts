@@ -33,6 +33,7 @@ import { scriptVocabulary } from './vocabularyApi'
 import type { AutomationEvent } from '@/automations/types'
 import type { BookScriptContext } from './bookContext'
 import { createBooksApi, type BooksHost } from './booksApi'
+import { booksDisposalFor } from './booksLifetime'
 import { bookPlaces } from '@/reader/places'
 import { BOOK_VIEW_TYPE } from '@/reader/viewType'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -214,7 +215,7 @@ export function buildScriptContext(opts: {
           ]
           return () => refs.forEach((ref) => app.vault.offref(ref))
         },
-        onDispose: (stop) => AbeleConfig.getInstance().plugin.register(stop),
+        onDispose: (stop) => booksDisposalFor(AbeleConfig.getInstance().plugin)(stop),
       } satisfies BooksHost
     })()),
     /** The message an interceptor script is deciding about; `null` for every other run. */

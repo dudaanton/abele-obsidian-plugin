@@ -5,6 +5,39 @@ import { BookPlaces } from '@/reader/positions'
 const places = () => new BookPlaces({ read: async () => '{}', write: async () => {} })
 
 describe('script reader books', () => {
+  it('removes aborted subscriptions from plugin disposal rather than retaining closed views', () => {
+    const pending = new Set<() => void>()
+    const removed = vi.fn()
+    const host = {
+      files: () => [],
+      places: places(),
+      getFile: () => null,
+      leaves: () => [],
+      newLeaf: () => ({ view: {}, setViewState: async () => {} }),
+      reveal: async () => {},
+      onDispose: (stop: () => void) => {
+        pending.add(stop)
+        return () => {
+          pending.delete(stop)
+          removed()
+        }
+      },
+    }
+    for (let n = 0; n < 50; n++) {
+      const api = createBooksApi(host)
+      const controller = new AbortController()
+      const callback = vi.fn()
+      const stop = api.onChange(callback, { signal: controller.signal })
+      expect(pending.size).toBe(1)
+      controller.abort()
+      stop()
+      expect(pending.size).toBe(0)
+      host.places.invalidate()
+      expect(callback).not.toHaveBeenCalled()
+    }
+    expect(removed).toHaveBeenCalledTimes(50)
+  })
+
   it('queries files, opens a dedicated tab and observes local changes until aborted', async () => {
     const store = places()
     const file = { path: 'Sample/book.pdf', extension: 'pdf' }
