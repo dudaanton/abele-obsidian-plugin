@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Notice, Platform, type App } from 'obsidian'
 import type { VaultClient } from '@abele/sync-core'
@@ -79,6 +79,8 @@ interface Device {
   saves: number
   /** The plugin's `onExternalSettingsChange`, for making Obsidian's own call by hand. */
   tell: () => Promise<void>
+  /** Work already started by the external-settings callback, awaited by a cycle. */
+  reloading: Promise<void>
   /** Where its ledger lives. */
   idb: IDBFactory
 }
@@ -129,7 +131,16 @@ async function device(
   // Its own settings, as a second copy of the plugin would hold them.
   const config = new (AbeleConfig as unknown as new () => AbeleConfig)()
   const keychain = new FakeKeychain()
-  const made = { name, app, config, keychain, calls: 0, reloads: 0, saves: 0 } as Device
+  const made = {
+    name,
+    app,
+    config,
+    keychain,
+    calls: 0,
+    reloads: 0,
+    saves: 0,
+    reloading: Promise.resolve(),
+  } as Device
   made.store = new SecretStore({
     keychain: () => keychain,
     read: () => config.secretStore,
@@ -162,12 +173,15 @@ async function device(
       await app.vault.adapter.writeBinary(DATA, bytes.buffer as ArrayBuffer, { mtime: Date.now() })
     },
     // `main.ts`'s `onExternalSettingsChange`, less what needs the whole plugin.
-    onExternalSettingsChange: async () => {
+    onExternalSettingsChange: () => {
       made.calls++
-      if (beforeReload !== undefined) await beforeReload()
-      if (!(await config.reloadSettings())) return
-      made.reloads++
-      await made.store.load()
+      made.reloading = made.reloading.then(async () => {
+        if (beforeReload !== undefined) await beforeReload()
+        if (!(await config.reloadSettings())) return
+        made.reloads++
+        await made.store.load()
+      })
+      return made.reloading
     },
   }
   made.tell = plugin.onExternalSettingsChange
@@ -225,10 +239,8 @@ function pushed(one: Device): number {
  * after the run, and a save it made is the next run's to push.
  */
 async function cycle(one: Device): Promise<void> {
-  const calls = one.calls
   await one.service.syncNow()
-  await tick()
-  if (one.calls !== calls) await tick(50)
+  await one.reloading
 }
 
 /** Syncs both devices in turn until a round in which neither pushed anything. */
@@ -302,8 +314,32 @@ afterEach(async () => {
 })
 
 describe('Abele settings between two devices', () => {
-  // Several real sync rounds and two device startups take longer than Vitest's default
-  // five seconds when the rest of the suite is busy; correctness is asserted below.
+  it('waits for an external-settings reload to complete instead of sleeping through it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let finish!: () => void
+    const reloading = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    let done = false
+    const one = {
+      calls: 0,
+      reloading,
+      service: { syncNow: async () => undefined },
+    } as unknown as Device
+    try {
+      const work = cycle(one).then(() => {
+        done = true
+      })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(done).toBe(false)
+      finish()
+      await work
+      expect(done).toBe(true)
+    } finally {
+      finish()
+      vi.useRealTimers()
+    }
+  })
   it('takes a change made on one device to the other, reloads it once, and settles', async () => {
     const a = await device('Laptop')
     const b = await device('Phone')
@@ -328,7 +364,7 @@ describe('Abele settings between two devices', () => {
     // The device that took the change wrote nothing back.
     expect(b.saves).toBe(before.saves)
     expect((await onDisk(b)).tasksFolder).toBe('Projects')
-  }, 20_000)
+  })
 
   it('a device joining with settings of its own takes the vault’s, and its own go to history', async () => {
     const a = await device('Laptop')

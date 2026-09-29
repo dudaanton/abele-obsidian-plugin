@@ -137,9 +137,7 @@ export class SyncDriver {
         (value) => { window.${key} = { ok: true, value: value === undefined ? null : value } },
         (error) => { window.${key} = { ok: false, error: String((error && error.message) || error) } }
       ); return 'started' })()`,
-      // The app can still be settling a server-down dialog; only the start acknowledgement
-      // needs the renderer. Its work runs through the separately polled result below.
-      60_000
+      20_000
     )
     let answer: { ok: boolean; value?: T; error?: string } | null = null
     await waitFor(
