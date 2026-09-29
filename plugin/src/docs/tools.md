@@ -235,9 +235,11 @@ Marking — each asks first:
   looks through the whole book (or `part`) and refuses words that are in several places, listing
   each with its link and the words around it; when those read the same everywhere, choose by link
   rather than quoting more. Highlighting the same words again changes that highlight. On a PDF
-  it needs the page's text layer: a scanned page has no words.
-- `book_highlight_edit` — a highlight's `color` or `note`, named by its link; an empty note
-  removes it.
+  it needs the page's text layer: a scanned page has no words. `forms` — a list, or one string
+  with commas — are forms of the word to underline everywhere in the book, a tap on each leading
+  to this highlight (see the vault section, Books); left out, a highlight keeps the ones it has.
+- `book_highlight_edit` — a highlight's `color`, `note` or `forms`, named by its link; an empty
+  note removes it, empty forms stop the underlining. Forms given replace the ones it has.
 - `book_highlight_remove` — removes a highlight named by its link. One carrying a discussion is
   refused: the person removes it in the reader, which asks what becomes of the chat.
 - `book_bookmark` — bookmarks the place a link names (for a PDF, its page), or with `remove` and

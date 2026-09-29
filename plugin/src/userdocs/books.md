@@ -155,6 +155,11 @@ await vocabulary.mark({ note: path, forms: [params.word] })
 Ask the agent for the word's other forms too and pass them in `forms`. Calling it again for the
 same card adds only what is new.
 
+If you keep terms as highlights in one shared note instead of cards, a script can highlight the
+selected word and give it its forms in one go: `await vocabulary.mark({ highlight: book, forms })`.
+A tap on the word anywhere in the book then brings back that highlight in the note. The agent can
+do the same: its highlight tools take the forms too.
+
 ## Asking about a passage
 
 With the AI agent on, **Ask here** on selected words starts a discussion about them. It is kept in

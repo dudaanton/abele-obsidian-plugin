@@ -320,7 +320,7 @@ await v.open()
 | \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
 | \`book\` | \`object \\| null\` | The words in a book the script was run on from the reader (see below) |
 | \`analytics\` | \`object\` | Statistics over finance, notes and bases (see Analytics above) |
-| \`vocabulary\` | \`object\` | Words a note's properties name, underlined in books (see below) |
+| \`vocabulary\` | \`object\` | Words a note's properties or a highlight name, underlined in books (see below) |
 | \`message\` | \`object \\| null\` | The message an interceptor script decides about (see below) |
 | \`chat\` | \`object \\| null\` | The chat that message is sent in, read-only (see below) |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
@@ -413,6 +413,9 @@ Several notes naming the same word make the tap a menu. The rule is properties o
 | \`vocabulary.mark({ note, forms, language?, books?, scope?, replace? })\` | \`rule\` | Adds the forms (an array, or one string with commas) and the books to the note's rule, each once: the same call twice changes nothing. Run on words in a book, \`books\` is that book and \`language\` its language unless given. \`scope: 'language'\` applies it to every book in the language. \`replace: true\` puts the forms in place of the note's |
 | \`await vocabulary.get(note)\` | \`rule \\| null\` | \`{ note, forms, language, books, scope, on }\`, or null when the note names no forms |
 | \`vocabulary.off(note)\`, \`vocabulary.on(note)\` | — | Stops underlining the note's words, or starts again; the forms stay |
+| \`vocabulary.mark({ highlight, forms, color?, replace? })\` | \`{ highlight, book, text, forms, note }\` | Keeps the forms with a highlight instead, in its entry in the highlights note; a tap on the words leads to that entry. \`highlight: book\` is the words the script was run on — highlighted first (in \`color\`, yellow by default) when they are not yet; a link to a highlight's place (\`[[Book.epub#cfi=…]]\`, the \`highlight\` this returns) names one there already. Forms are added, each once, or put in place of its own with \`replace\` |
+| \`await vocabulary.get({ highlight })\` | \`object \\| null\` | The highlight's words and forms, or null when there is no highlight at that place |
+| \`vocabulary.off({ highlight })\` | — | Takes the highlight's forms away: a highlight is underlined everywhere while it has forms. \`on\` has no highlight form |
 
 The note must exist. Forms are matched whole, ignoring case; letters with and without a
 diacritic are different words, and nothing is reduced to a stem: list each form to underline.
@@ -427,6 +430,20 @@ const answer = await agent('Translate "' + params.word + '" as used here. First 
 const [translation, forms = params.word] = answer.trim().split('\\n')
 const card = await create('Cards/' + params.word + '.md', '**' + params.word + '** — ' + translation + '\\n\\n> ' + book.sentence + '\\n> — ' + book.link + '\\n')
 await vocabulary.mark({ note: card, forms: [params.word, ...forms.split(',')] })
+\`\`\`
+
+Terms kept as highlights in one shared highlights note (Settings → Books → Highlights → one note
+for every book, a template whose body may have \`{{ forms }}\` for them) — the term highlighted, its
+forms underlined everywhere in the book, a tap on any of them bringing back its entry:
+
+\`\`\`js
+// @name Term
+// @book
+// @param word string "Term" selection
+if (!book) return 'Run it on a word selected in a book'
+const answer = await agent('List the forms of "' + params.word + '" in ' + (book.language || 'its language') + ' that a text would use, separated by commas, nothing else.\\n' + book.sentence)
+const term = await vocabulary.mark({ highlight: book, forms: [params.word, ...answer.split(',')], color: 'purple' })
+return term.text + ': ' + term.forms.join(', ') + ' — kept in ' + term.note
 \`\`\`
 
 ### message and chat — when a script is a chat's interceptor

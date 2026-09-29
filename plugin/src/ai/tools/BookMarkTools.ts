@@ -27,8 +27,8 @@ import {
   type NotesPlace,
 } from '@/reader/companion'
 import { HIGHLIGHT_COLORS, type Highlight, type HighlightColor } from '@/reader/highlights'
-import { notesTargetFor, readerSettingsFrom } from '@/reader/settings'
 import { bookKey } from '@/reader/positions'
+import { mergedForms, notesPlaceOf } from '@/reader/vocab/highlightForms'
 import { bookBookmarks } from '@/reader/bookmarkFiles'
 import type { BookPlace } from '@/reader/bookLinks'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -50,14 +50,20 @@ const short = (text: string, max: number) => {
 const keyOf = (loaded: LoadedBook) => bookKey(loaded.book.metadata?.identifier, loaded.file.path)
 
 /** Where the book's highlights go, as the settings say now: what the reader asks too. */
-function whereOf(loaded: LoadedBook): NotesPlace {
-  const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
-  return {
-    title: loaded.title,
-    author: loaded.author,
-    target: notesTargetFor(settings, keyOf(loaded)),
-  }
+const whereOf = (loaded: LoadedBook): NotesPlace => notesPlaceOf(loaded)
+
+/** The `forms` a call gives, as a highlight holds them; undefined when it gives none. */
+const formsFrom = (value: unknown): string[] | undefined =>
+  value === undefined || value === null ? undefined : mergedForms([], value, true)
+
+/** The forms parameter, the same for both tools that take it. */
+const FORMS_PARAM = {
+  description:
+    'Forms of the word to underline everywhere in the book, a tap on each leading to this highlight: a list, or one string separated by commas. They replace the ones it has; an empty string clears them',
 }
+
+const formsLine = (h: Highlight) =>
+  h.forms?.length ? [`   Underlined everywhere: ${h.forms.join(', ')}`] : []
 
 const colorFrom = (value: unknown): HighlightColor | undefined => {
   if (typeof value !== 'string' || !value.trim()) return undefined
@@ -141,7 +147,7 @@ export function createBookHighlightsTool(): AgentTool {
         out.push(`${offset + i + 1}. ${highlightLine(file, h)}`)
         out.push(quoted(short(h.text, 200)))
         if (h.comment) out.push(`   Note: ${short(h.comment, 300)}`)
-        if (h.forms?.length) out.push(`   Underlined everywhere: ${h.forms.join(', ')}`)
+        out.push(...formsLine(h))
       })
       if (offset + page.length < all.length)
         out.push(`[More: book_highlights with offset ${offset + page.length}.]`)
@@ -183,6 +189,7 @@ export function createBookHighlightTool(): AgentTool {
           description: `One of ${HIGHLIGHT_COLORS.join(', ')} (default yellow)`,
         },
         note: { type: 'string', description: 'A note kept with the highlight' },
+        forms: FORMS_PARAM,
       },
       required: ['book', 'text'],
     },
@@ -266,14 +273,17 @@ export function createBookHighlightTool(): AgentTool {
         comment: typeof params.note === 'string' ? params.note.trim() : (known?.comment ?? ''),
         label: await labelAt(loaded, index, doc, range),
         ...(known?.discussion ? { discussion: known.discussion } : {}),
-        // Forms of its word underlined everywhere stay with it.
-        ...(known?.forms ? { forms: known.forms } : {}),
+        // Forms of its word underlined everywhere stay with it, unless new ones are given.
+        ...((formsFrom(params.forms) ?? known?.forms)?.length
+          ? { forms: formsFrom(params.forms) ?? known?.forms }
+          : {}),
       }
       const note = await saveHighlight(app(), file, where, h, await chatOf(h))
       const out = [
         `${known ? 'Changed the highlight' : 'Highlighted'} in ${h.color}: ${link(file, { cfi }, h.label)}`,
         quoted(short(h.text, 300)),
         ...(h.comment ? [`   Note: ${short(h.comment, 300)}`] : []),
+        ...formsLine(h),
         `Kept in ${note.path}.`,
       ]
       return { ...answer(out.join('\n')), details: { path: note.path } }
@@ -286,34 +296,44 @@ export function createBookHighlightEditTool(): AgentTool {
     name: 'book_highlight_edit',
     label: 'Change a highlight',
     description:
-      "Changes a book highlight's colour or its note: name it by its link, as book_highlights lists it. " +
-      'An empty `note` removes the note. The words it covers stay; to cover other words, remove it and highlight again.',
+      "Changes a book highlight's colour, its note, or the forms of its word underlined everywhere in the book: name it by its link, as book_highlights lists it. " +
+      'An empty `note` removes the note, empty `forms` the forms. The words it covers stay; to cover other words, remove it and highlight again.',
     parameters: {
       type: 'object',
       properties: {
         highlight: { type: 'string', description: 'The highlight: its link' },
         color: { type: 'string', description: `One of ${HIGHLIGHT_COLORS.join(', ')}` },
         note: { type: 'string', description: 'The note in place of the one it has' },
+        forms: FORMS_PARAM,
       },
       required: ['highlight'],
     },
     execute: async (_id, params) => {
       const color = colorFrom(params.color)
       const note = typeof params.note === 'string' ? params.note.trim() : undefined
-      if (!color && note === undefined) throw new Error('Give a colour, a note, or both.')
+      const forms = formsFrom(params.forms)
+      if (!color && note === undefined && forms === undefined)
+        throw new Error('Give a colour, a note, forms, or several of them.')
       const { file, where, found } = await namedHighlight(params.highlight)
       const h: Highlight = {
         ...found,
         color: color ?? found.color,
         comment: note ?? found.comment,
+        forms: forms ?? found.forms,
         // Words only asked about become a highlight when given a colour.
         ...(color ? { plain: undefined } : {}),
       }
       if (!h.plain) delete h.plain
+      if (!h.forms?.length) delete h.forms
       const saved = await saveHighlight(app(), file, where, h, await chatOf(h))
       return {
         ...answer(
-          `Changed: ${highlightLine(file, h)}${h.comment ? `\n   Note: ${short(h.comment, 300)}` : ''}\nKept in ${saved.path}.`
+          [
+            `Changed: ${highlightLine(file, h)}`,
+            ...(h.comment ? [`   Note: ${short(h.comment, 300)}`] : []),
+            ...formsLine(h),
+            `Kept in ${saved.path}.`,
+          ].join('\n')
         ),
         details: { path: saved.path },
       }

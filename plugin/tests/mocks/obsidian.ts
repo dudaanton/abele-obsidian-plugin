@@ -227,6 +227,25 @@ export function sanitizeHTMLToDom(html: string): DocumentFragment {
  * It used to be `JSON.parse`, which passes for the frontmatter fixtures written as JSON and
  * fails for everything that is actually YAML — a codeblock a person would type, for one.
  */
+/** Where a note's properties are, as Obsidian says it: the YAML between the fences. */
+export function getFrontMatterInfo(content: string): {
+  exists: boolean
+  frontmatter: string
+  from: number
+  to: number
+  contentStart: number
+} {
+  const m = /^---\r?\n([\s\S]*?)\r?\n?---(?:\r?\n|$)/.exec(content)
+  if (!m) return { exists: false, frontmatter: '', from: 0, to: 0, contentStart: 0 }
+  return {
+    exists: true,
+    frontmatter: m[1],
+    from: 4,
+    to: 4 + m[1].length,
+    contentStart: m[0].length,
+  }
+}
+
 export function parseYaml(raw: string): unknown {
   return yamlLoad(raw)
 }

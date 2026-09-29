@@ -192,11 +192,35 @@ describe('a highlight whose word is underlined everywhere', () => {
     const tool = createBookHighlightTool()
     await call(tool, { book: 'Books/Dune.epub', text: 'the mind-killer' })
     const file = app.vault.getAbstractFileByPath('Books/Dune highlights.md') as TFile
-    await app.vault.modify(file, (await note()).replace(/(> the mind-killer)\n/, '$1\n>\n> forms:: killer, killers\n'))
+    await app.vault.modify(
+      file,
+      (await note()).replace(/(> the mind-killer)\n/, '$1\n>\n> forms:: killer, killers\n')
+    )
     await call(tool, { book: 'Books/Dune.epub', text: 'the mind-killer', color: 'blue' })
     expect(await note()).toContain('> forms:: killer, killers')
     const list = await call(createBookHighlightsTool(), { book: 'Books/Dune.epub' })
     expect(list).toContain('   Underlined everywhere: killer, killers')
+  })
+
+  it('takes forms when highlighting, and changes or clears them by link', async () => {
+    const made = await call(createBookHighlightTool(), {
+      book: 'Books/Dune.epub',
+      text: 'the mind-killer',
+      forms: 'killer, Killers, killer',
+    })
+    expect(made).toContain('Underlined everywhere: killer, Killers')
+    expect(await note()).toContain('> forms:: killer, Killers')
+    const link = /\[\[[^\]]+\]\]/.exec(made)?.[0] ?? ''
+    // Forms alone are a change the edit takes; given, they take the place of the old ones.
+    const edited = await call(createBookHighlightEditTool(), { highlight: link, forms: ['kill'] })
+    expect(edited).toContain('Underlined everywhere: kill')
+    expect(await note()).toContain('> forms:: kill\n')
+    await call(createBookHighlightEditTool(), { highlight: link, forms: '' })
+    expect(await note()).not.toContain('forms::')
+    // Highlighting the same words again without forms leaves the ones it has.
+    await call(createBookHighlightEditTool(), { highlight: link, forms: 'kill' })
+    await call(createBookHighlightTool(), { book: 'Books/Dune.epub', text: 'the mind-killer' })
+    expect(await note()).toContain('> forms:: kill\n')
   })
 })
 

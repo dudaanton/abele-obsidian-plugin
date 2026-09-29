@@ -588,6 +588,8 @@ A highlight can also name **forms of its word to underline everywhere in the boo
 `{{ forms }}` field in the template's body (on a line of its own, like `{{ comment }}`), they are
 kept there, comma-separated; otherwise as the callout's last line, `> forms:: māja, mājas, mājā`,
 after a blank `>` line. Keep either shape when editing; an empty field or no line means none.
+Set them with `book_highlight` or `book_highlight_edit` (`forms`) rather than by hand. In the note the
+forms are a link: it opens the book with its search on them, every place listed.
 
 The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or
 removing a highlight by editing the note is fine; keep the shape above or the reader will not see
