@@ -33,7 +33,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, markRaw, type Component } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, markRaw, type Component } from 'vue'
+import { settingsHeaderRoom } from './settingsHeaderRoom'
 import { Platform } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import Tabs from '../obsidian/Tabs.vue'
@@ -126,11 +127,17 @@ const onSelect = () => {
   }
 }
 
+let restoreHeaderRoom: (() => void) | undefined
+onUnmounted(() => restoreHeaderRoom?.())
+
 // Phone back button handling
 onMounted(() => {
   if (Platform.isPhone) {
     const backBtn = settingsDoc().querySelector('.modal-setting-back-button') as HTMLElement
     if (backBtn) {
+      const pane = settingsContainer.value?.closest<HTMLElement>('.vertical-tab-content')
+      const header = backBtn.parentElement
+      if (pane && header) restoreHeaderRoom = settingsHeaderRoom(pane, header)
       const newBackBtn = backBtn.cloneNode(true) as HTMLElement
       backBtn.parentNode?.replaceChild(newBackBtn, backBtn)
       isMenuOpen.value = !initialTab
@@ -211,11 +218,19 @@ body.is-phone .modal:has(.abele-settings) .modal-header {
 
 .abele-settings__content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--size-4-4);
 
   &_phone {
     padding: var(--size-4-2);
   }
+}
+// The native phone pane otherwise extends behind its floating header. Keep that header's
+// own theme and geometry, but give the scrolling pane only the room below it.
+body.is-phone .modal.mod-settings .vertical-tab-content.abele-settings-pane_phone {
+  margin-top: var(--abele-settings-header-room);
+  height: calc(100% - var(--abele-settings-header-room));
+  padding-top: var(--size-4-4);
 }
 </style>

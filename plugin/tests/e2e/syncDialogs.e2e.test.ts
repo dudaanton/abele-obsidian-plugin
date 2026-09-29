@@ -341,9 +341,7 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
       await server?.kill()
       if (workspace !== '') rmSync(workspace, { recursive: true, force: true })
     }
-    // Disposing the throwaway vault waits for other users of the app's pool to drain. That
-    // wait is not sync work; it may outlast the default five-minute hook timeout.
-  }, 700_000)
+  }, 300_000)
 
   /** Every screen asked for by name; the pages of the Sync tab after its first come on top. */
   const ON_PHONE = [
@@ -465,6 +463,16 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
       expect(extra.rowReach, `${label}: ${JSON.stringify(extra.reachers)}`).toBe(0)
       expect(extra.restoreInView, label).toBe(true)
       expect(extra.dateField, label).toBe(label.includes('custom'))
+    }
+  })
+
+  it('keeps scrolling Sync-tab content below the fixed phone header', () => {
+    const pages = Object.entries(phone).filter(
+      ([label]) => label.startsWith('sync tab') && !label.includes('confirm')
+    )
+    expect(pages.length).toBeGreaterThan(0)
+    for (const [label, screen] of pages) {
+      expect(screen.extra.headerOverlap, `${label}: ${JSON.stringify(screen.extra)}`).toBe(0)
     }
   })
 

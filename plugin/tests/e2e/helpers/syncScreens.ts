@@ -172,13 +172,29 @@ export const syncTabScreens = (
     return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 1
   }) || root
   const out = {}
+  const headerFacts = () => {
+    const header = doc.querySelector('.modal-setting-back-button')?.parentElement
+    if (!header || !doc.body.classList.contains('is-phone')) return { headerOverlap: 0 }
+    const bottom = Math.max(...[header, ...header.querySelectorAll('*'), ...modal.querySelectorAll('.modal-close-button')].map((el) => el.getBoundingClientRect().bottom))
+    const p = page.getBoundingClientRect()
+    return {
+      headerOverlap: Math.max(0, Math.round(bottom - p.top)),
+      page: page.className,
+      header: header.className,
+      chain: [page, page.parentElement, page.parentElement?.parentElement].filter(Boolean).map((el) => ({
+        name: el.className, box: [el.getBoundingClientRect().top, el.getBoundingClientRect().height],
+        overflow: view.getComputedStyle(el).overflowY,
+      })),
+    }
+  }
   const sections = [...root.querySelectorAll('.abele-section__heading')].map(textOf)
   out[${JSON.stringify(label)}] = await screen(${JSON.stringify(label)}, modal, root)
-  out[${JSON.stringify(label)}].extra = { sections, voids: voidsIn(root), connectCard: sections.includes('Connect to a server') }
+  out[${JSON.stringify(label)}].extra = { sections, voids: voidsIn(root), connectCard: sections.includes('Connect to a server'), ...headerFacts() }
   for (let i = 2; i <= ${pages} && page.scrollTop + page.clientHeight < page.scrollHeight - 1; i++) {
     page.scrollTop += page.clientHeight - 40
     await wait(300)
     out[${JSON.stringify(label)} + ' ' + i] = await screen(${JSON.stringify(label)} + ' ' + i, modal, root)
+    out[${JSON.stringify(label)} + ' ' + i].extra = headerFacts()
   }
   const confirmed = async (name) => {
     if (!(await until(() => modalOf('.abele-confirm', doc), 5000))) throw new Error('no confirmation for ' + name)
