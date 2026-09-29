@@ -320,7 +320,7 @@ export default class AbelePlugin extends Plugin {
     )
     // A chat file opened from anywhere — file explorer, quick switcher, a link, search — goes
     // to the chat panel instead of replacing the note in front.
-    this.register(keepChatFilesOutOfLeaves(openChat))
+    this.register(keepChatFilesOutOfLeaves(openChat, () => this.app.workspace))
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))

@@ -13,7 +13,10 @@ import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
 class FakeLeaf {
   opened: TFile[] = []
   detached = false
-  constructor(public viewType: string) {}
+  constructor(
+    public viewType: string,
+    public activeTime = 0
+  ) {}
   get view() {
     return { getViewType: () => this.viewType }
   }
@@ -37,13 +40,31 @@ const file = (path: string): TFile => {
   return f
 }
 
+/** Tabs in the main area and leaves in the sidebars, and what was made active, in order. */
+class FakeWorkspace {
+  tabs: FakeLeaf[] = []
+  side: FakeLeaf[] = []
+  activated: { leaf: FakeLeaf; focus: boolean }[] = []
+  iterateRootLeaves(cb: (leaf: FakeLeaf) => void): void {
+    this.tabs.filter((l) => !l.detached).forEach(cb)
+  }
+  iterateAllLeaves(cb: (leaf: FakeLeaf) => void): void {
+    ;[...this.tabs, ...this.side].filter((l) => !l.detached).forEach(cb)
+  }
+  setActiveLeaf(leaf: FakeLeaf, params?: { focus?: boolean }): void {
+    this.activated.push({ leaf, focus: !!params?.focus })
+  }
+}
+
 let open: ReturnType<typeof vi.fn>
 let undo: () => void
+let ws: FakeWorkspace
 const originalOpenFile = FakeLeaf.prototype.openFile
 
 beforeEach(() => {
   open = vi.fn(async () => {})
-  undo = keepChatFilesOutOfLeaves(open, FakeLeaf.prototype as never)
+  ws = new FakeWorkspace()
+  undo = keepChatFilesOutOfLeaves(open, () => ws as never, FakeLeaf.prototype as never)
 })
 
 afterEach(() => undo())
@@ -64,6 +85,38 @@ describe('opening a chat file into a leaf', () => {
     await leaf.openFile(file('Chats/Talk.abchat'))
     expect(open).toHaveBeenCalledTimes(1)
     expect(leaf.detached).toBe(true)
+  })
+
+  it('puts the tab that was in front back in front once the blank tab is closed', async () => {
+    const first = new FakeLeaf('markdown', 100)
+    const middle = new FakeLeaf('markdown', 300)
+    const last = new FakeLeaf('markdown', 200)
+    const blank = new FakeLeaf('empty', 400)
+    ws.tabs = [first, middle, last, blank]
+    await blank.openFile(file('Chats/Talk.abchat'))
+    expect(blank.detached).toBe(true)
+    expect(ws.activated).toEqual([{ leaf: middle, focus: true }])
+  })
+
+  it('gives the focus back to the sidebar it was in, with the tab in front as it was', async () => {
+    const note = new FakeLeaf('markdown', 300)
+    const other = new FakeLeaf('markdown', 100)
+    const panel = new FakeLeaf('abele-ai-sidebar-view', 500)
+    const blank = new FakeLeaf('empty', 600)
+    ws.tabs = [other, note, blank]
+    ws.side = [panel]
+    await blank.openFile(file('Chats/Talk.abchat'))
+    expect(ws.activated).toEqual([
+      { leaf: note, focus: false },
+      { leaf: panel, focus: true },
+    ])
+  })
+
+  it('makes nothing active when the chat is turned away from a leaf holding a note', async () => {
+    const note = new FakeLeaf('markdown', 300)
+    ws.tabs = [new FakeLeaf('markdown', 100), note]
+    await note.openFile(file('Chats/Talk.abchat'))
+    expect(ws.activated).toEqual([])
   })
 
   it('matches the extension whatever its case', async () => {

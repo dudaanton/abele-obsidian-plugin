@@ -1,27 +1,33 @@
 /**
- * A chat file opened the ways Obsidian opens any file lands in the chat panel, and the note in
- * front stays where it was.
+ * A chat file opened the ways Obsidian opens any file lands in the chat panel, and the tabs in
+ * the main area stay as they were — the same ones, holding the same notes, the same one in front.
  *
  * The unit tier proves `WorkspaceLeaf.openFile` turns a chat away; what only the app can show is
  * that Obsidian's own roads really go through it — a click in the file explorer, a link clicked
- * in a note, the quick switcher, and "open in new tab" — and that none of them leaves the note's
- * tab replaced or a blank tab behind.
+ * in a note, the quick switcher, each also asking for a new tab, a chat attached to a message
+ * clicked in the chat panel — and that none of them replaces a note, leaves a blank tab behind,
+ * or brings another tab to the front. Three notes are open in three tabs with the middle one in
+ * front, so a neighbour taking its place shows.
  *
- * One `eval` runs the whole sequence and answers with what it saw after each road. It writes one
- * note and one chat of its own and removes both; the fixture vault is otherwise left as it was.
- * Requires Obsidian running on a vault with the development build — see docs/Testing.md.
+ * One `eval` runs the whole sequence and answers with what it saw after each road. It writes
+ * three notes and two chats of its own and removes them; the fixture vault is otherwise left as
+ * it was. Requires Obsidian running on a vault with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw, activeVaultName } from './helpers/obsidianCli'
 
-const NOTE = 'Opening probe note'
+const NOTES = ['Opening probe first', 'Opening probe note', 'Opening probe last']
 const CHAT = 'Chat open probe chat'
+const HOST = 'Message with an attachment'
 
 interface Road {
-  /** The file in the note's own tab afterwards. */
-  noteTab: string | null
-  /** Whether the note's tab is still in the workspace. */
-  noteTabAttached: boolean
+  /** The files in the three tabs afterwards, in order; null for a tab no longer there. */
+  tabs: (string | null)[]
+  /** The file in front of the tabs' group, and in the tab active last in the main area. */
+  inFront: string | null
+  mostRecent: string | null
+  /** The view type, or the file, of the leaf that is active. */
+  active: string | null
   /** Tabs in the main area before and after. */
   tabsBefore: number
   tabsAfter: number
@@ -31,13 +37,17 @@ interface Road {
   chatLeaves: number
 }
 
-interface Report {
-  explorer?: Road
-  link?: Road
-  switcher?: Road | string
-  newTab?: Road
-  error?: string
-}
+type Roads =
+  | 'explorer'
+  | 'explorerNewTab'
+  | 'link'
+  | 'linkNewTab'
+  | 'switcher'
+  | 'switcherNewTab'
+  | 'newTab'
+  | 'attached'
+
+type Report = Partial<Record<Roads, Road | string>> & { error?: string }
 
 const script = `(async () => {
   const T = window.__abeleTest
@@ -55,59 +65,107 @@ const script = `(async () => {
   const createdDirs = []
   const svc = T.ChatService.getInstance()
   const storage = T.ChatStorage.getInstance()
-  let leaf = null
+  const tabs = []
 
   const cfg = T.AbeleConfig.getInstance().ai
   const base = cfg.chatFolder.replace(/\\/?\\{\\{.*$/, '').replace(/\\/$/, '')
-  const notePath = ${JSON.stringify(NOTE)} + '.md'
+  const notePaths = ${JSON.stringify(NOTES)}.map((n) => n + '.md')
   const chatPath = base + '/' + ${JSON.stringify(CHAT)} + '.abchat'
+  const hostPath = base + '/' + ${JSON.stringify(HOST)} + '.abchat'
 
   const mainTabs = () => {
     const out = []
-    app.workspace.iterateRootLeaves((l) => out.push(l))
-    return out.length
+    app.workspace.iterateRootLeaves((l) => { out.push(l) })
+    return out
   }
   const chatLeaves = () => {
     let n = 0
     app.workspace.iterateAllLeaves((l) => { if (l.view?.file?.path === chatPath) n++ })
     return n
   }
-  const closeChat = async () => {
-    const s = svc.getSessionByFile(chatPath)
-    if (s) await svc.closeTab(s.id)
+  const closeChats = async () => {
+    for (const path of [chatPath, hostPath]) {
+      const s = svc.getSessionByFile(path)
+      if (s) await svc.closeTab(s.id)
+    }
     await wait(200)
   }
-  const openNote = async (mode) => {
-    // The tab before is closed once the new one is there: closed first, the tab Obsidian puts in
-    // its place when it was the last has never been active, and leaves nothing to open beside.
-    const before = leaf
-    // A new tab goes beside the tab most recently active in the main area. There is none when
-    // the last one was just closed, or the one Obsidian put in its place has never been active
-    // ("No tab group found"): a tab is then made in the main area directly.
-    try { leaf = app.workspace.getLeaf('tab') } catch {
-      leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0)
+  const describeLeaf = (l) => (l ? (l.view?.file?.path ?? l.view?.getViewType() ?? null) : null)
+  // Three tabs, one note each, the middle one in front. Opened afresh for every road, so one that
+  // goes wrong does not spoil the next; the tabs before are closed once the new ones are there.
+  const openNotes = async (mode) => {
+    const before = tabs.splice(0)
+    for (const path of notePaths) {
+      let leaf
+      try { leaf = app.workspace.getLeaf('tab') } catch {
+        leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0)
+      }
+      await leaf.setViewState({ type: 'markdown', state: { file: path, mode }, active: true })
+      tabs.push(leaf)
     }
-    await leaf.setViewState({ type: 'markdown', state: { file: notePath, mode }, active: true })
-    if (before && before !== leaf) before.detach()
-    app.workspace.setActiveLeaf(leaf, { focus: true })
-    await until(() => leaf.view?.file?.path === notePath, 5000)
+    for (const l of before) l.detach()
+    app.workspace.setActiveLeaf(tabs[1], { focus: true })
+    await until(() => tabs.every((l, i) => l.view?.file?.path === notePaths[i]), 5000)
     await wait(300)
   }
+  const middle = () => tabs[1]
   const road = async (name, mode, act) => {
-    await closeChat()
-    await openNote(mode)
-    const tabsBefore = mainTabs()
+    await closeChats()
+    await openNotes(mode)
+    const tabsBefore = mainTabs().length
     await act()
     await until(() => !!svc.getSessionByFile(chatPath), 5000)
-    await wait(500)
+    await wait(700)
+    const attached = new Set(mainTabs())
+    const group = middle().parent
     report[name] = {
-      noteTab: leaf.view?.file?.path ?? null,
-      noteTabAttached: (() => { let found = false; app.workspace.iterateRootLeaves((l) => { if (l === leaf) found = true }); return found })(),
+      tabs: tabs.map((l) => (attached.has(l) ? (l.view?.file?.path ?? null) : null)),
+      inFront: describeLeaf(group?.children?.[group.currentTab]),
+      mostRecent: describeLeaf(app.workspace.getMostRecentLeaf(app.workspace.rootSplit)),
+      active: describeLeaf(app.workspace.activeLeaf),
       tabsBefore,
-      tabsAfter: mainTabs(),
+      tabsAfter: attached.size,
       inPanel: !!svc.getSessionByFile(chatPath),
       chatLeaves: chatLeaves(),
     }
+  }
+  const tryRoad = async (name, mode, act) => {
+    try {
+      await road(name, mode, act)
+    } catch (e) {
+      report[name] = String((e && e.message) || e)
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+    }
+  }
+  const mod = { metaKey: true, ctrlKey: true }
+  const explorerRow = async (chat) => {
+    const explorer = app.workspace.getLeavesOfType('file-explorer')[0]
+    if (explorer?.loadIfDeferred) await explorer.loadIfDeferred()
+    app.internalPlugins.getPluginById('file-explorer').instance.revealInFolder(chat)
+    app.workspace.setActiveLeaf(middle(), { focus: true })
+    const found = await until(() => document.querySelector('.nav-file-title[data-path="' + chatPath + '"]'))
+    if (!found) throw new Error('no explorer row for the chat')
+    return document.querySelector('.nav-file-title[data-path="' + chatPath + '"]')
+  }
+  const noteLink = async () => {
+    const view = () => middle().view.containerEl
+    const found = await until(() => view().querySelector('.markdown-preview-view a.internal-link'))
+    if (!found) throw new Error('no link in the note')
+    return view().querySelector('.markdown-preview-view a.internal-link')
+  }
+  const switcher = async (keys) => {
+    app.commands.executeCommandById('switcher:open')
+    if (!(await until(() => document.querySelector('.prompt .prompt-input')))) throw new Error('no switcher')
+    const input = document.querySelector('.prompt .prompt-input')
+    input.value = ${JSON.stringify(CHAT)}
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    const listed = await until(() =>
+      [...document.querySelectorAll('.prompt .suggestion-item')].some((e) => e.textContent.includes(${JSON.stringify(CHAT)})))
+    if (!listed) throw new Error('the switcher does not list the chat')
+    await wait(300)
+    const chosen = document.querySelector('.prompt .suggestion-item.is-selected')?.textContent ?? ''
+    if (!chosen.includes(${JSON.stringify(CHAT)})) throw new Error('the switcher put first: ' + chosen)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, ...keys }))
   }
 
   try {
@@ -120,63 +178,44 @@ const script = `(async () => {
         createdDirs.unshift(dir)
       }
     }
-    await app.vault.create(notePath, 'Open the chat: [[' + ${JSON.stringify(CHAT)} + '.abchat]]\\n')
-    created.push(notePath)
-    const meta = { v: 2, k: 'meta', type: 'abele-chat', created: '2026-09-26', title: ${JSON.stringify(CHAT)},
-      summary: 'A chat the open probe wrote.' }
+    for (const path of notePaths) {
+      await app.vault.create(path, 'Open the chat: [[' + ${JSON.stringify(CHAT)} + '.abchat]]\\n')
+      created.push(path)
+    }
+    const meta = (title) => JSON.stringify({ v: 2, k: 'meta', type: 'abele-chat', created: '2026-09-26', title,
+      summary: 'A chat the open probe wrote.' })
     const msg = { k: 'msg', id: 'a0', role: 'user', content: 'Hello', timestamp: 1790000000000 }
-    const chat = await app.vault.create(chatPath, JSON.stringify(meta) + '\\n' + JSON.stringify(msg) + '\\n')
+    const chat = await app.vault.create(chatPath, meta(${JSON.stringify(CHAT)}) + '\\n' + JSON.stringify(msg) + '\\n')
     created.push(chatPath)
+    const withChat = { ...msg, content: 'Look at this one', attachments: [chatPath] }
+    const host = await app.vault.create(hostPath, meta(${JSON.stringify(HOST)}) + '\\n' + JSON.stringify(withChat) + '\\n')
+    created.push(hostPath)
     await storage.refreshHistory()
 
-    // ── the file explorer: a plain click on the chat's row ──
-    await road('explorer', 'source', async () => {
-      const explorer = app.workspace.getLeavesOfType('file-explorer')[0]
-      if (explorer?.loadIfDeferred) await explorer.loadIfDeferred()
-      app.internalPlugins.getPluginById('file-explorer').instance.revealInFolder(chat)
-      app.workspace.setActiveLeaf(leaf, { focus: true })
-      const row = await until(() => document.querySelector('.nav-file-title[data-path="' + chatPath + '"]'))
-      if (!row) throw new Error('no explorer row for the chat')
-      document.querySelector('.nav-file-title[data-path="' + chatPath + '"]').click()
-    })
-
-    // ── a link to the chat, clicked in the note ──
-    await road('link', 'preview', async () => {
-      const link = await until(() => leaf.view.containerEl.querySelector('.markdown-preview-view a.internal-link'))
-      if (!link) throw new Error('no link in the note')
-      leaf.view.containerEl.querySelector('.markdown-preview-view a.internal-link').click()
-    })
-
-    // ── the quick switcher ──
-    try {
-      await road('switcher', 'source', async () => {
-        app.commands.executeCommandById('switcher:open')
-        if (!(await until(() => document.querySelector('.prompt .prompt-input')))) throw new Error('no switcher')
-        const input = document.querySelector('.prompt .prompt-input')
-        input.value = ${JSON.stringify(CHAT)}
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-        const listed = await until(() =>
-          [...document.querySelectorAll('.prompt .suggestion-item')].some((e) => e.textContent.includes(${JSON.stringify(CHAT)})))
-        if (!listed) throw new Error('the switcher does not list the chat')
-        await wait(300)
-        const chosen = document.querySelector('.prompt .suggestion-item.is-selected')?.textContent ?? ''
-        if (!chosen.includes(${JSON.stringify(CHAT)})) throw new Error('the switcher put first: ' + chosen)
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }))
-      })
-    } catch (e) {
-      report.switcher = String((e && e.message) || e)
-      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
-    }
-
-    // ── "open in new tab": a tab made for the chat ──
-    await road('newTab', 'source', async () => {
-      await app.workspace.getLeaf('tab').openFile(chat)
+    await tryRoad('explorer', 'source', async () => (await explorerRow(chat)).click())
+    await tryRoad('explorerNewTab', 'source', async () =>
+      (await explorerRow(chat)).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mod })))
+    await tryRoad('link', 'preview', async () => (await noteLink()).click())
+    await tryRoad('linkNewTab', 'preview', async () =>
+      (await noteLink()).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mod })))
+    await tryRoad('switcher', 'source', () => switcher({}))
+    await tryRoad('switcherNewTab', 'source', () => switcher(mod))
+    await tryRoad('newTab', 'source', async () => { await app.workspace.getLeaf('tab').openFile(chat) })
+    // A chat attached to a message, clicked in the chat panel: the focus is in the panel then.
+    await tryRoad('attached', 'source', async () => {
+      await svc.openChatFile(host)
+      await svc.revealSidebar()
+      const panel = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
+      const chip = () => panel?.view.containerEl.querySelector('.abele-chat-msg__attachment-chip')
+      if (!(await until(() => chip()))) throw new Error('no attached chat in the message')
+      app.workspace.setActiveLeaf(panel, { focus: true })
+      chip().click()
     })
   } catch (e) {
     report.error = String((e && e.message) || e)
   } finally {
-    await closeChat()
-    if (leaf) leaf.detach()
+    await closeChats()
+    for (const l of tabs) l.detach()
     for (const path of created) {
       const f = app.vault.getAbstractFileByPath(path)
       if (f) await app.vault.delete(f)
@@ -192,11 +231,23 @@ const script = `(async () => {
 
 const available = isObsidianRunning() && hasTestApi()
 
-const untouched = (road: Road | string | undefined) => {
+/** The three tabs as they were, the middle one still in front, and the chat in the panel only. */
+const untouched = (
+  road: Road | string | undefined,
+  focus: 'note' | 'panel' | 'explorer' = 'note'
+) => {
   expect(typeof road).toBe('object')
   const r = road as Road
-  expect(r.noteTab).toBe(`${NOTE}.md`)
-  expect(r.noteTabAttached).toBe(true)
+  expect(r.tabs).toEqual(NOTES.map((n) => `${n}.md`))
+  expect(r.inFront).toBe(`${NOTES[1]}.md`)
+  expect(r.mostRecent).toBe(`${NOTES[1]}.md`)
+  // The focus stays where the click was: the note, or the side panel clicked in.
+  const focused = {
+    note: `${NOTES[1]}.md`,
+    panel: 'abele-ai-sidebar-view',
+    explorer: 'file-explorer',
+  }
+  expect(r.active).toBe(focused[focus])
   expect(r.tabsAfter).toBe(r.tabsBefore)
   expect(r.inPanel).toBe(true)
   expect(r.chatLeaves).toBe(0)
@@ -206,28 +257,44 @@ describe.skipIf(!available)('opening a chat file the ways Obsidian opens files, 
   let report: Report = {}
 
   beforeAll(() => {
-    const raw = evalRaw(script, 60_000)
+    const raw = evalRaw(script, 120_000)
     report = JSON.parse(raw) as Report
     console.info(`\n  vault ${activeVaultName()}\n  ${JSON.stringify(report, null, 2)}\n`)
-  }, 75_000)
+  }, 135_000)
 
   it('runs to the end', () => {
     expect(report.error ?? '').toBe('')
   })
 
-  it('from the file explorer: to the chat panel, the note left in its tab', () => {
-    untouched(report.explorer)
+  it('from the file explorer: to the chat panel, the tabs left as they were', () => {
+    untouched(report.explorer, 'explorer')
   })
 
-  it('from a link in the note: to the chat panel, the note left in its tab', () => {
+  it('from the file explorer, asking for a new tab: the same', () => {
+    untouched(report.explorerNewTab, 'explorer')
+  })
+
+  it('from a link in the note: to the chat panel, the tabs left as they were', () => {
     untouched(report.link)
   })
 
-  it('from the quick switcher: to the chat panel, the note left in its tab', () => {
+  it('from a link in the note, asking for a new tab: the same', () => {
+    untouched(report.linkNewTab)
+  })
+
+  it('from the quick switcher: to the chat panel, the tabs left as they were', () => {
     untouched(report.switcher)
   })
 
-  it('into a new tab: to the chat panel, and no blank tab left behind', () => {
+  it('from the quick switcher, asking for a new tab: the same', () => {
+    untouched(report.switcherNewTab)
+  })
+
+  it('into a new tab: to the chat panel, no blank tab left behind, the same tab in front', () => {
     untouched(report.newTab)
+  })
+
+  it('a chat attached to a message: a tab in the panel, the note tabs left as they were', () => {
+    untouched(report.attached, 'panel')
   })
 })
