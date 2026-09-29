@@ -211,6 +211,9 @@ describe.skipIf(!available)('settings and sidebars on a tablet', () => {
     if (!available) return
     if (size[0]) await setWindowSize(size[0], size[1])
     await setMobile(false)
+    // And again: leaving emulation puts back the size the window had when it became a phone,
+    // which is the one this file set, not the one it found.
+    if (size[0]) await setWindowSize(size[0], size[1])
   }, 120_000)
 
   it('runs in Obsidian’s tablet layout, not its phone one', () => {

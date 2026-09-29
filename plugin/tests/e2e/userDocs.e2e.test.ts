@@ -280,6 +280,9 @@ describe.skipIf(!available)('the documentation', () => {
     // The window first: leaving emulation reloads the app at the window's size at that moment.
     if (size[0]) await setWindowSize(size[0], size[1])
     await setMobile(false)
+    // And again: leaving emulation puts back the size the window had when it became a phone,
+    // which is the one this file set, not the one it found.
+    if (size[0]) await setWindowSize(size[0], size[1])
   }, 120_000)
 
   it('opens on a desktop', () => {
