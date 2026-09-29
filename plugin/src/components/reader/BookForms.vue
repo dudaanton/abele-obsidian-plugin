@@ -1,7 +1,8 @@
 <template>
   <ObsidianModal title="Underline everywhere" @close="emit('cancel')">
-    <div class="abele-book-forms">
-      <blockquote class="abele-book-forms__quote">
+    <!-- The comment dialog's own look: a quote over a field. -->
+    <div class="abele-book-comment abele-book-forms">
+      <blockquote class="abele-book-comment__quote">
         {{ shortText(highlight.text, 200) }}
       </blockquote>
       <Input
@@ -10,7 +11,7 @@
         :rows="3"
         placeholder="The word's forms, separated by commas"
       />
-      <div class="abele-book-forms__hint setting-item-description">
+      <div class="setting-item-description">
         Each form is underlined wherever it stands as a whole word in this book, and a tap on it
         leads to this highlight. Leave the field empty to stop.
       </div>
@@ -66,20 +67,3 @@ const text = ref(
     : firstGuess(props.highlight.text)
 )
 </script>
-
-<style lang="scss">
-.abele-book-forms {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-3);
-
-  &__quote {
-    margin: 0;
-    padding-inline-start: var(--size-4-3);
-    border-inline-start: var(--blockquote-border-thickness, var(--size-2-1)) solid
-      var(--blockquote-border-color);
-    color: var(--text-muted);
-    font-size: var(--font-ui-small);
-  }
-}
-</style>
