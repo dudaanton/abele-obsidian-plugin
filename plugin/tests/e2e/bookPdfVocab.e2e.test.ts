@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { onPhone, targets } from './helpers/target'
+import { screenshot, tap } from './helpers/phone'
 import { buildVocabPdf } from '../fixtures/books/pdfFixture'
+
+targets('desktop', 'phone')
 
 const DIR = 'Abele pdf vocabulary e2e'
 const BOOK = `${DIR}/sample-book.pdf`
 const CARD = `${DIR}/sample-note.md`
+const SHOTS = process.env.ABELE_PHONE_SHOTS ?? '/tmp/abele-iphone'
 const available = isObsidianRunning() && hasTestApi()
 let originalReader: Record<string, unknown> | null = null
 
@@ -48,7 +53,10 @@ describe.skipIf(!available)('vocabulary on selectable PDF pages', () => {
   afterAll(() => {
     evalRaw(
       `(async () => {
-      for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+      for (const leaf of app.workspace.getLeavesOfType('abele-book'))
+        if (leaf.view?.file?.path === ${JSON.stringify(BOOK)}) leaf.detach()
+      for (const leaf of app.workspace.getLeavesOfType('markdown'))
+        if (leaf.view?.file?.path === ${JSON.stringify(CARD)}) leaf.detach()
       const cfg = window.__abeleTest.AbeleConfig.getInstance()
       if (${originalReader !== null}) {
         cfg.reader = ${JSON.stringify(originalReader)}
@@ -75,7 +83,7 @@ describe.skipIf(!available)('vocabulary on selectable PDF pages', () => {
       opened?: string
       split?: boolean
     }>(`
-      const leaf = app.workspace.getLeaf('tab')
+      let leaf; try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
       await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
       const view = leaf.view
       await until(() => view.model?.status === 'ready' && view.reading?.marks.vocab?.rules().length)
@@ -111,15 +119,55 @@ describe.skipIf(!available)('vocabulary on selectable PDF pages', () => {
     expect(result.opened).toBe(CARD)
   })
 
-  it('keeps PDF vocabulary tappable in a phone-sized window', async () => {
-    const size = evalJson<[number, number]>(
-      "require('@electron/remote').getCurrentWindow().getContentSize()"
-    )
-    try {
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
-      await reloadApp('window.location.reload()')
-      const result = run<{ error?: string; lines?: number; target?: string }>(`
+  it.skipIf(!onPhone())(
+    'opens a studied PDF word from a real touch',
+    () => {
+      const at = run<{ error?: string; x?: number; y?: number; lines?: number }>(`
+      let leaf; try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+      await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
+      const view = leaf.view
+      await until(() => view.model?.status === 'ready' && view.reading?.marks.vocab?.rules().length)
+      await view.engine.goTo(0)
+      const page = await until(() => [...view.reading.marks.vocab.pages.values()].find(p => p.index === 0 && p.drawn.length))
+      const range = page?.doc.createRange()
+      if (range && page?.text.nodes[0] && page.text.nodes[1]) {
+        range.setStart(page.text.nodes[0], 0)
+        range.setEnd(page.text.nodes[1], page.text.nodes[1].length)
+      }
+      const r = range?.getClientRects()[0]
+      const frame = page?.doc.defaultView?.frameElement?.getBoundingClientRect()
+      return { lines: page?.doc.querySelectorAll('.abele-vocab-mark line').length ?? 0,
+        x: r && frame ? Math.round(frame.left + (r.left + r.right) / 2) : null,
+        y: r && frame ? Math.round(frame.top + (r.top + r.bottom) / 2) : null }
+    `)
+      expect(at.error).toBeUndefined()
+      expect(at.lines).toBeGreaterThan(0)
+      expect(at.x).toBeTypeOf('number')
+      expect(at.y).toBeTypeOf('number')
+      screenshot(`${SHOTS}/book-pdf-vocab-lines.png`)
+      tap(at.x!, at.y!)
+      const opened = run<{ error?: string; path?: string | null }>(`
+      const path = await until(() => app.workspace.getActiveFile()?.path === ${JSON.stringify(CARD)} && app.workspace.getActiveFile()?.path)
+      return { path }
+    `)
+      expect(opened.error).toBeUndefined()
+      expect(opened.path).toBe(CARD)
+      screenshot(`${SHOTS}/book-pdf-vocab-card.png`)
+    },
+    120_000
+  )
+
+  it.skipIf(onPhone())(
+    'keeps PDF vocabulary tappable in a phone-sized window',
+    async () => {
+      const size = evalJson<[number, number]>(
+        "require('@electron/remote').getCurrentWindow().getContentSize()"
+      )
+      try {
+        await reloadApp('app.emulateMobile(true)')
+        evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
+        await reloadApp('window.location.reload()')
+        const result = run<{ error?: string; lines?: number; target?: string }>(`
         const leaf = app.workspace.getLeaf('tab')
         await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
         const view = leaf.view
@@ -137,14 +185,16 @@ describe.skipIf(!available)('vocabulary on selectable PDF pages', () => {
         leaf.detach()
         return { lines, target }
       `)
-      expect(result.error).toBeUndefined()
-      expect(result.lines).toBeGreaterThan(0)
-      expect(result.target).toBe(CARD)
-    } finally {
-      evalRaw(
-        `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
-      )
-      await reloadApp('app.emulateMobile(false)')
-    }
-  }, 180_000)
+        expect(result.error).toBeUndefined()
+        expect(result.lines).toBeGreaterThan(0)
+        expect(result.target).toBe(CARD)
+      } finally {
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
+        )
+        await reloadApp('app.emulateMobile(false)')
+      }
+    },
+    180_000
+  )
 })
