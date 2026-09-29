@@ -359,7 +359,14 @@ const probeScript = `(async () => {
     const chat = document.querySelector('.abele-ai-chat')
     await screen('chat', chat, chat)
 
-    // The one dialog everything about a chat lives in, tab by tab.
+    // The one dialog everything about a chat lives in, tab by tab. The chat is given an
+    // interceptor script for the while, so its Settings tab shows the script and the pattern
+    // field too; it follows its agent again afterwards.
+    const guardedChat = window.__abeleTest.ChatService.getInstance().activeSession.value
+    if (guardedChat) {
+      guardedChat.interceptor.script.value = 'Phone probe guard'
+      guardedChat.interceptor.pattern.value = '^/todo'
+    }
     const setup = chat && chat.querySelector('.lucide-sliders-horizontal')
     if (setup) {
       setup.closest('.abele-icon, .clickable-icon, div').click()
@@ -395,8 +402,12 @@ const probeScript = `(async () => {
         }
         await screen('setup ' + label, modal, modal && modal.querySelector('.abele-modal__body'))
         report['setup ' + label].clipped = clipped
+        if (label === 'settings' && modal) {
+          report['setup settings'].pattern = !!modal.querySelector('input[placeholder="Every message"]')
+        }
       }
       await closeDialog()
+      if (guardedChat) guardedChat.interceptor.followAgent()
     } else {
       report['setup'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no setup button' }
     }
@@ -740,6 +751,37 @@ const probeScript = `(async () => {
           f.blur()
         }
         report[label].clipped = clipped
+        // The agent editor's interceptor, a script chosen and a pattern that does not compile
+        // typed into its field: the picker, the field and the line saying why it was not kept.
+        if (dialogName === 'agent-editor') {
+          const registry = window.__abeleTest.AgentRegistry.getInstance()
+          const agent = registry.list()[0]
+          const was = { interceptorAgentId: agent.interceptorAgentId, interceptorScript: agent.interceptorScript, interceptorPattern: agent.interceptorPattern }
+          try {
+            registry.update(agent.id, { interceptorAgentId: '', interceptorScript: 'Phone probe guard', interceptorPattern: '' })
+            await until(() => modal.querySelector('input[placeholder="^/todo"]'), 3000)
+            const field = modal.querySelector('input[placeholder="^/todo"]')
+            if (!field) throw new Error('no pattern field')
+            field.value = '([a-'
+            field.dispatchEvent(new Event('input', { bubbles: true }))
+            await until(() => modal.querySelector('.mod-warning'), 3000)
+            field.scrollIntoView({ block: 'center' })
+            await wait(300)
+            await screen('agent editor interceptor', modal, modal.querySelector('.abele-modal__body'))
+            const cut = []
+            for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"]')) {
+              const cs = getComputedStyle(f)
+              if (cs.display === 'none' || cs.visibility === 'hidden' || f.getBoundingClientRect().width === 0) continue
+              f.focus()
+              for (const c of ringClipped(f)) cut.push(name(f) + ': ' + c)
+              f.blur()
+            }
+            report['agent editor interceptor'].clipped = cut
+            report['agent editor interceptor'].warning = !!modal.querySelector('.mod-warning')
+          } finally {
+            registry.update(agent.id, was)
+          }
+        }
         // The agent editor's Access tab: the tools, with the rows that set many at once.
         if (dialogName === 'agent-editor') {
           const access = [...modal.querySelectorAll('.abele-tabs__tab')].find((t) => t.textContent.trim() === 'Access')
@@ -980,7 +1022,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
 
-  it.each([...sheets, 'agent editor access'])(
+  it.each([...sheets, 'agent editor access', 'agent editor interceptor'])(
     '%s: nothing cuts the focus ring off any field',
     (label) => {
       expect(report[label]?.clipped ?? ['no report']).toEqual([])
@@ -1007,6 +1049,18 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(rows?.length ?? 0).toBeGreaterThan(1)
       expect(rows?.every((n) => n === 1)).toBe(true)
     })
+  })
+
+  it('agent editor interceptor: a script chosen, the pattern field and why it was not kept, inside the screen', () => {
+    const r = report['agent editor interceptor'] as Screen & { warning?: boolean }
+    expect(r?.error ?? 'no report').toBe('')
+    expect(r.over).toEqual([])
+    expect(r.scrollers.length).toBeLessThanOrEqual(1)
+    expect(r.warning).toBe(true)
+  })
+
+  it("setup settings: the chat's interceptor pattern field is there to be measured", () => {
+    expect((report['setup settings'] as Screen & { pattern?: boolean })?.pattern).toBe(true)
   })
 
   it('nested comment folded: a trail of four levels keeps to one row', () => {
