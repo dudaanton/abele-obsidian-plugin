@@ -17,7 +17,7 @@ const WORDS = (
 /** A paragraph of `n` words, the same for the same seed. */
 function paragraph(seed: number, n: number): string {
   const out: string[] = []
-  for (let i = 0; i < n; i++) out.push(WORDS[(seed * 7 + i * 3) % WORDS.length])
+  for (let i = 0; i < n; i++) out.push(WORDS[(seed * 11 + i * 3) % WORDS.length])
   out[0] = out[0][0].toUpperCase() + out[0].slice(1)
   return out.join(' ')
 }
