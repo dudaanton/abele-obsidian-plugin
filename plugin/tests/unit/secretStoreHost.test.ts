@@ -32,7 +32,20 @@ beforeEach(() => {
       },
     ],
   }
-  config.github = { ...DEFAULT_GITHUB_SETTINGS, keyId: GITHUB_TOKEN_KEY_ID }
+  config.github = {
+    ...DEFAULT_GITHUB_SETTINGS,
+    keyId: GITHUB_TOKEN_KEY_ID,
+    connections: [
+      {
+        id: 'github-legacy',
+        name: 'GitHub',
+        server: '',
+        keyId: GITHUB_TOKEN_KEY_ID,
+        owners: [],
+        isDefault: true,
+      },
+    ],
+  }
 })
 
 describe('the plugin’s secrets', () => {

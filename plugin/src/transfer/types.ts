@@ -24,6 +24,7 @@ export const TRANSFER_SECTIONS = [
   'time-tracking',
   'maps',
   'github',
+  'github-connections',
   'calendars',
   'reader',
   'quick-button',

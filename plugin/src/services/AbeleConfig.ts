@@ -14,6 +14,7 @@ import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
+import { projectLegacy } from '@/github/connections'
 import {
   DEFAULT_CALENDAR_SETTINGS,
   calendarSettingsFrom,
@@ -713,6 +714,7 @@ export class AbeleConfig {
     this.groupProperties = names(settings?.groupProperties, DEFAULT_SETTINGS.groupProperties)
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
+    if (settings?.github && !Array.isArray(settings.github.connections)) migrated = true
     this.reader = readerSettingsFrom(settings?.reader)
     this.calendars = calendarSettingsFrom(settings?.calendars)
     this.quickButton = quickButtonSettingsFrom(settings?.quickButton)
@@ -773,7 +775,7 @@ export class AbeleConfig {
       labelProperties: [...this.labelProperties],
       groupProperties: [...this.groupProperties],
       keyboardDiagnostics: this.keyboardDiagnostics,
-      github: { ...this.github },
+      github: projectLegacy(this.github),
       reader: { ...this.reader },
       calendars: {
         ...this.calendars,

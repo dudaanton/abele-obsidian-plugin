@@ -43,6 +43,25 @@ beforeEach(() => {
 })
 
 describe('loading settings that still need migrating', () => {
+  it('persists a GitHub connection using the existing secret slot without copying the token', async () => {
+    install({
+      github: { enabled: true, server: 'https://git.example.test', keyId: 'existing-key' },
+    })
+    await AbeleConfig.getInstance().loadSettings()
+    expect(saved).toHaveLength(1)
+    expect((saved[0] as { github: { connections: unknown[] } }).github.connections).toMatchObject([
+      {
+        id: 'github-legacy',
+        keyId: 'existing-key',
+        server: 'https://git.example.test',
+        isDefault: true,
+      },
+    ])
+    install(saved[0])
+    await AbeleConfig.getInstance().loadSettings()
+    expect(saved).toHaveLength(0)
+  })
+
   it('writes them back, so the migration only happens once', async () => {
     install({ ai: { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } })
 

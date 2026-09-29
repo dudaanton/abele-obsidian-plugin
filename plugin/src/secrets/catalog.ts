@@ -68,6 +68,7 @@ const KINDS: Partial<Record<SectionId, string>> = {
   'ai-mcp-servers': 'MCP server',
   finance: 'Finance',
   github: 'GitHub',
+  'github-connections': 'GitHub connection',
   calendars: 'Calendar',
 }
 

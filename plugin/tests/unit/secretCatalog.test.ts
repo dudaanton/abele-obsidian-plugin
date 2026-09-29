@@ -58,6 +58,16 @@ beforeEach(() => {
   config.github = {
     ...DEFAULT_GITHUB_SETTINGS,
     keyId: GITHUB_TOKEN_KEY_ID,
+    connections: [
+      {
+        id: 'github-legacy',
+        name: 'GitHub',
+        server: '',
+        keyId: GITHUB_TOKEN_KEY_ID,
+        owners: [],
+        isDefault: true,
+      },
+    ],
     notifications: { keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID },
   }
   settings = config.exportSettings()

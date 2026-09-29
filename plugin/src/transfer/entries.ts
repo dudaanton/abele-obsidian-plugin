@@ -11,6 +11,8 @@
  * be overwritten testable without an Obsidian to run them in.
  */
 import type { AbeleSettings } from '@/services/AbeleConfig'
+import { githubSettingsFrom } from '@/github/settings'
+import { projectLegacy, type GithubConnection } from '@/github/connections'
 import type { AiSettings } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
@@ -265,13 +267,56 @@ export const SECTIONS: Section[] = [
   ]),
   rootBlock('maps', 'Maps', ['mapCoordinatesProperty', 'mapStyleUrl']),
   rootBlock('github', 'GitHub', ['github'], {
-    // The tokens themselves are in the keychain; the settings hold only their ids: the main
-    // one, and the notifications panel's own when one is set.
+    // Compatibility fields are never offered here: otherwise choosing this block alone leaks
+    // an unselected connection's key through the old keyId alias.
+    read: (settings) => {
+      if (!settings.github) return {}
+      const {
+        connections: _connections,
+        keyId: _keyId,
+        server: _server,
+        legacyServer: _legacyServer,
+        ...general
+      } = settings.github
+      return { github: general }
+    },
+    write: (settings, data) => {
+      const incoming = data.github as Partial<NonNullable<AbeleSettings['github']>> | undefined
+      if (!incoming) return
+      const current = githubSettingsFrom(settings.github)
+      // A transfer made by an older version carries the main credential in its GitHub block.
+      // Never replace an already imported connection list with stale compatibility fields.
+      const hasList = Array.isArray(incoming.connections)
+      const connections =
+        current.connections.length || (!incoming.keyId && !incoming.server)
+          ? current.connections
+          : githubSettingsFrom(incoming).connections
+      settings.github = projectLegacy({
+        ...current,
+        ...incoming,
+        connections:
+          hasList && !current.connections.length
+            ? githubSettingsFrom(incoming).connections
+            : connections,
+      })
+    },
     secretsOf: (settings) =>
-      [settings.github?.keyId, settings.github?.notifications?.keyId].filter(
-        (id): id is string => !!id
-      ),
+      settings.github?.notifications?.keyId ? [settings.github.notifications.keyId] : [],
   }),
+  {
+    kind: 'list',
+    id: 'github-connections',
+    label: 'GitHub connections',
+    read: (settings) => (settings.github ? githubSettingsFrom(settings.github).connections : []),
+    write: (settings, items) => {
+      const current = githubSettingsFrom(settings.github)
+      settings.github = projectLegacy(
+        githubSettingsFrom({ ...current, connections: items as GithubConnection[] })
+      )
+    },
+    secretsOf: (item) =>
+      (item as GithubConnection).keyId ? [(item as GithubConnection).keyId] : [],
+  },
   rootBlock('calendars', 'Calendars', ['calendars'], {
     // Each calendar's link or password is in the keychain; the settings hold only where.
     secretsOf: (settings) =>
@@ -451,7 +496,15 @@ export function applyEntries(
     if (!section) continue
 
     if (section.kind === 'block') {
-      section.write(next, entry.data as Record<string, unknown>)
+      if (entry.section === 'github' && arriving.some((e) => e.section === 'github-connections')) {
+        const data = (entry.data as { github?: Record<string, unknown> }).github
+        if (data) {
+          const { keyId: _keyId, server: _server, connections: _connections, ...general } = data
+          section.write(next, { github: general })
+        }
+      } else {
+        section.write(next, entry.data as Record<string, unknown>)
+      }
       continue
     }
 

@@ -389,6 +389,17 @@ own. The text is a copy: editing it changes what the card shows, not the chat. A
 since is found again by the message id and the `chat` line is corrected when the card is next
 pressed. Do not invent these blocks — a `message` id that is in no chat opens nothing.
 
+## GitHub connection settings
+
+The plugin's `github.connections` list in settings holds stable connection IDs, names, server
+addresses, repository-owner patterns, per-server default marks, and optional account metadata
+(discovered login, avatar URL and access-check time). Each `keyId` names a keychain slot, never
+contains the token. A migrated connection keeps the old `github.keyId` slot; the old `keyId` and
+`server` fields are retained as a single-server compatibility projection. An explicitly empty
+list does not reimport an old token. Connection entries can be selected individually in settings
+transfer; keys travel only when the transfer includes keys. The separate notifications credential
+is still part of the GitHub general settings block.
+
 ## GitHub links
 
 A GitHub tab writes plain markdown links into a note when the person asks it to — "Insert into

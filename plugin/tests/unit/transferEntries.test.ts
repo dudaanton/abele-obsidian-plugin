@@ -287,9 +287,23 @@ describe('settings that arrived later than the transfer did', () => {
     const entries = collectEntries(settings({ github }))
     const entry = find(entries, 'github', 'github')
 
-    expect(entry?.data).toEqual({ github })
-    expect(entry?.secretIds).toEqual(['abele-github-token'])
-    expect(applyEntries([entry!], settings()).github).toEqual(github)
+    expect(entry?.data).toEqual({
+      github: {
+        enabled: true,
+        openLinks: false,
+        defaultRepo: 'octo-org/octo-repo',
+        userDisplay: 'login',
+        pageWidth: 'custom',
+        pageWidthPx: 1280,
+        pinnedRepos: github.pinnedRepos,
+      },
+    })
+    expect(entry?.secretIds).toEqual([])
+    const row = find(entries, 'github-connections', 'github-legacy')!
+    expect(row.secretIds).toEqual(['abele-github-token'])
+    const applied = applyEntries([entry!, row], settings()).github!
+    expect(applied.connections[0]).toMatchObject({ keyId: github.keyId, server: github.server })
+    expect(applied.openLinks).toBe(false)
   })
 
   it('carries the separate notifications token beside the main one', () => {
@@ -299,8 +313,12 @@ describe('settings that arrived later than the transfer did', () => {
       notifications: { keyId: 'abele-github-notifications-token' },
     }
     const entry = find(collectEntries(settings({ github })), 'github', 'github')
-    expect(entry?.secretIds).toEqual(['abele-github-token', 'abele-github-notifications-token'])
-    expect(applyEntries([entry!], settings()).github).toEqual(github)
+    expect(entry?.secretIds).toEqual(['abele-github-notifications-token'])
+    const row = find(collectEntries(settings({ github })), 'github-connections', 'github-legacy')!
+    expect(row.secretIds).toEqual(['abele-github-token'])
+    expect(applyEntries([entry!, row], settings()).github?.notifications).toEqual(
+      github.notifications
+    )
   })
 
   it('carries each MCP server as its own entry, with the token it points at', () => {
