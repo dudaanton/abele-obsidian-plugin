@@ -1,6 +1,7 @@
 /**
- * A drawing shown in a note, in the running app: embedded the plain way (`![[Sketch.svg]]`) as
- * well as through its callout, in reading view and live preview, it draws what is on the drawing —
+ * A drawing shown in a note, in the running app: embedded the plain way (`![[Sketch.svg]]`), the
+ * way a new one is inserted and the part kept in its link, as well as through the callout older
+ * notes use, in reading view and live preview, it draws what is on the drawing —
  * counted in the pixels of the screen, not in the markup — at the drawing's own size, and follows
  * a stroke drawn after it. Two embeds of one drawing in a note are sized apart: a size named in the
  * link, a handle dragged and written back into the embed dragged, a part kept into the callout it
@@ -251,6 +252,59 @@ describe.skipIf(!available)('a drawing in a note', () => {
     expect(Math.abs(r.dragged! - kept)).toBeLessThan(2)
     expect(r.parts?.[0]).toBe('> [!drawing]')
     expect(r.parts?.[1]).toMatch(/^> \[!drawing\|\d+ \d+ \d+ \d+\]$/)
+  })
+
+  it('goes into a note as its embed alone, and keeps a part changed there in the link', () => {
+    const r = run<{
+      error?: string
+      inserted?: string
+      shown?: boolean
+      text?: string
+      partPicture?: number
+      wholePicture?: number
+    }>(`
+      await closeAll()
+      const file = app.vault.getAbstractFileByPath(window.__embedDrawing)
+      // The command at the cursor: the embed and nothing round it.
+      const ins = await note('Inserted', 'Before\\n', 'source')
+      ins.view.editor.setCursor({ line: 1, ch: 0 })
+      app.commands.executeCommandById('abele:insert-drawing')
+      const inserted = await until(() => { const t = ins.view.editor.getValue(); return t.includes('![[') && t }, 8000)
+      await until(() => views().length, 8000)
+      for (const v of views()) v.leaf.detach()
+      await wait(300)
+      const made = /!\\[\\[([^\\]]+)\\]\\]/.exec(inserted || '')?.[1]
+      const madeFile = made && app.metadataCache.getFirstLinkpathDest(made, ins.view.file.path)
+      // Shown by the plugin, in live preview, with no callout.
+      const shown = !!(await until(() => boxes(ins).find((b) => b.clientWidth && !b.closest('.callout')), 8000))
+      if (madeFile) await app.vault.delete(madeFile)
+      // A part changed on an embed alone goes into that embed's link.
+      const leaf = await note('Part in link', 'Part\\n\\n![[' + file.name + ']]\\n\\n![[' + file.name + ']]\\n', 'source')
+      const two = await until(() => { const b = boxes(leaf); return b.length === 2 && b.every((x) => x.clientWidth && x.querySelector('img')?.complete) && b }, 8000)
+      await wait(400)
+      two[1].querySelector('.abele-drawing-embed__adjust').click(); await wait(100)
+      const br = two[1].getBoundingClientRect()
+      for (let i = 0; i < 4; i++) { await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(br.left + br.width / 2), y: Math.round(br.top + br.height / 2), deltaX: 0, deltaY: -50, modifiers: 2 }); await wait(60) }
+      two[1].querySelector('.abele-drawing-embed__keep').click()
+      const text = await until(async () => { const t = await read(leaf.view.file.path); return t.includes('#part=') && t }, 5000)
+      await wait(800)
+      // In reading view the part is what shows: the drawing's picture overflows its box, cut to the part.
+      await leaf.setViewState({ type: 'markdown', state: { file: leaf.view.file.path, mode: 'preview' } })
+      const rb = await until(() => { const b = boxes(leaf); return b.length === 2 && b.every((x) => x.clientWidth && x.querySelector('img')?.complete) && b }, 8000)
+      await wait(500)
+      await shoot('part-in-link')
+      const img = (b) => b.querySelector('img').getBoundingClientRect().width / b.clientWidth
+      return { inserted, shown, text, partPicture: rb && img(rb[1]), wholePicture: rb && img(rb[0]) }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.inserted).toMatch(/^Before\n!\[\[[^\]]+\.svg\]\]\n$/)
+    expect(r.shown).toBe(true)
+    const lines = r.text!.split('\n')
+    expect(r.text).not.toContain('[!drawing')
+    expect(lines[2]).not.toContain('#part=')
+    expect(lines[4]).toMatch(/^!\[\[[^\]#]+\.svg#part=-?\d+,-?\d+,\d+,\d+\]\]$/)
+    // The whole drawing fits its box; the part's box shows only a piece of the picture.
+    expect(r.partPicture!).toBeGreaterThan(r.wholePicture! * 1.3)
   })
 
   it('opens the drawing from a button seen without hovering, a part at that part, on a phone too', async () => {

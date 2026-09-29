@@ -1,11 +1,11 @@
 /**
- * A drawing shown in a note (`drawing/embedFormat.ts`): the callout that shows it, the part of it
- * the callout's header names, and that header rewritten when another part is kept.
+ * A drawing shown in a note (`drawing/embedFormat.ts`), in the callout older notes show it in: the
+ * part of it the callout's header names, and that header rewritten when another part is kept. A
+ * part named in the embed's own link is `drawingEmbedPart.test.ts`.
  */
 import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_EMBED_HEIGHT,
-  drawingCallout,
   embedBox,
   formatEmbedSize,
   parseEmbedSize,
@@ -19,13 +19,6 @@ import {
 import { drawingSvg } from '@/drawing/drawingFile'
 
 describe('a drawing in a note', () => {
-  it('is a callout with the picture embedded, and the part in its header', () => {
-    expect(drawingCallout('![[D/Sketch.svg]]')).toBe('> [!drawing]\n> ![[D/Sketch.svg]]')
-    expect(drawingCallout('![[D/Sketch.svg]]', { x: 10.4, y: -20.6, w: 300, h: 200 })).toBe(
-      '> [!drawing|10 -21 300 200]\n> ![[D/Sketch.svg]]'
-    )
-  })
-
   it('reads the part back only when it is four numbers with a size', () => {
     expect(parseView('10 -21 300 200')).toEqual({ x: 10, y: -21, w: 300, h: 200 })
     expect(parseView('10,20,30,40')).toEqual({ x: 10, y: 20, w: 30, h: 40 })

@@ -65,15 +65,15 @@ bar opens the zoom: in, out, actual size, or the whole drawing.
 
 **Insert a new drawing** — in the command palette or the editor's right-click menu — makes a
 drawing beside the note's attachments, shows it in the note where the cursor is, and opens it
-beside the note to draw on. It goes into the note as a callout with the picture in it:
+beside the note to draw on. It goes into the note as the picture's own embed, nothing round it:
 
 ```markdown
-> [!drawing|120 40 800 500]
-> ![[Sketch.svg]]
+![[Sketch.svg]]
 ```
 
-The numbers after the bar are the part of the drawing the note shows; without them it shows all
-of it. Two buttons sit in the corner of the picture. The pen opens the drawing at that part to
+Once a part of it is chosen, the link names that part — `![[Sketch.svg#part=120,40,800,500]]` —
+and without it the note shows all of it. A size after a bar works as for any picture. Notes
+written with an earlier version show a drawing in a `[!drawing]` callout; those keep working. Two buttons sit in the corner of the picture. The pen opens the drawing at that part to
 draw on. The other one changes the part: drag to move it, pinch, use the wheel with Ctrl or ⌘, or
 the trackpad to zoom, then the tick to keep it (the cross leaves it as it was). Without the plugin,
 the note still shows the whole drawing.

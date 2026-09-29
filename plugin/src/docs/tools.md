@@ -58,8 +58,8 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   top, the properties every file shares. `read_transactions` names its columns in its first line
   and leaves an empty one empty.
 - `look_at_drawing` is how to see a drawing (an `.svg` the plugin made — see the vault section):
-  all of it, a part by `area` (`x y width height` in its units, as a `[!drawing|…]` callout names
-  one), or `picked: true` for what the person picked with the lasso in its open tab. Read
+  all of it, a part by `area` (`x y width height` in its units — the numbers of an embed's
+  `#part=x,y,w,h`, or of an older `[!drawing|…]` callout), or `picked: true` for what the person picked with the lasso in its open tab. Read
   handwriting from it when asked to transcribe; the reply gives the whole drawing's bounds, so
   ask again for a closer part when the writing is small. `read_image` on a drawing shows it whole.
 

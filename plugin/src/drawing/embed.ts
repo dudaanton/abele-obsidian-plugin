@@ -1,9 +1,9 @@
 /**
- * A drawing in a note — embedded the plain way, `![[Sketch.svg]]`, or through its callout, which
- * names the part of it to show (`embedFormat.ts`) — shown as what is drawn, following the file as
- * the drawing changes, with buttons over it: one opens the drawing, one opens it to draw on, one
- * lets the part be changed — a drag moves it, the wheel, a trackpad's pinch or two fingers zoom it
- * — and kept, written back into the callout's header. A handle at its corner makes it bigger or
+ * A drawing in a note — its embed, `![[Sketch.svg]]`, the part of it to show named in the link
+ * (`![[Sketch.svg#part=…]]`, `embedFormat.ts`) or, in notes written before, in a callout round it
+ * — shown as what is drawn, following the file as the drawing changes, with buttons over it: one
+ * opens the drawing, one opens it to draw on, one lets the part be changed — a drag moves it, the
+ * wheel, a trackpad's pinch or two fingers zoom it — and kept, written back where it was named. A handle at its corner makes it bigger or
  * smaller, kept as the embed's size (`![[Sketch.svg|300]]`).
  *
  * Obsidian's own picture of the file stays where it is and is hidden: the box is put inside its
@@ -29,6 +29,8 @@ import {
   parseEmbedSize,
   paperOfSvg,
   parseView,
+  partOfLink,
+  withEmbedPart,
   withEmbedSize,
   withView,
   type EmbedSize,
@@ -160,7 +162,7 @@ export function drawingEmbedsInEditor(app: App, sourcePath: (view: EditorView) =
 
 interface EmbedOptions {
   sourcePath: string
-  /** The drawing's callout it is in, whose header names the part; null for a plain embed. */
+  /** The drawing's callout it is in, whose header names the part; null for an embed alone. */
   callout: HTMLElement | null
   place: () => EmbedPlace | null
 }
@@ -192,7 +194,9 @@ export class DrawingEmbed extends MarkdownRenderChild {
   ) {
     super(embed)
     claimed.add(embed)
-    this.saved = opts.callout ? parseView(opts.callout.getAttribute('data-callout-metadata')) : null
+    this.saved = opts.callout
+      ? parseView(opts.callout.getAttribute('data-callout-metadata'))
+      : partOfLink(embed.getAttribute('src'))
     this.view = this.saved
     this.size = this.namedSize()
     const doc = embed.ownerDocument
@@ -339,10 +343,9 @@ export class DrawingEmbed extends MarkdownRenderChild {
       this.button('check', 'Keep this part', 'keep', () => this.endAdjust(true))
       return
     }
-    if (this.opts.callout)
-      this.button('scan', 'Change the part of the drawing shown here', 'adjust', () =>
-        this.startAdjust()
-      )
+    this.button('scan', 'Change the part of the drawing shown here', 'adjust', () =>
+      this.startAdjust()
+    )
     this.button('pen-line', 'Open the drawing here to draw on', 'open', () => {
       const area = this.shown()
       void openDrawing(this.app, this.file, area ? { area, draw: true } : { draw: true })
@@ -399,10 +402,15 @@ export class DrawingEmbed extends MarkdownRenderChild {
     return done
   }
 
-  /** The part written into the callout's header in the note. */
+  /** The part written where it is named: the embed's link, or the header of its callout. */
   private async writePart(view: Rect | null): Promise<void> {
+    const nth = this.opts.callout ? 0 : this.nth()
     const done = await this.edit((text, place) =>
-      withView(text, view, { line: place?.from, file: this.file.path, was: this.saved })
+      this.opts.callout
+        ? withView(text, view, { line: place?.from, file: this.file.path, was: this.saved })
+        : place
+          ? withEmbedPart(text, { ...place, file: this.file.path, nth }, view)
+          : null
     )
     if (!done) new Notice('The drawing’s place in the note could not be found to keep the part')
   }

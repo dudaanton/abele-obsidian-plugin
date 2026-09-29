@@ -33,7 +33,7 @@ export function createLookAtDrawingTool(): AgentTool {
     name: LOOK_AT_DRAWING,
     label: 'Look at drawing',
     description:
-      "See a drawing made in the plugin (an .svg whose file says it is one) as a picture — the whole of it, a part, or what the person picked with the lasso in its open tab. Use it to read handwriting, describe or answer about a sketch. `area` is \"x y width height\" in the drawing's own units, as a note's `[!drawing|…]` callout names a part; the reply says the whole drawing's bounds so you can ask for a closer part.",
+      "See a drawing made in the plugin (an .svg whose file says it is one) as a picture — the whole of it, a part, or what the person picked with the lasso in its open tab. Use it to read handwriting, describe or answer about a sketch. `area` is \"x y width height\" in the drawing's own units, the numbers of a note's `#part=x,y,w,h` embed (or an older `[!drawing|…]` callout); the reply says the whole drawing's bounds so you can ask for a closer part.",
     parameters: {
       type: 'object',
       properties: {

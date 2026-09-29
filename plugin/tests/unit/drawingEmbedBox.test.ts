@@ -21,12 +21,15 @@ const stroke = (x1: number, y1: number, x2: number, y2: number): DrawingItem =>
   }) as DrawingItem
 
 /** An iPad's app: the address of a file is the same before and after it changes. */
-function phoneApp(file: TFile, text: { now: string }) {
+function phoneApp(file: TFile, text: { now: string }, start = '> [!drawing]\n> ![[Sketch.svg]]\n') {
   const modified: ((f: TFile) => void)[] = []
   const written: string[] = []
-  let note = '> [!drawing]\n> ![[Sketch.svg]]\n'
+  let note = start
   const noteFile = Object.assign(new TFile(), { path: 'Note.md', extension: 'md' })
   const app = {
+    metadataCache: {
+      getFirstLinkpathDest: (link: string) => (link === file.path ? file : null),
+    },
     vault: {
       on: (name: string, cb: (f: TFile) => void) => {
         if (name === 'modify') modified.push(cb)
@@ -119,5 +122,26 @@ describe('a drawing’s box in a note on an iPad', () => {
     await settle()
     expect(phone.written).toHaveLength(1)
     expect(embed.querySelector('.abele-drawing-embed__keep')).toBeNull()
+  })
+
+  it('keeps a part changed in an embed alone in its link, with no callout round it', async () => {
+    const phone = phoneApp(file, text, 'Plan\n\n![[Sketch.svg#part=0,0,300,200|240]]\n')
+    document.body.empty()
+    const line = document.body.createDiv()
+    const plain = line.createSpan({ cls: 'internal-embed' })
+    plain.setAttribute('src', 'Sketch.svg#part=0,0,300,200')
+    const box = new DrawingEmbed(phone.app, plain, file, {
+      sourcePath: 'Note.md',
+      callout: null,
+      place: () => ({ from: 2, to: 2 }),
+    })
+    box.load()
+    box.onload()
+    await settle()
+    plain.querySelector<HTMLElement>('.abele-drawing-embed__adjust')!.click()
+    plain.querySelector<HTMLElement>('.abele-drawing-embed__whole')!.click()
+    plain.querySelector<HTMLElement>('.abele-drawing-embed__keep')!.click()
+    await settle()
+    expect(phone.written).toEqual(['Plan\n\n![[Sketch.svg|240]]\n'])
   })
 })

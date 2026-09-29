@@ -1,15 +1,17 @@
 /**
- * A drawing shown in a note, and which part of it: a callout of its own with the picture embedded
- * in it, the part written into the callout's header.
+ * A drawing shown in a note, and which part of it: the picture's own embed, the part written into
+ * its link after a `#`.
  *
  * ```markdown
- * > [!drawing|120 40 800 500]
- * > ![[Drawings/Sketch.svg]]
+ * ![[Drawings/Sketch.svg#part=120,40,800,500]]
  * ```
  *
- * The part is `x y width height` in the drawing's units; without it the whole drawing shows. The
- * picture is an ordinary embed, so Obsidian follows the drawing when it is renamed and shows the
- * whole of it — in a callout — where the plugin is not there to show the part.
+ * The part is `x,y,width,height` in the drawing's units; without it the whole drawing shows. The
+ * embed is an ordinary one, so Obsidian follows the drawing when it is renamed and shows the
+ * whole of it where the plugin is not there to show the part.
+ *
+ * Notes written before name the part in a callout round the embed, `> [!drawing|120 40 800 500]`;
+ * those are read and kept as they are.
  *
  * Everything here works on text, so it is tested without a vault.
  */
@@ -31,10 +33,32 @@ export function parseView(meta: string | null | undefined): Rect | null {
 export const formatView = (r: Rect): string =>
   [r.x, r.y, r.w, r.h].map((n) => String(Math.round(n))).join(' ')
 
-/** The callout that shows a drawing — a part of it, or all of it. */
-export function drawingCallout(embed: string, view?: Rect | null): string {
-  const head = view ? `> [!${DRAWING_CALLOUT}|${formatView(view)}]` : `> [!${DRAWING_CALLOUT}]`
-  return `${head}\n> ${embed}`
+const PART = /#part=([^|\])\s>]*)/
+
+/** The part of a drawing a link names after its `#part=`; null for none, or for anything else. */
+export function partOfLink(link: string | null | undefined): Rect | null {
+  const m = PART.exec(link ?? '')
+  return m ? parseView(m[1]) : null
+}
+
+const partSuffix = (view: Rect | null | undefined): string =>
+  view ? `#part=${formatView(view).replace(/ /g, ',')}` : ''
+
+/**
+ * An embed of a drawing, a wikilink or a Markdown link, showing `view` — or all of it, when no
+ * part is named: the part written into the link, any part it named before taken out.
+ */
+export function drawingEmbed(embed: string, view?: Rect | null): string {
+  const suffix = partSuffix(view)
+  const wiki = /^!\[\[([^\]|]*)(\|[^\]]*)?\]\]$/.exec(embed)
+  if (wiki) return `![[${wiki[1].replace(PART, '')}${suffix}${wiki[2] ?? ''}]]`
+  const md = /^!\[([^\]]*)\]\((<[^>]*>|[^\s)]*)(\s+"[^"]*")?\)$/.exec(embed)
+  if (md) {
+    const url = md[2].replace(PART, '')
+    const at = url.startsWith('<') ? `${url.slice(0, -1)}${suffix}>` : `${url}${suffix}`
+    return `![${md[1]}](${at}${md[3] ?? ''})`
+  }
+  return embed
 }
 
 const HEADER = /^(\s*>\s*\[!drawing)(\|[^\]]*)?(\][+-]?.*)$/i
@@ -152,6 +176,14 @@ const sized = (parts: string[], size: EmbedSize | null): string[] => {
   return size ? [...rest, formatEmbedSize(size)] : rest
 }
 
+/** Where in a note one embed of a file is: the `nth` of its embeds over those lines. */
+export interface EmbedWhere {
+  from: number
+  to?: number
+  file: string
+  nth: number
+}
+
 /**
  * The note with the size of one embed of a file changed: the `nth` of the file's embeds from line
  * `from` through `to` — through the end of the callout when `from` opens one and `to` is not
@@ -159,8 +191,35 @@ const sized = (parts: string[], size: EmbedSize | null): string[] => {
  */
 export function withEmbedSize(
   markdown: string,
-  where: { from: number; to?: number; file: string; nth: number },
+  where: EmbedWhere,
   size: EmbedSize | null
+): string | null {
+  return withEmbed(markdown, where, {
+    wiki: (target, alias) => `![[${[target, ...sized(alias, size)].join('|')}]]`,
+    markdown: (alt, url) => `![${sized(alt ? alt.split('|') : [], size).join('|')}](${url})`,
+  })
+}
+
+/** The note with the part one embed of a file shows changed, found as `withEmbedSize` finds it. */
+export function withEmbedPart(
+  markdown: string,
+  where: EmbedWhere,
+  view: Rect | null
+): string | null {
+  return withEmbed(markdown, where, {
+    wiki: (target, alias) => drawingEmbed(`![[${[target, ...alias].join('|')}]]`, view),
+    markdown: (alt, url) => drawingEmbed(`![${alt}](${url})`, view),
+  })
+}
+
+/** The note with one embed of a file written anew. */
+function withEmbed(
+  markdown: string,
+  where: EmbedWhere,
+  write: {
+    wiki: (target: string, alias: string[]) => string
+    markdown: (alt: string, url: string) => string
+  }
 ): string | null {
   const lines = markdown.split('\n')
   const name = where.file.slice(where.file.lastIndexOf('/') + 1)
@@ -169,25 +228,20 @@ export function withEmbedSize(
     while (to + 1 < lines.length && /^\s*>/.test(lines[to + 1])) to++
   let seen = 0
   for (let i = where.from; i <= to && i < lines.length; i++) {
-    const found: { at: number; len: number; text: string }[] = []
+    const found: { at: number; len: number; text: () => string }[] = []
     for (const m of lines[i].matchAll(WIKI_EMBED)) {
       const [target, ...alias] = m[1].split('|')
       if (nameOf(target) !== name) continue
-      found.push({
-        at: m.index,
-        len: m[0].length,
-        text: `![[${[target, ...sized(alias, size)].join('|')}]]`,
-      })
+      found.push({ at: m.index, len: m[0].length, text: () => write.wiki(target, alias) })
     }
     for (const m of lines[i].matchAll(MD_EMBED)) {
       if (nameOf(m[2].split(/\s+"/)[0]) !== name) continue
-      const alt = sized(m[1] ? m[1].split('|') : [], size).join('|')
-      found.push({ at: m.index, len: m[0].length, text: `![${alt}](${m[2]})` })
+      found.push({ at: m.index, len: m[0].length, text: () => write.markdown(m[1], m[2]) })
     }
     found.sort((a, b) => a.at - b.at)
     for (const f of found) {
       if (seen++ !== where.nth) continue
-      lines[i] = lines[i].slice(0, f.at) + f.text + lines[i].slice(f.at + f.len)
+      lines[i] = lines[i].slice(0, f.at) + f.text() + lines[i].slice(f.at + f.len)
       return lines.join('\n')
     }
   }

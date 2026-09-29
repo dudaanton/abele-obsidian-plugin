@@ -8,7 +8,7 @@
  */
 import { Notice, TFile, TFolder, normalizePath, type App, type PaneType } from 'obsidian'
 import { emptyDrawingSvg, isDrawingSvg } from './drawingFile'
-import { drawingCallout } from './embedFormat'
+import { drawingEmbed } from './embedFormat'
 import { DRAWING_VIEW_TYPE, IMAGE_INK_VIEW_TYPE } from './viewType'
 import type { DrawingView } from './DrawingView'
 import type { Rect } from './items'
@@ -116,7 +116,7 @@ export async function insertDrawing(
   try {
     const path = await app.fileManager.getAvailablePathForAttachment(name, note.path)
     const file = await app.vault.create(path, emptyDrawingSvg())
-    insert(`${drawingCallout(`!${app.fileManager.generateMarkdownLink(file, note.path)}`)}\n`)
+    insert(`!${app.fileManager.generateMarkdownLink(file, note.path)}\n`)
     await openDrawing(app, file, { draw: true }, 'split')
     return file
   } catch (e) {
@@ -125,9 +125,9 @@ export async function insertDrawing(
   }
 }
 
-/** A drawing's callout on the clipboard, to paste into a note. */
+/** A drawing's embed on the clipboard, the part shown named in it, to paste into a note. */
 export async function copyEmbed(embed: string, view?: Rect | null): Promise<void> {
-  await navigator.clipboard.writeText(drawingCallout(embed, view))
+  await navigator.clipboard.writeText(drawingEmbed(embed, view))
   new Notice('Copied: paste it into a note to show the drawing there')
 }
 
