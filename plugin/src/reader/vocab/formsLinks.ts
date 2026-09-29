@@ -10,7 +10,7 @@
  * that opens it on a click.
  */
 import { Keymap, TFile, type App, type MarkdownPostProcessorContext, type Plugin } from 'obsidian'
-import { RangeSetBuilder, type Extension } from '@codemirror/state'
+import { RangeSetBuilder, StateEffect, type Extension } from '@codemirror/state'
 import {
   Decoration,
   EditorView,
@@ -56,6 +56,9 @@ export const formsHref = (place: Pick<FormsPlace, 'book' | 'forms'>): string =>
 /** The templates the settings name, as frames: where a `{{ forms }}` field may stand. */
 let frames: EntryFrame[] = []
 let framePaths: string[] = []
+/** The editors showing notes now, told when the templates are read again. */
+const editors = new Set<EditorView>()
+const framesRead = StateEffect.define<null>()
 
 function templatePaths(): string[] {
   const s = readerSettingsFrom(AbeleConfig.getInstance().reader)
@@ -75,11 +78,13 @@ async function loadFrames(app: App): Promise<void> {
     if (frame.forms) out.push(frame)
   }
   frames = out
+  for (const view of editors) view.dispatch({ effects: framesRead.of(null) })
 }
 
 /** The places a note's forms are written, with or without a template's field. */
 export function placesIn(markdown: string, known: EntryFrame[] = frames): FormsPlace[] {
-  if (!/forms/i.test(markdown)) return []
+  // With no template field to look for, only a callout's `forms::` line can hold them.
+  if (!known.length && !/forms::/i.test(markdown)) return []
   const byLine = new Map<number, FormsPlace>()
   for (const frame of [undefined, ...known])
     for (const p of formsPlaces(markdown, frame)) if (!byLine.has(p.line)) byLine.set(p.line, p)
@@ -104,16 +109,28 @@ function linkEl(
   return a
 }
 
-/** Wraps the last text of `el` reading `text` in a link; whether it found it. */
+/**
+ * Wraps the text of `el` reading `text` in a link; whether it found it. `line` is the drawn text of
+ * the line the forms are on: the paragraph that reads it is the one taken, not a paragraph that
+ * happens to hold the same words; with none, the last text holding them.
+ */
 function wrapText(
   el: HTMLElement,
   text: string,
-  place: Pick<FormsPlace, 'book' | 'forms'>
+  place: Pick<FormsPlace, 'book' | 'forms'>,
+  line?: string
 ): boolean {
   const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  const flat = (s: string) => s.replace(/\s+/g, ' ').trim()
   let hit: Text | null = null
-  for (let n = walker.nextNode(); n; n = walker.nextNode())
-    if ((n as Text).data.includes(text) && !n.parentElement?.closest('a')) hit = n as Text
+  let exact: Text | null = null
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!(n as Text).data.includes(text) || n.parentElement?.closest('a')) continue
+    hit = n as Text
+    const block = n.parentElement?.closest('p, li, div, td, th, h1, h2, h3, h4, h5, h6')
+    if (line !== undefined && block && flat(block.textContent ?? '') === flat(line)) exact = hit
+  }
+  if (line !== undefined && exact) hit = exact
   if (!hit) return false
   const at = hit.data.lastIndexOf(text)
   const rest = hit.splitText(at)
@@ -136,7 +153,11 @@ const FORMS_TEXT = /^forms::[ \t]*(.+?)\s*$/i
  * Reading view, and callouts live preview draws: a callout's `forms::` line found in what was
  * drawn, a `{{ forms }}` field by the lines of the section.
  */
-export function formsLinkPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+export function formsLinkPostProcessor(
+  el: HTMLElement,
+  ctx: MarkdownPostProcessorContext,
+  known: EntryFrame[] = frames
+): void {
   for (const callout of Array.from(el.querySelectorAll('.callout'))) {
     const book = calloutBook(callout)
     if (!book) continue
@@ -150,14 +171,17 @@ export function formsLinkPostProcessor(el: HTMLElement, ctx: MarkdownPostProcess
       wrapText(p as HTMLElement, text, { book, forms })
     }
   }
-  if (!frames.length) return
+  if (!known.length) return
   const info = ctx.getSectionInfo(el)
   if (!info) return
   const lines = info.text.split('\n')
-  for (const place of placesIn(info.text)) {
+  for (const place of placesIn(info.text, known)) {
     if (place.line < info.lineStart || place.line > info.lineEnd) continue
     if (/^>/.test(lines[place.line])) continue
-    wrapText(el, lines[place.line].slice(place.from, place.to), place)
+    const raw = lines[place.line]
+    // The line as drawn: without its emphasis and list marks, which are not text on the page.
+    const drawn = raw.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '').replace(/[*_`~=]/g, '')
+    wrapText(el, raw.slice(place.from, place.to), place, drawn)
   }
 }
 
@@ -189,11 +213,16 @@ function editorLinks(app: App): Extension {
   const plugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet
-      constructor(view: EditorView) {
+      constructor(private readonly view: EditorView) {
+        editors.add(view)
         this.decorations = build(view)
       }
       update(u: ViewUpdate) {
-        if (u.docChanged || u.viewportChanged) this.decorations = build(u.view)
+        const reread = u.transactions.some((t) => t.effects.some((e) => e.is(framesRead)))
+        if (u.docChanged || u.viewportChanged || reread) this.decorations = build(u.view)
+      }
+      destroy() {
+        editors.delete(this.view)
       }
     },
     { decorations: (v) => v.decorations }

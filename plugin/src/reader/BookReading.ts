@@ -447,7 +447,8 @@ export class BookReading {
     this.stopSearch(false)
     const q = query.trim()
     this.model.search = { ...emptySearch(), query, ...(words?.length ? { words } : {}) }
-    if (q.length < 2) return
+    // A form of a word may be a single letter; typed, a search needs two.
+    if (!words?.length && q.length < 2) return
     this.model.search.running = true
     const groups: SearchGroup[] = []
     const publish = () => {
@@ -456,27 +457,31 @@ export class BookReading {
     }
     try {
       if (this.pdf) {
-        // A PDF's pages are searched as they read: each form in turn is not offered there.
-        const pdfQuery = words?.length ? words[0] : q
-        for await (const found of this.pdf.searchPages(
-          pdfQuery,
-          () => token !== this.searchToken
-        )) {
-          if (token !== this.searchToken) return
-          if ('progress' in found) this.model.search.progress = found.progress
-          else {
-            groups.push({
-              label: `Page ${found.index + 1}`,
-              hits: found.items.map((item) => ({
-                cfi: this.engine.getCFI(found.index),
-                index: found.index,
-                occurrence: item.occurrence,
-                excerpt: item.excerpt,
-              })),
-            })
-            publish()
+        // A PDF's pages are searched as they read, for each form in turn; each result keeps the
+        // form it was found by, for its words to be selected on the page.
+        const queries = words?.length ? words : [q]
+        for (const [n, pdfQuery] of queries.entries())
+          for await (const found of this.pdf.searchPages(
+            pdfQuery,
+            () => token !== this.searchToken
+          )) {
+            if (token !== this.searchToken) return
+            if ('progress' in found)
+              this.model.search.progress = (n + found.progress) / queries.length
+            else {
+              groups.push({
+                label: `Page ${found.index + 1}`,
+                hits: found.items.map((item) => ({
+                  cfi: this.engine.getCFI(found.index),
+                  index: found.index,
+                  occurrence: item.occurrence,
+                  excerpt: item.excerpt,
+                  ...(words?.length ? { query: pdfQuery } : {}),
+                })),
+              })
+              publish()
+            }
           }
-        }
       } else {
         const accent = getComputedStyle(this.themeEl).getPropertyValue('--text-accent').trim()
         const search = this.engine.search({
@@ -534,7 +539,12 @@ export class BookReading {
     await this.goToHit(hits[next])
   }
 
-  async goToHit(hit: { cfi: string; index?: number; occurrence?: number }): Promise<void> {
+  async goToHit(hit: {
+    cfi: string
+    index?: number
+    occurrence?: number
+    query?: string
+  }): Promise<void> {
     const all = this.model.search.groups.flatMap((g) => g.hits)
     const i = all.findIndex(
       (h) => h === hit || (h.cfi === hit.cfi && h.occurrence === hit.occurrence)
@@ -545,7 +555,7 @@ export class BookReading {
       this.pendingMatch = {
         index: hit.index,
         occurrence: hit.occurrence ?? 0,
-        query: this.model.search.query.trim(),
+        query: (hit.query ?? this.model.search.query).trim(),
       }
       await this.engine.goTo(hit.index)
       for (const { doc } of this.engine.renderer.getContents())

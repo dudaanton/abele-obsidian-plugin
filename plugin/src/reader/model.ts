@@ -24,6 +24,8 @@ export interface SearchHit {
   cfi: string
   occurrence?: number
   index?: number
+  /** The words it was found by, when that is not the search's query: a form of a word in a PDF. */
+  query?: string
   excerpt: SearchExcerpt
 }
 

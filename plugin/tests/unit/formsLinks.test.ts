@@ -78,6 +78,27 @@ describe('the link', () => {
   })
 })
 
+describe('a template’s field in reading view', () => {
+  it('is linked on its own line, not in a paragraph holding the same word', () => {
+    const frame = entryFrame(parseNoteTemplate(TEMPLATE))
+    const note = `# Words\n\n> [!quote|green] ${LINK}\n> māja\n\n**Forms:** māja, mājas\n\nSee māja, mājas above.\n`
+    const el = document.createElement('div')
+    const parsed = new DOMParser().parseFromString(
+      '<p><strong>Forms:</strong> māja, mājas</p><p>See māja, mājas above.</p>',
+      'text/html'
+    )
+    el.append(...Array.from(parsed.body.childNodes))
+    const lines = note.split('\n')
+    const ctx = {
+      getSectionInfo: () => ({ text: note, lineStart: 5, lineEnd: lines.length - 1 }),
+    } as unknown as MarkdownPostProcessorContext
+    formsLinkPostProcessor(el, ctx, [frame])
+    const links = el.querySelectorAll(`a.${FORMS_LINK_CLASS}`)
+    expect(links).toHaveLength(1)
+    expect(links[0].parentElement!.textContent).toBe('Forms: māja, mājas')
+  })
+})
+
 describe('the book searched for the forms', () => {
   it('finds each whole word of them, with the words around it', () => {
     const parsed = new DOMParser().parseFromString(

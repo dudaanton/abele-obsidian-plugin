@@ -6,7 +6,14 @@
  */
 import type { App, TFile } from 'obsidian'
 import type { LoadedBook } from '../bookText'
-import { saveHighlight, readHighlights, noteFor, type NotesPlace } from '../companion'
+import { normalizePath } from 'obsidian'
+import {
+  companionPath,
+  saveHighlight,
+  readHighlights,
+  noteFor,
+  type NotesPlace,
+} from '../companion'
 import type { Highlight, HighlightColor } from '../highlights'
 import { notesTargetFor, readerSettingsFrom } from '../settings'
 import { bookKey } from '../positions'
@@ -74,13 +81,17 @@ export async function setHighlightForms(
   if (!h.forms) delete h.forms
   if (known && same(known.forms, next))
     return { highlight: known, note: await noteFor(app, book, where, cfi), changed: false }
+  // Told first, the note it is being made, too: what the automation hears next is its own echo.
   const before = await noteFor(app, book, where, cfi)
-  if (before) opts.wrote?.(before.path)
+  const told =
+    before?.path ??
+    (where.target.to === 'book' ? companionPath(book) : normalizePath(where.target.path))
+  opts.wrote?.(told)
   // A discussion's chat stays linked from the highlight written again.
   const chat = h.discussion
     ? (await import('../bookDiscussions')).discussionPath(h.discussion)
     : undefined
   const note = await saveHighlight(app, book, where, h, chat)
-  if (!before) opts.wrote?.(note.path)
+  if (note.path !== told) opts.wrote?.(note.path)
   return { highlight: h, note, changed: true }
 }
