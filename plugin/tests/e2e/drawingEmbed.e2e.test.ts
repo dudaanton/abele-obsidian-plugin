@@ -5,7 +5,8 @@
  * counted in the pixels of the screen, not in the markup — at the drawing's own size, and follows
  * a stroke drawn after it. Two embeds of one drawing in a note are sized apart: a size named in the
  * link, a handle dragged and written back into the embed dragged, a part kept into the callout it
- * was changed in. A button on every embed, seen without hovering, opens the drawing.
+ * was changed in. The buttons on every embed show at a mouse over it, or after a tap that does
+ * nothing else on a touch screen, and one of them opens the drawing.
  *
  * Pictures go to `/tmp/abele-phone/drawing-embed-*.png` — look at them.
  */
@@ -307,10 +308,11 @@ describe.skipIf(!available)('a drawing in a note', () => {
     expect(r.partPicture!).toBeGreaterThan(r.wholePicture! * 1.3)
   })
 
-  it('opens the drawing from a button seen without hovering, a part at that part, on a phone too', async () => {
+  it('shows its buttons to a mouse over it or after a first tap that does nothing else, and opens the drawing from one', async () => {
     const desk = run<{
       error?: string
-      seen?: boolean
+      away?: string
+      over?: string
       opened?: string
       zoom?: number
       plain?: string
@@ -319,19 +321,32 @@ describe.skipIf(!available)('a drawing in a note', () => {
       const file = app.vault.getAbstractFileByPath(window.__embedDrawing)
       const leaf = await note('Open', '> [!drawing|100 100 120 60]\\n> ![[' + file.name + ']]\\n\\n![[' + file.name + ']]\\n', 'preview')
       const b = await until(() => { const b = boxes(leaf); return b.length === 2 && b.every((x) => x.clientWidth) && b }, 8000)
-      const go = b[0].querySelector('.abele-drawing-embed__go')
-      const seen = !!go && go.getBoundingClientRect().width > 10 && getComputedStyle(go).opacity === '1' && getComputedStyle(go.parentElement).opacity === '1'
-      go.click()
+      const actions = b[0].querySelector('.abele-drawing-embed__actions')
+      const br = b[0].getBoundingClientRect()
+      // The mouse away from the drawing: nothing over it.
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(br.right + 200), y: Math.round(br.bottom + 200) })
+      await wait(400)
+      const away = getComputedStyle(actions).opacity
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(br.left + br.width / 2), y: Math.round(br.top + br.height / 2) })
+      await wait(400)
+      const over = getComputedStyle(actions).opacity
+      await shoot('hover')
+      // Pressed with the mouse where it shows.
+      const g = b[0].querySelector('.abele-drawing-embed__go').getBoundingClientRect()
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(g.left + g.width / 2), y: Math.round(g.top + g.height / 2) })
+      await input('mousePressed', g.left + g.width / 2, g.top + g.height / 2, 'mouse', 1)
+      await input('mouseReleased', g.left + g.width / 2, g.top + g.height / 2, 'mouse', 0)
       const view = await until(() => views().find((v) => v.file?.path === file.path && v.session?.surface.width), 8000)
       await wait(400)
       const zoom = view?.session.camera.zoom
       view?.leaf.detach()
       b[1].querySelector('.abele-drawing-embed__go').click()
       const plain = (await until(() => views().find((v) => v.file?.path === file.path), 8000))?.file.path
-      return { seen, opened: view?.file.path, zoom, plain }
+      return { away, over, opened: view?.file.path, zoom, plain }
     `)
     expect(desk.error).toBeUndefined()
-    expect(desk.seen).toBe(true)
+    expect(desk.away).toBe('0')
+    expect(desk.over).toBe('1')
     expect(desk.opened).toMatch(/\.svg$/)
     // The part is 120 wide: it opens zoomed in on it.
     expect(desk.zoom).toBeGreaterThan(1.5)
@@ -339,25 +354,66 @@ describe.skipIf(!available)('a drawing in a note', () => {
 
     await reloadApp('app.emulateMobile(true)')
     attachDebugger()
-    const phone = run<{ error?: string; seen?: boolean; opened?: boolean }>(`
+    const phone = run<{
+      error?: string
+      before?: string
+      shown?: boolean
+      cursor?: boolean
+      openedByTap?: boolean
+      opened?: boolean
+      gone?: boolean
+      goneElsewhere?: boolean
+    }>(`
       await until(() => app.workspace.layoutReady, 15000)
       await closeAll()
       const file = app.vault.getAbstractFileByPath(window.__embedDrawing ?? app.vault.getFiles().find((f) => f.path.startsWith(DIR) && f.extension === 'svg').path)
-      const leaf = await note('Open phone', '![[' + file.name + ']]\\n', 'source')
+      const leaf = await note('Open phone', 'Top line\\n\\n![[' + file.name + ']]\\n', 'source')
       const box = await until(() => boxes(leaf).find((x) => x.clientWidth), 8000)
       await wait(400)
-      const go = box.querySelector('.abele-drawing-embed__go')
-      const r = go.getBoundingClientRect()
-      const seen = r.width >= 20 && getComputedStyle(go.parentElement).opacity === '1'
-      await shoot('phone')
-      await touch('touchStart', [[r.left + r.width / 2, r.top + r.height / 2]])
-      await touch('touchEnd', [])
+      const editor = leaf.view.editor
+      editor.setCursor({ line: 0, ch: 0 })
+      document.activeElement?.blur?.()
+      const focused = () => !!leaf.view.containerEl.querySelector('.cm-content')?.contains(document.activeElement)
+      const wasFocused = focused()
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
+      await wait(300)
+      const actions = box.querySelector('.abele-drawing-embed__actions')
+      const before = getComputedStyle(actions).opacity
+      const tapAt = async (x, y) => { await touch('touchStart', [[x, y]]); await wait(30); await touch('touchEnd', []); await wait(300) }
+      // The first tap, right where the button would be: it shows the buttons and nothing else.
+      const g = box.querySelector('.abele-drawing-embed__go').getBoundingClientRect()
+      await tapAt(g.left + g.width / 2, g.top + g.height / 2)
+      const shown = box.classList.contains('abele-drawing-embed_shown') && getComputedStyle(actions).opacity === '1'
+      const openedByTap = views().some((v) => v.file?.path === file.path)
+      // The cursor stays where it was, and the editor is not focused by it (a phone's keyboard).
+      const cursor = editor.getCursor().line === 0 && !wasFocused && !focused()
+      await shoot('phone-tap')
+      // The second tap presses it.
+      await tapAt(g.left + g.width / 2, g.top + g.height / 2)
       const opened = !!(await until(() => views().find((v) => v.file?.path === file.path), 8000))
-      return { seen, opened }
+      for (const v of views()) v.leaf.detach()
+      await wait(300)
+      const again = await until(() => boxes(leaf).find((x) => x.clientWidth), 8000)
+      // Left alone, they go after a few seconds; a tap elsewhere puts them away at once.
+      const b2 = again.getBoundingClientRect()
+      await tapAt(b2.left + b2.width / 2, b2.top + b2.height / 2)
+      const shownAgain = again.classList.contains('abele-drawing-embed_shown')
+      await wait(4500)
+      const gone = shownAgain && !again.classList.contains('abele-drawing-embed_shown')
+      await tapAt(b2.left + b2.width / 2, b2.top + b2.height / 2)
+      const t = leaf.view.containerEl.querySelector('.cm-line').getBoundingClientRect()
+      await tapAt(t.left + 10, t.top + t.height / 2)
+      const goneElsewhere = !again.classList.contains('abele-drawing-embed_shown')
+      return { before, shown, cursor, openedByTap, opened, gone, goneElsewhere }
     `)
     expect(phone.error).toBeUndefined()
-    expect(phone.seen).toBe(true)
+    expect(phone.before).toBe('0')
+    expect(phone.shown).toBe(true)
+    expect(phone.openedByTap).toBe(false)
+    expect(phone.cursor).toBe(true)
     expect(phone.opened).toBe(true)
+    expect(phone.gone).toBe(true)
+    expect(phone.goneElsewhere).toBe(true)
   }, 180_000)
 
   it('keeps a part moved with a finger in a callout on a phone, and the callout’s size dragged there', async () => {
@@ -379,6 +435,8 @@ describe.skipIf(!available)('a drawing in a note', () => {
         await touch('touchEnd', [])
         await wait(200)
       }
+      // The first tap shows the buttons, the second presses one.
+      await tap(box.querySelector('.abele-drawing-embed__adjust'))
       await tap(box.querySelector('.abele-drawing-embed__adjust'))
       const b = box.getBoundingClientRect()
       const x = b.left + b.width / 3, y = b.top + b.height / 2

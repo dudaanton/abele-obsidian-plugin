@@ -44,15 +44,33 @@ body {
   padding: 1px 0;
 }
 
-.abele-highlight--red { background-color: var(--abele-highlight-red); }
-.abele-highlight--orange { background-color: var(--abele-highlight-orange); }
-.abele-highlight--yellow { background-color: var(--abele-highlight-yellow); }
-.abele-highlight--green { background-color: var(--abele-highlight-green); }
-.abele-highlight--cyan { background-color: var(--abele-highlight-cyan); }
-.abele-highlight--blue { background-color: var(--abele-highlight-blue); }
-.abele-highlight--purple { background-color: var(--abele-highlight-purple); }
-.abele-highlight--pink { background-color: var(--abele-highlight-pink); }
-.abele-highlight--gray { background-color: var(--abele-highlight-gray); }
+.abele-highlight--red {
+  background-color: var(--abele-highlight-red);
+}
+.abele-highlight--orange {
+  background-color: var(--abele-highlight-orange);
+}
+.abele-highlight--yellow {
+  background-color: var(--abele-highlight-yellow);
+}
+.abele-highlight--green {
+  background-color: var(--abele-highlight-green);
+}
+.abele-highlight--cyan {
+  background-color: var(--abele-highlight-cyan);
+}
+.abele-highlight--blue {
+  background-color: var(--abele-highlight-blue);
+}
+.abele-highlight--purple {
+  background-color: var(--abele-highlight-purple);
+}
+.abele-highlight--pink {
+  background-color: var(--abele-highlight-pink);
+}
+.abele-highlight--gray {
+  background-color: var(--abele-highlight-gray);
+}
 
 /* Hide syntax markers when cursor is outside — also kill Obsidian's yellow bg */
 .abele-highlight-syntax-hidden {
@@ -168,7 +186,6 @@ body {
 .cm-hmd-footnote:has(.abele-footnote-def-link) * {
   color: inherit !important;
 }
-
 
 .abele-footnote-def-bracket:hover,
 .abele-footnote-def-link:hover {
@@ -613,7 +630,6 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-bottom-style: dashed;
 }
 
-
 /* Maps
    MapLibre's own stylesheet is imported by the renderer; these are the parts that are ours:
    the frame the map sits in, the pin, and what a broken block says. */
@@ -753,6 +769,22 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-radius: var(--radius-s);
   background-color: var(--background-primary);
   box-shadow: var(--shadow-s);
+  /* Out of the way of the drawing until asked for, as Obsidian's own buttons over an embed. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--anim-duration-fast, 140ms) var(--anim-motion-smooth, ease-in-out);
+}
+
+/*
+ * A mouse over the drawing or a tap on it (both `embed.ts`: a finger sets `:hover` too, which would
+ * put the buttons under the very tap meant to show them), the part being changed, or a key inside.
+ */
+.abele-drawing-embed_hover .abele-drawing-embed__actions,
+.abele-drawing-embed_shown .abele-drawing-embed__actions,
+.abele-drawing-embed_adjusting .abele-drawing-embed__actions,
+.abele-drawing-embed:focus-within .abele-drawing-embed__actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* The corner that makes the drawing bigger or smaller: a finger's size, and always there. */

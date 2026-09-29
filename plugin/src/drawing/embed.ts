@@ -43,6 +43,13 @@ const XHTML = 'http://www.w3.org/1999/xhtml'
 const HOST = 'abele-drawing-embed__source'
 const CALLOUT = `.callout[data-callout="${DRAWING_CALLOUT}"]`
 
+/** The class that shows the buttons after a tap. */
+const SHOWN = 'abele-drawing-embed_shown'
+/** The class that shows the buttons while a mouse is over the drawing. */
+const HOVER = 'abele-drawing-embed_hover'
+/** How long the buttons stay after a tap, when nothing else hides them. */
+const SHOWN_MS = 4000
+
 /** The smallest a box is dragged to. */
 const MIN_DRAG_W = 60
 
@@ -185,6 +192,9 @@ export class DrawingEmbed extends MarkdownRenderChild {
   private resizing: { id: number; x: number; w: number; h: number } | null = null
   private observer: ResizeObserver | null = null
   private children: MutationObserver | null = null
+  /** A touch that shows the buttons, and so is nobody else's, until its click. */
+  private revealing = false
+  private hideTimer = 0
 
   constructor(
     private readonly app: App,
@@ -252,9 +262,75 @@ export class DrawingEmbed extends MarkdownRenderChild {
     this.registerDomEvent(this.handle, 'pointercancel', (e) => this.resizeEnd(e, false))
     for (const type of ['mousedown', 'touchstart', 'click'] as const)
       this.registerDomEvent(this.handle, type, (e) => e.stopPropagation())
+    this.revealOnTap()
+  }
+
+  /**
+   * On a touch screen the buttons wait for a tap on the drawing, which shows them and reaches
+   * nothing else: the cursor is not moved into the embed, the keyboard does not come up. They go
+   * again after a while or at a tap anywhere else. A mouse sees them while it is over the drawing.
+   */
+  private revealOnTap(): void {
+    const start = (touch: boolean, e: Event) => {
+      // The corner that resizes is always there and always the finger's.
+      if (e.target instanceof Node && this.handle.contains(e.target)) return
+      if (touch && !this.revealing && !this.adjusting && !this.box.classList.contains(SHOWN))
+        this.revealing = true
+      if (this.revealing) e.stopPropagation()
+    }
+    this.registerDomEvent(this.box, 'pointerdown', (e) => start(e.pointerType !== 'mouse', e), {
+      capture: true,
+    })
+    this.registerDomEvent(this.box, 'touchstart', (e) => start(true, e), { capture: true })
+    for (const type of ['touchend', 'mousedown', 'mouseup', 'pointerup'] as const)
+      this.registerDomEvent(this.box, type, (e) => {
+        if (!this.revealing) return
+        e.stopPropagation()
+        // Nor is the embed focused, which in the editor is what brings a phone's keyboard up.
+        if (type === 'mousedown') e.preventDefault()
+      })
+    this.registerDomEvent(this.box, 'pointercancel', () => (this.revealing = false))
+    // A mouse over it shows them as long as it stays; a finger's `:hover` is not that.
+    this.registerDomEvent(this.box, 'pointerenter', (e) => {
+      if (e.pointerType === 'mouse') this.box.classList.add(HOVER)
+    })
+    this.registerDomEvent(this.box, 'pointerleave', () => this.box.classList.remove(HOVER))
+    this.registerDomEvent(this.box, 'click', (e) => {
+      if (!this.revealing) {
+        if (this.box.classList.contains(SHOWN)) this.showButtons()
+        return
+      }
+      this.revealing = false
+      e.preventDefault()
+      e.stopPropagation()
+      this.showButtons()
+    })
+    this.registerDomEvent(
+      this.box.ownerDocument,
+      'pointerdown',
+      (e) => {
+        if (!(e.target instanceof Node) || !this.box.contains(e.target)) this.hideButtons()
+      },
+      { capture: true }
+    )
+  }
+
+  private showButtons(): void {
+    this.box.addClass(SHOWN)
+    const win = this.box.ownerDocument.defaultView ?? window
+    win.clearTimeout(this.hideTimer)
+    this.hideTimer = win.setTimeout(() => {
+      if (!this.adjusting) this.hideButtons()
+    }, SHOWN_MS)
+  }
+
+  private hideButtons(): void {
+    ;(this.box.ownerDocument.defaultView ?? window).clearTimeout(this.hideTimer)
+    if (!this.adjusting) this.box.removeClass(SHOWN)
   }
 
   onunload(): void {
+    ;(this.box.ownerDocument.defaultView ?? window).clearTimeout(this.hideTimer)
     this.observer?.disconnect()
     this.children?.disconnect()
     this.unguard?.()
@@ -374,6 +450,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
     this.pointers.clear()
     if (keep) void this.writePart(this.visible())
     else this.view = this.saved
+    if (this.box.classList.contains(SHOWN)) this.showButtons()
     this.buttons()
     this.layout()
   }

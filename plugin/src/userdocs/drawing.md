@@ -73,7 +73,11 @@ beside the note to draw on. It goes into the note as the picture's own embed, no
 
 Once a part of it is chosen, the link names that part — `![[Sketch.svg#part=120,40,800,500]]` —
 and without it the note shows all of it. A size after a bar works as for any picture. Notes
-written with an earlier version show a drawing in a `[!drawing]` callout; those keep working. Two buttons sit in the corner of the picture. The pen opens the drawing at that part to
+written with an earlier version show a drawing in a `[!drawing]` callout; those keep working.
+
+Its buttons show in the corner of the picture when the pointer is over it; on a phone or a tablet,
+tap the picture once to show them (that tap does nothing else), and they go again after a few
+seconds or a tap elsewhere. The arrow opens the drawing. The pen opens the drawing at that part to
 draw on. The other one changes the part: drag to move it, pinch, use the wheel with Ctrl or ⌘, or
 the trackpad to zoom, then the tick to keep it (the cross leaves it as it was). Without the plugin,
 the note still shows the whole drawing.

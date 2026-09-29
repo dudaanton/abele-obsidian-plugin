@@ -1,9 +1,11 @@
 /**
  * The box a drawing is shown in inside a note (`drawing/embed.ts`), as a phone runs it: the
  * picture follows the drawing when the phone's address of the file never changes, and the
- * buttons over the part being changed answer a finger.
+ * buttons over the part being changed answer a finger. Its buttons wait for a finger: the first
+ * tap on the drawing shows them and does nothing else, and they go again after a while or a tap
+ * elsewhere; a mouse sees them while it is over the drawing, and a finger's hover is not that.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { TFile, type App } from 'obsidian'
 import { DrawingEmbed } from '@/drawing/embed'
 import { drawingSvg } from '@/drawing/drawingFile'
@@ -143,5 +145,103 @@ describe('a drawing’s box in a note on an iPad', () => {
     plain.querySelector<HTMLElement>('.abele-drawing-embed__keep')!.click()
     await settle()
     expect(phone.written).toEqual(['Plan\n\n![[Sketch.svg|240]]\n'])
+  })
+
+  describe('its buttons, on a touch screen', () => {
+    afterEach(() => vi.useRealTimers())
+
+    const tap = (el: HTMLElement, pointerType = 'touch') => {
+      const down = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType })
+      el.dispatchEvent(down)
+      if (pointerType !== 'mouse') {
+        el.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true }))
+        el.dispatchEvent(new Event('touchend', { bubbles: true, cancelable: true }))
+      }
+      const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+      el.dispatchEvent(press)
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+      el.dispatchEvent(click)
+      return Object.assign(click, { press })
+    }
+
+    const mount = async () => {
+      const phone = phoneApp(file, text)
+      const box = new DrawingEmbed(phone.app, embed, file, {
+        sourcePath: 'Note.md',
+        callout,
+        place: () => ({ from: 0 }),
+      })
+      box.load()
+      box.onload()
+      await settle()
+      return embed.querySelector<HTMLElement>('.abele-drawing-embed')!
+    }
+
+    it('shows them on the first tap, which reaches nothing else, and hides them after a while', async () => {
+      const heard: string[] = []
+      for (const type of ['pointerdown', 'touchstart', 'mousedown', 'click'])
+        document.body.addEventListener(type, () => heard.push(type))
+      const el = await mount()
+      expect(el.classList.contains('abele-drawing-embed_shown')).toBe(false)
+      vi.useFakeTimers()
+      const first = tap(el)
+      expect(el.classList.contains('abele-drawing-embed_shown')).toBe(true)
+      // Not the note's: the cursor is not moved into the embed and nothing is opened, and the
+      // embed is not focused, which would bring the keyboard up.
+      expect(heard).toEqual([])
+      expect(first.press.defaultPrevented).toBe(true)
+      // Shown, a tap on the drawing is the note's again.
+      tap(el)
+      expect(heard).toContain('click')
+      vi.advanceTimersByTime(6000)
+      expect(el.classList.contains('abele-drawing-embed_shown')).toBe(false)
+    })
+
+    it('hides them at a tap elsewhere, and leaves a mouse’s click alone', async () => {
+      const el = await mount()
+      tap(el)
+      expect(el.classList.contains('abele-drawing-embed_shown')).toBe(true)
+      tap(document.body.createDiv())
+      expect(el.classList.contains('abele-drawing-embed_shown')).toBe(false)
+      const click = tap(el, 'mouse')
+      expect(click.defaultPrevented).toBe(false)
+      expect(el.classList.contains('abele-drawing-embed_shown')).toBe(false)
+    })
+
+    it('shows them to a mouse over the drawing, and not to a finger resting there', async () => {
+      const el = await mount()
+      el.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'touch' }))
+      expect(el.classList.contains('abele-drawing-embed_hover')).toBe(false)
+      el.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }))
+      expect(el.classList.contains('abele-drawing-embed_hover')).toBe(true)
+      el.dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }))
+      expect(el.classList.contains('abele-drawing-embed_hover')).toBe(false)
+    })
+
+    it('leaves a finger on the resizing corner to the corner, buttons or not', async () => {
+      const el = await mount()
+      const handle = el.querySelector<HTMLElement>('.abele-drawing-embed__resize')!
+      let heard = false
+      handle.addEventListener('pointerdown', () => (heard = true))
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch' })
+      )
+      expect(heard).toBe(true)
+      expect(el.classList.contains('abele-drawing-embed_shown')).toBe(false)
+    })
+
+    it('keeps them while the part is being changed', async () => {
+      const el = await mount()
+      vi.useFakeTimers()
+      tap(el)
+      el.querySelector<HTMLElement>('.abele-drawing-embed__adjust')!.click()
+      vi.advanceTimersByTime(10000)
+      expect(el.querySelector('.abele-drawing-embed__keep')).not.toBeNull()
+      expect(
+        el.classList.contains('abele-drawing-embed_shown') ||
+          el.classList.contains('abele-drawing-embed_adjusting')
+      ).toBe(true)
+    })
   })
 })
