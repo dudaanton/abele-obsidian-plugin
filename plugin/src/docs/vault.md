@@ -503,7 +503,13 @@ a JSON file in the vault — `abele-book-places.json` at its root unless the rea
 `placesPath` says otherwise — so every device reads the same places. It maps a key to a place:
 the book's `dc:identifier` as `id:<identifier>`, so renaming or moving the file keeps its place,
 or `path:<path>` for a book without one; each place is `{ cfi, fraction, path, at }`, `at` being
-when it was read, in milliseconds. Every device writes that file and keeps the latest `at` for each
+when its position last changed, in epoch milliseconds. A normal reader open adds optional
+`openedAt` (the last successful open, without changing `at`), `title` and `author` from the
+book's own metadata, and `measure: { kind, count }`. `kind: 'locations'` is the engine's
+whole-book text locations (roughly 1,500 bytes each) for reflowing books; `kind: 'pages'` is
+its fixed-layout/PDF page count. These are **not printed-edition pages**. Older records omit
+these fields; nothing reads unopened binaries to fill them. A new open before any saved CFI
+may have an empty `cfi` and `at: 0`, which is not a saved position. Every device writes that file and keeps the latest `at` for each
 book. A copy, `book-places.backup.json`, is written just before it in the plugin's own folder, on
 this device only. Obsidian's file list does not show a `.json` file; Obsidian Sync carries it with
 "Sync all other types" on. The only note written beside a book is its highlights note; a PDF with ink also has its ink folder.

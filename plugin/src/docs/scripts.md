@@ -44,6 +44,73 @@ A script that needs numbers — totals, averages, a trend, a correlation — tak
 `analyze_data` does, as an object, and money totals come out exact to the cent. The spec is the
 `analytics` section of this reference.
 
+## Books (reader library)
+
+`books.list()` returns snapshots of **every reader-compatible file** in the vault, not book
+notes: EPUB, MOBI, AZW, AZW3, FB2, FBZ, CBZ and PDF. `books.get(path)` returns one or `null`.
+Both read the file inventory and the existing positions JSON, **never the book binaries**.
+Paths are identities; sorting/filtering is up to the script. `book` (singular) is instead the
+selection context of a script run from a reader tab. A lint rule cannot use `books`.
+
+Each row has `path`, `format`, `title` and `author` (`null` until cached by a normal reader
+open), `position` (`{ cfi, fraction, at }` or `null`), `progress` (fraction 0–1 or `null`),
+`pageCount`, `currentPage`, `pageUnit` (`'locations'`, `'pages'`, or `null`), `finished`,
+`lastOpenedAt`, `lastPositionAt`, `highlightCount`. Times are epoch milliseconds; the last
+position time advances on a changed CFI, while opening a book advances the separate opened
+time. `position.at` equals `lastPositionAt`. Progress zero is a real saved position, not null.
+Completion is inferred only at progress 1; reading backward may unset it. A whole-book
+location is about 1,500 bytes of text, **not a printed page**; fixed-layout/PDF counts are
+actual pages. `currentPage` estimates `ceil(progress * pageCount)`, clamped to 1–count.
+Unopened books have null counts: listing does not parse books to backfill. Highlights are
+null unless a currently open reader has indexed them (zero means indexed and empty).
+No cover, book-note metadata, attachment or file-finding flow is part of this reader API.
+
+`await books.open(path)` reveals an existing Abele reader tab or opens a new one (including a
+PDF when automatic PDF takeover is off), leaving the dashboard tab alone. The reader restores
+its newest saved place. `books.onChange(callback, { signal: v.signal })` invalidates a script
+view on local page turns, external position changes and vault file events. Subscribe before
+fetching; the callback fetches again. Unsubscribe is idempotent; closing the view aborts its
+signal. `v.on('focus', refresh)` or a Refresh button also recover changes made while the app
+was closed. Results are detached, read-only snapshots, not setters.
+
+```js
+// @name Reader shelf
+const v = view({ title: 'Reader shelf' })
+let items = [], busy = false, again = false, query = ''
+const card = (b) => new Card({
+  title: b.title || b.path.split('/').pop(),
+  subtitle: b.author || 'Author unavailable',
+  description: b.progress === null ? 'No saved position' :
+    (b.finished ? 'Finished' : Math.round(b.progress * 100) + '% read') +
+    (b.currentPage ? ` · ${b.pageUnit === 'locations' ? 'Location' : 'Page'} ${b.currentPage} of ${b.pageCount}` : ''),
+  actions: [new Button({ text: b.position && !b.finished ? 'Continue' : 'Read',
+    onClick: () => books.open(b.path) })],
+})
+function draw() {
+  const reading = items.filter(b => b.progress !== null && !b.finished)
+  const latest = [...reading].sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0))[0]
+  const visible = items.filter(b => (b.title || b.path).toLowerCase().includes(query) ||
+    (b.author || '').toLowerCase().includes(query))
+  v.body = [new Text(`${items.length} files · ${reading.length} reading · ${items.filter(b => b.finished).length} finished`),
+    new Search({ placeholder: 'Search title, author or path', value: query,
+      onChange: value => { query = String(value).toLowerCase(); draw() } }),
+    ...(latest ? [new Text('Continue reading'), card(latest)] : []),
+    new Grid(visible.map(card)), new Button({ text: 'Refresh', onClick: refresh })]
+}
+async function refresh() {
+  if (busy) { again = true; return }
+  busy = true
+  try { do { again = false; const next = await books.list()
+    if (v.signal.aborted) return
+    items = next; draw()
+  } while (again) } finally { busy = false }
+}
+books.onChange(() => v.run(refresh), { signal: v.signal })
+v.on('focus', () => v.run(refresh))
+await v.open()
+await refresh()
+```
+
 ## Running one
 
 Six ways in: the command palette, a button in a note's header (a script button, or a command

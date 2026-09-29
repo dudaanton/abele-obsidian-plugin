@@ -32,6 +32,10 @@ import { scriptAnalytics } from './analyticsApi'
 import { scriptVocabulary } from './vocabularyApi'
 import type { AutomationEvent } from '@/automations/types'
 import type { BookScriptContext } from './bookContext'
+import { createBooksApi, type BooksHost } from './booksApi'
+import { bookPlaces } from '@/reader/places'
+import { BOOK_VIEW_TYPE } from '@/reader/viewType'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 /** Extract first text content from tool result */
 function text(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -180,6 +184,35 @@ export function buildScriptContext(opts: {
     event: opts.event ?? null,
     /** The words in a book the run was asked for from; `null` for every other run. */
     book: opts.book ? { ...opts.book } : null,
+    /** Vault reader files and their already-stored reader data; unrelated to the selection `book`. */
+    books: createBooksApi((() => {
+      const { app } = GlobalStore.getInstance()
+      return {
+        files: () => app.vault.getFiles(),
+        places: bookPlaces(),
+        highlightCount: (path) => {
+          const leaf = app.workspace.getLeavesOfType(BOOK_VIEW_TYPE)
+            .find((l) => (l.view as { file?: TFile }).file?.path === path)
+          const model = (leaf?.view as { model?: { status: string; highlights: unknown[] } } | undefined)?.model
+          return model?.status === 'ready' ? model.highlights.length : null
+        },
+        getFile: (path) => {
+          const file = app.vault.getAbstractFileByPath(path)
+          return file instanceof TFile ? file : null
+        },
+        leaves: () => app.workspace.getLeavesOfType(BOOK_VIEW_TYPE),
+        newLeaf: () => app.workspace.getLeaf('tab'),
+        reveal: (leaf) => app.workspace.revealLeaf(leaf as ReturnType<typeof app.workspace.getLeaf>),
+        onFilesChanged: (listener) => {
+          const refs = [
+            app.vault.on('create', listener), app.vault.on('delete', listener),
+            app.vault.on('rename', listener), app.vault.on('modify', listener),
+          ]
+          return () => refs.forEach((ref) => app.vault.offref(ref))
+        },
+        onDispose: (stop) => AbeleConfig.getInstance().plugin.register(stop),
+      } satisfies BooksHost
+    })()),
     /** The message an interceptor script is deciding about; `null` for every other run. */
     message: opts.intercept?.message ?? null,
     /** The chat that message is sent in, read-only; `null` for every other run. */

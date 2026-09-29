@@ -319,6 +319,7 @@ await v.open()
 | \`params\` | \`object\` | Resolved parameter values from the script header |
 | \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
 | \`book\` | \`object \\| null\` | The words in a book the script was run on from the reader (see below) |
+| \`books\` | \`object\` | Reader-file library, saved progress and navigation (see below); not available in lint rules |
 | \`analytics\` | \`object\` | Statistics over finance, notes and bases (see Analytics above) |
 | \`vocabulary\` | \`object\` | Words a note's properties or a highlight name, underlined in books (see below) |
 | \`message\` | \`object \\| null\` | The message an interceptor script decides about (see below) |
@@ -367,6 +368,36 @@ run for is therefore safe; one that writes to every note of the type it waits fo
 only run once per note per the automation's interval, and more than 30 runs in a minute pause
 every automation until one is edited. \`event\` is not a reserved name: a script with its own
 \`const event\` simply has its own.
+
+### books — reader-file library
+
+\`books.list()\` returns every readable book/PDF file in the vault as detached snapshots;
+\`books.get(path)\` returns one or null. Neither opens or parses a binary. No book-note,
+cover, attachment or file-finding data is inferred. Unlike \`book\` (the selection context
+from the reader), \`books\` is available to any ordinary script. Not in lint rules.
+
+Each result has \`path\`, \`format\` (epub/mobi/azw/azw3/fb2/fbz/cbz/pdf), \`title\`,
+\`author\` (cached from the book on opening, otherwise null), \`position\` (saved
+\`{ cfi, fraction, at }\` or null), \`progress\` (fraction 0–1 or null), \`finished\`,
+\`pageCount\`, \`currentPage\`, \`pageUnit\` ('locations', 'pages' or null),
+\`lastOpenedAt\`, \`lastPositionAt\`, \`highlightCount\`. Dates are epoch milliseconds.
+\`at\`/\`lastPositionAt\` change when the saved CFI changes; opening changes only
+\`lastOpenedAt\`. Zero progress is real. Finished means progress reached 1 (reading
+backward may unset it). For reflowing books the engine tracks whole-book locations of
+roughly 1,500 bytes, **not printed pages**; fixed layout/PDF use real page counts.
+\`currentPage\` is the 1-based approximate \`ceil(progress * pageCount)\`, clamped to
+1–count. Measurements are null until a normal reader open, without parsing unopened
+books to backfill. \`highlightCount\` is null unless an open reader tab has indexed
+highlights (zero then means none).
+
+\`await books.open(path)\` reuses an existing Abele book tab or opens a new tab, even
+for PDFs with automatic takeover off, restoring the reader's latest saved place. It
+throws on unknown/unsupported paths. \`books.onChange(fn, { signal: v.signal })\` returns
+an unsubscribe and invalidates on local reading, synced positions and vault file events;
+re-query in the callback. Subscribe before the initial list, using the *view* signal
+(not the run's \`signal\`), and use \`v.on('focus', refresh)\` or a manual Refresh
+button to recover external changes. See \`query_docs\` section \`scripts\` for a
+runnable shelf using Card, Grid, Search and Button. No position setter is exposed.
 
 ### book — when run on words in a book
 

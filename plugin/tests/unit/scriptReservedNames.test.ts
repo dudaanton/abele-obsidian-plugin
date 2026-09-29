@@ -55,6 +55,13 @@ describe('a script that declares a name the API already gave it', () => {
     )
   })
 
+  it('exposes reader books without reserving the ordinary variable name', async () => {
+    const list = register('List', 'return Array.isArray(await books.list())')
+    await expect(service.execute(list, {}, { source: 'command' })).resolves.toBe('true')
+    const shadow = register('Shadow', 'const books = 4\nreturn books')
+    await expect(service.execute(shadow, {}, { source: 'command' })).resolves.toBe('4')
+  })
+
   it('runs a script that shadows nothing', async () => {
     const path = register('Mine', 'const mine = 1\nreturn mine + 1')
 
