@@ -125,3 +125,56 @@ export function caretRect(field: Element): { top: number; bottom: number } {
   }
   return { top: last.top, bottom: last.bottom }
 }
+
+/** How long Obsidian's toolbar is watched after the keyboard moves, and how often, in ms. */
+const TOOLBAR_WATCH = 1500
+const TOOLBAR_LOOK = 50
+
+/**
+ * Obsidian's editing toolbar slides in over the keyboard after it, over ~350 ms, and a
+ * measurement taken on the way fitted a dialog to the keyboard alone, its buttons behind the
+ * toolbar once it landed until something else measured again. So for a while after the keyboard
+ * moves (`watch`) the toolbar is looked at, and measured again once it has stood in a new place
+ * for two looks in a row; and at once when its slide ends (`landed`, for `transitionend` and
+ * `animationend`). Timeouts rather than frames: a window in the background draws no frames.
+ *
+ * @param read - Where the toolbar stands now; null while it does not show.
+ * @param fitted - Where it stood at the last measurement.
+ * @param fit - Measures again.
+ */
+export function watchToolbar(
+  win: Window,
+  read: () => number | null,
+  fitted: () => number | null,
+  fit: () => void
+): { watch: () => void; landed: (event: Event) => void; stop: () => void } {
+  let timer: number | undefined
+  let until = 0
+  let seen: number | null = null
+  const moved = (a: number | null, b: number | null) =>
+    a === null || b === null ? a !== b : Math.abs(a - b) >= 1
+  const look = () => {
+    timer = undefined
+    const now = read()
+    if (!moved(now, seen) && moved(now, fitted())) fit()
+    seen = now
+    if (Date.now() < until) timer = win.setTimeout(look, TOOLBAR_LOOK)
+  }
+  return {
+    watch: () => {
+      until = Date.now() + TOOLBAR_WATCH
+      if (timer === undefined) {
+        seen = fitted()
+        timer = win.setTimeout(look, TOOLBAR_LOOK)
+      }
+    },
+    landed: (event: Event) => {
+      const target = event.target as Element | null
+      if (target?.closest?.('.mobile-toolbar') || target?.querySelector?.('.mobile-toolbar')) fit()
+    },
+    stop: () => {
+      if (timer !== undefined) win.clearTimeout(timer)
+      timer = undefined
+    },
+  }
+}

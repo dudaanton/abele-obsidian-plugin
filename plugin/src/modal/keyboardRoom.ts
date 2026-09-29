@@ -8,6 +8,7 @@ import {
   keyboardRoomReport,
   keyboardVar,
   toolbarTop,
+  watchToolbar,
 } from './keyboard'
 
 /**
@@ -94,6 +95,8 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   let natural = 0
   // What a keyboard event said the height was, until one says the keyboard has gone.
   let announced = 0
+  // Where Obsidian's toolbar stood at the last measurement; null while it did not show.
+  let fittedBar: number | null = null
   const timers: number[] = []
 
   // Found each time rather than once on mounting: Obsidian may not have finished putting the
@@ -330,6 +333,7 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
 
     // Obsidian's editing toolbar stands on the keyboard while a note field is typed into.
     const bar = typing && keyboardTop !== null ? toolbarTop(doc) : null
+    fittedBar = bar
     if (bar !== null && bar < bottom) bottom = bar
 
     const covered = top > rect.top + 1 || bottom < rect.bottom - 1
@@ -409,11 +413,20 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
     if (id !== undefined) timers.push(id)
   }
 
-  /** Now, and again as the keyboard finishes sliding: the app animates it over ~300 ms. */
+  // Obsidian's toolbar lands after the keyboard: measured again where it stands still.
+  const toolbar = watchToolbar(
+    win,
+    () => (focused()?.matches(TYPED) ? toolbarTop(doc) : null),
+    () => fittedBar,
+    fit
+  )
+
+  /** Now, and again as the keyboard finishes sliding (~300 ms); then the toolbar is watched. */
   const refit = () => {
     fit()
     later(50)
     later(350)
+    toolbar.watch()
   }
 
   const onKeyboard = (event: Event) => {
@@ -466,10 +479,15 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   doc.addEventListener('focusout', onFocusOut)
   doc.addEventListener('input', onTyping, true)
   doc.addEventListener('selectionchange', onTyping)
+  doc.addEventListener('transitionend', toolbar.landed, true)
+  doc.addEventListener('animationend', toolbar.landed, true)
   // The variable changes with no event of its own; the attribute carrying it does.
   // The window's own constructor: a dialog in the settings window is watched from there.
   const Observer = (win as Window & { MutationObserver: typeof MutationObserver }).MutationObserver
-  observer = new Observer(() => fit())
+  observer = new Observer(() => {
+    fit()
+    toolbar.watch()
+  })
   observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['style'] })
   fit()
 
@@ -482,6 +500,9 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
     doc.removeEventListener('focusout', onFocusOut)
     doc.removeEventListener('input', onTyping, true)
     doc.removeEventListener('selectionchange', onTyping)
+    doc.removeEventListener('transitionend', toolbar.landed, true)
+    doc.removeEventListener('animationend', toolbar.landed, true)
+    toolbar.stop()
     observer?.disconnect()
     observer = null
     if (typingTimer !== undefined) win.clearTimeout(typingTimer)

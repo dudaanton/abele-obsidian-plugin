@@ -150,6 +150,49 @@ describe('a long form under the phone keyboard', () => {
     toolbar.remove()
   })
 
+  describe('Obsidian’s toolbar landing after the keyboard has settled', () => {
+    const LANDED = GEOMETRY['mobile-toolbar']
+    /** Still on its way up from under the keyboard. */
+    const SLIDING: [number, number] = [SCREEN - 60, SCREEN - 15]
+    afterEach(() => {
+      GEOMETRY['mobile-toolbar'] = LANDED
+    })
+
+    const typeWhileSliding = async () => {
+      document.body.createDiv({ cls: 'mobile-toolbar' })
+      GEOMETRY['mobile-toolbar'] = SLIDING
+      await typeIntoNote()
+      // Fitted to the keyboard alone: the toolbar is still under it.
+      expect(container().style.getPropertyValue('--abele-room-height')).toBe(
+        `${SCREEN - KEYBOARD}px`
+      )
+      GEOMETRY['mobile-toolbar'] = LANDED
+    }
+
+    it('is fitted to the toolbar when its slide ends', async () => {
+      await typeWhileSliding()
+
+      document
+        .querySelector('.mobile-toolbar')!
+        .dispatchEvent(new Event('transitionend', { bubbles: true }))
+      await nextTick()
+
+      expect(container().style.getPropertyValue('--abele-room-height')).toBe(
+        `${SCREEN - KEYBOARD - TOOLBAR}px`
+      )
+    })
+
+    it('is fitted to the toolbar once it stands still, with no event to say so', async () => {
+      await typeWhileSliding()
+
+      await new Promise((resolve) => setTimeout(resolve, 300))
+
+      expect(container().style.getPropertyValue('--abele-room-height')).toBe(
+        `${SCREEN - KEYBOARD - TOOLBAR}px`
+      )
+    })
+  })
+
   it('keeps the line being typed above the keyboard as the text grows', async () => {
     const editor = await typeIntoNote()
     body().scrollTop = 0
