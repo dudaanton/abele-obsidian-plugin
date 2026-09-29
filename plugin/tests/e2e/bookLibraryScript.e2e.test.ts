@@ -1,14 +1,21 @@
 /** A reader-library script in a real tab, using only invented books. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+  runCli,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
-import { targets } from './helpers/target'
+import { onPhone, targets } from './helpers/target'
 
 targets('desktop', 'phone')
 
 const DIR = 'Sample reader library e2e'
-const FILE = `${DIR}/sample.pdf`
+const FILE = `${DIR}/sample-${Date.now()}.pdf`
 const SCRIPT = `// @name Sample reader library
 const v = view({ title: 'Sample reader library' })
 let items = []
@@ -115,4 +122,42 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
       lastOpenedAt: expect.any(Number),
     })
   }, 90_000)
+
+  it.skipIf(onPhone())(
+    'fits its cards in an emulated phone viewport',
+    async () => {
+      const size = evalJson<[number, number]>(
+        `require('@electron/remote').getCurrentWindow().getContentSize()`
+      )
+      try {
+        evalRaw(
+          `(() => { require('@electron/remote').getCurrentWindow().setContentSize(390, 844); return 'ok' })()`
+        )
+        await reloadApp('app.emulateMobile(true)')
+        const result = run<{ error?: string; card: number; viewport: number; button: number }>(`
+        ${wait}
+        const service = window.__abeleTest.ScriptService.getInstance()
+        await service.ready
+        const script = service.getAll().find(s => s.meta.name === 'Sample reader library')
+        if (!script) throw new Error('The sample script was not restored')
+        await service.execute(script.path, {}, { source: 'command' })
+        const view = await until(() => app.workspace.getLeavesOfType('abele-script-view')
+          .find(l => l.view?.contentEl?.querySelector('.abele-card'))?.view)
+        const card = view.contentEl.querySelector('.abele-card').getBoundingClientRect()
+        const button = view.contentEl.querySelector('button').getBoundingClientRect()
+        return { card: card.right, button: button.right, viewport: window.innerWidth }
+      `)
+        expect(result.error).toBeUndefined()
+        expect(result.card).toBeLessThanOrEqual(result.viewport)
+        expect(result.button).toBeLessThanOrEqual(result.viewport)
+        runCli(['dev:screenshot', `path=${process.cwd()}/build/book-library-mobile.png`])
+      } finally {
+        await reloadApp('app.emulateMobile(false)')
+        evalRaw(
+          `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]}); return 'ok' })()`
+        )
+      }
+    },
+    90_000
+  )
 })
