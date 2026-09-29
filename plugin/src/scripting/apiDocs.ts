@@ -393,7 +393,8 @@ highlights (zero then means none).
 \`await books.open(path)\` reuses an existing Abele book tab or opens a new tab, even
 for PDFs with automatic takeover off, restoring the reader's latest saved place. It
 throws on unknown/unsupported paths. \`books.onChange(fn, { signal: v.signal })\` returns
-an unsubscribe and invalidates on local reading, synced positions and vault file events;
+an unsubscribe and invalidates on local reading, synced reader data, vault file events and
+tab layout changes (including reader closure and loss of a cached highlight count);
 re-query in the callback. Subscribe before the initial list, using the *view* signal
 (not the run's \`signal\`), and use \`v.on('focus', refresh)\` or a manual Refresh
 button to recover external changes. See \`query_docs\` section \`scripts\` for a

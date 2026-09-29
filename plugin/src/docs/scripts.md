@@ -68,7 +68,8 @@ No cover, book-note metadata, attachment or file-finding flow is part of this re
 `await books.open(path)` reveals an existing Abele reader tab or opens a new one (including a
 PDF when automatic PDF takeover is off), leaving the dashboard tab alone. The reader restores
 its newest saved place. `books.onChange(callback, { signal: v.signal })` invalidates a script
-view on local page turns, external position changes and vault file events. Subscribe before
+view on local page turns, external reader-data changes, vault file events and tab layout changes
+(including a reader closing and its highlight count becoming unavailable). Subscribe before
 fetching; the callback fetches again. Unsubscribe is idempotent; closing the view aborts its
 signal. `v.on('focus', refresh)` or a Refresh button also recover changes made while the app
 was closed. Results are detached, read-only snapshots, not setters.

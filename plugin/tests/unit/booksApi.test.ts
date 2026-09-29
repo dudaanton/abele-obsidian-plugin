@@ -38,6 +38,42 @@ describe('script reader books', () => {
     expect(removed).toHaveBeenCalledTimes(50)
   })
 
+  it('invalidates a tab-dependent highlight count on reader closure and removes the layout listener on abort', async () => {
+    const file = { path: 'Sample/book.pdf', extension: 'pdf' }
+    let open = true
+    const readerListeners = new Set<() => void>()
+    const api = createBooksApi({
+      files: () => [file],
+      places: places(),
+      getFile: () => file,
+      leaves: () => [],
+      newLeaf: () => ({ view: {}, setViewState: async () => {} }),
+      reveal: async () => {},
+      highlightCount: () => (open ? 5 : null),
+      onReadersChanged: (notify: () => void) => {
+        readerListeners.add(notify)
+        return () => {
+          readerListeners.delete(notify)
+        }
+      },
+    })
+    const controller = new AbortController()
+    let displayedCount: number | null = (await api.get(file.path))!.highlightCount
+    const change = vi.fn(async () => {
+      displayedCount = (await api.get(file.path))!.highlightCount
+    })
+    api.onChange(change, { signal: controller.signal })
+    expect(displayedCount).toBe(5)
+    open = false
+    for (const notify of readerListeners) notify()
+    await vi.waitFor(() => {
+      expect(change).toHaveBeenCalledOnce()
+      expect(displayedCount).toBeNull()
+    })
+    controller.abort()
+    expect(readerListeners.size).toBe(0)
+  })
+
   it('queries files, opens a dedicated tab and observes local changes until aborted', async () => {
     const store = places()
     const file = { path: 'Sample/book.pdf', extension: 'pdf' }

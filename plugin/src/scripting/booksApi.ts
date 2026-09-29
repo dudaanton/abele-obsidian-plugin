@@ -22,6 +22,8 @@ export interface BooksHost {
   reveal(leaf: LeafRef): Promise<unknown>
   /** File inventory changed; returns an unsubscribe. */
   onFilesChanged?(listener: () => void): () => void
+  /** Reader tabs changed; cached highlight availability depends on the open tabs. */
+  onReadersChanged?(listener: () => void): () => void
   /** Plugin unload; returns what removes the callback when its view closes first. */
   onDispose?(stop: () => void): () => void
 }
@@ -61,6 +63,7 @@ export function createBooksApi(host: BooksHost) {
       }
       const stopPlace = host.places?.onChange(notify)
       const stopFiles = host.onFilesChanged?.(notify)
+      const stopReaders = host.onReadersChanged?.(notify)
       let active = true
       let stopDispose: (() => void) | undefined
       const stop = () => {
@@ -68,6 +71,7 @@ export function createBooksApi(host: BooksHost) {
         active = false
         stopPlace?.()
         stopFiles?.()
+        stopReaders?.()
         stopDispose?.()
         stopDispose = undefined
         options.signal.removeEventListener('abort', stop)

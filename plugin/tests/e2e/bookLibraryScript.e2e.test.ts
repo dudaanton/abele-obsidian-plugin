@@ -131,6 +131,24 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
     })
   }, 90_000)
 
+  it('refreshes a cached highlight count when the last reader tab closes, without a file write', () => {
+    const result = run<{ error?: string; before: number; after: number | null }>(`
+      ${wait}
+      // Let all delayed reader writes settle: closing must invalidate on its own.
+      await wait(2500)
+      const before = window.__abeleBookSnapshot.highlightCount
+      const leaf = app.workspace.getLeavesOfType('abele-book')
+        .find(l => l.view.file?.path === '${FILE}')
+      if (!leaf) throw new Error('Sample reader tab missing')
+      leaf.detach()
+      await until(() => window.__abeleBookSnapshot?.highlightCount === null)
+      return { before, after: window.__abeleBookSnapshot.highlightCount }
+    `)
+    expect(result.error).toBeUndefined()
+    expect(result.before).toBe(0)
+    expect(result.after).toBeNull()
+  }, 90_000)
+
   it.skipIf(onPhone())(
     'fits its cards in an emulated phone viewport',
     async () => {

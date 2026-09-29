@@ -215,6 +215,10 @@ export function buildScriptContext(opts: {
           ]
           return () => refs.forEach((ref) => app.vault.offref(ref))
         },
+        onReadersChanged: (listener) => {
+          const ref = app.workspace.on('layout-change', listener)
+          return () => app.workspace.offref(ref)
+        },
         onDispose: (stop) => booksDisposalFor(AbeleConfig.getInstance().plugin)(stop),
       } satisfies BooksHost
     })()),
