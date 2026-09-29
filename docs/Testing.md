@@ -295,6 +295,12 @@ Three files, three concerns:
   tree, a `javascript:` and a `file:` address, a launch action — is opened with both sandboxes and
   every link on it clicked: nothing may run, open, alert or ask for `child_process`. The phone file
   opens a PDF too, and checks the page fits the screen and turns by a tap and a swipe.
+- `bookHighlightWords.e2e.test.ts` — **a highlight drawn over its own words**, desktop and phone
+  (`tests/fixtures/books/justifiedBook.ts`, made-up justified prose): a highlights note written by
+  hand, one highlight whose place is the end of one paragraph and whose words end a paragraph
+  further on, one whose place and words agree, one whose words are nowhere in the chapter. The
+  boxes drawn must stand on the words, not on the paragraph the place names, for the first, and on
+  the place for the others.
 - `bookHighlights.e2e.test.ts` — **highlights, links and search**, with the rich book and the plain
   PDF in a folder of their own: words selected on the page are highlighted into
   `<book> highlights.md` (its exact callout checked) and drawn; a tap on the highlight opens its bar;

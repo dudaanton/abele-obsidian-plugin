@@ -17,6 +17,7 @@ import { LINK_KEY, linkMark, pointInWindow, shortenPlace } from './linkMarks'
 import { eink, einkShape, type EinkShape } from './eink'
 import { einkBoxStyle, einkMark } from './einkMarks'
 import { VocabMarks } from './vocab/vocabMarks'
+import { ownWords } from './bookQuote'
 import type { VocabRule } from './vocab/rules'
 
 /** The engine's key for a search result's mark, which a tap never opens. */
@@ -200,7 +201,7 @@ export class BookMarks {
     this.vocab = new VocabMarks(
       engine,
       () => (eink().on ? EINK_INK : this.accent()),
-      (cfi, index, doc) => (this.indexOf(cfi) === index ? this.rangeIn(doc, cfi) : null)
+      (cfi, index, doc) => (this.indexOf(cfi) === index ? this.placeIn(doc, cfi) : null)
     )
     engine.addEventListener('draw-annotation', (e) => {
       const { draw, annotation } = (e as CustomEvent).detail as {
@@ -274,9 +275,12 @@ export class BookMarks {
 
   private async addEpub(h: Highlight): Promise<void> {
     try {
+      const at = this.drawnAt(h)
       await (
-        this.engine as unknown as { addAnnotation(a: { value: string }): Promise<unknown> }
-      ).addAnnotation({ value: h.cfi })
+        this.engine as unknown as {
+          addAnnotation(a: { value: string; cfi?: string }): Promise<unknown>
+        }
+      ).addAnnotation(at === h.cfi ? { value: h.cfi } : { value: h.cfi, cfi: at })
       this.drawn.add(h.cfi)
     } catch (e) {
       console.debug('[Abele] a highlight could not be drawn', h.cfi, e)
@@ -378,7 +382,7 @@ export class BookMarks {
     const items: Box[] = []
     const on = eink().on
     for (const h of mine) {
-      const range = this.rangeIn(doc, h.cfi)
+      const range = this.placeIn(doc, h.cfi)
       if (!range) continue
       items.push({
         range,
@@ -399,6 +403,41 @@ export class BookMarks {
         items.push({ range: shortenPlace(range), color: on ? EINK_INK : this.accent(), link: cfi })
     }
     drawBoxes(doc, MARKS_CLASS, items)
+  }
+
+  /**
+   * Where a highlight is drawn, as a CFI: its own place, or the place of its words when its place
+   * leads to other words in its page (`ownWords`). Its page has to be open to tell.
+   */
+  private drawnAt(h: Highlight): string {
+    const index = this.indexOf(h.cfi)
+    if (index < 0) return h.cfi
+    const renderer = (
+      this.engine as unknown as {
+        renderer?: { getContents?(): { index: number; doc?: Document }[] }
+      }
+    ).renderer
+    const doc = renderer?.getContents?.().find((c) => c.index === index)?.doc
+    if (!doc) return h.cfi
+    const place = this.rangeIn(doc, h.cfi)
+    const words = ownWords(doc, place, h.text)
+    if (!words || words === place) return h.cfi
+    try {
+      const cfi = (
+        this.engine as unknown as { getCFI(index: number, range: Range): string }
+      ).getCFI(index, words)
+      console.debug('[Abele] a highlight is drawn on its words, away from its place', h.cfi, cfi)
+      return cfi
+    } catch {
+      return h.cfi
+    }
+  }
+
+  /** A place in a page as a range: over a highlight's own words when it is one (`drawnAt`). */
+  private placeIn(doc: Document, cfi: string): Range | null {
+    const place = this.rangeIn(doc, cfi)
+    const h = this.list.find((x) => x.cfi === cfi)
+    return h ? ownWords(doc, place, h.text) : place
   }
 
   private rangeIn(doc: Document, cfi: string): Range | null {

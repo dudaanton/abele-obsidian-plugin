@@ -186,3 +186,26 @@ const tidy = (text: string) =>
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ *\n[\s]*/g, '\n')
     .trim()
+
+/**
+ * Where a highlight's words are in a page: at its place, unless its words are not there at all
+ * and are elsewhere in the page — then the occurrence nearest the place. A place is a path of
+ * element and text steps; the same one led another device to a paragraph pages earlier than the
+ * one it was made on, and the words kept beside it say which is right. Words edited in the note,
+ * or found nowhere in the page, leave the place as it is; so do words that overlap it (a quote
+ * shortened by hand).
+ */
+export function ownWords(doc: Document, place: Range | null, words: string): Range | null {
+  const wanted = quoteKey(words)
+  if (wanted.length < MIN_QUOTE) return place
+  if (place && quoteKey(place.toString()) === wanted) return place
+  const found = findQuote(doc, words)
+  if (!found.length) return place
+  if (!place) return found[0]
+  const best = nearest(found, place)
+  if (!best) return place
+  const overlaps =
+    best.compareBoundaryPoints(Range.START_TO_END, place) > 0 &&
+    best.compareBoundaryPoints(Range.END_TO_START, place) < 0
+  return overlaps ? place : best
+}

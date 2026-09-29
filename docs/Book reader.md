@@ -81,6 +81,13 @@ under the page, in the place of the line with the slider:
 A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
 quote, the highlights note, or remove it. A tap beside the bar closes it.
 
+A highlight is drawn over its own words. It keeps a place (a CFI) and the words it was made of;
+when the place leads to other words in its chapter and its words are elsewhere there, it is drawn
+over the occurrence of its words nearest the place (`ownWords` in `bookQuote.ts`), and the console
+says so. A highlight made on one device was drawn on another over the end of a paragraph pages
+earlier than its own. Words edited in the note, words found nowhere in the chapter and words that
+overlap the place leave it drawn at its place; the note is never rewritten.
+
 Highlights stay on their words when the words move without the page changing size — a picture,
 font or style arriving late above them: they are measured again whenever a block of the page
 changes size and whenever the view comes to rest on a new place. When that finds them moved, the

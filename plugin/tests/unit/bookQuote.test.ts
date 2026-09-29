@@ -5,7 +5,7 @@
  */
 import { pageOf } from '../helpers/pageDocument'
 import { describe, it, expect } from 'vitest'
-import { aroundOf, findQuote, nearest, quoteKey, wordsOf } from '@/reader/bookQuote'
+import { aroundOf, findQuote, nearest, ownWords, quoteKey, wordsOf } from '@/reader/bookQuote'
 import { fromRange, parse, toRange } from '@/vendor/foliate-js/epubcfi.js'
 
 const page = (body: string): Document =>
@@ -97,5 +97,43 @@ describe('the occurrence meant', () => {
     const after = doc.createRange()
     after.setStart(doc.getElementById('c')!.firstChild!, 10)
     expect(nearest(found, after)).toBe(found[2])
+  })
+})
+
+describe("a highlight's own words, against its place", () => {
+  const doc = () =>
+    page(
+      '<p id="a">One two three. The end of the first.</p><p id="b">Four five. The end of the second.</p>' +
+        '<p id="c">Six. The end of the first.</p>'
+    )
+  const tail = (d: Document, id: string, words: string): Range => {
+    const text = d.getElementById(id)!.firstChild as Text
+    const r = d.createRange()
+    r.setStart(text, text.data.indexOf(words))
+    r.setEnd(text, text.data.indexOf(words) + words.length)
+    return r
+  }
+
+  it('keep the place when its words are there', () => {
+    const d = doc()
+    const place = tail(d, 'b', 'The end of the second.')
+    expect(ownWords(d, place, 'The end of the second.')).toBe(place)
+  })
+
+  it('move to the words, the nearest to the place, when the place holds others', () => {
+    const d = doc()
+    const place = tail(d, 'b', 'The end of the second.')
+    const got = ownWords(d, place, 'the end of the first.')
+    expect(got?.toString()).toBe('The end of the first.')
+    // Two paragraphs end so: the first, nine letters before the place, is nearer than the third.
+    expect(got?.startContainer.parentElement?.id).toBe('a')
+  })
+
+  it('keep the place when the words are nowhere in the page, too short, or overlap it', () => {
+    const d = doc()
+    const place = tail(d, 'b', 'The end of the second.')
+    expect(ownWords(d, place, 'words from another book')).toBe(place)
+    expect(ownWords(d, place, 'Th')).toBe(place)
+    expect(ownWords(d, place, 'end of the second')).toBe(place)
   })
 })
