@@ -3,7 +3,7 @@
  * paper, vanished on a dark page — the owner's book showed its pictures on the desktop (light) and
  * none on the phone (dark). The book is `tests/fixtures/books/lineArtBook.ts`: a PNG with alpha,
  * an SVG file in an `img` and an SVG in the page. Each is pictured on screen in a dark theme and
- * must show light paper with dark lines on it. A picture goes to `/tmp/abele-dark-pictures.png`.
+ * must show light paper with dark lines on it. A picture goes to `/tmp/abele-dark-pictures/dark-pictures.png`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
@@ -14,7 +14,7 @@ import { shotDir } from './helpers/shots'
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader dark pictures e2e'
 const BOOK = `${DIR}/line-art.epub`
-const SHOT = shotDir('abele-dark-pictures.png')
+const SHOT = `${shotDir('abele-dark-pictures')}/dark-pictures.png`
 
 const setTheme = (dark: boolean) => `
   document.body.classList.toggle('theme-dark', ${dark})

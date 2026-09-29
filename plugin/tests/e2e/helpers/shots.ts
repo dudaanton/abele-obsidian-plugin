@@ -15,6 +15,9 @@ import { join } from 'node:path'
  * because an earlier run had made them).
  */
 export function shotDir(name: string): string {
+  // A file name here would become a directory, and the picture written to it then fails.
+  if (/\.(png|jpe?g|webp|gif)$/i.test(name))
+    throw new Error(`shotDir('${name}'): that is a picture's name, not a directory's`)
   const root = process.env.ABELE_E2E_SHOTS
   const dir = join(root ? root : '/tmp', name)
   mkdirSync(dir, { recursive: true })

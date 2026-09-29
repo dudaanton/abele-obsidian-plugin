@@ -37,4 +37,9 @@ describe('the directory for e2e pictures', () => {
     process.env.ABELE_E2E_SHOTS = ''
     expect(shotDir('abele-tablet')).toBe('/tmp/abele-tablet')
   })
+
+  it('refuses a picture file name, which it would make into a directory', () => {
+    delete process.env.ABELE_E2E_SHOTS
+    expect(() => shotDir('sample-picture.png')).toThrow(/name, not a directory/)
+  })
 })
