@@ -320,16 +320,28 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const canvas = q(view, '.abele-ink-overlay__canvas')
       const box = canvas.getBoundingClientRect()
       const ratio = canvas.width / box.width
-      // The most ink in a pixel-wide column where the pen went, the input's rounding allowed for.
-      const alpha = (x) => {
-        const cx = Math.round((Math.round(x) - box.left) * ratio), cy = Math.round((Math.round(y) - box.top) * ratio)
-        const d = canvas.getContext('2d').getImageData(cx, cy - Math.ceil(ratio), Math.ceil(ratio), 2 * Math.ceil(ratio) + 1).data
+      // The most ink in a small region where the pen went: from x back \`w\` points, a few pixels
+      // above and below the line, the input's rounding allowed for.
+      const alpha = (x, w = 2) => {
+        const cx = Math.round((Math.round(x) - w - box.left) * ratio), cy = Math.round((Math.round(y) - box.top) * ratio)
+        const d = canvas.getContext('2d').getImageData(cx, cy - Math.ceil(ratio), Math.ceil((w + 1) * ratio), 2 * Math.ceil(ratio) + 1).data
         let most = 0
         for (let i = 3; i < d.length; i += 4) most = Math.max(most, d[i])
         return most
       }
+      // Read only once the overlay has painted what it was given: it draws on the next frame, and a
+      // busy machine hands out frames late. Two frames apart with the same ink at the tip and
+      // behind it means the last move is on the canvas.
+      const frame = () => new Promise((done) => requestAnimationFrame(() => done(undefined)))
+      let tip = -1, behind = -1
+      for (const until = Date.now() + 3000; Date.now() < until; ) {
+        await frame(); await frame()
+        const t = alpha(x1), b = alpha(x1 - 3)
+        if (t === tip && b === behind && b > 0) break
+        tip = t; behind = b
+      }
       // Past both the pen and where it was predicted to go: ink there went where nothing led it.
-      const tip = alpha(x1), behind = alpha(x1 - 3), past = alpha(Math.max(x1 + 40, ahead + 12))
+      const past = alpha(Math.max(x1 + 40, ahead + 12))
       await input('mouseReleased', x1, y, 'pen', 0, 0)
       await wait(150)
       // Bold, from the menu of the button beside the colours.
