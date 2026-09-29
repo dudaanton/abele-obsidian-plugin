@@ -680,7 +680,7 @@ to answer:
 | Command | What it does |
 |---|---|
 | `doctor` | one line per part, `OK …` or `FAIL …`, exit 0 when the phone is ready |
-| `take WHO --wait --pid PID`, `drop --pid PID` | the lock that gives one process the phone; `drop` turns the screen off first |
+| `take NAME --wait --pid PID`, `drop NAME` | the lock that gives one user the phone, held under a name: `take` prints `taken`, or `already yours` when the lock is under that name already; the pid only frees a lock whose process died; `drop` turns the screen off first. Every other command carries the holder's name in `IPHONE_LOCK_OWNER` |
 | `launch BUNDLE` | brings the app forward and aims the touches and typing at it (`md.obsidian`) |
 | `open-url URL` | opens a URL on the phone (`obsidian://open?vault=…`) |
 | `push-plugin DIR MANIFEST VAULT` | installs a build (`main.js`, `main.css`) into a vault on the phone |
@@ -691,8 +691,10 @@ to answer:
 
 **What a run does** (`helpers/phoneHost.ts`, from `globalSetup`): takes the phone's lock for the
 whole run — anything else that drives the phone takes the same lock and waits while it is held,
-so two runs, or a run and another user of the phone, never touch it at once — and gives it back
-at the end with the screen turned off; stops with the driver's own report when
+so two runs, or a run and another user of the phone, never touch it at once — under the name in
+`IPHONE_LOCK_OWNER`, or `abele-e2e-<pid>` when none is set, and gives it back at the end with the
+screen turned off, only if the run took it itself (a caller that set the name and holds the phone
+keeps it); stops with the driver's own report when
 `doctor` says anything but the plugin is down; builds the plugin like `build:test` into a scratch
 directory (`ABELE_PHONE_BUILD` names a build to install instead) and installs it into the phone's
 test vault (`ABELE_PHONE_VAULT`, default `abele-e2e` — a copy of the fixture vault, never a real

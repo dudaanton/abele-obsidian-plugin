@@ -16,28 +16,39 @@ import { DRIVER, PHONE_VAULT, driver, exposeToPhone, installPhoneHost, phoneEval
 /**
  * The phone is one device: a run holds it from start to end, through the driver's lock
  * (`take`/`drop`), which everything else that drives the phone respects too — the driver waits
- * while someone else holds it. It is tied to this process, so a run that dies leaves it stale,
- * and the next user takes it over.
+ * while someone else holds it. The lock is held under a name, `IPHONE_LOCK_OWNER`: every driver
+ * command this run and its test files make carries it, and that is what makes the phone theirs.
+ * A name set by whoever started the run (a batch or a session holding the phone already) is used
+ * as it is, and the lock stays theirs: the run gives back only a lock it took itself. This
+ * process's pid goes with the take, so a run that dies leaves the lock stale for the next user.
  */
+let tookPhone = false
+
 export function takePhone(who: string, waitMs = 30 * 60_000): void {
+  const name = (process.env.IPHONE_LOCK_OWNER ||= `${who}-${process.pid}`.replace(/\s+/g, '-'))
+  let verdict: string
   try {
-    driver(['take', who, '--wait', '--pid', String(process.pid)], waitMs)
+    verdict = driver(['take', name, '--wait', '--pid', String(process.pid)], waitMs)
   } catch {
     throw new Error(
       `the phone stayed taken for ${waitMs / 60_000} minutes (${DRIVER} doctor says by whom)`
     )
   }
+  tookPhone = verdict.split('\n').pop() === 'taken'
 }
 
 const sleepSync = (ms: number): void => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
+/** Gives the phone back, only when this run took it: a lock it found under its name is left. */
 export function dropPhone(): void {
+  if (!tookPhone) return
+  tookPhone = false
   try {
-    driver(['drop', '--pid', String(process.pid)])
+    driver(['drop', process.env.IPHONE_LOCK_OWNER ?? ''])
   } catch {
-    // Not ours (taken away as stale, or never taken): nothing to give back.
+    // Not ours any more (taken away as stale): nothing to give back.
   }
 }
 
@@ -49,7 +60,6 @@ export function assertPhoneReady(): void {
     out = execFileSync(DRIVER, ['doctor'], {
       encoding: 'utf8',
       timeout: 120_000,
-      env: { ...process.env, IPHONE_LOCK_OWNER_PID: String(process.pid) },
     })
   } catch (error) {
     out = String((error as { stdout?: string }).stdout ?? error)

@@ -35,7 +35,7 @@ export async function setup(): Promise<void> {
   if (onPhone()) {
     // The phone is taken for the whole run, checked, given this tree's build and the page
     // side of the harness; see phoneHost.ts. Any failure stops the run with its reason.
-    takePhone(`abele e2e ${process.cwd()}`)
+    takePhone('abele-e2e')
     try {
       assertPhoneReady()
       // Obsidian brought forward and made the app the driver's touches and typing go to: a driver
@@ -68,7 +68,7 @@ export async function teardown(): Promise<void> {
     await putAppBack()
   } finally {
     // Last: on a phone every call above goes to the phone, and one made after the drop would
-    // take it again for this process, which is about to exit and leave that lock behind.
+    // take it again under this run's name, a lock nobody would give back.
     if (onPhone()) {
       stopHost()
       dropPhone()
