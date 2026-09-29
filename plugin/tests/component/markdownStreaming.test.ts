@@ -1,6 +1,8 @@
 /**
  * Markdown that is still being written: a reply streaming into a chat.
  *
+ * - A block that draws something — a chart, a diagram — waits behind a placeholder until it is
+ *   complete, rather than being drawn from half its source and failing with every token.
  * - A block that comes back the same from the next render stays on the page as it is. Built
  *   afresh every time, a diagram fell back to its placeholder height and grew again with each
  *   token, and the text below it shook under the person reading it.
@@ -71,6 +73,39 @@ afterEach(() => {
 })
 
 const CHART = '```abele-chart\nseries: [1, 2]\n```'
+
+describe('a chart whose block is still being written', () => {
+  it('shows a placeholder in its place, not the chart', async () => {
+    const wrapper = mount(Markdown, {
+      props: { text: 'Numbers first.\n\n```abele-chart\nseries: [1', streaming: true },
+    })
+    await settle(RENDER_MS * 3)
+
+    expect(wrapper.find('.abele-md-pending').exists()).toBe(true)
+    expect(wrapper.find('.chart').exists()).toBe(false)
+    expect(rendered).toEqual(['Numbers first.'])
+  })
+
+  it('is drawn once the block is closed', async () => {
+    const wrapper = mount(Markdown, {
+      props: { text: 'Numbers first.\n\n```abele-chart\nseries: [1', streaming: true },
+    })
+    await settle(RENDER_MS * 3)
+    await wrapper.setProps({ text: 'Numbers first.\n\n' + CHART })
+    await settle(RENDER_MS * 3)
+
+    expect(wrapper.find('.abele-md-pending').exists()).toBe(false)
+    expect(wrapper.find('.chart').text()).toBe('chart of series: [1, 2]')
+  })
+
+  it('is drawn at once where the text is not being written', async () => {
+    const wrapper = mount(Markdown, { props: { text: 'Numbers.\n\n```abele-chart\nseries: [1' } })
+    await settle(RENDER_MS * 3)
+
+    expect(wrapper.find('.abele-md-pending').exists()).toBe(false)
+    expect(wrapper.find('.chart').exists()).toBe(true)
+  })
+})
 
 describe('the next render of a reply being written', () => {
   const START = 'The first paragraph.\n\n' + CHART + '\n\nThe second'
@@ -170,6 +205,21 @@ describe('a reply that ends and becomes a message', () => {
     await Promise.resolve()
 
     expect(wrapper.find('.message .abele-markdown').element.children.length).toBe(3)
+  })
+
+  it('draws what had been held back, keeping the rest', async () => {
+    const half = 'The first paragraph.\n\n```abele-chart\nseries: [1'
+    const wrapper = mount(Chat, { props: { text: half, done: false } })
+    await settle(RENDER_MS * 3)
+    const first = wrapper.find('.abele-markdown p').element
+
+    await wrapper.setProps({ done: true, text: 'The first paragraph.\n\n' + CHART })
+    await settle(RENDER_MS * 3)
+
+    const md = wrapper.find('.message .abele-markdown')
+    expect(md.element.firstElementChild).toBe(first)
+    expect(md.find('.abele-md-pending').exists()).toBe(false)
+    expect(md.find('.chart').exists()).toBe(true)
   })
 
   it('lets what was drawn go when nothing takes it over: the reply was stopped', async () => {

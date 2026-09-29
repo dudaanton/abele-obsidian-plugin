@@ -255,8 +255,14 @@ const expectSteady = (get: () => Report) => {
     expect(get().atEndAfter).toBe(false)
   })
 
+  it('shows the chart as a placeholder while its block is written, never its errors', () => {
+    expect(get().chartErrors).toBe(0)
+    expect(get().placeholders).toBeGreaterThan(0)
+  })
+
   it('draws the chart once the reply is done', () => {
     expect(get().chartsAfter).toBe(1)
+    expect(get().placeholdersAfter).toBe(0)
   })
 }
 

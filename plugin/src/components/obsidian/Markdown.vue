@@ -11,6 +11,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Component, Keymap, MarkdownRenderer } from 'obsidian'
 import { onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
+import { holdBackUnfinished, PENDING_LABEL } from '@/helpers/unfinishedBlock'
 import { offer, recordInto, stopRecording, take, type Part } from './markdownParts'
 
 const props = defineProps<{
@@ -27,8 +28,9 @@ const props = defineProps<{
    */
   asDocument?: boolean
   /**
-   * For text still being written — a reply streaming in. What was drawn is handed to the
-   * markdown that shows the finished text.
+   * For text still being written — a reply streaming in. A chart, map, diagram or gallery at its
+   * end waits behind a placeholder until its block is complete, and what was drawn is handed to
+   * the markdown that shows the finished text.
    */
   streaming?: boolean
 }>()
@@ -101,7 +103,10 @@ const renderContent = async () => {
   const mine = ++generation
   const source = props.text || ''
   const path = props.filePath || ''
-  const text = source
+  // While a reply is written, a block that draws something waits until it is complete.
+  const { text, pending } = props.streaming
+    ? holdBackUnfinished(source)
+    : { text: source, pending: null }
   // Built away from the page and swapped in. Emptying the element first left it with no height
   // until the render landed, which in a chat being streamed into collapses the scroll range
   // several times a second: the browser clamps the reader's position and drags them down.
@@ -158,6 +163,10 @@ const renderContent = async () => {
     ...parts.slice(0, same),
     ...fresh.slice(same).map((node, i) => ({ node, sig: sigs[same + i] ?? null, owner: own })),
   ]
+  if (pending) {
+    const placeholder = createDiv({ cls: 'abele-md-pending', text: PENDING_LABEL[pending] })
+    nextParts.push({ node: placeholder, sig: null, owner: own })
+  }
 
   const el = target.value
   for (const part of parts.slice(same)) part.node.remove()
@@ -173,7 +182,7 @@ const renderContent = async () => {
   parts = nextParts
   shownText = source
   shownPath = path
-  shownPartial = false
+  shownPartial = pending !== null
   // For whoever draws over the result — comments on an answer — since this replaced it.
   emit('rendered')
 }
@@ -267,5 +276,13 @@ const emit = defineEmits<{
 <style scoped>
 .abele-markdown {
   white-space-collapse: collapse;
+}
+
+/* Where a chart, map, diagram or gallery will be once the agent has finished writing it. */
+.abele-markdown :deep(.abele-md-pending) {
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  font-style: italic;
+  margin: var(--p-spacing) 0;
 }
 </style>

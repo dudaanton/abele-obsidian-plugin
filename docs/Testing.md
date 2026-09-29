@@ -155,6 +155,13 @@ Three files, three concerns:
 - `footerRender.e2e.test.ts` — **render cost**. Opens a wide group note and reports how much
   DOM its footer produced and how long the main thread was blocked. The component tier
   proves each list renders a single page; only this tier can show that the page is cheap.
+- `chatStreamScroll.e2e.test.ts` — **reading a reply while it streams**, on the desktop and
+  under `app.emulateMobile(true)` at 390×844. A scripted model (`window.fetch` answering a fake
+  address) thinks, streams a long reply with a diagram and a chart in it, calls a tool and
+  streams a second answer. Partway through the reader scrolls up to a paragraph below the chart;
+  it must stay within 2 px of where they put it until the whole turn has ended and settled, and
+  the chat must not end up at its end. The chart's block shows a placeholder while it is being
+  written, never a chart error, and is drawn once the reply is done.
 - `commentChats.e2e.test.ts` — **comment chats end to end**. Runs the comment command on a
   selection in a scratch note and checks what the app shows: no raw `%%c:…%%` in the editor, an
   icon carrying the comment id, the chat file under the comment folder, nothing drawn in the
