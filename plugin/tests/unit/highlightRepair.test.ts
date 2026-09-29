@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { patchHighlightLinks } from '@/reader/highlights'
+import { patchHighlightLinks, repairableHighlights } from '@/reader/highlights'
 
 const old = 'epubcfi(/6/2!/4/2:1)'
 const next = 'epubcfi(/6/2!/4/4:1[id]^%)'
@@ -19,6 +19,20 @@ describe('surgical highlight link repair', () => {
     const result = patchHighlightLinks(input, [request], ofBook)
     expect(result.applied).toEqual([old])
     expect(result.markdown).toBe(input.replace('(<Books/sample.epub#cfi=/6/2!/4/2:1>)', '(<Books/sample.epub#cfi=/6/2!/4/4:1%5Bid%5D%5E%25>)'))
+  })
+  it('patches the Markdown destination, not an identical address in its label', () => {
+    const target = 'Books/sample.epub#cfi=/6/2!/4/2:1'
+    const input = `> [!quote] [${target}](<${target}>)\n> A fabricated sentence.\n`
+    const output = `> [!quote] [${target}](<Books/sample.epub#cfi=/6/2!/4/4:1%5Bid%5D%5E%25>)\n> A fabricated sentence.\n`
+    expect(patchHighlightLinks(input, [request], ofBook)).toEqual({ markdown: output, applied: [old], skipped: [] })
+  })
+  it('keeps callout-shaped examples behind a fence line that is not a valid closing fence', () => {
+    const sample = line.replaceAll('\r\n', '\n')
+    const input = `\`\`\`md\n\`\`\`example\n${sample}\n\`\`\`\n${sample}`
+    expect(repairableHighlights(input, ofBook).map((h) => h.cfi)).toEqual([old])
+    const result = patchHighlightLinks(input, [request], ofBook)
+    expect(result.applied).toEqual([old])
+    expect(result.markdown).toBe(input.slice(0, input.lastIndexOf(sample)) + sample.replace('#cfi=/6/2!/4/2:1|Part', '#cfi=/6/2!/4/4:1%5Bid%5D%5E%25|Part'))
   })
   it('preserves a BOM, mixed endings, aliases and template text while patching disjoint links', () => {
     const second = 'epubcfi(/6/2!/4/10:1)'

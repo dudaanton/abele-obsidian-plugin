@@ -307,10 +307,10 @@ function repairLines(markdown: string): { starts: number[]; eligible: Set<number
       if (/^---\s*$/.test(line)) frontmatter = false
       continue
     }
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
     if (opening) {
       if (!fence) fence = opening[1]
-      else if (opening[1][0] === fence[0] && opening[1].length >= fence.length) fence = ''
+      else if (opening[1][0] === fence[0] && opening[1].length >= fence.length && /^[ \t]*$/.test(opening[2])) fence = ''
       continue
     }
     if (!fence) eligible.add(index)
@@ -329,13 +329,13 @@ function repairSpan(title: string, cfi: string, ofBook: OfBook): [number, number
     const from = wiki.index + 2 + hash + 5
     return [from, from + target.length - hash - 5]
   }
-  for (const md of title.matchAll(/\[[^\]]*\]\(\s*(<)?([^)>\s]+)>?\s*\)/g)) {
+  for (const md of title.matchAll(/\[[^\]]*\]\(\s*(<)?([^)>\s]+)>?\s*\)/dg)) {
     const target = md[2]
     const hash = target.indexOf('#cfi=')
     if (hash < 0 || !ofBook(decoded(target.slice(0, hash)))) continue
     const place = parsePlaceSubpath(target.slice(hash))
     if (!place || !('cfi' in place) || place.cfi !== cfi) continue
-    const from = md.index + md[0].indexOf(target) + hash + 5
+    const from = md.indices[2][0] + hash + 5
     return [from, from + target.length - hash - 5]
   }
   return null
