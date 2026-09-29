@@ -511,7 +511,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       leaf.view.editor.setCursor({ line: 1, ch: 0 })
       app.commands.executeCommandById('abele:insert-drawing')
       const view = await until(() => views().find((v) => v.session?.surface.width && v.model.on), 8000)
-      const text = await until(async () => { const t = await read(NOTE); return t.includes('[!drawing]') && t }, 5000)
+      const text = await until(async () => { const t = await read(NOTE); return t.includes('![[') && t }, 5000)
       const file = !!view?.file && !!app.vault.getAbstractFileByPath(view.file.path)
       const opened = !!view
       if (view) await app.vault.delete(view.file)
@@ -521,7 +521,8 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.error).toBeUndefined()
     expect(r.opened).toBe(true)
     expect(r.file).toBe(true)
-    expect(r.text).toMatch(/^Before\n> \[!drawing\]\n> !\[\[.*Drawing .*\.svg\]\]/)
+    // The embed alone, no callout round it.
+    expect(r.text).toMatch(/^Before\n!\[\[.*Drawing .*\.svg\]\]\n/)
   })
 
   it('exports a PNG, and shows a drawing to the agent as a picture, all of it or a part', () => {
