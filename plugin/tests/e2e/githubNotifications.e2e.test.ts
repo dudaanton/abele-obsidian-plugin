@@ -2,8 +2,8 @@
  * The GitHub notifications panel in the app, against the fake GitHub server:
  *
  * - the command opens it in the right sidebar, with the unread ones from the server;
- * - a click on the pull request's opens it in a tab at the latest comment, and marks the thread
- *   read on the server (a PATCH);
+ * - a click on the pull request's opens it in a tab at the latest comment and leaves it unread;
+ *   its check marks the thread read on the server (a PATCH), and the row stays, no longer bold;
  * - a discussion, which GitHub names by title only, is found and opened in a tab;
  * - "All" shows the read one, the repository filter narrows to one repository, and "mark all as
  *   read" PUTs and leaves nothing unread;
@@ -134,7 +134,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
     useNotificationsToken()
   })
 
-  it('opens in the sidebar with the unread ones, and a click opens the pull request at its comment and marks it read', async () => {
+  it('opens in the sidebar with the unread ones; a click opens the pull request at its comment, and only the check marks it read', async () => {
     const r = evalAsync<{
       error?: string
       inSidebar?: boolean
@@ -142,6 +142,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       rows?: { id: string; title: string; unread: boolean }[]
       url?: string
       after?: { id: string; unread: boolean }[]
+      afterOpen?: { id: string; unread: boolean }[]
       shot?: string
     }>(`(async () => {
       ${PRELUDE}
@@ -161,6 +162,9 @@ describe.skipIf(!available)('GitHub notifications', () => {
       if (!leaf) return { ...report, error: 'no tab opened' }
       await until(() => loaded(leaf, 'Rework the widget loader'), 20000)
       report.url = leaf.view.model.url
+      await wait(500)
+      report.afterOpen = rowsOf().map(({ id, unread }) => ({ id, unread }))
+      panel().querySelector('[data-id="101"] .abele-github-notification__mark .abele-obsidian-icon').click()
       await until(() => rowsOf().find((r) => r.id === '101' && !r.unread), 10000)
       report.after = rowsOf().map(({ id, unread }) => ({ id, unread }))
       return report
@@ -174,13 +178,21 @@ describe.skipIf(!available)('GitHub notifications', () => {
       { id: '103', title: 'How should paging work?', unread: true },
     ])
     expect(r.url).toBe(`${gh.web}/pull/${PULL}#issuecomment-${LATE_COMMENT}`)
+    expect(r.afterOpen).toEqual([
+      { id: '101', unread: true },
+      { id: '102', unread: true },
+      { id: '103', unread: true },
+    ])
     expect(r.after).toEqual([
       { id: '101', unread: false },
       { id: '102', unread: true },
       { id: '103', unread: true },
     ])
     await serverLog()
-    expect(gh.requests()).toContain('PATCH /api/v3/notifications/threads/101')
+    // Once, by the check; opening asked nothing of the kind.
+    expect(gh.requests().filter((l) => l.startsWith('PATCH '))).toEqual([
+      'PATCH /api/v3/notifications/threads/101',
+    ])
     expect(r.shot).toMatch(/\.png$/)
   })
 

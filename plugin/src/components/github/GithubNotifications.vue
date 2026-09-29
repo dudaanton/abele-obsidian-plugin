@@ -123,12 +123,14 @@ import { ago, reasonText, subjectType, type GithubNotification } from '@/github/
 /**
  * The notifications of the account the GitHub token belongs to, as a sidebar list: unread ones
  * stand out, the list can be narrowed to the unread or to one repository, and each row opens what
- * it is about — a pull request, an issue, a discussion — in a GitHub tab, and marks it read on
- * GitHub the way GitHub's own inbox does when one is clicked through. A row's check marks it read
- * without opening it; the button at the top marks all of them.
+ * it is about — a pull request, an issue, a discussion — in a GitHub tab. Opening leaves it
+ * unread: only a row's check marks it read on GitHub, and the button at the top marks all of them.
  *
  * Read when the list opens and whenever GitHub's poll interval comes round while it is open;
- * the refresh button asks straight away. See `notifications/inbox.ts` for what that costs.
+ * the refresh button asks straight away. See `notifications/inbox.ts` for what that costs. A
+ * round of polling never takes a row out from under the reader: one GitHub no longer lists as
+ * unread — marked read here, or elsewhere — stays, no longer standing out, until the list is
+ * refreshed by hand or the filter changes.
  */
 const props = defineProps<{
   enabled: boolean
@@ -203,6 +205,27 @@ const refreshTooltip = computed(
   () => `Ask GitHub now (it asks to be polled every ${pollSeconds.value} s)`
 )
 
+/**
+ * A poll's answer, with the rows on screen it no longer lists kept — as read, where they were — so
+ * nothing vanishes while it is being looked at. New ones take their place by time.
+ */
+function keepInView(
+  shown: GithubNotification[],
+  fresh: GithubNotification[]
+): GithubNotification[] {
+  const listed = new Set(fresh.map((n) => n.id))
+  const gone = shown.filter((n) => !listed.has(n.id))
+  if (gone.length)
+    console.debug(
+      '[abele] GitHub notifications no longer listed, kept in view as read',
+      gone.map((n) => n.id)
+    )
+  for (const n of gone) readHere.add(n.id)
+  return [...fresh, ...gone.map((n) => ({ ...n, unread: false }))].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt)
+  )
+}
+
 /** A refresh asked for while another ran: run once that one is done. Null: none. */
 let queued: { force: boolean } | null = null
 
@@ -220,10 +243,10 @@ async function refresh(force = false) {
     const page = await inbox().load(which, force)
     // The other list was chosen meanwhile: this answer is not what is shown.
     if (which === props.state.which) {
-      items.value = page.items
+      items.value = force || !items.value ? page.items : keepInView(items.value, page.items)
+      if (force) readHere.clear()
       truncated.value = page.truncated
       pollSeconds.value = page.pollSeconds
-      readHere.clear()
       error.value = ''
     }
   } catch (e) {
@@ -291,14 +314,13 @@ async function markAllRead() {
 
 /**
  * Opens what the notification is about by the clicks of any link here — plain by the tab rule,
- * Mod in a new tab, Alt on GitHub — and marks it read, as clicking through does on GitHub.
+ * Mod in a new tab, Alt on GitHub. It stays unread: marking read is the check's alone.
  */
 async function open(n: GithubNotification, event: MouseEvent | KeyboardEvent) {
   const pane = event instanceof MouseEvent ? paneForClick(event, false) : false
   const where = await inbox().open(n)
   if (pane === null || !where.tab) emit('external', where.url)
   else emit('open', where.url, pane)
-  if (n.unread) void markRead(n)
 }
 
 let timer = 0

@@ -51,9 +51,9 @@ else you type. **Alt+Enter** pins or unpins the highlighted repository; a GitHub
 
 **Show GitHub notifications** opens your GitHub notifications in the right sidebar — the unread
 ones, or all of them, from every repository or one. Clicking one opens the pull request, issue or
-discussion in a tab, at the latest comment, and marks it read on GitHub, as GitHub's own inbox
-does. The check on a row marks it read without opening it; the double check at the top marks them
-all. Releases, workflow runs and alerts open on GitHub. The list refreshes while it is open, as
+discussion in a tab, at the latest comment, and leaves it unread. The check on a row marks it
+read on GitHub; the double check at the top marks them all. Rows never vanish while you read:
+one marked read stays, no longer bold, until you refresh. Releases, workflow runs and alerts open on GitHub. The list refreshes while it is open, as
 often as GitHub allows, and the refresh button asks at once.
 
 GitHub lets only a **classic** personal access token read notifications, with the

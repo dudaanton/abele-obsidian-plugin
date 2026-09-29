@@ -586,8 +586,8 @@ repository, the title, what it is (pull request, issue, discussion, release…),
 (mentioned, review requested, assigned…) and how long ago. Unread ones stand out; the strip at
 the top shows the unread only or all of them, and the list below it narrows to one repository.
 
-A click opens what the notification is about, and marks it read on GitHub — as clicking through
-does in GitHub's own inbox:
+A click opens what the notification is about. It does not mark it read — reading is marked by
+hand, so a notification looked at and left for later stays unread:
 
 - a pull request, an issue or a commit in a GitHub tab, at the latest comment when the
   notification points at one (the API's `latest_comment_url`, read as `#issuecomment-…` or a
@@ -598,8 +598,11 @@ does in GitHub's own inbox:
 - a release, a workflow run, a security alert or an invitation on GitHub, which is the only
   place that shows them.
 
-The check on an unread row marks it read without opening it; it stays in the unread list,
-no longer standing out, until the list is asked for again. The double check at the top marks
+The check on an unread row marks it read on GitHub; it stays in the unread list, no longer
+standing out, until the list is refreshed by hand. Nothing leaves the list on its own while it is
+open: when a round of polling finds a row no longer unread — marked read here, or on another
+device or in the browser — the row stays where it was, no longer standing out, and goes at the
+next refresh by hand or change of filter. The double check at the top marks
 everything read — or, with a repository chosen, everything of that repository — up to the
 moment the list was read, so one that arrived since is not marked unseen.
 

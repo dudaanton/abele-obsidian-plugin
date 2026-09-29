@@ -116,7 +116,7 @@ describe('the notifications panel', () => {
     expect(options).toEqual(['All repositories', 'acme/gadgets (1)', 'acme/widgets (2)'])
   })
 
-  it('opens a click in a tab at the latest comment, and marks it read on GitHub', async () => {
+  it('opens a click in a tab at the latest comment, and leaves it unread: only the check marks read', async () => {
     const { wrapper, onOpen, request } = panel(ROUTES)
     await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(3))
     await wrapper.find('[data-id="2"] .tree-item-self').trigger('click')
@@ -125,14 +125,53 @@ describe('the notifications panel', () => {
       'https://github.com/acme/widgets/pull/7#issuecomment-11',
       false
     )
-    expect(calls(request, 'PATCH')).toEqual(['https://api.github.com/notifications/threads/2'])
-    expect(rows(wrapper).find((r) => r.id === '2')?.unread).toBe(false)
+    expect(calls(request, 'PATCH')).toEqual([])
+    expect(rows(wrapper).find((r) => r.id === '2')?.unread).toBe(true)
+  })
+
+  it('keeps the rows in view when a poll no longer lists them, until refreshed by hand', async () => {
+    let now = Date.parse('2026-09-10T10:00:00Z')
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    // GitHub's unread list: all three at first; then only the newest, the others read
+    // elsewhere — another device, the browser.
+    let unread = LIST.filter((n) => n.unread)
+    const { wrapper } = panel(
+      {
+        '/notifications': () => ({ json: unread, headers: { 'X-Poll-Interval': '60' } }),
+        '/notifications/threads/1': { status: 205 },
+      },
+      { which: 'unread' }
+    )
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(2))
+
+    // Marked read by its check: stays, no longer standing out.
+    await wrapper
+      .find('[data-id="1"] .abele-github-notification__mark .abele-obsidian-icon')
+      .trigger('click')
+    await flushPromises()
+
+    unread = unread.filter((n) => n.id === '2')
+    now += 61_000
+    await (wrapper.vm as unknown as { refresh: (force?: boolean) => Promise<void> }).refresh()
+    await flushPromises()
+    expect(rows(wrapper)).toEqual([
+      { id: '2', title: 'Subject 2', unread: true },
+      { id: '1', title: 'Subject 1', unread: false },
+    ])
+
+    // The refresh button asks for the list as GitHub has it now.
+    await wrapper.find('.abele-github-notifications__refresh').trigger('click')
+    await flushPromises()
+    expect(rows(wrapper)).toEqual([{ id: '2', title: 'Subject 2', unread: true }])
+    vi.restoreAllMocks()
   })
 
   it('marks one read by its check without opening it, and keeps it in the unread list', async () => {
     const { wrapper, onOpen, request } = panel(ROUTES, { which: 'unread' })
     await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(2))
-    await wrapper.find('[data-id="1"] .abele-github-notification__mark .abele-obsidian-icon').trigger('click')
+    await wrapper
+      .find('[data-id="1"] .abele-github-notification__mark .abele-obsidian-icon')
+      .trigger('click')
     await flushPromises()
     expect(onOpen).not.toHaveBeenCalled()
     expect(calls(request, 'PATCH')).toEqual(['https://api.github.com/notifications/threads/1'])
