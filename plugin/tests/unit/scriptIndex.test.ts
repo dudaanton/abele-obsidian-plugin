@@ -76,7 +76,9 @@ describe('rebuilding the index', () => {
     const second = service.discover()
     expect(second).toBe(first)
     await first
-    // The second request is served after the first, not alongside it.
+    // The second request is served after the first, not alongside it. Waited for rather than slept
+    // on: under load the follow-up rebuild can take longer than any fixed pause.
+    await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(4), { timeout: 5000 })
     await new Promise((r) => setTimeout(r, 30))
 
     expect(reads).toHaveBeenCalledTimes(4)
