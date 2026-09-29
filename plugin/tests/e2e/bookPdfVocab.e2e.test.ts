@@ -7,6 +7,7 @@ const DIR = 'Abele pdf vocabulary e2e'
 const BOOK = `${DIR}/sample-book.pdf`
 const CARD = `${DIR}/sample-note.md`
 const available = isObsidianRunning() && hasTestApi()
+let originalReader: Record<string, unknown> | null = null
 
 const run = <T>(script: string): T =>
   evalAsync<T>(
@@ -21,11 +22,13 @@ const run = <T>(script: string): T =>
 
 describe.skipIf(!available)('vocabulary on selectable PDF pages', () => {
   beforeAll(() => {
+    originalReader = evalJson<Record<string, unknown>>(
+      'window.__abeleTest.AbeleConfig.getInstance().reader'
+    )
     const bytes = Buffer.from(buildVocabPdf()).toString('base64')
     evalRaw(
       `(async () => {
       const cfg = window.__abeleTest.AbeleConfig.getInstance()
-      window.__pdfVocabSaved = { ...cfg.reader }
       cfg.reader = { ...cfg.reader, pdfLayout: 'paginated', notesTo: 'book' }
       await cfg.saveSettings()
       if (!app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) await app.vault.createFolder(${JSON.stringify(DIR)})
@@ -47,14 +50,21 @@ describe.skipIf(!available)('vocabulary on selectable PDF pages', () => {
       `(async () => {
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
       const cfg = window.__abeleTest.AbeleConfig.getInstance()
-      if (window.__pdfVocabSaved) { cfg.reader = window.__pdfVocabSaved; await cfg.saveSettings() }
-      delete window.__pdfVocabSaved
+      if (${originalReader !== null}) {
+        cfg.reader = ${JSON.stringify(originalReader)}
+        await cfg.saveSettings()
+      }
       const folder = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
       if (folder) await app.vault.delete(folder, true)
       return 'ok'
     })()`,
       60_000
     )
+    if (originalReader) {
+      expect(
+        evalJson<Record<string, unknown>>('window.__abeleTest.AbeleConfig.getInstance().reader')
+      ).toEqual(originalReader)
+    }
   }, 90_000)
 
   it('marks a repeat on each drawn page and opens the existing card on a click', () => {
