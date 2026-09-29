@@ -220,7 +220,7 @@ const script = (phone: boolean) => `(async () => {
     report.error = String((e && e.message) || e)
   } finally {
     try {
-      document.querySelector('.abele-chat-history')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click()
+      document.querySelector('.abele-chat-history')?.closest('.modal-container')?.querySelector('.modal-close-button, .modal-header-button')?.click()
       const b = bar()
       if (b) key(b.querySelector('input'), { key: 'Escape' })
       for (const p of paths) {
