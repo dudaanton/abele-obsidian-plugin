@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-logs-list">
+  <div class="abele-logs-list" data-abele-anchor="section:logs">
     <div class="abele-logs-list__header">
       <FoldHeading
         class="abele-logs-list__header-text"
@@ -31,6 +31,7 @@
         <LogView
           v-for="log in visible"
           :key="log.filePath"
+          :data-abele-anchor="'log:' + log.filePath"
           class="abele-logs-list__note"
           :log="log"
         />
@@ -51,6 +52,7 @@ import ObsidianSearch from './obsidian/Search.vue'
 import FoldHeading from './obsidian/FoldHeading.vue'
 import { computed, ref, watch } from 'vue'
 import { usePagedList } from '@/composables/usePagedList'
+import { useFooterPages } from '@/composables/useFooterView'
 import { logSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'
 import { useFooterFold } from '@/composables/useFooterFold'
@@ -72,7 +74,11 @@ const sortedLogs = computed(() => {
   })
 })
 
-const { visible, hasMore, sentinel, reset } = usePagedList(() => sortedLogs.value)
+const { visible, hasMore, sentinel, reset } = usePagedList(
+  () => sortedLogs.value,
+  undefined,
+  useFooterPages('logs')
+)
 
 // A new query is a different list; the window expanded over the old one means nothing here.
 watch(search.terms, reset)

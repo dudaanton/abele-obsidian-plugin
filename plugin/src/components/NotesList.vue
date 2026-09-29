@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-notes-list">
+  <div class="abele-notes-list" data-abele-anchor="section:backlinks">
     <div class="abele-notes-list__header">
       <FoldHeading
         class="abele-notes-list__header-text"
@@ -22,6 +22,7 @@
         <Card
           v-for="note in visible"
           :key="note.filePath"
+          :data-abele-anchor="'note:' + note.filePath"
           class="abele-notes-list__item"
           :title="note.name"
           :description="note.description ?? undefined"
@@ -48,6 +49,7 @@ import Card from './obsidian/Card.vue'
 import FoldHeading from './obsidian/FoldHeading.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
 import { usePagedList } from '@/composables/usePagedList'
+import { useFooterPages } from '@/composables/useFooterView'
 
 /**
  * Larger than the other footer lists: a row here is a card of plain text — a title, a
@@ -76,7 +78,11 @@ const sortedNotes = computed(() => {
   })
 })
 
-const { visible, hasMore, sentinel, reset } = usePagedList(() => sortedNotes.value, PAGE_SIZE)
+const { visible, hasMore, sentinel, reset } = usePagedList(
+  () => sortedNotes.value,
+  PAGE_SIZE,
+  useFooterPages('backlinks')
+)
 
 function toggleSort() {
   sortBy.value = sortBy.value === 'created' ? 'updated' : 'created'

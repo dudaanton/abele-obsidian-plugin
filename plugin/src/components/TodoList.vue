@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-todo-list">
+  <div class="abele-todo-list" data-abele-anchor="section:tasks">
     <div class="abele-todo-list__header">
       <div class="abele-todo-list__header-left">
         <FoldHeading
@@ -71,6 +71,7 @@ import FoldHeading from './obsidian/FoldHeading.vue'
 import { computed, ref, watch } from 'vue'
 import { createTask } from '@/commands/createTask'
 import { usePagedList } from '@/composables/usePagedList'
+import { useFooterPages } from '@/composables/useFooterView'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { sortByPriority } from '@/helpers/taskMeta'
 import { taskSearch, useListSearch } from '@/composables/useListSearch'
@@ -107,7 +108,11 @@ const shown = computed(() => sortByPriority(search.results.value))
 const itemsEl = ref<HTMLElement | null>(null)
 useSearchHighlight(itemsEl, search.terms)
 
-const { visible, hasMore, sentinel, reset } = usePagedList(() => shown.value)
+const { visible, hasMore, sentinel, reset } = usePagedList(
+  () => shown.value,
+  undefined,
+  useFooterPages('tasks')
+)
 
 // Revealing completed tasks interleaves them into the list rather than appending, so the
 // expanded window would no longer correspond to anything the reader scrolled past. A new label

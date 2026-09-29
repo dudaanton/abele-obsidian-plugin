@@ -7,6 +7,7 @@
     v-else-if="task.loaded"
     ref="taskEl"
     class="abele-task-view"
+    :data-abele-anchor="'task:' + task.taskPath"
     @click="onCardClick"
     @contextmenu.prevent="onContextMenu"
   >
@@ -82,6 +83,7 @@ import type { KitColor } from '@/constants/colors'
 import { openFile } from '@/helpers/vaultUtils'
 import { useElementVisibility, useIntervalFn } from '@vueuse/core'
 import { Menu } from 'obsidian'
+import { useFooterTaskOpen } from '@/composables/useFooterView'
 
 const props = defineProps<{
   task: Task
@@ -134,9 +136,13 @@ watch(
   }
 )
 
-const showDescription = ref(false)
+// Under a note, a task opened stays open when the note is opened again, so the rows under it
+// come back where they were.
+const openMemory = useFooterTaskOpen(() => props.task.taskPath)
+const showDescription = ref(openMemory.initial)
 const toggleDescription = () => {
   showDescription.value = !showDescription.value
+  openMemory.record(showDescription.value)
 }
 
 const dueText = computed(() => {

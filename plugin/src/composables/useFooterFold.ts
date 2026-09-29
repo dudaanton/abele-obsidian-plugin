@@ -59,6 +59,17 @@ export function moveFooterFolds(oldPath: string, newPath: string): void {
   write(renameFolds(current(), oldPath, newPath))
 }
 
+/** A deleted note's folds go with it, a folder's with all under it: a note made later under the same name starts open. */
+export function forgetFooterFolds(path: string): void {
+  // A folder deleted whole may say so once, for itself.
+  const state = current()
+  const gone = Object.keys(state).filter((key) => key === path || key.startsWith(path + '/'))
+  if (!gone.length) return
+  const next = { ...state }
+  for (const key of gone) delete next[key]
+  write(next)
+}
+
 /** Forgets what was read, so the next reader loads it again. For tests. */
 export function resetFooterFolds(): void {
   state.value = null

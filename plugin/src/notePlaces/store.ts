@@ -12,10 +12,22 @@ export interface CursorPlace {
   to: { line: number; ch: number }
 }
 
+/**
+ * A spot in the list under a note: the row that was at the top of the view, by a key that names
+ * what it shows (`task:<path>`, `section:tasks`), and how far its top was below the view's top,
+ * in pixels (negative when it was partly scrolled past).
+ */
+export interface AnchorPlace {
+  key: string
+  offset: number
+}
+
 /** A note's place: its scroll as the view reports it, the selection, and when it was saved. */
 export interface NotePlace {
   scroll: number
   cursor?: CursorPlace
+  /** Set when the view was scrolled into the list under the note: the line alone cannot say where. */
+  anchor?: AnchorPlace
   /** Milliseconds since the epoch; the oldest go first when there are too many. */
   at: number
 }
@@ -40,6 +52,15 @@ function placeFrom(raw: unknown): NotePlace | null {
       from: { line: c.from.line, ch: c.from.ch },
       to: { line: c.to.line, ch: c.to.ch },
     }
+  const a = r.anchor as Record<string, unknown> | undefined
+  if (
+    a &&
+    typeof a.key === 'string' &&
+    a.key &&
+    typeof a.offset === 'number' &&
+    Number.isFinite(a.offset)
+  )
+    place.anchor = { key: a.key, offset: a.offset }
   return place
 }
 
@@ -50,6 +71,7 @@ const samePos = (a: { line: number; ch: number }, b: { line: number; ch: number 
 export function samePlace(a: NotePlace | undefined, b: NotePlace | undefined): boolean {
   if (!a || !b) return a === b
   if (a.scroll !== b.scroll) return false
+  if (a.anchor?.key !== b.anchor?.key || a.anchor?.offset !== b.anchor?.offset) return false
   if (!a.cursor || !b.cursor) return !a.cursor && !b.cursor
   return samePos(a.cursor.from, b.cursor.from) && samePos(a.cursor.to, b.cursor.to)
 }

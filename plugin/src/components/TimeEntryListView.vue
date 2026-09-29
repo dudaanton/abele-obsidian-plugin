@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-time-entries-list">
+  <div class="abele-time-entries-list" data-abele-anchor="section:time">
     <div class="abele-time-entries-list__header">
       <FoldHeading
         class="abele-time-entries-list__header-text"
@@ -19,7 +19,7 @@
           <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
             {{ dayDuration(entryDate(entry)) }}
           </DateDivider>
-          <TimeEntryItem :entry="entry" />
+          <TimeEntryItem :entry="entry" :data-abele-anchor="'time:' + entry.id" />
         </template>
         <div ref="scrollSentinel" class="abele-time-entries-list__sentinel" />
       </div>
@@ -38,6 +38,7 @@ import DateDivider from './obsidian/DateDivider.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import FoldHeading from './obsidian/FoldHeading.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
+import { useFooterPages } from '@/composables/useFooterView'
 import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import dayjs from 'dayjs'
@@ -71,7 +72,9 @@ const sorted = computed(() => {
   })
 })
 
-const visibleCount = ref(PAGE_SIZE)
+const pages = useFooterPages('time')
+const visibleCount = ref(PAGE_SIZE * pages.initial)
+watch(visibleCount, (count) => pages.record(Math.ceil(count / PAGE_SIZE)))
 const visible = computed(() => sorted.value.slice(0, visibleCount.value))
 
 const scrollSentinel = ref<HTMLElement | null>(null)

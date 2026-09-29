@@ -15,6 +15,8 @@ import {
   HIDDEN_STEP_MS,
   HIDDEN_WAIT_MS,
   MAX_CORRECTIONS,
+  ANCHOR_HOLD_MS,
+  ANCHOR_WAIT_MS,
   RESTORE_WINDOW_MS,
   SAVE_DELAY_MS,
   type PlaceIo,
@@ -121,6 +123,10 @@ interface FakeView {
   cursorSets: number
   /** What is listening for the person's own scrolling, touching or typing in it. */
   listeners: Set<() => void>
+  /** Rows of the list under the note drawn so far, by key, and the one put at the top. */
+  rows?: Set<string>
+  aligned?: string[]
+  held?: number
 }
 
 const view = (path: string | null, scroll = 0): FakeView => ({
@@ -151,6 +157,17 @@ const io: PlaceIo<FakeView> = {
   watchInput(v, onInput) {
     v.listeners.add(onInput)
     return () => v.listeners.delete(onInput)
+  },
+  alignAnchor(v, anchor) {
+    if (!v.rows?.has(anchor.key)) return false
+    ;(v.aligned ??= []).push(anchor.key)
+    return true
+  },
+  holdAnchor(v) {
+    v.held = (v.held ?? 0) + 1
+    return () => {
+      v.held = (v.held ?? 1) - 1
+    }
   },
 }
 
@@ -303,6 +320,68 @@ describe('the keeper', () => {
     vi.advanceTimersByTime(RESTORE_WINDOW_MS)
     expect([a.applied, b.applied, a.scroll, b.scroll]).toEqual([0, 0, 7, 7])
     expect(a.listeners.size + b.listeners.size).toBe(0)
+  })
+
+  describe('a place in the list under the note', () => {
+    const anchored = { 'group.md': { ...at(80), anchor: { key: 'task:t.md', offset: 40 } } }
+
+    it('waits for its row to be drawn, puts it back once, holds it, then lets go', () => {
+      make(anchored)
+      const v = view('group.md')
+      v.rows = new Set()
+      keeper.opened(v, 'group.md', false)
+      vi.advanceTimersByTime(RESTORE_STEP_MS * 10)
+      expect(v.scroll).toBe(80)
+      expect(v.aligned ?? []).toEqual([])
+      expect(keeper.isPending(v)).toBe(true)
+      v.rows.add('task:t.md')
+      vi.advanceTimersByTime(RESTORE_STEP_MS * 2)
+      expect(v.aligned).toEqual(['task:t.md'])
+      expect(v.held).toBe(1)
+      vi.advanceTimersByTime(ANCHOR_HOLD_MS)
+      expect(v.held).toBe(0)
+      expect(keeper.isPending(v)).toBe(false)
+      expect(v.listeners.size).toBe(0)
+    })
+
+    it('stops holding the moment the person scrolls', () => {
+      make(anchored)
+      const v = view('group.md')
+      v.rows = new Set(['task:t.md'])
+      keeper.opened(v, 'group.md', false)
+      vi.advanceTimersByTime(RESTORE_STEP_MS * 4)
+      expect(v.held).toBe(1)
+      touch(v, 70)
+      expect(v.held).toBe(0)
+      expect(keeper.isPending(v)).toBe(false)
+    })
+
+    it('gives up on a row that never comes, and leaves the line where it got to', () => {
+      make(anchored)
+      const v = view('group.md')
+      v.rows = new Set()
+      keeper.opened(v, 'group.md', false)
+      vi.advanceTimersByTime(ANCHOR_WAIT_MS + RESTORE_WINDOW_MS)
+      expect(keeper.isPending(v)).toBe(false)
+      expect(v.scroll).toBe(80)
+      expect(v.held ?? 0).toBe(0)
+    })
+
+    it('keeps the row with the place, and a place in the list is never taken for the top', () => {
+      const s = NotePlaces.from({
+        'a.md': { scroll: 0, at: 1, anchor: { key: 'section:tasks', offset: -12 } },
+      })
+      expect(s.get('a.md')?.anchor).toEqual({ key: 'section:tasks', offset: -12 })
+      expect(
+        s.remember('a.md', { scroll: 0, at: 2, anchor: { key: 'section:tasks', offset: -30 } })
+      ).toBe(true)
+      make({ 'a.md': { scroll: 0, at: 1, anchor: { key: 'section:tasks', offset: 5 } } })
+      const v = view('a.md')
+      v.rows = new Set(['section:tasks'])
+      keeper.opened(v, 'a.md', false)
+      vi.advanceTimersByTime(RESTORE_STEP_MS * 3)
+      expect(v.aligned).toEqual(['section:tasks'])
+    })
   })
 
   it('drops the restore when the view has moved on to another note', () => {

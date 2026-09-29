@@ -13,7 +13,7 @@
  *   asked to go. Before that it shows the top of a note on its way somewhere else, and saving it
  *   would overwrite the place about to be put back.
  */
-import { NotePlaces, type NotePlace } from './store'
+import { NotePlaces, type AnchorPlace, type NotePlace } from './store'
 
 /** A place as a view reports it; when it was saved is added here. */
 export type ViewPlace = Omit<NotePlace, 'at'>
@@ -36,6 +36,16 @@ export interface PlaceIo<V> {
    * result stops listening.
    */
   watchInput(view: V, onInput: () => void): () => void
+  /**
+   * Scrolls `view` so the row `anchor` names is where it was, if that row is drawn. Says whether
+   * it was: the list under a note is drawn a moment after the note, and its rows after that.
+   */
+  alignAnchor(view: V, anchor: AnchorPlace): boolean
+  /**
+   * Keeps the row where it is while what is around it is still being drawn, correcting before
+   * anything is painted; the result stops.
+   */
+  holdAnchor(view: V, anchor: AnchorPlace): () => void
 }
 
 export interface KeeperEnv {
@@ -66,6 +76,10 @@ const CLOSE_ENOUGH = 1
  * few it is left where it is.
  */
 export const MAX_CORRECTIONS = 2
+/** How long a restore waits for the row it was left at to be drawn under the note. */
+export const ANCHOR_WAIT_MS = 4000
+/** How long that row is then held in place while the rest of the list is drawn around it. */
+export const ANCHOR_HOLD_MS = 1500
 /** How long a change waits before it is written, so scrolling does not write on every step. */
 export const SAVE_DELAY_MS = 2000
 
@@ -82,11 +96,14 @@ interface Pending {
   before: number | null
   /** Whether an apply has moved the view yet: until then it was not ready for one. */
   landed: boolean
-  /** Stops listening for the person's own scrolling. */
+  /** Stops listening for the person's own scrolling, and holding the row in place. */
   unwatch: () => void
+  /** Past the line, looking for the row under the note: how long it has looked. */
+  anchorWaited: number | null
 }
 
 const atTop = (p: ViewPlace) =>
+  !p.anchor &&
   p.scroll === 0 &&
   (!p.cursor ||
     (p.cursor.from.line === 0 &&
@@ -130,6 +147,7 @@ export class NotePlaceKeeper<V extends object> {
       before: null,
       landed: false,
       unwatch: () => {},
+      anchorWaited: null,
     }
     this.pending.set(view, pending)
     // The person scrolling, touching or typing first: the note stays where they took it.
@@ -169,6 +187,46 @@ export class NotePlaceKeeper<V extends object> {
     this.settled.set(view, p.path)
   }
 
+  /**
+   * The line reached, the row under the note it was left at: waited for until it is drawn, put
+   * where it was once, then held there while the list finishes drawing — never chased step by
+   * step, which is what shakes.
+   */
+  private anchorStep(view: V, p: Pending): void {
+    const anchor = p.place.anchor
+    if (this.io.path(view) !== p.path || !this.env.enabled()) {
+      this.finish(view, p)
+      return
+    }
+    let found = false
+    this.applying = true
+    try {
+      found = this.io.alignAnchor(view, anchor)
+    } catch (e) {
+      console.warn('[Abele] could not bring back the row under the note', e)
+      this.finish(view, p)
+      return
+    } finally {
+      this.applying = false
+    }
+    if (!found) {
+      if (p.anchorWaited >= ANCHOR_WAIT_MS) {
+        this.finish(view, p)
+        return
+      }
+      p.anchorWaited += RESTORE_STEP_MS
+      p.handle = this.env.schedule(() => this.anchorStep(view, p), RESTORE_STEP_MS)
+      return
+    }
+    const unwatch = p.unwatch
+    const release = this.io.holdAnchor(view, anchor)
+    p.unwatch = () => {
+      release()
+      unwatch()
+    }
+    p.handle = this.env.schedule(() => this.finish(view, p), ANCHOR_HOLD_MS)
+  }
+
   private attempt(view: V): void {
     const p = this.pending.get(view)
     if (!p) return
@@ -201,7 +259,10 @@ export class NotePlaceKeeper<V extends object> {
       p.waited >= RESTORE_WINDOW_MS ||
       !this.env.enabled()
     if (done) {
-      this.finish(view, p)
+      if (p.place.anchor && now && this.env.enabled()) {
+        p.anchorWaited = 0
+        this.anchorStep(view, p)
+      } else this.finish(view, p)
       return
     }
     p.before = now.scroll

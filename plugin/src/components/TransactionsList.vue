@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-transactions-list">
+  <div class="abele-transactions-list" data-abele-anchor="section:transactions">
     <div class="abele-transactions-list__header">
       <div class="abele-transactions-list__header-left">
         <FoldHeading
@@ -35,7 +35,11 @@
           <DateDivider v-if="showDateBefore(idx)" :date="txDate(tx)">
             <span v-for="s in dayTotals(txDate(tx))" :key="s">{{ s }}</span>
           </DateDivider>
-          <TransactionItem :transaction="tx" :tx-type="getType(tx)" />
+          <TransactionItem
+            :transaction="tx"
+            :tx-type="getType(tx)"
+            :data-abele-anchor="'tx:' + tx.id"
+          />
         </template>
         <div ref="scrollSentinel" class="abele-transactions-list__sentinel" />
       </div>
@@ -66,6 +70,7 @@ import { formatAmount } from '@/helpers/moneyFormat'
 import { transactionSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'
 import { useFooterFold } from '@/composables/useFooterFold'
+import { useFooterPages } from '@/composables/useFooterView'
 
 const PAGE_SIZE = 20
 
@@ -133,7 +138,9 @@ const sorted = computed(() => {
   })
 })
 
-const visibleCount = ref(PAGE_SIZE)
+const pages = useFooterPages('transactions')
+const visibleCount = ref(PAGE_SIZE * pages.initial)
+watch(visibleCount, (count) => pages.record(Math.ceil(count / PAGE_SIZE)))
 const visible = computed(() => sorted.value.slice(0, visibleCount.value))
 
 // A new query is a different list; the window expanded over the old one means nothing here.

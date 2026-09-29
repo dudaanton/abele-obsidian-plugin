@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 
 /**
@@ -36,15 +36,24 @@ export interface PagedList<T> {
   reset: () => void
 }
 
+/** Pages to start with, and where to report the pages drawn: a list under a note keeps them. */
+export interface PageMemory {
+  initial: number
+  record: (pages: number) => void
+}
+
 /**
  * @param source getter for the full, already sorted and filtered list
  * @param pageSize how many entries to add per page; tune per list by how costly one entry is
+ * @param memory the pages it was left at, and where to report them as they change
  */
 export function usePagedList<T>(
   source: () => readonly T[],
-  pageSize: number = DEFAULT_PAGE_SIZE
+  pageSize: number = DEFAULT_PAGE_SIZE,
+  memory?: PageMemory
 ): PagedList<T> {
-  const visibleCount = ref(pageSize)
+  const visibleCount = ref(pageSize * Math.max(1, memory?.initial ?? 1))
+  if (memory) watch(visibleCount, (count) => memory.record(Math.ceil(count / pageSize)))
 
   const all = computed(() => source())
   const visible = computed(() => all.value.slice(0, visibleCount.value))

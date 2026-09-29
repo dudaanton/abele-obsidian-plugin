@@ -27,6 +27,9 @@ import type { NotePlace } from './store'
 import { isExplicitTarget } from './target'
 import { importRememberCursorPlaces, OTHER_PLUGIN_ID } from './otherPlugin'
 import { currentPlaceKeeper, setPlaceKeeper } from './hold'
+import { alignAnchor, anchorAt, holdAnchor } from './anchor'
+import { forgetFooterView } from '@/composables/useFooterView'
+import { forgetFooterFolds } from '@/composables/useFooterFold'
 
 /** Where the places are kept, by `App.saveLocalStorage` — per vault, on this device. */
 export const PLACES_KEY = 'abele-note-places'
@@ -58,6 +61,10 @@ const io: PlaceIo<MarkdownView> = {
     const scroll = view.currentMode?.getScroll?.()
     if (typeof scroll !== 'number' || !Number.isFinite(scroll)) return null
     const place: ViewPlace = { scroll: round(scroll) }
+    // Scrolled into the list under the note: the row at the top, which the line cannot name.
+    const scroller = view.getMode() === 'preview' ? null : scrollerOf(view)
+    const anchor = scroller ? anchorAt(view.containerEl, scroller) : null
+    if (anchor) place.anchor = anchor
     const editor = view.editor
     if (editor) {
       const from = editor.getCursor('anchor')
@@ -87,6 +94,16 @@ const io: PlaceIo<MarkdownView> = {
     const el = scrollerOf(view)
     return !!el && el.scrollHeight > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 2
   },
+  alignAnchor(view, anchor) {
+    const scroller = view.getMode() === 'preview' ? null : scrollerOf(view)
+    return !!scroller && alignAnchor(view.containerEl, scroller, anchor)
+  },
+  holdAnchor: (view, anchor) =>
+    holdAnchor(
+      view.containerEl,
+      () => (view.getMode() === 'preview' ? null : scrollerOf(view)),
+      anchor
+    ),
   watchInput(view, onInput) {
     const el = view.containerEl
     const opts = { capture: true, passive: true }
@@ -220,7 +237,14 @@ export function registerNotePlaces(plugin: Plugin): void {
 
   plugin.registerInterval(window.setInterval(sampleAll, SAMPLE_MS))
   plugin.registerEvent(app.vault.on('rename', (file, oldPath) => k.renamed(oldPath, file.path)))
-  plugin.registerEvent(app.vault.on('delete', (file) => k.deleted(file.path)))
+  plugin.registerEvent(
+    app.vault.on('delete', (file) => {
+      k.deleted(file.path)
+      // How its lists were left goes too, or a note made later under its name inherits it.
+      forgetFooterView(file.path)
+      forgetFooterFolds(file.path)
+    })
+  )
   plugin.registerEvent(app.workspace.on('quit', saveNow))
   // A phone app sent to the background may never come back to say it quit.
   plugin.registerDomEvent(document, 'visibilitychange', () => {

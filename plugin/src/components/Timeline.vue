@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-timeline">
+  <div class="abele-timeline" data-abele-anchor="section:calendar">
     <div class="abele-timeline__header">
       <div class="abele-timeline__header-left">
         <FoldHeading
@@ -47,7 +47,12 @@
         @keydown.escape.stop.prevent="search.close"
       />
       <div ref="itemsEl" class="abele-timeline__blocks">
-        <div v-for="[date, dateItems] in visible" :key="date" class="abele-timeline__date-block">
+        <div
+          v-for="[date, dateItems] in visible"
+          :key="date"
+          class="abele-timeline__date-block"
+          :data-abele-anchor="'date:' + date"
+        >
           <div
             class="abele-timeline__date-indicator"
             :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
@@ -99,6 +104,7 @@ import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
 import { usePagedList } from '@/composables/usePagedList'
+import { useFooterPages } from '@/composables/useFooterView'
 import { createTask } from '@/commands/createTask'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { taskSearch, useListSearch } from '@/composables/useListSearch'
@@ -190,7 +196,11 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
-const { visible, hasMore, sentinel, reset } = usePagedList(() => dates.value, PAGE_SIZE)
+const { visible, hasMore, sentinel, reset } = usePagedList(
+  () => dates.value,
+  PAGE_SIZE,
+  useFooterPages('calendar')
+)
 
 // Completed tasks reappear throughout the timeline, not at its end, so the previously
 // expanded window no longer matches what the reader has actually scrolled through.

@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-chats-list">
+  <div class="abele-chats-list" data-abele-anchor="section:chats">
     <div class="abele-chats-list__header">
       <FoldHeading
         class="abele-chats-list__header-text"
@@ -14,6 +14,7 @@
       <Card
         v-for="chat in visible"
         :key="chat.path"
+        :data-abele-anchor="'chat:' + chat.path"
         :title="chat.title"
         :description="chat.recap || undefined"
         :meta="metaOf(chat)"
@@ -50,6 +51,7 @@ import Badge from './obsidian/Badge.vue'
 import Icon from './obsidian/Icon.vue'
 import { detachNote } from '@/ai/chatNoteLinks'
 import { usePagedList } from '@/composables/usePagedList'
+import { useFooterPages } from '@/composables/useFooterView'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 
 const props = withDefaults(
@@ -75,7 +77,11 @@ const detach = (chat: ChatLink) => {
   })
 }
 
-const { visible, hasMore, sentinel } = usePagedList(() => sorted.value)
+const { visible, hasMore, sentinel } = usePagedList(
+  () => sorted.value,
+  undefined,
+  useFooterPages('chats')
+)
 </script>
 
 <style lang="scss">
