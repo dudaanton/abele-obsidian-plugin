@@ -17,6 +17,7 @@ export function registerPropertyWidgets(plugin: Plugin): void {
     dateKeys: () => config.dateProperties,
     priorityKeys: () => config.priorityProperties,
     labelKeys: () => config.labelProperties,
+    groupKeys: () => config.groupProperties,
   })
   if (!widgets.load()) return
   const lists = () =>
@@ -25,6 +26,7 @@ export function registerPropertyWidgets(plugin: Plugin): void {
       config.dateProperties,
       config.priorityProperties,
       config.labelProperties,
+      config.groupProperties,
     ]
       .map((names) => names.join('\n'))
       .join('\0')

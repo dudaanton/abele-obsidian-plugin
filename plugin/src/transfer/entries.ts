@@ -291,6 +291,7 @@ export const SECTIONS: Section[] = [
     'dateProperties',
     'priorityProperties',
     'labelProperties',
+    'groupProperties',
   ]),
 ]
 

@@ -22,6 +22,8 @@
  *   (`priorityWidget.ts`).
  * - one named in `labelProperties`, drawn as a list or text: pills, and a field that adds a label
  *   from those the vault uses (`labelsWidget.ts`).
+ * - one named in `groupProperties`, drawn as a list or text: link pills to the group notes, and a
+ *   field that adds one from the notes used as groups (`groupsWidget.ts`).
  *
  * A listed property holding what its kind cannot read — `someday` in a date — is left to Obsidian.
  *

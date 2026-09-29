@@ -107,6 +107,8 @@ export interface AbeleSettings {
   priorityProperties?: string[]
   /** Property names drawn as labels: pills, and a field adding one from those the vault uses. */
   labelProperties?: string[]
+  /** Property names drawn as groups: link pills, and a field adding a group note. */
+  groupProperties?: string[]
   /**
    * A panel at the top of the screen showing what the page reports about the on-screen
    * keyboard. For finding out from a phone what no emulator shows; stays on its device.
@@ -309,6 +311,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   dateProperties: ['date', 'due'],
   priorityProperties: ['priority'],
   labelProperties: ['labels'],
+  groupProperties: ['groups'],
   keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
   reader: { ...DEFAULT_READER_SETTINGS },
@@ -364,6 +367,7 @@ export class AbeleConfig {
   public dateProperties: string[] = []
   public priorityProperties: string[] = []
   public labelProperties: string[] = []
+  public groupProperties: string[] = []
   public keyboardDiagnostics: boolean
   public github: GithubSettings
   public reader: ReaderSettings
@@ -701,6 +705,7 @@ export class AbeleConfig {
     this.dateProperties = names(settings?.dateProperties, DEFAULT_SETTINGS.dateProperties)
     this.priorityProperties = names(settings?.priorityProperties, DEFAULT_SETTINGS.priorityProperties)
     this.labelProperties = names(settings?.labelProperties, DEFAULT_SETTINGS.labelProperties)
+    this.groupProperties = names(settings?.groupProperties, DEFAULT_SETTINGS.groupProperties)
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
     this.reader = readerSettingsFrom(settings?.reader)
@@ -761,6 +766,7 @@ export class AbeleConfig {
       dateProperties: [...this.dateProperties],
       priorityProperties: [...this.priorityProperties],
       labelProperties: [...this.labelProperties],
+      groupProperties: [...this.groupProperties],
       keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
       reader: { ...this.reader },

@@ -66,8 +66,11 @@ The properties at the top of a note are drawn by the plugin in a few places:
 - `labels` are pills, coloured as in the task settings, each with a cross. Type in the field
   beside them to add one: the labels already used in the vault are offered, or press Enter to
   add a new one.
+- `groups` are links to the notes a note belongs to, each with a cross; press one to open that
+  note. Type in the field beside them to add one: the notes already used as groups come first,
+  those with the most notes in them at the top, then any other note by name.
 
-Which names get dates, priorities and labels is set in **Settings → Abele → Other**.
+Which names get dates, priorities, labels and groups is set in **Settings → Abele → Other**.
 
 Nothing about the note changes: it is still ordinary properties, and a device without the plugin
 shows them the way Obsidian does. Turn this off in **Settings → Abele → Other**. It rests on

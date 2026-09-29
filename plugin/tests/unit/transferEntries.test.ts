@@ -209,12 +209,13 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
-  it('carries the properties drawn as dates, priorities and labels', () => {
+  it('carries the properties drawn as dates, priorities, labels and groups', () => {
     const entries = collectEntries(
       settings({
         dateProperties: ['deadline'],
         priorityProperties: ['importance'],
         labelProperties: ['tags2'],
+        groupProperties: ['projects'],
       })
     )
 
@@ -222,6 +223,7 @@ describe('settings that arrived later than the transfer did', () => {
       dateProperties: ['deadline'],
       priorityProperties: ['importance'],
       labelProperties: ['tags2'],
+      groupProperties: ['projects'],
     })
   })
 

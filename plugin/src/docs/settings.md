@@ -210,8 +210,9 @@ number fields, file cards for File and Files properties and `cover` — `remembe
 by default) opens each note at the scroll and cursor it was left at on that device, unless it is
 opened at a place of its own, `counterProperties` lists
 the property names drawn as a counter, the number with − and + beside it, while that is on —
-`dateProperties` (`date`, `due`), `priorityProperties` (`priority`) and `labelProperties`
-(`labels`) the names drawn as a date stepped a day at a time, a task priority and labels — and
+`dateProperties` (`date`, `due`), `priorityProperties` (`priority`), `labelProperties`
+(`labels`) and `groupProperties` (`groups`) the names drawn as a date stepped a day at a time, a
+task priority, labels and links to group notes — and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
 `headerButtons` are buttons on notes, each `{ id, name, icon, runs, commandId, scriptName, params,

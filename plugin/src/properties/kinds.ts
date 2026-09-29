@@ -1,13 +1,15 @@
 /**
- * Which of the plugin's own rows draws a property: a counter, a date, a priority or labels, by the
- * lists of property names in the settings and the type Obsidian draws the property as. A name in
- * more than one list is drawn as the first of them, in that order. A listed property holding what
- * its kind cannot read — `someday` in a date — is left to Obsidian.
+ * Which of the plugin's own rows draws a property: a counter, a date, a priority, labels or
+ * groups, by the lists of property names in the settings and the type Obsidian draws the property
+ * as. A name in more than one list is drawn as the first of them, in that order. A listed property
+ * holding what its kind cannot read — `someday` in a date — is left to Obsidian.
  */
 import { counterKeys, counterValue, isCounterKey } from './counter'
 import { renderCounter } from './counterWidget'
 import { isDateValue } from './dates'
 import { renderDate } from './dateWidget'
+import { isGroupsValue } from './groups'
+import { renderGroups } from './groupsWidget'
 import { isLabelsValue } from './labels'
 import { renderLabels } from './labelsWidget'
 import { priorityLevel } from './priority'
@@ -24,19 +26,21 @@ export interface KindLists {
   priorityKeys?: () => readonly string[]
   /** Drawn as labels. */
   labelKeys?: () => readonly string[]
+  /** Drawn as links to group notes. */
+  groupKeys?: () => readonly string[]
 }
 
 type Draw = (el: HTMLElement, value: unknown, ctx: WidgetContext, type: string) => unknown
 
-export type Kind = 'counter' | 'date' | 'priority' | 'labels'
+export type Kind = 'counter' | 'date' | 'priority' | 'labels' | 'groups'
 
 /** Which kind draws a row, by the stock type the panel drew it as: the first listed wins. */
 const KINDS_BY_TYPE: Record<string, Kind[]> = {
   number: ['counter'],
-  text: ['counter', 'date', 'priority', 'labels'],
+  text: ['counter', 'date', 'priority', 'labels', 'groups'],
   date: ['date'],
   datetime: ['date'],
-  multitext: ['labels'],
+  multitext: ['labels', 'groups'],
 }
 
 const KIND_READS: Record<Kind, (value: unknown) => boolean> = {
@@ -44,6 +48,7 @@ const KIND_READS: Record<Kind, (value: unknown) => boolean> = {
   date: isDateValue,
   priority: (v) => priorityLevel(v) !== null,
   labels: isLabelsValue,
+  groups: isGroupsValue,
 }
 
 const KIND_DRAWS: Record<Kind, Draw> = {
@@ -51,6 +56,7 @@ const KIND_DRAWS: Record<Kind, Draw> = {
   date: renderDate,
   priority: renderPriority,
   labels: renderLabels,
+  groups: renderGroups,
 }
 
 /** The row that draws a property, or null when Obsidian's own should. */
@@ -60,6 +66,7 @@ export function pickKind(lists: KindLists, key: string, value: unknown, type: st
     date: lists.dateKeys,
     priority: lists.priorityKeys,
     labels: lists.labelKeys,
+    groups: lists.groupKeys,
   }
   for (const kind of KINDS_BY_TYPE[type] ?? []) {
     const names = listed[kind]?.() ?? []

@@ -205,7 +205,7 @@ const updateCounterProperties = (value: string) => {
   saveCounterProperties(value)
 }
 
-type ListKey = 'dateProperties' | 'priorityProperties' | 'labelProperties'
+type ListKey = 'dateProperties' | 'priorityProperties' | 'labelProperties' | 'groupProperties'
 
 /** A comma-separated list of property names, saved as the list it spells. */
 const propertyList = (key: ListKey, name: string, desc: string, placeholder: string) => {
@@ -248,6 +248,12 @@ const propertyLists = [
     'Label properties',
     'Comma-separated property names drawn as labels, added from those already used in the vault or typed. Needs own drawing of properties on.',
     'e.g. labels'
+  ),
+  propertyList(
+    'groupProperties',
+    'Group properties',
+    'Comma-separated property names drawn as links to group notes, opened with a click and added from the notes already used as groups or any other note. Needs own drawing of properties on.',
+    'e.g. groups'
   ),
 ]
 

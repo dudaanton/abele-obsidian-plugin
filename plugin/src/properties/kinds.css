@@ -104,7 +104,8 @@
   cursor: default;
 }
 
-.abele-property-labels {
+.abele-property-labels,
+.abele-property-groups {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
@@ -113,11 +114,13 @@
   min-width: 0;
 }
 
-.abele-property-labels__pills {
+.abele-property-labels__pills,
+.abele-property-groups__pills {
   display: contents;
 }
 
-.abele-property-labels .abele-property-labels__input {
+.abele-property-labels .abele-property-labels__input,
+.abele-property-groups .abele-property-groups__input {
   flex: 1 1 6ch;
   min-width: 6ch;
   width: auto;
@@ -130,7 +133,9 @@
 }
 
 .abele-property-labels .abele-property-labels__input:focus,
-.abele-property-labels .abele-property-labels__input:focus-visible {
+.abele-property-labels .abele-property-labels__input:focus-visible,
+.abele-property-groups .abele-property-groups__input:focus,
+.abele-property-groups .abele-property-groups__input:focus-visible {
   box-shadow: none;
 }
 

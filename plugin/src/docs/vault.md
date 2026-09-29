@@ -191,7 +191,7 @@ A property named in the `counterProperties` setting is a counter: the plugin dra
 first + writes 1. Write a number, never text, into one; a value that is not a number is shown as
 it is and the buttons leave it alone.
 
-## Dates, priorities and labels
+## Dates, priorities, labels and groups
 
 Properties named in `dateProperties` (by default `date`, `due`) are drawn with a day back, a day
 on, how far away the day is and a button to its daily note. A step keeps the shape: `2026-05-01`
@@ -199,8 +199,11 @@ stays a date, `2026-05-01T09:30` keeps its time. An empty one counts as today.
 
 Those in `priorityProperties` (`priority`) take `low`, `medium` or `high`, raised and lowered a
 step at a time; lowering `low` empties it. Those in `labelProperties` (`labels`) are a list,
-`labels: [work, errands]`, added to from the labels the vault already uses. Write these values in
-those shapes; a value the drawing cannot read is shown as it is and left alone.
+`labels: [work, errands]`, added to from the labels the vault already uses. Those in
+`groupProperties` (`groups`) are a list of links, `groups: ["[[Garden]]"]`, each shown as a link
+to its note and added to from the notes already used as groups; a new one is written as a plain
+`[[link]]` and the others are kept as they were. Write these values in those shapes; a value the
+drawing cannot read is shown as it is and left alone.
 
 ## Skills and prompts
 
