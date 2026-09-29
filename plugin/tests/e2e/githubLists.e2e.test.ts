@@ -21,8 +21,9 @@ import {
   startFakeGithub,
   type FakeGithub,
 } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
-const SHOTS = '/tmp/abele-github-lists'
+const SHOTS = shotDir('abele-github-lists')
 const available = isObsidianRunning() && hasTestApi()
 
 const LISTS = `

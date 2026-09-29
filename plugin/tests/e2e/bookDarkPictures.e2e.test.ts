@@ -9,11 +9,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildLineArtEpub } from '../fixtures/books/lineArtBook'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader dark pictures e2e'
 const BOOK = `${DIR}/line-art.epub`
-const SHOT = '/tmp/abele-dark-pictures.png'
+const SHOT = shotDir('abele-dark-pictures.png')
 
 const setTheme = (dark: boolean) => `
   document.body.classList.toggle('theme-dark', ${dark})

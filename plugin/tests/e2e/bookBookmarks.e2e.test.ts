@@ -19,12 +19,13 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub, RICH_BOOK_ID } from '../fixtures/books/richBook'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader bookmarks e2e'
 const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/long.pdf`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 

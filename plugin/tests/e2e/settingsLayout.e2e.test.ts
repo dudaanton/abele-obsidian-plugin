@@ -25,6 +25,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, evalJson, evalRaw, activeVaultName } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 interface Overflow {
   /** Class names of elements sticking out, with how far past the container they reach. */
@@ -184,10 +185,10 @@ const probeFor = (phone: boolean) =>
       const { remote } = require('electron')
       const w = remote.BrowserWindow.getAllWindows().find((x) => x.getTitle().startsWith('Settings - ' + app.vault.getName() + ' - '))
       if (!w) return
-      require('fs').mkdirSync('/tmp/abele-phone', { recursive: true })
+      require('fs').mkdirSync(${JSON.stringify(shotDir('abele-phone'))}, { recursive: true })
       const image = await w.webContents.capturePage()
       const tag = ${phone} ? 'phone' : String(view.innerWidth)
-      require('fs').writeFileSync('/tmp/abele-phone/settings-' + name + '-' + tag + '.png', image.toPNG())
+      require('fs').writeFileSync(${JSON.stringify(shotDir('abele-phone') + '/settings-')} + name + '-' + tag + '.png', image.toPNG())
     }
     try {
       if (config) {

@@ -18,13 +18,14 @@ import {
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { onPhone } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi() && !onPhone()
 const PHONE = { width: 390, height: 844 }
 const DIR = 'Property groups e2e'
 const NOTE = `${DIR}/Sample member.md`
 const KEY = 'pg-groups'
-const SHOTS = '/tmp/abele-property-groups'
+const SHOTS = shotDir('abele-property-groups')
 const GROUPS = [
   'Sample orchard',
   'Sample workshop',

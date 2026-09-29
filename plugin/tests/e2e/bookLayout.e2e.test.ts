@@ -23,12 +23,13 @@ import {
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildProseEpub, PROSE_BOOK_ID } from '../fixtures/books/proseBook'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader layout e2e'
 const BOOK = `${DIR}/prose.epub`
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const windowSize = (): [number, number] =>

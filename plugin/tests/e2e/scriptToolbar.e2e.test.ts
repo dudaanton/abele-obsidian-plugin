@@ -18,12 +18,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele script toolbar e2e'
 const SCRIPTS = `${DIR}/Scripts`
 const NOTE = `${DIR}/Toolbar note.md`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const OFFERED = 'abele-script-toolbar-offered'
 const HAND = 'editor:toggle-bold'
 

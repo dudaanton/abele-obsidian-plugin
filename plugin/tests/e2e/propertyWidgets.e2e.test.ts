@@ -13,10 +13,11 @@ import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { tablePng } from '../fixtures/books/figureBook'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Property widgets e2e'
-const SHOTS = '/tmp/abele-props'
+const SHOTS = shotDir('abele-props')
 const NOTE = `${DIR}/Card note.md`
 const TX = `${DIR}/Lunch.md`
 const PLAIN = `${DIR}/Plain names.md`

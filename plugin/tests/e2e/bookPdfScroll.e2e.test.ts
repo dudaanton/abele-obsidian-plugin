@@ -8,6 +8,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf, buildPlainPdf } from '../fixtures/books/pdfFixture'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader scroll e2e'
@@ -266,8 +267,8 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
         const whole = view.contentEl.querySelector('.abele-book-reader').getBoundingClientRect()
         const bar = document.querySelector('.mobile-navbar')?.getBoundingClientRect()
         const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
-        const shot = '/tmp/abele-phone/book-pdf-scroll.png'
-        if (img) { require('fs').mkdirSync('/tmp/abele-phone', { recursive: true }); require('fs').writeFileSync(shot, img.toPNG()) }
+        const shot = ${JSON.stringify(shotDir('abele-phone') + '/book-pdf-scroll.png')}
+        if (img) { require('fs').mkdirSync(${JSON.stringify(shotDir('abele-phone'))}, { recursive: true }); require('fs').writeFileSync(shot, img.toPNG()) }
         await view.engine.renderer.next()
         await wait(600)
         const out = {

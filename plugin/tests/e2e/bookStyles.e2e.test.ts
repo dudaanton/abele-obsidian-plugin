@@ -13,12 +13,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { buildStyledEpub, OUTSIDE } from '../fixtures/books/styledBook'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader book styles e2e'
 const BOOK = `${DIR}/styled.epub`
 const TEST_EPUB = `${DIR}/epub-test.epub`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))

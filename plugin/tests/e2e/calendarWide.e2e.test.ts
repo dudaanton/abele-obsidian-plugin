@@ -19,13 +19,14 @@ import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './h
 import { LINK_TOKEN } from '../helpers/fakeCalendarServer'
 import { targets } from './helpers/target'
 import { startCalendarProcess, type CalendarProcess } from './helpers/calendarProcess'
+import { shotDir } from './helpers/shots'
 
 targets('desktop')
 
 const PHONE = { width: 390, height: 844 }
 /** As narrow as Obsidian lets a sidebar get, so a long run cannot fit by luck. */
 const SIDEBAR_WIDTH = 300
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const KEY_ID = 'abele-e2e-wide-calendar'
 const TASK_PATH = 'ScaleTest/Tasks/Sample wide task.md'
 const available = isObsidianRunning() && hasTestApi()

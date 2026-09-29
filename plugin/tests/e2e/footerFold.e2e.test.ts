@@ -21,10 +21,11 @@ import {
   reloadApp,
   setBackgroundThrottling,
 } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 const GROUP_NOTE = process.env.OBSIDIAN_TEST_GROUP ?? 'ScaleTest/Notes/Projects.md'
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 interface Report {
   /** The titles of the foldable lists, top to bottom. */

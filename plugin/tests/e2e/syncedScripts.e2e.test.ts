@@ -18,12 +18,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele synced scripts e2e'
 const SCRIPTS = `${DIR}/Scripts`
 const PATH = `${SCRIPTS}/synced.js`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const TRUST_KEY = 'abele-script-trust'
 
 const SCRIPT = (says: string) => `// @name E2E synced script

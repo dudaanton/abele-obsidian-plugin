@@ -22,8 +22,9 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { OWNER, REPO, TAG } from './helpers/fakeGithubRepo'
+import { shotDir } from './helpers/shots'
 
-const SHOTS = '/tmp/abele-github-home'
+const SHOTS = shotDir('abele-github-home')
 const available = isObsidianRunning() && hasTestApi()
 
 const HOME = `

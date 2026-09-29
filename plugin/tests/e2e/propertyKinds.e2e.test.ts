@@ -19,6 +19,7 @@ import {
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { onPhone } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi() && !onPhone()
 const PHONE = { width: 390, height: 844 }
@@ -29,7 +30,7 @@ const DAILY = `${DIR}/Daily`
 const DATE = 'pk-when'
 const PRIO = 'pk-rank'
 const LABELS = 'pk-tags'
-const SHOTS = '/tmp/abele-property-kinds'
+const SHOTS = shotDir('abele-property-kinds')
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))

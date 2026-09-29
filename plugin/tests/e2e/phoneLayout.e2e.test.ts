@@ -38,12 +38,13 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
 
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 /**
  * Every dialog `openDialog` opens by name (src/testing/openDialog.ts). Listed here as well, so a

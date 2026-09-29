@@ -12,10 +12,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Gallery e2e'
-const SHOTS = '/tmp/abele-gallery'
+const SHOTS = shotDir('abele-gallery')
 const PHONE = { width: 390, height: 844 }
 const IMAGE_NAME = 'sample-image'
 

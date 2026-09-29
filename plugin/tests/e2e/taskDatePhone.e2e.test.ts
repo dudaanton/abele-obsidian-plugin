@@ -41,6 +41,7 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
@@ -48,7 +49,7 @@ const PHONE = { width: 390, height: 844 }
 /** An iPhone keyboard with its suggestion bar, in points. */
 const KEYBOARD = 336
 const ROOM = PHONE.height - KEYBOARD
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 interface Screen {
   /** The dialog's top and bottom edges. */

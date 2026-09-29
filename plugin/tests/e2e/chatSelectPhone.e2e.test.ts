@@ -22,11 +22,12 @@ import {
   runCli,
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const CHAT = 'AI/Chats/Abele chat select phone probe.abchat'
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const windowSize = (): [number, number] =>

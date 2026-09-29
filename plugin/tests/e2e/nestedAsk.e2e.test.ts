@@ -15,9 +15,10 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 const CHAT = 'AI/Chats/Abele nested ask probe.abchat'
-const SHOTS = '/tmp/abele-nested'
+const SHOTS = shotDir('abele-nested')
 
 interface Level {
   id: string

@@ -24,6 +24,7 @@ import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './h
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader scripts e2e'
@@ -31,7 +32,7 @@ const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/plain.pdf`
 const SCRIPTS = `${DIR}/Scripts`
 const CARDS = `${DIR}/Cards`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const SCRIPT = `// @name E2E word card
 // @description Makes a card for the words, linking back to the book

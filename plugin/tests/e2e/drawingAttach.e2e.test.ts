@@ -8,12 +8,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, runCli } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const aiOn = (): boolean =>
   evalJson<boolean>('!!window.__abeleTest?.AbeleConfig.getInstance().ai.enabled')
 const DIR = 'Abele drawing attach e2e'
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const PRELUDE = `
   const DIR = ${JSON.stringify(DIR)}

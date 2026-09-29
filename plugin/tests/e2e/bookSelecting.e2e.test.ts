@@ -27,6 +27,7 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader selecting e2e'
@@ -35,7 +36,7 @@ const PDF = `${DIR}/plain.pdf`
 const NOTE = `${DIR}/rich highlights.md`
 const PHONE = { width: 390, height: 844 }
 const DESKTOP = { width: 1280, height: 800 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const windowSize = (): [number, number] =>

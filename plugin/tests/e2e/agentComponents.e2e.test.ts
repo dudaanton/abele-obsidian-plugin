@@ -31,8 +31,9 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 import { onPhone } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
-const SHOTS = '/tmp/abele-agent-components'
+const SHOTS = shotDir('abele-agent-components')
 const PHONE = { width: 390, height: 844 }
 const DIR = 'Agent components e2e'
 const CHAT = 'AI/Chats/Agent components e2e.abchat'

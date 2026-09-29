@@ -20,13 +20,14 @@ import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './he
 import { onPhone, targets } from './helpers/target'
 import { longPress, screenshot } from './helpers/phone'
 import { buildLatvianEpub } from '../fixtures/books/latvianBook'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader selection place e2e'
 const BOOK = `${DIR}/lv.epub`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))

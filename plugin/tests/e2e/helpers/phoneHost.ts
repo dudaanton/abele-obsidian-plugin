@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import type { AddressInfo } from 'node:net'
+import { shotDir } from './shots'
 import { DRIVER, PHONE_VAULT, driver, exposeToPhone, installPhoneHost, phoneEval } from './phone'
 
 /**
@@ -119,7 +120,7 @@ export function installBuild(pluginDir: string): string {
 }
 
 /** Where the phone's pictures go. */
-export const SHOTS = process.env.ABELE_PHONE_SHOTS ?? '/tmp/abele-iphone'
+export const SHOTS = process.env.ABELE_PHONE_SHOTS ?? shotDir('abele-iphone')
 
 let server: Server | undefined
 let unexpose: (() => void) | undefined

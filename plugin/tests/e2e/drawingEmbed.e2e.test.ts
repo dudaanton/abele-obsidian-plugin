@@ -20,10 +20,11 @@ import {
   runCli,
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele drawing embed e2e'
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const attachDebugger = (): void => void runCli(['dev:debug', 'on'], 30_000)
 

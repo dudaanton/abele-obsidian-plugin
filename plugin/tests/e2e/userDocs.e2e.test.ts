@@ -20,10 +20,11 @@ import {
   reloadApp,
   setBackgroundThrottling,
 } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 const PHONE = { width: 390, height: 844 }
 const DESKTOP = { width: 1600, height: 1000 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 interface Screen {
   /** Class names of elements past the right edge of the view, with how far past. */

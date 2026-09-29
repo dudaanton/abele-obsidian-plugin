@@ -18,11 +18,12 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 /** An iPad in landscape, in points. */
 const TABLET = { width: 1180, height: 820 }
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-tablet'
+const SHOTS = shotDir('abele-tablet')
 
 interface Report {
   tablet: boolean

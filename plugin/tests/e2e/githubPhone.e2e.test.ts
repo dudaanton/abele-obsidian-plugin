@@ -33,11 +33,12 @@ import {
 import { BASE_SHA } from './helpers/fakeGithubRepo'
 import { onPhone, targets } from './helpers/target'
 import { longPress as fingerHeld } from './helpers/phone'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const available = isObsidianRunning() && hasTestApi()
 
 interface Screen {

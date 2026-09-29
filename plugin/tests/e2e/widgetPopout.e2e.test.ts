@@ -13,10 +13,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Widget popout e2e'
-const SHOTS = '/tmp/abele-popout'
+const SHOTS = shotDir('abele-popout')
 
 describe.skipIf(!available)('note widgets in a popout window', () => {
   beforeAll(() => {

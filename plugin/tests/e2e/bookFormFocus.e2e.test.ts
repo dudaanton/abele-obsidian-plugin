@@ -23,12 +23,13 @@ import {
 import { buildPlainEpub } from '../fixtures/books/maliciousBook'
 import { onPhone, targets } from './helpers/target'
 import { tap } from './helpers/phone'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const DIR = 'Abele book form focus e2e'
 const BOOK = `${DIR}/plain.epub`
-const SHOT = '/tmp/abele-phone/book-form-focus.png'
+const SHOT = `${shotDir('abele-phone')}/book-form-focus.png`
 /** An iPhone keyboard with its suggestion bar, in points. */
 const KEYBOARD = 336
 const available = isObsidianRunning() && hasTestApi()
@@ -138,7 +139,7 @@ describe.skipIf(!available)('a script’s dialog over a book with words selected
       const shot = window.__e2eHost
         ? await window.__e2eHost.shot(${JSON.stringify(SHOT)})
         : (() => {
-            const fs = require('fs'); fs.mkdirSync('/tmp/abele-phone', { recursive: true })
+            const fs = require('fs'); fs.mkdirSync(${JSON.stringify(shotDir('abele-phone'))}, { recursive: true })
             return require('@electron/remote').getCurrentWindow().webContents.capturePage()
               .then((img) => { fs.writeFileSync(${JSON.stringify(SHOT)}, img.toPNG()); return ${JSON.stringify(SHOT)} })
           })()

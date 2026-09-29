@@ -17,6 +17,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader zoom e2e'
@@ -87,7 +88,7 @@ const PRELUDE = `
   const sharp = (doc) => { const img = doc.querySelector('#canvas img'); return img.naturalWidth / frame(doc).width }
   const shoot = async (name) => {
     const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
-    if (img) { require('fs').mkdirSync('/tmp/abele-phone', { recursive: true }); require('fs').writeFileSync('/tmp/abele-phone/zoom-' + name + '.png', img.toPNG()) }
+    if (img) { require('fs').mkdirSync(${JSON.stringify(shotDir('abele-phone'))}, { recursive: true }); require('fs').writeFileSync(${JSON.stringify(shotDir('abele-phone') + '/zoom-')} + name + '.png', img.toPNG()) }
   }
   const settings = async (over) => {
     const cfg = window.__abeleTest.AbeleConfig.getInstance()

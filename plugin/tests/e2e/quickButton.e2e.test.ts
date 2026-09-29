@@ -19,12 +19,13 @@ import {
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele quick button e2e'
 const NOTE = `${DIR}/Long note.md`
 const BOOK = `${DIR}/rich.epub`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const setWindowSize = async (width: number, height: number): Promise<void> => {

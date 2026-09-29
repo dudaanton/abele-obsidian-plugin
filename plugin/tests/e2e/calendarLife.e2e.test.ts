@@ -12,9 +12,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { lifeSummary, lifeWeekOf } from '@/bases/lifeWeeks'
+import { shotDir } from './helpers/shots'
 
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const FOLDER = 'CalendarLifeE2E'
 const BIRTH = '1990-05-17'
 const available = isObsidianRunning() && hasTestApi()

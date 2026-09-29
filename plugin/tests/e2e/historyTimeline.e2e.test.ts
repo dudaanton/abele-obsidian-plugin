@@ -25,11 +25,12 @@ import {
   historyBase,
   historyNoteText,
 } from '../fixtures/history/historyNotes'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const FOLDER = 'HistoryTimelineE2E'
 const PERF = 'HistoryTimelinePerfE2E'
 const PERF_NOTES = 2000

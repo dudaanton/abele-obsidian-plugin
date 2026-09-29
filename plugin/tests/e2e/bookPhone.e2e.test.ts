@@ -26,12 +26,13 @@ import { buildPlainEpub } from '../fixtures/books/maliciousBook'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { onPhone, targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
 
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const DIR = 'Abele reader phone e2e'
 const available = isObsidianRunning() && hasTestApi()
 

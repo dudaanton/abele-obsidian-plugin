@@ -21,13 +21,14 @@ import {
   useDomMenus,
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Draw from view e2e'
 const PIC = `${DIR}/pic.png`
 const NOTE = `${DIR}/Note.md`
 const GALLERY = `${DIR}/Gallery.md`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const WIKI = `![[${PIC}|200]]`
 const MARKDOWN = `![alt|120](${DIR.replace(/ /g, '%20')}/pic.png)`
 const NOTE_TEXT = `# Note\n\n${WIKI}\n\nBetween.\n\n${MARKDOWN}\n`

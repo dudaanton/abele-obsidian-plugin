@@ -24,13 +24,14 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { buildProseEpub } from '../fixtures/books/proseBook'
 import { targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 targets('desktop')
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader zen e2e'
 const PROSE = `${DIR}/prose.epub`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const WINDOW = `require('@electron/remote').getCurrentWindow()`
 
 const reload = async (how: string): Promise<void> => {

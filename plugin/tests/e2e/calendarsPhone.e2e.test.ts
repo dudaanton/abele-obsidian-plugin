@@ -14,11 +14,12 @@ import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obs
 import { LINK_TOKEN } from '../helpers/fakeCalendarServer'
 import { onPhone, targets } from './helpers/target'
 import { startCalendarProcess, type CalendarProcess } from './helpers/calendarProcess'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const KEY_ID = 'abele-e2e-calendar'
 const available = isObsidianRunning() && hasTestApi()
 

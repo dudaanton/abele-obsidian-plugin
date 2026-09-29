@@ -31,6 +31,7 @@ import {
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildFigureEpub } from '../fixtures/books/figureBook'
 import { onPhone, targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
@@ -39,7 +40,7 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader controls e2e'
 const RICH = `${DIR}/rich.epub`
 const FIGURES = `${DIR}/figures.epub`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 /** An iPhone keyboard with its suggestion bar, in points. */
 const KEYBOARD = 336
 

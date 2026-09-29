@@ -10,13 +10,14 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { onPhone } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi() && !onPhone()
 const PHONE = { width: 390, height: 844 }
 const DIR = 'Property counter e2e'
 const NOTE = `${DIR}/Workout.md`
 const KEY = 'pw-count'
-const SHOTS = '/tmp/abele-counter'
+const SHOTS = shotDir('abele-counter')
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))

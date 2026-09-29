@@ -24,13 +24,14 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { tap, typeText } from './helpers/phone'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
 /** An iPhone keyboard with its suggestion bar, in points. */
 const KEYBOARD = 336
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 interface Typed {
   /** The field's top and bottom — the caret's line, for the note field — after typing. */

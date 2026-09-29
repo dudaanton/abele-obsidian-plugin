@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 
@@ -30,7 +31,7 @@ const NOTES: Record<string, string> = {
   'Good.md': '---\ncreated: 2026-01-01\n---\n\nText\n',
   'Todo.md': '---\ncreated: 2026-01-01\n---\n\nTODO later\n',
 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const PHONE = { width: 390, height: 844 }
 
 /** Runs an async probe in the app and parses what it answers. */

@@ -22,8 +22,9 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { HEAD_SHA } from './helpers/fakeGithubRepo'
+import { shotDir } from './helpers/shots'
 
-const SHOTS = '/tmp/abele-github-tree'
+const SHOTS = shotDir('abele-github-tree')
 const available = isObsidianRunning() && hasTestApi()
 
 /** Rows of the folder listing and of the panel, by their paths. */

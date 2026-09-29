@@ -22,6 +22,7 @@ import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './h
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader discussions e2e'
@@ -29,7 +30,7 @@ const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/plain.pdf`
 const NOTE = `${DIR}/rich highlights.md`
 const PDF_NOTE = `${DIR}/plain highlights.md`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const reload = async (how: string): Promise<void> => {

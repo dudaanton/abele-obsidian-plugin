@@ -15,8 +15,9 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
-const SHOTS = '/tmp/abele-drawer'
+const SHOTS = shotDir('abele-drawer')
 const PHONE = { width: 390, height: 844 }
 
 const PANELS = {

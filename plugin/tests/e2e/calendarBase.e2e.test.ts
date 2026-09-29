@@ -10,9 +10,10 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 const PHONE = { width: 390, height: 844 }
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 const FOLDER = 'CalendarBaseE2E'
 const available = isObsidianRunning() && hasTestApi()
 

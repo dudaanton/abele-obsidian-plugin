@@ -11,10 +11,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const NOTE = 'Mermaid viewer e2e.md'
-const SHOTS = '/tmp/abele-mermaid'
+const SHOTS = shotDir('abele-mermaid')
 const PHONE = { width: 390, height: 844 }
 
 /** Forty boxes in one row, with a branch under every fifth: far wider than any note. */

@@ -12,13 +12,14 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Gallery editing e2e'
 const NOTE = `${DIR}/Note.md`
 const OTHER = `${DIR}/Other.md`
 const IMG = `${DIR}/Attachments/sample-image.png`
-const SHOTS = '/tmp/abele-gallery-editing'
+const SHOTS = shotDir('abele-gallery-editing')
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))

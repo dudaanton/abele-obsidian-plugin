@@ -22,8 +22,9 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { LATE_COMMENT, PULL } from './helpers/fakeGithubRepo'
+import { shotDir } from './helpers/shots'
 
-const SHOTS = '/tmp/abele-github-notifications'
+const SHOTS = shotDir('abele-github-notifications')
 const PHONE = { width: 390, height: 844 }
 const available = isObsidianRunning() && hasTestApi()
 

@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele header commands e2e'
@@ -23,7 +24,7 @@ const SCRIPTS = `${DIR}/Scripts`
 const INSIDE = `${DIR}/Inside/First.md`
 const INSIDE_TOO = `${DIR}/Inside/Second.md`
 const OUTSIDE = `${DIR}/Outside/Third.md`
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const SCRIPT = `// @name E2E header command
 // @icon rocket

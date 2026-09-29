@@ -23,12 +23,13 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 const LANDSCAPE = { width: 1180, height: 820, keyboard: 398 }
 const PORTRAIT = { width: 820, height: 1000, keyboard: 320 }
 /** The bar a hardware keyboard leaves on an iPad's screen. */
 const BAR = 55
-const SHOTS = '/tmp/abele-tablet'
+const SHOTS = shotDir('abele-tablet')
 
 type Edges = [number, number]
 

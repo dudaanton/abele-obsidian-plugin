@@ -26,12 +26,13 @@ import {
   setBackgroundThrottling,
   setFocusEmulation,
 } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 const CHAT = 'AI/Chats/Abele composer probe.abchat'
 const PHONE = { width: 390, height: 844 }
 /** An iPhone keyboard with its suggestion bar, in points. */
 const KEYBOARD = 336
-const SHOTS = '/tmp/abele-phone'
+const SHOTS = shotDir('abele-phone')
 
 const probeLib = `(() => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
