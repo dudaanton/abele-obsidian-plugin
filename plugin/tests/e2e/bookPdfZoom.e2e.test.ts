@@ -322,11 +322,15 @@ describe.skipIf(!available)('zooming a PDF', () => {
       const { view } = await open(${JSON.stringify(PDF)})
       await view.engine.goTo(1); await wait(800)
       const before = R(view).scale
-      view.zoom('in'); view.zoom('in'); view.zoom('in'); view.zoom('in'); view.zoom('in'); view.zoom('in')
-      await wait(1000)
-      const after = R(view).scale
       const el = R(view)
-      const wide = el.scrollWidth > el.clientWidth + 1
+      // Stepped in until the page is wider than the tab, not a fixed number of steps: how wide
+      // the tab is depends on the sidebars the file before left open, and six steps made the
+      // page wider than a tab between two sidebars but not than one filling the window.
+      const overflows = () => el.scrollWidth > el.clientWidth + 1
+      for (let i = 0; i < 16 && !overflows(); i++) { view.zoom('in'); await wait(250) }
+      await wait(800)
+      const after = R(view).scale
+      const wide = overflows()
       el.scrollLeft = 0; await wait(100)
       const doc = await until(() => R(view).getContents().map((c) => c.doc).find((d) => d?.querySelector('#canvas img') && frame(d).width > 0))
       const leftEdge = frame(doc).left - el.getBoundingClientRect().left
