@@ -24,6 +24,12 @@ export class FooterWidget extends WidgetType {
     const container = createDiv()
     container.id = id
     container.classList.add('abele-footer-widget-container')
+    // A press on something in the lists that takes no focus itself — a chevron, a row, a gap —
+    // gives the focus to the nearest focusable thing around it. Without this that was the
+    // editor's own content: it took the focus, put its cursor down and scrolled to it, so the
+    // note jumped and the keyboard landed in it. Focusable, but out of the tab order, the block
+    // catches that focus itself.
+    container.tabIndex = -1
 
     const mount = container.createDiv({
       attr: { 'data-footer-id': id },
