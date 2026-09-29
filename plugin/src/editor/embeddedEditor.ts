@@ -125,6 +125,13 @@ export interface EmbeddedEditorOptions {
   onSubmit?: () => void
   /** Focus left the field — where a text box would say `change`. */
   onBlur?: () => void
+  /** The field took the focus. */
+  onFocus?: () => void
+  /**
+   * More keys the field answers before the note editor and Obsidian's hotkeys do, in
+   * CodeMirror's notation (`Shift-Enter`). `run` says whether the key was taken.
+   */
+  keys?: { key: string; run: () => boolean }[]
   placeholder?: string
 }
 
@@ -188,6 +195,7 @@ export function createEmbeddedEditor(
                 return !!options.onSubmit
               },
             },
+            ...(options.keys ?? []).map(({ key, run }) => ({ key, run: () => run() })),
           ])
         )
       )
@@ -196,6 +204,7 @@ export function createEmbeddedEditor(
           EditorView.domEventHandlers({
             focus: () => {
               activate()
+              options.onFocus?.()
               return false
             },
             blur: () => {
@@ -240,6 +249,12 @@ export function createEmbeddedEditor(
    */
   function claimToolbar(): void {
     if (!controller.editor.cm.hasFocus) return
+    // A note that became active is the active editor now, even with the focus left here — a
+    // note opened by the chat's agent, or by a command, while the chat's composer is focused.
+    // Taking it back would point every editor command at a field with no file. Only an
+    // editor that was cleared, as a leaf becoming active clears it, is claimed again.
+    const current = workspace.activeEditor as { file?: unknown } | null
+    if (current && current !== controller.owner && current.file) return
     if (workspace.activeEditor !== controller.owner) {
       previousActive = workspace.activeEditor
       workspace.activeEditor = controller.owner
