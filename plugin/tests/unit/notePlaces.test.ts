@@ -14,6 +14,7 @@ import {
   RESTORE_STEP_MS,
   HIDDEN_STEP_MS,
   HIDDEN_WAIT_MS,
+  MAX_CORRECTIONS,
   RESTORE_WINDOW_MS,
   SAVE_DELAY_MS,
   type PlaceIo,
@@ -112,6 +113,14 @@ interface FakeView {
   applied: number
   /** A tab behind another: its scroller reports nothing worth reading. */
   hidden?: boolean
+  /** The furthest it can scroll: a note shorter than the place saved for it. */
+  end?: number
+  /** Lines a scroll lands short by each time: a note growing above the place as it renders. */
+  short?: number
+  /** How many times the cursor was put back. */
+  cursorSets: number
+  /** What is listening for the person's own scrolling, touching or typing in it. */
+  listeners: Set<() => void>
 }
 
 const view = (path: string | null, scroll = 0): FakeView => ({
@@ -119,15 +128,29 @@ const view = (path: string | null, scroll = 0): FakeView => ({
   scroll,
   lagging: 0,
   applied: 0,
+  cursorSets: 0,
+  listeners: new Set(),
 })
+
+/** The person scrolls the view themselves: a wheel, a touch, a key. */
+const touch = (v: FakeView, scroll: number) => {
+  v.scroll = scroll
+  for (const l of [...v.listeners]) l()
+}
 
 const io: PlaceIo<FakeView> = {
   path: (v) => v.path,
   place: (v): ViewPlace | null => (v.hidden ? null : { scroll: v.scroll }),
-  apply(v, place) {
+  apply(v, place, first) {
     v.applied++
+    if (first) v.cursorSets++
     if (v.lagging > 0) v.lagging--
-    else v.scroll = place.scroll
+    else v.scroll = Math.min(place.scroll - (v.short ?? 0), v.end ?? Infinity)
+  },
+  atEnd: (v) => v.end !== undefined && v.scroll >= v.end,
+  watchInput(v, onInput) {
+    v.listeners.add(onInput)
+    return () => v.listeners.delete(onInput)
   },
 }
 
@@ -223,6 +246,63 @@ describe('the keeper', () => {
     keeper.opened(v, 'long.md', false)
     vi.advanceTimersByTime(HIDDEN_WAIT_MS + RESTORE_WINDOW_MS + 1000)
     expect(keeper.isPending(v)).toBe(false)
+  })
+
+  it('lands once and stays: a note that keeps growing is corrected a couple of times at most', () => {
+    const v = view('long.md')
+    v.short = 3
+    keeper.opened(v, 'long.md', false)
+    vi.advanceTimersByTime(RESTORE_WINDOW_MS * 2)
+    expect(v.applied).toBeLessThanOrEqual(1 + MAX_CORRECTIONS)
+    expect(v.cursorSets).toBe(1)
+    expect(keeper.isPending(v)).toBe(false)
+  })
+
+  it('stops at the end of a note shorter than its saved place', () => {
+    const v = view('long.md')
+    v.end = 60
+    keeper.opened(v, 'long.md', false)
+    vi.advanceTimersByTime(RESTORE_WINDOW_MS * 2)
+    expect(v.scroll).toBe(60)
+    expect(v.applied).toBe(1)
+    expect(keeper.isPending(v)).toBe(false)
+  })
+
+  it("never pulls back the person's own scrolling, and stops listening once done", () => {
+    const v = view('long.md')
+    v.short = 3
+    keeper.opened(v, 'long.md', false)
+    expect(v.listeners.size).toBe(1)
+    vi.advanceTimersByTime(RESTORE_STEP_MS)
+    expect(v.scroll).toBe(77)
+    touch(v, 20)
+    vi.advanceTimersByTime(RESTORE_WINDOW_MS * 2)
+    expect(v.scroll).toBe(20)
+    expect(v.applied).toBe(1)
+    expect(keeper.isPending(v)).toBe(false)
+    expect(v.listeners.size).toBe(0)
+    // Where the person went is what gets saved.
+    keeper.sample(v)
+    expect(keeper.places.get('long.md')?.scroll).toBe(20)
+  })
+
+  it('stops listening once the place has landed', () => {
+    const v = view('long.md')
+    keeper.opened(v, 'long.md', false)
+    vi.advanceTimersByTime(RESTORE_WINDOW_MS)
+    expect(v.scroll).toBe(80)
+    expect(v.listeners.size).toBe(0)
+  })
+
+  it('leaves a note with no saved place, or saved at its top, alone', () => {
+    make({ 'top.md': at(0) })
+    const a = view('none.md', 7)
+    const b = view('top.md', 7)
+    keeper.opened(a, 'none.md', false)
+    keeper.opened(b, 'top.md', false)
+    vi.advanceTimersByTime(RESTORE_WINDOW_MS)
+    expect([a.applied, b.applied, a.scroll, b.scroll]).toEqual([0, 0, 7, 7])
+    expect(a.listeners.size + b.listeners.size).toBe(0)
   })
 
   it('drops the restore when the view has moved on to another note', () => {

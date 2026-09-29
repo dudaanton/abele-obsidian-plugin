@@ -23,7 +23,19 @@ export interface PlaceIo<V> {
   path(view: V): string | null
   /** Null while the view is not on screen: a hidden scroller reports the top, whatever it holds. */
   place(view: V): ViewPlace | null
-  apply(view: V, place: NotePlace): void
+  /**
+   * Scrolls `view` to `place`. `first` on the first try only: the cursor is put back then and
+   * never again — in live preview each selection redraws the lines around it, and doing it on
+   * every try made the note shake.
+   */
+  apply(view: V, place: NotePlace, first: boolean): void
+  /** Whether `view` is scrolled as far down as it goes: a place further down cannot be reached. */
+  atEnd(view: V): boolean
+  /**
+   * Calls `onInput` when the person scrolls, touches, clicks or types in `view` themselves; the
+   * result stops listening.
+   */
+  watchInput(view: V, onInput: () => void): () => void
 }
 
 export interface KeeperEnv {
@@ -46,7 +58,14 @@ export const RESTORE_WINDOW_MS = 1500
 export const HIDDEN_STEP_MS = 250
 export const HIDDEN_WAIT_MS = 10 * 60 * 1000
 /** A scroll this close, in the view's own units (lines), is the place. */
-const CLOSE_ENOUGH = 0.5
+const CLOSE_ENOUGH = 1
+/**
+ * How many times a scroll that landed, but short, is made again. A note that grows above the
+ * place as it renders — embeds, diagrams, tables measured late — moves it each time it is
+ * measured again; chasing that for as long as it grows is what made the note shake. Past these
+ * few it is left where it is.
+ */
+export const MAX_CORRECTIONS = 2
 /** How long a change waits before it is written, so scrolling does not write on every step. */
 export const SAVE_DELAY_MS = 2000
 
@@ -57,6 +76,14 @@ interface Pending {
   /** How long it has waited, off screen, to be shown. */
   hidden: number
   handle: unknown
+  /** How many times the place was applied. */
+  applied: number
+  /** The scroll the view reported just before the last apply. */
+  before: number | null
+  /** Whether an apply has moved the view yet: until then it was not ready for one. */
+  landed: boolean
+  /** Stops listening for the person's own scrolling. */
+  unwatch: () => void
 }
 
 const atTop = (p: ViewPlace) =>
@@ -87,13 +114,26 @@ export class NotePlaceKeeper<V extends object> {
   opened(view: V, path: string, explicit: boolean): void {
     this.drop(view)
     const saved = this.env.enabled() && !explicit ? this.places.get(path) : undefined
-    if (!saved) {
+    // Saved at its top is where a note opens anyway: nothing to put back, nothing to move.
+    if (!saved || atTop(saved)) {
       this.settled.set(view, path)
       return
     }
     this.settled.delete(view)
-    const pending: Pending = { path, place: saved, waited: 0, hidden: 0, handle: null }
+    const pending: Pending = {
+      path,
+      place: saved,
+      waited: 0,
+      hidden: 0,
+      handle: null,
+      applied: 0,
+      before: null,
+      landed: false,
+      unwatch: () => {},
+    }
     this.pending.set(view, pending)
+    // The person scrolling, touching or typing first: the note stays where they took it.
+    pending.unwatch = this.io.watchInput(view, () => this.claim(view))
     pending.handle = this.env.schedule(() => this.attempt(view), RESTORE_STEP_MS)
   }
 
@@ -118,7 +158,15 @@ export class NotePlaceKeeper<V extends object> {
     const p = this.pending.get(view)
     if (!p) return
     this.env.cancel(p.handle)
+    p.unwatch()
     this.pending.delete(view)
+  }
+
+  /** The restore of `view` done with, whether it landed or not: its place may be saved now. */
+  private finish(view: V, p: Pending): void {
+    p.unwatch()
+    this.pending.delete(view)
+    this.settled.set(view, p.path)
   }
 
   private attempt(view: V): void {
@@ -126,6 +174,7 @@ export class NotePlaceKeeper<V extends object> {
     if (!p) return
     // The view moved on to another note meanwhile: that opening has its own say.
     if (this.io.path(view) !== p.path) {
+      p.unwatch()
       this.pending.delete(view)
       return
     }
@@ -137,18 +186,32 @@ export class NotePlaceKeeper<V extends object> {
       return
     }
     const arrived = !!now && Math.abs(now.scroll - p.place.scroll) <= CLOSE_ENOUGH
-    if (arrived || p.waited >= RESTORE_WINDOW_MS || !this.env.enabled()) {
-      this.pending.delete(view)
-      this.settled.set(view, p.path)
+    // The last scroll moved the view: it was ready for it. One that did not — reading view not
+    // measured yet — is no jump on screen, and is simply tried again.
+    const moved = p.applied > 0 && !!now && p.before !== null && now.scroll !== p.before
+    // Landed once and this try changed nothing: it is as close as this note lets it get.
+    const stuck = p.landed && !moved
+    if (moved) p.landed = true
+    const done =
+      arrived ||
+      !now ||
+      stuck ||
+      (p.applied > 0 && this.io.atEnd(view)) ||
+      (p.landed && p.applied > MAX_CORRECTIONS) ||
+      p.waited >= RESTORE_WINDOW_MS ||
+      !this.env.enabled()
+    if (done) {
+      this.finish(view, p)
       return
     }
+    p.before = now.scroll
     this.applying = true
     try {
-      this.io.apply(view, p.place)
+      this.io.apply(view, p.place, p.applied === 0)
+      p.applied++
     } catch (e) {
       console.warn('[Abele] could not put the note back where it was left', e)
-      this.pending.delete(view)
-      this.settled.set(view, p.path)
+      this.finish(view, p)
       return
     } finally {
       this.applying = false

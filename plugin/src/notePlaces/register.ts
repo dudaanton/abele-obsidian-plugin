@@ -67,9 +67,9 @@ const io: PlaceIo<MarkdownView> = {
     }
     return place
   },
-  apply(view, place: NotePlace) {
+  apply(view, place: NotePlace, first) {
     const editor = view.editor
-    if (place.cursor && editor) {
+    if (first && place.cursor && editor) {
       const last = editor.lastLine()
       const clamp = (p: { line: number; ch: number }) => {
         const line = Math.min(Math.max(0, p.line), last)
@@ -83,6 +83,35 @@ const io: PlaceIo<MarkdownView> = {
       else view.previewMode.applyScroll(place.scroll)
     } else view.setEphemeralState({ scroll: place.scroll })
   },
+  atEnd(view) {
+    const el = scrollerOf(view)
+    return !!el && el.scrollHeight > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 2
+  },
+  watchInput(view, onInput) {
+    const el = view.containerEl
+    const opts = { capture: true, passive: true }
+    for (const type of INPUT_EVENTS) el.addEventListener(type, onInput, opts)
+    return () => {
+      for (const type of INPUT_EVENTS) el.removeEventListener(type, onInput, opts)
+    }
+  },
+}
+
+/**
+ * What the person does to scroll or move in a note themselves: a restore gives way to any. A
+ * finger already on the glass as the note opens — the swipe that follows a tap — is caught by
+ * its moves.
+ */
+const INPUT_EVENTS = ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown'] as const
+
+/** The element that scrolls in the mode the note is showing. */
+function scrollerOf(view: MarkdownView): HTMLElement | null {
+  if (view.getMode() === 'preview')
+    return view.containerEl.querySelector<HTMLElement>(
+      '.markdown-reading-view > .markdown-preview-view'
+    )
+  const cm = (view.editor as unknown as { cm?: { scrollDOM?: HTMLElement } }).cm
+  return cm?.scrollDOM ?? view.containerEl.querySelector<HTMLElement>('.cm-scroller')
 }
 
 type SetViewState = (this: WorkspaceLeaf, viewState: unknown, eState?: unknown) => Promise<void>

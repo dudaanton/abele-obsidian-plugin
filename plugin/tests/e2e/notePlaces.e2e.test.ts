@@ -26,11 +26,31 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele note places e2e'
 const LONG = `${DIR}/long-sample.md`
 const OTHER = `${DIR}/other-sample.md`
+const GROWING = `${DIR}/growing-sample.md`
+const EMBEDDED = `${DIR}/embedded-sample.md`
 const BOOK = `${DIR}/rich.epub`
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 200 sections, four lines each: "## Section n", a blank, a paragraph, a blank. */
+/**
+ * A long note that grows after it opens: embeds of another note and diagrams drawn a moment
+ * later, above the place it is left at, so the place moves as the note is measured again.
+ */
+const GROWING_TEXT = Array.from({ length: 120 }, (_, i) =>
+  [
+    `## Part ${i + 1}`,
+    '',
+    `The text of part ${i + 1}, long enough to wrap once or twice in a narrow pane.`,
+    '',
+    ...(i % 10 === 5
+      ? ['![[embedded-sample]]', '', '```mermaid', 'graph TD; A-->B; B-->C; C-->D', '```', '']
+      : []),
+  ].join('\n')
+).join('\n')
+
+const EMBEDDED_TEXT = Array.from({ length: 12 }, (_, i) => `- embedded item ${i + 1}`).join('\n')
+
 const LONG_TEXT = Array.from(
   { length: 200 },
   (_, i) =>
@@ -231,6 +251,118 @@ const highlightWins = (): Record<string, Jump> & { error?: string } =>
     return out
   `)
 
+interface Settle {
+  /** The line at the top of the note at every frame after it opened, to a tenth. */
+  tops: number[]
+  /** The frames at which the note was scrolled to a place by code: the restore's own scrolls. */
+  scrolled: number[]
+  /** Frames at which the person's wheel turned, when it did. */
+  wheelFrom?: number
+  saved: number
+  end: number
+}
+
+/**
+ * The growing note left far down, opened again, and its scroller read at every frame; with
+ * `wheel`, the person starts scrolling up a few frames after it opened.
+ */
+const settles = (wheel: boolean): Record<string, Settle> & { error?: string } =>
+  run(`
+    const frame = () => new Promise((r) => requestAnimationFrame(r))
+    const out = {}
+    for (const m of ['preview', 'source']) {
+      app.vault.setConfig('defaultViewMode', m)
+      const leaf = newLeaf()
+      await leaf.openFile(file(${JSON.stringify(GROWING)}), { active: true })
+      await wait(1500)
+      const saved = await scrollTo(leaf, 300)
+      await wait(1000)
+      await leaf.openFile(file(${JSON.stringify(OTHER)}), { active: true })
+      await wait(500)
+      // Every scroll made to the note from here on, by the frame it was made at: the restore's.
+      let at = -1
+      const scrolled = []
+      const v = leaf.view
+      const renderer = v.previewMode.renderer
+      const own = { set: v.setEphemeralState, apply: renderer.applyScroll }
+      v.setEphemeralState = function (st) { if (st && st.scroll !== undefined) scrolled.push(at); return own.set.call(this, st) }
+      renderer.applyScroll = function (...a) { scrolled.push(at); return own.apply.apply(this, a) }
+      await leaf.openFile(file(${JSON.stringify(GROWING)}), { active: true })
+      const scroller = () => m === 'preview'
+        ? leaf.view.containerEl.querySelector('.markdown-reading-view > .markdown-preview-view')
+        : leaf.view.containerEl.querySelector('.cm-scroller')
+      const tops = []
+      const WHEEL_FROM = 12
+      for (let i = 0; i < 150; i++) {
+        at = i
+        await frame()
+        const s = scroller()
+        if (${wheel} && i >= WHEEL_FROM && i < WHEEL_FROM + 30) {
+          s.dispatchEvent(new WheelEvent('wheel', { deltaY: -40, bubbles: true, cancelable: true }))
+          s.scrollTop -= 40
+        }
+        // The line at the top of the view, not the scroller's pixels: reading view keeps the
+        // lines on screen still as blocks above them are drawn, by moving its pixels.
+        tops.push(Math.round(scrollOf(leaf) * 10) / 10)
+      }
+      delete v.setEphemeralState
+      renderer.applyScroll = own.apply
+      out[m] = { tops, scrolled, saved, end: scrollOf(leaf), ...(${wheel} ? { wheelFrom: WHEEL_FROM } : {}) }
+      leaf.detach()
+      await wait(300)
+    }
+    return out
+  `)
+
+/** How many times the scroll changed direction: a note that shakes turns back and forth. */
+const turns = (tops: number[]): number => {
+  let n = 0
+  let dir = 0
+  for (let i = 1; i < tops.length; i++) {
+    const d = Math.sign(tops[i] - tops[i - 1])
+    if (d && dir && d !== dir) n++
+    if (d) dir = d
+  }
+  return n
+}
+
+const expectSettles = (r: Record<string, Settle> & { error?: string }) => {
+  expect(r.error).toBeUndefined()
+  for (const m of ['preview', 'source']) {
+    const s = r[m]
+    const trace = `${m}: ${JSON.stringify({ ...s, tops: s.tops.join(' ') })}`
+    expect(turns(s.tops), trace).toBe(0)
+    // Put back once, corrected a couple of times at most as the note is measured — and only
+    // while it opens, never again once it has been still.
+    expect(s.scrolled.length, trace).toBeGreaterThan(0)
+    expect(s.scrolled.length, trace).toBeLessThanOrEqual(3)
+    expect(Math.max(...s.scrolled), trace).toBeLessThan(30)
+    // Near the place, the note having moved it a little as it was measured.
+    expect(Math.abs(s.end - s.saved), trace).toBeLessThan(5)
+  }
+}
+
+const expectGivesWay = (r: Record<string, Settle> & { error?: string }) => {
+  expect(r.error).toBeUndefined()
+  for (const m of ['preview', 'source']) {
+    const s = r[m]
+    const from = s.wheelFrom!
+    const after = s.tops.slice(from)
+    const trace = `${m}: ${JSON.stringify({ ...s, tops: s.tops.join(' ') })}`
+    // Not one scroll to the saved place once the person has turned the wheel.
+    expect(
+      s.scrolled.filter((f) => f >= from),
+      trace
+    ).toEqual([])
+    // And the note stays where they took it: once well above the place, never back near it.
+    // The view nudges a line or so on its own as diagrams above are drawn; that is not ours.
+    const away = after.findIndex((t) => t < s.saved - 10)
+    expect(away, trace).toBeGreaterThan(-1)
+    expect(Math.max(...after.slice(away)), trace).toBeLessThan(s.saved - 5)
+    expect(after[0] - after.at(-1)!, trace).toBeGreaterThan(20)
+  }
+}
+
 const expectBack = (r: Record<string, Back> & { error?: string }) => {
   expect(r.error).toBeUndefined()
   expect(Object.keys(r).sort()).toEqual(['preview', 'preview:closed', 'source', 'source:closed'])
@@ -281,6 +413,8 @@ const createFixtures = () => {
       await app.vault.createFolder(${JSON.stringify(DIR)})
       await app.vault.create(${JSON.stringify(LONG)}, ${JSON.stringify(LONG_TEXT)})
       await app.vault.create(${JSON.stringify(OTHER)}, 'A short note.\\n')
+      await app.vault.create(${JSON.stringify(EMBEDDED)}, ${JSON.stringify(EMBEDDED_TEXT)})
+      await app.vault.create(${JSON.stringify(GROWING)}, ${JSON.stringify(GROWING_TEXT)})
       const bytes = Uint8Array.from(atob(${JSON.stringify(epub)}), (c) => c.charCodeAt(0))
       await app.vault.createBinary(${JSON.stringify(BOOK)}, bytes.buffer)
       return 'ok'
@@ -323,6 +457,14 @@ describe.skipIf(!available)('notes come back where they were left', () => {
 
   it("a book's highlight lands on the highlight, not on the saved place", () => {
     expectJump(highlightWins(), 60)
+  })
+
+  it('a note that grows as it renders comes back without shaking', () => {
+    expectSettles(settles(false))
+  })
+
+  it("the person's own scrolling is never pulled back to the saved place", () => {
+    expectGivesWay(settles(true))
   })
 
   it('the deleted notes take their places with them', () => {
@@ -378,6 +520,14 @@ describe.skipIf(!available)('notes come back where they were left', () => {
 
     it("a book's highlight lands on the highlight", () => {
       expectJump(highlightWins(), 60)
+    })
+
+    it('a note that grows as it renders comes back without shaking', () => {
+      expectSettles(settles(false))
+    })
+
+    it("the person's own scrolling is never pulled back", () => {
+      expectGivesWay(settles(true))
     })
   })
 })
