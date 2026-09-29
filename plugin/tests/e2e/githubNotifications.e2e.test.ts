@@ -58,6 +58,12 @@ const PANEL = `
   }
 `
 
+/**
+ * A turn of this worker's event loop: the fake server's log is read only between the blocking
+ * calls into the app, so what it answered during one is there after this.
+ */
+const serverLog = () => new Promise((resolve) => setTimeout(resolve, 300))
+
 /** Closes the panel and the GitHub tabs, and folds the right sidebar the panel opened. */
 const closeAll = () =>
   evalRaw(
@@ -87,7 +93,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
     }
   })
 
-  it('opens in the sidebar with the unread ones, and a click opens the pull request at its comment and marks it read', () => {
+  it('opens in the sidebar with the unread ones, and a click opens the pull request at its comment and marks it read', async () => {
     const r = evalAsync<{
       error?: string
       inSidebar?: boolean
@@ -127,6 +133,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       { id: '102', unread: true },
       { id: '103', unread: true },
     ])
+    await serverLog()
     expect(gh.requests()).toContain('PATCH /api/v3/notifications/threads/101')
     expect(r.shot).toMatch(/\.png$/)
   })
@@ -144,7 +151,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
     expect(r.url).toBe(`${gh.web}/discussions/3`)
   })
 
-  it('shows read ones under "All", narrows to a repository, and marks everything read', () => {
+  it('shows read ones under "All", narrows to a repository, and marks everything read', async () => {
     const r = evalAsync<{
       error?: string
       all?: string[]
@@ -179,6 +186,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
     expect(r.repos).toEqual(['All repositories', 'acme/widgets (3)', 'other/gadgets (1)'])
     expect(r.narrowed).toEqual(['104'])
     expect(r.afterAll).toBe(true)
+    await serverLog()
     expect(gh.requests()).toContain('PUT /api/v3/notifications')
     // Asked again for a list that had not changed, it was answered "not modified".
     expect(

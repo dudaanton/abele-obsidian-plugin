@@ -343,6 +343,8 @@ defineExpose({ refresh })
 
 .abele-github-notification {
   &__self.tree-item-self {
+    // A flat list: no room kept for a fold arrow, which a narrow sidebar cannot spare.
+    padding-inline-start: var(--size-4-2);
     align-items: flex-start;
     gap: var(--size-4-2);
     padding-top: var(--size-4-1);
