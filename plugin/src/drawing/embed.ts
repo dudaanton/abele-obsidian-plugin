@@ -298,7 +298,10 @@ export class DrawingEmbed extends MarkdownRenderChild {
     const s = this.scale()
     const left = (paper.x - r.x) * s + (width - r.w * s) / 2
     const top = (paper.y - r.y) * s + (this.box.clientHeight - r.h * s) / 2
+    // Wider than its box whenever a part is shown. Obsidian's own rule for pictures in a note
+    // holds one to the width of what it is in and wins over a class, so it is lifted here.
     this.img.setCssStyles({
+      maxWidth: 'none',
       width: `${paper.w * s}px`,
       height: `${paper.h * s}px`,
       transform: `translate(${left}px, ${top}px)`,
