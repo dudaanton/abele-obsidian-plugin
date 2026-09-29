@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { PdfVocabMarks } from '@/reader/vocab/pdfVocabMarks'
+import { BookMarks } from '@/reader/marks'
 import { ruleOfNote } from '@/reader/vocab/rules'
 
 const rule = ruleOfNote('sample-note.md', {
@@ -106,6 +107,29 @@ describe('PDF vocabulary pages', () => {
     } finally {
       rects.mockRestore()
     }
+  })
+
+  it('ignores a departed frame drawing after its replacement through BookMarks.pageDrawn', async () => {
+    const old = page('<span>sample</span>')
+    const replacement = page('<span>sample</span>')
+    // Mounted frames have a defaultView; detached happy-dom documents do not.
+    Object.defineProperty(old, 'defaultView', { value: window, configurable: true })
+    Object.defineProperty(replacement, 'defaultView', { value: window, configurable: true })
+    const contents: { doc: Document }[] = [{ doc: old }]
+    const engine = { renderer: { getContents: () => contents } } as unknown as ConstructorParameters<typeof BookMarks>[0]
+    const marks = new BookMarks(engine, document.body, true, () => {}, true)
+    marks.vocab!.setRules([rule])
+    marks.pageDrawn(old, 0)
+    await tick()
+    contents[0] = { doc: replacement }
+    marks.pageDrawn(replacement, 0)
+    await tick()
+    expect(marks.vocab!.count()).toBe(1)
+    marks.pageDrawn(old, 0)
+    expect(marks.vocab!.count()).toBe(1)
+    expect(replacement.querySelector('.abele-vocab-marks')).not.toBeNull()
+    expect((marks as unknown as { pdfDocs: Map<number, Document> }).pdfDocs.get(0)).toBe(replacement)
+    marks.destroy()
   })
 
   it('keeps both pages of a spread and rejects a late draw after removal', async () => {

@@ -433,6 +433,9 @@ export class BookMarks {
   }
 
   pageDrawn(doc: Document, index: number): void {
+    // A render can finish after its frame left; do not evict a newer frame at this index.
+    if (!(this.engine.renderer as { getContents(): { doc?: Document }[] })
+      .getContents().some((content) => content.doc === doc)) return
     this.drawPdf(doc, index)
     if (this.vocab instanceof PdfVocabMarks) this.vocab.pageDrawn(doc, index)
   }
