@@ -201,4 +201,19 @@ describe('a PDF as one scroll', () => {
     expect(pageAt(tops, heights, 1636 + 200)).toEqual({ index: 2, fraction: 0.25 })
     expect(pageAt(tops, heights, 9999).index).toBe(2)
   })
+
+  it('puts a page back on the screen as that page, whatever the height of the window', async () => {
+    const { pageAt, restoreTop } = await import('@/reader/pdfScroll')
+    const tops = [12, 824, 1636, 2448]
+    const heights = [800, 800, 800, 800]
+    // The scroller keeps whole pixels and drops the rest of what it is given.
+    for (let clientHeight = 600; clientHeight < 1000; clientHeight++)
+      for (const index of [1, 2, 3])
+        for (const fraction of [0, 0.25]) {
+          const kept = Math.floor(restoreTop(tops[index], heights[index], fraction, clientHeight))
+          const at = pageAt(tops, heights, kept + clientHeight / 3)
+          expect(at.index, `${clientHeight} px, page ${index}`).toBe(index)
+          expect(at.fraction).toBeCloseTo(fraction, 2)
+        }
+  })
 })

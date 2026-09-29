@@ -76,6 +76,22 @@ export function pageAt(
   return { index, fraction: Math.min(1, Math.max(0, (y - tops[index]) / h)) }
 }
 
+/**
+ * The scroll position that puts the reading point — a third of the way down a screen
+ * `clientHeight` tall — `fraction` of the way down a page standing at `top`. Rounded up to a whole
+ * pixel: the scroller keeps whole (device) pixels and drops the rest, and a place at the very top
+ * of a page, which every jump to a page is, dropped by a fraction of a pixel reads back as the
+ * bottom of the page before.
+ */
+export function restoreTop(
+  top: number,
+  height: number,
+  fraction: number,
+  clientHeight: number
+): number {
+  return Math.ceil(top + fraction * height - clientHeight / 3)
+}
+
 export class PdfScroll extends HTMLElement {
   static observedAttributes = ['zoom']
   #root = this.attachShadow({ mode: 'closed' })
@@ -262,8 +278,12 @@ export class PdfScroll extends HTMLElement {
   #restore(index: number, fraction: number): void {
     const slot = this.#slots[index]
     if (!slot) return
-    this.#scroller.scrollTop =
-      slot.el.offsetTop + fraction * slot.el.offsetHeight - this.#scroller.clientHeight / 3
+    this.#scroller.scrollTop = restoreTop(
+      slot.el.offsetTop,
+      slot.el.offsetHeight,
+      fraction,
+      this.#scroller.clientHeight
+    )
   }
 
   #onScroll(): void {
