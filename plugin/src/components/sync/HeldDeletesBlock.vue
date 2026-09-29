@@ -18,7 +18,7 @@
 
     <p v-if="error !== null" class="abele-held-deletes__error">{{ error }}</p>
 
-    <div class="abele-held-deletes__actions">
+    <div class="abele-held-deletes__actions abele-modal__actions">
       <slot name="actions" :busy="busy" />
       <Button
         text="Delete everywhere"

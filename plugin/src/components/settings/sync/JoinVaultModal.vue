@@ -42,7 +42,7 @@
       <p v-if="hint" class="abele-join-vault__counts">{{ hint }}</p>
       <p v-if="error" class="abele-join-vault__error">{{ error }}</p>
 
-      <div class="abele-join-vault__actions">
+      <div class="abele-join-vault__actions abele-modal__actions">
         <Button
           text="Cancel"
           :disabled="busy"

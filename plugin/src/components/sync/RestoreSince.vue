@@ -271,6 +271,13 @@ function gone(items: TrashItem[], results: CommitOpResult[]): string[] {
 </script>
 
 <style lang="scss">
+// The generic dropdown offsets its focus-ring padding with negative margins. Inside the
+// dialog's full-width setting column that margin crosses the row's right edge by 4px.
+.abele-restore-since .abele-obsidian-dropdown {
+  box-sizing: border-box;
+  margin-inline: 0;
+}
+
 .abele-restore-since__error {
   margin: 0;
   color: var(--text-error);

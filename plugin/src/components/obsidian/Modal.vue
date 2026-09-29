@@ -82,3 +82,32 @@ const emit = defineEmits<{
   (e: 'expose-id', id: string): void
 }>()
 </script>
+
+<style lang="scss">
+/**
+ * A dialog's answer row, `abele-modal__actions` on the element that holds its buttons: kept at
+ * the bottom of the dialog while what is above it scrolls. A list of twenty long paths or three
+ * choices with a name field under them is taller than a phone, and the buttons at the end of it
+ * were under the bottom edge — on a desktop too, for the long list — where nobody looks for them.
+ * Obsidian scrolls the dialog itself, so the row sticks to the bottom of that, the way the script
+ * form's does. Only inside a dialog: the same block on a settings tab scrolls with the tab.
+ *
+ * The offset is the dialog's own bottom padding, which text would otherwise show through as it
+ * scrolls past; the row reaches the edge and carries the padding itself. Their phone sheet has
+ * none, and the home indicator's inset instead.
+ */
+.abele-modal__body .abele-modal__actions {
+  position: sticky;
+  bottom: calc(var(--size-4-4) * -1);
+  z-index: 1;
+  padding: var(--size-4-3) 0 var(--size-4-4);
+  border-top: 1px solid var(--background-modifier-border);
+  background-color: var(--modal-background, var(--background-primary));
+}
+
+body.is-phone .modal.mod-lg .abele-modal__body .abele-modal__actions {
+  bottom: 0;
+  padding-bottom: max(var(--size-4-4), var(--safe-area-inset-bottom));
+}
+
+</style>

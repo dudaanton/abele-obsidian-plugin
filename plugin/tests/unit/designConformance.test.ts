@@ -274,6 +274,22 @@ describe('the design standard', () => {
     }
   })
 
+  it('keeps long join and held-delete dialog action rows in view without pinning settings actions', () => {
+    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian/Modal.vue'), 'utf8'))
+    const joinModal = readFileSync(join(ROOT, 'settings/sync/JoinVaultModal.vue'), 'utf8')
+    const held = readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8')
+    expect(modal).toMatch(/\.abele-modal__body \.abele-modal__actions\s*\{[^}]*position:\s*sticky;/)
+    expect(modal).toMatch(/body\.is-phone \.modal\.mod-lg \.abele-modal__body \.abele-modal__actions\s*\{[^}]*safe-area-inset-bottom/)
+    expect(joinModal).toContain('abele-join-vault__actions abele-modal__actions')
+    expect(held).toContain('abele-held-deletes__actions abele-modal__actions')
+  })
+
+  it('keeps the restore-since dropdown inside its narrow dialog row', () => {
+    const css = styleBlock(readFileSync(join(ROOT, 'sync/RestoreSince.vue'), 'utf8'))
+    expect(css).toMatch(/\.abele-restore-since \.abele-obsidian-dropdown\s*\{[^}]*box-sizing:\s*border-box;/)
+    expect(css).toMatch(/\.abele-restore-since \.abele-obsidian-dropdown\s*\{[^}]*margin-inline:\s*0;/)
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')
