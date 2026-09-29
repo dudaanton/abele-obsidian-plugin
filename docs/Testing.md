@@ -412,6 +412,12 @@ Three files, three concerns:
   columns, a paragraph above a highlight grows by a couple of lines while the chapter keeps its
   page count (what a late picture, font or style does), and every box drawn over the page is
   compared with where its words now are; again after a page turned and back.
+- `bookOverlayReflow.e2e.test.ts` — **search boxes and saved highlights after reflow**, desktop,
+  phone emulation and real phone: compares all four dimensions of the drawn SVG rectangles with
+  independently located text ranges after the reader sidebar opens and closes, a desktop resize,
+  a reader font change, and a late paragraph style change that moves words without resizing their
+  block. The late change happens after the startup font checks have expired. Pictures go to
+  `abele-overlay-reflow` under the run's screenshot directory.
 - `bookSelectionPlace.e2e.test.ts` — **a word is selected where it is drawn**, desktop and phone
   (`tests/fixtures/books/latvianBook.ts`, made-up justified text in a monospace font): for every
   word on the page, the middle of its measured box must hit that word, once the page has settled

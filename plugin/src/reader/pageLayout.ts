@@ -169,21 +169,24 @@ export const FONT_CHECKS_MS = [250, 700, 1500, 3000, 6000, 12000]
  * What is drawn over a page's words kept on them. The engine measures its highlights once, and
  * again only when the chapter's size changes — a page more or less. Words move without that: a
  * picture, a font or a style arriving above them in the same column pushes them down by lines and
- * the chapter keeps its page count (seen on a desktop, 2026-09-26: highlights in a book's notes
- * one and two page margins above their words). So they are measured again whenever a block of the
- * page changes size, and whenever the view comes to rest on a new place — at most once a frame.
+ * the chapter keeps its page count. A paragraph's indent, alignment or inline font can also
+ * change without resizing any block. Measure again on content mutations as well as block resizes
+ * and relocations, coalescing all of them into at most one redraw per frame.
  */
 export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
   const win = doc.defaultView
   if (!win) return
   let queued = ''
+  let frame = 0
+  let stopped = false
   const again = (why: string) => {
-    if (queued) return
+    if (stopped || queued) return
     queued = why
-    window.requestAnimationFrame(() => {
+    frame = window.requestAnimationFrame(() => {
       const reason = queued
       queued = ''
-      if (doc.defaultView) redrawOver(renderer(), doc, reason)
+      frame = 0
+      if (!stopped && doc.defaultView) redrawOver(renderer(), doc, reason)
     })
   }
   // The first report is every block's size as it is: nothing has moved yet.
@@ -192,7 +195,34 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
     if (first) first = false
     else again('a block changed size')
   })
-  for (const el of Array.from(doc.body?.querySelectorAll(BLOCKS) ?? [])) observer.observe(el)
+  const blocks = new Set<Element>()
+  const watchBlocks = () => {
+    const current = new Set(Array.from(doc.body?.querySelectorAll(BLOCKS) ?? []))
+    for (const el of blocks)
+      if (!current.has(el)) {
+        observer.unobserve(el)
+        blocks.delete(el)
+      }
+    for (const el of current)
+      if (!blocks.has(el)) {
+        observer.observe(el)
+        blocks.add(el)
+      }
+  }
+  watchBlocks()
+  // ResizeObserver reports sizes, not where the words within an unchanged block have moved.
+  // Content-side styles/classes (including inherited ones) do not mutate the head either.
+  const content = new MutationObserver((records) => {
+    if (records.some((r) => r.type === 'childList')) watchBlocks()
+    again('the page content changed')
+  })
+  if (doc.body)
+    content.observe(doc.body, {
+      attributes: true,
+      childList: true,
+      characterData: true,
+      subtree: true,
+    })
   const target = renderer() as EventTarget | undefined
   const settled = () => {
     if (!doc.defaultView) {
@@ -210,7 +240,7 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
     for (const t of timers) window.clearTimeout(t)
     timers = FONT_CHECKS_MS.map((ms) =>
       window.setTimeout(() => {
-        if (!doc.defaultView) return
+        if (stopped || !doc.defaultView) return
         relayoutText(doc)
         relayoutColumns(doc)
         again('the page was laid out again')
@@ -236,8 +266,13 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
   win.addEventListener(
     'pagehide',
     () => {
+      stopped = true
+      window.cancelAnimationFrame(frame)
       observer.disconnect()
+      blocks.clear()
+      content.disconnect()
       styles.disconnect()
+      target?.removeEventListener?.('relocate', settled)
       for (const t of timers) window.clearTimeout(t)
     },
     { once: true }

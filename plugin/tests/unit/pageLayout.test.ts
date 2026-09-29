@@ -188,6 +188,58 @@ describe('laying a page out again', () => {
     }
   })
 
+  it('coalesces late content style changes and stops watching when the page leaves', async () => {
+    const doc = page('500px')
+    Object.defineProperty(doc, 'defaultView', { value: window })
+    doc.body.innerHTML = '<p><span>Sample words</span></p>'
+    const redraw = vi.fn()
+    const renderer = Object.assign(new EventTarget(), {
+      getContents: () => [{ doc, overlayer: { redraw } }],
+    })
+    const frame = () => new Promise((resolve) => window.requestAnimationFrame(resolve))
+    keepMarksOnText(doc, () => renderer)
+    await frame()
+    redraw.mockClear()
+    doc.querySelector('p')!.style.textIndent = '4em'
+    doc.querySelector('span')!.classList.add('alternate-font')
+    await Promise.resolve()
+    await frame()
+    expect(redraw).toHaveBeenCalledTimes(1)
+    // Leaving cancels even a redraw already queued for the next frame.
+    doc.body.classList.add('compact')
+    await Promise.resolve()
+    window.dispatchEvent(new Event('pagehide'))
+    renderer.dispatchEvent(new Event('relocate'))
+    doc.querySelector('p')!.style.textIndent = '2em'
+    await frame()
+    expect(redraw).toHaveBeenCalledTimes(1)
+  })
+
+  it('watches new blocks for later resizes and releases blocks removed from the page', async () => {
+    const observe = vi.spyOn(ResizeObserver.prototype, 'observe')
+    const unobserve = vi.spyOn(ResizeObserver.prototype, 'unobserve')
+    const doc = page()
+    Object.defineProperty(doc, 'defaultView', { value: window })
+    doc.body.innerHTML = '<p>First paragraph</p>'
+    try {
+      keepMarksOnText(doc, () => undefined)
+      const first = doc.querySelector('p')!
+      expect(observe).toHaveBeenCalledWith(first)
+      const second = doc.createElement('p')
+      second.textContent = 'A later paragraph'
+      doc.body.append(second)
+      first.remove()
+      await Promise.resolve()
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+      expect(observe).toHaveBeenCalledWith(second)
+      expect(unobserve).toHaveBeenCalledWith(first)
+    } finally {
+      window.dispatchEvent(new Event('pagehide'))
+      observe.mockRestore()
+      unobserve.mockRestore()
+    }
+  })
+
   it('sets every line of the page anew with its font made anew, and leaves nothing behind', () => {
     const doc = page('500px')
     doc.head.innerHTML = '<style id="book">p { text-align: justify }</style>'
