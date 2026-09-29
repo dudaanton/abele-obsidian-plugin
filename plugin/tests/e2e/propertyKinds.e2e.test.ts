@@ -330,6 +330,7 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
         labels: unknown
         sizes: number[]
         overflow: string[]
+        together: boolean
       }>(
         `
         const leaf = await open()
@@ -347,13 +348,30 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
           const box = b.getBoundingClientRect()
           return Math.min(box.width, box.height)
         })
+        // How far away the date is fitting after the day-on button, and its daily-note button not:
+        // the two wrap onto the next line together, rather than the button being left alone there.
+        // The date field is made as narrow as that takes and kept so, as a phone's own date field
+        // keeps its width.
+        const dateRow = cell(leaf, '${DATE}').querySelector('.abele-property-date')
+        const box = (sel) => dateRow.querySelector(sel).getBoundingClientRect()
+        const field = dateRow.querySelector('.abele-property-date__value')
+        const need =
+          box('.abele-property-date__later').right - dateRow.getBoundingClientRect().left + 8 +
+          box('.abele-property-date__relative').width + box('.abele-property-date__daily').width / 2
+        const spare = need - dateRow.getBoundingClientRect().width
+        field.style.flex = '0 0 ' + Math.max(20, field.getBoundingClientRect().width - spare) + 'px'
+        await wait(200)
+        const rel = box('.abele-property-date__relative')
+        const daily = box('.abele-property-date__daily')
+        const together = Math.abs((rel.top + rel.bottom) / 2 - (daily.top + daily.bottom) / 2) < 4
+        field.style.flex = ''
         const overflow = ['${DATE}', '${PRIO}', '${LABELS}'].filter((key) => {
           const c = cell(leaf, key)
           const row = c.firstElementChild
           return row.getBoundingClientRect().right > c.getBoundingClientRect().right + 1
         })
         await shoot('phone')
-        return { mobile: app.isMobile, d0, date, priority, labels, sizes, overflow }
+        return { mobile: app.isMobile, d0, date, priority, labels, sizes, overflow, together }
       `,
         90_000
       )
@@ -365,6 +383,7 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
       expect(r.sizes).toHaveLength(5)
       for (const size of r.sizes) expect(size).toBeGreaterThanOrEqual(24)
       expect(r.overflow).toEqual([])
+      expect(r.together).toBe(true)
     })
   })
 })

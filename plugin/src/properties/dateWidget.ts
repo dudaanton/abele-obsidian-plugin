@@ -48,8 +48,11 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
     cls: 'metadata-input metadata-input-text mod-date abele-property-date__value',
   })
   const later = iconButton(row, 'abele-property-date__later', 'chevron-right', 'Next day')
-  const relative = row.createSpan({ cls: 'abele-property-date__relative' })
-  const daily = iconButton(row, 'abele-property-date__daily', 'calendar-days', 'Open daily note')
+  // Together, so a narrow cell wraps them onto the next line as one rather than leaving the
+  // button alone there.
+  const after = row.createSpan({ cls: 'abele-property-date__after' })
+  const relative = after.createSpan({ cls: 'abele-property-date__relative' })
+  const daily = iconButton(after, 'abele-property-date__daily', 'calendar-days', 'Open daily note')
 
   const show = (v: unknown) => {
     const parsed = parseDateValue(v)
