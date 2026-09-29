@@ -248,13 +248,11 @@ export function createEmbeddedEditor(
    * the toolbar is placed.
    */
   function claimToolbar(): void {
+    // The field with the keyboard focus is where the person is typing, whatever became active
+    // around it: a note leaf becoming active hands Obsidian's active editor to that note even
+    // while the field keeps the focus, and the toolbar and its commands then worked on a note
+    // nobody was typing in. A note that takes the focus itself ends this here.
     if (!controller.editor.cm.hasFocus) return
-    // A note that became active is the active editor now, even with the focus left here — a
-    // note opened by the chat's agent, or by a command, while the chat's composer is focused.
-    // Taking it back would point every editor command at a field with no file. Only an
-    // editor that was cleared, as a leaf becoming active clears it, is claimed again.
-    const current = workspace.activeEditor as { file?: unknown } | null
-    if (current && current !== controller.owner && current.file) return
     if (workspace.activeEditor !== controller.owner) {
       previousActive = workspace.activeEditor
       workspace.activeEditor = controller.owner
