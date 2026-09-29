@@ -6,9 +6,17 @@
  * Read when the file loads, in the test process; the path is then written into the page's code
  * as a string, since the pictures are saved from inside the app.
  */
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
+/**
+ * The directory, made if it is not there: some pictures are written by the phone's driver
+ * straight to a path, with nothing on the way to create it (the /tmp ones survived that only
+ * because an earlier run had made them).
+ */
 export function shotDir(name: string): string {
   const root = process.env.ABELE_E2E_SHOTS
-  return join(root ? root : '/tmp', name)
+  const dir = join(root ? root : '/tmp', name)
+  mkdirSync(dir, { recursive: true })
+  return dir
 }
