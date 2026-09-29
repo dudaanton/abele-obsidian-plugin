@@ -64,10 +64,19 @@ export async function setup(): Promise<void> {
 }
 
 export async function teardown(): Promise<void> {
-  if (onPhone()) {
-    stopHost()
-    dropPhone()
+  try {
+    await putAppBack()
+  } finally {
+    // Last: on a phone every call above goes to the phone, and one made after the drop would
+    // take it again for this process, which is about to exit and leave that lock behind.
+    if (onPhone()) {
+      stopHost()
+      dropPhone()
+    }
   }
+}
+
+async function putAppBack(): Promise<void> {
   if (!isObsidianRunning()) return
   try {
     closeStrayWindows()
