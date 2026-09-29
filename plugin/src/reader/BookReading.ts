@@ -57,6 +57,8 @@ export class BookReading {
   private disposed = false
   private repairing = false
   private cancelRepair: (() => void) | null = null
+  /** Retained until a winning highlights read can see the repaired key. */
+  private pendingRepairActive: { old: string; suggested: string } | null = null
   /** A PDF search match to select once its page is drawn. */
   private pendingMatch: { index: number; occurrence: number; query: string } | null = null
   /** A place in a PDF a link named, to select once its page is drawn. */
@@ -132,6 +134,14 @@ export class BookReading {
     this.model.highlights = list
     this.marks.set(list)
     this.onHighlights()
+    const pending = this.pendingRepairActive
+    if (pending && this.model.active && ![pending.old, pending.suggested].includes(this.model.active.cfi))
+      this.pendingRepairActive = null // The reader chose another highlight while the read was pending.
+    else if (pending && list.some((h) => h.cfi === pending.suggested)) {
+      this.model.active = list.find((h) => h.cfi === pending.suggested) ?? null
+      this.pendingRepairActive = null
+      return
+    }
     if (this.model.active)
       this.model.active = list.find((h) => h.cfi === this.model.active?.cfi) ?? null
   }
@@ -142,6 +152,7 @@ export class BookReading {
     this.loadGeneration++
     this.cancelRepair?.()
     this.cancelRepair = null
+    this.pendingRepairActive = null
     this.marks.onRepairsChanged = () => {}
     this.model.repairableCfis = []
   }
@@ -168,10 +179,10 @@ export class BookReading {
       if (this.disposed) return
       if (result.applied.length) {
         const remap = selected.find((r) => r.cfi === activeBeforeWrite && result.applied.includes(r.cfi))
+        if (remap) this.pendingRepairActive = { old: remap.cfi, suggested: remap.suggested }
         if (result.applied.some((cfi) => cfi === this.model.commenting?.cfi)) this.model.commenting = null
         if (result.applied.some((cfi) => cfi === this.model.wording?.cfi)) this.model.wording = null
         await this.loadHighlights()
-        if (remap) this.model.active = this.model.highlights.find((x) => x.cfi === remap.suggested) ?? null
       }
       new Notice(`Repaired ${result.applied.length} link(s); skipped ${result.skipped.length}; errors ${result.failed.length}.`)
     } catch (e) {

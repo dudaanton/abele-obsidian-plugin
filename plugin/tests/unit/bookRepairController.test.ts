@@ -57,4 +57,30 @@ describe('repair confirmation lifecycle', () => {
     expect(model.active?.cfi).toBe(candidate.suggested)
     reading.dispose()
   })
+
+  it('remaps the active key when another highlights load supersedes the repair load', async () => {
+    vi.clearAllMocks()
+    const { reading, model } = start()
+    model.active = highlight
+    const deferred = () => {
+      let resolve: (items: Highlight[]) => void = () => {}
+      const promise = new Promise<Highlight[]>((done) => { resolve = done })
+      return { promise, resolve }
+    }
+    const first = deferred()
+    const newer = deferred()
+    load.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => newer.promise)
+    const action = reading.repairHighlightLinks(highlight)
+    await flush()
+    confirm(true)
+    await flush()
+    expect(load).toHaveBeenCalledTimes(1)
+    const eventLoad = reading.loadHighlights()
+    first.resolve([highlight])
+    await action
+    newer.resolve([{ ...highlight, cfi: candidate.suggested }])
+    await eventLoad
+    expect(model.active?.cfi).toBe(candidate.suggested)
+    reading.dispose()
+  })
 })
