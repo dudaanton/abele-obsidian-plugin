@@ -93,6 +93,9 @@ async function probe<T>(body: string): Promise<T> {
 
 const setup = `
   const t = window.__abeleTest
+  // Every probe reads the first script view there is: one another run left in the saved layout
+  // was read instead of this one's.
+  for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach()
   const folder = t.AbeleConfig.getInstance().ai.scriptsFolder
   const path = folder + '/E2E Counter.js'
   if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
