@@ -34,6 +34,12 @@ export interface PagedList<T> {
   showMore: () => void
   /** Collapses back to a single page — for when the source is refiltered from scratch. */
   reset: () => void
+  /**
+   * For a list with a search, called with its words each time they change. A search starts
+   * from one page; closing it gives back the pages that were drawn before it, so the reader is
+   * where they were — and nothing drawn while searching is remembered as how the list was left.
+   */
+  followSearch: (terms: readonly string[]) => void
 }
 
 /** Pages to start with, and where to report the pages drawn: a list under a note keeps them. */
@@ -53,7 +59,12 @@ export function usePagedList<T>(
   memory?: PageMemory
 ): PagedList<T> {
   const visibleCount = ref(pageSize * Math.max(1, memory?.initial ?? 1))
-  if (memory) watch(visibleCount, (count) => memory.record(Math.ceil(count / pageSize)))
+  /** What was drawn when a search opened, given back when it closes; null with no search. */
+  let beforeSearch: number | null = null
+  if (memory)
+    watch(visibleCount, (count) => {
+      if (beforeSearch === null) memory.record(Math.ceil(count / pageSize))
+    })
 
   const all = computed(() => source())
   const visible = computed(() => all.value.slice(0, visibleCount.value))
@@ -70,6 +81,16 @@ export function usePagedList<T>(
     visibleCount.value = pageSize
   }
 
+  const followSearch = (terms: readonly string[]): void => {
+    if (terms.length) {
+      beforeSearch ??= visibleCount.value
+      visibleCount.value = pageSize
+    } else if (beforeSearch !== null) {
+      visibleCount.value = beforeSearch
+      beforeSearch = null
+    }
+  }
+
   const sentinel = ref<HTMLElement | null>(null)
   useIntersectionObserver(sentinel, ([entry]) => {
     if (entry?.isIntersecting) {
@@ -77,5 +98,5 @@ export function usePagedList<T>(
     }
   })
 
-  return { visible, hasMore, total, sentinel, showMore, reset }
+  return { visible, hasMore, total, sentinel, showMore, reset, followSearch }
 }

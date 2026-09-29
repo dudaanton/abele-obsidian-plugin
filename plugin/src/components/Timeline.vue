@@ -196,7 +196,7 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
-const { visible, hasMore, sentinel, reset } = usePagedList(
+const { visible, hasMore, sentinel, reset, followSearch } = usePagedList(
   () => dates.value,
   PAGE_SIZE,
   useFooterPages('calendar')
@@ -206,7 +206,8 @@ const { visible, hasMore, sentinel, reset } = usePagedList(
 // expanded window no longer matches what the reader has actually scrolled through.
 watch(hideCompleted, reset)
 watch(labelSelection, reset)
-watch(search.terms, reset)
+// Closing the search gives back the pages drawn before it.
+watch(search.terms, followSearch)
 
 const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)

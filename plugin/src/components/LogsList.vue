@@ -74,14 +74,15 @@ const sortedLogs = computed(() => {
   })
 })
 
-const { visible, hasMore, sentinel, reset } = usePagedList(
+const { visible, hasMore, sentinel, reset, followSearch } = usePagedList(
   () => sortedLogs.value,
   undefined,
   useFooterPages('logs')
 )
 
 // A new query is a different list; the window expanded over the old one means nothing here.
-watch(search.terms, reset)
+// Closing the search gives back the pages drawn before it.
+watch(search.terms, followSearch)
 </script>
 
 <style lang="scss">

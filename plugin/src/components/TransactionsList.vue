@@ -139,13 +139,25 @@ const sorted = computed(() => {
 })
 
 const pages = useFooterPages('transactions')
+/** What was drawn when a search opened, given back when it closes; null with no search. */
+let beforeSearch: number | null = null
 const visibleCount = ref(PAGE_SIZE * pages.initial)
-watch(visibleCount, (count) => pages.record(Math.ceil(count / PAGE_SIZE)))
+watch(visibleCount, (count) => {
+  if (beforeSearch === null) pages.record(Math.ceil(count / PAGE_SIZE))
+})
 const visible = computed(() => sorted.value.slice(0, visibleCount.value))
 
 // A new query is a different list; the window expanded over the old one means nothing here.
-watch(search.terms, () => {
-  visibleCount.value = PAGE_SIZE
+// Closing the search gives back the pages drawn before it; nothing drawn while searching is
+// remembered as how the list was left.
+watch(search.terms, (terms) => {
+  if (terms.length) {
+    beforeSearch ??= visibleCount.value
+    visibleCount.value = PAGE_SIZE
+  } else if (beforeSearch !== null) {
+    visibleCount.value = beforeSearch
+    beforeSearch = null
+  }
 })
 
 const scrollSentinel = ref<HTMLElement | null>(null)

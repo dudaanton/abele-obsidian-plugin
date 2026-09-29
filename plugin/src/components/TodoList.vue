@@ -108,7 +108,7 @@ const shown = computed(() => sortByPriority(search.results.value))
 const itemsEl = ref<HTMLElement | null>(null)
 useSearchHighlight(itemsEl, search.terms)
 
-const { visible, hasMore, sentinel, reset } = usePagedList(
+const { visible, hasMore, sentinel, reset, followSearch } = usePagedList(
   () => shown.value,
   undefined,
   useFooterPages('tasks')
@@ -119,7 +119,8 @@ const { visible, hasMore, sentinel, reset } = usePagedList(
 // filter is a different list altogether.
 watch(hideCompleted, reset)
 watch(labelSelection, reset)
-watch(search.terms, reset)
+// Closing the search gives back the pages drawn before it.
+watch(search.terms, followSearch)
 </script>
 
 <style lang="scss">

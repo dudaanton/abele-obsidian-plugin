@@ -6,7 +6,7 @@
  * the source rather than copied out of it.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { usePagedList, DEFAULT_PAGE_SIZE } from '@/composables/usePagedList'
 import {
   installFakeIntersectionObserver,
@@ -120,5 +120,48 @@ describe('usePagedList', () => {
 
     expect(paged.visible.value).toHaveLength(20)
     expect(paged.total.value).toBe(20_000)
+  })
+
+  describe('across a search', () => {
+    it('gives back the pages drawn before the search when it is closed', () => {
+      const paged = inScope(() => usePagedList(() => items(500), 20))
+      paged.showMore()
+      paged.showMore()
+      paged.showMore()
+      expect(paged.visible.value).toHaveLength(80)
+      paged.followSearch(['word'])
+      expect(paged.visible.value).toHaveLength(20)
+      paged.showMore()
+      paged.followSearch(['word', 'other'])
+      expect(paged.visible.value).toHaveLength(20)
+      paged.followSearch([])
+      expect(paged.visible.value).toHaveLength(80)
+    })
+
+    it('keeps what it remembers for the note while searching, and stores nothing from the search', async () => {
+      const recorded: number[] = []
+      const paged = inScope(() =>
+        usePagedList(() => items(500), 20, { initial: 4, record: (n) => recorded.push(n) })
+      )
+      expect(paged.visible.value).toHaveLength(80)
+      paged.followSearch(['word'])
+      await nextTick()
+      paged.showMore()
+      await nextTick()
+      paged.followSearch([])
+      await nextTick()
+      expect(paged.visible.value).toHaveLength(80)
+      expect(recorded.filter((n) => n !== 4)).toEqual([])
+    })
+
+    it('leaves the pages alone while the field is open with nothing typed yet', () => {
+      const paged = inScope(() => usePagedList(() => items(500), 20))
+      paged.showMore()
+      paged.followSearch([])
+      expect(paged.visible.value).toHaveLength(40)
+      paged.followSearch(['word'])
+      paged.followSearch([])
+      expect(paged.visible.value).toHaveLength(40)
+    })
   })
 })
