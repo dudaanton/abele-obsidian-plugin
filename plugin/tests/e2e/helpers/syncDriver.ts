@@ -240,9 +240,8 @@ export class SyncDriver {
       () => `a notice saying ${String(text)} (seen: ${JSON.stringify(seen)})`,
       () => {
         seen.push(...this.takeNotices())
-        found = seen.find((one) =>
-          typeof text === 'string' ? one.includes(text) : text.test(one)
-        ) ?? ''
+        found =
+          seen.find((one) => (typeof text === 'string' ? one.includes(text) : text.test(one))) ?? ''
         if (found !== '') {
           // Another notice may have arrived earlier or in the same poll. Leave it for the
           // next assertion rather than consuming a question nobody has asked yet.
