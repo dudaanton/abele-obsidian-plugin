@@ -1357,6 +1357,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
             return { block: true, reason: this.refusalReason(toolName, args) }
           }
           const decided = await this.policyFor(_id, toolName, args)
+          // Stopped while the script decided: ask, which a stopped turn never gets to.
+          if (!this.turnPolicy.active) return { pause: true }
           if (decided.kind === 'deny') return { block: true, reason: decided.reason }
           if (decided.kind === 'approve') {
             this.widenScopeFor(args)
@@ -1409,12 +1411,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     let head = approved
 
     try {
+      // Busy from the first look at the queue: an interceptor script may take a moment to
+      // answer for a call, and the chat must not read as idle while it does.
+      this.isExecutingTool.value = true
       while (this.pendingToolCalls.value.length > 0) {
         const tc = this.pendingToolCalls.value[0]
 
         if (!head && this.needsApproval(tc.name, tc.arguments)) {
           // The interceptor script may answer for the person: the same question, decided once.
-          const decided = await this.policyFor(tc.id, tc.name, tc.arguments)
+          const gen = this.generation
+          let decided = await this.policyFor(tc.id, tc.name, tc.arguments)
+          // Stopped or cleared while the script decided: its answer no longer holds.
+          if (gen !== this.generation || !this.turnPolicy.active) decided = { kind: 'ask' }
           if (decided.kind === 'deny') {
             this.ensurePendingToolCallMessage(tc)
             this.recordRefusal(tc, decided.reason)

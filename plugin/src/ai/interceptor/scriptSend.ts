@@ -57,13 +57,16 @@ export async function sendThroughScript(
     interceptorChat: [],
   }
   host.append(bubble)
-  await host.save()
 
   const input = buildInterceptInput(
     { text: content, attachments: attachments ?? [] },
     host.source(earlier)
   )
-  const outcome = await host.interceptor.runScript(route.script, input)
+  // Started before the save is awaited: the chat counts as busy from this moment, so nothing
+  // sent meanwhile starts a turn of its own, and a stop or a reset reaches the script.
+  const deciding = host.interceptor.runScript(route.script, input)
+  await host.save()
+  const outcome = await deciding
   if (gen !== host.generation() || !host.find(bubble.id)?.draft) return
 
   const notes = route.broken

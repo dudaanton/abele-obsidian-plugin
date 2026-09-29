@@ -438,6 +438,22 @@ describe("a script's say over the turn's tool calls", () => {
     expect(session.pendingToolCalls.value.map((c) => c.id)).toEqual(['c3'])
   })
 
+  it('does not run a call it approves after the chat was stopped', async () => {
+    setup()
+    session.interceptor.script.value = 'Guard'
+    let answer: (yes: boolean) => void = () => {}
+    withPolicy(() => new Promise<boolean>((r) => (answer = r)))
+    turnsPlan = [[call('c1')]]
+
+    const sending = session.sendMessage('go')
+    await vi.waitFor(() => expect(asked).toEqual(['go']))
+    session.abort()
+    answer(true)
+    await sending
+
+    expect(ran).toEqual([])
+  })
+
   it('ends with the turn: the next message starts without it', async () => {
     setup()
     session.interceptor.script.value = 'Guard'

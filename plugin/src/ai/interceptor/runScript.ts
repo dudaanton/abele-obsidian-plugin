@@ -59,12 +59,16 @@ export async function runInterceptorScript(
   let seconds = INTERCEPTOR_DEFAULT_SECONDS
   let timedOut = false
   let timer = 0
+  const started = Date.now()
   const arm = () => {
     window.clearTimeout(timer)
-    timer = window.setTimeout(() => {
-      timedOut = true
-      controller.abort()
-    }, seconds * 1000)
+    timer = window.setTimeout(
+      () => {
+        timedOut = true
+        controller.abort()
+      },
+      Math.max(0, seconds * 1000 - (Date.now() - started))
+    )
   }
   // The clock runs from the send: waiting for the index counts too.
   arm()
@@ -83,7 +87,7 @@ export async function runInterceptorScript(
     const found = find(name)
     if (typeof found === 'string') return { kind: 'failed', reason: found }
 
-    // Its own header says how long it may take; re-armed from the send, not from now.
+    // Its own header says how long it may take, counted from the send, not from now.
     if (found.meta.interceptor && found.meta.interceptor !== seconds) {
       seconds = found.meta.interceptor
       arm()
