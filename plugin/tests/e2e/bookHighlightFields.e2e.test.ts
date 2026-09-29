@@ -131,10 +131,11 @@ describe.skipIf(!available)('a template with the quote and the comment apart', (
       const commented = await read(${JSON.stringify(NOTE)})
       await view.reading.save({ ...view.model.highlights.find((h) => h.color === 'green'), comment: 'Worth two sources.' })
       const changed = await read(${JSON.stringify(NOTE)})
-      leaf.detach()
 
-      // Opened again: read back from the note alone.
+      // Opened again, in a tab of its own, the first closed: read back from the note alone.
+      const firstLeaf = leaf
       ;({ leaf, view } = await open(${JSON.stringify(BOOK)}))
+      firstLeaf.detach()
       await view.engine.goTo(0)
       await until(() => rects(view) > 0, 5000)
       const drawn = rects(view)
