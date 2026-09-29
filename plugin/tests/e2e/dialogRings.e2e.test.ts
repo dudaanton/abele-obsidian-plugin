@@ -6,7 +6,7 @@
  * element on the desktop — and the search field lost 2px off each side: «задолбала меня
  * обрезка содержимого в модалках». This focuses every focusable thing in every tab of the
  * setup dialog, the history, the icon picker, the MCP server form, the list of keys and every
- * other dialog `openDialog` knows, and measures its ring against every clipping ancestor. The
+ * other dialog `openDialog` knows, each of its tabs included, and measures its ring against every clipping ancestor. The
  * phone probe does the same at 390×844.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -151,7 +151,14 @@ const script = `(async () => {
     window.__abeleTest.openDialog(dialogName)
     if (await until(() => document.querySelector('.modal.abele-modal'), 5000)) {
       await wait(300)
-      measureAll('dialog ' + dialogName, document.querySelector('.modal.abele-modal'))
+      const modal = document.querySelector('.modal.abele-modal')
+      measureAll('dialog ' + dialogName, modal)
+      // A dialog with tabs, the agent editor's among them, is measured tab by tab.
+      for (const tab of [...modal.querySelectorAll('.abele-tabs__tab')].slice(1)) {
+        tab.click()
+        await wait(300)
+        measureAll('dialog ' + dialogName + ' ' + tab.textContent.trim().toLowerCase(), modal)
+      }
     } else {
       cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['dialog did not open'] })
     }

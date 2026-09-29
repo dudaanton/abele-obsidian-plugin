@@ -186,7 +186,12 @@
             desc="Off = unavailable. Ask = needs approval. Auto = runs on its own. File tools are
               always available and governed by the permission mode above."
           >
-            <ToolModesEditor :tool-modes="agent.toolModes" hide-show-all @update="setToolMode" />
+            <ToolModesEditor
+              :tool-modes="agent.toolModes"
+              hide-show-all
+              @update="setToolMode"
+              @update-many="setToolModes"
+            />
           </Section>
         </template>
 
@@ -432,6 +437,10 @@ function setPromptValue(idx: number, value: string): void {
 
 function setToolMode(toolName: string, mode: ToolMode): void {
   patch({ toolModes: { ...(agent.value?.toolModes ?? {}), [toolName]: mode } })
+}
+
+function setToolModes(modes: Record<string, ToolMode>): void {
+  patch({ toolModes: { ...(agent.value?.toolModes ?? {}), ...modes } })
 }
 
 function toggleSkill(name: string): void {

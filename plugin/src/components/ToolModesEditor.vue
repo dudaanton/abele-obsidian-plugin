@@ -6,8 +6,41 @@
       </Setting>
     </div>
 
+    <!-- Shortcuts only: they set every tool's own dropdown below, which stays to be changed. -->
+    <Setting
+      v-if="!descriptionsOnly && allTools.length > 1"
+      name="All tools"
+      desc="Sets every tool below at once. Each can still be changed on its own after."
+      class="abele-tool-modes__bulk abele-tool-modes__bulk--all"
+    >
+      <Button
+        v-for="option in modeOptions"
+        :key="option.value"
+        :text="option.display"
+        :accent="sharedMode(allTools) === option.value"
+        :tooltip="`Set every tool to ${option.display}`"
+        @click="setAll(allTools, option.value)"
+      />
+    </Setting>
+
     <template v-for="group in visibleGroups" :key="group.category">
       <h4 class="abele-tool-modes__heading">{{ group.category }}</h4>
+
+      <Setting
+        v-if="!descriptionsOnly && optionalOf(group).length > 1"
+        name="All in this section"
+        class="abele-tool-modes__bulk abele-tool-modes__bulk--section"
+        :data-section="group.category"
+      >
+        <Button
+          v-for="option in modeOptions"
+          :key="option.value"
+          :text="option.display"
+          :accent="sharedMode(optionalOf(group)) === option.value"
+          :tooltip="`Set every tool in ${group.category} to ${option.display}`"
+          @click="setAll(optionalOf(group), option.value)"
+        />
+      </Setting>
 
       <!-- An MCP server is given to an agent whole; each tool can then be tuned below. -->
       <Setting
@@ -93,6 +126,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'update', toolName: string, mode: ToolMode): void
+  /** Several tools at once, from the shortcuts: one change for the host to save, not one each. */
+  (e: 'updateMany', modes: Record<string, ToolMode>): void
   (e: 'updateDescription', toolName: string, description: string): void
 }>()
 
@@ -153,6 +188,21 @@ const toggleServer = (group: ToolGroup) => {
   for (const tool of group.tools) setMode(tool.name, mode)
 }
 
+/** The tools of a group a mode applies to: core tools are always on and have none. */
+const optionalOf = (group: ToolGroup) => group.tools.filter((t) => !isCore(t.name))
+
+const allTools = computed(() => visibleGroups.value.flatMap(optionalOf))
+
+/** The mode every one of these tools is at, or null when they differ. */
+const sharedMode = (tools: ToolEntry[]): ToolMode | null => {
+  const modes = new Set(tools.map((t) => getMode(t.name)))
+  return modes.size === 1 ? [...modes][0] : null
+}
+
+const setAll = (tools: ToolEntry[], mode: string) => {
+  emit('updateMany', Object.fromEntries(tools.map((t) => [t.name, mode as ToolMode])))
+}
+
 const visibleGroups = computed<ToolGroup[]>(() => {
   const registry = getToolRegistry()
   const groups = new Map<string, ToolEntry[]>()
@@ -188,6 +238,10 @@ h4.abele-tool-modes__heading {
     padding-top: 0;
     border-top: none;
   }
+}
+
+.abele-tool-modes__bulk > .setting-item-control {
+  gap: var(--size-4-2);
 }
 
 .abele-tool-modes__core {

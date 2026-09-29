@@ -5,7 +5,12 @@
       from-agent="Tool modes come from this chat's agent."
       overridden="Tool modes are overridden for this chat."
     />
-    <ToolModesEditor v-if="session" :tool-modes="session.toolModes.value" @update="onUpdate" />
+    <ToolModesEditor
+      v-if="session"
+      :tool-modes="session.toolModes.value"
+      @update="onUpdate"
+      @update-many="onUpdateMany"
+    />
   </div>
 </template>
 
@@ -22,5 +27,11 @@ const onUpdate = (toolName: string, mode: ToolMode) => {
   const s = session.value
   if (!s) return
   s.toolModes.value = { ...s.toolModes.value, [toolName]: mode }
+}
+
+const onUpdateMany = (modes: Record<string, ToolMode>) => {
+  const s = session.value
+  if (!s) return
+  s.toolModes.value = { ...s.toolModes.value, ...modes }
 }
 </script>

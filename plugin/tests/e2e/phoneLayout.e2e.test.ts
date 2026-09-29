@@ -740,6 +740,24 @@ const probeScript = `(async () => {
           f.blur()
         }
         report[label].clipped = clipped
+        // The agent editor's Access tab: the tools, with the rows that set many at once.
+        if (dialogName === 'agent-editor') {
+          const access = [...modal.querySelectorAll('.abele-tabs__tab')].find((t) => t.textContent.trim() === 'Access')
+          if (!access) throw new Error('no Access tab')
+          access.click()
+          await until(() => modal.querySelector('.abele-tool-modes__bulk'), 3000)
+          await wait(300)
+          await screen('agent editor access', modal, modal.querySelector('.abele-modal__body'))
+          const cut = []
+          for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"]')) {
+            const cs = getComputedStyle(f)
+            if (cs.display === 'none' || cs.visibility === 'hidden' || f.getBoundingClientRect().width === 0) continue
+            f.focus()
+            for (const c of ringClipped(f)) cut.push(name(f) + ': ' + c)
+            f.blur()
+          }
+          report['agent editor access'].clipped = cut
+        }
       } catch (e) {
         report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
       } finally {
@@ -893,6 +911,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'settings mcp',
     'mcp server',
     'rewind',
+    'agent editor access',
     'script form',
     'docs page',
     'docs contents',
@@ -907,6 +926,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s === 'icon picker' ||
       s === 'secrets list' ||
       s === 'mcp server' ||
+      s === 'agent editor access' ||
       s === 'rewind'
   )
 

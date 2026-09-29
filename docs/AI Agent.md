@@ -31,6 +31,11 @@ chat header.
 | Delegation depth | How far it may hand work onward. `0` removes the delegate tool |
 | Utility | Hidden from the chat picker. Still reachable from scripts, delegation and draft review |
 
+Each tool is *Off*, *Ask* or *Auto*. Above the list, **All tools** sets every tool at once, and
+each section has its own **All in this section**; the button of the mode they all share is
+highlighted. These are shortcuts only: every tool keeps its own setting, to be changed after. The
+same rows are in a chat's own tools tab. Tools that are always on are never touched by them.
+
 ### Editing an agent while a chat is open
 
 Changes take effect immediately, with nothing reloaded. A chat holds the agent's *id*, not a copy
