@@ -11,8 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
-import { evalAsync } from './helpers/githubLive'
+import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { buildStyledEpub, OUTSIDE } from '../fixtures/books/styledBook'
 
 const available = isObsidianRunning() && hasTestApi()
@@ -63,13 +62,17 @@ const PRELUDE = `
   }
 `
 
-const run = <T>(body: string): T =>
-  evalAsync<T>(
-    `(async () => { ${PRELUDE}
+// Started in the page and asked after until it is done: walking every chapter of a real book
+// takes longer than one CLI call may block the test worker for.
+const run = async <T>(body: string): Promise<T> =>
+  JSON.parse(
+    await evalLong(
+      `(async () => { ${PRELUDE}
       try { ${body} } catch (e) { return { error: String((e && e.stack) || e) } }
     })()`,
-    120_000
-  )
+      120_000
+    )
+  ) as T
 
 describe.skipIf(!available)("a book's own styles", () => {
   let savedReader: unknown = null
@@ -130,7 +133,7 @@ describe.skipIf(!available)("a book's own styles", () => {
     )
   }, 90_000)
 
-  it('shows its layout, keeps the reader’s text size, and fetches nothing outside the book', () => {
+  it('shows its layout, keeps the reader’s text size, and fetches nothing outside the book', async () => {
     type Look = {
       indent: string
       centre: string
@@ -147,7 +150,7 @@ describe.skipIf(!available)("a book's own styles", () => {
       cellFont: string
       textFont: string
     }
-    const r = run<{
+    const r = await run<{
       error?: string
       on?: Look
       larger?: Look
@@ -211,8 +214,8 @@ describe.skipIf(!available)("a book's own styles", () => {
     expect(off.drop).not.toBe('left')
   })
 
-  it("opens a real book's stylesheet with its own rules and without its picture on the web", () => {
-    const r = run<{
+  it("opens a real book's stylesheet with its own rules and without its picture on the web", async () => {
+    const r = await run<{
       error?: string
       found?: number
       css?: string
