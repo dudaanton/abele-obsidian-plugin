@@ -137,7 +137,9 @@ export class SyncDriver {
         (value) => { window.${key} = { ok: true, value: value === undefined ? null : value } },
         (error) => { window.${key} = { ok: false, error: String((error && error.message) || error) } }
       ); return 'started' })()`,
-      20_000
+      // The app can still be settling a server-down dialog; only the start acknowledgement
+      // needs the renderer. Its work runs through the separately polled result below.
+      60_000
     )
     let answer: { ok: boolean; value?: T; error?: string } | null = null
     await waitFor(
@@ -237,9 +239,19 @@ export class SyncDriver {
     await waitFor(
       () => `a notice saying ${String(text)} (seen: ${JSON.stringify(seen)})`,
       () => {
-        for (const one of this.takeNotices()) {
-          seen.push(one)
-          if (typeof text === 'string' ? one.includes(text) : text.test(one)) found = one
+        seen.push(...this.takeNotices())
+        found = seen.find((one) =>
+          typeof text === 'string' ? one.includes(text) : text.test(one)
+        ) ?? ''
+        if (found !== '') {
+          // Another notice may have arrived earlier or in the same poll. Leave it for the
+          // next assertion rather than consuming a question nobody has asked yet.
+          const unrelated = seen.filter((one) => one !== found)
+          if (unrelated.length > 0) {
+            this.vault().evalAwait(
+              `(() => { window.__abeleNotices.unshift(...${JSON.stringify(unrelated)}); return 'ok' })()`
+            )
+          }
         }
         return found !== ''
       },

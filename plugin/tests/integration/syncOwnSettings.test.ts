@@ -302,6 +302,8 @@ afterEach(async () => {
 })
 
 describe('Abele settings between two devices', () => {
+  // Several real sync rounds and two device startups take longer than Vitest's default
+  // five seconds when the rest of the suite is busy; correctness is asserted below.
   it('takes a change made on one device to the other, reloads it once, and settles', async () => {
     const a = await device('Laptop')
     const b = await device('Phone')
@@ -326,7 +328,7 @@ describe('Abele settings between two devices', () => {
     // The device that took the change wrote nothing back.
     expect(b.saves).toBe(before.saves)
     expect((await onDisk(b)).tasksFolder).toBe('Projects')
-  })
+  }, 20_000)
 
   it('a device joining with settings of its own takes the vault’s, and its own go to history', async () => {
     const a = await device('Laptop')

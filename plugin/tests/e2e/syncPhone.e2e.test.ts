@@ -205,6 +205,25 @@ async function seed(): Promise<void> {
     })()`
   )
   await waitIdle()
+  // Forty deletes are deliberately enough to trip the bulk-delete guard. This fixture needs
+  // actual server trash, so answer that guard explicitly instead of picturing an empty list.
+  app().evalAwait(`(async () => {
+    const sync = ${service}
+    const held = await sync.heldDeletes()
+    if (held.length) {
+      const answer = await sync.decideDeletes('confirm', held.map((one) => one.fileId))
+      if (answer?.decided !== held.length) throw new Error('the fixture deletions were not confirmed')
+    }
+    return 'ok'
+  })()`)
+  await waitIdle()
+  await waitFor(
+    () => `the fixture trash to contain ${DELETED} files`,
+    () =>
+      app().evalAwait<number>(`(async () => (await ${service}.client().trash()).length)()`) ===
+      DELETED,
+    20_000
+  )
 
   fillLog()
 }

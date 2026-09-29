@@ -281,10 +281,13 @@ describe.skipIf(why !== null)('sync between Obsidian and a daemon folder', () =>
     daemonSyncOnce(daemonDir)
     await syncNow()
 
-    const copy = paths().find((path) =>
-      new RegExp(`^Note \\(Conflicted copy ${DAEMON_DEVICE} \\d{12}\\)\\.md$`).test(path)
+    const copyName = new RegExp(`^Note \\(Conflicted copy ${DAEMON_DEVICE} \\d{12}\\)\\.md$`)
+    let copy: string | undefined
+    await waitFor(
+      'Obsidian to index the conflict copy',
+      () => (copy = paths().find((path) => copyName.test(path))) !== undefined,
+      20_000
     )
-    expect(copy).toBeDefined()
     expect(read(copy ?? '')).toBe('the daemon says something else\n')
     expect(read(NOTE)).toContain('five')
   })

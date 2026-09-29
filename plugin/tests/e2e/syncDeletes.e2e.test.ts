@@ -36,7 +36,7 @@ import {
   type SyncServer,
 } from './helpers/syncServer'
 import { obsidianMissing, openTestVault, waitFor, type TestVault } from './helpers/syncVault'
-import { SERVICE, SyncDriver } from './helpers/syncDriver'
+import { SyncDriver } from './helpers/syncDriver'
 
 const EMAIL = 'sync-deletes@example.com'
 const PASSWORD = 'a-password-nobody-prints'
@@ -72,9 +72,16 @@ const onDaemon = (path: string): boolean => existsSync(join(daemonDir, path))
 
 /** Deletes every held note here and syncs, which holds the deletions. */
 async function deleteAllHeld(): Promise<void> {
-  sync.remove([HELD])
+  // Removing a folder emits one vault event per child. Keep the watcher from starting a sync
+  // halfway through that burst, or the guard can judge a prefix instead of all sixty files.
+  sync.run(`svc.pause(); return 'ok'`)
+  try {
+    sync.remove([HELD])
+  } finally {
+    sync.run(`svc.resume(); return 'ok'`)
+  }
   const status = await sync.syncNow()
-  expect(status.heldDeletes).toBe(COUNT)
+  expect(status.heldDeletes, sync.log().join('\n')).toBe(COUNT)
 }
 
 /** Waits for the held-deletes dialog, and reads its lead line. */
@@ -173,7 +180,7 @@ describe.skipIf(why !== null)('many files deleted at once', () => {
     `)
     await heldComeBack()
     expect(sync.status().heldDeletes).toBe(0)
-    expect(trashedHeld()).toEqual([])
+    expect(trashedHeld(), sync.log().join('\n')).toEqual([])
   })
 
   it('Delete everywhere, confirmed, sends them to the trash and off the other device', async () => {

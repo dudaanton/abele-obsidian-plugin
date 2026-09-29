@@ -65,10 +65,10 @@ const onDaemon = (path: string): string => readFileSync(join(daemonDir, path), '
  * Writes a file in the daemon's folder as the other device changing it, a little in the future
  * so the newer-mtime rule is never a coin toss against this device's copy, and syncs the daemon.
  */
-function daemonWrites(path: string, text: string): void {
+function daemonWrites(path: string, text: string, futureMs = 5_000): void {
   const file = join(daemonDir, path)
   writeFileSync(file, text)
-  const later = new Date(Date.now() + 5_000)
+  const later = new Date(Date.now() + futureMs)
   utimesSync(file, later, later)
   daemonSyncOnce(daemonDir)
 }
@@ -273,7 +273,10 @@ describe.skipIf(why !== null)('settings that travel between devices', () => {
   it("a settings file changed here while another device's change to it waits goes out, and says so", async () => {
     daemonWrites(
       HOTKEYS,
-      JSON.stringify({ 'editor:toggle-bold': [{ modifiers: ['Mod'], key: 'J' }] })
+      JSON.stringify({ 'editor:toggle-bold': [{ modifiers: ['Mod'], key: 'J' }] }),
+      // This case writes here afterwards. A future daemon mtime would make its earlier edit
+      // appear newer and win the conflict by design.
+      0
     )
     await askedAboutSettings()
     sync.run(`await escapeIn(); return 'ok'`)
