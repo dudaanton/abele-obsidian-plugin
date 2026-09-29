@@ -252,7 +252,7 @@ const propertyLists = [
   propertyList(
     'groupProperties',
     'Group properties',
-    'Comma-separated property names drawn as links to group notes, opened with a click and added from the notes already used as groups or any other note. Needs own drawing of properties on.',
+    'Comma-separated property names that get a button beside their list, adding one of the notes already used as groups. The list is still typed into as usual. Needs own drawing of properties on.',
     'e.g. groups'
   ),
 ]

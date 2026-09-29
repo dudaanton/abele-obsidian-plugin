@@ -1,13 +1,14 @@
 /**
- * The row of a groups property: each group as Obsidian's own link pill — the group note's name,
- * opened by a click (in a new tab with Mod, as any link), shown as a link to nothing when the note
- * is not there — each with its ×, and a field that adds one more, picked from the notes the vault
- * already uses as groups, most members first, or from any other note by name.
+ * The row of a groups property: Obsidian's own list editor, left exactly as it is — its link
+ * pills that open their note, `[[` bringing up its link suggester, any note or text typed in —
+ * with one button beside it that offers the notes the vault already uses as groups, most members
+ * first, then any other note by name. A group is any note, so nothing typed into the list is
+ * refused; the button is only a shortcut to the usual ones.
  *
- * There is no free text: a group is a note, and a link to a note that does not exist groups
- * nothing (`ScopeResolver` skips it). Backspace in the empty field takes the last group off.
+ * An empty property has no type of its own yet and is drawn as text; it gets the list editor
+ * here too, so the first group goes in the way the rest do.
  */
-import { AbstractInputSuggest, Keymap, setIcon, TFile, type App } from 'obsidian'
+import { SuggestModal, setIcon, TFile, type App } from 'obsidian'
 import './kinds.css'
 import {
   addGroup,
@@ -15,11 +16,10 @@ import {
   groupEntries,
   groupLink,
   groupLinkpath,
-  groupTitle,
-  removeGroupAt,
   suggestGroups,
-  type GroupNote,
 } from './groups'
+import type { GroupNote } from './groups'
+import type { StockRender } from './kinds'
 import type { WidgetContext } from './widgets'
 
 /** The note an entry points at from `source`, or null when there is none. */
@@ -29,20 +29,9 @@ function resolve(app: App, entry: string, source: string): TFile | null {
   return app.metadataCache.getFirstLinkpathDest(linkpath, source) ?? null
 }
 
-/**
- * The notes the vault uses as groups under `key`, most members first, and every note by name.
- * Read once each time the field is entered and kept while it is typed into.
- */
-let known: {
-  key: string
-  at: number
-  groups: GroupNote[]
-  notes: { path: string; title: string }[]
-} | null = null
-
+/** The notes the vault uses as groups under `key`, most members first, and every note by name. */
 function vaultGroups(app: App, key: string) {
   const want = key.toLowerCase()
-  if (known && known.key === want && Date.now() - known.at < 5000) return known
   const values: { value: unknown; source: string }[] = []
   const files = app.vault.getMarkdownFiles()
   for (const file of files) {
@@ -58,37 +47,50 @@ function vaultGroups(app: App, key: string) {
     (path) => titles.get(path) ?? path
   )
   const notes = files.map((f) => ({ path: f.path, title: f.basename }))
-  known = { key: want, at: Date.now(), groups, notes }
-  return known
+  return { groups, notes }
 }
 
-class GroupSuggest extends AbstractInputSuggest<GroupNote> {
-  shown = false
+/** What the property holds in the note now: the list editor saves every edit made in it. */
+function heldNow(app: App, ctx: WidgetContext, drawn: unknown): unknown {
+  const file = app.vault.getAbstractFileByPath(ctx.sourcePath)
+  const fm = file instanceof TFile ? app.metadataCache.getFileCache(file)?.frontmatter : null
+  if (!fm) return drawn
+  const want = ctx.key.toLowerCase()
+  for (const k in fm) if (k.toLowerCase() === want) return fm[k]
+  return null
+}
+
+/** The list the button opens: Obsidian's own suggester dialog, typed into to narrow it. */
+export class GroupPicker extends SuggestModal<GroupNote> {
+  /** The one opened last — for a test to reach, as nothing else holds it. */
+  static last: GroupPicker | null = null
+  private readonly vault: ReturnType<typeof vaultGroups>
 
   constructor(
     app: App,
-    private readonly field: HTMLInputElement,
-    private readonly key: string,
-    private readonly held: () => Set<string>,
+    key: string,
+    private readonly held: ReadonlySet<string>,
     private readonly take: (note: GroupNote) => void
   ) {
-    super(app, field)
+    super(app)
+    this.vault = vaultGroups(app, key)
+    this.setPlaceholder('Add a group…')
+    this.emptyStateText = 'No such note'
+    GroupPicker.last = this
   }
 
-  protected getSuggestions(query: string): GroupNote[] {
-    const { groups, notes } = vaultGroups(this.app, this.key)
-    return suggestGroups(groups, notes, this.held(), query)
+  getSuggestions(query: string): GroupNote[] {
+    return suggestGroups(this.vault.groups, this.vault.notes, this.held, query)
   }
 
   renderSuggestion(note: GroupNote, el: HTMLElement): void {
-    el.addClass('mod-complex', 'abele-property-groups__choice')
+    el.addClass('mod-complex')
     const content = el.createDiv({ cls: 'suggestion-content' })
     content.createDiv({ cls: 'suggestion-title', text: note.title })
     const folder = note.path.includes('/') ? note.path.slice(0, note.path.lastIndexOf('/')) : ''
     if (folder) content.createDiv({ cls: 'suggestion-note', text: folder })
     if (note.members) {
-      const aux = el.createDiv({ cls: 'suggestion-aux' })
-      aux.createSpan({
+      el.createDiv({ cls: 'suggestion-aux' }).createSpan({
         cls: 'suggestion-flair',
         text: String(note.members),
         attr: { 'aria-label': `${note.members} in this group` },
@@ -96,134 +98,62 @@ class GroupSuggest extends AbstractInputSuggest<GroupNote> {
     }
   }
 
-  selectSuggestion(note: GroupNote): void {
+  onChooseSuggestion(note: GroupNote): void {
     this.take(note)
-    this.field.value = ''
-    this.close()
   }
 
-  open(): void {
-    this.shown = true
-    super.open()
-  }
-
-  close(): void {
-    this.shown = false
-    super.close()
+  onClose(): void {
+    super.onClose?.()
+    if (GroupPicker.last === this) GroupPicker.last = null
   }
 }
 
-export function renderGroups(el: HTMLElement, value: unknown, ctx: WidgetContext, type: string) {
+export function renderGroups(
+  el: HTMLElement,
+  value: unknown,
+  ctx: WidgetContext,
+  type: string,
+  stock: StockRender
+) {
+  const list = stock('multitext')
+  if (!list) return null
   el.empty()
   const { app } = ctx
-  let current = value
-  const row = el.createDiv({ cls: 'multi-select-container abele-property-groups' })
-  const pills = row.createDiv({ cls: 'abele-property-groups__pills' })
-  const input = row.createEl('input', {
-    cls: 'abele-property-groups__input',
-    attr: {
-      type: 'text',
-      placeholder: 'Add group',
-      'aria-label': 'Add group',
-      autocapitalize: 'none',
-      enterkeyhint: 'done',
-    },
-  })
+  const widget = list(el, value, ctx) as { setValue?: (v: unknown) => void } | null
+  let drawn = value
 
-  const write = (next: string[] | null) => {
-    current = next
-    show(next)
-    ctx.onChange(next)
-  }
-  const target = (entry: string) =>
-    resolve(app, entry, ctx.sourcePath)?.path ?? groupLinkpath(entry)
   const add = (note: GroupNote) => {
     const file = app.vault.getAbstractFileByPath(note.path)
     const linktext =
       file instanceof TFile
         ? app.metadataCache.fileToLinktext(file, ctx.sourcePath, true)
         : note.path.replace(/\.md$/i, '')
-    const next = addGroup(current, groupLink(linktext), target)
-    if (next) write(next)
-  }
-  const removeAt = (index: number) => write(removeGroupAt(current, index))
-
-  const show = (v: unknown) => {
-    pills.empty()
-    groupEntries(v).forEach((entry, index) => {
-      const file = resolve(app, entry, ctx.sourcePath)
-      const linkpath = groupLinkpath(entry)
-      const title = groupTitle(entry, file?.basename)
-      const pill = pills.createDiv({ cls: 'multi-select-pill abele-property-groups__pill' })
-      pill.dataset.group = file?.path ?? linkpath
-      const link = pill.createDiv({
-        cls: 'multi-select-pill-content internal-link',
-        text: title,
-        attr: { 'data-href': linkpath },
-      })
-      if (!file) link.addClass('is-unresolved')
-      link.addEventListener('click', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        void app.workspace.openLinkText(linkpath, ctx.sourcePath, Keymap.isModEvent(e))
-      })
-      link.addEventListener('mouseover', (e) => {
-        app.workspace.trigger('hover-link', {
-          event: e,
-          source: 'preview',
-          hoverParent: { hoverPopover: null },
-          targetEl: link,
-          linktext: linkpath,
-          sourcePath: ctx.sourcePath,
-        })
-      })
-      const x = pill.createDiv({
-        cls: 'multi-select-pill-remove-button',
-        attr: { role: 'button', 'aria-label': `Remove ${title}` },
-      })
-      setIcon(x, 'x')
-      x.addEventListener('click', (e) => {
-        e.stopPropagation()
-        removeAt(index)
-      })
-    })
+    const target = (entry: string) =>
+      resolve(app, entry, ctx.sourcePath)?.path ?? groupLinkpath(entry)
+    const next = addGroup(heldNow(app, ctx, drawn), groupLink(linktext), target)
+    if (!next) return
+    drawn = next
+    widget?.setValue?.(next)
+    ctx.onChange(next)
   }
 
-  // Entered again: what the vault holds may have changed since the last read.
-  input.addEventListener('focus', () => (known = null), true)
-  const held = () =>
-    new Set([
+  const button = el.createDiv({
+    cls: 'clickable-icon abele-property-groups__pick',
+    attr: { role: 'button', 'aria-label': 'Add a group' },
+  })
+  setIcon(button, 'layers')
+  button.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const held = new Set([
       ctx.sourcePath,
-      ...groupEntries(current).map((e) => resolve(app, e, ctx.sourcePath)?.path ?? ''),
+      ...groupEntries(heldNow(app, ctx, drawn))
+        .map((entry) => resolve(app, entry, ctx.sourcePath)?.path)
+        .filter((p): p is string => !!p),
     ])
-  const suggest = new GroupSuggest(app, input, ctx.key, held, add)
-  input.addEventListener('keydown', (e) => {
-    if (e.isComposing) return
-    if (e.key === 'Enter' && !suggest.shown) {
-      e.preventDefault()
-    } else if (e.key === 'Backspace' && !input.value) {
-      const entries = groupEntries(current)
-      if (entries.length) removeAt(entries.length - 1)
-    } else if (e.key === 'Escape') {
-      input.value = ''
-      input.blur()
-    }
+    new GroupPicker(app, ctx.key, held, add).open()
   })
-  // A click on the row, between the pills, is a click into the field.
-  row.addEventListener('click', (e) => {
-    if (e.target === row || e.target === pills) input.focus()
-  })
-  show(current)
 
-  return {
-    containerEl: el,
-    type,
-    inputEl: input,
-    focus: () => input.focus(),
-    onFocus: () => input.focus(),
-    setValue: (next: unknown) => {
-      current = next
-      show(next)
-    },
-  }
+  if (widget && typeof widget === 'object') return widget
+  return { containerEl: el, type }
 }

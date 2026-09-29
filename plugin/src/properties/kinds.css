@@ -104,8 +104,7 @@
   cursor: default;
 }
 
-.abele-property-labels,
-.abele-property-groups {
+.abele-property-labels {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
@@ -114,13 +113,11 @@
   min-width: 0;
 }
 
-.abele-property-labels__pills,
-.abele-property-groups__pills {
+.abele-property-labels__pills {
   display: contents;
 }
 
-.abele-property-labels .abele-property-labels__input,
-.abele-property-groups .abele-property-groups__input {
+.abele-property-labels .abele-property-labels__input {
   flex: 1 1 6ch;
   min-width: 6ch;
   width: auto;
@@ -133,9 +130,7 @@
 }
 
 .abele-property-labels .abele-property-labels__input:focus,
-.abele-property-labels .abele-property-labels__input:focus-visible,
-.abele-property-groups .abele-property-groups__input:focus,
-.abele-property-groups .abele-property-groups__input:focus-visible {
+.abele-property-labels .abele-property-labels__input:focus-visible {
   box-shadow: none;
 }
 
@@ -178,4 +173,10 @@
 .abele-property-labels .multi-select-pill.abele-property-labels__pill_pink {
   --pill-color: var(--color-pink);
   --pill-background: rgba(var(--color-pink-rgb), 0.15);
+}
+
+/* The groups button sits after Obsidian's own list editor, at the height of its first line. */
+.abele-property-groups__pick {
+  flex: none;
+  align-self: flex-start;
 }

@@ -1,8 +1,10 @@
 /**
- * A groups property in the running app: a group added through the list of the vault's groups —
- * the most used one offered first — lands in the note's frontmatter as a wikilink, beside the one
- * already there kept as written; its pill opens the group note; its cross takes it off again. On
- * a phone (`emulateMobile`) the pills wrap inside their cell and the list opens from the field.
+ * A groups property in the running app: Obsidian's own list editor, typed into as a keyboard
+ * types — `[[` brings up Obsidian's link suggester and a note picked there is added, a note that
+ * is not a group yet and a note not written yet go in too — and the button beside it, whose list
+ * offers the most used group first and adds it. A pill opens its note. Every step is read back
+ * from the note's frontmatter and its text, quoting included. On a phone (`emulateMobile`) the
+ * pills wrap inside their cell, the button fits beside them and opens its list.
  *
  * Everything is written into a folder of its own and deleted after, with the settings put back.
  * Pictures go to `/tmp/abele-property-groups/` — look at them.
@@ -32,6 +34,7 @@ const GROUPS = [
   'Sample bakery with a long name',
   'Sample pond',
 ]
+const PLAIN = 'Sample plain note'
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -61,23 +64,29 @@ const PRELUDE = `
   const raw = () => app.vault.read(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))
   const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
   const settle = async (key, want) => (await until(() => same(stored(key), want), 8000)) ? want : stored(key) ?? null
-  // Typed as a keyboard types, again until the list is up: a window not in front can take the
-  // focus late.
-  const offer = async (leaf, text) => {
-    const field = () => cell(leaf, '${KEY}')?.querySelector('.abele-property-groups__input')
-    const input = await until(field)
-    if (!input) throw new Error('no field')
-    return await until(() => {
-      const found = [...document.querySelectorAll('.suggestion-container .suggestion-item')]
-      if (found.length) return found
-      input.blur()
-      input.focus()
-      input.value = text
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      return null
-    })
+  const cdp = require('@electron/remote').getCurrentWebContents().debugger
+  try { cdp.attach('1.3') } catch {}
+  // Real key input through the DevTools protocol, into the list editor's own field.
+  const type = async (leaf, text) => {
+    const input = await until(() => cell(leaf, '${KEY}')?.querySelector('.multi-select-input'))
+    if (!input) throw new Error('no list field')
+    input.focus()
+    if (!(await until(() => document.activeElement === input, 3000))) throw new Error('the list field took no focus')
+    for (const part of text.split('|')) {
+      await cdp.sendCommand('Input.insertText', { text: part })
+      await wait(400)
+    }
   }
-  const titles = (items) => (items ?? []).map((i) => i.querySelector('.suggestion-title')?.textContent)
+  const enter = async () => {
+    const key = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }
+    await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...key })
+    await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'char', ...key, text: '\\r' })
+    await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
+    await wait(400)
+  }
+  const suggestions = () => [...document.querySelectorAll('.suggestion-container .suggestion-item')]
+  const pills_ = (leaf) => [...cell(leaf, '${KEY}').querySelectorAll('.multi-select-pill-content')].map((p) => p.textContent)
+  const titles = (items) => (items ?? []).map((i) => i.querySelector('.suggestion-title')?.textContent ?? i.textContent)
 `
 
 const run = <T>(body: string, timeout = 60_000): T =>
@@ -141,6 +150,8 @@ describe.skipIf(!available)('groups properties', () => {
         await app.vault.createFolder(${JSON.stringify(DIR)})
         const groups = ${JSON.stringify(GROUPS)}
         for (const g of groups) await app.vault.create(${JSON.stringify(DIR)} + '/' + g + '.md', 'A sample group.\\n')
+        // A note no other note names as a group yet.
+        await app.vault.create(${JSON.stringify(DIR)} + '/${PLAIN}.md', 'Not a group yet.\\n')
         // The workshop has two members, the orchard one: the workshop is offered first.
         const members = [['Member a', ['[[' + groups[1] + ']]', '[[' + groups[0] + ']]']], ['Member b', ['[[' + groups[1] + ']]']]]
         for (const [name, links] of members)
@@ -177,55 +188,75 @@ describe.skipIf(!available)('groups properties', () => {
     )
   }, 90_000)
 
-  it('adds a group from the list, opens it from its pill, and takes it off', () => {
+  it('takes [[ links typed into Obsidian’s own list, any note or none, and the button’s groups', () => {
     const r = run<{
       error?: string
+      linkList: (string | null)[]
       offered: (string | null)[]
       steps: unknown[]
       text: string
-      pills: string[]
+      pills: (string | null)[]
       opened: string | null
     }>(`
       const leaf = await open()
-      await until(() => cell(leaf, '${KEY}')?.querySelector('.abele-property-groups'))
+      await until(() => cell(leaf, '${KEY}')?.querySelector('.abele-property-groups__pick'))
       const pond = '[[${DIR}/${GROUPS[3]}|Pond]]'
       const steps = [stored('${KEY}')]
-      const items = await offer(leaf, '')
+      // A note that is no group yet, through Obsidian's own link suggester: Enter takes the
+      // line, Enter again adds the pill.
+      await type(leaf, '[[|Sample plain')
+      const linkList = titles(await until(() => suggestions().length && suggestions()))
+      await enter()
+      await enter()
+      steps.push(await settle('${KEY}', [pond, '[[${PLAIN}]]']))
+      // A note not written yet, typed out whole.
+      await type(leaf, '[[|Not written yet]]')
+      await enter()
+      if (!same(stored('${KEY}'), [pond, '[[${PLAIN}]]', '[[Not written yet]]'])) await enter()
+      steps.push(await settle('${KEY}', [pond, '[[${PLAIN}]]', '[[Not written yet]]']))
+      document.activeElement?.blur?.()
+      await wait(300)
+      // The button: its list has the most used group first.
+      cell(leaf, '${KEY}').querySelector('.abele-property-groups__pick').click()
+      const items = await until(() => {
+        const found = [...document.querySelectorAll('.prompt .suggestion-item')]
+        return found.length && found
+      })
       const offered = titles(items)
-      const workshop = (items ?? []).find((i) => i.querySelector('.suggestion-title')?.textContent === '${GROUPS[1]}')
+      const workshop = (items || []).find((i) => i.querySelector('.suggestion-title')?.textContent === '${GROUPS[1]}')
       if (!workshop) throw new Error('the workshop was not offered: ' + JSON.stringify(offered))
       workshop.click()
-      steps.push(await settle('${KEY}', [pond, '[[${GROUPS[1]}]]']))
+      steps.push(await settle('${KEY}', [pond, '[[${PLAIN}]]', '[[Not written yet]]', '[[${GROUPS[1]}]]']))
       const text = await raw()
-      await wait(300)
-      const pills = [...cell(leaf, '${KEY}').querySelectorAll('.multi-select-pill-content')].map((p) => p.textContent)
+      await wait(500)
+      const pills = pills_(leaf)
       await shoot('desktop')
-      const link = cell(leaf, '${KEY}').querySelector('.multi-select-pill[data-group="${DIR}/${GROUPS[1]}.md"] .internal-link')
+      // A pill is Obsidian's own link: a click opens its note.
+      const link = [...cell(leaf, '${KEY}').querySelectorAll('.multi-select-pill-content')].find((p) => p.textContent === '${GROUPS[1]}')
       if (!link) throw new Error('no workshop pill')
       link.click()
       const opened = await until(() => {
         const f = app.workspace.getActiveFile()
         return f?.path === '${DIR}/${GROUPS[1]}.md' && f.path
       })
-      const back = await open()
-      const x = await until(() => cell(back, '${KEY}')?.querySelector('.multi-select-pill[data-group="${DIR}/${GROUPS[1]}.md"] .multi-select-pill-remove-button'))
-      if (!x) throw new Error('no cross on the workshop pill')
-      x.click()
-      steps.push(await settle('${KEY}', [pond]))
-      return { offered, steps, text, pills, opened }
+      return { linkList, offered, steps, text, pills, opened }
     `)
     expect(r.error).toBeUndefined()
+    expect(r.linkList.join(' ')).toContain(PLAIN)
     expect(r.offered[0]).toBe(GROUPS[1])
     expect(r.offered).not.toContain(GROUPS[3])
+    const pond = `[[${DIR}/${GROUPS[3]}|Pond]]`
     expect(r.steps).toEqual([
-      [`[[${DIR}/${GROUPS[3]}|Pond]]`],
-      [`[[${DIR}/${GROUPS[3]}|Pond]]`, `[[${GROUPS[1]}]]`],
-      [`[[${DIR}/${GROUPS[3]}|Pond]]`],
+      [pond],
+      [pond, `[[${PLAIN}]]`],
+      [pond, `[[${PLAIN}]]`, '[[Not written yet]]'],
+      [pond, `[[${PLAIN}]]`, '[[Not written yet]]', `[[${GROUPS[1]}]]`],
     ])
-    // Stored the way Obsidian writes a list of links: one per line, quoted.
+    // Stored the way Obsidian writes a list of links: one per line, quoted, the alias kept.
+    expect(r.text).toContain(`  - "${pond}"`)
+    expect(r.text).toContain(`  - "[[Not written yet]]"`)
     expect(r.text).toContain(`  - "[[${GROUPS[1]}]]"`)
-    expect(r.text).toContain(`  - "[[${DIR}/${GROUPS[3]}|Pond]]"`)
-    expect(r.pills).toEqual(['Pond', GROUPS[1]])
+    expect(r.pills).toEqual(['Pond', PLAIN, 'Not written yet', GROUPS[1]])
     expect(r.opened).toBe(`${DIR}/${GROUPS[1]}.md`)
   })
 
@@ -245,44 +276,56 @@ describe.skipIf(!available)('groups properties', () => {
       await reloadApp('app.emulateMobile(false)')
     }, 180_000)
 
-    it('wraps its pills inside the cell and opens the list from the field', () => {
+    it('wraps its pills inside the cell, the button beside them opening its list', () => {
       const r = run<{
         error?: string
         mobile: boolean
         rows: number
         overflow: number
+        button: { inside: boolean; size: number }
         offered: (string | null)[]
         listInside: boolean
       }>(`
         const mobile = app.isMobile
         await until(() => app.workspace.layoutReady)
         await wait(1000)
-        // Every group at once, so the pills cannot fit on one line.
+        // Long names first, so the pills cannot fit on one line.
         const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
         await app.fileManager.processFrontMatter(file, (fm) => {
-          fm['${KEY}'] = ${JSON.stringify(GROUPS.slice(0, 3).map((g) => `[[${g}]]`))}.concat(fm['${KEY}'] ?? [])
+          fm['${KEY}'] = [${JSON.stringify(`[[${GROUPS[2]}]]`)}].concat(fm['${KEY}'] ?? [])
         })
         const leaf = await open()
-        await until(() => cell(leaf, '${KEY}')?.querySelectorAll('.multi-select-pill').length === 4)
+        await until(() => cell(leaf, '${KEY}')?.querySelectorAll('.multi-select-pill').length >= 3)
         await wait(500)
         const c = cell(leaf, '${KEY}')
         const box = c.getBoundingClientRect()
         const pills = [...c.querySelectorAll('.multi-select-pill')].map((p) => p.getBoundingClientRect())
         const rows = new Set(pills.map((p) => Math.round(p.top))).size
         const overflow = Math.max(0, ...pills.map((p) => p.right - box.right))
-        const items = await offer(leaf, 'member')
+        const b = c.querySelector('.abele-property-groups__pick')
+        const br = b.getBoundingClientRect()
+        const button = { inside: br.left >= box.left - 1 && br.right <= box.right + 1, size: Math.min(br.width, br.height) }
+        b.click()
+        const items = await until(() => {
+          const found = [...document.querySelectorAll('.prompt .suggestion-item')]
+          return found.length && found
+        })
         const offered = titles(items)
-        const list = document.querySelector('.suggestion-container')?.getBoundingClientRect()
+        const list = document.querySelector('.prompt')?.getBoundingClientRect()
         const listInside = !!list && list.left >= 0 && list.right <= window.innerWidth + 1
         await shoot('phone')
-        document.activeElement?.blur?.()
-        return { mobile, rows, overflow, offered, listInside }
+        document.querySelector('.prompt-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        await until(() => !document.querySelector('.prompt'), 3000)
+        if (document.querySelector('.prompt')) throw new Error('the list did not close on Escape')
+        return { mobile, rows, overflow, button, offered, listInside }
       `)
       expect(r.error).toBeUndefined()
       expect(r.mobile).toBe(true)
       expect(r.rows).toBeGreaterThan(1)
       expect(r.overflow).toBeLessThanOrEqual(1)
-      expect(r.offered).toContain('Member a')
+      expect(r.button.inside).toBe(true)
+      expect(r.button.size).toBeGreaterThanOrEqual(24)
+      expect(r.offered[0]).toBe(GROUPS[0])
       expect(r.listInside).toBe(true)
     })
   })

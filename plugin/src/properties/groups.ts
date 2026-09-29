@@ -1,12 +1,11 @@
 /**
  * A groups property: the list of links that says which notes a note belongs to (`ScopeResolver`,
  * `NoteRelations`). Any note can be a group — it becomes one by being named in another note's
- * `groups` — so there is no type or folder to look for: the groups worth offering are the notes
- * the vault already names there, most members first, and after them any other note by name.
+ * `groups` — so there is no type or folder to look for: the usual groups are the notes the vault
+ * already names there, most members first, and after them any other note by name.
  *
- * Entries are kept exactly as written — a link with an alias keeps it, a link by full path stays
- * one — and a new one is written as a plain wikilink. Taking off the last one leaves the property
- * empty.
+ * Entries are kept exactly as written — a link with an alias keeps it, a link to no note or plain
+ * text stays — and a new one is written as a plain wikilink.
  */
 
 /** The entries a value holds, as stored: text only, empty ones dropped. */
@@ -33,24 +32,6 @@ export function groupLinkpath(entry: string): string {
   return inner.split('|')[0].split('#')[0].trim()
 }
 
-/** The alias an entry gives its link, if it gives one. */
-export function groupAlias(entry: string): string | null {
-  const match = WIKILINK.exec(entry)
-  if (!match) return null
-  const bar = match[1].indexOf('|')
-  const alias = bar >= 0 ? match[1].slice(bar + 1).trim() : ''
-  return alias || null
-}
-
-/** The name a group is shown by: its alias, else the note's own name, else the link's last part. */
-export function groupTitle(entry: string, basename?: string | null): string {
-  const alias = groupAlias(entry)
-  if (alias) return alias
-  if (basename) return basename
-  const path = groupLinkpath(entry)
-  return path.split('/').pop()?.replace(/\.md$/i, '') || entry
-}
-
 /** A new entry for a note, by the link text Obsidian would write for it. */
 export function groupLink(linktext: string): string {
   return `[[${linktext}]]`
@@ -70,12 +51,6 @@ export function addGroup(
   const want = target(entry)
   if (!want || held.some((e) => target(e) === want)) return null
   return [...held, entry]
-}
-
-/** The stored list without the entry at `index`: null once nothing is left. */
-export function removeGroupAt(value: unknown, index: number): string[] | null {
-  const rest = groupEntries(value).filter((_, i) => i !== index)
-  return rest.length ? rest : null
 }
 
 /** A note that can be offered as a group. */

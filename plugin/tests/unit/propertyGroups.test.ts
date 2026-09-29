@@ -7,13 +7,10 @@ import { describe, it, expect } from 'vitest'
 import {
   addGroup,
   collectGroups,
-  groupAlias,
   groupEntries,
   groupLink,
   groupLinkpath,
-  groupTitle,
   isGroupsValue,
-  removeGroupAt,
   suggestGroups,
 } from '@/properties/groups'
 import { pickKind } from '@/properties/kinds'
@@ -45,15 +42,10 @@ describe('reading a groups value', () => {
     expect(isGroupsValue([3])).toBe(false)
   })
 
-  it('reads where a link points, its alias and the name it is shown by', () => {
+  it('reads where a link points, without its alias or heading', () => {
     expect(groupLinkpath('[[Work/Desk|The desk]]')).toBe('Work/Desk')
     expect(groupLinkpath('[[Garden#Beds]]')).toBe('Garden')
     expect(groupLinkpath('Garden')).toBe('Garden')
-    expect(groupAlias('[[Work/Desk|The desk]]')).toBe('The desk')
-    expect(groupAlias('[[Garden]]')).toBeNull()
-    expect(groupTitle('[[Work/Desk|The desk]]', 'Desk')).toBe('The desk')
-    expect(groupTitle('[[Work/Desk]]', 'Desk')).toBe('Desk')
-    expect(groupTitle('[[Work/Missing]]', null)).toBe('Missing')
   })
 })
 
@@ -68,12 +60,6 @@ describe('writing a groups value', () => {
 
   it('does not add a note already there under another spelling', () => {
     expect(addGroup(['[[Notes/Garden|Beds]]'], '[[Garden]]', target)).toBeNull()
-  })
-
-  it('takes one off by its place, and leaves the property empty after the last', () => {
-    expect(removeGroupAt(['[[A]]', '[[B]]', '[[A]]'], 2)).toEqual(['[[A]]', '[[B]]'])
-    expect(removeGroupAt(['[[A]]'], 0)).toBeNull()
-    expect(removeGroupAt('[[A]]', 0)).toBeNull()
   })
 })
 

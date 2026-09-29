@@ -22,8 +22,8 @@
  *   (`priorityWidget.ts`).
  * - one named in `labelProperties`, drawn as a list or text: pills, and a field that adds a label
  *   from those the vault uses (`labelsWidget.ts`).
- * - one named in `groupProperties`, drawn as a list or text: link pills to the group notes, and a
- *   field that adds one from the notes used as groups (`groupsWidget.ts`).
+ * - one named in `groupProperties`, drawn as a list or text: Obsidian's own list editor, `[[`
+ *   and all, with a button beside it that adds one of the notes used as groups (`groupsWidget.ts`).
  *
  * A listed property holding what its kind cannot read — `someday` in a date — is left to Obsidian.
  *
@@ -320,6 +320,8 @@ export type PropertyWidgetsOptions = KindLists
  */
 export class PropertyWidgets {
   private readonly restores: (() => void)[] = []
+  /** Obsidian's own drawing of each type patched here, for a kind that builds on it. */
+  private readonly stocks = new Map<string, Render>()
   private filesWidget: TypeWidget | null = null
   private on = false
 
@@ -405,8 +407,8 @@ export class PropertyWidgets {
   }
 
   /**
-   * The row of the kind the property is listed for — a counter, a date, a priority, labels — or
-   * null when it is listed for none, or holds something its kind cannot read.
+   * The row of the kind the property is listed for — a counter, a date, a priority, labels,
+   * groups — or null when it is listed for none, or holds something its kind cannot read.
    */
   private renderKind(el: HTMLElement, value: unknown, ctx: WidgetContext, type: string) {
     const draw = pickKind(this.options, ctx.key, value, type)
@@ -414,7 +416,7 @@ export class PropertyWidgets {
     forgetBadge(el)
     mounted.get(el)?.unmount()
     mounted.delete(el)
-    return draw(el, value, ctx, type)
+    return draw(el, value, ctx, type, (t) => this.stocks.get(t) ?? null)
   }
 
   get active(): boolean {
@@ -450,6 +452,7 @@ export class PropertyWidgets {
       return
     }
     const original = widget.render
+    this.stocks.set(type, (e, v, c) => original.call(widget, e, v, c))
     const patched: Render = function (this: unknown, el, value, ctx) {
       const stock: Render = (e, v, c) => original.call(this, e, v, c)
       try {
@@ -462,6 +465,7 @@ export class PropertyWidgets {
     }
     widget.render = patched
     this.restores.push(() => {
+      this.stocks.delete(type)
       if (widget.render === patched) widget.render = original
     })
   }

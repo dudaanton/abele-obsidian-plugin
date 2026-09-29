@@ -30,7 +30,18 @@ export interface KindLists {
   groupKeys?: () => readonly string[]
 }
 
-type Draw = (el: HTMLElement, value: unknown, ctx: WidgetContext, type: string) => unknown
+/** Obsidian's own drawing of a type, for a kind that builds on it; null when it is not there. */
+export type StockRender = (
+  type: string
+) => ((el: HTMLElement, value: unknown, ctx: WidgetContext) => unknown) | null
+
+type Draw = (
+  el: HTMLElement,
+  value: unknown,
+  ctx: WidgetContext,
+  type: string,
+  stock: StockRender
+) => unknown
 
 export type Kind = 'counter' | 'date' | 'priority' | 'labels' | 'groups'
 
