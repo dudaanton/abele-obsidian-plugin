@@ -36,4 +36,12 @@ if [ ! -d node_modules ]; then
 fi
 
 echo "pre-commit: running unit and integration tests…"
-npm test --silent
+# Guards above must see the committing index. Tests below must not inherit the hook's
+# repository context: a fixture's cwd is otherwise overridden by GIT_DIR/INDEX_FILE.
+# Strip every GIT_* key, including configuration overrides and future Git variables.
+(
+  for name in $(env | awk -F= '/^GIT_[^=]*=/{print $1}'); do
+    unset "$name"
+  done
+  npm test --silent
+)
