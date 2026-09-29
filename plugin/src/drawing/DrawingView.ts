@@ -25,7 +25,7 @@ import { DRAWING_VIEW_TYPE } from './viewType'
 import { copyEmbed } from './files'
 import { visibleRect } from './camera'
 import { drawingPng, withMargin } from './rasterize'
-import { askAboutDrawing } from './askAgent'
+import { askAboutDrawing, attachDrawingToChat } from './askAgent'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { pickNote } from '@/helpers/suggesters/NotePicker'
 import type { Rect } from './items'
@@ -89,6 +89,12 @@ export class DrawingView extends TextFileView {
       () => this.session,
       (e) => this.moreMenu(e)
     )
+    // The drawing to the chat in front, as a picture, from the tab's header.
+    if (AbeleConfig.getInstance().ai.enabled)
+      this.addAction('paperclip', 'Attach to the chat as a picture', () => {
+        const box = this.session?.pick.box()
+        void this.attachToChat(box ? withMargin(box) : null)
+      })
     // A note shown on the drawing follows its changes.
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
@@ -213,6 +219,12 @@ export class DrawingView extends TextFileView {
         const link = `[[${file.path}]]`
         menu.addItem((item) =>
           item
+            .setTitle(`Attach ${what} to the chat as a picture`)
+            .setIcon('paperclip')
+            .onClick(() => void this.attachToChat(area))
+        )
+        menu.addItem((item) =>
+          item
             .setTitle(`Ask the agent about ${what}`)
             .setIcon('message-circle-question')
             .onClick(() => void askAboutDrawing(file, link, area, 'ask'))
@@ -247,6 +259,17 @@ export class DrawingView extends TextFileView {
       new Notice(`The picture could not be saved: ${String(e)}`)
       return null
     }
+  }
+
+  /** A PNG of the drawing, or of a part, attached to what is being written in the chat in front. */
+  async attachToChat(area: Rect | null): Promise<TFile | null> {
+    const file = this.file
+    const session = this.session
+    if (!file || !session) return null
+    const items = [...session.items.items]
+    return attachDrawingToChat(this.app, file, !!area, () =>
+      drawingPng(this.contentEl.ownerDocument, items, area)
+    )
   }
 
   private async copyPicture(area: Rect | null): Promise<void> {

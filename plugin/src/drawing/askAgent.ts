@@ -3,8 +3,11 @@
  * scope, with the question begun in its input — about all of the drawing or the part picked, or
  * asking for the handwriting as text. Nothing is sent; the person finishes the question first.
  * The agent looks with `look_at_drawing`.
+ *
+ * Or attached to the chat in front as a picture: a PNG of it, saved with the vault's attachments,
+ * put into what is being written there — models take pictures, not the drawing's SVG.
  */
-import { Notice, type TFile } from 'obsidian'
+import { Notice, type App, type TFile } from 'obsidian'
 import { ChatService } from '@/ai/ChatService'
 import { grantNote } from '@/commands/chatAboutNote'
 import { formatView } from './embedFormat'
@@ -43,4 +46,39 @@ export async function askAboutDrawing(
     new Notice(`Could not open a chat: ${e instanceof Error ? e.message : String(e)}`)
     return false
   }
+}
+
+/** The name of the PNG a drawing goes to a chat as. */
+export function drawingAttachmentName(basename: string, part: boolean): string {
+  return `${basename}${part ? ' (part)' : ''}.png`
+}
+
+type Chats = Pick<ChatService, 'pendingInput' | 'revealSidebar'>
+
+/**
+ * The drawing as a PNG — `png` paints it, all of it or the part — saved where the vault keeps a
+ * note's attachments, and attached to what is being written in the chat in front. Says the file
+ * it made; null, with the chat left alone, when there was no picture to make.
+ */
+export async function attachDrawingToChat(
+  app: App,
+  file: TFile,
+  part: boolean,
+  png: () => Promise<Blob>,
+  chats: Chats = ChatService.getInstance()
+): Promise<TFile | null> {
+  let made: TFile
+  try {
+    const blob = await png()
+    const name = drawingAttachmentName(file.basename, part)
+    const path = await app.fileManager.getAvailablePathForAttachment(name, file.path)
+    made = await app.vault.createBinary(path, await blob.arrayBuffer())
+  } catch (e) {
+    console.error('[Abele] Attaching a drawing to the chat failed:', e)
+    new Notice(`The drawing could not be attached: ${e instanceof Error ? e.message : String(e)}`)
+    return null
+  }
+  chats.pendingInput.value = { text: '', attachments: [made.path], focus: true }
+  await chats.revealSidebar()
+  return made
 }

@@ -89,7 +89,12 @@ picture to paste anywhere. With something picked by the lasso, only that part go
 
 The same menu hands the drawing to the AI agent: **Ask the agent about the drawing** opens a new
 chat with the question begun, and **Transcribe the handwriting** asks for what is written as text.
-Pick a part first to ask about only that part. Nothing is sent until you send it. The agent can
+Pick a part first to ask about only that part. Nothing is sent until you send it.
+
+To put the drawing into the chat you are already in, use the paperclip in the tab's header, or
+**Attach the drawing to the chat as a picture** in the same menu. It goes as a PNG, saved where
+the vault keeps attachments, into what you are writing in the chat in front — only the part
+picked by the lasso, when something is picked. The agent can
 also look at a drawing whenever you ask it to in a chat, all of it or a part, and closer when
 the writing is small.
 
