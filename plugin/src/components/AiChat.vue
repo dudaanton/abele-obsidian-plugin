@@ -2015,7 +2015,8 @@ const showDebug = () => {
 
   > .abele-obsidian-icon {
     height: 2em;
-    width: 2em;
+    min-width: 2em;
+    flex-shrink: 0;
   }
 }
 
