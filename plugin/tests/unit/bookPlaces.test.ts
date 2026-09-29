@@ -125,6 +125,134 @@ describe('the places of books', () => {
   })
 })
 
+describe('reader library snapshots', () => {
+  it('keeps the winning key and copies, without exposing mutable storage', async () => {
+    const { storage } = shared({
+      'id:a': at('later', 4),
+      'path:a.epub': at('earlier', 2),
+    })
+    const places = new BookPlaces(storage)
+    const snapshot = await places.snapshot()
+    expect(snapshot.get('a.epub')).toEqual({ key: 'id:a', place: at('later', 4) })
+    snapshot.get('a.epub')!.place.cfi = 'changed'
+    expect((await places.get('id:a'))?.cfi).toBe('later')
+  })
+
+  it('records opens without changing the last page turn, retaining metadata on a same-page relocation', async () => {
+    const { storage } = memory()
+    const places = new BookPlaces(storage)
+    const changes = vi.fn()
+    const newer = vi.fn()
+    places.onChange(changes)
+    places.onNewer(newer)
+    await places.set('id:a', { cfi: 'page', path: 'a.epub', fraction: 0.2 })
+    const at = (await places.get('id:a'))!.at
+    await places.opened('id:a', 'a.epub', { title: 'Sample', author: 'Writer' })
+    await places.set('id:a', {
+      cfi: 'page',
+      path: 'a.epub',
+      fraction: 0.2,
+      measure: { kind: 'locations', count: 100 },
+    })
+    expect(await places.get('id:a')).toMatchObject({
+      at,
+      openedAt: expect.any(Number),
+      title: 'Sample',
+      author: 'Writer',
+      measure: { kind: 'locations', count: 100 },
+    })
+    expect(changes).toHaveBeenCalledTimes(3)
+    expect(newer).not.toHaveBeenCalled()
+  })
+
+  it('restores reader metadata from a newer backup and writes it into the main copy', async () => {
+    const base = { cfi: 'same', fraction: 0.5, path: 'a.epub', at: 10 }
+    const { store, storage } = memory(
+      JSON.stringify({ 'id:a': base }),
+      JSON.stringify({ 'id:a': { ...base, openedAt: 40, title: 'Sample' } })
+    )
+    const places = new BookPlaces(storage)
+    expect((await places.get('id:a'))?.title).toBe('Sample')
+    await places.flush()
+    expect(JSON.parse(store.data!)['id:a'].openedAt).toBe(40)
+  })
+
+  it('does not treat a remote open at the same place as a new place to follow', async () => {
+    const place = { cfi: 'same', fraction: 0.5, path: 'a.epub', at: 10, openedAt: 20 }
+    const { store, storage } = shared({ 'id:a': place })
+    const places = new BookPlaces(storage)
+    await places.get('id:a')
+    const newer = vi.fn()
+    const changed = vi.fn()
+    places.onNewer(newer)
+    places.onChange(changed)
+    store.main = JSON.stringify({ 'id:a': { ...place, openedAt: 40 } })
+    await places.refresh()
+    expect(newer).not.toHaveBeenCalled()
+    expect(changed).toHaveBeenCalledOnce()
+    expect((await places.get('id:a'))?.openedAt).toBe(40)
+  })
+
+  it('persists reader measurements and open time in both copies without changing the place time', async () => {
+    const { store, storage } = memory()
+    const places = new BookPlaces(storage)
+    await places.set('id:sample', { cfi: 'page', fraction: 0.25, path: 'Sample/book.epub' })
+    const before = (await places.get('id:sample'))!.at
+    await places.opened('id:sample', 'Sample/book.epub', { title: 'Sample title' })
+    await places.measured('id:sample', 'Sample/book.epub', { kind: 'locations', count: 80 })
+    await places.flush()
+    const reopened = new BookPlaces(storage)
+    expect(await reopened.get('id:sample')).toMatchObject({
+      cfi: 'page',
+      at: before,
+      title: 'Sample title',
+      openedAt: expect.any(Number),
+      measure: { kind: 'locations', count: 80 },
+    })
+    expect(JSON.parse(store.backup!)['id:sample'].at).toBe(before)
+  })
+
+  it('keeps cached metadata and updates a moved book path on a new open', async () => {
+    const { storage } = memory()
+    const places = new BookPlaces(storage)
+    await places.opened('id:sample', 'Sample/old.epub', { title: 'Sample title' })
+    await places.opened('id:sample', 'Sample/new.epub', {})
+    expect((await places.snapshot()).get('Sample/new.epub')?.place.title).toBe('Sample title')
+  })
+
+  it('records a page count even when the first open has not saved a CFI', async () => {
+    const { storage } = memory()
+    const places = new BookPlaces(storage)
+    await places.opened('path:a.pdf', 'a.pdf', {})
+    await places.measured('path:a.pdf', 'a.pdf', { kind: 'pages', count: 8 })
+    expect((await places.snapshot()).get('a.pdf')?.place).toMatchObject({
+      cfi: '',
+      at: 0,
+      measure: { kind: 'pages', count: 8 },
+    })
+  })
+
+  it('notifies local and remote changes, isolates failures and stops on unsubscribe', async () => {
+    const { store, storage } = memory()
+    const places = new BookPlaces(storage)
+    const called = vi.fn()
+    places.onChange(() => {
+      throw new Error('listener')
+    })
+    const stop = places.onChange(called)
+    await places.set('path:a.epub', { cfi: 'a', fraction: 0, path: 'a.epub' })
+    await places.set('path:a.epub', { cfi: 'a', fraction: 0, path: 'a.epub' })
+    expect(called).toHaveBeenCalledTimes(1)
+    await places.flush()
+    store.data = JSON.stringify({ 'path:a.epub': at('b', Date.now() + 1000) })
+    await places.refresh()
+    expect(called).toHaveBeenCalledTimes(2)
+    stop()
+    await places.renamed('a.epub', 'b.epub')
+    expect(called).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('the places across a restart', () => {
   const place = (cfi: string, at: number) =>
     JSON.stringify({ 'id:a': { cfi, fraction: 0.5, path: 'a.epub', at } })

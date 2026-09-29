@@ -7,7 +7,7 @@
  * a moment after the last page turn, so they reach another device the way notes do.
  *
  * Every device writes that one file, so nothing here ever replaces a place by an older one: each
- * book keeps the place read last (`at`), wherever it was read. The file is read again just before
+ * book keeps the place changed last (`at`), wherever it was read. The file is read again just before
  * each write, and whenever it changes on disk — synced from another device — and what is newer
  * there is taken, and said (`onNewer`), so an open book can follow it.
  */
@@ -19,8 +19,14 @@ export interface BookPlace {
   fraction: number
   /** The path the book had when it was last read. */
   path: string
-  /** When it was last read, ms since the epoch. */
+  /** When its saved place last changed, ms since the epoch. */
   at: number
+  /** Last successful reader open; unlike at, not a page-turn clock. */
+  openedAt?: number
+  title?: string
+  author?: string
+  /** Engine measurement, never a printed-edition page count. */
+  measure?: { kind: 'locations' | 'pages'; count: number }
 }
 
 /**
@@ -64,8 +70,16 @@ function mergeInto(into: Places, from: Places | null): string[] {
   const took: string[] = []
   for (const [key, place] of Object.entries(from ?? {})) {
     const mine = into[key]
-    if (mine && (mine.at ?? 0) >= (place.at ?? 0)) continue
-    into[key] = place
+    if (mine && (mine.at ?? 0) > (place.at ?? 0)) continue
+    if (mine && mine.at === place.at) {
+      if (
+        mine.cfi !== place.cfi ||
+        mine.path !== place.path ||
+        (mine.openedAt ?? 0) >= (place.openedAt ?? 0)
+      )
+        continue
+      into[key] = { ...mine, ...place }
+    } else into[key] = place
     took.push(key)
   }
   return took
@@ -73,7 +87,14 @@ function mergeInto(into: Places, from: Places | null): string[] {
 
 /** Whether `places` holds something `file` lacks or has older. */
 const ahead = (places: Places, file: Places | null): boolean =>
-  Object.entries(places).some(([k, p]) => !file?.[k] || (file[k].at ?? 0) < (p.at ?? 0))
+  Object.entries(places).some(([k, p]) => {
+    const saved = file?.[k]
+    return (
+      !saved ||
+      (saved.at ?? 0) < (p.at ?? 0) ||
+      (saved.at === p.at && (saved.openedAt ?? 0) < (p.openedAt ?? 0))
+    )
+  })
 
 /** How many books are remembered; the ones read longest ago go first. */
 export const MAX_PLACES = 500
@@ -94,6 +115,25 @@ export class BookPlaces {
   /** Copies from before are still to be dropped, once their places are written. */
   private legacyLeft = false
   private readonly listeners = new Set<(keys: string[]) => void>()
+  private readonly changes = new Set<() => void>()
+
+  private changed(): void {
+    for (const listener of this.changes) {
+      try {
+        void Promise.resolve(listener()).catch((e) =>
+          console.warn('[Abele] book change listener failed', e)
+        )
+      } catch (e) {
+        console.warn('[Abele] book change listener failed', e)
+      }
+    }
+  }
+
+  /** Invalidation for dashboards, including local page turns (unlike onNewer). */
+  onChange(listener: () => void): () => void {
+    this.changes.add(listener)
+    return () => this.changes.delete(listener)
+  }
 
   constructor(
     private storage: PlaceStorage,
@@ -134,8 +174,13 @@ export class BookPlaces {
    */
   async refresh(): Promise<void> {
     await this.load()
+    const previous = { ...this.places }
     const took = mergeInto(this.places, await this.read('main'))
-    if (took.length) for (const listener of this.listeners) listener(took)
+    if (took.length) {
+      this.changed()
+      const newer = took.filter((key) => (previous[key]?.at ?? -1) < this.places[key].at)
+      if (newer.length) for (const listener of this.listeners) listener(newer)
+    }
   }
 
   /** Told the books whose place came newer from another device. Returns what stops it. */
@@ -155,7 +200,8 @@ export class BookPlaces {
     const raw = await next.read('main').catch((): null => null)
     const there = parsePlaces(raw)
     if (raw?.trim() && !there) return false
-    mergeInto(this.places, there)
+    const took = mergeInto(this.places, there)
+    if (took.length) this.changed()
     this.storage = next
     this.dirty = true
     await this.write()
@@ -165,6 +211,64 @@ export class BookPlaces {
   async get(key: string): Promise<BookPlace | null> {
     await this.load()
     return this.places[key] ?? null
+  }
+
+  /** Detached path index, retaining the winning key. */
+  async snapshot(): Promise<Map<string, { key: string; place: BookPlace }>> {
+    await this.load()
+    const out = new Map<string, { key: string; place: BookPlace }>()
+    for (const [key, place] of Object.entries(this.places)) {
+      const known = out.get(place.path)
+      if (!known || known.place.at < place.at)
+        out.set(place.path, {
+          key,
+          place: { ...place, measure: place.measure && { ...place.measure } },
+        })
+    }
+    return out
+  }
+
+  /** Records an open without pretending it was a page turn. */
+  async opened(
+    key: string,
+    path: string,
+    meta: { title?: string; author?: string }
+  ): Promise<void> {
+    await this.load()
+    const known = this.places[key]
+    this.places[key] = {
+      cfi: '',
+      fraction: 0,
+      at: 0,
+      ...known,
+      path,
+      openedAt: Date.now(),
+      title: meta.title ?? known?.title,
+      author: meta.author ?? known?.author,
+    }
+    this.dirty = true
+    this.schedule()
+    this.changed()
+  }
+
+  /** A measurement from the reader, including on a first open with no saved CFI. */
+  async measured(
+    key: string,
+    path: string,
+    measure: NonNullable<BookPlace['measure']>
+  ): Promise<void> {
+    await this.load()
+    const known = this.places[key]
+    if (
+      known?.path === path &&
+      known.measure?.kind === measure.kind &&
+      known.measure.count === measure.count
+    )
+      return
+    this.places[key] = { cfi: '', fraction: 0, at: 0, ...known, path, measure: { ...measure } }
+    this.dirty = true
+    this.schedule()
+    this.changed()
   }
 
   /** Every book's place by the path the book had when it was last read: what the agent lists. */
@@ -186,10 +290,17 @@ export class BookPlaces {
   async set(key: string, place: Omit<BookPlace, 'at'>): Promise<void> {
     await this.load()
     const known = this.places[key]
-    if (known && known.cfi === place.cfi && known.path === place.path) return
-    this.places[key] = { ...place, at: Date.now() }
+    if (known && known.cfi === place.cfi && known.path === place.path) {
+      if (
+        !place.measure ||
+        (known.measure?.kind === place.measure.kind && known.measure.count === place.measure.count)
+      )
+        return
+      this.places[key] = { ...known, measure: { ...place.measure } }
+    } else this.places[key] = { ...known, ...place, at: Date.now() }
     this.dirty = true
     this.schedule()
+    this.changed()
   }
 
   /** A file was renamed: a book kept under its path moves with it. */
@@ -208,6 +319,7 @@ export class BookPlaces {
     if (changed) {
       this.dirty = true
       this.schedule()
+      this.changed()
     }
   }
 
@@ -257,10 +369,16 @@ export class BookPlaces {
     this.pending = this.pending
       .then(async () => {
         // What another device wrote since this one last read the file is kept.
+        const previous = { ...this.places }
         const took = mergeInto(this.places, await this.read('main', storage))
-        if (took.length) for (const listener of this.listeners) listener(took)
+        if (took.length) {
+          this.changed()
+          const newer = took.filter((key) => (previous[key]?.at ?? -1) < this.places[key].at)
+          if (newer.length) for (const listener of this.listeners) listener(newer)
+        }
         const entries = Object.entries(this.places).sort((a, b) => b[1].at - a[1].at)
         this.places = Object.fromEntries(entries.slice(0, MAX_PLACES))
+        if (entries.length > MAX_PLACES) this.changed()
         const data = JSON.stringify(this.places)
         await storage.write(data, 'backup')
         await storage.write(data, 'main')

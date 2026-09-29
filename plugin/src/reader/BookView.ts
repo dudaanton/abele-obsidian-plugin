@@ -621,6 +621,13 @@ export class BookView extends FileView {
       // The first page of a book is not a place to go back to.
       this.model.canGoBack = false
       this.model.status = 'ready'
+      await bookPlaces()?.opened(this.key, file.path, {
+        title: nameOf(meta?.title), author: nameOf(meta?.author),
+      })
+      if (reader.isFixedLayout && token === this.loadToken)
+        await bookPlaces()?.measured(this.key, file.path, {
+          kind: 'pages', count: opened.book.sections.length,
+        })
       if (this.app.workspace.getActiveViewOfType(BookView) === this) this.takeFocus()
     } catch (e) {
       if (token !== this.loadToken) return
@@ -647,12 +654,22 @@ export class BookView extends FileView {
     this.bookmarks?.relocated()
     const file = this.file
     const mine = this.model.status === 'ready' && (this.follow?.turned(detail.cfi) ?? true)
-    if (detail.cfi && file && this.key && mine)
-      void bookPlaces()?.set(this.key, {
-        cfi: detail.cfi,
-        fraction: detail.fraction ?? 0,
-        path: file.path,
-      })
+    if (file && this.key && mine) {
+      const count = this.reader?.isFixedLayout
+        ? (detail.section?.total ?? this.opened?.book.sections.length)
+        : detail.location?.total
+      const measure = typeof count === 'number' && Number.isSafeInteger(count) && count > 0
+        ? { kind: this.reader?.isFixedLayout ? 'pages' as const : 'locations' as const, count }
+        : undefined
+      if (detail.cfi)
+        void bookPlaces()?.set(this.key, {
+          cfi: detail.cfi,
+          fraction: detail.fraction ?? 0,
+          path: file.path,
+          measure,
+        })
+      else if (measure) void bookPlaces()?.measured(this.key, file.path, measure)
+    }
   }
 
   /** A link inside the book: a note opens in its dialog, anything else is followed. */
