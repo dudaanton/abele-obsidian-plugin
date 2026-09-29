@@ -868,6 +868,12 @@ const fingerOn = (event: Event) => {
 }
 const fingerOff = () => {
   fingerDown = false
+  // Where the finger left it, read now: the scroll it made may not have been reported yet, and
+  // the next piece of the reply would otherwise take a reader who went up for one still following.
+  const el = messagesContainer.value
+  if (!el) return
+  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+  shouldAutoScroll = bottomGap < AUTO_SCROLL_THRESHOLD_PX
 }
 
 /**

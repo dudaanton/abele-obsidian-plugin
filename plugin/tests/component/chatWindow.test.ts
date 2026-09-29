@@ -429,6 +429,17 @@ describe('the reader starting to scroll up while a reply streams', () => {
     expect(model.container.scrollTop).toBe(3000)
   })
 
+  it('stays where the finger left the text, even before any scroll is reported', async () => {
+    const { model, container } = await atTheEnd()
+    await container.trigger('touchstart')
+    model.scrollTo(1000)
+    await container.trigger('touchend')
+
+    await more('The answer, at greater length')
+
+    expect(model.container.scrollTop).toBe(1000)
+  })
+
   it('stops following on a key that scrolls up', async () => {
     const { model, container } = await atTheEnd()
     await container.trigger('keydown', { key: 'PageUp' })
