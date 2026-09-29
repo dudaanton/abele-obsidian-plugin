@@ -46,6 +46,8 @@ interface Typed {
   run: number
   /** What the field holds once typed into. */
   value: string
+  /** How long the layout took to stand still with the keyboard up, in ms; -1 if it never did. */
+  settledIn: number
   shot: string
   error: string
 }
@@ -114,6 +116,51 @@ const probeLib = `(() => {
     return editor.querySelector('.cm-line:last-child').getBoundingClientRect()
   }
 
+  /**
+   * Everything the verdict is read from: the keyboard, the toolbar over it, the dialog, its body
+   * and its Run button — whole pixels, so a sub-pixel wobble is not movement.
+   */
+  const layout = () => {
+    const dialog = document.querySelector('.modal.abele-modal')
+    const bar = document.querySelector('.mobile-toolbar')
+    const run = dialog && [...dialog.querySelectorAll('.abele-modal__footer button')].find((b) => b.textContent.trim() === 'Run')
+    const edges = (el) => {
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return [Math.round(r.top), Math.round(r.bottom)]
+    }
+    return JSON.stringify([
+      Math.round(keyboardHeight()),
+      bar && getComputedStyle(bar).display,
+      edges(bar),
+      edges(dialog),
+      edges(dialog && dialog.querySelector('.abele-modal__body')),
+      edges(run),
+    ])
+  }
+
+  /**
+   * Until the keyboard is up and nothing of the layout has moved for a while. On a phone the
+   * system keyboard can go down and come back up after the typing is over — the phone's driver
+   * does that on its own — and Obsidian's toolbar then slides back in over ~350 ms, the dialog
+   * being fitted to it as it lands. Read in that moment, Run stood under a toolbar still on its
+   * way. A fit that is wrong and stays wrong is still read, once it has stayed.
+   */
+  const settled = async () => {
+    const start = Date.now()
+    let last = ''
+    let since = start
+    while (Date.now() - start < 8000) {
+      const now = keyboardHeight() > 0 ? layout() : ''
+      if (now !== last) {
+        last = now
+        since = Date.now()
+      } else if (now && Date.now() - since >= 500) return Date.now() - start
+      await wait(16)
+    }
+    return -1
+  }
+
   window.__formProbe = {
     async open() {
       const fields = Array.from({ length: 12 }, (_, i) => ({ name: 'f' + i, label: 'Field ' + (i + 1), type: 'text' }))
@@ -172,7 +219,8 @@ const probeLib = `(() => {
       return 'typed'
     },
     async measure(which) {
-      await wait(800)
+      await wait(300)
+      const settledIn = await settled()
       const el = fieldOf(which)
       const fieldRect = which === 'last-field' ? el.getBoundingClientRect() : caretOf(el)
       const dialog = document.querySelector('.modal.abele-modal')
@@ -188,6 +236,7 @@ const probeLib = `(() => {
         body: [Math.round(body.top), Math.round(body.bottom)],
         run: run ? Math.round(run.getBoundingClientRect().bottom) : 9999,
         value: which === 'last-field' ? el.value : el.innerText,
+        settledIn,
         shot: await shoot(which),
         error: '',
       }
@@ -214,7 +263,9 @@ const TEXT: Record<string, string> = {
 
 /** One step of the probe, awaited in the page. */
 const step = async (call: string): Promise<unknown> =>
-  JSON.parse(await evalLong(`(async () => JSON.stringify(await window.__formProbe.${call}))()`, 60_000))
+  JSON.parse(
+    await evalLong(`(async () => JSON.stringify(await window.__formProbe.${call}))()`, 60_000)
+  )
 
 /** The whole probe: on the desktop in the page, on a phone with real touches and typing between. */
 async function runProbe(): Promise<Report> {
@@ -249,6 +300,7 @@ async function runProbe(): Promise<Report> {
       body: [0, 0],
       run: 0,
       value: '',
+      settledIn: 0,
       shot: '',
       error: `${at}: ${String((e as Error)?.message ?? e)}`,
     }
@@ -296,7 +348,7 @@ describe.skipIf(!available)('typing into a long form on a phone, keyboard up', (
     if (!onPhone()) runCli(['dev:debug', 'on'], 30_000)
     report = await runProbe()
     const lines = Object.entries(report).map(
-      ([label, s]) => `  ${label.padEnd(12)} ${s.shot || s.error}`
+      ([label, s]) => `  ${label.padEnd(12)} ${s.shot || s.error} (settled in ${s.settledIn} ms)`
     )
     console.info(`\n  vault ...................... ${activeVaultName()}\n${lines.join('\n')}\n`)
   }, 300_000)
@@ -318,6 +370,8 @@ describe.skipIf(!available)('typing into a long form on a phone, keyboard up', (
     (label) => {
       const s = report[label]
       expect(s.keyboardTop).toBeLessThan(PHONE.height - 200)
+      // A layout that never stops moving with the keyboard up is a fault of its own.
+      expect(s.settledIn).toBeGreaterThanOrEqual(0)
       expect(s.value).toContain(label === 'last-field' ? 'hello' : 'ten')
     }
   )
