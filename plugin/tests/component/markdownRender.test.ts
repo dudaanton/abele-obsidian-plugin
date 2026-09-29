@@ -22,15 +22,26 @@ const RENDER_MS = 30
 
 let rendered: string[]
 
-const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/**
+ * Time passing, on a clock the test owns. On the wall clock a busy machine stretched a 60 ms
+ * wait past the render it waited for, and a render ran long enough to be over when the test
+ * looked inside it: the order of events is what is tested here, not how fast a machine is.
+ */
+const settle = async (ms: number): Promise<void> => {
+  await vi.advanceTimersByTimeAsync(ms)
+}
+
+/** A render taking its time, on that same clock. */
+const rendering = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   useVault([])
   rendered = []
   vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
     async (_app: unknown, markdown: string, el: HTMLElement) => {
       rendered.push(markdown)
-      await settle(RENDER_MS)
+      await rendering(RENDER_MS)
       el.setText(markdown)
     }
   )
@@ -38,6 +49,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 const open = (text: string) => mount(Markdown, { props: { text } })
@@ -122,7 +134,7 @@ describe('what a render leaves behind', () => {
     children = []
     vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
       async (_app: unknown, markdown: string, el: HTMLElement, _path: string, owner: unknown) => {
-        await settle(RENDER_MS)
+        await rendering(RENDER_MS)
         const record = { text: markdown, gone: false }
         children.push(record)
         const child = new MarkdownRenderChild(el)
