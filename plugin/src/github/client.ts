@@ -1,5 +1,6 @@
 /**
- * Read-only access to the GitHub API.
+ * Access to the GitHub API. Reads, and the one kind of write there is: marking notifications
+ * read (`notifications/`).
  *
  * Every request goes through Obsidian's `requestUrl`: it is not subject to CORS and it works on a
  * phone, where `fetch` to api.github.com from the app's origin would be refused.
@@ -293,13 +294,29 @@ export class GithubClient {
   }
 
   /** One request, uncached, answered with its status and headers whatever they are. */
-  async probe<T>(path: string, options: GetOptions = {}): Promise<Probe<T>> {
+  probe<T>(path: string, options: GetOptions = {}): Promise<Probe<T>> {
+    return this.call<T>('GET', path, options)
+  }
+
+  /**
+   * Any request — a write as well as a read — uncached, answered with its status and headers
+   * whatever they are. `headers` go beside the usual ones (`If-Modified-Since`), `body` is sent
+   * as JSON.
+   */
+  async call<T>(
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+    path: string,
+    options: GetOptions & { headers?: Record<string, string>; body?: unknown } = {}
+  ): Promise<Probe<T>> {
     const url = path.startsWith('http') ? path : `${this.endpoints.api}${path}`
-    const response = await this.send({
-      url,
-      method: 'GET',
-      headers: this.headers(options.accept ?? 'application/vnd.github+json'),
-    })
+    const sent = { ...this.headers(options.accept ?? 'application/vnd.github+json') }
+    Object.assign(sent, options.headers ?? {})
+    const request: RequestUrlParam = { url, method, headers: sent }
+    if (options.body !== undefined) {
+      sent['Content-Type'] = 'application/json'
+      request.body = JSON.stringify(options.body)
+    }
+    const response = await this.send(request)
     let body: T | null = null
     try {
       body = response.json as T
@@ -307,7 +324,8 @@ export class GithubClient {
       body = null
     }
     const headers = response.headers ?? {}
-    const ok = response.status >= 200 && response.status < 300
+    // "Not modified" answers a conditional request: nothing went wrong, there is nothing new.
+    const ok = (response.status >= 200 && response.status < 300) || response.status === 304
     return {
       status: response.status,
       headers,

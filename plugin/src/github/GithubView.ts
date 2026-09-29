@@ -22,6 +22,8 @@ import { OpenPicker } from './open/OpenPicker'
 import { RepoPicker } from './open/RepoPicker'
 import { isPinned, setPinned } from './open/repoList'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { revealSidebarView } from '@/views/revealSidebarView'
+import { GITHUB_NOTIFICATIONS_VIEW_TYPE } from './notifications/NotificationsView'
 import {
   GITHUB_VIEW_TYPE,
   githubClient,
@@ -137,6 +139,13 @@ export class GithubView extends ItemView {
         .setIcon('book-marked')
         .setSection('open')
         .onClick(() => new RepoPicker(this.app).open())
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle('GitHub notifications')
+        .setIcon('bell')
+        .setSection('open')
+        .onClick(() => void revealSidebarView(this.app, GITHUB_NOTIFICATIONS_VIEW_TYPE))
     )
     const t = this.model.target
     if (t) {

@@ -578,6 +578,43 @@ stay unselectable, so a drag across a diff copies its lines as they are in the f
 no `+` or `-`. A changed file's path in its head is selectable too, and the click that ends a
 drag over it does not fold the diff.
 
+## Notifications
+
+**Show GitHub notifications** — also in a GitHub tab's "more options" menu — opens the
+notifications of the account the token belongs to in the right sidebar. Each row says the
+repository, the title, what it is (pull request, issue, discussion, release…), why it arrived
+(mentioned, review requested, assigned…) and how long ago. Unread ones stand out; the strip at
+the top shows the unread only or all of them, and the list below it narrows to one repository.
+
+A click opens what the notification is about, and marks it read on GitHub — as clicking through
+does in GitHub's own inbox:
+
+- a pull request, an issue or a commit in a GitHub tab, at the latest comment when the
+  notification points at one (the API's `latest_comment_url`, read as `#issuecomment-…` or a
+  review comment's `#discussion_r…`); Mod-click opens a new tab, Alt-click opens GitHub;
+- a discussion in a tab too. GitHub gives a discussion notification no address, only a title,
+  so the discussion is found by its exact title in the repository; failing that, the tab shows
+  the repository's discussions searched for that title;
+- a release, a workflow run, a security alert or an invitation on GitHub, which is the only
+  place that shows them.
+
+The check on an unread row marks it read without opening it; it stays in the unread list,
+no longer standing out, until the list is asked for again. The double check at the top marks
+everything read — or, with a repository chosen, everything of that repository — up to the
+moment the list was read, so one that arrived since is not marked unseen.
+
+The list is read when the panel opens and again whenever GitHub's poll interval comes round
+while it is open (`X-Poll-Interval`, a minute as a rule); the refresh button asks straight away.
+Every request carries the list's `Last-Modified` back as `If-Modified-Since`, and an unchanged
+list is answered "not modified", which GitHub does not count against the hourly limit. Up to 200
+notifications are read.
+
+**The token.** GitHub lets only a **classic** personal access token read notifications, with the
+**notifications** scope (or **repo**, which covers it). A fine-grained token is refused whatever
+it is given — a GitHub limitation, not a setting — and the panel says so, and what to make
+instead. A classic token with **repo** reads everything else here as well, so it can take the
+fine-grained token's place.
+
 ## Access
 
 Without a token only public repositories can be read, at 60 requests an hour for the whole

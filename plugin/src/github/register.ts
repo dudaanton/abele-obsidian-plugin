@@ -20,6 +20,11 @@ import { registerSnippetBlock } from './snippetCard'
 import { OpenPicker } from './open/OpenPicker'
 import { RepoPicker } from './open/RepoPicker'
 import { initGithubUsers } from './users'
+import {
+  GITHUB_NOTIFICATIONS_VIEW_TYPE,
+  NotificationsView,
+} from './notifications/NotificationsView'
+import { revealSidebarView } from '@/views/revealSidebarView'
 
 /**
  * Where a click is taken as a click on a note's link. The settings window and dialogs are left
@@ -66,6 +71,7 @@ export function registerGithub(plugin: Plugin): void {
   const { app } = plugin
 
   plugin.registerView(GITHUB_VIEW_TYPE, (leaf) => new GithubView(leaf))
+  plugin.registerView(GITHUB_NOTIFICATIONS_VIEW_TYPE, (leaf) => new NotificationsView(leaf))
   // People's names and pictures, kept on this device; what was met last is written on the way out.
   const users = initGithubUsers(plugin)
   plugin.register(() => void users.save())
@@ -123,6 +129,17 @@ export function registerGithub(plugin: Plugin): void {
     checkCallback: (checking) => {
       if (!githubSettings().enabled) return false
       if (!checking) new RepoPicker(app).open()
+      return true
+    },
+  })
+
+  plugin.addCommand({
+    id: 'show-github-notifications',
+    name: 'Show GitHub notifications',
+    icon: 'bell',
+    checkCallback: (checking) => {
+      if (!githubSettings().enabled) return false
+      if (!checking) void revealSidebarView(app, GITHUB_NOTIFICATIONS_VIEW_TYPE)
       return true
     },
   })
