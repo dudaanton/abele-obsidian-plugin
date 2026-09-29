@@ -20,6 +20,11 @@ export class TaskWidget extends WidgetType {
     const container = createDiv()
     container.id = id
     container.classList.add('abele-task-widget-container')
+    // A press on the chevron or the card takes no focus itself, so it went to the editor around
+    // it: the cursor landed on this line, which put the raw link back in place of the task and
+    // scrolled to it. Focusable, but out of the tab order, the block keeps that focus.
+    // The same as the list under the note, `FooterWidget`.
+    container.tabIndex = -1
 
     const mount = container.createDiv({ attr: { 'data-task-id': id }, cls: 'abele-vue-mount' })
 

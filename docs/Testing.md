@@ -668,7 +668,8 @@ keyboard) `formKeyboard` (which taps a long form's fields and types with it) and
 taps a script form's field over a book with words selected and checks the keyboard stays) and `chatOpenPhone` (which taps a chat attached to a message, a chat file in the file list and
 a link to a chat, and checks the note in front stays in front) and `footerTaskClick` (which
 taps a task's checkbox and chevron in the list under a note and checks the note neither moves
-nor takes the focus). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
+nor takes the focus) and `editorWidgetClick` (the same for a task drawn on a line of a note
+and the buttons over a task note). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
 probes too — pictures through the host, the book's taps, swipes and pinch as real gestures, the
 phone really turned — but are not yet green there, so they still name only the desktop.
 
