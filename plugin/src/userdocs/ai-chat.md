@@ -41,6 +41,10 @@ conversation is marked, the counter says which one is shown, and **Enter** and *
 the older messages not shown yet, the agent's reasoning and what its tools returned — and opens
 whatever they are folded away in. **Esc** closes it.
 
+The chat history lists the chats newest first, by when each was last written in, under a date
+for each day; the list beside its search orders them by when each was started instead, and the
+choice stays on that device. Renaming a chat or a summary written later does not move it.
+
 To look through every chat, type into the search of the chat history (the clock over the chat),
 or run **Search all chats** from the command palette. A chat is found by its title, its summary,
 or by what you and the agent said in it; a chat found by its words shows them with a few either
