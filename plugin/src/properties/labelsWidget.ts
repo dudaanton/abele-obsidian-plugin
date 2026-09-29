@@ -11,7 +11,10 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { addLabel, collectLabels, labelsOf, removeLabel, suggestLabels } from './labels'
 import type { WidgetContext } from './widgets'
 
-/** The labels the vault uses under `key`, most used first; read again after a few seconds. */
+/**
+ * The labels the vault uses under `key`, most used first. Read once each time the field is
+ * entered and kept while it is typed into, rather than walking the vault on every key.
+ */
 let known: { key: string; at: number; labels: string[] } | null = null
 
 function vaultLabels(app: App, key: string): string[] {
@@ -123,6 +126,8 @@ export function renderLabels(el: HTMLElement, value: unknown, ctx: WidgetContext
     }
   }
 
+  // Entered again: what the vault holds may have changed since the last read.
+  input.addEventListener('focus', () => (known = null), true)
   const suggest = new LabelSuggest(ctx.app, input, ctx.key, () => labelsOf(current), add)
   input.addEventListener('keydown', (e) => {
     if (e.isComposing) return

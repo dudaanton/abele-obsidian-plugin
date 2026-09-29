@@ -9,7 +9,14 @@
  * Pictures go to `/tmp/abele-property-kinds/` — look at them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
+import {
+  hasTestApi,
+  isObsidianRunning,
+  evalRaw,
+  evalJson,
+  reloadApp,
+  setFocusEmulation,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { onPhone } from './helpers/target'
 
@@ -95,6 +102,9 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
   let saved: Saved | null = null
 
   beforeAll(() => {
+    // A pool window is never the one in front: without this, the field typed into is not the
+    // page's active element to Obsidian, and the list of labels never opens.
+    setFocusEmulation(true)
     saved = evalJson<Saved>(
       `(() => {
         const cfg = window.__abeleTest.AbeleConfig.getInstance()
@@ -126,6 +136,9 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
         await app.vault.createFolder(${JSON.stringify(DIR)})
         await app.vault.create(${JSON.stringify(OTHER)}, '---\\n${LABELS}:\\n  - sample-beta\\n  - sample-gamma\\n---\\n')
         await app.vault.create(${JSON.stringify(NOTE)}, '${FRONTMATTER}')
+        // The labels another note uses are offered once Obsidian has read that note.
+        for (let i = 0; i < 100 && !app.metadataCache.getFileCache(app.vault.getAbstractFileByPath(${JSON.stringify(OTHER)}))?.frontmatter; i++)
+          await new Promise((r) => setTimeout(r, 100))
         await new Promise((r) => setTimeout(r, 1000))
         return Journal ? 'ok' : 'no journal class'
       })()`,
@@ -134,6 +147,7 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
   }, 90_000)
 
   afterAll(() => {
+    setFocusEmulation(false)
     evalRaw(
       `(async () => {
         for (const l of app.workspace.getLeavesOfType('markdown'))
@@ -220,18 +234,26 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
       const field = () => cell(leaf, '${LABELS}')?.querySelector('.abele-property-labels__input')
       await until(field)
       const steps = [stored('${LABELS}') ?? null]
+      // Typed as a keyboard types: the list follows the text, and Enter takes its first line,
+      // here the text itself as a new label.
       field().focus()
       field().value = 'sample-alpha'
+      field().dispatchEvent(new Event('input', { bubbles: true }))
+      await until(() => document.querySelector('.suggestion-container .suggestion-item'))
       field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
       steps.push(await settle('${LABELS}', ['sample-alpha']))
       await wait(300)
       const input = await until(field)
-      input.focus()
       input.value = 'sample-b'
-      input.dispatchEvent(new Event('input', { bubbles: true }))
+      // Typed into again until the list is up: a window that is not in front can take the
+      // focus late.
       const items = await until(() => {
         const found = [...document.querySelectorAll('.suggestion-container .suggestion-item')]
-        return found.length ? found : null
+        if (found.some((i) => i.textContent === 'sample-beta')) return found
+        input.blur()
+        input.focus()
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        return null
       })
       const offered = (items ?? []).map((i) => i.textContent)
       const beta = (items ?? []).find((i) => i.textContent === 'sample-beta')

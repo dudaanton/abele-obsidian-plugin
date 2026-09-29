@@ -24,6 +24,7 @@
 }
 
 .abele-property-date__relative {
+  padding-inline: var(--size-4-1);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   white-space: nowrap;
