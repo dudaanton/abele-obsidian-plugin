@@ -190,6 +190,58 @@ const probeLib = `(() => {
       return { open, activeIsComposer: owner?.editor?.cm === view }
     },
 
+    // The chat's own commands start with a slash. Obsidian's core slash-command plugin, when it
+    // is on, offers its commands on a slash in a note; over the chat's it offered the wrong ones,
+    // and Enter picked one of them. Switched on for the probe, and back as it was.
+    async slash() {
+      const core = app.internalPlugins.getPluginById('slash-command')
+      const wasOn = !!core?.enabled
+      if (!core) return { core: false, open: true, noteOpen: false }
+      if (!wasOn) await core.enable(true)
+      const c = composer()
+      const view = window.__abeleTest.noteFieldView(c.field)
+      c.focus()
+      Object.defineProperty(view, 'hasFocus', { get: () => true, configurable: true })
+      const before = view.state.doc.toString()
+      const typeSlash = async (target, text) => {
+        target.dispatch({ changes: { from: 0, to: target.state.doc.length, insert: text }, selection: { anchor: text.length }, userEvent: 'input.type' })
+        await wait(300)
+        const owner = app.workspace.activeEditor
+        if (!document.querySelector('.suggestion-container') && owner && owner.editor)
+          app.workspace.editorSuggest.trigger(owner.editor, owner.file ?? null, true)
+        return !!(await until(() => document.querySelector('.suggestion-container .suggestion-item'), 1500))
+      }
+      const open = await typeSlash(view, '/comp')
+      app.workspace.editorSuggest.close?.()
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: before } })
+      delete view.hasFocus
+      // The same plugin in a note, to know the probe would have seen it at all.
+      let noteOpen = false
+      const scratch = await app.vault.create('composer-probe-slash.md', '')
+      try {
+        const leaf = app.workspace.getLeaf(true)
+        await leaf.openFile(scratch)
+        await wait(400)
+        const noteView = leaf.view.editor.cm
+        noteView.focus()
+        Object.defineProperty(noteView, 'hasFocus', { get: () => true, configurable: true })
+        noteOpen = await typeSlash(noteView, '/comp')
+        app.workspace.editorSuggest.close?.()
+        delete noteView.hasFocus
+        // Saved as it closes: emptied first, and deleted only once it has been written, or the
+        // save puts the note back after it was deleted.
+        noteView.dispatch({ changes: { from: 0, to: noteView.state.doc.length, insert: '' } })
+        await leaf.view.save?.()
+        leaf.detach()
+        await wait(500)
+      } finally {
+        const left = app.vault.getAbstractFileByPath('composer-probe-slash.md')
+        if (left) await app.vault.delete(left)
+        if (!wasOn) await core.disable(true)
+      }
+      return { core: true, open, noteOpen }
+    },
+
     // A file pasted, then one dropped, onto the editor: each becomes an attachment of the
     // message, as on the text box, and nothing is written into the text for it.
     async attach() {
@@ -297,6 +349,7 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
   let expanded: Measure
   let suggest: { open: boolean; activeIsComposer: boolean }
   let attached: { chips: number; textUnchanged: boolean; files: number }
+  let slash: { core: boolean; open: boolean; noteOpen: boolean }
   let closedAgain: Measure
   let sent: { requests: string[] }
   let afterSend: Measure
@@ -312,6 +365,7 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
       expanded = await step('measure("desktop-expanded")')
       suggest = await step('suggest()')
       attached = await step('attach()')
+      slash = await step('slash()')
       await step('toggle()')
       closedAgain = await step('measure("")')
       await step('toggle()')
@@ -345,6 +399,13 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
   it('offers Obsidian’s link suggester on [[', () => {
     expect(suggest.activeIsComposer).toBe(true)
     expect(suggest.open).toBe(true)
+  })
+
+  it('leaves the chat’s slash commands alone, with Obsidian’s slash commands switched on', () => {
+    expect(slash.core).toBe(true)
+    // In a note the same probe does see Obsidian's list, so the one below is not a blind spot.
+    expect(slash.noteOpen).toBe(true)
+    expect(slash.open).toBe(false)
   })
 
   it('takes a pasted and a dropped file as attachments, not as text', () => {
