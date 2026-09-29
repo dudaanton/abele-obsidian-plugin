@@ -15,11 +15,13 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const available = isObsidianRunning() && hasTestApi()
 const PREFIX = 'History order probe'
+const SHOTS = shotDir('abele-chat-history')
 
 interface Seen {
   titles: string[]
@@ -35,6 +37,11 @@ interface Report {
   searched: string[]
   reopened: string[]
   saved: unknown
+  contentDefault: string | null
+  metadataMatches: string[]
+  metadataOnly: string[]
+  contentRemembered: string | null
+  contentOff: string[]
 }
 
 const script = `(async () => {
@@ -57,6 +64,8 @@ const script = `(async () => {
   const base = cfg.chatFolder.replace(/\\/?\\{\\{.*$/, '').replace(/\\/$/, '')
   const dir = base + '/' + PREFIX
   const before = app.loadLocalStorage(KEY)
+  const CONTENT_KEY = 'abele-chat-history-content'
+  const beforeContent = app.loadLocalStorage(CONTENT_KEY)
   const createdDirs = []
 
   const DAY = 86400000
@@ -108,6 +117,7 @@ const script = `(async () => {
 
   try {
     app.saveLocalStorage(KEY, null)
+    app.saveLocalStorage(CONTENT_KEY, null)
     for (const d of dir.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))) {
       if (!app.vault.getAbstractFileByPath(d)) { await app.vault.createFolder(d); createdDirs.unshift(d) }
     }
@@ -133,9 +143,20 @@ const script = `(async () => {
     report.byCreated = seen()
     report.expectCreated = chats.map((c) => day(c.first))
     const search = modal().querySelector('.abele-chat-history__search')
+    const scope = modal().querySelector('[role="switch"]')
+    report.contentDefault = scope?.getAttribute('aria-checked') ?? null
+    search.value = PREFIX
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+    await wait(350)
+    report.metadataMatches = seen().titles
     search.value = 'plan'
     search.dispatchEvent(new Event('input', { bubbles: true }))
+    await wait(350)
+    report.metadataOnly = seen().titles
+    if (!scope) throw new Error('the content switch is missing')
+    scope.click()
     await until(() => modal().querySelector('.abele-chat-history__snippet'), 6000)
+    if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/history-content.png')
     await wait(300)
     report.searched = seen().titles
     report.saved = app.loadLocalStorage(KEY)
@@ -143,6 +164,15 @@ const script = `(async () => {
     await openHistory()
     if (modal().querySelector('.abele-chat-history__search').value) throw new Error('the old history is still open')
     report.reopened = seen().titles
+    const reopenedScope = modal().querySelector('[role="switch"]')
+    report.contentRemembered = reopenedScope?.getAttribute('aria-checked') ?? null
+    const reopenedSearch = modal().querySelector('.abele-chat-history__search')
+    reopenedSearch.value = 'plan'
+    reopenedSearch.dispatchEvent(new Event('input', { bubbles: true }))
+    await until(() => modal().querySelector('.abele-chat-history__snippet'), 6000)
+    reopenedScope.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    await wait(150)
+    report.contentOff = seen().titles
     if (!(await closeHistory())) throw new Error('the history did not close')
   } catch (e) {
     report.error = String((e && e.message) || e)
@@ -150,6 +180,7 @@ const script = `(async () => {
     try {
       await closeHistory()
       app.saveLocalStorage(KEY, before ?? null)
+      app.saveLocalStorage(CONTENT_KEY, beforeContent ?? null)
       for (const c of chats) {
         storage.removeHistoryEntry(path(c))
         const f = app.vault.getAbstractFileByPath(path(c))
@@ -187,6 +218,14 @@ describe.skipIf(!available)('the order of the chat history', () => {
   it('goes by when each chat was started once that is chosen, the days with it', () => {
     expect(report.byCreated!.titles).toEqual(['trip', 'pond', 'garden'])
     expect(report.byCreated!.days).toEqual([...report.expectCreated!].reverse())
+  })
+
+  it('searches only titles and descriptions until content is explicitly enabled', () => {
+    expect(report.contentDefault).toBe('false')
+    expect(report.metadataMatches).toEqual(['trip', 'pond', 'garden'])
+    expect(report.metadataOnly).toEqual([])
+    expect(report.contentRemembered).toBe('true')
+    expect(report.contentOff).toEqual([])
   })
 
   it('keeps that order for what a search finds', () => {

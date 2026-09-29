@@ -43,14 +43,21 @@ whatever they are folded away in. **Esc** closes it.
 
 The chat history lists the chats newest first, by when each was last written in, under a date
 for each day; the list beside its search orders them by when each was started instead, and the
-choice stays on that device. Renaming a chat or a summary written later does not move it.
+choice stays on that device. Renaming a chat, a summary written later, tool records and system
+dividers do not move it. If no sent message has a date, its creation date stands in, never the
+file's modification time.
 
 To look through every chat, type into the search of the chat history (the clock over the chat),
-or run **Search all chats** from the command palette. A chat is found by its title, its summary,
-or by what you and the agent said in it; a chat found by its words shows them with a few either
-side and the date they were written. Opening it takes you to that message, with the find bar
-open on the same words. The first search reads every chat once, which takes a moment in a large
-history; after that only the chats that changed are read again.
+or run **Search all chats** from the command palette. By default, it searches the title and the
+description under it. Turn on **Content** beside the field to also find what you and the agent
+said in the chats. This switch starts off and remembers your choice on this device only; it
+does not affect finding words inside a single chat.
+
+A chat found by its words shows them with a few either side and the date they were written.
+Opening it takes you to that message, with the find bar open on the same words. The first
+content search reads every chat once, which takes a moment in a large history; after that only
+the chats that changed are read again. Searching titles and descriptions does not build that
+message index.
 
 An answer is drawn the way a note is: an agent can show you a gallery of pictures, a diagram, a
 chart, a map, callouts, formulas and coloured highlights, or embed one of your notes, right in its

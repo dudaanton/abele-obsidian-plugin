@@ -2,14 +2,29 @@
   <ObsidianModal title="Chat History" size="tall" @close="emit('close')">
     <div class="abele-chat-history">
       <div class="abele-chat-history__bar">
-        <input
-          ref="searchRef"
-          type="text"
-          class="abele-chat-history__search"
-          placeholder="Search chats..."
-          :value="query"
-          @input="query = ($event.target as HTMLInputElement).value"
-        />
+        <div class="abele-chat-history__search-row">
+          <input
+            ref="searchRef"
+            type="text"
+            class="abele-chat-history__search"
+            placeholder="Search chats..."
+            :value="query"
+            @input="query = ($event.target as HTMLInputElement).value"
+          />
+          <div class="abele-chat-history__content">
+            <span id="abele-chat-history-content-label">Content</span>
+            <Checkbox
+              :is-enabled="contentSearch"
+              role="switch"
+              tabindex="0"
+              aria-labelledby="abele-chat-history-content-label"
+              :aria-checked="contentSearch"
+              @toggle="setContentSearch(!contentSearch)"
+              @keydown.space.prevent="setContentSearch(!contentSearch)"
+              @keydown.enter.prevent="setContentSearch(!contentSearch)"
+            />
+          </div>
+        </div>
         <!-- Which date the list goes by: the last message, or when the chat was started. -->
         <Dropdown
           class="abele-chat-history__order"
@@ -77,6 +92,7 @@ import ObsidianModal from './obsidian/Modal.vue'
 import Card from './obsidian/Card.vue'
 import Icon from './obsidian/Icon.vue'
 import Dropdown from './obsidian/Dropdown.vue'
+import Checkbox from './obsidian/Checkbox.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import {
   HISTORY_ORDERS,
@@ -111,7 +127,17 @@ const listRef = ref<HTMLElement>()
 const allChats = ref<AiChatHistoryEntry[]>([])
 const query = ref('')
 
-/** The chats' files, looked up once: their times stand in for a chat with no messages. */
+/** This device's search scope, deliberately outside synced/transferable settings. */
+const CONTENT_SEARCH_KEY = 'abele-chat-history-content'
+const contentSearch = ref(
+  GlobalStore.getInstance().app.loadLocalStorage(CONTENT_SEARCH_KEY) === true
+)
+const setContentSearch = (enabled: boolean) => {
+  contentSearch.value = enabled
+  GlobalStore.getInstance().app.saveLocalStorage(CONTENT_SEARCH_KEY, enabled)
+}
+
+/** The chats' files, looked up once: creation time stands in when message dates are absent. */
 const files = new Map<string, TFile | null>()
 const fileOf = (path: string) => files.get(path) ?? null
 
@@ -169,9 +195,8 @@ const filtered = computed(() => {
   return sorted.value.filter(
     (c) =>
       (c.title || '').toLowerCase().includes(q) ||
-      (c.summary || '').toLowerCase().includes(q) ||
-      c.path.toLowerCase().includes(q) ||
-      hits.value.has(c.path)
+      (describe(c) || '').toLowerCase().includes(q) ||
+      (contentSearch.value && hits.value.has(c.path))
   )
 })
 
@@ -194,7 +219,7 @@ let generation = 0
 
 const searchMessages = async (words: string) => {
   const mine = ++generation
-  if (foldQuery(words).trim().length < MIN_CONTENT_QUERY) {
+  if (!contentSearch.value || foldQuery(words).trim().length < MIN_CONTENT_QUERY) {
     hits.value = new Map()
     reading.value = null
     return
@@ -221,9 +246,17 @@ const searchMessages = async (words: string) => {
   hits.value = index.search(words)
 }
 
-watch(query, (words) => {
+watch([query, contentSearch], ([words, enabled]) => {
   window.clearTimeout(searchTimer)
-  searchTimer = window.setTimeout(() => void searchMessages(words), CONTENT_SEARCH_DELAY_MS)
+  // Invalidate a pending read immediately, not after the next debounce. No stale snippets or
+  // message destinations survive a changed query or a switch back to metadata-only search.
+  generation++
+  hits.value = new Map()
+  hitsFor = ''
+  reading.value = null
+  if (enabled) {
+    searchTimer = window.setTimeout(() => void searchMessages(words), CONTENT_SEARCH_DELAY_MS)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -329,7 +362,25 @@ const remove = async (path: string) => {
   display: flex;
   gap: var(--size-4-2);
   align-items: center;
+  flex-wrap: wrap;
   margin-bottom: var(--size-4-2);
+}
+
+/** Keep the scope beside the field; the date selector wraps below them on a narrow sheet. */
+.abele-chat-history__search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex: 1 1 18em;
+  min-width: 0;
+}
+
+.abele-chat-history__content {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /** The order's own width, whole: the search field is the one that gives way on a phone. */

@@ -36,6 +36,12 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   the link button in its header attaches it to the note in front or to one picked, and detaches it; under the note, the unlink
   button on a chat's card detaches it. Scripts take chats the same way, and list them under their
   code. An agent cannot attach chats itself
+- Search all chats — opens the chat history. Search matches titles and the descriptions shown
+  under them by default. Turn on **Content** beside the field to also search sent user and
+  assistant messages, with snippets that open at the matching message. The switch is off on a
+  new device and remembered only on that device. Its first content search reads all chats once;
+  later searches reread only changed chats. Cmd/Ctrl+F inside a chat still searches that whole
+  conversation, including reasoning and tool results, regardless of the history switch
 - Copy wikilink — copies a wikilink to the note, even when the vault uses Markdown links.
   Also available in the note's context menus and mobile quick menu with the AI switched off
 - Show script runs · Show script API reference

@@ -92,6 +92,8 @@ const script = (phone: boolean) => `(async () => {
   const base = cfg.chatFolder.replace(/\\/?\\{\\{.*$/, '').replace(/\\/$/, '')
   const paths = [${JSON.stringify(LONG)}, ${JSON.stringify(SHORT)}, ${JSON.stringify(OTHER)}].map((t) => base + '/' + t + '.abchat')
   const createdDirs = []
+  const CONTENT_KEY = 'abele-chat-history-content'
+  const beforeContent = app.loadLocalStorage(CONTENT_KEY)
 
   const log = (title, messages) => {
     const meta = { v: 2, k: 'meta', type: 'abele-chat', title, providerId: '', modelId: '', created: '2026-01-02' }
@@ -204,6 +206,8 @@ const script = (phone: boolean) => `(async () => {
     app.commands.executeCommandById('abele:search-all-chats')
     const history = await until(() => document.querySelector('.abele-chat-history__search'), 4000)
     if (!history) throw new Error('the history did not open on its search')
+    const contentSwitch = document.querySelector('.abele-chat-history [role="switch"]')
+    if (contentSwitch?.getAttribute('aria-checked') !== 'true') contentSwitch?.click()
     history.value = WORD
     history.dispatchEvent(new Event('input', { bubbles: true }))
     await until(() => document.querySelectorAll('.abele-chat-history .abele-card').length && document.querySelector('.abele-chat-history__snippet'), 6000)
@@ -220,6 +224,7 @@ const script = (phone: boolean) => `(async () => {
     report.error = String((e && e.message) || e)
   } finally {
     try {
+      app.saveLocalStorage(CONTENT_KEY, beforeContent ?? null)
       document.querySelector('.abele-chat-history')?.closest('.modal-container')?.querySelector('.modal-close-button, .modal-header-button')?.click()
       const b = bar()
       if (b) key(b.querySelector('input'), { key: 'Escape' })

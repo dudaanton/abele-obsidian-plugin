@@ -426,6 +426,17 @@ const probeScript = `(async () => {
       await wait(300)
       const modal = document.querySelector('.modal')
       await screen('history', modal, modal && modal.querySelector('.abele-modal__body'))
+      const scope = modal.querySelector('.abele-chat-history [role="switch"]')
+      const searchField = modal.querySelector('.abele-chat-history__search')
+      const sr = scope?.getBoundingClientRect()
+      const fr = searchField?.getBoundingClientRect()
+      report['history'].contentScope = {
+        label: scope?.getAttribute('aria-labelledby') && document.getElementById(scope.getAttribute('aria-labelledby'))?.textContent.trim(),
+        visible: !!sr && sr.width > 0 && sr.height > 0,
+        besideSearch: !!sr && !!fr && sr.left >= fr.right && sr.top < fr.bottom && sr.bottom > fr.top,
+        searchWidth: fr?.width ?? 0,
+      }
+      if (scope) { scope.focus(); report['history'].clipped.push(...ringClipped(scope)) }
       await closeDialog()
     }
 
@@ -1072,6 +1083,23 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it('nested comment folded: a trail of four levels keeps to one row', () => {
     expect((report['nested comment folded'] as Screen & { rows?: number })?.rows).toBe(1)
+  })
+
+  it('history: the content scope is visible beside a usable search field', () => {
+    const scope = (
+      report['history'] as Screen & {
+        contentScope?: {
+          label: string
+          visible: boolean
+          besideSearch: boolean
+          searchWidth: number
+        }
+      }
+    )?.contentScope
+    expect(scope?.label).toBe('Content')
+    expect(scope?.visible).toBe(true)
+    expect(scope?.besideSearch).toBe(true)
+    expect(scope?.searchWidth).toBeGreaterThanOrEqual(120)
   })
 
   it('history: every card keeps its delete icon on the row of its title', () => {

@@ -136,6 +136,7 @@ afterEach(() => {
   wrapper?.unmount()
   wrapper = null
   ChatSearchIndex.destroy()
+  vi.restoreAllMocks()
 })
 
 describe('a card in the chat history', () => {
@@ -200,6 +201,8 @@ describe('a chat listed without a summary', () => {
 })
 
 describe('searching the messages of every chat', () => {
+  beforeEach(() => app.saveLocalStorage('abele-chat-history-content', true))
+
   const type = async (view: VueWrapper, words: string) => {
     const field = view.find('.abele-chat-history__search')
     await field.setValue(words)
@@ -261,6 +264,87 @@ describe('searching the messages of every chat', () => {
   })
 })
 
+describe('optional content search', () => {
+  const type = async (view: VueWrapper, words: string) => {
+    await view.find('.abele-chat-history__search').setValue(words)
+    await new Promise((resolve) => setTimeout(resolve, 260))
+    await flushPromises()
+  }
+  const toggle = (view: VueWrapper) => view.find('[role="switch"]')
+
+  it('defaults to titles and descriptions without preparing the message index', async () => {
+    const view = await open()
+    const prepare = vi.spyOn(ChatSearchIndex.getInstance(), 'prepare')
+    expect(toggle(view).attributes('aria-checked')).toBe('false')
+    await type(view, 'lightest')
+    expect(view.findAllComponents(Card)).toHaveLength(0)
+    expect(prepare).not.toHaveBeenCalled()
+    await type(view, 'travel')
+    expect(view.findAllComponents(Card).map((c) => c.attributes('data-path'))).toEqual([OLD])
+    await type(view, 'summarised')
+    expect(view.findAllComponents(Card).map((c) => c.attributes('data-path'))).toEqual([NEW])
+    await type(view, 'AI/Chats')
+    expect(view.findAllComponents(Card)).toHaveLength(0)
+  })
+
+  it('searches the recap when it is the displayed description', async () => {
+    await app.vault.modify(
+      app.vault.getFileByPath(OLD)!,
+      chatFile(LONG_TITLE, { recap: 'Sample packing list' })
+    )
+    const view = await open()
+    await type(view, 'packing')
+    expect(view.findAllComponents(Card).map((c) => c.attributes('data-path'))).toEqual([OLD])
+  })
+
+  it('searches the current words when enabled, clears hits when disabled, and remembers both choices', async () => {
+    const view = await open()
+    await type(view, 'lightest')
+    await toggle(view).trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 260))
+    await flushPromises()
+    expect(view.findAllComponents(Card)).toHaveLength(2)
+    expect(view.find('.abele-chat-history__snippet').exists()).toBe(true)
+    expect(app.loadLocalStorage('abele-chat-history-content')).toBe(true)
+    view.unmount()
+    wrapper = null
+    const reopened = await open()
+    expect(toggle(reopened).attributes('aria-checked')).toBe('true')
+    await type(reopened, 'lightest')
+    await toggle(reopened).trigger('keydown', { key: ' ' })
+    expect(reopened.findAllComponents(Card)).toHaveLength(0)
+    expect(reopened.find('.abele-chat-history__snippet').exists()).toBe(false)
+    expect(app.loadLocalStorage('abele-chat-history-content')).toBe(false)
+    reopened.unmount()
+    wrapper = null
+    expect(toggle(await open()).attributes('aria-checked')).toBe('false')
+  })
+
+  it('does not publish an in-flight content search after it is switched off', async () => {
+    const view = await open()
+    let complete!: () => void
+    let stopped!: () => boolean
+    vi.spyOn(ChatSearchIndex.getInstance(), 'prepare').mockImplementation(
+      async (_app, _files, progress, cancel) => {
+        stopped = cancel!
+        progress?.({ done: 0, total: 10 })
+        await new Promise<void>((resolve) => {
+          complete = resolve
+        })
+      }
+    )
+    await toggle(view).trigger('click')
+    await type(view, 'lightest')
+    expect(view.find('.abele-chat-history__status').exists()).toBe(true)
+    await toggle(view).trigger('click')
+    expect(stopped()).toBe(true)
+    complete()
+    await flushPromises()
+    expect(view.findAllComponents(Card)).toHaveLength(0)
+    expect(view.find('.abele-chat-history__status').exists()).toBe(false)
+  })
+})
+
 describe('the order of the history', () => {
   const HOUR = 3_600_000
   // Three chats: Garden started first but was written in last; Pond started second, written in
@@ -276,7 +360,12 @@ describe('the order of the history', () => {
     serializeChat({
       metadata: { type: 'abele-chat', providerId: 'p', modelId: 'm', created: '2026-01-01', title },
       messages: [
-        { id: 'u', role: 'user', content: `About the ${title.toLowerCase()} plan`, timestamp: first },
+        {
+          id: 'u',
+          role: 'user',
+          content: `About the ${title.toLowerCase()} plan`,
+          timestamp: first,
+        },
         { id: 'a', parentId: 'u', role: 'assistant', content: 'Noted.', timestamp: last },
       ],
       internalMessages: [],
@@ -338,6 +427,7 @@ describe('the order of the history', () => {
   })
 
   it('keeps the same order for what a search finds', async () => {
+    app.saveLocalStorage('abele-chat-history-content', true)
     const view = await open()
     await view.find('.abele-chat-history__search').setValue('plan')
     await new Promise((resolve) => setTimeout(resolve, 260))
