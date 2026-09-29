@@ -17,7 +17,8 @@ import { LINK_KEY, linkMark, pointInWindow, shortenPlace } from './linkMarks'
 import { eink, einkShape, type EinkShape } from './eink'
 import { einkBoxStyle, einkMark } from './einkMarks'
 import { VocabMarks } from './vocab/vocabMarks'
-import { ownWords } from './bookQuote'
+import { aroundOf, ownWords, quoteKey } from './bookQuote'
+import type { HighlightRepairCandidate } from './highlightRepair'
 import type { VocabRule } from './vocab/rules'
 
 /** The engine's key for a search result's mark, which a tap never opens. */
@@ -173,6 +174,20 @@ export function markColor(el: HTMLElement, color: HighlightColor): string {
 export class BookMarks {
   private list: Highlight[] = []
   private drawn = new Set<string>()
+  private candidates = new Map<string, HighlightRepairCandidate>()
+  private generation = new Map<string, number>()
+  onRepairsChanged: () => void = () => {}
+
+  repairs(): HighlightRepairCandidate[] {
+    return [...this.candidates.values()].map((r) => ({ ...r }))
+  }
+
+  private publish(cfi: string, candidate?: HighlightRepairCandidate): void {
+    const before = this.candidates.get(cfi)
+    if (candidate) this.candidates.set(cfi, candidate)
+    else this.candidates.delete(cfi)
+    if (JSON.stringify(before) !== JSON.stringify(candidate)) this.onRepairsChanged()
+  }
   /** The page documents of a PDF on screen, by their index. */
   private pdfDocs = new Map<number, Document>()
   /** The places notes link to (`linkedNotes.ts`), and the ones drawn in a book's chapters. */
@@ -275,9 +290,15 @@ export class BookMarks {
 
   private async addEpub(h: Highlight): Promise<void> {
     try {
+      const generation = this.generation.get(h.cfi)
       let at = h.cfi
+      let candidate: HighlightRepairCandidate | undefined
+      let evaluated = false
       try {
-        at = this.drawnAt(h)
+        const result = this.drawnAt(h)
+        at = result.cfi
+        candidate = result.candidate
+        evaluated = result.evaluated
       } catch (e) {
         // Its words could not be looked for: drawn at its place, as before they were.
         console.debug(
@@ -291,14 +312,19 @@ export class BookMarks {
           addAnnotation(a: { value: string; cfi?: string }): Promise<unknown>
         }
       ).addAnnotation(at === h.cfi ? { value: h.cfi } : { value: h.cfi, cfi: at })
+      if (generation !== this.generation.get(h.cfi) ||
+          !this.list.some((x) => x.cfi === h.cfi && x.text === h.text)) return
       this.drawn.add(h.cfi)
+      if (evaluated) this.publish(h.cfi, candidate)
     } catch (e) {
       console.debug('[Abele] a highlight could not be drawn', h.cfi, e)
     }
   }
 
-  private removeEpub(cfi: string): void {
+  private removeEpub(cfi: string, keepRepair = false): void {
     this.drawn.delete(cfi)
+    this.generation.set(cfi, (this.generation.get(cfi) ?? 0) + 1)
+    if (!keepRepair) this.publish(cfi)
     void (this.engine as unknown as { deleteAnnotation(a: { value: string }): Promise<unknown> })
       .deleteAnnotation({ value: cfi })
       ?.catch?.(() => {})
@@ -353,6 +379,8 @@ export class BookMarks {
   set(list: Highlight[]): void {
     const before = new Map(this.list.map((h) => [h.cfi, h]))
     this.list = list.map((h) => ({ ...h }))
+    for (const [cfi, candidate] of this.candidates)
+      if (!this.list.some((h) => h.cfi === cfi && h.text === candidate.text)) this.publish(cfi)
     if (this.pdf) {
       for (const [index, doc] of this.pdfDocs) this.drawPdf(doc, index)
       return
@@ -362,8 +390,11 @@ export class BookMarks {
     for (const h of this.list) {
       const old = before.get(h.cfi)
       const changed =
-        !old || old.color !== h.color || old.discussion !== h.discussion || old.plain !== h.plain
-      if (changed || !this.drawn.has(h.cfi)) void this.addEpub(h)
+        !old || old.color !== h.color || old.discussion !== h.discussion || old.plain !== h.plain || old.text !== h.text
+      if (changed || !this.drawn.has(h.cfi)) {
+        this.generation.set(h.cfi, (this.generation.get(h.cfi) ?? 0) + 1)
+        void this.addEpub(h)
+      }
     }
   }
 
@@ -376,7 +407,7 @@ export class BookMarks {
   redraw(): void {
     const list = this.list
     this.list = []
-    for (const cfi of [...this.drawn]) this.removeEpub(cfi)
+    for (const cfi of [...this.drawn]) this.removeEpub(cfi, true)
     this.set(list)
     const links = this.links
     this.setLinks([])
@@ -419,27 +450,31 @@ export class BookMarks {
    * Where a highlight is drawn, as a CFI: its own place, or the place of its words when its place
    * leads to other words in its page (`ownWords`). Its page has to be open to tell.
    */
-  private drawnAt(h: Highlight): string {
+  private drawnAt(h: Highlight): { cfi: string; candidate?: HighlightRepairCandidate; evaluated: boolean } {
     const index = this.indexOf(h.cfi)
-    if (index < 0) return h.cfi
+    if (index < 0) return { cfi: h.cfi, evaluated: false }
     const renderer = (
       this.engine as unknown as {
         renderer?: { getContents?(): { index: number; doc?: Document }[] }
       }
     ).renderer
     const doc = renderer?.getContents?.().find((c) => c.index === index)?.doc
-    if (!doc) return h.cfi
+    if (!doc) return { cfi: h.cfi, evaluated: false }
     const place = this.rangeIn(doc, h.cfi)
     const words = ownWords(doc, place, h.text)
-    if (!words || words === place) return h.cfi
+    if (!words || words === place) return { cfi: h.cfi, evaluated: true }
     try {
       const cfi = (
         this.engine as unknown as { getCFI(index: number, range: Range): string }
       ).getCFI(index, words)
       console.debug('[Abele] a highlight is drawn on its words, away from its place', h.cfi, cfi)
-      return cfi
+      const back = cfi !== h.cfi ? this.rangeIn(doc, cfi) : null
+      const candidate = back && quoteKey(back.toString()) === quoteKey(h.text)
+        ? { cfi: h.cfi, suggested: cfi, text: h.text, label: h.label,
+            context: aroundOf(words), anchored: !!place } : undefined
+      return { cfi, candidate, evaluated: true }
     } catch {
-      return h.cfi
+      return { cfi: h.cfi, evaluated: true }
     }
   }
 

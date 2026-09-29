@@ -19,6 +19,8 @@ import {
   notesOf,
   readHighlights,
   saveHighlight,
+  prepareHighlightRepairs,
+  repairHighlightLinks,
   type NotesPlace,
 } from './companion'
 import type { Highlight, HighlightColor } from './highlights'
@@ -51,6 +53,10 @@ export class BookReading {
   /** The words last selected, where reading aloud can start. */
   private selectedRange: Range | null = null
   private searchToken = 0
+  private loadGeneration = 0
+  private disposed = false
+  private repairing = false
+  private cancelRepair: (() => void) | null = null
   /** A PDF search match to select once its page is drawn. */
   private pendingMatch: { index: number; occurrence: number; query: string } | null = null
   /** A place in a PDF a link named, to select once its page is drawn. */
@@ -77,6 +83,9 @@ export class BookReading {
     this.marks = new BookMarks(engine, themeEl, !!pdf || engine.isFixedLayout, (h) =>
       this.activate(h)
     )
+    this.marks.onRepairsChanged = () => {
+      if (!this.disposed) this.model.repairableCfis = this.marks.repairs().map((r) => r.cfi)
+    }
     this.speech = new ReadAloud(
       engine as unknown as ConstructorParameters<typeof ReadAloud>[0],
       (doc) => this.docIndex.get(doc),
@@ -114,15 +123,60 @@ export class BookReading {
 
   /** Reads the book's highlights notes and shows what they hold. */
   async loadHighlights(): Promise<void> {
+    const generation = ++this.loadGeneration
     const where = this.where()
     this.targetSeen = JSON.stringify(where.target)
     this.notePaths = this.notes().map((n) => n.path)
     const list = await readHighlights(this.app, this.file, where)
+    if (this.disposed || generation !== this.loadGeneration) return
     this.model.highlights = list
     this.marks.set(list)
     this.onHighlights()
     if (this.model.active)
       this.model.active = list.find((h) => h.cfi === this.model.active?.cfi) ?? null
+  }
+
+  /** A closing book cannot apply a pending confirmation or publish a late highlights read. */
+  dispose(): void {
+    this.disposed = true
+    this.loadGeneration++
+    this.cancelRepair?.()
+    this.cancelRepair = null
+    this.marks.onRepairsChanged = () => {}
+    this.model.repairableCfis = []
+  }
+
+  /** A menu action, not a background migration. The dialog freezes the known visited chapters. */
+  async repairHighlightLinks(h?: Highlight): Promise<void> {
+    if (this.repairing || this.disposed) return
+    this.repairing = true
+    try {
+      const candidates = this.marks.repairs().filter((r) => !h || r.cfi === h.cfi)
+      if (!candidates.length) return
+      const selected = await prepareHighlightRepairs(this.app, this.file, this.where(), candidates)
+      if (this.disposed || !selected.length) return
+      const { askToRepairLinks } = await import('./highlightRepairDialog')
+      if (this.disposed) return
+      const dialog = askToRepairLinks(this.app, selected)
+      this.cancelRepair = dialog.cancel
+      const confirmed = await dialog.answer
+      this.cancelRepair = null
+      if (!confirmed || this.disposed) return
+      const result = await repairHighlightLinks(this.app, this.file, this.where(), selected)
+      if (this.disposed) return
+      if (result.applied.length) {
+        const remap = selected.find((r) => r.cfi === this.model.active?.cfi && result.applied.includes(r.cfi))
+        if (result.applied.some((cfi) => cfi === this.model.commenting?.cfi)) this.model.commenting = null
+        if (result.applied.some((cfi) => cfi === this.model.wording?.cfi)) this.model.wording = null
+        await this.loadHighlights()
+        if (remap) this.model.active = this.model.highlights.find((x) => x.cfi === remap.suggested) ?? null
+      }
+      new Notice(`Repaired ${result.applied.length} link(s); skipped ${result.skipped.length}; errors ${result.failed.length}.`)
+    } catch (e) {
+      if (!this.disposed) new Notice(`Highlight links could not be repaired: ${(e as Error).message}`)
+    } finally {
+      this.repairing = false
+    }
   }
 
   /** The settings changed: the highlights are read again if where they go did. */

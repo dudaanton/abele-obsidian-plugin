@@ -79,6 +79,8 @@ const DIALOGS = [
   'ask-name',
   'confirm-action',
   'discussion-remove',
+  'book-repair-one',
+  'book-repair-many',
 ].map((name) => `dialog ${name}`)
 
 interface Screen {

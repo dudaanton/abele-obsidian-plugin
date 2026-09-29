@@ -543,6 +543,7 @@ leave either as it is. It is found by that property, not its name. Each highligh
 - The title is a link to the place (`#cfi=…`), labelled with the chapter or `Page N`.
 - The first paragraph is the highlighted words as they were; after a blank `>` line, the comment.
 - A highlight is told apart by its place: two callouts linking to the same CFI are one highlight.
+- In reflowing EPUBs, if the saved CFI points away from the quote in an opened chapter, the reader may draw the words at a found occurrence instead. The highlight's action row offers **Repair highlight link…** only for verified mismatches. A confirmation lists one or all mismatches found in chapters opened during this reading session; it does not audit the whole book. No link is changed on detection or dismissal. On confirmation only the encoded CFI value of each selected callout title link changes; all other note bytes, including quote and comment, remain as written. Changed, duplicated or colliding locations are skipped. Repeated quotes use the nearest occurrence when the saved anchor is available, so inspect the proposed context before confirming. Other copied links and a discussion's separate saved anchor are not repaired.
 - A **discussion** — a chat about the words, started with "Ask here" in the reader — is kept in the
   same note: its chat's file linked after the place in the title. Words only asked about are a
   `chat` callout with no colour; a highlight that was asked about keeps its `quote|colour`:

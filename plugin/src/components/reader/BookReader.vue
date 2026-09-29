@@ -78,6 +78,9 @@
         <BookSelectionBar
           v-else-if="(model.selection || model.active) && !model.selecting"
           :highlight="model.active"
+          :repairable="!!model.active && model.repairableCfis.includes(model.active.cfi)"
+          :repair-count="model.repairableCfis.length"
+          @repair="emit('repair-highlight', $event ? undefined : model.active!)"
           :can-ask="model.canAsk"
           :scripts="pinnedScripts"
           :can-run-scripts="hasScripts"
@@ -240,6 +243,7 @@ const emit = defineEmits<{
   (e: 'save-forms', h: Highlight, forms: string[]): void
   (e: 'cancel-forms'): void
   (e: 'delete-highlight', h: Highlight): void
+  (e: 'repair-highlight', h?: Highlight): void
   (e: 'open-note', h?: Highlight, evt?: MouseEvent): void
   (e: 'close-active'): void
   (e: 'bookmark'): void

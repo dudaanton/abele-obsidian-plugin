@@ -401,6 +401,7 @@ export class BookView extends FileView {
     this.follow = null
     this.closeFootnote()
     this.reading?.stopSearch()
+    this.reading?.dispose()
     this.reading?.speech.stop()
     this.reading = null
     this.linked?.stop()

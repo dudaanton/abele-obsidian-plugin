@@ -94,6 +94,13 @@
       </template>
       <template v-if="highlight">
         <Icon
+          v-if="repairable"
+          icon="wrench"
+          tooltip="Repair highlight link…"
+          aria-label="Repair highlight link…"
+          @click="openRepairMenu"
+        />
+        <Icon
           icon="underline"
           :active="!!highlight.forms?.length"
           :tooltip="
@@ -150,6 +157,8 @@ const props = defineProps<{
   highlight?: Highlight | null
   /** The AI side is on, so a chat can be asked from here. */
   canAsk?: boolean
+  repairable?: boolean
+  repairCount?: number
   /**
    * The book menu's scripts, chosen in the settings or by their header: a button each while
    * they are few, one button with a menu of them once they are more.
@@ -169,9 +178,18 @@ const emit = defineEmits<{
   (e: 'script', name?: string): void
   (e: 'open-note', evt?: MouseEvent): void
   (e: 'forms'): void
+  (e: 'repair', all: boolean): void
   (e: 'delete'): void
   (e: 'close'): void
 }>()
+
+const openRepairMenu = (event: MouseEvent) => {
+  const menu = new Menu()
+  menu.addItem((item) => item.setTitle('Repair this highlight link…').setIcon('wrench').onClick(() => emit('repair', false)))
+  if ((props.repairCount ?? 0) > 1)
+    menu.addItem((item) => item.setTitle(`Repair all found highlight links (${props.repairCount})…`).setIcon('wrench').onClick(() => emit('repair', true)))
+  menu.showAtMouseEvent(event)
+}
 
 /** More scripts than the bar has room for on a phone: one button, and a menu of them. */
 const folded = computed(() => (props.scripts?.length ?? 0) > BOOK_BAR_BUTTONS)

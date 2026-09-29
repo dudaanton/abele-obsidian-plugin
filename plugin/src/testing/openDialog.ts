@@ -31,7 +31,21 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { askName } from '@/modal/askName'
 import { confirmAction } from '@/modal/confirm'
 import { askWhatToRemove } from '@/reader/bookDiscussions'
+import { askToRepairLinks } from '@/reader/highlightRepairDialog'
+import type { PreparedHighlightRepair } from '@/reader/companion'
+import { TFile } from 'obsidian'
 import type { Highlight } from '@/reader/highlights'
+
+const repairExamples = (count: number): PreparedHighlightRepair[] =>
+  Array.from({ length: count }, (_, i) => ({
+    note: new TFile(),
+    cfi: `epubcfi(/6/2!/4/${i * 2 + 2}:1)`,
+    suggested: `epubcfi(/6/2!/4/${i * 2 + 3}:1)`,
+    text: `Fabricated sample passage ${i + 1} with enough words to wrap in a narrow dialog and describe a proposed location.`,
+    label: `Sample chapter ${i + 1} — an intentionally long chapter label`,
+    context: { pre: 'A short invented paragraph before the passage. ', match: 'Fabricated sample passage', post: ' and an invented paragraph after it.' },
+    anchored: i !== 0,
+  }))
 
 const HIGHLIGHT: Highlight = {
   cfi: 'epubcfi(/6/4!/4/2/1:0)',
@@ -143,6 +157,8 @@ const DIALOGS: Record<string, () => void> = {
       confirmText: 'Remove',
     }),
   'discussion-remove': () => void askWhatToRemove(HIGHLIGHT),
+  'book-repair-one': () => void askToRepairLinks(GlobalStore.getInstance().app, repairExamples(1)),
+  'book-repair-many': () => void askToRepairLinks(GlobalStore.getInstance().app, repairExamples(12)),
 }
 
 /** The names `openDialog` knows, for a probe to walk. */

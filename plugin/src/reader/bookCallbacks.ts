@@ -96,6 +96,7 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       model.wording = null
     },
     onDeleteHighlight: (h: Highlight): void => void a.reading()?.remove(h),
+    onRepairHighlight: (h?: Highlight): void => void a.reading()?.repairHighlightLinks(h),
     onOpenNote: (h?: Highlight, evt?: MouseEvent): void =>
       void a.reading()?.openNote(h, paneOf(evt)),
     onCloseActive: (): void => {

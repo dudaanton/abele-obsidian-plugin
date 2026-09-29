@@ -103,6 +103,8 @@ export interface BookModel {
   panelTab: PanelTab
   /** The book's highlights, as its highlights note has them. */
   highlights: Highlight[]
+  /** Runtime-only mismatches observed while visiting chapters. */
+  repairableCfis: string[]
   /** Words selected on the page, with what can be done to them. */
   selection: BookSelection | null
   /** A highlight that was tapped, with what can be done to it. */
@@ -152,6 +154,7 @@ export const emptyBookModel = (): BookModel => ({
   settingsOpen: false,
   panelTab: 'contents',
   highlights: [],
+  repairableCfis: [],
   selection: null,
   active: null,
   commenting: null,

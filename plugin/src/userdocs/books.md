@@ -48,7 +48,12 @@ file travels; chats need the same switch.
 
 Select words, with the mouse or a long press, and a bar appears: a colour highlights them, the
 speech bubble adds a comment, the link copies a link to the words, and the quote puts them into
-the note you last worked in. Tap a highlight to change or remove it.
+the note you last worked in. Tap a highlight to change or remove it. If an EPUB highlight's
+saved link points away from its quoted words in a chapter you opened, a wrench appears in its
+action row. Its menu offers repair of this link or all links found so far. Check the passage and
+nearby words in the confirmation dialog before choosing Repair; Cancel changes nothing. Repeated
+words may match the wrong occurrence. Only the link's location in the highlights note changes,
+not its words or comment. “All found” covers visited chapters, not a whole-book search.
 
 Highlights are kept in a note, `<book name> highlights.md` beside the book by default, one
 callout per highlight with a link back to its place. The note's `file` property links back to
