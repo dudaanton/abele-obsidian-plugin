@@ -157,9 +157,18 @@ export function activeVaultFileCount(): number {
  * never answers fails its test rather than the whole tier.
  */
 export function evalRaw(code: string, timeoutMs?: number): string {
-  const output = run(['eval', `code=${code}`], timeoutMs)
-  const marker = output.indexOf('=>')
-  return marker === -1 ? output : output.slice(marker + 2).trim()
+  return answerOf(run(['eval', `code=${code}`], timeoutMs))
+}
+
+/**
+ * The answer in what the CLI printed for an `eval`: the line that starts with `=>` and what
+ * follows it. The page's console messages from while the eval ran come first, and one of them
+ * can hold an arrow of its own — Obsidian logging a command it received, the code of an arrow
+ * function in it — which, read as the answer, handed a test half of someone's script.
+ */
+export function answerOf(output: string): string {
+  const marker = /^=>/m.exec(output)
+  return marker ? output.slice(marker.index + 2).trim() : output
 }
 
 /**
