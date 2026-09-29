@@ -505,7 +505,12 @@ the book's `dc:identifier` as `id:<identifier>`, so renaming or moving the file 
 or `path:<path>` for a book without one; each place is `{ cfi, fraction, path, at }`, `at` being
 when its position last changed, in epoch milliseconds. A normal reader open adds optional
 `openedAt` (the last successful open, without changing `at`), `title` and `author` from the
-book's own metadata, and `measure: { kind, count }`. `kind: 'locations'` is the engine's
+book's own metadata, and `measure: { kind, count }` with `measureAt` (epoch milliseconds when
+the measurement changed). Position (`at`), last opening (`openedAt`, with cached metadata),
+and measurement (`measureAt`) merge independently. An incoming legacy position that omits
+these optional fields does not erase them. Measurements saved before `measureAt` existed use
+their recorded opening/position time as a fallback when merging; a measurement-only update
+neither advances `at` nor makes the reader follow another device. `kind: 'locations'` is the engine's
 whole-book text locations (roughly 1,500 bytes each) for reflowing books; `kind: 'pages'` is
 its fixed-layout/PDF page count. These are **not printed-edition pages**. Older records omit
 these fields; nothing reads unopened binaries to fill them. A new open before any saved CFI

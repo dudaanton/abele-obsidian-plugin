@@ -177,6 +177,160 @@ describe('reader library snapshots', () => {
     expect(JSON.parse(store.data!)['id:a'].openedAt).toBe(40)
   })
 
+  it('keeps cached reader fields when a legacy device sends a newer place, including on disk and restart', async () => {
+    const base = {
+      cfi: 'first',
+      fraction: 0.2,
+      path: 'Sample/book.epub',
+      at: 10,
+      openedAt: 50,
+      title: 'Sample title',
+      author: 'Sample writer',
+      measure: { kind: 'locations', count: 80 },
+    }
+    const { store, storage } = memory(JSON.stringify({ 'id:sample': base }))
+    const places = new BookPlaces(storage)
+    await places.get('id:sample')
+    store.data = JSON.stringify({
+      'id:sample': { cfi: 'next', fraction: 0.3, path: base.path, at: 20 },
+    })
+    await places.refresh()
+    expect(await places.get('id:sample')).toMatchObject({
+      ...base,
+      cfi: 'next',
+      fraction: 0.3,
+      at: 20,
+    })
+    await places.set('path:Sample/other.pdf', { cfi: 'p', fraction: 0, path: 'Sample/other.pdf' })
+    await places.flush()
+    expect(JSON.parse(store.backup!)['id:sample']).toMatchObject({
+      ...base,
+      cfi: 'next',
+      fraction: 0.3,
+      at: 20,
+    })
+    const restarted = new BookPlaces(storage)
+    expect(await restarted.get('id:sample')).toMatchObject({
+      ...base,
+      cfi: 'next',
+      fraction: 0.3,
+      at: 20,
+    })
+  })
+
+  it('merges a newer open independently of a newer place in either direction', async () => {
+    const olderPlace = {
+      cfi: 'first',
+      fraction: 0.2,
+      path: 'Sample/book.epub',
+      at: 10,
+      openedAt: 50,
+      title: 'Sample newer title',
+      author: 'Sample writer',
+      measure: { kind: 'locations', count: 120 },
+      measureAt: 70,
+    }
+    const laterPlace = {
+      ...olderPlace,
+      cfi: 'next',
+      fraction: 0.3,
+      at: 20,
+      openedAt: 30,
+      title: 'Sample older title',
+      measure: { kind: 'locations', count: 80 },
+      measureAt: 40,
+    }
+    for (const [main, incoming] of [
+      [olderPlace, laterPlace],
+      [laterPlace, olderPlace],
+    ]) {
+      const { store, storage } = memory(JSON.stringify({ 'id:sample': main }))
+      const places = new BookPlaces(storage)
+      await places.get('id:sample')
+      const changed = vi.fn()
+      places.onChange(changed)
+      store.data = JSON.stringify({ 'id:sample': incoming })
+      await places.refresh()
+      expect(await places.get('id:sample')).toMatchObject({
+        cfi: 'next',
+        at: 20,
+        openedAt: 50,
+        title: 'Sample newer title',
+        author: 'Sample writer',
+        measure: { kind: 'locations', count: 120 },
+        measureAt: 70,
+      })
+      expect(changed).toHaveBeenCalledOnce()
+    }
+  })
+
+  it.each(['measured', 'same-place'] as const)(
+    'syncs a measurement-only change from %s without changing the other clocks',
+    async (method) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(1000)
+      const base = { cfi: 'same', fraction: 0.2, path: 'Sample/book.epub', at: 10, openedAt: 50 }
+      const shared = memory(JSON.stringify({ 'id:sample': base }))
+      const first = new BookPlaces(shared.storage)
+      const second = new BookPlaces(shared.storage)
+      await first.get('id:sample')
+      await second.get('id:sample')
+      const measure = { kind: 'locations' as const, count: 80 }
+      if (method === 'measured') await first.measured('id:sample', base.path, measure)
+      else
+        await first.set('id:sample', {
+          cfi: base.cfi,
+          fraction: base.fraction,
+          path: base.path,
+          measure,
+        })
+      await first.flush()
+      const changed = vi.fn()
+      const newer = vi.fn()
+      second.onChange(changed)
+      second.onNewer(newer)
+      await second.refresh()
+      expect(await second.get('id:sample')).toMatchObject({ ...base, measure, measureAt: 1000 })
+      expect(changed).toHaveBeenCalledOnce()
+      expect(newer).not.toHaveBeenCalled()
+      await second.set('path:Sample/other.pdf', { cfi: 'p', fraction: 0, path: 'Sample/other.pdf' })
+      await second.flush()
+      expect(JSON.parse(shared.store.data!)['id:sample']).toMatchObject({
+        ...base,
+        measure,
+        measureAt: 1000,
+      })
+      // A later measurement wins even if the remote position and open times are older.
+      vi.setSystemTime(2000)
+      await first.measured('id:sample', base.path, { kind: 'locations', count: 90 })
+      await first.flush()
+      await second.refresh()
+      expect((await second.get('id:sample'))?.measure?.count).toBe(90)
+      await second.refresh()
+      expect(changed).toHaveBeenCalledTimes(3) // measurement, other book, later measurement
+    }
+  )
+
+  it('recovers a measurement-only update from backup and migrates it with a newer place', async () => {
+    const base = { cfi: 'same', fraction: 0.2, path: 'Sample/book.epub', at: 10, openedAt: 50 }
+    const measured = { ...base, measure: { kind: 'locations', count: 80 }, measureAt: 60 }
+    const { store, storage } = memory(
+      JSON.stringify({ 'id:sample': base }),
+      JSON.stringify({ 'id:sample': measured })
+    )
+    const places = new BookPlaces(storage)
+    expect(await places.get('id:sample')).toMatchObject(measured)
+    await places.flush()
+    expect(JSON.parse(store.data!)['id:sample']).toMatchObject(measured)
+    const destination = memory(JSON.stringify({ 'id:sample': { ...base, at: 20, cfi: 'next' } }))
+    await places.moveTo(destination.storage)
+    expect(JSON.parse(destination.store.data!)['id:sample']).toMatchObject({
+      ...measured,
+      at: 20,
+      cfi: 'next',
+    })
+  })
+
   it('can invalidate readers of derived data without changing a position or following another device', async () => {
     const { store, storage } = memory()
     const places = new BookPlaces(storage)

@@ -27,6 +27,8 @@ export interface BookPlace {
   author?: string
   /** Engine measurement, never a printed-edition page count. */
   measure?: { kind: 'locations' | 'pages'; count: number }
+  /** When the engine measurement changed, independent of page turns and opens. */
+  measureAt?: number
 }
 
 /**
@@ -62,39 +64,77 @@ function parsePlaces(raw: string | null): Places | null {
   }
 }
 
-/**
- * Takes into `into` each place of `from` that is newer than its own, or that it lacks. Says which
- * books it took.
- */
+/** Older reader measurements predate their own clock; their known open/place time is a fallback. */
+const measureTime = (place: BookPlace): number => place.measureAt ?? place.openedAt ?? place.at ?? 0
+
+const sameMeasure = (a: BookPlace['measure'], b: BookPlace['measure']): boolean =>
+  a?.kind === b?.kind && a?.count === b?.count
+
+/** Position, opening metadata and engine measurement are three independent registers. */
+function mergedPlace(mine: BookPlace, incoming: BookPlace): BookPlace {
+  const position = (incoming.at ?? 0) > (mine.at ?? 0) ? incoming : mine
+  const opening = (incoming.openedAt ?? 0) > (mine.openedAt ?? 0) ? incoming : mine
+  const other = opening === mine ? incoming : mine
+  let measured = mine
+  if (
+    incoming.measure &&
+    (!mine.measure ||
+      measureTime(incoming) > measureTime(mine) ||
+      (measureTime(incoming) === measureTime(mine) &&
+        JSON.stringify(incoming.measure) > JSON.stringify(mine.measure)))
+  )
+    measured = incoming
+  // Absence is not deletion: an older reader writes only the four original position fields.
+  const out: BookPlace = {
+    ...mine,
+    cfi: position.cfi,
+    fraction: position.fraction,
+    path: position.path,
+    at: position.at,
+  }
+  if (opening.openedAt !== undefined) out.openedAt = opening.openedAt
+  const title = opening.title ?? other.title
+  const author = opening.author ?? other.author
+  if (title !== undefined) out.title = title
+  if (author !== undefined) out.author = author
+  if (measured.measure) {
+    out.measure = { ...measured.measure }
+    if (measured.measureAt !== undefined) out.measureAt = measured.measureAt
+    else delete out.measureAt
+  }
+  if (
+    out.cfi === mine.cfi &&
+    out.fraction === mine.fraction &&
+    out.path === mine.path &&
+    out.at === mine.at &&
+    out.openedAt === mine.openedAt &&
+    out.title === mine.title &&
+    out.author === mine.author &&
+    out.measureAt === mine.measureAt &&
+    sameMeasure(out.measure, mine.measure)
+  )
+    return mine
+  return out
+}
+
+/** Takes newer fields without coupling their clocks, and says which records changed. */
 function mergeInto(into: Places, from: Places | null): string[] {
   const took: string[] = []
   for (const [key, place] of Object.entries(from ?? {})) {
     const mine = into[key]
-    if (mine && (mine.at ?? 0) > (place.at ?? 0)) continue
-    if (mine && mine.at === place.at) {
-      if (
-        mine.cfi !== place.cfi ||
-        mine.path !== place.path ||
-        (mine.openedAt ?? 0) >= (place.openedAt ?? 0)
-      )
-        continue
-      into[key] = { ...mine, ...place }
-    } else into[key] = place
+    const next = mine ? mergedPlace(mine, place) : place
+    if (next === mine) continue
+    into[key] = next
     took.push(key)
   }
   return took
 }
 
-/** Whether `places` holds something `file` lacks or has older. */
+/** Whether the in-memory records hold fields the file lacks or has older. */
 const ahead = (places: Places, file: Places | null): boolean =>
-  Object.entries(places).some(([k, p]) => {
-    const saved = file?.[k]
-    return (
-      !saved ||
-      (saved.at ?? 0) < (p.at ?? 0) ||
-      (saved.at === p.at && (saved.openedAt ?? 0) < (p.openedAt ?? 0))
-    )
-  })
+  Object.entries(places).some(
+    ([key, place]) => !file?.[key] || mergedPlace(file[key], place) !== file[key]
+  )
 
 /** How many books are remembered; the ones read longest ago go first. */
 export const MAX_PLACES = 500
@@ -180,7 +220,12 @@ export class BookPlaces {
   async refresh(): Promise<void> {
     await this.load()
     const previous = { ...this.places }
-    const took = mergeInto(this.places, await this.read('main'))
+    const disk = await this.read('main')
+    const took = mergeInto(this.places, disk)
+    if (ahead(this.places, disk)) {
+      this.dirty = true
+      this.schedule()
+    }
     if (took.length) {
       this.changed()
       const newer = took.filter((key) => (previous[key]?.at ?? -1) < this.places[key].at)
@@ -270,7 +315,15 @@ export class BookPlaces {
       known.measure.count === measure.count
     )
       return
-    this.places[key] = { cfi: '', fraction: 0, at: 0, ...known, path, measure: { ...measure } }
+    this.places[key] = {
+      cfi: '',
+      fraction: 0,
+      at: 0,
+      ...known,
+      path,
+      measure: { ...measure },
+      measureAt: Math.max(Date.now(), (known?.measureAt ?? 0) + 1),
+    }
     this.dirty = true
     this.schedule()
     this.changed()
@@ -295,14 +348,13 @@ export class BookPlaces {
   async set(key: string, place: Omit<BookPlace, 'at'>): Promise<void> {
     await this.load()
     const known = this.places[key]
-    if (known && known.cfi === place.cfi && known.path === place.path) {
-      if (
-        !place.measure ||
-        (known.measure?.kind === place.measure.kind && known.measure.count === place.measure.count)
-      )
-        return
-      this.places[key] = { ...known, measure: { ...place.measure } }
-    } else this.places[key] = { ...known, ...place, at: Date.now() }
+    const moved = !known || known.cfi !== place.cfi || known.path !== place.path
+    const measured = place.measure && !sameMeasure(known?.measure, place.measure)
+    if (!moved && !measured) return
+    this.places[key] = { ...known, ...place, at: moved ? Date.now() : known!.at }
+    // Relocating without a measurement must not erase one cached earlier.
+    if (!place.measure && known?.measure) this.places[key].measure = { ...known.measure }
+    if (measured) this.places[key].measureAt = Math.max(Date.now(), (known?.measureAt ?? 0) + 1)
     this.dirty = true
     this.schedule()
     this.changed()
