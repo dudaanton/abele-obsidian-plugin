@@ -410,6 +410,14 @@ the repository. Editing it changes what the card shows. A block without `url`, `
 `---` line is shown as plain text, as written. Do not invent these blocks: `url` must be an
 address the GitHub tab can open.
 
+## Where notes were left
+
+With `rememberNotePlaces` on, each device keeps, outside the vault, where every note it opened
+was left: the scroll and the cursor, by path. A note opened plainly comes back there; one opened
+at a heading, a block, a search result, a line or a book's highlight goes to that instead.
+Nothing about it is written into notes or synced, a rename carries the place along and a delete
+drops it.
+
 ## Places
 
 A place is a note with its coordinates in one property, written `lat, lon` — `coordinates:

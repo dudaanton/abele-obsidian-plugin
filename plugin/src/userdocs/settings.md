@@ -83,6 +83,7 @@ Sending settings to another device, receiving them, synced keys and the list of 
 ## Other
 
 The CSS snippets folder, full-width sidebars on a phone and half-width on a tablet, the Mermaid
-viewer, the plugin's own drawing of properties (see [Properties](writing#properties)), the
+viewer, the plugin's own drawing of properties (see [Properties](writing#properties)), opening
+notes where you left them (see [Where you left off](writing#where-you-left-off)), the
 coordinates property and map style for maps, and keyboard diagnostics, a troubleshooting panel
 for the on-screen keyboard.

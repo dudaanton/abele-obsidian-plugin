@@ -112,6 +112,7 @@ import { SnippetService } from './services/SnippetService'
 import { startCalendars } from './calendars/start'
 import { dictate } from '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
+import { registerNotePlaces } from './notePlaces/register'
 import { registerGithub } from '@/github/register'
 import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
@@ -270,6 +271,9 @@ export default class AbelePlugin extends Plugin {
 
     // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
     startupStep('line links', () => registerLineLinks(this))
+
+    // Notes come back where they were left, unless opened at a place of their own.
+    startupStep('note places', () => registerNotePlaces(this))
 
     // Some properties drawn by the plugin: wallet balances, sums in numbers, file cards.
     startupStep('property widgets', () => registerPropertyWidgets(this))

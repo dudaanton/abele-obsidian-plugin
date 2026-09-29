@@ -94,6 +94,11 @@ export interface AbeleSettings {
    * cards for File and Files properties and for `cover`. Off is Obsidian's own drawing.
    */
   propertyWidgets?: boolean
+  /**
+   * Notes open where they were last left — scroll and cursor, saved on each device — unless
+   * they are opened at a place of their own: a heading, a search result, a book's highlight.
+   */
+  rememberNotePlaces?: boolean
   /** Property names drawn as a counter: the number with − and + beside it. Empty counts as 0. */
   counterProperties?: string[]
   /** Property names drawn as a date: a day back and on, how far away, its daily note. */
@@ -299,6 +304,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   halfWidthSidebarsOnTablet: false,
   mermaidViewer: true,
   propertyWidgets: true,
+  rememberNotePlaces: true,
   counterProperties: [],
   dateProperties: ['date', 'due'],
   priorityProperties: ['priority'],
@@ -353,6 +359,7 @@ export class AbeleConfig {
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean
   public propertyWidgets: boolean
+  public rememberNotePlaces: boolean
   public counterProperties: string[] = []
   public dateProperties: string[] = []
   public priorityProperties: string[] = []
@@ -681,6 +688,8 @@ export class AbeleConfig {
       settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
     this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
     this.propertyWidgets = settings?.propertyWidgets ?? DEFAULT_SETTINGS.propertyWidgets ?? true
+    this.rememberNotePlaces =
+      settings?.rememberNotePlaces ?? DEFAULT_SETTINGS.rememberNotePlaces ?? true
     this.counterProperties = Array.isArray(settings?.counterProperties)
       ? settings.counterProperties.filter((name): name is string => typeof name === 'string')
       : []
@@ -747,6 +756,7 @@ export class AbeleConfig {
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
       mermaidViewer: this.mermaidViewer,
       propertyWidgets: this.propertyWidgets,
+      rememberNotePlaces: this.rememberNotePlaces,
       counterProperties: [...this.counterProperties],
       dateProperties: [...this.dateProperties],
       priorityProperties: [...this.priorityProperties],

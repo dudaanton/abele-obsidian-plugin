@@ -28,6 +28,15 @@ enough. **Reindex footnotes** renumbers them in order of appearance.
 selected. **Copy link to selected lines** makes such a link from your selection; the editor's
 right-click menu has it as **Copy link to lines**.
 
+## Where you left off
+
+A note opens at the place you left it — scrolled where it was, with the cursor where it was —
+on each device separately. A link to a heading or a block, a search result, a link to lines and
+a book's highlight still take you to their own place. Turn it off in **Settings → Abele →
+Other**. It works like the
+[Remember cursor position](https://github.com/dy-sh/obsidian-remember-cursor-position) plugin,
+whose places are brought over the first time; keep only one of the two on.
+
 ## Diagrams
 
 A ```` ```mermaid ```` block is drawn at the width of the note, with zoom and drag, full screen,

@@ -32,6 +32,12 @@
       <Checkbox :is-enabled="propertyWidgets" @toggle="togglePropertyWidgets" />
     </Setting>
     <Setting
+      name="Remember where notes were left"
+      desc="Open each note at the scroll and cursor it was left at, kept on this device. A link to a heading or block, a search result or a book's highlight still goes to its own place."
+    >
+      <Checkbox :is-enabled="rememberNotePlaces" @toggle="toggleRememberNotePlaces" />
+    </Setting>
+    <Setting
       name="Counter properties"
       desc="Comma-separated property names drawn as a number with − and + buttons. An empty value counts as 0. Needs own drawing of properties on."
     >
@@ -103,6 +109,7 @@ const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 const mermaidViewer = ref(config.mermaidViewer)
 const propertyWidgets = ref(config.propertyWidgets)
+const rememberNotePlaces = ref(config.rememberNotePlaces)
 const counterProperties = ref((config.counterProperties ?? []).join(', '))
 
 const applyClass = (enabled: boolean) => {
@@ -174,6 +181,13 @@ const toggleMermaidViewer = async () => {
 const togglePropertyWidgets = async () => {
   propertyWidgets.value = !propertyWidgets.value
   config.propertyWidgets = propertyWidgets.value
+  await config.saveSettings()
+}
+
+// Read as each note opens; the places already saved stay, for when it is switched back on.
+const toggleRememberNotePlaces = async () => {
+  rememberNotePlaces.value = !rememberNotePlaces.value
+  config.rememberNotePlaces = rememberNotePlaces.value
   await config.saveSettings()
 }
 

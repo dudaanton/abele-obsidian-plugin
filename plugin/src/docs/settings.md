@@ -206,7 +206,9 @@ headers, `fullWidthSidebars` widens the sidebars to the whole screen on
 a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewer` (on by
 default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own,
 `propertyWidgets` (on by default) draws some properties itself — a wallet's balance, sums in
-number fields, file cards for File and Files properties and `cover` — `counterProperties` lists
+number fields, file cards for File and Files properties and `cover` — `rememberNotePlaces` (on
+by default) opens each note at the scroll and cursor it was left at on that device, unless it is
+opened at a place of its own, `counterProperties` lists
 the property names drawn as a counter, the number with − and + beside it, while that is on —
 `dateProperties` (`date`, `due`), `priorityProperties` (`priority`) and `labelProperties`
 (`labels`) the names drawn as a date stepped a day at a time, a task priority and labels — and

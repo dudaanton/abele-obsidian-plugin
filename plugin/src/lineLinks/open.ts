@@ -9,6 +9,7 @@
  */
 import { MarkdownView, Platform, TFile, type App, type PaneType } from 'obsidian'
 import { clampRange, parseLineLink, type LineRange } from './parse'
+import { holdNotePlace } from '@/notePlaces/hold'
 
 /** How long a section flashes in reading view; the same length as a footnote's flash. */
 const FLASH_MS = 2500
@@ -230,6 +231,8 @@ async function flashInEditor(view: MarkdownView, range: LineRange): Promise<void
  * leaving the cursor where it was.
  */
 export async function flashLines(view: MarkdownView, lines: LineRange): Promise<void> {
+  // The lines win over the place the note was last left at, now and a moment after it opened.
+  holdNotePlace(view)
   const range = clampRange(lines, lineCountOf(view))
   if (view.getMode() === 'preview') await flashInPreview(view, range)
   else await flashInEditor(view, range)
@@ -237,6 +240,7 @@ export async function flashLines(view: MarkdownView, lines: LineRange): Promise<
 
 /** Brings an open note to a range of its lines, in whichever mode it is showing. */
 export async function revealLines(view: MarkdownView, lines: LineRange): Promise<void> {
+  holdNotePlace(view)
   const range = clampRange(lines, lineCountOf(view))
   if (view.getMode() === 'preview') await flashInPreview(view, range)
   else selectInEditor(view, range)
