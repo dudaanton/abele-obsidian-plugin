@@ -472,7 +472,7 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       link.click()
       const searched = await until(() => bookLeaf().view.model.search.words && !bookLeaf().view.model.search.running && bookLeaf().view.model.search.count ? bookLeaf().view.model.search : null, 15000)
       const model = bookLeaf().view.model
-      const words = searched?.words
+      const words = [...(searched?.words ?? [])]
       const count = searched?.count
       const panel = model.panel && model.panelTab === 'search'
       // The bar under the page: on, on, back.
