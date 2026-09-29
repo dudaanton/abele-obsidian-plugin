@@ -1358,6 +1358,21 @@ const onBoxResized = () => {
   doScroll()
 }
 
+/**
+ * The distance to the end, measured again when the conversation grows or shrinks under a reader
+ * who is not following it. A reply streaming in below adds to that distance without a scroll to
+ * say so, and the box changing height afterwards — a row appearing under the chat on a phone —
+ * put the reader back at the distance from before the reply grew: a jump down by all that had
+ * streamed in since they scrolled. Not while the box itself has changed and its observer has not
+ * run yet: the distance from before the change is the one it is to keep.
+ */
+const keepGapCurrent = () => {
+  const el = messagesContainer.value
+  if (!el || shouldAutoScroll || fingerDown) return
+  if (boxHeight !== null && el.clientHeight !== boxHeight) return
+  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+}
+
 const observe = (el: HTMLElement) => {
   mutObserver = new MutationObserver(() => {
     // Hidden under the opened composer; it is put right when the composer closes.
@@ -1366,6 +1381,7 @@ const observe = (el: HTMLElement) => {
     // with it — which is exactly when the anchor needs putting back.
     holdAnchor()
     holdSteady()
+    keepGapCurrent()
     doScroll()
   })
   mutObserver.observe(el, {

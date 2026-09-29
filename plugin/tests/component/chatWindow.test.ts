@@ -477,6 +477,9 @@ function resizableModel(wrapper: ReturnType<typeof mount>, contentHeight: number
   return {
     container,
     scrollTo: (v: number) => (scrollTop = clamp(v)),
+    grow: (height: number) => {
+      contentHeight = height
+    },
     resize: (height: number) => {
       clientHeight = height
       scrollTop = clamp(scrollTop)
@@ -564,6 +567,38 @@ describe('the box shrinking under the reader, as it does when a keyboard opens',
     boxObserver(model.container)?.fire()
     await settle()
     expect(model.container.scrollTop).toBe(1000)
+  })
+
+  it('keeps the distance to the end as it is when the box changes, after a reply grew under the reader', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const isStreaming = ref(true)
+    vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+      value: fakeChatSession({
+        messages,
+        kind: 'chat',
+        overrides: { streamingContent: streaming, isStreaming },
+      }),
+    } as never)
+    const wrapper = mountAttached()
+    const model = resizableModel(wrapper, 2000)
+    const container = wrapper.find('.abele-ai-chat__messages')
+    await settle()
+    streaming.value = 'The answer'
+    await settle()
+    model.scrollTo(1000)
+    await container.trigger('scroll')
+
+    // The reply goes on streaming in below the reader: 400px more of it, and no scroll.
+    model.grow(2400)
+    streaming.value = 'The answer, at much greater length'
+    await settle()
+    await new Promise((r) => setTimeout(r, 0))
+
+    // Then the box under the conversation gets a little shorter, as a row appears below it.
+    model.resize(784)
+    boxObserver(model.container)?.fire()
+    await settle()
+    expect(model.container.scrollTop).toBe(1016)
   })
 })
 
