@@ -17,12 +17,12 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Gallery e2e'
 const SHOTS = '/tmp/abele-gallery'
 const PHONE = { width: 390, height: 844 }
-const UUID = 'b0146371-e7b4-499c-a591-281a73c9bcab'
+const IMAGE_NAME = 'sample-image'
 
-/** The note as it was written: one picture, its full path with a folder, a uuid for a name. */
+/** An invented note with a generated picture in a nested attachment folder. */
 const NOTES: Record<string, string> = {
-  single: `# Single\n\n::abele-gallery::\n![[${DIR}/Attachments/${UUID}.png]]\n\nAfter the gallery.\n`,
-  several: `# Several\n\n::abele-gallery::\n![[${DIR}/Attachments/${UUID}.png]]\n![[${DIR}/Attachments/Deep/red.png|300]]\n\n![[green.png]]\n\nAfter.\n`,
+  single: `# Single\n\n::abele-gallery::\n![[${DIR}/Attachments/${IMAGE_NAME}.png]]\n\nAfter the gallery.\n`,
+  several: `# Several\n\n::abele-gallery::\n![[${DIR}/Attachments/${IMAGE_NAME}.png]]\n![[${DIR}/Attachments/Deep/red.png|300]]\n\n![[green.png]]\n\nAfter.\n`,
   late: `# Late\n\n::abele-gallery::\n![[${DIR}/Attachments/late.png]]\n\nAfter.\n`,
 }
 const notePath = (name: string) => `${DIR}/${name}.md`
@@ -152,7 +152,7 @@ describe.skipIf(!available)('the gallery', () => {
       const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
       if (old) await app.vault.delete(old, true)
       await app.vault.createFolder(${JSON.stringify(DIR)})
-      ${writePicture(`${DIR}/Attachments/${UUID}.png`, '#2a7ab0')}
+      ${writePicture(`${DIR}/Attachments/${IMAGE_NAME}.png`, '#2a7ab0')}
       ${writePicture(`${DIR}/Attachments/Deep/red.png`, '#c0392b')}
       ${writePicture(`${DIR}/green.png`, '#27ae60')}
       for (const [name, text] of Object.entries(${JSON.stringify(NOTES)}))

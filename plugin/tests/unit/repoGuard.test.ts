@@ -39,7 +39,7 @@ const SECRETS: [string, string][] = [
     'JWT',
     j('ey', 'JhbGciOiJIUzI1NiJ9', '.', 'ey', 'JzdWIiOiIxMjM0NTY3ODkwIn0', '.', RANDOM.slice(0, 30)),
   ],
-  ['password in a URL', j('https://anton:', 'Hunter2Xq9', '@example.com/repo.git')],
+  ['password in a URL', j('https://user:', 'Hunter2Xq9', '@example.com/repo.git')],
   ['credential assignment', j('const apiKey = "', RANDOM.slice(0, 24), '"')],
   ['credential assignment', j('GITHUB_', 'TOKEN=', RANDOM.slice(0, 24))],
 ]
@@ -156,9 +156,9 @@ describe('secrets', () => {
 
 describe('personal paths', () => {
   it('refuses a real home directory and masks the name', () => {
-    const [found] = scan(`const vault = '/Users/${'anton'}/obsidian/vault'`)
+    const [found] = scan(`const vault = '/Users/${'operator'}/obsidian/vault'`)
     expect(found.kind).toBe('home')
-    expect(found.message).not.toContain('anton')
+    expect(found.message).not.toContain('operator')
     expect(scan(`cd /home/${'deploy'}/app`)[0].kind).toBe('home')
   })
 

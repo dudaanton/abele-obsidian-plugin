@@ -211,7 +211,7 @@ const visibleGroups = computed<ToolGroup[]>(() => {
     // In descriptions-only mode every tool has a description worth editing, core included.
     if (!props.descriptionsOnly && !showAll.value && isCore(tool.name)) continue
     if (!groups.has(tool.category)) groups.set(tool.category, [])
-    groups.get(tool.category)!.push({ name: tool.name, label: tool.label })
+    groups.get(tool.category).push({ name: tool.name, label: tool.label })
   }
 
   return Array.from(groups.entries()).map(([category, tools]) => ({
@@ -240,8 +240,18 @@ h4.abele-tool-modes__heading {
   }
 }
 
+// Off, Ask and Auto side by side, even on a phone, where Obsidian would stack each button
+// full width and three rows per section would bury the tools they set.
 .abele-tool-modes__bulk > .setting-item-control {
+  flex-wrap: nowrap;
   gap: var(--size-4-2);
+
+  > button {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    justify-content: center;
+  }
 }
 
 .abele-tool-modes__core {

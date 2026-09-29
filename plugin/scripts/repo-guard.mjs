@@ -263,7 +263,7 @@ export function checkLine(file, lineNo, text, config, localPatterns = []) {
       add(
         'error',
         'private',
-        `private pattern #${p.index} from your local patterns file matches ${mask(m[0])}.`
+        `private pattern #${p.index} from your local patterns file matches ${mask(m[0])}. Agent: rewrite the entire example using invented data; do not merely substitute this string.`
       )
     }
   }

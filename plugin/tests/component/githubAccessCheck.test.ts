@@ -85,14 +85,14 @@ describe('check access', () => {
   it('without a repository says whose token it is, that it was sent and where', async () => {
     answer({
       '/user': {
-        json: { login: 'anton' },
+        json: { login: 'sample-user' },
         headers: { 'github-authentication-token-expiration': '2026-12-01 10:00:00 UTC' },
       },
     })
     const wrapper = open()
     await check(wrapper)
     const text = wrapper.find('.abele-github-access').text()
-    expect(text).toContain('anton')
+    expect(text).toContain('sample-user')
     expect(text).toContain('fine-grained')
     expect(text).toContain(`${TOKEN.length} characters`)
     expect(text).toContain('2026-12-01')
@@ -102,7 +102,7 @@ describe('check access', () => {
 
   it('with a repository tries every permission and says which was refused and why', async () => {
     answer({
-      '/user': { json: { login: 'anton' } },
+      '/user': { json: { login: 'sample-user' } },
       '/repos/acme/app/contents': { json: [] },
       '/repos/acme/app/issues': { json: [] },
       '/repos/acme/app/pulls': {
@@ -143,7 +143,7 @@ describe('check access', () => {
   })
 
   it('a private repository the token cannot see: not found, with the resource-owner hint', async () => {
-    answer({ '/user': { json: { login: 'anton' } } })
+    answer({ '/user': { json: { login: 'sample-user' } } })
     const wrapper = open()
     await check(wrapper, 'acme/secret')
     const metadata = rows(wrapper).find((t) => t.startsWith('Metadata'))!
@@ -152,7 +152,7 @@ describe('check access', () => {
   })
 
   it('never shows the token itself', async () => {
-    answer({ '/user': { json: { login: 'anton' } } })
+    answer({ '/user': { json: { login: 'sample-user' } } })
     const wrapper = open()
     await check(wrapper, 'acme/app')
     expect(wrapper.html()).not.toContain('SECRETVALUE')

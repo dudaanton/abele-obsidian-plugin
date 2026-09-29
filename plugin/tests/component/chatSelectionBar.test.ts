@@ -1,8 +1,7 @@
 /**
- * "Ask here" over words selected in a chat on a phone. It used to be the menu of the long press,
- * which a phone opens as the finger goes down to select: the menu jumped up over the words
- * before they were chosen (Anton, 2026-09-27). Now a small bar under the words, once the
- * finger has let them go and they have stopped moving.
+ * A fictional chat contains selectable text. A long press starts selection and then extends it.
+ * "Ask here" must remain hidden while the selection moves and appear below it only after the
+ * touch ends; it must not obstruct the words being selected.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'

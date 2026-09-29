@@ -21,7 +21,7 @@ import { widgetMount } from '@/helpers/widgetMounts'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
 
-const IMAGE = '![[Attachments/b0146371-e7b4-499c-a591-281a73c9bcab.png]]'
+const IMAGE = '![[Attachments/sample-image.png]]'
 
 function noteFile(): TFile {
   const file = new TFile()
@@ -75,7 +75,7 @@ describe('a gallery inserted over a picture already in the note', () => {
     expect(shown).toHaveLength(1)
     expect(shown[0].entry).not.toBeNull()
     expect(shown[0].entry!.images.map((i) => i.path)).toEqual([
-      'Attachments/b0146371-e7b4-499c-a591-281a73c9bcab.png',
+      'Attachments/sample-image.png',
     ])
     // And nothing left behind for an element that is gone.
     expect(store().galleriesContainers.value).toHaveLength(1)

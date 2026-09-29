@@ -32,9 +32,9 @@ describe('adding to an agent memory', () => {
     const agent = createAgent()
     delete agent.memory
 
-    addMemory(agent, 'Call me Anton')
+    addMemory(agent, 'Call me Sample User')
 
-    expect(agent.memory?.map((m) => m.text)).toEqual(['Call me Anton'])
+    expect(agent.memory?.map((m) => m.text)).toEqual(['Call me Sample User'])
   })
 
   it('folds whitespace and line breaks into one line', () => {

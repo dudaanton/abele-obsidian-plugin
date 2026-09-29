@@ -1,7 +1,7 @@
 /**
  * When words selected on the page have stopped moving — the moment a bar that offers something
- * to do with them may show. Before that it would jump up under a finger still dragging them out
- * (Anton, 2026-09-27, of the chat on his phone).
+ * to do with them may show. During touch selection the bar must stay hidden, since its position
+ * would otherwise change as the selected range grows.
  *
  * "Stopped" means no finger and no mouse button is down, and no `selectionchange` has come for a
  * moment. The pause is what catches a handle dragged on iOS: WebKit moves those itself, and the

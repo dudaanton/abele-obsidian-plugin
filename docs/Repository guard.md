@@ -46,6 +46,25 @@ It exits 1 when anything is refused. Warnings are printed and never fail.
 A match is never printed whole. The report shows its first few characters and its length —
 enough to find it, not enough to use it.
 
+## Anonymous examples
+
+Everything in tracked code, documentation, tests, fixture data, screenshots and commit messages
+must describe behavior, not the person who reported it. No names, quotations from personal
+messages, dates tied to a person's report, device ownership, real account handles, vault names,
+note titles, attachment IDs or identifying paths. Reproduce a bug with a newly invented note,
+account and generated asset; use obvious fixture names (`sample-user`, `sample-image.png`), not
+anonymized copies of real data. A generic device type or viewport needed for a test is fine;
+"their phone" is not. A separate local-only check at `~/.config/abele/anonymous-check.mjs`
+can flag known personal identifiers, attributed devices and UUID-shaped attachment filenames.
+Its tests live beside it, outside Git. The pre-commit hook runs it when installed; neither CI
+nor a fresh checkout has this private file. It only reports and blocks: the agent must rewrite
+the entire scenario with invented data, not merely replace the flagged string. Review the full
+diff by hand: no scanner can prove a plausible example was not copied from real life. Never use
+an allow marker to exempt personal data.
+
+Old commits remain public after a source edit. Removing them from history requires a separate,
+explicit decision about rewriting published history.
+
 ## Allowing something on purpose
 
 - **A path** — add a glob to `plugin/scripts/repo-guard.json`: `allow.junk`, `allow.images`

@@ -757,6 +757,10 @@ const probeScript = `(async () => {
             f.blur()
           }
           report['agent editor access'].clipped = cut
+          // Off, Ask and Auto stay side by side in every row that sets many tools at once.
+          report['agent editor access'].bulkRows = [...modal.querySelectorAll('.abele-tool-modes__bulk')].map(
+            (row) => new Set([...row.querySelectorAll('button')].map((b) => Math.round(b.getBoundingClientRect().top))).size
+          )
         }
       } catch (e) {
         report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
@@ -911,7 +915,6 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'settings mcp',
     'mcp server',
     'rewind',
-    'agent editor access',
     'script form',
     'docs page',
     'docs contents',
@@ -926,7 +929,6 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s === 'icon picker' ||
       s === 'secrets list' ||
       s === 'mcp server' ||
-      s === 'agent editor access' ||
       s === 'rewind'
   )
 
@@ -978,8 +980,33 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
 
-  it.each(sheets)('%s: nothing cuts the focus ring off any field', (label) => {
-    expect(report[label]?.clipped ?? ['no report']).toEqual([])
+  it.each([...sheets, 'agent editor access'])(
+    '%s: nothing cuts the focus ring off any field',
+    (label) => {
+      expect(report[label]?.clipped ?? ['no report']).toEqual([])
+    }
+  )
+
+  /**
+   * The agent editor's Access tab, inside a dialog sized like the rest of the dialogs rather than
+   * a sheet, so it is held to what a dialog is: nothing past the edge, no ring cut, and the rows
+   * that set many tools at once keeping Off, Ask and Auto side by side.
+   */
+  describe('agent editor access', () => {
+    const access = () => report['agent editor access'] as Screen & { bulkRows?: number[] }
+
+    it('is reached, nothing past the edge, one scroller, no ring cut', () => {
+      expect(access()?.error ?? 'no report').toBe('')
+      expect(access().over).toEqual([])
+      expect(access().scrollers.length).toBeLessThanOrEqual(1)
+      expect(access().clipped).toEqual([])
+    })
+
+    it('keeps Off, Ask and Auto to one row in every row that sets many tools', () => {
+      const rows = access()?.bulkRows
+      expect(rows?.length ?? 0).toBeGreaterThan(1)
+      expect(rows?.every((n) => n === 1)).toBe(true)
+    })
   })
 
   it('nested comment folded: a trail of four levels keeps to one row', () => {

@@ -21,6 +21,14 @@ cd "$repo_root/plugin"
 
 node scripts/repo-guard.mjs --staged
 
+# Private examples and identity checks stay outside the public repository.
+privacy_gate="$HOME/.config/abele/anonymous-check.mjs"
+if [ -f "$privacy_gate" ]; then
+  node "$privacy_gate" --staged
+else
+  echo "pre-commit: local privacy gate is not installed; agent must review the staged diff manually"
+fi
+
 if [ ! -d node_modules ]; then
   echo "pre-commit: plugin/node_modules missing, skipping tests"
   exit 0

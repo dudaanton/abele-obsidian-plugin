@@ -1,12 +1,9 @@
 /**
  * Typing into a long form on a phone, the keyboard up.
  *
- * Anton, 2026-09-27: typing into a form an agent made, the field went under the keyboard and
- * nothing would scroll it back. The form is a script's `form()` — thirteen fields, the last a
- * note field, Obsidian's own editor — in the dialog shell. Its last text field is typed into, then
- * the note field line after line, and each time the field (the note field's caret) has to stand
- * above the keyboard and above Obsidian's editing toolbar over it, with the form's Run in sight
- * too.
+ * An invented script's `form()` has thirteen generated fields, ending in a note field backed by
+ * Obsidian's editor. As text is entered into the final fields, the active field and caret must
+ * remain visible above the simulated keyboard and editing toolbar, along with the Run button.
  *
  * On the desktop the phone is Obsidian's layout for one (`emulateMobile`) in a 390×844 window, the
  * keyboard written as Obsidian's iPhone app writes it (`--keyboard-height` on the root, announced

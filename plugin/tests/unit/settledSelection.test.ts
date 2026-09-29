@@ -1,8 +1,6 @@
 /**
- * When a selection has stopped moving, for the bars that offer something to do with it. On a
- * phone the finger is still dragging the words out, or a handle, long after the first
- * `selectionchange`: anything shown then jumps up under the finger (Anton, 2026-09-27: "on the
- * phone it's impossible to select text properly, the popup jumps up immediately").
+ * A simulated touch selection changes repeatedly while its range is extended. Action bars must
+ * wait for the selection to settle after the touch ends instead of covering the active range.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { SettledSelection, SETTLE_MS } from '@/helpers/settledSelection'

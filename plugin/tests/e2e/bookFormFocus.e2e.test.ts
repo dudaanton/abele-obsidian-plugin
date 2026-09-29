@@ -1,11 +1,9 @@
 /**
  * A script's dialog over a book keeps the field it was touched in.
  *
- * Anton, 2026-09-27, on his iPhone: a word selected in the reader, his translation script run on
- * it from the selection bar, the script's "Script Parameters" dialog — a list to pick from and two
- * text fields — and a touch on a field brought the keyboard up and sent it away at once. The
- * keyboard resizes the page; the engine lays the book out again and says so; and the reader,
- * drawing the selected words again after it, focused the book's frame — away from the field.
+ * In a generated book, a selected word opens an invented script's "Script Parameters" dialog:
+ * a list and two text fields. Simulate a keyboard resizing the page and triggering book layout.
+ * The reader must preserve focus in the active dialog field when it redraws the selection.
  *
  * Here: a plain book, words selected in it, a form of the same shape opened over it, its field
  * touched (on the desktop: focused, then the window made shorter by a keyboard's height, which

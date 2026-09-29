@@ -1,7 +1,7 @@
 /**
  * The way from the settings into the documentation: a small link at the top of each settings
- * tab, on every device, that closes the settings and opens the page about that tab. It used to
- * be a full button above the tab strip; Anton asked for it smaller and inside the tab.
+ * tab, on every device, that closes the settings and opens the page about that tab. The link
+ * belongs inside the tab, not as a full button above the tab strip.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'

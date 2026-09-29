@@ -2,11 +2,9 @@
  * The dialog shell and a phone's keyboard, for a form that runs longer than the room the
  * keyboard leaves.
  *
- * Anton, 2026-09-27: typing into a form an agent made, the field went under the keyboard and
- * nothing would scroll it back. On the iPhone the form's note field — Obsidian's editor, with a
- * scroller of its own — was given the keyboard's room inside that editor box, the dialog kept its
- * full height, its buttons and the field itself stood under the keyboard and Obsidian's editing
- * toolbar, and the line being typed walked further down with every line.
+ * A generated form has more fields than fit above a simulated phone keyboard. Its note field
+ * uses Obsidian's editor with a nested scroller. The dialog and nested scroller must leave the
+ * active line and action buttons visible above the keyboard and editing toolbar as text grows.
  *
  * happy-dom lays nothing out, so the geometry is described: a 390×844 screen, the keyboard as
  * Obsidian's iPhone app reports it (`--keyboard-height`, the page not shrinking), a form taller

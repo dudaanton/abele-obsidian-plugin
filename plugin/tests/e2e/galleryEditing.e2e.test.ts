@@ -1,12 +1,10 @@
 /**
  * The gallery while the note around it is being worked on, in the running app.
  *
- * It starts where Anton found it: a picture already in the note, the cursor put above it, and
- * "Insert Abele gallery" run — the gallery used to appear with nothing in it until Obsidian was
- * restarted. Then one step after another on the same note: typing above and below, the cursor
- * on the header and away, undo and redo, reading view and back, the same note split in two
- * panes, the file changed from outside as sync does, a tab switch and a window resize. After
- * each, every pane showing the note must show the picture — loaded, with a size.
+ * Generate a note and picture, place the cursor above the picture and insert a gallery. Exercise
+ * edits above and below it, cursor movement, undo and redo, reading view, split panes, an external
+ * file change, tab switch and window resize. After each step, every pane showing the note must
+ * show the generated picture loaded at a nonzero size.
  *
  * The note lives in `Gallery editing e2e/` for the length of this file and is deleted after.
  * Pictures go to `/tmp/abele-gallery-editing/` — look at them.
@@ -19,7 +17,7 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Gallery editing e2e'
 const NOTE = `${DIR}/Note.md`
 const OTHER = `${DIR}/Other.md`
-const IMG = `${DIR}/Attachments/b0146371-e7b4-499c-a591-281a73c9bcab.png`
+const IMG = `${DIR}/Attachments/sample-image.png`
 const SHOTS = '/tmp/abele-gallery-editing'
 
 const PRELUDE = `
