@@ -43,7 +43,7 @@
 
       <Section
         title="Access"
-        desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Without one, only public repositories can be read, 60 requests an hour, and discussions not at all."
+        desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Without one, only public repositories can be read, 60 requests an hour, and discussions not at all. Notifications are the exception: GitHub serves them only to a classic token with the notifications scope, set as the Notifications token below."
       >
         <Setting name="Token" desc="Stored in the keychain, never in the settings file.">
           <SecretField

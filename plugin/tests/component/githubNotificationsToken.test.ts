@@ -83,6 +83,17 @@ describe('the notifications token setting', () => {
   })
 })
 
+describe('the Access section', () => {
+  it('says the notifications need a classic token of their own', () => {
+    const view = mount(GithubSettings)
+    const access = view.findAll('.setting-item-description, .abele-section__desc, p, div')
+      .map((e) => e.text())
+      .find((t) => t.startsWith('A fine-grained personal access token'))
+    expect(access).toMatch(/classic token with the notifications scope/)
+    expect(access).toContain('Notifications token')
+  })
+})
+
 describe('which token the notifications are read with', () => {
   it('the notifications token when one is set, and only for them', () => {
     AbeleConfig.getInstance().github = {
