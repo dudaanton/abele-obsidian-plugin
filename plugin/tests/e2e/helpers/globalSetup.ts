@@ -1,6 +1,8 @@
 /**
  * Once for the whole tier: background throttling and focus emulation go back to normal when the
- * run is over, whatever the files in between did. See `setBackgroundThrottling`.
+ * run is over, whatever the files in between did. See `setBackgroundThrottling`. The window is
+ * put back to a desktop at its own size before the run and after it, whatever an earlier run
+ * killed half way left it as (`restoreDesktopWindow`).
  *
  * The plugin gives the vault's `file` and `files` properties the File and Files types
  * (`src/properties/types.ts`) while it draws properties, and that lands in the fixture vault's
@@ -11,6 +13,7 @@ import {
   evalJson,
   evalRaw,
   isObsidianRunning,
+  restoreDesktopWindow,
   setBackgroundThrottling,
   setFocusEmulation,
 } from './obsidianCli'
@@ -49,6 +52,7 @@ export async function setup(): Promise<void> {
     }
   }
   if (!isObsidianRunning()) return
+  await restoreDesktopWindow()
   try {
     typesBefore = evalJson<Record<string, string | null>>(
       `Object.fromEntries(${JSON.stringify(KEYS)}.map((k) => [k, app.metadataTypeManager?.getAssignedWidget?.(k) ?? null]))`,
@@ -59,7 +63,7 @@ export async function setup(): Promise<void> {
   }
 }
 
-export function teardown(): void {
+export async function teardown(): Promise<void> {
   if (onPhone()) {
     stopHost()
     dropPhone()
@@ -74,6 +78,11 @@ export function teardown(): void {
         30_000
       )
   } finally {
+    try {
+      await restoreDesktopWindow()
+    } catch (error) {
+      console.warn('the window could not be put back to a desktop:', error)
+    }
     setBackgroundThrottling(true)
     setFocusEmulation(false)
   }

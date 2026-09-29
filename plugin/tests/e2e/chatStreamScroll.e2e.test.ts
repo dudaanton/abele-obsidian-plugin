@@ -311,8 +311,13 @@ describe.runIf(available)('reading an answer while it streams, on a phone', () =
   }, 300_000)
 
   afterAll(async () => {
-    if (evalJson<boolean>('app.isMobile')) await reload('app.emulateMobile(false)')
-    if (size[0]) await setWindowSize(size[0], size[1])
+    // The size goes back even when switching the phone off fails; the run's teardown and the
+    // next run's setup put back whatever is still left (`restoreDesktopWindow`).
+    try {
+      if (evalJson<boolean>('app.isMobile')) await reload('app.emulateMobile(false)')
+    } finally {
+      if (size[0]) await setWindowSize(size[0], size[1])
+    }
   }, 180_000)
 
   expectSteady(() => report)

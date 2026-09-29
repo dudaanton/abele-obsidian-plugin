@@ -6,7 +6,15 @@
  * which is everything these tests need.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmdirSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  rmdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { onPhone, desktopOnly } from './target'
@@ -446,6 +454,73 @@ async function takeReloadLock(): Promise<void> {
 export async function reloadApp(how = 'location.reload()'): Promise<void> {
   if (onPhone()) return reloadPhone()
   const asked = /emulateMobile\((true|false)\)/.exec(how)?.[1]
+  if (asked === 'true') rememberDesktop()
+  await reloadWindow(asked)
+  if (asked === 'false') putDesktopBack()
+}
+
+/**
+ * The window's desktop size, kept on disk from the moment a file turns it into a phone until it
+ * is a desktop again at that size.
+ *
+ * Every phone file resized the window to 390×844 and put it back in its own `afterAll`, from a
+ * size it had read in `beforeAll`. A run killed half way never got there, and neither did one
+ * whose `afterAll` failed before the resize — and the next file then read 390×844 as the size
+ * to go back to, so the window stayed a phone for good (2026-09-29, pool windows found at phone
+ * size by several runs). Kept here, the size outlives the run that wrote it: `reloadApp` puts it
+ * back whenever the window leaves the phone, and `restoreDesktopWindow` at the start and end of
+ * every run puts back whatever a dead run left.
+ */
+const desktopRecord = () =>
+  join(tmpdir(), `abele-e2e-desktop-${(TARGET_VAULT || 'front').replace(/[^\w.-]/g, '_')}.json`)
+
+const contentSize = (): [number, number] =>
+  evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+
+const setContentSize = (width: number, height: number): void => {
+  evalRaw(
+    `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
+    30_000
+  )
+}
+
+/** Narrower than any desktop window a file drives, wider than any phone or tablet it plays. */
+const PHONE_SIZED = 900
+/** For a window found as a phone with no record of what it was: a desktop that fits a laptop. */
+const DEFAULT_DESKTOP: [number, number] = [1280, 800]
+
+function rememberDesktop(): void {
+  // The first record stands: a second phone in the same run must not take the first one's size.
+  if (existsSync(desktopRecord())) return
+  const [width, height] = contentSize()
+  const size =
+    evalJson<boolean>('app.isMobile') || width < PHONE_SIZED ? DEFAULT_DESKTOP : [width, height]
+  writeFileSync(desktopRecord(), JSON.stringify(size))
+}
+
+function putDesktopBack(): void {
+  if (!existsSync(desktopRecord())) return
+  const [width, height] = JSON.parse(readFileSync(desktopRecord(), 'utf8')) as [number, number]
+  setContentSize(width, height)
+  rmSync(desktopRecord(), { force: true })
+}
+
+/**
+ * Puts the window back to a desktop at its desktop size, if a run before this one left it a
+ * phone or at a phone's size. For the start and the end of a run; a no-op on a real phone.
+ */
+export async function restoreDesktopWindow(): Promise<void> {
+  if (onPhone()) return
+  if (evalJson<boolean>('app.isMobile')) {
+    rememberDesktop()
+    await reloadWindow('false')
+  }
+  if (!existsSync(desktopRecord()) && contentSize()[0] < PHONE_SIZED)
+    writeFileSync(desktopRecord(), JSON.stringify(DEFAULT_DESKTOP))
+  putDesktopBack()
+}
+
+async function reloadWindow(asked: string | undefined): Promise<void> {
   await takeReloadLock()
   try {
     evalRaw(
