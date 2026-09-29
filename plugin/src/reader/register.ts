@@ -15,6 +15,7 @@ import { fontsFolderOf, readerSettingsFrom, renamedBookNotes } from './settings'
 import { ReaderFonts, initReaderFonts } from './readerFonts'
 import { adoptPdfLeaves, setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
+import { registerFormsLinks } from './vocab/formsLinks'
 import { reuseBookTabs } from './bookTabReuse'
 import { forgetBookTexts } from './bookText'
 import { moveInk } from './ink/inkStore'
@@ -118,6 +119,8 @@ export function registerReader(plugin: Plugin): void {
 
   // A link to a place in a PDF's text opens here, where the place is understood.
   registerPlaceLinks(plugin, BOOK_VIEW_TYPE)
+  // A highlight's forms in its note, a link to every place they stand in the book.
+  registerFormsLinks(plugin)
   // A link to a book already open goes to its tab.
   plugin.register(reuseBookTabs(app))
 

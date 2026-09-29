@@ -69,7 +69,8 @@ form is underlined wherever it stands as a whole word in this book, with the sam
 words a note links to, and tapping one brings you to that highlight in its note. The forms are kept
 with the highlight, in a `forms::` line of its callout, or in a `{{ forms }}` field if your
 highlights template has one. **Stop underlining** in the same dialog takes the lines away and
-keeps the highlight.
+keeps the highlight. In the note, those forms are a link: tap it and the book opens with its search
+on them, every place they stand listed; the bar under the page then goes back and on through them.
 
 A note can hold the same rule in its properties, which is what a translation card does:
 

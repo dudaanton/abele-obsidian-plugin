@@ -136,6 +136,8 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       if (fromPanel) model.panel = false
       void a.reading()?.goToHit(hit)
     },
+    onSearchStep: (step: 1 | -1): void => void a.reading()?.stepHit(step),
+    onSearchClose: (): void => a.reading()?.stopSearch(),
     onBookmark: (): void => void a.bookmarks()?.toggle(),
     onGoBookmark: (b: Bookmark, fromPanel: boolean): void => {
       if (fromPanel) model.panel = false

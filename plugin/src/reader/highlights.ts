@@ -158,6 +158,10 @@ interface Block {
   inner: string
   /** The line of the note the entry's forms field is on, when it has one. */
   formsAt?: number
+  /** The line of the note the callout's own `forms::` line is, when it has one. */
+  inlineAt?: number
+  /** The book its place links to, as written. */
+  target: string
 }
 
 function blocks(
@@ -180,10 +184,12 @@ function blocks(
     }
     // The forms, kept as the callout's own line, are neither the words nor the comment.
     let inlineForms: string[] = []
+    let inlineAt: number | undefined
     // Its last line, and only that: a comment may mention forms in passing.
     let formsAt = body.length - 1
     while (formsAt > 0 && !body[formsAt].trim()) formsAt--
     if (formsAt > 0 && FORMS_LINE.test(body[formsAt])) {
+      inlineAt = i + 1 + formsAt
       inlineForms = parseForms(FORMS_LINE.exec(body[formsAt])[1])
       body.splice(formsAt, 1)
       while (body.length && !body[body.length - 1].trim()) body.pop()
@@ -213,6 +219,8 @@ function blocks(
       start: i,
       end,
       inner: comment,
+      target: at.target,
+      ...(inlineAt !== undefined ? { inlineAt } : {}),
     })
     i = end - 1
   }
@@ -439,4 +447,41 @@ export function removeHighlight(
   if (end < lines.length && !lines[end].trim() && start > 0 && !lines[start - 1].trim()) end++
   lines.splice(start, end - start)
   return lines.join('\n')
+}
+
+/** Where a highlight's forms are written in its note, for them to be shown as a link. */
+export interface FormsPlace {
+  /** The line, from 0, and the characters of it the forms take, `[from, to)`. */
+  line: number
+  from: number
+  to: number
+  forms: string[]
+  /** The book the highlight's place links to, as written. */
+  book: string
+}
+
+/**
+ * Every place in the note its highlights' forms are written — a callout's `forms::` line, or,
+ * with a frame, the template's `{{ forms }}` field — the forms named there, and their book.
+ */
+export function formsPlaces(markdown: string, frame?: EntryFrame): FormsPlace[] {
+  const { lines, blocks: found } = blocks(markdown, undefined, frame)
+  const out: FormsPlace[] = []
+  for (const b of found) {
+    const forms = b.highlight.forms
+    if (!forms?.length) continue
+    const field =
+      b.formsAt !== undefined && frame?.forms
+        ? new RegExp(frame.forms.pattern.source, 'd').exec(lines[b.formsAt])?.indices?.[1]
+        : undefined
+    if (field && field[1] > field[0])
+      out.push({ line: b.formsAt, from: field[0], to: field[1], forms, book: b.target })
+    else if (b.inlineAt !== undefined) {
+      const line = lines[b.inlineAt]
+      const lead = /^>\s?forms::[ \t]*/i.exec(line)?.[0].length ?? 0
+      const to = line.trimEnd().length
+      if (to > lead) out.push({ line: b.inlineAt, from: lead, to, forms, book: b.target })
+    }
+  }
+  return out
 }

@@ -553,7 +553,9 @@ export class View extends HTMLElement {
         this.#searchDrawOptions = opts.drawOptions
         const { searchMatcher } = await import('./search.js')
         const { query, index } = opts
-        const matcher = searchMatcher(textWalker,
+        // ABELE PATCH: a search may bring its own matcher — `(doc, query) => { range, excerpt }*` —
+        // as the forms of a word are searched for (src/reader/vocab/wordsSearch.ts).
+        const matcher = opts.matcher ?? searchMatcher(textWalker,
             { defaultLocale: this.language, ...opts })
         const iter = index != null
             ? this.#searchSection(matcher, query, index)

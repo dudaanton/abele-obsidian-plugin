@@ -242,7 +242,11 @@ describe('the PDF settings', () => {
     await toggle('Open PDF files in the Abele reader').trigger('click')
     await toggle('Two pages side by side').trigger('click')
     await toggle('Dark pages in a dark theme').trigger('click')
-    expect(config.reader).toMatchObject({ pdfInReader: false, pdfTwoPages: true, pdfDarkPages: false })
+    expect(config.reader).toMatchObject({
+      pdfInReader: false,
+      pdfTwoPages: true,
+      pdfDarkPages: false,
+    })
   })
 })
 
@@ -396,6 +400,39 @@ describe('highlights', () => {
     document.querySelector<HTMLElement>('.modal .mod-cta')!.click()
     expect(view.emitted('save-forms')).toEqual([[model.wording, ['word', 'words']]])
     view.unmount()
+  })
+})
+
+describe('a search with results', () => {
+  it('shows a bar under the page to go back and on, see the list, or close it', async () => {
+    const model = readyModel()
+    const view = mount(BookReader, { props: { model } })
+    expect(view.find('.abele-book-search-bar').exists()).toBe(false)
+    model.search = {
+      ...model.search,
+      query: 'māja, mājas',
+      words: ['māja', 'mājas'],
+      count: 12,
+      current: 2,
+    }
+    await flushPromises()
+    const bar = view.find('.abele-book-search-bar')
+    expect(bar.text()).toContain('māja, mājas · 3 of 12')
+    const icons = bar.findAll('.abele-obsidian-icon')
+    expect(icons.map((i) => i.attributes('aria-label'))).toEqual([
+      'The result before',
+      'The next result',
+      'Every result',
+      'Close the search',
+    ])
+    await icons[0].trigger('click')
+    await icons[1].trigger('click')
+    expect(view.emitted('search-step')).toEqual([[-1], [1]])
+    await icons[2].trigger('click')
+    expect(view.emitted('panel-tab')).toEqual([['search']])
+    expect(view.emitted('panel')).toEqual([[true]])
+    await icons[3].trigger('click')
+    expect(view.emitted('search-close')).toHaveLength(1)
   })
 })
 

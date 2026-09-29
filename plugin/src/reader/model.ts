@@ -39,6 +39,10 @@ export interface BookSearch {
   progress: number
   groups: SearchGroup[]
   count: number
+  /** The result last gone to, among all of them in order; -1 before any. */
+  current: number
+  /** The forms of a word searched for as whole words, when the search is for them. */
+  words?: string[]
 }
 
 export type PanelTab = 'contents' | 'search' | 'highlights' | 'bookmarks'
@@ -49,6 +53,7 @@ export const emptySearch = (): BookSearch => ({
   progress: 0,
   groups: [],
   count: 0,
+  current: -1,
 })
 
 export interface TocEntry {

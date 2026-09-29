@@ -34,7 +34,12 @@ import type { PdfBookExtras, PdfPageDrawn } from './pdfBook'
 interface Engine extends FoliateView {
   getCFI(index: number, range?: Range): string
   getProgressOf(index: number, range: Range): { tocItem?: { label?: string } | null }
-  search(opts: { query: string; draw?: unknown; drawOptions?: unknown }): AsyncGenerator<unknown>
+  search(opts: {
+    query: string
+    draw?: unknown
+    drawOptions?: unknown
+    matcher?: unknown
+  }): AsyncGenerator<unknown>
   clearSearch(): void
   resolveNavigation(target: string | number): { index: number } | null
 }
@@ -433,12 +438,15 @@ export class BookReading {
 
   // ————— Search —————
 
-  /** Searches the whole book, showing results as they are found; a new search stops the last. */
-  async search(query: string): Promise<void> {
+  /**
+   * Searches the whole book, showing results as they are found; a new search stops the last. With
+   * `words`, the whole words of those forms, as the book's underlines find them (`vocab/`).
+   */
+  async search(query: string, words?: string[]): Promise<void> {
     const token = ++this.searchToken
     this.stopSearch(false)
     const q = query.trim()
-    this.model.search = { ...emptySearch(), query }
+    this.model.search = { ...emptySearch(), query, ...(words?.length ? { words } : {}) }
     if (q.length < 2) return
     this.model.search.running = true
     const groups: SearchGroup[] = []
@@ -448,7 +456,12 @@ export class BookReading {
     }
     try {
       if (this.pdf) {
-        for await (const found of this.pdf.searchPages(q, () => token !== this.searchToken)) {
+        // A PDF's pages are searched as they read: each form in turn is not offered there.
+        const pdfQuery = words?.length ? words[0] : q
+        for await (const found of this.pdf.searchPages(
+          pdfQuery,
+          () => token !== this.searchToken
+        )) {
           if (token !== this.searchToken) return
           if ('progress' in found) this.model.search.progress = found.progress
           else {
@@ -470,6 +483,9 @@ export class BookReading {
           query: q,
           draw: Overlayer.outline,
           drawOptions: { color: accent || 'Highlight', width: 2, radius: 3 },
+          ...(words?.length
+            ? { matcher: (await import('./vocab/wordsSearch')).wordsMatcher(words) }
+            : {}),
         })
         for await (const found of search) {
           if (token !== this.searchToken) return
@@ -509,7 +525,21 @@ export class BookReading {
   }
 
   /** Goes to one search result and marks the words. */
+  /** Goes to the search result `step` places on from the last one gone to, round the ends. */
+  async stepHit(step: 1 | -1): Promise<void> {
+    const hits = this.model.search.groups.flatMap((g) => g.hits)
+    if (!hits.length) return
+    const at = this.model.search.current
+    const next = at < 0 ? (step > 0 ? 0 : hits.length - 1) : (at + step + hits.length) % hits.length
+    await this.goToHit(hits[next])
+  }
+
   async goToHit(hit: { cfi: string; index?: number; occurrence?: number }): Promise<void> {
+    const all = this.model.search.groups.flatMap((g) => g.hits)
+    const i = all.findIndex(
+      (h) => h === hit || (h.cfi === hit.cfi && h.occurrence === hit.occurrence)
+    )
+    if (i >= 0) this.model.search.current = i
     if (this.pdf && hit.index !== undefined) {
       this.pendingCfi = null
       this.pendingMatch = {

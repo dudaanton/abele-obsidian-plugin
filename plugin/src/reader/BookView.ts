@@ -33,6 +33,7 @@ import type { PdfBookExtras } from './pdfBook'
 import { BookReading } from './BookReading'
 import { linkedNotesFor } from './bookLinkedNotes'
 import { vocabFor } from './vocab/bookVocab'
+import { wordsOfSubpath } from './vocab/formsLinks'
 import { languagesOf } from './vocab/rules'
 import type { LinkedNotes } from './linkedNotes'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
@@ -113,6 +114,8 @@ export class BookView extends FileView {
   private zenChrome: ZenChrome | null = null
   /** A place a link asked for, gone to once the book is open. */
   private pendingPlace: BookPlace | null = null
+  /** Forms a link asked the book to be searched for, before it was ready (`vocab/formsLinks.ts`). */
+  private pendingWords: string[] | null = null
   /** Every page loaded so far in this tab, newest last. */
   readonly pages: PageReport[] = []
 
@@ -357,10 +360,23 @@ export class BookView extends FileView {
     if (h) this.model.commenting = { ...h }
   }
 
-  /** A link to a place in this book was followed: `#cfi=…` or `#page=N`. */
+  /** The book searched for the forms of a word, every place listed in the search panel. */
+  private searchWords(words: string[]): void {
+    this.openSearch()
+    void this.reading?.search(words.join(', '), words)
+  }
+
+  /** A link to a place in this book was followed: `#cfi=…` or `#page=N`, or `#words=…`. */
   setEphemeralState(state: unknown): void {
     super.setEphemeralState(state)
-    const place = parsePlaceSubpath((state as { subpath?: string } | null)?.subpath)
+    const subpath = (state as { subpath?: string } | null)?.subpath
+    const words = wordsOfSubpath(subpath)
+    if (words) {
+      if (this.reading && this.model.status === 'ready') this.searchWords(words)
+      else this.pendingWords = words
+      return
+    }
+    const place = parsePlaceSubpath(subpath)
     if (!place) return
     if (this.reading && this.model.status === 'ready') void this.reading.goToPlace(place)
     else this.pendingPlace = place
@@ -597,6 +613,9 @@ export class BookView extends FileView {
       const asked = this.pendingPlace
       this.pendingPlace = null
       if (asked) await this.reading.goToPlace(asked)
+      const words = this.pendingWords
+      this.pendingWords = null
+      if (words) this.searchWords(words)
       // The first page of a book is not a place to go back to.
       this.model.canGoBack = false
       this.model.status = 'ready'

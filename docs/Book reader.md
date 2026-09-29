@@ -372,6 +372,18 @@ what is on screen each time: every path that draws the engine's marks again (a t
 a block resizing, fonts and pictures arriving, the iPhone's relayout, theme and e-ink) draws these
 again with it. The line is the dotted one of words a note links to, black on e-ink.
 
+**The forms in the note are a link.** A callout's `forms::` line and a template's `{{ forms }}`
+field show their forms as a link to the book with a `#words=` subpath
+(`[[Novel.epub#words=māja,mājas]]`, each form URI-encoded): a markdown post-processor makes them an
+internal link in reading view and in callouts live preview draws, and an editor mark does in the
+editor's own text (the field is found by the frames of the templates the settings name). The book
+tab, opened or followed into with that subpath, opens its search panel and searches the whole book
+for those forms as its underlines find them — the engine's search, given a matcher of its own
+(an ABELE PATCH in `view.js`) — so the list is exactly the underlined words. While a search has
+results, a bar under the page steps back and on through them (round the ends), reopens the list,
+or closes the search; it takes the row of the line under the page, after the selection's and
+reading aloud's bars.
+
 **A tap** on an underlined word, after links, selections and swipes have had their say: one rule
 opens its target; several open a menu of them; a highlight or a linked note's mark under the same
 words is offered first in that menu, and a rule that is the same thing (the highlight's own, the

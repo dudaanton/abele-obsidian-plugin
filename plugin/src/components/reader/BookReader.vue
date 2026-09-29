@@ -98,6 +98,13 @@
           :state="model.speech === 'paused' ? 'paused' : 'playing'"
           @action="emit('speech', $event)"
         />
+        <BookSearchBar
+          v-else-if="model.search.count > 0"
+          :search="model.search"
+          @step="emit('search-step', $event)"
+          @list="openSearchList"
+          @close="emit('search-close')"
+        />
         <BookFooter
           v-else
           :model="model"
@@ -178,6 +185,7 @@ import BookSelectionBar from './BookSelectionBar.vue'
 import BookComment from './BookComment.vue'
 import BookForms from './BookForms.vue'
 import BookSpeechBar from './BookSpeechBar.vue'
+import BookSearchBar from './BookSearchBar.vue'
 import BookInkBar from './BookInkBar.vue'
 import BookEink from './BookEink.vue'
 import type { InkToolName } from '@/reader/ink/inkModel'
@@ -212,6 +220,8 @@ const emit = defineEmits<{
   (e: 'panel-tab', tab: PanelTab): void
   (e: 'search', query: string): void
   (e: 'search-hit', hit: SearchHit, fromPanel: boolean): void
+  (e: 'search-step', step: 1 | -1): void
+  (e: 'search-close'): void
   (e: 'go-highlight', h: Highlight, fromPanel: boolean): void
   (e: 'highlight', color: HighlightColor): void
   (e: 'comment'): void
@@ -278,6 +288,12 @@ const onColor = (color: HighlightColor) => {
 const onComment = () => {
   if (props.model.active) emit('edit-comment', props.model.active)
   else emit('comment')
+}
+
+/** The search's whole list, in the panel. */
+const openSearchList = () => {
+  emit('panel-tab', 'search')
+  emit('panel', true)
 }
 
 const stage = ref<HTMLElement>()

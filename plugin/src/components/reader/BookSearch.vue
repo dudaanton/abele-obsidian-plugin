@@ -30,7 +30,7 @@
  * Search through a whole book or PDF. Results come in chapter by chapter, or page by page, while
  * the search goes on; a result goes to its place and marks the words.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import Search from '../obsidian/Search.vue'
 import type { BookSearch, SearchHit } from '@/reader/model'
 
@@ -45,6 +45,13 @@ const emit = defineEmits<{
 
 const query = ref(props.search.query)
 let timer = 0
+// A search asked for from outside — a highlight's forms — shows what it is for.
+watch(
+  () => props.search.query,
+  (q) => {
+    if (q !== query.value) query.value = q
+  }
+)
 
 /** A search runs a moment after typing stops: a whole book is slow to go through. */
 const onInput = (value: string) => {

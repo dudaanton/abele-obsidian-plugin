@@ -37,6 +37,9 @@ const CAT = `${CARDS}/kaķis.md`
 const NOTE = `${DIR}/words highlights.md`
 const SCRIPTS = `${DIR}/Scripts`
 const API_CARD = `${CARDS}/nams.md`
+const TERMS = `${DIR}/Terms.md`
+const TERMS_FIELD = `${DIR}/Terms field.md`
+const TEMPLATE = `${DIR}/Terms template.md`
 /** A script keeping a card's rule the way a translating one would, twice, then switching it off. */
 const SCRIPT = `// @name E2E vocabulary
 const note = ${JSON.stringify(API_CARD)}
@@ -438,6 +441,78 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
     expect(out.off).toBe(false)
     expect(out.text).toContain('**nams** — a house')
     expect(r.ruled).toBe(true)
+  })
+
+  it('the forms in a highlights note are a link: the book opens searched for them, stepped through', () => {
+    const r = run<{
+      error?: string
+      linked?: string | null
+      words?: string[]
+      count?: number
+      steps?: number[]
+      field?: boolean
+      again?: number
+      closed?: boolean
+    }>(`
+      const view = bookLeaf().view
+      // No highlight's bar left open by the tests before: it takes the row the search's bar is in.
+      view.model.active = null
+      view.reading.clearSelection()
+      const cfi = view.engine.lastLocation.cfi
+      const place = encodeURI(cfi.replace(/^epubcfi\\(|\\)$/g, '')).replace(/[#|]/g, (c) => encodeURIComponent(c))
+      const callout = '# Terms\\n\\n> [!quote|yellow] [[words.epub#cfi=' + place + '|Vārdi]]\\n> māja\\n>\\n> forms:: māja, mājas, mājā\\n'
+      await app.vault.create(${JSON.stringify(TERMS)}, callout)
+      closeNotes()
+      const leaf = app.workspace.getLeaf('tab')
+      await leaf.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(TERMS)}, mode: 'preview' }, active: true })
+      const link = await until(() => leaf.view.containerEl.querySelector('.markdown-reading-view a.abele-forms-link'), 5000)
+      if (!link) return { linked: null }
+      const linked = link.textContent
+      view.reading.stopSearch()
+      link.click()
+      const searched = await until(() => bookLeaf().view.model.search.words && !bookLeaf().view.model.search.running && bookLeaf().view.model.search.count ? bookLeaf().view.model.search : null, 15000)
+      const model = bookLeaf().view.model
+      const words = searched?.words
+      const count = searched?.count
+      const panel = model.panel && model.panelTab === 'search'
+      // The bar under the page: on, on, back.
+      const bar = () => bookLeaf().view.contentEl.querySelector('.abele-book-search-bar')
+      const steps = []
+      for (const i of [1, 1, 0]) {
+        bar().querySelectorAll('.abele-obsidian-icon')[i].click()
+        await wait(700)
+        steps.push(model.search.current)
+      }
+      // The same from a template's field, in the editor.
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      await app.vault.create(${JSON.stringify(TEMPLATE)}, '{{#body}}\\n{{ quote }}\\n\\n**Forms:** {{ forms }}\\n{{/body}}\\n')
+      config.reader = { ...config.reader, notesTemplate: ${JSON.stringify(TEMPLATE)} }
+      await config.saveSettings()
+      await wait(500)
+      const withField = '# Terms\\n\\n> [!quote|yellow] [[words.epub#cfi=' + place + '|Vārdi]]\\n> māja\\n\\n**Forms:** mājas\\n'
+      await app.vault.create(${JSON.stringify(TERMS_FIELD)}, withField)
+      closeNotes()
+      const editor = app.workspace.getLeaf('tab')
+      await editor.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(TERMS_FIELD)}, mode: 'source', source: false }, active: true })
+      const mark = await until(() => editor.view.containerEl.querySelector('.cm-content .abele-forms-link'), 5000)
+      const field = !!mark && mark.textContent === 'mājas'
+      if (mark) mark.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))
+      const again = await until(() => { const s = bookLeaf().view.model.search; return s.words?.join() === 'mājas' && !s.running ? s.count : null }, 15000)
+      closeNotes(); backToBook()
+      bar().querySelectorAll('.abele-obsidian-icon')[3].click()
+      await wait(300)
+      const closed = !bar() && bookLeaf().view.model.search.count === 0
+      return { linked, words, count, panel, steps, field, again, closed }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.linked).toBe('māja, mājas, mājā')
+    expect(r.words).toEqual(['māja', 'mājas', 'mājā'])
+    expect(r.count).toBe(VOCAB_COUNTS.maja)
+    expect(r.steps).toEqual([0, 1, 0])
+    expect(r.field).toBe(true)
+    // `mājas` stands three times: twice in lower case, once in capitals.
+    expect(r.again).toBe(3)
+    expect(r.closed).toBe(true)
   })
 
   it(`the page turn with ${RULES} words underlined is not much slower than with none`, async () => {
