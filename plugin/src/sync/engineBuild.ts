@@ -83,12 +83,6 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     (replaced) => host.settingsArrived(replaced),
     () => host.settingsMeaning()
   )
-  const fs = new ObsidianFileSystem(app, {
-    ...(pollMs === undefined ? {} : { pollMs }),
-    onWatch: (paths) => recipe.noticed(paths),
-    onEngineWrite: (path) => settings.noteWrite(path),
-    yieldsToServer: (path) => settings.yields(path),
-  })
   const store = await IndexedDbStateStore.open(
     factoryOf(deps),
     stateDatabaseName(ledgerFor(app, connection.vaultId, board).stateId)
@@ -96,6 +90,13 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
   store.onClosedElsewhere(() => recipe.closedElsewhere(store))
   settings.useLedger(store)
   try {
+    const fs = new ObsidianFileSystem(app, {
+      ledger: store,
+      ...(pollMs === undefined ? {} : { pollMs }),
+      onWatch: (paths) => recipe.noticed(paths),
+      onEngineWrite: (path) => settings.noteWrite(path),
+      yieldsToServer: (path) => settings.yields(path),
+    })
     const vault = new SyncClient({
       baseUrl: connection.serverUrl,
       fetch: transportOf(deps),

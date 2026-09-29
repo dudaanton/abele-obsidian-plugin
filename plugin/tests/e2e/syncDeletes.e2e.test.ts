@@ -360,6 +360,42 @@ describe.skipIf(why !== null)('many files deleted at once', () => {
     expect(offered).not.toContain('Emptied here')
   })
 
+  it('holds an entire folder deleted while sync runs normally and puts back every note without trash', async () => {
+    const folder = 'Live folder deletion'
+    const notes: [string, string][] = Array.from({ length: COUNT }, (_, n) => [
+      `${folder}/Note ${String(n + 1).padStart(2, '0')}.md`,
+      `active sync note ${n + 1}\n`,
+    ])
+    sync.createMany(notes)
+    await sync.syncNow()
+    expect(sync.status().state).toBe('idle')
+    expect(sync.serverPaths().filter((path) => path.startsWith(`${folder}/`))).toHaveLength(COUNT)
+    // No pause here: the real folder delete and its watcher events race normal sync work.
+    sync.remove([folder])
+    await sync.syncNow()
+    await waitFor(
+      'every folder deletion to be held',
+      () =>
+        sync.run<number>(
+          `return (await svc.heldDeletes()).filter((one) => one.path.startsWith(${JSON.stringify(`${folder}/`)})).length`
+        ) === COUNT,
+      20_000
+    )
+    expect(sync.trashPaths().filter((path) => path.startsWith(`${folder}/`))).toEqual([])
+    sync.run(`
+      await escapeIn()
+      const held = (await svc.heldDeletes()).filter((one) => one.path.startsWith(${JSON.stringify(`${folder}/`)}))
+      await svc.decideDeletes('restore', held.map((one) => one.fileId))
+      return 'ok'
+    `)
+    await waitFor(
+      'all normally deleted notes to come back',
+      () => sync.filesUnder(folder).length === COUNT
+    )
+    expect(sync.trashPaths().filter((path) => path.startsWith(`${folder}/`))).toEqual([])
+    expect(sync.serverPaths().filter((path) => path.startsWith(`${folder}/`))).toHaveLength(COUNT)
+  })
+
   it('says nothing went wrong in the plugin while all that happened', () => {
     const captured = app().run(['dev:errors'], 20_000)
     expect(captured).not.toMatch(/plugin:abele|\/plugins\/abele\//)

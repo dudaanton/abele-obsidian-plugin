@@ -164,6 +164,23 @@ async function join(prefer: JoinPrefer | null): Promise<void> {
 }
 
 describe('joining with files on both sides', () => {
+  it('sends no deletes when finishing the join rebuilds the engine before pulled notes are indexed', async () => {
+    const files = app.vault.getFiles.bind(app.vault)
+    app.vault.getFiles = () => files().filter((file) => file.path !== 'Only there.md')
+    await join('theirs')
+    expect(conn().join).toBeNull()
+    expect(
+      service.log.value.filter((line) => line.includes('syncing vault ')).length
+    ).toBeGreaterThanOrEqual(2)
+    // The join's reconciliation has built another filesystem on the same ledger. Its scan
+    // must verify the missing index entry on disk, not send it as a local delete.
+    await service.syncNow()
+    await service.syncNow()
+    expect(await read('Only there.md')).toBe('made there')
+    expect(await head('Only there.md')).toBe('made there')
+    expect(await other.trash()).toEqual([])
+  })
+
   it('asks which side wins, counting both sides, and enrols nothing by asking', async () => {
     start()
     const [vault] = await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)

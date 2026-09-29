@@ -1,7 +1,8 @@
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
-import { EngineError, type FileInfo, type FileSystem } from '@abele/sync-core'
+import { EngineError, type FileInfo, type FileSystem, type StateStore } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
+import { folderMutations } from './folderMutations'
 import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
 import {
@@ -32,6 +33,8 @@ const CONFIG_WALK_DEPTH = 32
 const IGNORE_FILE = '.abele-sync-ignore'
 
 export interface ObsidianFileSystemOptions {
+  /** Ledger paths absent from the index are checked on disk before a scan calls them deleted. */
+  ledger?: Pick<StateStore, 'all'>
   /** How often the config folder is polled; 30 s by default. */
   pollMs?: number
   /** The clock the watcher's ceiling reads; `Date.now` by default. */
@@ -108,6 +111,7 @@ export class ObsidianFileSystem implements FileSystem {
    * what a `stat` compares against before it answers mtime 0 (`yieldsToServer`).
    */
   private readonly yielded = new Map<string, string>()
+  private readonly ledger: Pick<StateStore, 'all'> | null
   /** Pulls can finish before Obsidian's file index sees their adapter renames. */
   private readonly awaitingIndex = new Set<string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
@@ -121,6 +125,7 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.ledger = options.ledger ?? null
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
     this.now = options.now ?? ((): number => Date.now())
     this.onWatch = options.onWatch ?? null
@@ -160,23 +165,43 @@ export class ObsidianFileSystem implements FileSystem {
   async *list(): AsyncIterable<FileInfo> {
     this.recovered ??= this.writer.recover()
     await this.recovered
+    const mutations = folderMutations(this.app.vault)
+    await mutations.settled()
+    const revision = mutations.revision
+    const indexed = new Set<string>()
     for (const file of this.app.vault.getFiles()) {
       if (isAdapterTemp(file.path)) continue
-      this.awaitingIndex.delete(file.path)
+      indexed.add(caseKey(file.path))
       yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
     }
-    // The engine scans immediately after a pull. An adapter rename has reached the disk but
-    // Obsidian may not yet have indexed it; omitting it here sends a delete right back out.
-    for (const path of this.awaitingIndex) {
-      if (path.startsWith(`${this.configDir}/`)) {
+    // A pull can finish before the index sees its adapter renames, including across engine
+    // rebuilds and app restarts. The ledger is authoritative about what might still be on disk.
+    const candidates = new Set(this.awaitingIndex)
+    if (this.ledger !== null) {
+      for await (const entry of this.ledger.all()) candidates.add(entry.path)
+    }
+    for (const path of candidates) {
+      if (indexed.has(caseKey(path)) || path.startsWith(`${this.configDir}/`)) {
         this.awaitingIndex.delete(path)
         continue
       }
-      const info = await this.fileAt(path)
-      if (info !== null) yield info
-      else this.awaitingIndex.delete(path) // A person really removed it before the next scan.
+      // stat alone on a case-folding disk would keep a phantom Report.md after a rename to
+      // report.md. List its parent for the actual spelling, and never yield both names.
+      const actual = await this.spellingOnDisk(path)
+      const info = actual === null ? null : await this.fileAt(actual)
+      if (info !== null && !indexed.has(caseKey(info.path))) {
+        indexed.add(caseKey(info.path))
+        yield info
+      }
+      if (info === null || actual !== path) this.awaitingIndex.delete(path)
     }
     for await (const info of this.walkConfig(this.configDir)) yield await this.told(info, true)
+    if (mutations.revision !== revision) {
+      throw new EngineError(
+        'io',
+        'a folder deletion started during the scan; scan again after it finishes'
+      )
+    }
   }
 
   /**
@@ -303,6 +328,7 @@ export class ObsidianFileSystem implements FileSystem {
    * are the two ways of not waiting for the next tick.
    */
   watch(cb: (paths: string[]) => void): () => void {
+    const stopMutations = folderMutations(this.app.vault).watch()
     const watcher = watchVault(
       {
         app: this.app,
@@ -317,6 +343,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.pollNow = watcher.kick
     return () => {
       watcher.stop()
+      stopMutations()
       if (this.pollNow === watcher.kick) this.pollNow = null
     }
   }
@@ -413,11 +440,24 @@ export class ObsidianFileSystem implements FileSystem {
     return taken
   }
 
+  private async spellingOnDisk(path: string): Promise<string | null> {
+    const cut = path.lastIndexOf('/')
+    const parent = cut === -1 ? '/' : path.slice(0, cut)
+    try {
+      const listing = await this.adapter.list(parent)
+      return listing.files.find((file) => caseKey(file) === caseKey(path)) ?? null
+    } catch (cause) {
+      if (notFound(cause)) return null
+      throw new EngineError('io', `cannot list ${parent}`, cause)
+    }
+  }
+
   private async rawStat(target: string): Promise<Stat | null> {
     try {
       return await this.adapter.stat(target)
-    } catch {
-      return null
+    } catch (cause) {
+      if (notFound(cause)) return null
+      throw new EngineError('io', `cannot stat ${target}`, cause)
     }
   }
 
@@ -507,6 +547,12 @@ function caseOnly(source: string, target: string): boolean {
 /** The wire has no time before 1970; a file that claims one is dated at the epoch. */
 function stamp(mtime: number): number {
   return Math.max(0, Math.round(mtime))
+}
+
+/** Adapter null and explicit missing-path errors mean absent; access and I/O errors do not. */
+function notFound(cause: unknown): boolean {
+  const code = typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null
+  return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
 function conflictAt(path: string, standing: Stat): EngineError {

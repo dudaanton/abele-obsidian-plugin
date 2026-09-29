@@ -86,6 +86,127 @@ describe('ObsidianFileSystem — listing', () => {
     expect((await listed(fs)).map((file) => file.path)).not.toContain('Pulled.md')
   })
 
+  it('aborts listing on a pulled file stat error and retries that path after access returns', async () => {
+    const fs = useVault(VAULT)
+    await fs.writeAtomic('Pending.md', text('pending'), 7000)
+    const files = app.vault.getFiles.bind(app.vault)
+    app.vault.getFiles = () => files().filter((file) => file.path !== 'Pending.md')
+    const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+    app.vault.adapter.stat = async (path) => {
+      if (path === 'Pending.md')
+        throw Object.assign(new Error('temporary failure'), { code: 'EIO' })
+      return stat(path)
+    }
+    await expect(codeOf(listed(fs))).resolves.toBe('io')
+    app.vault.adapter.stat = stat
+    expect((await listed(fs)).map((file) => file.path)).toContain('Pending.md')
+  })
+
+  it('accepts confirmed ENOENT but propagates unknown stat failures', async () => {
+    const fs = useVault(VAULT)
+    app.vault.adapter.stat = async () => {
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+    }
+    expect(await fs.stat('Absent.md')).toBeNull()
+    app.vault.adapter.stat = async () => {
+      throw new Error('adapter unavailable')
+    }
+    await expect(codeOf(fs.stat('Note.md'))).resolves.toBe('io')
+  })
+
+  it('uses the actual spelling after a local case-only rename before a pulled file was indexed', async () => {
+    const fs = useVault(VAULT)
+    await fs.writeAtomic('Report.md', text('report'), 7000)
+    await app.vault.adapter.rename('Report.md', 'report.md')
+    const names = (await listed(fs)).map((file) => file.path)
+    expect(names).toContain('report.md')
+    expect(names).not.toContain('Report.md')
+    expect((await listed(fs)).map((file) => file.path)).not.toContain('Report.md')
+  })
+
+  it('finds a case-renamed ledger path by its disk spelling even before either spelling is indexed', async () => {
+    app = buildFakeVault(VAULT)
+    const fs = new ObsidianFileSystem(app as unknown as App, {
+      ledger: {
+        async *all() {
+          yield {
+            path: 'Report.md',
+            wirePath: 'Report.md',
+            fileId: 'file',
+            versionId: 'version',
+            sha: 'sha',
+            size: 6,
+            mtime: 7000,
+          }
+        },
+      },
+    })
+    await fs.writeAtomic('Report.md', text('report'), 7000)
+    await app.vault.adapter.rename('Report.md', 'report.md')
+    const files = app.vault.getFiles.bind(app.vault)
+    app.vault.getFiles = () => files().filter((file) => file.path !== 'report.md')
+    for (let scan = 0; scan < 2; scan++) {
+      const names = (await listed(fs)).map((file) => file.path)
+      expect(names).toContain('report.md')
+      expect(names).not.toContain('Report.md')
+    }
+  })
+
+  it('does not scan a partially completed folder deletion while the watcher runs', async () => {
+    const fs = useVault(VAULT)
+    let release!: () => void
+    const deleting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    app.vault.delete = async () => {
+      await app.vault.adapter.remove('Notes/Deep/second.md')
+      await deleting
+      await app.vault.adapter.remove('Note.md')
+    }
+    const stop = fs.watch(() => undefined)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let finished = false
+    try {
+      const removal = app.vault.delete(app.vault.getAbstractFileByPath('Notes') as never)
+      const scan = listed(fs).then((files) => {
+        finished = true
+        return files
+      })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(finished).toBe(false)
+      release()
+      await removal
+      const names = (await scan).map((file) => file.path)
+      expect(names).not.toContain('Note.md')
+      expect(names).not.toContain('Notes/Deep/second.md')
+    } finally {
+      release()
+      stop()
+      vi.useRealTimers()
+    }
+  })
+
+  it('aborts a listing if a folder deletion starts after the listing already yielded a file', async () => {
+    const fs = useVault(VAULT)
+    app.vault.delete = async () => {
+      await app.vault.adapter.remove('Notes/Deep/second.md')
+    }
+    const stop = fs.watch(() => undefined)
+    try {
+      const listing = fs.list()[Symbol.asyncIterator]()
+      expect((await listing.next()).done).toBe(false)
+      await app.vault.delete(app.vault.getAbstractFileByPath('Notes') as never)
+      const remainder = async () => {
+        while (!(await listing.next()).done) {
+          /* finish the scan */
+        }
+      }
+      await expect(codeOf(remainder())).resolves.toBe('io')
+    } finally {
+      stop()
+    }
+  })
+
   it('walks the configuration folder, which the file index never shows', async () => {
     const fs = useVault(VAULT)
     const paths = (await listed(fs)).map((info) => info.path).sort()
