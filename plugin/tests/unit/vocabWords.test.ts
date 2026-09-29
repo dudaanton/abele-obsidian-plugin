@@ -88,6 +88,11 @@ describe('a chapter’s text', () => {
     expect(sectionText(doc).text).toBe('viens divi trīs 漢')
   })
 
+  it('leaves the words of a drawing out, and parts the words around it', () => {
+    const doc = page('<p>viens<svg><text>māja</text></svg>divi</p>')
+    expect(sectionText(doc).text).toBe('viens divi')
+  })
+
   it('maps a word found back onto the page’s own nodes, and a point of the page into the text', () => {
     const doc = page('<p>Lie<em>la</em> māja</p><p>stāv</p>')
     const st = sectionText(doc)

@@ -53,6 +53,8 @@ interface Section {
   drawn: { match: WordMatch; rects: DOMRect[] }[]
   /** Where a highlight a rule belongs to is in the chapter: its own words are not underlined. */
   own: Map<string, [number, number]>
+  /** Its words all found: only then are they kept for coming back to it. */
+  done: boolean
 }
 
 /** A chapter's words, kept when it closes, for the same text read with the same forms. */
@@ -175,6 +177,8 @@ export class VocabMarks {
   }
 
   private keep(section: Section): void {
+    // Left before all its words were found: read again when it is come back to.
+    if (!section.done) return
     this.kept.delete(section.index)
     this.kept.set(section.index, {
       text: section.text.text,
@@ -188,7 +192,15 @@ export class VocabMarks {
   private async read(index: number, doc: Document): Promise<void> {
     const generation = this.generation
     const text = sectionText(doc)
-    const section: Section = { index, doc, text, matches: [], drawn: [], own: new Map() }
+    const section: Section = {
+      index,
+      doc,
+      text,
+      matches: [],
+      drawn: [],
+      own: new Map(),
+      done: false,
+    }
     this.sections.set(index, section)
     const kept = this.kept.get(index)
     if (kept && kept.keys === this.signature && kept.text === text.text) {
@@ -208,6 +220,7 @@ export class VocabMarks {
       section.matches = matches
     }
     if (generation !== this.generation || this.sections.get(index) !== section) return
+    section.done = true
     section.own = this.ownPlaces(section)
     this.draw(section)
   }

@@ -91,6 +91,13 @@ describe('forms in the callout, with no field for them', () => {
     expect(parseHighlights(block)).toEqual([hl(A, { forms: FORMS })])
   })
 
+  it('takes only the callout’s last line as forms, not a comment that mentions them', () => {
+    const md = `> [!quote|green] ${LINK(A)}\n> māja\n>\n> forms:: are what I list\n> and more text.\n`
+    expect(parseHighlights(md)).toEqual([
+      hl(A, { comment: 'forms:: are what I list\nand more text.' }),
+    ])
+  })
+
   it('reads a note written before exactly as before', () => {
     const md = `> [!quote|green] ${LINK(A)}\n> māja\n>\n> A house.\n`
     expect(parseHighlights(md)).toEqual([hl(A, { comment: 'A house.' })])

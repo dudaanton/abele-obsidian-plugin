@@ -411,7 +411,7 @@ Several notes naming the same word make the tap a menu. The rule is properties o
 | Function | Returns | Description |
 |----------|---------|-------------|
 | \`vocabulary.mark({ note, forms, language?, books?, scope?, replace? })\` | \`rule\` | Adds the forms (an array, or one string with commas) and the books to the note's rule, each once: the same call twice changes nothing. Run on words in a book, \`books\` is that book and \`language\` its language unless given. \`scope: 'language'\` applies it to every book in the language. \`replace: true\` puts the forms in place of the note's |
-| \`vocabulary.get(note)\` | \`rule \\| null\` | \`{ note, forms, language, books, scope, on }\`, or null when the note names no forms |
+| \`await vocabulary.get(note)\` | \`rule \\| null\` | \`{ note, forms, language, books, scope, on }\`, or null when the note names no forms |
 | \`vocabulary.off(note)\`, \`vocabulary.on(note)\` | — | Stops underlining the note's words, or starts again; the forms stay |
 
 The note must exist. Forms are matched whole, ignoring case; letters with and without a

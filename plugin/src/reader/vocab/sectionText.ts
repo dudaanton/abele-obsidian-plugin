@@ -67,6 +67,8 @@ const BLOCK = new Set([
 const BREAK = new Set(['br', 'img', 'image', 'svg', 'hr', 'wbr', 'video', 'audio', 'math'])
 /** Elements whose text is never read. */
 const SKIP = new Set(['script', 'style', 'rt', 'rp', 'noscript', 'template', 'head', 'title'])
+/** Pictures drawn in the page: their words are no text of the book, and they stand between words. */
+const PICTURE = new Set(['svg', 'math'])
 
 /** The chapter's text, walked once. */
 export function sectionText(doc: Document): SectionText {
@@ -94,14 +96,18 @@ export function sectionText(doc: Document): SectionText {
     for (const e of trail) if (found) blocks.set(e, found)
     return found
   }
+  let gap = false
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) =>
-      node.nodeType === 1 && SKIP.has((node as Element).localName)
+    acceptNode: (node) => {
+      if (node.nodeType !== 1) return NodeFilter.FILTER_ACCEPT
+      const name = (node as Element).localName
+      if (PICTURE.has(name)) gap = true
+      return SKIP.has(name) || PICTURE.has(name)
         ? NodeFilter.FILTER_REJECT
-        : NodeFilter.FILTER_ACCEPT,
+        : NodeFilter.FILTER_ACCEPT
+    },
   })
   let lastBlock: Element | null = null
-  let gap = false
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     if (node.nodeType === 1) {
       if (BREAK.has((node as Element).localName)) gap = true

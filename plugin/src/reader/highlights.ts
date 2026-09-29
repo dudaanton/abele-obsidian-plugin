@@ -180,10 +180,11 @@ function blocks(
     }
     // The forms, kept as the callout's own line, are neither the words nor the comment.
     let inlineForms: string[] = []
+    // Its last line, and only that: a comment may mention forms in passing.
     let formsAt = body.length - 1
-    while (formsAt > 0 && !FORMS_LINE.test(body[formsAt])) formsAt--
-    if (formsAt > 0) {
-      inlineForms = parseForms(FORMS_LINE.exec(body[formsAt])![1])
+    while (formsAt > 0 && !body[formsAt].trim()) formsAt--
+    if (formsAt > 0 && FORMS_LINE.test(body[formsAt])) {
+      inlineForms = parseForms(FORMS_LINE.exec(body[formsAt])[1])
       body.splice(formsAt, 1)
       while (body.length && !body[body.length - 1].trim()) body.pop()
     }
@@ -387,7 +388,7 @@ function upsertIn(
  * earlier ones stay where they were found.
  */
 function writeField(lines: string[], block: Block, callout: string, comment: string): void {
-  const region = block.entry!.comment!
+  const region = block.entry.comment
   let field = commentLines(comment, region.lead, region.carry, region.end)
   // An empty field at the edge of the body is no line at all, as the body writes it.
   if (region.edge && isBlankField(field)) field = []

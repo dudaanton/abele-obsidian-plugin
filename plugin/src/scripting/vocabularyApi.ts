@@ -11,7 +11,7 @@
  * forms and books are added to what the note has, each once, so the same call twice changes
  * nothing; everything else in the note is left as it is.
  */
-import { TFile, normalizePath } from 'obsidian'
+import { TFile, getFrontMatterInfo, normalizePath, parseYaml } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { WORD_FORMS, markInto, noteRuleOf, switchInto, type RuleScope } from '@/reader/vocab/rules'
 import type { BookScriptContext } from './bookContext'
@@ -71,8 +71,21 @@ function ruleOf(
     : null
 }
 
-const ruleIn = (file: TFile): ScriptVocabRule | null =>
-  ruleOf(file.path, GlobalStore.getInstance().app.metadataCache.getFileCache(file)?.frontmatter)
+/**
+ * A note's properties as its file has them now — not Obsidian's reading of them, which catches up
+ * a moment after a write, so a call right after `mark` would see the note before it.
+ */
+async function propsOf(file: TFile): Promise<Record<string, unknown>> {
+  const text = await GlobalStore.getInstance().app.vault.read(file)
+  const info = getFrontMatterInfo(text)
+  if (!info.exists) return {}
+  try {
+    const parsed = parseYaml(info.frontmatter) as unknown
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
 
 /** A book as a note's property links it: a wikilink with its extension, from the note. */
 function bookLink(path: string, from: string): string {
@@ -96,7 +109,7 @@ export function scriptVocabulary(opts: {
     fn: (fm: Record<string, unknown>) => void
   ): Promise<Record<string, unknown>> => {
     const { app } = GlobalStore.getInstance()
-    const now = structuredClone(app.metadataCache.getFileCache(file)?.frontmatter ?? {})
+    const now = await propsOf(file)
     const before = JSON.stringify(now)
     fn(now)
     if (JSON.stringify(now) === before) return now
@@ -132,8 +145,9 @@ export function scriptVocabulary(opts: {
     },
 
     /** The rule a note keeps; null when it names no forms. */
-    get(note: string): ScriptVocabRule | null {
-      return ruleIn(noteFile(note))
+    async get(note: string): Promise<ScriptVocabRule | null> {
+      const file = noteFile(note)
+      return ruleOf(file.path, await propsOf(file))
     },
 
     /** The note's words no longer underlined; its forms kept. */

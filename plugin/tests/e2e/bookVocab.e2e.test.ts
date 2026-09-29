@@ -35,6 +35,19 @@ const MANY = `${DIR}/Many`
 const CARD = `${CARDS}/māja.md`
 const CAT = `${CARDS}/kaķis.md`
 const NOTE = `${DIR}/words highlights.md`
+const SCRIPTS = `${DIR}/Scripts`
+const API_CARD = `${CARDS}/nams.md`
+/** A script keeping a card's rule the way a translating one would, twice, then switching it off. */
+const SCRIPT = `// @name E2E vocabulary
+const note = ${JSON.stringify(API_CARD)}
+const first = await vocabulary.mark({ note, forms: ['nams', 'Nami'], books: [${JSON.stringify(BOOK)}], language: 'lv' })
+const text = await read(note)
+const again = await vocabulary.mark({ note, forms: 'nams, nami' })
+const same = (await read(note)) === text
+const added = await vocabulary.mark({ note, forms: ['namu'] })
+await vocabulary.off(note)
+const off = await vocabulary.get(note)
+return JSON.stringify({ first, again, same, added: added.forms, off: off.on, text })`
 /** How many made-up words get a rule each for the page-turn measure. */
 const RULES = 1000
 
@@ -110,12 +123,12 @@ const runLong = async <T>(body: string, timeout: number): Promise<T> =>
   ) as T
 
 describe.skipIf(!available)('words underlined everywhere in a book', () => {
-  let saved: { reader?: unknown; native?: boolean | null } = {}
+  let saved: { reader?: unknown; native?: boolean | null; folder?: string } = {}
 
   beforeAll(() => {
     const epub = Buffer.from(buildVocabEpub()).toString('base64')
     saved = evalJson(
-      `({ reader: window.__abeleTest.AbeleConfig.getInstance().reader, native: app.vault.getConfig('nativeMenus') ?? null })`
+      `({ reader: window.__abeleTest.AbeleConfig.getInstance().reader, native: app.vault.getConfig('nativeMenus') ?? null, folder: window.__abeleTest.AbeleConfig.getInstance().ai?.scriptsFolder ?? '' })`
     )
     evalRaw(
       `(async () => {
@@ -128,7 +141,12 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
         await app.vault.createBinary(${JSON.stringify(BOOK)}, bytes.buffer)
         const config = window.__abeleTest.AbeleConfig.getInstance()
         config.reader = { ...config.reader, flow: 'paginated', notesTo: 'book', notesTemplate: '' }
+        await app.vault.createFolder(${JSON.stringify(SCRIPTS)})
+        await app.vault.create(${JSON.stringify(`${SCRIPTS}/vocabulary.js`)}, ${JSON.stringify(SCRIPT)})
+        await app.vault.create(${JSON.stringify(API_CARD)}, '**nams** — a house\\n')
+        config.ai.scriptsFolder = ${JSON.stringify(SCRIPTS)}
         await config.saveSettings()
+        await window.__abeleTest.ScriptService.getInstance().discover()
         // A menu drawn by the page, not the system's: the system's cannot be read from here.
         app.vault.setConfig('nativeMenus', false)
         return 'ok'
@@ -146,9 +164,11 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
         app.vault.setConfig('nativeMenus', ${JSON.stringify(saved.native ?? null)})
         const config = window.__abeleTest.AbeleConfig.getInstance()
         config.reader = ${JSON.stringify(saved.reader ?? {})}
+        config.ai.scriptsFolder = ${JSON.stringify(saved.folder ?? '')}
         await config.saveSettings()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
+        await window.__abeleTest.ScriptService.getInstance().discover()
         return 'ok'
       })()`,
       120_000
@@ -202,8 +222,11 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
     expect(r.openedByLink).toBe(BOOK)
   })
 
-  it.skipIf(!onPhone())('on a phone, a finger’s tap opens the card, and a swipe turns to more lines', async () => {
-    const at = run<{ error?: string; x?: number; y?: number; word?: string }>(`
+  it.skipIf(!onPhone())(
+    'on a phone, a finger’s tap opens the card, and a swipe turns to more lines',
+    async () => {
+      const at = await runLong<{ error?: string; x?: number; y?: number; word?: string }>(
+        `
       const view = bookLeaf().view
       closeNotes(); backToBook()
       await view.engine.goTo(view.model.toc[0].href); await wait(800)
@@ -214,38 +237,52 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       const frame = doc.defaultView.frameElement.getBoundingClientRect()
       await window.__e2eHost?.shot(${JSON.stringify(`${SHOTS}/book-vocab-lines.png`)})
       return { x: Math.round(frame.left + d.rect.left + d.rect.width / 2), y: Math.round(frame.top + d.rect.top + d.rect.height / 2), word: d.text }
-    `)
-    expect(at.error).toBeUndefined()
-    tap(at.x!, at.y!)
-    await pause(1500)
-    const opened = run<{ error?: string; opened?: string | null; from?: number; stage?: number[] }>(`
+    `,
+        120_000
+      )
+      expect(at.error).toBeUndefined()
+      tap(at.x!, at.y!)
+      await pause(1500)
+      const opened = await runLong<{
+        error?: string
+        opened?: string | null
+        from?: number
+        stage?: number[]
+      }>(
+        `
       const opened = await until(() => activePath() === ${JSON.stringify(CARD)} && activePath(), 5000)
       closeNotes(); backToBook(); await wait(800)
       const view = bookLeaf().view
       const r = view.contentEl.getBoundingClientRect()
       return { opened, from: view.engine.renderer.start, stage: [r.left, r.top, r.width, r.height] }
-    `)
-    expect(opened.error).toBeUndefined()
-    expect(opened.opened).toBe(CARD)
-    const [left, top, width, height] = opened.stage!
-    swipe(
-      Math.round(left + width * 0.8),
-      Math.round(top + height / 2),
-      Math.round(left + width * 0.2),
-      Math.round(top + height / 2)
-    )
-    await pause(1500)
-    const turned = run<{ error?: string; to?: number; lines?: number }>(`
+    `,
+        120_000
+      )
+      expect(opened.error).toBeUndefined()
+      expect(opened.opened).toBe(CARD)
+      const [left, top, width, height] = opened.stage!
+      swipe(
+        Math.round(left + width * 0.8),
+        Math.round(top + height / 2),
+        Math.round(left + width * 0.2),
+        Math.round(top + height / 2)
+      )
+      await pause(1500)
+      const turned = await runLong<{ error?: string; to?: number; lines?: number }>(
+        `
       const view = bookLeaf().view
       await until(() => view.engine.renderer.start !== ${opened.from}, 5000)
       await wait(500)
       await window.__e2eHost?.shot(${JSON.stringify(`${SHOTS}/book-vocab-turned.png`)})
       return { to: view.engine.renderer.start, lines: drawn(view).length }
-    `)
-    expect(turned.error).toBeUndefined()
-    expect(turned.to).toBeGreaterThan(opened.from!)
-    expect(turned.lines).toBeGreaterThan(0)
-  })
+    `,
+        120_000
+      )
+      expect(turned.error).toBeUndefined()
+      expect(turned.to).toBeGreaterThan(opened.from!)
+      expect(turned.lines).toBeGreaterThan(0)
+    }
+  )
 
   it('a highlight given forms from its bar underlines the word elsewhere, and a tap opens its entry', () => {
     const r = run<{
@@ -371,6 +408,36 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
     expect(r.afterCard).toBe(VOCAB_COUNTS.kakis)
     expect(r.afterAll).toBe(0)
     expect(r.note).not.toContain('forms::')
+  })
+
+  it('a script keeps a card’s rule in one call, twice without a duplicate, and switches it off', () => {
+    const r = run<{ error?: string; out?: string; ruled?: boolean }>(`
+      const t = window.__abeleTest.ScriptService.getInstance()
+      const s = t.getAll().find((x) => x.meta.name === 'E2E vocabulary')
+      if (!s) return { error: 'the script was not discovered' }
+      const out = await t.execute(s.path, {}, { source: 'command' })
+      const view = bookLeaf().view
+      // Switched off at the end: the book had it, and does not now.
+      const ruled = !!(await until(() => !vocab(view).rules().some((r) => r.id === 'note:' + ${JSON.stringify(API_CARD)}), 5000))
+      return { out, ruled }
+    `)
+    expect(r.error).toBeUndefined()
+    const out = JSON.parse(r.out!.trim().split('\n').pop()!) as {
+      first: { forms: string[]; books: string[]; language: string; on: boolean }
+      again: { forms: string[] }
+      same: boolean
+      added: string[]
+      off: boolean
+      text: string
+    }
+    expect(out.first).toMatchObject({ forms: ['nams', 'Nami'], language: 'lv', on: true })
+    expect(out.first.books).toEqual(['words.epub'])
+    expect(out.again.forms).toEqual(['nams', 'Nami'])
+    expect(out.same).toBe(true)
+    expect(out.added).toEqual(['nams', 'Nami', 'namu'])
+    expect(out.off).toBe(false)
+    expect(out.text).toContain('**nams** — a house')
+    expect(r.ruled).toBe(true)
   })
 
   it(`the page turn with ${RULES} words underlined is not much slower than with none`, async () => {
