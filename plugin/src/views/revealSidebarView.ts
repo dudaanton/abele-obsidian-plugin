@@ -3,7 +3,7 @@ import { Platform, type App, type WorkspaceLeaf, type WorkspaceSidedock } from '
 /** How long a phone's drawer takes to finish closing, and so how long a reveal waits to settle. */
 const DRAWER_SETTLE_MS = 500
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const pause = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
 const onScreen = (split: WorkspaceSidedock) =>
   ((split as unknown as { containerEl?: HTMLElement }).containerEl?.offsetWidth ?? 1) > 0
