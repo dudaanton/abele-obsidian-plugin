@@ -307,9 +307,15 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const before = inked(doc)
       // A line on its way, the pen still down: is there ink right under the pen?
       const x0 = f.left + f.width * 0.2, x1 = f.left + f.width * 0.6, y = f.top + f.height * 0.75
+      // How far ahead of the pen Chromium predicted it, which is drawn too: a few points on an idle
+      // machine, far more when the moves arrive unevenly on a busy one.
+      let ahead = x1
+      const predicted = (e) => { for (const p of e.getPredictedEvents?.() ?? []) ahead = Math.max(ahead, p.clientX) }
+      document.addEventListener('pointermove', predicted, true)
       await input('mousePressed', x0, y, 'pen', 0.5, 1)
       for (let i = 1; i <= 12; i++) { await input('mouseMoved', x0 + (x1 - x0) * i / 12, y, 'pen', 0.5, 1); await wait(8) }
       await wait(120)
+      document.removeEventListener('pointermove', predicted, true)
       const canvas = q(view, '.abele-ink-overlay__canvas')
       const box = canvas.getBoundingClientRect()
       const ratio = canvas.width / box.width
@@ -321,8 +327,8 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
         for (let i = 3; i < d.length; i += 4) most = Math.max(most, d[i])
         return most
       }
-      // Past it by more than the few points Chromium predicts ahead of the pen, which are drawn too.
-      const tip = alpha(x1), behind = alpha(x1 - 3), past = alpha(x1 + 40)
+      // Past both the pen and where it was predicted to go: ink there went where nothing led it.
+      const tip = alpha(x1), behind = alpha(x1 - 3), past = alpha(Math.max(x1 + 40, ahead + 12))
       await input('mouseReleased', x1, y, 'pen', 0, 0)
       await wait(150)
       // Bold, from the menu of the button beside the colours.

@@ -39,6 +39,9 @@ const PRELUDE = `
     const at = (d, k) => [{ id: 1, x: cx - d / 2, y: cy + dy * k }, { id: 2, x: cx + d / 2, y: cy + dy * k }]
     await touches('touchStart', at(d0, 0))
     for (let i = 1; i <= 12; i++) { await touches('touchMove', at(d0 + (d1 - d0) * i / 12, i / 12)); await wait(16) }
+    // Held a moment before lifting, as fingers are: moves still queued behind a busy frame are
+    // then heard before the lift, which on a loaded machine otherwise came first and cut the pinch short.
+    await wait(100)
     await touches('touchEnd', [])
     await wait(900)
   }
