@@ -30,6 +30,7 @@ const COVERED_DIRS = [
   join(ROOT, 'reader'),
   join(ROOT, 'drawing'),
   join(ROOT, 'docs'),
+  join(ROOT, 'changelog'),
   join(ROOT, 'quick'),
   join(ROOT, 'calendarBase'),
   join(ROOT, 'linter'),

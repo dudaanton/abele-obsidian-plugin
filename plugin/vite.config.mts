@@ -65,9 +65,19 @@ export default defineConfig(async ({ mode }) => {
           return id === 'virtual:abele-changelog' ? '\0virtual:abele-changelog' : null
         },
         load(id: string) {
-          return id === '\0virtual:abele-changelog'
-            ? `export const runningVersion = ${JSON.stringify(JSON.parse(readFileSync(path.resolve(__dirname, '../manifest.json'), 'utf8')).version)}; export default ${JSON.stringify(generateChangelog())}`
-            : null
+          if (id !== '\0virtual:abele-changelog') return null
+          const releases = generateChangelog(undefined, {
+            onUnrecognized: (subjects: { revision: string; subject: string }[]) => {
+              if (subjects.length)
+                console.warn(
+                  `[Abele changelog] ${subjects.length} uncategorized historical subjects omitted; review with node scripts/review-changelog.mjs`
+                )
+            },
+          })
+          const version = JSON.parse(
+            readFileSync(path.resolve(__dirname, '../manifest.json'), 'utf8')
+          ).version
+          return `export const runningVersion = ${JSON.stringify(version)}; export default ${JSON.stringify(releases)}`
         },
       },
     ],

@@ -82,6 +82,20 @@ Sending settings to another device, receiving them, synced keys and the list of 
 
 ## Other
 
+**Changelog → Open changelog** lists all versions and their changes, newest first. The
+**Open changelog** command opens the same tab. **Show older versions** loads the next page;
+all older versions remain available. On an update a brief notice offers the changes since
+the last version run on this device, including intermediate versions you skipped. **What's
+new** opens that range and **Show all versions** returns to the full history. Dismissing or
+ignoring the notice does not reopen it on the next start. Nothing is shown on a fresh install.
+
+The first version with this feature quietly starts tracking: earlier versions kept no
+device-local record, so it cannot know what was installed before. Automatic update offers
+become accurate on the following update. This is separate for each device and vault and
+does not travel with settings. The changelog works offline. Dates are UTC commit dates,
+not GitHub publication times. Dates marked “Recovered version history” belong to versions
+recovered from old version-bump commits rather than verified release tags.
+
 The CSS snippets folder, full-width sidebars on a phone and half-width on a tablet, the Mermaid
 viewer, the plugin's own drawing of properties (see [Properties](writing#properties)), opening
 notes where you left them (see [Where you left off](writing#where-you-left-off)), the

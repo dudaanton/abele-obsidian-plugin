@@ -1,5 +1,8 @@
 <template>
   <div class="abele-settings__other">
+    <Setting name="Changelog" desc="See what changed in every plugin version, newest first.">
+      <Button text="Open changelog" tooltip="Open the plugin changelog" @click="showChangelog" />
+    </Setting>
     <Setting
       name="CSS snippets folder"
       desc="Vault folder with .css files to auto-apply as style snippets. Leave empty to disable."
@@ -95,12 +98,19 @@ import { debounce } from 'obsidian'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
+import Button from '../obsidian/Button.vue'
+import { openChangelog } from '@/changelog/ChangelogView'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SnippetService } from '@/services/SnippetService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 
 const config = AbeleConfig.getInstance()
+const showChangelog = () => {
+  const app = GlobalStore.getInstance().app
+  ;(app as unknown as { setting?: { close?: () => void } }).setting?.close?.()
+  void openChangelog(app)
+}
 const snippetsFolder = ref(config.snippetsFolder)
 const fullWidthSidebars = ref(config.fullWidthSidebars)
 const halfWidthSidebars = ref(config.halfWidthSidebarsOnTablet)

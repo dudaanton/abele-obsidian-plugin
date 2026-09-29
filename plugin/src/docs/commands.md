@@ -94,6 +94,7 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Other
 
+- Open changelog — every plugin version in a tab, newest first, with dated changes grouped as new features, fixes and improvements; also **Settings → Other → Changelog**. Works with AI off and without a network
 - Open documentation — the plugin's own documentation for people, page by page with a search
   over it; also **Documentation** at the top of each tab of the plugin's settings. Send a person
   there for a walk-through rather than retelling it

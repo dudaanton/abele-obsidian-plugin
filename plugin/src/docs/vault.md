@@ -419,6 +419,17 @@ the repository. Editing it changes what the card shows. A block without `url`, `
 `---` line is shown as plain text, as written. Do not invent these blocks: `url` must be an
 address the GitHub tab can open.
 
+## Plugin version on this device
+
+The changelog is bundled with the plugin, not written into the vault or fetched from a
+server. Obsidian local storage keeps `abele-changelog-version` with schema 1 and the last
+plugin version run in this vault on this device. It is not `data.json`, a note or part of a
+settings transfer. The first run with this feature sets a quiet baseline; no previous version
+can be inferred from older installations. On an upgrade the new baseline is saved before
+showing a dismissible notice. A downgrade records the older version silently; re-upgrading
+can offer its changes again. The changelog's recovered historical boundaries use commit
+dates, not claimed publication dates.
+
 ## Where notes were left
 
 With `rememberNotePlaces` on, each device keeps, outside the vault, where every note it opened

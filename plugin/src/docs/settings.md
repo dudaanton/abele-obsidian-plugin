@@ -199,6 +199,14 @@ shown or copied and all of them copied at once. It is theirs alone: no tool read
 values, and none should be asked to. Send a person who wants to see or copy a key there, or to the field the key was entered in:
 every one of them has the same show and copy icons beside the stored key.
 
+## Changelog
+
+**Settings → Other → Changelog → Open changelog** opens all versions. This is an action,
+not a writable setting. On a later update a dismissible notice can open the versions since
+this device last ran the plugin. The version marker is local to this device and vault, not
+in the settings or settings transfer; on the first version with this feature it is set
+silently because older versions kept no marker.
+
 ## Everything else
 
 `snippetsFolder` is where CSS snippets are written, `links` are the links added to note

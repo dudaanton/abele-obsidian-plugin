@@ -68,6 +68,7 @@ import {
 } from './views/TimeTrackingSidebarView'
 import { SCRIPT_RUNS_VIEW_TYPE, ScriptRunsView } from './views/ScriptRunsView'
 import { USER_DOCS_VIEW_TYPE, UserDocsView, openUserDocs } from './views/UserDocsView'
+import { registerChangelog } from './changelog/register'
 import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { BaseProbeView, probeFor } from './analytics/sources/baseProbe'
@@ -290,6 +291,7 @@ export default class AbelePlugin extends Plugin {
     startupStep('workspace events', () => this.registerWorkspaceEvents())
 
     startupStep('commands', () => this.registerCommands())
+    startupStep('changelog', () => registerChangelog(this))
 
     // AI Agent — conditional on settings, and switched on later as often as at startup
     startupStep('agent', () => this.syncAiFeatures())
