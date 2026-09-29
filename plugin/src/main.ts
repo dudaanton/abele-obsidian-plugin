@@ -24,10 +24,9 @@ import { createTransaction, createTransactionAndInsert } from './commands/create
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import { createNoteInGroup } from './commands/createNoteInGroup'
 import { commentHereInView } from './commands/commentCommands'
-import { registerChatAbout } from './commands/chatAboutNote'
-import { registerAttachChat } from './commands/attachChat'
+import { registerNoteMenu } from './commands/noteMenu'
+import { NOTE_ACTIONS } from './commands/noteActions'
 import { isScriptPath } from './scripting/scriptPath'
-import { useInAgentText } from './ai/quoteSelection'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -82,7 +81,6 @@ import { registerPropertyWidgets } from './properties/register'
 import { registerLinter } from './linter/register'
 import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
-import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
 import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
@@ -524,12 +522,12 @@ export default class AbelePlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
-        // "Use in AI agent" for folders
+        // Add folders to the agent context.
         if (file instanceof TFolder && AbeleConfig.getInstance().ai.enabled) {
           menu.addItem((item) => {
             item
-              .setTitle('Use in AI agent')
-              .setIcon('bot')
+              .setTitle(NOTE_ACTIONS[0].title)
+              .setIcon(NOTE_ACTIONS[0].icon)
               .onClick(async () => {
                 const chatService = ChatService.getInstance()
                 const session = chatService.activeSession.value
@@ -560,16 +558,6 @@ export default class AbelePlugin extends Plugin {
               .onClick(() => {
                 GlobalStore.getInstance().previewImagePath.value = file.path
               })
-          })
-        }
-
-        // "Use in AI agent" for all files
-        if (AbeleConfig.getInstance().ai.enabled) {
-          menu.addItem((item) => {
-            item
-              .setTitle('Use in AI agent')
-              .setIcon('bot')
-              .onClick(() => useFilesInAgent([file]))
           })
         }
 
@@ -618,52 +606,7 @@ export default class AbelePlugin extends Plugin {
       })
     )
 
-    registerChatAbout(this)
-    registerAttachChat(this)
-
-    // "Use selection in AI Agent" on right-click in editor
-    if (AbeleConfig.getInstance().ai.enabled) {
-      this.registerEvent(
-        this.app.workspace.on('editor-menu', (menu, editor, view) => {
-          const selection = editor.getSelection()
-          if (!selection) return
-          menu.addItem((item) => {
-            item
-              .setTitle('Use in AI agent')
-              .setIcon('bot')
-              .onClick(async () => {
-                const file = view.file
-                const ref = useInAgentText(selection, file?.basename)
-                const chatService = ChatService.getInstance()
-                chatService.pendingInput.value = { text: ref }
-
-                // Add file to scope
-                if (file) {
-                  const session = chatService.activeSession.value
-                  if (session) {
-                    const scope = session.scopeResolver
-                    if (!scope.entries.value.some((e) => e.path === file.path)) {
-                      scope.entries.value = [
-                        ...scope.entries.value,
-                        { type: 'file' as const, path: file.path },
-                      ]
-                      scope.invalidate()
-                    }
-                  }
-                }
-
-                const { workspace } = this.app
-                let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
-                if (!leaf) {
-                  leaf = workspace.getRightLeaf(false)
-                  await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
-                }
-                void workspace.revealLeaf(leaf)
-              })
-          })
-        })
-      )
-    }
+    registerNoteMenu(this)
 
     // "Find and create aliases" on right-click in editor
     this.registerEvent(
@@ -1209,7 +1152,7 @@ export default class AbelePlugin extends Plugin {
       },
     })
 
-    // Beside "Use in AI agent", and unlike it, offered with or without a selection: a
+    // Beside the note actions, offered with or without a selection: a
     // comment at the caret is a question about the place, not about a passage.
     this.registerEvent(
       this.app.workspace.on('editor-menu', (menu, _editor, view) => {

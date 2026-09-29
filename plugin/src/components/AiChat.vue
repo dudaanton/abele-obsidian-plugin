@@ -1423,15 +1423,7 @@ watch(
     // this tab from outside comes with the switch, and is what goes back instead.
     const pending = pendingFor(tabId)
     const saved = tabId ? drafts.get(tabId) : undefined
-    const draft = !pending
-      ? saved
-      : pending.text || !pending.attachments?.length
-        ? { text: pending.text, attachments: filesOf(pending.attachments) }
-        : // Files alone — a picture sent back — join what the tab had waiting.
-          {
-            text: saved?.text ?? '',
-            attachments: [...(saved?.attachments ?? []), ...filesOf(pending.attachments)],
-          }
+    const draft = pending ? pendingDraft(pending, saved) : saved
     void nextTick(() => {
       chatInput.value?.putDraft(draft ?? NO_DRAFT)
       if (pending) takePending(pending)
@@ -1445,6 +1437,18 @@ function filesOf(paths: string[] | undefined): TFile[] {
   return (paths ?? [])
     .map((p) => app.vault.getAbstractFileByPath(p))
     .filter((f): f is TFile => f instanceof TFile)
+}
+
+/** Inserted links and files alone join the draft; new-chat text still replaces it. */
+function pendingDraft(pending: PendingInput, saved?: ChatDraft): ChatDraft {
+  const join = pending.append || (!pending.text && !!pending.attachments?.length)
+  const before = saved?.text ?? ''
+  return {
+    text: join
+      ? `${before}${before && pending.text && !before.endsWith('\n') ? '\n' : ''}${pending.text}`
+      : pending.text,
+    attachments: [...(join ? (saved?.attachments ?? []) : []), ...filesOf(pending.attachments)],
+  }
 }
 
 /** The text waiting to go into this tab's input, if any. */
@@ -1467,9 +1471,7 @@ function consumePendingInput() {
   void nextTick(() => {
     const pending = pendingFor(chatService.activeTabId.value)
     if (!pending || !chatInput.value) return
-    // Files alone — a picture sent back — go beside whatever is already typed.
-    if (pending.text || !pending.attachments?.length) chatInput.value.setText(pending.text)
-    for (const file of filesOf(pending.attachments)) chatInput.value.addAttachment(file)
+    chatInput.value.putDraft(pendingDraft(pending, chatInput.value.takeDraft()))
     takePending(pending)
   })
 }

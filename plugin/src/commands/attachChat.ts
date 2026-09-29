@@ -1,7 +1,7 @@
 /**
  * Attaching a chat to a note by hand, from either end.
  *
- * From a note: *Attach a chat…* in its file menu — the explorer, a tab's header and its "more
+ * From a note: *Attach a chat to note* in its file menu — the explorer, a tab's header and its "more
  * options" all build that one menu — and as a command for the note in front. It picks a chat
  * out of the history. From a chat: the link button in its header, whose menu attaches the chat
  * to the note in front or to one picked, and detaches it from the notes it is attached to.
@@ -19,9 +19,13 @@ import { attachNote, detachNote } from '@/ai/chatNoteLinks'
 import { isScriptPath } from '@/scripting/scriptPath'
 import { pickChat } from '@/helpers/suggesters/ChatPicker'
 import { pickNote } from '@/helpers/suggesters/NotePicker'
+import { ChatService } from '@/ai/ChatService'
+import { grantNote } from './chatAboutNote'
+import { noteWikilink } from './noteWikilink'
+import { NOTE_ACTIONS } from './noteActions'
 
-export const ATTACH_CHAT_TITLE = 'Attach a chat…'
-export const ATTACH_ICON = 'link'
+export const ATTACH_CHAT_TITLE = NOTE_ACTIONS[3].title
+export const ATTACH_ICON = NOTE_ACTIONS[3].icon
 export const DETACH_ICON = 'unlink'
 
 /**
@@ -49,6 +53,27 @@ export async function attachChatToNote(note: TFile): Promise<boolean> {
   if (!chat) return false
   if (!(await attachNote(chat.path, note.path))) return false
   new Notice(`Attached “${titleOf(chat.path)}” to ${nameOf(note.path)}`)
+  return true
+}
+
+/** Inserts a link into a picked chat's draft; this does not attach a card to the note. */
+export async function attachNoteToChat(note: TFile): Promise<boolean> {
+  const { app } = GlobalStore.getInstance()
+  const chat = await pickChat(app, undefined, { placeholder: 'Attach this note to a chat...' })
+  if (!chat) return false
+  const service = ChatService.getInstance()
+  await service.openChatFile(chat)
+  // Opening can be refused by a full tab bar. Never insert into the unrelated active chat.
+  const session = service.getSessionByFile(chat.path)
+  if (!session || service.activeSession.value?.id !== session.id) return false
+  grantNote(session.scopeResolver, note.path)
+  service.pendingInput.value = {
+    text: `${noteWikilink(note)} `,
+    tabId: session.id,
+    focus: true,
+    append: true,
+  }
+  await service.revealSidebar()
   return true
 }
 
@@ -134,24 +159,25 @@ function run(note: TFile): void {
 
 const aiEnabled = () => AbeleConfig.getInstance().ai.enabled
 
-export function registerAttachChat(plugin: Plugin): void {
+export function registerAttachChat(plugin: Plugin, menus = true): void {
   const { workspace } = plugin.app
 
-  plugin.registerEvent(
-    workspace.on('file-menu', (menu, file) => {
-      if (!aiEnabled() || !canAttachTo(file)) return
-      menu.addItem((item) =>
-        item
-          .setTitle(ATTACH_CHAT_TITLE)
-          .setIcon(ATTACH_ICON)
-          .onClick(() => run(file))
-      )
-    })
-  )
+  if (menus)
+    plugin.registerEvent(
+      workspace.on('file-menu', (menu, file) => {
+        if (!aiEnabled() || !canAttachTo(file)) return
+        menu.addItem((item) =>
+          item
+            .setTitle(ATTACH_CHAT_TITLE)
+            .setIcon(ATTACH_ICON)
+            .onClick(() => run(file))
+        )
+      })
+    )
 
   plugin.addCommand({
     id: 'attach-chat-to-current-note',
-    name: 'Attach a chat to current note',
+    name: ATTACH_CHAT_TITLE,
     icon: ATTACH_ICON,
     checkCallback: (checking) => {
       const file = workspace.getActiveFile()

@@ -67,6 +67,39 @@ describe('text put into the composer from outside', () => {
     expect(service.pendingInput.value).toBeNull()
   })
 
+  it('appends an inserted note link without replacing the active draft', async () => {
+    const wrapper = open()
+    await wrapper.get('.abele-chat-input__textarea').setValue('A draft')
+    service.pendingInput.value = {
+      text: '[[sample-note]] ',
+      tabId: 'tab-a',
+      focus: true,
+      append: true,
+    }
+    await settle()
+    expect(textarea(wrapper).value).toBe('A draft\n[[sample-note]] ')
+  })
+
+  it('appends to the picked tab’s saved draft and leaves the other draft alone', async () => {
+    const wrapper = open()
+    await wrapper.get('.abele-chat-input__textarea').setValue('First draft')
+    service.activeTabId.value = 'tab-b'
+    await settle()
+    await wrapper.get('.abele-chat-input__textarea').setValue('Second draft')
+    service.activeTabId.value = 'tab-a'
+    service.pendingInput.value = {
+      text: '[[sample-note]] ',
+      tabId: 'tab-a',
+      focus: true,
+      append: true,
+    }
+    await settle()
+    expect(textarea(wrapper).value).toBe('First draft\n[[sample-note]] ')
+    service.activeTabId.value = 'tab-b'
+    await settle()
+    expect(textarea(wrapper).value).toBe('Second draft')
+  })
+
   it('survives the tab switch it came with', async () => {
     const wrapper = open()
     await wrapper.get('.abele-chat-input__textarea').setValue('typed in A')

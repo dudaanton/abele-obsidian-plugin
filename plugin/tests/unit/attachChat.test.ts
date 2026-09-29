@@ -10,12 +10,13 @@ import { FuzzySuggestModal, Menu, Notice, TFile, TFolder, type Plugin } from 'ob
 import {
   ATTACH_CHAT_TITLE,
   attachChatToNote,
+  attachNoteToChat,
   chatNotesMenu,
   registerAttachChat,
 } from '@/commands/attachChat'
 import { pickNote } from '@/helpers/suggesters/NotePicker'
 import { ChatSession } from '@/ai/ChatSession'
-import { ChatService } from '@/ai/ChatService'
+import { ChatService, MAX_TABS } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -145,6 +146,63 @@ describe('from a note: picking a chat', () => {
 
     expect(await done).toBe(false)
     expect(linkedTo(trip.path)).toEqual([])
+  })
+})
+
+describe('inserting a note link into a picked chat', () => {
+  it('picks an existing chat, inserts a wikilink and grants access without attaching a card', async () => {
+    const other = await seedChat('Other')
+    const chosen = await seedChat('Chosen')
+    const service = ChatService.getInstance()
+    await openSession(other)
+    vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+    ;(app.metadataCache as any).fileToLinktext = vi.fn(() => 'Notes/A')
+
+    const done = attachNoteToChat(fileAt(NOTE_A))
+    const modal = opened<AiChatHistoryEntry>()
+    modal.onChooseItem(
+      modal.getItems().find((e) => e.path === chosen.path)!,
+      new MouseEvent('click')
+    )
+
+    expect(await done).toBe(true)
+    const session = service.getSessionByFile(chosen.path)!
+    expect(service.activeSession.value?.id).toBe(session.id)
+    expect(service.pendingInput.value).toEqual({
+      text: '[[Notes/A]] ',
+      tabId: session.id,
+      focus: true,
+      append: true,
+    })
+    expect(session.scopeResolver.isInScope(NOTE_A)).toBe(true)
+    expect(linkedTo(chosen.path)).toEqual([])
+  })
+
+  it('refuses a full tab bar without replacing an open conversation', async () => {
+    const service = ChatService.getInstance()
+    for (let i = 0; i < MAX_TABS; i++) await openSession(await seedChat(`Sample-${i}`))
+    const active = service.activeSession.value!
+    const original = active.currentChatFile.value!.path
+    vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+    const extra = await seedChat('Extra')
+    ;(app.metadataCache as any).fileToLinktext = vi.fn(() => 'Notes/A')
+    const done = attachNoteToChat(fileAt(NOTE_A))
+    const modal = opened<AiChatHistoryEntry>()
+    modal.onChooseItem(
+      modal.getItems().find((e) => e.path === extra.path)!,
+      new MouseEvent('click')
+    )
+    expect(await done).toBe(false)
+    expect(active.currentChatFile.value?.path).toBe(original)
+    expect(service.pendingInput.value).toBeNull()
+  })
+
+  it('does nothing when picking is cancelled', async () => {
+    await seedChat('Sample')
+    const done = attachNoteToChat(fileAt(NOTE_A))
+    opened().onClose()
+    expect(await done).toBe(false)
+    expect(ChatService.getInstance().pendingInput.value).toBeNull()
   })
 })
 

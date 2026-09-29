@@ -24,6 +24,8 @@ export interface PendingInput {
   text: string
   tabId?: string
   focus?: boolean
+  /** Insert text beside the picked chat's existing draft instead of replacing it. */
+  append?: boolean
   /** Vault files to attach to what is being written — a picture drawn on, sent back. */
   attachments?: string[]
 }
@@ -583,6 +585,11 @@ export class ChatService {
       return
     }
 
+    // createTab() returns the active id at the limit; loading there would replace its chat.
+    if (!this.canCreateTab) {
+      new Notice(ChatService.TABS_FULL)
+      return
+    }
     // Create new tab and load
     const tabId = this.createTab()
     const session = this.sessions.get(tabId)

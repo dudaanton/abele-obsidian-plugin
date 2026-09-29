@@ -23,16 +23,21 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 ## Views
 
 - Show timeline sidebar · Show todo sidebar · Show AI chat sidebar
-- Chat about current note — a new chat with a link to that note ready in the input, and access
-  to it if the agent had none; *Chat about this* when a note is right-clicked does the same.
+- Add to agent context — adds the note (or its selected passage) to the chat in front and
+  opens the agent sidebar. File and folder menus offer the same action
+- Chat about this — a new chat with a link to that note ready in the input, and access
+  to it if the agent had none. The note's context menus offer the same action.
   With text selected in that note, the link points at the selected lines and the text is
   quoted under it
-- Attach a chat to current note — picks a chat from the history and links it to the note, the
-  same link a chat makes by writing to it, so it appears in the note's **Chats** list; *Attach a
-  chat…* when a note is right-clicked does the same. From a chat, the link button in its header
-  attaches it to the note in front or to one picked, and detaches it; under the note, the unlink
+- Attach to a chat — picks an existing chat and inserts a wikilink to the note into its input,
+  keeping any draft already there and giving that chat access to the note. Nothing is sent
+- Attach a chat to note — picks a chat from the history and links it to the note, the
+  same link a chat makes by writing to it, so it appears in the note's **Chats** list. From a chat,
+  the link button in its header attaches it to the note in front or to one picked, and detaches it; under the note, the unlink
   button on a chat's card detaches it. Scripts take chats the same way, and list them under their
   code. An agent cannot attach chats itself
+- Copy wikilink — copies a wikilink to the note, even when the vault uses Markdown links.
+  Also available in the note's context menus and mobile quick menu with the AI switched off
 - Show script runs · Show script API reference
 - Open GitHub link or item — the GitHub link under the cursor opens straight away; otherwise a
   picker takes a pasted link (github.com or the configured server), or `#123`, `owner/repo#123`,

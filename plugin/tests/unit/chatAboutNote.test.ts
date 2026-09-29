@@ -294,7 +294,7 @@ describe('where it is offered', () => {
 
   it('as a command for the note in front, and only when there is one', async () => {
     const command = commands.find((c) => c.id === 'chat-about-current-note')!
-    expect(command.name).toBe('Chat about current note')
+    expect(command.name).toBe('Chat about this')
 
     activeFile = null
     expect(command.checkCallback(true)).toBe(false)

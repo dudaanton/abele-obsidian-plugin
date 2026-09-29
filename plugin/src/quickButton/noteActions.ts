@@ -1,7 +1,7 @@
 /**
  * What the quick menu offers for a note: its timer, where the header would show one, and a
- * chat about it or attached to it, where the AI side is on. The last two are the plugin's own
- * commands, asked first whether they apply — the same question their menus ask.
+ * agent/chat actions where AI is on, and copying a link either way. The actions are the
+ * plugin's own commands, asked first whether they apply — the same question their menus ask.
  */
 import { unref } from 'vue'
 import type { App, Menu, TFile } from 'obsidian'
@@ -12,15 +12,9 @@ import { timerActiveFor, toggleTimerFor } from '@/composables/useTimerButton'
 import type { TimeEntry } from '@/entities/TimeEntry'
 import type { TimeEntryList } from '@/entities/TimeEntryList'
 import { commandAvailable } from './menu'
+import { NOTE_ACTIONS } from '@/commands/noteActions'
 
-const COMMANDS: { id: string; title: string; icon: string }[] = [
-  {
-    id: 'abele:chat-about-current-note',
-    title: 'Chat about this note',
-    icon: 'message-square-plus',
-  },
-  { id: 'abele:attach-chat-to-current-note', title: 'Attach a chat', icon: 'paperclip' },
-]
+const COMMANDS = NOTE_ACTIONS.map((action) => ({ ...action, id: `abele:${action.id}` }))
 
 export function noteQuickActions(app: App, menu: Menu, file: TFile): void {
   const frontmatter = getFrontmatterFromCache(file.path)

@@ -7,8 +7,8 @@
  * vault's link settings, and it is only prefilled: the person says what they want before
  * anything is sent.
  *
- * Something selected in the note goes in with it, the way "Use in AI agent" quotes it, and the
- * link then points at the selected lines. Only that note's own selection counts: the one in the
+ * Something selected in the note goes in with it, the way "Add to agent context" quotes it,
+ * and the link then points at the selected lines. Only that note's own selection counts: the one in the
  * editor the menu was opened from, or in the note's pane in front — never another note's. In
  * reading view there are no lines to point at, so the link is to the note and the passage is
  * the text as it was selected on the page.
@@ -34,9 +34,10 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { quoteLines } from '@/ai/quoteSelection'
 import { lineSubpath, type LineRange } from '@/lineLinks/parse'
 import { BOOK_VIEW_TYPE } from '@/reader/viewType'
+import { NOTE_ACTIONS } from './noteActions'
 
-export const CHAT_ABOUT_TITLE = 'Chat about this'
-const CHAT_ABOUT_ICON = 'message-square-plus'
+export const CHAT_ABOUT_TITLE = NOTE_ACTIONS[1].title
+const CHAT_ABOUT_ICON = NOTE_ACTIONS[1].icon
 
 /** Whether this is something a chat can be about. */
 export function canChatAbout(file: TAbstractFile | null | undefined): file is TFile {
@@ -152,44 +153,46 @@ function run(file: TFile, selection: NoteSelection | null): void {
 
 const aiEnabled = () => AbeleConfig.getInstance().ai.enabled
 
-export function registerChatAbout(plugin: Plugin): void {
+export function registerChatAbout(plugin: Plugin, menus = true): void {
   const { workspace } = plugin.app
 
   // The explorer, a tab's header and "more options" all build this one menu.
-  plugin.registerEvent(
-    workspace.on('file-menu', (menu, file, _source, leaf) => {
-      if (!aiEnabled() || !canChatAbout(file)) return
-      // A book's own tab offers its own, which links to the place on screen.
-      if (leaf?.view?.getViewType?.() === BOOK_VIEW_TYPE) return
-      // Read now: choosing the item can take the page's selection away.
-      const pane = paneOf(workspace, file, leaf)
-      const selection = pane ? viewSelection(pane) : null
-      menu.addItem((item) =>
-        item
-          .setTitle(CHAT_ABOUT_TITLE)
-          .setIcon(CHAT_ABOUT_ICON)
-          .onClick(() => run(file, selection))
-      )
-    })
-  )
+  if (menus)
+    plugin.registerEvent(
+      workspace.on('file-menu', (menu, file, _source, leaf) => {
+        if (!aiEnabled() || !canChatAbout(file)) return
+        // A book's own tab offers its own, which links to the place on screen.
+        if (leaf?.view?.getViewType?.() === BOOK_VIEW_TYPE) return
+        // Read now: choosing the item can take the page's selection away.
+        const pane = paneOf(workspace, file, leaf)
+        const selection = pane ? viewSelection(pane) : null
+        menu.addItem((item) =>
+          item
+            .setTitle(CHAT_ABOUT_TITLE)
+            .setIcon(CHAT_ABOUT_ICON)
+            .onClick(() => run(file, selection))
+        )
+      })
+    )
 
-  plugin.registerEvent(
-    workspace.on('editor-menu', (menu, editor, info) => {
-      const file = info.file
-      if (!aiEnabled() || !canChatAbout(file)) return
-      const selection = editorSelection(editor)
-      menu.addItem((item) =>
-        item
-          .setTitle(CHAT_ABOUT_TITLE)
-          .setIcon(CHAT_ABOUT_ICON)
-          .onClick(() => run(file, selection))
-      )
-    })
-  )
+  if (menus)
+    plugin.registerEvent(
+      workspace.on('editor-menu', (menu, editor, info) => {
+        const file = info.file
+        if (!aiEnabled() || !canChatAbout(file)) return
+        const selection = editorSelection(editor)
+        menu.addItem((item) =>
+          item
+            .setTitle(CHAT_ABOUT_TITLE)
+            .setIcon(CHAT_ABOUT_ICON)
+            .onClick(() => run(file, selection))
+        )
+      })
+    )
 
   plugin.addCommand({
     id: 'chat-about-current-note',
-    name: 'Chat about current note',
+    name: CHAT_ABOUT_TITLE,
     icon: CHAT_ABOUT_ICON,
     checkCallback: (checking) => {
       const file = workspace.getActiveFile()

@@ -427,7 +427,7 @@ function showMoreMenu(e: MouseEvent) {
     if (AbeleConfig.getInstance().ai.enabled) {
       menu.addItem((item) =>
         item
-          .setTitle('Use in AI agent')
+          .setTitle('Add to agent context')
           .setIcon('bot')
           .onClick(() => {
             const file = resolveFile()

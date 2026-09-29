@@ -177,10 +177,18 @@ does the same in a note, at the cursor. The speech model and its key are set on 
 
 ## Asking about a note
 
-- **Chat about current note**, or **Chat about this** in a note's right-click menu, starts a chat
-  with a link to the note already typed. With text selected, the link points at those lines and
-  the text is quoted.
-- **Use in AI agent** on a file, a folder or selected text adds it to the chat in front.
+The note's context menus and mobile quick menu offer these actions in this order. The command
+palette uses the same names:
+
+- **Add to agent context** on a file, a folder or selected text adds it to the chat in front.
+- **Chat about this** starts a chat with a link to the note already typed. With text selected,
+  the link points at those lines and the text is quoted.
+- **Attach to a chat** picks an existing chat and inserts a wikilink to the note in its input,
+  without sending it or replacing its draft.
+- **Attach a chat to note** puts an existing chat in the note's **Chats** list (see below).
+- **Copy wikilink** copies a wikilink to the note, even when the vault uses Markdown links.
+  This action also works with the AI switched off.
+
 - **Ask here** asks about a passage and keeps the chat tied to it. See [Comments](comments).
 
 If the agent cannot see the note, this one chat is given access to it.
@@ -188,6 +196,6 @@ If the agent cannot see the note, this one chat is given access to it.
 ## Chats under a note
 
 A chat that changes a note is listed under that note, in the **Chats** list of its footer. You can
-also put one there yourself: **Attach a chat to current note**, **Attach a chat…** in a note's
-right-click menu, or the link button in the chat's header. The unlink button on a chat's card
+also put one there yourself: **Attach a chat to note** in the command palette or a note's
+context menu, or the link button in the chat's header. The unlink button on a chat's card
 takes it away again. Scripts can have chats attached the same way.
