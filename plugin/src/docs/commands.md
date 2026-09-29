@@ -55,7 +55,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   GitHub tab (at the latest comment) and marks it read on GitHub; a row's check marks it read
   without opening it, and the panel's double check marks all of them (of the chosen repository).
   Releases, workflow runs and alerts open on GitHub. Needs a classic token with the
-  `notifications` or `repo` scope — GitHub does not let a fine-grained token read notifications.
+  `notifications` or `repo` scope — GitHub does not let a fine-grained token read notifications —
+  read from its own setting, `github.notifications.keyId` (Notifications token), else the main
+  token.
   Also in a GitHub tab's "more options" menu (only while the GitHub integration is on)
 - Chat about this GitHub item — in a GitHub tab: a new chat with a link to the item in the
   input. The same is the speech-bubble button in the tab's header and in its "more options"

@@ -44,6 +44,14 @@ export interface GithubSettings {
    * can be added beside the address later.
    */
   pinnedRepos: PinnedRepo[]
+  /**
+   * What the notifications panel alone reads with. GitHub serves notifications only to a classic
+   * token, so a fine-grained main token needs a classic one beside it; with no `keyId` here —
+   * or nothing under it on this device — the panel reads with the main token. An object, whose
+   * field is named `keyId` so the agent's settings tools treat it as a secret, and so that it can
+   * become a connection of its own later.
+   */
+  notifications: { keyId: string }
 }
 
 export interface PinnedRepo {
@@ -52,6 +60,7 @@ export interface PinnedRepo {
 }
 
 export const GITHUB_TOKEN_KEY_ID = 'abele-github-token'
+export const GITHUB_NOTIFICATIONS_TOKEN_KEY_ID = 'abele-github-notifications-token'
 
 export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   enabled: false,
@@ -65,6 +74,7 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   pageWidthPx: 1000,
   markdownView: 'preview',
   pinnedRepos: [],
+  notifications: { keyId: '' },
 }
 
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({
@@ -74,4 +84,7 @@ export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSett
   pinnedRepos: Array.isArray(stored?.pinnedRepos)
     ? stored.pinnedRepos.filter((p): p is PinnedRepo => typeof p?.url === 'string')
     : [],
+  notifications: {
+    keyId: typeof stored?.notifications?.keyId === 'string' ? stored.notifications.keyId : '',
+  },
 })

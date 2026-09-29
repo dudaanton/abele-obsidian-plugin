@@ -115,7 +115,7 @@ import Tabs from '../obsidian/Tabs.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubNotice from './GithubNotice.vue'
-import type { GithubClient } from '@/github/client'
+import { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
 import { inboxFor, type NotificationsState } from '@/github/notifications/inbox'
 import { ago, reasonText, subjectType, type GithubNotification } from '@/github/notifications/model'
@@ -132,9 +132,18 @@ import { ago, reasonText, subjectType, type GithubNotification } from '@/github/
  */
 const props = defineProps<{
   enabled: boolean
-  clientFor: () => GithubClient
+  /**
+   * The client to read with, and whether it carries the notifications token rather than the
+   * main one — so a refusal names the right field.
+   */
+  clientFor: () => GithubClient | { client: GithubClient; separate: boolean }
   state: NotificationsState
 }>()
+
+const reader = () => {
+  const r = props.clientFor()
+  return r instanceof GithubClient ? { client: r, separate: false } : r
+}
 
 const emit = defineEmits<{
   (e: 'open', url: string, pane: PaneType | false): void
@@ -152,9 +161,12 @@ const pollSeconds = ref(60)
 /** Read here since the list was asked for: stays in the unread list, dimmed, until the next asking. */
 const readHere = reactive(new Set<string>())
 
-const inbox = () => inboxFor(props.clientFor())
+const inbox = () => {
+  const { client, separate } = reader()
+  return inboxFor(client, separate)
+}
 
-const inboxUrl = computed(() => `${props.clientFor().endpoints.origin}/notifications`)
+const inboxUrl = computed(() => `${reader().client.endpoints.origin}/notifications`)
 
 const shown = computed(() =>
   (items.value ?? []).filter(

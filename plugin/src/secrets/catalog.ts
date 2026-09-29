@@ -107,6 +107,11 @@ function usesOf(settings: AbeleSettings): Map<string, Use[]> {
         add(id, { kind: 'Calendar', name: calendarNames.get(id) ?? 'Calendar' })
         continue
       }
+      // The notifications panel's own token travels in the GitHub block, beside the main one.
+      if (entry.section === 'github' && id === settings.github?.notifications?.keyId) {
+        add(id, { kind: 'GitHub', name: 'GitHub notifications' })
+        continue
+      }
       const block = entry.id === entry.section
       add(id, {
         kind: KINDS[entry.section] ?? sectionLabel(entry.section),

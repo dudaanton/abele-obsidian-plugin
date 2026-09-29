@@ -248,6 +248,17 @@ describe('settings that arrived later than the transfer did', () => {
     expect(applyEntries([entry!], settings()).github).toEqual(github)
   })
 
+  it('carries the separate notifications token beside the main one', () => {
+    const github = {
+      enabled: true,
+      keyId: 'abele-github-token',
+      notifications: { keyId: 'abele-github-notifications-token' },
+    }
+    const entry = find(collectEntries(settings({ github })), 'github', 'github')
+    expect(entry?.secretIds).toEqual(['abele-github-token', 'abele-github-notifications-token'])
+    expect(applyEntries([entry!], settings()).github).toEqual(github)
+  })
+
   it('carries each MCP server as its own entry, with the token it points at', () => {
     const server = {
       id: 'm1',

@@ -7,7 +7,7 @@ import { ItemView, type PaneType, type ViewStateResult, type WorkspaceLeaf } fro
 import { createApp, reactive, type App as VueApp } from 'vue'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
 import type { NotificationsState } from './inbox'
-import { githubClient, githubSettings, openGithubUrl } from '../GithubService'
+import { githubSettings, notificationsClient, openGithubUrl } from '../GithubService'
 
 export const GITHUB_NOTIFICATIONS_VIEW_TYPE = 'abele-github-notifications'
 
@@ -48,8 +48,9 @@ export class NotificationsView extends ItemView {
     const mountPoint = this.contentEl.createDiv()
     this.vue = createApp(GithubNotifications, {
       enabled: githubSettings().enabled,
-      // The token's own server: notifications belong to the account, not to a repository.
-      clientFor: () => githubClient(),
+      // The token's own server: notifications belong to the account, not to a repository. Read
+      // with the notifications token when one is set, the main token otherwise.
+      clientFor: () => notificationsClient(),
       state: this.state,
       onOpen: (url: string, pane: PaneType | false): void =>
         void openGithubUrl(this.app, url, pane),

@@ -8,7 +8,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { AbeleConfig, type AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
-import { DEFAULT_GITHUB_SETTINGS, GITHUB_TOKEN_KEY_ID } from '@/github/settings'
+import {
+  DEFAULT_GITHUB_SETTINGS,
+  GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
+  GITHUB_TOKEN_KEY_ID,
+} from '@/github/settings'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { copyAllText, secretCatalog, type StoreView } from '@/secrets/catalog'
 import type { StoreContent } from '@/secrets/SecretStore'
@@ -51,7 +55,11 @@ beforeEach(() => {
       },
     ],
   }
-  config.github = { ...DEFAULT_GITHUB_SETTINGS, keyId: GITHUB_TOKEN_KEY_ID }
+  config.github = {
+    ...DEFAULT_GITHUB_SETTINGS,
+    keyId: GITHUB_TOKEN_KEY_ID,
+    notifications: { keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID },
+  }
   settings = config.exportSettings()
 })
 
@@ -72,6 +80,7 @@ describe('the keys the plugin knows', () => {
         'abele-secret-1',
         'abele-provider-p',
         GITHUB_TOKEN_KEY_ID,
+        GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
         DEFAULT_TRANSCRIPTION.apiKeyId,
         FIREFLY_TOKEN_KEY_ID,
         'abele-mcp-mc',
@@ -89,6 +98,8 @@ describe('the keys the plugin knows', () => {
     expect(by['abele-secret-1'].uses).toEqual(['Stored key · Weather'])
     expect(by['abele-brave-search'].name).toBe('Brave Search')
     expect(by[GITHUB_TOKEN_KEY_ID].name).toBe('GitHub')
+    expect(by[GITHUB_NOTIFICATIONS_TOKEN_KEY_ID].name).toBe('GitHub notifications')
+    expect(by[GITHUB_NOTIFICATIONS_TOKEN_KEY_ID].uses).toEqual(['GitHub · GitHub notifications'])
     expect(by[FIREFLY_TOKEN_KEY_ID].name).toBe('Firefly III')
     expect(by[DEFAULT_TRANSCRIPTION.apiKeyId].name).toBe('Voice input')
     expect(by[DEFAULT_TRANSCRIPTION.apiKeyId].uses).toEqual(['Voice input'])

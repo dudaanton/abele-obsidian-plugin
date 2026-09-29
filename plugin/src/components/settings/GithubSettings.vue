@@ -2,7 +2,7 @@
   <div class="abele-settings__github">
     <Setting
       name="GitHub"
-      desc="Open GitHub issues, pull requests, discussions, commits and files in tabs here. Read only: nothing is ever written to GitHub."
+      desc="Open GitHub issues, pull requests, discussions, commits and files in tabs here, and your notifications in a sidebar. Nothing is written to GitHub except marking notifications read."
     >
       <Checkbox :is-enabled="settings.enabled" @toggle="toggle('enabled')" />
     </Setting>
@@ -61,6 +61,30 @@
                 with-bg
                 tooltip="Forget the token"
                 @click="confirmingForget = true"
+              />
+            </template>
+          </SecretField>
+        </Setting>
+
+        <Setting
+          name="Notifications token"
+          desc="Optional. A classic personal access token with the notifications scope, used only by the notifications panel: GitHub does not let a fine-grained token read notifications. Empty: the panel uses the token above. Stored in the keychain."
+        >
+          <SecretField
+            v-model="notificationsInput"
+            :value="storedNotifications"
+            placeholder="ghp_..."
+            replace-placeholder="New token..."
+            save-tooltip="Save the notifications token"
+            what="The notifications token"
+            @save="saveNotificationsToken"
+          >
+            <template #actions>
+              <Icon
+                icon="trash-2"
+                with-bg
+                tooltip="Forget the notifications token"
+                @click="confirmingForgetNotifications = true"
               />
             </template>
           </SecretField>
@@ -187,6 +211,15 @@
       @confirm="forgetToken"
       @close="confirmingForget = false"
     />
+    <ConfirmModal
+      v-if="confirmingForgetNotifications"
+      title="Forget the notifications token"
+      message="Remove the notifications token from the keychain? The notifications panel goes back to the main token."
+      confirm-text="Forget"
+      confirm-tooltip="Remove the notifications token from the keychain"
+      @confirm="forgetNotificationsToken"
+      @close="confirmingForgetNotifications = false"
+    />
   </div>
 </template>
 
@@ -206,7 +239,12 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import GithubAccessReport from './GithubAccessReport.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GITHUB_TOKEN_KEY_ID, githubSettingsFrom, type GithubSettings } from '@/github/settings'
+import {
+  GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
+  GITHUB_TOKEN_KEY_ID,
+  githubSettingsFrom,
+  type GithubSettings,
+} from '@/github/settings'
 import { checkGithubAccess, resetGithubClients } from '@/github/GithubService'
 import type { AccessReport } from '@/github/accessCheck'
 import { githubUsers } from '@/github/users'
@@ -222,6 +260,8 @@ const checkResult = ref('')
 const checkRepo = ref('')
 const report = ref<AccessReport | null>(null)
 const confirmingForget = ref(false)
+const notificationsInput = ref('')
+const confirmingForgetNotifications = ref(false)
 
 // Settings changed on disk — synced from another device — are shown rather than overwritten.
 watch(config.version, () => Object.assign(settings, githubSettingsFrom(config.github)))
@@ -230,6 +270,13 @@ const stored = computed(() => {
   void secretVersion.value
   void secrets().version.value
   return settings.keyId ? secrets().get(settings.keyId) : ''
+})
+
+const storedNotifications = computed(() => {
+  void secretVersion.value
+  void secrets().version.value
+  const id = settings.notifications.keyId
+  return id ? secrets().get(id) : ''
 })
 
 const save = async () => {
@@ -349,6 +396,23 @@ const saveToken = () => {
 const forgetToken = () => {
   if (settings.keyId) secrets().set(settings.keyId, '')
   settings.keyId = ''
+  secretVersion.value++
+  void save()
+}
+
+const saveNotificationsToken = () => {
+  const value = notificationsInput.value.trim()
+  if (!value) return
+  settings.notifications = { keyId: GITHUB_NOTIFICATIONS_TOKEN_KEY_ID }
+  secrets().set(GITHUB_NOTIFICATIONS_TOKEN_KEY_ID, value)
+  notificationsInput.value = ''
+  secretVersion.value++
+  void save()
+}
+
+const forgetNotificationsToken = () => {
+  if (settings.notifications.keyId) secrets().set(settings.notifications.keyId, '')
+  settings.notifications = { keyId: '' }
   secretVersion.value++
   void save()
 }

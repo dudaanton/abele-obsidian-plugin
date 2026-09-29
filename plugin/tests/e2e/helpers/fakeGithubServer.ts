@@ -451,7 +451,7 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
 }
 
 /**
- * The account's notifications: a comment on the pull request, the issue, the discussion (which
+ * The account's notifications, read only with a classic (`ghp_`) token: a comment on the pull request, the issue, the discussion (which
  * GitHub names by title only) and a read one on another repository. Marking read is remembered
  * for the life of the server, and every change moves `Last-Modified`, so an unchanged list is
  * answered 304 the way GitHub answers it.
@@ -512,6 +512,12 @@ function notificationList(web: string) {
 }
 
 function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
+  // As GitHub does: only a classic token reads notifications, whatever else another one can.
+  if (!String(req.headers.authorization ?? '').startsWith('Bearer ghp_'))
+    return send(res, 403, {
+      message: 'Resource not accessible by personal access token',
+      documentation_url: 'https://docs.github.com/rest/activity/notifications',
+    })
   if (url.pathname === '/api/v3/notifications' && req.method === 'PUT') {
     for (const n of notificationList(web)) readThreads.add(n.id)
     notificationsChanged = new Date()

@@ -57,8 +57,9 @@ all. Releases, workflow runs and alerts open on GitHub. The list refreshes while
 often as GitHub allows, and the refresh button asks at once.
 
 GitHub lets only a **classic** personal access token read notifications, with the
-**notifications** scope (or **repo**). A fine-grained token cannot, whatever it is given; the
-panel says so when that is the token you have.
+**notifications** scope (or **repo**). A fine-grained token cannot, whatever it is given. Put a
+classic one in **Settings → Abele → GitHub → Notifications token**: the panel reads with it, and
+everything else keeps your main token. Left empty, the panel uses the main token.
 
 ## Linking and quoting
 

@@ -611,9 +611,15 @@ notifications are read.
 
 **The token.** GitHub lets only a **classic** personal access token read notifications, with the
 **notifications** scope (or **repo**, which covers it). A fine-grained token is refused whatever
-it is given — a GitHub limitation, not a setting — and the panel says so, and what to make
-instead. A classic token with **repo** reads everything else here as well, so it can take the
-fine-grained token's place.
+it is given — a GitHub limitation, not a setting. So the panel can have a token of its own:
+**Notifications token** in the GitHub settings, beside the main one — a classic token, kept in
+the keychain like the main one and carried to other devices with it, used by the notifications
+panel and by nothing else. Every other GitHub feature keeps reading with the main token. Left
+empty, or with nothing under it in this device's keychain, the panel reads with the main token.
+
+A refusal says which token was refused and where the fix goes: with the main token, that a
+classic one belongs in **Notifications token**; with the notifications token, that it is not a
+classic one, lacks the scope, or was not accepted.
 
 ## Access
 

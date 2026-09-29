@@ -23,6 +23,9 @@ import {
 } from './helpers/githubLive'
 import { LATE_COMMENT, PULL } from './helpers/fakeGithubRepo'
 import { shotDir } from './helpers/shots'
+import { onPhone, targets } from './helpers/target'
+
+targets('desktop', 'phone')
 
 const SHOTS = shotDir('abele-github-notifications')
 const PHONE = { width: 390, height: 844 }
@@ -42,6 +45,8 @@ const PANEL = `
     return await until(() => ready() && rowsOf().length, 20000)
   }
   const shoot = async (file) => {
+    // On a real phone the harness's host takes the picture (see helpers/phone.ts).
+    if (window.__e2eHost) return await window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/' + file)
     require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -58,6 +63,24 @@ const PANEL = `
     return 'no picture'
   }
 `
+
+/**
+ * Sets the notifications panel's own token — a classic one, which is what the fake server, like
+ * GitHub, reads notifications with — in memory, beside the main token `enableGithub` put in.
+ * `restoreGithub` puts the settings and the keychain back.
+ */
+const useNotificationsToken = () =>
+  evalRaw(
+    `(() => {
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      config.github = { ...config.github, notifications: { keyId: 'abele-e2e-github-notifications' } }
+      const before = app.secretStorage.getSecret
+      app.secretStorage.getSecret = function (id) {
+        return id === 'abele-e2e-github-notifications' ? 'ghp_e2e_classic' : before.call(this, id)
+      }
+      return 'ok'
+    })()`
+  )
 
 /**
  * A turn of this worker's event loop: the fake server's log is read only between the blocking
@@ -81,7 +104,8 @@ describe.skipIf(!available)('GitHub notifications', () => {
 
   beforeAll(async () => {
     gh = await startFakeGithub()
-    enableGithub(gh.origin)
+    // A phone's sidebars are drawers, shut already.
+    enableGithub(gh.origin, !onPhone())
   }, 60_000)
 
   afterAll(() => {
@@ -92,6 +116,22 @@ describe.skipIf(!available)('GitHub notifications', () => {
     } finally {
       gh?.stop()
     }
+  })
+
+  it('without a notifications token, says the main token cannot read them and names the field for one', () => {
+    const r = evalAsync<{ error?: string; text?: string }>(`(async () => {
+      ${PRELUDE}
+      ${PANEL}
+      app.commands.executeCommandById('abele:show-github-notifications')
+      const notice = await until(() => panel()?.querySelector('.abele-github-notice__text'), 20000)
+      const text = notice?.textContent ?? ''
+      for (const l of app.workspace.getLeavesOfType('abele-github-notifications')) l.detach()
+      return notice ? { text } : { error: 'no refusal: ' + (panel()?.textContent.slice(0, 300) ?? 'none') }
+    })()`)
+    expect(r.error).toBeUndefined()
+    expect(r.text).toContain('Notifications token')
+    expect(r.text).toContain('classic')
+    useNotificationsToken()
   })
 
   it('opens in the sidebar with the unread ones, and a click opens the pull request at its comment and marks it read', async () => {
@@ -110,7 +150,8 @@ describe.skipIf(!available)('GitHub notifications', () => {
         inSidebar: panelLeaf().getRoot() === app.workspace.rightSplit,
         rows: rowsOf(),
       }
-      await wait(300)
+      // A phone's drawer slides in first.
+      await wait(document.body.classList.contains('is-phone') ? 1000 : 300)
       report.shot = await shoot('desktop-unread.png')
       panel().querySelector('[data-id="101"] .tree-item-self').click()
       const leaf = await until(() => githubLeaves()[0], 20000)
@@ -196,7 +237,8 @@ describe.skipIf(!available)('GitHub notifications', () => {
   })
 })
 
-describe.skipIf(!available)('GitHub notifications on a phone', () => {
+// Emulated in a phone-sized desktop window; a real phone runs the file above as it is.
+describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () => {
   let gh: FakeGithub
   let size: [number, number] = [0, 0]
 
@@ -217,6 +259,7 @@ describe.skipIf(!available)('GitHub notifications on a phone', () => {
     await setWindowSize(PHONE.width, PHONE.height)
     await reloadApp('window.location.reload()')
     enableGithub(gh.origin, false)
+    useNotificationsToken()
   }, 300_000)
 
   afterAll(async () => {

@@ -264,8 +264,12 @@ export const SECTIONS: Section[] = [
   ]),
   rootBlock('maps', 'Maps', ['mapCoordinatesProperty', 'mapStyleUrl']),
   rootBlock('github', 'GitHub', ['github'], {
-    // The token itself is in the keychain; the setting holds only its id.
-    secretsOf: (settings) => (settings.github?.keyId ? [settings.github.keyId] : []),
+    // The tokens themselves are in the keychain; the settings hold only their ids: the main
+    // one, and the notifications panel's own when one is set.
+    secretsOf: (settings) =>
+      [settings.github?.keyId, settings.github?.notifications?.keyId].filter(
+        (id): id is string => !!id
+      ),
   }),
   rootBlock('calendars', 'Calendars', ['calendars'], {
     // Each calendar's link or password is in the keychain; the settings hold only where.

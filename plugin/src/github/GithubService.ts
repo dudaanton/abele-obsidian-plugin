@@ -7,7 +7,14 @@ import type { App, PaneType, WorkspaceLeaf } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GithubClient } from './client'
 import { checkAccess, parseRepoInput, type AccessReport } from './accessCheck'
-import { endpoints, normaliseHost, parseGithubUrl, targetKey, type GithubTarget } from './urls'
+import {
+  endpoints,
+  normaliseHost,
+  parseGithubUrl,
+  targetKey,
+  type Endpoints,
+  type GithubTarget,
+} from './urls'
 import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
 import { forgetRepoTrees } from './tree/repoTree'
 import { rememberRepo } from './open/repoList'
@@ -48,6 +55,10 @@ export function githubClient(host?: string): GithubClient {
         ? 'a token is set, but the keychain on this device has nothing under it. Paste the token again in Abele settings → GitHub, or, if keys are synced, unlock them in Abele settings → Transfer → Synced keys.'
         : undefined
 
+  return cachedClient(ends, token, noTokenReason)
+}
+
+function cachedClient(ends: Endpoints, token: string, noTokenReason?: string): GithubClient {
   const key = `${ends.api}\n${token}\n${noTokenReason ?? ''}`
   let client = clients.get(key)
   if (!client) {
@@ -55,6 +66,20 @@ export function githubClient(host?: string): GithubClient {
     clients.set(key, client)
   }
   return client
+}
+
+/**
+ * The client the notifications panel reads with: the notifications token when one is set and
+ * this device's keychain holds it — GitHub serves notifications only to a classic token, and a
+ * fine-grained main token needs one beside it — else the main token's client. `separate` says
+ * which, for a refusal to name the right field.
+ */
+export function notificationsClient(): { client: GithubClient; separate: boolean } {
+  const settings = githubSettings()
+  const keyId = settings.notifications?.keyId
+  const token = keyId ? (secrets().get(keyId) ?? '').trim() : ''
+  if (!token) return { client: githubClient(), separate: false }
+  return { client: cachedClient(endpoints(settings.server), token), separate: true }
 }
 
 /**

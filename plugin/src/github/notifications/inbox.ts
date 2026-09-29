@@ -54,49 +54,71 @@ export interface InboxPage {
   truncated: boolean
 }
 
-const TOKEN_SETTINGS =
-  "GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic), and tick notifications (or repo, which covers it and everything else Abele reads). Then set it in Abele settings → GitHub; a classic token with repo reads the rest of GitHub here too, so it can take the fine-grained one's place."
+/** Where a classic token is made, and what to tick. */
+const MAKE_CLASSIC =
+  'GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic), with the notifications scope (or repo, which covers it)'
+
+/** Where it goes: its own field, so the main token keeps serving everything else. */
+const FIELD = 'Abele settings → GitHub → Notifications token'
 
 /**
  * A refusal of the notifications, said for the notifications: GitHub lets only a classic personal
  * access token read them, with the `notifications` or `repo` scope, and a fine-grained token is
  * refused whatever it is given. The generic words ("lacks that permission") would send the person
  * looking for a permission that does not exist.
+ *
+ * `separate` says the panel read with its own notifications token rather than the main one, so
+ * the words name the token that was refused and the field it is set in.
  */
 export function notificationsRefusal(
   error: GithubError,
   tokenKind: string,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
+  separate = false
 ): GithubError {
   const refused = error.status === 403 || error.status === 404
   const keep = { githubSaid: error.githubSaid, needed: error.needed }
+  const addOne = `Make a classic token (${MAKE_CLASSIC}) and set it in ${FIELD}: only the notifications read with it, and everything else keeps using the main token.`
+  const replace = `Make a new classic token (${MAKE_CLASSIC}) and set it in ${FIELD} in place of this one.`
   let refusal: Refusal | null = null
   if (error.status === 401 && tokenKind === 'none') {
     refusal = {
       ...keep,
       kind: 'auth',
       reason: 'GitHub shows notifications only to a request with a token.',
-      fix: `Make a classic personal access token: ${TOKEN_SETTINGS}`,
+      fix: addOne,
+    }
+  } else if (error.status === 401 && separate) {
+    refusal = {
+      ...keep,
+      kind: 'auth',
+      reason:
+        'GitHub did not accept the notifications token. It may be mistyped, expired or revoked.',
+      fix: replace,
     }
   } else if (refused && (tokenKind === 'fine-grained' || tokenKind === 'app')) {
+    const what = tokenKind === 'app' ? 'an app token' : 'a fine-grained one'
     refusal = {
       ...keep,
       kind: 'forbidden',
-      reason:
-        tokenKind === 'app'
+      reason: separate
+        ? `The notifications token is ${what}, and GitHub lets only a classic personal access token read notifications.`
+        : tokenKind === 'app'
           ? 'GitHub does not let an app token read notifications.'
           : 'GitHub does not let a fine-grained token read notifications, whatever permissions it has: only a classic personal access token can.',
-      fix: `Make a classic one: ${TOKEN_SETTINGS}`,
+      fix: separate ? replace : addOne,
     }
   } else if (refused && error.kind !== 'rate-limit' && error.kind !== 'sso') {
     const has = header(headers, 'x-oauth-scopes')
     refusal = {
       ...keep,
       kind: 'forbidden',
-      reason: `GitHub refused the notifications to this token${
+      reason: `GitHub refused the notifications to ${separate ? 'the notifications token' : 'this token'}${
         has !== undefined ? ` (its scopes: ${has.trim() || 'none'})` : ''
       }. Reading them needs the notifications or the repo scope.`,
-      fix: 'Edit the token on GitHub (Settings → Developer settings → Personal access tokens) and tick notifications — or repo. A fine-grained token cannot read notifications at all.',
+      fix: separate
+        ? 'Edit the token on GitHub (Settings → Developer settings → Personal access tokens) and tick notifications — or repo.'
+        : `Edit the token on GitHub (Settings → Developer settings → Personal access tokens) and tick notifications — or repo. Or, to leave it as it is: ${addOne}`,
     }
   }
   return refusal ? new GithubError(refusal.kind, refusal.reason, error.status, refusal) : error
@@ -105,7 +127,11 @@ export function notificationsRefusal(
 export class NotificationInbox {
   private kept = new Map<Which, Kept>()
 
-  constructor(private readonly client: GithubClient) {}
+  constructor(
+    private readonly client: GithubClient,
+    /** Read with the notifications token rather than the main one. */
+    private readonly separate = false
+  ) {}
 
   /** The notifications as last read, without asking. */
   cached(which: Which): GithubNotification[] | null {
@@ -123,7 +149,8 @@ export class NotificationInbox {
     throw notificationsRefusal(
       probe.error ?? new GithubError('other', `GitHub answered ${probe.status}.`, probe.status),
       this.client.tokenInfo.kind,
-      probe.headers
+      probe.headers,
+      this.separate
     )
   }
 
@@ -279,11 +306,14 @@ export class NotificationInbox {
 
 const inboxes = new WeakMap<GithubClient, NotificationInbox>()
 
-/** The inbox of a client: one per server and token, kept while the client is. */
-export function inboxFor(client: GithubClient): NotificationInbox {
+/**
+ * The inbox of a client: one per server and token, kept while the client is. `separate`: the
+ * client carries the notifications token, not the main one.
+ */
+export function inboxFor(client: GithubClient, separate = false): NotificationInbox {
   let inbox = inboxes.get(client)
   if (!inbox) {
-    inbox = new NotificationInbox(client)
+    inbox = new NotificationInbox(client, separate)
     inboxes.set(client, inbox)
   }
   return inbox
