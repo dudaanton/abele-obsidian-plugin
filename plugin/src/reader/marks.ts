@@ -19,6 +19,7 @@ import { einkBoxStyle, einkMark } from './einkMarks'
 import { VocabMarks } from './vocab/vocabMarks'
 import { aroundOf, ownWords, quoteKey } from './bookQuote'
 import type { HighlightRepairCandidate } from './highlightRepair'
+import { PdfVocabMarks } from './vocab/pdfVocabMarks'
 import type { VocabRule } from './vocab/rules'
 
 /** The engine's key for a search result's mark, which a tap never opens. */
@@ -203,15 +204,24 @@ export class BookMarks {
     at: { x: number; y: number },
     alongside: MarkAlongside | null
   ) => void = () => {}
-  /** Words vocabulary rules name, underlined in a reflowing book; none in fixed pages. */
-  readonly vocab: VocabMarks | null = null
+  /** The vocabulary renderer appropriate to the book's actual format. */
+  readonly vocab: VocabMarks | PdfVocabMarks | null = null
 
   constructor(
     private readonly engine: FoliateView,
     private readonly themeEl: HTMLElement,
     private readonly pdf: boolean,
-    private readonly onTap: (h: Highlight) => void
+    private readonly onTap: (h: Highlight) => void,
+    actualPdf = false
   ) {
+    if (actualPdf) {
+      this.vocab = new PdfVocabMarks(
+        () => (engine.renderer as { getContents(): { doc?: Document }[] }).getContents(),
+        () => (eink().on ? EINK_INK : this.accent()),
+        (cfi, index, doc) => (this.indexOf(cfi) === index ? this.placeIn(doc, cfi) : null),
+        (cfi) => this.indexOf(cfi)
+      )
+    }
     if (pdf) return
     this.vocab = new VocabMarks(
       engine,
@@ -415,10 +425,29 @@ export class BookMarks {
     this.vocab?.redraw()
   }
 
+  /** A PDF frame left the renderer: no document, ranges or geometry are retained. */
+  unloadPdf(doc: Document): void {
+    for (const [index, current] of this.pdfDocs)
+      if (current === doc) this.pdfDocs.delete(index)
+    if (this.vocab instanceof PdfVocabMarks) this.vocab.pageUnloaded(doc)
+  }
+
+  pageDrawn(doc: Document, index: number): void {
+    this.drawPdf(doc, index)
+    if (this.vocab instanceof PdfVocabMarks) this.vocab.pageDrawn(doc, index)
+  }
+
+  destroy(): void {
+    this.vocab?.stop()
+    this.pdfDocs.clear()
+  }
+
   /** A page of fixed size was drawn: its highlights go over it, over its fresh text layer. */
   drawPdf(doc: Document, index: number): void {
+    const previous = this.pdfDocs.get(index)
+    if (previous && previous !== doc) this.unloadPdf(previous)
     this.pdfDocs.set(index, doc)
-    for (const [i, d] of this.pdfDocs) if (!d.defaultView) this.pdfDocs.delete(i)
+    for (const [i, d] of this.pdfDocs) if (!d.defaultView) this.unloadPdf(d)
     const mine = this.list.filter((h) => this.indexOf(h.cfi) === index)
     const items: Box[] = []
     const on = eink().on
@@ -511,18 +540,47 @@ export class BookMarks {
     return null
   }
 
+  /** One fixed-page tap: preserve ordinary marks while offering independent vocabulary rules. */
+  hitFixed(doc: Document, x: number, y: number): boolean {
+    const highlight = this.hitPdf(doc, x, y)
+    const link = highlight ? null : this.linkAt(doc, x, y)
+    const words = this.vocab instanceof PdfVocabMarks ? this.vocab.at(doc, x, y) : null
+    if (!words) {
+      if (highlight) this.open(highlight)
+      else if (link) this.onLink(link.cfi, link.at)
+      return !!(highlight || link)
+    }
+    const linked = link ? this.linkedAt(link.cfi) : []
+    const rules = words.rules.filter((rule) =>
+      rule.target.kind === 'highlight'
+        ? rule.target.cfi !== highlight?.cfi
+        : !linked.includes(rule.target.path)
+    )
+    if (!rules.length) {
+      if (highlight) this.open(highlight)
+      else if (link) this.onLink(link.cfi, link.at)
+      return !!(highlight || link)
+    }
+    this.onWords(rules, pointInWindow(doc, words.rect.left, words.rect.bottom),
+      highlight ? { kind: 'highlight', open: () => this.open(highlight) }
+        : link ? { kind: 'link', open: () => this.onLink(link.cfi, link.at) } : null)
+    return true
+  }
+
+  private linkAt(doc: Document, x: number, y: number): { cfi: string; at: { x: number; y: number } } | null {
+    for (const box of Array.from(doc.querySelectorAll<HTMLElement>(`.${MARKS_CLASS}__box[data-link]`))) {
+      const r = box.getBoundingClientRect()
+      if (x >= r.left && x <= r.right && y >= r.top - 4 && y <= r.bottom + 4)
+        return { cfi: box.dataset.link ?? '', at: pointInWindow(doc, r.left, r.bottom) }
+    }
+    return null
+  }
+
   /** Words a note links to under a point of a fixed page, opened as a tap on them in a book is. */
   openLinkAt(doc: Document, x: number, y: number): boolean {
-    for (const box of Array.from(
-      doc.querySelectorAll<HTMLElement>(`.${MARKS_CLASS}__box[data-link]`)
-    )) {
-      const r = box.getBoundingClientRect()
-      if (x >= r.left && x <= r.right && y >= r.top - 4 && y <= r.bottom + 4) {
-        this.onLink(box.dataset.link ?? '', pointInWindow(doc, r.left, r.bottom))
-        return true
-      }
-    }
-    return false
+    const link = this.linkAt(doc, x, y)
+    if (link) this.onLink(link.cfi, link.at)
+    return !!link
   }
 
   /**

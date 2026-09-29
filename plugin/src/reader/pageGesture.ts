@@ -80,10 +80,17 @@ export class PageGesture {
     }
     const pointAt = (e: { clientX: number; clientY: number } | undefined) =>
       e && Number.isFinite(e.clientX) ? { x: e.clientX, y: e.clientY } : null
-    doc.addEventListener('touchstart', (e) => begin(true, pointAt(e.touches?.[0])), {
-      capture: true,
-      passive: true,
-    })
+    doc.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches?.length > 1) {
+          this.held = true
+          return
+        }
+        begin(true, pointAt(e.touches?.[0]))
+      },
+      { capture: true, passive: true }
+    )
     doc.addEventListener('pointerdown', (e) => begin(e.pointerType !== 'mouse', pointAt(e)), true)
     doc.addEventListener(
       'mousedown',
@@ -103,6 +110,14 @@ export class PageGesture {
       { capture: true, passive: true }
     )
     doc.addEventListener('touchend', end, true)
+    doc.addEventListener(
+      'touchcancel',
+      () => {
+        this.held = true
+        end()
+      },
+      true
+    )
     doc.addEventListener(
       'pointerup',
       (e) => {
@@ -136,6 +151,11 @@ export class PageGesture {
    */
   get dragged(): boolean {
     return this.moved || this.changed
+  }
+
+  /** A mark can still be tapped with its bar open, but never after a drag or held touch. */
+  get markTap(): boolean {
+    return !this.moved && !this.changed && !this.held && !selected(this.doc)
   }
 
   /** A tap that may turn the page. */

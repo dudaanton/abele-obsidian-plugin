@@ -185,12 +185,9 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
   const marks = host.reading()?.marks
   if (marks) {
     if (host.fixed()) {
-      const h = marks.hitPdf(doc, e.clientX, e.clientY)
-      if (h) {
-        marks.open(h)
-        return
-      }
-      if (marks.openLinkAt(doc, e.clientX, e.clientY)) return
+      // An open highlight bar still accepts a tap on its mark; a drag, canceled touch or long
+      // press must never activate a vocabulary target.
+      if (gesture.markTap && marks.hitFixed(doc, e.clientX, e.clientY)) return
     } else if (marks.hitEpub(e, doc)) return
   }
   // A tap beside an open highlight's bar closes it, rather than turning the page as well.

@@ -618,8 +618,11 @@ word-books: ["[[Books/Novel.epub]]"]
   scope it applies nowhere.
 - `word-underline: false` — off, the forms kept.
 
-Several rules (notes, highlights with forms) for the same word make the tap a menu. Only reflowing
-books are underlined, not PDFs, and only single words. Scripts write these properties with
+Several rules (notes, highlights with forms) for the same word make the tap a menu. Reflowing
+books and PDFs with selectable text use the same forms and properties; scanned/image-only PDF
+pages need a text layer to show underlines. Other fixed-layout books are not supported. Only
+single words are underlined. Language-wide rules require the book's language metadata (a PDF
+without it can still use book-scoped rules). Scripts write these properties with
 `vocabulary.mark`; write them by hand the same way.
 
 ### Ink on PDF pages

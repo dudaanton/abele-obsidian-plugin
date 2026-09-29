@@ -93,6 +93,15 @@ describe('a chapter’s text', () => {
     expect(sectionText(doc).text).toBe('viens divi')
   })
 
+  it('reads only the PDF text layer, joining adjacent spans but separating explicit breaks', () => {
+    const doc = page('<div class="textLayer"><span>sam</span><span>ple</span><br><span>sam</span><span>ple</span> <span>ma</span><span>̄ja</span></div><div class="annotationLayer">sample</div>')
+    const st = sectionText(doc, doc.querySelector('.textLayer')!)
+    expect(st.text).toBe('sample sample māja')
+    expect(found(st.text, 'sample', 'māja')).toEqual(['sample', 'sample', 'māja'])
+    expect(rangeOf(st, 0, 6)?.toString()).toBe('sample')
+    expect(st.nodes).toHaveLength(7)
+  })
+
   it('maps a word found back onto the page’s own nodes, and a point of the page into the text', () => {
     const doc = page('<p>Lie<em>la</em> māja</p><p>stāv</p>')
     const st = sectionText(doc)

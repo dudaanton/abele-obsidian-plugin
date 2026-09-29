@@ -50,6 +50,17 @@ export class BookReading {
   readonly marks: BookMarks
   readonly speech: ReadAloud
   private docIndex = new WeakMap<Document, number>()
+  private readonly pageDrawnHandler = (e: Event) => {
+    const { doc, index } = (e as CustomEvent<PdfPageDrawn>).detail
+    this.marks.pageDrawn(doc, index)
+    if (this.pendingMatch?.index === index) this.selectMatch(doc, this.pendingMatch)
+    if (this.pendingCfi && this.engine.resolveNavigation(this.pendingCfi)?.index === index)
+      this.selectCfi(doc, this.pendingCfi)
+  }
+  private readonly pageUnloadHandler = (e: Event) => {
+    const doc = (e as CustomEvent<{ doc: Document }>).detail.doc
+    this.marks.unloadPdf(doc)
+  }
   /** The words last selected, where reading aloud can start. */
   private selectedRange: Range | null = null
   private searchToken = 0
@@ -83,7 +94,7 @@ export class BookReading {
     // Pages of a fixed size — a PDF, a comic, a fixed-layout book — have no overlay in the
     // engine: the reader marks them itself.
     this.marks = new BookMarks(engine, themeEl, !!pdf || engine.isFixedLayout, (h) =>
-      this.activate(h)
+      this.activate(h), !!pdf
     )
     this.marks.onRepairsChanged = () => {
       if (!this.disposed) this.model.repairableCfis = this.marks.repairs().map((r) => r.cfi)
@@ -98,15 +109,14 @@ export class BookReading {
       },
       (state) => (this.model.speech = state)
     )
-    pdf?.pageEvents.addEventListener('drawn', (e) => {
-      const { doc, index } = (e as CustomEvent<PdfPageDrawn>).detail
-      this.marks.drawPdf(doc, index)
-      // A page is drawn again at every new size, and its text with it: what was asked to be
-      // marked on it is marked again, until another page is shown.
-      if (this.pendingMatch?.index === index) this.selectMatch(doc, this.pendingMatch)
-      if (this.pendingCfi && this.engine.resolveNavigation(this.pendingCfi)?.index === index)
-        this.selectCfi(doc, this.pendingCfi)
-    })
+    pdf?.pageEvents.addEventListener('drawn', this.pageDrawnHandler)
+    if (pdf) engine.renderer.addEventListener('unload', this.pageUnloadHandler)
+  }
+
+  destroy(): void {
+    this.pdf?.pageEvents.removeEventListener('drawn', this.pageDrawnHandler)
+    if (this.pdf) this.engine.renderer.removeEventListener('unload', this.pageUnloadHandler)
+    this.marks.destroy()
   }
 
   // ————— Highlights —————
@@ -282,6 +292,7 @@ export class BookReading {
 
   /** The page on screen changed: what was waiting to be marked on another page is dropped. */
   relocated(index: number): void {
+    if (this.pdf) (this.marks.vocab as import('./vocab/pdfVocabMarks').PdfVocabMarks | null)?.reconcile()
     if (this.pendingMatch && this.pendingMatch.index !== index) this.pendingMatch = null
     if (this.pendingCfi && this.engine.resolveNavigation(this.pendingCfi)?.index !== index)
       this.pendingCfi = null

@@ -71,8 +71,10 @@ const SKIP = new Set(['script', 'style', 'rt', 'rp', 'noscript', 'template', 'he
 const PICTURE = new Set(['svg', 'math'])
 
 /** The chapter's text, walked once. */
-export function sectionText(doc: Document): SectionText {
-  const root = doc.body ?? doc.documentElement
+export function sectionText(
+  doc: Document,
+  root: Element | null = doc.body ?? doc.documentElement
+): SectionText {
   const out: SectionText = { text: '', nodes: [], starts: [] }
   if (!root) return out
   const parts: string[] = []

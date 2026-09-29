@@ -171,6 +171,9 @@ export class FixedLayout extends HTMLElement {
         }
     }
     async #showSpread({ left, right, center, side }) {
+        // ABELE PATCH: let page-local marks release old frame documents before replacement.
+        for (const { doc } of this.getContents())
+            if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
         this.#root.replaceChildren()
         this.#left = null
         this.#right = null
@@ -319,6 +322,9 @@ export class FixedLayout extends HTMLElement {
         }))
     }
     destroy() {
+        // ABELE PATCH: release the documents retained by page-local marks on close.
+        for (const { doc } of this.getContents())
+            if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
         this.#observer.unobserve(this)
     }
 }

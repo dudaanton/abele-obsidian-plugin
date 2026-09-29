@@ -361,6 +361,7 @@ export class PdfScroll extends HTMLElement {
 
   #unload(i: number): void {
     const slot = this.#slots[i]
+    if (slot.doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc: slot.doc } }))
     slot.frame?.remove()
     slot.frame = null
     slot.doc = null

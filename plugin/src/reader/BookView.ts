@@ -403,6 +403,7 @@ export class BookView extends FileView {
     this.reading?.stopSearch()
     this.reading?.dispose()
     this.reading?.speech.stop()
+    this.reading?.destroy()
     this.reading = null
     this.linked?.stop()
     this.linked = null
@@ -584,8 +585,8 @@ export class BookView extends FileView {
       )
       void this.reading.loadHighlights()
       this.linked = linkedNotesFor(this.app, file, this.reading)
-      // Words the vault's vocabulary names, underlined in a reflowing book.
-      if (!this.isPdf && !reader.isFixedLayout)
+      // Words the vault's vocabulary names on reflowing pages and text-bearing PDFs.
+      if (this.isPdf || !reader.isFixedLayout)
         this.vocab = vocabFor(this.app, file, this.reading, languagesOf(meta?.language))
       this.bookmarks = bookmarksFor(this.key, this.model, reader, this.isPdf ? opened.book : null)
       this.ink = this.isPdf ? inkFor(this, file, reader, opened.book, () => this.stage) : null

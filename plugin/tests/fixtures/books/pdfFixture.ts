@@ -7,6 +7,8 @@
 
 interface Page {
   text: string[]
+  /** Raw operators for deliberately separated PDF.js text runs in a test fixture. */
+  raw?: string
   /** Link rectangles on this page: to a page (0-based), or with a raw action dictionary. */
   links?: { rect: [number, number, number, number]; page?: number; action?: string }[]
 }
@@ -26,9 +28,11 @@ function writePdf(pages: Page[], extra: { outline?: boolean; hostile?: boolean }
   const pageIds: number[] = []
   const annotLists: number[][] = []
   for (const page of pages) {
-    const lines = page.text
-      .map((line, i) => `BT /F1 18 Tf 72 ${720 - i * 28} Td (${esc(line)}) Tj ET`)
-      .join('\n')
+    const lines =
+      page.raw ??
+      page.text
+        .map((line, i) => `BT /F1 18 Tf 72 ${720 - i * 28} Td (${esc(line)}) Tj ET`)
+        .join('\n')
     const content = add(`<< /Length ${lines.length} >>\nstream\n${lines}\nendstream`)
     const id = add('') // page, filled later
     pageIds.push(id)
@@ -114,6 +118,21 @@ export function buildPlainPdf(): Uint8Array {
   ]
   pages[0].text.push('', 'Go to page four', 'Visit example.com')
   return writePdf(pages, { outline: true })
+}
+
+/** Original text-bearing pages: one repeated word crosses font-size runs. */
+export function buildVocabPdf(): Uint8Array {
+  return writePdf(
+    [
+      {
+        text: [],
+        raw: 'BT /F1 18 Tf 72 720 Td (sam) Tj /F1 19 Tf (ple) Tj ET\nBT /F1 18 Tf 72 690 Td (sample samples) Tj ET',
+      },
+      { text: ['A sample on another page.', 'sample'] },
+      { text: [] },
+    ],
+    {}
+  )
 }
 
 /** A long PDF of plain pages, for scrolling. */
