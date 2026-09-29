@@ -369,6 +369,78 @@ describe('the view while a reply is streaming', () => {
 })
 
 /**
+ * The reader starting to scroll up while a reply arrives.
+ *
+ * A scroll event says where the box is only once the frame is drawn, and a piece of the reply
+ * landing before that put a reader still near the end back at the end — a short flick up, or a
+ * finger dragging slowly, was pulled back down, again and again. What the reader does with the
+ * wheel, a key or a finger says it at once.
+ */
+describe('the reader starting to scroll up while a reply streams', () => {
+  const atTheEnd = async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    model.setHeights(100)
+    streaming.value = 'The answer'
+    await nextTick()
+    await nextTick()
+    expect(model.container.scrollTop).toBe(3000)
+    return { wrapper, model, container: wrapper.find('.abele-ai-chat__messages') }
+  }
+
+  const more = async (text: string) => {
+    streaming.value = text
+    await nextTick()
+    await nextTick()
+  }
+
+  it('stops following on a turn of the wheel up, before any scroll is reported', async () => {
+    const { model, container } = await atTheEnd()
+    await container.trigger('wheel', { deltaY: -40 })
+    model.scrollTo(2960)
+
+    await more('The answer, at greater length')
+
+    expect(model.container.scrollTop).toBe(2960)
+  })
+
+  it('keeps following on a turn of the wheel down', async () => {
+    const { model, container } = await atTheEnd()
+    await container.trigger('wheel', { deltaY: 40 })
+
+    await more('The answer, at greater length')
+
+    expect(model.container.scrollTop).toBe(3000)
+  })
+
+  it('leaves the text alone under a finger on the screen', async () => {
+    const { model, container } = await atTheEnd()
+    await container.trigger('touchstart')
+    model.scrollTo(2970)
+
+    await more('The answer, at greater length')
+    expect(model.container.scrollTop).toBe(2970)
+
+    // Let go still at the end: following again.
+    model.scrollTo(3000)
+    await container.trigger('touchend')
+    await more('The answer, at greater length still')
+    expect(model.container.scrollTop).toBe(3000)
+  })
+
+  it('stops following on a key that scrolls up', async () => {
+    const { model, container } = await atTheEnd()
+    await container.trigger('keydown', { key: 'PageUp' })
+    model.scrollTo(2300)
+
+    await more('The answer, at greater length')
+
+    expect(model.container.scrollTop).toBe(2300)
+  })
+})
+
+/**
  * A box that changes height while it is being read — a phone's keyboard opening under it.
  *
  * Modelled with a scroll position that the browser would clamp: a box shorter than its

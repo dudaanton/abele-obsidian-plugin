@@ -95,7 +95,9 @@
         class="abele-ai-chat__messages"
         @scroll="onMessagesScroll"
         @wheel.passive="readerTakesOver"
-        @touchstart.passive="readerTakesOver"
+        @touchstart.passive="fingerOn"
+        @touchend.passive="fingerOff"
+        @touchcancel.passive="fingerOff"
         @mousedown="readerTakesOver"
         @keydown="readerTakesOver"
       >
@@ -139,17 +141,17 @@
           :interceptor-streaming="msg.draft ? interceptorStreaming : false"
           :interceptor-streaming-content="msg.draft ? interceptorStreamingContent : ''"
           :interceptor-error="msg.draft ? interceptorError : null"
+          :comments="commentsOn.get(msg.id)"
+          :can-comment="canComment"
+          :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
+          :changed-files="changedTurns.has(msg.id)"
           @create-branch="onCreateBranch"
           @switch-branch="onSwitchBranch"
           @repeat-message="onRepeatMessage"
           @retry-message="onRetryMessage"
           @insert-into-note="onInsertIntoNote"
-          :comments="commentsOn.get(msg.id)"
-          :can-comment="canComment"
           @ask-here="onAskHere"
           @edit-message="onEditMessage"
-          :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
-          :changed-files="changedTurns.has(msg.id)"
           @rewind="onRewind"
           @confirm-draft="onConfirmDraft"
           @edit-draft="onEditDraft"
@@ -163,7 +165,7 @@
           <div v-if="streamingThinking" class="abele-ai-chat__streaming-thinking">
             <details v-if="!hideReasoning" open>
               <summary>Thinking...</summary>
-              <Markdown :text="streamingThinking" />
+              <Markdown :text="streamingThinking" streaming />
             </details>
             <div v-else class="abele-ai-chat__streaming-thinking-hidden">
               <Icon icon="lightbulb" no-hover class="abele-ai-chat__spinner" />
@@ -176,7 +178,7 @@
                 <Icon icon="bot" />
               </div>
               <div class="abele-chat-msg__body">
-                <Markdown :text="streamingContent" />
+                <Markdown :text="streamingContent" streaming />
               </div>
             </div>
           </div>
@@ -841,8 +843,31 @@ const holdAnchor = () => {
  * refused to scroll back for as long as it lasted. A wheel, a finger, a key or the scrollbar
  * being taken hold of says what the scroll event cannot.
  */
-const readerTakesOver = () => {
+const readerTakesOver = (event?: Event) => {
   anchor = null
+  // Heading up, said before the frame reports any scroll: a piece of the reply landing in
+  // between used to take a reader still near the end back to it, flick after flick.
+  // By type rather than by class: a chat in a popped-out window gets that window's events.
+  const up =
+    event?.type === 'wheel'
+      ? (event as WheelEvent).deltaY < 0
+      : event?.type === 'keydown' && SCROLL_UP_KEYS.has((event as KeyboardEvent).key)
+  if (up) shouldAutoScroll = false
+}
+
+const SCROLL_UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
+
+/**
+ * A finger on the screen. Nothing is scrolled under it, whichever way it is about to move:
+ * following the end resumes once it lets go at the end, as the scroll events then say.
+ */
+let fingerDown = false
+const fingerOn = (event: Event) => {
+  fingerDown = true
+  readerTakesOver(event)
+}
+const fingerOff = () => {
+  fingerDown = false
 }
 
 /**
@@ -912,6 +937,91 @@ const holdAnchorAWhile = (el: HTMLElement) => {
   }
   nextFrame(win, hold)
 }
+
+/**
+ * The reader's place while the conversation changes under it — a reply ending and becoming a
+ * message, a tool call arriving, a message taking the place of another — for a reader who is
+ * not following the end.
+ *
+ * Kept as the block at the top of the box, a paragraph or a chart of a message, and where it
+ * sits in the conversation. Whatever moves that block up or down is layout, and is taken back
+ * out of the scroll; the reader scrolling moves the box, not the block, so it is never fought.
+ * That is what the browser's own scroll anchoring does too, and the two cannot both correct the
+ * same change: the browser's is off for as long as this one holds.
+ *
+ * A reply that ended used to take the reader to the end of the chat. The message replacing it
+ * started empty, the scroll range collapsed under the reader, the browser clamped them to the
+ * new end, and a chat at its end follows it. The message now takes over what the reply drew
+ * (`markdownParts.ts`), and this covers what still differs between the two: the reasoning
+ * folded away, the message's own chrome.
+ */
+const STEADY_MS = 1500
+let steady: { el: HTMLElement; at: number; until: number } | null = null
+
+/** Where an element sits in the conversation, whatever the scroll. */
+const placeOf = (el: HTMLElement, container: HTMLElement) =>
+  offsetOf(el, container) + container.scrollTop
+
+/** The block at the top of the box: the first of a message's rendered blocks still in view. */
+const blockAtTop = (container: HTMLElement): HTMLElement | null => {
+  const top = container.getBoundingClientRect().top
+  const inView = (el: Element) => el.getBoundingClientRect().bottom > top + 1
+  const item = Array.from(container.children).find(inView)
+  if (!item?.instanceOf(HTMLElement)) return null
+  const blocks = item.querySelectorAll<HTMLElement>('.abele-markdown > *')
+  return Array.from(blocks).find((b) => b.getClientRects().length && inView(b)) ?? item
+}
+
+const endSteady = (container?: HTMLElement | null) => {
+  steady = null
+  container?.classList.remove('abele-ai-chat__messages_steady')
+}
+
+/** Takes back out of the scroll whatever moved the block since it was last looked at. */
+const holdSteady = () => {
+  const container = messagesContainer.value
+  if (!container || !steady) return
+  const { el } = steady
+  if (
+    !el.isConnected ||
+    !el.getClientRects().length ||
+    container.win.performance.now() > steady.until
+  ) {
+    endSteady(container)
+    return
+  }
+  const at = placeOf(el, container)
+  const moved = at - steady.at
+  // Another hold is putting the reader back already — a page revealed above them.
+  if (!anchor && Math.abs(moved) >= 1) scrollContainerTo(container, container.scrollTop + moved)
+  steady.at = at
+}
+
+/** Starts holding the reader's place, from before the change about to happen to the page. */
+const steadyReader = () => {
+  const container = messagesContainer.value
+  if (!container || shouldAutoScroll || closed) return
+  const el = blockAtTop(container)
+  if (!el) return
+  const win = container.win
+  const fresh = !steady
+  steady = { el, at: placeOf(el, container), until: win.performance.now() + STEADY_MS }
+  container.classList.add('abele-ai-chat__messages_steady')
+  if (!fresh) return
+  const hold = () => {
+    if (!steady) return
+    holdSteady()
+    if (steady) nextFrame(win, hold)
+  }
+  nextFrame(win, hold)
+}
+
+// Before the page changes: a message added, removed or replaced, a reply starting or ending.
+watch(
+  [() => messages.value.map((m) => m.id).join(), () => !!streamingContent.value, isStreaming],
+  steadyReader,
+  { flush: 'pre' }
+)
 
 /**
  * Where the reader was in each tab they have left, so going back puts them there again.
@@ -995,11 +1105,11 @@ const onMessagesScroll = () => {
 }
 
 const doScroll = () => {
-  if (!shouldAutoScroll) return
+  if (!shouldAutoScroll || fingerDown) return
   nextTick(() => {
     const el = messagesContainer.value
     // Asked again: the reader may have scrolled away in the tick between.
-    if (!el || !shouldAutoScroll) return
+    if (!el || !shouldAutoScroll || fingerDown) return
     scrollContainerTo(el, el.scrollHeight)
   })
 }
@@ -1208,6 +1318,7 @@ const observe = (el: HTMLElement) => {
     // A message that has just rendered its markdown changes the subtree and the layout
     // with it — which is exactly when the anchor needs putting back.
     holdAnchor()
+    holdSteady()
     doScroll()
   })
   mutObserver.observe(el, {
@@ -1683,6 +1794,11 @@ const showDebug = () => {
   overflow-x: hidden;
   padding: var(--size-4-2) var(--size-4-3);
   user-select: text;
+}
+
+/* While the chat holds the reader's place itself, the browser does not hold it a second time. */
+.abele-ai-chat__messages_steady {
+  overflow-anchor: none;
 }
 
 .abele-ai-chat__empty {

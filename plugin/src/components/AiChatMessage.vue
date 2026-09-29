@@ -289,7 +289,11 @@
             v-if="interceptorStreaming"
             class="abele-chat-msg__interceptor-msg abele-chat-msg__interceptor-msg--assistant"
           >
-            <Markdown v-if="interceptorStreamingContent" :text="interceptorStreamingContent" />
+            <Markdown
+              v-if="interceptorStreamingContent"
+              :text="interceptorStreamingContent"
+              streaming
+            />
             <span v-else class="abele-chat-msg__interceptor-typing">
               <span class="abele-ai-chat__typing-dot" />
               <span class="abele-ai-chat__typing-dot" />

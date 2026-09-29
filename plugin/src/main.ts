@@ -37,6 +37,7 @@ import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { galleryPostProcessor } from './editor/galleryPostProcessor'
+import { recordSignatures, SIGNATURE_PROCESSOR_ORDER } from '@/components/obsidian/markdownParts'
 import { mermaidExtensions, refreshMermaidEditors } from './editor/MermaidPlugin'
 import { mermaidPostProcessor, MERMAID_PROCESSOR_ORDER } from './mermaid/mermaidBlocks'
 import { footnoteExtensions } from './editor/FootnotePlugin'
@@ -431,6 +432,9 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(footnoteExtensions)
     this.registerEditorExtension(highlightStateField)
     this.registerEditorExtension(commentExtensions)
+    // Reads each rendered block before anything draws into it, so a render replaced over and
+    // over — a reply being streamed — keeps the blocks that came back the same.
+    this.registerMarkdownPostProcessor(recordSignatures, SIGNATURE_PROCESSOR_ORDER)
     // The gallery outside the editor: reading mode, embeds, chat, script views.
     this.registerMarkdownPostProcessor(galleryPostProcessor)
     // Coloured highlights outside the editor, for the same places.
