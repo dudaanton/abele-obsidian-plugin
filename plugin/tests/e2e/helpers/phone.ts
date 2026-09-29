@@ -14,6 +14,8 @@
  * - `push-plugin DIR MANIFEST VAULT` — install a build into that vault on the phone.
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 
 export const DRIVER = process.env.ABELE_PHONE_DRIVER ?? 'iphone'
 
@@ -77,7 +79,11 @@ export function dialog(): { text: string[]; buttons: string[] } | null {
 }
 export const answerDialog = (button: string): void => void driver(['alert', button])
 
-export const screenshot = (path: string): void => void driver(['shot', path])
+/** A picture of the phone's screen to `path`, its directory made first: the driver only writes. */
+export const screenshot = (path: string): void => {
+  mkdirSync(dirname(path), { recursive: true })
+  driver(['shot', path])
+}
 
 /**
  * Makes 127.0.0.1:`port` on the phone lead to the same port here, for a server a test starts
@@ -113,23 +119,28 @@ export function installPhoneHost(): void {
     throw new Error('ABELE_PHONE_HOST_PORT is not set: the phone run did not start its host')
   phoneEval(
     `(() => {
-      const ask = (what, body) => requestUrl({ url: 'http://127.0.0.1:${port}/' + what, method: 'POST',
-          contentType: 'application/json', body: JSON.stringify(body), throw: false })
+      // A request lost in the reversed port answers only when the phone gives up on it, after
+      // 60 s — as long as a whole probe may take. Each is given its own deadline instead, so the
+      // probe fails, or the picture is skipped, in time. The host logs what did arrive.
+      const within = (ms, what, p) => Promise.race([p, new Promise((_, no) =>
+        setTimeout(() => no(new Error('no answer from the host for ' + what + ' in ' + ms + ' ms')), ms))])
+      const ask = (what, body, ms) => within(ms, what, requestUrl({ url: 'http://127.0.0.1:${port}/' + what,
+          method: 'POST', contentType: 'application/json', body: JSON.stringify(body), throw: false }))
       const call = async (what, body) => {
-        // A picture is asked for again when the reversed port dropped the first request: the
-        // first one of a run now and then arrives on a connection the port has just closed.
-        // Only a picture — a touch asked for twice would touch twice.
+        // A picture is asked for again when the first request was lost — dropped by the
+        // reversed port or never answered. Only a picture: a touch asked for twice would touch twice.
         let r
-        try { r = await ask(what, body) } catch (error) {
-          if (what !== 'shot' || !String(error && error.message).includes('connection was lost')) throw error
-          r = await ask(what, body)
+        try { r = await ask(what, body, what === 'shot' ? 20000 : what === 'type' ? 45000 : 15000) } catch (error) {
+          if (what !== 'shot') throw error
+          r = await ask(what, body, 20000)
         }
         if (r.status !== 200) throw new Error('host ' + what + ': ' + r.text)
         return r.json
       }
       window.__e2eHost = {
-        // Answers where the picture went: see SHOTS in phoneHost.ts.
-        shot: (path) => call('shot', { path }).then((r) => r.path),
+        // Answers where the picture went: see SHOTS in phoneHost.ts. A picture that could not
+        // be taken does not stop what is being measured: it answers why, in place of a path.
+        shot: (path) => call('shot', { path }).then((r) => r.path, (e) => 'no picture: ' + String(e && e.message)),
         tap: (x, y) => call('tap', { x, y }),
         swipe: (x1, y1, x2, y2) => call('swipe', { x1, y1, x2, y2 }),
         longPress: (x, y) => call('longpress', { x, y }),

@@ -6,7 +6,7 @@
  */
 import { execFile, execFileSync } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import type { AddressInfo } from 'node:net'
@@ -125,6 +125,20 @@ export const SHOTS = process.env.ABELE_PHONE_SHOTS ?? shotDir('abele-iphone')
 let server: Server | undefined
 let unexpose: (() => void) | undefined
 
+/**
+ * Every request the page makes of the host, when it arrived and how the driver answered, one
+ * line each: a picture or a touch that never came back can then be told apart — never arrived
+ * (lost in the reversed port) or arrived and the driver took that long.
+ */
+const HOST_LOG = process.env.ABELE_PHONE_HOST_LOG ?? join(tmpdir(), 'abele-phone-host.log')
+const hostLog = (line: string): void => {
+  try {
+    appendFileSync(HOST_LOG, `${new Date().toISOString()} ${process.pid} ${line}\n`)
+  } catch {
+    // a log that cannot be written must not fail the run
+  }
+}
+
 const run = (args: string[]): Promise<string> =>
   new Promise((done, fail) =>
     execFile(DRIVER, args, { timeout: 60_000 }, (err, stdout, stderr) =>
@@ -159,14 +173,21 @@ export async function startHost(): Promise<void> {
         res.writeHead(404, { Connection: 'close' }).end('unknown')
         return
       }
+      const started = Date.now()
+      hostLog(`${what} arrived`)
       run(args).then(
         // No keep-alive: a connection the phone kept for its next request was one the reversed
         // port had already closed, and that request timed out.
-        () =>
+        () => {
+          hostLog(`${what} ok ${Date.now() - started} ms`)
           res
             .writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
-            .end(answer),
-        (e: Error) => res.writeHead(500, { Connection: 'close' }).end(e.message)
+            .end(answer)
+        },
+        (e: Error) => {
+          hostLog(`${what} failed ${Date.now() - started} ms: ${e.message.split('\n')[0]}`)
+          res.writeHead(500, { Connection: 'close' }).end(e.message)
+        }
       )
     })
   })

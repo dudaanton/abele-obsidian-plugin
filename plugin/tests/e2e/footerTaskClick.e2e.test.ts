@@ -89,7 +89,7 @@ const script = `(async () => {
     if (window.__e2eHost) {
       for (let attempt = 0; attempt < 3; attempt++) {
         try { return await window.__e2eHost.tap(x, y) } catch (e) {
-          if (!String(e && e.message).includes('connection was lost')) throw e
+          if (!/connection was lost|no answer from the host/.test(String(e && e.message))) throw e
           await wait(1500)
           if (await settled()) return
         }
