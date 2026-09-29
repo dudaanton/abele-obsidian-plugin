@@ -283,7 +283,10 @@ describe.skipIf(why !== null)('settings that travel between devices', () => {
       `app.vault.adapter.write(${JSON.stringify(HOTKEYS)}, ${JSON.stringify(mine)}).then(() => 'ok')`
     )
     await waitFor(
-      'the log to say this device replaced the change that waited',
+      () =>
+        'the log to say this device replaced the change that waited (its lines on the file: ' +
+        JSON.stringify(sync.log().filter((line) => line.includes('hotkeys'))) +
+        ')',
       () => {
         app().evalAwait(
           `(async () => { await window.__abeleTest.SyncService.getInstance().syncNow(); return 'ok' })()`

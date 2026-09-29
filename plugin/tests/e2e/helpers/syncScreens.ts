@@ -117,6 +117,10 @@ export const restoreSinceScreens = (suffix: string, trashed: number): string => 
     const r = button.getBoundingClientRect()
     out[label].extra = {
       rowReach: row.scrollWidth - row.clientWidth,
+      // What reaches past the row's right edge, for a rowReach that is not 0.
+      reachers: [...row.querySelectorAll('*')]
+        .filter((el) => el.getBoundingClientRect().right > row.getBoundingClientRect().right + 0.5)
+        .map((el) => el.tagName.toLowerCase() + '.' + [...el.classList].join('.') + ' +' + Math.round(el.getBoundingClientRect().right - row.getBoundingClientRect().right)),
       restoreInView: r.width > 0 && r.left >= 0 && r.right <= window.innerWidth + 1,
       dateField: !!row.querySelector('input[type="datetime-local"]'),
     }

@@ -102,7 +102,11 @@ async function collect(into: Record<string, Screen>, body: string): Promise<void
   try {
     Object.assign(
       into,
-      await sync.long<Record<string, Screen>>('a probe step', `${probePrelude(SHOTS)}\n${body}`, 180_000)
+      await sync.long<Record<string, Screen>>(
+        'a probe step',
+        `${probePrelude(SHOTS)}\n${body}`,
+        180_000
+      )
     )
   } catch (error) {
     into[`failed step ${Object.keys(into).length + 1}`] = {
@@ -388,10 +392,7 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
   ]
   const all = (): Record<string, Screen> => ({ ...phone, ...desktop })
   /** What each screen that failed a check says, one line per screen. */
-  const offenders = (
-    screens: Record<string, Screen>,
-    check: (s: Screen) => unknown[]
-  ): string[] =>
+  const offenders = (screens: Record<string, Screen>, check: (s: Screen) => unknown[]): string[] =>
     Object.entries(screens)
       .filter(([, s]) => s.error === '' && check(s).length > 0)
       .map(([label, s]) => `${label}: ${check(s).map(String).join('; ')}`)
@@ -453,7 +454,7 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     expect(rows.length).toBeGreaterThan(0)
     for (const label of rows) {
       const extra = all()[label]?.extra ?? {}
-      expect(extra.rowReach, label).toBe(0)
+      expect(extra.rowReach, `${label}: ${JSON.stringify(extra.reachers)}`).toBe(0)
       expect(extra.restoreInView, label).toBe(true)
       expect(extra.dateField, label).toBe(label.includes('custom'))
     }
@@ -461,7 +462,9 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
 
   it('gives no half of a Sync-tab row more room than it fills', () => {
     const tabs = Object.fromEntries(
-      Object.entries(all()).filter(([label]) => label.startsWith('sync tab') && !label.includes('confirm'))
+      Object.entries(all()).filter(
+        ([label]) => label.startsWith('sync tab') && !label.includes('confirm')
+      )
     )
     expect(offenders(tabs, (s) => (s.extra.voids as string[] | undefined) ?? [])).toEqual([])
   })

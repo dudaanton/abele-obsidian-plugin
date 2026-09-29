@@ -78,11 +78,24 @@ export const SYNC_PRELUDE = `
   }
   const settingsDoc = () =>
     (app.setting && app.setting.activeTab && app.setting.activeTab.containerEl.ownerDocument) || document
+  // A Notice shows in the window it was raised from, and settings open in a window of their
+  // own: while notices are being kept, that window's are kept too.
+  const keepNoticesOf = (doc) => {
+    if (!window.__abeleNotices || doc === document || doc.__abeleNoticeWatch) return
+    doc.__abeleNoticeWatch = new MutationObserver((changes) => {
+      for (const change of changes)
+        for (const node of change.addedNodes)
+          if (node.nodeType === 1 && node.classList.contains('notice'))
+            window.__abeleNotices.push(node.textContent.trim())
+    })
+    doc.__abeleNoticeWatch.observe(doc.body, { childList: true, subtree: true })
+  }
   const openSyncTab = async () => {
     app.setting.open()
     app.setting.openTabById('abele')
     await sleep(800)
     const root = app.setting.activeTab.containerEl
+    keepNoticesOf(root.ownerDocument)
     const tab = [...root.querySelectorAll('.abele-tabs__tab')].find((t) => textOf(t) === 'Sync')
     if (!tab) throw new Error('no Sync tab')
     tab.click()
