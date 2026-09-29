@@ -141,11 +141,27 @@ const script = `(async () => {
   const explorerRow = async (chat) => {
     const explorer = app.workspace.getLeavesOfType('file-explorer')[0]
     if (explorer?.loadIfDeferred) await explorer.loadIfDeferred()
-    app.internalPlugins.getPluginById('file-explorer').instance.revealInFolder(chat)
+    // Awaited: it ends by making the explorer the active leaf, and left running it did that at
+    // some moment of the road or other, which decided what the road saw as active.
+    await app.internalPlugins.getPluginById('file-explorer').instance.revealInFolder(chat)
     app.workspace.setActiveLeaf(middle(), { focus: true })
     const found = await until(() => document.querySelector('.nav-file-title[data-path="' + chatPath + '"]'))
     if (!found) throw new Error('no explorer row for the chat')
+    // Obsidian stamps the leaf made active with the time in whole milliseconds, and which leaf was
+    // active last is read from those stamps: a press in the same millisecond as the note's focus
+    // tied with it, and the note won. No hand presses that fast.
+    await wait(50)
     return document.querySelector('.nav-file-title[data-path="' + chatPath + '"]')
+  }
+  // Pressed the way a pointer presses: the press makes the explorer the active leaf, as a real
+  // one does, before the click opens the file.
+  const press = (el, keys = {}) => {
+    const o = { bubbles: true, cancelable: true, button: 0, ...keys }
+    el.dispatchEvent(new PointerEvent('pointerdown', o))
+    el.dispatchEvent(new MouseEvent('mousedown', o))
+    el.dispatchEvent(new PointerEvent('pointerup', o))
+    el.dispatchEvent(new MouseEvent('mouseup', o))
+    el.dispatchEvent(new MouseEvent('click', o))
   }
   const noteLink = async () => {
     const view = () => middle().view.containerEl
@@ -192,9 +208,8 @@ const script = `(async () => {
     created.push(hostPath)
     await storage.refreshHistory()
 
-    await tryRoad('explorer', 'source', async () => (await explorerRow(chat)).click())
-    await tryRoad('explorerNewTab', 'source', async () =>
-      (await explorerRow(chat)).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mod })))
+    await tryRoad('explorer', 'source', async () => press(await explorerRow(chat)))
+    await tryRoad('explorerNewTab', 'source', async () => press(await explorerRow(chat), mod))
     await tryRoad('link', 'preview', async () => (await noteLink()).click())
     await tryRoad('linkNewTab', 'preview', async () =>
       (await noteLink()).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mod })))
@@ -266,8 +281,11 @@ describe.skipIf(!available)('opening a chat file the ways Obsidian opens files, 
     expect(report.error ?? '').toBe('')
   })
 
+  // A plain click: Obsidian makes the tab it asked to open the file active, as for any file, and
+  // that tab still holds its note. Asking for a new tab gives the focus back to the explorer, as
+  // the blank tab that goes gives it back to whatever had it.
   it('from the file explorer: to the chat panel, the tabs left as they were', () => {
-    untouched(report.explorer, 'explorer')
+    untouched(report.explorer)
   })
 
   it('from the file explorer, asking for a new tab: the same', () => {
