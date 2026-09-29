@@ -9,10 +9,10 @@ import { strToU8, zipSync } from 'fflate'
 const HEAD = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>'
 
 const WORDS = (
-  'šo grāmatu esmu veltījis pieaugušajam man jālūdz piedošana bērniem ka viņš dzīvo ' +
-  'Francijā kur pašreiz valda bads un aukstums tādēļ viņam ļoti nepieciešams mierinājums ' +
-  'visi šie aizbildinājumi tomēr nav pietiekami tad es veltīšu puisēnam kāds reiz bija ' +
-  'mans draugs pieaugušie ir bijuši bērni tikai nedaudzi no viņiem to atceras'
+  'rīta migla gulēja pār upi zvejnieks sēdās laivā un airēja gar krastu kur auga vecie ' +
+  'vītoli vējš bija silts un kluss kaijas riņķoja virs sēkļa ciemā aiz kalna jau kūrās ' +
+  'krāsnis bērni skrēja uz tiltu lai redzētu laivu atgriežamies ar lomu pusdienlaikā ' +
+  'debesis noskaidrojās un upe mirdzēja saulē līdz vakaram'
 ).split(' ')
 
 /** A paragraph of `n` words, the same for the same seed. */

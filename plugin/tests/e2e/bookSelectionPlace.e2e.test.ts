@@ -2,13 +2,12 @@
  * A word selected in a book is selected where it is drawn, in the running app: a justified book
  * set in a monospace font, on the desktop and on a real iPhone.
  *
- * iOS WebKit (seen on iOS 26, 2026-09-27) draws a justified line in a monospace font stretched
- * across the column, and hit-tests it that way too, but on the paragraph's first layout it
- * answers where the words are — `Range.getClientRects`, the selection it paints, the highlights
- * measured from it — as if the line were not stretched. A word long-pressed was selected, with
- * its selection painted over the words to its left (a Latvian book, "veltījis" drawn over
- * "esmu"); every highlight sat a few letters off. Changing any font property of the text puts it
- * right, which is what switching the reader's font did.
+ * iOS WebKit (iOS 26) draws a justified line in a monospace font stretched across the column,
+ * and hit-tests it that way too, but on the paragraph's first layout it answers where the words
+ * are — `Range.getClientRects`, the selection it paints, the highlights measured from it — as if
+ * the line were not stretched. A word long-pressed was selected, with its selection painted over
+ * the words to its left; every highlight sat a few letters off. Changing any font property of the
+ * text puts it right, which is what switching the reader's font did.
  *
  * So for every word on the page the point in the middle of its measured box must hit that word
  * — after the page has settled, and again after the page's style changed — and on the phone a

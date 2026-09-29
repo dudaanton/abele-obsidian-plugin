@@ -61,7 +61,7 @@ const PASSING_FONT = 'font-variant-east-asian: jis78 !important;'
  * of it and taken back within one task, laid out each time, so nothing is painted in between and
  * a page that was right stays as it was.
  *
- * iOS WebKit (iOS 26, 2026-09-27) draws a justified line in a monospace font stretched across the
+ * iOS WebKit (iOS 26) draws a justified line in a monospace font stretched across the
  * column, and hit-tests it that way, but on a paragraph's first layout answers where its words
  * are — `Range.getClientRects`, the selection it paints, the highlights measured from it — as if
  * the line were not stretched. A word long-pressed was selected with its selection painted over
@@ -159,7 +159,7 @@ const BLOCKS =
  * iPhone with a monospace text font, WebKit answered where the words of a justified line are as
  * if the line were not stretched, while it drew and hit-tested them stretched: highlights a few
  * letters off, and a word long-pressed selected with its selection over its neighbours, right
- * again after the font was changed and back (2026-09-27). Nothing announces it, and the words'
+ * again after the font was changed and back. Nothing announces it, and the words'
  * own measure is as wrong as the highlight's. Making the text's font anew puts it right; a
  * layout that was right does not move.
  */
