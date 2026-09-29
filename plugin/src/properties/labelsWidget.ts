@@ -111,7 +111,7 @@ export function renderLabels(el: HTMLElement, value: unknown, ctx: WidgetContext
     for (const label of labelsOf(v)) {
       const pill = pills.createDiv({ cls: 'multi-select-pill abele-property-labels__pill' })
       const color = labelColor(label, colors)
-      if (color !== 'grey') pill.addClass(`abele-property-labels__pill_${color}`)
+      if (color !== 'grey') pill.addClass('is-tinted', `abele-property-labels__pill_${color}`)
       pill.dataset.label = label
       pill.createDiv({ cls: 'multi-select-pill-content', text: label })
       const x = pill.createDiv({

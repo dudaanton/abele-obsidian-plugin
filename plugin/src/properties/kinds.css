@@ -126,35 +126,43 @@
   box-shadow: none;
 }
 
-.abele-property-labels__pill_red {
+/* A label with a colour of its own is drawn in it, as a task's labels are. Obsidian draws a
+   property's pills bare, without padding, and in the value's own colour
+   (`.metadata-property-value .multi-select-pill`): a tint needs its padding back, and the
+   colour has to outrank that rule. */
+.abele-property-labels .multi-select-pill.abele-property-labels__pill.is-tinted {
+  --pill-padding-x: var(--tag-padding-x);
+}
+
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_red {
   --pill-color: var(--color-red);
   --pill-background: rgba(var(--color-red-rgb), 0.15);
 }
-.abele-property-labels__pill_orange {
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_orange {
   --pill-color: var(--color-orange);
   --pill-background: rgba(var(--color-orange-rgb), 0.15);
 }
-.abele-property-labels__pill_yellow {
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_yellow {
   --pill-color: var(--color-yellow);
   --pill-background: rgba(var(--color-yellow-rgb), 0.15);
 }
-.abele-property-labels__pill_green {
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_green {
   --pill-color: var(--color-green);
   --pill-background: rgba(var(--color-green-rgb), 0.15);
 }
-.abele-property-labels__pill_cyan {
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_cyan {
   --pill-color: var(--color-cyan);
   --pill-background: rgba(var(--color-cyan-rgb), 0.15);
 }
-.abele-property-labels__pill_blue {
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_blue {
   --pill-color: var(--color-blue);
   --pill-background: rgba(var(--color-blue-rgb), 0.15);
 }
-.abele-property-labels__pill_purple {
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_purple {
   --pill-color: var(--color-purple);
   --pill-background: rgba(var(--color-purple-rgb), 0.15);
 }
-.abele-property-labels__pill_pink {
+.abele-property-labels .multi-select-pill.abele-property-labels__pill_pink {
   --pill-color: var(--color-pink);
   --pill-background: rgba(var(--color-pink-rgb), 0.15);
 }

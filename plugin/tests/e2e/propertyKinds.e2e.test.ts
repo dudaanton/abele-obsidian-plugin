@@ -79,6 +79,7 @@ interface Saved {
   priorities: string[]
   labels: string[]
   journals: unknown[]
+  colors: unknown[]
   shown: string | null
 }
 
@@ -114,6 +115,7 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
           priorities: [...(cfg.priorityProperties ?? [])],
           labels: [...(cfg.labelProperties ?? [])],
           journals: cfg.journals.map((j) => j.toDTO()),
+          colors: JSON.parse(JSON.stringify(cfg.taskLabelColors ?? [])),
           shown: app.vault.getConfig('propertiesInDocument') ?? null,
         }
       })()`,
@@ -127,6 +129,7 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
         cfg.dateProperties = ['${DATE}']
         cfg.priorityProperties = ['${PRIO}']
         cfg.labelProperties = ['${LABELS}']
+        cfg.taskLabelColors = [...(cfg.taskLabelColors ?? []), { value: 'sample-beta', color: 'red' }]
         const Journal = cfg.journals[0]?.constructor
         const dto = { id: 'pk-daily', name: 'Sample daily', type: 'pk-daily', isDefault: true, recurrence: 'daily', newPathTemplate: '${DAILY}/{{date}}' }
         if (Journal) cfg.journals = [new Journal(dto), ...cfg.journals.filter((j) => !(j.isDefault && j.recurrence === 'daily'))]
@@ -159,6 +162,7 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
           cfg.dateProperties = saved.dates
           cfg.priorityProperties = saved.priorities
           cfg.labelProperties = saved.labels
+          cfg.taskLabelColors = saved.colors
           const Journal = cfg.journals[0]?.constructor
           if (Journal) cfg.journals = saved.journals.map((dto) => new Journal(dto))
           if (saved.shown) app.vault.setConfig('propertiesInDocument', saved.shown)
@@ -229,7 +233,13 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
   })
 
   it('adds a typed label and one from the vault, and takes one off', () => {
-    const r = run<{ error?: string; steps: unknown[]; offered: string[]; pills: string[] }>(`
+    const r = run<{
+      error?: string
+      steps: unknown[]
+      offered: string[]
+      pills: string[]
+      tint: { color: string; red: string; padding: number } | null
+    }>(`
       const leaf = await open()
       const field = () => cell(leaf, '${LABELS}')?.querySelector('.abele-property-labels__input')
       await until(field)
@@ -265,8 +275,21 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
       steps.push(await settle('${LABELS}', ['sample-beta']))
       await wait(300)
       const pills = [...cell(leaf, '${LABELS}').querySelectorAll('.multi-select-pill')].map((p) => p.dataset.label)
+      // A label with a colour of its own is drawn in it, its text too, clear of the tint's edge.
+      const tinted = cell(leaf, '${LABELS}').querySelector('.multi-select-pill[data-label="sample-beta"]')
+      const probe = document.body.createDiv()
+      probe.style.color = 'var(--color-red)'
+      const red = getComputedStyle(probe).color
+      probe.remove()
+      const tint = tinted && {
+        color: getComputedStyle(tinted.querySelector('.multi-select-pill-content')).color,
+        red,
+        padding:
+          tinted.querySelector('.multi-select-pill-content').getBoundingClientRect().left -
+          tinted.getBoundingClientRect().left,
+      }
       await shoot('desktop-labels')
-      return { steps, offered, pills }
+      return { steps, offered, pills, tint }
     `)
     expect(r.error).toBeUndefined()
     expect(r.offered[0]).toBe('sample-beta')
@@ -277,6 +300,9 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
       ['sample-beta'],
     ])
     expect(r.pills).toEqual(['sample-beta'])
+    expect(r.tint).not.toBeNull()
+    expect(r.tint!.color).toBe(r.tint!.red)
+    expect(r.tint!.padding).toBeGreaterThan(0)
   })
 
   describe('on a phone', () => {
