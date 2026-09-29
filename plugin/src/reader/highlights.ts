@@ -43,7 +43,7 @@
  *
  * Everything here works on the note's text, so the rules are tested without a vault.
  */
-import { parsePlaceSubpath, type BookPlace } from './bookLinks'
+import { encodeCfi, parsePlaceSubpath, type BookPlace } from './bookLinks'
 import {
   commentLines,
   formsLineOf,
@@ -88,7 +88,7 @@ export const HIGHLIGHTS_TYPE = 'book-highlights'
 export const BOOK_LINK_KEY = 'file'
 export const BOOK_LINK_KEYS = [BOOK_LINK_KEY, 'book'] as const
 
-const HEADER = /^>\s*\[!(quote|chat)(?:\|([a-z]+))?\][+-]?\s*(.*)$/i
+const HEADER = /^\uFEFF?>\s*\[!(quote|chat)(?:\|([a-z]+))?\][+-]?\s*(.*)$/i
 /** A link to a chat file in a callout title, its basename being the discussion's id. */
 const CHAT_LINK =
   /\[\[([^\]|]+?\.abchat)(?:\|[^\]]*)?\]\]|\[[^\]]*\]\(\s*<?([^)>\s]+\.abchat)>?\s*\)/i
@@ -281,6 +281,111 @@ export function highlightLines(
 ): { from: number; to: number } | null {
   const block = blocks(markdown, ofBook).blocks.find((b) => b.highlight.cfi === cfi)
   return block ? { from: block.start + 1, to: block.end } : null
+}
+
+/** A link repair never serializes a callout: only the destination's encoded CFI is writable. */
+export interface HighlightLinkRepair {
+  cfi: string
+  text: string
+  suggested: string
+}
+
+/** Raw line starts and eligibility, including fenced examples and YAML properties. */
+function repairLines(markdown: string): { starts: number[]; eligible: Set<number> } {
+  const starts: number[] = []
+  const eligible = new Set<number>()
+  let fence = ''
+  let frontmatter = markdown.replace(/^\uFEFF/, '').startsWith('---')
+  for (const match of markdown.matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g)) {
+    const raw = match[0]
+    if (!raw && match.index === markdown.length) break
+    const index = starts.length
+    starts.push(match.index)
+    const line = raw.replace(/\r\n?$|\n$/, '')
+    if (index === 0 && frontmatter) continue
+    if (frontmatter) {
+      if (/^---\s*$/.test(line)) frontmatter = false
+      continue
+    }
+    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    if (opening) {
+      if (!fence) fence = opening[1]
+      else if (opening[1][0] === fence[0] && opening[1].length >= fence.length) fence = ''
+      continue
+    }
+    if (!fence) eligible.add(index)
+  }
+  return { starts, eligible }
+}
+
+/** Offset of the CFI inside a title, never of a discussion link or alias. */
+function repairSpan(title: string, cfi: string, ofBook: OfBook): [number, number] | null {
+  for (const wiki of title.matchAll(/\[\[([^\]|]+?)(?:\|[^\]]*)?\]\]/g)) {
+    const target = wiki[1]
+    const hash = target.indexOf('#cfi=')
+    if (hash < 0 || !ofBook(decoded(target.slice(0, hash)))) continue
+    const place = parsePlaceSubpath(target.slice(hash))
+    if (!place || !('cfi' in place) || place.cfi !== cfi) continue
+    const from = wiki.index + 2 + hash + 5
+    return [from, from + target.length - hash - 5]
+  }
+  for (const md of title.matchAll(/\[[^\]]*\]\(\s*(<)?([^)>\s]+)>?\s*\)/g)) {
+    const target = md[2]
+    const hash = target.indexOf('#cfi=')
+    if (hash < 0 || !ofBook(decoded(target.slice(0, hash)))) continue
+    const place = parsePlaceSubpath(target.slice(hash))
+    if (!place || !('cfi' in place) || place.cfi !== cfi) continue
+    const from = md.index + md[0].indexOf(target) + hash + 5
+    return [from, from + target.length - hash - 5]
+  }
+  return null
+}
+
+/** Only actual callouts, not examples in properties or fenced code, count as repair sources. */
+export function repairableHighlights(markdown: string, ofBook: OfBook): Highlight[] {
+  const { eligible } = repairLines(markdown)
+  return blocks(markdown, ofBook).blocks.filter((b) => eligible.has(b.start)).map((b) => b.highlight)
+}
+
+/** Check all requests against one snapshot; apply independent, disjoint spans from right to left. */
+export function patchHighlightLinks(
+  markdown: string,
+  requests: HighlightLinkRepair[],
+  ofBook: OfBook
+): { markdown: string; applied: string[]; skipped: string[] } {
+  const { starts, eligible } = repairLines(markdown)
+  const { lines, blocks: found } = blocks(markdown, ofBook)
+  const live = found.filter((b) => eligible.has(b.start))
+  const edits: { from: number; to: number; value: string; cfi: string }[] = []
+  const skipped: string[] = []
+  const destinations = requests.map((r) => r.suggested)
+  for (const r of requests) {
+    const matches = live.filter((b) => b.highlight.cfi === r.cfi)
+    if (
+      matches.length !== 1 ||
+      matches[0].highlight.text !== r.text ||
+      r.cfi === r.suggested ||
+      requests.filter((x) => x.cfi === r.cfi).length !== 1 ||
+      destinations.filter((x) => x === r.suggested).length !== 1 ||
+      live.some((b) => b.highlight.cfi === r.suggested && b.highlight.cfi !== r.cfi)
+    ) {
+      skipped.push(r.cfi)
+      continue
+    }
+    const b = matches[0]
+    const header = HEADER.exec(lines[b.start])
+    const span = header && repairSpan(header[3], r.cfi, ofBook)
+    if (!span) {
+      skipped.push(r.cfi)
+      continue
+    }
+    const from = starts[b.start] + header[0].indexOf(header[3]) + span[0]
+    edits.push({ from, to: starts[b.start] + header[0].indexOf(header[3]) + span[1], value: encodeCfi(r.suggested), cfi: r.cfi })
+  }
+  let output = markdown
+  for (const e of edits.sort((a, b) => b.from - a.from))
+    output = output.slice(0, e.from) + e.value + output.slice(e.to)
+  return { markdown: output, applied: edits.map((e) => e.cfi), skipped }
 }
 
 /** One highlight as its callout, the links — to the place, to its chat — already made. */

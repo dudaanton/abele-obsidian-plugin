@@ -23,6 +23,9 @@ import {
   HIGHLIGHTS_TYPE,
   highlightBlock,
   highlightLines,
+  patchHighlightLinks,
+  repairableHighlights,
+  type HighlightLinkRepair,
   newHighlightsNote,
   parseHighlights,
   removeHighlight,
@@ -43,6 +46,7 @@ import {
 } from './noteTemplate'
 import type { BookNotesTarget } from './settings'
 import { formsLine } from './vocab/words'
+import type { HighlightRepairCandidate } from './highlightRepair'
 
 /** What writing a book's highlights needs beyond the book: its name, and where they go. */
 export interface NotesPlace {
@@ -134,6 +138,67 @@ export async function readHighlights(
     for (const h of parseHighlights(await app.vault.cachedRead(note), ofBook, frame))
       if (!out.some((x) => x.cfi === h.cfi)) out.push(h)
   return out
+}
+
+/** Frozen source identity for a confirmed, surgical repair. */
+export interface PreparedHighlightRepair extends HighlightLinkRepair {
+  note: TFile
+  label: string
+  context: HighlightRepairCandidate['context']
+  anchored: boolean
+}
+
+async function repairSources(app: App, book: TFile, where: NotesPlace) {
+  return Promise.all(sources(app, book, where).map(async ({ note }) => {
+    const ofBook = linkingTo(app, book, note) // Strict even for a book's own note.
+    return { note, ofBook, highlights: repairableHighlights(await app.vault.read(note), ofBook) }
+  }))
+}
+
+/** Identify the sole source of each found mismatch; never create a target note. */
+export async function prepareHighlightRepairs(
+  app: App, book: TFile, where: NotesPlace, candidates: HighlightRepairCandidate[]
+): Promise<PreparedHighlightRepair[]> {
+  const all = await repairSources(app, book, where)
+  const highlights = all.flatMap((s) => s.highlights.map((h) => ({ note: s.note, h })))
+  return candidates.filter((r) =>
+    highlights.filter((x) => x.h.cfi === r.cfi).length === 1 &&
+    highlights.find((x) => x.h.cfi === r.cfi)?.h.text === r.text &&
+    !highlights.some((x) => x.h.cfi === r.suggested) &&
+    candidates.filter((x) => x.suggested === r.suggested).length === 1 &&
+    candidates.filter((x) => x.cfi === r.cfi).length === 1
+  ).map((r) => ({ ...r, note: highlights.find((x) => x.h.cfi === r.cfi)!.note }))
+}
+
+/** Recheck global identity after confirmation and patch CURRENT text once per source file. */
+export async function repairHighlightLinks(
+  app: App, book: TFile, where: NotesPlace, prepared: PreparedHighlightRepair[]
+): Promise<{ applied: string[]; skipped: string[]; failed: string[] }> {
+  const valid = await prepareHighlightRepairs(app, book, where, prepared)
+  const current = new Map(valid.filter((r) =>
+    prepared.some((p) => p.cfi === r.cfi && p.note.path === r.note.path && p.note === r.note)
+  ).map((r) => [r.cfi, r]))
+  const result = { applied: [] as string[], skipped: prepared.filter((r) => !current.has(r.cfi)).map((r) => r.cfi), failed: [] as string[] }
+  const groups = new Map<TFile, PreparedHighlightRepair[]>()
+  for (const r of current.values()) groups.set(r.note, [...(groups.get(r.note) ?? []), r])
+  for (const [note, requests] of groups) {
+    if (app.vault.getAbstractFileByPath(note.path) !== note) {
+      result.skipped.push(...requests.map((r) => r.cfi))
+      continue
+    }
+    let patch: ReturnType<typeof patchHighlightLinks> | undefined
+    try {
+      await app.vault.process(note, (md) => {
+        patch = patchHighlightLinks(md, requests, linkingTo(app, book, note))
+        return patch.markdown
+      })
+      result.applied.push(...(patch?.applied ?? []))
+      result.skipped.push(...(patch?.skipped ?? []))
+    } catch {
+      result.failed.push(...requests.map((r) => r.cfi))
+    }
+  }
+  return result
 }
 
 /** The note holding the highlight at `cfi`, with what it has there. */
