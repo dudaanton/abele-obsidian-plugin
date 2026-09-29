@@ -155,6 +155,8 @@ describe.skipIf(!available)('GitHub notifications', () => {
       }
       // A phone's drawer slides in first.
       await wait(document.body.classList.contains('is-phone') ? 1000 : 300)
+      // Settled: the whole panel inside the screen, not a drawer still sliding.
+      await until(() => { const b = panel().getBoundingClientRect(); return b.width > 0 && b.right <= innerWidth + 1 }, 3000)
       const box = panel().getBoundingClientRect()
       report.onScreen = !app.workspace.rightSplit.collapsed && box.width > 0 && box.left < innerWidth
       report.where = { collapsed: app.workspace.rightSplit.collapsed, left: Math.round(box.left), width: Math.round(box.width), screen: innerWidth }
