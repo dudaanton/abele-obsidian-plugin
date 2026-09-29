@@ -64,7 +64,9 @@ const script = `(async () => {
     'const earlier = chat.messages.length',
     'return {',
     '  text: message.text.replace(/^\\\\/probe\\\\s*/, "PROBED: ") + " (earlier: " + earlier + ")",',
-    '  approve: ["ls"],',
+    // A function, which is shown the call: ls on the vault root reaches outside a chat's scope,
+    // which a list of names never approves.
+    '  approve: (call) => call.name === "ls",',
     '}',
   ].join('\\n')
 
@@ -136,6 +138,9 @@ const script = `(async () => {
     session.interceptor.script.value = NAME
     session.interceptor.pattern.value = '^/probe'
 
+    const runsOf = () => T.ScriptRuns ? T.ScriptRuns.getInstance().runs.value.filter((r) => r.name === NAME).length : -1
+    const runsBefore = runsOf()
+
     await session.sendMessage('hello plain')
     const users = () => session.allMessages.value.filter((m) => m.role === 'user')
     report.plainBubble = users()[0]?.content ?? ''
@@ -148,9 +153,7 @@ const script = `(async () => {
     report.probeNote = (probe?.interceptorChat || []).map((m) => m.content).join('\\n')
     report.toolStatus = session.allMessages.value.find((m) => m.toolCallId === 'call_probe')?.toolStatus ?? ''
     report.pendingAfter = session.pendingToolCalls.value.length
-    report.scriptRuns = T.ScriptRuns
-      ? T.ScriptRuns.getInstance().runs.value.filter((r) => r.name === NAME).length
-      : -1
+    report.scriptRuns = runsBefore === -1 ? -1 : runsOf() - runsBefore
   } catch (e) {
     report.error = String((e && e.message) || e)
   } finally {
