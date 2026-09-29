@@ -101,10 +101,16 @@ watch(() => props.tooltip, updateTooltip)
     color: var(--text-accent);
     background-color: var(--background-modifier-active-hover);
   }
-  &:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover):hover {
+  &:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover) {
     cursor: var(--cursor-link);
-    color: var(--text-normal);
-    background-color: var(--background-modifier-hover);
+  }
+  // Only where there is a pointer to hover with, as Obsidian's `.clickable-icon` does: a phone
+  // keeps `:hover` on whatever was tapped last, so the highlight stayed behind after a tap.
+  @media (hover: hover) {
+    &:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover):hover {
+      color: var(--icon-color-hover);
+      background-color: var(--background-modifier-hover);
+    }
   }
 }
 
