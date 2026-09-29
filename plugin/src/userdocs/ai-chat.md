@@ -32,6 +32,22 @@ Up to 20 chats can be open at once, as tabs. Every chat is saved as a file in th
 (`AI/Chats` by default), so it survives a restart and can be found again in the history. When a
 chat grows too long for the model, it is compacted by itself.
 
+## Finding words in chats
+
+**Cmd/Ctrl+F** inside a chat, the magnifier over it, or **Find in the current chat** from the
+command palette opens a find bar: every match in the
+conversation is marked, the counter says which one is shown, and **Enter** and **Shift+Enter**
+(or the arrows) go to the next and the previous one. It finds words in the whole conversation —
+the older messages not shown yet, the agent's reasoning and what its tools returned — and opens
+whatever they are folded away in. **Esc** closes it.
+
+To look through every chat, type into the search of the chat history (the clock over the chat),
+or run **Search all chats** from the command palette. A chat is found by its title, its summary,
+or by what you and the agent said in it; a chat found by its words shows them with a few either
+side and the date they were written. Opening it takes you to that message, with the find bar
+open on the same words. The first search reads every chat once, which takes a moment in a large
+history; after that only the chats that changed are read again.
+
 An answer is drawn the way a note is: an agent can show you a gallery of pictures, a diagram, a
 chart, a map, callouts, formulas and coloured highlights, or embed one of your notes, right in its
 reply. Links in it open the note they name. The same goes for what a script shows you and for the
