@@ -1,10 +1,11 @@
 /**
  * Menus opened inside the picture viewer — the full-screen view a gallery picture opens in —
  * must show above it. The viewer covers the whole window, so a menu drawn under it is simply not
- * there for the person: they right-click, or tap "More", and nothing seems to happen.
+ * there for the person: they tap "More", and nothing seems to happen. Nothing in the viewer
+ * answers a right click or a long press with a menu, so "More" is the one road there is.
  *
- * Both roads are asked the same question: at the centre of the menu, which element is on top?
- * A menu under the viewer answers with the viewer's backdrop or its picture.
+ * It is asked: at the centre of the menu, which element is on top? A menu under the viewer
+ * answers with the viewer's backdrop or its picture.
  *
  * The note and picture live in `Gallery viewer e2e/` for the length of this file and are deleted
  * after it, so the fixture vault ends with nothing but `ScaleTest/` in it.
@@ -16,7 +17,6 @@ import {
   hasTestApi,
   isObsidianRunning,
   reloadApp,
-  runCli,
   useDomMenus,
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
@@ -66,8 +66,10 @@ const PRELUDE = `
     const leaf = app.workspace.getLeaf(false)
     await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'preview' }, active: true })
     app.workspace.revealLeaf(leaf)
-    // The pictures load lazily: one off screen never would, so it is scrolled to first.
-    const img = await until(() => leaf.view.containerEl.querySelector('.abele-gallery img.abele-gallery__image'))
+    // The pictures load lazily: one off screen never would, so it is scrolled to first. Looked
+    // for in reading view only: the tab keeps its editor too, hidden, with a gallery of its own.
+    const img = await until(() =>
+      leaf.view.containerEl.querySelector('.markdown-preview-view .abele-gallery img.abele-gallery__image'))
     if (!img) return { error: 'no gallery picture' }
     img.scrollIntoView({ block: 'center' })
     if (!(await until(() => img.complete && img.naturalWidth > 0))) return { error: 'the gallery picture did not load' }
@@ -101,51 +103,6 @@ const moreMenu = (): Hit =>
   })()`,
     60_000
   )
-
-/** The centre of the viewer's picture, after opening the viewer. */
-const openViewerAt = (): { error?: string; x: number; y: number } =>
-  evalAsync(
-    `(async () => {
-    ${PRELUDE}
-    const opened = await openViewer()
-    if (opened.error) return { error: opened.error, x: 0, y: 0 }
-    const r = opened.viewer.getBoundingClientRect()
-    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
-  })()`,
-    60_000
-  )
-
-const cdp = (method: string, params: object): void => {
-  runCli(['dev:cdp', `method=${method}`, `params=${JSON.stringify(params)}`], 30_000)
-}
-
-/** A right click the way a mouse makes one, through the page's input pipeline. */
-const rightClick = (x: number, y: number): void => {
-  cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' })
-  cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 })
-  cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 })
-}
-
-const afterRightClick = (): Hit =>
-  evalAsync<Hit>(
-    `(async () => {
-    ${PRELUDE}
-    await until(() => document.querySelector('.menu'), 3000)
-    await wait(300)
-    const seen = menuOnTop()
-    closeMenus()
-    await closeViewer()
-    return seen
-  })()`,
-    30_000
-  )
-
-const rightClickMenu = (): Hit => {
-  const at = openViewerAt()
-  if (at.error) return { error: at.error, menu: false }
-  rightClick(at.x, at.y)
-  return afterRightClick()
-}
 
 const expectOnTop = (r: Hit) => {
   expect(r.error).toBeUndefined()
@@ -217,10 +174,6 @@ describe.skipIf(!available)('menus in the picture viewer', () => {
 
   it('shows the "More" menu above the viewer', () => {
     expectOnTop(moreMenu())
-  })
-
-  it('shows the menu of a right click on the picture above the viewer', () => {
-    expectOnTop(rightClickMenu())
   })
 
   describe('on a phone', () => {
