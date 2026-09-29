@@ -122,6 +122,7 @@ import { startStartupScripts } from '@/scripting/startupRunner'
 import { claimVueSetters } from '@/helpers/vueGlobals'
 import { openChat } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
+import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
 import { openQuickMenu } from '@/quickButton/open'
 import { HeaderCommands } from '@/headerButtons/viewActions'
@@ -1298,6 +1299,28 @@ export default class AbelePlugin extends Plugin {
       },
     })
 
+    // Finding words: in the chat in front, and in every chat there has been. Both show the chat
+    // panel first; the chat on screen takes the request (`AiChat.vue`).
+    this.addCommand({
+      id: 'find-in-chat',
+      name: 'Find in the current chat',
+      icon: 'search',
+      callback: () => {
+        const chats = ChatService.getInstance()
+        void chats.revealSidebar({ focus: false }).then(() => (chats.findRequest.value = true))
+      },
+    })
+
+    this.addCommand({
+      id: 'search-all-chats',
+      name: 'Search all chats',
+      icon: 'history',
+      callback: () => {
+        const chats = ChatService.getInstance()
+        void chats.revealSidebar({ focus: false }).then(() => (chats.historyRequest.value = true))
+      },
+    })
+
     this.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
       void ChatService.getInstance().revealSidebar()
     })
@@ -1402,6 +1425,7 @@ export default class AbelePlugin extends Plugin {
     ChangeTracker.get()?.uninstall()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()
+    ChatSearchIndex.destroy()
     GlobalStore.getInstance().destroy()
     AbeleConfig.getInstance().destroy()
     VaultWatcherWrapper.destroy()

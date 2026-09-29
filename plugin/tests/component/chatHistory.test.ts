@@ -22,6 +22,7 @@ import {
 } from '../helpers/fakeIntersectionObserver'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
+import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 
 vi.mock('@/editor/CommentPlugin', () => ({
   dispatchCommentsChanged: vi.fn(),
@@ -132,6 +133,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   wrapper = null
+  ChatSearchIndex.destroy()
 })
 
 describe('a card in the chat history', () => {
@@ -192,5 +194,67 @@ describe('a chat listed without a summary', () => {
     AbeleConfig.getInstance().ai.enabled = false
     const view = await open()
     expect(scrollIntoView(cardOf(view, OLD).element)).toBe(0)
+  })
+})
+
+describe('searching the messages of every chat', () => {
+  const type = async (view: VueWrapper, words: string) => {
+    const field = view.find('.abele-chat-history__search')
+    await field.setValue(words)
+    // The search waits for typing to pause, then reads the chats.
+    await new Promise((resolve) => setTimeout(resolve, 260))
+    await flushPromises()
+  }
+
+  it('finds a chat by what was said in it, with the words and a few around them', async () => {
+    const view = await open()
+    await type(view, 'LIGHTEST')
+
+    const cards = view.findAllComponents(Card)
+    expect(cards.map((c) => c.attributes('data-path')).sort()).toEqual([NEW, OLD])
+    const snippet = cardOf(view, OLD).find('.abele-chat-history__snippet')
+    expect(snippet.text()).toBe('The lightest one.')
+    expect(snippet.find('.search-result-file-matched-text').text()).toBe('lightest')
+    expect(cardOf(view, OLD).props('meta')).toContain('1 match')
+  })
+
+  it('does not find what a tool returned', async () => {
+    const view = await open()
+    await type(view, SECRET)
+    expect(view.findAllComponents(Card)).toHaveLength(0)
+    expect(view.find('.abele-chat-history__empty').text()).toBe('No matches')
+  })
+
+  it('opens a result at the message it was found in, with the words to find there', async () => {
+    const view = await open()
+    await type(view, 'laptop should')
+    await cardOf(view, OLD).trigger('click')
+
+    const [file, found] = view.emitted('select')![0] as [{ path: string }, unknown]
+    expect(file.path).toBe(OLD)
+    expect(found).toEqual({ query: 'laptop should', messageId: 'u' })
+  })
+
+  it('reads each chat once however much is typed, and again once it changes', async () => {
+    const view = await open()
+    const read = vi.spyOn(app.vault, 'cachedRead')
+    await type(view, 'light')
+    await type(view, 'lightest')
+    expect(read).toHaveBeenCalledTimes(2)
+
+    const changed = app.vault.getFileByPath(NEW)!
+    await app.vault.modify(changed, chatFile('New'))
+    // The fake vault keeps no clock; Obsidian moves `mtime` with every write.
+    changed.stat = { ...changed.stat, mtime: (changed.stat?.mtime ?? 0) + 1000 }
+    await type(view, 'lightes')
+    expect(read).toHaveBeenCalledTimes(3)
+  })
+
+  it('still finds by title alone for a single letter, without reading any chat', async () => {
+    const view = await open()
+    const read = vi.spyOn(app.vault, 'cachedRead')
+    await type(view, 'n')
+    expect(read).not.toHaveBeenCalled()
+    expect(view.findAllComponents(Card).map((c) => c.attributes('data-path'))).toContain(NEW)
   })
 })

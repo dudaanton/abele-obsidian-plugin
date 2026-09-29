@@ -81,23 +81,23 @@
         </div>
         <div v-if="message.toolParams" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__detail-label">Params</span>
-          <pre>{{ JSON.stringify(message.toolParams, null, 2) }}</pre>
+          <pre data-find-part="params">{{ toolParamsText(message.toolParams) }}</pre>
         </div>
         <div v-if="message.toolResult" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__detail-label">Result</span>
-          <pre>{{ truncate(message.toolResult, TOOL_RESULT_MAX_LENGTH) }}</pre>
+          <pre data-find-part="result">{{ toolResultText(message.toolResult) }}</pre>
         </div>
       </div>
 
       <!-- Thinking (collapsible) -->
       <details v-if="message.thinking" class="abele-chat-msg__thinking">
         <summary>Thinking</summary>
-        <Markdown :text="message.thinking" />
+        <Markdown :text="message.thinking" data-find-part="thinking" />
       </details>
 
       <!-- Tool call — compact one-liner + inline diff -->
       <template v-if="message.role === 'tool-call'">
-        <span class="abele-chat-msg__tool-line">
+        <span class="abele-chat-msg__tool-line" data-find-part="tool">
           <code>{{ message.toolName }}</code>
           <span
             class="abele-chat-msg__tool-summary"
@@ -157,6 +157,7 @@
         <pre
           v-if="message.toolDiff && !message.toolDiff.old"
           class="abele-chat-msg__new-file"
+          data-find-part="newfile"
         ><code>{{ message.toolDiff.new }}</code></pre>
         <Diff
           v-else-if="message.toolDiff"
@@ -168,7 +169,11 @@
 
       <!-- Tool result — only show errors -->
       <template v-else-if="message.role === 'tool-result'">
-        <span v-if="message.toolStatus === 'rejected'" class="abele-chat-msg__tool-error">
+        <span
+          v-if="message.toolStatus === 'rejected'"
+          class="abele-chat-msg__tool-error"
+          data-find-part="content"
+        >
           {{ message.content }}
         </span>
       </template>
@@ -178,10 +183,12 @@
         <template v-if="message.content.length > 100">
           <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
           <div v-if="expanded" class="abele-chat-msg__compact-summary">
-            <Markdown :text="message.content" />
+            <Markdown :text="message.content" data-find-part="summary" />
           </div>
         </template>
-        <span v-else class="abele-chat-msg__compact-label">── {{ message.content }} ──</span>
+        <span v-else class="abele-chat-msg__compact-label"
+          >── <span data-find-part="content">{{ message.content }}</span> ──</span
+        >
       </template>
 
       <!-- User / Assistant — markdown -->
@@ -190,10 +197,11 @@
         :ref="comments.content"
         :text="message.content"
         :data-ask-message="canComment ? message.id : undefined"
+        data-find-part="content"
         @rendered="comments.paint"
         @contextmenu="onContentMenu"
       />
-      <Markdown v-else-if="message.content" :text="message.content" />
+      <Markdown v-else-if="message.content" :text="message.content" data-find-part="content" />
 
       <!-- Attachments -->
       <div v-if="message.attachments?.length" class="abele-chat-msg__attachments">
@@ -275,7 +283,7 @@
           <Icon icon="chevron-down" />
           <span>{{ message.interceptorName || 'Interceptor' }}</span>
         </div>
-        <div class="abele-chat-msg__interceptor-messages">
+        <div class="abele-chat-msg__interceptor-messages" data-find-part="interceptor">
           <div
             v-for="icMsg in message.interceptorChat"
             :key="icMsg.id"
@@ -309,7 +317,10 @@
         </div>
         <div
           v-if="
-            message.draft && !message.interceptorScript && !interceptorStreaming && !interceptorError
+            message.draft &&
+            !message.interceptorScript &&
+            !interceptorStreaming &&
+            !interceptorError
           "
           class="abele-chat-msg__interceptor-input"
         >
@@ -351,6 +362,13 @@ import type { ChatMessage, MessageComment } from '@/ai/types'
 import type { BranchInfo } from './AiChat.vue'
 import { useMessageComments } from '@/composables/useMessageComments'
 import { vaultUrl } from '@/helpers/vaultUrl'
+import {
+  extractResultPath,
+  toolParamsText,
+  toolResultText,
+  toolSummary as toolSummaryOf,
+} from '@/ai/toolLine'
+import type { FindPart } from '@/ai/chatFind'
 
 const props = defineProps<{
   message: ChatMessage
@@ -440,6 +458,24 @@ const branchFromHere = () => {
 
 const expanded = ref(false)
 
+/**
+ * Unfolds whatever keeps a part of this message out of sight, for a match found in it: the
+ * details for a tool's parameters and result or a compaction's summary, the side conversation
+ * for the interceptor's replies. Reasoning folds in a `<details>` of its own, which the finder
+ * opens on the page.
+ */
+const revealPart = (part: FindPart) => {
+  if (part === 'params' || part === 'result' || part === 'summary') expanded.value = true
+  if (
+    part === 'interceptor' &&
+    !props.message.draft &&
+    props.message.interceptorCollapsed !== false
+  )
+    emit('toggle-interceptor', props.message.id)
+}
+
+defineExpose({ revealPart })
+
 const FILE_TOOLS = [
   'read',
   'edit',
@@ -452,13 +488,6 @@ const FILE_TOOLS = [
   'look_at_drawing',
   'apply_template',
 ]
-
-/** Extract path from tool result text like "Created: path" or "Saved: path" */
-function extractResultPath(result?: string): string {
-  if (!result) return ''
-  const match = result.match(/^(?:Created|Saved|Edited):\s*(.+)$/m)
-  return match?.[1]?.trim() || ''
-}
 
 /**
  * The map a map tool drew, ready to render — or nothing, for every other tool.
@@ -474,21 +503,7 @@ const mapConfig = computed<MapConfig | null>(() => {
   return 'error' in parsed ? null : parsed
 })
 
-const toolSummary = computed(() => {
-  const name = props.message.toolName
-  const p = props.message.toolParams
-  // For apply_template, show created file path once available
-  if (name === 'apply_template') {
-    return extractResultPath(props.message.toolResult) || String(p?.path || '')
-  }
-  if (!p) return ''
-  if (p.path) return String(p.path)
-  if (p.from && p.to) return `${p.from} → ${p.to}`
-  if (p.url) return String(p.url)
-  if (p.query) return String(p.query)
-  if (p.name) return String(p.name)
-  return ''
-})
+const toolSummary = computed(() => toolSummaryOf(props.message))
 
 /** Path to open when clicking the tool summary (result path for mv/cp, otherwise path param) */
 const toolFilePath = computed(() => {
@@ -632,11 +647,8 @@ const imageUrl = computed(() => {
 // A chat attached here goes to the sidebar; opened in the editor it would close the note.
 const openAttachment = (path: string) => void openVaultFile(path)
 
-const TOOL_RESULT_MAX_LENGTH = 1000
-
 const formatTime = (ts: number) => dayjs(ts).format('YYYY-MM-DD HH:mm:ss')
 const shortTime = (ts: number) => dayjs(ts).format('HH:mm')
-const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) + '…' : s)
 </script>
 
 <style lang="scss">

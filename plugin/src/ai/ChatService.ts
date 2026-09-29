@@ -69,6 +69,23 @@ export class ChatService {
   public readonly pendingReveal = ref<string | null>(null)
 
   /**
+   * A result of the search across chats, for the chat component: once the chat at `path` is in
+   * front, the find bar opens on `query` at the message it was found in.
+   */
+  public readonly pendingFind = ref<{ path: string; query: string; messageId: string } | null>(
+    null
+  )
+
+  /**
+   * Set to open the history of chats with its search in the chat in front — the command that
+   * searches every chat. The chat component that opens it sets it back.
+   */
+  public readonly historyRequest = ref(false)
+
+  /** The same for the find bar of the chat in front — the command that finds in it. */
+  public readonly findRequest = ref(false)
+
+  /**
    * Bumped to put the cursor in the composer of whatever chat is in front: a new chat, a new
    * comment. The chat answers it; `requestFocus` is the way to ask.
    */
@@ -345,7 +362,11 @@ export class ChatService {
   }
 
   /** Puts the chat sidebar in front of the person, opening it in the right split if needed. */
-  async revealSidebar(): Promise<void> {
+  /**
+   * `focus: false` for a caller that opens something of its own over the chat — the find bar,
+   * the history's search — which takes the cursor itself.
+   */
+  async revealSidebar({ focus = true }: { focus?: boolean } = {}): Promise<void> {
     const { workspace } = GlobalStore.getInstance().app
 
     let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
@@ -358,7 +379,7 @@ export class ChatService {
     // A blank chat is there to be typed into, so it gets the cursor as it comes into view. A
     // conversation does not: on a phone the cursor brings up the keyboard, which would cover
     // the half of what was opened to be read.
-    if (ChatService.isBlank(this.activeSession.value)) this.requestFocus()
+    if (focus && ChatService.isBlank(this.activeSession.value)) this.requestFocus()
   }
 
   /**

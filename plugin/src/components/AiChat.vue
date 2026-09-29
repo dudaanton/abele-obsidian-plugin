@@ -45,6 +45,14 @@
             :tooltip="blocked ? blockedTooltip : 'Turn this comment into an ordinary chat'"
             @click="openAsChat"
           />
+          <!-- Find words in this conversation; Cmd/Ctrl+F does the same from inside the chat. -->
+          <Icon
+            icon="search"
+            with-bg
+            class="abele-ai-chat__find"
+            tooltip="Find in this chat"
+            @click="find.open()"
+          />
           <!-- One button for everything this chat is set up with: scope, skills, prompts,
                tool permissions, its own settings, and the two things that are neither —
                reading the file again and copying what the chat is made of. -->
@@ -79,6 +87,20 @@
           />
         </div>
       </div>
+
+      <ChatFindBar
+        v-if="find.isOpen.value"
+        v-show="!composing"
+        :query="find.query.value"
+        :count="find.count.value"
+        :position="find.position.value"
+        :focus-request="find.focusRequest.value"
+        :autofocus="find.takesFocus.value"
+        @update:query="find.setQuery"
+        @next="find.next"
+        @previous="find.previous"
+        @close="find.close"
+      />
 
       <!-- "Ask here" over words selected on a touch screen, once the finger has let them go. -->
       <ChatSelectionBar
@@ -139,6 +161,7 @@
         <AiChatMessage
           v-for="msg in visibleMessages"
           :key="msg.id"
+          :ref="(c) => keepMessageRef(msg.id, c)"
           :data-message-id="msg.id"
           :message="msg"
           :branch-info="branchInfoMap.get(msg.id)"
@@ -321,6 +344,10 @@ import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import ChatSelectionBar from './ChatSelectionBar.vue'
+import ChatFindBar from './ChatFindBar.vue'
+import { useChatFind } from '@/composables/useChatFind'
+import { useFindKey } from '@/composables/useFindKey'
+import type { FindPart } from '@/ai/chatFind'
 import { useTailPagedList } from '@/composables/useTailPagedList'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'
@@ -661,6 +688,18 @@ const chatContainer = ref<HTMLElement | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
+
+// The command that searches every chat: whichever chat is on screen takes it and opens its
+// history on the search, and says so by setting the request back.
+watch(
+  () => [chatService.historyRequest.value, chatContainer.value] as const,
+  ([asked, el]) => {
+    if (!asked || !el) return
+    chatService.historyRequest.value = false
+    historyOpen.value = true
+  },
+  { immediate: true, flush: 'post' }
+)
 
 /**
  * A comment being read in this tab.
@@ -1271,6 +1310,78 @@ const revealMessage = async (messageId: string) => {
   window.setTimeout(() => target.classList.remove('abele-footnote-flash'), 2500)
 }
 
+// ── Find in this chat ──
+
+/** The mounted messages, for unfolding the part of one a match is in. */
+const messageRefs = new Map<string, InstanceType<typeof AiChatMessage>>()
+const keepMessageRef = (id: string, component: unknown) => {
+  if (component) messageRefs.set(id, component as InstanceType<typeof AiChatMessage>)
+  else messageRefs.delete(id)
+}
+
+const find = useChatFind({
+  messages: () => messages.value,
+  container: () => messagesContainer.value,
+  hidden: () => olderCount.value,
+  mountFrom: (index) => showMessagesFrom(index),
+  revealPart: (messageId: string, part: FindPart) => messageRefs.get(messageId)?.revealPart(part),
+  holdInView: (el, offset) => {
+    const box = messagesContainer.value
+    if (!box) return
+    // A reader taken to a match is reading back, not following the end.
+    shouldAutoScroll = false
+    anchor = { el, offset }
+    holdAnchor()
+    bottomGap = box.scrollHeight - box.scrollTop - box.clientHeight
+    holdAnchorAWhile(box)
+  },
+})
+
+// The command that finds in the chat in front, taken by whichever chat is on screen.
+watch(
+  () => [chatService.findRequest.value, messagesContainer.value] as const,
+  ([asked, el]) => {
+    if (!asked || !el) return
+    chatService.findRequest.value = false
+    composing.value = false
+    find.open()
+  },
+  { immediate: true, flush: 'post' }
+)
+
+useFindKey(chatContainer, () => {
+  // A tab held by a delegated run has no conversation to search.
+  if (!activeRun.value) find.open()
+})
+
+// Another chat loaded into this tab: the words were looked for in the one it replaced.
+watch(
+  () => session.value?.currentChatFile.value?.path,
+  (path, before) => {
+    if (before && path !== before) find.close()
+  }
+)
+
+// A result of the search across chats: the chat it is in is opening in this tab, and the find
+// bar opens on the words once its messages are here, at the message the result was.
+watch(
+  () =>
+    [
+      chatService.pendingFind.value,
+      session.value?.currentChatFile.value?.path,
+      messages.value.length,
+      messagesContainer.value,
+    ] as const,
+  ([pending, path, count, el]) => {
+    if (!pending || !el || !count || pending.path !== path) return
+    chatService.pendingFind.value = null
+    composing.value = false
+    // On a phone the keyboard would cover the message just landed on.
+    find.openAt(pending.query, pending.messageId, !Platform.isMobile)
+  },
+  { immediate: true, flush: 'post' }
+)
+
 watch(
   () => [chatService.pendingReveal.value, session.value, messagesContainer.value] as const,
   ([messageId, s, el]) => {
@@ -1288,6 +1399,8 @@ watch(
     // The DOM still shows the tab being left, so this is the moment to read its place.
     if (previousTabId) rememberPlace(previousTabId)
     anchor = null
+    // The words were looked for in the conversation being left.
+    find.close()
     resetWindow()
     const place = tabId ? places.get(tabId) : undefined
     // Not following the end while the messages mount, or they would be scrolled past the place.
@@ -1818,8 +1931,13 @@ const handleNewChat = async () => {
   if (id) await chatService.startNewChat(id)
 }
 
-const onLoadChat = async (file: TFile) => {
+/**
+ * A chat picked in the history. Picked by a match in its messages, it opens on that message with
+ * the find bar on the words, so the rest of them are a press of Enter away.
+ */
+const onLoadChat = async (file: TFile, found?: { query: string; messageId: string }) => {
   const id = session.value?.id
+  if (found) chatService.pendingFind.value = { path: file.path, ...found }
   if (id) await chatService.openChatInTab(id, file)
 }
 
@@ -1871,11 +1989,10 @@ const showDebug = () => {
   // buttons, Send among them; the chat ends above it instead.
   body.is-mobile.mod-toolbar-open &.abele-keyboard-open {
     height: calc(
-      100% -
-        max(
+      100% - max(
           0px,
-          var(--keyboard-height, 0px) + var(--mobile-toolbar-height, 0px) -
-            var(--abele-bottom-gap, 0px)
+          var(--keyboard-height, 0px) +
+            var(--mobile-toolbar-height, 0px) - var(--abele-bottom-gap, 0px)
         )
     );
   }

@@ -107,6 +107,15 @@ describe('a new chat asks for the cursor', () => {
     expect(chats.focusRequest.value).toBe(before)
   })
 
+  it('nor when the panel is shown for a find bar or a search that takes the cursor itself', async () => {
+    chats.createTab()
+    const before = chats.focusRequest.value
+
+    await chats.revealSidebar({ focus: false })
+
+    expect(chats.focusRequest.value).toBe(before)
+  })
+
   it('and not for the tabs made while restoring the layout at startup', () => {
     const before = chats.focusRequest.value
 
