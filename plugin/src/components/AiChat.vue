@@ -292,6 +292,7 @@
         v-model:expanded="composing"
         :is-streaming="isStreaming || isExecutingTool || interceptorWorking"
         :is-busy="isBusy"
+        :attachment-owner="chatService.activeTabId.value ?? undefined"
         :can-continue="showContinue"
         :token-display="tokenDisplay"
         :scope-label="scopeCompact"
@@ -366,7 +367,6 @@ import { ChatService, type PendingInput } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
-import { importExternalFile } from '@/ai/attachments'
 import type { ChatDraft, MessageComment } from '@/ai/types'
 import { revealAnchor } from '@/ai/openChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
@@ -1263,7 +1263,6 @@ watch(
  * which threw the message away for anyone who switched tabs to check something.
  */
 const drafts = new Map<string, ChatDraft>()
-const NO_DRAFT: ChatDraft = { text: '', attachments: [] }
 
 /** How far below the top of the box a message brought into view sits: clear of the edge. */
 const REVEAL_OFFSET_PX = 16
@@ -1410,7 +1409,7 @@ watch(
     else void nextTick(doScroll)
 
     // The input still holds the tab being left — the DOM has not been updated yet.
-    if (previousTabId) drafts.set(previousTabId, chatInput.value?.takeDraft() ?? NO_DRAFT)
+    if (previousTabId) drafts.set(previousTabId, chatInput.value?.takeDraft() ?? { text: '', attachments: [] })
     for (const id of drafts.keys()) {
       if (!chatService.tabOrder.value.includes(id)) drafts.delete(id)
     }
@@ -1425,7 +1424,7 @@ watch(
     const saved = tabId ? drafts.get(tabId) : undefined
     const draft = pending ? pendingDraft(pending, saved) : saved
     void nextTick(() => {
-      chatInput.value?.putDraft(draft ?? NO_DRAFT)
+      chatInput.value?.putDraft(draft ?? { text: '', attachments: [] })
       if (pending) takePending(pending)
     })
   }
@@ -1804,11 +1803,12 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
   chatInput.value?.setText(resolved.trim())
 }
 
-const onAttachFile = (path: string) => {
+const onAttachFile = (path: string, owner?: string) => {
   // A chat dropped here goes to the agent as what was said in it, never as a file in scope:
   // the log holds everything its own agent was shown. The scope would refuse it anyway.
   if (isChatLog(path)) return
-  session.value?.scopeResolver.addFile(path)
+  const origin = owner ? chatService.getSession(owner) : session.value
+  origin?.scopeResolver.addFile(path)
 }
 
 // ── Drag & drop on the whole chat area ──
@@ -1866,14 +1866,7 @@ const onFileDrop = async (e: DragEvent) => {
 
   // 2. External files
   const fileList = dt.files ? Array.from(dt.files) : []
-  for (const f of fileList) {
-    try {
-      const vaultFile = await importExternalFile(f)
-      chatInput.value?.addAttachment(vaultFile)
-    } catch (err: unknown) {
-      new Notice(`Failed to import ${f.name}: ${err instanceof Error ? err.message : err}`)
-    }
-  }
+  await chatInput.value?.importFiles(fileList)
 }
 
 const onAbort = () => {

@@ -7,7 +7,7 @@
     }"
     @dragover.prevent="onDragOver"
     @dragleave="onDragLeave"
-    @drop.prevent="onDrop"
+    @drop.prevent.stop="onDrop"
   >
     <!-- Pending attachments -->
     <div v-if="attachments.length" class="abele-chat-input__attachments">
@@ -99,7 +99,7 @@
             @click="emit('abort')"
           />
         </template>
-        <Icon v-else-if="isBusy" icon="loader" no-hover class="abele-chat-input__spinner" />
+        <Icon v-else-if="isBusy || importing" icon="loader" no-hover class="abele-chat-input__spinner" />
         <template v-else>
           <div v-if="scopeLabel" class="abele-chat-input__scope-badge" @click="emit('openScope')">
             {{ scopeLabel }}
@@ -183,6 +183,8 @@ import {
 const props = defineProps<{
   isStreaming: boolean
   isBusy: boolean
+  /** File imports belong to this tab, even when the shared composer switches away. */
+  attachmentOwner?: string
   canContinue: boolean
   tokenDisplay: string
   scopeLabel: string
@@ -213,7 +215,7 @@ const emit = defineEmits<{
   (e: 'focus', focused: boolean): void
   /** The scope badge: a way into the dialog that opens on what the badge is about. */
   (e: 'openScope'): void
-  (e: 'attachFile', path: string): void
+  (e: 'attachFile', path: string, owner?: string): void
 }>()
 
 /** The slash commands the chat answers itself; anything else is looked up as a skill. */
@@ -226,7 +228,16 @@ const TEXTAREA_MIN_HEIGHT = 34
  */
 const TEXTAREA_MAX_HEIGHT = 140
 
-const text = ref('')
+const draft = ref<ChatDraft>({ text: '', attachments: [] })
+let draftOwner = props.attachmentOwner
+const retiredDrafts = new WeakSet<ChatDraft>()
+const pendingImports = new WeakMap<ChatDraft, Set<string>>()
+const importsVersion = ref(0)
+const importing = computed(() => {
+  void importsVersion.value
+  return !!pendingImports.get(draft.value)?.size
+})
+const text = computed({ get: () => draft.value.text, set: (value) => { draft.value.text = value } })
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const editorHost = ref<HTMLElement | null>(null)
 /**
@@ -238,7 +249,10 @@ let editor: EmbeddedEditor | null = null
 /** What the editor itself last reported, so writing it back does not move the cursor. */
 let echoed = ''
 const fileInputEl = ref<HTMLInputElement | null>(null)
-const attachments = ref<TFile[]>([])
+const attachments = computed({
+  get: () => draft.value.attachments,
+  set: (files: TFile[]) => { draft.value.attachments = files },
+})
 
 /**
  * Open out over the whole chat, for a message that takes more than a few lines to write. The
@@ -303,7 +317,7 @@ const send = () => {
   // Streaming is deliberately not a guard: the session queues that message and gives it to
   // the loop at its next iteration. An auxiliary task the user chose to run on its own still
   // holds the input, because that is what running it sequentially means.
-  if (props.isBusy) return
+  if (props.isBusy || importing.value) return
 
   const msg = text.value.trim()
   if (!msg && !attachments.value.length) return
@@ -408,8 +422,10 @@ const pickFromChats = async () => {
 
 const pickFromVault = async () => {
   const { app } = GlobalStore.getInstance()
+  const target = draft.value
+  const owner = draftOwner
   const file = await pickVaultFile(app)
-  if (file) addAttachment(file)
+  if (file && !retiredDrafts.has(target)) attachToDraft(file, target, owner)
 }
 
 const pickFromDisk = () => {
@@ -422,17 +438,7 @@ const onFileSelected = async (e: Event) => {
   input.value = ''
   if (!fileList.length) return
 
-  for (const file of fileList) {
-    try {
-      const vaultFile = await importExternalFile(file)
-      if (!attachments.value.some((a) => a.path === vaultFile.path)) {
-        attachments.value = [...attachments.value, vaultFile]
-        emit('attachFile', vaultFile.path)
-      }
-    } catch (err: unknown) {
-      new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
-    }
-  }
+  await importFiles(fileList)
 }
 
 const onPaste = async (e: ClipboardEvent) => {
@@ -450,17 +456,7 @@ const onPaste = async (e: ClipboardEvent) => {
   if (!files.length) return
   e.preventDefault()
 
-  for (const file of files) {
-    try {
-      const vaultFile = await importExternalFile(file)
-      if (!attachments.value.some((a) => a.path === vaultFile.path)) {
-        attachments.value = [...attachments.value, vaultFile]
-        emit('attachFile', vaultFile.path)
-      }
-    } catch (err: unknown) {
-      new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
-    }
-  }
+  await importFiles(files)
 }
 
 // ── Drag & drop ──
@@ -500,28 +496,23 @@ const onDrop = async (e: DragEvent) => {
   const textData = dt.getData('text/plain')?.trim()
   if (textData) {
     const { app } = GlobalStore.getInstance()
-    // Could be a single path or a wikilink-style drag
-    const path = textData.replace(/^\[\[|\]\]$/g, '')
-    const file = app.vault.getAbstractFileByPath(path)
-    if (file instanceof TFile) {
-      addAttachment(file)
-      return
+    let handled = false
+    for (const line of textData.split('\n').map((s) => s.trim()).filter(Boolean)) {
+      // Both URI and wikilink drags must work here now that this event stops at the composer.
+      const fileParam = line.match(/[?&]file=([^&]+)/)
+      const path = fileParam ? decodeURIComponent(fileParam[1]) : line.replace(/^\[\[|\]\]$/g, '')
+      const file = app.vault.getAbstractFileByPath(path)
+      if (file instanceof TFile) {
+        addAttachment(file)
+        handled = true
+      }
     }
+    if (handled) return
   }
 
   // 2. External files from OS
   const fileList = dt.files ? Array.from(dt.files) : []
-  for (const file of fileList) {
-    try {
-      const vaultFile = await importExternalFile(file)
-      if (!attachments.value.some((a) => a.path === vaultFile.path)) {
-        attachments.value = [...attachments.value, vaultFile]
-        emit('attachFile', vaultFile.path)
-      }
-    } catch (err: unknown) {
-      new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
-    }
-  }
+  await importFiles(fileList)
 }
 
 const setText = (value: string) => {
@@ -530,26 +521,68 @@ const setText = (value: string) => {
 }
 
 /** Hand the unsent input to whoever is keeping it while another tab is open. */
-const takeDraft = (): ChatDraft => ({ text: text.value, attachments: attachments.value })
+const takeDraft = (): ChatDraft => draft.value
 
-const putDraft = (draft: ChatDraft) => {
-  write(draft.text)
-  attachments.value = draft.attachments.filter((file) => !isHeicImport(file.path))
-  for (const file of draft.attachments) if (isHeicImport(file.path)) addAttachment(file)
+const putDraft = (incoming: ChatDraft) => {
+  // Replacing a draft in the same tab cancels its outstanding imports; switching tabs keeps
+  // the old object alive in AiChat's draft map, where its own imports may still finish.
+  if (draftOwner === props.attachmentOwner && incoming !== draft.value) retiredDrafts.add(draft.value)
+  draftOwner = props.attachmentOwner
+  draft.value = incoming
+  write(incoming.text)
   nextTick(autoResize)
 }
 
-const addAttachment = (file: TFile) => {
-  if (isHeicImport(file.path)) {
-    void imageFileForImport(GlobalStore.getInstance().app, file).then(addAttachment).catch((err) => {
-      new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
-    })
+function beginImport(target: ChatDraft, key: string): (() => void) | null {
+  let pending = pendingImports.get(target)
+  if (!pending) pendingImports.set(target, pending = new Set())
+  if (pending.has(key)) return null
+  pending.add(key)
+  importsVersion.value++
+  return () => { pending.delete(key); importsVersion.value++ }
+}
+
+function attachToDraft(file: TFile, target: ChatDraft, owner?: string): void {
+  if (retiredDrafts.has(target) || target.attachments.some((a) => a.path === file.path)) return
+  target.attachments = [...target.attachments, file]
+  if (!isHeicImport(file.path)) {
+    emit('attachFile', file.path, owner)
     return
   }
-  if (!attachments.value.some((a) => a.path === file.path)) {
-    attachments.value = [...attachments.value, file]
-    emit('attachFile', file.path)
-  }
+  const done = beginImport(target, file.path)
+  if (!done) return
+  void imageFileForImport(GlobalStore.getInstance().app, file).then((converted) => {
+    if (retiredDrafts.has(target) || !target.attachments.some((a) => a.path === file.path)) return
+    target.attachments = target.attachments.map((a) => a.path === file.path ? converted : a)
+    emit('attachFile', converted.path, owner)
+  }).catch((err) => {
+    new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
+  }).finally(done)
+}
+
+const addAttachment = (file: TFile) => attachToDraft(file, draft.value, draftOwner)
+
+/** Capture once before any await: disk, paste and whole-chat drops obey the same ownership. */
+async function importFiles(files: File[]): Promise<void> {
+  const target = draft.value
+  const owner = draftOwner
+  const done = beginImport(target, `external-${Date.now()}-${Math.random()}`)
+  try {
+    for (const file of files) {
+      try {
+        const imported = await importExternalFile(file)
+        if (!retiredDrafts.has(target)) {
+          // importExternalFile already attempted normalization, including non-convertible HEIC.
+          if (!target.attachments.some((a) => a.path === imported.path)) {
+            target.attachments = [...target.attachments, imported]
+            emit('attachFile', imported.path, owner)
+          }
+        }
+      } catch (err) {
+        new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+  } finally { done?.() }
 }
 
 /** `atEnd` puts the cursor after what is already typed — text somebody else put there. */
@@ -572,7 +605,7 @@ function hasFocus(): boolean {
   return !!el && !!active && el.contains(active)
 }
 
-defineExpose({ setText, addAttachment, focus, hasFocus, takeDraft, putDraft })
+defineExpose({ setText, addAttachment, importFiles, focus, hasFocus, takeDraft, putDraft })
 
 const onKeydown = (e: KeyboardEvent) => {
   // Alt+Enter is Enter without the model, and only where there is a note to keep.
