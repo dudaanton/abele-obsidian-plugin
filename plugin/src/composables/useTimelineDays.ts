@@ -30,17 +30,17 @@ export function useTimelineDays<T>(
   )
   const folded = computed(() => all.value.filter(([day]) => day < start.value))
   const hasMore = computed(
-    () => upper.value !== null && all.value.some(([day]) => day > upper.value!)
+    () => upper.value !== null && all.value.some(([day]) => day > upper.value)
   )
   const sentinel = ref<HTMLElement | null>(null)
   const showMore = () => {
     const next = all.value.filter(([day]) => day > (upper.value ?? start.value)).slice(0, pageSize)
-    if (next.length) upper.value = next.at(-1)![0]
+    if (next.length) upper.value = next.at(-1)[0]
     if (!terms().length)
       memory.record(
         Math.max(
           1,
-          Math.ceil(eligible.value.filter(([day]) => day <= upper.value!).length / pageSize)
+          Math.ceil(eligible.value.filter(([day]) => day <= upper.value).length / pageSize)
         )
       )
   }
