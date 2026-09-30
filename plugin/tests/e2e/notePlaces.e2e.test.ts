@@ -10,7 +10,7 @@
  *
  * Then the same on a phone: 390×844 under `emulateMobile`.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import {
   evalJson,
   evalRaw,
@@ -428,6 +428,11 @@ const removeFixtures = () => {
 }
 
 describe.skipIf(!available)('notes come back where they were left', () => {
+  // These probes block on synchronous CLI calls for several seconds apiece. Let Vitest send
+  // each result to its runner before starting the next one; otherwise its pending task-update
+  // RPC times out even when every assertion passed.
+  afterEach(async () => { await pause(0) })
+
   beforeAll(() => {
     expect(
       evalJson<boolean>('window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces')
