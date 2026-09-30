@@ -56,6 +56,9 @@ interface ListReport {
   found: boolean
   /** Entries shown that do not hold the words searched for. */
   strays: string[]
+  /** Independently matched task note paths and the distinct paths shown after paging. */
+  expectedPaths?: string[]
+  shownPaths?: string[]
   /** Ranges marked in the list. */
   marked: number
   /** Milliseconds from typing to the entry showing. */
@@ -151,7 +154,7 @@ const probeScript = (tag: string): string => `(async () => {
   // latest date and the oldest log both sort last, far past the first page.
   const body = async (path) => (await app.vault.cachedRead(app.vault.getAbstractFileByPath(path))).replace(/^---\\n[\\s\\S]*?\\n---\\n/, '')
 
-  const probe = async (label, listSel, entrySel, query, isTarget, holds) => {
+  const probe = async (label, listSel, entrySel, query, isTarget, holds, expectedPaths) => {
     const entry = { before: 0, after: 0, found: false, strays: [], marked: 0, ms: 0, restored: 0, closed: false, over: [], shot: '', error: '' }
     report[label] = entry
     window.__abeleListSearchStep = label
@@ -170,11 +173,31 @@ const probeScript = (tag: string): string => `(async () => {
       type(input, query)
       if (!(await until(() => entries().some(isTarget), 20000))) throw new Error('the entry searched for never showed')
       entry.ms = Math.round(performance.now() - started)
+      if (expectedPaths && !await until(() => entries().some(isTarget) && entries().every((e) =>
+        expectedPaths.includes(e.getAttribute('data-abele-anchor')?.replace(/^task:/, ''))), 20000))
+        throw new Error('search did not settle to matching tasks')
       await wait(600)
       entry.after = entries().length
       entry.found = entries().some(isTarget)
       entry.strays = entries().filter((e) => !holds(e)).map((e) => e.textContent.trim().slice(0, 60))
       entry.marked = marked()
+      if (expectedPaths) {
+        // Search reveals folded past days. If a matching task is missing from the first
+        // twenty date blocks, page until it appears; a task spanning many days may already
+        // account for all twenty blocks without hiding any other matching task.
+        const missing = () => expectedPaths.some((path) => !entries().some((e) =>
+          e.getAttribute('data-abele-anchor') === 'task:' + path))
+        for (let page = 0; page < 200 && missing() && list.querySelector('.abele-timeline__sentinel'); page++) {
+          const previous = list.querySelectorAll('.abele-timeline__date-block').length
+          list.querySelector('.abele-timeline__sentinel').scrollIntoView({ block: 'center' })
+          if (!await until(() => !list.querySelector('.abele-timeline__sentinel') ||
+            list.querySelectorAll('.abele-timeline__date-block').length > previous, 5000))
+            throw new Error('search results stopped paging before their end')
+        }
+        if (missing() && list.querySelector('.abele-timeline__sentinel')) throw new Error('search results never reached the missing match')
+        entry.expectedPaths = expectedPaths
+        entry.shownPaths = [...new Set(entries().map((e) => e.getAttribute('data-abele-anchor')?.replace(/^task:/, '') ?? 'missing task path'))].sort()
+      }
       window.__abeleListSearchStep = label + ' shoot'
       // The lists above this one grow a page whenever the scroll passes their end — the
       // backlinks run to thousands — which keeps pushing this one down. Hidden for the picture.
@@ -213,6 +236,12 @@ const probeScript = (tag: string): string => `(async () => {
     const words = title.replace(/\\[\\[([^\\]|]*\\|)?|\\]\\]/g, '').split(/\\s+/).filter((w) => /^[\\p{L}\\d]+$/u.test(w)).slice(0, 4)
     const taskQuery = words.join(' ').toUpperCase()
     const lower = words.map((w) => w.toLowerCase())
+    // An independent reference from the actual task notes, including the dates folded out
+    // of sight before searching. Do not use the component's filtered results as the oracle.
+    const expectedPaths = (await Promise.all(open.map(async (task) => {
+      const text = (task.taskName + '\\n' + await body(task.taskPath)).toLowerCase()
+      return lower.every((word) => text.includes(word)) ? task.taskPath : null
+    }))).filter(Boolean).sort()
     await probe(
       'tasks',
       '.abele-timeline',
@@ -223,7 +252,8 @@ const probeScript = (tag: string): string => `(async () => {
       // title yet, which says nothing about whether it matched.
       (e) =>
         !e.querySelector('.abele-markdown') ||
-        lower.every((w) => e.textContent.toLowerCase().includes(w))
+        lower.every((w) => e.textContent.toLowerCase().includes(w)),
+      expectedPaths
     )
     report['tasks'].query = taskQuery
 
@@ -392,7 +422,11 @@ describe.skipIf(!available)('searching the task, log and transaction lists', () 
   it('finds the entry sorted last, past the first page', () => {
     for (const [label, r] of both()) {
       expect(r.found, label).toBe(true)
-      expect(r.after, label).toBeLessThan(r.before + 1)
+      if (label.endsWith('tasks')) {
+        // The unsearched timeline folds past days: its visible count may be zero. Compare
+        // every distinct task in every search page with the independent note-based matches.
+        expect(r.shownPaths, label).toEqual(r.expectedPaths)
+      } else expect(r.after, label).toBeLessThan(r.before + 1)
     }
   })
 
