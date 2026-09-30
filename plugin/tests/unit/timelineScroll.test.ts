@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function pane(rowTop: number, reveal: () => void = () => {}) {
+async function pane(rowTop: number) {
   const owner = document.createElement('div')
   owner.style.overflowY = 'auto'
   const root = document.createElement('div')
@@ -29,7 +29,7 @@ async function pane(rowTop: number, reveal: () => void = () => {}) {
   const anchorSpace = ref<HTMLElement | null>(null)
   const source = ref(0)
   const scope = effectScope()
-  scope.run(() => useTimelineScroll(items, history, anchorSpace, () => source.value, reveal))
+  scope.run(() => useTimelineScroll(items, history, anchorSpace, () => source.value))
   items.value = root
   anchorSpace.value = space
   await nextTick()
@@ -49,17 +49,7 @@ async function pane(rowTop: number, reveal: () => void = () => {}) {
 
 describe('timeline scroll ownership', () => {
   it('leaves the whole upward touch gesture native without inserting history', async () => {
-    let inserted = 0
-    const earlier = document.createElement('div')
-    vi.spyOn(earlier, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, -100, 300, 100))
-    const reveal = vi.fn(() => {
-      inserted = 200
-      p.root.prepend(earlier)
-    })
-    const p = await pane(50, reveal)
-    vi.mocked(p.row.getBoundingClientRect).mockImplementation(
-      () => new DOMRect(0, 50 + inserted - (p.owner.scrollTop - 100), 300, 40)
-    )
+    const p = await pane(50)
     const strip = document.createElement('div')
     p.owner.prepend(strip)
     vi.spyOn(strip, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 40))
@@ -79,7 +69,7 @@ describe('timeline scroll ownership', () => {
     expect(touch('touchmove', 140).defaultPrevented).toBe(false)
     expect(touch('touchmove', 180).defaultPrevented).toBe(false)
     await nextTick()
-    expect(reveal).not.toHaveBeenCalled()
+    expect([...p.root.children]).toEqual([p.row])
     expect(p.row.getBoundingClientRect().top).toBe(50)
     expect(p.space.style.height).toBe('')
     for (const event of [
@@ -90,12 +80,12 @@ describe('timeline scroll ownership', () => {
       p.root.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(false)
       await nextTick()
-      expect(reveal).not.toHaveBeenCalled()
+      expect([...p.root.children]).toEqual([p.row])
     }
     p.owner.scrollTop = 0
     p.owner.dispatchEvent(new Event('scroll'))
     await nextTick()
-    expect(reveal).not.toHaveBeenCalled()
+    expect([...p.root.children]).toEqual([p.row])
   })
 
   it('does not scroll note text when every timeline row is below the viewport', async () => {

@@ -437,8 +437,9 @@ was left: the scroll and the cursor, by path. A note opened plainly comes back t
 at a heading, a block, a search result, a line or a book's highlight goes to that instead.
 Nothing about it is written into notes or synced, a rename carries the place along and a delete
 drops it. The local footer-view memory also keeps expanded list pages, opened task descriptions,
-and the earliest revealed timeline day. That day is drawn again before restoring a saved past-task
-anchor; with place restoration off, the timeline starts at today. Search windows are not remembered.
+and whether all past timeline days were revealed (`calendarPast`). Revealed history is drawn again
+before restoring a saved past-task anchor; an older saved day boundary migrates to all history open.
+With place restoration off, the timeline starts at today. Search windows are not remembered.
 
 ## Places
 

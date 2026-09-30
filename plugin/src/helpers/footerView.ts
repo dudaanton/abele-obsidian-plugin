@@ -15,8 +15,8 @@ export interface NoteFooterView {
   pages?: Partial<Record<FooterSection, number>>
   /** Tasks, by path, showing their description. */
   open?: string[]
-  /** Earliest revealed timeline day, so a saved past-row anchor can be drawn again. */
-  calendarStart?: string
+  /** All past timeline days revealed, so a saved past-row anchor can be drawn again. */
+  calendarPast?: true
 }
 
 /** Note path → how its lists were left. Insertion order is recency: oldest first. */
@@ -32,21 +32,21 @@ export const FOOTER_VIEW_LIMIT = 500
 export const MAX_RESTORED_PAGES = 10
 
 const isEmpty = (v: NoteFooterView) =>
-  !(v.pages && Object.keys(v.pages).length) && !(v.open && v.open.length) && !v.calendarStart
+  !(v.pages && Object.keys(v.pages).length) && !(v.open && v.open.length) && !v.calendarPast
 
-export function timelineStartOf(state: FooterViewState, path: string): string | null {
-  return state[path]?.calendarStart ?? null
+export function timelinePastOf(state: FooterViewState, path: string): boolean {
+  return state[path]?.calendarPast === true
 }
 
-export function setTimelineStart(
+export function setTimelinePast(
   state: FooterViewState,
   path: string,
-  day: string | null
+  revealed: boolean
 ): FooterViewState {
-  if (timelineStartOf(state, path) === day) return state
+  if (timelinePastOf(state, path) === revealed) return state
   const view = { ...state[path] }
-  if (day) view.calendarStart = day
-  else delete view.calendarStart
+  if (revealed) view.calendarPast = true
+  else delete view.calendarPast
   return put(state, path, view)
 }
 
@@ -120,7 +120,12 @@ export function footerViewFrom(raw: unknown): FooterViewState {
   const state: FooterViewState = {}
   for (const [path, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!value || typeof value !== 'object') continue
-    const v = value as { pages?: unknown; open?: unknown; calendarStart?: unknown }
+    const v = value as {
+      pages?: unknown
+      open?: unknown
+      calendarPast?: unknown
+      calendarStart?: unknown
+    }
     const view: NoteFooterView = {}
     if (v.pages && typeof v.pages === 'object') {
       const pages: Partial<Record<FooterSection, number>> = {}
@@ -133,8 +138,13 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       const open = v.open.filter((t): t is string => typeof t === 'string')
       if (open.length) view.open = open
     }
-    if (typeof v.calendarStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.calendarStart))
-      view.calendarStart = v.calendarStart
+    // Previous versions remembered a partially revealed date. Any such state now means
+    // all history is open; newly arriving or completed-only earlier days belong there too.
+    if (
+      v.calendarPast === true ||
+      (typeof v.calendarStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.calendarStart))
+    )
+      view.calendarPast = true
     if (!isEmpty(view)) state[path] = view
   }
   return state

@@ -12,8 +12,8 @@ import {
   renameFooterView,
   setOpen,
   setPages,
-  setTimelineStart,
-  timelineStartOf,
+  setTimelinePast,
+  timelinePastOf,
 } from '@/helpers/footerView'
 
 describe('the pages of a list under a note', () => {
@@ -45,16 +45,25 @@ describe('the tasks opened under a note', () => {
   })
 })
 
-describe('the revealed timeline boundary', () => {
-  it('survives storage and rename, and a reset removes just the history boundary', () => {
-    const s = setTimelineStart(setPages({}, 'sample.md', 'calendar', 2), 'sample.md', '2030-06-14')
-    expect(timelineStartOf(footerViewFrom(s), 'sample.md')).toBe('2030-06-14')
+describe('the revealed timeline history', () => {
+  it('survives storage and rename, and a reset removes just the history state', () => {
+    const s = setTimelinePast(setPages({}, 'sample.md', 'calendar', 2), 'sample.md', true)
+    expect(timelinePastOf(footerViewFrom(s), 'sample.md')).toBe(true)
     const moved = renameFooterView(s, 'sample.md', 'sample-renamed.md')
-    expect(timelineStartOf(moved, 'sample-renamed.md')).toBe('2030-06-14')
-    const reset = setTimelineStart(moved, 'sample-renamed.md', null)
-    expect(timelineStartOf(reset, 'sample-renamed.md')).toBeNull()
+    expect(timelinePastOf(moved, 'sample-renamed.md')).toBe(true)
+    const reset = setTimelinePast(moved, 'sample-renamed.md', false)
+    expect(timelinePastOf(reset, 'sample-renamed.md')).toBe(false)
     expect(pagesOf(reset, 'sample-renamed.md', 'calendar')).toBe(2)
-    expect(setTimelineStart({}, 'sample.md', null)).toEqual({})
+    expect(setTimelinePast({}, 'sample.md', false)).toEqual({})
+    expect(footerViewFrom({ 'sample.md': { calendarPast: ['bad'] } })).toEqual({})
+    expect(footerViewFrom({ 'sample.md': { calendarPast: 'true' } })).toEqual({})
+  })
+
+  it('migrates a legacy revealed day into all-history state without losing future pages', () => {
+    const s = footerViewFrom({
+      'sample.md': { calendarStart: '2030-06-14', pages: { calendar: 3 } },
+    })
+    expect(s).toEqual({ 'sample.md': { calendarPast: true, pages: { calendar: 3 } } })
     expect(footerViewFrom({ 'sample.md': { calendarStart: ['bad'] } })).toEqual({})
     expect(footerViewFrom({ 'sample.md': { calendarStart: 'not-a-day' } })).toEqual({})
   })

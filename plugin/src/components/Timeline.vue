@@ -50,15 +50,19 @@
         v-if="folded.length"
         ref="historyEl"
         class="abele-timeline__history"
-        role="status"
-        aria-live="polite"
+        role="button"
+        tabindex="0"
+        aria-label="Show all past days"
+        @click="revealPast"
+        @keydown.enter.prevent="revealPast"
+        @keydown.space.prevent="revealPast"
       >
         <div class="abele-timeline__date-indicator abele-timeline__date-indicator_overdue">
           <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
             <ObsidianIcon icon="flame" no-hover />
           </div>
         </div>
-        <span>Past days · {{ foldedUnfinished }} unfinished · Scroll up</span>
+        <span>Past days · {{ foldedUnfinished }} unfinished · Show all</span>
       </div>
       <div ref="itemsEl" class="abele-timeline__blocks">
         <div
@@ -219,7 +223,7 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
-const { visible, folded, hasMore, sentinel, reset, revealPrevious } = useTimelineDays(
+const { visible, folded, hasMore, sentinel, reset, revealPast } = useTimelineDays(
   () => dates.value,
   () => now.value.format(DATE_FORMAT),
   () => search.terms.value,
@@ -235,7 +239,7 @@ const foldedUnfinished = computed(() => {
 })
 const historyEl = ref<HTMLElement | null>(null)
 const anchorSpaceEl = ref<HTMLElement | null>(null)
-useTimelineScroll(itemsEl, historyEl, anchorSpaceEl, () => visible.value, revealPrevious)
+useTimelineScroll(itemsEl, historyEl, anchorSpaceEl, () => visible.value)
 watch(labelSelection, reset)
 
 const getDateWikilink = (dateStr: string) => {
@@ -269,6 +273,11 @@ const getDateWikilink = (dateStr: string) => {
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   font-size: var(--font-small);
+  cursor: var(--cursor);
+
+  &:focus-visible {
+    box-shadow: var(--input-shadow);
+  }
 }
 
 .abele-timeline__search {

@@ -87,6 +87,13 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     const blocks = () => [...root.querySelectorAll('.abele-timeline__date-block')]
     const dates = () => blocks().map(x => x.dataset.abeleAnchor)
     const strip = () => root.querySelector('.abele-timeline__history')
+    const revealClick = async () => {
+      const el = strip()
+      if (window.__e2eHost) {
+        const r = el.getBoundingClientRect()
+        await window.__e2eHost.tap(r.left + r.width / 2, r.top + r.height / 2)
+      } else el.click()
+    }
     const row = (d, n = 1) => [...root.querySelectorAll('.abele-task-view')].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item ' + d + ' ' + n + '.md')
     const usableTop = () => {
       const viewport = scroller.getBoundingClientRect().top
@@ -173,7 +180,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       await wait(1200)
       report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
       const beforeReveal = row(0).getBoundingClientRect().top
-      strip().click()
+      await revealClick()
       await wait(1200)
       report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
       report.revealed = dates()
@@ -224,7 +231,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     report.scrollRevealed = dates()
     align(row(0)); await wait(500)
     const beforeReveal = row(0).getBoundingClientRect().top
-    strip().click()
+    await revealClick()
     await wait(1200)
     report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
     report.revealed = dates()
@@ -327,6 +334,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           const p = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
           expect(p.error).toBeUndefined()
           expect(p.emptySpace).toBe(0)
+          expect(p.revealed).toHaveLength(2)
           for (const pair of [p.anchored, p.hiddenAnchor, p.revealAnchor]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)

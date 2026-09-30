@@ -248,24 +248,34 @@ describe('folded timeline history', () => {
     expect(view.find('.abele-timeline__history').exists()).toBe(false)
   })
 
-  it('includes older completed-only days and late arrivals after revealing all history', async () => {
-    const tasks = [
-      task('sample-old-done', '2020-01-01', true),
-      task('sample-old', '2030-06-12'),
-      task('sample-today', '2030-06-15'),
-    ]
-    render(tasks)
-    await flushPromises()
-    await view.find('.abele-timeline__history').trigger('click')
-    await flushPromises()
-    await view.find('.abele-timeline__completed-toggle').trigger('click')
-    await flushPromises()
-    expect(days()).toEqual(['date:2020-01-01', 'date:2030-06-12', 'date:2030-06-15'])
-    await view.setProps({ tasks: [task('sample-arrival', '2019-01-01'), ...tasks] })
-    await flushPromises()
-    expect(days()[0]).toBe('date:2019-01-01')
-    expect(view.find('.abele-timeline__history').exists()).toBe(false)
-  })
+  it.each([false, true])(
+    'includes older completed-only days and late arrivals when completed is enabled before reveal: %s',
+    async (completedFirst) => {
+      const tasks = [
+        task('sample-old-done', '2020-01-01', true),
+        task('sample-old', '2030-06-12'),
+        task('sample-today', '2030-06-15'),
+      ]
+      render(tasks)
+      await flushPromises()
+      if (completedFirst) {
+        await view.find('.abele-timeline__completed-toggle').trigger('click')
+        await flushPromises()
+        expect(days()).toEqual(['date:2030-06-15'])
+      }
+      await view.find('.abele-timeline__history').trigger('click')
+      await flushPromises()
+      if (!completedFirst) {
+        await view.find('.abele-timeline__completed-toggle').trigger('click')
+        await flushPromises()
+      }
+      expect(days()).toEqual(['date:2020-01-01', 'date:2030-06-12', 'date:2030-06-15'])
+      await view.setProps({ tasks: [task('sample-arrival', '2019-01-01'), ...tasks] })
+      await flushPromises()
+      expect(days()[0]).toBe('date:2019-01-01')
+      expect(view.find('.abele-timeline__history').exists()).toBe(false)
+    }
+  )
 
   it.each(['Enter', ' '])('reveals all history with the banner keyboard action %s', async (key) => {
     render([task('sample-old', '2030-06-14'), task('sample-today', '2030-06-15')])

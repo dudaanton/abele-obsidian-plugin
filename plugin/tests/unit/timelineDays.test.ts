@@ -8,6 +8,39 @@ import {
 } from '../helpers/fakeIntersectionObserver'
 
 describe('timeline date loading', () => {
+  it('preserves revealed history across a search label reset without recording the search', async () => {
+    const scope = effectScope()
+    const terms = ref<string[]>([])
+    const recordPast = vi.fn()
+    const record = vi.fn()
+    const window = scope.run(() =>
+      useTimelineDays(
+        () => [
+          ['2030-06-01', []],
+          ['2030-06-15', []],
+        ],
+        () => '2030-06-15',
+        () => terms.value,
+        20,
+        { initial: 1, pastRevealed: true, record, recordPast }
+      )
+    )!
+    try {
+      terms.value = ['sample']
+      await nextTick()
+      window.reset()
+      await nextTick()
+      expect(window.folded.value).toEqual([])
+      terms.value = []
+      await nextTick()
+      expect(window.visible.value.map(([day]) => day)).toEqual(['2030-06-01', '2030-06-15'])
+      expect(recordPast).not.toHaveBeenCalled()
+      expect(record).not.toHaveBeenCalled()
+    } finally {
+      scope.stop()
+    }
+  })
+
   it('includes an earlier description match arriving after a known title match', async () => {
     const scope = effectScope()
     const days = ref<[string, string[]][]>([['2030-06-15', ['sample-title-match']]])
