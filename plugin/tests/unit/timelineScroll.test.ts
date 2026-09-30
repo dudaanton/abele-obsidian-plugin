@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function pane(rowTop: number) {
+async function pane(rowTop: number, reveal: () => void = () => {}) {
   const owner = document.createElement('div')
   owner.style.overflowY = 'auto'
   const root = document.createElement('div')
@@ -29,15 +29,7 @@ async function pane(rowTop: number) {
   const anchorSpace = ref<HTMLElement | null>(null)
   const source = ref(0)
   const scope = effectScope()
-  scope.run(() =>
-    useTimelineScroll(
-      items,
-      history,
-      anchorSpace,
-      () => source.value,
-      () => {}
-    )
-  )
+  scope.run(() => useTimelineScroll(items, history, anchorSpace, () => source.value, reveal))
   items.value = root
   anchorSpace.value = space
   await nextTick()
@@ -52,10 +44,45 @@ async function pane(rowTop: number) {
     await nextTick()
     stop()
   }
-  return { owner, row, space, patch, shift: (amount: number) => (top += amount) }
+  return { owner, root, row, space, history, patch, shift: (amount: number) => (top += amount) }
 }
 
 describe('timeline scroll ownership', () => {
+  it('keeps a revealed row under the finger through the entire upward touch gesture', async () => {
+    let inserted = 0
+    const earlier = document.createElement('div')
+    vi.spyOn(earlier, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, -100, 300, 100))
+    const reveal = vi.fn(() => {
+      inserted = 200
+      p.root.prepend(earlier)
+    })
+    const p = await pane(50, reveal)
+    vi.mocked(p.row.getBoundingClientRect).mockImplementation(
+      () => new DOMRect(0, 50 + inserted - (p.owner.scrollTop - 100), 300, 40)
+    )
+    const strip = document.createElement('div')
+    p.owner.prepend(strip)
+    vi.spyOn(strip, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 40))
+    p.history.value = strip
+    await nextTick()
+    const touch = (type: string, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'touches', { value: [{ clientY: y }] })
+      p.root.dispatchEvent(event)
+      return event
+    }
+    touch('touchstart', 100)
+    touch('touchmove', 113)
+    await nextTick()
+    await nextTick()
+    expect(p.row.getBoundingClientRect().top).toBe(63)
+    expect(touch('touchmove', 140).defaultPrevented).toBe(true)
+    touch('touchmove', 180)
+    await nextTick()
+    expect(reveal).toHaveBeenCalledTimes(1)
+    expect(p.row.getBoundingClientRect().top).toBe(130)
+  })
+
   it('does not scroll note text when every timeline row is below the viewport', async () => {
     const p = await pane(700)
     await p.patch(() => p.shift(50))

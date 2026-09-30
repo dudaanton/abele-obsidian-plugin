@@ -61,7 +61,7 @@ export function useTimelineScroll(
     alignedTop = owner.scrollTop
   }
 
-  const hold = (moveDown = 0) => {
+  const hold = (moveDown: number | (() => number) = 0) => {
     stopHolding()
     const root = items.value
     if (!root) return () => {}
@@ -86,10 +86,19 @@ export function useTimelineScroll(
     if (!row) return () => releaseUnusedSpace(owner)
     const key = row.dataset.timelineItem
     const day = row.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor')
-    const offset = row.getBoundingClientRect().top - viewport.top + moveDown
+    // Touch positions are client coordinates: a gesture's row follows the finger even if
+    // native navigation changes the pane's top. Normal updates keep the pane-relative offset.
+    const clientMotion = typeof moveDown === 'function'
+    const offset = row.getBoundingClientRect().top - (clientMotion ? 0 : viewport.top)
     let live = true
+    let timeout = 0
+    const extend = () => {
+      window.clearTimeout(timeout)
+      timeout = window.setTimeout(() => stopHolding(), 800)
+    }
     const align = () => {
       if (!live || !items.value) return
+      extend()
       const target = Array.from(
         items.value.querySelectorAll<HTMLElement>('[data-timeline-item]')
       ).find(
@@ -98,8 +107,12 @@ export function useTimelineScroll(
           el.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor') === day
       )
       if (target) {
+        const movement = typeof moveDown === 'function' ? moveDown() : moveDown
         const shift =
-          target.getBoundingClientRect().top - owner.getBoundingClientRect().top - offset
+          target.getBoundingClientRect().top -
+          (clientMotion ? 0 : owner.getBoundingClientRect().top) -
+          offset -
+          movement
         if (Math.abs(shift) > 0.5) {
           placeScroll(owner, owner.scrollTop + shift)
         }
@@ -112,7 +125,7 @@ export function useTimelineScroll(
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(align)
     observer?.observe(root)
     const frame = window.requestAnimationFrame(align)
-    const timeout = window.setTimeout(() => stopHolding(), 800)
+    extend()
     stopHolding = () => {
       live = false
       observer?.disconnect()
@@ -182,14 +195,15 @@ export function useTimelineScroll(
         )
       }
       let upwardScroll = false
-      const unfold = async (amount: number) => {
+      const unfold = async (amount: number, motion?: { distance: number; align?: () => void }) => {
         if (inserting || !atBoundary()) return false
         inserting = true
         upwardScroll = false
         // Move the old row down by exactly the input distance, not by the newly inserted
         // day's height. Keep holding through its lazy titles, which arrive after the patch.
         const hadRow = !!root.querySelector('[data-timeline-item]')
-        const align = hold(amount)
+        const align = hold(motion ? () => motion.distance : amount)
+        if (motion) motion.align = align
         const oldHeight = root.getBoundingClientRect().height
         revealPrevious()
         await nextTick()
@@ -213,9 +227,11 @@ export function useTimelineScroll(
         void unfold(Math.abs(event.deltaY))
       }
       let fingerY: number | null = null
+      let touchHistory: { distance: number; align?: () => void } | null = null
       const touchStart = (event: TouchEvent) => {
         inputInsideTimeline = root.parentElement?.contains(event.target as Node) ?? false
         stopHolding()
+        touchHistory = null
         fingerY = event.touches.length === 1 ? event.touches[0].clientY : null
       }
       const touchMove = (event: TouchEvent) => {
@@ -223,10 +239,25 @@ export function useTimelineScroll(
         const delta = y !== null && fingerY !== null ? y - fingerY : 0
         fingerY = y
         upwardScroll = delta > 0
+        if (touchHistory && y !== null) {
+          // Once history consumed the first move, own the whole pan. Returning later moves
+          // to native scrolling loses its touch slop and cancels the insertion's lazy hold.
+          event.preventDefault()
+          touchHistory.distance += delta
+          touchHistory.align?.()
+          return
+        }
         stopHolding()
+        touchHistory = null
         if (delta <= 0 || !atBoundary()) return
         event.preventDefault()
-        void unfold(delta)
+        touchHistory = { distance: delta }
+        void unfold(delta, touchHistory)
+      }
+      const touchEnd = () => {
+        fingerY = null
+        touchHistory = null
+        upwardScroll = false
       }
       let previousTop = owner.scrollTop
       const scroll = () => {
@@ -267,6 +298,8 @@ export function useTimelineScroll(
       owner.addEventListener('wheel', wheel, { passive: false })
       owner.addEventListener('touchstart', touchStart, { passive: true })
       owner.addEventListener('touchmove', touchMove, { passive: false })
+      owner.addEventListener('touchend', touchEnd, { passive: true })
+      owner.addEventListener('touchcancel', touchEnd, { passive: true })
       owner.addEventListener('scroll', scroll, { passive: true })
       owner.addEventListener('keydown', key)
       owner.addEventListener('pointerdown', pointer)
@@ -277,6 +310,8 @@ export function useTimelineScroll(
         owner.removeEventListener('wheel', wheel)
         owner.removeEventListener('touchstart', touchStart)
         owner.removeEventListener('touchmove', touchMove)
+        owner.removeEventListener('touchend', touchEnd)
+        owner.removeEventListener('touchcancel', touchEnd)
         owner.removeEventListener('scroll', scroll)
         owner.removeEventListener('keydown', key)
         owner.removeEventListener('pointerdown', pointer)
