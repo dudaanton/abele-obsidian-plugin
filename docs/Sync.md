@@ -222,6 +222,11 @@ or a newer version of one it shows, is neither written nor kept over: it stays w
 question is asked again about it. **Reload now** then applies what was shown but does not reload,
 so no plugin starts with code nobody was shown; answer the new question and it reloads then.
 
+If applying a batch fails part way, the result names exactly which files were written and which
+failed. Files already written remain listed as **Written but awaiting reload** on the Sync tab,
+with **Reload applied settings** to read those changes without retrying the failed files. Do not
+change settings before reloading; the failed files remain waiting for another attempt.
+
 Changing settings here before reloading keeps this device's version everywhere: the change is
 sent as usual, and the one that was waiting for that file is dropped, with a line in the log
 ("your change to hotkeys.json on this device replaced the one from Laptop"). The command-line
@@ -241,15 +246,20 @@ Folders themselves do not sync, only the files in them. When another device rena
 folder, the files move or go here too, and a folder this left empty is removed. A folder you made
 empty yourself, or one still holding a hidden file such as `.DS_Store`, stays. On a computer the
 folder is removed only by a call that refuses a folder holding anything, so a file saved into it at
-that moment keeps the folder. A phone has no such call: the folder is looked at twice, right before
-it goes, and a file saved into it in the instant between the second look and the removal would go
-with it.
+that moment keeps the folder. A phone has no non-recursive removal call, so the plugin does not
+prune folders on mobile at all: empty folders stay. This prevents a newly created file from being
+removed by a recursive cleanup.
 
 A file that arrives is written whole or not at all. Its new contents go to a hidden file beside it,
 named `.abele-sync-….tmp`, and take the file's name only once they are all there, so Obsidian
 closing half way leaves the old file as it was. On a phone the old file steps aside to a hidden
-`.abele-sync-….old` for that moment, and if Obsidian closes right then it is put back the next time
-sync starts.
+`.abele-sync-….old` for that moment. Unfinished replacements are recovered before every scan,
+including after a failed write without restarting. A journal or recovery error stops the scan;
+it is never treated as a deleted file. The original contents are rechecked after preparing the
+temporary file, so an edit made during that preparation is left in place rather than overwritten.
+A remaining desktop limitation is the instant between that final check and the native rename:
+an independent writer changing the file in that interval is not yet fenced. This case remains a
+known failing regression; do not rely on safe replacement with competing independent writers.
 
 These never travel, whatever the switches say:
 
@@ -291,7 +301,9 @@ other keep the edit, and the file comes back.
 
 Right-click a file in the file list and choose **Open version history (Abele)** (shown only while
 this device is connected; Obsidian's own Sync, when it is on, adds an item of its own without the
-suffix). Every version the server keeps is listed with its number, what happened
+suffix). Versions are read in pages of fifty; **Load older** appends the next retained page, so
+versions beyond the first fifty can also be previewed and restored. Every version the server keeps
+is listed with its number, what happened
 (created, edited, deleted…) and when. A merged version also says whose version it kept, or
 that it merged two devices' edits: the device named beside it is the one whose change caused the
 merge, which is not always the one whose text won. Clicking a version of a text file shows how it differs from
@@ -401,7 +413,10 @@ it to anything else, or empty, like on any device; the laptop does not see the c
 
 Signing in gives this device a token of its own, and that token is what it syncs with from then
 on. It is kept in Obsidian's keychain on this device only. It is never put in the synced keys, not
-even with those turned on: a device holding another's token would sync as that device.
+even with those turned on: a device holding another's token would sync as that device. Beside its
+keychain id, the plugin keeps a device-only binding to the server that minted the token. Changing
+an id cannot send that token to another server. An id with no binding is refused too: connections
+from a build without this metadata need a new sign-in before they can sync or send a revoke.
 
 Where the device syncs — the server, the vault, the device it enrolled as, the name its token is
 filed under, whether it is paused, and what it takes — is kept in Obsidian's own storage for this
@@ -437,8 +452,9 @@ On the receiving device:
   it from its vault — telling that server — and takes the new one. Declining applies the rest of the
   transfer, and the device made for it is revoked.
 
-Closing the dialog without **Apply** revokes the device made for it too, whatever the switches
-said: nothing was taken, so nobody holds it. A switch that fails after this device was
+Closing the dialog without **Apply** revokes the spare device made for it too, whatever the
+switches said. Reopening a saved transfer that this device already adopted is different: its
+own current device is never revoked by applying or closing that transfer again. A switch that fails after this device was
 disconnected from its own vault says so, and the device then syncs nothing until it signs in.
 
 A transfer made by an older version of Abele still holds the sender's connection and token; the

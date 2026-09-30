@@ -1146,8 +1146,8 @@ again. Other hidden files and folders — `.git/`,
 from `.obsidian`. The daemon's `.abele-sync/` folder, when
 a vault is synced by the command-line client, is its state and never syncs either. Leave both
 alone unless asked. A hidden `.abele-sync-….tmp` or `.abele-sync-….old` file beside a note is a
-file the sync is writing that moment; one left after Obsidian closed is tidied (or, for `.old`,
-put back under its own name) the next time sync starts. Never delete an `.old` by hand: it can be
+file the sync is writing that moment; unfinished replacements are recovered before each scan,
+not only at startup. A recovery error stops the scan rather than treating the gap as a delete. Never delete an `.old` by hand: it can be
 the only copy of that file.
 
 Four records are kept in Obsidian's local storage for this vault, which no file carries: under
@@ -1159,14 +1159,16 @@ connection waits for the person to choose; cleared once the join is done), and a
 while the server could not be told,
 whose token is kept under an `abele-sync-device-revoke-…` keychain name until it is (one that left
 a server on plain http to another machine is never told, and is kept until the person forgets it); under
-`abele-sync-writes`, the files a sync write was replacing when Obsidian last closed, put back at
-the next start; under `abele-sync-restore-keys`, for a day, the keys of a **Restore all deleted
+`abele-sync-writes`, unfinished replacements, including the replacement hash and whether it was
+installed, recovered before the next scan; under `abele-sync-restore-keys`, for a day, the keys of a **Restore all deleted
 since** whose answer did not arrive, so pressing it again is not a second restore; under
 `abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
 in Obsidian's IndexedDB, as a database named `abele-sync-<id>`; it also holds the Obsidian
 settings changes that arrived from other devices and wait for the person to reload or keep this
 device's, so a file in the config folder may be older on disk than on the other devices until then. The device token itself is in the
-keychain — one per vault on a desktop, one for the whole app on a phone. So a copy of the vault, a
+keychain — one per vault on a desktop, one for the whole app on a phone. A device-only keychain
+entry named `<token-id>-server` binds each token id and its exact token value to the server that
+minted it; missing or mismatched proofs, or bindings to another server, are never sent. Neither the token nor this binding travels. So a copy of the vault, a
 synced `data.json` or a transfer never makes another vault sync as this device or read its record;
 a transfer that carries the connection gives the other device a device of its own, made on the
 server when the codes are made. A device set up by a transfer from an older version is the
