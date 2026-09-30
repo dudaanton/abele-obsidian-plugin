@@ -59,12 +59,16 @@ const PRELUDE = `
   }
   const win = require('@electron/remote').getCurrentWindow()
   const open = async () => {
-    let leaf = app.workspace.getLeavesOfType('abele-book')[0]
+    let leaf = app.workspace.getLeavesOfType('abele-book').find(l => l.getViewState().state?.file === ${JSON.stringify(BOOK)})
     if (!leaf) {
       try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
       await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
     }
-    await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading)
+    // After a mobile reload Obsidian may restore this tab as a deferred view, not a BookView.
+    app.workspace.setActiveLeaf(leaf, { focus: true })
+    if (leaf.loadIfDeferred) await leaf.loadIfDeferred()
+    if (!await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading))
+      throw Error('the fixture book did not become ready')
     await wait(800)
     return leaf.view
   }
