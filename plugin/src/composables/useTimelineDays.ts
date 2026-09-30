@@ -22,7 +22,11 @@ export function useTimelineDays<T>(
   const upper = ref<string | null>(null)
   const start = computed(() => lower.value ?? today())
   const eligible = computed(() => all.value.filter(([day]) => day >= start.value))
-  const pageEnd = (pages = 1) => eligible.value.slice(0, pageSize * pages).at(-1)?.[0] ?? null
+  // History has its own boundary. Future-page memory must not round an extra revealed past
+  // day up to an entire future page when the note reopens.
+  const forward = computed(() => all.value.filter(([day]) => day >= today()))
+  const pageEnd = (pages = 1) =>
+    (terms().length ? eligible.value : forward.value).slice(0, pageSize * pages).at(-1)?.[0] ?? null
   upper.value = pageEnd(memory.initial)
   // The sidebar can mount before the vault's tasks arrive. Keep the default batched watch:
   // synchronous reads would rebuild every date for each task as a large relation set loads.
@@ -47,7 +51,7 @@ export function useTimelineDays<T>(
       memory.record(
         Math.max(
           1,
-          Math.ceil(eligible.value.filter(([day]) => day <= upper.value).length / pageSize)
+          Math.ceil(forward.value.filter(([day]) => day <= upper.value).length / pageSize)
         )
       )
   }
@@ -60,7 +64,6 @@ export function useTimelineDays<T>(
       lower.value = previous[0]
       if (!terms().length) {
         memory.recordLower?.(lower.value)
-        memory.record(Math.max(1, Math.ceil(visible.value.length / pageSize)))
       }
     }
   }

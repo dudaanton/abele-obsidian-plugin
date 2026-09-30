@@ -41,6 +41,46 @@ beforeEach(() => {
 afterEach(() => view?.unmount())
 
 describe('folded timeline history', () => {
+  it('restores the same future page without rounding revealed history into extra future pages', async () => {
+    useVault([])
+    const config = configureAbele()
+    const remembered = config.rememberNotePlaces
+    config.rememberNotePlaces = true
+    resetFooterView()
+    resetFooterFolds()
+    const tasks = [
+      task('sample-yesterday', '2030-06-14'),
+      ...Array.from({ length: 60 }, (_, i) =>
+        task(`sample-future-${i}`, dayjs('2030-06-15').add(i, 'day').format('YYYY-MM-DD'))
+      ),
+    ]
+    const open = () => {
+      view = mount(Timeline, {
+        props: { tasks },
+        shallow: true,
+        attachTo: document.body,
+        global: { provide: { [FOOTER_FOLD as symbol]: () => 'Sample/group.md' } },
+      })
+    }
+    try {
+      open()
+      await flushPromises()
+      await view.trigger('wheel', { deltaY: -80 })
+      await flushPromises()
+      expect(days()).toHaveLength(21)
+      const before = days()
+      view.unmount()
+      resetFooterView()
+      open()
+      await flushPromises()
+      expect(days()).toEqual(before)
+    } finally {
+      config.rememberNotePlaces = remembered
+      resetFooterView()
+      resetFooterFolds()
+    }
+  })
+
   it('recreates revealed history after a footer unmounts, only when remembering places is enabled', async () => {
     const app = useVault([])
     const config = configureAbele()
