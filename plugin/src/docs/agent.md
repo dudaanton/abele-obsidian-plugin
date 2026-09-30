@@ -105,7 +105,10 @@ path or treat the image input as the only copy. The picture is a real vault file
 to this chat's scope. `read_image` shows it again; `edit_image` takes its path in `source` and
 saves a new image. The result appears as a clickable preview under the tool call. To include
 an existing image in your reply, use `![[Attachments/sample-image.png]]` with its actual path.
-Text `read`/`write`/`edit` tools are not binary image editors.
+Text `read`/`write`/`edit` tools are not binary image editors. Pending imports belong to the
+conversation that started them, not its tab: loading or resetting the conversation cancels
+its pending attachments. Drawing returns and draft edits preserve unrelated imports. Send
+waits until the current draft's imports finish, including after viewing a delegated run.
 
 HEIC/HEIF imports become PNG only when the platform decodes them natively (iPhone/iPad).
 Then only the PNG is attached and sent to the model; refer to its labeled path. External

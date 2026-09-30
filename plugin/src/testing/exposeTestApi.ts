@@ -34,7 +34,7 @@ import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools
 import { createGithubTools } from '@/ai/tools/github'
 import { createAgentTools } from '@/ai/tools'
 import { prepareImageForApi } from '@/ai/imagePrep'
-import { importExternalFile } from '@/ai/attachments'
+import { importExternalFile, resolveAttachmentsForApi } from '@/ai/attachments'
 import { normalizeImageImport } from '@/media/imageImport'
 import { McpService } from '@/ai/mcp/McpService'
 import { githubUsers } from '@/github/users'
@@ -160,6 +160,7 @@ interface AbeleTestApi {
   /** A vault picture as it goes to a model. */
   prepareImageForApi: typeof prepareImageForApi
   importExternalFile: typeof importExternalFile
+  resolveAttachmentsForApi: typeof resolveAttachmentsForApi
   normalizeImageImport: typeof normalizeImageImport
   /** The connections to MCP servers, to fetch a server's tools the way the settings do. */
   McpService: typeof McpService
@@ -663,6 +664,7 @@ export function exposeTestApi(plugin: Plugin): void {
     createAgentTools,
     prepareImageForApi,
     importExternalFile,
+    resolveAttachmentsForApi,
     normalizeImageImport,
     McpService,
     githubUsers,

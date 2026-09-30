@@ -59,6 +59,120 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
     }
   }, 180_000)
 
+  it.each(['sample', 'sample.jpg'])('persists MIME-only HEIC type for %s rather than sending bytes as text or pixels', async (name) => {
+    const result = JSON.parse(await evalLong(`(async () => {
+      const folder = app.vault.getConfig('attachmentFolderPath')
+      try {
+        app.vault.setConfig('attachmentFolderPath', ${JSON.stringify(DIR)})
+        const bytes = Uint8Array.from(atob(${JSON.stringify(HEIC)}), c => c.charCodeAt(0))
+        const file = await window.__abeleTest.importExternalFile(new File([bytes], ${JSON.stringify(name)}, { type: 'image/heic' }))
+        const parts = await window.__abeleTest.resolveAttachmentsForApi([file.path])
+        return { name: file.name, path: file.path, parts }
+      } catch (e) { return { error: String(e?.stack || e) } }
+      finally { app.vault.setConfig('attachmentFolderPath', folder) }
+    })()`, 60_000))
+    expect(result.error).toBeUndefined()
+    if (onPhone()) {
+      expect(result.name).toBe(name + '.png')
+      expect(result.parts).toContainEqual({ type: 'image_url', image_url: { url: 'vault:' + result.path } })
+    } else {
+      expect(result.name).toBe(name + '.heic')
+      expect(result.parts).toEqual([{ type: 'text', text: '[File attachment: ' + result.path + ' (HEIC/HEIF; not converted)]' }])
+    }
+  }, 90_000)
+
+  it.each(['reset', 'drawing', 'run'])('preserves conversation ownership and the import barrier across %s', async (scenario) => {
+    const result = JSON.parse(await evalLong(`(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms))
+      const until = async fn => { for (let i = 0; i < 160; i++) { const value = fn(); if (value) return value; await wait(50) } throw new Error('UI did not appear') }
+      const chats = window.__abeleTest.ChatService.getInstance()
+      const prior = chats.activeTabId.value
+      const tab = chats.createTab()
+      if (tab === prior) return { error: 'No free temporary chat tab' }
+      const runId = 'run:sample-import-probe'
+      const originalRead = app.vault.readBinary
+      let release
+      let held
+      let originalSend
+      let session
+      try {
+        const bytes = Uint8Array.from(atob(${JSON.stringify(HEIC)}), c => c.charCodeAt(0))
+        const source = await app.vault.createBinary(${JSON.stringify(DIR)} + '/sample-' + ${JSON.stringify(scenario)} + '.heic', bytes.buffer)
+        app.vault.readBinary = async function(file) {
+          if (file.path === source.path) await new Promise(r => { release = r })
+          return originalRead.call(this, file)
+        }
+        await chats.revealSidebar()
+        const host = () => document.querySelector('.abele-ai-chat .abele-chat-input')
+        const composer = () => host()?.__vueParentComponent?.exposed
+        const input = await until(composer)
+        session = chats.getSession(tab)
+        originalSend = session.sendMessage
+        const sends = []
+        session.sendMessage = async (...args) => { sends.push(args) }
+        input.addAttachment(source)
+        held = input.takeDraft()
+        await until(() => release)
+        if (${JSON.stringify(scenario)} === 'reset') {
+          await session.reset()
+          await wait(100)
+        } else if (${JSON.stringify(scenario)} === 'drawing') {
+          const canvas = document.createElement('canvas'); canvas.width = 16; canvas.height = 16
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/png'))
+          const original = await app.vault.createBinary(${JSON.stringify(DIR)} + '/sample-return-source.png', await blob.arrayBuffer())
+          const drawn = await app.vault.createBinary(${JSON.stringify(DIR)} + '/sample-return-result.png', await blob.arrayBuffer())
+          input.addAttachment(original)
+          chats.pendingInput.value = { text: '', tabId: tab, replaceAttachment: original.path, attachments: [drawn.path] }
+          await wait(100)
+        } else {
+          chats.runTabs.set(runId, { type: 'abele-run', runId: 'sample-import-probe', agentName: 'Sample', task: 'Fabricated read-only run', branches: [], status: 'done', parentChat: '' })
+          chats.tabOrder.value = [...chats.tabOrder.value, runId]
+          chats.switchTab(runId)
+          await until(() => !host())
+          chats.switchTab(tab)
+          await until(composer)
+          await wait(100)
+        }
+        const probe = window.__abeleTest.composer()
+        probe.focus()
+        probe.keyTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))
+        await wait(50)
+        const before = sends.length
+        release(); release = null
+        await until(() => !held.imports.pending.size)
+        const paths = composer().takeDraft().attachments.map(f => f.path)
+        const scope = session.scopeResolver.entries.value.map(e => e.path)
+        if (${JSON.stringify(scenario)} !== 'reset') {
+          const ready = window.__abeleTest.composer()
+          ready.focus()
+          ready.keyTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))
+          await wait(50)
+        }
+        return { before, paths, scope, sends: sends.length }
+      } catch (e) { return { error: String(e?.stack || e) } }
+      finally {
+        if (release) release()
+        if (held?.imports) await until(() => !held.imports.pending.size).catch(() => {})
+        app.vault.readBinary = originalRead
+        if (session && originalSend) session.sendMessage = originalSend
+        if (chats.getRun(runId)) await chats.closeTab(runId)
+        await chats.closeTab(tab)
+        if (prior) chats.switchTab(prior)
+      }
+    })()`, 120_000))
+    expect(result.error).toBeUndefined()
+    expect(result.before).toBe(0)
+    if (scenario === 'reset') {
+      expect(result.paths).toEqual([])
+      expect(result.scope.some((p: string) => p.startsWith(DIR))).toBe(false)
+    } else {
+      expect(result.paths).toHaveLength(scenario === 'drawing' ? 2 : 1)
+      const name = onPhone() ? '.png' : '.heic'
+      expect(result.paths.some((p: string) => p.endsWith('sample-' + scenario + name))).toBe(true)
+      expect(result.sends).toBe(1)
+    }
+  }, 150_000)
+
   it('returns a drawn picture to the originating composer in place of the original', async () => {
     const result = JSON.parse(await evalLong(`(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
