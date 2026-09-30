@@ -26,6 +26,26 @@ afterEach(() => {
 })
 
 describe('editing dates in the task note header', () => {
+  it('keeps quoted calendar dates in a western time zone', async () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles')
+    const env = taskHarness()
+    env.editor.setValue("---\ntype: task\ndue: '2028-03-01'\n---\nWater seedlings")
+    const header = make()
+    await header.load()
+    expect(header.due.format('YYYY-MM-DD')).toBe('2028-03-01')
+  })
+
+  // BUG: YAML turns an unquoted date into UTC midnight; parseNoteContent converts it to
+  // local time before extracting the date. West of UTC, loading and saving shifts it back a day.
+  it.fails('keeps an unquoted calendar date in a western time zone', async () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles')
+    const env = taskHarness()
+    env.editor.setValue('---\ntype: task\ndue: 2028-03-01\n---\nWater seedlings')
+    const header = make()
+    await header.load()
+    expect(header.due.format('YYYY-MM-DD')).toBe('2028-03-01')
+  })
+
   it('loads unsaved editor frontmatter rather than cache, once unless forced', async () => {
     const env = taskHarness({ due: '2028-02-01' })
     env.editor.setValue(
