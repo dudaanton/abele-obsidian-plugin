@@ -203,8 +203,11 @@ Three files, three concerns:
   the eye. Restores desktop mode and the window size after itself.
 - `taskTimelineScroll.e2e.test.ts` — **folded history and stable task anchors**, in the sidebar
   and note footer, at desktop and phone width and on the real phone. Checks that upward input
-  stays native and never reveals history; one banner click reveals every past day with the visible
-  row held within 1 px. Also measures completed-toggle anchors within 1 px, short-list spacer
+  stays native and never reveals history, using CDP wheel input on desktop, CDP touches under
+  phone emulation and physical swipes on the phone. Measures the owner's displacement against
+  the input distance (allowing native touch slop) and rejects a snap-back after release; no manual
+  scroll positioning is used during the measured gesture. One banner click reveals every past day
+  with the visible row held within 1 px. Also measures completed-toggle anchors within 1 px, short-list spacer
   cleanup, and a past-row anchor after reopening. On desktop, renders a frozen pre-history stylesheet on
   the same live DOM/build/theme path (retaining only the intentional new banner rule), captures
   the original date block in place, and asserts identical bounds and zero changed pixels. A

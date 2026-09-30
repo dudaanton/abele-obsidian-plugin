@@ -1,6 +1,13 @@
 /** Folded history and viewport anchoring in the task timeline's real scroll owners. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+  runCli,
+} from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { timelineStyleReference } from './helpers/timelineStyleReference'
@@ -23,6 +30,9 @@ interface Probe {
   revealAnchor?: number[]
   scrollRevealed?: string[]
   nativeInput?: boolean
+  nativeScroll?: number[]
+  nativeDistance?: number
+  nativeSettled?: number
   pastCompleted?: boolean
   appearancePixels?: number
   appearanceCanary?: number
@@ -210,24 +220,53 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     const first = blocks()[0]
     scroller.scrollTop += first.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0)
     await wait(400)
-    let prevented = false, moves = 0
-    const touchMove = e => { moves++; prevented ||= e.defaultPrevented }
+    const nativeBefore = scroller.scrollTop
+    let prevented = false, moves = 0, fingerY = null, inputDistance = 0, nativeEnd = null
+    const touchStart = e => { fingerY = e.touches[0]?.clientY ?? null }
+    const touchMove = e => {
+      moves++; prevented ||= e.defaultPrevented
+      const y = e.touches[0]?.clientY ?? null
+      if (y !== null && fingerY !== null) inputDistance += y - fingerY
+      fingerY = y
+    }
+    // Measure while the finger lifts, before release velocity can add native inertia.
+    const touchEnd = () => { nativeEnd = scroller.scrollTop }
+    const wheel = e => { moves++; prevented ||= e.defaultPrevented; inputDistance -= e.deltaY }
+    scroller.addEventListener('touchstart', touchStart, { passive: true })
     scroller.addEventListener('touchmove', touchMove, { passive: true })
+    scroller.addEventListener('touchend', touchEnd, { passive: true })
+    scroller.addEventListener('wheel', wheel, { passive: true })
+    const r = scroller.getBoundingClientRect()
+    // Start in scroll content, clear of native navigation and the sticky banner.
+    const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + Math.max(200, r.height * 0.45))
     if (window.__e2eHost) {
-      const r = scroller.getBoundingClientRect()
-      // Start in the scroll content, clear of the native floating navigation header.
-      const y = r.top + Math.max(200, r.height * 0.45)
-      await window.__e2eHost.swipe(r.left + r.width/2, y, r.left + r.width/2, y + 80)
+      await window.__e2eHost.swipe(x, y, x, y + 80)
     } else {
-      const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -80 })
-      root.dispatchEvent(wheel)
-      prevented ||= wheel.defaultPrevented
-      moves++
-      scroller.scrollTop = 0
+      const cdp = require('@electron/remote').getCurrentWebContents().debugger
+      if (app.isMobile) {
+        const touch = (type, at) => cdp.sendCommand('Input.dispatchTouchEvent', {
+          type, touchPoints: type === 'touchEnd' ? [] : [{ x, y: at }],
+        })
+        await touch('touchStart', y)
+        for (let i = 1; i <= 8; i++) {
+          await touch('touchMove', y + i * 10)
+          await wait(60)
+        }
+        await wait(300)
+        await touch('touchEnd')
+      } else await cdp.sendCommand('Input.dispatchMouseEvent', {
+        type: 'mouseWheel', x, y, deltaX: 0, deltaY: -80,
+      })
     }
     await wait(800)
     report.nativeInput = moves > 0 && !prevented
+    report.nativeScroll = [nativeBefore, nativeEnd ?? scroller.scrollTop]
+    report.nativeDistance = inputDistance
+    report.nativeSettled = nativeBefore - scroller.scrollTop
+    scroller.removeEventListener('touchstart', touchStart)
     scroller.removeEventListener('touchmove', touchMove)
+    scroller.removeEventListener('touchend', touchEnd)
+    scroller.removeEventListener('wheel', wheel)
     report.scrollRevealed = dates()
     align(row(0)); await wait(500)
     const beforeReveal = row(0).getBoundingClientRect().top
@@ -292,6 +331,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
       )
     )
     if (!onPhone()) {
+      runCli(['dev:debug', 'on'], 30000)
       for (const footer of [false, true]) {
         desktop.push(JSON.parse(await evalLong(script(footer), 100000)))
         shortDesktop.push(JSON.parse(await evalLong(script(footer, true), 100000)))
@@ -299,6 +339,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
       await reloadApp('app.emulateMobile(true)')
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844); 'sized'`)
       await reloadApp('window.location.reload()')
+      runCli(['dev:debug', 'on'], 30000)
     }
     for (const footer of [false, true]) {
       mobile.push(JSON.parse(await evalLong(script(footer), 100000)))
@@ -350,6 +391,13 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.summary).toContain('90 unfinished')
           expect(p.scrollRevealed).toEqual(p.initial)
           expect(p.nativeInput).toBe(true)
+          expect(p.nativeScroll).toHaveLength(2)
+          expect(p.nativeDistance).toBeGreaterThan(0)
+          const displacement = p.nativeScroll![0] - p.nativeScroll![1]
+          expect(displacement).toBeGreaterThan(p.nativeDistance! / 2)
+          // Touch slop is platform-owned, not a reason to accept zero or reversed scroll.
+          expect(Math.abs(displacement - p.nativeDistance!)).toBeLessThanOrEqual(24)
+          expect(p.nativeSettled).toBeGreaterThanOrEqual(displacement - 2)
           expect(p.revealed).toHaveLength(65)
           expect(p.countAfter).toBeNull()
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
