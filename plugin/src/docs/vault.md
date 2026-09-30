@@ -1165,7 +1165,14 @@ since** whose answer did not arrive, so pressing it again is not a second restor
 `abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
 in Obsidian's IndexedDB, as a database named `abele-sync-<id>`; it also holds the Obsidian
 settings changes that arrived from other devices and wait for the person to reload or keep this
-device's, so a file in the config folder may be older on disk than on the other devices until then. The device token itself is in the
+device's, so a file in the config folder may be older on disk than on the other devices until then.
+Other plugins' code (`main.js`, `manifest.json`, `styles.css`, including new plugins) waits in
+that same durable staging queue but has its own confirmation, **Review plugin code from sync**.
+It names each plugin as new or changed, with the manifest version when available. Applying
+settings cannot install that code: only **Install and reload** (or **Install plugin code** where
+reload is unavailable) can. **Keep local code** declines it without changing local code; **Later**
+leaves it staged with a review button on the Sync tab. Other plugins' `data.json` stays in the
+settings flow, and Abele's own folder keeps its existing rules. The device token itself is in the
 keychain — one per vault on a desktop, one for the whole app on a phone. A device-only keychain
 entry named `<token-id>-server` binds each token id and its exact token value to the server that
 minted it; missing or mismatched proofs, or bindings to another server, are never sent. Neither the token nor this binding travels. So a copy of the vault, a

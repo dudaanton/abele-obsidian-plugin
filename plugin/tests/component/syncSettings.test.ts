@@ -91,6 +91,7 @@ const service = {
   joinQuestion: vi.fn(),
   answerJoin: vi.fn(),
   heldPrompt: { held: ref<{ path: string; fileId: string }[]>([]), decided: ref(null) },
+  codePrompt: { staged: ref([]), ask: vi.fn() },
   settingsPrompt: {
     staged: ref<ChangeItem[]>([]),
     names: ref<Record<string, string>>({}),

@@ -1,12 +1,16 @@
 <template>
-  <ObsidianModal title="Settings changed on another device" phone-sheet @close="emit('close')">
-    <StagedSettingsBlock :changes="changes" :names="names" @decided="emit('close')">
+  <ObsidianModal
+    title="Settings changed on another device"
+    phone-sheet
+    @close="emit('close', questionKey)"
+  >
+    <StagedSettingsBlock :changes="changes" :names="names" @decided="emit('close', questionKey)">
       <template #actions="{ busy }">
         <Button
           text="Later"
           :disabled="busy"
           tooltip="Close this; the settings wait, and the Sync tab still has them"
-          @click="emit('close')"
+          @click="emit('close', questionKey)"
         />
       </template>
     </StagedSettingsBlock>
@@ -24,7 +28,7 @@ import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import StagedSettingsBlock from './StagedSettingsBlock.vue'
 
-defineProps<{ changes: ChangeItem[]; names: Record<string, string> }>()
+defineProps<{ changes: ChangeItem[]; names: Record<string, string>; questionKey?: number }>()
 
-const emit = defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{ (e: 'close', questionKey?: number): void }>()
 </script>

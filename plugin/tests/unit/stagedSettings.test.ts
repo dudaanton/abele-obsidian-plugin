@@ -251,6 +251,39 @@ describe('when the question is asked', () => {
     expect(appliedNotice(outcome)).toMatch(/1 file changed again while you were looking/)
   })
 
+  it('does not replace a newer question when older manifest metadata arrives late', async () => {
+    const first = [change('.obsidian/plugins/sample/main.js')]
+    const second = [change('.obsidian/plugins/sample/main.js')]
+    const { host, prompt: p } = prompt([first, second])
+    let finish!: (names: Record<string, string>) => void
+    host.names.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const slow = p.refresh()
+    await Promise.resolve()
+    await p.refresh()
+    finish({ sample: 'Old manifest' })
+    await slow
+    expect(p.staged.value).toEqual(second)
+    expect(p.asking.value?.changes).toEqual(second)
+  })
+
+  it('does not let an old dialog closing dismiss a replacement question', async () => {
+    const first = [change('.obsidian/plugins/sample/main.js')]
+    const second = [change('.obsidian/plugins/sample/main.js')]
+    const { prompt: p } = prompt([first, second])
+    await p.refresh()
+    const oldKey = p.asking.value!.key
+    await p.refresh()
+    const nextKey = p.asking.value!.key
+    expect(nextKey).not.toBe(oldKey)
+    p.later(oldKey)
+    expect(p.asking.value?.key).toBe(nextKey)
+  })
+
   it('asks about what waits at a start, once', async () => {
     const waiting = [change('.obsidian/app.json')]
     const { prompt: p } = prompt([waiting, waiting])

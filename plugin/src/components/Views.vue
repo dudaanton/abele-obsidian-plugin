@@ -127,7 +127,16 @@
     :key="settingsAsking.key"
     :changes="settingsAsking.changes"
     :names="settingsAsking.names"
-    @close="settingsPrompt.later()"
+    :question-key="settingsAsking.key"
+    @close="settingsPrompt.later($event)"
+  />
+  <PluginCodeModal
+    v-if="codeAsking && !settingsAsking && !heldAsking"
+    :key="codeAsking.key"
+    :changes="codeAsking.changes"
+    :names="codeAsking.names"
+    :question-key="codeAsking.key"
+    @close="codePrompt.later($event)"
   />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
@@ -160,6 +169,7 @@ import VersionHistoryModal from './sync/VersionHistoryModal.vue'
 import DeletedFilesModal from './sync/DeletedFilesModal.vue'
 import HeldDeletesModal from './sync/HeldDeletesModal.vue'
 import SettingsArrivedModal from './sync/SettingsArrivedModal.vue'
+import PluginCodeModal from './sync/PluginCodeModal.vue'
 import SyncLogModal from './sync/SyncLogModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
@@ -212,7 +222,8 @@ const {
 } = GlobalStore.getInstance()
 
 /** Many files deleted at once, held back until decided: the question, while one is open. */
-const { heldPrompt, settingsPrompt } = SyncService.getInstance()
+const { heldPrompt, settingsPrompt, codePrompt } = SyncService.getInstance()
+const codeAsking = codePrompt.asking
 const heldAsking = heldPrompt.asking
 /** Obsidian settings changed on another device, staged until answered: the question, if open. */
 const settingsAsking = settingsPrompt.asking

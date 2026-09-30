@@ -113,7 +113,7 @@ async function serverSha(path: string): Promise<string | null> {
 
 /** Hands the prompt a reload that counts instead of reloading. */
 function seamReload(available = true): void {
-  service.settingsPrompt.reloader = {
+  service.codePrompt.reloader = service.settingsPrompt.reloader = {
     available: () => available,
     reload: () => {
       reloads++
@@ -171,6 +171,86 @@ afterEach(async () => {
 })
 
 describe('settings changed on another device', () => {
+  it('never applies another plugin’s code through the settings confirmation', async () => {
+    const code = '.obsidian/plugins/sample-tool/main.js'
+    const manifest = '.obsidian/plugins/sample-tool/manifest.json'
+    const data = '.obsidian/plugins/sample-tool/data.json'
+    await seed(other, [
+      await create(other, code, 'module.exports = {}', Date.now()),
+      await create(other, manifest, '{"name":"Sample tool","version":"2.0.0"}', Date.now()),
+      await create(other, data, '{"enabled":true}', Date.now()),
+    ])
+    await modify(HOTKEYS, '{"there":true}')
+    await service.syncNow()
+    await waitFor('all files staged', () => service.status.value.deferred === 4)
+
+    expect(service.settingsPrompt.staged.value.map((one) => one.path).sort()).toEqual(
+      [HOTKEYS, data].sort()
+    )
+    // Even a caller handing the generic action every staged version cannot install code.
+    await service.applySettingsAndReload(
+      (await service.stagedSettings()).map((one) => one.version_id)
+    )
+    expect(await app.vault.adapter.exists(code)).toBe(false)
+    expect(await app.vault.adapter.exists(manifest)).toBe(false)
+    expect(await read(data)).toBe('{"enabled":true}')
+    await service.codePrompt.refresh()
+    expect(service.codePrompt.names.value['sample-tool']).toBe(
+      'Sample tool (sample-tool) — New · Version 2.0.0'
+    )
+    const codeVersions = service.codePrompt.staged.value.map((one) => one.version_id)
+    const result = await service.applyPluginCodeAndReload(codeVersions)
+    expect(result?.applied.sort()).toEqual([code, manifest].sort())
+    expect(result?.reloaded).toBe(true)
+    expect(await read(code)).toBe('module.exports = {}')
+  })
+
+  it('keeps changed code and declines a new plugin across restart', async () => {
+    const code = '.obsidian/plugins/sample-tool/main.js'
+    const manifest = '.obsidian/plugins/sample-tool/manifest.json'
+    const fresh = '.obsidian/plugins/new-tool/main.js'
+    await write(code, 'local code')
+    await write(manifest, '{"name":"Sample tool","version":"1.0.0"}')
+    await service.syncNow()
+    await modify(code, 'remote code')
+    await modify(manifest, '{"name":"Sample tool","version":"2.0.0"}')
+    await seed(other, [await create(other, fresh, 'new code', Date.now())])
+    await service.syncNow()
+    await service.codePrompt.refresh()
+    expect(service.codePrompt.names.value['sample-tool']).toBe(
+      'Sample tool (sample-tool) — Changed · Version 2.0.0'
+    )
+    service.codePrompt.later()
+    await service.destroy()
+    service = SyncService.getInstance()
+    start()
+    await waitFor('code question after restart', () => service.codePrompt.asking.value !== null)
+    const versions = service.codePrompt.asking.value!.changes.map((one) => one.version_id)
+    const result = await service.keepLocalPluginCode(versions)
+    expect(result?.kept.sort()).toEqual([code, manifest].sort())
+    expect(result?.left).toEqual([fresh])
+    await service.syncNow()
+    expect(await read(code)).toBe('local code')
+    expect(await read(manifest)).toContain('1.0.0')
+    expect(await app.vault.adapter.exists(fresh)).toBe(false)
+    expect(service.codePrompt.staged.value).toEqual([])
+    expect(reloads).toBe(0)
+  })
+
+  it('leaves a newer code version staged when an older confirmation is answered', async () => {
+    const code = '.obsidian/plugins/sample-tool/main.js'
+    await seed(other, [await create(other, code, 'first', Date.now())])
+    await service.syncNow()
+    await service.codePrompt.refresh()
+    const versions = service.codePrompt.staged.value.map((one) => one.version_id)
+    await modify(code, 'second')
+    await service.syncNow()
+    const result = await service.applyPluginCodeAndReload(versions)
+    expect(result).toMatchObject({ applied: [], unshown: [code], reloaded: false })
+    expect(await app.vault.adapter.exists(code)).toBe(false)
+    expect(service.codePrompt.asking.value?.changes[0]?.version_id).not.toBe(versions[0])
+  })
+
   it('are staged rather than written, counted, and asked about once', async () => {
     await modify(HOTKEYS, '{"there":true}')
     await service.syncNow()

@@ -57,7 +57,7 @@ export interface StagedHost {
   /** Whether the app is in front, where a dialog can be seen. */
   visible(): boolean
   /** The names of the plugins in these folders, read from their `manifest.json` here. */
-  names(ids: string[]): Promise<Record<string, string>>
+  names(ids: string[], changes: readonly ChangeItem[]): Promise<Record<string, string>>
   /**
    * Write what is staged at the versions shown (`SyncEngine.applyDeferred`); null with no
    * engine. The rest stays staged and comes back in `unshown`.
@@ -110,6 +110,7 @@ export class StagedSettingsPrompt {
   /** A new batch was found while the app was not in front; it is asked when it comes back. */
   private waiting = false
   private asked = 0
+  private reading = 0
 
   /** `reloader` is the test seam: the e2e and the integration tests count a reload instead. */
   constructor(
@@ -153,15 +154,18 @@ export class StagedSettingsPrompt {
 
   /** Read the staged changes again, and ask when they hold one no question has shown. */
   async refresh(): Promise<void> {
+    const reading = ++this.reading
     let changes: ChangeItem[]
     let names: Record<string, string>
     try {
       changes = await this.host.list()
-      names = await this.host.names(pluginIdsOf(changes))
+      names = await this.host.names(pluginIdsOf(changes), changes)
     } catch (error) {
       console.debug('[abele-sync] the staged settings could not be read', error)
       return
     }
+    // Manifest reads can involve the network. An older snapshot must not replace a newer one.
+    if (reading !== this.reading) return
     this.staged.value = changes
     this.names.value = names
     if (changes.length === 0) {
@@ -323,7 +327,9 @@ export class StagedSettingsPrompt {
   }
 
   /** Later: the dialog closes and the changes stay staged, asked about at the next start or batch. */
-  later(): void {
+  later(questionKey?: number): void {
+    // A keyed modal emits close while unmounting, including when a newer question replaces it.
+    if (questionKey !== undefined && this.asking.value?.key !== questionKey) return
     this.asking.value = null
     this.waiting = false
   }

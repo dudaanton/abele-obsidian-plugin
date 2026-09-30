@@ -148,6 +148,19 @@
         <StagedSettingsBlock :changes="staged" :names="stagedNames" apply-text="Apply and reload" />
       </Section>
 
+      <Section v-if="stagedCode.length" :title="`Plugin code waiting (${stagedCode.length})`">
+        <Setting
+          name="Review plugin code"
+          desc="New or changed plugins need their own confirmation before installation."
+        >
+          <Button
+            text="Review plugin code"
+            tooltip="Open the separate plugin code confirmation"
+            @click="sync.codePrompt.ask()"
+          />
+        </Setting>
+      </Section>
+
       <SelectiveSync />
 
       <template v-if="!joining">
@@ -283,6 +296,7 @@ const status = sync.status
 /** What the engine holds back after many files went at once (`HeldDeletesPrompt`). */
 const held = sync.heldPrompt.held
 /** Settings changed on another device, waiting for Apply or Keep (`StagedSettingsPrompt`). */
+const stagedCode = sync.codePrompt.staged
 const staged = sync.settingsPrompt.staged
 const stagedNames = sync.settingsPrompt.names
 const stagedWritten = computed(() => sync.settingsPrompt.appliedWaiting?.value ?? [])

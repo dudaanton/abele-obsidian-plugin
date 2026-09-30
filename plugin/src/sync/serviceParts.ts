@@ -18,7 +18,9 @@ import {
   keepAppliedPaths,
   pluginNamesIn,
   StagedSettingsPrompt,
+  type StagedHost,
 } from './stagedSettings'
+import { codePluginIds, pluginCodeNames, stagedLane } from './stagedPluginCode'
 import type { StatusBoard } from './statusBoard'
 
 /**
@@ -46,6 +48,7 @@ export interface ServiceParts {
   enrolment: Enrolment
   heldPrompt: HeldDeletesPrompt
   settingsPrompt: StagedSettingsPrompt
+  codePrompt: StagedSettingsPrompt
   /** See `SyncService.joinQuestion`. */
   joinQuestion(vault?: VaultInfo): Promise<JoinQuestion>
 }
@@ -79,7 +82,10 @@ export function wireParts(host: PartsHost): ServiceParts {
           },
           join
         ),
-      synced: (report) => void settingsPrompt.reported(report),
+      synced: (report) => {
+        void settingsPrompt.reported(report)
+        void codePrompt.reported(report)
+      },
     },
     host.board
   )
@@ -114,21 +120,42 @@ export function wireParts(host: PartsHost): ServiceParts {
    * what to do with them, and the question about them (`stagedSettings.ts`). Its `reloader` is
    * the seam a test replaces so that "Reload now" reloads nothing.
    */
-  const settingsPrompt = new StagedSettingsPrompt(
-    {
-      list: () => runner.deferred(),
-      apply: (versionIds) => runner.applyDeferred(versionIds),
-      keep: (paths, versionIds) => runner.keepLocal(paths, versionIds),
-      visible,
-      appliedWaiting: () => appliedPathsOf(host.app()),
-      keepApplied: (paths) => keepAppliedPaths(host.app(), paths),
-      names: (ids) => pluginNamesIn(host.app(), ids),
-      note: (text) => host.note(text),
-      pause: () => runner.pause(),
-      resume: () => {
-        if (!host.connection().paused) runner.resume()
-      },
+  const stagedHost: StagedHost = {
+    list: () => runner.deferred(),
+    apply: (versionIds) => runner.applyDeferred(versionIds),
+    keep: (paths, versionIds) => runner.keepLocal(paths, versionIds),
+    visible,
+    appliedWaiting: () => appliedPathsOf(host.app()),
+    keepApplied: (paths) => keepAppliedPaths(host.app(), paths),
+    names: (ids) => pluginNamesIn(host.app(), ids),
+    note: (text) => host.note(text),
+    pause: () => runner.pause(),
+    resume: () => {
+      if (!host.connection().paused) runner.resume()
     },
+  }
+  const ownFolder = (): string => {
+    const app = host.app()
+    const manifest = host.plugin()?.manifest ?? { id: 'abele' }
+    return app === null
+      ? manifest.id
+      : (ownSettingsPath(app.vault.configDir, manifest).split('/').at(-2) ?? manifest.id)
+  }
+  const isCode = (change: Parameters<typeof codePluginIds>[0]): boolean =>
+    codePluginIds(change, ownFolder()).length > 0
+  const settingsPrompt = new StagedSettingsPrompt(
+    stagedLane(stagedHost, (change) => !isCode(change)),
+    obsidianReloader(() => host.app())
+  )
+  const codePrompt = new StagedSettingsPrompt(
+    stagedLane(
+      {
+        ...stagedHost,
+        names: (_ids, changes) =>
+          pluginCodeNames(host.app(), runner.client(), changes, ownFolder()),
+      },
+      isCode
+    ),
     obsidianReloader(() => host.app())
   )
 
@@ -149,5 +176,5 @@ export function wireParts(host: PartsHost): ServiceParts {
     })
   }
 
-  return { runner, enrolment, heldPrompt, settingsPrompt, joinQuestion }
+  return { runner, enrolment, heldPrompt, settingsPrompt, codePrompt, joinQuestion }
 }

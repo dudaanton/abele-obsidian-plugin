@@ -132,6 +132,9 @@ export class SyncService {
   /** Obsidian settings staged from another device, and the question about them. */
   readonly settingsPrompt = this.parts.settingsPrompt
 
+  /** Other plugins' code requires a separate, explicit confirmation. */
+  readonly codePrompt = this.parts.codePrompt
+
   /** Whether the visibility listener has been registered; it is registered once. */
   private watchingVisibility = false
   /** Drops the settings-saved subscription. */
@@ -141,6 +144,7 @@ export class SyncService {
     this.board.onStatusChange((status) => {
       void this.heldPrompt.noticed(status)
       void this.settingsPrompt.noticed(status)
+      void this.codePrompt.noticed(status)
     })
   }
 
@@ -331,6 +335,14 @@ export class SyncService {
     return this.settingsPrompt.applyAndReload(versionIds)
   }
 
+  applyPluginCodeAndReload(versionIds: readonly string[]): Promise<AppliedSettings | null> {
+    return this.codePrompt.applyAndReload(versionIds)
+  }
+
+  keepLocalPluginCode(versionIds: readonly string[]): Promise<KeptSettings | null> {
+    return this.codePrompt.keepLocal(undefined, versionIds)
+  }
+
   async reloadAppliedSettings(): Promise<boolean> {
     return this.settingsPrompt.reloadApplied()
   }
@@ -504,6 +516,7 @@ export class SyncService {
       held: () => {
         this.heldPrompt.foreground()
         this.settingsPrompt.foreground()
+        this.codePrompt.foreground()
       },
       sync: (visible) => {
         if (!this.runner.isRunning() || this.connection.value.paused) return
