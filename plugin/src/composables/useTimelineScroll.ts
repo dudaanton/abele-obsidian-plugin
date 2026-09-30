@@ -205,11 +205,26 @@ export function useTimelineScroll(
       const owner = scrollOwner(root)
       // Sticky positioning starts at the padding edge. Place only this new strip at the
       // usable viewport edge, leaving the sidebar/editor spacing and phone chrome untouched.
-      const positionStrip = () =>
-        strip?.style.setProperty(
-          '--abele-timeline-sticky-top',
-          `${pinnedTop(owner) - owner.getBoundingClientRect().top - parseFloat(getComputedStyle(owner).paddingTop || '0')}px`
-        )
+      const positionStrip = () => {
+        if (!strip) return
+        const usable = pinnedTop(owner)
+        let inset =
+          usable -
+          owner.getBoundingClientRect().top -
+          parseFloat(getComputedStyle(owner).paddingTop || '0')
+        strip.style.setProperty('--abele-timeline-sticky-top', `${inset}px`)
+        // Native editor panes can change their sticky origin as navigation opens. Verify
+        // the pinned strip itself instead of treating owner padding as a universal origin.
+        const box = strip.getBoundingClientRect()
+        if (
+          box.height &&
+          box.top < usable - 0.5 &&
+          root.getBoundingClientRect().bottom > usable + box.height
+        ) {
+          inset += usable - box.top
+          strip.style.setProperty('--abele-timeline-sticky-top', `${inset}px`)
+        }
+      }
       positionStrip()
       let positionFrame = 0
       let followUntil = 0
