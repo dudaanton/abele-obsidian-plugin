@@ -52,12 +52,13 @@ export async function setup(): Promise<void> {
       throw error
     }
   }
-  if (!isObsidianRunning() || !hasTestApi()) {
+  const running = isObsidianRunning()
+  if (!running || !hasTestApi()) {
     if (onPhone()) {
       stopHost()
       dropPhone()
     }
-    throw new Error(!isObsidianRunning()
+    throw new Error(!running
       ? 'Obsidian is not running; an explicit e2e run requires the app.'
       : 'The e2e vault needs a development build with the test API.')
   }
