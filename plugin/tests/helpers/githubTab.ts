@@ -47,9 +47,10 @@ export function openTab(
   url: string,
   routes: Record<string, Route>,
   enabled = true,
-  attachTo: Element = document.body
+  attachTo: Element = document.body,
+  connection?: ReturnType<typeof clientWith>
 ) {
-  const { client, request } = clientWith(routes)
+  const { client, request } = connection ?? clientWith(routes)
   const model: GithubViewModel = reactive({
     url: '',
     target: null,
@@ -66,7 +67,7 @@ export function openTab(
   model.url = url
   model.target = parseGithubUrl(url, ['github.com'])
   model.nonce++
-  return { wrapper, onTitle, onOpen, model, keys, request }
+  return { wrapper, onTitle, onOpen, model, keys, request, client }
 }
 
 export const ISSUE = {

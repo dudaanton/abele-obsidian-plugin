@@ -54,7 +54,14 @@ export function useTabSearch(o: TabSearchOptions) {
   const sha = (): Promise<string> => {
     const t = o.shown.value
     const d = o.data()
-    const key = JSON.stringify([t.kind, t.host, t.owner, t.repo, (d as { url?: string })?.url])
+    const key = JSON.stringify([
+      o.client().cacheNamespace,
+      t.kind,
+      t.host,
+      t.owner,
+      t.repo,
+      (d as { url?: string })?.url,
+    ])
     if (shaFor?.key === key) return shaFor.sha
     let promise: Promise<string>
     const head =

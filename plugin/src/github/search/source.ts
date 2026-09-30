@@ -132,7 +132,7 @@ export async function repoIndex(
   sha: string,
   request: IndexRequest
 ): Promise<RepoIndex> {
-  const key = indexKey(repo.host, repo.owner, repo.repo, sha)
+  const key = `${client.cacheNamespace}:${indexKey(repo.host, repo.owner, repo.repo, sha)}`
   const cached = indexes.get(key)
   if (cached) return cached
   // Two asks for the same commit — a search and a definition lookup — share one download.
@@ -143,12 +143,13 @@ export async function repoIndex(
     void pending.then(
       (index) => {
         building.delete(key)
-        indexes.set(key, index)
+        if (client.isCurrent !== false) indexes.set(key, index)
       },
       () => building.delete(key)
     )
   }
   const index = await pending
+  if (client.isCurrent === false) client.assertCurrent()
   if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
   return index
 }
@@ -195,8 +196,14 @@ async function build(
 }
 
 /** An index already built for this commit, if there is one; never downloads. */
-export const cachedIndex = (repo: RepoRef, sha: string): RepoIndex | undefined =>
-  indexes.get(indexKey(repo.host, repo.owner, repo.repo, sha))
+export const cachedIndex = (
+  client: GithubClient,
+  repo: RepoRef,
+  sha: string
+): RepoIndex | undefined =>
+  client.isCurrent === false
+    ? undefined
+    : indexes.get(`${client.cacheNamespace}:${indexKey(repo.host, repo.owner, repo.repo, sha)}`)
 
 /**
  * GitHub's own code search, for a repository too big to download. It searches only the default

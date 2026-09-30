@@ -208,7 +208,7 @@ export class GithubUsers {
 
   private gather(client: GithubClient, logins: string[]): Promise<void> {
     // One gathering per server and token: the token decides both the road and what is visible.
-    const id = `${client.endpoints.api}\n${client.hasToken}`
+    const id = client.cacheNamespace
     let g = this.gatherings.get(id)
     if (!g) {
       g = { client, logins: new Set(), timer: null, waiting: [] }

@@ -136,7 +136,26 @@ function bytesBase64(bytes: Uint8Array): string {
 const MAX_PAGES = 10
 const PER_PAGE = 100
 
+let clientGeneration = 0
+
 export class GithubClient {
+  /** Opaque credential generation, never derived from a secret. Content caches bind to it. */
+  readonly cacheNamespace = `github-${++clientGeneration}`
+  private current = true
+  get isCurrent(): boolean {
+    return this.current
+  }
+  retire(): void {
+    this.current = false
+    this.cache.clear()
+  }
+  assertCurrent(): void {
+    if (!this.current)
+      throw new GithubError(
+        'other',
+        'The GitHub connection changed; retry with its current credentials.'
+      )
+  }
   private cache = new Map<string, Cached>()
 
   private readonly token: string
@@ -154,6 +173,7 @@ export class GithubClient {
   ) {
     // A token pasted with a trailing newline or space is still the token; sent as it is, it is
     // not, and GitHub answers 401 for what looks like a perfectly good token.
+    this.endpoints = Object.freeze({ ...endpoints })
     this.token = token.trim()
   }
 
@@ -190,6 +210,7 @@ export class GithubClient {
     hops = 0,
     anonymousRedirect = false
   ): Promise<RequestUrlResponse> {
+    this.assertCurrent()
     let url: URL
     try {
       url = new URL(request.url)
@@ -232,6 +253,7 @@ export class GithubClient {
       // The transport may include request headers or URLs (including credentials) in its errors.
       throw new GithubError('network', `Could not reach ${url.host}.`)
     }
+    this.assertCurrent()
     const location = header(response.headers, 'location')
     if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response
     if (hops >= 5 || request.method !== 'GET') {

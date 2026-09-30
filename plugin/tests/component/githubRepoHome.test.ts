@@ -386,9 +386,11 @@ describe('what the page asks GitHub', () => {
     const first = openTab('https://github.com/x/none', routes)
     await loaded(first.wrapper)
     first.wrapper.unmount()
-    const second = openTab('https://github.com/x/none', routes)
+    // Two tabs under the same connection share its client/generation, as the service does.
+    // Creating a new client would now mean a different credential generation, not a cache hit.
+    const second = openTab('https://github.com/x/none', routes, true, document.body, first)
     await loaded(second.wrapper)
-    const asked = [...first.request.mock.calls, ...second.request.mock.calls].filter(([r]) =>
+    const asked = first.request.mock.calls.filter(([r]) =>
       r.url.includes('/repos/x/none/releases/latest')
     )
     expect(asked).toHaveLength(1)

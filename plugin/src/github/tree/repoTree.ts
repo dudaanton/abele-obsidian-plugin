@@ -104,7 +104,7 @@ async function read(client: GithubClient, repo: RepoRef, sha: string): Promise<R
 
 /** The tree of a repository at a commit, read once a session. */
 export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Promise<RepoTree> {
-  const key = keyOf(repo, sha)
+  const key = `${client.cacheNamespace}:${keyOf(repo, sha)}`
   const known = trees.get(key)
   if (known !== undefined) {
     // Most recently used goes to the end, so the oldest is the first dropped.

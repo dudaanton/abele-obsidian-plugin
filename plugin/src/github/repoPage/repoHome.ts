@@ -259,7 +259,7 @@ export async function loadLatestRelease(
   r: RepoLike,
   now = Date.now()
 ): Promise<ReleaseData | null> {
-  const key = `${client.endpoints.api}\n${client.hasToken}\n${repoName(r)}`.toLowerCase()
+  const key = `${client.cacheNamespace}\n${repoName(r)}`.toLowerCase()
   const none = noRelease.get(key)
   if (none !== undefined && now - none < NO_RELEASE_MS) return null
   try {

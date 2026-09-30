@@ -58,14 +58,15 @@ export function useTreePanel(o: TreePanelOptions) {
   const versionKey = computed(() => {
     const r = repoRef.value
     if (!r || !o.data()) return ''
-    return `${r.host}/${r.owner}/${r.repo}@${ref() ?? ''}`
+    return `${o.client().cacheNamespace}:${r.host}/${r.owner}/${r.repo}@${ref() ?? ''}`
   })
 
   const resolveVersion = async () => {
     const r = repoRef.value
     if (!r) throw new Error('Nothing is shown.')
-    const at = ref() ?? (await defaultBranch(o.client(), r))
-    return { ref: at, sha: await commitSha(o.client(), r, at) }
+    const client = o.client()
+    const at = ref() ?? (await defaultBranch(client, r))
+    return { ref: at, sha: await commitSha(client, r, at) }
   }
 
   /** The file or folder on screen, to mark in the tree. */

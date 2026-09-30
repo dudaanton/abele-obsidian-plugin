@@ -3,6 +3,8 @@
  * the one road by which a URL becomes an open tab.
  */
 import { secrets } from '@/secrets/SecretStore'
+import { watch } from 'vue'
+import { ConnectionClients } from './connectionClients'
 import type { App, PaneType, WorkspaceLeaf } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GithubClient } from './client'
@@ -23,6 +25,25 @@ export const GITHUB_VIEW_TYPE = 'abele-github'
 
 export const githubSettings = (): GithubSettings =>
   AbeleConfig.getInstance().github ?? DEFAULT_GITHUB_SETTINGS
+
+let connectionClients: ConnectionClients | undefined
+
+/** Explicit connection access; legacy callers deliberately keep their single-server facade. */
+export function connectionClient(id: string): GithubClient {
+  if (!connectionClients) {
+    connectionClients = new ConnectionClients(
+      () => githubSettings().connections ?? [],
+      (keyId) => (keyId ? (secrets().get(keyId) ?? '') : ''),
+      () => secrets().status.value
+    )
+    watch(
+      [AbeleConfig.getInstance().version, secrets().version, secrets().status],
+      () => connectionClients?.reconcile(),
+      { flush: 'sync' }
+    )
+  }
+  return connectionClients.client(id)
+}
 
 /** github.com always; an Enterprise host besides it when one is configured. */
 export function githubHosts(): string[] {
@@ -116,7 +137,9 @@ export function checkGithubAccess(repoInput: string): Promise<AccessReport> {
 
 /** Forgets every cached answer — for a token that was just replaced, say. */
 export function resetGithubClients(): void {
+  for (const client of clients.values()) client.retire()
   clients.clear()
+  connectionClients?.reconcile()
   forgetRepoTrees()
 }
 

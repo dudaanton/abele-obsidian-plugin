@@ -264,7 +264,7 @@ export class TabCode implements CodeNav {
       let where = `${repo.owner}/${repo.repo} at ${this.src.refLabel()}`
       try {
         const index =
-          cachedIndex(repo, sha) ??
+          cachedIndex(this.src.client(), repo, sha) ??
           (await this.index((stage) => {
             notice ??= new Notice(`Looking for ${name}…`, 0)
             notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)

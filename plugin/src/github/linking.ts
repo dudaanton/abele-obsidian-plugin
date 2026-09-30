@@ -157,12 +157,14 @@ export function createLinker(o: {
       const t = o.shown()
       const blob = o.data() as BlobData | null
       if (t?.kind !== 'blob' || !blob) throw new Error('no file is shown')
-      let asked = shas.get(blob.ref)
+      const client = o.client()
+      const key = `${client.cacheNamespace}:${t.host}/${t.owner}/${t.repo}@${blob.ref}`
+      let asked = shas.get(key)
       if (asked === undefined) {
-        asked = commitSha(o.client(), t, blob.ref)
-        shas.set(blob.ref, asked)
+        asked = commitSha(client, t, blob.ref)
+        shas.set(key, asked)
         // A failure is not kept: the next press asks again.
-        asked.catch(() => shas.delete(blob.ref))
+        asked.catch(() => shas.delete(key))
       }
       return blobLink(t, await asked, blob.path, span)
     },
