@@ -85,6 +85,7 @@ const emit = defineEmits<{
 
 <style lang="scss">
 /**
+ * A dialog’s answer row stays visible while the body scrolls.
  * A dialog's answer row, `abele-modal__actions` on the element that holds its buttons: kept at
  * the bottom of the dialog while what is above it scrolls. A list of twenty long paths or three
  * choices with a name field under them is taller than a phone, and the buttons at the end of it

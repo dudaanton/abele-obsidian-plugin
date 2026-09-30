@@ -336,6 +336,18 @@ describe('the design standard', () => {
     )
   })
 
+  it('wraps shared phone modal titles inside space reserved for native close controls', () => {
+    const source = readFileSync(join(ROOT, 'obsidian/Modal.vue'), 'utf8')
+    const css = styleBlock(source)
+    expect(source).toContain("modal.value.modalEl.addClass('abele-modal')")
+    expect(css).toMatch(
+      /body\.is-phone \.modal\.abele-modal \.modal-title\s*\{[^}]*white-space:\s*normal;/
+    )
+    expect(css).toMatch(
+      /body\.is-phone \.modal\.abele-modal \.modal-title\s*\{[^}]*max-width:\s*calc\([^;]*--touch-size-m/
+    )
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')
