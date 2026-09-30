@@ -336,7 +336,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       report.restoredHistory = !!returned
       report.restoredAnchor = [beforeReturn, returned ? returned.getBoundingClientRect().top - leaf.view.containerEl.querySelector('.cm-scroller').getBoundingClientRect().top : -9999]
     }
-  } catch (e) { report.error = String(e && e.stack || e) }
+  } catch (e) { report.error = String(e) + '\n' + (e?.stack ?? '') }
   finally { leaf?.detach(); config.rememberNotePlaces = remembered }
   return JSON.stringify(report)
 })()`
