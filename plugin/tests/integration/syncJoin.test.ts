@@ -169,6 +169,10 @@ describe('joining with files on both sides', () => {
     app.vault.getFiles = () => files().filter((file) => file.path !== 'Only there.md')
     await join('theirs')
     expect(conn().join).toBeNull()
+    await waitFor(
+      'the post-join engine to be built',
+      () => service.log.value.filter((line) => line.includes('syncing vault ')).length >= 2
+    )
     expect(
       service.log.value.filter((line) => line.includes('syncing vault ')).length
     ).toBeGreaterThanOrEqual(2)

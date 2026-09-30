@@ -1,7 +1,7 @@
 <template>
   <div class="abele-staged-settings">
-    <p class="abele-staged-settings__lead">{{ lead }}</p>
-    <p class="abele-staged-settings__note">{{ from }}</p>
+    <p v-if="changes.length" class="abele-staged-settings__lead">{{ lead }}</p>
+    <p v-if="changes.length" class="abele-staged-settings__note">{{ from }}</p>
     <p class="abele-staged-settings__note">
       Changing settings here before reloading keeps this device's version everywhere.
     </p>
@@ -10,11 +10,22 @@
       other device has is left there.
     </p>
 
+    <p v-if="written.length" class="abele-staged-settings__note">
+      Written but awaiting reload: {{ written.join(', ') }}. Change no settings before reloading.
+    </p>
     <p v-if="error !== null" class="abele-staged-settings__error">{{ error }}</p>
 
     <div class="abele-staged-settings__actions">
       <slot name="actions" :busy="busy" />
       <Button
+        v-if="written.length && reloadable"
+        text="Reload applied settings"
+        :disabled="busy"
+        tooltip="Reload Obsidian to read the settings already written; leave failed files waiting"
+        @click="reloadWritten"
+      />
+      <Button
+        v-if="changes.length"
         text="Keep this device's"
         :disabled="busy"
         :tooltip="
@@ -25,6 +36,7 @@
         @click="keep"
       />
       <Button
+        v-if="changes.length"
         :text="reloadable ? applyText : 'Apply'"
         accent
         :disabled="busy"
@@ -91,6 +103,7 @@ const error = ref<string | null>(null)
 
 /** Whether Obsidian here has a reload command: a phone's may not, and is asked to restart. */
 const reloadable = sync.settingsPrompt.reloader.available()
+const written = computed(() => sync.settingsPrompt.appliedWaiting?.value ?? [])
 
 const groups = computed(() => groupStaged(props.changes, props.names))
 
@@ -112,11 +125,18 @@ async function run(work: () => Promise<string>): Promise<void> {
     new Notice(await work())
     emit('decided')
   } catch (failure) {
-    error.value = `Nothing was changed: ${reasonOf(failure)}`
+    error.value = `The operation could not finish: ${reasonOf(failure)}. Check the Sync tab for files awaiting reload.`
   } finally {
     busy.value = false
   }
 }
+
+const reloadWritten = (): Promise<void> =>
+  run(async () =>
+    (await sync.reloadAppliedSettings())
+      ? 'Obsidian is reloading applied settings.'
+      : 'Reload did not start; restart Obsidian before changing settings.'
+  )
 
 /** The versions this block shows: what either answer is for, and nothing staged since. */
 const shownVersions = (): string[] => props.changes.map((change) => change.version_id)

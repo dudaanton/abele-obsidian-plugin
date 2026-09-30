@@ -237,6 +237,48 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     await connectedScreens(phone, ' 320', 8)
     await setWindowSize(app(), ...PHONE)
 
+    // A real partial apply: app.json succeeds, later plugin files fail. Count the reload
+    // instead of reloading this renderer, and inspect the recovery button at both widths.
+    const partial = sync.run<{ applied: string[]; failed: { path: string }[] }>(`
+      await closeSettings()
+      await escapeIn()
+      const adapter = app.vault.adapter
+      const write = adapter.writeBinary.bind(adapter)
+      svc.settingsPrompt.reloader = { available: () => true, reload: () => false }
+      adapter.writeBinary = async (path, bytes, options) => {
+        if (path.endsWith('.tmp') && path.startsWith('.obsidian/plugins/')) throw new Error('sample write failure')
+        return write(path, bytes, options)
+      }
+      try { return await svc.applySettingsAndReload((await svc.stagedSettings()).map((one) => one.version_id)) }
+      finally { adapter.writeBinary = write }
+    `)
+    for (const [width, suffix] of [
+      [PHONE, ''],
+      [NARROW, ' 320'],
+    ] as const) {
+      await setWindowSize(app(), ...width)
+      await collect(
+        phone,
+        `
+        const root = await openSyncTab()
+        const doc = root.ownerDocument
+        const button = buttonIn(root.querySelector('.abele-staged-settings'), 'Reload applied settings')
+        if (!button) throw new Error('no reload offered after partial apply')
+        button.scrollIntoView({ block: 'center' })
+        await wait(200)
+        const label = ${JSON.stringify(`settings partially applied${suffix}`)}
+        const modal = root.closest('.modal') || root
+        const out = { [label]: await screen(label, modal, root) }
+        const r = button.getBoundingClientRect()
+        const hit = doc.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2)
+        out[label].extra = { written: ${JSON.stringify(partial.applied)}, failed: ${JSON.stringify(partial.failed)}, reloadInView: r.top >= 0 && r.bottom <= doc.defaultView.innerHeight && r.left >= 0 && r.right <= doc.defaultView.innerWidth, onTop: !!hit && button.contains(hit) }
+        await closeSettings()
+        return out
+      `
+      )
+    }
+    await setWindowSize(app(), ...PHONE)
+
     // A phone in front pushes by itself; one leaving the front pushes on the way out.
     sync.frontAsIs()
     pushed.inFront = await pushTime('Phone/Made in front.md', () => sync.inFront())
@@ -348,6 +390,8 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     'held deletes',
     'held deletes confirm',
     'settings arrived',
+    'settings partially applied',
+    'settings partially applied 320',
     'restore since hour',
     'restore since today',
     'restore since custom',
@@ -446,6 +490,16 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
   it('lists twenty held files and counts the rest', () => {
     expect(phone['held deletes']?.extra.more).toBe(`and ${HELD - 20} more`)
   })
+
+  it.each(['settings partially applied', 'settings partially applied 320'])(
+    '%s: names the written files and keeps reload reachable',
+    (label) => {
+      expect(phone[label]?.extra.written).toEqual(['.obsidian/app.json'])
+      expect(phone[label]?.extra.failed).toHaveLength(2)
+      expect(phone[label]?.extra.reloadInView).toBe(true)
+      expect(phone[label]?.extra.onTop).toBe(true)
+    }
+  )
 
   it('names App settings and both plugins in the settings question', () => {
     const lead = String(phone['settings arrived']?.extra.lead ?? '')

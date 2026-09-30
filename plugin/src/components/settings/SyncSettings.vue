@@ -141,7 +141,10 @@
         Obsidian settings changed on another device, staged until somebody says what to do with
         them. The dialog asks once per batch; this is where they wait after Later.
       -->
-      <Section v-if="staged.length > 0" :title="`Settings waiting (${staged.length})`">
+      <Section
+        v-if="staged.length > 0 || stagedWritten.length > 0"
+        :title="`Settings waiting (${staged.length})`"
+      >
         <StagedSettingsBlock :changes="staged" :names="stagedNames" apply-text="Apply and reload" />
       </Section>
 
@@ -155,6 +158,10 @@
         <UsageCard />
       </template>
     </template>
+
+    <Section v-if="!connected && stagedWritten.length > 0" title="Applied settings awaiting reload">
+      <StagedSettingsBlock :changes="[]" :names="stagedNames" />
+    </Section>
 
     <!-- Keyed by the question: see ConnectCard's. -->
     <JoinVaultModal
@@ -278,6 +285,7 @@ const held = sync.heldPrompt.held
 /** Settings changed on another device, waiting for Apply or Keep (`StagedSettingsPrompt`). */
 const staged = sync.settingsPrompt.staged
 const stagedNames = sync.settingsPrompt.names
+const stagedWritten = computed(() => sync.settingsPrompt.appliedWaiting?.value ?? [])
 const connected = computed(() => status.value.state !== 'disconnected')
 const confirming = ref<'disconnect' | 'forget' | null>(null)
 /** The waiting revoke whose kept token the person asked to forget, while that is asked. */

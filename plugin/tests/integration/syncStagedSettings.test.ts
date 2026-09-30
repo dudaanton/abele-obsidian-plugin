@@ -207,6 +207,51 @@ describe('settings changed on another device', () => {
     expect(second.changes.map((change) => change.path).sort()).toEqual([APP, HOTKEYS])
   })
 
+  it('reports a partial apply exactly and still offers reload after a later file write fails', async () => {
+    await modify(APP, '{"a":2}')
+    await modify(HOTKEYS, '{"there":true}')
+    await service.syncNow()
+    await waitFor('both settings staged', () => service.status.value.deferred === 2)
+    const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+    app.vault.adapter.writeBinary = async (path, bytes, options) => {
+      if (path.endsWith('.tmp') && new TextDecoder().decode(bytes).includes('"there"'))
+        throw new Error('write unavailable')
+      return write(path, bytes, options)
+    }
+    const outcome = await service.applySettingsAndReload(shown())
+    expect(outcome?.applied).toEqual([APP])
+    expect(outcome?.failed).toEqual([expect.objectContaining({ path: HOTKEYS })])
+    expect(outcome?.reloaded).toBe(false)
+    expect(await read(APP)).toBe('{"a":2}')
+    expect(await read(HOTKEYS)).toBe('{"here":true}')
+    expect(service.settingsPrompt.appliedWaiting.value).toEqual([APP])
+    expect(await service.reloadAppliedSettings()).toBe(true)
+    expect(reloads).toBe(1)
+    expect(service.settingsPrompt.appliedWaiting.value).toEqual([])
+  })
+
+  it('reports a file already written when its replacement journal update fails afterwards', async () => {
+    await modify(APP, '{"a":2}')
+    await service.syncNow()
+    await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
+    const save = app.saveLocalStorage.bind(app)
+    app.saveLocalStorage = (key, value) => {
+      if (
+        key === 'abele-sync-writes' &&
+        Array.isArray(value) &&
+        value.some((entry) => entry.installed === true)
+      )
+        throw new Error('journal update unavailable')
+      save(key, value)
+    }
+    const outcome = await service.applySettingsAndReload(shown())
+    expect(outcome?.applied).toEqual([APP])
+    expect(outcome?.failed).toEqual([expect.objectContaining({ path: APP })])
+    expect(await read(APP)).toBe('{"a":2}')
+    expect(service.settingsPrompt.appliedWaiting.value).toEqual([APP])
+    app.saveLocalStorage = save
+  })
+
   it('are written by Reload now, which reloads Obsidian once', async () => {
     await modify(HOTKEYS, '{"there":true}')
     await service.syncNow()

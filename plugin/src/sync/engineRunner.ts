@@ -1,6 +1,7 @@
 import type { App } from 'obsidian'
+import { readDeleteDecision } from '@abele/sync-core'
+import type { DeferredSettingsBatch } from './stagedSettings'
 import type {
-  DeferredApplied,
   DeferredKept,
   DeleteDecision,
   HeldDelete,
@@ -14,6 +15,8 @@ import {
   PLAIN_HTTP_REFUSED,
   serverUrlProblem,
   type ChangeItem,
+  type CommitOp,
+  type CommitOpResult,
 } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { IndexedDbStateStore } from './IndexedDbStateStore'
@@ -87,6 +90,8 @@ export interface EngineHost {
   settingsArrived(replaced: string | null): void
   /** What the plugin's settings file says now, as canonical JSON: what `replaced` holds. */
   settingsMeaning(): Promise<string>
+  /** A settings apply wrote a file, even if the operation's bookkeeping later fails. */
+  settingsApplied?(path: string): void
   /**
    * A run of the engine built with this join got through: the host forgets the
    * choice, so no later engine is built with it, and says so.
@@ -112,6 +117,13 @@ export class EngineRunner {
   private builtToken = ''
   /** The scope key the running engine's settings and ignore file hash to. */
   private scope = ''
+  private applyWrites: Set<string> | null = null
+  private applyTarget: ChangeItem | null = null
+  private applyTail: Promise<void> = Promise.resolve()
+  private deleteTail: Promise<void> = Promise.resolve()
+  private deleteClient: VaultClient | null = null
+  private deleteTargets: Set<string> | null = null
+  private deleteReceipts: Set<string> | null = null
 
   constructor(
     private readonly host: EngineHost,
@@ -206,19 +218,81 @@ export class EngineRunner {
    * went offline would read as nothing decided, its files already off the hold (task-10 review,
    * #2).
    */
-  async decideDeletes(
+  decideDeletes(
     kind: DeleteDecision['kind'],
     fileIds: readonly string[]
-  ): Promise<{ decided: number; applied: boolean } | null> {
+  ): Promise<{ decided: number; applied: boolean; completed?: number } | null> {
+    const ids = [...fileIds]
+    const work = this.deleteTail.then(() => this.decideDeleteBatch(kind, ids))
+    this.deleteTail = work.then(
+      (): void => undefined,
+      (): void => undefined
+    )
+    return work
+  }
+
+  private async decideDeleteBatch(
+    kind: DeleteDecision['kind'],
+    fileIds: readonly string[]
+  ): Promise<{ decided: number; applied: boolean; completed?: number } | null> {
     const engine = this.engine
     if (engine === null) return null
+    const store = this.store
     const held = new Set((await engine.heldDeletes()).map((one) => one.fileId))
-    const decided = fileIds.filter((id) => held.has(id)).length
+    const targets = new Set(fileIds.filter((id) => held.has(id)))
+    const decided = targets.size
+    this.deleteClient = this.vault
+    this.deleteTargets = targets
+    this.deleteReceipts = new Set()
     try {
       const result = await engine.decideDeletes(kind, fileIds)
+      if (kind === 'confirm' && result.report !== null) {
+        const completed = this.deleteReceipts.size
+        if (completed !== result.decided)
+          return { decided: result.decided, applied: false, completed }
+      }
       return { decided: result.decided, applied: result.report !== null }
-    } catch {
+    } catch (error) {
+      const filed = store === null ? null : await readDeleteDecision(store)
+      const waiting =
+        filed?.kind === kind &&
+        fileIds.filter((id) => held.has(id)).every((id) => filed.fileIds.includes(id))
+      // A put-back can consume its decision before a network failure: the durable rewind and
+      // dropped hold still carry it out next time. A failed decision write has neither proof.
+      const restored =
+        kind === 'restore' && !(await engine.heldDeletes()).some((one) => held.has(one.fileId))
+      if (!waiting && !restored) throw error
       return { decided, applied: false }
+    } finally {
+      this.deleteClient = null
+      this.deleteTargets = null
+      this.deleteReceipts = null
+    }
+  }
+
+  private recordDeleteResults(
+    vault: VaultClient,
+    ops: CommitOp[],
+    results: CommitOpResult[]
+  ): void {
+    if (
+      vault !== this.deleteClient ||
+      this.deleteReceipts === null ||
+      results.length !== ops.length
+    )
+      return
+    for (let i = 0; i < ops.length; i++) {
+      const op = ops[i]
+      const result = results[i]
+      if (
+        op.op === 'delete' &&
+        this.deleteTargets?.has(op.file_id) &&
+        result.status !== 'rejected' &&
+        result.file_id === op.file_id &&
+        result.sha === null
+      ) {
+        this.deleteReceipts.add(op.file_id)
+      }
     }
   }
 
@@ -231,8 +305,62 @@ export class EngineRunner {
    * Write what is staged at the versions shown (`SyncService.applySettingsAndReload`); null with
    * no engine.
    */
-  async applyDeferred(versionIds: readonly string[]): Promise<DeferredApplied | null> {
-    return (await this.engine?.applyDeferred(versionIds)) ?? null
+  applyDeferred(versionIds: readonly string[]): Promise<DeferredSettingsBatch | null> {
+    const work = this.applyTail.then(() => this.applyBatch(versionIds))
+    this.applyTail = work.then(
+      (): void => undefined,
+      (): void => undefined
+    )
+    return work
+  }
+
+  private async applyBatch(versionIds: readonly string[]): Promise<DeferredSettingsBatch | null> {
+    const engine = this.engine
+    if (engine === null) return null
+    const requested = new Set(versionIds)
+    const shown = (await engine.deferred()).filter((one) => requested.has(one.version_id))
+    const applied = new Set<string>()
+    const skipped = new Set<string>()
+    const failed: { path: string; reason: string }[] = []
+    for (const one of shown) {
+      const writes = new Set<string>()
+      this.applyWrites = writes
+      this.applyTarget = one
+      try {
+        // One file per exclusive operation: if a later one fails, the completed outcomes are
+        // still available. Actual write receipts also cover a ledger error after a file write.
+        const result = await engine.applyDeferred([one.version_id])
+        result.applied.forEach((path) => applied.add(path))
+        result.skipped.forEach((path) => skipped.add(path))
+      } catch (error) {
+        failed.push({ path: one.path, reason: messageOf(error) })
+      } finally {
+        if (
+          [...writes].some((path) =>
+            [one.path, one.prev_path].some(
+              (target) => target !== null && caseKey(target) === caseKey(path)
+            )
+          )
+        )
+          applied.add(one.path)
+        this.applyWrites = null
+        this.applyTarget = null
+      }
+    }
+    let unshown: ChangeItem[] = []
+    let incomplete: string | undefined
+    try {
+      unshown = (await engine.deferred()).filter((one) => !requested.has(one.version_id))
+    } catch (error) {
+      incomplete = messageOf(error)
+    }
+    return {
+      applied: [...applied],
+      skipped: [...skipped],
+      unshown,
+      ...(failed.length ? { failed } : {}),
+      ...(incomplete ? { incomplete } : {}),
+    }
   }
 
   /**
@@ -384,6 +512,19 @@ export class EngineRunner {
       ignoreText,
       join,
       noticed: (paths) => this.noticed(paths),
+      committed: (vault, ops, results) => this.recordDeleteResults(vault, ops, results),
+      written: (path) => {
+        this.applyWrites?.add(path)
+        const target = this.applyTarget
+        if (
+          target &&
+          [target.path, target.prev_path].some(
+            (one) => one !== null && caseKey(one) === caseKey(path)
+          )
+        ) {
+          this.host.settingsApplied?.(target.path)
+        }
+      },
       closedElsewhere: (closed) => this.closedUnderEngine(closed),
     })
 

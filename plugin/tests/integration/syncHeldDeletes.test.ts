@@ -10,7 +10,8 @@ import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
-import { create, seed } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { blob, create, seed } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { decidedNotice } from '@/sync/heldDeletes'
 
 /**
  * Many files deleted at once on this device (phase 3b, decision 8).
@@ -121,6 +122,27 @@ describe('many files deleted at once on this device', () => {
     expect(decided).toEqual({ decided: 60, applied: true })
     expect(await other.trash()).toHaveLength(60)
     expect(service.status.value.heldDeletes).toBe(0)
+  })
+
+  it('reports only fifty-nine deletes when a remote edit keeps one file alive', async () => {
+    await remove(0, 60)
+    await service.syncNow()
+    const held = (await service.heldDeletes()).map((one) => one.fileId)
+    const file = (await other.manifest(null)).items.find((one) => one.path === note(0))!
+    await seed(other, [
+      {
+        op: 'modify',
+        file_id: file.file_id,
+        base_version_id: file.version_id,
+        ...(await blob(other, 'remote edit')),
+        mtime: Date.now() + 1000,
+      },
+    ])
+    const outcome = await service.decideDeletes('confirm', held)
+    expect(outcome).toMatchObject({ decided: 60, completed: 59, applied: false })
+    expect(await other.trash()).toHaveLength(59)
+    expect(decidedNotice('confirm', outcome, 'idle')).toContain('59 files were deleted')
+    expect((await other.manifest(null)).items.some((one) => one.path === note(0))).toBe(true)
   })
 
   it('come back when put back', async () => {

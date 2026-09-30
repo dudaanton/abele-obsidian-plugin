@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { ref } from 'vue'
 import { Notice } from 'obsidian'
 import type { ChangeItem } from '@abele/sync-protocol'
 import SettingsArrivedModal from '@/components/sync/SettingsArrivedModal.vue'
@@ -45,7 +46,11 @@ const CHANGES = [
 const NAMES = { dataview: 'Dataview' }
 
 const service = {
-  settingsPrompt: { reloader: { available: vi.fn(() => true), reload: vi.fn(() => true) } },
+  settingsPrompt: {
+    reloader: { available: vi.fn(() => true), reload: vi.fn(() => true) },
+    appliedWaiting: ref<string[]>([]),
+  },
+  reloadAppliedSettings: vi.fn(async () => true),
   applySettingsAndReload: vi.fn(),
   keepLocalSettings: vi.fn(),
   note: vi.fn(),
@@ -64,6 +69,7 @@ const button = (view: View, text: string) =>
 beforeEach(() => {
   useVault([])
   Notice.shown.length = 0
+  service.settingsPrompt.appliedWaiting.value = []
   service.settingsPrompt.reloader.available.mockReturnValue(true)
   service.applySettingsAndReload.mockResolvedValue({
     applied: CHANGES.map((c) => c.path),
@@ -113,6 +119,26 @@ describe('the settings-arrived dialog', () => {
     expect(service.applySettingsAndReload).toHaveBeenCalledWith(CHANGES.map((c) => c.version_id))
     expect(Notice.shown).toContain('Settings applied; Obsidian is reloading.')
     expect(view.emitted('close')).toBeTruthy()
+  })
+
+  it('names partial writes and offers an explicit reload without claiming nothing changed', async () => {
+    service.settingsPrompt.appliedWaiting.value = ['.obsidian/app.json']
+    service.applySettingsAndReload.mockResolvedValue({
+      applied: ['.obsidian/app.json'],
+      skipped: [],
+      reloaded: false,
+      unshown: [],
+      failed: [{ path: '.obsidian/hotkeys.json', reason: 'write unavailable' }],
+    })
+    const view = open()
+    await button(view, 'Reload now')!.trigger('click')
+    await flushPromises()
+    expect(Notice.shown.join(' ')).toContain('Applied 1: .obsidian/app.json')
+    expect(Notice.shown.join(' ')).toContain('Failed 1: .obsidian/hotkeys.json')
+    expect(view.text()).not.toContain('Nothing was changed')
+    await button(view, 'Reload applied settings')!.trigger('click')
+    await flushPromises()
+    expect(service.reloadAppliedSettings).toHaveBeenCalledTimes(1)
   })
 
   it('asks for a restart instead where Obsidian cannot reload itself', async () => {

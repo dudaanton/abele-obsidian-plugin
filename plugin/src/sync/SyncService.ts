@@ -14,7 +14,8 @@ import { listDevices, revokeDevice } from './devices'
 import { watchTheFront } from './phone'
 import type { JoinQuestion } from './join'
 import type { SyncServiceDeps } from './environment'
-import { noop, SerialQueue } from './queue'
+import { SerialQueue } from './queue'
+import { pendingTeardown, recordTeardown } from './teardownBarrier'
 import { wireParts, type ServiceParts } from './serviceParts'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
@@ -67,15 +68,6 @@ export type { SyncServiceDeps } from './environment'
 export class SyncService {
   private static instance: SyncService | null = null
 
-  /**
-   * The teardown of the instance before this one.
-   *
-   * `onunload` cannot await, so a plugin reload can start a new instance while the old one is
-   * still stopping an engine and closing its database. The next `init` waits on this before it
-   * opens anything, which is what stops two engines running on one vault.
-   */
-  private static lastTeardown: Promise<unknown> = Promise.resolve()
-
   static getInstance(): SyncService {
     SyncService.instance ??= new SyncService()
     return SyncService.instance
@@ -111,6 +103,7 @@ export class SyncService {
 
   /** Everything that touches the engine, one at a time (`queue.ts`). */
   private readonly queue = new SerialQueue()
+  private previousTeardown: Promise<void> = Promise.resolve()
 
   /** The runner, the enrolment verbs and the two prompts, wired together (`serviceParts.ts`). */
   private readonly parts: ServiceParts = wireParts({
@@ -171,13 +164,20 @@ export class SyncService {
     // Said again here, for an instance `onload` did not announce — a plugin reload's.
     this.announce()
     // Read here and not inside the queued work: a `destroy()` in this same tick would file its
-    // own teardown as `lastTeardown`, and waiting for that from behind it in the queue is a
+    // own teardown in the App barrier, and waiting for that from behind it in the queue is a
     // deadlock — the teardown cannot start until this item lets go.
-    const pending = SyncService.lastTeardown
+    const pending = pendingTeardown(app)
+    this.previousTeardown = pending
     void this.serialise(async () => {
       // Whatever instance a plugin reload left stopping goes first.
       await pending
+      this.settingsPrompt.restoreAppliedWaiting()
       await this.runner.reconcile()
+    }).catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error)
+      const message = `the previous sync could not be stopped (${reason}); restart Obsidian before syncing again`
+      this.note(message)
+      this.board.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: message })
     })
     void this.retryPendingRevokes()
     tellJoinWaiting(this.connection.value)
@@ -208,6 +208,7 @@ export class SyncService {
    * it throws, and what is written is the change as `check` answers it — the address normalised.
    */
   async updateConnection(patch: ConnectionEdit): Promise<void> {
+    await this.previousTeardown
     this.keeper.save(this.keeper.check(patch))
     await this.serialise(() => this.runner.reconcile())
   }
@@ -221,8 +222,8 @@ export class SyncService {
     if (SyncService.instance === this) SyncService.instance = null
     this.unhookSettings?.()
     this.unhookSettings = null
-    const stopping = this.serialise(() => this.runner.teardown())
-    SyncService.lastTeardown = stopping.then(noop, noop)
+    const stopping = this.queue.run(() => this.runner.teardown())
+    if (this.app !== null) recordTeardown(this.app, Promise.all([this.previousTeardown, stopping]))
     await stopping
     this.board.clearListeners()
     this.app = null
@@ -313,7 +314,7 @@ export class SyncService {
   decideDeletes(
     kind: DeleteDecision['kind'],
     fileIds: readonly string[]
-  ): Promise<{ decided: number; applied: boolean } | null> {
+  ): Promise<{ decided: number; applied: boolean; completed?: number } | null> {
     return this.heldPrompt.decide(kind, fileIds)
   }
 
@@ -328,6 +329,10 @@ export class SyncService {
    */
   applySettingsAndReload(versionIds: readonly string[]): Promise<AppliedSettings | null> {
     return this.settingsPrompt.applyAndReload(versionIds)
+  }
+
+  async reloadAppliedSettings(): Promise<boolean> {
+    return this.settingsPrompt.reloadApplied()
   }
 
   /**
@@ -510,6 +515,10 @@ export class SyncService {
 
   /** Runs the work after everything asked for before it, whether that succeeded or not. */
   private serialise<T>(fn: () => Promise<T>): Promise<T> {
-    return this.queue.run(fn)
+    const before = this.previousTeardown
+    return this.queue.run(async () => {
+      await before
+      return fn()
+    })
   }
 }

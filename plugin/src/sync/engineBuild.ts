@@ -1,6 +1,7 @@
 import { Platform, type App } from 'obsidian'
 import { toRaw } from 'vue'
 import { SyncClient, SyncEngine, joinFinished, type VaultClient } from '@abele/sync-core'
+import type { CommitOp, CommitOpResult } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
@@ -40,6 +41,10 @@ export interface EngineRecipe {
   join: JoinState | null
   /** Every batch the watcher hands the engine, for the runner to look at (`noticed`). */
   noticed(paths: string[]): void
+  /** Actual disk-write receipts, even if recording the result later fails. */
+  written?(path: string): void
+  /** Acknowledged wire outcomes, including all batches and idempotent replays. */
+  committed?(vault: VaultClient, ops: CommitOp[], results: CommitOpResult[]): void
   /** The ledger's connection was closed by another window (`closedUnderEngine`). */
   closedElsewhere(store: IndexedDbStateStore): void
 }
@@ -94,7 +99,10 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       ledger: store,
       ...(pollMs === undefined ? {} : { pollMs }),
       onWatch: (paths) => recipe.noticed(paths),
-      onEngineWrite: (path) => settings.noteWrite(path),
+      onEngineWrite: (path) => {
+        settings.noteWrite(path)
+        recipe.written?.(path)
+      },
       yieldsToServer: (path) => settings.yields(path),
     })
     const vault = new SyncClient({
@@ -104,6 +112,14 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       token,
       userAgent: USER_AGENT,
     }).forVault(connection.vaultId)
+    if (recipe.committed !== undefined) {
+      const commit = vault.commitRaw.bind(vault)
+      vault.commitRaw = async (ops, key) => {
+        const outcome = await commit(ops, key)
+        recipe.committed?.(vault, ops, outcome.body.results)
+        return outcome
+      }
+    }
     const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
     const engine = new SyncEngine({
       client: vault,

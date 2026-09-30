@@ -8,6 +8,24 @@ import {
 } from '@abele/sync-core'
 import type { ChangeItem } from '@abele/sync-protocol'
 import type { SyncStatus } from './status'
+
+const APPLIED_SLOT = Symbol.for('abele.sync.settings-applied')
+type AppliedHost = { [APPLIED_SLOT]?: string[] }
+
+/** Survives a plugin bundle reload, but a new App after an application reload has read the files. */
+export function appliedPathsOf(app: object | null): string[] {
+  return app === null ? [] : [...((app as AppliedHost)[APPLIED_SLOT] ?? [])]
+}
+export function keepAppliedPaths(app: object | null, paths: string[]): void {
+  if (app === null) return
+  if (paths.length) (app as AppliedHost)[APPLIED_SLOT] = [...paths]
+  else delete (app as AppliedHost)[APPLIED_SLOT]
+}
+
+export interface DeferredSettingsBatch extends DeferredApplied {
+  failed?: { path: string; reason: string }[]
+  incomplete?: string
+}
 import type { Reloader } from './reload'
 
 /**
@@ -44,12 +62,15 @@ export interface StagedHost {
    * Write what is staged at the versions shown (`SyncEngine.applyDeferred`); null with no
    * engine. The rest stays staged and comes back in `unshown`.
    */
-  apply(versionIds: readonly string[]): Promise<DeferredApplied | null>
+  apply(versionIds: readonly string[]): Promise<DeferredSettingsBatch | null>
   /**
    * Keep this device's files over what is staged at the versions shown, at `paths` or all
    * (`SyncEngine.keepLocal`); null with no engine.
    */
   keep(paths: string[] | undefined, versionIds: readonly string[]): Promise<DeferredKept | null>
+  /** Read/write plain application-lifetime bookkeeping, not a ref from an old Vue bundle. */
+  appliedWaiting?(): string[]
+  keepApplied?(paths: string[]): void
   /** A line for the sync log. */
   note(text: string): void
   /** Stop the running engine taking up more work: a reload is about to end it. */
@@ -74,6 +95,8 @@ export class StagedSettingsPrompt {
   readonly staged: Ref<ChangeItem[]> = ref([])
   /** The plugin names for `staged`. */
   readonly names: Ref<Record<string, string>> = ref({})
+  /** Already written, but not read by Obsidian until a reload. Kept even when staging empties. */
+  readonly appliedWaiting: Ref<string[]> = ref([])
   /** The question the dialog shows, or null while none is open. */
   readonly asking: Ref<StagedQuestion | null> = ref(null)
 
@@ -93,6 +116,21 @@ export class StagedSettingsPrompt {
     private readonly host: StagedHost,
     public reloader: Reloader
   ) {}
+
+  restoreAppliedWaiting(): void {
+    this.appliedWaiting.value = this.host.appliedWaiting?.() ?? this.appliedWaiting.value
+  }
+
+  recordApplied(path: string): void {
+    this.restoreAppliedWaiting()
+    this.appliedWaiting.value = [...new Set([...this.appliedWaiting.value, path])]
+    this.host.keepApplied?.(this.appliedWaiting.value)
+  }
+
+  private readApplied(): void {
+    this.appliedWaiting.value = []
+    this.host.keepApplied?.([])
+  }
 
   /**
    * The status moved: read the staged list again when its count no longer matches — which is
@@ -185,6 +223,7 @@ export class StagedSettingsPrompt {
    */
   async applyAndReload(versionIds: readonly string[]): Promise<AppliedSettings | null> {
     const result = await this.host.apply(versionIds)
+    if (result !== null) result.applied.forEach((path) => this.recordApplied(path))
     const unshown = result?.unshown ?? []
     this.askAgain(unshown)
     // Closed first: what the read finds that nobody was shown is asked about afresh.
@@ -197,20 +236,39 @@ export class StagedSettingsPrompt {
         (unshown.length > 0 ? `; ${unshown.length} changed since they were shown, asked again` : '')
     )
     let reloaded = false
-    if (result.applied.length > 0 && unshown.length === 0 && this.reloader.available()) {
+    if (
+      this.appliedWaiting.value.length > 0 &&
+      unshown.length === 0 &&
+      !result.failed?.length &&
+      !result.incomplete &&
+      this.reloader.available()
+    ) {
       this.host.note('reloading Obsidian to read the settings that were applied')
       // Nothing more is started under a reload that is about to end it: a sync that began
       // after the apply would be cut off, and relies only on its journal to come back whole.
       this.host.pause()
       reloaded = this.reloader.reload()
       if (!reloaded) this.host.resume()
+      else this.readApplied()
     }
     return {
       applied: result.applied,
       skipped: result.skipped,
       reloaded,
       unshown: unshown.map((change) => change.path),
+      ...(result.failed?.length ? { failed: result.failed } : {}),
+      ...(result.incomplete ? { incomplete: result.incomplete } : {}),
     }
+  }
+
+  /** Explicitly reload what was already written, without retrying failed or unshown files. */
+  reloadApplied(): boolean {
+    if (this.appliedWaiting.value.length === 0 || !this.reloader.available()) return false
+    this.host.pause()
+    const reloaded = this.reloader.reload()
+    if (reloaded) this.readApplied()
+    else this.host.resume()
+    return reloaded
   }
 
   /**
@@ -393,6 +451,8 @@ export interface KeptSettings extends Omit<DeferredKept, 'unshown'> {
 /** What "Reload now" did, as `SyncService.applySettingsAndReload` answers it. */
 export interface AppliedSettings {
   applied: string[]
+  failed?: { path: string; reason: string }[]
+  incomplete?: string
   skipped: string[]
   /**
    * Whether Obsidian was reloaded; false where it has no reload command, where nothing was
@@ -406,8 +466,23 @@ export interface AppliedSettings {
 /** What is said once "Reload now" has run. */
 export function appliedNotice(outcome: AppliedSettings | null): string {
   if (outcome === null) return 'Sync is not running on this device, so nothing was applied.'
-  const { applied, skipped, reloaded, unshown } = outcome
+  const { applied, skipped, reloaded, unshown, failed = [], incomplete } = outcome
   const lines: string[] = []
+  if (failed.length > 0 || incomplete) {
+    const written = applied.length
+      ? `Applied ${applied.length}: ${applied.join(', ')}. `
+      : 'No files were applied. '
+    return (
+      written +
+      (failed.length
+        ? `Failed ${failed.length}: ${failed.map((one) => `${one.path} (${one.reason})`).join('; ')}. `
+        : '') +
+      (incomplete ? `The remaining queue could not be read: ${incomplete}. ` : '') +
+      (applied.length
+        ? 'Reload applied settings on the Sync tab before changing settings.'
+        : 'The files remain waiting.')
+    )
+  }
   if (applied.length === 0 && skipped.length === 0 && unshown.length === 0) {
     return 'These settings are no longer waiting, so nothing was applied.'
   }

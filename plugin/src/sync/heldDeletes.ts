@@ -114,10 +114,10 @@ export class HeldDeletesPrompt {
   filed(
     kind: FiledDecision['kind'],
     fileIds: readonly string[],
-    result: { decided: number; applied: boolean }
+    result: { decided: number; applied: boolean; completed?: number }
   ): boolean {
     const replaced = this.decided.value !== null
-    if (result.applied) {
+    if (result.applied || result.completed !== undefined) {
       this.settled()
       return replaced
     }
@@ -192,11 +192,18 @@ const filesOf = (count: number): string => (count === 1 ? '1 file' : `${count} f
  */
 export function decidedNotice(
   kind: 'confirm' | 'restore',
-  result: { decided: number; applied: boolean } | null,
+  result: { decided: number; applied: boolean; completed?: number } | null,
   state: SyncStatus['state']
 ): string {
   if (result === null) return 'Sync is not running on this device, so nothing was decided.'
   if (result.decided === 0) return 'These files are no longer held, so nothing was decided.'
+  if (kind === 'confirm' && result.completed !== undefined) {
+    const completed = result.completed
+    return (
+      `${filesOf(completed)} ${completed === 1 ? 'was' : 'were'} deleted everywhere; ` +
+      `${filesOf(result.decided - completed)} were not deleted (changed or refused). See the sync log.`
+    )
+  }
   const files = filesOf(result.decided)
   const one = result.decided === 1
   if (result.applied) {

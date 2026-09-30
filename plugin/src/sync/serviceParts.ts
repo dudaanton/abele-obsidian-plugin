@@ -13,7 +13,12 @@ import { askJoin, type JoinQuestion } from './join'
 import { finishJoin } from './joinState'
 import { ownSettingsPath, settingsArrived, settingsMeaning } from './ownSettings'
 import { obsidianReloader } from './reload'
-import { pluginNamesIn, StagedSettingsPrompt } from './stagedSettings'
+import {
+  appliedPathsOf,
+  keepAppliedPaths,
+  pluginNamesIn,
+  StagedSettingsPrompt,
+} from './stagedSettings'
 import type { StatusBoard } from './statusBoard'
 
 /**
@@ -63,6 +68,7 @@ export function wireParts(host: PartsHost): ServiceParts {
       settingsArrived: (replaced) =>
         settingsArrived({ plugin: host.plugin(), note: (text) => host.note(text) }, replaced),
       settingsMeaning: () => settingsMeaning(host.plugin()),
+      settingsApplied: (path) => settingsPrompt.recordApplied(path),
       joined: (join) =>
         finishJoin(
           {
@@ -114,6 +120,8 @@ export function wireParts(host: PartsHost): ServiceParts {
       apply: (versionIds) => runner.applyDeferred(versionIds),
       keep: (paths, versionIds) => runner.keepLocal(paths, versionIds),
       visible,
+      appliedWaiting: () => appliedPathsOf(host.app()),
+      keepApplied: (paths) => keepAppliedPaths(host.app(), paths),
       names: (ids) => pluginNamesIn(host.app(), ids),
       note: (text) => host.note(text),
       pause: () => runner.pause(),
