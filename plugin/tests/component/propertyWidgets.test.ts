@@ -12,6 +12,8 @@ import type { App } from 'obsidian'
 import { FILES_TYPE, PropertyWidgets, type TypeWidget } from '@/properties/widgets'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
 
 interface Ctx {
   app: App
@@ -297,7 +299,7 @@ describe('a wallet’s balance beside a link to it', () => {
     } as never
   }
 
-  const flush = () => new Promise((r) => setTimeout(r, 0))
+  const flush = () => advance()
 
   const drawText = (value: unknown) => {
     const el = host.createDiv({ cls: 'metadata-property-value' })
@@ -400,7 +402,7 @@ describe('a wallet’s balance beside a link to it', () => {
       // Another note opens in the tab with the same link; the panel keeps the row as it is.
       view.file = { path: 'Work/Taxi.md' }
       for (const h of handlers) h()
-      await new Promise((r) => setTimeout(r, 20))
+      await advance(20)
       expect(badge(el)).toBe('488.00 EUR')
     } finally {
       delete fake.workspace

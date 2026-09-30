@@ -60,9 +60,12 @@ function viewIn(root: unknown, extra: Partial<FakeView> = {}) {
   return view
 }
 
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+
 const settle = async () => {
   await flushPromises()
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  await advance(20)
   await nextTick()
 }
 

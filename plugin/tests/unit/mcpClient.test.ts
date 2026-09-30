@@ -6,7 +6,8 @@
  * which has no CORS to get in the way either. Everything else — the probe, the fallback,
  * the session, the headers — is the code that runs in the plugin.
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { deferred } from '../helpers/deferred'
 import { McpClient, McpError, type McpRequest } from '@/ai/mcp/McpClient'
 import { startMcpTestServer, nodeRequestUrl, type McpTestServer } from '../helpers/mcpTestServer'
 
@@ -122,18 +123,31 @@ describe('a legacy server (initialize and a session)', () => {
   })
 
   it('tells the server a call was stopped', async () => {
-    server = await startMcpTestServer({ mode: 'legacy' })
+    const entered = deferred()
+    const response = deferred()
+    server = await startMcpTestServer({
+      mode: 'legacy',
+      slow: async () => {
+        entered.resolve()
+        await response.promise
+      },
+    })
     const client = clientFor(server)
     await client.listTools()
     const controller = new AbortController()
-
     const call = client.callTool('slow', { ms: 1500 }, controller.signal)
-    setTimeout(() => controller.abort(), 50)
-
-    await expect(call).rejects.toThrow(/stopped/i)
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    const cancelled = server.requests.find((r) => r.body?.method === 'notifications/cancelled')
-    expect(cancelled?.body.params.requestId).toBeDefined()
+    const rejected = expect(call).rejects.toThrow(/stopped/i)
+    try {
+      await entered.promise
+      controller.abort()
+      await rejected
+      await vi.waitFor(() => {
+        const cancelled = server!.requests.find((r) => r.body?.method === 'notifications/cancelled')
+        expect(cancelled?.body.params.requestId).toBeDefined()
+      })
+    } finally {
+      response.resolve()
+    }
   })
 })
 

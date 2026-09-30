@@ -18,8 +18,9 @@ import Markdown from '@/components/obsidian/Markdown.vue'
 import { recordSignatures } from '@/components/obsidian/markdownParts'
 import { useVault } from '../helpers/testEnv'
 
+import { useFakeClock } from '../helpers/fakeClock'
+const settle = useFakeClock()
 const RENDER_MS = 10
-const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 let rendered: string[]
 /** Renders started and not yet finished. */
@@ -51,7 +52,8 @@ const fakeRender = async (
 ) => {
   rendered.push(markdown)
   inFlight++
-  await settle(RENDER_MS)
+  // The fake renderer is delayed on the controlled clock, not advancing that clock itself.
+  await new Promise((resolve) => setTimeout(resolve, RENDER_MS))
   inFlight--
   for (const block of markdown.split(/\n\n+/).filter(Boolean)) {
     const fence = /^```([\w-]*)\n([\s\S]*?)(?:\n```)?$/.exec(block)

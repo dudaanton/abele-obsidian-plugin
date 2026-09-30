@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { computed, ref, nextTick } from 'vue'
 import AiChat from '@/components/AiChat.vue'
+import { useFakeClock } from '../helpers/fakeClock'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
@@ -21,6 +22,7 @@ import { DEFAULT_TAIL_PAGE_SIZE } from '@/composables/useTailPagedList'
 import { useVault } from '../helpers/testEnv'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 
+const advance = useFakeClock()
 const HEIGHT = 100
 const BOX = 800
 
@@ -126,7 +128,7 @@ function layoutModel(container: HTMLElement) {
 const settle = async () => {
   for (let i = 0; i < 4; i++) {
     await nextTick()
-    await new Promise((r) => setTimeout(r, 20))
+    await advance(20)
   }
 }
 
@@ -144,7 +146,7 @@ async function switchTo(id: 'a' | 'b', model: ReturnType<typeof layoutModel>) {
   for (let i = 0; i < 6; i++) {
     await nextTick()
     model.relayout()
-    await new Promise((r) => setTimeout(r, 20))
+    await advance(20)
   }
 }
 
@@ -231,7 +233,7 @@ describe('a card in a note asking for one of its messages', () => {
     for (let i = 0; i < 6; i++) {
       await nextTick()
       model.relayout()
-      await new Promise((r) => setTimeout(r, 20))
+      await advance(20)
     }
 
     // The message 16px below the top, with the one before it showing in that gap.
@@ -251,7 +253,7 @@ describe('a card in a note asking for one of its messages', () => {
     for (let i = 0; i < 12; i++) {
       await nextTick()
       model.relayout()
-      await new Promise((r) => setTimeout(r, 20))
+      await advance(20)
     }
 
     expect(model.topMessage()).toEqual({ id: 'a4', offset: -84 })
@@ -271,13 +273,13 @@ describe('a chat closed while it is holding a message in place', () => {
     for (let i = 0; i < 6; i++) {
       await nextTick()
       model.relayout()
-      await new Promise((r) => setTimeout(r, 20))
+      await advance(20)
     }
 
     wrapper?.unmount()
     wrapper = null
     const raf = vi.spyOn(window, 'requestAnimationFrame')
-    await new Promise((r) => setTimeout(r, 200))
+    await advance(200)
 
     expect(raf).not.toHaveBeenCalled()
   })

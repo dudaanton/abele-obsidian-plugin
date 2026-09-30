@@ -57,7 +57,9 @@ function phoneApp(file: TFile, text: { now: string }, start = '> [!drawing]\n> !
   }
 }
 
-const settle = () => new Promise((r) => setTimeout(r, 20))
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+const settle = () => advance(20)
 
 describe('a drawing’s box in a note on an iPad', () => {
   let file: TFile

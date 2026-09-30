@@ -186,17 +186,49 @@ describe('packing a row into lines', () => {
     expect(tight.placed.get(y)).toEqual({ line: 0, labeled: false })
   })
 
-  // A loose bound, as the calendar's: ten thousand bars take a tenth of a second alone, a second
-  // on a machine running several checks at once, and far longer if the packing went quadratic.
+  // Count numeric comparisons/coercions at the input boundary, including the sorted line
+  // endpoints. This detects repeated scans without depending on CPU load.
   it('packs thousands of bars without going quadratic', () => {
     const many = Array.from({ length: 10000 }, (_, i) =>
       item({ title: `Person ${i}`, start: String(1000 + (i % 900)), end: String(1060 + (i % 900)) })
     )
-    const started = performance.now()
+    let operations = 0
+    for (const bar of many) {
+      for (const key of ['from', 'to'] as const) {
+        const value = bar[key]
+        bar[key] = {
+          valueOf: () => {
+            operations++
+            return value
+          },
+        } as unknown as number
+      }
+    }
     const pack = packLane(many, { ...PACK, ppy: 2, maxRows: 40 })
     expect(pack.placed.size + pack.overflow.length).toBe(10000)
-    expect(performance.now() - started).toBeLessThan(5000)
+    // Two packing orders, at most 40 rows and logarithmic endpoint searches per bar.
+    expect(operations).toBeLessThan(many.length * 40 * Math.ceil(Math.log2(many.length)) * 4)
   }, 30_000)
+
+  it('searches a long sparse row logarithmically instead of scanning all previous bars', () => {
+    const count = 10000
+    let comparisons = 0
+    const many = Array.from({ length: count }, (_, i) => {
+      const bar = item({ start: '1000', end: '1001' })
+      bar.from = {
+        valueOf: () => {
+          comparisons++
+          return i * 100
+        },
+      } as unknown as number
+      bar.to = i * 100 + 1
+      return bar
+    })
+    const pack = packLane(many, { ...PACK, ppy: 2, maxRows: 1 })
+    expect(pack.placed.size).toBe(count)
+    expect(pack.overflow).toEqual([])
+    expect(comparisons).toBeLessThan(count * Math.ceil(Math.log2(count)) * 8)
+  })
 })
 
 describe('what does not fit', () => {

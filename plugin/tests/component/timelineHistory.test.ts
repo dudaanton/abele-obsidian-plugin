@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import dayjs from 'dayjs'
+import { useFakeClock } from '../helpers/fakeClock'
 import { Menu, type MenuItem } from 'obsidian'
 import Timeline from '@/components/Timeline.vue'
 import Search from '@/components/obsidian/Search.vue'
@@ -17,6 +18,7 @@ import {
 
 vi.mock('@/composables/useDate', () => ({ useDate: () => ({ now: ref(dayjs('2030-06-15')) }) }))
 
+const advance = useFakeClock()
 let view: VueWrapper
 const task = (name: string, date: string, done = false, due?: string) => {
   const t = new Task({ wikilink: `[[Sample/${name}]]` })
@@ -336,7 +338,7 @@ describe('folded timeline history', () => {
     render([])
     await view.find('.abele-timeline__search-toggle').trigger('click')
     view.findComponent(Search).vm.$emit('update:modelValue', 'sample-old')
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    await advance(250)
     await flushPromises()
     expect(days()).toEqual([])
     await view.setProps({ tasks: [task('sample-old', '2030-06-12')] })
@@ -350,7 +352,7 @@ describe('folded timeline history', () => {
     render([old, task('sample-today', '2030-06-15')])
     await view.find('.abele-timeline__search-toggle').trigger('click')
     view.findComponent(Search).vm.$emit('update:modelValue', 'sample-old')
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    await advance(250)
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-12'])
     const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
@@ -368,7 +370,7 @@ describe('folded timeline history', () => {
     render([task('sample-old', '2030-06-12'), task('sample-today', '2030-06-15')])
     await view.find('.abele-timeline__search-toggle').trigger('click')
     view.findComponent(Search).vm.$emit('update:modelValue', 'sample-old')
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    await advance(250)
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-12'])
   })

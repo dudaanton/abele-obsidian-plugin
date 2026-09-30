@@ -13,6 +13,9 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
 import { indexes } from '@/github/search/source'
 
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+
 const archive = new Uint8Array(
   readFileSync(resolve(__dirname, '../fixtures/github/widgets.tar.gz'))
 )
@@ -21,7 +24,7 @@ const SHA = '9bafc7b0401748aa7ce64a89653af1a32c4c6143'
 const settle = async () => {
   for (let i = 0; i < 5; i++) {
     await flushPromises()
-    await new Promise((r) => setTimeout(r, 0))
+    await advance()
   }
 }
 
@@ -44,7 +47,7 @@ const issueRoutes = {
 const type = async (input: HTMLInputElement, value: string) => {
   input.value = value
   input.dispatchEvent(new Event('input'))
-  await new Promise((r) => setTimeout(r, 150))
+  await advance(150)
   await flushPromises()
 }
 

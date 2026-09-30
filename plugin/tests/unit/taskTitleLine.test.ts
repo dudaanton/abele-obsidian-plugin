@@ -9,6 +9,7 @@
  * byte, blank line after the frontmatter included.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
+import { flushPromises as settle } from '@vue/test-utils'
 import { Task } from '@/entities/Task'
 import { syncTaskFileName } from '@/helpers/taskFileName'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -27,8 +28,6 @@ function writable(vault: FakeTaskVault): FakeTaskVault {
   vault.app.vault.offref = () => {}
   return vault
 }
-
-const settle = () => new Promise((r) => setTimeout(r, 0))
 
 beforeEach(() => {
   AbeleConfig.getInstance().tasksFolder = 'Tasks'

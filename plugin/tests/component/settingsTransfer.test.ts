@@ -93,11 +93,7 @@ const clickButton = async (wrapper: ReturnType<typeof mount>, text: string) => {
  * in real time, not in ticks.
  */
 const waitFor = async (ready: () => boolean, timeout = 4000) => {
-  const started = Date.now()
-  while (!ready()) {
-    if (Date.now() - started > timeout) throw new Error('timed out waiting for the transfer')
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  await vi.waitFor(() => expect(ready()).toBe(true), { timeout, interval: 10 })
   await flushPromises()
 }
 
@@ -264,7 +260,6 @@ describe('reading a transfer on the other device', () => {
   })
 })
 
-
 describe('the scripts, skills and prompts themselves', () => {
   const sendFile = async (name: string) => {
     const wrapper = open(TransferSettings)
@@ -383,10 +378,7 @@ describe('choosing between keeping and replacing', () => {
 
     await clickButton(wrapper, 'Apply')
 
-    expect(AbeleConfig.getInstance().ai.providers.map((p) => p.name)).toEqual([
-      'mine',
-      'openwebui',
-    ])
+    expect(AbeleConfig.getInstance().ai.providers.map((p) => p.name)).toEqual(['mine', 'openwebui'])
   })
 
   it('replaces it when that is what was chosen', async () => {
@@ -528,7 +520,10 @@ describe('a transfer that carries a key', () => {
 describe('sending without a camera', () => {
   const clipboard = () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(window.navigator, 'clipboard', { value: { writeText }, configurable: true })
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
     return writeText
   }
 

@@ -15,6 +15,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { fakeChatSession } from '../helpers/fakeChatSession'
+import { useFakeClock } from '../helpers/fakeClock'
+const wait = useFakeClock()
 
 let service: ChatService
 const mounted: Array<ReturnType<typeof mount>> = []
@@ -44,8 +46,6 @@ const open = () => {
 }
 const textarea = (wrapper: ReturnType<typeof open>) =>
   wrapper.get('.abele-chat-input__textarea').element as HTMLTextAreaElement
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** The composer refuses the first `times` focuses, the way one not yet on screen does. */
 function refuseFocus(el: HTMLTextAreaElement, times: number) {

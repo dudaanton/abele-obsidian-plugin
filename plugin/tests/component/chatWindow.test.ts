@@ -18,6 +18,8 @@ import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { DEFAULT_TAIL_PAGE_SIZE } from '@/composables/useTailPagedList'
 import { useVault } from '../helpers/testEnv'
 import { fakeChatSession } from '../helpers/fakeChatSession'
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
 
 function conversation(count: number): ChatMessage[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -225,9 +227,9 @@ describe('the view while older messages are being revealed', () => {
     // after mounting, awaited, and queued again behind a timeout. Frames pass with nothing to
     // correct — and only then do the messages take up room. This is the moment the view
     // jumped, and a correction measured once, early, is exactly what missed it.
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await advance(50)
     model.setHeights(100)
-    await new Promise((resolve) => setTimeout(resolve, 80))
+    await advance(80)
 
     // A page of 30 messages, 100px each, appeared above: staying put means scrolling by that.
     expect(model.container.scrollTop).toBe(DEFAULT_TAIL_PAGE_SIZE * 100)
@@ -249,7 +251,7 @@ describe('the view while older messages are being revealed', () => {
     model.scrollTo(1500)
     await container.trigger('scroll')
     model.setHeights(100)
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await advance(60)
 
     expect(model.container.scrollTop).toBe(1500)
   })
@@ -272,7 +274,7 @@ describe('the view while older messages are being revealed', () => {
       // The revealed page takes up room, and the hold answers by scrolling to keep the reader's
       // message where it was. From here on it is correcting every frame.
       model.setHeights(100)
-      await new Promise((resolve) => setTimeout(resolve, 60))
+      await advance(60)
 
       /*
        * The reader scrolls up into what was just revealed. Their scroll and the correction that
@@ -282,7 +284,7 @@ describe('the view while older messages are being revealed', () => {
        */
       model.scrollTo(2000)
       await container.trigger(input)
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await advance(100)
 
       expect(model.container.scrollTop).toBe(2000)
     }
@@ -300,14 +302,14 @@ describe('the view while older messages are being revealed', () => {
     await nextTick()
 
     model.setHeights(100)
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await advance(60)
 
     // The browser reports the correction, as it reports every scroll. Reading that as the
     // reader having taken over would end the hold at the first thing it did, and the messages
     // still rendering below would push the view around for the rest of their arrival.
     await container.trigger('scroll')
     model.setHeights(150)
-    await new Promise((resolve) => setTimeout(resolve, 80))
+    await advance(80)
 
     // 30 messages of 150px above the one being read, which is still where it was.
     expect(model.container.scrollTop).toBe(DEFAULT_TAIL_PAGE_SIZE * 150)
@@ -592,7 +594,7 @@ describe('the box shrinking under the reader, as it does when a keyboard opens',
     model.grow(2400)
     streaming.value = 'The answer, at much greater length'
     await settle()
-    await new Promise((r) => setTimeout(r, 0))
+    await advance()
 
     // Then the box under the conversation gets a little shorter, as a row appears below it.
     model.resize(784)
@@ -628,7 +630,7 @@ describe('coming back from a tab a delegated run was holding', () => {
     model.scrollTo(0)
     const last = model.container.querySelector('.abele-chat-msg:last-of-type')!
     last.appendChild(document.createElement('p'))
-    await new Promise((r) => setTimeout(r, 0))
+    await advance()
     await nextTick()
 
     expect(model.container.scrollTop).toBe(DEFAULT_TAIL_PAGE_SIZE * 100)

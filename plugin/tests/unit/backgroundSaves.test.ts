@@ -7,7 +7,7 @@
  * as an unhandled rejection.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises as settle } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -32,7 +32,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('a background settings write that fails', () => {
   it('is logged by the chat history, not left unhandled', async () => {

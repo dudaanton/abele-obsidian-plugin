@@ -17,6 +17,8 @@ import type { Plugin } from 'obsidian'
 import AiChatInput from '@/components/AiChatInput.vue'
 import { registerFocusRelease } from '@/helpers/fieldFocus'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
 
 function listen() {
   const registered = new Map<string, (event: Event) => void>()
@@ -112,7 +114,7 @@ describe('a tap elsewhere in the composer', () => {
 
     tap(wrapper.find('.abele-chat-input__tokens').element)
     // The field is let go of once the click has been handled, not on the lift itself.
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await advance()
 
     expect(document.activeElement).not.toBe(field)
     expect(wrapper.emitted('send')).toBeUndefined()

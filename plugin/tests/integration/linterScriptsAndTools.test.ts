@@ -195,24 +195,31 @@ describe('the agent tools', () => {
   })
 })
 
+import { deferred } from '../helpers/deferred'
+
 describe('the report on screen', () => {
   it('fixes with the rules its own run used, not a later or earlier run’s', async () => {
     const service = LinterService.getInstance()
     const config = AbeleConfig.getInstance()
     // A slow first run, overtaken by a second with no-h1 switched off: its rules arrive last.
     const load = service.loadRules.bind(service)
+    const entered = deferred()
+    const release = deferred()
     let first = true
     vi.spyOn(service, 'loadRules').mockImplementation(async (settings) => {
       const rules = await load(settings)
       if (first) {
         first = false
-        await new Promise((r) => setTimeout(r, 30))
+        entered.resolve()
+        await release.promise
       }
       return rules
     })
     const slow = service.run({ kind: 'folder', path: 'Notes' })
+    await entered.promise
     config.linter = linterSettingsFrom({ rules: { 'no-h1': { enabled: false } } })
     const fast = await service.run({ kind: 'folder', path: 'Notes' })
+    release.resolve()
     await slow
     expect(service.report.value?.startedAt).toBe(fast.startedAt)
     await service.fix('Notes/bare.md')

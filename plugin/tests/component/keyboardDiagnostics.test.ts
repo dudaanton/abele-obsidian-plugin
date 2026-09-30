@@ -15,10 +15,13 @@ import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { collectEntries } from '@/transfer/entries'
 import { DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+
 let wrapper: VueWrapper | null = null
 
 const tick = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  await advance(300)
   await nextTick()
 }
 

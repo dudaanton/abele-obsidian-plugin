@@ -9,6 +9,7 @@
  * line's own.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { transactionFileTarget } from '@/helpers/transactionFileName'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -99,7 +100,7 @@ describe('editing a transaction whose open editor has not loaded the text', () =
     store.init(vault.app)
 
     for (const handler of handlers) handler(vault.file(RENT))
-    await new Promise((r) => setTimeout(r, 0))
+    await flushPromises()
 
     expect(vault.renames).toEqual([])
   })

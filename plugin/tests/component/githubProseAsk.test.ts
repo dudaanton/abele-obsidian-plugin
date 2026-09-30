@@ -18,6 +18,8 @@ import { proseSnippet } from '@/github/proseSelection'
 import type { GithubViewModel } from '@/github/model'
 import { openTab } from '../helpers/githubTab'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
 
 const { askAboutGithub } = vi.hoisted(() => ({ askAboutGithub: vi.fn(async () => {}) }))
 vi.mock('@/github/chatAbout', async (real) => ({
@@ -123,7 +125,7 @@ async function select(from: Text, fromAt: number, to: Text, toAt: number) {
   range.setEnd(to, toAt)
   selection.addRange(range)
   document.dispatchEvent(new Event('selectionchange'))
-  await new Promise((r) => setTimeout(r, 600))
+  await advance(600)
   await flushPromises()
 }
 

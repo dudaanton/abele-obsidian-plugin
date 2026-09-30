@@ -5,6 +5,7 @@
  * skips them all, and the memory of the script that was running when the app last went down.
  */
 import { describe, it, expect, vi } from 'vitest'
+import { deferred } from '../helpers/deferred'
 import { parseScriptHeader } from '@/scripting/ScriptParser'
 import { RUNNING_STARTUP_KEY, runStartupScripts, type StartupRun } from '@/scripting/startupRunner'
 import type { ExecuteOptions } from '@/scripting/ScriptService'
@@ -57,8 +58,11 @@ function setup(
 describe('running the startup scripts', () => {
   it('runs each in the order given, one after another', async () => {
     const finished: string[] = []
+    const entered = deferred()
+    const release = deferred()
     const slow: Behaviour = async () => {
-      await new Promise((r) => setTimeout(r, 20))
+      entered.resolve()
+      await release.promise
       finished.push(A.path)
       return ''
     }
@@ -76,7 +80,12 @@ describe('running the startup scripts', () => {
       { timeoutMs: 10_000 }
     )
 
-    const report = await runStartupScripts(run)
+    const pending = runStartupScripts(run)
+    await entered.promise
+    expect(order).toEqual([A.path])
+    expect(finished).toEqual([])
+    release.resolve()
+    const report = await pending
 
     expect(order).toEqual([A.path, B.path, C.path])
     expect(finished).toEqual([A.path, B.path])

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { PdfVocabMarks } from '@/reader/vocab/pdfVocabMarks'
 import { BookMarks } from '@/reader/marks'
 import { ruleOfNote } from '@/reader/vocab/rules'
+import { useFakeClock } from '../helpers/fakeClock'
 
 const rule = ruleOfNote('sample-note.md', {
   forms: ['sample'],
@@ -10,7 +11,8 @@ const rule = ruleOfNote('sample-note.md', {
   scope: 'book',
   on: true,
 })
-const tick = () => new Promise((resolve) => setTimeout(resolve, 20))
+const advance = useFakeClock()
+const tick = () => advance(20)
 
 function page(html = '<span>sam</span><span>ple</span> <span>sample</span>') {
   const doc = document.implementation.createHTMLDocument('page')

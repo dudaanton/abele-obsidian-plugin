@@ -75,8 +75,9 @@ beforeEach(() => {
 
 // The lines are looked after for a moment past the jump; that is over before the next test.
 afterEach(async () => {
-  vi.useRealTimers()
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(3000)
   await lineFlashSettled()
+  vi.useRealTimers()
 })
 
 const note = () => app.vault.getAbstractFileByPath(NOTE) as TFile
@@ -162,7 +163,6 @@ describe('opening at lines in reading view', () => {
 
   /** Reading view lays a note out a moment after it opens; flashing before that finds nothing. */
   it('waits for the note to be rendered before scrolling and flashing', async () => {
-    vi.useRealTimers()
     const origGetLeaf = (app.workspace as { getLeaf: (p: unknown) => { view: FakeMarkdownView } })
       .getLeaf
     ;(app.workspace as { getLeaf: unknown }).getLeaf = (pane: unknown) => {
@@ -172,7 +172,9 @@ describe('opening at lines in reading view', () => {
       return leaf
     }
 
-    await openNoteAtLines(app as never, note(), { from: 20, to: 20 })
+    const opening = openNoteAtLines(app as never, note(), { from: 20, to: 20 })
+    await vi.advanceTimersByTimeAsync(200)
+    await opening
 
     const view = leaves[0].view
     expect(view.sections.filter((s) => s.el.classList.contains('abele-line-flash'))).toHaveLength(1)
@@ -184,7 +186,6 @@ describe('opening at lines in reading view', () => {
    * a note opened fresh from a book stayed at its top with the flash off screen.
    */
   it('scrolls once the renderer has measured the note, not when it first has blocks', async () => {
-    vi.useRealTimers()
     const origGetLeaf = (app.workspace as { getLeaf: (p: unknown) => { view: FakeMarkdownView } })
       .getLeaf
     const measured: { at: number | null } = { at: null }
@@ -208,7 +209,9 @@ describe('opening at lines in reading view', () => {
       return leaf
     }
 
-    await openNoteAtLines(app as never, note(), { from: 20, to: 20 })
+    const opening = openNoteAtLines(app as never, note(), { from: 20, to: 20 })
+    await vi.advanceTimersByTimeAsync(200)
+    await opening
 
     expect(measured.at).toBe(17)
     const view = leaves[0].view
@@ -217,11 +220,10 @@ describe('opening at lines in reading view', () => {
 
   /** Drawn anew once measured, the blocks come back without the flash: they get it again. */
   it('flashes again the blocks drawn anew just after the jump', async () => {
-    vi.useRealTimers()
     await openNoteAtLines(app as never, note(), { from: 20, to: 20 })
     const view = leaves[0].view
     view.sections[19].el = document.createElement('p')
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await vi.advanceTimersByTimeAsync(150)
     expect(view.sections[19].el.classList.contains('abele-line-flash')).toBe(true)
   })
 })

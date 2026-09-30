@@ -22,6 +22,8 @@ export interface McpTestServerOptions {
   pageSize?: number
   /** A bearer token every request must carry. */
   token?: string
+  /** Fast tests hold the response explicitly; live e2e can still ask for a timed slow call. */
+  slow?: () => Promise<void>
 }
 
 export interface RecordedRequest {
@@ -98,7 +100,8 @@ const PIXEL =
 async function callTool(
   name: string,
   args: Record<string, any>,
-  headers: http.IncomingHttpHeaders
+  headers: http.IncomingHttpHeaders,
+  slow?: () => Promise<void>
 ) {
   switch (name) {
     case 'echo':
@@ -118,7 +121,8 @@ async function callTool(
     case 'broken':
       return { content: [{ type: 'text', text: 'it broke' }], isError: true }
     case 'slow':
-      await new Promise((resolve) => setTimeout(resolve, Number(args.ms) || 200))
+      if (slow) await slow()
+      else await new Promise((resolve) => setTimeout(resolve, Number(args.ms) || 200))
       return { content: [{ type: 'text', text: 'done at last' }] }
     case 'regional':
       return { content: [{ type: 'text', text: `region header: ${headers['mcp-param-region']}` }] }
@@ -281,7 +285,12 @@ export async function startMcpTestServer(options: McpTestServerOptions): Promise
     }
 
     if (method === 'tools/call') {
-      const result = await callTool(params?.name, params?.arguments ?? {}, req.headers)
+      const result = await callTool(
+        params?.name,
+        params?.arguments ?? {},
+        req.headers,
+        options.slow
+      )
       if (!result) {
         send(res, 200, error(id, -32602, `Unknown tool: ${params?.name}`))
         return

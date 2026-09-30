@@ -19,6 +19,9 @@ import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import { useVault } from '../helpers/testEnv'
 
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+
 const SCREEN = 844
 const KEYBOARD = 336
 
@@ -41,7 +44,7 @@ const roomHeight = () => container()?.style.getPropertyValue('--abele-room-heigh
 /** Past a MutationObserver's delivery and the timeouts the room re-measures on. */
 const settle = async () => {
   await nextTick()
-  await new Promise((resolve) => setTimeout(resolve, 400))
+  await advance(400)
   await nextTick()
 }
 

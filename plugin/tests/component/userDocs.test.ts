@@ -14,6 +14,9 @@ import UserDocs from '@/components/docs/UserDocs.vue'
 import { USER_DOCS, type DocTarget } from '@/userdocs'
 import { useVault } from '../helpers/testEnv'
 
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+
 let wrapper: VueWrapper | null = null
 
 beforeEach(() => {
@@ -28,7 +31,7 @@ afterEach(() => {
 
 const settle = async () => {
   await flushPromises()
-  await new Promise((resolve) => setTimeout(resolve, 5))
+  await advance(5)
   await flushPromises()
 }
 

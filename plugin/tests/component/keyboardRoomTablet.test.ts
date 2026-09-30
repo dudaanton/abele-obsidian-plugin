@@ -17,7 +17,10 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, nextTick } from 'vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
 import { liftFor, revealDelta, KEYBOARD_GAP } from '@/modal/keyboardLift'
+
+const advance = useFakeClock()
 
 class StillViewport extends EventTarget {
   height: number
@@ -81,7 +84,7 @@ const setScreen = (width: number, height: number) => {
 
 const settle = async () => {
   await nextTick()
-  await new Promise((resolve) => setTimeout(resolve, 400))
+  await advance(400)
   await nextTick()
 }
 

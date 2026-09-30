@@ -15,6 +15,8 @@ import { nextTick } from 'vue'
 import dayjs from 'dayjs'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
 
 const SCREEN = 844
 const KEYBOARD = 336
@@ -112,7 +114,7 @@ describe('the date dialog with a keyboard up', () => {
     const field = timeField()!
     field.focus()
     field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await advance(60)
     await nextTick()
 
     expect(scrolled).toContain(field)

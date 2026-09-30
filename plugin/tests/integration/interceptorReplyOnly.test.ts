@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -398,7 +399,7 @@ describe('reply-only agent interceptors', () => {
     const signal = calls.find((c) => c.system === 'Review this.')!.signal
     await session.reset()
     expect(signal?.aborted).toBe(true)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
     expect(session.messages.value).toEqual([])
     expect(session.interceptor.replyReviews.value).toEqual({})
   })

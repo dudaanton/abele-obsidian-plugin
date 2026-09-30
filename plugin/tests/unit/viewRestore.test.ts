@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 import { WorkspaceLeaf } from 'obsidian'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { ScriptView, type SavedViewState } from '@/views/ScriptView'
@@ -264,7 +265,7 @@ describe('restoring', () => {
     const execute = executeOpeningView()
     const lv = attachView(leaves.tab)
     await lv.setState(saved, { history: false })
-    await new Promise((r) => setTimeout(r, 20))
+    await flushPromises()
     expect(lv.model.status).toEqual({ kind: 'starting', script: 'Demo' })
     expect(findScriptByName).not.toHaveBeenCalled()
 
@@ -354,7 +355,7 @@ describe('restoring', () => {
     const first = lv.model.view
     lv.model.runAgain()
     await service.restore(lv, saved)
-    await new Promise((r) => setTimeout(r, 20))
+    await flushPromises()
     expect(execute).toHaveBeenCalledTimes(1)
     expect(lv.model.view === first).toBe(true)
     execute.mockRestore()
@@ -439,12 +440,12 @@ describe('hooks', () => {
       const input = document.createElement('input')
       lv.containerEl.appendChild(input)
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
+      await flushPromises()
       expect(key).toHaveBeenCalledTimes(1)
 
       app.workspace.trigger('active-leaf-change', leaves.split)
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
+      await flushPromises()
       expect(key).toHaveBeenCalledTimes(1)
 
       // Closed: the document listener goes with the leaf. A disposed view is deaf anyway, so
@@ -478,7 +479,7 @@ describe('hooks', () => {
         lv.containerEl.appendChild(editable)
         press(editable)
       }
-      await new Promise((r) => setTimeout(r, 10))
+      await flushPromises()
       expect(key).not.toHaveBeenCalled()
 
       const inert = document.createElement('div')

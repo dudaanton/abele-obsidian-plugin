@@ -14,6 +14,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { DEFAULT_TAIL_PAGE_SIZE } from '@/composables/useTailPagedList'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 
 describe('the find bar', () => {
@@ -110,7 +111,7 @@ describe('finding in a long chat', () => {
       return { ...base, role: i % 2 ? 'assistant' : 'user', content: `Message ${i + 1}` }
     }) as ChatMessage[]
 
-  const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+  const pause = useFakeClock()
 
   beforeEach(() => {
     useVault([])

@@ -10,6 +10,7 @@
  * messages the loop is handed and when, so the fake is written as a script of iterations.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
@@ -175,7 +176,7 @@ describe('sending while the chat is being compacted', () => {
   async function compactionEnds() {
     session.isCompacting.value = false
     await nextTick()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
   }
 
   beforeEach(() => {

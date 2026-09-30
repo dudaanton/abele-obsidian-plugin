@@ -7,6 +7,7 @@
  * which is the source of truth; the index in the settings is only ever a copy of it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { useFakeClock } from '../helpers/fakeClock'
 import type { TFile } from 'obsidian'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
@@ -29,6 +30,7 @@ vi.mock('@/editor/CommentPlugin', () => ({
   setCommentInfoSource: vi.fn(),
 }))
 
+const advance = useFakeClock()
 const NOTE_A = 'Notes/A.md'
 const NOTE_B = 'Notes/B.md'
 
@@ -138,9 +140,9 @@ describe('a chat that writes to a note', () => {
 
     await edit.execute('c1', { path: NOTE_A, old_string: 'alpha', new_string: 'ALPHA' })
     const first = session.touched.value[0].at
-    await new Promise((resolve) => setTimeout(resolve, 2))
+    await advance(2)
     await edit.execute('c2', { path: NOTE_B, old_string: 'beta', new_string: 'BETA' })
-    await new Promise((resolve) => setTimeout(resolve, 2))
+    await advance(2)
     await edit.execute('c3', { path: NOTE_A, old_string: 'ALPHA', new_string: 'alpha' })
 
     expect(paths(session)).toEqual([NOTE_A, NOTE_B])
@@ -272,7 +274,11 @@ describe('the chat index, which is what a footer actually reads', () => {
     const history = await ChatStorage.getInstance().refreshHistory()
 
     expect(history.map((e) => e.title)).not.toContain('Gone')
-    expect(ChatStorage.getInstance().getHistory().map((e) => e.title)).not.toContain('Gone')
+    expect(
+      ChatStorage.getInstance()
+        .getHistory()
+        .map((e) => e.title)
+    ).not.toContain('Gone')
   })
 })
 

@@ -16,6 +16,8 @@ import { defineComponent, h, nextTick } from 'vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import { ShellModal } from '@/modal/ShellModal'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
 
 const SCREEN = 844
 const KEYBOARD = 336
@@ -43,7 +45,7 @@ const body = () => document.querySelector<HTMLElement>('.abele-modal__body')!
 
 const settle = async () => {
   await nextTick()
-  await new Promise((resolve) => setTimeout(resolve, 400))
+  await advance(400)
   await nextTick()
 }
 
@@ -185,7 +187,7 @@ describe('a long form under the phone keyboard', () => {
     it('is fitted to the toolbar once it stands still, with no event to say so', async () => {
       await typeWhileSliding()
 
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      await advance(300)
 
       expect(container().style.getPropertyValue('--abele-room-height')).toBe(
         `${SCREEN - KEYBOARD - TOOLBAR}px`

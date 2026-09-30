@@ -31,6 +31,9 @@ vi.mock('@/editor/CommentPlugin', () => ({
   setCommentInfoSource: vi.fn(),
 }))
 
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+
 const prompts: string[] = []
 vi.mock('@/ai/client/OpenAIClient', () => {
   class OpenAIClient {
@@ -207,7 +210,7 @@ describe('searching the messages of every chat', () => {
     const field = view.find('.abele-chat-history__search')
     await field.setValue(words)
     // The search waits for typing to pause, then reads the chats.
-    await new Promise((resolve) => setTimeout(resolve, 260))
+    await advance(260)
     await flushPromises()
   }
 
@@ -267,7 +270,7 @@ describe('searching the messages of every chat', () => {
 describe('optional content search', () => {
   const type = async (view: VueWrapper, words: string) => {
     await view.find('.abele-chat-history__search').setValue(words)
-    await new Promise((resolve) => setTimeout(resolve, 260))
+    await advance(260)
     await flushPromises()
   }
   const toggle = (view: VueWrapper) => view.find('[role="switch"]')
@@ -301,7 +304,7 @@ describe('optional content search', () => {
     const view = await open()
     await type(view, 'lightest')
     await toggle(view).trigger('click')
-    await new Promise((resolve) => setTimeout(resolve, 260))
+    await advance(260)
     await flushPromises()
     expect(view.findAllComponents(Card)).toHaveLength(2)
     expect(view.find('.abele-chat-history__snippet').exists()).toBe(true)
@@ -430,7 +433,7 @@ describe('the order of the history', () => {
     app.saveLocalStorage('abele-chat-history-content', true)
     const view = await open()
     await view.find('.abele-chat-history__search').setValue('plan')
-    await new Promise((resolve) => setTimeout(resolve, 260))
+    await advance(260)
     await flushPromises()
     expect(titles(view)).toEqual(['Garden', 'Pond', 'Trip'])
     await choose(view, 'created')

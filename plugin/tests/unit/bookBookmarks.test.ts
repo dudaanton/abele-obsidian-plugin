@@ -5,6 +5,7 @@
  * bookmarks on the page on screen told apart.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
@@ -343,7 +344,7 @@ describe('the bookmarks of an open book', () => {
     page.stop()
     store.data = JSON.stringify({ k: { x: mark('x', PAGE_TWO, 9, { deleted: true }) } })
     await marks.refresh()
-    await new Promise((r) => setTimeout(r, 0))
+    await flushPromises()
     expect(model.bookmarks).toHaveLength(1)
   })
 })

@@ -6,8 +6,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
 import { revealSidebarView } from '@/views/revealSidebarView'
+import { deferred } from '../helpers/deferred'
+import { flushPromises } from '@vue/test-utils'
 
-function fakeApp(opts: { revealOpens: boolean; existing?: boolean }) {
+function fakeApp(opts: { revealOpens: boolean; existing?: boolean; reveal?: Promise<void> }) {
   const rightSplit = {
     collapsed: true,
     containerEl: { offsetWidth: 330 },
@@ -29,7 +31,7 @@ function fakeApp(opts: { revealOpens: boolean; existing?: boolean }) {
     getLeavesOfType: () => (opts.existing ? [leaf] : []),
     getRightLeaf: () => leaf,
     revealLeaf: vi.fn(async () => {
-      await new Promise((r) => setTimeout(r, 10))
+      await (opts.reveal ?? Promise.resolve())
       order.push('revealed')
       if (opts.revealOpens) rightSplit.collapsed = false
     }),
@@ -39,8 +41,17 @@ function fakeApp(opts: { revealOpens: boolean; existing?: boolean }) {
 
 describe('revealing a sidebar panel', () => {
   it('waits for the reveal before it resolves', async () => {
-    const f = fakeApp({ revealOpens: true })
-    await revealSidebarView(f.app, 'some-view')
+    const reveal = deferred()
+    const f = fakeApp({ revealOpens: true, reveal: reveal.promise })
+    let settled = false
+    const opening = revealSidebarView(f.app, 'some-view').then(() => {
+      settled = true
+    })
+    await flushPromises()
+    expect(settled).toBe(false)
+    expect(f.order).toEqual(['setViewState'])
+    reveal.resolve()
+    await opening
     expect(f.order).toEqual(['setViewState', 'revealed'])
     expect(f.rightSplit.collapsed).toBe(false)
     expect(f.rightSplit.expand).not.toHaveBeenCalled()

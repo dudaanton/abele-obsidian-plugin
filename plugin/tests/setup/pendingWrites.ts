@@ -24,43 +24,61 @@ const WRITE_BEHIND = [
 ]
 
 const pending = new Map<unknown, string>()
-const realSet = globalThis.setTimeout
 const realClear = globalThis.clearTimeout
 
-function patchedSet(this: unknown, handler: unknown, ...rest: unknown[]) {
-  const stack = new Error().stack ?? ''
-  const tracked = WRITE_BEHIND.some((frame) => frame.test(stack))
-  if (!tracked || typeof handler !== 'function') {
-    return (realSet as (...args: unknown[]) => unknown).call(this, handler, ...rest)
+/** Reinstall after opting into fake timers so the delayed-write guarantee is not bypassed. */
+export function trackWriteTimers(): () => void {
+  const set = globalThis.setTimeout
+  const clear = globalThis.clearTimeout
+  const windowSet = typeof window !== 'undefined' ? window.setTimeout : undefined
+  const windowClear = typeof window !== 'undefined' ? window.clearTimeout : undefined
+
+  function patchedSet(this: unknown, handler: unknown, ...rest: unknown[]) {
+    const stack = new Error().stack ?? ''
+    const tracked = WRITE_BEHIND.some((frame) => frame.test(stack))
+    if (!tracked || typeof handler !== 'function') {
+      return (set as (...args: unknown[]) => unknown).call(this, handler, ...rest)
+    }
+    const id: unknown = (set as (...args: unknown[]) => unknown).call(
+      this,
+      (...args: unknown[]) => {
+        pending.delete(key(id))
+        ;(handler as (...a: unknown[]) => unknown)(...args)
+      },
+      ...rest
+    )
+    pending.set(key(id), stack)
+    return id
   }
-  const id: unknown = (realSet as (...args: unknown[]) => unknown).call(
-    this,
-    (...args: unknown[]) => {
-      pending.delete(key(id))
-      ;(handler as (...a: unknown[]) => unknown)(...args)
-    },
-    ...rest
-  )
-  pending.set(key(id), stack)
-  return id
+
+  function patchedClear(this: unknown, id: unknown) {
+    pending.delete(key(id))
+    return (clear as (...args: unknown[]) => unknown).call(this, id)
+  }
+
+  /** Node returns a `Timeout` object, the DOM a number; `clearTimeout` accepts either form. */
+  function key(id: unknown): unknown {
+    return typeof id === 'object' && id !== null ? Number(id) : id
+  }
+
+  globalThis.setTimeout = patchedSet as typeof setTimeout
+  globalThis.clearTimeout = patchedClear as typeof clearTimeout
+  if (typeof window !== 'undefined' && window !== (globalThis as unknown)) {
+    window.setTimeout = patchedSet as typeof window.setTimeout
+    window.clearTimeout = patchedClear as typeof window.clearTimeout
+  }
+
+  return () => {
+    globalThis.setTimeout = set
+    globalThis.clearTimeout = clear
+    if (typeof window !== 'undefined' && window !== (globalThis as unknown)) {
+      window.setTimeout = windowSet!
+      window.clearTimeout = windowClear!
+    }
+  }
 }
 
-function patchedClear(this: unknown, id: unknown) {
-  pending.delete(key(id))
-  return (realClear as (...args: unknown[]) => unknown).call(this, id)
-}
-
-/** Node returns a `Timeout` object, the DOM a number; `clearTimeout` accepts either form. */
-function key(id: unknown): unknown {
-  return typeof id === 'object' && id !== null ? Number(id) : id
-}
-
-globalThis.setTimeout = patchedSet as typeof setTimeout
-globalThis.clearTimeout = patchedClear as typeof clearTimeout
-if (typeof window !== 'undefined' && window !== (globalThis as unknown)) {
-  window.setTimeout = patchedSet as typeof window.setTimeout
-  window.clearTimeout = patchedClear as typeof window.clearTimeout
-}
+trackWriteTimers()
 
 beforeEach(() => {
   pending.clear()

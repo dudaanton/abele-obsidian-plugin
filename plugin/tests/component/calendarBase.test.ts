@@ -78,7 +78,10 @@ const titles = (el: ReturnType<VueWrapper['find']>) =>
   el.findAll('.abele-calendar-chip__title').map((t) => t.text())
 
 beforeEach(() => {
-  vi.useFakeTimers({ now: new Date(2026, 8, 26, 10, 30), toFake: ['Date'] })
+  vi.useFakeTimers({
+    now: new Date(2026, 8, 26, 10, 30),
+    toFake: ['Date', 'setTimeout', 'clearTimeout'],
+  })
   useVault([])
   configureAbele()
   GlobalStore.getInstance().weekStartsOnMonday.value = true
@@ -335,10 +338,7 @@ describe('dragging a note', () => {
   })
 
   // The guard against the click that follows a drop lasts one turn; let it go before the next.
-  afterEach(() => {
-    vi.useRealTimers()
-    return new Promise((resolve) => setTimeout(resolve, 0))
-  })
+  afterEach(() => vi.advanceTimersByTimeAsync(0))
 
   it('moves a note to the day it is let go on, and does not open it', async () => {
     const instance = makeInstance([item('Dentist')])

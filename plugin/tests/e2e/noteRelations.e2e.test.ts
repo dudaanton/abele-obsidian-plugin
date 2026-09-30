@@ -38,9 +38,6 @@ const JOURNAL_NOTE = process.env.OBSIDIAN_JOURNAL_NOTE ?? 'ScaleTest/Journals/20
 
 const UPDATE_SNAPSHOT = process.env.UPDATE_RELATIONS_SNAPSHOT === '1'
 
-/** Opening a note should feel immediate; a second of frozen UI does not. */
-const ACCEPTABLE_MS = 300
-
 const available = isObsidianRunning() && hasTestApi()
 
 function measure(notePath: string): NoteRelationsMeasurement {
@@ -126,8 +123,8 @@ describe.skipIf(!available)('note relations end-to-end', () => {
   })
 
   describe('cost', () => {
-    it('builds a group note relation set without a visible freeze', () => {
-      expect(group.ms).toBeLessThan(ACCEPTABLE_MS)
+    it('bounds link resolution while building a group note relation set', () => {
+      expect(group.linkResolutions).toBeLessThanOrEqual(group.vaultFiles * 2)
     })
 
     it('reads each note in the vault a bounded number of times', () => {
@@ -137,8 +134,9 @@ describe.skipIf(!available)('note relations end-to-end', () => {
       expect(group.fileCacheReads).toBeLessThanOrEqual(group.vaultFiles * 2)
     })
 
-    it('builds a journal note relation set without a visible freeze', () => {
-      expect(journal.ms).toBeLessThan(ACCEPTABLE_MS)
+    it('bounds metadata work while building a journal note relation set', () => {
+      expect(journal.fileCacheReads).toBeLessThanOrEqual(journal.vaultFiles * 2)
+      expect(journal.linkResolutions).toBeLessThanOrEqual(journal.vaultFiles * 2)
     })
   })
 })

@@ -14,6 +14,7 @@ import { McpService } from '@/ai/mcp/McpService'
 import { createMcpServer, type McpServer } from '@/ai/mcp/types'
 import { startMcpTestServer, nodeRequestUrl, type McpTestServer } from '../helpers/mcpTestServer'
 import { useVault } from '../helpers/testEnv'
+import { deferred } from '../helpers/deferred'
 
 const { requestUrl } = vi.hoisted(() => ({ requestUrl: vi.fn() }))
 
@@ -188,15 +189,29 @@ describe('calling one', () => {
   })
 
   it('stops waiting the moment Stop is pressed', async () => {
-    server = await startMcpTestServer({ mode: 'modern' })
+    const entered = deferred()
+    const response = deferred()
+    let answered = false
+    server = await startMcpTestServer({
+      mode: 'modern',
+      slow: async () => {
+        entered.resolve()
+        await response.promise
+        answered = true
+      },
+    })
     await connect()
     const controller = new AbortController()
-
-    const started = Date.now()
     const call = tool('mcp_test_slow').execute('c5', { ms: 2000 }, controller.signal)
-    setTimeout(() => controller.abort(), 30)
-
-    await expect(call).rejects.toThrow(/stopped/i)
-    expect(Date.now() - started).toBeLessThan(1000)
+    const rejected = expect(call).rejects.toThrow(/stopped/i)
+    try {
+      await entered.promise
+      controller.abort()
+      await rejected
+      // Stop must settle independently of the server, even if it never answers.
+      expect(answered).toBe(false)
+    } finally {
+      response.resolve()
+    }
   })
 })

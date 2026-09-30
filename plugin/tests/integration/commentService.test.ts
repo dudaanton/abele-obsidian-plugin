@@ -6,6 +6,7 @@
  * file only ever has one session writing it.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { flushPromises as flush } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
@@ -839,10 +840,6 @@ describe('the note being renamed', () => {
     expect(session.anchor.value?.note).toBe('Notes/A.md')
   })
 })
-/** Lets Promise chains and their `.then` continuations run to the end. */
-const flush = async () => {
-  for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0))
-}
 
 describe('a comment file appearing under the folder', () => {
   it('lets a marker that had given up on it find it again', async () => {

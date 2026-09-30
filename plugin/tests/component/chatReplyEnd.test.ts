@@ -21,6 +21,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { fakeChatSession } from '../helpers/fakeChatSession'
+import { useFakeClock } from '../helpers/fakeClock'
+const frames = useFakeClock()
 
 const messages = ref<ChatMessage[]>([])
 const streaming = ref('')
@@ -126,8 +128,6 @@ function webkitModel(container: HTMLElement) {
     at: () => scrollTop,
   }
 }
-
-const frames = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('a reply ending while the reader is back in it', () => {
   it('keeps the reader where they were, though the message draws its text a moment late', async () => {

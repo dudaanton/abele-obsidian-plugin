@@ -8,7 +8,7 @@
  * and reporting a pass. These assert the shape the rules are written against.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
@@ -142,7 +142,7 @@ describe('a map tool that answered', () => {
       toolResult: '**Drive** — 8.3 km',
       toolMap: { points: [{ lat: 56.9496, lon: 24.1052, label: 'Rīgas Doms' }] },
     })
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
 
     expect(wrapper.find('.abele-chat-msg__map').exists()).toBe(true)
     expect(wrapper.find('.abele-map').exists()).toBe(true)
@@ -163,7 +163,7 @@ describe('a map tool that answered', () => {
       toolStatus: 'approved',
       toolMap: { points: [{ lat: 56.9496, lon: 24.1052 }] },
     })
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
 
     expect(wrapper.find('.abele-map-error').text()).toContain('WebGL is unavailable')
   })
@@ -268,7 +268,7 @@ describe('a chat attached to a message', () => {
       attachments: ['AI/Chats/Trip.abchat'],
     })
     await wrapper.find('.abele-chat-msg__attachment-chip').trigger('click')
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
 
     expect(opened).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('AI/Chats/Trip.abchat'))
     expect(getLeaf).not.toHaveBeenCalled()
@@ -281,7 +281,7 @@ describe('a chat attached to a message', () => {
 
     const wrapper = render({ role: 'user', content: 'see', attachments: ['Plans.md'] })
     await wrapper.find('.abele-chat-msg__attachment-chip').trigger('click')
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
 
     expect(openFile).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('Plans.md'))
   })
@@ -289,7 +289,7 @@ describe('a chat attached to a message', () => {
 
 describe('comments on an answer', () => {
   const answer = 'Take the night train.'
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 5))
+  const settle = flushPromises
 
   // The comment's file and session are `CommentService`'s business, tested with it; here it
   // answers for one comment that is loaded and has three messages in it.

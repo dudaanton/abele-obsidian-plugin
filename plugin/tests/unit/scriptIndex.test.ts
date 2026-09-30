@@ -12,6 +12,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
+import { OperationDelays } from '../helpers/deferred'
 
 const SCRIPT = (name: string) => `// @name ${name}\nreturn '${name}'\n`
 
@@ -38,25 +39,32 @@ beforeEach(async () => {
   await service.discover()
 })
 
-/** Makes every read take a tick, so a rebuild is observable while it runs. */
-function slowReads() {
+/** Hold chosen reads explicitly; hashing between reads still runs on the host. */
+function slowReads(count = 2) {
+  const delays = new OperationDelays<'read'>()
+  const gates = Array.from({ length: count }, () => delays.holdNext('read'))
   const { app } = GlobalStore.getInstance()
   const read = app.vault.read.bind(app.vault)
   vi.spyOn(app.vault, 'read').mockImplementation(async (file) => {
-    await new Promise((r) => setTimeout(r, 5))
+    const gate = delays.take('read')
+    if (gate) await gate
     return read(file)
   })
+  return gates
 }
 
 describe('rebuilding the index', () => {
   it('keeps the old scripts in place until the new ones have all been read', async () => {
-    slowReads()
+    const [first, second] = slowReads()
 
     const rebuild = service.discover()
     const during = service.getAll().map((s) => s.meta.name)
     const commandsDuring = commands.size
-    await new Promise((r) => setTimeout(r, 7))
+    await first.entered
+    first.release()
+    await second.entered
     const midway = service.getAll().map((s) => s.meta.name)
+    second.release()
     await rebuild
 
     expect(during).toEqual(['One', 'Two'])
@@ -67,7 +75,7 @@ describe('rebuilding the index', () => {
   })
 
   it('runs one rebuild at a time, and once more for one asked for meanwhile', async () => {
-    slowReads()
+    const gates = slowReads(4)
     const { app } = GlobalStore.getInstance()
     const reads = vi.mocked(app.vault.read)
     reads.mockClear()
@@ -75,25 +83,35 @@ describe('rebuilding the index', () => {
     const first = service.discover()
     const second = service.discover()
     expect(second).toBe(first)
+    for (const gate of gates.slice(0, 2)) {
+      await gate.entered
+      gate.release()
+    }
     await first
-    // The second request is served after the first, not alongside it. Waited for rather than slept
-    // on: under load the follow-up rebuild can take longer than any fixed pause.
-    await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(4), { timeout: 5000 })
-    await new Promise((r) => setTimeout(r, 30))
+    const published = service.scriptList.value
+    // The follow-up must publish too, not merely start its last read.
+    for (const gate of gates.slice(2)) {
+      await gate.entered
+      gate.release()
+    }
+    await vi.waitFor(() => expect(service.scriptList.value).not.toBe(published))
 
     expect(reads).toHaveBeenCalledTimes(4)
     expect(service.getAll()).toHaveLength(2)
   })
 
   it('keeps the tool modes of scripts that are still there through overlapping rebuilds', async () => {
-    slowReads()
+    const [gate] = slowReads(1)
     const config = AbeleConfig.getInstance()
     config.ai.toolModes = { script_one: 'auto', script_two: 'ask' } as never
 
     void service.discover()
-    await new Promise((r) => setTimeout(r, 2))
-    await service.discover()
-    await new Promise((r) => setTimeout(r, 30))
+    await gate.entered
+    const rebuilding = service.discover()
+    gate.release()
+    await rebuilding
+    const published = service.scriptList.value
+    await vi.waitFor(() => expect(service.scriptList.value).not.toBe(published))
 
     expect(config.ai.toolModes).toEqual({ script_one: 'auto', script_two: 'ask' })
   })

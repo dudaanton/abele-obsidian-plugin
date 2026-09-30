@@ -10,6 +10,7 @@
  * file systems drop — as that line's own.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
+import { flushPromises as settle } from '@vue/test-utils'
 import { Task } from '@/entities/Task'
 import { pathToWikilink } from '@/helpers/pathsHelpers'
 import { syncTaskFileName, taskFileTarget } from '@/helpers/taskFileName'
@@ -54,8 +55,6 @@ function openWithEmptyEditor(vault: FakeTaskVault, path: string) {
     { view: { file: vault.file(path), editor: { getValue: () => '' } } },
   ]
 }
-
-const settle = () => new Promise((r) => setTimeout(r, 0))
 
 beforeEach(() => {
   AbeleConfig.getInstance().tasksFolder = 'Agent/Abele/Tasks'

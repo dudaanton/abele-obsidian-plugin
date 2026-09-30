@@ -10,6 +10,7 @@
  * round trip through `dispatchCommentsChanged`, and mocking that away would guard nothing.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { flushPromises as settle } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { MarkdownView, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
@@ -28,10 +29,6 @@ const NOTE_PATH = 'Notes/A.md'
 let app: FakeApp
 let dispatches: number
 
-/** Lets Promise chains and their `.then` continuations run to the end. */
-const settle = async () => {
-  for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0))
-}
 
 /** One markdown leaf on the note, which is all `dispatchCommentsChanged` looks for. */
 function installWorkspace(): void {

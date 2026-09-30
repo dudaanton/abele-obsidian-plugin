@@ -18,15 +18,14 @@ const SCRIPT = `// @name Tag notes
 // @param tag string "Tag to add"
 
 log('starting')
-await new Promise((resolve) => setTimeout(resolve, 0))
+await Promise.resolve()
 if (params.tag === 'boom') throw new Error('no such tag')
 return 'tagged ' + params.tag
 `
 
+// A pending operation stays pending after Stop, without leaving an infinite timer loop behind.
 const SLOW = `// @name Slow
-while (true) {
-  await new Promise((resolve) => setTimeout(resolve, 5))
-}
+await new Promise(() => {})
 `
 
 let service: ScriptService

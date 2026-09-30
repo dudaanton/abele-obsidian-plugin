@@ -54,13 +54,14 @@ async function type(view: VueWrapper, values: string[]) {
 /** Clicks and waits for PBKDF2 at its real cost, which is a real wait. */
 async function press(view: VueWrapper, text: string) {
   await button(view, text)!.trigger('click')
-  for (
-    let i = 0;
-    i < 50 && view.findAllComponents(Button).some((b) => b.props('disabled') && b.props('accent'));
-    i++
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 20))
-  }
+  await vi.waitFor(
+    () => {
+      expect(
+        view.findAllComponents(Button).some((b) => b.props('disabled') && b.props('accent'))
+      ).toBe(false)
+    },
+    { timeout: 1000, interval: 20 }
+  )
   await flushPromises()
 }
 

@@ -17,6 +17,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { runInterceptorScript, interceptorScripts } from '@/ai/interceptor/runScript'
 import { buildInterceptInput, type InterceptInput } from '@/ai/interceptor/context'
 import { useVault } from '../helpers/testEnv'
+import { flushPromises } from '@vue/test-utils'
 import type { TFile } from 'obsidian'
 
 const review = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true))
@@ -223,7 +224,7 @@ describe('running an interceptor script', () => {
     ])
     const controller = new AbortController()
     const pending = runInterceptorScript('Slow', input, controller.signal)
-    await new Promise((r) => setTimeout(r, 10))
+    await flushPromises()
     controller.abort()
     expect((await pending).kind).toBe('stopped')
   })

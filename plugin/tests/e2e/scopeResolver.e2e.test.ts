@@ -81,9 +81,9 @@ describe.skipIf(!available)('ScopeResolver cost end-to-end', () => {
     expect(measurement.linkResolutions).toBeLessThanOrEqual(measurement.vaultFiles * 2)
   })
 
-  it('keeps a group scope resolution off the critical path', () => {
-    // Resolution happens synchronously during agent tool calls, so anything above a fraction
-    // of a second is a visible UI freeze rather than a slow background job.
-    expect(measurement.ms).toBeLessThan(500)
+  it('bounds the remaining metadata work of a synchronous group resolution', () => {
+    // Time is reported above, but load on the host must not decide correctness. Together
+    // with the sweep/link bounds, this prohibits closure-by-vault work on the critical path.
+    expect(measurement.fileCacheReads).toBeLessThanOrEqual(measurement.vaultFiles * 2)
   })
 })

@@ -10,7 +10,7 @@
  * The picker itself is faked: what it offers and what it hands back is settled in
  * `tests/unit/runnablePicker.test.ts`, and a modal cannot be opened for real here anyway.
  */
-import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import HeaderButtonsEditor from '@/components/settings/scripts/HeaderButtonsEditor.vue'
@@ -56,6 +56,9 @@ const legacy = { ...script('Legacy'), meta: { ...script('Legacy').meta, enabled:
  */
 const STUBS = { Search: true, Dropdown: true }
 
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
+
 let config: AbeleConfig
 
 beforeEach(() => {
@@ -90,9 +93,11 @@ function mountScreen(...args: Parameters<typeof mount>): ReturnType<typeof mount
   return wrapper
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const wrapper of [...mounted]) wrapper.unmount()
   vi.restoreAllMocks()
+  // Let any write left by a screen surface after teardown, on the controlled clock.
+  await advance(700)
 })
 
 /** The button carrying a given label, which is how each of these reads its current value. */
@@ -307,10 +312,4 @@ describe('the scripts screen while the folder is being read', () => {
 
     expect(wrapper.text()).toContain('2 scripts discovered')
   })
-})
-
-// Outlives the last half-second write: anything a screen left waiting would surface here as
-// an unhandled rejection rather than in whichever file happens to run next.
-afterAll(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 700))
 })

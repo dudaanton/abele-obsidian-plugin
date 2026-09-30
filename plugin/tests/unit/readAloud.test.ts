@@ -4,6 +4,7 @@
  * the platform's speech. The platform's own voices are the e2e tier's.
  */
 import { describe, it, expect, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import { sentencesIn } from '@/reader/sentences'
 import {
   Narrator,
@@ -104,7 +105,7 @@ function fakeSpeech() {
   }
   const end = async () => {
     spoken.at(-1)!.onend!(new Event('end') as SpeechSynthesisEvent)
-    await new Promise((r) => setTimeout(r, 0))
+    await flushPromises()
   }
   return { speech, spoken, calls, end }
 }
@@ -161,7 +162,7 @@ describe('the narrator', () => {
     expect(spoken.at(-1)!.text).toBe('B.')
     // The first utterance ending late — it was cancelled — changes nothing.
     spoken[0].onend!(new Event('end') as SpeechSynthesisEvent)
-    await new Promise((r) => setTimeout(r, 0))
+    await flushPromises()
     expect(spoken.at(-1)!.text).toBe('B.')
     await n.skip(-1)
     expect(spoken.at(-1)!.text).toBe('A.')

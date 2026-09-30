@@ -12,6 +12,8 @@ import { enableAutoUnmount, flushPromises, type VueWrapper } from '@vue/test-uti
 import { MarkdownRenderer, WorkspaceLeaf } from 'obsidian'
 import { openTab as open } from '../helpers/githubTab'
 import { useVault } from '../helpers/testEnv'
+import { useFakeClock } from '../helpers/fakeClock'
+const advance = useFakeClock()
 
 const SHA = '0123456789abcdef0123456789abcdef01234567'
 const README = [
@@ -270,7 +272,7 @@ describe('find in a markdown file', () => {
     const input = w.find<HTMLInputElement>('.abele-github-find__input').element
     input.value = q
     input.dispatchEvent(new Event('input'))
-    await new Promise((r) => setTimeout(r, 150))
+    await advance(150)
     await flushPromises()
   }
 

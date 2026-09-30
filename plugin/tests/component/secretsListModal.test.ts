@@ -210,9 +210,10 @@ describe('with the synced store locked on this device', () => {
 
     await view.findComponent(Input).find('input').setValue('long enough')
     await button(view, 'Unlock')!.trigger('click')
-    for (let i = 0; i < 50 && phone.store.status.value !== 'unlocked'; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 20))
-    }
+    await vi.waitFor(() => expect(phone.store.status.value).toBe('unlocked'), {
+      timeout: 1000,
+      interval: 20,
+    })
     await flushPromises()
 
     // Used by no setting on this device, but in the store: listed, by its keychain id.
