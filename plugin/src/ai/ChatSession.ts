@@ -81,7 +81,7 @@ import { ResultStore, createReadResultTool, READ_RESULT } from './resultStore'
 import { linkedNotesNote } from './linkedNotes'
 import { TurnPolicy } from './interceptor/turnPolicy'
 import type { ToolPolicy } from './interceptor/policy'
-import type { InterceptSource } from './interceptor/context'
+import { buildInterceptInput, type InterceptSource } from './interceptor/context'
 import { sendThroughScript, type ScriptSendHost } from './interceptor/scriptSend'
 import type { InterceptRoute } from './ChatInterceptor'
 import {
@@ -1625,7 +1625,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const route = this.interceptRoute(content)
     if (route.kind === 'agent' && !route.replyOnly)
       return this.sendDraftMessage(content, attachments)
-    if (route.kind === 'script') return this.sendThroughScript(route, content, attachments)
+    if (route.kind === 'script' && !route.replyOnly)
+      return this.sendThroughScript(route, content, attachments)
 
     const gen = this.generation
     this.error.value = null
@@ -1749,12 +1750,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       attachments: attachments?.length ? attachments : undefined,
       timestamp: Date.now(),
     }
+    const route = this.interceptRoute(content)
+    // Snapshot before this bubble joins the conversation, just like a blocking script sees it.
+    const input =
+      review && route.kind === 'script' && route.replyOnly
+        ? buildInterceptInput(
+            { text: content, attachments: attachments ?? [] },
+            this.interceptSource(this.messages.value)
+          )
+        : null
     this.appendChatMessage(userMsg)
     this.updateVisibleMessages()
-    const route = this.interceptRoute(content)
-    if (review && route.kind === 'agent' && route.replyOnly) {
+    if (review && route.kind !== 'none' && route.replyOnly) {
       // A separate request, never awaited by the main turn (including queued injections).
-      void this.interceptor.reviewReply(userMsg.id).catch((err) => {
+      const reviewing =
+        route.kind === 'script' && input
+          ? this.interceptor.reviewScriptReply(userMsg.id, route, input)
+          : this.interceptor.reviewReply(userMsg.id)
+      void reviewing.catch((err) => {
         console.error('[Abele interceptor save]', err)
       })
     }
@@ -1809,7 +1822,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // than slipping into this one past it. Order is kept, so nothing behind it goes first.
     const cut = queued.findIndex((q) => {
       const route = this.interceptRoute(q.content)
-      return route.kind === 'script' || (route.kind === 'agent' && !route.replyOnly)
+      return route.kind !== 'none' && !route.replyOnly
     })
     const taken = cut === -1 ? queued : queued.slice(0, cut)
     if (!taken.length) return []

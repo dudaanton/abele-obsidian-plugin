@@ -388,6 +388,38 @@ describe("a script's say over the turn's tool calls", () => {
       policy: toolPolicy({ approve: approve as never, deny }, 'Guard'),
     })
 
+  it.each([true, ['demo'], () => true])(
+    'ignores approval %j in reply-only mode',
+    async (approve) => {
+      setup()
+      session.interceptor.script.value = 'Guard'
+      session.interceptor.replyOnly.value = true
+      withPolicy(approve)
+      turnsPlan = [[call('c1')]]
+      await session.sendMessage('go')
+      expect(ran).toEqual([])
+      expect(blocked).toEqual([])
+      expect(session.pendingToolCalls.value.map((c) => c.id)).toEqual(['c1'])
+      await vi.waitFor(() =>
+        expect(session.messages.value[0].interceptorChat?.[0].content).toMatch(
+          /ignored tool-approval/
+        )
+      )
+    }
+  )
+
+  it('ignores denial in reply-only mode and keeps asking as usual', async () => {
+    setup()
+    session.interceptor.script.value = 'Guard'
+    session.interceptor.replyOnly.value = true
+    withPolicy(true, ['demo'])
+    turnsPlan = [[call('c1')]]
+    await session.sendMessage('go')
+    expect(blocked).toEqual([])
+    expect(ran).toEqual([])
+    expect(session.pendingToolCalls.value.map((c) => c.id)).toEqual(['c1'])
+  })
+
   it('runs a call it approves without asking', async () => {
     setup()
     session.interceptor.script.value = 'Guard'

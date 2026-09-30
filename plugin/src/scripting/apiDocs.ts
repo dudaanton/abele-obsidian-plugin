@@ -47,7 +47,7 @@ Every script must start with a comment block declaring its metadata:
 - \`@startup\`: the script runs each time the plugin starts, after the vault is open, with its parameter defaults and no forms (\`form()\` answers \`null\`); \`@startup desktop\` or \`@startup mobile\` runs it on those devices only. A script that needs a parameter without a default is skipped. The startup list in Settings → Scripts → Startup does the same and sets the order
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
 - \`@lint\` (or \`@lint warning\`): the script is a rule of the linter, not something to run — no command, no agent tool. Declare \`function check(note)\` returning what is wrong: a list of messages or of \`{ message, line, fixable }\` (line 1-based over the whole file). Optionally \`function fix(note)\` returning the note's whole new text, or \`null\`. (Or \`return { check, fix }\`.) \`note\` has \`path\`, \`name\`, \`folder\`, \`content\`, \`lines\`, \`frontmatter\` (parsed, or \`null\`), \`frontmatterError\`, \`frontmatterEnd\`, \`body\`, \`bodyStart\`, \`ctime\`, \`mtime\`. Only read: \`read\`, \`ls\`, \`find\`, \`noteInfo\`, \`listTemplates\`, \`log\`, \`dayjs\` work; anything that writes, asks, opens or fetches throws. Keep \`check\` fast and pure: it runs once per note over the whole vault. The rule is set up in Settings → Linter, with the built-in ones
-- \`@interceptor\` (or \`@interceptor 60\`): the script is a chat interceptor, not something to run — no command, no agent tool. Chosen as an agent's or a chat's interceptor, it runs on each message the person sends there (only those matching the interceptor's pattern, when one is set) before the agent sees it, and what it returns decides what becomes of the message; see \`message\` and \`chat\` below. The number is how many seconds it may take, 30 unless it says (at most 600)
+- \`@interceptor\` (or \`@interceptor 60\`): the script is a chat interceptor, not something to run — no command, no agent tool. Chosen as an agent's or a chat's interceptor, it runs on each message the person sends there (only those matching the interceptor's pattern, when one is set) before the agent sees it (or alongside the agent with **Reply only**), and what it returns decides what becomes of the message; see \`message\` and \`chat\` below. The number is how many seconds it may take, 30 unless it says (at most 600)
 
 ---
 
@@ -481,7 +481,8 @@ return term.text + ': ' + term.forms.join(', ') + ' — kept in ' + term.note
 ### message and chat — when a script is a chat's interceptor
 
 A script with \`// @interceptor\` in its header, chosen as an interceptor (an agent's settings, or a
-chat's), runs on each message the person sends in that chat before the agent sees it. It finds
+chat's), runs on each message the person sends in that chat before the agent sees it, or in
+parallel with **Reply only** enabled. It finds
 the message in \`message\` and the chat around it in \`chat\`; any other run finds \`null\` in both.
 Both are read-only copies: changing them throws.
 
@@ -498,7 +499,7 @@ chat.agent           // { id, name, description, providerId, modelId, permission
                      //   toolModes, fullVaultAccess, scope } as this chat runs it
 \`\`\`
 
-What it returns decides:
+With **Reply only** off (the default), what it returns decides:
 
 | return | what happens |
 |---|---|
@@ -516,9 +517,21 @@ to ask the person as usual (within 5 seconds, or the person is asked). \`deny: [
 those tools. Only a function can approve a call outside the chat's scope. The say ends with the
 turn, or when another message joins it. A tool switched off is never offered, whatever this says.
 
+With **Reply only** on, the same read-only \`message\` and \`chat\` snapshots are supplied, but the
+message and its attachments are sent to the main agent immediately and unchanged. Return
+\`{ reply: 'text' }\` to add an asynchronous interceptor answer under that person's message,
+not an answer instead of the main agent. Return nothing, \`null\` or \`true\` to show nothing.
+A bare string is still a rewrite, not a reply. Rewrites (\`'text'\`, \`{ text?, attachments? }\`),
+\`hold\`, and \`approve\`/\`deny\` have no effect in this mode; an ignored rewrite, hold or tool
+policy leaves a quiet explanation under the message. Approval callbacks are never called.
+Failures and timeouts show their reason there without stopping the main turn. The pattern
+filter still applies. Replies stay with their own messages and are saved with them, even if
+later reviews finish first; they never enter the main agent's conversation. Stopping a review
+does not turn an already-sent message into a draft or undo the script's earlier side effects.
+
 A script that throws, returns something else, is not confirmed on this device or runs out of
-time does not stop the message: it is sent as written, and the reason is shown beside it. Stopped
-from the chat, the message is kept back as a draft. A stop or a timeout does not undo what the
+time does not stop the message: it is sent as written, and the reason is shown beside it. With
+**Reply only** off, stopping from the chat keeps the message back as a draft. A stop or a timeout does not undo what the
 script already did.
 
 \`\`\`js

@@ -178,6 +178,21 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('round-trips a script interceptor and its reply-only mode together', () => {
+    const base = settings()
+    const choice = {
+      interceptorScript: 'Sample guard',
+      interceptorPattern: '^/review',
+      interceptorReplyOnly: true,
+    }
+    base.ai.agents = [createAgent({ id: 'sample-script-agent', ...choice })]
+    const entry = find(collectEntries(base), 'ai-agents', 'sample-script-agent')!
+    expect(entry.data).toMatchObject(choice)
+    const destination = settings()
+    destination.ai.agents = []
+    expect(applyEntries([entry], destination).ai.agents[0]).toMatchObject(choice)
+  })
+
   it('round-trips an agent interceptor reply-only mode with the agent', () => {
     const base = settings()
     base.ai.agents = [createAgent({ id: 'sample-agent', interceptorReplyOnly: true })]

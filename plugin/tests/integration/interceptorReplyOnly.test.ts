@@ -6,6 +6,8 @@ import { ChatStorage } from '@/ai/ChatStorage'
 import { parseChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { ScriptService } from '@/scripting/ScriptService'
+import type { InterceptInput } from '@/ai/interceptor/context'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata } from '@/ai/types'
 import { EMPTY_USAGE, type Message, type ModelConfig, type StreamOptions } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
@@ -115,6 +117,7 @@ destroyChatsAfterEach()
 
 beforeEach(() => {
   useVault([])
+  ScriptService.destroy()
   AgentRegistry.destroy()
   calls.length = 0
   releases.clear()
@@ -157,6 +160,162 @@ beforeEach(() => {
     messages: storedMessages,
   }))
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
+})
+
+async function setupScript() {
+  const state = setup()
+  state.registry.update(state.writer.id, {
+    interceptorAgentId: '',
+    interceptorScript: 'Sample guard',
+  })
+  const service = ScriptService.getInstance()
+  await service.discover()
+  vi.spyOn(service, 'getAll').mockReturnValue([
+    {
+      path: 'Scripts/sample-guard.js',
+      commandId: '',
+      code: '',
+      meta: { name: 'Sample guard', description: '', params: [], interceptor: 1 },
+    },
+  ])
+  const pending = new Map<
+    string,
+    {
+      resolve(value?: unknown): void
+      reject(reason: Error): void
+      signal: AbortSignal
+      input: InterceptInput
+    }
+  >()
+  vi.spyOn(service, 'intercept').mockImplementation(
+    (_path, input, signal) =>
+      new Promise((resolve, reject) => {
+        pending.set(input.message.text, { resolve, reject, signal, input })
+      })
+  )
+  return { ...state, pending, service }
+}
+
+async function sentWithoutWaiting(session: ChatSession, text: string, attachments?: string[]) {
+  let finished = false
+  void session.sendMessage(text, attachments).then(() => {
+    finished = true
+  })
+  await vi.waitFor(() => expect(finished).toBe(true), { timeout: 500 })
+}
+
+const annotations = (session: ChatSession, text: string) =>
+  session.messages.value.find((m) => m.content === text)?.interceptorChat?.map((m) => m.content) ??
+  []
+
+describe('reply-only script interceptors', () => {
+  it('sends unchanged immediately, snapshots the usual inputs and saves out-of-order replies', async () => {
+    const { session, pending } = await setupScript()
+    await sentWithoutWaiting(session, 'First question')
+    await sentWithoutWaiting(session, 'Second question')
+    expect(session.isBusy).toBe(false)
+    expect(session.getDraftMessage()).toBeNull()
+    expect(session.interceptor.working.value).toBe(false)
+    expect(pending.get('First question')!.input.message).toEqual({
+      text: 'First question',
+      attachments: [],
+    })
+    expect(pending.get('First question')!.input.chat.messages).toEqual([])
+    expect(pending.get('Second question')!.input.chat.messages.map((m) => m.text)).toEqual([
+      'First question',
+      'Main answer.',
+    ])
+    pending.get('Second question')!.resolve({ reply: 'Second review' })
+    await vi.waitFor(() =>
+      expect(annotations(session, 'Second question')).toEqual(['Second review'])
+    )
+    pending.get('First question')!.resolve({ reply: 'First review' })
+    await vi.waitFor(() =>
+      expect(storedMessages[0].interceptorChat?.[0].content).toBe('First review')
+    )
+    expect(annotations(session, 'Second question')).toEqual(['Second review'])
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(file)
+    expect(reopened.interceptor.script.value).toBe('Sample guard')
+    expect(reopened.interceptor.replyOnly.value).toBe(true)
+    expect(annotations(reopened, 'First question')).toEqual(['First review'])
+  })
+
+  it.each([undefined, null, true])('keeps a silent result (%s) invisible', async (value) => {
+    const { session, pending } = await setupScript()
+    await sentWithoutWaiting(session, 'Silent question')
+    pending.get('Silent question')!.resolve(value)
+    await vi.waitFor(() =>
+      expect(session.interceptor.replyReviews.value[session.messages.value[0].id]?.streaming).toBe(
+        false
+      )
+    )
+    expect(annotations(session, 'Silent question')).toEqual([])
+    expect(session.error.value).toBeNull()
+  })
+
+  it.each([
+    ['replacement', /rewrite/i],
+    [{ text: 'replacement', attachments: ['sample-note.md'] }, /rewrite/i],
+    [{ hold: 'Wait' }, /hold/i],
+    [{ approve: true, deny: ['demo'] }, /tool/i],
+  ])('ignores controlling result %j and explains it under the message', async (value, reason) => {
+    const { session, pending } = await setupScript()
+    await sentWithoutWaiting(session, 'Original question')
+    pending.get('Original question')!.resolve(value)
+    await vi.waitFor(() =>
+      expect(annotations(session, 'Original question').join(' ')).toMatch(reason)
+    )
+    expect(session.getDraftMessage()).toBeNull()
+    expect(calls[0].messages.find((m) => m.role === 'user')?.content).toBe('Original question')
+    expect(
+      session.messages.value.filter((m) => m.role === 'assistant').map((m) => m.content)
+    ).toEqual(['Main answer.'])
+    expect(session.error.value).toBeNull()
+  })
+
+  it('filters scripts and injects matching queued messages without holding them', async () => {
+    const { session, pending } = await setupScript()
+    session.interceptor.pattern.value = '^/review'
+    await session.sendMessage('Plain question')
+    expect(pending.size).toBe(0)
+    session.queuedMessages.value = [{ id: 'q1', content: '/review queued' }]
+    const taken = await (session as unknown as { takeQueued(): Promise<Message[]> }).takeQueued()
+    expect(taken.map((m) => m.content)).toEqual(['/review queued'])
+    await vi.waitFor(() => expect(pending.has('/review queued')).toBe(true))
+    pending.get('/review queued')!.resolve({ reply: 'Queued review' })
+    await vi.waitFor(() =>
+      expect(annotations(session, '/review queued')).toEqual(['Queued review'])
+    )
+  })
+
+  it('keeps script errors and timeouts beside the message, not on the main turn', async () => {
+    const { session, pending } = await setupScript()
+    await sentWithoutWaiting(session, 'Failing question')
+    pending.get('Failing question')!.reject(new Error('Sample script failure'))
+    await vi.waitFor(() =>
+      expect(annotations(session, 'Failing question').join(' ')).toContain('Sample script failure')
+    )
+    await sentWithoutWaiting(session, 'Slow question')
+    await vi.waitFor(() => expect(annotations(session, 'Slow question').join(' ')).toMatch(/1 s/), {
+      timeout: 2000,
+    })
+    expect(session.error.value).toBeNull()
+    expect(session.isBusy).toBe(false)
+    expect(session.messages.value.filter((m) => m.role === 'assistant')).toHaveLength(2)
+  })
+
+  it('cancels on reset and discards late results even when the script ignores abort', async () => {
+    const { session, pending } = await setupScript()
+    await sentWithoutWaiting(session, 'Old question')
+    const old = pending.get('Old question')!
+    await session.reset()
+    expect(old.signal.aborted).toBe(true)
+    old.resolve({ reply: 'Too late' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(session.messages.value).toEqual([])
+    expect(session.interceptor.replyReviews.value).toEqual({})
+  })
 })
 
 describe('reply-only agent interceptors', () => {
@@ -264,7 +423,7 @@ describe('reply-only agent interceptors', () => {
     expect(session.messages.value[0].interceptorChat).toBeUndefined()
   })
 
-  it('still filters messages and leaves scripts in control', async () => {
+  it('still filters messages and routes scripts separately', async () => {
     const { session, writer, registry } = setup()
     registry.update(writer.id, { interceptorPattern: '^/review' })
     await session.sendMessage('Plain question')
@@ -274,7 +433,10 @@ describe('reply-only agent interceptors', () => {
       replyOnly: true,
     })
     session.interceptor.script.value = 'Sample guard'
-    expect(session.interceptor.route('/review text').kind).toBe('script')
+    expect(session.interceptor.route('/review text')).toMatchObject({
+      kind: 'script',
+      replyOnly: true,
+    })
   })
 
   it('injects queued reply-only messages as usual rather than holding them for a separate turn', async () => {

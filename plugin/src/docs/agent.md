@@ -38,12 +38,12 @@ much of the conversation the reviewer sees: the message only, the last few prece
 or all preceding messages. During a holding review, Send/Edit are hidden but the chat's Stop
 control cancels the reviewer and restores those actions without discarding the draft.
 
-**Reply only** (`interceptorReplyOnly: true`) runs an agent review alongside the main turn:
+**Reply only** (`interceptorReplyOnly: true`) runs an agent or script review alongside the main turn:
 the message is sent immediately, with no draft or Send/Edit actions. The reviewer's answer stays
 in that message's side conversation, even if later turns finish first, and is never sent to the
 main agent. It neither delays the main turn nor is cancelled when that turn finishes. False or
 absent means the existing hold-for-review behaviour. The switch is available in the agent's
-Basic settings and the chat's interceptor override, only for agent reviewers; scripts ignore it.
+Basic settings and the chat's interceptor override, for both agents and scripts.
 
 The interceptor can also be a **script** whose header says `// @interceptor`. It is shown the
 message and the chat around it — the conversation so far, what was attached, the note open in
@@ -55,6 +55,14 @@ fails, runs out of time or waits to be confirmed on this device never stops the 
 sent as written, and the reason is shown under it. The script API reference (`script_api_docs`)
 has the whole contract under `message` and `chat`.
 
+With **Reply only**, the script receives the same read-only inputs, but the message and its
+attachments go to the main agent immediately and unchanged. Returning `{ reply: 'text' }` adds
+only a side reply under that person's message; it does not replace the main agent's answer.
+Returning nothing adds nothing. Rewrites (including a bare string), holds and tool-approval
+answers have no effect and leave an explanatory note under the message. Failures and timeouts
+also leave their reason there without affecting the main turn. Replies and notes are saved
+with the message, even when scripts finish out of order.
+
 **Only messages matching** narrows either kind to messages matching a regular expression, written
 bare (`^/todo`) or as `/pattern/flags`; the rest go straight to the agent. Empty means every
 message. A pattern that does not compile is refused when set and, if one arrives anyway, lets
@@ -65,13 +73,13 @@ settings; that choice is the chat's own, and switching the chat to a different a
 A chat that never chose follows whichever agent it is on now. Interceptors never chain: the
 reviewer answers as one plain reply, so the reviewer's own interceptor is never asked. Delegated
 runs and scripts never use one — nobody is there to read the review. A message typed while the
-agent is working waits for its own turn when a script or a hold-for-review agent interceptor
-would take it, rather than joining the running one past it. Reply-only review lets queued
+agent is working waits for its own turn when a blocking script or a hold-for-review agent
+interceptor would take it, rather than joining the running one past it. Reply-only review lets queued
 messages join the running turn as usual, reviewing each independently.
 
 The settings on the agent are `interceptorAgentId` (an agent id, or empty for none),
 `interceptorContextDepth` (0 the draft, -1 everything, N the last N messages; an agent reviewer
-only), `interceptorReplyOnly` (boolean, false by default; agent reviewers only),
+only), `interceptorReplyOnly` (boolean, false by default; agents and scripts),
 `interceptorScript` (a script's `@name`, or empty; set, it wins over the agent) and
 `interceptorPattern` (the regular expression, or empty).
 

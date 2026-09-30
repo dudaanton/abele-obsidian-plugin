@@ -489,7 +489,7 @@ const probeScript = `(async () => {
         if (label === 'settings' && modal) {
           report['setup settings'].pattern = !!modal.querySelector('input[placeholder="Every message"]')
           const replyRow = () => [...modal.querySelectorAll('.setting-item')].find(r => r.querySelector('.setting-item-name')?.textContent.trim() === 'Reply only')
-          report['setup settings'].replyHidden = !replyRow()
+          report['setup settings'].replyToggle = !!replyRow()?.querySelector('.checkbox-container')
           guardedChat.interceptor.agentId.value = replyReviewer.id
           await until(() => replyRow(), 3000)
           const row = replyRow()
@@ -888,7 +888,7 @@ const probeScript = `(async () => {
             }
             report['agent editor interceptor'].clipped = cut
             report['agent editor interceptor'].warning = !!modal.querySelector('.mod-warning')
-            report['agent editor interceptor'].replyHidden = !replyRow()
+            report['agent editor interceptor'].replyToggle = !!replyRow()?.querySelector('.checkbox-container')
           } finally {
             registry.update(agent.id, was)
           }
@@ -1283,9 +1283,9 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   )
 
   it.each(['setup settings', 'agent editor interceptor'])(
-    '%s: scripts have no reply-only toggle',
+    '%s: scripts also have a reply-only toggle',
     (label) => {
-      expect((report[label] as Screen & { replyHidden?: boolean })?.replyHidden).toBe(true)
+      expect((report[label] as Screen & { replyToggle?: boolean })?.replyToggle).toBe(true)
     }
   )
 

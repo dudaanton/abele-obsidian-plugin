@@ -17,7 +17,7 @@ export interface InterceptorChoice {
   agentId: string
   /** 0 sends only the draft, -1 the whole visible history, N the last N messages. */
   contextDepth: number
-  /** Agent review without holding the message. Absent on older choices means hold. */
+  /** Review without holding the message. Absent on older choices means hold. */
   replyOnly?: boolean
   /** The interceptor script, by its `@name`. Set, it wins over `agentId`. */
   script: string
@@ -37,7 +37,7 @@ export const NO_INTERCEPTOR: InterceptorChoice = {
 export type InterceptRoute =
   | { kind: 'none' }
   | { kind: 'agent'; replyOnly?: boolean; broken?: string }
-  | { kind: 'script'; script: string; broken?: string }
+  | { kind: 'script'; script: string; replyOnly?: boolean; broken?: string }
 
 export interface ReviewProgress {
   streaming: boolean
@@ -122,7 +122,7 @@ export class ChatInterceptor {
     set: (pattern) => this.choose({ pattern }),
   })
 
-  /** Only agent interceptors use this; scripts keep deciding for themselves. */
+  /** Sends unchanged while the interceptor independently decides whether to reply. */
   public readonly replyOnly: WritableComputedRef<boolean> = computed({
     get: () => this.choice.value.replyOnly === true,
     set: (replyOnly) => this.choose({ replyOnly }),
@@ -167,10 +167,13 @@ export class ChatInterceptor {
     if (!this.isActive) return { kind: 'none' }
     const { matches, broken } = matchesPattern(this.pattern.value, text)
     if (!matches) return { kind: 'none' }
-    const extra = broken ? { broken } : {}
+    const extra = {
+      ...(broken ? { broken } : {}),
+      ...(this.replyOnly.value ? { replyOnly: true } : {}),
+    }
     return this.script.value
       ? { kind: 'script', script: this.script.value, ...extra }
-      : { kind: 'agent', ...(this.replyOnly.value ? { replyOnly: true } : {}), ...extra }
+      : { kind: 'agent', ...extra }
   }
 
   /** True while a script decides about a message; the chat is busy for that long. */
@@ -232,6 +235,72 @@ export class ChatInterceptor {
     } finally {
       if (this.replyControllers.get(messageId) === controller)
         this.replyControllers.delete(messageId)
+    }
+  }
+
+  /** A script's side reply: never a draft, rewrite or tool policy for the main turn. */
+  async reviewScriptReply(
+    messageId: string,
+    route: Extract<InterceptRoute, { kind: 'script' }>,
+    input: InterceptInput
+  ): Promise<void> {
+    const message = this.host.findMessage(messageId)
+    if (!message || this.replyControllers.has(messageId)) return
+    const controller = new AbortController()
+    this.replyControllers.set(messageId, controller)
+    this.replyReviews.value[messageId] = { streaming: true, streamingContent: '', error: null }
+    message.interceptorName = route.script
+    message.interceptorScript = true
+    message.interceptorCollapsed = false
+    this.host.updateVisibleMessages()
+    try {
+      const outcome = await runInterceptorScript(route.script, input, controller.signal)
+      const current = this.host.findMessage(messageId)
+      if (controller.signal.aborted || !current) return
+      const lines = route.broken
+        ? [`The pattern does not compile (${route.broken}), so every message goes to the script.`]
+        : []
+      switch (outcome.kind) {
+        case 'reply':
+          lines.push(outcome.text)
+          break
+        case 'hold':
+          lines.push(
+            'Reply only: ignored the request to hold this message. It was sent as written.'
+          )
+          break
+        case 'send':
+          if (outcome.rewritten)
+            lines.push(
+              'Reply only: ignored the rewrite of this message or its attachments. It was sent as written.'
+            )
+          if (outcome.policy)
+            lines.push(
+              'Reply only: ignored tool-approval answers. The main turn keeps its own permissions.'
+            )
+          break
+        case 'failed':
+          lines.push(`Not checked: ${outcome.reason}. Sent as written.`)
+          break
+      }
+      if (lines.length) {
+        current.interceptorChat = [
+          ...(current.interceptorChat ?? []),
+          ...lines.map((content) => ({
+            id: nanoid(),
+            role: 'assistant' as const,
+            content,
+            timestamp: Date.now(),
+          })),
+        ]
+        this.host.updateVisibleMessages()
+        await this.host.save()
+      }
+    } finally {
+      if (this.replyControllers.get(messageId) === controller) {
+        this.replyControllers.delete(messageId)
+        this.replyReviews.value[messageId].streaming = false
+      }
     }
   }
 

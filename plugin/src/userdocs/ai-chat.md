@@ -198,14 +198,20 @@ parallel, with the chosen context, without Send or Edit buttons. You can carry o
 while it reviews; its reply does not become part of the main agent's conversation. It is off
 by default, so existing interceptors still hold drafts for review. A chat's **Settings** tab
 can override this choice along with its interceptor; choose **Agent default** to follow the
-agent again. This switch is only shown for agent reviewers, not scripts.
+agent again. The switch works for both agent reviewers and scripts.
 
-The interceptor can also be one of your [scripts](scripts#chat-interceptors). A script decides by
-itself: it lets the message through, rewrites it, answers it without asking the agent, or holds
+The interceptor can also be one of your [scripts](scripts#chat-interceptors). With **Reply only**
+off, a script decides by itself: it lets the message through, rewrites it, answers it without asking the agent, or holds
 it back for you. It can also approve or refuse the actions the agent takes while answering that
 message, where you would otherwise be asked. If the script breaks or takes too long, your message
 is sent as you wrote it and the reason is shown under it. Stop it from the chat and the message
 waits as a draft.
+
+With **Reply only** on, the script runs in parallel while your message goes straight to the main
+agent unchanged. If the script returns a reply, it appears under your message; if it says nothing,
+nothing appears. It cannot rewrite or hold the message, replace the main agent's answer, or
+approve or refuse its actions in this mode. An attempted rewrite, hold or approval leaves a
+small explanation under the message, as does a failure or timeout. Neither stops the main turn.
 
 **Only messages matching** limits the interceptor to messages that match a regular expression,
 such as `^/todo`. Everything else goes straight to the agent. Leave it empty for every message.

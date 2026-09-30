@@ -35,10 +35,10 @@
     </template>
 
     <Setting
-      v-if="activeInterceptorId && !activeScript"
+      v-if="interceptorActive"
       name="Reply only"
-      desc="Send messages straight to the main agent. The reviewer answers beside each message,
-        without holding it or showing Send and Edit buttons."
+      desc="Send messages unchanged straight to the main agent. The interceptor may answer beside
+        each message, without holding it, rewriting it or deciding tool approvals."
     >
       <Checkbox :is-enabled="interceptorReplyOnly" @toggle="toggleInterceptorReplyOnly" />
     </Setting>

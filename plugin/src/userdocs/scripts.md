@@ -185,9 +185,9 @@ changes through the text its fix returns, when you or the agent apply the fix.
 
 A script whose header says `// @interceptor` can stand in front of an agent. Pick it as the
 **Interceptor** in the agent's settings, or in one chat's settings. Each message you send there
-reaches the script first, as `message`, with the chat around it as `chat`: the conversation so
+reaches the script as `message`, with the chat around it as `chat`: the conversation so
 far, what is attached, the note open in the editor and the agent's settings. What the script
-returns decides what happens:
+returns decides what happens when **Reply only** is off:
 
 ```js
 // @name Quick tasks
@@ -206,6 +206,12 @@ Return nothing to send the message as it is, a text to send that instead, `{ rep
 it yourself, or `{ hold: 'why' }` to keep it back as a draft. Beside a send, `approve` and
 `deny` answer for you on the actions the agent takes for that message: `approve: ['edit']`,
 `approve: true`, or a function that looks at each one. The full list is in the script reference.
+
+Turn on **Reply only** in either settings screen to send the message unchanged to the main agent
+at once while the script runs alongside it. Return `{ reply: 'text' }` to show a side answer
+under the message, or nothing to stay silent. Rewrites, holds and tool approvals are ignored
+with an explanation under the message; the script cannot replace the main agent's answer.
+Failures and timeouts also show their reason there without affecting the main turn.
 
 The number after `@interceptor` is how many seconds the script may take, 30 if you leave it out.
 A script that fails, takes longer, or waits to be confirmed on this device never loses your
