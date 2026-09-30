@@ -121,12 +121,14 @@ describe('credential destination confinement', () => {
     await client(request).call('POST', '/x', {
       headers: { authorization: 'Bearer injected', Authorization: 'Bearer injected' },
     })
-    expect(Object.entries(calls[0].headers ?? {}).filter(([k]) => k.toLowerCase() === 'authorization')).toEqual([
-      ['Authorization', 'Bearer tkn'],
-    ])
+    expect(
+      Object.entries(calls[0].headers ?? {}).filter(([k]) => k.toLowerCase() === 'authorization')
+    ).toEqual([['Authorization', 'Bearer tkn']])
     const anonymous = client(request, '')
     await anonymous.call('GET', '/x', { headers: { AUTHORIZATION: 'Bearer injected' } })
-    expect(Object.keys(calls[1].headers ?? {}).some((k) => k.toLowerCase() === 'authorization')).toBe(false)
+    expect(
+      Object.keys(calls[1].headers ?? {}).some((k) => k.toLowerCase() === 'authorization')
+    ).toBe(false)
   })
 
   it('accepts the Enterprise GraphQL endpoint, but not REST prefix lookalikes', async () => {
@@ -139,8 +141,12 @@ describe('credential destination confinement', () => {
     await c.graphql('query { ok }', {})
     expect(calls[0].url).toBe('http://git.example.test:8080/api/graphql')
     expect(calls[0].headers?.Authorization).toBe('Bearer secret')
-    await expect(c.get('http://git.example.test:8080/api/v3evil/repos')).rejects.toBeInstanceOf(GithubError)
-    await expect(c.get('https://git.example.test:8080/api/v3/repos')).rejects.toBeInstanceOf(GithubError)
+    await expect(c.get('http://git.example.test:8080/api/v3evil/repos')).rejects.toBeInstanceOf(
+      GithubError
+    )
+    await expect(c.get('https://git.example.test:8080/api/v3/repos')).rejects.toBeInstanceOf(
+      GithubError
+    )
     expect(calls).toHaveLength(1)
   })
 
@@ -155,7 +161,62 @@ describe('credential destination confinement', () => {
     await c.image('http://avatars.git.example.test:8443/a.png')
     await c.image('https://avatars.git.example.test/a.png')
     await c.image('https://github.com/a.png')
-    expect(calls.map((r) => r.headers?.Authorization)).toEqual(['Bearer secret', undefined, undefined, undefined])
+    expect(calls.map((r) => r.headers?.Authorization)).toEqual([
+      'Bearer secret',
+      undefined,
+      undefined,
+      undefined,
+    ])
+  })
+})
+
+describe('redirects are new requests', () => {
+  it('an API redirect outside the REST boundary is refused before the second send', async () => {
+    const request = vi.fn(async () =>
+      respond({ status: 302, headers: { location: 'https://unrelated.example.test/private' } })
+    )
+    await expect(client(request).get('/private')).rejects.toMatchObject({ kind: 'other' })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('a redirected archive never regains Authorization, even if it returns to the API', async () => {
+    const calls: RequestUrlParam[] = []
+    const request = vi.fn(async (r: RequestUrlParam) => {
+      calls.push(r)
+      return respond(
+        calls.length === 1
+          ? { status: 302, headers: { location: 'https://download.example.test/signed' } }
+          : calls.length === 2
+            ? { status: 302, headers: { location: 'https://api.github.com/final' } }
+            : { status: 200 }
+      )
+    })
+    await client(request).bytes('/tarball')
+    expect(calls.map((r) => r.headers?.Authorization)).toEqual(['Bearer tkn', undefined, undefined])
+  })
+
+  it('never follows a redirect on a notification write', async () => {
+    const request = vi.fn(async () =>
+      respond({ status: 307, headers: { location: '/notifications/new' } })
+    )
+    await expect(client(request).call('PATCH', '/notifications')).rejects.toMatchObject({
+      kind: 'other',
+    })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses secure-to-insecure archive redirects', async () => {
+    const request = vi.fn(async () =>
+      respond({ status: 302, headers: { location: 'http://download.example.test/file' } })
+    )
+    await expect(client(request).bytes('/tarball')).rejects.toMatchObject({ kind: 'other' })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('bounds redirect loops', async () => {
+    const request = vi.fn(async () => respond({ status: 302, headers: { location: '/loop' } }))
+    await expect(client(request).get('/loop')).rejects.toMatchObject({ kind: 'other' })
+    expect(request).toHaveBeenCalledTimes(6)
   })
 })
 

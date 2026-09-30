@@ -59,11 +59,14 @@ import { ChatRewind } from '@/ai/rewind/ChatRewind'
 import { memoryStore } from '@/ai/rewind/RewindStore'
 import { showFormModal } from '@/scripting/formModal'
 import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
-import { TFile, Component, MarkdownRenderer, MarkdownPreviewRenderer } from 'obsidian'
+import { TFile, Component, MarkdownRenderer, MarkdownPreviewRenderer, requestUrl } from 'obsidian'
 import { renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
 import { renderGithubMarkdown } from '@/github/safeMarkdown'
 import { tablePage } from '@/reader/figures'
 import { placeDiagram } from '@/mermaid/renderMermaid'
+import { GithubClient } from '@/github/client'
+import { singleHopRequest } from '@/github/transport'
+import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
@@ -182,6 +185,10 @@ interface AbeleTestApi {
   createRouteTool: typeof createRouteTool
   /** The GitHub tools, so a check can call them the way an agent would. */
   createGithubTools: typeof createGithubTools
+  requestUrl: typeof requestUrl
+  singleHopRequest: typeof singleHopRequest
+  GithubClient: typeof GithubClient
+  githubEndpoints: typeof endpoints
   /** Every tool an agent could be handed now, MCP servers' included, to call as an agent would. */
   createAgentTools: typeof createAgentTools
   /** The renderer shared by note maps and AbeleMap, for control/layout probes. */
@@ -698,6 +705,10 @@ export function exposeTestApi(plugin: Plugin): void {
     createPlacesTool,
     createRouteTool,
     createGithubTools,
+    requestUrl,
+    singleHopRequest,
+    GithubClient,
+    githubEndpoints: endpoints,
     createAgentTools,
     renderMap,
     prepareImageForApi,

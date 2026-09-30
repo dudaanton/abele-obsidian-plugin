@@ -19,6 +19,9 @@ vi.mock('obsidian', async () => ({
   requestUrl,
 }))
 
+// Script the single-hop transport; archive and cache behavior remain real.
+vi.mock('@/github/transport', () => ({ singleHopRequest: requestUrl }))
+
 const archive = new Uint8Array(
   readFileSync(resolve(__dirname, '../fixtures/github/widgets.tar.gz'))
 )

@@ -2,14 +2,15 @@
  * Access to the GitHub API. Reads, and the one kind of write there is: marking notifications
  * read (`notifications/`).
  *
- * Every request goes through Obsidian's `requestUrl`: it is not subject to CORS and it works on a
- * phone, where `fetch` to api.github.com from the app's origin would be refused.
+ * Every hop goes through the redirect-controlled transport (Node HTTP on desktop, native
+ * CapacitorHttp on mobile), never requestUrl, which forwards credentials across redirects.
  *
  * Responses are kept in memory with their ETag and asked about again with `If-None-Match`. An
  * unchanged answer is a 304 with no body, and GitHub does not count it against the hourly limit —
  * which is what makes reopening the same pull request free.
  */
-import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian'
+import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
+import { singleHopRequest } from './transport'
 import { normaliseHost, type Endpoints } from './urls'
 import {
   RAW,
@@ -143,7 +144,7 @@ export class GithubClient {
   constructor(
     readonly endpoints: Endpoints,
     token: string,
-    private readonly request: Requester = (r) => requestUrl(r),
+    private readonly request: Requester = singleHopRequest,
     /**
      * Why no token goes with these requests although one is set — a link on github.com while
      * the token belongs to an Enterprise server. Said in every refusal, so the token is not
@@ -185,7 +186,9 @@ export class GithubClient {
   /** Validate the final destination, not a caller's relative/absolute path or host spelling. */
   private async send(
     request: RequestUrlParam,
-    purpose: 'rest' | 'graphql' | 'image' = 'rest'
+    purpose: 'rest' | 'graphql' | 'image' | 'download' = 'rest',
+    hops = 0,
+    anonymousRedirect = false
   ): Promise<RequestUrlResponse> {
     let url: URL
     try {
@@ -201,29 +204,73 @@ export class GithubClient {
       }
       if (purpose === 'graphql') {
         if (url.origin !== api.origin || url.pathname !== api.pathname) throw new Error('endpoint')
-      } else if (purpose === 'rest') {
+      } else if (purpose === 'rest' || (purpose === 'download' && hops === 0)) {
         const base = api.pathname.replace(/\/$/, '')
         if (
           url.origin !== api.origin ||
           !(url.pathname === base || url.pathname.startsWith(`${base}/`))
-        ) throw new Error('endpoint')
-      } else {
+        )
+          throw new Error('endpoint')
+      } else if (purpose === 'image') {
         const web = new URL(this.endpoints.origin)
-        const own = this.endpoints.webHost !== 'github.com' &&
-          url.protocol === web.protocol && url.port === web.port &&
+        const own =
+          this.endpoints.webHost !== 'github.com' &&
+          url.protocol === web.protocol &&
+          url.port === web.port &&
           hostWithin(normaliseHost(url.hostname), this.endpoints.webHost)
         // Public images can be read anonymously from arbitrary HTTPS hosts.
-        if (request.headers && 'Authorization' in request.headers && !own) throw new Error('avatar destination')
+        if (request.headers && 'Authorization' in request.headers && !own)
+          throw new Error('avatar destination')
       }
     } catch {
       throw new GithubError('other', 'GitHub request destination is not permitted.')
     }
+    let response: RequestUrlResponse
     try {
-      return await this.request({ ...request, throw: false })
+      response = await this.request({ ...request, throw: false })
     } catch {
       // The transport may include request headers or URLs (including credentials) in its errors.
       throw new GithubError('network', `Could not reach ${url.host}.`)
     }
+    const location = header(response.headers, 'location')
+    if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response
+    if (hops >= 5 || request.method !== 'GET') {
+      throw new GithubError('other', 'GitHub redirected this request; it was not repeated.')
+    }
+    let next: URL
+    try {
+      next = new URL(location, url)
+    } catch {
+      throw new GithubError('other', 'GitHub returned an invalid redirect.')
+    }
+    if (url.protocol === 'https:' && next.protocol !== 'https:') {
+      throw new GithubError('other', 'GitHub redirected to an insecure destination.')
+    }
+    const api = new URL(this.endpoints.api)
+    const base = api.pathname.replace(/\/$/, '')
+    const approvedApi =
+      next.origin === api.origin && (next.pathname === base || next.pathname.startsWith(`${base}/`))
+    const web = new URL(this.endpoints.origin)
+    const approvedImage =
+      this.endpoints.webHost !== 'github.com' &&
+      next.protocol === web.protocol &&
+      next.port === web.port &&
+      hostWithin(normaliseHost(next.hostname), this.endpoints.webHost)
+    const anonymous = anonymousRedirect || !(purpose === 'image' ? approvedImage : approvedApi)
+    const headers = { ...request.headers }
+    if (anonymous) {
+      // Signed archive URLs are followed anonymously. Once a chain leaves the credential's
+      // boundary it cannot regain credentials by redirecting back into it.
+      for (const name of Object.keys(headers)) {
+        if (
+          ['authorization', 'if-none-match', 'cookie', 'proxy-authorization'].includes(
+            name.toLowerCase()
+          )
+        )
+          delete headers[name]
+      }
+    }
+    return this.send({ ...request, url: next.href, headers }, purpose, hops + 1, anonymous)
   }
 
   /** One REST resource, answered from memory when GitHub says it has not changed. */
@@ -262,11 +309,14 @@ export class GithubClient {
     options: Pick<GetOptions, 'what'> = {}
   ): Promise<{ bytes: ArrayBuffer; type?: string }> {
     const url = path.startsWith('http') ? path : `${this.endpoints.api}${path}`
-    const response = await this.send({
-      url,
-      method: 'GET',
-      headers: this.headers('application/vnd.github.raw'),
-    })
+    const response = await this.send(
+      {
+        url,
+        method: 'GET',
+        headers: this.headers('application/vnd.github.raw'),
+      },
+      'download'
+    )
     if (response.status < 200 || response.status >= 300) {
       throw this.refusal(response.status, response.headers, null, options.what)
     }
@@ -398,9 +448,13 @@ export class GithubClient {
     }
     const web = new URL(this.endpoints.origin)
     const host = normaliseHost(parsed.hostname)
-    const own = this.endpoints.webHost !== 'github.com' &&
-      parsed.protocol === web.protocol && parsed.port === web.port &&
-      !parsed.username && !parsed.password && hostWithin(host, this.endpoints.webHost)
+    const own =
+      this.endpoints.webHost !== 'github.com' &&
+      parsed.protocol === web.protocol &&
+      parsed.port === web.port &&
+      !parsed.username &&
+      !parsed.password &&
+      hostWithin(host, this.endpoints.webHost)
     const headers: Record<string, string> = { Accept: 'image/*' }
     if (own && this.token) headers.Authorization = `Bearer ${this.token}`
     const response = await this.send({ url, method: 'GET', headers }, 'image')
@@ -431,12 +485,15 @@ export class GithubClient {
         'GitHub only shows discussions to a signed-in request. Add a token in Abele settings → GitHub.'
       )
     }
-    const response = await this.send({
-      url: this.endpoints.graphql,
-      method: 'POST',
-      headers: { ...this.headers('application/json'), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
-    }, 'graphql')
+    const response = await this.send(
+      {
+        url: this.endpoints.graphql,
+        method: 'POST',
+        headers: { ...this.headers('application/json'), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables }),
+      },
+      'graphql'
+    )
 
     let body: { data?: T; errors?: { type?: string; message: string }[] } | null = null
     try {

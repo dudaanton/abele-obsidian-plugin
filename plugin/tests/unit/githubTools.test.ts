@@ -25,6 +25,9 @@ vi.mock('obsidian', async () => ({
   requestUrl,
 }))
 
+// Script the single-hop transport; destination guards remain real.
+vi.mock('@/github/transport', () => ({ singleHopRequest: requestUrl }))
+
 type Reply = { status?: number; json?: unknown; text?: string; headers?: Record<string, string> }
 type Route = Reply | ((req: RequestUrlParam) => Reply)
 
