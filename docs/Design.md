@@ -104,9 +104,11 @@ is named in the component and nowhere else: no other element sets a colour of it
 **No `style="…"` attributes.** A one-off margin in the template is a pattern nobody can find
 later. Give it a class, or give the kit a prop.
 
-**Nothing scrolls horizontally.** Content wraps. `overflow-x: auto` belongs only on an
-element that is deliberately a scroller — a code block, a wide table — and it is stated as
-such in a comment. Tab strips wrap onto a second row rather than hiding tabs off the edge.
+**Content wraps unless it is deliberately a horizontal scroller.** `overflow-x: auto` belongs
+on an intentional scroller — a code block, a wide table, a phone's horizontal tab strip — and
+is explained in a comment. Desktop tab strips may wrap; on a phone horizontal tabs stay on one
+row, do not shrink, and scroll sideways. A focused tab scrolls into view. Vertical settings
+navigation remains a list.
 
 **Work in the element's own window, never in `window`.** Since Obsidian 1.13 settings can open
 in a window of their own, and code rendered there still sees the *main* window as `window` and
@@ -133,7 +135,9 @@ after the component.
 `tests/unit/designConformance.test.ts` reads the component sources and fails on a bare
 `<button>`, an inline `style` attribute, a literal colour or length, and an unexplained
 `overflow-x`. It covers the settings screens, the shared kit and the chat components this
-plugin's agent work introduced.
+plugin's agent work introduced. The authoritative inventory is `COVERED_DIRS` and
+`COVERED_FILES` in that test. Source-pattern checks do not resolve aliased components or prove
+computed geometry; live phone and focus-ring checks protect those contracts.
 
 `tests/e2e/settingsLayout.e2e.test.ts` drives the running app and asserts that no settings
 tab, and no modal opened from one, puts anything past its container's right edge — at a

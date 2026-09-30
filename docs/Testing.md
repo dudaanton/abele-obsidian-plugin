@@ -1,17 +1,19 @@
 # Testing
 
-Three tiers, each with its own command. All commands run from `plugin/`.
+Three execution tiers: fast checks, bundle size, and live end-to-end. All commands run from
+`plugin/`. Complexity checks and harness tests belong to the fast tier.
 
 | Command | Tier | Needs Obsidian | Runs on commit | Runs in CI |
 |---|---|---|---|---|
-| `npm test` | unit + integration + component | no | yes | yes |
+| `npm test` | unit + integration + component + harness (including complexity) | no | yes | yes |
 | `npm run test:size` | bundle size | no | no | yes |
-| `npm run test:perf` | complexity | no | no | no |
+| `npm run test:perf` | filtered complexity checks, same fast config | no | via `npm test` | via `npm test` |
 | `npm run test:e2e` | end-to-end | yes | no | no |
 | `npm run test:all` | everything | yes | no | no |
 | `npm run guard` | repository guard | no | yes (staged) | yes |
 
-`npm run test:watch` re-runs the fast tier on change.
+`npm run test:watch` re-runs the fast tier on change. `test:all` runs each execution tier once;
+`test:perf` is a convenience filter, not a second configuration or an additional gate.
 
 **Do not touch Obsidian while the e2e tier runs.** There is one app and one CLI; a stray
 `obsidian eval` — opening settings, resizing a window — races the probe the tests are waiting
@@ -36,13 +38,15 @@ depends on Obsidian's runtime.
 
 ## Unit tier — `tests/unit/`
 
-Pure functions, no Obsidian, no I/O. `tests/unit/pathsHelpers.test.ts` is the model to
-follow.
+Small modules and pure functions without a running Obsidian. `tests/unit/pathsHelpers.test.ts`
+is the pure-function model; adapter tests may use the mocked host API or a local HTTP server.
+Keep real I/O explicit rather than describing those tests as entirely in-memory.
 
 `tests/unit/designConformance.test.ts` is the odd one out: it reads the component sources and
 enforces the rules in `Design.md` — no hand-styled `<button>`, no literal colours or pixel
 sizes, no inline `style` attributes, no unexplained `overflow-x`. Each rule is there because
-breaking it produced a visible defect at least once. When adding a rule, prove it fails:
+breaking it produced a visible defect at least once. These are source-pattern checks over an
+explicit coverage list, not proof of component identity or computed layout. When adding a rule, prove it fails:
 introduce the violation, watch the test go red, then take it out again.
 
 ## Integration tier — `tests/integration/`
@@ -69,6 +73,33 @@ field directly rather than calling `init()`, which would also start a `VaultWatc
 ```ts
 ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = buildFakeVault(specs)
 ```
+
+## Controlled scheduling
+
+Use `tests/helpers/fakeClock.ts` at file or suite scope before its own hooks. Its returned
+`advance(ms)` drains microtasks and advances the timers and animation frames without sleeping.
+Unmount components and dispose services before returning to real time; the delayed-write guard
+remains active on this clock. For a timer inside a fake operation, schedule its completion on
+the fake clock; do not advance time from inside that operation.
+
+Use `flushPromises` for promise chains that do not depend on time. For real I/O or WebCrypto,
+wait for the observable completion with `vi.waitFor`; a fake clock cannot complete host work.
+A check that nothing happens over a period still advances the entire period before asserting.
+
+`tests/helpers/deferred.ts` provides explicit completions and one-shot `OperationDelays` gates.
+Queue `holdNext`, start the operation, await `entered`, then `release` (or reject a write).
+`fakeVault` exposes independent `frontmatter` persistence and `metadata` publication gates;
+`FakeSettings` in `tests/helpers/fakeSettings.ts` has `load` and `save` gates and snapshots values
+by copy. Immediate operation remains the default. Always release outstanding work in cleanup.
+Known product ordering defects are pinned as `it.fails` with `BUG:` comments, not skipped or
+weakened; a fix makes those cases fail until their expected-failure marker is removed.
+
+## Harness tier — `tests/harness/`
+
+Tests for the test infrastructure itself: CLI answers, screenshots, phone gestures, setup and
+teardown, snapshot approval, configuration ownership and scheduling fakes. They run under the
+same fast configuration without driving Obsidian or a phone. Isolated runner fixtures under
+`tests/fixtures/harness/` are collected only by their own child-run configurations.
 
 ## Component tier — `tests/component/`
 
@@ -113,7 +144,7 @@ rather than by faking a window size.
 `build/`) and fails when `main.js` or the stylesheet is over its budget in
 `tests/size/budget.json`. Obsidian reads and compiles the whole of `main.js` on every start,
 phones included, so every byte is paid for at load whether the feature behind it is used or
-not. Raising the budget is a decision, made in the same diff as whatever needed the room.
+not. Raise the budget in its own commit explaining the growth; do not remove a feature to fit it.
 
 The run also says where the bytes go — the heaviest packages in the console, all of them in
 `/tmp/abele-bundle-size.json`. `node scripts/bundle-size.mjs` prints the same table without
@@ -126,17 +157,20 @@ ships.
 
 A dynamic `import()` does not make a dependency cheaper here: `inlineDynamicImports` keeps it in
 `main.js` (see *The test hook* below), so its bytes are still read and compiled at every start —
-only its top-level code waits until first use.
+a dynamic import alone does not guarantee that top-level evaluation waits until first use.
 
 ## Complexity tier — `tests/**/*.perf.test.ts`
 
-States the cost an algorithm *should* have. Kept out of `npm test` because it currently
-fails by design: `ScopeResolver.resolveGroup` rescans the whole vault once per node in a
-group's transitive closure. Fold it back into `vitest.config.ts` once that is fixed.
+Pins deterministic operation counts against the in-memory fixtures. These tests run in
+`npm test`, including on commit and in CI, under `vitest.config.ts`. `npm run test:perf`
+selects the same files from that configuration. Wall times may be reported for diagnosis;
+complexity assertions do not depend on how busy the host is.
 
 ## What the e2e tier covers
 
-Three files, three concerns:
+The live suite covers groups, tasks, finance, chats, scripts, settings, media, drawing, GitHub
+and the reader on the targets each file declares. The list below describes representative
+contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current file inventory.
 
 - `groups.e2e.test.ts` — **correctness**. Membership is pinned by a committed snapshot
   (`tests/e2e/__snapshots__/group-membership.json`), cross-checked against an independent
@@ -148,7 +182,7 @@ Three files, three concerns:
   (`tests/e2e/__snapshots__/note-relations.json`, regenerate with
   `UPDATE_RELATIONS_SNAPSHOT=1`), and measures the cost of building that set.
 - `scopeResolver.e2e.test.ts` — **cost**. Measures one resolution and asserts on both the
-  operation counts and the wall clock.
+  operation counts, while reporting the wall clock for diagnosis.
 - `responsiveness.e2e.test.ts` — **UI stalls**. Samples a 16ms timer across a resolution and
   reports the longest stretch the main thread went unserviced. That stall is what the user
   experiences as input lag.
@@ -502,7 +536,8 @@ Three files, three concerns:
   finds a bar by name. Pictures in `/tmp/abele-phone/timeline-*.png`.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
-"mega group", where a single resolution currently takes about two minutes.
+"mega group" to expose work that grows with the transitive closure. The former multi-minute
+rescan is not the current performance baseline.
 
 ## End-to-end tier — `tests/e2e/`
 
@@ -542,8 +577,13 @@ the frontmost window has it — each file turns on `Emulation.setFocusEmulationE
 the settings popout (found by its title, which names the vault). A test that reloads the app
 or switches emulation must do it through `reloadApp()`, never `app.emulateMobile()` itself.
 
-The suite skips itself when Obsidian is not running or the build lacks the test hook, so
-`npm run test:all` stays usable with Obsidian closed.
+An explicitly requested e2e run fails if Obsidian is unavailable or the vault lacks the
+development test API. The reporter also fails a run in which every collected test was skipped
+or no tests executed. Use `npm test` for offline verification, not `test:all`.
+
+Missing group or relation snapshot baselines fail without writing anything. Only the explicit
+`UPDATE_GROUP_SNAPSHOT=1` or `UPDATE_RELATIONS_SNAPSHOT=1` flag approves a new baseline; review
+that diff before committing it.
 
 ### Load time
 
@@ -699,16 +739,12 @@ npm run test:e2e:phone          # E2E_TARGET=phone
 A file takes part by saying so at its top — `targets('desktop', 'phone')` from
 `tests/e2e/helpers/target.ts`. The e2e config reads that call from each file's source: a phone
 run loads only the files that name the phone, and a file with no call is a desktop file, so the
-desktop run is what it always was. The phone files so far: `calendarsPhone`, `githubPhone`,
-`taskDatePhone` (which on the phone taps the time field and measures the system's own
-keyboard) `formKeyboard` (which taps a long form's fields and types with it) and `bookFormFocus` (which
-taps a script form's field over a book with words selected and checks the keyboard stays) and `chatOpenPhone` (which taps a chat attached to a message, a chat file in the file list and
-a link to a chat, and checks the note in front stays in front) and `footerTaskClick` (which
-taps a task's checkbox and chevron in the list under a note and checks the note neither moves
-nor takes the focus) and `editorWidgetClick` (the same for a task drawn on a line of a note
-and the buttons over a task note). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
-probes too — pictures through the host, the book's taps, swipes and pinch as real gestures, the
-phone really turned — but are not yet green there, so they still name only the desktop.
+desktop run is what it always was. The `targets(...)` declarations, not a hand-maintained list
+here, are the source of truth for phone coverage. A desktop file using `emulateMobile` is not
+a real-phone check unless it also declares the phone and implements that target. Examples of
+phone contracts include `taskDatePhone` (the system keyboard), `formKeyboard` (typing through a
+long form), `chatOpenPhone` (opening chats without losing the note), and `footerTaskClick`
+(task actions without moving the note). Inspect the declaration before selecting a file.
 
 **The phone driver.** The repository does not know how to reach a phone. Everything goes
 through a command on the machine, named by `ABELE_PHONE_DRIVER` (default `iphone`), which has
@@ -782,11 +818,10 @@ single file, and the release workflow fails if `build/` holds anything but `main
 
 ## Generating a test vault
 
-**Four of the six e2e files need this vault.** `footerRender`, `groups`, `noteRelations` and
-`scopeResolver` all address notes under `ScaleTest/`, and without them they fail with
-`Group note ScaleTest/Notes/Projects.md not found in vault "<name>"`, an empty membership
-snapshot, or a render probe that never finishes — nine failures that look alarming and mean
-only that the fixture is absent. `settingsLayout` and `responsiveness` run without it.
+**Files that address `ScaleTest/` require the generated fixture.** These include `footerRender`,
+`groups`, `noteRelations` and `scopeResolver`; other files create their own scratch data.
+Missing fixture notes are environment failures, not permission to regenerate a baseline from
+an empty result. Check a file's setup before selecting its vault.
 
 `scripts/generate-vault.mjs` writes a realistic vault: the `groups` relation graph,
 journals, tasks, finance accounts/transactions/categories, time entries and `.abchat` files.
@@ -800,10 +835,10 @@ Options: `--out` (required), `--files` (approximate total, default 12000), `--se
 (default 42), `--force` (write into a non-empty directory).
 
 The group graph includes one deliberately wide "mega group" whose transitive closure covers
-a large share of the vault. Group resolution costs (closure size) × (notes carrying a
-`groups` property), so a wide closure over a link-dense vault is what makes that cost
-visible. Measured on a 37,765-file vault, resolving one such group took **108 seconds**,
-during which the main thread was blocked.
+a large share of the vault. The old rescan cost (closure size) × (notes carrying a `groups`
+property), which made a wide closure over a link-dense vault block the main thread. The
+operation-count checks guard against reintroducing that shape; historical wall times are
+not thresholds for the current implementation.
 
 Link density matters as much as file count. Journals, tasks and transactions all link into
 the general note population — which is itself group-attached — because backlink lookups and

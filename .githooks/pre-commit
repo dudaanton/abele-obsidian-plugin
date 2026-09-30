@@ -1,16 +1,16 @@
 #!/bin/sh
 #
 # Runs before every commit: the repository guard, then the fast test tiers (unit and
-# integration).
+# integration, component, harness and deterministic complexity).
 #
 # The guard (plugin/scripts/repo-guard.mjs) refuses stray tool output, build results, big files,
 # credentials and real home paths in what is staged. It needs nothing but node and takes well
 # under a second, so it runs even when plugin/node_modules is missing. See
 # docs/Repository guard.md for how to allow something on purpose.
 #
-# The complexity tier (`npm run test:perf`) and the end-to-end tier (`npm run test:e2e`)
-# are deliberately not run here — the first currently fails by design, and the second needs
-# a running Obsidian desktop app, which cannot be assumed at commit time.
+# Complexity checks already run in `npm test`; `test:perf` is only a filter of that config.
+# The end-to-end tier (`npm run test:e2e`) is not run here: it needs a running Obsidian app,
+# which cannot be assumed at commit time.
 #
 # Enabled by `npm run prepare` in plugin/, which points core.hooksPath at this directory.
 # Skip a run with `git commit --no-verify` when committing work in progress.
