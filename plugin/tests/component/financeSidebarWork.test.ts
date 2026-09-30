@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import dayjs from 'dayjs'
+import type { TFile } from 'obsidian'
 import { nextTick } from 'vue'
 import FinanceSidebar from '@/components/FinanceSidebar.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -77,8 +78,12 @@ async function addTransaction(name: string) {
     currency: 'EUR',
   }
   const file = await (
-    app.vault as unknown as { create(p: string, c: string): Promise<unknown> }
+    app.vault as unknown as { create(p: string, c: string): Promise<TFile> }
   ).create(path, '')
+  // The fake vault defaults every ctime to zero. A new note must be newer than the
+  // fixture notes even when their transaction dates tie on the first of the month;
+  // otherwise it falls behind the first page's 20 rows rather than appearing on top.
+  file.stat.ctime = Date.now()
   app.setFrontmatter(path, frontmatter)
   app.emit('metadataCache', 'changed', file)
   app.emit('metadataCache', 'resolved')
@@ -86,6 +91,8 @@ async function addTransaction(name: string) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+  vi.setSystemTime(new Date(2026, 9, 1, 0, 15))
   installFakeIntersectionObserver()
   app = useVault(fixture())
   AbeleConfig.getInstance().pinnedCurrencies = 'EUR'
@@ -102,6 +109,7 @@ afterEach(() => {
   store.transactionsList.value = null
   store.accountsList.value?.cleanup()
   store.accountsList.value = null
+  vi.useRealTimers()
 })
 
 function work() {
@@ -135,13 +143,6 @@ async function mountSidebar(active = true) {
 }
 
 describe('finance sidebar — work per new transaction', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   /**
    * What a new transaction costs with no sidebar at all — the balance index's rebuild and
    * nothing else. Taken on the second transaction: the first also carries the index's
