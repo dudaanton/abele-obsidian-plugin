@@ -514,7 +514,7 @@ function notificationList(web: string) {
     .map(({ read, ...n }) => ({ ...n, unread: !read && !readThreads.has(n.id) }))
 }
 
-function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
+async function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
   // As GitHub does: only a classic token reads notifications, whatever else another one can.
   if (!String(req.headers.authorization ?? '').startsWith('Bearer ghp_'))
     return send(res, 403, {
@@ -522,7 +522,13 @@ function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web:
       documentation_url: 'https://docs.github.com/rest/activity/notifications',
     })
   if (url.pathname === '/api/v3/notifications' && req.method === 'PUT') {
-    for (const n of notificationList(web)) readThreads.add(n.id)
+    let bytes = ''
+    for await (const chunk of req) bytes += chunk
+    const body = JSON.parse(bytes || '{}') as { last_read_at?: string; read?: boolean }
+    const cutoff = Date.parse(body.last_read_at ?? new Date().toISOString())
+    for (const n of notificationList(web)) {
+      if (body.read === true || Date.parse(n.updated_at) <= cutoff) readThreads.add(n.id)
+    }
     notificationsChanged = new Date()
     return send(res, 202, {
       message: "Unread notifications couldn't be marked in a single request.",
@@ -574,7 +580,10 @@ const server = createServer((req, res) => {
     graphql(req, res, web).catch((e) => send(res, 500, { message: String(e) }))
     return
   }
-  if (url.pathname.startsWith('/api/v3/notifications')) return notifications(req, res, url, web)
+  if (url.pathname.startsWith('/api/v3/notifications')) {
+    notifications(req, res, url, web).catch((e) => send(res, 500, { message: String(e) }))
+    return
+  }
   if (req.method !== 'GET') return notFound(res)
   rest(req, res, url, web)
 })

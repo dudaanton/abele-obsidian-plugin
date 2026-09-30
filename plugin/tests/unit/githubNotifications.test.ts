@@ -391,11 +391,66 @@ describe('marking read', () => {
     expect(put.url).toBe('https://api.github.com/notifications')
     expect(JSON.parse(String(put.body))).toEqual({
       last_read_at: '2026-09-03T12:00:00.000Z',
-      read: true,
     })
     expect(inbox.cached('unread')?.every((n) => !n.unread)).toBe(true)
     vi.restoreAllMocks()
   })
+})
+
+describe('bulk-read server cutoff', () => {
+  it.each(['', 'sample-org/sample-repo'])(
+    'does not force unseen activity read on the server (repository %s)',
+    async (repo) => {
+      let now = Date.parse('2026-01-01T10:00:00Z')
+      vi.spyOn(Date, 'now').mockImplementation(() => now)
+      let server = [
+        raw('41', 'Issue', null, {
+          updated_at: '2026-01-01T09:00:00Z',
+          repository: { full_name: 'sample-org/sample-repo' },
+        }),
+      ]
+      const { client, request } = fakeClient((req) => {
+        if (req.method === 'PUT') {
+          const body = JSON.parse(String(req.body)) as { last_read_at: string; read?: boolean }
+          // Model the server decision, not just the optimistic local cache: read:true forces all.
+          server = server.map((n) =>
+            body.read === true || Date.parse(n.updated_at) <= Date.parse(body.last_read_at)
+              ? { ...n, unread: false }
+              : n
+          )
+          return { status: 205 }
+        }
+        return { json: server }
+      })
+      const inbox = new NotificationInbox(client)
+      await inbox.load('all')
+      now += 60_000
+      server = [
+        ...server,
+        raw('42', 'Issue', null, {
+          updated_at: '2026-01-01T10:01:00Z',
+          repository: { full_name: 'sample-org/sample-repo' },
+        }),
+      ]
+      now += 60_000
+      await inbox.markAllRead('all', repo)
+      expect(server.map((n) => [n.id, n.unread])).toEqual([
+        ['41', false],
+        ['42', true],
+      ])
+      const put = request.mock.calls.at(-1)![0]
+      expect(JSON.parse(String(put.body))).toEqual({ last_read_at: '2026-01-01T10:00:00.000Z' })
+      expect(put.url).toBe(
+        repo
+          ? 'https://api.github.com/repos/sample-org/sample-repo/notifications'
+          : 'https://api.github.com/notifications'
+      )
+      expect((await inbox.load('all', true)).items.map((n) => [n.id, n.unread])).toEqual([
+        ['42', true],
+        ['41', false],
+      ])
+    }
+  )
 })
 
 describe('bulk-read cutoff precision', () => {

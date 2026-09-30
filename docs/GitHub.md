@@ -610,7 +610,9 @@ stays on screen, no longer standing out, until refresh by hand or a filter chang
 Done removes the row immediately after GitHub confirms it. The double check at the top means
 **Mark all as read, not Done** — or, with a repository chosen, everything of that repository —
 up to the moment the list was read, so one that arrived since is not marked unseen. Read rows
-remain in All. GitHub's REST API has no bulk Done endpoint; the tooltip names this distinction.
+remain in All. The bulk Read request sends `last_read_at` without a forcing `read: true` flag,
+so later activity is not marked read on the server either. GitHub's REST API has no bulk Done
+endpoint; the tooltip names this distinction.
 
 The list is read when the panel opens and again whenever GitHub's poll interval comes round
 while it is open (`X-Poll-Interval`, a minute as a rule); the refresh button asks straight away.

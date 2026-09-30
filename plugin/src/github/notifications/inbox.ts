@@ -326,7 +326,8 @@ export class NotificationInbox {
       : '/notifications'
     const answer = await this.client.call('PUT', path, {
       what: 'marking the notifications read',
-      body: { last_read_at: listedAt, read: true },
+      // Do not force all notifications read: last_read_at must protect later activity.
+      body: { last_read_at: listedAt },
     })
     if (answer.error) this.refuse(answer)
     this.markKept(
