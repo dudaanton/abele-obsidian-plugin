@@ -15,15 +15,23 @@
  *   change to it waits goes out, and the log says it replaced the one that waited.
  *
  * The test vault's ignore file keeps the config folder out, as every sync suite's does, but lets
- * through the three files these cases need; the plugin's sixteen megabytes of `main.js` stay out.
+ * through the settings and small synthetic code fixtures these cases need; Abele's bundle stays out.
  * The questions are asked only while the app is in front, which the suite says it is.
  *
  * Requires Obsidian running with a vault open, the sibling repository built, and
  * `npm run build:test` newer than the source — see docs/Testing.md.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   daemonConfig,
@@ -43,6 +51,9 @@ const CHAT_INDEX = '.obsidian/plugins/abele/chat-index.json'
 const APP_JSON = '.obsidian/app.json'
 const HOTKEYS = '.obsidian/hotkeys.json'
 const FROM_DAEMON = 'Tasks the other device chose'
+const CODE = '.obsidian/plugins/sample-code/main.js'
+const MANIFEST = '.obsidian/plugins/sample-code/manifest.json'
+const FRESH = '.obsidian/plugins/fresh-code/main.js'
 
 const why = siblingMissing() ?? obsidianMissing()
 if (why !== null) console.info(`\n  sync settings e2e skipped: ${why}\n`)
@@ -67,6 +78,7 @@ const onDaemon = (path: string): string => readFileSync(join(daemonDir, path), '
  */
 function daemonWrites(path: string, text: string, futureMs = 5_000): void {
   const file = join(daemonDir, path)
+  mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, text)
   const later = new Date(Date.now() + futureMs)
   utimesSync(file, later, later)
@@ -98,7 +110,7 @@ async function askedAboutSettings(): Promise<string> {
 function countReloads(): void {
   sync.run(`
     window.__abeleReloads = 0
-    svc.settingsPrompt.reloader = {
+    svc.codePrompt.reloader = svc.settingsPrompt.reloader = {
       available: () => true,
       reload: () => { window.__abeleReloads++; return true },
     }
@@ -128,9 +140,23 @@ describe.skipIf(why !== null)('settings that travel between devices', () => {
     vault = await openTestVault()
     writeFileSync(
       join(vault.path, '.abele-sync-ignore'),
-      ['.obsidian/', `!${APP_JSON}`, `!${HOTKEYS}`, `!${OWN_SETTINGS}`, ''].join('\n')
+      [
+        '.obsidian/',
+        `!${APP_JSON}`,
+        `!${HOTKEYS}`,
+        `!${OWN_SETTINGS}`,
+        '!.obsidian/plugins/sample-code/*',
+        '!.obsidian/plugins/fresh-code/*',
+        '',
+      ].join('\n')
     )
     writeFileSync(join(vault.path, HOTKEYS), '{}\n')
+    mkdirSync(dirname(join(vault.path, CODE)), { recursive: true })
+    writeFileSync(join(vault.path, CODE), 'module.exports = {}')
+    writeFileSync(
+      join(vault.path, MANIFEST),
+      JSON.stringify({ name: 'Sample code tool', version: '1.0.0' })
+    )
     vault.run(['dev:errors', 'clear'], 20_000)
     sync.run(`
       await svc.connect(${JSON.stringify(server.url)}, ${JSON.stringify(EMAIL)}, ${JSON.stringify(PASSWORD)})
@@ -305,6 +331,75 @@ describe.skipIf(why !== null)('settings that travel between devices', () => {
     expect(sync.status().deferred ?? 0).toBe(0)
     daemonSyncOnce(daemonDir)
     expect(onDaemon(HOTKEYS)).toBe(mine)
+  })
+
+  it('keeps code out of the settings answer and declines it in its own dialog', async () => {
+    countReloads()
+    daemonWrites(CODE, 'module.exports = { changed: true }')
+    daemonWrites(MANIFEST, JSON.stringify({ name: 'Sample code tool', version: '2.0.0' }))
+    daemonWrites(FRESH, 'module.exports = {}')
+    daemonWrites(APP_JSON, JSON.stringify({ ...JSON.parse(here(APP_JSON)), codeReviewTest: true }))
+    await askedAboutSettings()
+    sync.run(`
+      await press(() => modalOf('.abele-staged-settings'), 'Reload now')
+      if (!(await poll(() => modalOf('.abele-plugin-code'), 20000))) throw new Error('no separate code review: ' + JSON.stringify({ code: svc.codePrompt.asking.value, staged: svc.codePrompt.staged.value.map(x => x.path), settings: svc.settingsPrompt.asking.value, held: svc.heldPrompt.asking.value, modals: [...document.querySelectorAll('.modal')].map(x => textOf(x)), settingsModals: [...(app.setting.containerEl?.ownerDocument?.querySelectorAll('.modal') ?? [])].map(x => textOf(x)) }))
+      return 'ok'
+    `)
+    expect(JSON.parse(here(APP_JSON))).toMatchObject({ codeReviewTest: true })
+    expect(here(CODE)).toBe('module.exports = {}')
+    expect(here(MANIFEST)).toContain('1.0.0')
+    expect(existsSync(join(app().path, FRESH))).toBe(false)
+    const labels = sync.run<string[]>(
+      `return [...modalOf('.abele-plugin-code').querySelectorAll('li')].map(textOf)`
+    )
+    expect(labels).toContain('Sample code tool (sample-code) — Changed · Version 2.0.0')
+    expect(labels).toContain('fresh-code — New')
+    sync.run(`
+      await press(() => modalOf('.abele-plugin-code'), 'Keep local code')
+      if (!(await poll(() => !modalOf('.abele-plugin-code'), 20000))) throw new Error('code review stayed open')
+      svc.resume()
+      return 'ok'
+    `)
+    await sync.syncNow()
+    expect(here(CODE)).toBe('module.exports = {}')
+    expect(existsSync(join(app().path, FRESH))).toBe(false)
+    expect(reloads()).toBe(1) // The settings reload, not an installation.
+  })
+
+  it('Later installs nothing; the Sync tab reopens the code confirmation and Install applies it', async () => {
+    countReloads()
+    daemonSyncOnce(daemonDir)
+    daemonWrites(CODE, 'module.exports = { approved: true }')
+    daemonWrites(MANIFEST, JSON.stringify({ name: 'Sample code tool', version: '3.0.0' }))
+    daemonWrites(FRESH, 'module.exports = { approved: true }')
+    await sync.syncNow()
+    sync.run(`
+      if (!(await poll(() => modalOf('.abele-plugin-code'), 20000))) throw new Error('no code review')
+      await press(() => modalOf('.abele-plugin-code'), 'Later')
+      return 'ok'
+    `)
+    expect(here(CODE)).toBe('module.exports = {}')
+    expect(existsSync(join(app().path, FRESH))).toBe(false)
+    expect(reloads()).toBe(0)
+    await sync.long(
+      'installing reviewed code',
+      `
+      const root = await openSyncTab()
+      await press(root, 'Review plugin code')
+      const review = () => modalOf('.abele-plugin-code', root.ownerDocument)
+      if (!(await poll(review, 10000))) throw new Error('no code review from the tab: ' + JSON.stringify({ code: svc.codePrompt.asking.value, settings: svc.settingsPrompt.asking.value, held: svc.heldPrompt.asking.value, main: [...document.querySelectorAll('.modal')].map(x => textOf(x)), settingsModals: [...root.ownerDocument.querySelectorAll('.modal')].map(x => textOf(x)) }))
+      await press(review, 'Install and reload')
+      if (!(await poll(() => window.__abeleReloads > 0, 20000))) throw new Error('no installation reload')
+      await closeSettings()
+      svc.resume()
+      return 'ok'
+    `,
+      60_000
+    )
+    expect(here(CODE)).toBe('module.exports = { approved: true }')
+    expect(here(MANIFEST)).toContain('3.0.0')
+    expect(here(FRESH)).toBe('module.exports = { approved: true }')
+    expect(reloads()).toBe(1)
   })
 
   it('says nothing went wrong in the plugin while all that happened', () => {

@@ -9,6 +9,7 @@
  * - **Deletions held back** with sixty files under long folder names, and its confirmation
  *   stacked over it;
  * - **Settings changed on another device**, naming App settings and two plugins;
+ * - **Review plugin code from sync**, naming a new and a changed plugin with their versions;
  * - **Deleted files** with **Restore all deleted since** in each of its three presets — the
  *   date-time field among them — and the restore's confirmation;
  * - the **Sync tab** holding all of it at once: held deletions, waiting settings, three devices
@@ -55,6 +56,7 @@ import {
   restoreSinceScreens,
   signInOnTab,
   stagedScreen,
+  pluginCodeScreen,
   syncTabScreens,
 } from './helpers/syncScreens'
 
@@ -150,6 +152,7 @@ async function pushTime(path: string, then: () => void): Promise<number | string
 async function connectedScreens(into: Record<string, Screen>, suffix: string, pages: number) {
   await collect(into, heldScreens(suffix))
   await collect(into, stagedScreen(suffix))
+  await collect(into, pluginCodeScreen(suffix))
   await collect(into, restoreSinceScreens(suffix, TRASHED))
   await collect(into, syncTabScreens(`sync tab full${suffix}`, pages, { revoke: SIBLING }))
 }
@@ -179,11 +182,18 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     const vaultId = daemonConfig(daemonDir).vaultId
 
     vault = await openVaultUnderLock()
+    const localPlugin = join(vault.path, '.obsidian/plugins/sample-code')
+    mkdirSync(localPlugin, { recursive: true })
+    writeFileSync(join(localPlugin, 'main.js'), 'module.exports = {}')
+    writeFileSync(
+      join(localPlugin, 'manifest.json'),
+      JSON.stringify({ name: 'Sample code tool', version: '1.0.0' })
+    )
     // Obsidian's own settings and other plugins' travel here, for the settings question to have
     // something to name; the plugin's sixteen megabytes of `main.js` stay out.
     writeFileSync(
       join(vault.path, '.abele-sync-ignore'),
-      '.obsidian/\n!.obsidian/app.json\n!.obsidian/plugins/*/data.json\n'
+      '.obsidian/\n!.obsidian/app.json\n!.obsidian/plugins/*/data.json\n!.obsidian/plugins/sample-code/*\n!.obsidian/plugins/fresh-code/*\n'
     )
     await beforeSignIn()
     sync.run(`
@@ -211,6 +221,16 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     daemonSyncOnce(daemonDir)
     daemonWrites({
       '.obsidian/app.json': JSON.stringify({ nativeMenus: false, spellcheck: false }),
+      '.obsidian/plugins/sample-code/main.js': 'module.exports = { updated: true }',
+      '.obsidian/plugins/sample-code/manifest.json': JSON.stringify({
+        name: 'Sample code tool with a long descriptive name',
+        version: '2.0.0',
+      }),
+      '.obsidian/plugins/fresh-code/main.js': 'module.exports = {}',
+      '.obsidian/plugins/fresh-code/manifest.json': JSON.stringify({
+        name: 'Fresh code tool with a long descriptive name',
+        version: '1.0.0',
+      }),
       '.obsidian/plugins/dataview/data.json': JSON.stringify({ renderNullAs: '-' }),
       '.obsidian/plugins/obsidian-tasks-plugin/data.json': JSON.stringify({ globalFilter: '' }),
     })
@@ -236,6 +256,10 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     await setWindowSize(app(), ...NARROW)
     await connectedScreens(phone, ' 320', 8)
     await setWindowSize(app(), ...PHONE)
+
+    sync.run(
+      `await svc.keepLocalPluginCode(svc.codePrompt.staged.value.map((one) => one.version_id)); return 'ok'`
+    )
 
     // Opening, closing and emulating native settings can save app.json. Settle those local
     // writes first, then stage a fresh remote change against that baseline. Otherwise the
@@ -404,6 +428,7 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     'held deletes',
     'held deletes confirm',
     'settings arrived',
+    'plugin code',
     'settings partially applied',
     'settings partially applied 320',
     'restore since hour',
@@ -422,6 +447,7 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     'held deletes 320',
     'held deletes confirm 320',
     'settings arrived 320',
+    'plugin code 320',
     'restore since hour 320',
     'restore since today 320',
     'restore since custom 320',
@@ -438,6 +464,7 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     'held deletes desktop',
     'held deletes confirm desktop',
     'settings arrived desktop',
+    'plugin code desktop',
     'restore since hour desktop',
     'restore since today desktop',
     'restore since custom desktop',
@@ -514,6 +541,18 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
       expect(phone[label]?.extra.onTop).toBe(true)
     }
   )
+
+  it('names every new or changed plugin and its incoming version in its own dialog', () => {
+    for (const label of ['plugin code', 'plugin code 320', 'plugin code desktop']) {
+      expect(all()[label]?.extra.plugins).toEqual(
+        expect.arrayContaining([
+          'Sample code tool with a long descriptive name (sample-code) — Changed · Version 2.0.0',
+          'Fresh code tool with a long descriptive name (fresh-code) — New · Version 1.0.0',
+        ])
+      )
+      expect(all()[label]?.extra.plugins).toHaveLength(2)
+    }
+  })
 
   it('names App settings and both plugins in the settings question', () => {
     const lead = String(phone['settings arrived']?.extra.lead ?? '')

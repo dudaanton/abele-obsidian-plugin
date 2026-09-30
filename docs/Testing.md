@@ -625,12 +625,17 @@ contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current
   the other device are asked about, and **Keep this device's**, **Later** then **Apply and
   reload**, and **Reload now** each do what they say, with the reload counted through
   `settingsPrompt.reloader` rather than run; a local change to a waiting file goes out instead.
+  Other plugins' code waits for a separate dialog: applying settings leaves code untouched,
+  **Keep local code** keeps an installed plugin and leaves a new one absent, and **Later** then
+  **Review plugin code** on the Sync tab followed by **Install and reload** installs only the
+  reviewed versions. That reload is counted through `codePrompt.reloader`.
 - `syncDevices.e2e.test.ts` — **the devices on a vault**: the Sync tab's list with a transfer's
   device marked as enrolled by this one, **Revoke** on the daemon (its next sync is refused),
   **Disconnect** telling the server while the transfer's device stays enrolled, and a Disconnect
   with the server down waiting to tell it until **Forget without telling the server**.
 - `syncDialogs.e2e.test.ts` — **the phase-3b sync screens on a phone**: the held-deletes dialog
-  and its confirmation, the settings question, **Restore all deleted since** in each preset and
+  and its confirmation, the settings question, the separate plugin-code review naming new and
+  changed plugins with their versions, **Restore all deleted since** in each preset and
   its confirmation, the Sync tab holding all of it with the device list and the Revoke
   confirmation, the join dialog as a sign-in and a transfer open it, and the waiting-to-tell line
   and its confirmation — at 390 and 320 wide under the phone's emulation, with their rings on the
@@ -963,7 +968,8 @@ The other sync files differ in a few ways worth knowing before a run:
   couple of minutes.
 - **Some let part of the config folder through.** `syncJoin` lets Abele's own `data.json` sync;
   `syncSettings` and `syncDialogs` also let `app.json`, `hotkeys.json` or other plugins'
-  `data.json` through. `main.js` stays out everywhere.
+  `data.json` through. They allow small synthetic plugin-code fixtures too, for the separate
+  code review; Abele's own `main.js` stays out everywhere.
 - **The questions need the app in front.** The held-deletes and settings dialogs are asked only
   while the page is visible, and the test window sits behind everything. The suites make the page
   say it is (`SyncDriver.inFront`) and undo it at the end.

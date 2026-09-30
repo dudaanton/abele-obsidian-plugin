@@ -58,6 +58,7 @@ export const heldScreens = (suffix: string): string => `
   // A phone reload can surface the staged-settings question at the same moment as this
   // manually opened hold. Leave it for the next screen instead of layering it over the hold.
   svc.settingsPrompt.later()
+  svc.codePrompt.later()
   await closeDialog()
   svc.heldPrompt.ask()
   if (!(await until(() => modalOf('.abele-held-deletes'), 10000))) throw new Error('the held-deletes dialog never opened')
@@ -101,6 +102,24 @@ export const stagedScreen = (suffix: string): string => `
   const out = { [label]: await screen(label, modal, modal.querySelector('.abele-modal__body')) }
   out[label].extra = { ...buttonFacts(modal), lead: textOf(modal.querySelector('.abele-staged-settings__lead')) }
   await closeDialog()
+  return out
+`
+
+/** The independent code review uses the same phone and focus-ring measurements. */
+export const pluginCodeScreen = (suffix: string): string => `
+  ${BUTTON_FACTS}
+  svc.settingsPrompt.later()
+  svc.heldPrompt.close()
+  await closeDialog()
+  await svc.codePrompt.refresh()
+  svc.codePrompt.ask()
+  if (!(await until(() => modalOf('.abele-plugin-code'), 10000))) throw new Error('the code dialog never opened')
+  await wait(300)
+  const modal = modalOf('.abele-plugin-code')
+  const label = 'plugin code' + ${JSON.stringify(suffix)}
+  const out = { [label]: await screen(label, modal, modal.querySelector('.abele-modal__body')) }
+  out[label].extra = { ...buttonFacts(modal), plugins: [...modal.querySelectorAll('li')].map(textOf) }
+  await press(modal, 'Later')
   return out
 `
 
