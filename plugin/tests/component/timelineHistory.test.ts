@@ -65,7 +65,7 @@ describe('folded timeline history', () => {
     try {
       open()
       await flushPromises()
-      await view.trigger('wheel', { deltaY: -80 })
+      await view.find('.abele-timeline__history').trigger('click')
       await flushPromises()
       expect(days()).toHaveLength(21)
       const before = days()
@@ -100,7 +100,7 @@ describe('folded timeline history', () => {
     try {
       open()
       await flushPromises()
-      await view.trigger('wheel', { deltaY: -80 })
+      await view.find('.abele-timeline__history').trigger('click')
       await flushPromises()
       expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
       expect(app.loadLocalStorage(FOOTER_VIEW_KEY)).toBeTruthy()
@@ -159,7 +159,7 @@ describe('folded timeline history', () => {
     expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished')
   })
 
-  it('reveals the closest earlier day per upward wheel, never on a click or downward wheel', async () => {
+  it('reveals every past day on one banner click, never on upward or downward scrolling', async () => {
     render([
       task('sample-a', '2030-06-13'),
       task('sample-b', '2030-06-14'),
@@ -167,14 +167,12 @@ describe('folded timeline history', () => {
     ])
     await flushPromises()
     const strip = view.find('.abele-timeline__history')
-    await strip.trigger('click')
+    expect(strip.text()).toContain('2 unfinished')
     await view.trigger('wheel', { deltaY: 80 })
-    expect(days()).toEqual(['date:2030-06-15'])
     await view.trigger('wheel', { deltaY: -80 })
     await flushPromises()
-    expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
-    expect(strip.text()).toContain('1 unfinished')
-    await view.trigger('wheel', { deltaY: -80 })
+    expect(days()).toEqual(['date:2030-06-15'])
+    await strip.trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-14', 'date:2030-06-15'])
     expect(view.find('.abele-timeline__history').exists()).toBe(false)
@@ -205,14 +203,14 @@ describe('folded timeline history', () => {
       task('sample-today', '2030-06-15'),
     ])
     await flushPromises()
-    await view.trigger('wheel', { deltaY: -80 })
+    await view.find('.abele-timeline__history').trigger('click')
     await flushPromises()
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-13', 'date:2030-06-15'])
   })
 
-  it('reveals history on upward input inside a short pane that cannot scroll past its calendar', async () => {
+  it('keeps history folded on upward input inside a short pane with a calendar above it', async () => {
     render([task('sample-old', '2030-06-14'), task('sample-today', '2030-06-15')])
     await flushPromises()
     // Input geometry, not happy-dom layout: a short pane has its timeline halfway down,
@@ -231,18 +229,53 @@ describe('folded timeline history', () => {
     ).mockReturnValue(new DOMRect(0, 450, 300, 100))
     await view.trigger('wheel', { deltaY: -80 })
     await flushPromises()
-    expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+    expect(days()).toEqual(['date:2030-06-15'])
+    expect(view.find('.abele-timeline__history').text()).toContain('1 unfinished')
   })
 
-  it('unfolds a past-only list with an upward touch and keeps other days folded', async () => {
+  it('keeps a past-only list folded on touch and reveals it all on a click', async () => {
     render([task('sample-a', '2030-06-12'), task('sample-b', '2030-06-14')])
     await flushPromises()
     expect(days()).toEqual([])
     await view.trigger('touchstart', { touches: [{ clientY: 100 }] })
     await view.trigger('touchmove', { touches: [{ clientY: 150 }] })
     await flushPromises()
-    expect(days()).toEqual(['date:2030-06-14'])
-    expect(view.find('.abele-timeline__history').text()).toContain('1 unfinished')
+    expect(days()).toEqual([])
+    expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished')
+    await view.find('.abele-timeline__history').trigger('click')
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-14'])
+    expect(view.find('.abele-timeline__history').exists()).toBe(false)
+  })
+
+  it('includes older completed-only days and late arrivals after revealing all history', async () => {
+    const tasks = [
+      task('sample-old-done', '2020-01-01', true),
+      task('sample-old', '2030-06-12'),
+      task('sample-today', '2030-06-15'),
+    ]
+    render(tasks)
+    await flushPromises()
+    await view.find('.abele-timeline__history').trigger('click')
+    await flushPromises()
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
+    await flushPromises()
+    expect(days()).toEqual(['date:2020-01-01', 'date:2030-06-12', 'date:2030-06-15'])
+    await view.setProps({ tasks: [task('sample-arrival', '2019-01-01'), ...tasks] })
+    await flushPromises()
+    expect(days()[0]).toBe('date:2019-01-01')
+    expect(view.find('.abele-timeline__history').exists()).toBe(false)
+  })
+
+  it.each(['Enter', ' '])('reveals all history with the banner keyboard action %s', async (key) => {
+    render([task('sample-old', '2030-06-14'), task('sample-today', '2030-06-15')])
+    await flushPromises()
+    const banner = view.find('.abele-timeline__history')
+    expect(banner.attributes('role')).toBe('button')
+    expect(banner.attributes('tabindex')).toBe('0')
+    await banner.trigger('keydown', { key })
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
   })
 
   it('keeps a late future day mounted when new completed-only dates appear before it', async () => {

@@ -48,7 +48,7 @@ async function pane(rowTop: number, reveal: () => void = () => {}) {
 }
 
 describe('timeline scroll ownership', () => {
-  it('keeps a revealed row under the finger through the entire upward touch gesture', async () => {
+  it('leaves the whole upward touch gesture native without inserting history', async () => {
     let inserted = 0
     const earlier = document.createElement('div')
     vi.spyOn(earlier, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, -100, 300, 100))
@@ -71,16 +71,31 @@ describe('timeline scroll ownership', () => {
       p.root.dispatchEvent(event)
       return event
     }
-    touch('touchstart', 100)
-    touch('touchmove', 113)
+    expect(touch('touchstart', 100).defaultPrevented).toBe(false)
+    expect(touch('touchmove', 113).defaultPrevented).toBe(false)
     await nextTick()
     await nextTick()
-    expect(p.row.getBoundingClientRect().top).toBe(63)
-    expect(touch('touchmove', 140).defaultPrevented).toBe(true)
-    touch('touchmove', 180)
+    expect(p.row.getBoundingClientRect().top).toBe(50)
+    expect(touch('touchmove', 140).defaultPrevented).toBe(false)
+    expect(touch('touchmove', 180).defaultPrevented).toBe(false)
     await nextTick()
-    expect(reveal).toHaveBeenCalledTimes(1)
-    expect(p.row.getBoundingClientRect().top).toBe(130)
+    expect(reveal).not.toHaveBeenCalled()
+    expect(p.row.getBoundingClientRect().top).toBe(50)
+    expect(p.space.style.height).toBe('')
+    for (const event of [
+      new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -80 }),
+      new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowUp' }),
+      new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'PageUp' }),
+    ]) {
+      p.root.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      await nextTick()
+      expect(reveal).not.toHaveBeenCalled()
+    }
+    p.owner.scrollTop = 0
+    p.owner.dispatchEvent(new Event('scroll'))
+    await nextTick()
+    expect(reveal).not.toHaveBeenCalled()
   })
 
   it('does not scroll note text when every timeline row is below the viewport', async () => {

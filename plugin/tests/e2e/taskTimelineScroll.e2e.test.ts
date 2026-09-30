@@ -21,14 +21,16 @@ interface Probe {
   hiddenAnchor?: number[]
   futureAnchor?: number[]
   revealAnchor?: number[]
-  revealInput?: number
+  scrollRevealed?: string[]
+  nativeInput?: boolean
+  pastCompleted?: boolean
   appearancePixels?: number
   appearanceCanary?: number
   appearanceRects?: number[][]
   emptySpace?: number
   restoredHistory?: boolean
   restoredAnchor?: number[]
-  lazy?: boolean
+  allHistory?: boolean
   sticky?: number
   chromeGap?: number
   overflow?: number
@@ -170,6 +172,11 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       root.querySelector('.abele-timeline__completed-toggle').click()
       await wait(1200)
       report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
+      const beforeReveal = row(0).getBoundingClientRect().top
+      strip().click()
+      await wait(1200)
+      report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
+      report.revealed = dates()
       root.querySelector('.abele-timeline__search-toggle').click()
       await wait(100)
       const input = root.querySelector('.abele-timeline__search input')
@@ -180,31 +187,46 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       return JSON.stringify(report)
     }
 
-    // Deliberately reach the upper boundary, then scroll upward once. No clicking the strip.
+    // The folded banner stays at the usable edge, without changing existing pane spacing.
+    const stickyScroll = scroller.scrollTop
+    scroller.scrollTop += 400
+    await wait(400)
+    const safeTop = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
+    const navigation = scroller.closest('.workspace-leaf')?.querySelector('.view-header')?.getBoundingClientRect()
+    const chromeBottom = document.body.classList.contains('is-phone') ? Math.max(safeTop, navigation?.height ? navigation.bottom : 0) : 0
+    report.chromeGap = strip().getBoundingClientRect().top - chromeBottom
+    report.sticky = Math.abs(strip().getBoundingClientRect().top - usableTop())
+    scroller.scrollTop = stickyScroll
+    await wait(400)
+
+    // Reach the upper boundary and scroll past it: input stays native, history stays folded.
     const first = blocks()[0]
     scroller.scrollTop += first.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0)
     await wait(400)
-    const beforeReveal = row(0).getBoundingClientRect().top
-    let touchY = null, inputDistance = 0
-    const touchStart = e => { touchY = e.touches[0]?.clientY ?? null }
-    const touchMove = e => {
-      const y = e.touches[0]?.clientY ?? null
-      if (touchY !== null && y !== null) inputDistance += y - touchY
-      touchY = y
-    }
-    scroller.addEventListener('touchstart', touchStart, { capture: true, passive: true })
-    scroller.addEventListener('touchmove', touchMove, { capture: true, passive: true })
+    let prevented = false, moves = 0
+    const touchMove = e => { moves++; prevented ||= e.defaultPrevented }
+    scroller.addEventListener('touchmove', touchMove, { passive: true })
     if (window.__e2eHost) {
       const r = scroller.getBoundingClientRect()
       // Start in the scroll content, clear of the native floating navigation header.
       const y = r.top + Math.max(200, r.height * 0.45)
       await window.__e2eHost.swipe(r.left + r.width/2, y, r.left + r.width/2, y + 80)
-    } else root.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }))
+    } else {
+      const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -80 })
+      root.dispatchEvent(wheel)
+      prevented ||= wheel.defaultPrevented
+      moves++
+      scroller.scrollTop = 0
+    }
     await wait(800)
+    report.nativeInput = moves > 0 && !prevented
+    scroller.removeEventListener('touchmove', touchMove)
+    report.scrollRevealed = dates()
+    align(row(0)); await wait(500)
+    const beforeReveal = row(0).getBoundingClientRect().top
+    strip().click()
+    await wait(1200)
     report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
-    report.revealInput = window.__e2eHost ? inputDistance : 80
-    scroller.removeEventListener('touchstart', touchStart, true)
-    scroller.removeEventListener('touchmove', touchMove, true)
     report.revealed = dates()
     report.countAfter = strip()?.textContent.trim() ?? null
     // Keep the first incomplete row under the eye while completed rows appear above it.
@@ -213,19 +235,8 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     root.querySelector('.abele-timeline__completed-toggle').click()
     await wait(1200)
     report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
-    report.lazy = !dates().includes('date:' + day(-90))
-    // Pin the strip by reading further down the timeline, not while it is still in normal flow.
-    const stickyScroll = scroller.scrollTop
-    scroller.scrollTop += 400
-    await wait(400)
-    const safeTop = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
-    const navigation = scroller.closest('.workspace-leaf')?.querySelector('.view-header')?.getBoundingClientRect()
-    const chromeBottom = document.body.classList.contains('is-phone') ? Math.max(safeTop, navigation?.height ? navigation.bottom : 0) : 0
-    report.chromeGap = (strip()?.getBoundingClientRect().top ?? -9999) - chromeBottom
-    // The raw scroll border is behind native phone chrome, not a readable pinned position.
-    report.sticky = strip() ? Math.abs(strip().getBoundingClientRect().top - usableTop()) : 9999
-    scroller.scrollTop = stickyScroll
-    await wait(400)
+    report.allHistory = dates().includes('date:' + day(-90))
+    report.pastCompleted = !!row(-45, 0)
     report.overflow = scroller.scrollWidth - scroller.clientWidth
     await shot('completed')
     const beforeHide = row(0)?.getBoundingClientRect().top ?? -9999
@@ -316,32 +327,28 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           const p = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
           expect(p.error).toBeUndefined()
           expect(p.emptySpace).toBe(0)
-          for (const pair of [p.anchored, p.hiddenAnchor]) {
+          for (const pair of [p.anchored, p.hiddenAnchor, p.revealAnchor]) {
             expect(pair).toHaveLength(2)
-            expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(2)
+            expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
           }
         }
       )
       it.skipIf(kind === 'desktop' && onPhone())(
-        `${kind}, ${owner}: starts today, reveals only one past day, shrinks the sticky summary`,
+        `${kind}, ${owner}: scroll stays native, one click reveals all past days without moving the row`,
         () => {
           const p = probe()
           expect(p.error).toBeUndefined()
           expect(p.initial).toHaveLength(20)
           expect(p.summary).toContain('90 unfinished')
-          expect(p.revealed).toHaveLength(21)
-          expect(p.countAfter).toContain('88 unfinished')
+          expect(p.scrollRevealed).toEqual(p.initial)
+          expect(p.nativeInput).toBe(true)
+          expect(p.revealed).toHaveLength(65)
+          expect(p.countAfter).toBeNull()
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
           expect(p.sticky).toBeLessThanOrEqual(2)
           expect(p.overflow).toBeLessThanOrEqual(1)
           expect(p.revealAnchor).toHaveLength(2)
-          expect(p.revealInput).toBeGreaterThan(0)
-          expect(
-            Math.abs(p.revealAnchor![1] - p.revealAnchor![0] - p.revealInput!)
-          ).toBeLessThanOrEqual(2)
-          if (!onPhone()) {
-            expect(Math.abs(p.revealAnchor![1] - p.revealAnchor![0] - 80)).toBeLessThanOrEqual(2)
-          }
+          expect(Math.abs(p.revealAnchor![1] - p.revealAnchor![0])).toBeLessThanOrEqual(1)
         }
       )
       if (index === 1)
@@ -368,14 +375,15 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         }
       )
       it.skipIf(kind === 'desktop' && onPhone())(
-        `${kind}, ${owner}: completed toggles hold the same row within two pixels without loading old history`,
+        `${kind}, ${owner}: completed toggles hold the same row within one pixel and include all revealed history`,
         () => {
           const p = probe()
           expect(p.error).toBeUndefined()
-          expect(p.lazy).toBe(true)
+          expect(p.allHistory).toBe(true)
+          expect(p.pastCompleted).toBe(true)
           for (const pair of [p.anchored, p.hiddenAnchor, p.futureAnchor]) {
             expect(pair).toHaveLength(2)
-            expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(2)
+            expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
           }
         }
       )
