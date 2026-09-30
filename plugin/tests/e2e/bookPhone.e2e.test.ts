@@ -28,8 +28,7 @@ import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
-// Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
-targets('desktop')
+targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = shotDir('abele-phone')
