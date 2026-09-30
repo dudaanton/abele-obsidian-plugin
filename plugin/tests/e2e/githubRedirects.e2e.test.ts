@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-globals -- Runs in Node, not the Obsidian page; fetch reads the controlled server's log. */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { beforeAll, afterAll, describe, it, expect } from 'vitest'
@@ -49,20 +48,20 @@ describe.skipIf(!available)('GitHub redirect credential confinement', () => {
       }
       return { statuses }
     })()`)
-    const seen = await (await fetch(`${origin}/seen`)).json()
+    const seen = await (await globalThis.fetch(`${origin}/seen`)).json()
     console.log('requestUrl redirect behaviour', { ...result, seen })
     expect(result.statuses).toHaveLength(3)
   })
 
   it('the GitHub client never forwards its token through a cross-origin archive redirect', async () => {
-    const before = (await (await fetch(`${origin}/seen`)).json()).length
+    const before = (await (await globalThis.fetch(`${origin}/seen`)).json()).length
     const result = evalAsync<{ type?: string; bytes: number }>(`(async () => {
       const client = new window.__abeleTest.GithubClient(window.__abeleTest.githubEndpoints(${JSON.stringify(origin)}), 'invented-client-token')
       const r = await client.bytes('/other-origin')
       return { type: r.type, bytes: r.bytes.byteLength }
     })()`)
     expect(result.bytes).toBeGreaterThan(0)
-    const seen = (await (await fetch(`${origin}/seen`)).json()).slice(before)
+    const seen = (await (await globalThis.fetch(`${origin}/seen`)).json()).slice(before)
     expect(seen).toEqual([
       { destination: 'original', path: '/api/v3/other-origin', authenticated: true },
       { destination: 'other-origin', path: '/landed', authenticated: false },
