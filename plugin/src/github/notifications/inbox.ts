@@ -146,6 +146,22 @@ export function notificationsRefusal(
 
 export class NotificationInbox {
   private kept = new Map<Which, Kept>()
+  private pending: Promise<void> = Promise.resolve()
+
+  /** A slow list must not republish a thread after a successful write on this same inbox. */
+  private serial<T>(run: () => Promise<T>): Promise<T> {
+    const turn = this.pending.then(run)
+    this.pending = turn.then(
+      (): void => undefined,
+      (): void => undefined
+    )
+    return turn
+  }
+
+  /** A write changes both lists, possibly within Last-Modified's one-second precision. */
+  private invalidateValidators() {
+    for (const k of this.kept.values()) k.lastModified = undefined
+  }
 
   constructor(
     private readonly client: GithubClient,
@@ -178,7 +194,11 @@ export class NotificationInbox {
    * The notifications: unread ones, or every recent one. Asked for only when the poll interval
    * has passed or `force` says so, and asked conditionally, so an unchanged list is free.
    */
-  async load(which: Which, force = false): Promise<InboxPage> {
+  load(which: Which, force = false): Promise<InboxPage> {
+    return this.serial(() => this.loadNow(which, force))
+  }
+
+  private async loadNow(which: Which, force: boolean): Promise<InboxPage> {
     const kept = this.kept.get(which)
     const now = Date.now()
     if (kept && !force && this.waitSeconds(which, now) > 0) return this.page(kept)
@@ -257,7 +277,11 @@ export class NotificationInbox {
   }
 
   /** Done removes a thread from GitHub's inbox; Read only removes its unread emphasis. */
-  async markDone(id: string): Promise<void> {
+  markDone(id: string): Promise<void> {
+    return this.serial(() => this.markDoneNow(id))
+  }
+
+  private async markDoneNow(id: string): Promise<void> {
     const answer = await this.client.call(
       'DELETE',
       `/notifications/threads/${encodeURIComponent(id)}`,
@@ -266,10 +290,15 @@ export class NotificationInbox {
     // Unlike Read, Done has only one documented successful status; 304 is not a deletion.
     if (answer.error || answer.status !== 204) this.refuse(answer)
     for (const k of this.kept.values()) k.items = k.items.filter((n) => n.id !== id)
+    this.invalidateValidators()
   }
 
   /** Marks one thread read on GitHub — `PATCH /notifications/threads/{id}`. */
-  async markRead(id: string): Promise<void> {
+  markRead(id: string): Promise<void> {
+    return this.serial(() => this.markReadNow(id))
+  }
+
+  private async markReadNow(id: string): Promise<void> {
     const answer = await this.client.call(
       'PATCH',
       `/notifications/threads/${encodeURIComponent(id)}`,
@@ -277,6 +306,7 @@ export class NotificationInbox {
     )
     if (answer.error) this.refuse(answer)
     this.markKept((n) => n.id === id)
+    this.invalidateValidators()
   }
 
   /**
@@ -285,7 +315,11 @@ export class NotificationInbox {
    * `last_read_at`, so one that arrived since is not swallowed unseen. GitHub may answer 202: it
    * has taken the request and marks them in a while.
    */
-  async markAllRead(which: Which, repo = ''): Promise<void> {
+  markAllRead(which: Which, repo = ''): Promise<void> {
+    return this.serial(() => this.markAllReadNow(which, repo))
+  }
+
+  private async markAllReadNow(which: Which, repo: string): Promise<void> {
     const listedAt = this.kept.get(which)?.listedAt ?? new Date().toISOString()
     const path = repo
       ? `/repos/${repo.split('/').map(encodeURIComponent).join('/')}/notifications`
@@ -295,7 +329,10 @@ export class NotificationInbox {
       body: { last_read_at: listedAt, read: true },
     })
     if (answer.error) this.refuse(answer)
-    this.markKept((n) => (!repo || n.repo === repo) && n.updatedAt <= listedAt)
+    this.markKept(
+      (n) => (!repo || n.repo === repo) && Date.parse(n.updatedAt) <= Date.parse(listedAt)
+    )
+    this.invalidateValidators()
   }
 
   /**

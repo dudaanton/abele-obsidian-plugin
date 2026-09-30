@@ -616,7 +616,10 @@ The list is read when the panel opens and again whenever GitHub's poll interval 
 while it is open (`X-Poll-Interval`, a minute as a rule); the refresh button asks straight away.
 Every request carries the list's `Last-Modified` back as `If-Modified-Since`, and an unchanged
 list is answered "not modified", which GitHub does not count against the hourly limit. Up to 200
-notifications are read.
+notifications are read. Requests on the same inbox are ordered so a slow poll cannot undo Done.
+After a successful Read or Done, both lists discard their old conditional timestamps; the next
+request reads fresh data, even if a thread's new activity falls within the same timestamp second.
+A later round resumes conditional polling. A 304 does not advance the bulk-read cutoff.
 
 **The token.** GitHub lets only a **classic** personal access token read notifications, with the
 **notifications** scope (or **repo**, which covers it). A fine-grained token is refused whatever

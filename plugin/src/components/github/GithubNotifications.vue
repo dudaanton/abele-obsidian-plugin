@@ -93,7 +93,7 @@
             <Icon
               icon="check"
               tooltip="Done on GitHub (remove from inbox)"
-              :disabled="marking.has(n.id)"
+              :disabled="busy || marking.has(n.id)"
               @click="markDone(n)"
             />
           </span>
@@ -230,6 +230,14 @@ function keepInView(
 /** A refresh asked for while another ran: run once that one is done. Null: none. */
 let queued: { force: boolean } | null = null
 
+/** Refresh requests also wait for writes, not just for another refresh. */
+function finishBusy() {
+  busy.value = false
+  const next = queued
+  queued = null
+  if (next) void refresh(next.force)
+}
+
 /** Asks GitHub — or not, if its interval has not passed and nobody pressed refresh. */
 async function refresh(force = false) {
   if (!props.enabled) return
@@ -254,10 +262,7 @@ async function refresh(force = false) {
   } catch (e) {
     if (which === props.state.which) error.value = e instanceof Error ? e.message : String(e)
   } finally {
-    busy.value = false
-    const next = queued
-    queued = null
-    if (next) void refresh(next.force)
+    finishBusy()
   }
 }
 
@@ -284,7 +289,8 @@ function setRepo(repo: string) {
 
 /** Done on GitHub and here, including a read row retained on screen after an unread poll. */
 async function markDone(n: GithubNotification) {
-  if (marking.has(n.id)) return
+  if (busy.value || marking.has(n.id)) return
+  busy.value = true
   marking.add(n.id)
   try {
     await inbox().markDone(n.id)
@@ -295,6 +301,7 @@ async function markDone(n: GithubNotification) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
     marking.delete(n.id)
+    finishBusy()
   }
 }
 
@@ -310,7 +317,7 @@ async function markAllRead() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
-    busy.value = false
+    finishBusy()
   }
 }
 

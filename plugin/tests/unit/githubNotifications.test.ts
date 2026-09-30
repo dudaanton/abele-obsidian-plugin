@@ -3,7 +3,7 @@
  * leads to from the API addresses it carries, polling the way GitHub asks (the poll interval,
  * `If-Modified-Since`), marking read, and what a refusal says about the token.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import { GithubClient } from '@/github/client'
 import { endpoints } from '@/github/urls'
@@ -17,6 +17,8 @@ import {
   type RawNotification,
 } from '@/github/notifications/model'
 import { NotificationInbox } from '@/github/notifications/inbox'
+
+afterEach(() => vi.restoreAllMocks())
 
 const API = 'https://api.github.com/repos'
 const COM = endpoints('')
@@ -228,6 +230,112 @@ describe('polling', () => {
   })
 })
 
+describe('polling after local writes', () => {
+  it.each(['read', 'done'] as const)(
+    'does not reuse a pre-%s validator when the same thread has new activity',
+    async (action) => {
+      const stamp = 'Tue, 01 Sep 2026 10:00:00 GMT'
+      let changed = false
+      const { client, request } = fakeClient((req) => {
+        if (req.method !== 'GET') {
+          changed = true
+          return { status: req.method === 'DELETE' ? 204 : 205 }
+        }
+        // A validator rounded to seconds can still be the same after a write and new activity.
+        if (req.headers?.['If-Modified-Since'] === stamp) return { status: 304 }
+        return {
+          json: changed ? [raw('1', 'Issue', null, { updated_at: '2026-09-01T10:00:01Z' })] : LIST,
+          headers: { 'Last-Modified': stamp },
+        }
+      })
+      const inbox = new NotificationInbox(client)
+      await inbox.load('all')
+      await inbox.load('unread')
+      if (action === 'done') await inbox.markDone('1')
+      else await inbox.markRead('1')
+      for (const which of ['all', 'unread'] as const) {
+        const page = await inbox.load(which, true)
+        expect(page.items.map((n) => [n.id, n.unread, n.updatedAt])).toEqual([
+          ['1', true, '2026-09-01T10:00:01Z'],
+        ])
+      }
+      expect(request.mock.calls.slice(-2).every(([r]) => !r.headers?.['If-Modified-Since'])).toBe(
+        true
+      )
+    }
+  )
+
+  it('does not let a GET started before Done republish the removed thread', async () => {
+    const { client } = fakeClient((req) =>
+      req.method === 'DELETE' ? { status: 204 } : { json: LIST }
+    )
+    const inbox = new NotificationInbox(client)
+    await inbox.load('all')
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(client, 'call').mockImplementationOnce(async () => {
+      await waiting
+      return { status: 200, headers: {}, body: LIST } as never
+    })
+    const loading = inbox.load('all', true)
+    await Promise.resolve()
+    const done = inbox.markDone('1')
+    await Promise.resolve()
+    await Promise.resolve()
+    release()
+    await Promise.all([loading, done])
+    expect(inbox.cached('all')?.map((n) => n.id)).toEqual(['2'])
+  })
+
+  it('keeps a newly arrived notification until the poll interval, then includes it', async () => {
+    let now = Date.parse('2026-09-03T12:00:00Z')
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    let current = LIST
+    const { client, request } = fakeClient(() => ({
+      json: current,
+      headers: { 'X-Poll-Interval': '90' },
+    }))
+    const inbox = new NotificationInbox(client)
+    await inbox.load('all')
+    current = [...LIST, raw('3', 'Issue', null, { updated_at: '2026-09-03T12:00:01Z' })]
+    now += 45_000
+    expect((await inbox.load('all')).items.map((n) => n.id)).toEqual(['2', '1'])
+    expect(request).toHaveBeenCalledTimes(1)
+    now += 46_000
+    expect((await inbox.load('all')).items.map((n) => n.id)).toEqual(['3', '2', '1'])
+    vi.restoreAllMocks()
+  })
+
+  it('does not advance bulk-read cutoff on 304 and invalidates every cached list after bulk read', async () => {
+    let now = Date.parse('2026-09-03T12:00:00Z')
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const stamp = 'Wed, 02 Sep 2026 10:00:00 GMT'
+    const { client, request } = fakeClient((req) =>
+      req.method === 'PUT'
+        ? { status: 202 }
+        : req.headers?.['If-Modified-Since']
+          ? { status: 304 }
+          : { json: LIST, headers: { 'Last-Modified': stamp } }
+    )
+    const inbox = new NotificationInbox(client)
+    await inbox.load('all')
+    await inbox.load('unread')
+    now += 120_000
+    await inbox.load('all')
+    await inbox.markAllRead('all')
+    const put = request.mock.calls.at(-1)![0]
+    expect(JSON.parse(String(put.body)).last_read_at).toBe('2026-09-03T12:00:00.000Z')
+    await inbox.load('all', true)
+    await inbox.load('unread', true)
+    expect(request.mock.calls.slice(-2).every(([r]) => !r.headers?.['If-Modified-Since'])).toBe(
+      true
+    )
+    vi.restoreAllMocks()
+  })
+})
+
 describe('marking done', () => {
   it('DELETEs the thread and removes it from both cached lists, only after success', async () => {
     const { client, request } = fakeClient((req) =>
@@ -287,6 +395,29 @@ describe('marking read', () => {
     })
     expect(inbox.cached('unread')?.every((n) => !n.unread)).toBe(true)
     vi.restoreAllMocks()
+  })
+})
+
+describe('bulk-read cutoff precision', () => {
+  it('marks an update exactly at the cutoff read despite ISO precision, but not a later update', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-03T12:00:00Z'))
+    const { client } = fakeClient((req) =>
+      req.method === 'PUT'
+        ? { status: 205 }
+        : {
+            json: [
+              raw('1', 'Issue', null, { updated_at: '2026-09-03T12:00:00Z' }),
+              raw('2', 'Issue', null, { updated_at: '2026-09-03T12:00:01Z' }),
+            ],
+          }
+    )
+    const inbox = new NotificationInbox(client)
+    await inbox.load('all')
+    await inbox.markAllRead('all')
+    expect(inbox.cached('all')?.map((n) => [n.id, n.unread])).toEqual([
+      ['2', true],
+      ['1', false],
+    ])
   })
 })
 

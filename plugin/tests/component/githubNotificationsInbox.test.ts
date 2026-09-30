@@ -143,6 +143,65 @@ describe('polling and bulk read', () => {
   })
 })
 
+describe('refresh and write ordering', () => {
+  it('disables Done while a refresh is in flight, then permits it on the refreshed row', async () => {
+    const { wrapper, client, request } = panel({
+      '/notifications': { json: notes },
+      '/notifications/threads/11': { status: 204 },
+    })
+    await flushPromises()
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(client, 'call').mockImplementationOnce(async () => {
+      await waiting
+      return { status: 200, headers: {}, body: notes } as never
+    })
+    const loading = refresh(wrapper, true)
+    await flushPromises()
+    const check = wrapper
+      .find('[data-id="11"] .abele-github-notification__mark')
+      .findComponent(Icon)
+    await check.trigger('click')
+    await flushPromises()
+    const during = request.mock.calls.filter(([r]) => r.method === 'DELETE').length
+    release()
+    await loading
+    await flushPromises()
+    expect(during).toBe(0)
+    await check.trigger('click')
+    await flushPromises()
+    expect(ids(wrapper)).toEqual(['12'])
+  })
+
+  it('queues a forced refresh during Done and runs it after the write, without resurrecting the row', async () => {
+    let current = notes
+    const { wrapper, client, request } = panel({ '/notifications': () => ({ json: current }) })
+    await flushPromises()
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(client, 'call').mockImplementationOnce(async () => {
+      await waiting
+      current = current.filter((n) => n.id !== '11')
+      return { status: 204, headers: {}, body: null } as never
+    })
+    await wrapper
+      .find('[data-id="11"] .abele-github-notification__mark .abele-obsidian-icon')
+      .trigger('click')
+    await flushPromises()
+    await refresh(wrapper, true)
+    const during = request.mock.calls.length
+    release()
+    await flushPromises()
+    expect(during).toBe(1)
+    expect(request.mock.calls).toHaveLength(2)
+    expect(ids(wrapper)).toEqual(['12'])
+  })
+})
+
 describe('successful but incomplete access', () => {
   it('quietly explains missing repo scope without blocking the list, including after a 304', async () => {
     const { wrapper } = panel({
