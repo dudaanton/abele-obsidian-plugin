@@ -13,10 +13,12 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Paste from clipboard at cursor
 - Insert colored highlight · Remove colored highlight
 - Reindex footnotes
+- Copy link to selected lines — copies a link to the selected line range in the current note
+- Comment here — opens a comment chat for the selected passage
 
 ## Finance and time
 
-- Create new transaction — and *…and insert into current note*
+- Create new transaction — and *Create new transaction and insert into current note*, which leaves a link behind
 - Start timer for current note · Stop active timer
 - Show finance sidebar · Show accounts sidebar · Show time tracking sidebar
 
@@ -44,7 +46,10 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   conversation, including reasoning and tool results, regardless of the history switch
 - Copy wikilink — copies a wikilink to the note, even when the vault uses Markdown links.
   Also available in the note's context menus and mobile quick menu with the AI switched off
+- Find in the current chat — opens search within the conversation in front
+- Open quick menu — opens the configured quick actions without pressing the floating button
 - Show script runs · Show script API reference
+- Review scripts waiting for confirmation — reviews scripts awaiting this device's approval
 - Open GitHub link or item — the GitHub link under the cursor opens straight away; otherwise a
   picker takes a pasted link (github.com or the configured server), or `#123`, `owner/repo#123`,
   a commit SHA, a branch, `owner/repo`, or words of a title, and offers what GitHub has for it
@@ -84,10 +89,17 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Media
 
+- New drawing — creates a drawing and opens it
+- Insert a new drawing — creates a drawing and embeds it at the cursor
 - Insert image gallery · Convert images on page to galleries
 - Set cover from first image/video in note
 - Import files to vault · Save remote media to vault
 - Find and delete unused media · Deduplicate media attachments
+
+## Reading
+
+- Toggle e-ink mode for books on this device — switches the reader's device-local e-ink presentation
+- Toggle zen mode for books on this device — switches the reader's device-local distraction-free presentation
 
 ## Bulk and migration
 
