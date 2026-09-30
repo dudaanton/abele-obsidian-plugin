@@ -49,8 +49,13 @@ function desktopRequest(request: RequestUrlParam): Promise<RequestUrlResponse> {
   return new Promise((resolve, reject) => {
     const url = new URL(request.url)
     // Runtime-only Node adapter: importing it statically breaks mobile plugin loading.
+    const protocol = url.protocol === 'https:' ? 'https' : 'http'
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Runtime-only Node adapter; static imports break mobile.
-    const http = require(url.protocol === 'https:' ? 'https' : 'http') as typeof import('node:http')
+    const http = (require(protocol) ??
+      (window as typeof window & { require?: (name: string) => unknown }).require?.(protocol)) as typeof import('node:http')
+    // Obsidian's module loader returns null for Node built-ins during desktop phone emulation;
+    // the host window still has Node. A real phone never takes this desktop adapter.
+    if (!http?.request) { reject(new Error('Node HTTP is unavailable.')); return }
     const call = http.request(
       url,
       { method: request.method ?? 'GET', headers: request.headers },

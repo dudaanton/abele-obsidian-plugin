@@ -326,7 +326,7 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
       ${PRELUDE}
       ${PANEL}
       const report = { phone: document.body.classList.contains('is-phone') }
-      if (!(await openPanel())) return { ...report, error: 'no panel' }
+      if (!(await openPanel())) return { ...report, error: 'no panel: ' + (panel()?.textContent.slice(0, 600) ?? 'none') }
       await wait(800)
       const root = panel()
       const content = panelLeaf().view.contentEl
