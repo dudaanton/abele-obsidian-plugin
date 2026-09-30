@@ -154,13 +154,16 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
         await until(() => !held.imports.pending.size)
         const paths = composer().takeDraft().attachments.map(f => f.path)
         const scope = session.scopeResolver.entries.value.map(e => e.path)
+        const box = host().getBoundingClientRect()
+        const thumbnail = host().querySelector('.abele-chat-input__attachments img')?.getBoundingClientRect()
         if (${JSON.stringify(scenario)} !== 'reset') {
           const ready = window.__abeleTest.composer()
           ready.focus()
           ready.keyTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))
           await wait(50)
         }
-        return { before, paths, scope, sends: sends.length, sentText: sends.at(-1)?.[0] }
+        return { before, paths, scope, sends: sends.length, sentText: sends.at(-1)?.[0],
+          composerSize: [box.width, box.height], thumbnailSize: thumbnail ? [thumbnail.width, thumbnail.height] : null }
       } catch (e) { return { error: String(e?.stack || e) } }
       finally {
         if (release) release()
@@ -184,6 +187,14 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
       expect(result.paths.some((p: string) => p.endsWith('sample-' + scenario + name))).toBe(true)
       expect(result.sends).toBe(1)
       if (scenario === 'run-text') expect(result.sentText).toBe('Incoming sample passage')
+      if (scenario === 'panel') {
+        expect(result.composerSize[0]).toBeGreaterThan(0)
+        expect(result.composerSize[1]).toBeGreaterThan(0)
+        if (onPhone()) {
+          expect(result.thumbnailSize?.[0]).toBeGreaterThan(0)
+          expect(result.thumbnailSize?.[1]).toBeGreaterThan(0)
+        }
+      }
     }
   }, 150_000)
 
