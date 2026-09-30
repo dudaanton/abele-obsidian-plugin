@@ -34,6 +34,16 @@ export function useTimelineScroll(
   let inserting = false
   let alignedTop: number | null = null
 
+  const releaseSpace = () => anchorSpace.value?.style.removeProperty('height')
+  const releaseUnusedSpace = (owner: HTMLElement) => {
+    const space = anchorSpace.value
+    if (!space?.style.height) return
+    const naturalEnd = Math.max(0, owner.scrollHeight - owner.clientHeight - space.offsetHeight)
+    // Keep room while removing it would clamp a visible anchor. Give it back as soon as the
+    // reader returns to the natural scroll range, including short owners at scrollTop zero.
+    if (owner.scrollTop <= naturalEnd + 0.5) releaseSpace()
+  }
+
   const placeScroll = (owner: HTMLElement, to: number) => {
     const space = anchorSpace.value
     if (space) space.style.removeProperty('height')
@@ -68,8 +78,12 @@ export function useTimelineScroll(
           box.top < viewport.bottom &&
           !el.querySelector<HTMLInputElement>('input:checked')
         )
-      }) ?? candidates.find((el) => el.getBoundingClientRect().bottom > top)
-    if (!row) return () => {}
+      }) ??
+      candidates.find((el) => {
+        const box = el.getBoundingClientRect()
+        return box.bottom > top && box.top < viewport.bottom
+      })
+    if (!row) return () => releaseUnusedSpace(owner)
     const key = row.dataset.timelineItem
     const day = row.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor')
     const offset = row.getBoundingClientRect().top - viewport.top + moveDown
@@ -89,6 +103,9 @@ export function useTimelineScroll(
         if (Math.abs(shift) > 0.5) {
           placeScroll(owner, owner.scrollTop + shift)
         }
+      } else {
+        releaseSpace()
+        stopHolding()
       }
     }
     // Markdown titles load after the Vue patch. Correct their layout before it is painted too.
@@ -106,7 +123,7 @@ export function useTimelineScroll(
   }
 
   watch(
-    windowSource,
+    () => (items.value ? windowSource() : null),
     () => {
       if (inserting) return
       const align = hold()
@@ -121,6 +138,7 @@ export function useTimelineScroll(
       disposeInput()
       if (!root) {
         stopHolding()
+        releaseSpace()
         return
       }
       const owner = scrollOwner(root)
@@ -213,6 +231,7 @@ export function useTimelineScroll(
       let previousTop = owner.scrollTop
       const scroll = () => {
         followChrome()
+        releaseUnusedSpace(owner)
         const delta = previousTop - owner.scrollTop
         previousTop = owner.scrollTop
         if (alignedTop !== null && Math.abs(owner.scrollTop - alignedTop) < 1) {
@@ -269,5 +288,6 @@ export function useTimelineScroll(
   onScopeDispose(() => {
     disposeInput()
     stopHolding()
+    releaseSpace()
   })
 }
