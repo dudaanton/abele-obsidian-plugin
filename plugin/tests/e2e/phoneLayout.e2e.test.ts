@@ -847,6 +847,11 @@ const probeScript = `(async () => {
         if (!(await until(() => document.querySelector('.modal.abele-modal'), 5000))) throw new Error('did not open')
         await wait(300)
         const modal = document.querySelector('.modal.abele-modal')
+        if (dialogName === 'github-connections') {
+          // Show the long connection rows, not the unrelated general settings above them.
+          const heading = [...modal.querySelectorAll('.abele-section__heading')].find(el => el.textContent === 'Connections')
+          heading?.scrollIntoView({ block: 'start' })
+        }
         await screen(label, modal, modal.querySelector('.abele-modal__body'))
         const d = modal.getBoundingClientRect()
         report[label].edges = [Math.round(d.top), Math.round(d.bottom)]

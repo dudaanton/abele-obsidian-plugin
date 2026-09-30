@@ -24,6 +24,12 @@ describe('GitHub connection migration', () => {
     expect(githubSettingsFrom(one).connections).toEqual(one.connections)
   })
 
+  it('retains a legacy API-address spelling with a trailing slash and the same key slot', () => {
+    const settings = githubSettingsFrom({ server: 'https://Git.Example.test/api/v3/', keyId: 'legacy-slot' })
+    expect(settings.connections).toHaveLength(1)
+    expect(settings.connections[0].keyId).toBe('legacy-slot')
+  })
+
   it('keeps a server-only connection; never fabricates one for untouched anonymous settings', () => {
     expect(githubSettingsFrom({ server: legacy.server }).connections).toHaveLength(1)
     expect(githubSettingsFrom().connections).toEqual([])
@@ -120,6 +126,14 @@ describe('GitHub connection migration', () => {
     expect(saved.notifications.boundKeyId).toBe('classic-key')
     expect(saved.notifications.boundServer).toBe(legacy.server)
     expect(githubSettingsFrom(saved).notifications.boundKeyId).toBe('classic-key')
+  })
+
+  it('does not restore an abandoned legacy projection server if it is later added again', () => {
+    const first = githubSettingsFrom(legacy)
+    first.connections = [{ id: 'public', name: 'Public', server: '', keyId: 'public-slot', owners: [], isDefault: true }]
+    const projected = projectLegacy(first)
+    projected.connections.push({ id: 'enterprise-again', name: 'Enterprise again', server: legacy.server, keyId: 'new-slot', owners: [], isDefault: true })
+    expect(projectLegacy(projected).keyId).toBe('public-slot')
   })
 
   it('keeps the migrated Enterprise server as the legacy projection when public is added', () => {

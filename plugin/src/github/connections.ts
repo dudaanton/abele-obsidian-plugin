@@ -106,7 +106,7 @@ export function validConnectionServer(address: string): boolean {
       ['http:', 'https:'].includes(url.protocol) &&
       !url.username &&
       !url.password &&
-      (url.pathname === '/' || url.pathname === '/api/v3' || url.pathname === '/api/graphql') &&
+      ['', '/api/v3', '/api/graphql'].includes(url.pathname.replace(/\/+$/, '')) &&
       !url.search &&
       !url.hash &&
       !!url.hostname &&
@@ -134,7 +134,7 @@ export function projectLegacy(settings: GithubSettings): GithubSettings {
     ...settings,
     keyId: chosen?.keyId ?? '',
     server: chosen?.server ?? '',
-    legacyServer: chosen ? (settings.legacyServer ?? settings.server) : '',
+    legacyServer: chosen?.server ?? '',
     defaultRepo: bare ? `${oldOrigin}/${settings.defaultRepo}` : settings.defaultRepo,
     notifications: {
       ...settings.notifications,
