@@ -254,7 +254,9 @@ API without a working location provider.
 
 The map's **Show my location** control is separate: a one-shot local request that centres the
 map and draws the native marker and accuracy circle. It writes no note and sends no position
-to an agent (the map still requests tiles from its provider). A failed request shows a Notice.
+to an agent (the map still requests tiles from its provider). Pressing the location marker or
+accuracy circle does not trigger a reverse lookup; ordinary base-map clicks still show place
+details. A failed request shows a Notice.
 
 The other map tools run on OpenStreetMap data through Photon, Overpass and the FOSSGIS routing servers — no API
 key and no account, so they work on a fresh install. Each of them draws what it answered: the

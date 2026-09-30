@@ -102,6 +102,22 @@ describe('show my location map control', () => {
     expect(button.disabled).toBe(false)
   })
 
+  it.each([0, 1])('marker %i never bubbles a click into the map lookup handler', async (index) => {
+    location.get.mockResolvedValue(position)
+    button.click()
+    await settle()
+    const canvas = document.createElement('div')
+    const reverseLookup = vi.fn()
+    canvas.addEventListener('click', reverseLookup)
+    canvas.appendChild(markers[index].options.element)
+
+    markers[index].options.element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(reverseLookup).not.toHaveBeenCalled()
+    // A press on the ordinary base map still reaches its handler.
+    canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(reverseLookup).toHaveBeenCalledOnce()
+  })
+
   it('suppresses repeated taps while pending and replaces rather than duplicates the marker', async () => {
     let answer: (value: typeof position) => void
     location.get.mockImplementationOnce(

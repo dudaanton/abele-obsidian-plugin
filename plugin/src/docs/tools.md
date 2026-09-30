@@ -274,7 +274,9 @@ is also kept in the chat history like other tool results. Recap and compaction r
 `current_location` tool-result content with a redacted placeholder before sending it to the
 helper model; the stored result and the main model's active history remain unchanged. The map's **Show my location** button
 is a separate, local one-shot action: it centres the map and draws a marker and accuracy radius,
-without writing coordinates to a note or sending them to an agent.
+without writing coordinates to a note or sending them to an agent. Clicks on its location
+marker and accuracy circle never trigger the map's third-party reverse lookup; ordinary
+base-map clicks still show place details.
 
 `geocode`, `places`, `route`.
 

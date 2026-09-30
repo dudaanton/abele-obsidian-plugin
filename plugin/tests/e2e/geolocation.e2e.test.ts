@@ -107,6 +107,37 @@ describe.skipIf(!available)('device location on a real map', () => {
     30_000
   )
 
+  it('clicking the location dot or accuracy circle never starts a reverse lookup', async () => {
+    expect(await evalLong(mount)).toBe('true')
+    const result = JSON.parse(
+      await evalLong(`(async () => {
+      const state = window.__locationE2E
+      // Obsidian's requestUrl export is read-only. Observe the actual MapLibre click entry
+      // point instead: no event may reach the canvas where its lookup handler is attached.
+      const canvas = state.root.querySelector('.maplibregl-canvas-container')
+      let lookups = 0
+      canvas.addEventListener('click', () => lookups++)
+      state.root.querySelector('button[aria-label="Show my location"]').click()
+      const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+      const deadline = Date.now() + 8000
+      while (Date.now() < deadline && !state.root.querySelector('.maplibregl-user-location-dot')) await wait(100)
+      const dot = state.root.querySelector('.maplibregl-user-location-dot')
+      const circle = state.root.querySelector('.maplibregl-user-location-accuracy-circle')
+      if (!dot || !circle) return { missing: true }
+      dot.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      circle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await wait(1500)
+      const popup = !!state.root.querySelector('.maplibregl-popup')
+      const markerLookups = lookups
+      // An intentional base-map click must still reach the handler and open place details.
+      canvas.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await wait(1500)
+      return { markerLookups, popup, baseLookups: lookups - markerLookups, basePopup: !!state.root.querySelector('.maplibregl-popup') }
+    })()`)
+    )
+    expect(result).toEqual({ markerLookups: 0, popup: false, baseLookups: 1, basePopup: true })
+  }, 30_000)
+
   it('the registered agent tool uses the same device provider and reports its platform', async () => {
     expect(await evalLong(mount)).toBe('true')
     const result = JSON.parse(

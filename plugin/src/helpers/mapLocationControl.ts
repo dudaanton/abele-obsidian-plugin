@@ -97,9 +97,13 @@ export class MapLocationControl implements IControl {
       this.circleElement = doc.win.createDiv()
       this.circleElement.className = 'maplibregl-user-location-accuracy-circle'
       this.circleElement.setAttribute('aria-hidden', 'true')
+      // Like note pins, the local position overlays must not trigger the base map's
+      // third-party reverse lookup when pressed.
+      this.circleElement.addEventListener('click', (event) => event.stopPropagation())
       const dot = doc.win.createDiv()
       dot.className = 'maplibregl-user-location-dot'
       dot.title = `Current location (accuracy ${Math.round(accuracy)} m)`
+      dot.addEventListener('click', (event) => event.stopPropagation())
       this.circle = new this.library.Marker({ element: this.circleElement, pitchAlignment: 'map' })
         .setLngLat([longitude, latitude])
         .addTo(this.map)
