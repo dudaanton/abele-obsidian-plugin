@@ -13,6 +13,7 @@ import { CommentService } from './CommentService'
 import { ChatStorage } from './ChatStorage'
 import { RunStorage, type RunFile } from './RunStorage'
 import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
+import { revealSidebarView } from '@/views/revealSidebarView'
 import { buildCommentContext } from './commentContext'
 import { buildMessageCommentContext } from './messageComments'
 
@@ -373,14 +374,9 @@ export class ChatService {
    * the history's search — which takes the cursor itself.
    */
   async revealSidebar({ focus = true }: { focus?: boolean } = {}): Promise<void> {
-    const { workspace } = GlobalStore.getInstance().app
-
-    let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
-    if (!leaf) {
-      leaf = workspace.getRightLeaf(false)
-      await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
-    }
-    void workspace.revealLeaf(leaf)
+    // The shared adapter waits for the reveal and repairs a mobile drawer that finished
+    // closing after its leaf was recreated. Returning earlier exposes a hidden, zero-size chat.
+    await revealSidebarView(GlobalStore.getInstance().app, AI_SIDEBAR_VIEW_TYPE)
 
     // A blank chat is there to be typed into, so it gets the cursor as it comes into view. A
     // conversation does not: on a phone the cursor brings up the keyboard, which would cover

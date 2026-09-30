@@ -43,8 +43,11 @@ beforeEach(() => {
   chats = ChatService.getInstance()
   vi.spyOn(chats, 'saveTabs').mockImplementation(() => {})
   // An open sidebar: its leaf is there, and showing it again is all revealing does.
-  const leaf = { view: { containerEl: { isShown: () => true } } }
+  const rightSplit = { collapsed: false, containerEl: { offsetWidth: 330 }, expand: vi.fn(), collapse: vi.fn() }
+  const leaf = { view: { containerEl: { isShown: () => true } }, getRoot: () => rightSplit }
   ;(GlobalStore.getInstance().app as unknown as { workspace: unknown }).workspace = {
+    rightSplit,
+    leftSplit: {},
     getLeavesOfType: (type: string) => (type === AI_SIDEBAR_VIEW_TYPE ? [leaf] : []),
     revealLeaf: vi.fn(async () => {}),
   }
