@@ -194,12 +194,15 @@ describe('the style every page is given', () => {
     doc.head.append(style)
     doc.body.innerHTML =
       '<span id="note"><div>105</div><p>words</p></span><span id="word">a word</span>' +
-      '<a id="link" href="#x"><p>linked</p></a>'
-    expect(before).toMatch(/span[^{]*:has\(>[^{]*div[^{]*\{\s*display: block/)
+      '<a id="link" href="#x"><p>linked</p></a>' +
+      '<span id="outer"><span id="middle"><span id="inner"><p>nested words</p></span></span></span>'
+    expect(before).toMatch(/span[^{]*:has\(:is\([^{]*div[^{]*\{\s*display: block/)
     const block = /(:is\([^{]+\):has\([^{]+\))\s*\{/.exec(before)?.[1]?.replace(/\s+/g, ' ') ?? ''
     expect(doc.getElementById('note')?.matches(block)).toBe(true)
     expect(doc.getElementById('link')?.matches(block)).toBe(true)
     expect(doc.getElementById('word')?.matches(block)).toBe(false)
+    for (const id of ['outer', 'middle', 'inner'])
+      expect(doc.getElementById(id)?.matches(block), id).toBe(true)
   })
 
   it('sets size, spacing and the theme font after the book, so the book cannot undo them', () => {

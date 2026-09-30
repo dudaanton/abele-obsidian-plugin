@@ -485,6 +485,15 @@ contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current
   and Electron zoom 90%/110%, and asserts that reflow does not echo a new reading position or
   timestamp. Both devices' settings and files are restored; the caller releases the desktop
   lease. This tests the reader's sync-file boundary, not a hosted sync service's transport.
+  Optional `ABELE_READER_LOCAL_CASE` points at an untracked JSON diagnostic case: `font`
+  (`family`, host `files`, vault `folder`), initial Electron `zoom` and sidebar `panel`; an
+  external `book` also supplies its identifier `key`, two `targets` (`index` plus `text`) and
+  search `query`. These assets and reports stay local; the default fixture remains invented.
+- `bookNestedWrappers.e2e.test.ts` — **nested inline wrappers around whole chapters**, desktop
+  and real phone. Every inline ancestor of block content must lay out as a block while plain
+  inline words remain inline (also unit checked). Moving between later paragraphs must save
+  distinct, nonempty ranges containing their actual text, not a collapsed chapter-body CFI.
+  This catches wrapper bounds that make the visible-range walker prune text in later columns.
 - `bookFontReflow.e2e.test.ts` — **real font metrics arriving late**, desktop and real phone.
   Reads a TrueType font from the test host (`ABELE_TEST_FONT_FILE`, defaulting to the macOS
   Times New Roman file), gives its temporary copy a test-only family so the installed font

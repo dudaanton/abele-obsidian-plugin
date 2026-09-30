@@ -99,7 +99,11 @@ const PRELUDE = `
 `
 async function run<T>(device: Device, body: string, fast = false): Promise<T> {
   const code = `(async()=>{${PRELUDE}\n${body}\n})()`
-  if (device === 'phone') return JSON.parse(fast ? evalRaw(code) : await evalLong(code, 90000)) as T
+  if (device === 'phone') {
+    const out = fast ? evalRaw(code) : await evalLong(code, 90000)
+    if (out.startsWith('Error:')) throw new Error(out)
+    return JSON.parse(out) as T
+  }
   const { stdout } = await exec(
     process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian',
     [`vault=${DESKTOP}`, 'eval', `code=${code}`],
@@ -166,6 +170,7 @@ async function snapshot(): Promise<Packet> {
     const c=current(),places=JSON.parse(await app.vault.adapter.read(placesPath())),place=places[${JSON.stringify(KEY)}]
     if(!place?.cfi)throw Error('phone did not persist its place')
     const text=String(view().engine.resolveNavigation(place.cfi).anchor(c.doc))
+    if(!text.trim())throw Error('phone persisted an empty visible text range')
     return JSON.stringify({place,text,index:c.index,note:await app.vault.adapter.read(${JSON.stringify(NOTE)})})
   `
   )

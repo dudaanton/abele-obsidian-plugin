@@ -406,9 +406,11 @@ export function pageStyles(settings: ReaderSettings, theme: ThemeValues): [strin
     aside[epub|type~="rearnote"], aside[role="doc-footnote"] { display: none; }
     /* An inline element wrapped around blocks — a note's number and its paragraph inside one
        span, as some converters write them — laid out as the block it stands for. Drawn the same;
-       but inside it the words are measured where the blocks before them are, so highlights on
-       them landed a note number or two above (a book on the desktop, 2026-09-27). */
-    :is(span, a, em, i, b, strong, font, small, big, u, s, cite, q, abbr, dfn, label):has(> :is(
+       but inside it the words are measured where the blocks before them are. Include every
+       inline ancestor, not only the block's immediate parent: an inline wrapper around another
+       normalized span still has broken fragment bounds, and can hide later pages from the
+       engine's visible-range walk. This changes layout only, leaving CFI node paths intact. */
+    :is(span, a, em, i, b, strong, font, small, big, u, s, cite, q, abbr, dfn, label):has(:is(
       div, p, h1, h2, h3, h4, h5, h6, ul, ol, dl, table, blockquote, section, article, aside,
       header, footer, figure, pre, hr, nav, address)) { display: block; }
   `
