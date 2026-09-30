@@ -8,6 +8,19 @@ function scrollOwner(el: HTMLElement): HTMLElement {
   return el.parentElement ?? el
 }
 
+/** The usable top of a phone pane is below its status bar and floating navigation. */
+function pinnedTop(owner: HTMLElement): number {
+  const top = owner.getBoundingClientRect().top
+  const body = owner.ownerDocument.body
+  if (!body.classList.contains('is-phone')) return top
+  const safe = parseFloat(getComputedStyle(body).getPropertyValue('--safe-area-inset-top')) || 0
+  const header = owner
+    .closest('.workspace-leaf')
+    ?.querySelector('.view-header')
+    ?.getBoundingClientRect()
+  return Math.max(top, safe, header?.height ? header.bottom : 0)
+}
+
 /** Keeps an existing row on screen as the window changes; upward input unfolds one earlier day. */
 export function useTimelineScroll(
   items: Ref<HTMLElement | null>,
@@ -26,7 +39,7 @@ export function useTimelineScroll(
     if (!root) return () => {}
     const owner = scrollOwner(root)
     const viewport = owner.getBoundingClientRect()
-    const top = viewport.top + (history.value?.getBoundingClientRect().height ?? 0)
+    const top = pinnedTop(owner) + (history.value?.getBoundingClientRect().height ?? 0)
     // Prefer an unfinished row: it survives both directions of the completed toggle.
     const candidates = Array.from(root.querySelectorAll<HTMLElement>('[data-timeline-item]'))
     const row =
@@ -94,15 +107,25 @@ export function useTimelineScroll(
         return
       }
       const owner = scrollOwner(root)
-      // Sticky positioning starts at the scroll owner's padding edge. Cancel only that inset
-      // for this new header; neither the sidebar nor the editor's existing spacing is changed.
-      strip?.style.setProperty(
-        '--abele-timeline-sticky-top',
-        `${-parseFloat(getComputedStyle(owner).paddingTop || '0')}px`
-      )
+      // Sticky positioning starts at the padding edge. Place only this new strip at the
+      // usable viewport edge, leaving the sidebar/editor spacing and phone chrome untouched.
+      const positionStrip = () =>
+        strip?.style.setProperty(
+          '--abele-timeline-sticky-top',
+          `${pinnedTop(owner) - owner.getBoundingClientRect().top - parseFloat(getComputedStyle(owner).paddingTop || '0')}px`
+        )
+      positionStrip()
+      let positionFrame = 0
+      const followChrome = () => {
+        positionStrip()
+        window.cancelAnimationFrame(positionFrame)
+        positionFrame = window.requestAnimationFrame(positionStrip)
+      }
+      const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(followChrome)
+      resize?.observe(owner)
       const atBoundary = () => {
         if (!history.value) return false
-        const top = owner.getBoundingClientRect().top
+        const top = pinnedTop(owner)
         const header = history.value.getBoundingClientRect()
         const first = root.firstElementChild?.getBoundingClientRect()
         const edge = first?.top ?? header.bottom
@@ -112,9 +135,11 @@ export function useTimelineScroll(
           edge <= top + header.height + 120
         )
       }
+      let upwardScroll = false
       const unfold = async (amount: number) => {
         if (inserting || !atBoundary()) return false
         inserting = true
+        upwardScroll = false
         // Move the old row down by exactly the input distance, not by the newly inserted
         // day's height. Keep holding through its lazy titles, which arrive after the patch.
         const hadRow = !!root.querySelector('[data-timeline-item]')
@@ -132,6 +157,7 @@ export function useTimelineScroll(
         return true
       }
       const wheel = (event: WheelEvent) => {
+        upwardScroll = event.deltaY < 0 && !event.ctrlKey && !event.metaKey
         stopHolding()
         if (event.ctrlKey || event.metaKey || event.deltaY >= 0 || !atBoundary()) return
         event.preventDefault()
@@ -146,6 +172,7 @@ export function useTimelineScroll(
         const y = event.touches.length === 1 ? event.touches[0].clientY : null
         const delta = y !== null && fingerY !== null ? y - fingerY : 0
         fingerY = y
+        upwardScroll = delta > 0
         stopHolding()
         if (delta <= 0 || !atBoundary()) return
         event.preventDefault()
@@ -153,15 +180,19 @@ export function useTimelineScroll(
       }
       let previousTop = owner.scrollTop
       const scroll = () => {
+        followChrome()
         const delta = previousTop - owner.scrollTop
         previousTop = owner.scrollTop
         if (alignedTop !== null && Math.abs(owner.scrollTop - alignedTop) < 1) {
           alignedTop = null
           return
         }
-        if (delta > 0 && !inserting && atBoundary()) void unfold(delta)
+        // Layout and native phone navigation also change scrollTop. Only upward input
+        // may unfold history; an automatic correction is not a request for another day.
+        if (upwardScroll && delta > 0 && !inserting && atBoundary()) void unfold(delta)
       }
       const key = (event: KeyboardEvent) => {
+        upwardScroll = ['ArrowUp', 'PageUp'].includes(event.key)
         stopHolding()
         if (
           event.target instanceof HTMLElement &&
@@ -172,20 +203,31 @@ export function useTimelineScroll(
         event.preventDefault()
         void unfold(event.key === 'PageUp' ? owner.clientHeight : 40)
       }
-      const pointer = () => stopHolding()
+      const pointer = (event: PointerEvent) => {
+        upwardScroll = event.target === owner
+        stopHolding()
+      }
+      const drag = (event: PointerEvent) => {
+        if (event.pointerType === 'mouse' && event.buttons && event.target === owner)
+          upwardScroll = true
+      }
       owner.addEventListener('wheel', wheel, { passive: false })
       owner.addEventListener('touchstart', touchStart, { passive: true })
       owner.addEventListener('touchmove', touchMove, { passive: false })
       owner.addEventListener('scroll', scroll, { passive: true })
       owner.addEventListener('keydown', key)
       owner.addEventListener('pointerdown', pointer)
+      owner.addEventListener('pointermove', drag)
       disposeInput = () => {
+        resize?.disconnect()
+        window.cancelAnimationFrame(positionFrame)
         owner.removeEventListener('wheel', wheel)
         owner.removeEventListener('touchstart', touchStart)
         owner.removeEventListener('touchmove', touchMove)
         owner.removeEventListener('scroll', scroll)
         owner.removeEventListener('keydown', key)
         owner.removeEventListener('pointerdown', pointer)
+        owner.removeEventListener('pointermove', drag)
       }
     },
     { flush: 'post' }

@@ -21,6 +21,7 @@ interface Probe {
   revealAnchor?: number[]
   lazy?: boolean
   sticky?: number
+  chromeGap?: number
   overflow?: number
   shots?: string[]
 }
@@ -75,10 +76,17 @@ const script = (footer: boolean) => String.raw`(async () => {
     const dates = () => blocks().map(x => x.dataset.abeleAnchor)
     const strip = () => root.querySelector('.abele-timeline__history')
     const row = (d, n = 1) => [...root.querySelectorAll('.abele-task-view')].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item ' + d + ' ' + n + '.md')
+    const usableTop = () => {
+      const viewport = scroller.getBoundingClientRect().top
+      if (!document.body.classList.contains('is-phone')) return viewport
+      const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
+      const header = scroller.closest('.workspace-leaf')?.querySelector('.view-header')?.getBoundingClientRect()
+      return Math.max(viewport, safe, header?.height ? header.bottom : 0)
+    }
     const align = el => {
       // Model a reader's input before positioning, so a prior patch's temporary hold ends.
       scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 1 }))
-      scroller.scrollTop += el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 100
+      scroller.scrollTop += el.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0) - 8
     }
     const shot = async name => {
       const path = shots + '/' + phase + '-' + (${footer} ? 'footer' : 'sidebar') + '-' + (app.isMobile ? 'phone' : 'desktop') + '-' + name + '.png'
@@ -134,7 +142,7 @@ const script = (footer: boolean) => String.raw`(async () => {
 
     // Deliberately reach the upper boundary, then scroll upward once. No clicking the strip.
     const first = blocks()[0]
-    scroller.scrollTop += first.getBoundingClientRect().top - scroller.getBoundingClientRect().top - (strip()?.getBoundingClientRect().height ?? 0)
+    scroller.scrollTop += first.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0)
     await wait(400)
     const beforeReveal = row(0).getBoundingClientRect().top
     if (window.__e2eHost) {
@@ -158,7 +166,12 @@ const script = (footer: boolean) => String.raw`(async () => {
     const stickyScroll = scroller.scrollTop
     scroller.scrollTop += 400
     await wait(400)
-    report.sticky = strip() ? Math.abs(strip().getBoundingClientRect().top - scroller.getBoundingClientRect().top) : 9999
+    const safeTop = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
+    const navigation = scroller.closest('.workspace-leaf')?.querySelector('.view-header')?.getBoundingClientRect()
+    const chromeBottom = document.body.classList.contains('is-phone') ? Math.max(safeTop, navigation?.height ? navigation.bottom : 0) : 0
+    report.chromeGap = (strip()?.getBoundingClientRect().top ?? -9999) - chromeBottom
+    // The raw scroll border is behind native phone chrome, not a readable pinned position.
+    report.sticky = strip() ? Math.abs(strip().getBoundingClientRect().top - usableTop()) : 9999
     scroller.scrollTop = stickyScroll
     await wait(400)
     report.overflow = scroller.scrollWidth - scroller.clientWidth
@@ -231,6 +244,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.summary).toContain('90 unfinished')
           expect(p.revealed).toHaveLength(21)
           expect(p.countAfter).toContain('88 unfinished')
+          expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
           expect(p.sticky).toBeLessThanOrEqual(2)
           expect(p.overflow).toBeLessThanOrEqual(1)
           if (!onPhone()) {
