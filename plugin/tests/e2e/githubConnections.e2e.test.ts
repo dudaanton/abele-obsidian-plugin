@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { isObsidianRunning, hasTestApi } from './helpers/obsidianCli'
 import { evalAsync, startFakeGithub, type FakeGithub, PRELUDE } from './helpers/githubLive'
 import { targets, onPhone } from './helpers/target'
@@ -12,6 +12,16 @@ describe.skipIf(!available)('GitHub connection editor against independent invent
   let server: FakeGithub
   beforeAll(async () => { server = await startFakeGithub({ mode: 'accounts' }) })
   afterAll(() => server?.stop())
+  const closeDialogs = () => evalAsync(`(async () => {
+    ${PRELUDE}
+    for (let i=0;i<8 && document.querySelector('.modal');i++) {
+      document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
+      await wait(150)
+    }
+    return !document.querySelector('.modal')
+  })()`)
+  beforeEach(() => { expect(closeDialogs()).toBe(true) })
+  afterEach(() => { closeDialogs() })
 
   it('checks two unsaved credentials against their own account and never renders or stores them', async () => {
     const result = evalAsync<{ accounts: string[]; exposed: boolean; unchanged: boolean }>(`(async () => {
@@ -22,7 +32,7 @@ describe.skipIf(!available)('GitHub connection editor against independent invent
       let exposed = false
       for (const [token, expected] of [['invented-connection-one','sample-account-one'], ['invented-connection-two','sample-account-two']]) {
         window.__abeleTest.openDialog('github-connection')
-        const modal = await until(() => document.querySelector('.modal.abele-modal'))
+        const modal = await until(() => document.querySelector('input[placeholder="github_pat_..."]')?.closest('.modal.abele-modal'))
         const set = (placeholder, value) => {
           const field = [...modal.querySelectorAll('input')].find(i => i.placeholder === placeholder)
           field.value = value; field.dispatchEvent(new Event('input', {bubbles:true}))
@@ -54,14 +64,14 @@ describe.skipIf(!available)('GitHub connection editor against independent invent
       ${PRELUDE}
       const paths = []
       window.__abeleTest.openDialog('github-connections')
-      let modal = await until(() => document.querySelector('.modal.abele-modal'))
+      let modal = await until(() => document.querySelector('.abele-settings__github .abele-section__heading')?.closest('.modal.abele-modal'))
       const heading = [...modal.querySelectorAll('.abele-section__heading')].find(e=>e.textContent==='Connections')
       heading.scrollIntoView({block:'start'})
       await wait(300)
       paths.push(await window.__e2eHost.shot(${JSON.stringify(shots + '/list.png')}))
       const edit = [...modal.querySelectorAll('button')].find(b=>b.textContent.trim()==='Edit')
       edit.scrollIntoView({block:'center'}); edit.click()
-      modal = await until(() => [...document.querySelectorAll('.modal.abele-modal')].find(m=>m.textContent.includes('Edit GitHub connection')))
+      modal = await until(() => document.querySelector('input[type=password][placeholder="github_pat_..."]')?.closest('.modal.abele-modal'))
       const token = modal.querySelector('input[type=password]')
       token.scrollIntoView({block:'center'})
       await wait(300)
@@ -74,7 +84,7 @@ describe.skipIf(!available)('GitHub connection editor against independent invent
       const overflow = modal.scrollWidth - modal.clientWidth
       const cancel = [...modal.querySelectorAll('button')].find(b=>b.textContent.trim()==='Cancel')
       cancel.click(); await wait(200)
-      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}))
+      document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
       return {overflow, footer, viewport:innerHeight, shots:paths}
     })()`)
     console.info('connection phone pictures', result.shots)
