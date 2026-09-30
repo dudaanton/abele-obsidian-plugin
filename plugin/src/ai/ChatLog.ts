@@ -331,13 +331,23 @@ export class ChatLogWriter {
     return { kind: 'append', data: start + lines.join('\n') + '\n', records }
   }
 
-  /** Records that the planned write reached the file. */
-  commit(snapshot: ChatSnapshot, plan: ChatWritePlan): void {
+  /**
+   * Records exactly the bytes that reached the file, never the live snapshot: messages can
+   * change while I/O is pending. Such changes must remain outstanding for the next save.
+   * The snapshot parameter is retained for callers; only the serialized plan is authoritative.
+   */
+  commit(_snapshot: ChatSnapshot, plan: ChatWritePlan): void {
     if (plan.kind === 'noop') return
+    if (plan.kind === 'rewrite') this.forget()
 
-    this.metaLine = metaLine(snapshot.metadata)
-    this.messageLines = new Map(snapshot.messages.map((m) => [m.id, messageLine(m)]))
-    this.internalCount = snapshot.internalMessages.length
+    const written = plan.kind === 'rewrite' ? plan.content : plan.data
+    for (const line of written.split('\n')) {
+      if (line.startsWith(META_PREFIX)) this.metaLine = line
+      else if (line.startsWith(MSG_START)) {
+        const { id } = JSON.parse(line) as { id: string }
+        this.messageLines.set(id, line)
+      } else if (line.startsWith('{"k":"int"')) this.internalCount++
+    }
     this.records = plan.records
     this.clean = true
   }

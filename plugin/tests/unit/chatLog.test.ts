@@ -131,6 +131,43 @@ describe('planning a save', () => {
     expect(plan.kind).toBe('rewrite')
   })
 
+  it.each(['rewrite', 'append'] as const)(
+    'commits only serialized state when live data changes during a %s write',
+    (kind) => {
+      const writer = new ChatLogWriter()
+      const state = snapshot({ metadata: metadata({ anchor: { note: 'sample-note.md' } }) })
+      let file = ''
+      if (kind === 'append') {
+        file = serializeChat(state)
+        writer.adopt(parseChat(file))
+        state.messages[0].content = 'Sample revised question'
+      }
+      const planned = writer.plan(state)
+      expect(planned.kind).toBe(kind)
+
+      // The file operation has the serialized bytes already, but live objects keep changing.
+      state.messages[0].interceptorChat = [
+        { id: 'sample-review', role: 'assistant', content: 'Sample review', timestamp: 2 },
+      ]
+      state.metadata.anchor!.note = 'sample-renamed-note.md'
+      state.internalMessages.push(internal('Sample later answer'))
+      if (planned.kind === 'rewrite') file = planned.content
+      else if (planned.kind === 'append') file += planned.data
+      writer.commit(state, planned)
+
+      const pending = writer.plan(state)
+      expect(pending.kind).not.toBe('noop')
+      if (pending.kind === 'rewrite') file = pending.content
+      else if (pending.kind === 'append') file += pending.data
+      writer.commit(state, pending)
+      const reopened = parseChat(file)
+      expect(reopened.messages).toEqual(state.messages)
+      expect(reopened.metadata).toEqual(state.metadata)
+      expect(reopened.internalMessages).toEqual(state.internalMessages)
+      expect(writer.plan(state).kind).toBe('noop')
+    }
+  )
+
   it('writes nothing at all when nothing changed', () => {
     const writer = new ChatLogWriter()
     const state = snapshot()

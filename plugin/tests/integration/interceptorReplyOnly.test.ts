@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { parseChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata } from '@/ai/types'
@@ -180,6 +181,40 @@ describe('reply-only agent interceptors', () => {
       ).toBe('First question')
     )
     expect(session.messages.value.at(-1)?.role).toBe('assistant')
+  })
+
+  it('persists a review that arrives while the main turn is being written', async () => {
+    const { session } = setup()
+    let serialized = ''
+    let releaseWrite: (() => void) | undefined
+    let writes = 0
+    vi.mocked(ChatStorage.getInstance().saveChat).mockImplementation(async (_snapshot, plan) => {
+      if (++writes === 1)
+        await new Promise<void>((resolve) => {
+          releaseWrite = resolve
+        })
+      if (plan.kind === 'rewrite') serialized = plan.content
+      else if (plan.kind === 'append') serialized += plan.data
+      return file
+    })
+    const sending = session.sendMessage('Sample question')
+    await vi.waitFor(() => expect(releaseWrite).toBeDefined())
+    await vi.waitFor(() => expect(releases.has('Sample question')).toBe(true))
+    releases.get('Sample question')!()
+    await vi.waitFor(() => expect(session.messages.value[0].interceptorChat).toHaveLength(1))
+    releaseWrite!()
+    await sending
+    await vi.waitFor(() =>
+      expect(parseChat(serialized).messages[0].interceptorChat?.[0]?.content).toBe(
+        'Sample question'
+      )
+    )
+    vi.mocked(ChatStorage.getInstance().loadChat).mockImplementation(async () =>
+      parseChat(serialized)
+    )
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(file)
+    expect(reopened.messages.value[0].interceptorChat?.[0]?.content).toBe('Sample question')
   })
 
   it('can finish a review while the main turn is still streaming', async () => {
