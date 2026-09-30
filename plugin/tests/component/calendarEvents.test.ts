@@ -8,6 +8,10 @@ process.env.TZ = 'Europe/Berlin'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import dayjs from 'dayjs'
+import { ref } from 'vue'
+
+// The dated fixtures are upcoming events, even when the test runs years later.
+vi.mock('@/composables/useDate', () => ({ useDate: () => ({ now: ref(dayjs('2026-04-10')) }) }))
 import { Menu, type MenuItem } from 'obsidian'
 import Timeline from '@/components/Timeline.vue'
 import CalendarEventView from '@/components/CalendarEvent.vue'

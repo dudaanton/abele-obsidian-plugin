@@ -14,6 +14,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Menu, type MenuItem } from 'obsidian'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import dayjs from 'dayjs'
+import { ref } from 'vue'
+
+// These fixtures exercise future-day paging, independent of the machine's calendar.
+vi.mock('@/composables/useDate', () => ({ useDate: () => ({ now: ref(dayjs('2026-01-01')) }) }))
 import { Note } from '@/entities/Note'
 import { Log } from '@/entities/Log'
 import { Task } from '@/entities/Task'

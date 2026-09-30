@@ -46,6 +46,20 @@
         autofocus
         @keydown.escape.stop.prevent="search.close"
       />
+      <div
+        v-if="folded.length"
+        ref="historyEl"
+        class="abele-timeline__history"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="abele-timeline__date-indicator abele-timeline__date-indicator_overdue">
+          <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
+            <ObsidianIcon icon="flame" no-hover />
+          </div>
+        </div>
+        <span>Past days · {{ foldedUnfinished }} unfinished · Scroll up</span>
+      </div>
       <div ref="itemsEl" class="abele-timeline__blocks">
         <div
           v-for="[date, dateItems] in visible"
@@ -74,8 +88,15 @@
                   :event="item.shown.event"
                   :feed="item.shown.feed"
                   :day="date"
+                  :data-timeline-item="item.key"
                 />
-                <TaskView v-else class="abele-timeline__task" :task="item.task!" at-timeline />
+                <TaskView
+                  v-else
+                  class="abele-timeline__task"
+                  :task="item.task!"
+                  :data-timeline-item="item.key"
+                  at-timeline
+                />
               </template>
             </div>
           </div>
@@ -103,7 +124,8 @@ import FoldHeading from './obsidian/FoldHeading.vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
-import { usePagedList } from '@/composables/usePagedList'
+import { useTimelineDays } from '@/composables/useTimelineDays'
+import { useTimelineScroll } from '@/composables/useTimelineScroll'
 import { useFooterPages } from '@/composables/useFooterView'
 import { createTask } from '@/commands/createTask'
 import { useLabelFilter } from '@/composables/useLabelFilter'
@@ -196,18 +218,22 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
-const { visible, hasMore, sentinel, reset, followSearch } = usePagedList(
+const { visible, folded, hasMore, sentinel, reset, revealPrevious } = useTimelineDays(
   () => dates.value,
+  () => now.value.format(DATE_FORMAT),
+  () => search.terms.value,
   PAGE_SIZE,
   useFooterPages('calendar')
 )
-
-// Completed tasks reappear throughout the timeline, not at its end, so the previously
-// expanded window no longer matches what the reader has actually scrolled through.
-watch(hideCompleted, reset)
+const foldedUnfinished = computed(() => {
+  const keys = new Set<string>()
+  for (const [, items] of folded.value)
+    for (const item of items) if (item.task && !item.task.completedAt) keys.add(item.key)
+  return keys.size
+})
+const historyEl = ref<HTMLElement | null>(null)
+useTimelineScroll(itemsEl, historyEl, () => visible.value, revealPrevious)
 watch(labelSelection, reset)
-// Closing the search gives back the pages drawn before it.
-watch(search.terms, followSearch)
 
 const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
@@ -227,6 +253,21 @@ const getDateWikilink = (dateStr: string) => {
 </script>
 
 <style lang="scss">
+.abele-timeline__history {
+  position: sticky;
+  top: var(--abele-timeline-sticky-top, 0);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+  border-radius: var(--radius-s);
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-small);
+}
+
 .abele-timeline__search {
   margin-bottom: var(--p-spacing);
 }
