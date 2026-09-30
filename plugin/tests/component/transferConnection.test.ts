@@ -268,6 +268,22 @@ describe('receiving the connection', () => {
   const ticked = (screen: Screen) => rowOf(screen).findComponent(Checkbox).props('isEnabled')
 
   /** Named for what it is: the row said "Sync connection" twice and never which vault. */
+  it('selects a replacement exactly once when its visible checkbox is clicked', async () => {
+    service.connection.value = { ...home(), vaultId: 'another-vault', vaultName: 'Other' }
+    const screen = await received()
+    expect(ticked(screen)).toBe(false)
+    await rowOf(screen).find('.checkbox-container').trigger('click')
+    await flushPromises()
+    expect(ticked(screen)).toBe(true)
+    expect(buttonNamed(screen, 'Apply')!.props('disabled')).toBe(false)
+    await rowOf(screen).find('.checkbox-container').trigger('click')
+    await flushPromises()
+    expect(ticked(screen)).toBe(false)
+    await rowOf(screen).find('.abele-transfer-scan__entry-name').trigger('click')
+    await flushPromises()
+    expect(ticked(screen)).toBe(true)
+  })
+
   it('names the vault and the server it connects to, and says "Sync connection" once', async () => {
     const screen = await received()
 
