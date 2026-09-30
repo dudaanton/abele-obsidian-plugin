@@ -122,38 +122,48 @@ for (const layout of ['phone', 'desktop', 'tablet'] as const) {
   })
 }
 
-describe('native select fields on a phone', () => {
-  beforeEach(() => document.body.classList.add('is-mobile', 'is-phone'))
+for (const layout of ['phone', 'tablet'] as const) {
+  describe(`native select fields on a ${layout}`, () => {
+    beforeEach(() => {
+      document.body.classList.add('is-mobile')
+      if (layout === 'phone') document.body.classList.add('is-phone')
+    })
 
-  it.each(['variable', 'event'] as const)(
-    'reveals the select and respects its system picker height reported by %s',
-    async (signal) => {
-      await open()
-      const select = document.querySelector<HTMLSelectElement>('select')!
-      select.focus()
-      if (signal === 'variable') {
-        document.documentElement.style.setProperty('--keyboard-height', '336px')
-      } else {
-        const event = new Event('keyboardWillShow')
-        Object.assign(event, { keyboardHeight: 336 })
-        window.dispatchEvent(event)
+    it.each(['variable', 'event'] as const)(
+      'never reveals the select or counts a keyboard height reported by %s',
+      async (signal) => {
+        await open()
+        const select = document.querySelector<HTMLSelectElement>('select')!
+        const list = document.querySelector<HTMLElement>('.list')!
+        const before = list.scrollTop
+        select.focus()
+        expect(scroll).not.toHaveBeenCalled()
+        expect(list.scrollTop).toBe(before)
+        if (signal === 'variable') {
+          document.documentElement.style.setProperty('--keyboard-height', '336px')
+        } else {
+          const event = new Event('keyboardWillShow')
+          Object.assign(event, { keyboardHeight: 336 })
+          window.dispatchEvent(event)
+        }
+        await settle()
+
+        window.dispatchEvent(new Event('resize'))
+        expect(scroll).not.toHaveBeenCalled()
+        expect(list.scrollTop).toBe(before)
+        const container = document.querySelector<HTMLElement>('.modal-container')!
+        expect(container.classList.contains('abele-keyboard-room')).toBe(false)
+        expect(container.classList.contains('abele-keyboard-lift')).toBe(false)
+        expect(container.style.getPropertyValue('--abele-room-height')).toBe('')
+
+        // A height left behind after closing the popover must not keep the dialog fitted.
+        select.blur()
+        await settle()
+        expect(container.classList.contains('abele-keyboard-room')).toBe(false)
       }
-      await settle()
-
-      expect(scroll).toHaveBeenCalledWith({ block: 'center' })
-      // happy-dom proxies select elements; bound methods receive the underlying node.
-      expect(scroll.mock.contexts.every((field) => select.isSameNode(field as Node))).toBe(true)
-      const container = document.querySelector<HTMLElement>('.modal-container')!
-      expect(container.classList.contains('abele-keyboard-room')).toBe(true)
-      expect(container.style.getPropertyValue('--abele-room-height')).toBe('508px')
-
-      // A height left behind after closing the picker must not keep the dialog fitted.
-      select.blur()
-      await settle()
-      expect(container.classList.contains('abele-keyboard-room')).toBe(false)
-    }
-  )
-})
+    )
+  })
+}
 
 it('still centres a text field and fits the dialog above its keyboard on a phone', async () => {
   document.body.classList.add('is-mobile', 'is-phone')
