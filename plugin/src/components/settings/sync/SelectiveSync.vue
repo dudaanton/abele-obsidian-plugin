@@ -3,6 +3,7 @@
     title="What this device syncs"
     desc="Notes and canvases always travel. Everything else is this device's own choice — a phone can skip the video and still hold every note."
   >
+    <p v-if="saveError" class="abele-selective-sync__error">{{ saveError }}</p>
     <Setting
       v-for="kind in KINDS"
       :key="kind.key"
@@ -206,8 +207,13 @@ const canAddFolder = computed(
  * it. Nothing here can be refused — the rules `updateConnection` checks are about the server
  * and the keychain — so a failure is only ever local storage's, and the log says so.
  */
+const saveError = ref<string | null>(null)
 const save = (): void => {
+  saveError.value = null
   sync.updateConnection({ selective: copyOf(selective.value) }).catch((error: unknown) => {
+    selective.value = copyOf(sync.connection.value.selective)
+    capDraft.value = maxMegabytes.value
+    saveError.value = `Nothing was changed: ${error instanceof Error ? error.message : String(error)}`
     console.debug('[abele-sync] what this device syncs could not be saved', error)
   })
 }
@@ -307,3 +313,10 @@ function removeFolder(folder: string): void {
   save()
 }
 </script>
+
+<style lang="scss">
+.abele-selective-sync__error {
+  color: var(--text-error);
+  overflow-wrap: anywhere;
+}
+</style>

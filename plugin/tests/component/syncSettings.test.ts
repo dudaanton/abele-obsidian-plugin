@@ -1061,6 +1061,16 @@ describe('what this device takes', () => {
     expect(switchFor(screen, 'video').props('isEnabled')).toBe(false)
   })
 
+  it('rolls back a refused selective write and visibly reports the failure', async () => {
+    const screen = open(SelectiveSync)
+    service.updateConnection.mockRejectedValueOnce(new Error('storage unavailable'))
+    await switchFor(screen, 'images').trigger('click')
+    await flushPromises()
+    expect(switchFor(screen, 'images').props('isEnabled')).toBe(held().images)
+    expect(screen.text()).toContain('storage unavailable')
+    expect(screen.text()).toContain('Nothing was changed')
+  })
+
   it('takes a folder off the list the moment it is removed', async () => {
     change({ selective: { ...held(), excludedFolders: ['Archive/Video'] } })
     const screen = open(SelectiveSync)
