@@ -204,7 +204,7 @@ Three files, three concerns:
 - `taskTimelineScroll.e2e.test.ts` — **folded history and stable task anchors**, in the sidebar
   and note footer, at desktop and phone width and on the real phone. Checks that upward input
   stays native and never reveals history, using CDP wheel input on desktop, CDP touches under
-  phone emulation and physical swipes on the phone. Measures the owner's displacement against
+  phone emulation and slow physical swipes on the phone. Measures the owner's displacement against
   the input distance (allowing native touch slop) and rejects a snap-back after release; no manual
   scroll positioning is used during the measured gesture. One banner click reveals every past day
   with the visible row held within 1 px. Also measures completed-toggle anchors within 1 px, short-list spacer
@@ -719,6 +719,7 @@ to answer:
 | `push-plugin DIR MANIFEST VAULT` | installs a build (`main.js`, `main.css`) into a vault on the phone |
 | `eval --envelope --timeout S CODE` | evaluates in Obsidian's page, prints `{"type","value"}` or `{"thrown"}` |
 | `tap X Y`, `swipe X1 Y1 X2 Y2`, `longpress X Y`, `type TEXT`, `pinch SCALE` | real touches, in the page's CSS pixels |
+| `call /swipe JSON` | optional-speed swipe for displacement probes: `x1`, `y1`, `x2`, `y2`, `velocity` in CSS pixels per second |
 | `orientation landscape\|portrait`, `alert [BUTTON]`, `shot PATH`, `status` | the rest |
 | `reverse PORT` | while it runs, `127.0.0.1:PORT` on the phone reaches the same port on the machine |
 
@@ -736,7 +737,8 @@ a reversed port.
 
 **Inside the page** the harness puts `window.__e2eHost` (`installPhoneHost` in
 `helpers/phone.ts`, put back after every reload): `shot(path)`, `tap`, `swipe`, `longPress`,
-`type`, `pinch`, `orientation`. A probe that runs in the page tells the phone by it and uses it
+`type`, `pinch`, `orientation`. `swipe(x1, y1, x2, y2, { velocity })` optionally requests a slow
+pan rather than the driver's default flick; other swipes are unchanged. A probe that runs in the page tells the phone by it and uses it
 where the desktop uses Electron — `capturePage()` becomes `shot`, a DevTools touch becomes a
 finger. A probe that runs long goes through `evalLong()`: on a phone it is started in the page and
 asked after every second, since a call that blocks the test worker for a minute ends the run. Pictures go to `/tmp/abele-iphone/` (`ABELE_PHONE_SHOTS`), so they never mix with the

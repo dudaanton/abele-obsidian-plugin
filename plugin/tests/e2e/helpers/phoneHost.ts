@@ -11,7 +11,15 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { shotDir } from './shots'
-import { DRIVER, PHONE_VAULT, driver, exposeToPhone, installPhoneHost, phoneEval } from './phone'
+import {
+  DRIVER,
+  PHONE_VAULT,
+  driver,
+  exposeToPhone,
+  installPhoneHost,
+  phoneEval,
+  swipeDriverArgs,
+} from './phone'
 
 /**
  * The phone is one device: a run holds it from start to end, through the driver's lock
@@ -175,7 +183,14 @@ export async function startHost(): Promise<void> {
         answer = JSON.stringify({ path })
       } else if (what === 'tap') args = ['tap', n('x'), n('y')]
       else if (what === 'longpress') args = ['longpress', n('x'), n('y')]
-      else if (what === 'swipe') args = ['swipe', n('x1'), n('y1'), n('x2'), n('y2')]
+      else if (what === 'swipe')
+        args = swipeDriverArgs(
+          Number(n('x1')),
+          Number(n('y1')),
+          Number(n('x2')),
+          Number(n('y2')),
+          b.velocity === undefined ? undefined : Number(b.velocity)
+        )
       else if (what === 'type') args = ['type', String(b.text)]
       else if (what === 'pinch') args = ['pinch', String(Number(b.scale))]
       else if (what === 'orientation') args = ['orientation', String(b.value)]

@@ -101,7 +101,17 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       const el = strip()
       if (window.__e2eHost) {
         const r = el.getBoundingClientRect()
-        await window.__e2eHost.tap(r.left + r.width / 2, r.top + r.height / 2)
+        const x = r.left + r.width / 2, y = r.top + r.height / 2
+        const received = []
+        const record = e => received.push({ type: e.type, target: e.target.className, prevented: e.defaultPrevented })
+        for (const type of ['touchstart', 'touchend', 'click']) document.addEventListener(type, record, true)
+        try {
+          await window.__e2eHost.tap(x, y)
+          await wait(200)
+          if (el.isConnected) throw Error('Banner tap did not reveal history: ' + JSON.stringify({ x, y, hit: document.elementFromPoint(x, y)?.className, received }))
+        } finally {
+          for (const type of ['touchstart', 'touchend', 'click']) document.removeEventListener(type, record, true)
+        }
       } else el.click()
     }
     const row = (d, n = 1) => [...root.querySelectorAll('.abele-task-view')].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item ' + d + ' ' + n + '.md')
@@ -241,7 +251,8 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     // Start in scroll content, clear of native navigation and the sticky banner.
     const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + Math.max(200, r.height * 0.45))
     if (window.__e2eHost) {
-      await window.__e2eHost.swipe(x, y, x, y + 80)
+      // Match the emulated pan's slow travel, rather than the driver's default flick.
+      await window.__e2eHost.swipe(x, y, x, y + 80, { velocity: 160 })
     } else {
       const cdp = require('@electron/remote').getCurrentWebContents().debugger
       if (app.isMobile) {

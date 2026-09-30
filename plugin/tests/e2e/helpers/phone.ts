@@ -7,7 +7,8 @@
  *   `{"type","value"}` or `{"thrown"}` as JSON;
  * - `tap X Y`, `swipe X1 Y1 X2 Y2`, `longpress X Y`, `type TEXT`, `pinch SCALE`,
  *   `alert [BUTTON]` — real touches on the screen, in the page's CSS pixels (the page fills the
- *   screen); `orientation landscape|portrait` — the phone turned;
+ *   screen); `call /swipe JSON` accepts the same coordinates plus velocity for a measured pan;
+ *   `orientation landscape|portrait` — the phone turned;
  * - `shot PATH` — a screenshot to a PNG file;
  * - `reverse PORT` — while it runs, 127.0.0.1:PORT on the phone reaches the same port here;
  * - `doctor` — one line per part, `OK`/`FAIL`, exit 0 when ready;
@@ -57,6 +58,19 @@ export function phoneEval(code: string, timeoutMs: number): string {
   if (r.type === 'undefined') return '(no output)'
   if (typeof r.value === 'string') return `=> ${r.value}`
   return `=> ${JSON.stringify(r.value, null, 2)}`
+}
+
+/** Default gestures stay unchanged; an explicit speed avoids inertia in displacement probes. */
+export function swipeDriverArgs(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  velocity?: number
+): string[] {
+  return velocity === undefined
+    ? ['swipe', String(x1), String(y1), String(x2), String(y2)]
+    : ['call', '/swipe', JSON.stringify({ x1, y1, x2, y2, velocity })]
 }
 
 /** Real touches, in CSS pixels of the page (which fills the phone's screen). */
@@ -142,7 +156,7 @@ export function installPhoneHost(): void {
         // be taken does not stop what is being measured: it answers why, in place of a path.
         shot: (path) => call('shot', { path }).then((r) => r.path, (e) => 'no picture: ' + String(e && e.message)),
         tap: (x, y) => call('tap', { x, y }),
-        swipe: (x1, y1, x2, y2) => call('swipe', { x1, y1, x2, y2 }),
+        swipe: (x1, y1, x2, y2, options = {}) => call('swipe', { x1, y1, x2, y2, velocity: options.velocity }),
         longPress: (x, y) => call('longpress', { x, y }),
         type: (text) => call('type', { text }),
         pinch: (scale) => call('pinch', { scale }),
