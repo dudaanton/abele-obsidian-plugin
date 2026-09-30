@@ -294,7 +294,7 @@
       <AiChatInput
         ref="chatInput"
         v-model:expanded="composing"
-        :is-streaming="isStreaming || isExecutingTool || interceptorWorking"
+        :is-streaming="isStreaming || isExecutingTool || interceptorWorking || interceptorStreaming"
         :is-busy="isBusy"
         :attachment-owner="attachmentOwner"
         :conversation-draft="session?.draft.value"

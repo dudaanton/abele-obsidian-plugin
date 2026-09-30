@@ -174,7 +174,8 @@ remove them in the agent's settings, under **Memory**.
 
 An agent can name another agent as its interceptor: a reviewer that reads each message you write
 in that agent's chats before it is sent, and answers it on the side. You then send the draft,
-change it, or talk it over first.
+change it, or talk it over first. While the reviewer is thinking, Send/Edit stay hidden;
+**Stop** cancels the review and makes them available again without discarding your draft.
 
 Turn on **Reply only** beside the interceptor in the agent's **Basic** settings to send your
 message to the main agent immediately. The reviewer answers beside that same message in

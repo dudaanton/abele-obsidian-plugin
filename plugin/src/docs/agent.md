@@ -35,7 +35,8 @@ person writes in that agent's chats before it is sent, and answers it in a side 
 The person then sends the draft on, edits it, or talks it over with the reviewer first. Any agent
 can be one, utility agents included, except the agent itself. **Interceptor context** says how
 much of the conversation the reviewer sees: the message only, the last few preceding messages,
-or all preceding messages.
+or all preceding messages. During a holding review, Send/Edit are hidden but the chat's Stop
+control cancels the reviewer and restores those actions without discarding the draft.
 
 **Reply only** (`interceptorReplyOnly: true`) runs an agent review alongside the main turn:
 the message is sent immediately, with no draft or Send/Edit actions. The reviewer's answer stays

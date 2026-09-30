@@ -372,6 +372,25 @@ describe('reply-only agent interceptors', () => {
     }
   )
 
+  it('cancels a holding reviewer and keeps the draft ready to send or edit', async () => {
+    const { session } = setup()
+    session.interceptor.replyOnly.value = false
+    const sending = session.sendMessage('Sample held question')
+    await vi.waitFor(() => expect(releases.has('Sample held question')).toBe(true))
+    expect(session.interceptor.streaming.value).toBe(true)
+    const signal = calls.find((c) => c.system === 'Review this.')!.signal
+    session.abort()
+    await sending
+    expect(signal?.aborted).toBe(true)
+    expect(session.interceptor.streaming.value).toBe(false)
+    expect(session.interceptor.error.value).toBeNull()
+    expect(session.getDraftMessage()?.content).toBe('Sample held question')
+    expect(session.getDraftMessage()?.interceptorChat).toEqual([])
+    await session.confirmDraft(session.getDraftMessage()!.id)
+    expect(session.getDraftMessage()).toBeNull()
+    expect(session.messages.value.at(-1)?.role).toBe('assistant')
+  })
+
   it('cancels pending reviews on reset, even if a provider ignores abort', async () => {
     const { session } = setup()
     await session.sendMessage('Old question')

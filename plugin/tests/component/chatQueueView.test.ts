@@ -19,6 +19,10 @@ import { fakeChatSession } from '../helpers/fakeChatSession'
 const messages = ref<ChatMessage[]>([])
 const queued = ref<QueuedMessage[]>([])
 const streaming = ref(false)
+const interceptorStreaming = ref(false)
+const replyReviews = ref<
+  Record<string, { streaming: boolean; streamingContent: string; error: string | null }>
+>({})
 let aborted = false
 
 beforeEach(() => {
@@ -27,6 +31,8 @@ beforeEach(() => {
   messages.value = []
   queued.value = []
   streaming.value = false
+  interceptorStreaming.value = false
+  replyReviews.value = {}
   aborted = false
 
   const service = ChatService.getInstance()
@@ -40,7 +46,14 @@ beforeEach(() => {
       kind: 'chat',
       overrides: {
         isStreaming: streaming,
+        interceptor: {
+          streaming: interceptorStreaming,
+          streamingContent: ref(''),
+          error: ref(null),
+          replyReviews,
+        },
         abort: () => {
+          interceptorStreaming.value = false
           aborted = true
           queued.value = []
         },
@@ -94,6 +107,37 @@ describe('a message waiting its turn', () => {
 
   it('leaves nothing behind when there is nothing queued', () => {
     expect(open().find('.abele-ai-chat__queued').exists()).toBe(false)
+  })
+})
+
+describe('stopping a holding review', () => {
+  it('offers Stop while Send/Edit are hidden, and restores draft actions after cancellation', async () => {
+    interceptorStreaming.value = true
+    messages.value = [
+      { id: 'sample-draft', role: 'user', content: 'Sample question', timestamp: 1, draft: true },
+    ]
+    const wrapper = open()
+    expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-input__stop').exists()).toBe(true)
+    await wrapper.get('.abele-chat-input__stop').trigger('click')
+    await nextTick()
+    expect(aborted).toBe(true)
+    expect(wrapper.find('.abele-chat-input__stop').exists()).toBe(false)
+    expect(messages.value[0].draft).toBe(true)
+    expect(wrapper.findAll('.abele-chat-msg__draft-actions button').map((b) => b.text())).toEqual([
+      'Send',
+      'Edit',
+    ])
+    wrapper.unmount()
+  })
+
+  it('does not make a reply-only review block the composer or show main-turn Stop', () => {
+    replyReviews.value = { 'sample-user': { streaming: true, streamingContent: '', error: null } }
+    messages.value = [{ id: 'sample-user', role: 'user', content: 'Sample question', timestamp: 1 }]
+    const wrapper = open()
+    expect(wrapper.find('.abele-chat-input__stop').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(false)
+    wrapper.unmount()
   })
 })
 
