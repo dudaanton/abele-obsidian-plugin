@@ -301,6 +301,23 @@ describe('Account — note-backed public surface', () => {
 })
 
 describe.each(['account', 'transaction'] as const)('%s lifecycle through vault events', (kind) => {
+  // BUG: VaultWatcherWrapper omits event.file for delete, but FileWatcher requires
+  // a TFile before forwarding it. A standalone header/card keeps stale fields after
+  // its note is deleted instead of reporting it missing (list removal masks this).
+  it.fails('marks a standalone entity missing when its backing note is deleted', async () => {
+    const entity = kind === 'account' ? account() : transaction()
+    const path = kind === 'account' ? 'Finance/Wallet.md' : 'Finance/Purchase.md'
+    await entity.load()
+    await entity.loadContent()
+    const file = app.vault.getFileByPath(path)!
+    await GlobalStore.getInstance().app.vault.delete(file)
+    app.emit('vault', 'delete', file)
+    await flushPromises()
+    expect(entity instanceof Account ? entity.accountNotFound : entity.transactionNotFound).toBe(
+      true
+    )
+  })
+
   it('reloads edits, follows a move and rename, and unsubscribes on cleanup', async () => {
     const entity = kind === 'account' ? account() : transaction()
     const path = kind === 'account' ? 'Finance/Wallet.md' : 'Finance/Purchase.md'

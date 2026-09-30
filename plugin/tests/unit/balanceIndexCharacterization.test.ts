@@ -80,6 +80,23 @@ describe('BalanceIndex — dates, prefix sums and currencies', () => {
     expect(bi.getBalanceSeries('Cash.md', at, at.subtract(1, 'day'))).toEqual([])
   })
 
+  it.each([
+    { zone: 'Europe/Berlin', dates: ['2024-03-30', '2024-03-31', '2024-04-01'], offset: '+02:00' },
+    { zone: 'Europe/Moscow', dates: ['2024-12-31', '2025-01-01', '2025-01-02'], offset: '+03:00' },
+  ])(
+    'walks local calendar days across DST/week/year boundaries in $zone',
+    ({ zone, dates, offset }) => {
+      vi.stubEnv('TZ', zone)
+      build([account('Cash'), ...dates.map((date, i) => tx(`day ${i}`, { date, amount: 0.1 }))])
+      expect(dayjs(dates[2]).format('Z')).toBe(offset)
+      expect(bi.getBalanceSeries('Cash.md', dayjs(dates[0]), dayjs(dates[2]))).toEqual([
+        { date: dates[0], balance: 0.1 },
+        { date: dates[1], balance: 0.2 },
+        { date: dates[2], balance: 0.3 },
+      ])
+    }
+  )
+
   it('returns starting balances before the first transaction, with and without a starting date', () => {
     build([
       account('Cash', { startingBalance: 15 }),
