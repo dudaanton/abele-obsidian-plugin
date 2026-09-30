@@ -186,6 +186,8 @@ const props = defineProps<{
   isBusy: boolean
   /** Captured conversation lifetime, not merely the tab that displays it. */
   attachmentOwner?: ConversationOwner
+  /** A session-owned object: neither mounting nor replacing an editor changes its lifetime. */
+  conversationDraft?: ChatDraft
   ownsConversation?: (owner?: ConversationOwner) => boolean
   isCurrentConversation?: (owner?: ConversationOwner) => boolean
   /** An adapter that outlives composer remounts; async completions cannot emit from a dead editor. */
@@ -233,8 +235,9 @@ const TEXTAREA_MIN_HEIGHT = 34
  */
 const TEXTAREA_MAX_HEIGHT = 140
 
-const draft = ref<ChatDraft>({ text: '', attachments: [] })
+const draft = ref<ChatDraft>(props.conversationDraft ?? { text: '', attachments: [] })
 let draftOwner = props.attachmentOwner
+let boundToSession = !!props.conversationDraft
 const importing = computed(() => !!draft.value.imports?.pending.size)
 const text = computed({ get: () => draft.value.text, set: (value) => { draft.value.text = value } })
 const inputEl = ref<HTMLTextAreaElement | null>(null)
@@ -526,6 +529,16 @@ const setText = (value: string) => {
 const takeDraft = (): ChatDraft => draft.value
 
 const putDraft = (incoming: ChatDraft) => {
+  if (props.conversationDraft) {
+    // Edit the one session-owned draft in place. Its import context and pending barrier are
+    // not editor state, and must not be lost when incoming text replaces the contents.
+    draftOwner = props.attachmentOwner
+    draft.value = props.conversationDraft
+    draft.value.attachments = incoming.attachments
+    write(incoming.text)
+    nextTick(autoResize)
+    return
+  }
   const owner = props.attachmentOwner
   const previous = draft.value.imports
   const same = sameConversation(draftOwner, owner)
@@ -543,6 +556,26 @@ const putDraft = (incoming: ChatDraft) => {
   write(incoming.text)
   nextTick(autoResize)
 }
+
+// Binding a different session is not retirement: its imports continue in its own draft.
+watch(() => [props.conversationDraft, props.attachmentOwner] as const, ([owned, owner]) => {
+  if (!owned && !boundToSession) return
+  if (owned) boundToSession = true
+  draftOwner = owner
+  draft.value = owned ?? { text: '', attachments: [] }
+  write(draft.value.text)
+  nextTick(autoResize)
+}, { flush: 'post' })
+
+// Text can arrive while no composer exists. When one is mounted, it mirrors the session,
+// without echoing edits the embedded editor already made or moving their cursor.
+watch(text, (value) => {
+  if (editor && value !== echoed) {
+    echoed = value
+    editor.set(value)
+  }
+  nextTick(autoResize)
+})
 
 function importsFor(target: ChatDraft, owner?: ConversationOwner): DraftImports<ChatDraft> {
   if (!target.imports) target.imports = new DraftImports(target, owner)

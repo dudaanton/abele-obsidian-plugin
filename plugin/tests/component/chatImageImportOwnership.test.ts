@@ -141,6 +141,60 @@ it.each(['vault', 'external'])('preserves another %s import and its send barrier
   expect(a.scopeResolver.addFile).toHaveBeenCalledWith(png.path)
 })
 
+it.each(['vault', 'external'])('retains a pending %s import when incoming text replaces the draft after a run visit', async (kind) => {
+  vi.spyOn(service, 'activeRun', 'get').mockImplementation(() => service.activeTabId.value === 'run:sample' ? ({ runId: 'sample' } as never) : null)
+  service.tabOrder.value.push('run:sample')
+  let pending: Promise<void> | undefined
+  if (kind === 'vault') input().vm.addAttachment(source)
+  else pending = input().vm.importFiles([new File(['sample'], 'sample.heic')])
+  await switchTo('run:sample')
+  service.pendingInput.value = { text: 'Incoming sample passage', tabId: 'tab-a', focus: true }
+  await switchTo('tab-a')
+  expect(input().vm.takeDraft().text).toBe('Incoming sample passage')
+  fakeNoteEditors.at(-1)!.press('Shift-Enter')
+  expect(a.sendMessage).not.toHaveBeenCalled()
+  if (kind === 'vault') finish(png)
+  else finishExternal(png)
+  if (pending) await pending
+  await flushPromises()
+  expect(input().vm.takeDraft().attachments.map((f: TFile) => f.path)).toEqual([png.path])
+  expect(a.scopeResolver.addFile).toHaveBeenCalledWith(png.path)
+  fakeNoteEditors.at(-1)!.press('Shift-Enter')
+  expect(a.sendMessage).toHaveBeenCalledWith('Incoming sample passage', [png.path])
+})
+
+it.each(['vault', 'external'])('keeps the pending %s import and send barrier after the entire chat panel is remounted', async (kind) => {
+  input().vm.setText('An unfinished sample message')
+  let pending: Promise<void> | undefined
+  if (kind === 'vault') input().vm.addAttachment(source)
+  else pending = input().vm.importFiles([new File(['sample'], 'sample.heic')])
+  wrapper.unmount()
+  wrapper = mount(AiChat, { attachTo: document.body, global: { stubs: { AiRunView: true } } })
+  await nextTick(); await nextTick()
+  input().vm.setText('Sending must wait')
+  fakeNoteEditors.at(-1)!.press('Shift-Enter')
+  expect(a.sendMessage).not.toHaveBeenCalled()
+  if (kind === 'vault') finish(png)
+  else finishExternal(png)
+  if (pending) await pending
+  await flushPromises()
+  expect(input().vm.takeDraft().attachments.map((f: TFile) => f.path)).toEqual([png.path])
+  expect(a.scopeResolver.addFile).toHaveBeenCalledWith(png.path)
+})
+
+it('shows an import completed while the whole panel was closed in the newly opened panel', async () => {
+  input().vm.setText('A preserved sample draft')
+  input().vm.addAttachment(source)
+  wrapper.unmount()
+  finish(png)
+  await flushPromises()
+  wrapper = mount(AiChat, { attachTo: document.body, global: { stubs: { AiRunView: true } } })
+  await nextTick(); await nextTick()
+  expect(input().vm.takeDraft().text).toBe('A preserved sample draft')
+  expect(input().vm.takeDraft().attachments.map((f: TFile) => f.path)).toEqual([png.path])
+  expect(a.scopeResolver.addFile).toHaveBeenCalledWith(png.path)
+})
+
 it('keeps the send barrier and completion through a delegated-run composer remount', async () => {
   vi.spyOn(service, 'activeRun', 'get').mockImplementation(() => service.activeTabId.value === 'run:sample' ? ({ runId: 'sample' } as never) : null)
   service.tabOrder.value.push('run:sample')

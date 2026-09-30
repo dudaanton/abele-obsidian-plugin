@@ -57,6 +57,7 @@ import {
 } from './types'
 import type {
   CommentAnchor,
+  ChatDraft,
   MessageComment,
   ToolMode,
   PermissionMode,
@@ -211,6 +212,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private toolAbortController: AbortController | null = null
   /** Changes before replacing a conversation; saving its first file does not change it. */
   public readonly conversationVersion = ref(0)
+  /** The live conversation owns this draft, including imports, independently of every view. */
+  public readonly draft = ref<ChatDraft>({ text: '', attachments: [] })
   private get generation(): number { return this.conversationVersion.value }
   /** What an interceptor script said about the tool calls of the turn running now. */
   private readonly turnPolicy = new TurnPolicy()
@@ -1982,6 +1985,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   // ── Reset (new chat within this session / tab) ─────────────────
 
   async reset(): Promise<void> {
+    this.draft.value.imports?.retire()
+    this.draft.value = { text: '', attachments: [] }
     this.conversationVersion.value++
     this.queuedMessages.value = []
     await this.save()
@@ -2682,6 +2687,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // abort signal raised over listeners that have gone.
     if (this.destroyed) return
     this.destroyed = true
+    this.draft.value.imports?.retire()
+    this.draft.value = { text: '', attachments: [] }
     this.conversationVersion.value++
     if (this.persistTimer !== null) {
       window.clearTimeout(this.persistTimer)

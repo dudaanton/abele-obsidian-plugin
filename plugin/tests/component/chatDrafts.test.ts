@@ -31,9 +31,11 @@ beforeEach(() => {
   service.tabOrder.value = ['tab-a', 'tab-b']
   service.activeTabId.value = 'tab-a'
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
-  vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
-    value: fakeChatSession({ messages, kind: 'chat' }),
-  } as never)
+  // The session is the draft owner, so model the real service's distinct session per tab.
+  const sessions = new Map(service.tabOrder.value.map((id) => [id, fakeChatSession({ messages, kind: 'chat' })]))
+  vi.spyOn(service, 'activeSession', 'get').mockImplementation(() => ({
+    value: service.tabOrder.value.includes(service.activeTabId.value!) ? sessions.get(service.activeTabId.value!) : undefined,
+  }) as never)
 })
 
 afterEach(() => {

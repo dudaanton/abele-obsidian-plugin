@@ -6,9 +6,9 @@
  * these tests ask what gets drawn, not what happens when it is used, so each test overrides
  * the few members its own question is about.
  */
-import { ref, shallowRef, type Ref } from 'vue'
+import { ref, shallowRef, watch, type Ref } from 'vue'
 import type { CommentState } from '@/editor/CommentPlugin'
-import type { ChatMessage, CommentAnchor, QueuedMessage } from '@/ai/types'
+import type { ChatDraft, ChatMessage, CommentAnchor, QueuedMessage } from '@/ai/types'
 
 export interface FakeSessionOptions {
   messages?: Ref<ChatMessage[]>
@@ -36,8 +36,18 @@ export function fakeChatSession({
   const isCompacting = ref(false)
   const pendingToolCalls = ref<unknown[]>([])
   const pendingQuestions = ref<unknown>(null)
+  const conversationVersion = (overrides.conversationVersion as Ref<number> | undefined) ?? ref(0)
+  const draft = ref<ChatDraft>({ text: '', attachments: [] })
+  // Real load/reset replaces the owned draft before changing the lifetime. Test cases can
+  // signal the same transition without running storage or a model.
+  watch(conversationVersion, () => {
+    draft.value.imports?.retire()
+    draft.value = { text: '', attachments: [] }
+  }, { flush: 'sync' })
   return {
     id: 'session-1',
+    draft,
+    conversationVersion,
     messages,
     allMessages: messages,
     queuedMessages,

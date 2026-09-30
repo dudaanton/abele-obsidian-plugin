@@ -293,6 +293,7 @@
         :is-streaming="isStreaming || isExecutingTool || interceptorWorking"
         :is-busy="isBusy"
         :attachment-owner="attachmentOwner"
+        :conversation-draft="session?.draft.value"
         :owns-conversation="ownsImportConversation"
         :is-current-conversation="isCurrentImportConversation"
         :attachment-ready="onAttachFile"
@@ -369,7 +370,7 @@ import { ChatService, type PendingInput } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
-import type { ChatDraft, MessageComment } from '@/ai/types'
+import type { MessageComment } from '@/ai/types'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 import { revealAnchor } from '@/ai/openChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
@@ -1262,15 +1263,6 @@ watch(
   }
 )
 
-/**
- * What was typed in each tab and not sent.
- *
- * The input is one component shared by every tab, so leaving it alone would show the message
- * being composed in one conversation while another is open. It used to be emptied instead,
- * which threw the message away for anyone who switched tabs to check something.
- */
-const drafts = new Map<string, { version: number; draft: ChatDraft }>()
-
 /** How far below the top of the box a message brought into view sits: clear of the edge. */
 const REVEAL_OFFSET_PX = 16
 const REVEAL_CONTEXT = 3
@@ -1401,7 +1393,7 @@ watch(
 // Switching tabs: the one being left keeps its place, the one being opened goes back to its own
 watch(
   () => [chatService.activeTabId.value, attachmentOwner.value?.version ?? 0] as const,
-  ([tabId, version], [previousTabId, previousVersion]) => {
+  ([tabId, version], [previousTabId]) => {
     // The DOM still shows the tab being left, so this is the moment to read its place.
     if (previousTabId) rememberPlace(previousTabId)
     anchor = null
@@ -1415,38 +1407,14 @@ watch(
     if (place) void nextTick(() => returnTo(place))
     else void nextTick(doScroll)
 
-    // The input still holds the tab being left — the DOM has not been updated yet.
-    if (previousTabId === tabId && previousVersion !== version) {
-      chatInput.value?.takeDraft().imports?.retire()
-      drafts.get(previousTabId!)?.draft.imports?.retire()
-      drafts.delete(previousTabId!)
-    } else if (previousTabId && chatInput.value) {
-      drafts.set(previousTabId, { version: previousVersion, draft: chatInput.value.takeDraft() })
-    }
-    for (const [id, held] of drafts) {
-      if (!chatService.tabOrder.value.includes(id)) {
-        held.draft.imports?.retire()
-        drafts.delete(id)
-      }
-    }
     for (const id of places.keys()) {
       if (!chatService.tabOrder.value.includes(id)) places.delete(id)
     }
 
-    // On a tab held by a delegated run the input is not mounted at all, so the one being
-    // returned to is put back a tick later, once there is an input to put it in. Text sent to
-    // this tab from outside comes with the switch, and is what goes back instead.
-    const pending = pendingFor(tabId)
-    const held = tabId ? drafts.get(tabId) : undefined
-    if (held && held.version !== version) held.draft.imports?.retire()
-    const saved = held?.version === version ? held.draft : undefined
-    const draft = pending ? pendingDraft(pending, saved) : saved
-    draft?.imports?.redirect(draft)
-    if (tabId && draft) drafts.set(tabId, { version, draft })
+    // Drafts are session-owned. The editor only rebinds to the session; there is no view-local
+    // snapshot to restore or replace, even if a run or a closed panel destroyed the editor.
     void nextTick(() => {
       if (chatService.activeTabId.value !== tabId || attachmentOwner.value?.version !== version) return
-      chatInput.value?.putDraft(draft ?? { text: '', attachments: [] })
-      if (pending) takePending(pending)
       consumePendingInput()
     })
   }
@@ -1461,18 +1429,18 @@ function filesOf(paths: string[] | undefined): TFile[] {
 }
 
 /** Inserted links and files alone join the draft; new-chat text still replaces it. */
-function pendingDraft(pending: PendingInput, saved?: ChatDraft): ChatDraft {
+function pendingDraft(pending: PendingInput, saved?: ChatDraft, incoming = filesOf(pending.attachments)): ChatDraft {
   const join = pending.append || (!pending.text && !!pending.attachments?.length)
   const before = saved?.text ?? ''
+  const attachments = [...(saved?.attachments ?? [])]
+  const index = attachments.findIndex((f) => f.path === pending.replaceAttachment)
+  if (pending.replaceAttachment && index >= 0) attachments.splice(index, 1)
   return {
-    imports: saved?.imports,
+    ...saved,
     text: join
       ? `${before}${before && pending.text && !before.endsWith('\n') ? '\n' : ''}${pending.text}`
       : pending.text,
-    attachments: [
-      ...(join ? (saved?.attachments ?? []).filter((f) => f.path !== pending.replaceAttachment) : []),
-      ...filesOf(pending.attachments),
-    ],
+    attachments: [...attachments, ...incoming],
   }
 }
 
@@ -1502,7 +1470,8 @@ function consumePendingInput() {
   void nextTick(() => {
     const pending = pendingFor(chatService.activeTabId.value)
     if (!pending || !chatInput.value || !chatInput.value.isDraftFor(attachmentOwner.value)) return
-    chatInput.value.putDraft(pendingDraft(pending, chatInput.value.takeDraft()))
+    chatInput.value.putDraft(pendingDraft(pending, chatInput.value.takeDraft(), []))
+    for (const file of filesOf(pending.attachments)) chatInput.value.addAttachment(file)
     takePending(pending)
   })
 }

@@ -27,9 +27,11 @@ beforeEach(() => {
   service.activeTabId.value = 'tab-a'
   service.pendingInput.value = null
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
-  vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
-    value: fakeChatSession({ messages, kind: 'chat' }),
-  } as never)
+  // Tabs hold separate sessions and therefore separate owned drafts, just as the real service does.
+  const sessions = new Map(service.tabOrder.value.map((id) => [id, fakeChatSession({ messages, kind: 'chat' })]))
+  vi.spyOn(service, 'activeSession', 'get').mockImplementation(() => ({
+    value: sessions.get(service.activeTabId.value!),
+  }) as never)
 })
 
 // Unmounted after each test: a chat left mounted keeps watching the service and would take
