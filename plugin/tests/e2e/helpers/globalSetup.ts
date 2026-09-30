@@ -13,6 +13,7 @@ import {
   evalJson,
   evalRaw,
   isObsidianRunning,
+  hasTestApi,
   restoreDesktopWindow,
   setBackgroundThrottling,
   setFocusEmulation,
@@ -51,7 +52,15 @@ export async function setup(): Promise<void> {
       throw error
     }
   }
-  if (!isObsidianRunning()) return
+  if (!isObsidianRunning() || !hasTestApi()) {
+    if (onPhone()) {
+      stopHost()
+      dropPhone()
+    }
+    throw new Error(!isObsidianRunning()
+      ? 'Obsidian is not running; an explicit e2e run requires the app.'
+      : 'The e2e vault needs a development build with the test API.')
+  }
   await restoreDesktopWindow()
   try {
     typesBefore = evalJson<Record<string, string | null>>(

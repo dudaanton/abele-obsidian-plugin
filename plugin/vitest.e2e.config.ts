@@ -41,6 +41,6 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: { forks: { singleFork: true } },
     fileParallelism: false,
-    reporters: 'default',
+    reporters: ['default', './tests/e2e/helpers/requireTests.ts'],
   },
 })
