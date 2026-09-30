@@ -5,7 +5,7 @@
  * `eval`, DOM queries, console capture and plugin reload against the real running instance,
  * which is everything these tests need.
  */
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +18,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
+import { randomBytes } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { onPhone, desktopOnly } from './target'
 import { phoneEval, installPhoneHost, assertPhoneTransport } from './phone'
@@ -65,11 +67,12 @@ const sleepSync = (ms: number): void => {
  * app is asked takes more than seconds; one that has not answered in this long is not going to.
  */
 const CALL_CEILING_MS = 45_000
+const EVAL_PROCESS = fileURLToPath(new URL('./obsidianEvalProcess.mjs', import.meta.url))
 
 class CliNoAnswerError extends Error {}
 
 /** Opt-in only: arbitrary evals, reloads and native input must never be replayed. */
-function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false, vault = TARGET_VAULT): string {
+function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false, vault = TARGET_VAULT, reply?: string): string {
   timeoutMs = Math.min(timeoutMs, CALL_CEILING_MS)
   if (onPhone()) return runOnPhone(args, timeoutMs)
   const attempts = idempotent ? 3 : 1
@@ -77,7 +80,7 @@ function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false, va
     // Even all three lost answers must leave the synchronous worker below its 60 s ceiling.
     const allowance = idempotent ? Math.min(timeoutMs, attempt === 1 ? 30_000 : 10_000) : timeoutMs
     try {
-      return runReady(args, allowance, vault)
+      return runReady(args, allowance, vault, reply)
     } catch (error) {
       if (!(error instanceof CliNoAnswerError)) throw error
       if (attempt === attempts)
@@ -89,11 +92,11 @@ function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false, va
   throw new Error('unreachable CLI attempt')
 }
 
-function runReady(args: string[], timeoutMs: number, vault: string): string {
+function runReady(args: string[], timeoutMs: number, vault: string, reply?: string): string {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     // What is left of the one allowance: waiting for the app to get ready counts against it.
-    const output = runOnce(args, Math.max(1_000, deadline - Date.now()), vault)
+    const output = runOnce(args, Math.max(1_000, deadline - Date.now()), vault, reply)
     if (!NOT_READY.test(output)) return output
     if (Date.now() > deadline)
       throw new Error(`obsidian ${args[0]}: the app never got ready: ${output}`)
@@ -101,7 +104,7 @@ function runReady(args: string[], timeoutMs: number, vault: string): string {
   }
 }
 
-function runOnce(args: string[], timeoutMs: number, vault: string): string {
+function runOnce(args: string[], timeoutMs: number, vault: string, reply?: string): string {
   // `vault=` MUST precede the command. Passed after it the CLI ignores it without an error
   // and runs against whichever window is frontmost, so the tests would silently measure
   // whatever vault the user happened to be looking at.
@@ -109,12 +112,35 @@ function runOnce(args: string[], timeoutMs: number, vault: string): string {
   try {
     // SIGKILL, not the default SIGTERM: a CLI call that never gets its answer from the app
     // ignores SIGTERM, and the timeout then stopped nothing — the whole run hung on it.
-    return execFileSync(CLI, fullArgs, {
+    const framed = reply !== undefined
+    const executable = framed ? process.execPath : CLI
+    const command = framed
+      ? [EVAL_PROCESS, CLI, reply, String(Date.now() + timeoutMs), ...fullArgs]
+      : fullArgs
+    const result = spawnSync(executable, command, {
       encoding: 'utf8',
+      detached: framed && process.platform !== 'win32',
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
       maxBuffer: 64 * 1024 * 1024,
-    }).trim()
+    })
+    // A proxy killed at the outer deadline must not leave its CLI child running. The running
+    // Obsidian app is a different process group and is never touched.
+    if (framed && result.pid > 0 && process.platform !== 'win32') {
+      try {
+        process.kill(-result.pid, 'SIGKILL')
+      } catch {
+        /* the group already exited */
+      }
+    }
+    if (result.error || result.status !== 0) {
+      throw Object.assign(result.error ?? new Error('CLI process failed'), {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        signal: result.status === 124 ? 'SIGKILL' : result.signal,
+      })
+    }
+    return result.stdout.trim()
   } catch (error) {
     const err = error as NodeJS.ErrnoException & {
       stderr?: string
@@ -124,9 +150,18 @@ function runOnce(args: string[], timeoutMs: number, vault: string): string {
     if (err.code === 'ENOENT') {
       throw new ObsidianUnavailableError(`Obsidian CLI not found at ${CLI}`)
     }
-    if (err.code === 'ETIMEDOUT' && err.signal === 'SIGKILL') {
+    if (err.signal === 'SIGKILL') {
+      const stdout = String(err.stdout ?? '')
+      const stderr = String(err.stderr ?? '')
+      // Distinguish a missing renderer reply from a CLI process that printed its reply but
+      // never exited. Do not include the output itself: an eval can return device credentials.
+      const diagnostics = JSON.stringify({
+        stdoutBytes: Buffer.byteLength(stdout),
+        stderrBytes: Buffer.byteLength(stderr),
+        responsePrinted: stdout.includes('=>'),
+      })
       throw new CliNoAnswerError(
-        `obsidian ${args[0]} gave no answer in ${timeoutMs} ms and was killed`
+        `obsidian ${args[0]} gave no answer in ${timeoutMs} ms and was killed; ${diagnostics}`
       )
     }
     const detail = (err.stderr || err.stdout || err.message || '').toString().trim()
@@ -179,10 +214,20 @@ function parseJson<T>(raw: string): T {
   throw new Error(`Could not parse eval result as JSON: ${raw.slice(0, 400)}`)
 }
 
-/** The `=> …` payload of an eval, without the arrow. */
-function payloadOf(output: string): string {
-  const marker = output.indexOf('=>')
-  return marker === -1 ? output : output.slice(marker + 2).trim()
+function evalReply<T>(output: string, id: string): { value: T; hasValue: boolean; logs: string } {
+  for (const match of output.matchAll(/(?:^|\n)=> /g)) {
+    try {
+      const reply = JSON.parse(output.slice(match.index! + match[0].length).trim()) as {
+        __abeleReply?: string
+        hasValue: boolean
+        value: T
+      }
+      if (reply.__abeleReply === id) return { ...reply, logs: output.slice(0, match.index).trim() }
+    } catch {
+      /* only a completed reply with the nonce is a result */
+    }
+  }
+  throw new Error(`Could not parse eval result as JSON: ${output.slice(0, 400)}`)
 }
 
 /** The CLI pinned to one vault's window, by name, whatever `OBSIDIAN_TEST_VAULT` says. */
@@ -211,9 +256,28 @@ export function vaultCli(name: string): VaultCli {
   const cli: VaultCli = {
     name,
     run: (args, timeoutMs) => run(args, timeoutMs, false, name),
-    evalRaw: (code, timeoutMs) => payloadOf(run(['eval', `code=${code}`], timeoutMs, false, name)),
-    evalAwait: <T>(expression: string, timeoutMs?: number): T =>
-      parseJson<T>(cli.evalRaw(`(async () => JSON.stringify(await (${expression})))()`, timeoutMs)),
+    evalRaw: (code, timeoutMs) => {
+      const id = randomBytes(16).toString('hex')
+      const wrapped = `(async () => {
+        const value = await window.eval(${JSON.stringify(code)})
+        const rendered = value === undefined ? null : value === null ? 'null' : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
+        return JSON.stringify({ __abeleReply: ${JSON.stringify(id)}, hasValue: value !== undefined, value: rendered })
+      })()`
+      const output = run(['eval', `code=${wrapped}`], timeoutMs, false, name, id)
+      const reply = evalReply<string>(output, id)
+      return reply.hasValue ? reply.value : reply.logs || '(no output)'
+    },
+    evalAwait: <T>(expression: string, timeoutMs?: number): T => {
+      const id = randomBytes(16).toString('hex')
+      const wrapped = `(async () => {
+        const value = await (${expression})
+        return JSON.stringify({ __abeleReply: ${JSON.stringify(id)}, hasValue: value !== undefined, value })
+      })()`
+      const output = run(['eval', `code=${wrapped}`], timeoutMs, false, name, id)
+      const reply = evalReply<T>(output, id)
+      if (!reply.hasValue) throw new Error('Could not parse eval result as JSON: undefined')
+      return reply.value
+    },
   }
   return cli
 }

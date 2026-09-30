@@ -823,6 +823,12 @@ The CLI calls themselves are killed with `SIGKILL` at their timeout — a CLI ca
 gets its answer ignores `SIGTERM` — and a call answered with `Error: Command "…" not found`
 (the app is there but still loading) is retried rather than parsed as a result.
 
+Eval replies carry a per-request nonce and complete JSON frame. The harness waits for that
+reply, not for CLI process exit: some CLI invocations print the answer but keep an output pipe
+open. Once the matching frame is complete, only that invocation's CLI child is terminated and
+reaped. Missing or incomplete replies still fail at the original deadline; the running Obsidian
+app is never terminated.
+
 ### Known rough edge
 
 The CLI helpers call `execFileSync`, which blocks the worker's event loop for the whole
