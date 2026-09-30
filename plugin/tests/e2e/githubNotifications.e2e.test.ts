@@ -317,6 +317,7 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
       phone?: boolean
       over?: string[]
       sideways?: number
+      measuring?: { visibility: string; opacity: string }[]
       shot?: string
       opened?: string
       drawerClosed?: boolean
@@ -331,10 +332,20 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
       const edge = Math.min(content.getBoundingClientRect().right, window.innerWidth)
       const name = (el) => el.tagName.toLowerCase() + '.' + [...el.classList].join('.')
       report.over = [...content.querySelectorAll('*')]
-        .filter((el) => { const b = el.getBoundingClientRect(); return b.width > 0 && b.right > edge + 1 })
+        .filter((el) => {
+          // Obsidian's hidden dropdown measuring clone has a box but paints nothing. Measure
+          // visible overflow, as the other phone-layout probes do, rather than that clone.
+          if (getComputedStyle(el).visibility === 'hidden') return false
+          const b = el.getBoundingClientRect()
+          return b.width > 0 && b.right > edge + 1
+        })
         .map((el) => name(el) + ' +' + Math.round(el.getBoundingClientRect().right - edge))
         .slice(0, 12)
       report.sideways = content.scrollWidth - content.clientWidth
+      report.measuring = [...content.querySelectorAll('.is-measuring')].map((el) => {
+        const s = getComputedStyle(el)
+        return { visibility: s.visibility, opacity: s.opacity }
+      })
       report.shot = await shoot('phone.png')
       root.querySelector('[data-id="102"] .tree-item-self').click()
       const leaf = await until(() => githubLeaves()[0], 20000)
@@ -348,7 +359,8 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
     })()`)
     expect(r.error).toBeUndefined()
     expect(r.phone).toBe(true)
-    expect(r.over).toEqual([])
+    expect(r.measuring?.every((s) => s.visibility === 'hidden')).toBe(true)
+    expect(r.over, JSON.stringify(r.measuring)).toEqual([])
     expect(r.sideways).toBe(0)
     expect(r.opened).toMatch(/\/issues\/7#issuecomment-7011$/)
     expect(r.drawerClosed).toBe(true)
