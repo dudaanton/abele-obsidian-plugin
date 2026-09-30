@@ -367,8 +367,10 @@ describe.skipIf(why !== null)('many files deleted at once', () => {
       `active sync note ${n + 1}\n`,
     ])
     sync.createMany(notes)
-    await sync.syncNow()
-    expect(sync.status().state).toBe('idle')
+    // The waiter returns the actual idle snapshot. A later, independent CLI read may see a
+    // new watcher run already started; that is normal active sync, not an unsettled setup.
+    const settled = await sync.syncNow()
+    expect(settled.state).toBe('idle')
     expect(sync.serverPaths().filter((path) => path.startsWith(`${folder}/`))).toHaveLength(COUNT)
     // No pause here: the real folder delete and its watcher events race normal sync work.
     sync.remove([folder])

@@ -33,7 +33,7 @@
  * Requires Obsidian running with a vault open, the sibling repository built, and
  * `npm run build:test` newer than the source — see docs/Testing.md.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -237,11 +237,22 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
     await connectedScreens(phone, ' 320', 8)
     await setWindowSize(app(), ...PHONE)
 
+    // Opening, closing and emulating native settings can save app.json. Settle those local
+    // writes first, then stage a fresh remote change against that baseline. Otherwise the
+    // correct local-edit protection skips app.json and this is not a partial-apply fixture.
+    sync.run(`await closeSettings(); await escapeIn(); await svc.syncNow(); return 'ok'`)
+    await sync.waitIdle()
+    daemonSyncOnce(daemonDir)
+    const latestApp = JSON.parse(readFileSync(join(app().path, '.obsidian/app.json'), 'utf8'))
+    daemonWrites({
+      '.obsidian/app.json': JSON.stringify({ ...latestApp, samplePartialChange: true }),
+    })
+    await sync.syncNow()
+    sync.run(`svc.settingsPrompt.later(); return 'ok'`)
+
     // A real partial apply: app.json succeeds, later plugin files fail. Count the reload
     // instead of reloading this renderer, and inspect the recovery button at both widths.
-    const partial = sync.run<{ applied: string[]; failed: { path: string }[] }>(`
-      await closeSettings()
-      await escapeIn()
+    const partial = sync.run<{ applied: string[]; skipped: string[]; failed: { path: string }[] }>(`
       const adapter = app.vault.adapter
       const write = adapter.writeBinary.bind(adapter)
       svc.settingsPrompt.reloader = { available: () => true, reload: () => false }
@@ -252,6 +263,9 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
       try { return await svc.applySettingsAndReload((await svc.stagedSettings()).map((one) => one.version_id)) }
       finally { adapter.writeBinary = write }
     `)
+    expect(partial.applied, JSON.stringify(partial)).toEqual(['.obsidian/app.json'])
+    expect(partial.skipped).toEqual([])
+    expect(partial.failed).toHaveLength(2)
     for (const [width, suffix] of [
       [PHONE, ''],
       [NARROW, ' 320'],
@@ -263,7 +277,7 @@ describe.skipIf(why !== null)('the phase-3b sync screens', () => {
         const root = await openSyncTab()
         const doc = root.ownerDocument
         const button = buttonIn(root.querySelector('.abele-staged-settings'), 'Reload applied settings')
-        if (!button) throw new Error('no reload offered after partial apply')
+        if (!button) throw new Error('no reload offered after partial apply: ' + JSON.stringify({ written: svc.settingsPrompt.appliedWaiting.value, reloadable: svc.settingsPrompt.reloader.available(), outcome: ${JSON.stringify(partial)} }))
         button.scrollIntoView({ block: 'center' })
         await wait(200)
         const label = ${JSON.stringify(`settings partially applied${suffix}`)}
