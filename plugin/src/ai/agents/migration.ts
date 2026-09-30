@@ -274,6 +274,7 @@ function normaliseInterceptors(ai: AiSettings): boolean {
     const raw = agent as {
       interceptorAgentId?: unknown
       interceptorContextDepth?: unknown
+      interceptorReplyOnly?: unknown
       interceptorScript?: unknown
       interceptorPattern?: unknown
     }
@@ -291,6 +292,12 @@ function normaliseInterceptors(ai: AiSettings): boolean {
       agent.interceptorAgentId = ''
     } else if (typeof raw.interceptorAgentId !== 'string' || raw.interceptorAgentId === agent.id) {
       agent.interceptorAgentId = ''
+      changed = true
+    }
+
+    if (raw.interceptorReplyOnly === undefined) agent.interceptorReplyOnly = false
+    else if (typeof raw.interceptorReplyOnly !== 'boolean') {
+      agent.interceptorReplyOnly = false
       changed = true
     }
 

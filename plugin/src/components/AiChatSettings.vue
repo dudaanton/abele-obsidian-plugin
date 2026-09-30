@@ -36,6 +36,15 @@
 
     <Setting
       v-if="activeInterceptorId && !activeScript"
+      name="Reply only"
+      desc="Send messages straight to the main agent. The reviewer answers beside each message,
+        without holding it or showing Send and Edit buttons."
+    >
+      <Checkbox :is-enabled="interceptorReplyOnly" @toggle="toggleInterceptorReplyOnly" />
+    </Setting>
+
+    <Setting
+      v-if="activeInterceptorId && !activeScript"
       name="Interceptor context"
       desc="How much of the conversation the reviewer sees."
     >
@@ -275,6 +284,14 @@ function typePattern(text: string) {
   void s.save()
 }
 const interceptorContextDepth = computed(() => session.value?.interceptor.contextDepth.value ?? 0)
+const interceptorReplyOnly = computed(() => session.value?.interceptor.replyOnly.value ?? false)
+
+function toggleInterceptorReplyOnly() {
+  const s = session.value
+  if (!s) return
+  s.interceptor.replyOnly.value = !s.interceptor.replyOnly.value
+  void s.save()
+}
 
 /** Not an agent id — nanoid never produces a colon — so it cannot collide with one. */
 const FOLLOW_AGENT = ':agent'
@@ -299,8 +316,8 @@ const agentDefaultLabel = computed(() => {
 
 const interceptorDesc = computed(() =>
   followsAgent.value
-    ? "Reviews messages before they reach the main AI. Follows the agent's choice."
-    : "Reviews messages before they reach the main AI. Chosen for this chat; the agent's choice no longer applies here."
+    ? "Reviews messages. Follows the agent's choice."
+    : "Reviews messages. Chosen for this chat; the agent's choice no longer applies here."
 )
 
 function setInterceptor(value: string) {

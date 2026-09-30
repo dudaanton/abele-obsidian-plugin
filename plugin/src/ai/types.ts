@@ -641,6 +641,8 @@ export interface ChatMetadata {
   customSystemPromptNotePath?: string
   interceptorAgentId?: string
   interceptorContextDepth?: number
+  /** Agent review without holding the message; stored only for a chat's explicit override. */
+  interceptorReplyOnly?: boolean
   /** The interceptor script this chat chose, by name; with `interceptorAgentId`, only as an override. */
   interceptorScript?: string
   /** Only messages matching this regular expression go to the interceptor; empty means all. */

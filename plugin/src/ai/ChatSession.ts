@@ -521,6 +521,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return {
       agentId,
       contextDepth: normaliseContextDepth(agent.interceptorContextDepth),
+      replyOnly: agent.interceptorReplyOnly === true,
       script,
       pattern: agent.interceptorPattern || '',
     }
@@ -1602,7 +1603,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const text = content.trim()
     if (!text) return false
 
-    this.allInternalMessages.push(await this.userMessage(text))
+    this.allInternalMessages.push(await this.userMessage(text, undefined, false))
     await this.save()
     return true
   }
@@ -1622,7 +1623,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // The interceptor looks first, when there is one and the message is its kind. Never in a
     // run, where nobody is there to send a draft on.
     const route = this.interceptRoute(content)
-    if (route.kind === 'agent') return this.sendDraftMessage(content, attachments)
+    if (route.kind === 'agent' && !route.replyOnly)
+      return this.sendDraftMessage(content, attachments)
     if (route.kind === 'script') return this.sendThroughScript(route, content, attachments)
 
     const gen = this.generation
@@ -1735,7 +1737,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * than stored, because where it belongs depends on whether a loop is already running — a
    * fresh turn pushes it into the history, an injected one lets the loop carry it.
    */
-  private async userMessage(content: string, attachments?: string[]): Promise<Message> {
+  private async userMessage(
+    content: string,
+    attachments?: string[],
+    review = true
+  ): Promise<Message> {
     const userMsg: ChatMessage = {
       id: nanoid(),
       role: 'user',
@@ -1745,6 +1751,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
     this.appendChatMessage(userMsg)
     this.updateVisibleMessages()
+    const route = this.interceptRoute(content)
+    if (review && route.kind === 'agent' && route.replyOnly) {
+      // A separate request, never awaited by the main turn (including queued injections).
+      void this.interceptor.reviewReply(userMsg.id).catch((err) => {
+        console.error('[Abele interceptor save]', err)
+      })
+    }
     return this.modelMessage(userMsg)
   }
 
@@ -1794,7 +1807,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // Only the run of messages at the front that the interceptor would not look at: one it
     // would look at waits for its own turn, through `drainQueue` and `sendMessage`, rather
     // than slipping into this one past it. Order is kept, so nothing behind it goes first.
-    const cut = queued.findIndex((q) => this.interceptRoute(q.content).kind !== 'none')
+    const cut = queued.findIndex((q) => {
+      const route = this.interceptRoute(q.content)
+      return route.kind === 'script' || (route.kind === 'agent' && !route.replyOnly)
+    })
     const taken = cut === -1 ? queued : queued.slice(0, cut)
     if (!taken.length) return []
     this.queuedMessages.value = cut === -1 ? [] : queued.slice(cut)
@@ -2080,6 +2096,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.interceptor.override.value = {
       agentId: typeof stored === 'string' ? stored : '',
       contextDepth: normaliseContextDepth(metadata?.interceptorContextDepth),
+      replyOnly: metadata?.interceptorReplyOnly === true,
       script: typeof script === 'string' ? script : '',
       pattern: typeof metadata?.interceptorPattern === 'string' ? metadata.interceptorPattern : '',
     }
@@ -2211,6 +2228,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // whatever the agent's reviewer is the next time it is opened. An empty id is Off.
       interceptorAgentId: this.interceptor.override.value?.agentId,
       interceptorContextDepth: this.interceptor.override.value?.contextDepth,
+      interceptorReplyOnly: this.interceptor.override.value?.replyOnly,
       interceptorScript: this.interceptor.override.value?.script || undefined,
       interceptorPattern: this.interceptor.override.value?.pattern || undefined,
     }
@@ -2575,7 +2593,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.interceptor.abort()
   }
 
-  async retryInterceptor(): Promise<void> {
+  async retryInterceptor(messageId?: string): Promise<void> {
+    if (messageId && this.interceptor.replyReviews.value[messageId]) {
+      await this.interceptor.reviewReply(messageId)
+      return
+    }
     await this.interceptor.retry()
   }
 

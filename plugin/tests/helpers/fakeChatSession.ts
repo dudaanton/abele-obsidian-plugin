@@ -8,6 +8,7 @@
  */
 import { ref, shallowRef, watch, type Ref } from 'vue'
 import type { CommentState } from '@/editor/CommentPlugin'
+import type { ReviewProgress } from '@/ai/ChatInterceptor'
 import type { ChatDraft, ChatMessage, CommentAnchor, QueuedMessage } from '@/ai/types'
 
 export interface FakeSessionOptions {
@@ -73,7 +74,12 @@ export function fakeChatSession({
     /** Set by `CommentService` for the length of a move; nothing here moves on its own. */
     moving: ref(false),
     scopeResolver: { summary: ref('No files'), addFile: () => {} },
-    interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
+    interceptor: {
+      streaming: off,
+      streamingContent: ref(''),
+      error: ref(null),
+      replyReviews: ref<Record<string, ReviewProgress>>({}),
+    },
     // Comment sessions. A card reads the agent's name for its badge, the anchor for the quote
     // it is attached to, and `commentState` for the dot that has to agree with the marker.
     kind,

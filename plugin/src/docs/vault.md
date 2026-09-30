@@ -255,8 +255,13 @@ same fields but is not in the index, so it appears in no footer until it is open
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 
 A chat that chose its own interceptor rather than following its agent's keeps the choice in its
-metadata: `interceptorAgentId` and `interceptorContextDepth` for a reviewing agent,
-`interceptorScript` for a script, `interceptorPattern` for the messages it is shown. A message a
+metadata: `interceptorAgentId`, `interceptorContextDepth` and `interceptorReplyOnly` for a reviewing
+agent, `interceptorScript` for a script, `interceptorPattern` for the messages it is shown.
+`interceptorReplyOnly: true` sends the message at once while the agent reviewer answers beside it;
+absent or false keeps draft review. The reply is stored on the reviewed message in `interceptorChat`,
+with `interceptorName` and `interceptorCollapsed`, not as an assistant turn in the main conversation.
+Following the agent stores no interceptor override. Agent definitions in the plugin's settings also
+hold `interceptorReplyOnly` (false by default), and it travels with the agent in settings transfer. A message a
 script held back, or one it was stopped on, stays in the chat as a draft (`draft: true`,
 `interceptorScript: true`), with the script's lines beside it in `interceptorChat`; so do the
 lines a script left on a message it rewrote or failed on.

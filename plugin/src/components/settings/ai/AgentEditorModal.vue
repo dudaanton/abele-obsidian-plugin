@@ -94,6 +94,18 @@
 
           <Setting
             v-if="agent.interceptorAgentId && !agent.interceptorScript"
+            name="Reply only"
+            desc="Send messages straight to the main agent. The reviewer answers beside each message,
+              without holding it or showing Send and Edit buttons."
+          >
+            <Checkbox
+              :is-enabled="agent.interceptorReplyOnly ?? false"
+              @toggle="patch({ interceptorReplyOnly: !agent.interceptorReplyOnly })"
+            />
+          </Setting>
+
+          <Setting
+            v-if="agent.interceptorAgentId && !agent.interceptorScript"
             name="Interceptor context"
             desc="How much of the conversation the interceptor sees."
           >

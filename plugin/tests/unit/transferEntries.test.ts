@@ -161,6 +161,18 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('round-trips an agent interceptor reply-only mode with the agent', () => {
+    const base = settings()
+    base.ai.agents = [createAgent({ id: 'sample-agent', interceptorReplyOnly: true })]
+    const entry = find(collectEntries(base), 'ai-agents', 'sample-agent')!
+    expect(entry.data).toMatchObject({ interceptorReplyOnly: true })
+    const destination = settings()
+    destination.ai.agents = []
+    const received = applyEntries([entry], destination)
+    expect(received.ai.agents[0].interceptorReplyOnly).toBe(true)
+    expect(createAgent().interceptorReplyOnly).toBe(false)
+  })
+
   it('carries both map settings', () => {
     const entries = collectEntries(
       settings({

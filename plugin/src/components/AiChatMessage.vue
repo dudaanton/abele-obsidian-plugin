@@ -324,7 +324,7 @@
         </div>
         <div v-if="interceptorError" class="abele-chat-msg__interceptor-error">
           <span>{{ interceptorError }}</span>
-          <button class="abele-chat-msg__draft-btn" @click="emit('retry-interceptor')">
+          <button class="abele-chat-msg__draft-btn" @click="emit('retry-interceptor', message.id)">
             Retry
           </button>
         </div>
@@ -413,7 +413,7 @@ const emit = defineEmits<{
   (e: 'edit-draft', messageId: string): void
   (e: 'send-interceptor', messageId: string, content: string): void
   (e: 'toggle-interceptor', messageId: string): void
-  (e: 'retry-interceptor'): void
+  (e: 'retry-interceptor', messageId: string): void
   /** A comment on this answer: on the selected words, or on all of it when there are none. */
   (e: 'ask-here', messageId: string, quote?: string, start?: number): void
   /** Take back file changes: everything from this message on, or this turn's alone. */

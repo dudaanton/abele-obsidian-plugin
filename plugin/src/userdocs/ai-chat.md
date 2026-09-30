@@ -176,6 +176,14 @@ An agent can name another agent as its interceptor: a reviewer that reads each m
 in that agent's chats before it is sent, and answers it on the side. You then send the draft,
 change it, or talk it over first.
 
+Turn on **Reply only** beside the interceptor in the agent's **Basic** settings to send your
+message to the main agent immediately. The reviewer answers beside that same message in
+parallel, with the chosen context, without Send or Edit buttons. You can carry on chatting
+while it reviews; its reply does not become part of the main agent's conversation. It is off
+by default, so existing interceptors still hold drafts for review. A chat's **Settings** tab
+can override this choice along with its interceptor; choose **Agent default** to follow the
+agent again. This switch is only shown for agent reviewers, not scripts.
+
 The interceptor can also be one of your [scripts](scripts#chat-interceptors). A script decides by
 itself: it lets the message through, rewrites it, answers it without asking the agent, or holds
 it back for you. It can also approve or refuse the actions the agent takes while answering that

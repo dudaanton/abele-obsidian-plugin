@@ -358,6 +358,26 @@ describe("the agent's interceptor", () => {
     expect(view.find('.mod-warning').text()).toMatch(/Not saved/)
   })
 
+  it('offers reply-only mode for an agent reviewer, but not a script or Off', async () => {
+    const { main, helper } = seedAgents()
+    const registry = AgentRegistry.getInstance()
+    registry.update(main.id, { interceptorAgentId: helper.id })
+    const view = mountEditor(main.id)
+    const row = () =>
+      view
+        .findAll('.setting-item')
+        .find((s) => s.find('.setting-item-name').text() === 'Reply only')
+    expect(row()?.find('.checkbox-container').classes()).not.toContain('is-enabled')
+    await row()!.find('.checkbox-container').trigger('click')
+    expect(registry.get(main.id)?.interceptorReplyOnly).toBe(true)
+    expect(row()?.find('.checkbox-container').classes()).toContain('is-enabled')
+    await interceptorPicker(view)!.vm.$emit('update:model-value', 'script:Sample guard')
+    expect(row()).toBeUndefined()
+    await interceptorPicker(view)!.vm.$emit('update:model-value', '')
+    expect(row()).toBeUndefined()
+    view.unmount()
+  })
+
   it('turns review off again', async () => {
     const { main, helper } = seedAgents()
     AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })

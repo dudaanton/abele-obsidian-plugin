@@ -34,7 +34,15 @@ An agent can name another agent as its **interceptor**: a reviewer that reads ea
 person writes in that agent's chats before it is sent, and answers it in a side conversation.
 The person then sends the draft on, edits it, or talks it over with the reviewer first. Any agent
 can be one, utility agents included, except the agent itself. **Interceptor context** says how
-much of the conversation the reviewer sees: the draft only, the last few messages, or all of it.
+much of the conversation the reviewer sees: the message only, the last few preceding messages,
+or all preceding messages.
+
+**Reply only** (`interceptorReplyOnly: true`) runs an agent review alongside the main turn:
+the message is sent immediately, with no draft or Send/Edit actions. The reviewer's answer stays
+in that message's side conversation, even if later turns finish first, and is never sent to the
+main agent. It neither delays the main turn nor is cancelled when that turn finishes. False or
+absent means the existing hold-for-review behaviour. The switch is available in the agent's
+Basic settings and the chat's interceptor override, only for agent reviewers; scripts ignore it.
 
 The interceptor can also be a **script** whose header says `// @interceptor`. It is shown the
 message and the chat around it — the conversation so far, what was attached, the note open in
@@ -56,12 +64,14 @@ settings; that choice is the chat's own, and switching the chat to a different a
 A chat that never chose follows whichever agent it is on now. Interceptors never chain: the
 reviewer answers as one plain reply, so the reviewer's own interceptor is never asked. Delegated
 runs and scripts never use one — nobody is there to read the review. A message typed while the
-agent is working waits for its own turn when the interceptor would take it, rather than joining
-the running one past it.
+agent is working waits for its own turn when a script or a hold-for-review agent interceptor
+would take it, rather than joining the running one past it. Reply-only review lets queued
+messages join the running turn as usual, reviewing each independently.
 
 The settings on the agent are `interceptorAgentId` (an agent id, or empty for none),
 `interceptorContextDepth` (0 the draft, -1 everything, N the last N messages; an agent reviewer
-only), `interceptorScript` (a script's `@name`, or empty; set, it wins over the agent) and
+only), `interceptorReplyOnly` (boolean, false by default; agent reviewers only),
+`interceptorScript` (a script's `@name`, or empty; set, it wins over the agent) and
 `interceptorPattern` (the regular expression, or empty).
 
 ## Permissions

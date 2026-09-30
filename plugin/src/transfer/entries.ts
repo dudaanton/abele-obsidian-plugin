@@ -161,6 +161,7 @@ export const SECTIONS: Section[] = [
     'imageProviders',
     (p: Identified & { apiKeyId?: string }) => (p.apiKeyId ? [p.apiKeyId] : [])
   ),
+  // Whole agent definitions travel, including interceptorReplyOnly and the other review settings.
   aiList('ai-agents', 'Agents', 'agents'),
   // Each server travels with the tools it was last seen offering, so the other device tells
   // its agents the same thing without fetching first. There is no command to carry: servers are

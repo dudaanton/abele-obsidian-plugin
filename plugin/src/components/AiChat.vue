@@ -165,9 +165,13 @@
           :data-message-id="msg.id"
           :message="msg"
           :branch-info="branchInfoMap.get(msg.id)"
-          :interceptor-streaming="msg.draft ? interceptorStreaming || interceptorWorking : false"
-          :interceptor-streaming-content="msg.draft ? interceptorStreamingContent : ''"
-          :interceptor-error="msg.draft ? interceptorError : null"
+          :interceptor-streaming="
+            msg.draft ? interceptorStreaming || interceptorWorking : replyReviews[msg.id]?.streaming
+          "
+          :interceptor-streaming-content="
+            msg.draft ? interceptorStreamingContent : replyReviews[msg.id]?.streamingContent
+          "
+          :interceptor-error="msg.draft ? interceptorError : replyReviews[msg.id]?.error"
           :comments="commentsOn.get(msg.id)"
           :can-comment="canComment"
           :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
@@ -404,6 +408,7 @@ const interceptorStreamingContent = computed(
   () => session.value?.interceptor.streamingContent.value ?? ''
 )
 const interceptorError = computed(() => session.value?.interceptor.error.value ?? null)
+const replyReviews = computed(() => session.value?.interceptor.replyReviews.value ?? {})
 /** A script deciding about a message: the composer offers stop, which keeps the message back. */
 const interceptorWorking = computed(() => session.value?.interceptor.working?.value ?? false)
 const draftMessage = computed(() => session.value?.getDraftMessage() ?? null)
@@ -625,8 +630,8 @@ const onSendInterceptor = async (messageId: string, content: string) => {
   await session.value?.sendInterceptorMessage(messageId, content)
 }
 
-const onRetryInterceptor = async () => {
-  await session.value?.retryInterceptor()
+const onRetryInterceptor = async (messageId: string) => {
+  await session.value?.retryInterceptor(messageId)
 }
 
 const onToggleInterceptor = (messageId: string) => {

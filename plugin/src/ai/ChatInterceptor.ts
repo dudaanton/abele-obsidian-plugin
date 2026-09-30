@@ -1,4 +1,4 @@
-import { computed, ref, type Ref, type WritableComputedRef } from 'vue'
+import { computed, ref, toRefs, type Ref, type WritableComputedRef } from 'vue'
 import { nanoid } from 'nanoid'
 import { OpenAIClient } from './client/OpenAIClient'
 import type { Message } from './client'
@@ -9,7 +9,7 @@ import { runInterceptorScript, type InterceptOutcome } from './interceptor/runSc
 import type { InterceptInput } from './interceptor/context'
 
 /**
- * What looks at a message before the chat's agent does: a reviewing agent, or a script that
+ * What looks at a message before or alongside the chat's agent: a reviewing agent, or a script that
  * decides about it. Which messages it is shown is narrowed by `pattern`.
  */
 export interface InterceptorChoice {
@@ -17,6 +17,8 @@ export interface InterceptorChoice {
   agentId: string
   /** 0 sends only the draft, -1 the whole visible history, N the last N messages. */
   contextDepth: number
+  /** Agent review without holding the message. Absent on older choices means hold. */
+  replyOnly?: boolean
   /** The interceptor script, by its `@name`. Set, it wins over `agentId`. */
   script: string
   /** Only messages matching this regular expression are intercepted; empty means all. */
@@ -26,6 +28,7 @@ export interface InterceptorChoice {
 export const NO_INTERCEPTOR: InterceptorChoice = {
   agentId: '',
   contextDepth: 0,
+  replyOnly: false,
   script: '',
   pattern: '',
 }
@@ -33,8 +36,16 @@ export const NO_INTERCEPTOR: InterceptorChoice = {
 /** Where a message goes: straight on, to a reviewing agent, or through a script. */
 export type InterceptRoute =
   | { kind: 'none' }
-  | { kind: 'agent'; broken?: string }
+  | { kind: 'agent'; replyOnly?: boolean; broken?: string }
   | { kind: 'script'; script: string; broken?: string }
+
+export interface ReviewProgress {
+  streaming: boolean
+  streamingContent: string
+  error: string | null
+}
+
+type ReviewRefs = { [K in keyof ReviewProgress]: Ref<ReviewProgress[K]> }
 
 /** The slice of a chat the interceptor touches. */
 export interface InterceptorHost {
@@ -50,7 +61,7 @@ export interface InterceptorHost {
 }
 
 /**
- * Reviews a message before it is sent to the main agent.
+ * Reviews a held draft or a message sent alongside an independent main-agent turn.
  *
  * The reviewer is an ordinary agent — it gets its model and its composed system prompt from
  * `AgentRegistry` like any other. Which one reviews, and how much it sees, comes from the chat's
@@ -111,6 +122,16 @@ export class ChatInterceptor {
     set: (pattern) => this.choose({ pattern }),
   })
 
+  /** Only agent interceptors use this; scripts keep deciding for themselves. */
+  public readonly replyOnly: WritableComputedRef<boolean> = computed({
+    get: () => this.choice.value.replyOnly === true,
+    set: (replyOnly) => this.choose({ replyOnly }),
+  })
+
+  /** Independent progress keyed by the message reviewed, never by the last chat bubble. */
+  public readonly replyReviews = ref<Record<string, ReviewProgress>>({})
+  private readonly replyControllers = new Map<string, AbortController>()
+
   get followsAgent(): boolean {
     return this.override.value === null
   }
@@ -149,7 +170,7 @@ export class ChatInterceptor {
     const extra = broken ? { broken } : {}
     return this.script.value
       ? { kind: 'script', script: this.script.value, ...extra }
-      : { kind: 'agent', ...extra }
+      : { kind: 'agent', ...(this.replyOnly.value ? { replyOnly: true } : {}), ...extra }
   }
 
   /** True while a script decides about a message; the chat is busy for that long. */
@@ -187,7 +208,31 @@ export class ChatInterceptor {
     this.lastDraftId = draftMsgId
     this.error.value = null
 
-    await this.runTurn(draft, this.buildContext(draft.content))
+    await this.runTurn(draft, this.buildContext(draft))
+  }
+
+  /** Starts a non-blocking review with a snapshot of the reviewer and preceding context. */
+  async reviewReply(messageId: string): Promise<void> {
+    const message = this.host.findMessage(messageId)
+    const agent = this.agent
+    if (!message || !agent || this.replyControllers.has(messageId)) return
+
+    const messages = this.buildContext(message)
+    const controller = new AbortController()
+    this.replyControllers.set(messageId, controller)
+    this.replyReviews.value[messageId] = { streaming: true, streamingContent: '', error: null }
+    const progress = toRefs(this.replyReviews.value[messageId])
+    message.interceptorName = agent.name
+    message.interceptorCollapsed = false
+    message.interceptorChat ??= []
+    this.host.updateVisibleMessages()
+    try {
+      await this.runTurn(message, messages, progress, controller, agent)
+      if (!controller.signal.aborted && this.host.findMessage(messageId)) await this.host.save()
+    } finally {
+      if (this.replyControllers.get(messageId) === controller)
+        this.replyControllers.delete(messageId)
+    }
   }
 
   async retry(): Promise<void> {
@@ -216,7 +261,7 @@ export class ChatInterceptor {
     draft.interceptorChat = [...(draft.interceptorChat || []), userReply]
     this.host.updateVisibleMessages()
 
-    const messages = this.buildContext(draft.content)
+    const messages = this.buildContext(draft)
     for (const msg of draft.interceptorChat) {
       if (msg.role === 'user') {
         messages.push({ role: 'user', content: msg.content, timestamp: msg.timestamp })
@@ -239,6 +284,9 @@ export class ChatInterceptor {
   abort(): void {
     this.abortController?.abort()
     this.scriptController?.abort()
+    for (const controller of this.replyControllers.values()) controller.abort()
+    this.replyControllers.clear()
+    this.replyReviews.value = {}
   }
 
   /**
@@ -246,61 +294,73 @@ export class ChatInterceptor {
    *
    * An aborted stream returns silently — the user cancelled, which is not an error to report.
    */
-  private async runTurn(draft: ChatMessage, messages: Message[]): Promise<void> {
-    const agent = this.agent
+  private async runTurn(
+    draft: ChatMessage,
+    messages: Message[],
+    progress: ReviewRefs = {
+      streaming: this.streaming,
+      streamingContent: this.streamingContent,
+      error: this.error,
+    },
+    controller = new AbortController(),
+    agent = this.agent
+  ): Promise<void> {
     if (!agent) return
-
-    const registry = AgentRegistry.getInstance()
-    const model = registry.resolveModel(agent)
-    if (!model) {
-      this.error.value = `Interceptor "${agent.name}" has no usable model configured`
-      return
-    }
-
-    const systemPrompt = await registry.buildSystemPrompt(agent)
-
-    console.debug('[Abele interceptor]', {
-      agent: agent.name,
-      modelId: model.id,
-      baseUrl: model.baseUrl,
-      hasKey: !!model.apiKey,
-    })
-
-    const client = new OpenAIClient()
-    this.abortController = new AbortController()
-    this.streaming.value = true
-    this.streamingContent.value = ''
-
+    const foreground = progress.streaming === this.streaming
+    if (foreground) this.abortController = controller
+    progress.streaming.value = true
+    progress.streamingContent.value = ''
+    progress.error.value = null
     try {
+      const registry = AgentRegistry.getInstance()
+      const model = registry.resolveModel(agent)
+      if (!model) {
+        progress.error.value = `Interceptor "${agent.name}" has no usable model configured`
+        return
+      }
+
+      const systemPrompt = await registry.buildSystemPrompt(agent)
+
+      console.debug('[Abele interceptor]', {
+        agent: agent.name,
+        modelId: model.id,
+        baseUrl: model.baseUrl,
+        hasKey: !!model.apiKey,
+      })
+
+      if (controller.signal.aborted) return
+      const client = new OpenAIClient()
       let response = ''
       for await (const event of client.stream(model, systemPrompt, messages, [], {
-        signal: this.abortController.signal,
+        signal: controller.signal,
       })) {
+        if (controller.signal.aborted) return
         if (event.type === 'text_delta') {
           response += event.delta
-          this.streamingContent.value = response
+          progress.streamingContent.value = response
         }
       }
 
-      if (response.trim()) {
+      const current = this.host.findMessage(draft.id)
+      if (!controller.signal.aborted && current && response.trim()) {
         const chatMsg: InterceptorChatMessage = {
           id: nanoid(),
           role: 'assistant',
           content: response.trim(),
           timestamp: Date.now(),
         }
-        draft.interceptorChat = [...(draft.interceptorChat || []), chatMsg]
+        current.interceptorChat = [...(current.interceptorChat || []), chatMsg]
         this.host.updateVisibleMessages()
       }
     } catch (err) {
-      if (this.abortController?.signal.aborted) return
+      if (controller.signal.aborted) return
       const message = err instanceof Error ? err.message : String(err)
       console.error('[Abele interceptor error]', err)
-      this.error.value = message
+      progress.error.value = message
     } finally {
-      this.streaming.value = false
-      this.streamingContent.value = ''
-      this.abortController = null
+      progress.streaming.value = false
+      progress.streamingContent.value = ''
+      if (foreground && this.abortController === controller) this.abortController = null
     }
   }
 
@@ -310,12 +370,15 @@ export class ChatInterceptor {
    * Prior messages are flattened into `[role]: text` user turns rather than replayed as a real
    * conversation, so the reviewer reads them as material to judge rather than as its own past.
    */
-  private buildContext(draftContent: string): Message[] {
+  private buildContext(draft: ChatMessage): Message[] {
     const msgs: Message[] = []
     const depth = this.contextDepth.value
 
     if (depth !== 0) {
-      const visible = this.host.messages.value.filter(
+      const history = this.host.messages.value
+      const at = history.findIndex((m) => m.id === draft.id)
+      // Only what preceded this message, even on retry after later turns have arrived.
+      const visible = (at < 0 ? [] : history.slice(0, at)).filter(
         (m) => !m.draft && (m.role === 'user' || m.role === 'assistant')
       )
       const slice = depth === -1 ? visible : visible.slice(-depth)
@@ -324,7 +387,7 @@ export class ChatInterceptor {
       }
     }
 
-    msgs.push({ role: 'user', content: draftContent, timestamp: Date.now() })
+    msgs.push({ role: 'user', content: draft.content, timestamp: draft.timestamp })
     return msgs
   }
 }
