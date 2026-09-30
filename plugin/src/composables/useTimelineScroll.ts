@@ -36,7 +36,7 @@ export function useTimelineScroll(
 
   const placeScroll = (owner: HTMLElement, to: number) => {
     const space = anchorSpace.value
-    if (space) space.style.height = '0px'
+    if (space) space.style.removeProperty('height')
     owner.scrollTop = Math.max(0, to)
     if (space && owner.scrollTop < to - 0.5) {
       // A short list otherwise has no scroll range with which to compensate for an insertion.
