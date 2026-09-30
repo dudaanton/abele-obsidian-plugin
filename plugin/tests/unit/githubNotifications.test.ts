@@ -228,6 +228,35 @@ describe('polling', () => {
   })
 })
 
+describe('marking done', () => {
+  it('DELETEs the thread and removes it from both cached lists, only after success', async () => {
+    const { client, request } = fakeClient((req) =>
+      req.method === 'DELETE' ? { status: 204 } : { json: LIST }
+    )
+    const inbox = new NotificationInbox(client)
+    await inbox.load('all')
+    await inbox.load('unread')
+    await inbox.markDone('1')
+    expect(request.mock.calls[2][0].method).toBe('DELETE')
+    expect(request.mock.calls[2][0].url).toBe('https://api.github.com/notifications/threads/1')
+    expect(inbox.cached('all')?.map((n) => n.id)).toEqual(['2'])
+    expect(inbox.cached('unread')?.map((n) => n.id)).toEqual(['2'])
+  })
+
+  it.each([403, 304])(
+    'does not remove a thread when DELETE answers %s rather than 204',
+    async (status) => {
+      const { client } = fakeClient((req) =>
+        req.method === 'DELETE' ? { status, json: { message: 'Not done' } } : { json: LIST }
+      )
+      const inbox = new NotificationInbox(client)
+      await inbox.load('all')
+      await expect(inbox.markDone('1')).rejects.toBeInstanceOf(Error)
+      expect(inbox.cached('all')?.map((n) => n.id)).toEqual(['2', '1'])
+    }
+  )
+})
+
 describe('marking read', () => {
   it('PATCHes one thread and PUTs all of them up to when the list was read', async () => {
     vi.spyOn(Date, 'now').mockImplementation(() => Date.parse('2026-09-03T12:00:00Z'))

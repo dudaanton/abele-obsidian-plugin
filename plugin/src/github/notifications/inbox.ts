@@ -1,5 +1,5 @@
 /**
- * The notifications of the account the token belongs to: read, kept, and marked read on GitHub.
+ * The notifications of the account the token belongs to: listed, marked read or done on GitHub.
  *
  * GitHub asks that notifications be polled gently. Every answer carries `X-Poll-Interval` — the
  * seconds to wait before asking again — and `Last-Modified`, which goes back as
@@ -44,6 +44,8 @@ interface Kept {
   listedAt: string
   pollSeconds: number
   truncated: boolean
+  /** Known limitations reported by the successful response, not an authentication error. */
+  accessHint: string
 }
 
 export interface InboxPage {
@@ -52,6 +54,24 @@ export interface InboxPage {
   pollSeconds: number
   /** More than the pages read: the list stops short of what GitHub has. */
   truncated: boolean
+  accessHint: string
+}
+
+/** Do not infer scopes when GitHub did not report them, or demand broader access to read. */
+function accessHint(headers: Record<string, string>): string {
+  const hints: string[] = []
+  const scopes = header(headers, 'x-oauth-scopes')
+  if (scopes !== undefined && !scopes.split(',').some((s) => s.trim() === 'repo')) {
+    hints.push(
+      'This token has no repo scope. If private repository notifications are missing, check the token’s repository access. Organizations may also require SSO authorization or allow access only to approved tokens.'
+    )
+  }
+  if (header(headers, 'x-github-sso')?.includes('partial-results')) {
+    hints.push(
+      'GitHub reports partial results: authorize this token for the missing organizations with Configure SSO on GitHub.'
+    )
+  }
+  return hints.join(' ')
 }
 
 /** Where a classic token is made, and what to tick. */
@@ -214,13 +234,19 @@ export class NotificationInbox {
       listedAt: new Date(now).toISOString(),
       pollSeconds,
       truncated,
+      accessHint: accessHint(first.headers),
     }
     this.kept.set(which, fresh)
     return this.page(fresh)
   }
 
   private page(k: Kept): InboxPage {
-    return { items: k.items, pollSeconds: k.pollSeconds, truncated: k.truncated }
+    return {
+      items: k.items,
+      pollSeconds: k.pollSeconds,
+      truncated: k.truncated,
+      accessHint: k.accessHint,
+    }
   }
 
   /** Marks what is kept read, in every list, without asking GitHub. */
@@ -228,6 +254,18 @@ export class NotificationInbox {
     for (const k of this.kept.values()) {
       k.items = k.items.map((n) => (n.unread && read(n) ? { ...n, unread: false } : n))
     }
+  }
+
+  /** Done removes a thread from GitHub's inbox; Read only removes its unread emphasis. */
+  async markDone(id: string): Promise<void> {
+    const answer = await this.client.call(
+      'DELETE',
+      `/notifications/threads/${encodeURIComponent(id)}`,
+      { what: 'marking the notification done' }
+    )
+    // Unlike Read, Done has only one documented successful status; 304 is not a deletion.
+    if (answer.error || answer.status !== 204) this.refuse(answer)
+    for (const k of this.kept.values()) k.items = k.items.filter((n) => n.id !== id)
   }
 
   /** Marks one thread read on GitHub — `PATCH /notifications/threads/{id}`. */

@@ -584,7 +584,9 @@ drag over it does not fold the diff.
 notifications of the account the token belongs to in the right sidebar. Each row says the
 repository, the title, what it is (pull request, issue, discussion, release…), why it arrived
 (mentioned, review requested, assigned…) and how long ago. Unread ones stand out; the strip at
-the top shows the unread only or all of them, and the list below it narrows to one repository.
+the top shows **All** by default (read and unread, like GitHub's inbox) or **Unread**, and the
+list below it narrows to one repository. Older saved panels switch once from the old unread-only
+default to All; after that a chosen Unread filter is saved as usual.
 
 A click opens what the notification is about. It does not mark it read — reading is marked by
 hand, so a notification looked at and left for later stays unread:
@@ -598,13 +600,17 @@ hand, so a notification looked at and left for later stays unread:
 - a release, a workflow run, a security alert or an invitation on GitHub, which is the only
   place that shows them.
 
-The check on an unread row marks it read on GitHub; it stays in the unread list, no longer
-standing out, until the list is refreshed by hand. Nothing leaves the list on its own while it is
-open: when a round of polling finds a row no longer unread — marked read here, or on another
-device or in the browser — the row stays where it was, no longer standing out, and goes at the
-next refresh by hand or change of filter. The double check at the top marks
-everything read — or, with a repository chosen, everything of that repository — up to the
-moment the list was read, so one that arrived since is not marked unseen.
+The check on **every row**, read or unread, means **Done**, just like the check on GitHub:
+`DELETE /notifications/threads/{id}` removes it from both inboxes. It does not unsubscribe from
+the thread. A refusal leaves the notification in the local cache and explains the error.
+**Read** is different: it removes the unread emphasis, but leaves the notification in the inbox.
+
+Polling still does not take a row out from under the reader: a row no longer returned by GitHub
+stays on screen, no longer standing out, until refresh by hand or a filter change. An explicit
+Done removes the row immediately after GitHub confirms it. The double check at the top means
+**Mark all as read, not Done** — or, with a repository chosen, everything of that repository —
+up to the moment the list was read, so one that arrived since is not marked unseen. Read rows
+remain in All. GitHub's REST API has no bulk Done endpoint; the tooltip names this distinction.
 
 The list is read when the panel opens and again whenever GitHub's poll interval comes round
 while it is open (`X-Poll-Interval`, a minute as a rule); the refresh button asks straight away.
@@ -623,6 +629,18 @@ empty, or with nothing under it in this device's keychain, the panel reads with 
 A refusal says which token was refused and where the fix goes: with the main token, that a
 classic one belongs in **Notifications token**; with the notifications token, that it is not a
 classic one, lacks the scope, or was not accepted.
+
+A successful list can still differ from the web account's inbox because the token's access is
+not the same as the browser session's. When GitHub reports `X-OAuth-Scopes` without `repo`, a
+quiet hint suggests checking private repository access; it does **not** require changing the
+token, and no missing scope is inferred if the header is absent. The `notifications` scope
+remains sufficient to use the panel; `repo` also grants broad repository access and is needed to
+read private issue and commit content. Organizations may require SSO authorization of the
+classic token or restrict token access. A successful response with `X-GitHub-SSO: partial-results`
+also shows a hint to authorize the token for the missing organizations.
+
+API semantics: [Notifications REST API](https://docs.github.com/en/rest/activity/notifications)
+and [Managing the web inbox](https://docs.github.com/en/subscriptions-and-notifications/how-tos/viewing-and-triaging-notifications/managing-notifications-from-your-inbox).
 
 ## Access
 

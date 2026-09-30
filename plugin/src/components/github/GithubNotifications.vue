@@ -14,8 +14,8 @@
           icon="check-check"
           :tooltip="
             state.repo
-              ? `Mark all of ${state.repo} as read on GitHub`
-              : 'Mark all as read on GitHub'
+              ? `Mark all of ${state.repo} as read on GitHub (keep in inbox, not Done)`
+              : 'Mark all as read on GitHub (keep in inbox, not Done)'
           "
           :disabled="busy || !unreadCount"
           @click="markAllRead"
@@ -45,6 +45,10 @@
         :model-value="state.repo"
         @update:model-value="setRepo"
       />
+    </div>
+
+    <div v-if="enabled && accessHint" class="abele-github-notifications__access-hint">
+      {{ accessHint }}
     </div>
 
     <EmptyState v-if="!enabled">
@@ -85,17 +89,12 @@
             </div>
           </div>
           <!-- Its own click, never the row's: a check pressed while it is busy opens nothing. -->
-          <span
-            v-if="n.unread"
-            class="abele-github-notification__mark"
-            @click.stop
-            @keydown.enter.stop
-          >
+          <span class="abele-github-notification__mark" @click.stop @keydown.enter.stop>
             <Icon
               icon="check"
-              tooltip="Mark as read on GitHub"
+              tooltip="Done on GitHub (remove from inbox)"
               :disabled="marking.has(n.id)"
-              @click="markRead(n)"
+              @click="markDone(n)"
             />
           </span>
         </div>
@@ -124,7 +123,8 @@ import { ago, reasonText, subjectType, type GithubNotification } from '@/github/
  * The notifications of the account the GitHub token belongs to, as a sidebar list: unread ones
  * stand out, the list can be narrowed to the unread or to one repository, and each row opens what
  * it is about — a pull request, an issue, a discussion — in a GitHub tab. Opening leaves it
- * unread: only a row's check marks it read on GitHub, and the button at the top marks all of them.
+ * unread: a row's check marks it Done and removes it from both inboxes. The top button marks
+ * everything read without marking Done. All (read and unread) is the default, as on GitHub.
  *
  * Read when the list opens and whenever GitHub's poll interval comes round while it is open;
  * the refresh button asks straight away. See `notifications/inbox.ts` for what that costs. A
@@ -157,6 +157,7 @@ const items = shallowRef<GithubNotification[] | null>(null)
 const error = ref('')
 const busy = ref(false)
 const truncated = ref(false)
+const accessHint = ref('')
 const marking = reactive(new Set<string>())
 const now = ref(Date.now())
 const pollSeconds = ref(60)
@@ -182,7 +183,7 @@ const unreadCount = computed(() => shown.value.filter((n) => n.unread).length)
 
 const whichTabs = computed(() => [
   { id: 'unread', label: 'Unread', tooltip: 'Only the notifications not read yet' },
-  { id: 'all', label: 'All', tooltip: 'Read ones too' },
+  { id: 'all', label: 'All', tooltip: 'GitHub inbox: read and unread, not Done' },
 ])
 
 const repoOptions = computed(() => {
@@ -246,6 +247,7 @@ async function refresh(force = false) {
       items.value = force || !items.value ? page.items : keepInView(items.value, page.items)
       if (force) readHere.clear()
       truncated.value = page.truncated
+      accessHint.value = page.accessHint
       pollSeconds.value = page.pollSeconds
       error.value = ''
     }
@@ -280,14 +282,14 @@ function setRepo(repo: string) {
   emit('state')
 }
 
-/** Marks one read on GitHub; the row stays where it is, no longer standing out. */
-async function markRead(n: GithubNotification) {
+/** Done on GitHub and here, including a read row retained on screen after an unread poll. */
+async function markDone(n: GithubNotification) {
   if (marking.has(n.id)) return
   marking.add(n.id)
   try {
-    await inbox().markRead(n.id)
-    readHere.add(n.id)
-    items.value = inbox().cached(props.state.which)
+    await inbox().markDone(n.id)
+    readHere.delete(n.id)
+    items.value = (items.value ?? []).filter((item) => item.id !== n.id)
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -314,7 +316,7 @@ async function markAllRead() {
 
 /**
  * Opens what the notification is about by the clicks of any link here — plain by the tab rule,
- * Mod in a new tab, Alt on GitHub. It stays unread: marking read is the check's alone.
+ * Mod in a new tab, Alt on GitHub. It stays unread: opening is not Read or Done.
  */
 async function open(n: GithubNotification, event: MouseEvent | KeyboardEvent) {
   const pane = event instanceof MouseEvent ? paneForClick(event, false) : false
@@ -368,6 +370,7 @@ defineExpose({ refresh })
     padding: 0 var(--size-4-1);
   }
 
+  &__access-hint,
   &__more {
     padding: var(--size-4-2) var(--size-4-3);
     color: var(--text-faint);

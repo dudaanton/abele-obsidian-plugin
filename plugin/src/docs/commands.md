@@ -61,14 +61,19 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   Alt+Enter pins or unpins the row. A GitHub tab's "more options" menu has the same command, and
   **Pin repository** / **Unpin repository** for the repository it shows (only while the GitHub
   integration is on)
-- Show GitHub notifications — the account's GitHub notifications in the right sidebar: unread or
-  all, one repository or all. A click opens the pull request, issue, commit or discussion in a
-  GitHub tab (at the latest comment) and leaves it unread; only a row's check marks it read on
-  GitHub, and the panel's double check marks all of them (of the chosen repository).
+- Show GitHub notifications — the account's GitHub inbox in the right sidebar: All (read and
+  unread, not Done) by default, or Unread; one repository or all. Old unread-only saved panels
+  migrate once to All. A click opens the pull request, issue, commit or discussion in a GitHub
+  tab (at the latest comment) and leaves it unread. Every row's check means Done on GitHub
+  (DELETE thread), removing it from both inboxes, not unsubscribing. The panel's double check
+  marks all read (of the chosen repository), not Done: read rows remain in All. There is no
+  bulk Done REST endpoint. Polling keeps disappeared rows dimmed until refresh or filter change.
   Releases, workflow runs and alerts open on GitHub. Needs a classic token with the
   `notifications` or `repo` scope — GitHub does not let a fine-grained token read notifications —
   read from its own setting, `github.notifications.keyId` (Notifications token), else the main
-  token.
+  token. Successful replies without `repo` in `X-OAuth-Scopes` show a quiet private-access hint;
+  `X-GitHub-SSO: partial-results` hints at missing organization authorization. Neither blocks
+  the list or changes which token scopes are required.
   Also in a GitHub tab's "more options" menu (only while the GitHub integration is on)
 - Chat about this GitHub item — in a GitHub tab: a new chat with a link to the item in the
   input. The same is the speech-bubble button in the tab's header and in its "more options"

@@ -12,7 +12,7 @@ import { githubSettings, notificationsClient, openGithubUrl } from '../GithubSer
 export const GITHUB_NOTIFICATIONS_VIEW_TYPE = 'abele-github-notifications'
 
 export class NotificationsView extends ItemView {
-  readonly state: NotificationsState = reactive({ which: 'unread', repo: '' })
+  readonly state: NotificationsState = reactive({ which: 'all', repo: '' })
   private vue: VueApp | null = null
 
   constructor(leaf: WorkspaceLeaf) {
@@ -32,12 +32,14 @@ export class NotificationsView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return { which: this.state.which, repo: this.state.repo }
+    return { which: this.state.which, repo: this.state.repo, inboxVersion: 1 }
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    const s = (state ?? {}) as { which?: unknown; repo?: unknown }
-    if (s.which === 'unread' || s.which === 'all') this.state.which = s.which
+    const s = (state ?? {}) as { which?: unknown; repo?: unknown; inboxVersion?: unknown }
+    // Old layouts inherited an unread-only default unlike GitHub's inbox. Migrate once; a
+    // deliberate Unread choice saved by this version still travels through the layout.
+    this.state.which = s.inboxVersion === 1 && s.which === 'unread' ? 'unread' : 'all'
     if (typeof s.repo === 'string') this.state.repo = s.repo
     await super.setState(state, result)
   }
