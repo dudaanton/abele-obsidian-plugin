@@ -117,9 +117,15 @@ async function putBinary(device: Device, path: string, bytes: Uint8Array): Promi
   if (device === 'desktop') {
     // Large local diagnostic EPUBs/fonts need not traverse hundreds of CLI eval messages.
     // Use the leased vault's filesystem boundary and wait for its ordinary file watcher.
-    const root = await run<string>('desktop', `return JSON.stringify(app.vault.adapter.getBasePath())`)
+    const root = await run<string>(
+      'desktop',
+      `return JSON.stringify(app.vault.adapter.getBasePath())`
+    )
     writeFileSync(join(root, path), bytes, { flag: 'wx' })
-    await run('desktop', `await until(()=>app.vault.getAbstractFileByPath(${JSON.stringify(path)}));return JSON.stringify(true)`)
+    await run(
+      'desktop',
+      `await until(()=>app.vault.getAbstractFileByPath(${JSON.stringify(path)}));return JSON.stringify(true)`
+    )
     return
   }
   const data = Buffer.from(bytes).toString('base64')
@@ -445,6 +451,16 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
       )
       await check(`followed-zoom-${zoom}`, second)
     }
+    await run(
+      'desktop',
+      `
+      const wc=require('@electron/remote').getCurrentWebContents();wc.setZoomFactor(${local.zoom ?? 1.1})
+      view().model.panel=true
+      await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:1800,height:800,deviceScaleFactor:1,mobile:false})
+      return JSON.stringify(true)
+    `
+    )
+    expect((await check('followed-two-columns-sidebar-zoomed', second)).columns).toBe(2)
     await run(
       'desktop',
       `
