@@ -146,21 +146,24 @@ export const probePrelude = (shots: string): string => `
    * ever for a frame that never comes; a nudge of the window's size makes one, so a capture
    * that has not answered in five seconds is asked again after one.
    */
-  const shoot = async (label) => {
-    for (const el of document.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
+  const shoot = async (label, doc = document) => {
+    // Settings can live in another renderer. Capture (and nudge) that window, not the vault
+    // window whose test hook is running the probe.
+    const target = doc === document ? win : doc.defaultView.require('@electron/remote').getCurrentWindow()
+    for (const el of doc.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
     await wait(400)
     let img = null
     for (let attempt = 0; attempt < 3 && !img; attempt++) {
       try {
-        img = await Promise.race([win.webContents.capturePage(), wait(5000).then(() => null)])
+        img = await Promise.race([target.webContents.capturePage(), wait(5000).then(() => null)])
       } catch (error) {
         img = null
       }
       if (!img) {
-        const [w, h] = win.getContentSize()
-        win.setContentSize(w + 2, h + 2)
+        const [w, h] = target.getContentSize()
+        target.setContentSize(w + 2, h + 2)
         await wait(300)
-        win.setContentSize(w, h)
+        target.setContentSize(w, h)
         await wait(500)
       }
     }
@@ -184,7 +187,7 @@ export const probePrelude = (shots: string): string => `
     const entry = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, width: window.innerWidth, shot: '', error: '', extra: {} }
     try {
       if (!root) throw new Error('nothing to measure')
-      entry.shot = await shoot(label)
+      entry.shot = await shoot(label, root.ownerDocument)
       Object.assign(entry, measure(root, body))
       entry.clipped = ringsOf(root)
     } catch (e) {
