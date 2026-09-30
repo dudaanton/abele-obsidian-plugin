@@ -3,7 +3,10 @@ import { generateChangelog } from '../../scripts/changelog.mjs'
 import { compareVersions } from '@/changelog/model'
 
 it('includes every reviewed historical version and stable UTC metadata', () => {
-  const releases = generateChangelog()
+  // This invariant audits committed historical data, including during a release's
+  // pre-commit hook when a higher version is staged but its bump commit does not exist yet.
+  // Production generation separately validates the working-tree version without this option.
+  const releases = generateChangelog(undefined, { revision: 'HEAD' })
   expect(
     releases.filter((release) => compareVersions(release.version, '1.58.0')! <= 0)
   ).toHaveLength(122)

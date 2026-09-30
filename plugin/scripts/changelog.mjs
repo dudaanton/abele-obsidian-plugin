@@ -26,7 +26,9 @@ export function subjectBullet(subject, override) {
   return text ? [group, text] : null
 }
 
-/** Full Git history is mandatory; never ship a truncated or silently empty catalog. */
+/** Full Git history is mandatory; never ship a truncated or silently empty catalog.
+ * An explicit options.revision reads BOTH version metadata and history from that commit.
+ * Default production generation still validates the working-tree release version. */
 export function generateChangelog(root = project, options = {}) {
   const git = (...args) => gitAt(root, args)
   const fail = (message) => {
@@ -34,14 +36,25 @@ export function generateChangelog(root = project, options = {}) {
   }
   if (git('rev-parse', '--is-shallow-repository') === 'true')
     fail('shallow repository; fetch full history and tags')
-  const target = JSON.parse(readFileSync(resolve(root, 'manifest.json'), 'utf8')).version
-  const packagePath = existsSync(resolve(root, 'plugin/package.json'))
-    ? 'plugin/package.json'
-    : 'package.json'
-  const packageVersion = JSON.parse(readFileSync(resolve(root, packagePath), 'utf8')).version
+  const head = git(
+    'rev-parse',
+    '--verify',
+    '--end-of-options',
+    `${options.revision ?? 'HEAD'}^{commit}`
+  )
+  const committed = options.revision !== undefined
+  const readMetadata = (path) =>
+    JSON.parse(
+      committed ? git('show', `${head}:${path}`) : readFileSync(resolve(root, path), 'utf8')
+    )
+  const target = readMetadata('manifest.json').version
+  const hasPluginPackage = committed
+    ? !!git('ls-tree', '-r', '--name-only', head, '--', 'plugin/package.json')
+    : existsSync(resolve(root, 'plugin/package.json'))
+  const packagePath = hasPluginPackage ? 'plugin/package.json' : 'package.json'
+  const packageVersion = readMetadata(packagePath).version
   if (target !== packageVersion || !version(target))
     fail('manifest and package versions differ or are invalid')
-  const head = git('rev-parse', 'HEAD')
   const isAncestor = (a, b) => {
     try {
       git('merge-base', '--is-ancestor', a, b)

@@ -7,6 +7,34 @@ import { generateChangelog } from '../../scripts/changelog.mjs'
 import { gitEnvironment } from '../../scripts/changelog-git.mjs'
 import { changelogFixture } from '../helpers/changelogFixture'
 
+it('checks committed history during a staged bump while rejecting that bump as a release build', () => {
+  const f = changelogFixture()
+  try {
+    f.commit('feat: sample feature')
+    f.bump('1.0.0')
+    const before = JSON.stringify(generateChangelog(f.root, { historical: [] }))
+    writeFileSync(join(f.root, 'manifest.json'), '{"version":"1.1.0"}')
+    writeFileSync(join(f.root, 'package.json'), '{"version":"1.1.0"}')
+    f.git('add', 'manifest.json', 'package.json')
+    expect(JSON.stringify(generateChangelog(f.root, { historical: [], revision: 'HEAD' }))).toBe(
+      before
+    )
+    expect(() => generateChangelog(f.root, { historical: [] })).toThrow(
+      /current version.*no release boundary/
+    )
+    f.commit('chore: bump version to 1.1.0')
+    const pending = JSON.stringify(generateChangelog(f.root, { historical: [] }))
+    expect(generateChangelog(f.root, { historical: [] })[0].version).toBe('1.1.0')
+    f.git('tag', '1.1.0')
+    expect(JSON.stringify(generateChangelog(f.root, { historical: [] }))).toBe(pending)
+    expect(JSON.stringify(generateChangelog(f.root, { historical: [], revision: '1.0.0' }))).toBe(
+      before
+    )
+  } finally {
+    f.dispose()
+  }
+})
+
 it('reports unrecognized public subjects for review without shipping them', () => {
   const f = changelogFixture()
   try {

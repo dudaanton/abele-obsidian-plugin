@@ -72,14 +72,19 @@ and clean-clone/cwd/timezone determinism. Git child environments strip every inh
 hook context cannot redirect fixture writes or generator reads.
 
 Fast tests use a fixed virtual-module alias; the separate catalog invariant checks historical
-boundaries without copying real subjects into fixtures. Component and adapter tests cover
+boundaries at committed `HEAD`, reading both version metadata and history from that revision,
+without copying real subjects into fixtures. This keeps the invariant meaningful during a
+pre-commit hook with a higher version staged. Default production generation still checks the
+working-tree version and rejects an uncommitted release bump. Component and adapter tests cover
 paging, range restoration, plain text, entry points, storage and Notice lifecycle. Focused
 live tests cover the view, settings action and update controls; the phone layout and focus-ring
 probes include them. A Notice is not registered as a modal or required to fill a sheet.
 
 A release check must use a complete clean clone, including tags, then `npm ci` and
 `npm run build` from `plugin/`. No untracked input is needed.
-`node scripts/check-changelog-build.mjs` exercises `release.sh` only inside a disposable
-full clone, then builds that synthetic tag in two clean clones under different timezones
-and compares both release-file hashes. It never tags or commits in the source checkout. The wider e2e batch and final
+`node scripts/check-changelog-build.mjs` explicitly enables the executable pre-commit hook
+inside a disposable full clone (independent of npm lifecycle-script configuration), then
+exercises `release.sh`. It asserts that the hook ran, the bump commit and tag succeeded and
+the catalog includes the new version. It builds that synthetic tag in two clean clones
+under different timezones and compares both release-file hashes. It never tags or commits in the source checkout. The wider e2e batch and final
 release clean-clone gate remain separate from focused feature verification.
