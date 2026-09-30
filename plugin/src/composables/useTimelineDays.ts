@@ -17,17 +17,14 @@ export function useTimelineDays<T>(
   const eligible = computed(() => all.value.filter(([day]) => day >= start.value))
   const pageEnd = (pages = 1) => eligible.value.slice(0, pageSize * pages).at(-1)?.[0] ?? null
   upper.value = pageEnd(memory.initial)
-  // The sidebar can mount before the vault's tasks arrive.
-  watch(
-    all,
-    () => {
-      if (upper.value === null) {
-        if (terms().length) lower.value = all.value[0]?.[0] ?? null
-        upper.value = pageEnd(terms().length ? 1 : memory.initial)
-      }
-    },
-    { flush: 'sync' }
-  )
+  // The sidebar can mount before the vault's tasks arrive. Keep the default batched watch:
+  // synchronous reads would rebuild every date for each task as a large relation set loads.
+  watch(all, () => {
+    if (upper.value === null) {
+      if (terms().length) lower.value = all.value[0]?.[0] ?? null
+      upper.value = pageEnd(terms().length ? 1 : memory.initial)
+    }
+  })
   const visible = computed(() =>
     eligible.value.filter(([day]) => upper.value === null || day <= upper.value)
   )
