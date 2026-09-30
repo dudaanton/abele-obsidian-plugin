@@ -28,6 +28,7 @@ import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader selecting e2e'
@@ -38,7 +39,6 @@ const PHONE = { width: 390, height: 844 }
 const DESKTOP = { width: 1280, height: 800 }
 const SHOTS = shotDir('abele-phone')
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const windowSize = (): [number, number] =>
   evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
 const setWindowSize = async (width: number, height: number): Promise<void> => {
@@ -46,7 +46,11 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  const sized = evalAsync<boolean>(`(async () => {
+    ${WAIT_PRELUDE}
+    return !!(await until(() => innerWidth === ${width} && innerHeight === ${height}))
+  })()`)
+  if (!sized) throw new Error('The window did not reach its requested size')
 }
 /**
  * The app's DevTools debugger, which the touches and clicks here are sent through, attached the
@@ -64,12 +68,9 @@ const reload = async (how: string): Promise<void> => {
 }
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 8000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
-    return null
-  }
+  ${WAIT_PRELUDE}
+  // Keep gesture timing and no-page-turn observation windows: an immediately unchanged page
+  // does not prove that a long press or a released selection cannot turn it later.
   const cdp = require('@electron/remote').getCurrentWebContents().debugger
   const touch = (type, x, y) =>
     cdp.sendCommand('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(y) }] })
@@ -88,7 +89,8 @@ const PRELUDE = `
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 15000)
     const view = leaf.view
-    await wait(500)
+    if (!(await until(() => view.engine.renderer.getContents()[0]?.doc?.body?.getBoundingClientRect().height > 0)))
+      throw Error('The book did not draw its document')
     return { leaf, view }
   }
   const R = (view) => view.engine.renderer
@@ -97,12 +99,19 @@ const PRELUDE = `
   /** Chapter 1, its second page, nothing selected and no bar open. */
   const fresh = async (view) => {
     // The contents panel, which the desktop remembers open, would stand over the page.
-    if (view.model.panel) { view.model.panel = false; await wait(400) }
+    view.model.panel = false
+    if (!(await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))))
+      throw Error('The contents panel did not close')
     view.reading.clearSelection(); view.model.active = null
-    await view.engine.goTo(view.model.toc[0].href); await wait(500)
-    await R(view).next(); await wait(700)
+    await view.engine.goTo(view.model.toc[0].href)
+    if (!(await until(() => docOf(view).querySelector('h1')?.textContent === 'Chapter 1' && R(view).page === 1)))
+      throw Error('The first chapter did not open at its start')
+    await R(view).next()
+    if (!(await until(() => R(view).page === 2 && words(view).length > 5)))
+      throw Error('The second page did not draw its words')
     view.reading.clearSelection(); view.model.active = null
-    await wait(300)
+    if (!(await until(() => docOf(view).getSelection().isCollapsed && !view.contentEl.querySelector('.abele-book-selection'))))
+      throw Error('The previous selection did not clear')
   }
   /** Where a word on the page on screen is, in the window: its range and its box. */
   const words = (view) => {
@@ -211,7 +220,14 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       panels = evalJson<[boolean, boolean]>(
         `(() => { const w = app.workspace, was = [w.leftSplit.collapsed, w.rightSplit.collapsed]; w.leftSplit.collapse(); w.rightSplit.collapse(); return was })()`
       )
-      await pause(800)
+      const collapsed = evalAsync<boolean>(`(async () => {
+        ${WAIT_PRELUDE}
+        return !!(await until(() => ['leftSplit', 'rightSplit'].every(side => {
+          const split = app.workspace[side]
+          return split.collapsed && split.containerEl.getBoundingClientRect().width === 0
+        })))
+      })()`)
+      if (!collapsed) throw new Error('The side panels did not finish collapsing')
     }, 60_000)
     afterAll(() => {
       evalRaw(
@@ -241,7 +257,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await click(edge.right - 2)
         const clicked = [p0, R(view).page]
         const w = words(view)[5]
-        select(view, w.range); await wait(700)
+        select(view, w.range)
+        await until(() => view.model.selection?.text === w.range.toString() && !view.model.selecting)
         const p1 = R(view).page
         // Two thirds across: a clean click there turns; with words selected, only the very edge.
         const s = box(view)
@@ -250,7 +267,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         // That click let the words go, as a click beside a selection does: selected again.
         // A word of the right-hand column, as words reaching for the edge are.
         const chosen = words(view).filter((w) => w.x > s.left + s.width / 2)[3].range
-        select(view, chosen); await wait(700)
+        select(view, chosen)
+        await until(() => view.model.selection?.text === chosen.toString() && !view.model.selecting)
         const s2 = at(view)
         await click(s.right - 4)
         await wait(300)
@@ -309,7 +327,7 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const file = await until(() => app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}), 5000)
         const note = file ? await app.vault.read(file) : ''
         // Let go — highlighted — the pages come back to rest on a page's edge.
-        await wait(800)
+        await until(() => Math.abs(R(view).start / R(view).size - Math.round(R(view).start / R(view).size)) < 0.01)
         const aligned = Math.abs(R(view).start / R(view).size - Math.round(R(view).start / R(view).size)) < 0.01
         const pEnd = R(view).page
         leaf.detach()
@@ -768,7 +786,7 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const list = words(view)
         select(view, list[list.length - 1].range)
         await until(() => view.model.selection && !view.model.selecting && view.contentEl.querySelector('.abele-book-selection'), 3000)
-        await wait(200)
+        await until(() => !view.contentEl.querySelector('.abele-book-reader__footer'))
         const bar = rect(view.contentEl.querySelector('.abele-book-selection'))
         const withBar = rect(stageEl)
         const footerGone = !view.contentEl.querySelector('.abele-book-reader__footer')
@@ -776,7 +794,7 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         view.reading.clearSelection()
         await until(() => !view.contentEl.querySelector('.abele-book-selection'), 3000)
         view.model.speech = 'paused'
-        await wait(200)
+        await until(() => view.contentEl.querySelector('.abele-book-speech'))
         const speech = rect(view.contentEl.querySelector('.abele-book-speech'))
         await shoot('phone-speech-bar')
         view.model.speech = 'idle'
