@@ -30,6 +30,7 @@ export function useTimelineScroll(
 ) {
   let stopHolding = () => {}
   let disposeInput = () => {}
+  let alignedScroll: { owner: HTMLElement; top: number } | null = null
 
   const releaseSpace = () => anchorSpace.value?.style.removeProperty('height')
   const releaseUnusedSpace = (owner: HTMLElement) => {
@@ -55,6 +56,9 @@ export function useTimelineScroll(
       space.style.height = `${Math.max(0, offered - excess)}px`
       owner.scrollTop = to
     }
+    // Scroll events arrive asynchronously and can coalesce several alignments. Only the
+    // final position we actually wrote belongs to this hold, not a later reader movement.
+    alignedScroll = { owner, top: owner.scrollTop }
   }
 
   const hold = () => {
@@ -83,6 +87,7 @@ export function useTimelineScroll(
     const key = row.dataset.timelineItem
     const day = row.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor')
     const offset = row.getBoundingClientRect().top - viewport.top
+    let heldTop = owner.scrollTop
     let live = true
     let timeout = 0
     const extend = () => {
@@ -91,6 +96,12 @@ export function useTimelineScroll(
     }
     const align = () => {
       if (!live || !items.value) return
+      // Native scrolling can move before its scroll event is delivered. A resize callback
+      // or queued nextTick must not mistake that movement for a layout insertion.
+      if (Math.abs(owner.scrollTop - heldTop) > 0.5) {
+        stopHolding()
+        return
+      }
       extend()
       const target = Array.from(
         items.value.querySelectorAll<HTMLElement>('[data-timeline-item]')
@@ -102,7 +113,10 @@ export function useTimelineScroll(
       if (target) {
         const shift =
           target.getBoundingClientRect().top - owner.getBoundingClientRect().top - offset
-        if (Math.abs(shift) > 0.5) placeScroll(owner, owner.scrollTop + shift)
+        if (Math.abs(shift) > 0.5) {
+          placeScroll(owner, owner.scrollTop + shift)
+          heldTop = owner.scrollTop
+        }
       } else {
         releaseSpace()
         stopHolding()
@@ -158,14 +172,22 @@ export function useTimelineScroll(
       const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(followChrome)
       resize?.observe(owner)
       const scroll = () => {
+        const own =
+          alignedScroll?.owner === owner && Math.abs(owner.scrollTop - alignedScroll.top) < 0.5
+        alignedScroll = null
+        if (!own) stopHolding()
         followChrome()
         releaseUnusedSpace(owner)
       }
       // Input only releases a pending layout hold. No gesture ownership, prevention,
       // history reveal, synthetic displacement or extra scroll room on any input path.
-      const releaseHold = () => stopHolding()
+      const releaseHold = () => {
+        alignedScroll = null
+        stopHolding()
+      }
       owner.addEventListener('wheel', releaseHold, { passive: true })
       owner.addEventListener('touchstart', releaseHold, { passive: true })
+      owner.addEventListener('touchmove', releaseHold, { passive: true })
       owner.addEventListener('keydown', releaseHold)
       owner.addEventListener('pointerdown', releaseHold, { passive: true })
       owner.addEventListener('scroll', scroll, { passive: true })
@@ -174,6 +196,7 @@ export function useTimelineScroll(
         window.cancelAnimationFrame(positionFrame)
         owner.removeEventListener('wheel', releaseHold)
         owner.removeEventListener('touchstart', releaseHold)
+        owner.removeEventListener('touchmove', releaseHold)
         owner.removeEventListener('keydown', releaseHold)
         owner.removeEventListener('pointerdown', releaseHold)
         owner.removeEventListener('scroll', scroll)

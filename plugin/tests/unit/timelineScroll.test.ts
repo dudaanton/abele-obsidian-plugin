@@ -20,7 +20,9 @@ async function pane(rowTop: number) {
   document.body.append(owner)
   let top = rowTop
   vi.spyOn(owner, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 400))
-  vi.spyOn(row, 'getBoundingClientRect').mockImplementation(() => new DOMRect(0, top, 300, 40))
+  vi.spyOn(row, 'getBoundingClientRect').mockImplementation(
+    () => new DOMRect(0, top - (owner.scrollTop - 100), 300, 40)
+  )
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1)
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
   owner.scrollTop = 100
@@ -44,10 +46,100 @@ async function pane(rowTop: number) {
     await nextTick()
     stop()
   }
-  return { owner, root, row, space, history, patch, shift: (amount: number) => (top += amount) }
+  return {
+    owner,
+    root,
+    row,
+    space,
+    history,
+    source,
+    patch,
+    shift: (amount: number) => (top += amount),
+  }
 }
 
 describe('timeline scroll ownership', () => {
+  const lateResize = () => {
+    const callbacks: ResizeObserverCallback[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          callbacks.push(callback)
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+    cleanups.push(() => vi.unstubAllGlobals())
+    return () => callbacks.forEach((callback) => callback([], {} as ResizeObserver))
+  }
+
+  it.each(['touchmove', 'wheel', 'keydown', 'pointerdown', 'scroll'])(
+    'releases a hold acquired after touchstart on continuing %s input before late layout',
+    async (type) => {
+      const resize = lateResize()
+      const p = await pane(50)
+      p.root.dispatchEvent(new Event('touchstart', { bubbles: true }))
+      // Paging can start a new hold in the middle of a pan, after touchstart already ran.
+      await p.patch(() => {})
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      if (type === 'scroll') p.owner.dispatchEvent(event)
+      else p.root.dispatchEvent(event)
+      p.shift(60)
+      resize()
+      expect(event.defaultPrevented).toBe(false)
+      expect(p.owner.scrollTop).toBe(100)
+    }
+  )
+
+  it('releases before a deferred align when native scroll moved but its event has not arrived', async () => {
+    const resize = lateResize()
+    const p = await pane(50)
+    await p.patch(() => {})
+    p.owner.scrollTop = 140
+    p.shift(-40)
+    resize()
+    expect(p.owner.scrollTop).toBe(140)
+  })
+
+  it('does not let a queued nextTick alignment undo a user scroll', async () => {
+    const p = await pane(50)
+    const stop = watch(
+      p.source,
+      () => {
+        p.owner.scrollTop = 140
+        p.shift(-40)
+        p.owner.dispatchEvent(new Event('scroll'))
+      },
+      { flush: 'post' }
+    )
+    try {
+      p.source.value++
+      await nextTick()
+      await nextTick()
+      expect(p.owner.scrollTop).toBe(140)
+    } finally {
+      stop()
+    }
+  })
+
+  it('keeps holding through its own scroll event, but releases on a later external scroll', async () => {
+    const resize = lateResize()
+    const p = await pane(50)
+    await p.patch(() => p.shift(50))
+    expect(p.owner.scrollTop).toBe(150)
+    p.owner.dispatchEvent(new Event('scroll'))
+    p.shift(20)
+    resize()
+    expect(p.owner.scrollTop).toBe(170)
+    p.owner.scrollTop = 200
+    p.owner.dispatchEvent(new Event('scroll'))
+    p.shift(20)
+    resize()
+    expect(p.owner.scrollTop).toBe(200)
+  })
+
   it('leaves the whole upward touch gesture native without inserting history', async () => {
     const p = await pane(50)
     const strip = document.createElement('div')
