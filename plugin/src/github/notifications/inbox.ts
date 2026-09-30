@@ -50,6 +50,8 @@ interface Kept {
 
 export interface InboxPage {
   items: GithubNotification[]
+  /** The cutoff of this displayed version, unchanged by 304 or another panel's later poll. */
+  readonly listedAt: string
   /** Seconds until GitHub would like to be asked again. */
   pollSeconds: number
   /** More than the pages read: the list stops short of what GitHub has. */
@@ -171,7 +173,13 @@ export class NotificationInbox {
 
   /** The notifications as last read, without asking. */
   cached(which: Which): GithubNotification[] | null {
-    return this.kept.get(which)?.items ?? null
+    return this.cachedPage(which)?.items ?? null
+  }
+
+  /** The cached list together with its own cutoff, for switching the panel's filter. */
+  cachedPage(which: Which): InboxPage | null {
+    const kept = this.kept.get(which)
+    return kept ? this.page(kept) : null
   }
 
   /** Seconds left before GitHub would like to be asked again; 0 when it may be asked now. */
@@ -263,6 +271,7 @@ export class NotificationInbox {
   private page(k: Kept): InboxPage {
     return {
       items: k.items,
+      listedAt: k.listedAt,
       pollSeconds: k.pollSeconds,
       truncated: k.truncated,
       accessHint: k.accessHint,
@@ -311,16 +320,15 @@ export class NotificationInbox {
 
   /**
    * Marks everything read on GitHub — or everything of one repository, `owner/name` — up to the
-   * moment the list was read: `PUT /notifications` (`/repos/{owner}/{repo}/notifications`) with
-   * `last_read_at`, so one that arrived since is not swallowed unseen. GitHub may answer 202: it
+   * caller's displayed list version: `PUT /notifications` (`/repos/{owner}/{repo}/notifications`)
+   * with that page's `listedAt` as `last_read_at`, so one that arrived since is not swallowed unseen. GitHub may answer 202: it
    * has taken the request and marks them in a while.
    */
-  markAllRead(which: Which, repo = ''): Promise<void> {
-    return this.serial(() => this.markAllReadNow(which, repo))
+  markAllRead(listedAt: string, repo = ''): Promise<void> {
+    return this.serial(() => this.markAllReadNow(listedAt, repo))
   }
 
-  private async markAllReadNow(which: Which, repo: string): Promise<void> {
-    const listedAt = this.kept.get(which)?.listedAt ?? new Date().toISOString()
+  private async markAllReadNow(listedAt: string, repo: string): Promise<void> {
     const path = repo
       ? `/repos/${repo.split('/').map(encodeURIComponent).join('/')}/notifications`
       : '/notifications'

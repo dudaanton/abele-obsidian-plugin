@@ -167,6 +167,82 @@ describe('bulk read with rows retained by a poll', () => {
   })
 })
 
+describe('bulk read across shared panels', () => {
+  it.each(['pending', 'completed'])(
+    'uses the displayed panel cutoff when another panel’s poll is %s',
+    async (timing) => {
+      let now = Date.parse('2026-01-03T10:00:00Z')
+      vi.spyOn(Date, 'now').mockImplementation(() => now)
+      let server = [...notes]
+      const {
+        wrapper: first,
+        client,
+        request,
+      } = panel({
+        '/notifications': (req: RequestUrlParam) => {
+          if (req.method === 'PUT') {
+            const body = JSON.parse(String(req.body)) as { last_read_at: string; read?: boolean }
+            server = server.map((n) =>
+              body.read === true || Date.parse(n.updated_at) <= Date.parse(body.last_read_at)
+                ? { ...n, unread: false }
+                : n
+            )
+            return { status: 205 }
+          }
+          return { json: server }
+        },
+      })
+      await flushPromises()
+      const second = mount(GithubNotifications, {
+        props: {
+          enabled: true,
+          clientFor: () => client,
+          state: reactive<NotificationsState>({ which: 'all', repo: '' }),
+        },
+      })
+      mounted.push(second)
+      await flushPromises()
+      expect(ids(first)).toEqual(['11', '12'])
+      now += 120_000
+      server = [...server, { ...notes[0], id: '13', updated_at: '2026-01-03T10:01:00Z' }]
+      let release!: () => void
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      vi.spyOn(client, 'call').mockImplementationOnce(async () => {
+        await waiting
+        return { status: 200, headers: {}, body: server } as never
+      })
+      const polling = refresh(second, true)
+      await flushPromises()
+      if (timing === 'completed') {
+        release()
+        await polling
+        await flushPromises()
+      }
+      // A still shows the older version, even if B has already replaced the shared cache.
+      expect(ids(first)).toEqual(['11', '12'])
+      await first.find('.abele-github-notifications__read-all').trigger('click')
+      if (timing === 'pending') release()
+      await polling
+      await flushPromises()
+      const put = request.mock.calls.find(([r]) => r.method === 'PUT')![0]
+      expect(JSON.parse(String(put.body))).toEqual({ last_read_at: '2026-01-03T10:00:00.000Z' })
+      expect(server.map((n) => [n.id, n.unread])).toEqual([
+        ['11', false],
+        ['12', false],
+        ['13', true],
+      ])
+      expect(ids(first)).toEqual(['11', '12'])
+      expect(
+        inboxFor(client)
+          .cached('all')
+          ?.find((n) => n.id === '13')?.unread
+      ).toBe(true)
+    }
+  )
+})
+
 describe('refresh and write ordering', () => {
   it('disables Done while a refresh is in flight, then permits it on the refreshed row', async () => {
     const { wrapper, client, request } = panel({

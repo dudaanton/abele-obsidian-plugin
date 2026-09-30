@@ -621,7 +621,9 @@ list is answered "not modified", which GitHub does not count against the hourly 
 notifications are read. Requests on the same inbox are ordered so a slow poll cannot undo Done.
 After a successful Read or Done, both lists discard their old conditional timestamps; the next
 request reads fresh data, even if a thread's new activity falls within the same timestamp second.
-A later round resumes conditional polling. A 304 does not advance the bulk-read cutoff.
+A later round resumes conditional polling. A 304 does not advance the bulk-read cutoff. Each
+panel holds the cutoff of the version it displays and passes that cutoff into bulk Read; a poll
+in another panel cannot move it forward, even while the write waits in the shared inbox queue.
 
 **The token.** GitHub lets only a **classic** personal access token read notifications, with the
 **notifications** scope (or **repo**, which covers it). A fine-grained token is refused whatever

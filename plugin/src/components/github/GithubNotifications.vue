@@ -154,6 +154,8 @@ const emit = defineEmits<{
 }>()
 
 const items = shallowRef<GithubNotification[] | null>(null)
+/** This panel's version, not a cutoff looked up in the inbox another panel may have polled. */
+const listedAt = ref('')
 const error = ref('')
 const busy = ref(false)
 const truncated = ref(false)
@@ -254,6 +256,7 @@ async function refresh(force = false) {
     if (which === props.state.which) {
       items.value = force || !items.value ? page.items : keepInView(items.value, page.items)
       if (force) readHere.clear()
+      listedAt.value = page.listedAt
       truncated.value = page.truncated
       accessHint.value = page.accessHint
       pollSeconds.value = page.pollSeconds
@@ -276,7 +279,9 @@ function setWhich(which: string) {
 watch(
   () => props.state.which,
   (which) => {
-    items.value = inbox().cached(which)
+    const page = inbox().cachedPage(which)
+    items.value = page?.items ?? null
+    listedAt.value = page?.listedAt ?? ''
     readHere.clear()
     void refresh()
   }
@@ -306,11 +311,11 @@ async function markDone(n: GithubNotification) {
 }
 
 async function markAllRead() {
-  if (busy.value) return
+  if (busy.value || !listedAt.value) return
   busy.value = true
   try {
     const before = shown.value.filter((n) => n.unread).map((n) => n.id)
-    await inbox().markAllRead(props.state.which, props.state.repo)
+    await inbox().markAllRead(listedAt.value, props.state.repo)
     for (const id of before) readHere.add(id)
     const read = new Map((inbox().cached(props.state.which) ?? []).map((n) => [n.id, n]))
     // Read is not Done: preserve rows retained by a poll, which are not in the API cache.

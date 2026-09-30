@@ -320,11 +320,11 @@ describe('polling after local writes', () => {
           : { json: LIST, headers: { 'Last-Modified': stamp } }
     )
     const inbox = new NotificationInbox(client)
-    await inbox.load('all')
+    const page = await inbox.load('all')
     await inbox.load('unread')
     now += 120_000
     await inbox.load('all')
-    await inbox.markAllRead('all')
+    await inbox.markAllRead(page.listedAt)
     const put = request.mock.calls.at(-1)![0]
     expect(JSON.parse(String(put.body)).last_read_at).toBe('2026-09-03T12:00:00.000Z')
     await inbox.load('all', true)
@@ -374,7 +374,7 @@ describe('marking read', () => {
       return { json: LIST }
     })
     const inbox = new NotificationInbox(client)
-    await inbox.load('unread')
+    const page = await inbox.load('unread')
 
     await inbox.markRead('1')
     const patch = request.mock.calls[1][0]
@@ -385,7 +385,7 @@ describe('marking read', () => {
       ['1', false],
     ])
 
-    await inbox.markAllRead('unread')
+    await inbox.markAllRead(page.listedAt)
     const put = request.mock.calls[2][0]
     expect(put.method).toBe('PUT')
     expect(put.url).toBe('https://api.github.com/notifications')
@@ -423,7 +423,7 @@ describe('bulk-read server cutoff', () => {
         return { json: server }
       })
       const inbox = new NotificationInbox(client)
-      await inbox.load('all')
+      const page = await inbox.load('all')
       now += 60_000
       server = [
         ...server,
@@ -433,7 +433,7 @@ describe('bulk-read server cutoff', () => {
         }),
       ]
       now += 60_000
-      await inbox.markAllRead('all', repo)
+      await inbox.markAllRead(page.listedAt, repo)
       expect(server.map((n) => [n.id, n.unread])).toEqual([
         ['41', false],
         ['42', true],
@@ -467,8 +467,8 @@ describe('bulk-read cutoff precision', () => {
           }
     )
     const inbox = new NotificationInbox(client)
-    await inbox.load('all')
-    await inbox.markAllRead('all')
+    const page = await inbox.load('all')
+    await inbox.markAllRead(page.listedAt)
     expect(inbox.cached('all')?.map((n) => [n.id, n.unread])).toEqual([
       ['2', true],
       ['1', false],
@@ -485,8 +485,8 @@ describe('marking one repository read', () => {
       req.method === 'PUT' ? { status: 205 } : { json: [...LIST, other] }
     )
     const inbox = new NotificationInbox(client)
-    await inbox.load('unread')
-    await inbox.markAllRead('unread', 'acme/widgets')
+    const page = await inbox.load('unread')
+    await inbox.markAllRead(page.listedAt, 'acme/widgets')
     expect(request.mock.calls[1][0].url).toBe(
       'https://api.github.com/repos/acme/widgets/notifications'
     )

@@ -67,7 +67,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   tab (at the latest comment) and leaves it unread. Every row's check means Done on GitHub
   (DELETE thread), removing it from both inboxes, not unsubscribing. The panel's double check
   marks all read (of the chosen repository), not Done: read rows remain in All. There is no
-  bulk Done REST endpoint. Polling keeps disappeared rows dimmed until refresh or filter change.
+  bulk Done REST endpoint. Bulk Read passes the displayed page's cutoff as `last_read_at`,
+  without forcing `read: true`; another panel's polling cannot advance that cutoff. Polling
+  keeps disappeared rows dimmed until refresh or filter change.
   Releases, workflow runs and alerts open on GitHub. Needs a classic token with the
   `notifications` or `repo` scope — GitHub does not let a fine-grained token read notifications —
   read from its own setting, `github.notifications.keyId` (Notifications token), else the main
