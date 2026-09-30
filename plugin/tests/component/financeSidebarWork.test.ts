@@ -40,7 +40,9 @@ function fixture(): FakeFileSpec[] {
     { path: 'Accounts/Food.md', frontmatter: { type: 'account', accountType: 'expense' } },
     { path: 'Accounts/Salary.md', frontmatter: { type: 'account', accountType: 'revenue' } },
   ]
-  const start = dayjs().startOf('month')
+  // Every fixture transaction predates a newly added one, including on the month's first day.
+  // Otherwise tied dates can leave the new item beyond the sidebar's first page.
+  const start = dayjs().subtract(1, 'day')
   for (let i = 0; i < COUNT; i++) {
     const income = i % 10 === 0
     specs.push({
