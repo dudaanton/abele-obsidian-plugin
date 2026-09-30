@@ -1,13 +1,13 @@
 /**
  * The GitHub notifications panel from canned API answers: unread ones stand out, the filters
  * narrow the list, opening does not write, Done and bulk Read are distinct, and a refused
- * token is explained. Superseded check-to-read expectations remain explicit legacy failures;
- * the current inbox contract is covered by githubNotificationsInbox.test.ts.
+ * token is explained. Done is available on every row and removes it only after GitHub's 204;
+ * rows read elsewhere during polling are covered by githubNotificationsInbox.test.ts.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
-import type { RequestUrlParam } from 'obsidian'
+import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
 import type { NotificationsState } from '@/github/notifications/inbox'
 import { clientWith, type Route } from '../helpers/githubTab'
@@ -85,8 +85,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('the notifications panel', () => {
-  // BUG: legacy expectation says read rows have no check; Done is now available on every row.
-  it.fails('lists every notification, newest first, the unread ones standing out', async () => {
+  it('lists every notification, newest first, the unread ones standing out', async () => {
     const { wrapper } = panel(ROUTES)
     await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(3))
     expect(rows(wrapper)).toEqual([
@@ -98,9 +97,10 @@ describe('the notifications panel', () => {
     expect(first.find('.abele-github-notification__repo').text()).toBe('acme/widgets')
     expect(first.find('.abele-github-notification__meta').text()).toContain('Pull request')
     expect(first.find('.abele-github-notification__meta').text()).toContain('mentioned')
-    // Only an unread one offers to be marked read.
-    expect(wrapper.find('[data-id="3"] .abele-github-notification__mark').exists()).toBe(false)
+    // Done is offered on read rows as well as unread rows.
+    expect(wrapper.find('[data-id="3"] .abele-github-notification__mark').exists()).toBe(true)
     expect(first.find('.abele-github-notification__mark').exists()).toBe(true)
+    expect(wrapper.find('[data-id="1"] .abele-github-notification__mark').exists()).toBe(true)
   })
 
   it('narrows to the unread, and to one repository', async () => {
@@ -137,68 +137,78 @@ describe('the notifications panel', () => {
     expect(rows(wrapper).find((r) => r.id === '2')?.unread).toBe(true)
   })
 
-  // BUG: legacy check-to-read expectation; the check now means Done and removes the row.
-  // The external-read polling guarantee is covered separately in githubNotificationsInbox.
-  it.fails(
-    'keeps the rows in view when a poll no longer lists them, until refreshed by hand',
-    async () => {
-      let now = Date.parse('2026-09-10T10:00:00Z')
-      vi.spyOn(Date, 'now').mockImplementation(() => now)
-      // GitHub's unread list: all three at first; then only the newest, the others read
-      // elsewhere — another device, the browser.
-      let unread = LIST.filter((n) => n.unread)
-      const { wrapper } = panel(
-        {
-          '/notifications': () => ({ json: unread, headers: { 'X-Poll-Interval': '60' } }),
-          '/notifications/threads/1': (req: RequestUrlParam) => ({
-            status: req.method === 'DELETE' ? 204 : 205,
-          }),
-        },
-        { which: 'unread' }
-      )
-      await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(2))
+  it('removes Done immediately and does not restore it during polling or refresh', async () => {
+    let now = Date.parse('2026-09-10T10:00:00Z')
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    // GitHub's unread list: both at first; after Done only the remaining thread.
+    let unread = LIST.filter((n) => n.unread)
+    const { wrapper, onOpen, request } = panel(
+      {
+        '/notifications': () => ({ json: unread, headers: { 'X-Poll-Interval': '60' } }),
+        '/notifications/threads/1': (req: RequestUrlParam) => ({
+          status: req.method === 'DELETE' ? 204 : 205,
+        }),
+      },
+      { which: 'unread' }
+    )
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(2))
 
-      // Marked read by its check: stays, no longer standing out.
-      await wrapper
-        .find('[data-id="1"] .abele-github-notification__mark .abele-obsidian-icon')
-        .trigger('click')
-      await flushPromises()
+    // Done by its check: removed only after GitHub confirms it.
+    await wrapper
+      .find('[data-id="1"] .abele-github-notification__mark .abele-obsidian-icon')
+      .trigger('click')
+    await flushPromises()
 
-      unread = unread.filter((n) => n.id === '2')
-      now += 61_000
-      await (wrapper.vm as unknown as { refresh: (force?: boolean) => Promise<void> }).refresh()
-      await flushPromises()
-      expect(rows(wrapper)).toEqual([
-        { id: '2', title: 'Subject 2', unread: true },
-        { id: '1', title: 'Subject 1', unread: false },
-      ])
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(calls(request, 'DELETE')).toEqual(['https://api.github.com/notifications/threads/1'])
+    expect(calls(request, 'PATCH')).toEqual([])
+    expect(rows(wrapper)).toEqual([{ id: '2', title: 'Subject 2', unread: true }])
+    unread = unread.filter((n) => n.id === '2')
+    now += 61_000
+    await (wrapper.vm as unknown as { refresh: (force?: boolean) => Promise<void> }).refresh()
+    await flushPromises()
+    expect(rows(wrapper)).toEqual([{ id: '2', title: 'Subject 2', unread: true }])
 
-      // The refresh button asks for the list as GitHub has it now.
-      await wrapper.find('.abele-github-notifications__refresh').trigger('click')
-      await flushPromises()
-      expect(rows(wrapper)).toEqual([{ id: '2', title: 'Subject 2', unread: true }])
-      vi.restoreAllMocks()
-    }
-  )
+    // The refresh button asks for the list as GitHub has it now.
+    await wrapper.find('.abele-github-notifications__refresh').trigger('click')
+    await flushPromises()
+    expect(rows(wrapper)).toEqual([{ id: '2', title: 'Subject 2', unread: true }])
+    vi.restoreAllMocks()
+  })
 
-  // BUG: legacy check-to-read expectation; GitHub's inbox check means Done (DELETE), not Read.
-  it.fails(
-    'marks one read by its check without opening it, and keeps it in the unread list',
-    async () => {
-      const { wrapper, onOpen, request } = panel(ROUTES, { which: 'unread' })
-      await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(2))
-      await wrapper
-        .find('[data-id="1"] .abele-github-notification__mark .abele-obsidian-icon')
-        .trigger('click')
-      await flushPromises()
-      expect(onOpen).not.toHaveBeenCalled()
-      expect(calls(request, 'PATCH')).toEqual(['https://api.github.com/notifications/threads/1'])
-      expect(rows(wrapper)).toEqual([
-        { id: '2', title: 'Subject 2', unread: true },
-        { id: '1', title: 'Subject 1', unread: false },
-      ])
-    }
-  )
+  it('marks Done by DELETE without PATCH or opening, and removes the row only after 204', async () => {
+    const { wrapper, onOpen, request } = panel(ROUTES, { which: 'unread' })
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(2))
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    request.mockImplementationOnce(async () => {
+      await waiting
+      return {
+        status: 204,
+        headers: {},
+        json: null,
+        text: '',
+        arrayBuffer: new ArrayBuffer(0),
+      } as RequestUrlResponse
+    })
+    await wrapper
+      .find('[data-id="1"] .abele-github-notification__mark .abele-obsidian-icon')
+      .trigger('click')
+    await flushPromises()
+    const before204 = rows(wrapper)
+    release()
+    await flushPromises()
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(calls(request, 'DELETE')).toEqual(['https://api.github.com/notifications/threads/1'])
+    expect(calls(request, 'PATCH')).toEqual([])
+    expect(before204).toEqual([
+      { id: '2', title: 'Subject 2', unread: true },
+      { id: '1', title: 'Subject 1', unread: true },
+    ])
+    expect(rows(wrapper)).toEqual([{ id: '2', title: 'Subject 2', unread: true }])
+  })
 
   it('marks all read — only the chosen repository when one is chosen', async () => {
     const { wrapper, request } = panel(ROUTES, { repo: 'acme/widgets' })
