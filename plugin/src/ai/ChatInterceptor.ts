@@ -335,6 +335,11 @@ export class ChatInterceptor {
         signal: controller.signal,
       })) {
         if (controller.signal.aborted) return
+        if (event.type === 'error') {
+          progress.error.value =
+            event.error || event.message?.errorMessage || 'Interceptor request failed'
+          return
+        }
         if (event.type === 'text_delta') {
           response += event.delta
           progress.streamingContent.value = response

@@ -14,6 +14,8 @@ import type { TFile } from 'obsidian'
 const calls: Array<{ system: string; messages: Message[]; signal?: AbortSignal }> = []
 const releases = new Map<string, () => void>()
 let reviewerError = false
+let reviewerEventError: string | null = null
+let partialReview = false
 let mainRelease: (() => void) | null = null
 let delayMain = false
 
@@ -35,6 +37,24 @@ vi.mock('@/ai/client/OpenAIClient', () => ({
           options.signal?.addEventListener('abort', () => resolve(), { once: true })
         })
         if (reviewerError) throw new Error('Reviewer offline')
+        if (reviewerEventError) {
+          const partial = partialReview ? 'Sample unfinished review' : ''
+          if (partial) yield { type: 'text_delta' as const, delta: partial }
+          yield {
+            type: 'error' as const,
+            error: reviewerEventError,
+            message: {
+              role: 'assistant' as const,
+              content: [{ type: 'text' as const, text: partial }],
+              model: model.id,
+              usage: EMPTY_USAGE,
+              stopReason: 'error' as const,
+              errorMessage: reviewerEventError,
+              timestamp: Date.now(),
+            },
+          }
+          return
+        }
       }
       if (!reviewing && delayMain) {
         await new Promise<void>((resolve) => {
@@ -98,6 +118,8 @@ beforeEach(() => {
   calls.length = 0
   releases.clear()
   reviewerError = false
+  reviewerEventError = null
+  partialReview = false
   mainRelease = null
   delayMain = false
   metadata = null
@@ -291,6 +313,64 @@ describe('reply-only agent interceptors', () => {
     expect(session.error.value).toBeNull()
     expect(session.isBusy).toBe(false)
   })
+
+  it.each([401, 429, 500])(
+    'surfaces an HTTP %s error event without failing the main turn',
+    async (status) => {
+      const { session } = setup()
+      reviewerEventError = `HTTP ${status}: Sample provider failure`
+      await session.sendMessage('Sample question')
+      await vi.waitFor(() => expect(releases.has('Sample question')).toBe(true))
+      releases.get('Sample question')!()
+      const id = session.messages.value[0].id
+      await vi.waitFor(() =>
+        expect(session.interceptor.replyReviews.value[id]?.error).toBe(reviewerEventError)
+      )
+      expect(session.messages.value[0].interceptorChat).toEqual([])
+      expect(session.interceptor.replyReviews.value[id]?.streaming).toBe(false)
+      expect(session.error.value).toBeNull()
+      expect(session.isBusy).toBe(false)
+    }
+  )
+
+  it.each([false, true])(
+    'discards an interrupted review and supports Retry (reply only: %s)',
+    async (replyOnly) => {
+      const { session } = setup()
+      session.interceptor.replyOnly.value = replyOnly
+      reviewerEventError = 'Sample stream interrupted'
+      partialReview = true
+      const sending = session.sendMessage('Sample question')
+      await vi.waitFor(() => expect(releases.has('Sample question')).toBe(true))
+      releases.get('Sample question')!()
+      await sending
+      const id = session.messages.value[0].id
+      const progress = () =>
+        replyOnly
+          ? session.interceptor.replyReviews.value[id]
+          : {
+              error: session.interceptor.error.value,
+              streaming: session.interceptor.streaming.value,
+              streamingContent: session.interceptor.streamingContent.value,
+            }
+      await vi.waitFor(() => expect(progress()?.error).toBe('Sample stream interrupted'))
+      expect(progress()?.streaming).toBe(false)
+      expect(progress()?.streamingContent).toBe('')
+      expect(session.messages.value[0].interceptorChat).toEqual([])
+
+      reviewerEventError = null
+      const retrying = session.retryInterceptor(id)
+      await vi.waitFor(() =>
+        expect(calls.filter((c) => c.system === 'Review this.')).toHaveLength(2)
+      )
+      releases.get('Sample question')!()
+      await retrying
+      expect(progress()?.error).toBeNull()
+      expect(session.messages.value[0].interceptorChat?.map((m) => m.content)).toEqual([
+        'Sample question',
+      ])
+    }
+  )
 
   it('cancels pending reviews on reset, even if a provider ignores abort', async () => {
     const { session } = setup()
