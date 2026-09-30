@@ -474,6 +474,15 @@ contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current
   before resize observers can repair a wrong origin, then after sidebar changes, a delayed vault
   font, returning to a chapter, two-column layout and scrolling. A generated font file exercises
   the fonts-folder path; a tall desktop viewport exercises one visible column with two enabled.
+- `bookFontReflow.e2e.test.ts` — **real font metrics arriving late**, desktop and real phone.
+  Reads a TrueType font from the test host (`ABELE_TEST_FONT_FILE`, defaulting to the macOS
+  Times New Roman file), gives its temporary copy a test-only family so the installed font
+  cannot bypass the delay, and writes it into the test vault's fonts folder. No font binary
+  is committed. Holds its arrival past the startup repair timers, then compares every saved
+  highlight rectangle and the target search frame with independent text ranges within 2 px;
+  repeats after section changes, the sidebar, two columns and reopening the book. A canary
+  requires the late face to move the text enough that the old rectangles would fail. The
+  temporary book, font and note are removed and device e-ink mode restored afterwards.
 - `bookSelectionPlace.e2e.test.ts` — **a word is selected where it is drawn**, desktop and phone
   (`tests/fixtures/books/latvianBook.ts`, made-up justified text in a monospace font): for every
   word on the page, the middle of its measured box must hit that word, once the page has settled

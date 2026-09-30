@@ -253,6 +253,32 @@ function sfnt(tables: Record<string, number[]>): Uint8Array {
   return Uint8Array.from(w.bytes)
 }
 
+/** A host TrueType font under a test-only family, so the installed system face cannot mask a late load. */
+export function aliasTrueTypeFont(font: Uint8Array, family: string): Uint8Array {
+  const view = new DataView(font.buffer, font.byteOffset, font.byteLength)
+  if (view.getUint32(0) !== 0x00010000) throw new Error('Supply a single TrueType font')
+  const tables: Record<string, number[]> = {}
+  for (let i = 0; i < view.getUint16(4); i++) {
+    const at = 12 + i * 16
+    const tag = String.fromCharCode(...font.subarray(at, at + 4))
+    const offset = view.getUint32(at + 8),
+      length = view.getUint32(at + 12)
+    tables[tag] = Array.from(font.subarray(offset, offset + length))
+  }
+  tables.name = nameTable({ family })
+  tables.head.fill(0, 8, 12)
+  // The original signature no longer describes the renamed copy.
+  delete tables.DSIG
+  const result = sfnt(tables)
+  const out = new DataView(result.buffer)
+  for (let i = 0; i < out.getUint16(4); i++) {
+    const at = 12 + i * 16
+    if (out.getUint32(at) === 0x68656164)
+      out.setUint32(out.getUint32(at + 8) + 8, (0xb1b0afba - checksum(Array.from(result))) >>> 0)
+  }
+  return result
+}
+
 /** The same font as a WOFF file, its tables compressed. */
 export function toWoff(font: Uint8Array): Uint8Array {
   const view = new DataView(font.buffer, font.byteOffset, font.byteLength)

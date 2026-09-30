@@ -7,7 +7,7 @@ import {
   isFontPath,
   type FontFile,
 } from '@/reader/fontNames'
-import { buildTinyFont, toWoff } from '../helpers/tinyFont'
+import { aliasTrueTypeFont, buildTinyFont, toWoff } from '../helpers/tinyFont'
 
 const buf = (b: Uint8Array) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)
 
@@ -31,6 +31,26 @@ describe('a font file named by its name', () => {
 })
 
 describe('a font file named by what it says of itself', () => {
+  it('can alias a test font without changing its glyphs or metrics', async () => {
+    const original = buildTinyFont({ family: 'Sample Original', advance: 750 })
+    const aliased = aliasTrueTypeFont(original, 'Sample Alias')
+    expect((await faceFromFont(buf(aliased)))?.family).toBe('Sample Alias')
+    expect((await faceFromFont(buf(original)))?.family).toBe('Sample Original')
+    const tables = (font: Uint8Array) => {
+      const view = new DataView(font.buffer, font.byteOffset, font.byteLength)
+      const out: Record<string, Uint8Array> = {}
+      for (let i = 0; i < view.getUint16(4); i++) {
+        const at = 12 + i * 16,
+          offset = view.getUint32(at + 8)
+        const tag = String.fromCharCode(...font.subarray(at, at + 4))
+        if (tag !== 'name' && tag !== 'head')
+          out[tag] = font.slice(offset, offset + view.getUint32(at + 12))
+      }
+      return out
+    }
+    expect(tables(aliased)).toEqual(tables(original))
+  })
+
   it('reads the family, weight and slant of a TrueType font', async () => {
     const font = buildTinyFont({
       family: 'Abele Tiny',
