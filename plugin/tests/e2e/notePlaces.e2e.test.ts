@@ -314,24 +314,16 @@ const settles = (wheel: boolean): Record<string, Settle> & { error?: string } =>
     return out
   `)
 
-/** How many times the scroll changed direction: a note that shakes turns back and forth. */
-const turns = (tops: number[]): number => {
-  let n = 0
-  let dir = 0
-  for (let i = 1; i < tops.length; i++) {
-    const d = Math.sign(tops[i] - tops[i - 1])
-    if (d && dir && d !== dir) n++
-    if (d) dir = d
-  }
-  return n
-}
-
 const expectSettles = (r: Record<string, Settle> & { error?: string }) => {
   expect(r.error).toBeUndefined()
   for (const m of ['preview', 'source']) {
     const s = r[m]
     const trace = `${m}: ${JSON.stringify({ ...s, tops: s.tops.join(' ') })}`
-    expect(turns(s.tops), trace).toBe(0)
+    // Embeds and diagrams change the renderer's line-to-pixel mapping while it draws. That
+    // briefly moves the reported top line even on 1.61.0 with only one restore scroll. Once
+    // rendering settles, the visible line must stop moving altogether, not merely stay near
+    // the saved line; a late jump or repeated restore would fail here.
+    expect(new Set(s.tops.slice(30)).size, trace).toBe(1)
     // Put back once, corrected a couple of times at most as the note is measured — and only
     // while it opens, never again once it has been still.
     expect(s.scrolled.length, trace).toBeGreaterThan(0)
