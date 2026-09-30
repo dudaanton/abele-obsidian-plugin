@@ -52,7 +52,13 @@ function tab(store: BookPlaces) {
     here = cfi
     if (follow.turned(cfi, reading)) await store.set(KEY, { cfi, fraction: 0.5, path: 'a.epub' })
   }
-  return { follow, go, turn: (cfi: string) => relocate(cfi), reflow: (cfi: string) => relocate(cfi, false), here: () => here }
+  return {
+    follow,
+    go,
+    turn: (cfi: string) => relocate(cfi),
+    reflow: (cfi: string) => relocate(cfi, false),
+    here: () => here,
+  }
 }
 
 beforeEach(() => {

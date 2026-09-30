@@ -157,6 +157,8 @@ async function check(name: string, packet?: Packet): Promise<Probe> {
     expect(result.index, name).toBe(packet.index)
     expect(result.text, name).toBe(packet.text)
     expect(result.visible, name).toBe(true)
+    expect(result.stored.cfi, `${name}: no position echo`).toBe(packet.place.cfi)
+    expect(result.stored.at, `${name}: no reading-clock echo`).toBe(packet.place.at)
   }
   return result
 }
@@ -283,9 +285,14 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
         for(const r of records)for(const n of r.addedNodes)if(n.nodeType===1)for(const el of [n,...n.querySelectorAll('.notice')])if(el.classList.contains('notice')&&/another device/.test(el.textContent))state.notices.add(el)
       })
       seen.observe(document.body,{childList:true,subtree:true})
-      let frame,stopped=false
-      const tick=()=>{if(stopped)return;const m=measure();if(m){state.samples++;if(m.failures.length&&state.failures.length<10)state.failures.push(m)}frame=requestAnimationFrame(tick)}
-      state.stop=()=>{stopped=true;cancelAnimationFrame(frame);seen.disconnect()};window.__deviceGeometry=state;tick()
+      let frame,task,stopped=false
+      // rAF runs BEFORE layout/ResizeObserver delivery. At zoom changes, forcing text layout
+      // there sees new glyph metrics beside boxes the engine will repair before painting.
+      // Sample the completed frame, not that intermediate pre-paint state; keep the 2px bound.
+      const tick=()=>{if(stopped)return;frame=requestAnimationFrame(()=>{task=setTimeout(()=>{
+        if(stopped)return;const m=measure();if(m){state.samples++;if(m.failures.length&&state.failures.length<10)state.failures.push(m)}tick()
+      },0)})}
+      state.stop=()=>{stopped=true;cancelAnimationFrame(frame);clearTimeout(task);seen.disconnect()};window.__deviceGeometry=state;tick()
       const l=app.workspace.getLeaf('tab');await l.setViewState({type:'abele-book',state:{file:${JSON.stringify(BOOK)}},active:true})
       const v=await until(()=>l.view.model?.status==='ready'&&l.view.model.highlights.length===2&&l.view);v.model.panel=false
       return JSON.stringify(true)
@@ -303,7 +310,9 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
       `window.__releaseDeviceFont();await until(()=>[...current().doc.fonts].length);await current().doc.fonts.ready;return JSON.stringify(true)`
     )
     const afterFont = await check('phone-place-after-font', first)
-    expect(afterFont.stored.cfi, 'reflow must not echo a different desktop page range').toBe(first.place.cfi)
+    expect(afterFont.stored.cfi, 'reflow must not echo a different desktop page range').toBe(
+      first.place.cfi
+    )
     expect(afterFont.stored.at, 'reflow is not newer reading').toBe(first.place.at)
 
     // The second packet is recorded on the real phone AFTER desktop opening and font settling.

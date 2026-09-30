@@ -466,14 +466,25 @@ contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current
 - `bookOverlayReflow.e2e.test.ts` — **search boxes and saved highlights after reflow**, desktop,
   phone emulation and real phone: compares all four dimensions of the drawn SVG rectangles with
   independently located text ranges after the reader sidebar opens and closes, a desktop resize,
-  a reader font change, and a late paragraph style change that moves words without resizing their
-  block. The late change happens after the startup font checks have expired. Pictures go to
+  a reader font change, Electron zoom 90%/110%, and a late paragraph style change that moves
+  words without resizing their block. The late change happens after the startup font checks have expired. Pictures go to
   `abele-overlay-reflow` under the run's screenshot directory.
 - `bookOverlayOrigin.e2e.test.ts` — **a new overlay starts at its frame's origin**, desktop and
   real phone. Checks actual search and saved-highlight rectangles in the attachment microtask,
   before resize observers can repair a wrong origin, then after sidebar changes, a delayed vault
   font, returning to a chapter, two-column layout and scrolling. A generated font file exercises
   the fonts-folder path; a tall desktop viewport exercises one visible column with two enabled.
+- `bookDeviceReflow.e2e.test.ts` — **real phone to desktop handoff**, an opt-in paired-device
+  test in the phone tier. The caller must also lease a desktop vault, install the same test
+  build there, and name it with `ABELE_READER_DESKTOP_VAULT`. Without that second lease the test
+  does not run. It creates highlights and reading positions on the real phone, copies the
+  actual places record and note through the vault-file arrival boundary, opens the desktop
+  at that position with a delayed real vault font, and then delivers a second place recorded
+  on the phone after the desktop has opened. No CFI or timestamp is synthesized. Checks all
+  current-chapter highlight/search boxes after rendered frames, through sidebar/column changes
+  and Electron zoom 90%/110%, and asserts that reflow does not echo a new reading position or
+  timestamp. Both devices' settings and files are restored; the caller releases the desktop
+  lease. This tests the reader's sync-file boundary, not a hosted sync service's transport.
 - `bookFontReflow.e2e.test.ts` — **real font metrics arriving late**, desktop and real phone.
   Reads a TrueType font from the test host (`ABELE_TEST_FONT_FILE`, defaulting to the macOS
   Times New Roman file), gives its temporary copy a test-only family so the installed font
