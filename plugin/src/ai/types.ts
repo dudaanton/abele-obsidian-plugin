@@ -1,5 +1,6 @@
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
 import type { TFile } from 'obsidian'
+import type { DraftImports } from './draftImports'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
 import type { MapBlock } from '@/helpers/mapConfig'
 import type { McpServer } from './mcp/types'
@@ -14,6 +15,8 @@ import type { StartupScript } from '@/scripting/types'
 export interface ChatDraft {
   text: string
   attachments: TFile[]
+  /** Ephemeral lifetime and send barrier; retained through editor remounts and content edits. */
+  imports?: DraftImports<ChatDraft>
 }
 
 /** A message the person sent while the agent was working, waiting for the next iteration. */

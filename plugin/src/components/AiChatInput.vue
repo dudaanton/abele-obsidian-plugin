@@ -174,6 +174,7 @@ import {
   ALLOWED_ACCEPT,
 } from '@/ai/attachments'
 import type { ChatDraft } from '@/ai/types'
+import { DraftImports, sameConversation, type ConversationOwner } from '@/ai/draftImports'
 import {
   createEmbeddedEditor,
   isEmbeddedEditorAvailable,
@@ -183,8 +184,12 @@ import {
 const props = defineProps<{
   isStreaming: boolean
   isBusy: boolean
-  /** File imports belong to this tab, even when the shared composer switches away. */
-  attachmentOwner?: string
+  /** Captured conversation lifetime, not merely the tab that displays it. */
+  attachmentOwner?: ConversationOwner
+  ownsConversation?: (owner?: ConversationOwner) => boolean
+  isCurrentConversation?: (owner?: ConversationOwner) => boolean
+  /** An adapter that outlives composer remounts; async completions cannot emit from a dead editor. */
+  attachmentReady?: (path: string, owner?: ConversationOwner) => void
   canContinue: boolean
   tokenDisplay: string
   scopeLabel: string
@@ -215,7 +220,7 @@ const emit = defineEmits<{
   (e: 'focus', focused: boolean): void
   /** The scope badge: a way into the dialog that opens on what the badge is about. */
   (e: 'openScope'): void
-  (e: 'attachFile', path: string, owner?: string): void
+  (e: 'attachFile', path: string, owner?: ConversationOwner): void
 }>()
 
 /** The slash commands the chat answers itself; anything else is looked up as a skill. */
@@ -230,13 +235,7 @@ const TEXTAREA_MAX_HEIGHT = 140
 
 const draft = ref<ChatDraft>({ text: '', attachments: [] })
 let draftOwner = props.attachmentOwner
-const retiredDrafts = new WeakSet<ChatDraft>()
-const pendingImports = new WeakMap<ChatDraft, Set<string>>()
-const importsVersion = ref(0)
-const importing = computed(() => {
-  void importsVersion.value
-  return !!pendingImports.get(draft.value)?.size
-})
+const importing = computed(() => !!draft.value.imports?.pending.size)
 const text = computed({ get: () => draft.value.text, set: (value) => { draft.value.text = value } })
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const editorHost = ref<HTMLElement | null>(null)
@@ -317,7 +316,7 @@ const send = () => {
   // Streaming is deliberately not a guard: the session queues that message and gives it to
   // the loop at its next iteration. An auxiliary task the user chose to run on its own still
   // holds the input, because that is what running it sequentially means.
-  if (props.isBusy || importing.value) return
+  if (props.isBusy || importing.value || !(props.isCurrentConversation?.(draftOwner) ?? true)) return
 
   const msg = text.value.trim()
   if (!msg && !attachments.value.length) return
@@ -413,20 +412,22 @@ const showAttachMenu = (event: MouseEvent) => {
  */
 const pickFromChats = async () => {
   const { app } = GlobalStore.getInstance()
-  const target = draft.value
+  const owner = draftOwner
+  const state = importsFor(draft.value, owner)
   const current = ChatService.getInstance().activeSession.value?.currentChatFile.value?.path
   const file = await pickChat(app, current)
-  if (file && !retiredDrafts.has(target) && !target.attachments.some((a) => a.path === file.path)) {
+  const target = state.target
+  if (file && state.active && (props.ownsConversation?.(owner) ?? true) && !target.attachments.some((a) => a.path === file.path)) {
     target.attachments = [...target.attachments, file]
   }
 }
 
 const pickFromVault = async () => {
   const { app } = GlobalStore.getInstance()
-  const target = draft.value
   const owner = draftOwner
+  const state = importsFor(draft.value, owner)
   const file = await pickVaultFile(app)
-  if (file && !retiredDrafts.has(target)) attachToDraft(file, target, owner)
+  if (file && state.active && (props.ownsConversation?.(owner) ?? true)) attachToDraft(file, state.target, owner)
 }
 
 const pickFromDisk = () => {
@@ -525,37 +526,47 @@ const setText = (value: string) => {
 const takeDraft = (): ChatDraft => draft.value
 
 const putDraft = (incoming: ChatDraft) => {
-  // Replacing a draft in the same tab cancels its outstanding imports; switching tabs keeps
-  // the old object alive in AiChat's draft map, where its own imports may still finish.
-  if (draftOwner === props.attachmentOwner && incoming !== draft.value) retiredDrafts.add(draft.value)
-  draftOwner = props.attachmentOwner
+  const owner = props.attachmentOwner
+  const previous = draft.value.imports
+  const same = sameConversation(draftOwner, owner)
+  if (!same && draftOwner?.sessionId === owner?.sessionId) previous?.retire()
+  // A content edit (drawing returned, queued message restored) retains the lifetime and
+  // redirects every completion to the replacement. Switching conversations never transfers it.
+  if (same && previous) incoming.imports = previous
+  if (incoming.imports && !sameConversation(incoming.imports.owner, owner)) {
+    incoming.imports.retire()
+    incoming.imports = undefined
+  }
+  incoming.imports?.redirect(incoming)
+  draftOwner = owner
   draft.value = incoming
   write(incoming.text)
   nextTick(autoResize)
 }
 
-function beginImport(target: ChatDraft, key: string): (() => void) | null {
-  let pending = pendingImports.get(target)
-  if (!pending) pendingImports.set(target, pending = new Set())
-  if (pending.has(key)) return null
-  pending.add(key)
-  importsVersion.value++
-  return () => { pending.delete(key); importsVersion.value++ }
+function importsFor(target: ChatDraft, owner?: ConversationOwner): DraftImports<ChatDraft> {
+  if (!target.imports) target.imports = new DraftImports(target, owner)
+  return target.imports
 }
 
-function attachToDraft(file: TFile, target: ChatDraft, owner?: string): void {
-  if (retiredDrafts.has(target) || target.attachments.some((a) => a.path === file.path)) return
-  target.attachments = [...target.attachments, file]
+function attachToDraft(file: TFile, target: ChatDraft, owner?: ConversationOwner): void {
+  const state = importsFor(target, owner)
+  const owns = props.ownsConversation ?? (() => true)
+  const ready = props.attachmentReady ?? ((path, origin) => emit('attachFile', path, origin))
+  const current = state.target
+  if (!state.active || !owns(owner) || current.attachments.some((a) => a.path === file.path)) return
+  current.attachments = [...current.attachments, file]
   if (!isHeicImport(file.path)) {
-    emit('attachFile', file.path, owner)
+    ready(file.path, owner)
     return
   }
-  const done = beginImport(target, file.path)
+  const done = state.begin(file.path)
   if (!done) return
   void imageFileForImport(GlobalStore.getInstance().app, file).then((converted) => {
-    if (retiredDrafts.has(target) || !target.attachments.some((a) => a.path === file.path)) return
-    target.attachments = target.attachments.map((a) => a.path === file.path ? converted : a)
-    emit('attachFile', converted.path, owner)
+    const current = state.target
+    if (!state.active || !owns(owner) || !current.attachments.some((a) => a.path === file.path)) return
+    current.attachments = current.attachments.map((a) => a.path === file.path ? converted : a)
+    ready(converted.path, owner)
   }).catch((err) => {
     new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
   }).finally(done)
@@ -567,16 +578,22 @@ const addAttachment = (file: TFile) => attachToDraft(file, draft.value, draftOwn
 async function importFiles(files: File[]): Promise<void> {
   const target = draft.value
   const owner = draftOwner
-  const done = beginImport(target, `external-${Date.now()}-${Math.random()}`)
+  const state = importsFor(target, owner)
+  const owns = props.ownsConversation ?? (() => true)
+  const ready = props.attachmentReady ?? ((path, origin) => emit('attachFile', path, origin))
+  const done = state.begin(`external-${Date.now()}-${Math.random()}`)
+  if (!done) return
   try {
     for (const file of files) {
+      if (!state.active || !owns(owner)) break
       try {
         const imported = await importExternalFile(file)
-        if (!retiredDrafts.has(target)) {
+        const current = state.target
+        if (state.active && owns(owner)) {
           // importExternalFile already attempted normalization, including non-convertible HEIC.
-          if (!target.attachments.some((a) => a.path === imported.path)) {
-            target.attachments = [...target.attachments, imported]
-            emit('attachFile', imported.path, owner)
+          if (!current.attachments.some((a) => a.path === imported.path)) {
+            current.attachments = [...current.attachments, imported]
+            ready(imported.path, owner)
           }
         }
       } catch (err) {
@@ -606,7 +623,9 @@ function hasFocus(): boolean {
   return !!el && !!active && el.contains(active)
 }
 
-defineExpose({ setText, addAttachment, importFiles, focus, hasFocus, takeDraft, putDraft })
+const isDraftFor = (owner?: ConversationOwner) => sameConversation(draftOwner, owner)
+
+defineExpose({ setText, addAttachment, importFiles, focus, hasFocus, takeDraft, putDraft, isDraftFor })
 
 const onKeydown = (e: KeyboardEvent) => {
   // Alt+Enter is Enter without the model, and only where there is a note to keep.

@@ -30,6 +30,8 @@ export interface PendingInput {
   attachments?: string[]
   /** Replace an unsent original with the picture drawn on, leaving the rest of the draft. */
   replaceAttachment?: string
+  /** When returning asynchronously to a tab, refuse a different conversation loaded into it. */
+  conversationVersion?: number
 }
 
 interface TabsState {

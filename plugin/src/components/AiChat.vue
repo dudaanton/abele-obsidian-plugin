@@ -292,7 +292,10 @@
         v-model:expanded="composing"
         :is-streaming="isStreaming || isExecutingTool || interceptorWorking"
         :is-busy="isBusy"
-        :attachment-owner="chatService.activeTabId.value ?? undefined"
+        :attachment-owner="attachmentOwner"
+        :owns-conversation="ownsImportConversation"
+        :is-current-conversation="isCurrentImportConversation"
+        :attachment-ready="onAttachFile"
         :can-continue="showContinue"
         :token-display="tokenDisplay"
         :scope-label="scopeCompact"
@@ -305,7 +308,6 @@
         @continue="onContinue"
         @focus="onInputFocus"
         @open-scope="openSetup('scope')"
-        @attach-file="onAttachFile"
       />
     </template>
 
@@ -368,6 +370,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import type { ChatDraft, MessageComment } from '@/ai/types'
+import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 import { revealAnchor } from '@/ai/openChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
@@ -378,6 +381,10 @@ import { chatNotesMenu } from '@/commands/attachChat'
 const chatService = ChatService.getInstance()
 chatService.ensureInitialized()
 const session = computed(() => chatService.activeSession.value)
+const attachmentOwner = computed<ConversationOwner | undefined>(() => {
+  const id = chatService.activeTabId.value
+  return id ? { sessionId: id, version: session.value?.conversationVersion?.value ?? 0 } : undefined
+})
 
 // Reactive state from active session
 const messages = computed(() => session.value?.messages.value ?? [])
@@ -1262,7 +1269,7 @@ watch(
  * being composed in one conversation while another is open. It used to be emptied instead,
  * which threw the message away for anyone who switched tabs to check something.
  */
-const drafts = new Map<string, ChatDraft>()
+const drafts = new Map<string, { version: number; draft: ChatDraft }>()
 
 /** How far below the top of the box a message brought into view sits: clear of the edge. */
 const REVEAL_OFFSET_PX = 16
@@ -1393,8 +1400,8 @@ watch(
 
 // Switching tabs: the one being left keeps its place, the one being opened goes back to its own
 watch(
-  () => chatService.activeTabId.value,
-  (tabId, previousTabId) => {
+  () => [chatService.activeTabId.value, attachmentOwner.value?.version ?? 0] as const,
+  ([tabId, version], [previousTabId, previousVersion]) => {
     // The DOM still shows the tab being left, so this is the moment to read its place.
     if (previousTabId) rememberPlace(previousTabId)
     anchor = null
@@ -1409,9 +1416,18 @@ watch(
     else void nextTick(doScroll)
 
     // The input still holds the tab being left — the DOM has not been updated yet.
-    if (previousTabId) drafts.set(previousTabId, chatInput.value?.takeDraft() ?? { text: '', attachments: [] })
-    for (const id of drafts.keys()) {
-      if (!chatService.tabOrder.value.includes(id)) drafts.delete(id)
+    if (previousTabId === tabId && previousVersion !== version) {
+      chatInput.value?.takeDraft().imports?.retire()
+      drafts.get(previousTabId!)?.draft.imports?.retire()
+      drafts.delete(previousTabId!)
+    } else if (previousTabId && chatInput.value) {
+      drafts.set(previousTabId, { version: previousVersion, draft: chatInput.value.takeDraft() })
+    }
+    for (const [id, held] of drafts) {
+      if (!chatService.tabOrder.value.includes(id)) {
+        held.draft.imports?.retire()
+        drafts.delete(id)
+      }
     }
     for (const id of places.keys()) {
       if (!chatService.tabOrder.value.includes(id)) places.delete(id)
@@ -1421,11 +1437,17 @@ watch(
     // returned to is put back a tick later, once there is an input to put it in. Text sent to
     // this tab from outside comes with the switch, and is what goes back instead.
     const pending = pendingFor(tabId)
-    const saved = tabId ? drafts.get(tabId) : undefined
+    const held = tabId ? drafts.get(tabId) : undefined
+    if (held && held.version !== version) held.draft.imports?.retire()
+    const saved = held?.version === version ? held.draft : undefined
     const draft = pending ? pendingDraft(pending, saved) : saved
+    draft?.imports?.redirect(draft)
+    if (tabId && draft) drafts.set(tabId, { version, draft })
     void nextTick(() => {
+      if (chatService.activeTabId.value !== tabId || attachmentOwner.value?.version !== version) return
       chatInput.value?.putDraft(draft ?? { text: '', attachments: [] })
       if (pending) takePending(pending)
+      consumePendingInput()
     })
   }
 )
@@ -1443,6 +1465,7 @@ function pendingDraft(pending: PendingInput, saved?: ChatDraft): ChatDraft {
   const join = pending.append || (!pending.text && !!pending.attachments?.length)
   const before = saved?.text ?? ''
   return {
+    imports: saved?.imports,
     text: join
       ? `${before}${before && pending.text && !before.endsWith('\n') ? '\n' : ''}${pending.text}`
       : pending.text,
@@ -1457,7 +1480,13 @@ function pendingDraft(pending: PendingInput, saved?: ChatDraft): ChatDraft {
 function pendingFor(tabId: string | null | undefined): PendingInput | null {
   const pending = chatService.pendingInput.value
   if (!pending || !tabId) return null
-  return !pending.tabId || pending.tabId === tabId ? pending : null
+  if (pending.tabId && pending.tabId !== tabId) return null
+  if (pending.conversationVersion !== undefined && pending.conversationVersion !== attachmentOwner.value?.version) {
+    if (chatService.pendingInput.value === pending) chatService.pendingInput.value = null
+    new Notice('The conversation changed. Attach the saved picture to the intended chat.')
+    return null
+  }
+  return pending
 }
 
 /** Marks it taken, and puts the cursor after it when that was asked for. */
@@ -1472,7 +1501,7 @@ function takePending(pending: PendingInput) {
 function consumePendingInput() {
   void nextTick(() => {
     const pending = pendingFor(chatService.activeTabId.value)
-    if (!pending || !chatInput.value) return
+    if (!pending || !chatInput.value || !chatInput.value.isDraftFor(attachmentOwner.value)) return
     chatInput.value.putDraft(pendingDraft(pending, chatInput.value.takeDraft()))
     takePending(pending)
   })
@@ -1803,12 +1832,27 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
   chatInput.value?.setText(resolved.trim())
 }
 
-const onAttachFile = (path: string, owner?: string) => {
+function importConversation(owner?: ConversationOwner) {
+  if (!owner) return session.value
+  const origin = chatService.getSession(owner.sessionId) ??
+    (chatService.activeTabId.value === owner.sessionId ? session.value : null)
+  if (!origin || origin.isDestroyed || (origin.conversationVersion?.value ?? 0) !== owner.version) return null
+  return origin
+}
+
+function ownsImportConversation(owner?: ConversationOwner): boolean {
+  return !!importConversation(owner)
+}
+
+function isCurrentImportConversation(owner?: ConversationOwner): boolean {
+  return sameConversation(owner, attachmentOwner.value) && ownsImportConversation(owner)
+}
+
+const onAttachFile = (path: string, owner?: ConversationOwner) => {
   // A chat dropped here goes to the agent as what was said in it, never as a file in scope:
   // the log holds everything its own agent was shown. The scope would refuse it anyway.
   if (isChatLog(path)) return
-  const origin = owner ? chatService.getSession(owner) : session.value
-  origin?.scopeResolver.addFile(path)
+  importConversation(owner)?.scopeResolver.addFile(path)
 }
 
 // ── Drag & drop on the whole chat area ──

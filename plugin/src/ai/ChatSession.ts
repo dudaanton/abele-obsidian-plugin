@@ -209,7 +209,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private chatCreated = ''
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
-  private generation = 0
+  /** Changes before replacing a conversation; saving its first file does not change it. */
+  public readonly conversationVersion = ref(0)
+  private get generation(): number { return this.conversationVersion.value }
   /** What an interceptor script said about the tool calls of the turn running now. */
   private readonly turnPolicy = new TurnPolicy()
   private lastModelId = ''
@@ -1980,7 +1982,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   // ── Reset (new chat within this session / tab) ─────────────────
 
   async reset(): Promise<void> {
-    this.generation++
+    this.conversationVersion.value++
     this.queuedMessages.value = []
     await this.save()
     await this.rewindLog?.flush()
@@ -2680,6 +2682,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // abort signal raised over listeners that have gone.
     if (this.destroyed) return
     this.destroyed = true
+    this.conversationVersion.value++
     if (this.persistTimer !== null) {
       window.clearTimeout(this.persistTimer)
       this.persistTimer = null
