@@ -95,13 +95,16 @@ export function useTimelineScroll(
     const browserAnchor = owner.style.getPropertyValue('overflow-anchor')
     const browserAnchorPriority = owner.style.getPropertyPriority('overflow-anchor')
     const browserAnchoring = getComputedStyle(owner).overflowAnchor !== 'none'
-    owner.style.setProperty('overflow-anchor', 'none')
+    const alreadyHeld = owner.classList.contains('abele-timeline__scroll-hold')
+    owner.style.removeProperty('overflow-anchor')
+    owner.classList.add('abele-timeline__scroll-hold')
     let heldTop = owner.scrollTop
     // A shrinking patch can clamp scrollTop before nextTick aligns the surviving row.
     // Reserve range only across that patch; align replaces it with the exact needed room.
     // An editor which already owns anchoring also owns its patch-time scroll range.
     // Reserving extra range there would trigger its deferred viewport restoration.
-    const space = browserAnchoring ? anchorSpace.value : null
+    // WebKit may not expose overflow-anchor at all. The editor still owns its range.
+    const space = browserAnchoring && !owner.matches('.cm-scroller') ? anchorSpace.value : null
     const previousSpace = space?.style.height ?? ''
     let patchSpace = !!space
     if (space)
@@ -155,6 +158,7 @@ export function useTimelineScroll(
         else space.style.removeProperty('height')
         patchSpace = false
       }
+      if (!alreadyHeld) owner.classList.remove('abele-timeline__scroll-hold')
       if (browserAnchor)
         owner.style.setProperty('overflow-anchor', browserAnchor, browserAnchorPriority)
       else owner.style.removeProperty('overflow-anchor')

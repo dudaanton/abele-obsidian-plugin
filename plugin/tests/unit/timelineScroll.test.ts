@@ -41,10 +41,13 @@ async function pane(rowTop: number) {
   })
   const patch = async (change: () => void) => {
     const stop = watch(source, change, { flush: 'post' })
-    source.value++
-    await nextTick()
-    await nextTick()
-    stop()
+    try {
+      source.value++
+      await nextTick()
+      await nextTick()
+    } finally {
+      stop()
+    }
   }
   return {
     owner,
@@ -213,21 +216,41 @@ describe('timeline scroll ownership', () => {
     expect(p.space.style.height).toBe('')
   })
 
+  it('does not reserve patch range in an editor even when overflow-anchor is unsupported', async () => {
+    const p = await pane(50)
+    p.root.dispatchEvent(new Event('touchmove', { bubbles: true }))
+    p.owner.classList.add('cm-scroller')
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      overflowY: 'auto',
+      overflowAnchor: undefined,
+      paddingTop: '0',
+    } as unknown as CSSStyleDeclaration)
+    let patchSpace = ''
+    await p.patch(() => {
+      patchSpace = p.space.style.height
+    })
+    expect(patchSpace).toBe('')
+    expect(p.owner.scrollTop).toBe(100)
+  })
+
   it('temporarily disables competing browser scroll anchoring and restores the owner on release', async () => {
     const p = await pane(50)
     p.root.dispatchEvent(new Event('touchmove', { bubbles: true }))
     p.owner.style.setProperty('overflow-anchor', 'auto', 'important')
     await p.patch(() => {})
-    expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('none')
+    expect(p.owner.classList.contains('abele-timeline__scroll-hold')).toBe(true)
+    expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('')
     p.root.dispatchEvent(new Event('touchmove', { bubbles: true }))
     expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('auto')
     expect(p.owner.style.getPropertyPriority('overflow-anchor')).toBe('important')
+    expect(p.owner.classList.contains('abele-timeline__scroll-hold')).toBe(false)
     p.owner.style.removeProperty('overflow-anchor')
     await p.patch(() => {})
-    expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('none')
+    expect(p.owner.classList.contains('abele-timeline__scroll-hold')).toBe(true)
     p.owner.scrollTop += 20
     p.owner.dispatchEvent(new Event('scroll'))
     expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('')
+    expect(p.owner.classList.contains('abele-timeline__scroll-hold')).toBe(false)
   })
 
   it('does not scroll note text when every timeline row is below the viewport', async () => {

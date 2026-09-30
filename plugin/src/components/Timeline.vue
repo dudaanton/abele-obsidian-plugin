@@ -260,6 +260,11 @@ const getDateWikilink = (dateStr: string) => {
 </script>
 
 <style lang="scss">
+// Only while a layout patch is anchored; native input removes this class immediately.
+.abele-timeline__scroll-hold {
+  overflow-anchor: none !important;
+}
+
 .abele-timeline__history {
   position: sticky;
   top: var(--abele-timeline-sticky-top, 0);
