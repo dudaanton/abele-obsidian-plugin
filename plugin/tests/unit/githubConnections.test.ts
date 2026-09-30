@@ -25,7 +25,10 @@ describe('GitHub connection migration', () => {
   })
 
   it('retains a legacy API-address spelling with a trailing slash and the same key slot', () => {
-    const settings = githubSettingsFrom({ server: 'https://Git.Example.test/api/v3/', keyId: 'legacy-slot' })
+    const settings = githubSettingsFrom({
+      server: 'https://Git.Example.test/api/v3/',
+      keyId: 'legacy-slot',
+    })
     expect(settings.connections).toHaveLength(1)
     expect(settings.connections[0].keyId).toBe('legacy-slot')
   })
@@ -37,6 +40,7 @@ describe('GitHub connection migration', () => {
 
   it('never resurrects a deleted legacy connection, even while legacy fields are still present', () => {
     expect(githubSettingsFrom({ ...legacy, connections: [] }).connections).toEqual([])
+    expect(githubSettingsFrom({ ...legacy, connections: [] }).keyId).toBe('')
     expect(projectLegacy(githubSettingsFrom({ ...legacy, connections: [] }))).toMatchObject({
       server: '',
       keyId: '',
@@ -108,6 +112,16 @@ describe('GitHub connection migration', () => {
     ])
   })
 
+  it('hides the classic legacy alias when the last Enterprise connection is removed', () => {
+    const settings = githubSettingsFrom({ ...legacy, notifications: { keyId: 'classic-key' } })
+    settings.connections = []
+    const projected = projectLegacy(settings)
+    expect(projected.server).toBe('')
+    expect(projected.notifications.keyId).toBe('')
+    expect(projected.notifications.boundKeyId).toBe('classic-key')
+    expect(projected.notifications.boundServer).toBe(legacy.server)
+  })
+
   it('binds a classic notifications credential to its original server after changing the projection', () => {
     const settings = githubSettingsFrom({ ...legacy, notifications: { keyId: 'classic-key' } })
     settings.connections = [
@@ -130,9 +144,25 @@ describe('GitHub connection migration', () => {
 
   it('does not restore an abandoned legacy projection server if it is later added again', () => {
     const first = githubSettingsFrom(legacy)
-    first.connections = [{ id: 'public', name: 'Public', server: '', keyId: 'public-slot', owners: [], isDefault: true }]
+    first.connections = [
+      {
+        id: 'public',
+        name: 'Public',
+        server: '',
+        keyId: 'public-slot',
+        owners: [],
+        isDefault: true,
+      },
+    ]
     const projected = projectLegacy(first)
-    projected.connections.push({ id: 'enterprise-again', name: 'Enterprise again', server: legacy.server, keyId: 'new-slot', owners: [], isDefault: true })
+    projected.connections.push({
+      id: 'enterprise-again',
+      name: 'Enterprise again',
+      server: legacy.server,
+      keyId: 'new-slot',
+      owners: [],
+      isDefault: true,
+    })
     expect(projectLegacy(projected).keyId).toBe('public-slot')
   })
 
@@ -157,6 +187,57 @@ describe('GitHub connection migration', () => {
 })
 
 describe('connection transfer', () => {
+  it('refuses a legacy token whose slot already belongs to another server, before settings change', () => {
+    const current = { ...DEFAULT_SETTINGS, github: githubSettingsFrom(legacy) }
+    const incoming = {
+      section: 'github' as const,
+      id: 'github',
+      label: 'GitHub',
+      secretIds: ['old-slot'],
+      data: { github: { keyId: 'old-slot', server: 'https://other.example.test' } },
+    }
+    expect(() => applyEntries([incoming], current)).toThrow(/another server/i)
+    expect(current.github.server).toBe(legacy.server)
+  })
+
+  it('rejects a malformed connection instead of applying its token to an existing slot', () => {
+    const current = { ...DEFAULT_SETTINGS, github: githubSettingsFrom(legacy) }
+    const incoming = {
+      section: 'github-connections' as const,
+      id: 'new',
+      label: 'New',
+      secretIds: ['old-slot'],
+      data: {
+        id: 'new',
+        name: 'New',
+        keyId: 'old-slot',
+        server: 'https://',
+        owners: [],
+        isDefault: false,
+      },
+    }
+    expect(() => applyEntries([incoming], current)).toThrow(/invalid.*connection/i)
+  })
+
+  it('never lets two servers share an imported credential reference', () => {
+    const current = { ...DEFAULT_SETTINGS, github: githubSettingsFrom(legacy) }
+    const incoming = {
+      section: 'github-connections' as const,
+      id: 'new',
+      label: 'New',
+      secretIds: ['old-slot'],
+      data: {
+        id: 'new',
+        name: 'New',
+        keyId: 'old-slot',
+        server: 'https://other.example.test',
+        owners: [],
+        isDefault: false,
+      },
+    }
+    expect(() => applyEntries([incoming], current)).toThrow(/another server|different servers/i)
+  })
+
   const settings = { ...DEFAULT_SETTINGS, github: githubSettingsFrom(legacy) }
   it('offers separate selectable entries and only selected tokens', () => {
     const entries = collectEntries(settings)

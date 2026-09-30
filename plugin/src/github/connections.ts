@@ -141,11 +141,8 @@ export function projectLegacy(settings: GithubSettings): GithubSettings {
       // Old versions attach this slot to the projected server. Hide it if that would send
       // the classic token to a different API; the new version retains the bound slot below.
       keyId:
-        (chosen
-          ? serverId(chosen.server)
-          : !settings.connections.length
-            ? serverId(settings.server)
-            : null) === serverId(settings.notifications.boundServer ?? settings.server)
+        serverId(chosen?.server ?? '') ===
+        serverId(settings.notifications.boundServer ?? settings.server)
           ? (settings.notifications.boundKeyId ?? settings.notifications.keyId)
           : '',
     },

@@ -709,12 +709,24 @@ export class AbeleConfig {
         ? list.filter((name): name is string => typeof name === 'string')
         : [...fallback]
     this.dateProperties = names(settings?.dateProperties, DEFAULT_SETTINGS.dateProperties)
-    this.priorityProperties = names(settings?.priorityProperties, DEFAULT_SETTINGS.priorityProperties)
+    this.priorityProperties = names(
+      settings?.priorityProperties,
+      DEFAULT_SETTINGS.priorityProperties
+    )
     this.labelProperties = names(settings?.labelProperties, DEFAULT_SETTINGS.labelProperties)
     this.groupProperties = names(settings?.groupProperties, DEFAULT_SETTINGS.groupProperties)
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
-    if (settings?.github && !Array.isArray(settings.github.connections)) migrated = true
+    if (
+      settings?.github &&
+      (!Array.isArray(settings.github.connections) ||
+        settings.github.keyId !== this.github.keyId ||
+        settings.github.server !== this.github.server ||
+        settings.github.legacyServer !== this.github.legacyServer ||
+        settings.github.defaultRepo !== this.github.defaultRepo ||
+        JSON.stringify(settings.github.connections) !== JSON.stringify(this.github.connections))
+    )
+      migrated = true
     this.reader = readerSettingsFrom(settings?.reader)
     this.calendars = calendarSettingsFrom(settings?.calendars)
     this.quickButton = quickButtonSettingsFrom(settings?.quickButton)

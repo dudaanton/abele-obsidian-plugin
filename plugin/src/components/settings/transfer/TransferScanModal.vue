@@ -283,7 +283,8 @@ const going = computed(() =>
 )
 
 const modeNote = computed(() => {
-  if (mode.value === 'merge') return 'Anything here that the transfer does not mention is left alone.'
+  if (mode.value === 'merge')
+    return 'Anything here that the transfer does not mention is left alone.'
   if (!going.value.length) return 'Nothing here would be removed: the transfer covers all of it.'
 
   const names = going.value.map((item) => item.label).join(', ')
@@ -334,7 +335,13 @@ const apply = async () => {
 
   const chosen = acceptedEntries.value
   const config = AbeleConfig.getInstance()
-  config.applySettings(applyEntries(chosen, config.exportSettings(), mode.value))
+  try {
+    config.applySettings(applyEntries(chosen, config.exportSettings(), mode.value))
+  } catch (e) {
+    // Connection/credential binding is validated before any keychain or settings write.
+    error.value = e instanceof Error ? e.message : 'These settings could not be applied.'
+    return
+  }
   // Taken in here, by hand: it arms this device even if it was once switched off on it.
   const scriptSettings = chosen.find((entry) => entry.section === 'scripts')?.data as
     | { confirmForeignScripts?: boolean }
@@ -366,11 +373,7 @@ const apply = async () => {
 
   // The files go in after the settings, so a script lands in the folder that just arrived
   // with them rather than the one this vault had a moment ago.
-  const files = await applyFiles(
-    GlobalStore.getInstance().app,
-    filesOnly(chosen),
-    scriptsFolder()
-  )
+  const files = await applyFiles(GlobalStore.getInstance().app, filesOnly(chosen), scriptsFolder())
 
   emit('applied', {
     items: settingsOnly(chosen).length + files.written,
@@ -503,17 +506,7 @@ const pixels = (bitmap: ImageBitmap, from: Rect): ImageData | null => {
   const context = canvas.getContext('2d')
   if (!context) return null
 
-  context.drawImage(
-    bitmap,
-    from.x,
-    from.y,
-    from.width,
-    from.height,
-    0,
-    0,
-    size.width,
-    size.height
-  )
+  context.drawImage(bitmap, from.x, from.y, from.width, from.height, 0, 0, size.width, size.height)
 
   return context.getImageData(0, 0, size.width, size.height)
 }

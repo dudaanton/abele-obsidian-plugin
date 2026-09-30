@@ -12,7 +12,8 @@
  */
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import { githubSettingsFrom } from '@/github/settings'
-import { projectLegacy, type GithubConnection } from '@/github/connections'
+import { projectLegacy, validConnectionServer, type GithubConnection } from '@/github/connections'
+import { endpoints } from '@/github/urls'
 import type { AiSettings } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
@@ -283,7 +284,30 @@ export const SECTIONS: Section[] = [
     write: (settings, data) => {
       const incoming = data.github as Partial<NonNullable<AbeleSettings['github']>> | undefined
       if (!incoming) return
+      if (
+        (incoming.server !== undefined &&
+          (typeof incoming.server !== 'string' ||
+            (incoming.server.trim() && !validConnectionServer(incoming.server.trim())))) ||
+        (incoming.notifications?.boundServer !== undefined &&
+          (typeof incoming.notifications.boundServer !== 'string' ||
+            (incoming.notifications.boundServer.trim() &&
+              !validConnectionServer(incoming.notifications.boundServer.trim()))))
+      ) {
+        throw new Error('Invalid GitHub connection server in this transfer.')
+      }
       const current = githubSettingsFrom(settings.github)
+      if (
+        incoming.keyId &&
+        current.connections.some(
+          (c) =>
+            c.keyId === incoming.keyId &&
+            endpoints(c.server).origin !== endpoints(incoming.server ?? '').origin
+        )
+      ) {
+        throw new Error(
+          'This legacy GitHub token slot already belongs to another server. Transfer connections from a current plugin version instead.'
+        )
+      }
       // A transfer made by an older version carries the main credential in its GitHub block.
       // Never replace an already imported connection list with stale compatibility fields.
       const hasList = Array.isArray(incoming.connections)
@@ -485,6 +509,25 @@ export function applyEntries(
   const next = JSON.parse(JSON.stringify(settings)) as AbeleSettings
 
   const arriving = settingsOnly(entries)
+  for (const entry of arriving) {
+    if (entry.section !== 'github-connections') continue
+    const c = entry.data as Partial<GithubConnection> | null
+    if (
+      !c ||
+      typeof c.id !== 'string' ||
+      c.id !== entry.id ||
+      !c.id ||
+      typeof c.name !== 'string' ||
+      typeof c.keyId !== 'string' ||
+      typeof c.server !== 'string' ||
+      (c.server.trim() && !validConnectionServer(c.server.trim())) ||
+      entry.secretIds?.some((id) => id !== c.keyId)
+    ) {
+      throw new Error(
+        'Invalid GitHub connection in this transfer. Check its name, server and credential reference.'
+      )
+    }
+  }
 
   if (mode === 'replace') {
     // Emptied first, then filled by the loop below: doing it in one pass would drop items the
@@ -520,5 +563,24 @@ export function applyEntries(
     section.write(next, items)
   }
 
+  if (arriving.some((e) => e.section === 'github' || e.section === 'github-connections')) {
+    const github = githubSettingsFrom(next.github)
+    const owners = new Map<string, string>()
+    const bind = (keyId: string | undefined, server: string) => {
+      if (!keyId) return
+      const origin = endpoints(server).origin
+      const previous = owners.get(keyId)
+      if (previous && previous !== origin)
+        throw new Error(
+          'A GitHub credential reference cannot belong to different servers. Give each connection its own keychain slot.'
+        )
+      owners.set(keyId, origin)
+    }
+    for (const connection of github.connections) bind(connection.keyId, connection.server)
+    bind(
+      github.notifications.boundKeyId ?? github.notifications.keyId,
+      github.notifications.boundServer ?? github.server
+    )
+  }
   return next
 }

@@ -1,5 +1,5 @@
 /** The GitHub integration's settings, kept under `github` in the plugin's settings. */
-import { normalizeConnections, type GithubConnection } from './connections'
+import { normalizeConnections, projectLegacy, type GithubConnection } from './connections'
 export interface GithubSettings {
   /** The whole feature. Off: no link is intercepted and no command does anything. */
   enabled: boolean
@@ -83,26 +83,27 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   notifications: { keyId: '' },
 }
 
-export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({
-  ...DEFAULT_GITHUB_SETTINGS,
-  ...(stored ?? {}),
-  connections: normalizeConnections(stored?.connections, stored ?? {}),
-  // A settings file from before pinning, or one edited by hand, holds nothing usable here.
-  pinnedRepos: Array.isArray(stored?.pinnedRepos)
-    ? stored.pinnedRepos.filter((p): p is PinnedRepo => typeof p?.url === 'string')
-    : [],
-  notifications: {
-    keyId: typeof stored?.notifications?.keyId === 'string' ? stored.notifications.keyId : '',
-    ...(stored?.notifications?.boundKeyId
-      ? {
-          boundKeyId: stored.notifications.boundKeyId,
-          boundServer: stored.notifications.boundServer ?? stored?.server ?? '',
-        }
-      : stored?.notifications?.keyId
+export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings =>
+  projectLegacy({
+    ...DEFAULT_GITHUB_SETTINGS,
+    ...(stored ?? {}),
+    connections: normalizeConnections(stored?.connections, stored ?? {}),
+    // A settings file from before pinning, or one edited by hand, holds nothing usable here.
+    pinnedRepos: Array.isArray(stored?.pinnedRepos)
+      ? stored.pinnedRepos.filter((p): p is PinnedRepo => typeof p?.url === 'string')
+      : [],
+    notifications: {
+      keyId: typeof stored?.notifications?.keyId === 'string' ? stored.notifications.keyId : '',
+      ...(stored?.notifications?.boundKeyId
         ? {
-            boundKeyId: stored.notifications.keyId,
-            boundServer: stored.server ?? '',
+            boundKeyId: stored.notifications.boundKeyId,
+            boundServer: stored.notifications.boundServer ?? stored?.server ?? '',
           }
-        : {}),
-  },
-})
+        : stored?.notifications?.keyId
+          ? {
+              boundKeyId: stored.notifications.keyId,
+              boundServer: stored.server ?? '',
+            }
+          : {}),
+    },
+  })
