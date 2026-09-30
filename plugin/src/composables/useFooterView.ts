@@ -9,6 +9,8 @@ import {
   renameFooterView,
   setOpen,
   setPages,
+  setTimelineStart,
+  timelineStartOf,
   type FooterViewState,
 } from '@/helpers/footerView'
 import { FOOTER_FOLD } from './useFooterFold'
@@ -54,6 +56,18 @@ export function useFooterPages(section: FooterSection): RememberedPages {
   return {
     initial: restoring() ? pagesOf(current(), path(), section) : 1,
     record: (pages) => write(setPages(current(), path(), section, pages)),
+  }
+}
+
+/** The timeline also needs its revealed past boundary before note-place restoration runs. */
+export function useFooterTimeline() {
+  const path = inject(FOOTER_FOLD, null)
+  return {
+    ...useFooterPages('calendar'),
+    lower: path && restoring() ? timelineStartOf(current(), path()) : null,
+    recordLower: (day: string | null) => {
+      if (path) write(setTimelineStart(current(), path(), day))
+    },
   }
 }
 

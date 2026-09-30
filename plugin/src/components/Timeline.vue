@@ -127,7 +127,7 @@ import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
 import { useTimelineDays } from '@/composables/useTimelineDays'
 import { useTimelineScroll } from '@/composables/useTimelineScroll'
-import { useFooterPages } from '@/composables/useFooterView'
+import { useFooterTimeline } from '@/composables/useFooterView'
 import { createTask } from '@/commands/createTask'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { taskSearch, useListSearch } from '@/composables/useListSearch'
@@ -224,7 +224,8 @@ const { visible, folded, hasMore, sentinel, reset, revealPrevious } = useTimelin
   () => now.value.format(DATE_FORMAT),
   () => search.terms.value,
   PAGE_SIZE,
-  useFooterPages('calendar')
+  useFooterTimeline(),
+  () => !fold.collapsed.value
 )
 const foldedUnfinished = computed(() => {
   const keys = new Set<string>()

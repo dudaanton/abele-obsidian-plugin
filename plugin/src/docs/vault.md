@@ -436,7 +436,9 @@ With `rememberNotePlaces` on, each device keeps, outside the vault, where every 
 was left: the scroll and the cursor, by path. A note opened plainly comes back there; one opened
 at a heading, a block, a search result, a line or a book's highlight goes to that instead.
 Nothing about it is written into notes or synced, a rename carries the place along and a delete
-drops it.
+drops it. The local footer-view memory also keeps expanded list pages, opened task descriptions,
+and the earliest revealed timeline day. That day is drawn again before restoring a saved past-task
+anchor; with place restoration off, the timeline starts at today. Search windows are not remembered.
 
 ## Places
 

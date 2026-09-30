@@ -7,6 +7,9 @@ import Timeline from '@/components/Timeline.vue'
 import Search from '@/components/obsidian/Search.vue'
 import { Task } from '@/entities/Task'
 import { configureAbele, useVault } from '../helpers/testEnv'
+import { FOOTER_FOLD, FOOTER_FOLDS_KEY, resetFooterFolds } from '@/composables/useFooterFold'
+import FoldHeading from '@/components/obsidian/FoldHeading.vue'
+import { FOOTER_VIEW_KEY, resetFooterView } from '@/composables/useFooterView'
 import {
   installFakeIntersectionObserver,
   scrollIntoView,
@@ -38,6 +41,73 @@ beforeEach(() => {
 afterEach(() => view?.unmount())
 
 describe('folded timeline history', () => {
+  it('recreates revealed history after a footer unmounts, only when remembering places is enabled', async () => {
+    const app = useVault([])
+    const config = configureAbele()
+    const remembered = config.rememberNotePlaces
+    config.rememberNotePlaces = true
+    resetFooterView()
+    resetFooterFolds()
+    const tasks = [task('sample-yesterday', '2030-06-14'), task('sample-today', '2030-06-15')]
+    const open = () => {
+      view = mount(Timeline, {
+        props: { tasks },
+        shallow: true,
+        attachTo: document.body,
+        global: { provide: { [FOOTER_FOLD as symbol]: () => 'Sample/group.md' } },
+      })
+    }
+    try {
+      open()
+      await flushPromises()
+      await view.trigger('wheel', { deltaY: -80 })
+      await flushPromises()
+      expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+      expect(app.loadLocalStorage(FOOTER_VIEW_KEY)).toBeTruthy()
+      view.unmount()
+      resetFooterView()
+      open()
+      await flushPromises()
+      expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+      view.unmount()
+      config.rememberNotePlaces = false
+      open()
+      await flushPromises()
+      expect(days()).toEqual(['date:2030-06-15'])
+    } finally {
+      config.rememberNotePlaces = remembered
+      resetFooterView()
+      resetFooterFolds()
+    }
+  })
+
+  it('does not build date ranges while a footer section is folded, even across loading batches', async () => {
+    const app = useVault([])
+    app.saveLocalStorage(FOOTER_FOLDS_KEY, { 'Sample/group.md': ['calendar'] })
+    resetFooterFolds()
+    const sample = task('sample-span', '2030-06-10', false, '2030-06-20')
+    const dateRanges = vi.spyOn(sample, 'dates', 'get')
+    view = mount(Timeline, {
+      props: { tasks: [sample] },
+      shallow: true,
+      attachTo: document.body,
+      global: { provide: { [FOOTER_FOLD as symbol]: () => 'Sample/group.md' } },
+    })
+    await flushPromises()
+    expect(dateRanges).not.toHaveBeenCalled()
+    for (let i = 0; i < 3; i++) {
+      await view.setProps({ tasks: [sample, task(`sample-${i}`, '2030-06-15')] })
+      await flushPromises()
+      expect(dateRanges).not.toHaveBeenCalled()
+    }
+    view.findComponent(FoldHeading).vm.$emit('toggle')
+    await flushPromises()
+    expect(dateRanges).toHaveBeenCalled()
+    expect(days()).toContain('date:2030-06-15')
+    dateRanges.mockRestore()
+    resetFooterFolds()
+  })
+
   it('starts today and counts unfinished tasks once, even across several folded days', () => {
     render([
       task('sample-span', '2030-06-10', false, '2030-06-12'),

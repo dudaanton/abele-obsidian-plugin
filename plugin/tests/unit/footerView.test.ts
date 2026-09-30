@@ -12,6 +12,8 @@ import {
   renameFooterView,
   setOpen,
   setPages,
+  setTimelineStart,
+  timelineStartOf,
 } from '@/helpers/footerView'
 
 describe('the pages of a list under a note', () => {
@@ -40,6 +42,21 @@ describe('the tasks opened under a note', () => {
     s = setOpen(s, 'a.md', 'Tasks/one.md', false)
     s = setOpen(s, 'a.md', 'Tasks/two.md', false)
     expect(s).toEqual({})
+  })
+})
+
+describe('the revealed timeline boundary', () => {
+  it('survives storage and rename, and a reset removes just the history boundary', () => {
+    const s = setTimelineStart(setPages({}, 'sample.md', 'calendar', 2), 'sample.md', '2030-06-14')
+    expect(timelineStartOf(footerViewFrom(s), 'sample.md')).toBe('2030-06-14')
+    const moved = renameFooterView(s, 'sample.md', 'sample-renamed.md')
+    expect(timelineStartOf(moved, 'sample-renamed.md')).toBe('2030-06-14')
+    const reset = setTimelineStart(moved, 'sample-renamed.md', null)
+    expect(timelineStartOf(reset, 'sample-renamed.md')).toBeNull()
+    expect(pagesOf(reset, 'sample-renamed.md', 'calendar')).toBe(2)
+    expect(setTimelineStart({}, 'sample.md', null)).toEqual({})
+    expect(footerViewFrom({ 'sample.md': { calendarStart: ['bad'] } })).toEqual({})
+    expect(footerViewFrom({ 'sample.md': { calendarStart: 'not-a-day' } })).toEqual({})
   })
 })
 
