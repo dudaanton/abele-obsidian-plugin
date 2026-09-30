@@ -96,6 +96,8 @@ interface Screen {
   clipped: string[]
   /** Horizontal tab strips: row count and tabs taller than their strip. */
   tabs?: { name: string; count: number; rows: number; clipped: string[] }[]
+  /** Focus a tab outside the visible strip, then measure its ring without pre-scrolling it. */
+  tabFocus?: { label: string; level: string; outside: boolean; clipped: string[] }[]
   /** The root's height as a share of the window's. */
   fill: number
   /** Where the picture went. */
@@ -240,6 +242,27 @@ const probeScript = `(async () => {
       if (!root) throw new Error('nothing to measure')
       entry.shot = await shoot(label)
       Object.assign(entry, measure(root, body))
+      entry.tabFocus = []
+      for (const strip of root.querySelectorAll('.abele-tabs:not(.abele-tabs_vertical)')) {
+        if (strip.scrollWidth <= strip.clientWidth + 1) continue
+        const tabs = [...strip.querySelectorAll('.abele-tabs__tab')]
+        const previous = strip.scrollLeft
+        const level = strip.classList.contains('abele-tabs_primary') ? 'primary' : 'secondary'
+        for (const [tab, start] of [[tabs.at(-1), 0], [tabs[0], strip.scrollWidth]]) {
+          if (!tab || !tab.getBoundingClientRect().width) continue
+          document.activeElement?.blur()
+          strip.scrollLeft = start
+          const bounds = strip.getBoundingClientRect()
+          const box = tab.getBoundingClientRect()
+          const outside = box.left >= bounds.right || box.right <= bounds.left
+          // The same unforced focus a keyboard or script gives. Do not scroll into view in the
+          // probe: the component itself must reveal the focused tab and its whole focus ring.
+          tab.focus()
+          entry.tabFocus.push({ label: tab.textContent.trim(), level, outside, clipped: ringClipped(tab) })
+          tab.blur()
+        }
+        strip.scrollLeft = previous
+      }
     } catch (e) {
       entry.error = String((e && e.message) || e)
     }
@@ -1125,6 +1148,15 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(d?.edges?.[0] ?? -1).toBeGreaterThanOrEqual(0)
     expect(d?.edges?.[1] ?? 9999).toBeLessThanOrEqual(PHONE.height)
     expect(d?.hidden ?? ['no report']).toEqual([])
+  })
+
+  it('focusing an offscreen tab brings its whole focus ring into the scrolling strip', () => {
+    const cases = Object.values(report).flatMap((screen) => screen.tabFocus ?? [])
+    for (const level of ['primary', 'secondary'])
+      expect(cases.some((c) => c.level === level && c.outside), level).toBe(true)
+    for (const item of cases) {
+      expect(item.clipped, item.label).toEqual([])
+    }
   })
 
   it.each(['scope', 'skills', 'prompts', 'tools', 'settings', 'debug'])(
