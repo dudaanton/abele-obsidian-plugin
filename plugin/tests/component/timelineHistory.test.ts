@@ -102,6 +102,28 @@ describe('folded timeline history', () => {
     expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-13', 'date:2030-06-15'])
   })
 
+  it('reveals history on upward input inside a short pane that cannot scroll past its calendar', async () => {
+    render([task('sample-old', '2030-06-14'), task('sample-today', '2030-06-15')])
+    await flushPromises()
+    // Input geometry, not happy-dom layout: a short pane has its timeline halfway down,
+    // but no scroll range with which to bring that first date to the viewport's top.
+    const owner = view.element as HTMLElement
+    Object.defineProperty(owner, 'clientHeight', { value: 1000 })
+    Object.defineProperty(owner, 'scrollHeight', { value: 1000 })
+    vi.spyOn(owner, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 1000))
+    vi.spyOn(
+      view.find('.abele-timeline__history').element,
+      'getBoundingClientRect'
+    ).mockReturnValue(new DOMRect(0, 400, 300, 50))
+    vi.spyOn(
+      view.find('.abele-timeline__date-block').element,
+      'getBoundingClientRect'
+    ).mockReturnValue(new DOMRect(0, 450, 300, 100))
+    await view.trigger('wheel', { deltaY: -80 })
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+  })
+
   it('unfolds a past-only list with an upward touch and keeps other days folded', async () => {
     render([task('sample-a', '2030-06-12'), task('sample-b', '2030-06-14')])
     await flushPromises()

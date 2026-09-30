@@ -123,10 +123,21 @@ export function useTimelineScroll(
       }
       const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(followChrome)
       resize?.observe(owner)
+      let inputInsideTimeline = false
       const atBoundary = () => {
         if (!history.value) return false
         const top = pinnedTop(owner)
         const header = history.value.getBoundingClientRect()
+        // A short pane may have no scroll range at all (the calendar is still above it).
+        // Upward input on its visible timeline can still open history; input on the calendar
+        // must not do so. Once scrolling is possible, the normal upper boundary takes over.
+        if (
+          owner.scrollTop <= 1 &&
+          inputInsideTimeline &&
+          header.top >= top - 2 &&
+          header.bottom <= owner.getBoundingClientRect().bottom
+        )
+          return true
         const first = root.firstElementChild?.getBoundingClientRect()
         const edge = first?.top ?? header.bottom
         return (
@@ -157,6 +168,7 @@ export function useTimelineScroll(
         return true
       }
       const wheel = (event: WheelEvent) => {
+        inputInsideTimeline = root.parentElement?.contains(event.target as Node) ?? false
         upwardScroll = event.deltaY < 0 && !event.ctrlKey && !event.metaKey
         stopHolding()
         if (event.ctrlKey || event.metaKey || event.deltaY >= 0 || !atBoundary()) return
@@ -165,6 +177,7 @@ export function useTimelineScroll(
       }
       let fingerY: number | null = null
       const touchStart = (event: TouchEvent) => {
+        inputInsideTimeline = root.parentElement?.contains(event.target as Node) ?? false
         stopHolding()
         fingerY = event.touches.length === 1 ? event.touches[0].clientY : null
       }
@@ -192,6 +205,7 @@ export function useTimelineScroll(
         if (upwardScroll && delta > 0 && !inserting && atBoundary()) void unfold(delta)
       }
       const key = (event: KeyboardEvent) => {
+        inputInsideTimeline = root.parentElement?.contains(event.target as Node) ?? false
         upwardScroll = ['ArrowUp', 'PageUp'].includes(event.key)
         stopHolding()
         if (
@@ -204,6 +218,7 @@ export function useTimelineScroll(
         void unfold(event.key === 'PageUp' ? owner.clientHeight : 40)
       }
       const pointer = (event: PointerEvent) => {
+        inputInsideTimeline = root.parentElement?.contains(event.target as Node) ?? false
         upwardScroll = event.target === owner
         stopHolding()
       }
