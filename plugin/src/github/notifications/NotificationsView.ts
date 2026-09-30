@@ -5,7 +5,9 @@
  */
 import { openExternal } from '@/helpers/openExternal'
 import { ItemView, type PaneType, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
-import { createApp, reactive, type App as VueApp } from 'vue'
+import { createApp, reactive, h, type App as VueApp } from 'vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { secrets } from '@/secrets/SecretStore'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
 import type { NotificationsState } from './inbox'
 import { githubSettings, notificationsClient, openGithubUrl } from '../GithubService'
@@ -49,16 +51,25 @@ export class NotificationsView extends ItemView {
     this.contentEl.empty()
     this.contentEl.addClass('abele-github-notifications-view')
     const mountPoint = this.contentEl.createDiv()
-    this.vue = createApp(GithubNotifications, {
-      enabled: githubSettings().enabled,
-      // The token's own server: notifications belong to the account, not to a repository. Read
-      // with the notifications token when one is set, the main token otherwise.
-      clientFor: () => notificationsClient(),
-      state: this.state,
-      onOpen: (url: string, pane: PaneType | false): void =>
-        void openGithubUrl(this.app, url, pane),
-      onExternal: (url: string): void => void openExternal(url),
-      onState: () => this.app.workspace.requestSaveLayout(),
+    this.vue = createApp({
+      render: () => {
+        void AbeleConfig.getInstance().version.value
+        return h(GithubNotifications, {
+          enabled: githubSettings().enabled,
+          // The token's own server: notifications belong to the account, not to a repository. Read
+          // with the notifications token when one is set, the main token otherwise.
+          clientFor: () => {
+            void AbeleConfig.getInstance().version.value
+            void secrets().version.value
+            return notificationsClient()
+          },
+          state: this.state,
+          onOpen: (url: string, pane: PaneType | false): void =>
+            void openGithubUrl(this.app, url, pane),
+          onExternal: (url: string): void => void openExternal(url),
+          onState: () => this.app.workspace.requestSaveLayout(),
+        })
+      },
     })
     this.vue.mount(mountPoint)
   }

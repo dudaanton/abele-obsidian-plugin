@@ -250,10 +250,11 @@ async function refresh(force = false) {
   busy.value = true
   now.value = Date.now()
   const which = props.state.which
+  const client = reader().client
   try {
     const page = await inbox().load(which, force)
-    // The other list was chosen meanwhile: this answer is not what is shown.
-    if (which === props.state.which) {
+    // The list or credential changed meanwhile: this answer is not what is shown.
+    if (props.enabled && client === reader().client && which === props.state.which) {
       items.value = force || !items.value ? page.items : keepInView(items.value, page.items)
       if (force) readHere.clear()
       listedAt.value = page.listedAt
@@ -263,11 +264,26 @@ async function refresh(force = false) {
       error.value = ''
     }
   } catch (e) {
-    if (which === props.state.which) error.value = e instanceof Error ? e.message : String(e)
+    if (props.enabled && client === reader().client && which === props.state.which)
+      error.value = e instanceof Error ? e.message : String(e)
   } finally {
     finishBusy()
   }
 }
+
+watch(
+  [() => props.enabled, () => reader().client.cacheNamespace],
+  () => {
+    items.value = null
+    listedAt.value = ''
+    error.value = ''
+    accessHint.value = ''
+    readHere.clear()
+    marking.clear()
+    if (props.enabled) void refresh()
+  },
+  { flush: 'sync' }
+)
 
 function setWhich(which: string) {
   if (which !== 'unread' && which !== 'all') return
@@ -297,13 +313,15 @@ async function markDone(n: GithubNotification) {
   if (busy.value || marking.has(n.id)) return
   busy.value = true
   marking.add(n.id)
+  const client = reader().client
   try {
     await inbox().markDone(n.id)
+    if (client !== reader().client) return
     readHere.delete(n.id)
     items.value = (items.value ?? []).filter((item) => item.id !== n.id)
     error.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    if (client === reader().client) error.value = e instanceof Error ? e.message : String(e)
   } finally {
     marking.delete(n.id)
     finishBusy()
@@ -313,16 +331,19 @@ async function markDone(n: GithubNotification) {
 async function markAllRead() {
   if (busy.value || !listedAt.value) return
   busy.value = true
+  const client = reader().client
+  const currentInbox = inbox()
   try {
     const before = shown.value.filter((n) => n.unread).map((n) => n.id)
-    await inbox().markAllRead(listedAt.value, props.state.repo)
+    await currentInbox.markAllRead(listedAt.value, props.state.repo)
+    if (client !== reader().client) return
     for (const id of before) readHere.add(id)
-    const read = new Map((inbox().cached(props.state.which) ?? []).map((n) => [n.id, n]))
+    const read = new Map((currentInbox.cached(props.state.which) ?? []).map((n) => [n.id, n]))
     // Read is not Done: preserve rows retained by a poll, which are not in the API cache.
     items.value = (items.value ?? []).map((n) => read.get(n.id) ?? n)
     error.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    if (client === reader().client) error.value = e instanceof Error ? e.message : String(e)
   } finally {
     finishBusy()
   }
@@ -334,7 +355,9 @@ async function markAllRead() {
  */
 async function open(n: GithubNotification, event: MouseEvent | KeyboardEvent) {
   const pane = event instanceof MouseEvent ? paneForClick(event, false) : false
+  const client = reader().client
   const where = await inbox().open(n)
+  if (!props.enabled || client !== reader().client) return
   if (pane === null || !where.tab) emit('external', where.url)
   else emit('open', where.url, pane)
 }

@@ -54,6 +54,20 @@ describe('the inbox default', () => {
   })
 })
 
+describe('credential changes', () => {
+  it('clears the old inbox and rereads when its client changes, even if the next credential is denied', async () => {
+    const { wrapper } = panel({ '/notifications': { json: notes } })
+    await flushPromises()
+    expect(ids(wrapper)).toEqual(['11', '12'])
+    const next = clientWith({ '/notifications': { status: 403, json: { message: 'Forbidden' } } })
+    await wrapper.setProps({ clientFor: () => next.client })
+    await flushPromises()
+    expect(ids(wrapper)).toEqual([])
+    expect(wrapper.text()).not.toContain('Sample thread 11')
+    expect(next.request).toHaveBeenCalledOnce()
+  })
+})
+
 describe('Done', () => {
   it.each(['11', '12'])(
     'offers Done on thread %s, read or unread, and removes it without opening',

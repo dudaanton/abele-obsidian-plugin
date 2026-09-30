@@ -78,6 +78,7 @@ const useNotificationsToken = () =>
       app.secretStorage.getSecret = function (id) {
         return id === 'abele-e2e-github-notifications' ? 'ghp_e2e_classic' : before.call(this, id)
       }
+      config.version.value++
       return 'ok'
     })()`
   )
