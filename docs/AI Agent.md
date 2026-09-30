@@ -237,11 +237,23 @@ The agent has access to these tools:
 
 | Tool | Description |
 |------|-------------|
+| `current_location` | Fresh position of the device running the chat: latitude, longitude, accuracy in metres, Unix-millisecond timestamp and answering platform; defaults to Ask |
 | `geocode` | Address or place name to coordinates, and coordinates back to an address |
 | `places` | Find places around a point by category or free text, sorted by distance |
 | `route` | Distance, time and turn-by-turn directions between places, by car, bike or on foot |
 
-These run on OpenStreetMap data through Photon, Overpass and the FOSSGIS routing servers — no API
+`current_location` uses the device's geolocation API and needs location permission. Its per-agent
+access is Off / Ask / Auto, with Ask as the default; use it only for answers that depend on where
+the person is. The result goes to the model and remains in chat history. It never substitutes
+IP-based location and never sends an automatic address lookup. Permission denied, unavailable
+platforms and a 15-second timeout give actionable errors. Desktop applications may expose the
+API without a working location provider.
+
+The map's **Show my location** control is separate: a one-shot local request that centres the
+map and draws the native marker and accuracy circle. It writes no note and sends no position
+to an agent (the map still requests tiles from its provider). A failed request shows a Notice.
+
+The other map tools run on OpenStreetMap data through Photon, Overpass and the FOSSGIS routing servers — no API
 key and no account, so they work on a fresh install. Each of them draws what it answered: the
 chat shows a map under the tool call, and the same map can be written into a note as an
 `abele-map` block. Coordinates come back as `lat, lon`, the form a note

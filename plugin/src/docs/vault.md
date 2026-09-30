@@ -254,6 +254,11 @@ use the file's creation time when neither a first turn nor a stored creation dat
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 
+A `current_location` tool answer contains personal coordinates, accuracy, acquisition time and
+the answering platform. Like other tool answers it is sent to the model and retained in the
+chat file; it is not saved as a note property or a global location setting. The map's **Show my
+location** action keeps its position only in the live map and discards it when the map is closed.
+
 A chat that chose its own interceptor rather than following its agent's keeps the choice in its
 metadata: `interceptorAgentId`, `interceptorContextDepth` and `interceptorReplyOnly` for a reviewing
 agent, `interceptorScript` for a script, `interceptorPattern` for the messages it is shown.

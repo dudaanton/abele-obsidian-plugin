@@ -2,6 +2,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { formatLatLon, reverseGeocode } from '@/services/GeoService'
 import { mapBounds, type MapConfig, type MapPoint } from './mapConfig'
+import { MapLocationControl } from './mapLocationControl'
 
 /**
  * The map itself: MapLibre, on tiles that cost the person nothing.
@@ -156,8 +157,10 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
 
   if (config.interactive) {
     map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right')
+    map.addControl(new MapLocationControl(el, maplibre), 'top-right')
     map.addControl(new maplibre.FullscreenControl({ container: el }), 'top-right')
-    map.addControl(new maplibre.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left')
+    // Expanded attribution spans the bottom of a phone map. Keep the scale on its own row.
+    map.addControl(new maplibre.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'top-left')
   }
 
   for (const point of config.points) {

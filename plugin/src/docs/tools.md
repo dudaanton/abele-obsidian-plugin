@@ -261,7 +261,7 @@ the words, then `book_highlight` with the find's link as `book` and the exact wo
 ## Maps
 
 `current_location` requests one fresh position from the device running this chat, not another
-synced device. It defaults to Ask in each agent's tool access (Off / Ask / On). Location is
+synced device. It defaults to Ask in each agent's tool access (Off / Ask / Auto). Location is
 personal data: request it only when the answer depends on where the person is. The JSON answer
 has `latitude`, `longitude`, `accuracy` (metres), `timestamp` (Unix milliseconds from the
 provider), and `device` (the answering Obsidian platform, not a unique hardware identifier).

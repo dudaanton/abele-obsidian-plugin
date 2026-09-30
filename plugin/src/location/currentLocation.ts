@@ -50,13 +50,13 @@ export function requestCurrentLocation(
     const finish = (location?: CurrentLocation, error?: Error) => {
       if (done) return
       done = true
-      clearTimeout(timer)
+      window.clearTimeout(timer)
       signal?.removeEventListener('abort', abort)
       if (error) reject(error)
-      else resolve(location!)
+      else if (location) resolve(location)
     }
     const abort = () => finish(undefined, new Error('Location request cancelled.'))
-    const timer = setTimeout(() => finish(undefined, locationError(3)), LOCATION_TIMEOUT_MS)
+    const timer = window.setTimeout(() => finish(undefined, locationError(3)), LOCATION_TIMEOUT_MS)
     signal?.addEventListener('abort', abort, { once: true })
 
     try {

@@ -106,6 +106,15 @@ A place note keeps its position in the `coordinates` property as `lat, lon`. The
 OpenStreetMap tiles and need no account. A property name and a map style of your own are set in
 **Settings → Abele → Other**.
 
+On an interactive map, **Show my location** (the location icon beside the zoom controls) centres
+the map on your device and shows a position marker with an accuracy circle. It requests a fresh
+position once per press, not continuous tracking. It does not write a note or send the position
+to an agent; loading map tiles still uses your tile provider. Allow location for Obsidian and,
+if asked, the page. If permission is denied, location is unavailable or the request times out
+(after 15 seconds), a notice explains what to do. On desktops the API may exist without a
+working location provider: check system Location Services and Obsidian's privacy permissions,
+or use a device that supports location. No guessed or IP-based position is substituted.
+
 ## Find and replace
 
 **Find and replace in frontmatter and content of all notes, matching the criteria** changes many

@@ -1008,6 +1008,34 @@ const probeScript = `(async () => {
     } else {
       report['docs page'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the documentation did not open' }
     }
+    // The renderer is shared by AbeleMap (chat/script UI) and maps inside notes. Location
+    // must be available on a phone without automatically requesting personal data.
+    const mapRoot = document.createElement('div')
+    mapRoot.className = 'abele-map'
+    Object.assign(mapRoot.style, { position: 'fixed', width: 'auto', left: '12px', right: '12px', top: '90px', height: '320px', zIndex: '1000' })
+    document.body.appendChild(mapRoot)
+    let mapHandle
+    try {
+      mapHandle = await window.__abeleTest.renderMap(mapRoot, {
+        points: [], lines: [], center: { lat: 12.345, lon: 67.89 }, height: 320, interactive: true,
+      })
+      await screen('map location', mapRoot)
+      const edge = mapRoot.getBoundingClientRect()
+      const buttons = [...mapRoot.querySelectorAll('.maplibregl-ctrl button')]
+      report['map location'].locationLabel = mapRoot.querySelector('button[aria-label="Show my location"]')?.title || ''
+      const scale = mapRoot.querySelector('.maplibregl-ctrl-scale')?.getBoundingClientRect()
+      const attribution = mapRoot.querySelector('.maplibregl-ctrl-attrib')?.getBoundingClientRect()
+      report['map location'].scaleOverlap = !!scale && !!attribution &&
+        scale.left < attribution.right && scale.right > attribution.left &&
+        scale.top < attribution.bottom && scale.bottom > attribution.top
+      report['map location'].controlOverflow = buttons.filter(button => {
+        const r = button.getBoundingClientRect()
+        return r.left < edge.left || r.right > edge.right || r.top < edge.top || r.bottom > edge.bottom
+      }).map(button => button.getAttribute('aria-label') || button.title)
+    } finally {
+      mapHandle?.destroy()
+      mapRoot.remove()
+    }
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
@@ -1112,6 +1140,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'docs contents',
     'docs search result',
     'script form picker',
+    'map location',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -1153,7 +1182,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   it('focusing an offscreen tab brings its whole focus ring into the scrolling strip', () => {
     const cases = Object.values(report).flatMap((screen) => screen.tabFocus ?? [])
     for (const level of ['primary', 'secondary'])
-      expect(cases.some((c) => c.level === level && c.outside), level).toBe(true)
+      expect(
+        cases.some((c) => c.level === level && c.outside),
+        level
+      ).toBe(true)
     for (const item of cases) {
       expect(item.clipped, item.label).toEqual([])
     }
@@ -1342,6 +1374,17 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(report['changelog notice']?.error ?? 'no report').toBe('')
     expect(report['changelog notice'].over).toEqual([])
     expect(report['changelog notice'].clipped).toEqual([])
+  })
+
+  it('map location: the labelled location button and every map control fit inside the map', () => {
+    const map = report['map location'] as Screen & {
+      locationLabel?: string
+      controlOverflow?: string[]
+      scaleOverlap?: boolean
+    }
+    expect(map?.locationLabel).toBe('Show my location')
+    expect(map?.controlOverflow).toEqual([])
+    expect(map?.scaleOverlap).toBe(false)
   })
 
   it('docs search result: lands on the place it found, lit up and in view', () => {

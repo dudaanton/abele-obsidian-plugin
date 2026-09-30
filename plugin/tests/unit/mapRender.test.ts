@@ -16,13 +16,15 @@ vi.mock('@/services/GeoService', () => ({
 
 const maplibre = vi.hoisted(() => {
   const controls: unknown[] = []
+  const positions = new Map<unknown, string>()
   const handlers = new Map<string, (event: any) => void>()
   let features: unknown[] = []
   let popupContent: HTMLElement | null = null
 
   class MockMap {
-    addControl(control: unknown) {
+    addControl(control: unknown, position: string) {
       controls.push(control)
+      positions.set(control, position)
       return this
     }
     on(name: string, handler: (event: any) => void) {
@@ -60,6 +62,7 @@ const maplibre = vi.hoisted(() => {
 
   return {
     controls,
+    positions,
     handlers,
     get popupContent() {
       return popupContent
@@ -88,6 +91,7 @@ vi.mock('maplibre-gl', () => ({
 }))
 
 import { mapFeatureInfo, renderMap } from '@/helpers/mapRender'
+import { MapLocationControl } from '@/helpers/mapLocationControl'
 
 const config = {
   points: [],
@@ -100,12 +104,19 @@ const config = {
 beforeEach(() => {
   useVault([])
   maplibre.controls.length = 0
+  maplibre.positions.clear()
   maplibre.handlers.clear()
   maplibre.setFeatures([])
   geo.reverseGeocode.mockReset()
 })
 
 describe('map controls', () => {
+  it('keeps the scale away from expanded bottom attribution on a narrow map', async () => {
+    await renderMap(document.createElement('div'), config)
+    const scale = maplibre.controls.find((control) => control instanceof maplibre.ScaleControl)
+    expect(maplibre.positions.get(scale)).toBe('top-left')
+  })
+
   it('lets a person zoom, reset direction, use fullscreen and read the scale', async () => {
     await renderMap(document.createElement('div'), config)
 
@@ -116,6 +127,14 @@ describe('map controls', () => {
       true
     )
     expect(maplibre.controls.some((control) => control instanceof maplibre.ScaleControl)).toBe(true)
+    expect(maplibre.controls.some((control) => control instanceof MapLocationControl)).toBe(true)
+  })
+})
+
+describe('a non-interactive map', () => {
+  it('does not offer location or navigation controls', async () => {
+    await renderMap(document.createElement('div'), { ...config, interactive: false })
+    expect(maplibre.controls).toEqual([])
   })
 })
 

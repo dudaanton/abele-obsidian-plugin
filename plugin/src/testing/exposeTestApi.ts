@@ -33,6 +33,7 @@ import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { createGithubTools } from '@/ai/tools/github'
 import { createAgentTools } from '@/ai/tools'
+import { renderMap } from '@/helpers/mapRender'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import { importExternalFile, resolveAttachmentsForApi } from '@/ai/attachments'
 import { normalizeImageImport } from '@/media/imageImport'
@@ -157,6 +158,8 @@ interface AbeleTestApi {
   createGithubTools: typeof createGithubTools
   /** Every tool an agent could be handed now, MCP servers' included, to call as an agent would. */
   createAgentTools: typeof createAgentTools
+  /** The renderer shared by note maps and AbeleMap, for control/layout probes. */
+  renderMap: typeof renderMap
   /** A vault picture as it goes to a model. */
   prepareImageForApi: typeof prepareImageForApi
   importExternalFile: typeof importExternalFile
@@ -662,6 +665,7 @@ export function exposeTestApi(plugin: Plugin): void {
     createRouteTool,
     createGithubTools,
     createAgentTools,
+    renderMap,
     prepareImageForApi,
     importExternalFile,
     resolveAttachmentsForApi,
