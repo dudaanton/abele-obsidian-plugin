@@ -80,7 +80,8 @@ export function scrollIntoView(element: Element): number {
 
     fired++
     registration.callback(
-      [{ isIntersecting: true, target: element } as IntersectionObserverEntry],
+      // useElementVisibility picks the latest entry by time, as browsers supply it.
+      [{ isIntersecting: true, target: element, time: 0 } as IntersectionObserverEntry],
       registration.observer
     )
   }
