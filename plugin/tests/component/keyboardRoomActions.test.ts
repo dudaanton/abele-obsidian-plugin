@@ -48,9 +48,17 @@ const open = async () => {
           h('button', { class: 'action' }, 'Open'),
           h('a', { href: '#sample', class: 'link' }, 'Sample link'),
           h('div', { tabindex: 0, role: 'button', class: 'row' }, 'Sample row'),
-          ...['checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'range', 'color', 'file'].map(
-            (type) => h('input', { type })
-          ),
+          ...[
+            'checkbox',
+            'radio',
+            'button',
+            'submit',
+            'reset',
+            'image',
+            'range',
+            'color',
+            'file',
+          ].map((type) => h('input', { type })),
           h('select', {}, [h('option', {}, 'Sample option')]),
         ]),
       ]),
