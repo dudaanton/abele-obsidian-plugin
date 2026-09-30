@@ -12,8 +12,11 @@
     <!-- Pending attachments -->
     <div v-if="attachments.length" class="abele-chat-input__attachments">
       <div v-for="(a, i) in attachments" :key="a.path" class="abele-chat-input__attachment">
-        <Icon :icon="getAttachmentIcon(a.path)" />
-        <span class="abele-chat-input__attachment-name">{{ attachmentName(a.path) }}</span>
+        <ChatPicture v-if="isImagePath(a.path)" :path="a.path" pending />
+        <template v-else>
+          <Icon :icon="getAttachmentIcon(a.path)" />
+          <span class="abele-chat-input__attachment-name">{{ attachmentName(a.path) }}</span>
+        </template>
         <Icon
           icon="x"
           class="abele-chat-input__attachment-remove"
@@ -156,6 +159,10 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { Menu, TFile, Notice } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
+import ChatPicture from './ChatPicture.vue'
+import { isImagePath } from '@/ai/tools/ReadImageTool'
+import { isHeicImport } from '@/media/imageImport'
+import { imageFileForImport } from '@/media/importImageFile'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { pickVaultFile } from '@/helpers/suggesters/VaultFilePicker'
 import { pickChat } from '@/helpers/suggesters/ChatPicker'
@@ -402,10 +409,7 @@ const pickFromChats = async () => {
 const pickFromVault = async () => {
   const { app } = GlobalStore.getInstance()
   const file = await pickVaultFile(app)
-  if (file && !attachments.value.some((a) => a.path === file.path)) {
-    attachments.value = [...attachments.value, file]
-    emit('attachFile', file.path)
-  }
+  if (file) addAttachment(file)
 }
 
 const pickFromDisk = () => {
@@ -500,10 +504,7 @@ const onDrop = async (e: DragEvent) => {
     const path = textData.replace(/^\[\[|\]\]$/g, '')
     const file = app.vault.getAbstractFileByPath(path)
     if (file instanceof TFile) {
-      if (!attachments.value.some((a) => a.path === file.path)) {
-        attachments.value = [...attachments.value, file]
-        emit('attachFile', file.path)
-      }
+      addAttachment(file)
       return
     }
   }
@@ -533,11 +534,18 @@ const takeDraft = (): ChatDraft => ({ text: text.value, attachments: attachments
 
 const putDraft = (draft: ChatDraft) => {
   write(draft.text)
-  attachments.value = draft.attachments
+  attachments.value = draft.attachments.filter((file) => !isHeicImport(file.path))
+  for (const file of draft.attachments) if (isHeicImport(file.path)) addAttachment(file)
   nextTick(autoResize)
 }
 
 const addAttachment = (file: TFile) => {
+  if (isHeicImport(file.path)) {
+    void imageFileForImport(GlobalStore.getInstance().app, file).then(addAttachment).catch((err) => {
+      new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
+    })
+    return
+  }
   if (!attachments.value.some((a) => a.path === file.path)) {
     attachments.value = [...attachments.value, file]
     emit('attachFile', file.path)

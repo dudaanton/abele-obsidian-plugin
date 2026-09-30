@@ -198,6 +198,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import { Gallery } from '@/entities/Gallery'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { createImportedBinary } from '@/media/importImageFile'
 import ObsidianIcon from './obsidian/Icon.vue'
 import GalleryViewer, { type ViewerImage } from './GalleryViewer.vue'
 import { pickImageFile } from '@/helpers/suggesters/ImagePicker'
@@ -469,7 +470,7 @@ async function addFromClipboard() {
         counter++
       }
 
-      const created = await app.vault.createBinary(finalPath, buffer)
+      const created = await createImportedBinary(app, finalPath, new Blob([buffer], { type: imageType }))
       paths.push(created.path)
     }
 
@@ -558,7 +559,7 @@ async function addExternalFiles(files: File[]) {
         : `${base} ${counter}${ext}`
       counter++
     }
-    const created = await app.vault.createBinary(finalPath, buffer)
+    const created = await createImportedBinary(app, finalPath, new Blob([buffer], { type: file.type }))
     paths.push(created.path)
   }
 

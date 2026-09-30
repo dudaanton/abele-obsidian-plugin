@@ -93,6 +93,7 @@ import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { createImportedBinary } from '@/media/importImageFile'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -348,6 +349,8 @@ const ensureExtension = (name: string, contentType: string): string => {
     'image/gif': '.gif',
     'image/webp': '.webp',
     'image/svg+xml': '.svg',
+    'image/heic': '.heic',
+    'image/heif': '.heif',
     'video/mp4': '.mp4',
     'video/webm': '.webm',
     'audio/mpeg': '.mp3',
@@ -409,7 +412,8 @@ const downloadItem = async (item: MediaItem) => {
         const basePath = folder ? `${folder}/${finalName}` : finalName
         localPath = getAvailablePath(basePath)
 
-        await app.vault.createBinary(localPath, response.arrayBuffer)
+        const saved = await createImportedBinary(app, localPath, new Blob([response.arrayBuffer], { type: contentType }))
+        localPath = saved.path
         attachmentHashIndex.set(contentHash, localPath)
       }
 

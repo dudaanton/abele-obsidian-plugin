@@ -2,6 +2,7 @@
   <div
     class="abele-chat-msg"
     :class="[`abele-chat-msg_${message.role}`, { 'abele-chat-msg--draft': message.draft }]"
+    @click.capture="previewContentImage"
   >
     <!-- Icon — clickable to expand details -->
     <div
@@ -146,6 +147,7 @@
             :images="viewerImages"
             :start-index="0"
             :gallery-file-path="imagePath || ''"
+            :chat-id="ChatService.getInstance().activeTabId.value ?? ''"
             @close="viewerOpen = false"
           />
         </div>
@@ -205,9 +207,10 @@
 
       <!-- Attachments -->
       <div v-if="message.attachments?.length" class="abele-chat-msg__attachments">
+        <template v-for="path in message.attachments" :key="path">
+        <ChatPicture v-if="isImagePath(path)" :path="path" />
         <span
-          v-for="path in message.attachments"
-          :key="path"
+          v-else
           class="abele-chat-msg__attachment-chip"
           @click="openAttachment(path)"
           @contextmenu.prevent="onAttachmentContextMenu($event, path)"
@@ -215,8 +218,18 @@
           <Icon :icon="getAttachmentIcon(path)" />
           {{ attachmentName(path) }}
         </span>
+        </template>
       </div>
     </div>
+
+    <GalleryViewer
+      v-if="contentPicture"
+      :images="[contentPicture]"
+      :start-index="0"
+      :gallery-file-path="contentPicture.path"
+      :chat-id="ChatService.getInstance().activeTabId.value ?? ''"
+      @close="contentPicture = null"
+    />
 
     <!-- Timestamp — always visible, right-aligned -->
     <span
@@ -345,6 +358,8 @@ import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
 import { Menu, Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import ChatPicture from './ChatPicture.vue'
+import { isImagePath } from '@/ai/tools/ReadImageTool'
 import Markdown from './obsidian/Markdown.vue'
 import AbeleMap from './AbeleMap.vue'
 import { normalizeMapBlock, type MapConfig } from '@/helpers/mapConfig'
@@ -536,6 +551,24 @@ const imagePath = computed(() => {
 })
 
 const viewerOpen = ref(false)
+const contentPicture = ref<ViewerImage | null>(null)
+
+/** Replies may send an image by embed, not just by a tool's result or attachment. */
+function previewContentImage(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (target.tagName !== 'IMG' || !target.closest('.abele-markdown')) return
+  const { app } = GlobalStore.getInstance()
+  const link = target.closest('.internal-embed')?.getAttribute('src')
+  const file = link ? app.metadataCache.getFirstLinkpathDest(link, '') : null
+  const url = (target as HTMLImageElement).src
+  if (file instanceof TFile && isImagePath(file.path)) {
+    contentPicture.value = { url: vaultUrl(app, file), alt: file.name, type: 'local', path: file.path }
+  } else if (/^https?:\/\//i.test(url)) {
+    contentPicture.value = { url, alt: target.getAttribute('alt') || '', type: 'remote', path: url }
+  } else return
+  event.preventDefault()
+  event.stopPropagation()
+}
 
 const viewerImages = computed<ViewerImage[]>(() => {
   if (!imageUrl.value || !imagePath.value) return []

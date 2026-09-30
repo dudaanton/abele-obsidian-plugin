@@ -4,8 +4,11 @@ import { getAttachmentFolder } from './imageUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { substituteSecrets } from './secretUtils'
+import { createImportedBinary } from '@/media/importImageFile'
 
 function extFromContentType(contentType: string): string | null {
+  if (contentType.includes('heic')) return 'heic'
+  if (contentType.includes('heif')) return 'heif'
   if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg'
   if (contentType.includes('png')) return 'png'
   if (contentType.includes('gif')) return 'gif'
@@ -22,6 +25,8 @@ function extFromUrl(url: string): string | null {
   if (
     urlExt &&
     [
+      'heic',
+      'heif',
       'jpg',
       'jpeg',
       'png',
@@ -106,8 +111,8 @@ async function downloadToVault(
     counter++
   }
 
-  await app.vault.createBinary(targetPath, response.arrayBuffer)
-  return targetPath
+  const saved = await createImportedBinary(app, targetPath, new Blob([response.arrayBuffer], { type: contentType }))
+  return saved.path
 }
 
 export function createDownloadImageTool(): AgentTool {

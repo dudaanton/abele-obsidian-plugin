@@ -2,6 +2,7 @@ import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { arrayBufferToBase64, getMime } from '@/ai/imagePrep'
+import { createImportedBinary } from '@/media/importImageFile'
 
 /**
  * Get the vault's configured attachment folder path, ensuring it exists.
@@ -53,8 +54,8 @@ export async function saveImageToVault(dataUrl: string, nameHint?: string): Prom
     counter++
   }
 
-  await app.vault.createBinary(targetPath, buffer.buffer)
-  return targetPath
+  const saved = await createImportedBinary(app, targetPath, new Blob([buffer], { type: `image/${match[1]}` }))
+  return saved.path
 }
 
 /**

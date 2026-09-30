@@ -97,6 +97,23 @@ Chat files (`.abchat`) are never in a scope, whatever the entries say: a chat fi
 note its own agent read and everything its tools returned. With the whole vault open, `read` on
 one gives only what was said in it, the same as an attached chat.
 
+## Image attachments
+
+An attached picture arrives as both model image input and a text label `[Image: <vault path>]`.
+Use that exact path, relative to the vault root, with image tools; do not invent a temporary
+path or treat the image input as the only copy. The picture is a real vault file and is added
+to this chat's scope. `read_image` shows it again; `edit_image` takes its path in `source` and
+saves a new image. The result appears as a clickable preview under the tool call. To include
+an existing image in your reply, use `![[Attachments/sample-image.png]]` with its actual path.
+Text `read`/`write`/`edit` tools are not binary image editors.
+
+HEIC/HEIF imports are converted to PNG before attachment. Only the PNG is sent to the model
+and attached to the chat; refer to the PNG path in the label. New external imports do not keep
+a HEIC original. Importing an existing vault HEIC leaves that original in place and makes a
+PNG copy. Pending pictures open in the plugin's preview; Draw opens a drawing tab, whose
+**Send back to the chat** replaces the pending original with the saved drawing, keeping the
+rest of the draft. Drawing from a sent message attaches a new picture instead.
+
 ## Skills
 
 Skills are notes with `type: abele-skill` describing how to do something. An agent can be

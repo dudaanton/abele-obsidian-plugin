@@ -17,6 +17,15 @@ Type your message and press **Shift+Enter** or **Cmd/Ctrl+Enter** to send it; **
 new line. The paperclip attaches files from the vault or from disk, pictures included, and other
 agent chats; files can also be dropped or pasted onto the message box.
 
+Attached pictures show a thumbnail before sending. Tap it, or a picture in a sent message,
+to open Abele's preview. **Draw** opens the picture to draw on; **Send back to the chat** in
+the drawing tab's menu replaces an unsent attachment with the edited picture, leaving your
+message and other attachments alone. From a sent message it adds a new picture to your draft.
+The agent sees the picture and knows its file path, so you can ask it to edit the file and
+show the result. HEIC/HEIF photos are converted to PNG automatically, in chats and other Abele
+image imports. External imports keep only the PNG; a HEIC already in the vault stays there
+beside its new PNG copy.
+
 Commands typed in the message box:
 
 | Command | What it does |

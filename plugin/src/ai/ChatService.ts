@@ -28,6 +28,8 @@ export interface PendingInput {
   append?: boolean
   /** Vault files to attach to what is being written — a picture drawn on, sent back. */
   attachments?: string[]
+  /** Replace an unsent original with the picture drawn on, leaving the rest of the draft. */
+  replaceAttachment?: string
 }
 
 interface TabsState {

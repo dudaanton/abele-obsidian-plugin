@@ -139,12 +139,13 @@ export async function openImageInk(
   app: App,
   path: string,
   chat = '',
-  embed: EmbedAnchor | null = null
+  embed: EmbedAnchor | null = null,
+  replaceAttachment = ''
 ): Promise<void> {
   const leaf = app.workspace.getLeaf('tab')
   await leaf.setViewState({
     type: IMAGE_INK_VIEW_TYPE,
-    state: { path, chat, embed },
+    state: { path, chat, embed, replaceAttachment },
     active: true,
   })
   await app.workspace.revealLeaf(leaf)

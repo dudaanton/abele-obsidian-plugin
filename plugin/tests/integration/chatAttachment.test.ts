@@ -214,6 +214,7 @@ beforeEach(() => {
     { path: CHAT, content: attachedChat() },
     { path: NOTE, content: S.noteRead },
     { path: 'Notes/Plain.md', content: 'plain' },
+    { path: 'Attachments/sample-image.png', content: 'sample' },
   ])
   AgentRegistry.destroy()
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, providers: [provider] }
@@ -294,6 +295,10 @@ describe('a chat attached to a message', () => {
     })
 
     await session.sendMessage('What did we decide?', [CHAT])
+
+    await session.sendMessage('Edit this picture', ['Attachments/sample-image.png'])
+    expect(session.scopeResolver.isInScope('Attachments/sample-image.png')).toBe(true)
+    expect(JSON.stringify(sent)).toContain('[Image: Attachments/sample-image.png]')
 
     const payload = JSON.stringify(sent)
     expect(payload).toContain('Done: Sunday is Cascais.')

@@ -42,6 +42,7 @@ export class ImageInkView extends ItemView {
   private path = ''
   /** The chat the picture came from, to send it back to; empty when it came from the vault. */
   private chat = ''
+  private replaceAttachment = ''
   /** The embed in a note the picture was opened from; null when it came from anywhere else. */
   private embed: EmbedAnchor | null = null
   private image: HTMLImageElement | null = null
@@ -93,9 +94,10 @@ export class ImageInkView extends ItemView {
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    const s = (state ?? {}) as { path?: unknown; chat?: unknown; embed?: unknown }
+    const s = (state ?? {}) as { path?: unknown; chat?: unknown; embed?: unknown; replaceAttachment?: unknown }
     const path = typeof s.path === 'string' ? s.path : ''
     this.chat = typeof s.chat === 'string' ? s.chat : ''
+    this.replaceAttachment = typeof s.replaceAttachment === 'string' ? s.replaceAttachment : ''
     this.embed = anchorOf(s.embed)
     if (path && path !== this.path) {
       this.path = path
@@ -105,7 +107,7 @@ export class ImageInkView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return { path: this.path, chat: this.chat, embed: this.embed }
+    return { path: this.path, chat: this.chat, embed: this.embed, replaceAttachment: this.replaceAttachment }
   }
 
   /** The picture, under an empty sheet of ink, ready to draw on. */
@@ -249,7 +251,11 @@ export class ImageInkView extends ItemView {
     const chats = ChatService.getInstance()
     const tabId = this.chat && chats.getSession(this.chat) ? this.chat : undefined
     if (tabId) chats.switchTab(tabId)
-    chats.pendingInput.value = { text: '', tabId, attachments: [made.path], focus: true }
+    chats.pendingInput.value = {
+      text: '', tabId, attachments: [made.path], focus: true,
+      replaceAttachment: this.replaceAttachment || undefined,
+    }
+    this.replaceAttachment = made.path
     await chats.revealSidebar()
     return true
   }

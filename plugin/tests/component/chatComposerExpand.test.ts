@@ -208,6 +208,32 @@ describe('the chat around an opened composer', () => {
     expect(editor().value).toBe('still writing')
   })
 
+  it('replaces an unsent picture returned from drawing without losing the draft', async () => {
+    const app = useVault([
+      { path: 'sample-image.png', content: '' },
+      { path: 'sample-image-drawn.png', content: '' },
+      { path: 'sample-note.md', content: '' },
+    ])
+    ;(app.vault as any).getResourcePath = (f: TFile) => `app://sample/${f.path}`
+    const wrapper = mount(AiChat, { attachTo: document.body })
+    mounted.push(wrapper)
+    await nextTick()
+    const input = wrapper.getComponent(AiChatInput)
+    input.vm.addAttachment(app.vault.getAbstractFileByPath('sample-image.png') as TFile)
+    input.vm.addAttachment(app.vault.getAbstractFileByPath('sample-note.md') as TFile)
+    editor().type('half written')
+    ChatService.getInstance().pendingInput.value = {
+      text: '', tabId: 'tab-a', attachments: ['sample-image-drawn.png'],
+      replaceAttachment: 'sample-image.png',
+    }
+    await nextTick()
+    await nextTick()
+    expect(input.vm.takeDraft().attachments.map((f: TFile) => f.path)).toEqual([
+      'sample-note.md', 'sample-image-drawn.png',
+    ])
+    expect(editor().value).toBe('half written')
+  })
+
   it('gives the composer the room the conversation had, and gives it back', async () => {
     const wrapper = mount(AiChat, { attachTo: document.body })
     mounted.push(wrapper)

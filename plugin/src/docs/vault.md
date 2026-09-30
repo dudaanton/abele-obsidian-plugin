@@ -4,6 +4,14 @@ The shape of every kind of note the plugin owns: which `type` marks it, which pr
 carries, and where new ones are put. Dates are `YYYY-MM-DD` and times are `HH:mm` unless said
 otherwise; a note that breaks that is a note the plugin will read wrongly.
 
+## Imported images
+
+Images imported through Abele's chat, gallery, file importer and media downloads are stored
+as vault attachments. HEIC/HEIF inputs are converted to PNG before saving and before allocating
+a collision-free filename. External imports keep only the PNG. An existing vault HEIC picked
+for a chat or gallery is kept as an original, with a new PNG copy used there. Chat attachments
+store the PNG's vault path, not base64 bytes or a temporary system path.
+
 ## Naming notes
 
 A note's name cannot carry `* " \ / < > : | ?` — Obsidian refuses those itself — nor `#`, `^`,

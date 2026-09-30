@@ -65,6 +65,7 @@ export interface FakeFileCache {
 
 export interface FakeApp {
   vault: {
+    getResourcePath(file: TFile): string
     getFiles(): TFile[]
     getMarkdownFiles(): TFile[]
     getAbstractFileByPath(path: string): TAbstractFile | null
@@ -460,6 +461,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     vault: {
       on: register('vault'),
       offref: noopOffref,
+      getResourcePath(file: TFile) { return `app://sample/${file.path}` },
       getFiles() {
         stats.getFiles++
         // Obsidian allocates a fresh array per call; mirroring that keeps callers honest

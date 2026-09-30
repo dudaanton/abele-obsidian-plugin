@@ -1,4 +1,5 @@
-import { App, FuzzySuggestModal, TFile } from 'obsidian'
+import { App, FuzzySuggestModal, Notice, TFile } from 'obsidian'
+import { imageFileForImport } from '@/media/importImageFile'
 
 const MEDIA_EXTENSIONS = [
   'png',
@@ -9,6 +10,8 @@ const MEDIA_EXTENSIONS = [
   'bmp',
   'svg',
   'avif',
+  'heic',
+  'heif',
   'mp4',
   'webm',
   'mov',
@@ -55,6 +58,13 @@ class ImagePickerModal extends FuzzySuggestModal<TFile> {
   }
 }
 
-export function pickImageFile(app: App): Promise<TFile | null> {
-  return new ImagePickerModal(app).pick()
+export async function pickImageFile(app: App): Promise<TFile | null> {
+  const file = await new ImagePickerModal(app).pick()
+  if (!file) return null
+  try {
+    return await imageFileForImport(app, file)
+  } catch (error) {
+    new Notice(`Failed to import ${file.name}: ${error instanceof Error ? error.message : error}`)
+    return null
+  }
 }

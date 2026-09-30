@@ -72,6 +72,7 @@ import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
+import { isImagePath } from './tools/ReadImageTool'
 import { ReadGuard } from './readGuard'
 import { ChatRewind } from './rewind/ChatRewind'
 import { ResultStore, createReadResultTool, READ_RESULT } from './resultStore'
@@ -1754,6 +1755,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       content + linkedNotesNote(content, GlobalStore.getInstance().app, this.scopeResolver)
 
     if (attachments?.length) {
+      // A picture explicitly sent to the agent is also a file its editing tools may use.
+      for (const path of attachments) if (isImagePath(path)) this.scopeResolver.addFile(path)
       // An attached note is read: its text is in the message.
       const reads: ReadMark[] = []
       const parts = await resolveAttachmentsForApi(attachments, (seen) =>

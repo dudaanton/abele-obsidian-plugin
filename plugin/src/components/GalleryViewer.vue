@@ -90,6 +90,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { FileSystemAdapter, Menu, Notice, Platform, TFile, requestUrl } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { createImportedBinary } from '@/media/importImageFile'
 import { setCoverFromMedia } from '@/commands/setCover'
 import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
 import { useFilesInAgent } from '@/helpers/useFilesInAgent'
@@ -110,6 +111,9 @@ const props = defineProps<{
   images: ViewerImage[]
   startIndex: number
   galleryFilePath: string
+  chatId?: string
+  /** An unsent image: the drawing returned to the chat replaces this attachment. */
+  replaceAttachment?: string
 }>()
 
 const emit = defineEmits<{
@@ -154,7 +158,7 @@ function drawOnImage() {
   const file = resolveFile()
   if (!file) return
   close()
-  void openImageInk(GlobalStore.getInstance().app, file.path)
+  void openImageInk(GlobalStore.getInstance().app, file.path, props.chatId, null, props.replaceAttachment)
 }
 
 const displayUrl = computed(() => urlOverride.value || currentImage.value.url)
@@ -381,7 +385,7 @@ async function downloadImage() {
       fileName += '.' + ext
     }
 
-    const file = await app.vault.createBinary(fileName, buffer)
+    const file = await createImportedBinary(app, fileName, new Blob([buffer], { type: response.headers['content-type'] || '' }))
     new Notice(`Downloaded: ${file.path}`)
   } catch (e) {
     new Notice(`Download failed: ${e}`)
@@ -672,7 +676,7 @@ onUnmounted(() => {
 
 .abele-gallery-viewer__info {
   position: absolute;
-  top: 16px;
+  top: calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--size-4-4));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -710,8 +714,8 @@ onUnmounted(() => {
 
 .abele-gallery-viewer__close {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--size-4-3));
+  right: calc(var(--safe-area-inset-right, 0px) + var(--size-4-3));
   z-index: 2;
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
@@ -760,14 +764,14 @@ onUnmounted(() => {
 
 .abele-gallery-viewer__image {
   max-width: 90vw;
-  max-height: 85vh;
+  max-height: min(85vh, calc(100dvh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px) - 112px));
   object-fit: contain;
   transition: none;
 }
 
 .abele-gallery-viewer__caption {
   position: absolute;
-  bottom: 56px;
+  bottom: calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 56px);
   left: 50%;
   transform: translateX(-50%);
   max-width: 80vw;
@@ -783,7 +787,7 @@ onUnmounted(() => {
 
 .abele-gallery-viewer__toolbar {
   position: absolute;
-  bottom: 16px;
+  bottom: calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--size-4-4));
   left: 50%;
   transform: translateX(-50%);
   display: flex;

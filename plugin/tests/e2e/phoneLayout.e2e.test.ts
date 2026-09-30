@@ -383,6 +383,40 @@ const probeScript = `(async () => {
     const chat = document.querySelector('.abele-ai-chat')
     await screen('chat', chat, chat)
 
+    // An unsent picture and the same preview used by sent pictures, with every action visible.
+    {
+      const scope = window.__abeleTest.ChatService.getInstance().activeSession.value?.scopeResolver
+      const scopeBefore = scope?.entries.value.slice()
+      try {
+      const canvas = document.createElement('canvas')
+      canvas.width = 96; canvas.height = 64
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#e08020'; ctx.fillRect(0, 0, 96, 64)
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+      const path = 'Phone probe/sample-image.png'
+      await app.vault.createBinary(path, await blob.arrayBuffer())
+      SEEDED.push(path)
+      window.__abeleTest.ChatService.getInstance().pendingInput.value = { text: '', attachments: [path] }
+      await until(() => chat.querySelector('.abele-chat-picture img'), 5000)
+      await wait(300)
+      await screen('chat attachment', chat, chat)
+      chat.querySelector('.abele-chat-picture img').click()
+      await until(() => document.querySelector('.abele-gallery-viewer'), 5000)
+      await wait(300)
+      const preview = document.querySelector('.abele-gallery-viewer')
+      await screen('chat image preview', preview, preview)
+      // Absolutely positioned actions are deliberately ignored by the general walker;
+      // measure the toolbar's full box too, so a centred strip cannot hide either end.
+      const toolbar = preview.querySelector('.abele-gallery-viewer__toolbar').getBoundingClientRect()
+      if (toolbar.left < 0 || toolbar.right > window.innerWidth) report['chat image preview'].over.push('toolbar')
+      preview.querySelector('.abele-gallery-viewer__close').click()
+      chat.querySelector('.abele-chat-input__attachment-remove').click()
+      } finally {
+        if (scope && scopeBefore) scope.entries.value = scopeBefore
+        document.querySelector('.abele-gallery-viewer__close')?.click()
+      }
+    }
+
     // The one dialog everything about a chat lives in, tab by tab. The chat is given an
     // interceptor script for the while, so its Settings tab shows the script and the pattern
     // field too; it follows its agent again afterwards.
@@ -1006,6 +1040,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   const screens = [
     'chat',
+    'chat attachment',
+    'chat image preview',
     'setup scope',
     'setup skills',
     'setup prompts',

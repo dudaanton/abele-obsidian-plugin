@@ -1447,7 +1447,10 @@ function pendingDraft(pending: PendingInput, saved?: ChatDraft): ChatDraft {
     text: join
       ? `${before}${before && pending.text && !before.endsWith('\n') ? '\n' : ''}${pending.text}`
       : pending.text,
-    attachments: [...(join ? (saved?.attachments ?? []) : []), ...filesOf(pending.attachments)],
+    attachments: [
+      ...(join ? (saved?.attachments ?? []).filter((f) => f.path !== pending.replaceAttachment) : []),
+      ...filesOf(pending.attachments),
+    ],
   }
 }
 
