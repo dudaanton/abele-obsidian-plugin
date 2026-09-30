@@ -31,11 +31,15 @@ type Report = { error?: string; checks: Check[]; count: number }
 
 describe.skipIf(!available)('book overlay reflow', () => {
   let savedReader: unknown
+  let savedEink: unknown
   let size: number[]
   let panels: boolean[]
   let savedPlaces: { path: string; text: string | null }
   beforeAll(() => {
     savedReader = evalJson('window.__abeleTest.AbeleConfig.getInstance().reader')
+    // This probe measures filled rectangles; e-ink uses lines and is device-local, not reader config.
+    savedEink = evalJson('window.__abeleTest.reader.eink.state()')
+    evalRaw('window.__abeleTest.reader.eink.set({ on: false })')
     savedPlaces = JSON.parse(
       evalRaw(`(async () => {
       const path = window.__abeleTest.AbeleConfig.getInstance().reader.placesPath || 'abele-book-places.json'
@@ -68,6 +72,7 @@ describe.skipIf(!available)('book overlay reflow', () => {
       const cfg = window.__abeleTest.AbeleConfig.getInstance()
       cfg.reader = ${JSON.stringify(savedReader)}
       await cfg.saveSettings()
+      window.__abeleTest.reader.eink.set(${JSON.stringify(savedEink)})
       const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
       if (dir) await app.vault.delete(dir, true)
       const places = ${JSON.stringify(savedPlaces)}

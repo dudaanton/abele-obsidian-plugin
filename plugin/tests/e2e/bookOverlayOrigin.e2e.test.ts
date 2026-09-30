@@ -36,10 +36,14 @@ type Report = { error?: string; checks: Geometry[]; fontsBefore: number; fontsAf
 
 describe.skipIf(!available)('book overlay coordinate origin', () => {
   let reader: unknown
+  let savedEink: unknown
   let panels: boolean[]
   let places: { path: string; text: string | null }
   beforeAll(() => {
     reader = evalJson('window.__abeleTest.AbeleConfig.getInstance().reader')
+    // E-ink is device-local and draws lines, while this probe measures filled rectangles.
+    savedEink = evalJson('window.__abeleTest.reader.eink.state()')
+    evalRaw('window.__abeleTest.reader.eink.set({ on: false })')
     panels = evalJson(
       `(() => { const w=app.workspace, p=[w.leftSplit.collapsed,w.rightSplit.collapsed]; w.leftSplit.collapse(); w.rightSplit.collapse(); return p })()`
     )
@@ -74,6 +78,7 @@ describe.skipIf(!available)('book overlay coordinate origin', () => {
     evalRaw(`(async () => {
       for(const l of app.workspace.getLeavesOfType('abele-book'))if(l.view.file?.path===${JSON.stringify(BOOK)})l.detach()
       const cfg=window.__abeleTest.AbeleConfig.getInstance();cfg.reader=${JSON.stringify(reader)};await cfg.saveSettings()
+      window.__abeleTest.reader.eink.set(${JSON.stringify(savedEink)})
       const dir=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(dir)await app.vault.delete(dir,true)
       const saved=${JSON.stringify(places)}
       if(saved?.text!=null)await app.vault.adapter.write(saved.path,saved.text)
