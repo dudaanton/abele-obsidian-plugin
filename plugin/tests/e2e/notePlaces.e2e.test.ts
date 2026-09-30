@@ -448,7 +448,9 @@ describe.skipIf(!available)('notes come back where they were left', () => {
   // These probes block on synchronous CLI calls for several seconds apiece. Let Vitest send
   // each result to its runner before starting the next one; otherwise its pending task-update
   // RPC times out even when every assertion passed.
-  afterEach(async () => { await pause(0) })
+  afterEach(async () => {
+    await pause(0)
+  })
 
   beforeAll(() => {
     expect(

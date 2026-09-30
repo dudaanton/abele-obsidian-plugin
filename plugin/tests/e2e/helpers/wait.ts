@@ -12,7 +12,9 @@ export async function until<T>(fn: () => T | Promise<T>, ms = 15_000): Promise<T
     try {
       const value = await fn()
       if (value) return value
-    } catch {}
+    } catch {
+      // Mounting and indexing can temporarily make a predicate's target unavailable.
+    }
     const remaining = deadline - Date.now()
     if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(100, remaining)))
   }

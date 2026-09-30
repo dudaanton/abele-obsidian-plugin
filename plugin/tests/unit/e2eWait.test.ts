@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WAIT_PRELUDE, until } from '../e2e/helpers/wait'
+import { PRELUDE as GITHUB_PRELUDE } from '../e2e/helpers/githubLive'
 
 // Exercise the exact JavaScript sent to Obsidian as well as the host-side helper.
 const inPage = new Function(`${WAIT_PRELUDE}; return until`)() as typeof until
+const inGithubPage = new Function(`${GITHUB_PRELUDE}; return until`)() as typeof until
 
 afterEach(() => vi.useRealTimers())
 
 for (const [name, poll] of [
   ['host', until],
   ['page', inPage],
+  ['GitHub page', inGithubPage],
 ] as const) {
   describe(`condition polling in the ${name}`, () => {
     it('returns an already-ready value without sleeping', async () => {

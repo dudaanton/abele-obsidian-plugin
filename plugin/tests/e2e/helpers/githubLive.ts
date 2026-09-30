@@ -17,6 +17,7 @@ import { evalRaw, runCli } from './obsidianCli'
 import { onPhone } from './target'
 import { exposeToPhone } from './phone'
 import { OWNER, REPO } from './fakeGithubRepo'
+import { WAIT_PRELUDE } from './wait'
 
 export interface FakeGithub {
   /** `http://127.0.0.1:<port>`: the Server setting, and the start of every link. */
@@ -173,15 +174,7 @@ export const evalAsync = <T>(script: string, timeoutMs = 60_000): T => {
  * GitHub tabs and what they show, and whether an element is inside its tab's visible area.
  */
 export const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 15000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) {
-      try { const v = fn(); if (v) return v } catch {}
-      await wait(100)
-    }
-    return null
-  }
+  ${WAIT_PRELUDE}
   const githubLeaves = () => app.workspace.getLeavesOfType('abele-github')
   const tabs = () => githubLeaves().map((l) => ({
     url: l.view.model.url,
