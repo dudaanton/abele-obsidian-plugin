@@ -2,10 +2,10 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { buildJustifiedEpub, JUSTIFIED_BOOK_ID } from '../fixtures/books/justifiedBook'
@@ -19,10 +19,37 @@ const available = onPhone() && !!DESKTOP && isObsidianRunning() && hasTestApi()
 const DIR = 'Sample device reading'
 const BOOK = `${DIR}/sample-book.epub`
 const NOTE = `${DIR}/sample-book highlights.md`
-const FAMILY = 'Sample Handoff Serif'
+// Optional local diagnostic assets never enter the repository. The normal regression always
+// uses the invented fixture; an external book must name its own key and two independent targets.
+interface Target {
+  index: number
+  id?: string
+  text?: string
+}
+interface LocalCase {
+  book?: string
+  key?: string
+  targets?: Target[]
+  query?: string
+  font?: { family: string; files: string[]; folder: string }
+  zoom?: number
+  panel?: boolean
+}
+const local: LocalCase = process.env.ABELE_READER_LOCAL_CASE
+  ? (JSON.parse(readFileSync(process.env.ABELE_READER_LOCAL_CASE, 'utf8')) as LocalCase)
+  : {}
+const FAMILY = local.font?.family ?? 'Sample Handoff Serif'
+const FONTS = local.font?.folder ?? `${DIR}/Fonts`
+const TARGETS = local.targets ?? [
+  { index: 0, id: 'p1-0-0' },
+  { index: 1, id: 'p2-0-0' },
+]
+const QUERY = local.query ?? 'рыбак'
 const SHOTS = shotDir('abele-device-reflow')
 const ID = `urn:uuid:sample-device-reading-${Date.now()}`
-const KEY = `id:${ID}`
+const KEY = local.key ?? `id:${ID}`
+const madeFontFiles: string[] = []
+const madeFontFolders: string[] = []
 type Device = 'phone' | 'desktop'
 type Packet = {
   place: { cfi: string; at: number; [key: string]: unknown }
@@ -61,11 +88,18 @@ const PRELUDE = `
   const leaf=()=>app.workspace.getLeavesOfType('abele-book').find(l=>l.getViewState().state?.file===${JSON.stringify(BOOK)})
   const view=()=>leaf()?.view
   const current=()=>view()?.engine?.renderer?.getContents()[0]
-  const range=(doc,index)=>{const p=doc.getElementById('p'+(index+1)+'-0-0'),r=doc.createRange();r.setStart(p.firstChild,0);r.setEnd(p.firstChild,150);return r}
+  const targets=${JSON.stringify(TARGETS)},query=${JSON.stringify(QUERY)}
+  const range=(doc,target)=>{
+    const r=doc.createRange()
+    if(target.id){const p=doc.getElementById(target.id);r.setStart(p.firstChild,0);r.setEnd(p.firstChild,150);return r}
+    const w=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT);let n
+    while(n=w.nextNode()){const at=n.data.indexOf(target.text);if(at>=0){r.setStart(n,at);r.setEnd(n,at+target.text.length);return r}}
+    throw Error('independent target missing')
+  }
 `
-async function run<T>(device: Device, body: string): Promise<T> {
+async function run<T>(device: Device, body: string, fast = false): Promise<T> {
   const code = `(async()=>{${PRELUDE}\n${body}\n})()`
-  if (device === 'phone') return JSON.parse(await evalLong(code, 90000)) as T
+  if (device === 'phone') return JSON.parse(fast ? evalRaw(code) : await evalLong(code, 90000)) as T
   const { stdout } = await exec(
     process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian',
     [`vault=${DESKTOP}`, 'eval', `code=${code}`],
@@ -73,6 +107,32 @@ async function run<T>(device: Device, body: string): Promise<T> {
   )
   const out = stdout.trim().replace(/^=> /, '')
   return JSON.parse(out) as T
+}
+
+async function putBinary(device: Device, path: string, bytes: Uint8Array): Promise<void> {
+  const data = Buffer.from(bytes).toString('base64')
+  await run(
+    device,
+    `if(await app.vault.adapter.exists(${JSON.stringify(path)}))throw Error('refusing to overwrite test input');window.__deviceBytes='';return JSON.stringify(true)`,
+    true
+  )
+  try {
+    for (let i = 0; i < data.length; i += 32000) {
+      await run(
+        device,
+        `window.__deviceBytes+=${JSON.stringify(data.slice(i, i + 32000))};return JSON.stringify(true)`,
+        true
+      )
+      if (i % (16 * 32000) === 0) await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    await run(
+      device,
+      `const b=Uint8Array.from(atob(window.__deviceBytes),c=>c.charCodeAt(0));await app.vault.createBinary(${JSON.stringify(path)},b.buffer);return JSON.stringify(true)`,
+      true
+    )
+  } finally {
+    await run(device, `delete window.__deviceBytes;return JSON.stringify(true)`, true)
+  }
 }
 
 const GEOMETRY = `
@@ -86,14 +146,14 @@ const GEOMETRY = `
     const groups=[...c.overlayer.element.children],boxes=g=>[...g.querySelectorAll('rect')].map(r=>rect(r.getBoundingClientRect()))
     const highlight=groups.filter(g=>g.getAttribute('fill')!=='none').flatMap(boxes)
     const search=groups.filter(g=>g.getAttribute('fill')==='none').flatMap(boxes)
-    const expected=words(range(d,c.index)),query=[]
+    const expected=targets.filter(t=>t.index===c.index).flatMap(t=>words(range(d,t))),queryWords=[]
     if(search.length){const w=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT);let n
-      while(n=w.nextNode()){let from=0,at;while((at=n.data.toLowerCase().indexOf('рыбак',from))>=0){const r=d.createRange();r.setStart(n,at);r.setEnd(n,at+5);query.push(...words(r));from=at+5}}
+      while(n=w.nextNode()){let from=0,at;while((at=n.data.toLowerCase().indexOf(query.toLowerCase(),from))>=0){const r=d.createRange();r.setStart(n,at);r.setEnd(n,at+query.length);queryWords.push(...words(r));from=at+query.length}}
     }
     const matches=(a,b)=>a.length===b.length&&b.every(r=>a.some(s=>r.every((n,i)=>Math.abs(n-s[i])<2)))
     const failures=[]
     if(highlight.length&&!matches(highlight,expected))failures.push({kind:'highlight',actual:highlight,expected})
-    if(search.length&&!matches(search,query))failures.push({kind:'search',actual:search,expected:query})
+    if(search.length&&!matches(search,queryWords))failures.push({kind:'search',actual:search,expected:queryWords})
     return {index:c.index,columns:renderer.columns,highlights:highlight.length,search:search.length,failures}
   }
 `
@@ -130,7 +190,7 @@ async function check(name: string, packet?: Packet): Promise<Probe> {
     await wait(600)
     const m=measure();if(!m)throw Error('no desktop geometry')
     const monitor=window.__deviceGeometry
-    const out={...m,samples:monitor.samples,failures:[...monitor.failures,...m.failures],settings:cfg.reader,notices:monitor.notices.size,key:view().model.key,stored:await view().follow.store.get(view().model.key),lastLocation:view().engine.lastLocation.cfi}
+    const out={...m,samples:monitor.samples,failures:[...monitor.failures,...m.failures],settings:cfg.reader,notices:monitor.notices.size,key:view().model.key,stored:await view().follow.store.get(view().model.key),lastLocation:view().engine.lastLocation.cfi,zoom:require('@electron/remote').getCurrentWebContents().getZoomFactor(),panel:view().model.panel,faces:[...current().doc.fonts].map(f=>[f.family,f.weight,f.style,f.status])}
     ${
       packet
         ? `const c=current(),r=view().engine.resolveNavigation(${JSON.stringify(packet.place.cfi)}).anchor(c.doc)
@@ -169,7 +229,9 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
     entries['OEBPS/content.opf'] = strToU8(
       strFromU8(entries['OEBPS/content.opf']).replace(JUSTIFIED_BOOK_ID, ID)
     )
-    const book = Buffer.from(zipSync(entries)).toString('base64')
+    if (local.book && (!local.key || local.targets?.length !== 2))
+      throw Error('external book needs a key and two targets')
+    const book = local.book ? readFileSync(local.book) : zipSync(entries)
     for (const device of ['phone', 'desktop'] as const) {
       backups[device] = await run<Backup>(
         device,
@@ -184,43 +246,47 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
         `
         window.__abeleTest.reader.eink.set({on:false});app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()
         await app.vault.createFolder(${JSON.stringify(DIR)})
-        const bytes=Uint8Array.from(atob(${JSON.stringify(book)}),c=>c.charCodeAt(0));await app.vault.createBinary(${JSON.stringify(BOOK)},bytes.buffer)
         cfg.reader={...cfg.reader,flow:'paginated',font:'serif',fontSize:${device === 'phone' ? 135 : 110},lineHeight:1.5,columns:${device === 'phone' ? 1 : 2},margin:'normal',maxWidth:720,themeColors:true,bookStyles:true,notesTo:'book',bookNotes:{}}
         await cfg.saveSettings()
-        ${device === 'desktop' ? `const wc=require('@electron/remote').getCurrentWebContents();wc.setBackgroundThrottling(false);wc.setZoomFactor(1);if(!wc.debugger.isAttached())wc.debugger.attach('1.3');await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:960,height:1280,deviceScaleFactor:1,mobile:false})` : ''}
+        ${device === 'desktop' ? `const wc=require('@electron/remote').getCurrentWebContents();wc.setBackgroundThrottling(false);wc.setZoomFactor(${local.zoom ?? 1});if(!wc.debugger.isAttached())wc.debugger.attach('1.3');await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:960,height:1280,deviceScaleFactor:1,mobile:false})` : ''}
         return JSON.stringify(true)
       `
       )
+      await putBinary(device, BOOK, book)
     }
-    const bytes = aliasTrueTypeFont(
-      readFileSync(
-        process.env.ABELE_TEST_FONT_FILE ?? '/System/Library/Fonts/Supplemental/Times New Roman.ttf'
-      ),
-      FAMILY
-    )
-    const data = Buffer.from(bytes).toString('base64')
+    const components = FONTS.split('/')
+    for (let i = 1; i <= components.length; i++) {
+      const folder = components.slice(0, i).join('/')
+      const made = await run<boolean>(
+        'desktop',
+        `if(app.vault.getAbstractFileByPath(${JSON.stringify(folder)}))return JSON.stringify(false);await app.vault.createFolder(${JSON.stringify(folder)});return JSON.stringify(true)`
+      )
+      if (made) madeFontFolders.push(folder)
+    }
+    const fonts = local.font
+      ? local.font.files.map((path) => ({ name: basename(path), bytes: readFileSync(path) }))
+      : [
+          {
+            name: 'Sample-Regular.ttf',
+            bytes: aliasTrueTypeFont(
+              readFileSync(
+                process.env.ABELE_TEST_FONT_FILE ??
+                  '/System/Library/Fonts/Supplemental/Times New Roman.ttf'
+              ),
+              FAMILY
+            ),
+          },
+        ]
+    for (const font of fonts) {
+      const path = `${FONTS}/${font.name}`
+      await putBinary('desktop', path, font.bytes)
+      madeFontFiles.push(path)
+    }
     await run(
       'desktop',
-      `await app.vault.createFolder(${JSON.stringify(`${DIR}/Fonts`)});window.__deviceFontData='';return JSON.stringify(true)`
+      `cfg.reader={...cfg.reader,font:${JSON.stringify(`vault:${FAMILY}`)},fontsFolder:${JSON.stringify(FONTS)}};await cfg.saveSettings();await window.__abeleTest.reader.fonts().scan();return JSON.stringify(true)`
     )
-    try {
-      for (let i = 0; i < data.length; i += 32000)
-        await run(
-          'desktop',
-          `window.__deviceFontData+=${JSON.stringify(data.slice(i, i + 32000))};return JSON.stringify(true)`
-        )
-      await run(
-        'desktop',
-        `
-        const b=Uint8Array.from(atob(window.__deviceFontData),c=>c.charCodeAt(0));await app.vault.createBinary(${JSON.stringify(`${DIR}/Fonts/Sample-Regular.ttf`)},b.buffer)
-        cfg.reader={...cfg.reader,font:${JSON.stringify(`vault:${FAMILY}`)},fontsFolder:${JSON.stringify(`${DIR}/Fonts`)}};await cfg.saveSettings();await window.__abeleTest.reader.fonts().scan()
-        return JSON.stringify(true)
-      `
-      )
-    } finally {
-      await run('desktop', `delete window.__deviceFontData;return JSON.stringify(true)`)
-    }
-  }, 120000)
+  }, 240000)
 
   afterAll(async () => {
     for (const device of ['phone', 'desktop'] as const) {
@@ -236,6 +302,12 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
         if(store)await store.flush();await wait(1800)
         cfg.reader=saved.reader;await cfg.saveSettings();window.__abeleTest.reader.eink.set(saved.eink)
         const dir=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(dir)await app.vault.delete(dir,true)
+        ${
+          device === 'desktop'
+            ? `for(const path of ${JSON.stringify(madeFontFiles)}){const f=app.vault.getAbstractFileByPath(path);if(f)await app.vault.delete(f,true)}
+        for(const path of ${JSON.stringify([...madeFontFolders].reverse())}){const f=app.vault.getAbstractFileByPath(path);if(f&&f.children?.length===0)await app.vault.delete(f,true)}`
+            : ''
+        }
         for(const f of saved.files){if(f.text!==null)await app.vault.adapter.write(f.path,f.text);else if(await app.vault.adapter.exists(f.path))await app.vault.adapter.remove(f.path)}
         if(!saved.panels[0])app.workspace.leftSplit.expand();if(!saved.panels[1])app.workspace.rightSplit.expand()
         ${device === 'desktop' ? `const wc=require('@electron/remote').getCurrentWebContents();await wc.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');wc.setZoomFactor(saved.zoom);wc.setBackgroundThrottling(saved.throttling)` : ''}
@@ -252,9 +324,9 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
       let l;try{l=app.workspace.getLeaf('tab')}catch{l=app.workspace.getLeaf(false)}
       await l.setViewState({type:'abele-book',state:{file:${JSON.stringify(BOOK)}},active:true})
       const v=await until(()=>l.view.model?.status==='ready'&&l.view.reading&&l.view);v.model.panel=false
-      for(const index of [0,1]){
-        await v.engine.goTo(index);await wait(500)
-        const d=current().doc,r=range(d,index),cfi=v.engine.getCFI(index,r)
+      for(const target of targets){
+        const index=target.index;await v.engine.goTo(index);await wait(500)
+        const d=current().doc,r=range(d,target),cfi=v.engine.getCFI(index,r)
         await v.engine.goTo(cfi);await wait(300)
         d.getSelection().removeAllRanges();d.getSelection().addRange(r)
         await until(()=>v.model.selection?.text===String(r));await v.reading.highlight('yellow')
@@ -263,7 +335,7 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
     `
     )
     const first = await snapshot()
-    expect(first.index).toBe(1)
+    expect(first.index).toBe(TARGETS[1].index)
     writeFileSync(join(SHOTS, 'phone-initial.json'), JSON.stringify(first, null, 2))
     await run(
       'phone',
@@ -294,14 +366,14 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
       },0)})}
       state.stop=()=>{stopped=true;cancelAnimationFrame(frame);clearTimeout(task);seen.disconnect()};window.__deviceGeometry=state;tick()
       const l=app.workspace.getLeaf('tab');await l.setViewState({type:'abele-book',state:{file:${JSON.stringify(BOOK)}},active:true})
-      const v=await until(()=>l.view.model?.status==='ready'&&l.view.model.highlights.length===2&&l.view);v.model.panel=false
+      const v=await until(()=>l.view.model?.status==='ready'&&l.view.model.highlights.length===2&&l.view);v.model.panelTab='search';v.model.panel=${local.panel ?? false}
       return JSON.stringify(true)
     `
     )
     await check('cold-open-phone-place', first)
     await run(
       'desktop',
-      `await view().reading.search('рыбак');await wait(13000);return JSON.stringify(true)`
+      `await view().reading.search(query);await wait(13000);return JSON.stringify(true)`
     )
     const beforeFont = await check('phone-place-before-font', first)
     expect(beforeFont.search).toBeGreaterThan(0)
@@ -319,11 +391,11 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
     // It therefore wins the normal timestamp merge without modifying its clock in the test.
     await run(
       'phone',
-      `const v=view();await v.engine.goTo(0);await wait(400);await v.engine.goTo(v.engine.getCFI(0,range(current().doc,0)));return JSON.stringify(true)`
+      `const v=view(),t=targets[0];await v.engine.goTo(t.index);await wait(400);await v.engine.goTo(v.engine.getCFI(t.index,range(current().doc,t)));return JSON.stringify(true)`
     )
     const second = await snapshot()
     expect(second.place.at).toBeGreaterThan(first.place.at)
-    expect(second.index).toBe(0)
+    expect(second.index).toBe(TARGETS[0].index)
     writeFileSync(join(SHOTS, 'phone-next.json'), JSON.stringify(second, null, 2))
     await deliver(second)
     await run(
@@ -333,7 +405,7 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
       // is looked at again. Exercise the real workspace event, not PlaceFollow.back directly.
       const l=leaf(),other=app.workspace.getLeaf('tab');await other.setViewState({type:'empty',state:{},active:true});await wait(250)
       app.workspace.setActiveLeaf(l,{focus:true});await wait(250);other.detach()
-      await until(()=>current()?.index===0);return JSON.stringify(true)
+      await until(()=>current()?.index===targets[0].index);return JSON.stringify(true)
     `
     )
     const followed = await check('followed-phone-place', second)
