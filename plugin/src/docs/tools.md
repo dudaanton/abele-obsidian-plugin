@@ -270,7 +270,9 @@ A request takes at most 15 seconds, including permission prompts. Denied, unavai
 silent providers give actionable errors; never invent a position or substitute IP geolocation.
 No reverse lookup is sent automatically. Use `geocode` separately only when an address is
 needed; that sends the coordinates to the existing Photon service. A result sent to the model
-is also kept in the chat history like other tool results. The map's **Show my location** button
+is also kept in the chat history like other tool results. Recap and compaction replace
+`current_location` tool-result content with a redacted placeholder before sending it to the
+helper model; the stored result and the main model's active history remain unchanged. The map's **Show my location** button
 is a separate, local one-shot action: it centres the map and draws a marker and accuracy radius,
 without writing coordinates to a note or sending them to an agent.
 

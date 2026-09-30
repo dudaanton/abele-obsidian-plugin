@@ -16,12 +16,12 @@ let nextResponse = ''
 /** Set to throw from the stream instead of yielding. */
 let nextError: Error | null = null
 /** Every (systemPrompt, messages) pair the stub was called with. */
-const calls: Array<{ system: string; messages: Message[] }> = []
+const calls: Array<{ model: ModelConfig; system: string; messages: Message[] }> = []
 
 vi.mock('@/ai/client/OpenAIClient', () => {
   class OpenAIClient {
     async *stream(_model: ModelConfig, system: string, messages: Message[]) {
-      calls.push({ system, messages })
+      calls.push({ model: _model, system, messages })
       if (nextError) throw nextError
       yield { type: 'text_delta' as const, delta: nextResponse }
     }
@@ -431,6 +431,76 @@ describe('ChatSummarizer.generateRecap', () => {
     expect(host.recap.value.startsWith('"')).toBe(false)
     expect(host.recap.value.length).toBeLessThanOrEqual(200)
   })
+})
+
+describe('location results in helper-model requests', () => {
+  // Invented device data. The helper can be a different provider from the approved chat model.
+  const locationText = JSON.stringify({
+    latitude: 12.345,
+    longitude: 67.89,
+    accuracy: 24,
+    timestamp: 1234567890000,
+    device: 'sample-device-token',
+  })
+  const locationResult = {
+    role: 'toolResult' as const,
+    toolCallId: 'sample-location-call',
+    toolName: 'current_location',
+    content: [
+      { type: 'text' as const, text: locationText },
+      { type: 'text' as const, text: 'sample-location-extra' },
+    ],
+    timestamp: 2,
+    isError: false,
+  }
+
+  it.each(['generateRecap', 'compact', 'autoCompactIfNeeded'] as const)(
+    '%s receives a redacted placeholder instead of any location result content',
+    async (operation) => {
+      nextResponse = 'A sample summary.'
+      const messages: Message[] = [
+        { role: 'user', content: 'Find a nearby place', timestamp: 1 },
+        locationResult,
+        {
+          role: 'toolResult',
+          toolCallId: 'sample-read-call',
+          toolName: 'read',
+          content: [{ type: 'text', text: 'ordinary sample tool answer' }],
+          timestamp: 3,
+          isError: false,
+        },
+      ]
+      const before = structuredClone(messages)
+      const helper: ModelConfig = {
+        ...MODEL,
+        id: 'sample-helper',
+        baseUrl: 'https://helper.example/v1',
+      }
+      const { host } = buildHost({
+        messages: ref([assistantMessage(950)]),
+        messagesForModel: () => messages,
+        auxiliaryModel: () => helper,
+        activeModel: () => ({ ...MODEL, id: 'sample-primary', baseUrl: 'http://localhost/v1' }),
+      })
+      await new ChatSummarizer(host)[operation]()
+      expect(calls).toHaveLength(1)
+      expect(calls[0].model).toEqual(helper)
+      const sent = JSON.stringify(calls[0].messages)
+      expect(sent).toContain('[tool current_location]: [Location result redacted]')
+      for (const secret of [
+        '12.345',
+        '67.89',
+        '1234567890000',
+        'sample-device-token',
+        'sample-location-extra',
+      ]) {
+        expect(sent).not.toContain(secret)
+      }
+      expect(sent).toContain('ordinary sample tool answer')
+      // Only the helper's rendering is redacted, not the main model's history or stored result.
+      expect(messages).toEqual(before)
+    }
+  )
 })
 
 describe('ChatSummarizer.generateSummary', () => {

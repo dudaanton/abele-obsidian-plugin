@@ -146,6 +146,8 @@ there; choose **Auto** explicitly if that agent should be allowed to request it 
 Your device may also ask for location permission. The answer includes the position,
 accuracy, time and which platform answered — always the device running the chat, not another
 synced device. It is sent to the model and kept in the conversation like any other tool answer.
+When a helper model prepares a recap or shortens the history, the location tool's answer is
+replaced with a redacted placeholder; the original answer stays in the chat.
 The agent should request it only for questions that depend on where you are. There is no
 automatic address lookup; looking up the address separately sends the coordinates to the map's
 existing lookup service.

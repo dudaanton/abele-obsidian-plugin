@@ -360,6 +360,11 @@ export class ChatSummarizer {
           return text ? `[assistant]: ${cut(text)}` : null
         }
         if (m.role === 'toolResult') {
+          // Permission to share device location with the chat model does not authorise
+          // forwarding that result to a potentially different helper-model provider.
+          if (m.toolName === 'current_location') {
+            return '[tool current_location]: [Location result redacted]'
+          }
           return `[tool ${m.toolName}]: ${cut(m.content.map((c) => c.text).join(''))}`
         }
         return null

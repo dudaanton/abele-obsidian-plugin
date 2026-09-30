@@ -245,7 +245,9 @@ The agent has access to these tools:
 `current_location` uses the device's geolocation API and needs location permission. Its per-agent
 access is Off / Ask / Auto, with Ask as the default; use it only for answers that depend on where
 the person is. Script-started agents and delegated runs refuse Ask-mode location because there
-is nobody to confirm; only explicit Auto permits it. Other tools keep their existing script policy. The result goes to the model and remains in chat history. It never substitutes
+is nobody to confirm; only explicit Auto permits it. Other tools keep their existing script policy. The result goes to the model and remains in chat history. Recap and compaction send the helper
+model a redacted placeholder in place of `current_location` tool-result content, without
+altering the original chat record. It never substitutes
 IP-based location and never sends an automatic address lookup. Permission denied, unavailable
 platforms and a 15-second timeout give actionable errors. Desktop applications may expose the
 API without a working location provider.

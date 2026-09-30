@@ -256,7 +256,9 @@ Renaming a note or a script rewrites the path in both places. Do not edit these 
 
 A `current_location` tool answer contains personal coordinates, accuracy, acquisition time and
 the answering platform. Like other tool answers it is sent to the model and retained in the
-chat file; it is not saved as a note property or a global location setting. The map's **Show my
+chat file; it is not saved as a note property or a global location setting. Background recap
+and compaction redact this tool-result content before sending their transcript to the helper
+model; the original chat record is retained. The map's **Show my
 location** action keeps its position only in the live map and discards it when the map is closed.
 
 A chat that chose its own interceptor rather than following its agent's keeps the choice in its
