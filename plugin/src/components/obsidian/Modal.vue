@@ -37,6 +37,7 @@ const props = defineProps<{
 }>()
 
 const modal = ref<ShellModal | null>(null)
+let unmounting = false
 
 const id = ref(genid())
 // Teleport by element, not by selector: a modal opened from the settings window
@@ -55,7 +56,7 @@ onBeforeMount(() => {
   modal.value = new (class extends ShellModal {
     onClose(): void {
       super.onClose()
-      emit('close')
+      if (!unmounting) emit('close')
     }
   })(app, { title: props.title, size: props.size ?? 'default', footer: !!slots.footer })
 
@@ -73,6 +74,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  unmounting = true
   modal.value?.close()
   modal.value = null
 })
