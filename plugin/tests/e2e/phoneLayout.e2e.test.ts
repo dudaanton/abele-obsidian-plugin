@@ -260,11 +260,13 @@ const probeScript = `(async () => {
   // stands in a sheet. These are written for the run and removed after it.
   const SEEDED = []
   const SEEDED_DIRS = []
+  let replyReviewer = null
   // An MCP server with a few tools, in memory only: the chat's tools tab shows its group and
   // switch, and the settings' MCP tab has a card to open. Put back as it was by \`unseed\`.
   const mcpConfig = window.__abeleTest.AbeleConfig.getInstance()
   const MCP_BEFORE = mcpConfig.ai.mcpServers
   const seed = async () => {
+    replyReviewer = window.__abeleTest.AgentRegistry.getInstance().create({ name: 'Sample reply reviewer', utility: true })
     const lorem = 'Reads a page of the documentation for a library and returns it as markdown, with the examples kept whole.'
     mcpConfig.ai = { ...mcpConfig.ai, mcpServers: [{
       id: 'phone-probe', name: 'context7', url: 'https://mcp.context7.com/mcp', enabled: true,
@@ -358,6 +360,7 @@ const probeScript = `(async () => {
   }
   const unseed = async () => {
     mcpConfig.ai = { ...mcpConfig.ai, mcpServers: MCP_BEFORE }
+    if (replyReviewer) window.__abeleTest.AgentRegistry.getInstance().remove(replyReviewer.id)
     for (const path of SEEDED) {
       const file = app.vault.getAbstractFileByPath(path)
       if (file) await app.vault.delete(file)
@@ -462,6 +465,14 @@ const probeScript = `(async () => {
         report['setup ' + label].clipped = clipped
         if (label === 'settings' && modal) {
           report['setup settings'].pattern = !!modal.querySelector('input[placeholder="Every message"]')
+          const replyRow = () => [...modal.querySelectorAll('.setting-item')].find(r => r.querySelector('.setting-item-name')?.textContent.trim() === 'Reply only')
+          report['setup settings'].replyHidden = !replyRow()
+          guardedChat.interceptor.agentId.value = replyReviewer.id
+          await until(() => replyRow(), 3000)
+          const row = replyRow()
+          if (row) row.scrollIntoView({ block: 'center' })
+          await screen('setup settings reply only', modal, modal.querySelector('.abele-modal__body'))
+          report['setup settings reply only'].replyToggle = !!row?.querySelector('.checkbox-container')
         }
       }
       await closeDialog()
@@ -827,6 +838,13 @@ const probeScript = `(async () => {
           const agent = registry.list()[0]
           const was = { interceptorAgentId: agent.interceptorAgentId, interceptorScript: agent.interceptorScript, interceptorPattern: agent.interceptorPattern }
           try {
+            registry.update(agent.id, { interceptorAgentId: replyReviewer.id, interceptorScript: '', interceptorPattern: '' })
+            const replyRow = () => [...modal.querySelectorAll('.setting-item')].find(r => r.querySelector('.setting-item-name')?.textContent.trim() === 'Reply only')
+            await until(() => replyRow(), 3000)
+            const row = replyRow()
+            if (row) row.scrollIntoView({ block: 'center' })
+            await screen('agent editor reply only', modal, modal.querySelector('.abele-modal__body'))
+            report['agent editor reply only'].replyToggle = !!row?.querySelector('.checkbox-container')
             registry.update(agent.id, { interceptorAgentId: '', interceptorScript: 'Phone probe guard', interceptorPattern: '' })
             await until(() => modal.querySelector('input[placeholder="^/todo"]'), 3000)
             const field = modal.querySelector('input[placeholder="^/todo"]')
@@ -847,6 +865,7 @@ const probeScript = `(async () => {
             }
             report['agent editor interceptor'].clipped = cut
             report['agent editor interceptor'].warning = !!modal.querySelector('.mod-warning')
+            report['agent editor interceptor'].replyHidden = !replyRow()
           } finally {
             registry.update(agent.id, was)
           }
@@ -1047,6 +1066,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'setup prompts',
     'setup tools',
     'setup settings',
+    'setup settings reply only',
+    'agent editor reply only',
     'setup debug',
     'history',
     'nested comment',
@@ -1189,6 +1210,20 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   it("setup settings: the chat's interceptor pattern field is there to be measured", () => {
     expect((report['setup settings'] as Screen & { pattern?: boolean })?.pattern).toBe(true)
   })
+
+  it.each(['setup settings reply only', 'agent editor reply only'])(
+    '%s: the agent reviewer toggle is present',
+    (label) => {
+      expect((report[label] as Screen & { replyToggle?: boolean })?.replyToggle).toBe(true)
+    }
+  )
+
+  it.each(['setup settings', 'agent editor interceptor'])(
+    '%s: scripts have no reply-only toggle',
+    (label) => {
+      expect((report[label] as Screen & { replyHidden?: boolean })?.replyHidden).toBe(true)
+    }
+  )
 
   it('nested comment folded: a trail of four levels keeps to one row', () => {
     expect((report['nested comment folded'] as Screen & { rows?: number })?.rows).toBe(1)

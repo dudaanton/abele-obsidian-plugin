@@ -14,6 +14,7 @@
       tabindex="0"
       :aria-selected="tab.id === modelValue"
       @click="emit('update:modelValue', tab.id)"
+      @focus="showFocusedTab"
       @keydown.enter.prevent="emit('update:modelValue', tab.id)"
       @keydown.space.prevent="emit('update:modelValue', tab.id)"
     >
@@ -60,6 +61,15 @@ withDefaults(
   }>(),
   { level: 'primary', vertical: false }
 )
+
+// A narrow, horizontally scrolling strip must bring the whole tab (and its ring) into view.
+function showFocusedTab(event: FocusEvent): void {
+  const tab = event.currentTarget as HTMLElement
+  const strip = tab.parentElement
+  if (strip && strip.scrollWidth > strip.clientWidth) {
+    tab.scrollIntoView?.({ block: 'nearest', inline: 'center' })
+  }
+}
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void

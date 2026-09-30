@@ -546,6 +546,12 @@ function toggleSkill(name: string): void {
   margin: calc(-1 * var(--size-2-2)) 0 calc(-1 * var(--size-2-2)) calc(-1 * var(--size-2-2));
 }
 
+// On a phone the dialog shell owns scrolling; a 60vh box inside it caps the form twice.
+.is-phone .abele-agent-editor__body {
+  max-height: none;
+  overflow-y: visible;
+}
+
 .abele-agent-editor__actions {
   display: flex;
   flex-wrap: wrap;
