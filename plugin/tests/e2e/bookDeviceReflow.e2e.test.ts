@@ -60,7 +60,7 @@ const PRELUDE = `
   const leaf=()=>app.workspace.getLeavesOfType('abele-book').find(l=>l.getViewState().state?.file===${JSON.stringify(BOOK)})
   const view=()=>leaf()?.view
   const current=()=>view()?.engine?.renderer?.getContents()[0]
-  const range=(doc,index)=>{const p=doc.getElementById('p'+(index+1)+'-2-0'),r=doc.createRange();r.setStart(p.firstChild,0);r.setEnd(p.firstChild,150);return r}
+  const range=(doc,index)=>{const p=doc.getElementById('p'+(index+1)+'-0-0'),r=doc.createRange();r.setStart(p.firstChild,0);r.setEnd(p.firstChild,150);return r}
 `
 async function run<T>(device: Device, body: string): Promise<T> {
   const code = `(async()=>{${PRELUDE}\n${body}\n})()`
@@ -129,7 +129,7 @@ async function check(name: string, packet?: Packet): Promise<Probe> {
     await wait(600)
     const m=measure();if(!m)throw Error('no desktop geometry')
     const monitor=window.__deviceGeometry
-    const out={...m,samples:monitor.samples,failures:[...monitor.failures,...m.failures],settings:cfg.reader,notices:monitor.notices.size}
+    const out={...m,samples:monitor.samples,failures:[...monitor.failures,...m.failures],settings:cfg.reader,notices:monitor.notices.size,key:view().model.key,stored:await view().follow.store.get(view().model.key),lastLocation:view().engine.lastLocation.cfi}
     ${
       packet
         ? `const c=current(),r=view().engine.resolveNavigation(${JSON.stringify(packet.place.cfi)}).anchor(c.doc)
@@ -254,7 +254,7 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
         const d=current().doc,r=range(d,index),cfi=v.engine.getCFI(index,r)
         await v.engine.goTo(cfi);await wait(300)
         d.getSelection().removeAllRanges();d.getSelection().addRange(r)
-        await until(()=>v.model.selection);await v.reading.highlight('yellow')
+        await until(()=>v.model.selection?.text===String(r));await v.reading.highlight('yellow')
       }
       await wait(700);return JSON.stringify(true)
     `
