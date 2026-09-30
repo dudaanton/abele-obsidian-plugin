@@ -15,7 +15,7 @@
  * Requires a development build and OBSIDIAN_TEST_VAULT — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import fs from 'node:fs'
+import { snapshotBaseline } from './helpers/snapshotBaseline'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -82,21 +82,7 @@ describe.skipIf(!available)('groups end-to-end', () => {
         current[group] = resolvedPaths(group)
       }
 
-      if (UPDATE_SNAPSHOT || !fs.existsSync(SNAPSHOT_PATH)) {
-        fs.mkdirSync(path.dirname(SNAPSHOT_PATH), { recursive: true })
-        fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(current, null, 2) + '\n', 'utf8')
-        console.info(
-          `  wrote group membership snapshot: ${Object.entries(current)
-            .map(([g, paths]) => `${g} -> ${paths.length}`)
-            .join(', ')}`
-        )
-        return
-      }
-
-      const expected = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8')) as Record<
-        string,
-        string[]
-      >
+      const expected = snapshotBaseline(SNAPSHOT_PATH, current, UPDATE_SNAPSHOT)
 
       for (const group of SNAPSHOT_GROUPS) {
         expect(current[group], `membership changed for ${group}`).toEqual(expected[group])

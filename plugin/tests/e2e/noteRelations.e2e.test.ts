@@ -9,7 +9,7 @@
  * Requires a development build and OBSIDIAN_TEST_VAULT — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import fs from 'node:fs'
+import { snapshotBaseline } from './helpers/snapshotBaseline'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isObsidianRunning, hasTestApi, evalJson, activeVaultName } from './helpers/obsidianCli'
@@ -93,18 +93,7 @@ describe.skipIf(!available)('note relations end-to-end', () => {
         },
       }
 
-      if (UPDATE_SNAPSHOT || !fs.existsSync(SNAPSHOT_PATH)) {
-        fs.mkdirSync(path.dirname(SNAPSHOT_PATH), { recursive: true })
-        fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(current, null, 2) + '\n', 'utf8')
-        console.info(
-          `  wrote relations snapshot: ${group.tasks.length} tasks, ${group.logs.length} logs, ` +
-            `${group.transactions.length} transactions, ${group.timeEntries.length} time entries, ` +
-            `${group.notes.length} notes`
-        )
-        return
-      }
-
-      const expected = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'))
+      const expected = snapshotBaseline(SNAPSHOT_PATH, current, UPDATE_SNAPSHOT)
       expect(current).toEqual(expected)
     })
 
