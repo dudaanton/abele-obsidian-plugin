@@ -270,7 +270,7 @@ export class ChatInterceptor {
           )
           break
         case 'send':
-          if (outcome.rewritten)
+          if (outcome.rewriteRequested || outcome.rewritten)
             lines.push(
               'Reply only: ignored the rewrite of this message or its attachments. It was sent as written.'
             )

@@ -18,6 +18,8 @@ export type InterceptOutcome =
       text: string
       attachments: string[]
       rewritten: boolean
+      /** Explicit text/attachments, even unchanged: reply-only must explain discarded intent. */
+      rewriteRequested?: boolean
       policy?: ToolPolicy
     }
   | Exclude<InterceptResult, { kind: 'send' } | { kind: 'invalid' }>
@@ -105,7 +107,17 @@ export async function runInterceptorScript(
     if (read.kind === 'invalid') return { kind: 'failed', reason: read.reason }
     if (read.kind !== 'send') return read
     const { policy, ...rest } = read
-    return policy ? { ...rest, policy: toolPolicy(policy, name) } : rest
+    const fields = value as Record<string, unknown> | null | undefined
+    const rewriteRequested =
+      typeof value === 'string' ||
+      (typeof value === 'object' &&
+        fields != null &&
+        (fields.text !== undefined || fields.attachments !== undefined))
+    return {
+      ...rest,
+      ...(rewriteRequested ? { rewriteRequested: true } : {}),
+      ...(policy ? { policy: toolPolicy(policy, name) } : {}),
+    }
   } catch (err) {
     if (timedOut) {
       return { kind: 'failed', reason: `the script did not decide within ${seconds} s` }

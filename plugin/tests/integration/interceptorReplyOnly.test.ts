@@ -278,6 +278,9 @@ describe('reply-only script interceptors', () => {
 
   it.each([
     ['replacement', /rewrite/i],
+    ['Original question', /rewrite/i],
+    [{ text: 'Original question' }, /rewrite/i],
+    [{ attachments: [] }, /rewrite/i],
     [{ text: 'replacement', attachments: ['sample-note.md'] }, /rewrite/i],
     [{ hold: 'Wait' }, /hold/i],
     [{ approve: true, deny: ['demo'] }, /tool/i],
