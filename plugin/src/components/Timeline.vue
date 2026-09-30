@@ -47,22 +47,26 @@
         @keydown.escape.stop.prevent="search.close"
       />
       <div
-        v-if="folded.length"
+        v-if="past.length && !search.terms.value.length"
         ref="historyEl"
         class="abele-timeline__history"
         role="button"
         tabindex="0"
-        aria-label="Show all past days"
-        @click="revealPast"
-        @keydown.enter.prevent="revealPast"
-        @keydown.space.prevent="revealPast"
+        :aria-label="pastRevealed ? 'Hide all past days' : 'Show all past days'"
+        :aria-expanded="pastRevealed"
+        @click="togglePast"
+        @keydown.enter.prevent="togglePast"
+        @keydown.space.prevent="togglePast"
       >
         <div class="abele-timeline__date-indicator abele-timeline__date-indicator_overdue">
           <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
             <ObsidianIcon icon="flame" no-hover />
           </div>
         </div>
-        <span>Past days · {{ foldedUnfinished }} unfinished · Show all</span>
+        <span
+          >Past days · {{ pastUnfinished }} unfinished ·
+          {{ pastRevealed ? 'Hide all' : 'Show all' }}</span
+        >
       </div>
       <div ref="itemsEl" class="abele-timeline__blocks">
         <div
@@ -223,7 +227,7 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
-const { visible, folded, hasMore, sentinel, reset, revealPast } = useTimelineDays(
+const { visible, past, pastRevealed, hasMore, sentinel, reset, togglePast } = useTimelineDays(
   () => dates.value,
   () => now.value.format(DATE_FORMAT),
   () => search.terms.value,
@@ -231,15 +235,27 @@ const { visible, folded, hasMore, sentinel, reset, revealPast } = useTimelineDay
   useFooterTimeline(),
   () => !fold.collapsed.value
 )
-const foldedUnfinished = computed(() => {
+const pastUnfinished = computed(() => {
   const keys = new Set<string>()
-  for (const [, items] of folded.value)
+  for (const [, items] of past.value)
     for (const item of items) if (item.task && !item.task.completedAt) keys.add(item.key)
   return keys.size
 })
 const historyEl = ref<HTMLElement | null>(null)
 const anchorSpaceEl = ref<HTMLElement | null>(null)
-useTimelineScroll(itemsEl, historyEl, anchorSpaceEl, () => visible.value)
+const retainedRows = computed(
+  () =>
+    new Set(
+      visible.value.flatMap(([date, items]) => items.map((item) => 'date:' + date + ':' + item.key))
+    )
+)
+useTimelineScroll(
+  itemsEl,
+  historyEl,
+  anchorSpaceEl,
+  () => visible.value,
+  (key, day) => retainedRows.value.has(day + ':' + key)
+)
 watch(labelSelection, reset)
 
 const getDateWikilink = (dateStr: string) => {

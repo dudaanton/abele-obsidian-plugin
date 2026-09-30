@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function pane(rowTop: number) {
+async function pane(rowTop: number, survives?: (key: string, day: string | null) => boolean) {
   const owner = document.createElement('div')
   owner.style.overflowY = 'auto'
   const root = document.createElement('div')
@@ -31,7 +31,7 @@ async function pane(rowTop: number) {
   const anchorSpace = ref<HTMLElement | null>(null)
   const source = ref(0)
   const scope = effectScope()
-  scope.run(() => useTimelineScroll(items, history, anchorSpace, () => source.value))
+  scope.run(() => useTimelineScroll(items, history, anchorSpace, () => source.value, survives))
   items.value = root
   anchorSpace.value = space
   await nextTick()
@@ -373,6 +373,53 @@ describe('timeline scroll ownership', () => {
     const p = await pane(-10)
     await p.patch(() => p.shift(50))
     expect(p.owner.scrollTop).toBe(150)
+  })
+
+  it('holds the nearest remaining row at the read position when hidden history removes every visible row', async () => {
+    const resize = lateResize()
+    let hiding = false
+    const p = await pane(50, (key) => !hiding || key !== 'sample-task')
+    const next = document.createElement('div')
+    next.dataset.timelineItem = 'sample-next'
+    p.root.append(next)
+    let nextTop = 700
+    vi.spyOn(next, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, nextTop - (p.owner.scrollTop - 100), 300, 40)
+    )
+    hiding = true
+    await p.patch(() => {
+      p.row.remove()
+      nextTop = 20
+    })
+    expect(next.getBoundingClientRect().top).toBe(50)
+    nextTop += 20
+    resize()
+    expect(next.getBoundingClientRect().top).toBe(50)
+  })
+
+  it('keeps a visible surviving row at its own position when the first visible row is hidden', async () => {
+    let hiding = false
+    const p = await pane(50, (key) => !hiding || key !== 'sample-task')
+    const next = document.createElement('div')
+    next.dataset.timelineItem = 'sample-next'
+    p.root.append(next)
+    let nextTop = 120
+    vi.spyOn(next, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, nextTop - (p.owner.scrollTop - 100), 300, 40)
+    )
+    hiding = true
+    await p.patch(() => {
+      p.row.remove()
+      nextTop = 70
+    })
+    expect(next.getBoundingClientRect().top).toBe(120)
+  })
+
+  it('releases virtual space when hiding history leaves no remaining row', async () => {
+    const p = await pane(50, () => false)
+    p.space.style.height = '400px'
+    await p.patch(() => p.row.remove())
+    expect(p.space.style.height).toBe('')
   })
 
   it('releases virtual space when filtering removes the held row', async () => {

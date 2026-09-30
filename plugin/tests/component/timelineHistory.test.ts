@@ -74,6 +74,15 @@ describe('folded timeline history', () => {
       open()
       await flushPromises()
       expect(days()).toEqual(before)
+      await view.find('.abele-timeline__history').trigger('click')
+      await flushPromises()
+      expect(days()).toEqual(before.filter((date) => date !== 'date:2030-06-14'))
+      view.unmount()
+      resetFooterView()
+      open()
+      await flushPromises()
+      expect(days()).toEqual(before.filter((date) => date !== 'date:2030-06-14'))
+      expect(view.find('.abele-timeline__history').text()).toContain('Show all')
     } finally {
       config.rememberNotePlaces = remembered
       resetFooterView()
@@ -175,7 +184,11 @@ describe('folded timeline history', () => {
     await strip.trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-14', 'date:2030-06-15'])
-    expect(view.find('.abele-timeline__history').exists()).toBe(false)
+    expect(strip.text()).toContain('2 unfinished · Hide all')
+    await strip.trigger('click')
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-15'])
+    expect(strip.text()).toContain('2 unfinished · Show all')
   })
 
   it('does not reset future pages or unfold old completed-only days on a completed toggle', async () => {
@@ -245,7 +258,11 @@ describe('folded timeline history', () => {
     await view.find('.abele-timeline__history').trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-14'])
-    expect(view.find('.abele-timeline__history').exists()).toBe(false)
+    expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished · Hide all')
+    await view.find('.abele-timeline__history').trigger('click')
+    await flushPromises()
+    expect(days()).toEqual([])
+    expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished · Show all')
   })
 
   it.each([false, true])(
@@ -273,7 +290,10 @@ describe('folded timeline history', () => {
       await view.setProps({ tasks: [task('sample-arrival', '2019-01-01'), ...tasks] })
       await flushPromises()
       expect(days()[0]).toBe('date:2019-01-01')
-      expect(view.find('.abele-timeline__history').exists()).toBe(false)
+      expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished · Hide all')
+      await view.find('.abele-timeline__history').trigger('click')
+      await flushPromises()
+      expect(days()).toEqual(['date:2030-06-15'])
     }
   )
 
@@ -286,6 +306,13 @@ describe('folded timeline history', () => {
     await banner.trigger('keydown', { key })
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+    expect(banner.attributes('aria-expanded')).toBe('true')
+    expect(banner.attributes('aria-label')).toBe('Hide all past days')
+    await banner.trigger('keydown', { key })
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-15'])
+    expect(banner.attributes('aria-expanded')).toBe('false')
+    expect(banner.attributes('aria-label')).toBe('Show all past days')
   })
 
   it('keeps a late future day mounted when new completed-only dates appear before it', async () => {

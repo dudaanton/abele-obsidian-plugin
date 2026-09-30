@@ -36,9 +36,8 @@ export function useTimelineDays<T>(
   const visible = computed(() =>
     eligible.value.filter(([day]) => upper.value === null || day <= upper.value)
   )
-  const folded = computed(() =>
-    terms().length || pastRevealed.value ? [] : all.value.filter(([day]) => day < today())
-  )
+  const past = computed(() => all.value.filter(([day]) => day < today()))
+  const folded = computed(() => (terms().length || pastRevealed.value ? [] : past.value))
   const hasMore = computed(
     () => upper.value !== null && all.value.some(([day]) => day > upper.value)
   )
@@ -57,9 +56,9 @@ export function useTimelineDays<T>(
   useIntersectionObserver(sentinel, ([entry]) => {
     if (entry?.isIntersecting) showMore()
   })
-  const revealPast = () => {
-    pastRevealed.value = true
-    if (!terms().length) memory.recordPast?.(true)
+  const togglePast = () => {
+    pastRevealed.value = !pastRevealed.value
+    if (!terms().length) memory.recordPast?.(pastRevealed.value)
   }
   const reset = () => {
     // A label changes the source, not the search: its matching past days must stay visible.
@@ -80,5 +79,5 @@ export function useTimelineDays<T>(
       beforeSearch = null
     }
   })
-  return { visible, folded, hasMore, sentinel, revealPast, reset }
+  return { visible, folded, past, pastRevealed, hasMore, sentinel, togglePast, reset }
 }

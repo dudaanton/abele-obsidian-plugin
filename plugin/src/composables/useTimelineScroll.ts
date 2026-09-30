@@ -39,12 +39,13 @@ function pinnedTop(owner: HTMLElement): number {
   return Math.max(top, safe + nativeHeader, chromeBottom)
 }
 
-/** Holds a visible row through insertions and completed toggles. All scrolling stays native. */
+/** Holds a surviving row through layout patches. All scrolling stays native. */
 export function useTimelineScroll(
   items: Ref<HTMLElement | null>,
   history: Ref<HTMLElement | null>,
   anchorSpace: Ref<HTMLElement | null>,
-  windowSource: () => unknown
+  windowSource: () => unknown,
+  survives?: (key: string, day: string | null) => boolean
 ) {
   let stopHolding = () => {}
   let disposeInput = () => {}
@@ -91,8 +92,13 @@ export function useTimelineScroll(
     const top = pinnedTop(owner) + (history.value?.getBoundingClientRect().height ?? 0)
     // Prefer an unfinished row: it survives both directions of the completed toggle.
     const candidates = Array.from(root.querySelectorAll<HTMLElement>('[data-timeline-item]'))
-    const row =
-      candidates.find((el) => {
+    const dayOf = (el: HTMLElement) =>
+      el.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor') ?? null
+    const retained = candidates.filter(
+      (el) => !survives || survives(el.dataset.timelineItem!, dayOf(el))
+    )
+    const visibleRow = (rows: HTMLElement[]) =>
+      rows.find((el) => {
         const box = el.getBoundingClientRect()
         return (
           box.top >= top &&
@@ -100,14 +106,32 @@ export function useTimelineScroll(
           !el.querySelector<HTMLInputElement>('input:checked')
         )
       }) ??
-      candidates.find((el) => {
+      rows.find((el) => {
         const box = el.getBoundingClientRect()
         return box.bottom > top && box.top < viewport.bottom
       })
-    if (!row) return () => releaseUnusedSpace(owner)
+    const read = visibleRow(candidates)
+    // Prefer a surviving visible row at its own offset. If the whole read region is
+    // removed (hidden history), bring the nearest remaining row to that read position.
+    // Never move a note when its timeline is entirely outside the viewport.
+    const visibleRetained = visibleRow(retained)
+    const readTop = read?.getBoundingClientRect().top
+    const row =
+      visibleRetained ??
+      (read &&
+        retained.reduce<HTMLElement | undefined>(
+          (nearest, el) =>
+            !nearest ||
+            Math.abs(el.getBoundingClientRect().top - readTop!) <
+              Math.abs(nearest.getBoundingClientRect().top - readTop!)
+              ? el
+              : nearest,
+          undefined
+        ))
+    if (!row) return () => (read ? releaseSpace() : releaseUnusedSpace(owner))
     const key = row.dataset.timelineItem
-    const day = row.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor')
-    const offset = row.getBoundingClientRect().top - viewport.top
+    const day = dayOf(row)
+    const offset = (visibleRetained ? row.getBoundingClientRect().top : readTop!) - viewport.top
     // Let this hold be the only layout anchor. Otherwise browser anchoring can write its
     // own scrollTop during late title rendering and look like external input to our guard.
     const browserAnchor = owner.style.getPropertyValue('overflow-anchor')
@@ -144,11 +168,7 @@ export function useTimelineScroll(
       extend()
       const target = Array.from(
         items.value.querySelectorAll<HTMLElement>('[data-timeline-item]')
-      ).find(
-        (el) =>
-          el.dataset.timelineItem === key &&
-          el.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor') === day
-      )
+      ).find((el) => el.dataset.timelineItem === key && dayOf(el) === day)
       if (target) {
         const shift =
           target.getBoundingClientRect().top - owner.getBoundingClientRect().top - offset
