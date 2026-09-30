@@ -32,15 +32,14 @@ async function nativePng(blob: Blob): Promise<Blob> {
 export async function normalizeImageImport(
   name: string,
   blob: Blob
-): Promise<{ name: string; blob: Blob }> {
+): Promise<{ name: string; blob: Blob; unconvertedHeic?: boolean }> {
   if (!isHeicImport(name, blob.type)) return { name, blob }
   // iOS WebKit can decode HEIC without shipping a decoder into the page.
-  let png: Blob
   try {
-    png = await nativePng(blob)
+    const png = await nativePng(blob)
+    return { name: name.replace(/\.(heic|heif)$/i, '') + '.png', blob: png }
   } catch {
-    const { decodeHeic } = await import('./heicDecoder')
-    png = await decodeHeic(blob)
+    // A platform without native decoding keeps the original as a file, never mislabeled PNG.
+    return { name, blob, unconvertedHeic: true }
   }
-  return { name: name.replace(/\.(heic|heif)$/i, '') + '.png', blob: png }
 }

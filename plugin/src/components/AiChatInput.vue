@@ -413,10 +413,11 @@ const showAttachMenu = (event: MouseEvent) => {
  */
 const pickFromChats = async () => {
   const { app } = GlobalStore.getInstance()
+  const target = draft.value
   const current = ChatService.getInstance().activeSession.value?.currentChatFile.value?.path
   const file = await pickChat(app, current)
-  if (file && !attachments.value.some((a) => a.path === file.path)) {
-    attachments.value = [...attachments.value, file]
+  if (file && !retiredDrafts.has(target) && !target.attachments.some((a) => a.path === file.path)) {
+    target.attachments = [...target.attachments, file]
   }
 }
 

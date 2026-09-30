@@ -107,10 +107,13 @@ saves a new image. The result appears as a clickable preview under the tool call
 an existing image in your reply, use `![[Attachments/sample-image.png]]` with its actual path.
 Text `read`/`write`/`edit` tools are not binary image editors.
 
-HEIC/HEIF imports are converted to PNG before attachment. Only the PNG is sent to the model
-and attached to the chat; refer to the PNG path in the label. New external imports do not keep
-a HEIC original. Importing an existing vault HEIC leaves that original in place and makes a
-PNG copy. Pending pictures open in the plugin's preview; Draw opens a drawing tab, whose
+HEIC/HEIF imports become PNG only when the platform decodes them natively (iPhone/iPad).
+Then only the PNG is attached and sent to the model; refer to its labeled path. External
+converted imports keep only PNG; an existing vault HEIC stays beside its PNG copy. On a
+platform without native decoding, such as desktop, HEIC stays an ordinary binary file, with
+a `[File attachment: <path> (HEIC/HEIF; not converted)]` label and no model image input.
+Do not claim to see its pixels or use text tools to edit its bytes; conversion is available
+on iPhone/iPad. Its original file is never deleted. Pending pictures open in the plugin's preview; Draw opens a drawing tab, whose
 **Send back to the chat** replaces the pending original with the saved drawing, keeping the
 rest of the draft. Drawing from a sent message attaches a new picture instead.
 

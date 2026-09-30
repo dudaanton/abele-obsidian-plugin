@@ -22,9 +22,11 @@ to open Abele's preview. **Draw** opens the picture to draw on; **Send back to t
 the drawing tab's menu replaces an unsent attachment with the edited picture, leaving your
 message and other attachments alone. From a sent message it adds a new picture to your draft.
 The agent sees the picture and knows its file path, so you can ask it to edit the file and
-show the result. HEIC/HEIF photos are converted to PNG automatically, in chats and other Abele
-image imports. External imports keep only the PNG; a HEIC already in the vault stays there
-beside its new PNG copy.
+show the result. HEIC/HEIF photos become PNG automatically on iPhone/iPad, where the platform
+can read them, in chats and other Abele image imports. Converted external imports keep only
+PNG; a HEIC already in the vault stays beside its new PNG copy. On desktop without native
+HEIC support, a short message explains that conversion is available on iPhone/iPad. The
+original is kept and attached as a file, not a picture the model can see.
 
 Commands typed in the message box:
 

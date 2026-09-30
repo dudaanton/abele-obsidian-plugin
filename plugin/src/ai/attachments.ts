@@ -5,6 +5,7 @@ import { isImagePath, VAULT_IMAGE_PREFIX } from './tools/ReadImageTool'
 import { chatForAgent, isChatLog } from './chatText'
 import { contentHash } from './readGuard'
 import { createImportedBinary } from '@/media/importImageFile'
+import { isHeicImport } from '@/media/imageImport'
 
 const MAX_TEXT_FILE_SIZE = 100 * 1024 // 100 KB
 
@@ -88,7 +89,10 @@ export async function resolveAttachmentsForApi(
       continue
     }
 
-    if (isImagePath(path)) {
+    if (isHeicImport(path)) {
+      // Native conversion was unavailable: a binary file, not text or model image input.
+      parts.push({ type: 'text', text: `[File attachment: ${path} (HEIC/HEIF; not converted)]` })
+    } else if (isImagePath(path)) {
       parts.push({ type: 'text', text: `[Image: ${path}]` })
       parts.push({ type: 'image_url', image_url: { url: `${VAULT_IMAGE_PREFIX}${path}` } })
     } else if (isChatLog(path)) {

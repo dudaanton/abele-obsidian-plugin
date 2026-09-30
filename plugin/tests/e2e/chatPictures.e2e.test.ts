@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
-import { targets } from './helpers/target'
+import { onPhone, targets } from './helpers/target'
 
 targets('desktop', 'phone')
 const HEIC = readFileSync(new URL('../fixtures/images/sample-gradient.heic', import.meta.url)).toString('base64')
@@ -24,26 +24,39 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
     })()`)
   })
 
-  it('decodes a synthetic HEIC into PNG pixels before importing it', async () => {
+  it('converts HEIC natively on the phone and preserves it as a file on desktop', async () => {
     const result = JSON.parse(await evalLong(`(async () => {
+      const folder = app.vault.getConfig('attachmentFolderPath')
       try {
+        app.vault.setConfig('attachmentFolderPath', ${JSON.stringify(DIR)})
         const bytes = Uint8Array.from(atob(${JSON.stringify(HEIC)}), c => c.charCodeAt(0))
-        const out = await window.__abeleTest.normalizeImageImport('sample-gradient.HEIC', new Blob([bytes], { type: 'image/heic' }))
-        const path = ${JSON.stringify(DIR)} + '/' + out.name
-        const made = await app.vault.createBinary(path, await out.blob.arrayBuffer())
+        const made = await window.__abeleTest.importExternalFile(new File([bytes], 'sample-gradient.HEIC', { type: 'image/heic' }))
+        const saved = new Uint8Array(await app.vault.readBinary(made))
+        if (made.extension.toLowerCase() !== 'png') return {
+          name: made.name,
+          unchanged: saved.length === bytes.length && saved.every((b, i) => b === bytes[i]),
+          notice: [...document.querySelectorAll('.notice')].map(n => n.textContent).join(' '),
+        }
         const model = await window.__abeleTest.prepareImageForApi(made.path)
-        const url = URL.createObjectURL(out.blob)
+        const url = URL.createObjectURL(new Blob([saved], { type: 'image/png' }))
         try {
           const img = new Image(); img.src = url; await img.decode()
-          return { name: out.name, mime: out.blob.type, width: img.naturalWidth, height: img.naturalHeight, model: model?.slice(0, 22) }
+          return { name: made.name, signature: [...saved.slice(0, 8)], width: img.naturalWidth, height: img.naturalHeight, model: model?.slice(0, 22) }
         } finally { URL.revokeObjectURL(url) }
       } catch (e) { return { error: String(e?.stack || e) } }
+      finally { app.vault.setConfig('attachmentFolderPath', folder) }
     })()`, 150_000))
     expect(result.error).toBeUndefined()
-    expect(result.name).toBe('sample-gradient.png')
-    expect(result.mime).toBe('image/png')
-    expect([result.width, result.height]).toEqual([48, 32])
-    expect(result.model).toBe('data:image/png;base64,')
+    if (onPhone()) {
+      expect(result.name).toBe('sample-gradient.png')
+      expect(result.signature).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
+      expect([result.width, result.height]).toEqual([48, 32])
+      expect(result.model).toBe('data:image/png;base64,')
+    } else {
+      expect(result.name).toBe('sample-gradient.HEIC')
+      expect(result.unchanged).toBe(true)
+      expect(result.notice).toMatch(/HEIC.*iPhone\/iPad.*original file/)
+    }
   }, 180_000)
 
   it('returns a drawn picture to the originating composer in place of the original', async () => {

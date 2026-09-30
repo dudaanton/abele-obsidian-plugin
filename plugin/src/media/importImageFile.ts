@@ -1,9 +1,18 @@
-import { TFile, type App } from 'obsidian'
+import { Notice, TFile, type App } from 'obsidian'
 import { isHeicImport, normalizeImageImport } from './imageImport'
 
-/** Obsidian adapter: convert first, then allocate a collision-free name and store only PNG. */
+/** Obsidian adapter: try native conversion, then store under a collision-free filename. */
 export async function createImportedBinary(app: App, path: string, blob: Blob): Promise<TFile> {
   const incoming = await normalizeImageImport(path, blob)
+  if (incoming.unconvertedHeic) unsupportedHeicNotice()
+  return storeIncoming(app, incoming)
+}
+
+function unsupportedHeicNotice(): void {
+  new Notice('HEIC is converted on iPhone/iPad only. Keeping the original file.')
+}
+
+async function storeIncoming(app: App, incoming: { name: string; blob: Blob }): Promise<TFile> {
   let target = incoming.name
   let counter = 1
   while (app.vault.getAbstractFileByPath(target)) {
@@ -15,12 +24,16 @@ export async function createImportedBinary(app: App, path: string, blob: Blob): 
   return app.vault.createBinary(target, await incoming.blob.arrayBuffer())
 }
 
-/** Existing originals belong to the vault; keep them, but attach/use the PNG copy only. */
+/** Keep vault originals; use a PNG copy when native conversion works, otherwise reuse the file. */
 export async function imageFileForImport(app: App, file: TFile): Promise<TFile> {
   if (!isHeicImport(file.path)) return file
-  return createImportedBinary(
-    app,
+  const incoming = await normalizeImageImport(
     file.path,
     new Blob([await app.vault.readBinary(file)], { type: 'image/heic' })
   )
+  if (incoming.unconvertedHeic) {
+    unsupportedHeicNotice()
+    return file
+  }
+  return storeIncoming(app, incoming)
 }

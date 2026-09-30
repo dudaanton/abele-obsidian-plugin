@@ -7,10 +7,13 @@ otherwise; a note that breaks that is a note the plugin will read wrongly.
 ## Imported images
 
 Images imported through Abele's chat, gallery, file importer and media downloads are stored
-as vault attachments. HEIC/HEIF inputs are converted to PNG before saving and before allocating
-a collision-free filename. External imports keep only the PNG. An existing vault HEIC picked
-for a chat or gallery is kept as an original, with a new PNG copy used there. Chat attachments
-store the PNG's vault path, not base64 bytes or a temporary system path.
+as vault attachments. HEIC/HEIF inputs become PNG only where native decoding is available
+(iPhone/iPad), before allocating a collision-free filename. Converted external imports keep
+only PNG; an existing vault HEIC is kept beside its new PNG copy. Without native decoding,
+HEIC is kept with its original extension and bytes: an external file is imported unchanged,
+and an existing vault file is reused without making a duplicate. A notice explains that
+conversion is available on iPhone/iPad. Chat attachments store the resulting file's vault
+path, not base64 bytes or a temporary system path.
 
 ## Naming notes
 

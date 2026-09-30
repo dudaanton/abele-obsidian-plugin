@@ -39,6 +39,8 @@ const brands = [
   'Dataview',
   'Firefly III',
   'Toggl',
+  'HEIC',
+  'HEIF',
 ]
 
 /** Obsidian's own rules, lifted out of the preset so `.vue` files can be held to them too. */

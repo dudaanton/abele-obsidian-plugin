@@ -67,7 +67,9 @@ Attached pictures include `[Image: <vault path>]` beside the model image input. 
 with `read_image` or as `edit_image.source`. The latter saves a new vault image and shows it
 under the tool call; embed its returned path as `![[Attachments/sample-image.png]]` in a reply
 to send it back visually. Do not use text file tools to overwrite image bytes. HEIC/HEIF
-imports become PNG; always use the resulting PNG path, not the original HEIC name.
+imports become PNG on native-decoding platforms (iPhone/iPad); use the resulting PNG path.
+Without native decoding, HEIC is attached as a binary file, not as pixels or decoded text.
+Use its file label for the path, and tell the person conversion is available on iPhone/iPad.
 
 Every one of these is bounded by the agent's scope.
 
