@@ -32,6 +32,44 @@ function render(message: Partial<ChatMessage> & Pick<ChatMessage, 'role'>) {
   })
 }
 
+describe('interceptor draft actions', () => {
+  it('keeps Send and Edit hidden while the reviewer is thinking', async () => {
+    const wrapper = render({ role: 'user', content: 'Sample question', draft: true })
+    await wrapper.setProps({ interceptorStreaming: true })
+    expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(false)
+    await wrapper.setProps({ interceptorStreaming: false })
+    expect(wrapper.findAll('.abele-chat-msg__draft-actions button').map((b) => b.text())).toEqual([
+      'Send',
+      'Edit',
+    ])
+    wrapper.unmount()
+  })
+
+  it('never offers draft actions for a reply-only message, pending or answered', async () => {
+    const wrapper = render({
+      role: 'user',
+      content: 'Sample question',
+      interceptorCollapsed: false,
+    })
+    await wrapper.setProps({ interceptorStreaming: true })
+    expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(false)
+    await wrapper.setProps({
+      interceptorStreaming: false,
+      message: {
+        id: 'sample-user',
+        role: 'user',
+        content: 'Sample question',
+        timestamp: 1,
+        interceptorChat: [
+          { id: 'sample-review', role: 'assistant', content: 'Sample review', timestamp: 2 },
+        ],
+      },
+    })
+    expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
 describe('a failed tool call', () => {
   it('puts the badge in the same line as the tool name and its target', () => {
     const wrapper = render({
@@ -404,7 +442,10 @@ describe('rewinding from a user message', () => {
     expect(labels).toContain('Rewind')
     expect(labels).toContain('Undo changes')
 
-    await wrapper.findAll('.abele-chat-msg__branch-action').find((a) => a.text() === 'Rewind')!.trigger('click')
+    await wrapper
+      .findAll('.abele-chat-msg__branch-action')
+      .find((a) => a.text() === 'Rewind')!
+      .trigger('click')
     await wrapper
       .findAll('.abele-chat-msg__branch-action')
       .find((a) => a.text() === 'Undo changes')!
