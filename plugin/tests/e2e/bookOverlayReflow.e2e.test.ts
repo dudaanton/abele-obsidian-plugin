@@ -33,6 +33,7 @@ describe.skipIf(!available)('book overlay reflow', () => {
   let savedReader: unknown
   let savedEink: unknown
   let size: number[]
+  let zoom: number
   let panels: boolean[]
   let savedPlaces: { path: string; text: string | null }
   beforeAll(() => {
@@ -50,6 +51,8 @@ describe.skipIf(!available)('book overlay reflow', () => {
       `(() => { const w = app.workspace; const p = [w.leftSplit.collapsed, w.rightSplit.collapsed]; w.leftSplit.collapse(); w.rightSplit.collapse(); return p })()`
     )
     if (!onPhone()) {
+      zoom = evalJson(`require('@electron/remote').getCurrentWebContents().getZoomFactor()`)
+      evalRaw(`require('@electron/remote').getCurrentWebContents().setZoomFactor(1)`)
       size = evalJson(`require('@electron/remote').getCurrentWindow().getContentSize()`)
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(1280, 800)`)
     }
@@ -81,7 +84,7 @@ describe.skipIf(!available)('book overlay reflow', () => {
       const w = app.workspace
       if (!${panels?.[0] ?? true}) w.leftSplit.expand()
       if (!${panels?.[1] ?? true}) w.rightSplit.expand()
-      ${!onPhone() && size ? `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})` : ''}
+      ${!onPhone() && size ? `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]}); require('@electron/remote').getCurrentWebContents().setZoomFactor(${zoom})` : ''}
       return 'ok'
     })()`)
   }, 90000)
@@ -157,6 +160,12 @@ describe.skipIf(!available)('book overlay reflow', () => {
       v.model.panel=false
       await check('sidebar closed', () => !v.contentEl.querySelector('.abele-book-reader__panel'))
       ${!onPhone() ? `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '430, 844' : '1100, 860'}); await check('resized', () => innerWidth === ${mobile ? 430 : 1100} && innerHeight === ${mobile ? 844 : 860})` : ''}
+      ${!onPhone() && !mobile ? `for (const zoom of [0.9, 1.1, 1]) {
+        const wc = require('@electron/remote').getCurrentWebContents()
+        const width = innerWidth * wc.getZoomFactor() / zoom
+        wc.setZoomFactor(zoom)
+        await check('zoom '+zoom, () => Math.abs(wc.getZoomFactor() - zoom) < 0.001 && Math.abs(innerWidth - width) < 2)
+      }` : ''}
       const fontSize = () => parseFloat(doc.defaultView.getComputedStyle(p).fontSize)
       const originalSize = fontSize()
       cfg.reader={...cfg.reader,font:'sans',fontSize:120}; await cfg.saveSettings()
