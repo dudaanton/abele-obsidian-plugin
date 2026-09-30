@@ -279,7 +279,9 @@ describe('the design standard', () => {
     const joinModal = readFileSync(join(ROOT, 'settings/sync/JoinVaultModal.vue'), 'utf8')
     const held = readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8')
     expect(modal).toMatch(/\.abele-modal__body \.abele-modal__actions\s*\{[^}]*position:\s*sticky;/)
-    expect(modal).toMatch(/body\.is-phone \.modal\.mod-lg \.abele-modal__body \.abele-modal__actions\s*\{[^}]*safe-area-inset-bottom/)
+    expect(modal).toMatch(
+      /body\.is-phone \.modal\.mod-lg \.abele-modal__body \.abele-modal__actions\s*\{[^}]*safe-area-inset-bottom/
+    )
     expect(joinModal).toContain('abele-join-vault__actions abele-modal__actions')
     expect(held).toContain('abele-held-deletes__actions abele-modal__actions')
   })
@@ -298,13 +300,27 @@ describe('the design standard', () => {
     const dialog = readFileSync(join(ROOT, 'sync/HeldDeletesModal.vue'), 'utf8')
     const css = styleBlock(readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8'))
     expect(dialog).toContain('size="tall"')
-    expect(css).toMatch(/\.abele-modal_tall \.abele-held-deletes__paths\s*\{[^}]*overflow-y:\s*auto;/)
+    expect(css).toMatch(
+      /\.abele-modal_tall \.abele-held-deletes__paths\s*\{[^}]*overflow-y:\s*auto;/
+    )
   })
 
   it('keeps the restore-since dropdown inside its narrow dialog row', () => {
     const css = styleBlock(readFileSync(join(ROOT, 'sync/RestoreSince.vue'), 'utf8'))
-    expect(css).toMatch(/\.abele-restore-since \.abele-obsidian-dropdown\s*\{[^}]*box-sizing:\s*border-box;/)
-    expect(css).toMatch(/\.abele-restore-since \.abele-obsidian-dropdown\s*\{[^}]*margin-inline:\s*0;/)
+    expect(css).toMatch(
+      /\.abele-restore-since \.abele-obsidian-dropdown\s*\{[^}]*box-sizing:\s*border-box;/
+    )
+    expect(css).toMatch(
+      /\.abele-restore-since \.abele-obsidian-dropdown\s*\{[^}]*margin-inline:\s*0;/
+    )
+  })
+
+  it('leaves focus-ring room around the history paging button inside its scroller', () => {
+    const source = readFileSync(join(ROOT, 'sync/VersionHistoryModal.vue'), 'utf8')
+    expect(source).toContain('class="abele-version-history__older"')
+    expect(styleBlock(source)).toMatch(
+      /\.abele-version-history__older\s*\{[^}]*padding:\s*var\(--size-4-2\);/
+    )
   })
 
   it('explains any element that scrolls sideways', () => {

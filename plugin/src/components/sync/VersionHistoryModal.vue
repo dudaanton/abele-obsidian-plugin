@@ -58,13 +58,14 @@
             </div>
           </Card>
         </CardGrid>
-        <Button
-          v-if="hasOlder"
-          text="Load older"
-          :disabled="loadingOlder || busy"
-          tooltip="Read the next page of older versions from the server"
-          @click="loadOlder"
-        />
+        <div v-if="hasOlder" class="abele-version-history__older">
+          <Button
+            text="Load older"
+            :disabled="loadingOlder || busy"
+            tooltip="Read the next page of older versions from the server"
+            @click="loadOlder"
+          />
+        </div>
       </div>
     </div>
 
@@ -422,6 +423,12 @@ onMounted(async () => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+// Cards already inset their controls. The paging control is outside a card and needs its
+// own room inside the clipping scroller for the native button's focus ring.
+.abele-version-history__older {
+  padding: var(--size-4-2);
 }
 
 /**
