@@ -323,6 +323,19 @@ describe('the design standard', () => {
     )
   })
 
+  it('keeps replacement transfer names and notes in one content column with phone metadata below', () => {
+    const source = readFileSync(join(ROOT, 'settings/transfer/TransferScanModal.vue'), 'utf8')
+    const css = styleBlock(source)
+    expect(source).toContain('class="abele-transfer-scan__entry-content"')
+    expect(source).toContain('class="abele-transfer-scan__entry-details"')
+    expect(css).toMatch(
+      /\.abele-transfer-scan__entry\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\) max-content;/
+    )
+    expect(css).toMatch(
+      /body\.is-phone \.abele-transfer-scan__entry-details\s*\{[^}]*grid-column:\s*2;/
+    )
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')

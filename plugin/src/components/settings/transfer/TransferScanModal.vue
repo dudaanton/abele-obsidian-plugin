@@ -83,16 +83,20 @@
           @keydown.space.prevent="toggle(item)"
         >
           <Checkbox :is-enabled="accepted.has(id(item))" @toggle="toggle(item)" />
-          <span class="abele-transfer-scan__entry-name">{{
-            isConnection(item) ? connectionTitle(item.entry) : item.entry.label
-          }}</span>
-          <span
-            v-if="isConnection(item) && connectionNote"
-            class="abele-transfer-scan__entry-note"
-            >{{ connectionNote }}</span
-          >
-          <span class="abele-transfer-scan__entry-section">{{ label(item.entry.section) }}</span>
-          <Badge :text="statusWord(item.status)" />
+          <div class="abele-transfer-scan__entry-content">
+            <span class="abele-transfer-scan__entry-name">{{
+              isConnection(item) ? connectionTitle(item.entry) : item.entry.label
+            }}</span>
+            <span
+              v-if="isConnection(item) && connectionNote"
+              class="abele-transfer-scan__entry-note"
+              >{{ connectionNote }}</span
+            >
+          </div>
+          <div class="abele-transfer-scan__entry-details">
+            <span class="abele-transfer-scan__entry-section">{{ label(item.entry.section) }}</span>
+            <Badge :text="statusWord(item.status)" />
+          </div>
         </div>
 
         <Setting :name="acceptedSummary" :desc="keysSummary">
@@ -782,12 +786,38 @@ onBeforeUnmount(() => {
   color: var(--text-error);
 }
 
+// The replacement note is part of the destination, not another competing column. Keep the
+// native checkbox and metadata separate, so adding that note never shrinks a name to fragments.
 .abele-transfer-scan__entry {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: center;
   gap: var(--size-4-2);
   padding: var(--size-4-1) 0;
   cursor: pointer;
+}
+
+.abele-transfer-scan__entry-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--size-4-1);
+}
+
+.abele-transfer-scan__entry-details {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+
+body.is-phone .abele-transfer-scan__entry {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+body.is-phone .abele-transfer-scan__entry-details {
+  grid-column: 2;
+  justify-content: space-between;
 }
 
 .abele-transfer-scan__entry-name {
