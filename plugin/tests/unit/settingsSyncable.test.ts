@@ -9,11 +9,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { useVault } from '../helpers/testEnv'
+import { ConnectionKeeper } from '@/sync/connectionKeeper'
+import type { FakeApp } from '../helpers/fakeVault'
 
 const IDENTITY = ['serverUrl', 'vaultId', 'deviceId', 'deviceTokenId', 'maxFileBytes']
 
 let stored: unknown
 let saved: unknown[]
+let app: FakeApp
 
 function install(): void {
   saved = []
@@ -47,7 +50,7 @@ const OLD_FORMAT = {
 }
 
 beforeEach(() => {
-  useVault([])
+  app = useVault([])
 })
 
 describe('a saved data.json', () => {
@@ -56,6 +59,8 @@ describe('a saved data.json', () => {
     install()
     const config = AbeleConfig.getInstance()
     await config.loadSettings()
+    // Complete the real startup order before asking what data.json is allowed to export.
+    await new ConnectionKeeper(() => undefined).open(app as never)
     config.tasksFolder = 'Projects'
     await config.saveSettings()
 

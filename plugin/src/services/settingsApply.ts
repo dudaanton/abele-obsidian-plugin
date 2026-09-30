@@ -262,7 +262,7 @@ export function applySettingsTo(config: AbeleConfig, settings: AbeleSettings | u
 }
 
 export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): AbeleSettings {
-    return {
+    const exported: AbeleSettings = {
       refreshDelay: config.refreshDelay,
       tasksFolder: config.tasksFolder,
       logsNotesTypes: [...config.logsNotesTypes],
@@ -279,7 +279,7 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
       busyDayThreshold: config.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...config.excludedPathsForDefaultTemplate],
       // The chat index is not a setting: it is in a file of its own once that file holds it.
-      ai: outOfSettings || false ? withoutChatIndex(config.ai) : { ...config.ai },
+      ai: outOfSettings ? withoutChatIndex(config.ai) : { ...config.ai },
       // A copy all the way down rather than a spread: the migration already knows how to build
       // one field by field.
       sync: migrateSyncSettings(config.sync),
@@ -337,4 +337,5 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
         ? { secretStore: config.secretStore }
         : {}),
     }
+    return snapshotSettings(exported)
   }

@@ -334,10 +334,15 @@ export function migrateConnection(
         migrated: true,
       }
     : { ...emptyConnection(isMobile), selective, migrated: true }
-  writeConnection(storage, record)
-  const back = objectOf(storage.loadLocalStorage(CONNECTION_KEY))
-  const stored =
-    back !== null && back.migrated === true && back.deviceTokenId === record.deviceTokenId
+  let stored = false
+  try {
+    writeConnection(storage, record)
+    const back = objectOf(storage.loadLocalStorage(CONNECTION_KEY))
+    stored = back !== null && JSON.stringify(back) === JSON.stringify(record)
+  } catch {
+    // Startup must leave the only legacy copy intact even when storage throws, not only
+    // when it silently drops the write. The caller acknowledges migration only on success.
+  }
   return {
     outcome: own ? 'moved' : named ? 'dropped' : 'fresh',
     rewrite: stored && Object.keys(o).some((field) => field !== 'keySignature'),

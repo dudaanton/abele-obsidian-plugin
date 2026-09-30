@@ -313,6 +313,11 @@ export class AbeleConfig {
    * The `sync` block the startup load read off disk, handed over once — or null when there was
    * no file to read it from: see `SettingsKeeper.loadedSync`.
    */
+  /** Only the connection keeper calls this after reading back the durable migrated record. */
+  acknowledgeSyncMigration(): boolean {
+    return this.file.acknowledgeSyncMigration()
+  }
+
   takeLoadedSync(): { sync: unknown } | null {
     return this.file.takeLoadedSync()
   }

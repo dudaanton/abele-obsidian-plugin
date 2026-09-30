@@ -83,6 +83,10 @@ export class SettingsKeeper {
    * and the move must wait for a launch that reads it rather than record that there was nothing.
    */
   private loadedSync: { sync: unknown } | null = null
+  /** Settings writes wait until openConnection confirms durable local storage. */
+  private pendingLegacySync: unknown = null
+  private waitingForInitialFile = false
+  private deferredRewrite = false
 
   /**
    * The settings file as this copy last read or wrote it, as canonical JSON (`settingsFile.ts`),
@@ -152,6 +156,13 @@ export class SettingsKeeper {
     try {
     const stamp = await this.readStamp()
     const stored: unknown = await this.host.plugin().loadData()
+    this.deferredRewrite = false
+    this.waitingForInitialFile = stored === null || stored === undefined
+    const legacy = isSettingsObject(stored) && isSettingsObject(stored.sync) ? stored.sync : null
+    this.pendingLegacySync =
+      legacy && (legacy.serverUrl || legacy.deviceTokenId || legacy.vaultId)
+        ? JSON.parse(JSON.stringify(legacy))
+        : null
     const index = await this.host.index.read(this.host.plugin())
     this.host.index.onDisk = index !== null
     await this.take(stored, stored, () => index ?? [], stamp)
@@ -297,6 +308,15 @@ export class SettingsKeeper {
       }
     } else {
       const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored)
+      if (
+        this.waitingForInitialFile &&
+        isSettingsObject(stored) &&
+        isSettingsObject(stored.sync) &&
+        (stored.sync.serverUrl || stored.sync.deviceTokenId || stored.sync.vaultId)
+      ) {
+        this.pendingLegacySync = JSON.parse(JSON.stringify(stored.sync))
+      }
+      this.waitingForInitialFile = false
       await this.take(stored, settings, () => this.host.chatHistory(), stamp)
       // Only the startup load's block is moved: one from another device is never this one's.
       this.loadedSync = null
@@ -340,6 +360,14 @@ export class SettingsKeeper {
    * The `sync` block the startup load read off disk, handed over once — or null when there was
    * no file to read it from: see `loadedSync`.
    */
+  acknowledgeSyncMigration(): boolean {
+    this.waitingForInitialFile = false
+    this.pendingLegacySync = null
+    const deferred = this.deferredRewrite
+    this.deferredRewrite = false
+    return deferred
+  }
+
   takeLoadedSync(): { sync: unknown } | null {
     const block = this.loadedSync
     this.loadedSync = null
@@ -366,13 +394,18 @@ export class SettingsKeeper {
       this.tellUnreadable()
       return
     }
+    if (this.pendingLegacySync !== null) {
+      this.deferredRewrite = true
+      return
+    }
     if (!(await this.catchUp(plugin))) return
-    const next = this.host.export()
+    const accepted = this.host.export()
+    const next = accepted
     const text = canonicalJson(next)
     // Nothing changed in meaning: writing would only hand every other device a file to pull
     // and reload for nothing, and a newer mtime to beat whatever they save next.
     if (text === this.onDisk) {
-      this.base = next
+      this.base = accepted
       return
     }
     const written = this.host.edits.written()
@@ -380,7 +413,7 @@ export class SettingsKeeper {
     written()
     this.gone = false
     this.onDisk = text
-    this.base = next
+    this.base = accepted
     this.stamp = await this.readStamp(plugin)
   }
 

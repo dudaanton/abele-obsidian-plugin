@@ -107,6 +107,41 @@ beforeEach(() => {
 /** Lets whatever a finished step scheduled run. */
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
+describe('startup before the connection has been moved', () => {
+  it('does not strip a legacy identity when an initially unreadable file later becomes readable', async () => {
+    const legacy = {
+      serverUrl: 'https://legacy.example',
+      vaultId: 'v1',
+      deviceId: 'd1',
+      deviceTokenId: 'abele-sync-device-legacy',
+    }
+    disk = { file: { sync: legacy }, broken: true, mtime: 1000 }
+    const config = install()
+    await config.loadSettings()
+    arrive({ sync: legacy, tasksFolder: 'Work' })
+    await config.reloadSettings()
+    await config.saveSettings()
+    expect(onDisk().sync).toMatchObject(legacy)
+    expect(saved).toEqual([])
+  })
+  it('keeps legacy identity through startup rewrites and later saves until durable migration succeeds', async () => {
+    const legacy = {
+      serverUrl: 'https://legacy.example',
+      vaultId: 'v1',
+      deviceId: 'd1',
+      deviceTokenId: 'abele-sync-device-legacy',
+    }
+    disk = { file: { tasksFolder: 'Work', sync: legacy }, broken: false, mtime: 1000 }
+    const config = install()
+    await config.loadSettings()
+    expect(onDisk().sync).toMatchObject(legacy)
+    expect(config.takeLoadedSync()?.sync).toMatchObject(legacy)
+    config.busyDayThreshold = 9
+    await config.saveSettings()
+    expect(onDisk().sync).toMatchObject(legacy)
+  })
+})
+
 describe('a pulled settings file that will not parse', () => {
   it('keeps the settings in memory, reloads nothing, and writes nothing over it', async () => {
     const config = await settled()
@@ -211,6 +246,48 @@ describe('a settings file that has gone', () => {
 })
 
 describe('a save while a pulled file waits for its reload', () => {
+  it('keeps nested provider and array-element edits on top of independently arriving settings', async () => {
+    const config = await settled()
+    config.ai.providers = [
+      { id: 'sample', name: 'Sample', baseUrl: 'https://old.example', apiKeyId: '', models: [] },
+    ]
+    config.links = [
+      {
+        id: 'sample-link',
+        name: 'Sample',
+        type: 'script',
+        scriptName: 'Original',
+        commandId: '',
+        waitForSync: false,
+      },
+    ]
+    config.headerButtons = [
+      {
+        id: 'sample-button',
+        name: 'Sample button',
+        icon: 'star',
+        noteTypes: ['sample'],
+        scriptName: 'Original',
+        params: { mode: 'old' },
+      },
+    ]
+    await config.saveSettings()
+    const before = clone(onDisk())
+    config.ai.providers[0].baseUrl = 'https://local.example'
+    config.links[0].scriptName = 'Local'
+    config.headerButtons[0].params.mode = 'local'
+    config.headerButtons[0].noteTypes.push('another')
+    arrive({ ...before, busyDayThreshold: 9 })
+    await config.saveSettings()
+    expect(config.ai.providers[0].baseUrl).toBe('https://local.example')
+    expect(config.links[0].scriptName).toBe('Local')
+    expect(config.headerButtons[0].params.mode).toBe('local')
+    expect(config.headerButtons[0].noteTypes).toEqual(['sample', 'another'])
+    expect(onDisk().busyDayThreshold).toBe(9)
+    expect((onDisk().ai as { providers: { baseUrl: string }[] }).providers[0].baseUrl).toBe(
+      'https://local.example'
+    )
+  })
   it('takes the pulled change in and puts its own on top, rather than writing over it', async () => {
     const config = await settled()
     arrive({ ...onDisk(), busyDayThreshold: 9 })

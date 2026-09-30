@@ -97,12 +97,19 @@ export class ConnectionKeeper {
       }
       return
     }
-    if (migration === null) return
-    this.note(MIGRATION_LINE[migration.outcome])
+    if (migration === null) {
+      // A durable record already exists. A previous interrupted rewrite, or a legacy file
+      // arriving again, must not leave all future settings saves waiting for an already-done move.
+      const deferred = config.acknowledgeSyncMigration()
+      if (deferred) await config.rewrite()
+      return
+    }
     if (!migration.stored) {
       this.note(MIGRATION_UNSTORED)
       return
     }
+    this.note(MIGRATION_LINE[migration.outcome])
+    config.acknowledgeSyncMigration()
     if (migration.rewrite) await config.rewrite()
   }
 
