@@ -197,10 +197,19 @@ export function useTimelineScroll(
         )
       positionStrip()
       let positionFrame = 0
-      const followChrome = () => {
+      let followUntil = 0
+      const followFrame = () => {
         positionStrip()
-        window.cancelAnimationFrame(positionFrame)
-        positionFrame = window.requestAnimationFrame(positionStrip)
+        positionFrame =
+          performance.now() < followUntil ? window.requestAnimationFrame(followFrame) : 0
+      }
+      const followChrome = () => {
+        if (!strip) return
+        positionStrip()
+        // Native navigation also moves via JS transforms, without resize/transitionend.
+        // Follow only its finite settling interval, never keep a permanent animation loop.
+        followUntil = performance.now() + 500
+        if (!positionFrame) positionFrame = window.requestAnimationFrame(followFrame)
       }
       const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(followChrome)
       resize?.observe(owner)

@@ -204,6 +204,35 @@ describe('timeline scroll ownership', () => {
     expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('0px')
   })
 
+  it('follows navigation moving after the first scroll frame without resize or transition events', async () => {
+    document.body.classList.add('is-phone')
+    cleanups.push(() => document.body.classList.remove('is-phone'))
+    const p = await pane(100)
+    p.owner.classList.add('workspace-leaf')
+    const header = document.createElement('div')
+    header.classList.add('view-header')
+    const strip = document.createElement('div')
+    p.owner.append(header, strip)
+    let headerTop = 0
+    vi.spyOn(header, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, headerTop, 300, 40)
+    )
+    p.history.value = strip
+    await nextTick()
+    const frames: FrameRequestCallback[] = []
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    p.owner.dispatchEvent(new Event('scroll'))
+    frames.shift()!(performance.now())
+    headerTop = -40
+    const following = frames.shift()
+    expect(following).toBeDefined()
+    following!(performance.now())
+    expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('0px')
+  })
+
   it('keeps enough scroll range through a shrinking patch without confusing a layout clamp with input', async () => {
     const p = await pane(50)
     Object.defineProperty(p.owner, 'clientHeight', { value: 400 })
