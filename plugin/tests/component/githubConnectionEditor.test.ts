@@ -46,6 +46,7 @@ describe('GitHub connection draft', () => {
     request.mockResolvedValue(reply('sample-user'))
     await press(view, 'Check access')
     expect(document.body.textContent).toContain('sample-user')
+    expect(document.querySelector('.abele-avatar__image')?.getAttribute('src')).toBe('https://avatars.githubusercontent.com/fake.png')
     expect(app.secretStorage.getSecret('sample-key')).toBe('')
     await press(view, 'Cancel')
     expect(view.emitted('save')).toBeUndefined()

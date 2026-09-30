@@ -43,6 +43,9 @@ import {
 const port = Number(process.argv[2] ?? 0)
 const mode = process.argv[3] ?? ''
 const legacy = mode === 'legacy' || mode === 'no-raw'
+const accountOf = (req: IncomingMessage): 'one' | 'two' | 'anonymous' =>
+  req.headers.authorization === 'Bearer invented-connection-one' ? 'one' :
+  req.headers.authorization === 'Bearer invented-connection-two' ? 'two' : 'anonymous'
 /** The size that stands for the contents API's 1 MB in legacy mode: `src/long.ts` is over it. */
 const LEGACY_LARGE = 10_000
 
@@ -212,6 +215,13 @@ function avatarPng(login: string): Buffer {
 function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
   const f = fixtures(web)
   const accept = String(req.headers.accept ?? '')
+  if (url.pathname === '/api/v3/user') {
+    const account = accountOf(req)
+    if (mode === 'accounts' && account === 'anonymous') return send(res, 401, { message: 'Bad credentials' })
+    res.setHeader('X-RateLimit-Limit', '5000')
+    res.setHeader('X-RateLimit-Remaining', account === 'two' ? '4900' : '100')
+    return send(res, 200, { login: `sample-account-${account === 'two' ? 'two' : 'one'}`, avatar_url: `${web}/avatars/u/sample` })
+  }
   if (url.pathname === '/api/v3/search/issues') return searchIssues(res, url, web)
   // The account's own repositories and the starred ones: this one, and a starred one to tell apart.
   if (url.pathname === '/api/v3/user/repos') return send(res, 200, page(url, [f.repo]))
@@ -575,7 +585,8 @@ const server = createServer((req, res) => {
   const host = req.headers.host ?? `127.0.0.1:${port}`
   const url = new URL(req.url ?? '/', `http://${host}`)
   const web = `http://${host}`
-  console.log(`${req.method} ${url.pathname}${url.search}`)
+  console.log(`${req.method} ${url.pathname}${url.search}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`)
+  if (mode === 'accounts' && url.pathname.startsWith(`/api/v3/repos/${OWNER}/${REPO}`) && accountOf(req) !== 'two') return notFound(res)
   if (req.method === 'POST' && url.pathname === '/api/graphql') {
     graphql(req, res, web).catch((e) => send(res, 500, { message: String(e) }))
     return

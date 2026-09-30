@@ -55,6 +55,7 @@
           :name="connection.name + (connection.isDefault ? ' · Default' : '')"
           :desc="connectionDescription(connection)"
         >
+          <Avatar :name="connection.account?.login || connection.name" :src="connection.account?.avatarUrl" />
           <Button
             text="Check"
             tooltip="Check this connection's account and repository access"
@@ -228,6 +229,7 @@ import Checkbox from '../obsidian/Checkbox.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
+import Avatar from '../obsidian/Avatar.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Dropdown from '../obsidian/Dropdown.vue'

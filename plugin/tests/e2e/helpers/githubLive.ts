@@ -34,7 +34,7 @@ export interface FakeGithub {
  * older Enterprise Server — see `fakeGithubServer.ts`.
  */
 export async function startFakeGithub(
-  options: { mode?: 'legacy' | 'no-raw' } = {}
+  options: { mode?: 'legacy' | 'no-raw' | 'accounts' } = {}
 ): Promise<FakeGithub> {
   const dir = mkdtempSync(join(tmpdir(), 'abele-fake-github-'))
   const bundle = join(dir, 'server.mjs')
@@ -128,6 +128,8 @@ export function enableGithub(origin: string, foldSidebars = true): void {
       app.secretStorage.getSecret = function (id) {
         return id === ${JSON.stringify(KEY_ID)} ? 'e2e-token' : real.call(this, id)
       }
+      // In-memory fixture changes still need the notification real settings saves emit.
+      config.version.value++
       return 'ok'
     })()`,
     30_000
@@ -150,6 +152,7 @@ export function restoreGithub(): void {
       if (github) config.github = github
       else delete config.github
       app.secretStorage.getSecret = saved.getSecret
+      config.version.value++
       if (!saved.left) app.workspace.leftSplit.expand()
       if (!saved.right) app.workspace.rightSplit.expand()
       delete window.__abeleGithubE2E

@@ -4,6 +4,9 @@
     size="tall"
     @close="close"
   >
+    <Setting v-if="draft.account" name="Account" :desc="draft.account.login">
+      <Avatar :name="draft.account.login" :src="draft.account.avatarUrl" />
+    </Setting>
     <Setting
       name="Name"
       desc="A name for this connection, independent of the account discovered from its token."
@@ -90,6 +93,7 @@ import Modal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Icon from '../obsidian/Icon.vue'
+import Avatar from '../obsidian/Avatar.vue'
 import SecretField from './SecretField.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'
