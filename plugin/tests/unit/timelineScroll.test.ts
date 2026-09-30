@@ -180,6 +180,56 @@ describe('timeline scroll ownership', () => {
     expect([...p.root.children]).toEqual([p.row])
   })
 
+  it('repositions the sticky banner when phone navigation finishes transitioning', async () => {
+    document.body.classList.add('is-phone')
+    cleanups.push(() => document.body.classList.remove('is-phone'))
+    const p = await pane(100)
+    p.owner.classList.add('workspace-leaf')
+    const header = document.createElement('div')
+    header.classList.add('view-header')
+    const strip = document.createElement('div')
+    p.owner.append(header, strip)
+    let headerTop = 0
+    vi.spyOn(header, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, headerTop, 300, 40)
+    )
+    p.history.value = strip
+    await nextTick()
+    expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('40px')
+    headerTop = -40
+    header.dispatchEvent(new Event('transitionend', { bubbles: true }))
+    expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('0px')
+  })
+
+  it('keeps enough scroll range through a shrinking patch without confusing a layout clamp with input', async () => {
+    const p = await pane(50)
+    Object.defineProperty(p.owner, 'clientHeight', { value: 400 })
+    await p.patch(() => {
+      p.shift(-50)
+      // A browser clamps scrollTop during the DOM patch if the shorter list loses range.
+      if (parseFloat(p.space.style.height || '0') < 500) p.owner.scrollTop = 80
+    })
+    expect(p.owner.scrollTop).toBe(50)
+    expect(p.space.style.height).toBe('')
+  })
+
+  it('temporarily disables competing browser scroll anchoring and restores the owner on release', async () => {
+    const p = await pane(50)
+    p.root.dispatchEvent(new Event('touchmove', { bubbles: true }))
+    p.owner.style.setProperty('overflow-anchor', 'auto', 'important')
+    await p.patch(() => {})
+    expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('none')
+    p.root.dispatchEvent(new Event('touchmove', { bubbles: true }))
+    expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('auto')
+    expect(p.owner.style.getPropertyPriority('overflow-anchor')).toBe('important')
+    p.owner.style.removeProperty('overflow-anchor')
+    await p.patch(() => {})
+    expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('none')
+    p.owner.scrollTop += 20
+    p.owner.dispatchEvent(new Event('scroll'))
+    expect(p.owner.style.getPropertyValue('overflow-anchor')).toBe('')
+  })
+
   it('does not scroll note text when every timeline row is below the viewport', async () => {
     const p = await pane(700)
     await p.patch(() => p.shift(50))

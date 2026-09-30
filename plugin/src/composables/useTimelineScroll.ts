@@ -43,8 +43,10 @@ export function useTimelineScroll(
   }
 
   const placeScroll = (owner: HTMLElement, to: number) => {
+    const before = owner.scrollTop
     const space = anchorSpace.value
     if (space) space.style.removeProperty('height')
+    const clamped = owner.scrollTop
     owner.scrollTop = Math.max(0, to)
     if (space && owner.scrollTop < to - 0.5) {
       // A short list otherwise has no scroll range with which to compensate for an insertion.
@@ -58,7 +60,8 @@ export function useTimelineScroll(
     }
     // Scroll events arrive asynchronously and can coalesce several alignments. Only the
     // final position we actually wrote belongs to this hold, not a later reader movement.
-    alignedScroll = { owner, top: owner.scrollTop }
+    if (owner.scrollTop !== before || clamped !== before)
+      alignedScroll = { owner, top: owner.scrollTop }
   }
 
   const hold = () => {
@@ -87,7 +90,22 @@ export function useTimelineScroll(
     const key = row.dataset.timelineItem
     const day = row.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor')
     const offset = row.getBoundingClientRect().top - viewport.top
+    // Let this hold be the only layout anchor. Otherwise browser anchoring can write its
+    // own scrollTop during late title rendering and look like external input to our guard.
+    const browserAnchor = owner.style.getPropertyValue('overflow-anchor')
+    const browserAnchorPriority = owner.style.getPropertyPriority('overflow-anchor')
+    const browserAnchoring = getComputedStyle(owner).overflowAnchor !== 'none'
+    owner.style.setProperty('overflow-anchor', 'none')
     let heldTop = owner.scrollTop
+    // A shrinking patch can clamp scrollTop before nextTick aligns the surviving row.
+    // Reserve range only across that patch; align replaces it with the exact needed room.
+    // An editor which already owns anchoring also owns its patch-time scroll range.
+    // Reserving extra range there would trigger its deferred viewport restoration.
+    const space = browserAnchoring ? anchorSpace.value : null
+    const previousSpace = space?.style.height ?? ''
+    let patchSpace = !!space
+    if (space)
+      space.style.height = `${Math.max(space.offsetHeight, owner.clientHeight + heldTop)}px`
     let live = true
     let timeout = 0
     const extend = () => {
@@ -113,11 +131,13 @@ export function useTimelineScroll(
       if (target) {
         const shift =
           target.getBoundingClientRect().top - owner.getBoundingClientRect().top - offset
-        if (Math.abs(shift) > 0.5) {
+        if (patchSpace || Math.abs(shift) > 0.5) {
+          patchSpace = false
           placeScroll(owner, owner.scrollTop + shift)
           heldTop = owner.scrollTop
         }
       } else {
+        patchSpace = false
         releaseSpace()
         stopHolding()
       }
@@ -128,7 +148,16 @@ export function useTimelineScroll(
     const frame = window.requestAnimationFrame(align)
     extend()
     stopHolding = () => {
+      if (!live) return
       live = false
+      if (patchSpace && space) {
+        if (previousSpace) space.style.height = previousSpace
+        else space.style.removeProperty('height')
+        patchSpace = false
+      }
+      if (browserAnchor)
+        owner.style.setProperty('overflow-anchor', browserAnchor, browserAnchorPriority)
+      else owner.style.removeProperty('overflow-anchor')
       observer?.disconnect()
       window.cancelAnimationFrame(frame)
       window.clearTimeout(timeout)
@@ -171,6 +200,10 @@ export function useTimelineScroll(
       }
       const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(followChrome)
       resize?.observe(owner)
+      const chrome = owner.closest('.workspace-leaf')
+      const header = chrome?.querySelector('.view-header')
+      if (header) resize?.observe(header)
+      chrome?.addEventListener('transitionend', followChrome)
       const scroll = () => {
         const own =
           alignedScroll?.owner === owner && Math.abs(owner.scrollTop - alignedScroll.top) < 0.5
@@ -193,6 +226,7 @@ export function useTimelineScroll(
       owner.addEventListener('scroll', scroll, { passive: true })
       disposeInput = () => {
         resize?.disconnect()
+        chrome?.removeEventListener('transitionend', followChrome)
         window.cancelAnimationFrame(positionFrame)
         owner.removeEventListener('wheel', releaseHold)
         owner.removeEventListener('touchstart', releaseHold)
