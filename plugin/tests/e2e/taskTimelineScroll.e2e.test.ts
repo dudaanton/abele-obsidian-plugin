@@ -25,10 +25,11 @@ interface Probe {
   overflow?: number
   shots?: string[]
 }
-const script = (footer: boolean) => String.raw`(async () => {
+const script = (footer: boolean, short = false) => String.raw`(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async fn => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready') }
-  const folder = ${JSON.stringify(FOLDER)}
+  const folder = ${JSON.stringify(FOLDER)} + (${short} ? ' short' : '')
+  const label = 'sample-timeline-probe' + (${short} ? '-short' : '')
   const shots = ${JSON.stringify(SHOTS)}
   const phase = ${JSON.stringify(PHASE)}
   const pad = n => String(n).padStart(2, '0')
@@ -43,15 +44,15 @@ const script = (footer: boolean) => String.raw`(async () => {
       await app.vault.createFolder(folder)
       await app.vault.create(folder + '/Sample group.md', 'Sample group\n')
       const writes = []
-      for (let d = -45; d <= 45; d++) {
+      for (let d = ${short ? -1 : -45}; d <= ${short ? 0 : 45}; d++) {
         for (let n = 0; n < 3; n++) {
           const done = n === 0
           const title = 'Sample item ' + d + ' ' + n
-          writes.push(app.vault.create(folder + '/' + title + '.md', '---\ntype: task\ndate: ' + day(d) + '\n' + (done ? 'completed: ' + day(d) + '\n' : '') + 'labels:\n  - sample-timeline-probe\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\n' + title + '\n'))
+          writes.push(app.vault.create(folder + '/' + title + '.md', '---\ntype: task\ndate: ' + day(d) + '\n' + (${short} && done ? 'dateTime: 08:00\n' : '') + (done ? 'completed: ' + day(d) + '\n' : '') + 'labels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\n' + title + '\n'))
         }
       }
       // Much older completed-only days must never pull the reader to the start of history.
-      for (let d = -90; d < -45; d++) writes.push(app.vault.create(folder + '/Sample archive ' + d + '.md', '---\ntype: task\ndate: ' + day(d) + '\ncompleted: ' + day(d) + '\nlabels:\n  - sample-timeline-probe\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\nSample archive ' + d + '\n'))
+      for (let d = -90; d < -45; d++) writes.push(app.vault.create(folder + '/Sample archive ' + d + '.md', '---\ntype: task\ndate: ' + day(d) + '\ncompleted: ' + day(d) + '\nlabels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\nSample archive ' + d + '\n'))
       await Promise.all(writes)
       await wait(3000)
     }
@@ -67,7 +68,7 @@ const script = (footer: boolean) => String.raw`(async () => {
     const root = await until(() => leaf.view.containerEl.querySelector('.abele-timeline'))
     if (!${footer}) {
       root.querySelector('.abele-task-label-filter').click()
-      const option = await until(() => [...document.querySelectorAll('.menu-item')].find(x => x.textContent.includes('sample-timeline-probe')))
+      const option = await until(() => [...document.querySelectorAll('.menu-item')].find(x => x.querySelector('.menu-item-title')?.textContent.trim().startsWith(label + ' (')))
       option.click()
     }
     await wait(1200)
@@ -89,7 +90,7 @@ const script = (footer: boolean) => String.raw`(async () => {
       scroller.scrollTop += el.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0) - 8
     }
     const shot = async name => {
-      const path = shots + '/' + phase + '-' + (${footer} ? 'footer' : 'sidebar') + '-' + (app.isMobile ? 'phone' : 'desktop') + '-' + name + '.png'
+      const path = shots + '/' + phase + '-' + (${short} ? 'short-' : '') + (${footer} ? 'footer' : 'sidebar') + '-' + (app.isMobile ? 'phone' : 'desktop') + '-' + name + '.png'
       if (window.__e2eHost) await window.__e2eHost.shot(path)
       else {
         const fs = require('fs'); fs.mkdirSync(shots, { recursive: true })
@@ -139,6 +140,18 @@ const script = (footer: boolean) => String.raw`(async () => {
     await wait(800)
     await shot('unchanged')
     await shot('initial')
+    if (${short}) {
+      const before = row(0).getBoundingClientRect().top
+      root.querySelector('.abele-timeline__completed-toggle').click()
+      await wait(1200)
+      report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
+      await shot('completed')
+      const beforeHide = row(0).getBoundingClientRect().top
+      root.querySelector('.abele-timeline__completed-toggle').click()
+      await wait(1200)
+      report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
+      return JSON.stringify(report)
+    }
 
     // Deliberately reach the upper boundary, then scroll upward once. No clicking the strip.
     const first = blocks()[0]
@@ -195,6 +208,8 @@ const script = (footer: boolean) => String.raw`(async () => {
 describe.skipIf(!available)('task timeline scrolling', () => {
   let desktop: Probe[] = [],
     mobile: Probe[] = []
+  const shortDesktop: Probe[] = [],
+    shortMobile: Probe[] = []
   let state: { size: number[]; layout: unknown } | null = null
   beforeAll(async () => {
     state = JSON.parse(
@@ -203,20 +218,24 @@ describe.skipIf(!available)('task timeline scrolling', () => {
       )
     )
     if (!onPhone()) {
-      for (const footer of [false, true])
+      for (const footer of [false, true]) {
         desktop.push(JSON.parse(await evalLong(script(footer), 100000)))
+        shortDesktop.push(JSON.parse(await evalLong(script(footer, true), 100000)))
+      }
       await reloadApp('app.emulateMobile(true)')
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844); 'sized'`)
       await reloadApp('window.location.reload()')
     }
-    for (const footer of [false, true])
+    for (const footer of [false, true]) {
       mobile.push(JSON.parse(await evalLong(script(footer), 100000)))
-    console.info(JSON.stringify({ desktop, mobile }))
+      shortMobile.push(JSON.parse(await evalLong(script(footer, true), 100000)))
+    }
+    console.info(JSON.stringify({ desktop, mobile, shortDesktop, shortMobile }))
   }, 360000)
   afterAll(async () => {
     if (!available) return
-    evalRaw(
-      `(async () => { const f = app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)}); if (f) await app.vault.delete(f, true); return 'removed' })()`,
+    await evalLong(
+      `(async () => { for (const dir of ${JSON.stringify([FOLDER, FOLDER + ' short'])}) { const f = app.vault.getAbstractFileByPath(dir); if (f) await app.vault.delete(f, true); } return 'removed' })()`,
       60000
     )
     if (state) {
@@ -226,7 +245,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         )
         await reloadApp('app.emulateMobile(false)')
       }
-      evalRaw(
+      await evalLong(
         `(async () => { await app.workspace.changeLayout(${JSON.stringify(state.layout)}); return 'restored' })()`,
         60000
       )
@@ -235,6 +254,17 @@ describe.skipIf(!available)('task timeline scrolling', () => {
   for (const kind of ['desktop', 'phone width']) {
     for (const [index, owner] of ['sidebar', 'note footer'].entries()) {
       const probe = () => (kind === 'desktop' ? desktop : mobile)[index]
+      it.skipIf(kind === 'desktop' && onPhone())(
+        `${kind}, ${owner}: holds a task even when a short list cannot otherwise scroll far enough`,
+        () => {
+          const p = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
+          expect(p.error).toBeUndefined()
+          for (const pair of [p.anchored, p.hiddenAnchor]) {
+            expect(pair).toHaveLength(2)
+            expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(2)
+          }
+        }
+      )
       it.skipIf(kind === 'desktop' && onPhone())(
         `${kind}, ${owner}: starts today, reveals only one past day, shrinks the sticky summary`,
         () => {

@@ -102,6 +102,7 @@
           </div>
         </div>
       </div>
+      <div ref="anchorSpaceEl" class="abele-timeline__anchor-space" aria-hidden="true" />
       <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
       <div v-if="!dates.length" class="abele-timeline__no-tasks">
         {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
@@ -232,7 +233,8 @@ const foldedUnfinished = computed(() => {
   return keys.size
 })
 const historyEl = ref<HTMLElement | null>(null)
-useTimelineScroll(itemsEl, historyEl, () => visible.value, revealPrevious)
+const anchorSpaceEl = ref<HTMLElement | null>(null)
+useTimelineScroll(itemsEl, historyEl, anchorSpaceEl, () => visible.value, revealPrevious)
 watch(labelSelection, reset)
 
 const getDateWikilink = (dateStr: string) => {

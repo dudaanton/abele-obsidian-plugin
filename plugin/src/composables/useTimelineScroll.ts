@@ -25,6 +25,7 @@ function pinnedTop(owner: HTMLElement): number {
 export function useTimelineScroll(
   items: Ref<HTMLElement | null>,
   history: Ref<HTMLElement | null>,
+  anchorSpace: Ref<HTMLElement | null>,
   windowSource: () => unknown,
   revealPrevious: () => void
 ) {
@@ -32,6 +33,23 @@ export function useTimelineScroll(
   let disposeInput = () => {}
   let inserting = false
   let alignedTop: number | null = null
+
+  const placeScroll = (owner: HTMLElement, to: number) => {
+    const space = anchorSpace.value
+    if (space) space.style.height = '0px'
+    owner.scrollTop = Math.max(0, to)
+    if (space && owner.scrollTop < to - 0.5) {
+      // A short list otherwise has no scroll range with which to compensate for an insertion.
+      // Temporarily exceed the viewport, measure the real range, then keep only the missing
+      // virtual space. This handles minimum-height scroll owners without guessing their gap.
+      const offered = owner.clientHeight + to - owner.scrollTop
+      space.style.height = `${offered}px`
+      const excess = Math.max(0, owner.scrollHeight - owner.clientHeight - to)
+      space.style.height = `${Math.max(0, offered - excess)}px`
+      owner.scrollTop = to
+    }
+    alignedTop = owner.scrollTop
+  }
 
   const hold = (moveDown = 0) => {
     stopHolding()
@@ -69,8 +87,7 @@ export function useTimelineScroll(
         const shift =
           target.getBoundingClientRect().top - owner.getBoundingClientRect().top - offset
         if (Math.abs(shift) > 0.5) {
-          owner.scrollTop += shift
-          alignedTop = owner.scrollTop
+          placeScroll(owner, owner.scrollTop + shift)
         }
       }
     }
@@ -160,8 +177,10 @@ export function useTimelineScroll(
         await nextTick()
         align()
         if (!hadRow) {
-          owner.scrollTop += root.getBoundingClientRect().height - oldHeight
-          owner.scrollTop = Math.max(0, owner.scrollTop - amount)
+          placeScroll(
+            owner,
+            owner.scrollTop + root.getBoundingClientRect().height - oldHeight - amount
+          )
         }
         previousTop = owner.scrollTop
         inserting = false
