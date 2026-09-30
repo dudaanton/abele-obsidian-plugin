@@ -342,10 +342,13 @@ export class ChatLogWriter {
 
     const written = plan.kind === 'rewrite' ? plan.content : plan.data
     for (const line of written.split('\n')) {
-      if (line.startsWith(META_PREFIX)) this.metaLine = line
+      // V8 can keep split results as slices of the entire plan, including large tool results.
+      // Re-serialize only retained records to independent strings; parse ids from those copies
+      // too, so neither map keys nor values keep the plan buffer alive.
+      if (line.startsWith(META_PREFIX)) this.metaLine = JSON.stringify(JSON.parse(line))
       else if (line.startsWith(MSG_START)) {
-        const { id } = JSON.parse(line) as { id: string }
-        this.messageLines.set(id, line)
+        const message = JSON.parse(line) as { id: string }
+        this.messageLines.set(message.id, JSON.stringify(message))
       } else if (line.startsWith('{"k":"int"')) this.internalCount++
     }
     this.records = plan.records
