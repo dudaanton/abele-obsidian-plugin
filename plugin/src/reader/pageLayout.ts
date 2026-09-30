@@ -189,6 +189,13 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
       if (!stopped && doc.defaultView) redrawOver(renderer(), doc, reason)
     })
   }
+  // Browser zoom can change glyph pixel metrics while CSS block sizes stay unchanged. The
+  // frame reports a viewport resize, not a font load or DOM mutation. Measure in that delivery
+  // rather than leaving the previous metrics in the SVG until the next queued animation frame.
+  const resized = () => {
+    if (!stopped && doc.defaultView) redrawOver(renderer(), doc, 'the page viewport changed')
+  }
+  win.addEventListener('resize', resized)
   // The first report is every block's size as it is: nothing has moved yet.
   let first = true
   const observer = new ResizeObserver(() => {
@@ -268,6 +275,7 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
     () => {
       stopped = true
       window.cancelAnimationFrame(frame)
+      win.removeEventListener('resize', resized)
       observer.disconnect()
       blocks.clear()
       content.disconnect()

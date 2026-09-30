@@ -215,6 +215,20 @@ describe('laying a page out again', () => {
     expect(redraw).toHaveBeenCalledTimes(1)
   })
 
+  it('remeasures glyph boxes immediately on a frame viewport change and stops on pagehide', () => {
+    const doc = page('500px')
+    Object.defineProperty(doc, 'defaultView', { value: window })
+    const redraw = vi.fn()
+    const renderer = { getContents: () => [{ doc, overlayer: { redraw } }] }
+    keepMarksOnText(doc, () => renderer)
+    // Browser zoom can change font pixel metrics without a font load or block-size change.
+    window.dispatchEvent(new Event('resize'))
+    expect(redraw).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new Event('pagehide'))
+    window.dispatchEvent(new Event('resize'))
+    expect(redraw).toHaveBeenCalledTimes(1)
+  })
+
   it('watches new blocks for later resizes and releases blocks removed from the page', async () => {
     const observe = vi.spyOn(ResizeObserver.prototype, 'observe')
     const unobserve = vi.spyOn(ResizeObserver.prototype, 'unobserve')
