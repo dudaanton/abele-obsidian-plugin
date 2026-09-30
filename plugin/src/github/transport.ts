@@ -4,7 +4,7 @@ import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 interface NativeHttp {
   request(
     options: Record<string, unknown>
-  ): Promise<{ status: number; headers: Record<string, string>; data: string }>
+  ): Promise<{ status: number; headers: Record<string, string>; data: unknown }>
 }
 
 function response(
@@ -39,7 +39,15 @@ export async function nativeRequest(
     connectTimeout: 30_000,
     readTimeout: 60_000,
   })
-  const binary = atob(r.data ?? '')
+  // CapacitorHttp decodes application/json itself on iOS even when arraybuffer was requested.
+  const type = Object.entries(r.headers ?? {}).find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? ''
+  if (type.toLowerCase().includes('json')) {
+    return response(r.status, r.headers ?? {}, new TextEncoder().encode(JSON.stringify(r.data)))
+  }
+  if (r.data !== undefined && r.data !== null && typeof r.data !== 'string') {
+    throw new Error('Native HTTP returned an unsupported binary response.')
+  }
+  const binary = atob((r.data as string | undefined) ?? '')
   const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
   return response(r.status, r.headers ?? {}, bytes)
 }
