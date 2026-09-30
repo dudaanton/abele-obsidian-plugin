@@ -78,10 +78,12 @@ export class PlaceFollow {
   /**
    * The engine says where the page is (`cfi`). False when that is not this device's reading — the
    * tab following another device — and so not to be written as this device's place. The same
-   * page said again — the tab laid out anew, shown again, resized — is no page turned.
+   * page said again is no page turned. A layout relocation (`reading` false) may change either
+   * end of its visible range; remember it without claiming a local turn or dropping a waiting
+   * remote place. A font arriving after follow() resolves must not echo that place as newer.
    */
-  turned(cfi: string | undefined): boolean {
-    if (this.moving) {
+  turned(cfi: string | undefined, reading = true): boolean {
+    if (this.moving || !reading) {
       this.at = cfi
       return false
     }

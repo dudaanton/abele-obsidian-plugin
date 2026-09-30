@@ -100,6 +100,12 @@ Every change is marked `ABELE PATCH` at its site.
     it now immediately applies the frame's layout, including the scrolled page's margins, rather
     than relying on another resize or font event to place it.
 
+11. **Relocations retain their cause** (`view.js`, `#onRelocate`). The paginator reports `anchor`
+    when fonts, columns or other layout changes re-anchor the page, but the view discarded that
+    reason. The host then treated a changed visible CFI range as fresh reading and echoed a
+    remote place with a newer timestamp. Forwarding the reason lets the host update geometry and
+    measurements without advancing the reading clock or discarding a queued remote place.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

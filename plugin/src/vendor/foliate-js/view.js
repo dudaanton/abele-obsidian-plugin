@@ -337,7 +337,9 @@ export class View extends HTMLElement {
         const tocItem = this.#tocProgress?.getProgress(index, range)
         const pageItem = this.#pageProgress?.getProgress(index, range)
         const cfi = this.getCFI(index, range)
-        this.lastLocation = { ...progress, tocItem, pageItem, cfi, range }
+        // ABELE PATCH: preserve the renderer's cause. Re-anchoring after layout is not reading
+        // on this device, even when another font/column width changes the visible CFI range.
+        this.lastLocation = { ...progress, tocItem, pageItem, cfi, range, reason }
         if (reason === 'snap' || reason === 'page' || reason === 'scroll')
             this.history.replaceState(cfi)
         this.#emit('relocate', this.lastLocation)

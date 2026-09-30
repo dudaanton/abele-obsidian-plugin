@@ -47,12 +47,12 @@ function tab(store: BookPlaces) {
   )
   const go = vi.fn()
   /** What the tab does on the engine's relocate: write the place, unless it was not its own. */
-  const relocate = async (cfi: string) => {
+  const relocate = async (cfi: string, reading = true) => {
     go(cfi)
     here = cfi
-    if (follow.turned(cfi)) await store.set(KEY, { cfi, fraction: 0.5, path: 'a.epub' })
+    if (follow.turned(cfi, reading)) await store.set(KEY, { cfi, fraction: 0.5, path: 'a.epub' })
   }
-  return { follow, go, turn: (cfi: string) => relocate(cfi), here: () => here }
+  return { follow, go, turn: (cfi: string) => relocate(cfi), reflow: (cfi: string) => relocate(cfi, false), here: () => here }
 }
 
 beforeEach(() => {
@@ -80,6 +80,37 @@ describe('an open book another device reads on', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(d.file.data).toBe(before)
     expect(d.file.writes).toBe(0)
+  })
+
+  it('does not echo a followed place when reflow changes the visible range afterwards', async () => {
+    const d = device()
+    const t = tab(d.store)
+    await d.elsewhere('phone-range')
+    const incoming = await d.store.get(KEY)
+    await vi.advanceTimersByTimeAsync(2000)
+    await t.reflow('desktop-range-after-font')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await d.store.get(KEY)).toEqual(incoming)
+    expect(d.file.writes).toBe(0)
+    // Reflow neither counts as local reading nor resets the once-per-follow notice.
+    await d.elsewhere('phone-next')
+    expect(t.here()).toBe('phone-next')
+    expect(Notice.shown).toHaveLength(1)
+    // A real page turn still records reading on this device.
+    await t.turn('desktop-next')
+    expect((await d.store.get(KEY))?.cfi).toBe('desktop-next')
+  })
+
+  it('keeps a queued remote place across reflow during local reading', async () => {
+    const d = device()
+    const t = tab(d.store)
+    await t.turn('local-page')
+    await d.elsewhere('remote-page')
+    await t.reflow('local-page-with-other-line-breaks')
+    t.follow.back()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.here()).toBe('remote-page')
+    expect(Notice.shown).toHaveLength(1)
   })
 
   it('stays put while read here, and the next page turned here wins', async () => {

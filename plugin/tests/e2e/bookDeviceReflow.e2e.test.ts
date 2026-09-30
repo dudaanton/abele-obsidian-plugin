@@ -49,6 +49,7 @@ type Probe = {
   visible?: boolean
   text?: string
   notices?: number
+  stored: Packet['place']
 }
 const backups: Partial<Record<Device, Backup>> = {}
 const exec = promisify(execFile)
@@ -301,7 +302,9 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
       'desktop',
       `window.__releaseDeviceFont();await until(()=>[...current().doc.fonts].length);await current().doc.fonts.ready;return JSON.stringify(true)`
     )
-    await check('phone-place-after-font', first)
+    const afterFont = await check('phone-place-after-font', first)
+    expect(afterFont.stored.cfi, 'reflow must not echo a different desktop page range').toBe(first.place.cfi)
+    expect(afterFont.stored.at, 'reflow is not newer reading').toBe(first.place.at)
 
     // The second packet is recorded on the real phone AFTER desktop opening and font settling.
     // It therefore wins the normal timestamp merge without modifying its clock in the test.
@@ -325,7 +328,12 @@ describe.skipIf(!available)('phone to desktop reader geometry', () => {
     `
     )
     const followed = await check('followed-phone-place', second)
-    expect(followed.notices).toBe(1)
+    // Arrival can follow during cold opening as well: one notice per distinct handoff, not
+    // one total across both the initial packet and the later real page turn on the phone.
+    expect(beforeFont.notices).toBeLessThanOrEqual(1)
+    expect((followed.notices ?? 0) - (beforeFont.notices ?? 0)).toBe(1)
+    expect(followed.stored.cfi).toBe(second.place.cfi)
+    expect(followed.stored.at).toBe(second.place.at)
     await run(
       'desktop',
       `view().model.panelTab='search';view().model.panel=true;return JSON.stringify(true)`

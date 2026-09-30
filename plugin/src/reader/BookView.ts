@@ -640,7 +640,8 @@ export class BookView extends FileView {
   private onRelocate(detail: FoliateLocation): void {
     const index = (detail as { index?: number }).index ?? detail.section?.current
     if (typeof index === 'number') this.reading?.relocated(index)
-    if (this.model.status === 'ready') this.model.turns++
+    const reading = detail.reason !== 'anchor'
+    if (this.model.status === 'ready' && reading) this.model.turns++
     this.model.fraction = detail.fraction ?? 0
     this.model.progress = this.isPdf ? null : progressOf(detail, this.reader?.renderer as never)
     const label = detail.tocItem?.label?.trim() ?? ''
@@ -653,15 +654,16 @@ export class BookView extends FileView {
     this.model.currentHref = detail.tocItem?.href ?? null
     this.bookmarks?.relocated()
     const file = this.file
-    const mine = this.model.status === 'ready' && (this.follow?.turned(detail.cfi) ?? true)
-    if (file && this.key && mine) {
+    const ready = this.model.status === 'ready'
+    const mine = ready && (this.follow?.turned(detail.cfi, reading) ?? reading)
+    if (file && this.key && ready) {
       const count = this.reader?.isFixedLayout
         ? (detail.section?.total ?? this.opened?.book.sections.length)
         : detail.location?.total
       const measure = typeof count === 'number' && Number.isSafeInteger(count) && count > 0
         ? { kind: this.reader?.isFixedLayout ? 'pages' as const : 'locations' as const, count }
         : undefined
-      if (detail.cfi)
+      if (detail.cfi && mine)
         void bookPlaces()?.set(this.key, {
           cfi: detail.cfi,
           fraction: detail.fraction ?? 0,

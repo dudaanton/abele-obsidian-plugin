@@ -26,6 +26,8 @@ export interface FoliateBook {
 }
 
 export interface FoliateLocation {
+  /** Renderer relocation cause; `anchor` is reflow, not a new reading position. */
+  reason?: string
   fraction?: number
   cfi?: string
   tocItem?: { label?: string; href?: string } | null
