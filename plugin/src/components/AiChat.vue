@@ -294,9 +294,9 @@
         :is-busy="isBusy"
         :attachment-owner="attachmentOwner"
         :conversation-draft="session?.draft.value"
-        :owns-conversation="ownsImportConversation"
+        :owns-conversation="importBridge.owns"
         :is-current-conversation="isCurrentImportConversation"
-        :attachment-ready="onAttachFile"
+        :attachment-ready="importBridge.ready"
         :can-continue="showContinue"
         :token-display="tokenDisplay"
         :scope-label="scopeCompact"
@@ -617,11 +617,9 @@ const onEditDraft = (messageId: string) => {
   if (!s) return
   const msg = s.allMessages.value.find((m) => m.id === messageId)
   if (!msg || !msg.draft) return
-  chatInput.value?.setText(msg.content)
-  editingDraftId.value = messageId
+  s.draft.value.editingDraftId = messageId
+  s.draft.value.text = msg.content
 }
-
-const editingDraftId = ref<string | null>(null)
 
 const onSendInterceptor = async (messageId: string, content: string) => {
   await session.value?.sendInterceptorMessage(messageId, content)
@@ -1631,9 +1629,9 @@ const onSend = async (content: string, attachments: string[] = []) => {
   if (!s) return
 
   // Update draft content if editing
-  if (editingDraftId.value) {
-    s.updateDraftContent(editingDraftId.value, content)
-    editingDraftId.value = null
+  if (s.draft.value.editingDraftId) {
+    s.updateDraftContent(s.draft.value.editingDraftId, content)
+    delete s.draft.value.editingDraftId
     return
   }
 
@@ -1801,27 +1799,22 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
   chatInput.value?.setText(resolved.trim())
 }
 
-function importConversation(owner?: ConversationOwner) {
-  if (!owner) return session.value
-  const origin = chatService.getSession(owner.sessionId) ??
-    (chatService.activeTabId.value === owner.sessionId ? session.value : null)
-  if (!origin || origin.isDestroyed || (origin.conversationVersion?.value ?? 0) !== owner.version) return null
-  return origin
-}
-
-function ownsImportConversation(owner?: ConversationOwner): boolean {
-  return !!importConversation(owner)
-}
+// Capture the live conversation itself when an import starts. Moving a comment out of the
+// sidebar releases its tab, not its session; a tab-registry lookup would lose that owner.
+const importBridge = computed(() => {
+  const origin = session.value
+  const expected = attachmentOwner.value
+  const owns = (owner?: ConversationOwner): boolean => !!origin && !origin.isDestroyed &&
+    sameConversation(owner, expected) && (origin.conversationVersion?.value ?? 0) === expected?.version
+  const ready = (path: string, owner?: ConversationOwner): void => {
+    // Chat logs are supplied as conversation text, never granted as files in scope.
+    if (owns(owner) && !isChatLog(path)) origin!.scopeResolver.addFile(path)
+  }
+  return { owns, ready }
+})
 
 function isCurrentImportConversation(owner?: ConversationOwner): boolean {
-  return sameConversation(owner, attachmentOwner.value) && ownsImportConversation(owner)
-}
-
-const onAttachFile = (path: string, owner?: ConversationOwner) => {
-  // A chat dropped here goes to the agent as what was said in it, never as a file in scope:
-  // the log holds everything its own agent was shown. The scope would refuse it anyway.
-  if (isChatLog(path)) return
-  importConversation(owner)?.scopeResolver.addFile(path)
+  return sameConversation(owner, attachmentOwner.value) && importBridge.value.owns(owner)
 }
 
 // ── Drag & drop on the whole chat area ──

@@ -15,6 +15,8 @@ import type { StartupScript } from '@/scripting/types'
 export interface ChatDraft {
   text: string
   attachments: TFile[]
+  /** The interceptor draft being edited; this mode travels with its text, not the editor. */
+  editingDraftId?: string
   /** Ephemeral lifetime and send barrier; retained through editor remounts and content edits. */
   imports?: DraftImports<ChatDraft>
 }

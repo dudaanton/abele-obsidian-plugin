@@ -5,6 +5,8 @@ import { fakeNoteEditors } from '../helpers/fakeNoteEditor'
 import { TFile } from 'obsidian'
 import AiChat from '@/components/AiChat.vue'
 import AiChatInput from '@/components/AiChatInput.vue'
+import AiChatMessage from '@/components/AiChatMessage.vue'
+import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -57,6 +59,77 @@ async function switchTo(id: string) {
   service.activeTabId.value = id
   await nextTick(); await nextTick()
 }
+
+it('keeps the interceptor editing target with its text when the whole panel is reopened', async () => {
+  a.allMessages.value = [{ id: 'sample-edit', role: 'user', content: 'Original sample draft', timestamp: 1, draft: true }]
+  a.updateDraftContent = vi.fn((id, content) => {
+    const message = a.allMessages.value.find((m) => m.id === id)
+    if (message) message.content = content
+  })
+  await nextTick()
+  wrapper.getComponent(AiChatMessage).vm.$emit('edit-draft', 'sample-edit')
+  input().vm.setText('Edited sample draft')
+  wrapper.unmount()
+  wrapper = mount(AiChat, { attachTo: document.body })
+  await nextTick(); await nextTick()
+  fakeNoteEditors.at(-1)!.press('Shift-Enter')
+  expect(a.updateDraftContent).toHaveBeenCalledWith('sample-edit', 'Edited sample draft')
+  expect(a.sendMessage).not.toHaveBeenCalled()
+  expect(a.allMessages.value).toHaveLength(1)
+  expect(a.allMessages.value[0].content).toBe('Edited sample draft')
+})
+
+it('does not apply another session editing target when tabs change', async () => {
+  a.allMessages.value = [{ id: 'sample-edit', role: 'user', content: 'Original sample draft', timestamp: 1, draft: true }]
+  b.updateDraftContent = vi.fn()
+  await nextTick()
+  wrapper.getComponent(AiChatMessage).vm.$emit('edit-draft', 'sample-edit')
+  await switchTo('tab-b')
+  input().vm.setText('A new sample message')
+  fakeNoteEditors.at(-1)!.press('Shift-Enter')
+  expect(b.updateDraftContent).not.toHaveBeenCalled()
+  expect(b.sendMessage).toHaveBeenCalledWith('A new sample message', [])
+})
+
+it.each(['vault', 'external'])('finishes a %s import after a live comment session is handed back to CommentService', async (kind) => {
+  let pending: Promise<void> | undefined
+  if (kind === 'vault') input().vm.addAttachment(source)
+  else pending = input().vm.importFiles([new File(['sample'], 'sample.heic')])
+  const comments = CommentService.getInstance()
+  comments.sessions.set('sample-comment-a', a as never)
+  await switchTo('tab-b')
+  // hideFromSidebar releases the tab without destroying this CommentService-owned session.
+  service.tabOrder.value = ['tab-b']
+  vi.mocked(service.getSession).mockImplementation((id) => id === 'tab-b' ? b as never : undefined)
+  if (kind === 'vault') finish(png)
+  else finishExternal(png)
+  if (pending) await pending
+  await flushPromises()
+  expect(a.draft.value.attachments.map((f: TFile) => f.path)).toEqual([png.path])
+  expect(a.scopeResolver.addFile).toHaveBeenCalledWith(png.path)
+  expect(b.scopeResolver.addFile).not.toHaveBeenCalled()
+  service.tabOrder.value.push('tab-a')
+  vi.mocked(service.getSession).mockImplementation((id) => (id === 'tab-a' ? a : b) as never)
+  await switchTo('tab-a')
+  expect(input().vm.takeDraft().attachments.map((f: TFile) => f.path)).toEqual([png.path])
+  comments.sessions.delete('sample-comment-a')
+})
+
+it.each(['destroyed', 'replaced'])('rejects completion for a %s comment conversation even after handoff', async (reason) => {
+  input().vm.addAttachment(source)
+  const comments = CommentService.getInstance()
+  comments.sessions.set('sample-comment-a', a as never)
+  await switchTo('tab-b')
+  service.tabOrder.value = ['tab-b']
+  vi.mocked(service.getSession).mockImplementation((id) => id === 'tab-b' ? b as never : undefined)
+  if (reason === 'replaced') a.conversationVersion.value++
+  else (a as any).isDestroyed = true
+  finish(png)
+  await flushPromises()
+  expect(a.scopeResolver.addFile).not.toHaveBeenCalled()
+  expect(b.scopeResolver.addFile).not.toHaveBeenCalled()
+  comments.sessions.delete('sample-comment-a')
+})
 
 it('keeps a pending HEIC in its originating draft and grants only that session access', async () => {
   input().vm.addAttachment(source)
