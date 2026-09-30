@@ -139,6 +139,15 @@ backlinks, tasks and transactions); search the web and read pages; look up addre
 on a map; read your books; read GitHub; make and edit pictures; ask you questions with a form;
 run your scripts; and delegate work to other agents.
 
+**Current location**, under **Maps** in an agent's **Access** tab, asks your device where it is.
+It starts on **Ask**: each request needs your approval unless you choose **On**; **Off** removes
+the tool. Your device may also ask for location permission. The answer includes the position,
+accuracy, time and which platform answered — always the device running the chat, not another
+synced device. It is sent to the model and kept in the conversation like any other tool answer.
+The agent should request it only for questions that depend on where you are. There is no
+automatic address lookup; looking up the address separately sends the coordinates to the map's
+existing lookup service.
+
 They can also work out numbers from your vault rather than guess them: totals and averages,
 spending per category or per month, trends, how two things move together, rough forecasts and
 unusual values — over your finances, over notes such as daily notes with `weight` or `sleep`, or

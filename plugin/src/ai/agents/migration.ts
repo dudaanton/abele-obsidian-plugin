@@ -3,6 +3,7 @@ import { REMEMBER_TOOL, FORGET_TOOL } from './memory'
 import {
   BOOK_TOOL_MODES,
   LINT_TOOL_MODES,
+  LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
   DEFAULT_AI_SETTINGS,
   EDIT_SELECTION_TOOL,
@@ -238,6 +239,19 @@ function enableLintTools(ai: AiSettings): boolean {
   return changed
 }
 
+/** Adds Ask for personal device location, leaving every deliberate mode intact. */
+function enableLocationTool(ai: AiSettings): boolean {
+  let changed = false
+  for (const agent of ai.agents || []) {
+    for (const [tool, mode] of Object.entries(LOCATION_TOOL_MODES)) {
+      if (agent.toolModes[tool] !== undefined) continue
+      agent.toolModes[tool] = mode
+      changed = true
+    }
+  }
+  return changed
+}
+
 /**
  * Hands the analytics tools to agents saved before there were any: they only read and compute, so
  * they run on their own. A mode set by hand stays.
@@ -326,7 +340,19 @@ export function migrateAgents(ai: AiSettings): boolean {
   const books = enableBookTools(ai)
   const lint = enableLintTools(ai)
   const analytics = enableAnalyticsTools(ai)
+  const location = enableLocationTool(ai)
   const interceptors = normaliseInterceptors(ai)
 
-  return legacy || comment || maps || memory || github || books || lint || analytics || interceptors
+  return (
+    legacy ||
+    comment ||
+    maps ||
+    memory ||
+    github ||
+    books ||
+    lint ||
+    analytics ||
+    location ||
+    interceptors
+  )
 }

@@ -390,6 +390,9 @@ export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
  */
 export const LINT_TOOL_MODES: Record<string, ToolMode> = { lint: 'auto', lint_fix: 'ask' }
 
+/** Personal device data: ask before every request unless the person chooses another mode. */
+export const LOCATION_TOOL_MODES: Record<string, ToolMode> = { current_location: 'ask' }
+
 /**
  * The analytics tools only read and compute, so every agent has them on its own. Someone who set
  * a mode by hand keeps it (`enableAnalyticsTools`).
@@ -414,6 +417,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     // The map tools need no key and no account, so there is nothing for a person to set up
     // before asking where something is. See `enableMapTools` for the agents that already exist.
     ...MAP_TOOL_MODES,
+    ...LOCATION_TOOL_MODES,
     ...GITHUB_TOOL_MODES,
     ...BOOK_TOOL_MODES,
   },

@@ -35,6 +35,7 @@ import { createScreenshotTool } from './ScreenshotTool'
 import { createInspectViewTool } from './InspectViewTool'
 import { createChartDocsTool } from './ChartDocsTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from './GeoTools'
+import { createCurrentLocationTool } from './CurrentLocationTool'
 import { createTemplateDocsTool } from './TemplateDocsTool'
 import { createQueryDocsTool } from './QueryDocsTool'
 import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
@@ -122,6 +123,7 @@ export function getToolRegistry(): ToolInfo[] {
     book_highlight_edit: { label: 'Change a highlight', category: 'Books' },
     book_highlight_remove: { label: 'Remove a highlight', category: 'Books' },
     book_bookmark: { label: 'Bookmark in a book', category: 'Books' },
+    current_location: { label: 'Current location', category: 'Maps' },
     geocode: { label: 'Geocode', category: 'Maps' },
     places: { label: 'Find places', category: 'Maps' },
     route: { label: 'Build route', category: 'Maps' },
@@ -288,6 +290,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createLintFixTool(),
     createScreenshotTool(),
     createInspectViewTool(),
+    createCurrentLocationTool(),
     createGeocodeTool(),
     createPlacesTool(),
     createRouteTool(),

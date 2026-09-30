@@ -10,6 +10,7 @@ import {
   ANALYTICS_TOOL_MODES,
   GITHUB_TOOL_MODES,
   MAP_TOOL_MODES,
+  LOCATION_TOOL_MODES,
   type AiSettings,
 } from '@/ai/types'
 
@@ -214,6 +215,7 @@ describe('the Comment agent', () => {
       ...BOOK_TOOL_MODES,
       ...LINT_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,
+      ...LOCATION_TOOL_MODES,
       remember: 'auto' as const,
       forget: 'auto' as const,
     }

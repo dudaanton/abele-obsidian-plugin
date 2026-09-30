@@ -260,6 +260,19 @@ the words, then `book_highlight` with the find's link as `book` and the exact wo
 
 ## Maps
 
+`current_location` requests one fresh position from the device running this chat, not another
+synced device. It defaults to Ask in each agent's tool access (Off / Ask / On). Location is
+personal data: request it only when the answer depends on where the person is. The JSON answer
+has `latitude`, `longitude`, `accuracy` (metres), `timestamp` (Unix milliseconds from the
+provider), and `device` (the answering Obsidian platform, not a unique hardware identifier).
+A request takes at most 15 seconds, including permission prompts. Denied, unavailable and
+silent providers give actionable errors; never invent a position or substitute IP geolocation.
+No reverse lookup is sent automatically. Use `geocode` separately only when an address is
+needed; that sends the coordinates to the existing Photon service. A result sent to the model
+is also kept in the chat history like other tool results. The map's **Show my location** button
+is a separate, local one-shot action: it centres the map and draws a marker and accuracy radius,
+without writing coordinates to a note or sending them to an agent.
+
 `geocode`, `places`, `route`.
 
 Addresses, places and journeys, from OpenStreetMap through services that need no key and no

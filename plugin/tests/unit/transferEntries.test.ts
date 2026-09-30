@@ -57,6 +57,23 @@ const settings = (over: Partial<AbeleSettings> = {}): AbeleSettings =>
 const find = (entries: TransferEntry[], section: string, id: string) =>
   entries.find((e) => e.section === section && e.id === id)
 
+describe('location access travelling with agents', () => {
+  it('carries each deliberate mode in the existing agent section, without location data', () => {
+    for (const mode of ['off', 'ask', 'auto'] as const) {
+      const source = settings()
+      source.ai.agents = [
+        createAgent({ id: 'sample-agent', toolModes: { current_location: mode } }),
+      ]
+      const entry = find(collectEntries(source), 'ai-agents', 'sample-agent')!
+      const received = applyEntries([entry], settings())
+      expect(
+        received.ai.agents.find((a) => a.id === 'sample-agent')?.toolModes.current_location
+      ).toBe(mode)
+      expect(JSON.stringify(entry)).not.toMatch(/latitude|longitude|accuracy|timestamp/)
+    }
+  })
+})
+
 describe('what the sending side offers', () => {
   it('makes an entry of every provider, named the way the settings name it', () => {
     const entries = collectEntries(settings())
