@@ -18,5 +18,9 @@ export async function createImportedBinary(app: App, path: string, blob: Blob): 
 /** Existing originals belong to the vault; keep them, but attach/use the PNG copy only. */
 export async function imageFileForImport(app: App, file: TFile): Promise<TFile> {
   if (!isHeicImport(file.path)) return file
-  return createImportedBinary(app, file.path, new Blob([await app.vault.readBinary(file)], { type: 'image/heic' }))
+  return createImportedBinary(
+    app,
+    file.path,
+    new Blob([await app.vault.readBinary(file)], { type: 'image/heic' })
+  )
 }

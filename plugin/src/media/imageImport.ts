@@ -11,14 +11,17 @@ async function nativePng(blob: Blob): Promise<Blob> {
       image.onerror = () => reject(new Error('Native HEIC decoding unavailable'))
       image.src = url
     })
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = image.naturalWidth
     canvas.height = image.naturalHeight
     const context = canvas.getContext('2d')
     if (!context || !canvas.width || !canvas.height) throw new Error('Image has no pixels')
     context.drawImage(image, 0, 0)
     return await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((png) => png ? resolve(png) : reject(new Error('PNG encoding failed')), 'image/png')
+      canvas.toBlob(
+        (png) => (png ? resolve(png) : reject(new Error('PNG encoding failed'))),
+        'image/png'
+      )
     })
   } finally {
     URL.revokeObjectURL(url)
@@ -26,7 +29,10 @@ async function nativePng(blob: Blob): Promise<Blob> {
 }
 
 /** Normalize an incoming image before choosing its vault filename. */
-export async function normalizeImageImport(name: string, blob: Blob): Promise<{ name: string; blob: Blob }> {
+export async function normalizeImageImport(
+  name: string,
+  blob: Blob
+): Promise<{ name: string; blob: Blob }> {
   if (!isHeicImport(name, blob.type)) return { name, blob }
   // iOS WebKit can decode HEIC without shipping a decoder into the page.
   let png: Blob
