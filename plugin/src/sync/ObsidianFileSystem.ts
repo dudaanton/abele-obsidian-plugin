@@ -118,8 +118,6 @@ export class ObsidianFileSystem implements FileSystem {
   private pollNow: (() => void) | null = null
   private readonly writer: VaultWriter
   private readonly journal: WriteJournal
-  /** What a crash left half done, put back once, before the first listing is taken. */
-  private recovered: Promise<void> | null = null
 
   constructor(
     private readonly app: App,
@@ -138,6 +136,10 @@ export class ObsidianFileSystem implements FileSystem {
       journal: this.journal,
       indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
       makeParents: (path) => makeParents(this.adapter, path),
+      installed: (path) => {
+        this.awaitingIndex.add(path)
+        this.wrote(path)
+      },
     })
   }
 
@@ -163,8 +165,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async *list(): AsyncIterable<FileInfo> {
-    this.recovered ??= this.writer.recover()
-    await this.recovered
+    await this.writer.recover()
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()
     const revision = mutations.revision
@@ -230,9 +231,8 @@ export class ObsidianFileSystem implements FileSystem {
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
     const standing = await this.onlyFileOrNothing(path)
-    await this.writer.write(path, bytesOf(bytes), mtime, standing !== null)
-    this.awaitingIndex.add(path)
-    this.wrote(path)
+    const before = standing === null ? null : bytesOf(await this.read(path))
+    await this.writer.write(path, bytesOf(bytes), mtime, standing !== null, before)
   }
 
   async move(from: string, to: string): Promise<void> {

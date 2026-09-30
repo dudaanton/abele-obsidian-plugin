@@ -12,6 +12,7 @@ import { normalizePath, type App } from 'obsidian'
 import { EngineError, type FileInfo } from '@abele/sync-core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault, type FakeApp, type FakeFileSpec } from '../helpers/fakeVault'
+import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const POLL_MS = 1000
 
@@ -509,6 +510,8 @@ describe('ObsidianFileSystem — moving and removing', () => {
       { path: 'Kept/c.md', content: 'c', mtime: 1000, ctime: 900 },
       { path: 'Moved/d.md', content: 'd', mtime: 1000, ctime: 900 },
     ])
+    // This guarantee needs the desktop's non-recursive removal API; mobile leaves folders.
+    withDesktopFs(app)
     await app.vault.adapter.mkdir('Empty')
 
     await fs.remove('Burst/deep/a.md')

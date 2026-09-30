@@ -37,6 +37,8 @@ export interface JournalEntry {
   target: string
   temp?: string
   backup?: string
+  replacementSha?: string
+  installed?: boolean
 }
 
 /**
@@ -130,16 +132,20 @@ export class WriteJournal {
     let raw: unknown
     try {
       raw = this.storage?.loadLocalStorage(JOURNAL_KEY) ?? null
-    } catch {
-      return []
+    } catch (cause) {
+      throw new EngineError('io', 'cannot read the write journal', cause)
     }
-    if (!Array.isArray(raw)) return []
-    return raw.filter(
+    if (raw === null) return []
+    if (!Array.isArray(raw)) throw new EngineError('io', 'the write journal is not an array')
+    const entries = raw.filter(
       (entry): entry is JournalEntry =>
         entry !== null &&
         typeof entry === 'object' &&
         typeof (entry as JournalEntry).target === 'string'
     )
+    if (entries.length !== raw.length)
+      throw new EngineError('io', 'the write journal contains an unreadable entry')
+    return entries
   }
 
   add(entry: JournalEntry): void {
@@ -150,12 +156,23 @@ export class WriteJournal {
     this.save(this.entries().filter((held) => !sameEntry(held, entry)))
   }
 
+  replace(entry: JournalEntry, next: JournalEntry): void {
+    this.save(this.entries().map((held) => (sameEntry(held, entry) ? next : held)))
+  }
+
   private save(entries: JournalEntry[]): void {
     try {
-      this.storage?.saveLocalStorage(JOURNAL_KEY, entries.length === 0 ? null : entries)
-    } catch (error) {
-      // Nothing to fall back on: the write goes ahead, and a crash inside it is not put back.
-      console.debug('[abele-sync] the write journal could not be saved', error)
+      if (this.storage === null) throw new Error('no durable local storage')
+      this.storage.saveLocalStorage(JOURNAL_KEY, entries.length === 0 ? null : entries)
+      const back = this.storage.loadLocalStorage(JOURNAL_KEY)
+      if (JSON.stringify(back) !== JSON.stringify(entries.length === 0 ? null : entries))
+        throw new Error('journal was not kept')
+    } catch (cause) {
+      throw new EngineError(
+        'io',
+        'cannot save the write journal; no replacement was started',
+        cause
+      )
     }
   }
 }
@@ -172,6 +189,7 @@ export interface WriterDeps {
   indexed(path: string): boolean
   /** Folders above `path` made. */
   makeParents(path: string): Promise<void>
+  installed?(path: string): void
 }
 
 export class VaultWriter {
@@ -185,42 +203,62 @@ export class VaultWriter {
    * `bytes` at `path`, dated `mtime`, the old file or the new one at every instant. `exists` says
    * whether a file stands at `path` now, which decides between taking a free name and replacing.
    */
-  async write(path: string, bytes: ArrayBuffer, mtime: number, exists: boolean): Promise<void> {
+  async write(
+    path: string,
+    bytes: ArrayBuffer,
+    mtime: number,
+    exists: boolean,
+    before: ArrayBuffer | null
+  ): Promise<void> {
     await this.deps.makeParents(path)
     const temp = await this.freeName(path, 'tmp')
-    let entry: JournalEntry = { target: path, temp }
-    inFlight.add(temp)
+    let entry: JournalEntry = { target: path, temp, replacementSha: await signature(bytes) }
     this.deps.journal.add(entry)
+    inFlight.add(temp)
     try {
       try {
         await this.adapter.writeBinary(temp, bytes, { mtime })
       } catch (cause) {
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
-      if (!exists) await this.takeFreeName(temp, path)
-      else if (this.deps.native !== null) {
+      if (before !== null) await this.unchanged(path, before)
+      if (!exists) {
+        await this.takeFreeName(temp, path)
+        this.deps.installed?.(path)
+      } else if (this.deps.native !== null) {
         await this.replaceNative(this.deps.native, temp, await this.held(path))
+        this.deps.installed?.(path)
       } else {
         const held = await this.held(path)
         const backup = await this.freeName(path, 'old')
-        const swapping: JournalEntry = { target: held, temp, backup }
-        this.deps.journal.drop(entry)
-        this.deps.journal.add(swapping)
+        const swapping: JournalEntry = {
+          target: held,
+          temp,
+          backup,
+          replacementSha: entry.replacementSha,
+        }
+        this.deps.journal.replace(entry, swapping)
         entry = swapping
-        if (!(await this.replaceBySwap(temp, held, backup))) {
+        if (!(await this.replaceBySwap(temp, held, backup, before))) {
           // The old file could not be put back under its name: the entry stays for the next
           // listing, which tries again.
           await this.dropQuietly(temp)
           inFlight.delete(temp)
           throw new EngineError('io', `cannot write ${path}; ${held} is kept at ${backup}`)
         }
+        this.deps.installed?.(path)
+        const installed = { ...entry, installed: true }
+        this.deps.journal.replace(entry, installed)
+        entry = installed
+        await this.dropQuietly(backup)
         // A backup that would not be removed stays in the journal, for the next listing.
         if (await this.there(backup)) return
       }
     } catch (error) {
       if (inFlight.has(temp)) {
         await this.dropQuietly(temp)
-        this.deps.journal.drop(entry)
+        if (entry.backup === undefined || !(await this.there(entry.backup)))
+          this.deps.journal.drop(entry)
       }
       throw error
     } finally {
@@ -258,7 +296,12 @@ export class VaultWriter {
    * when the new file would not take the name and the old one would not go back under it either:
    * it is left at the backup name, for the next listing to put back.
    */
-  private async replaceBySwap(temp: string, path: string, backup: string): Promise<boolean> {
+  private async replaceBySwap(
+    temp: string,
+    path: string,
+    backup: string,
+    before: ArrayBuffer | null
+  ): Promise<boolean> {
     inFlight.add(backup)
     try {
       try {
@@ -267,6 +310,7 @@ export class VaultWriter {
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
       try {
+        if (before !== null) await this.unchanged(backup, before)
         await this.adapter.rename(temp, path)
       } catch (cause) {
         try {
@@ -275,9 +319,9 @@ export class VaultWriter {
           console.debug(`[abele-sync] ${path} is left at ${backup} until the next listing`)
           return false
         }
+        if (cause instanceof EngineError) throw cause
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
-      await this.dropQuietly(backup)
       return true
     } finally {
       inFlight.delete(backup)
@@ -367,8 +411,16 @@ export class VaultWriter {
       }
       try {
         if (entry.backup !== undefined && (await this.there(entry.backup))) {
-          if (await this.there(entry.target)) await this.adapter.remove(entry.backup)
-          else {
+          if (await this.there(entry.target)) {
+            const installed =
+              entry.installed === true ||
+              (entry.replacementSha !== undefined &&
+                (await signature(await this.adapter.readBinary(entry.target))) ===
+                  entry.replacementSha)
+            if (!installed)
+              throw new Error('the backup and target both exist; neither may be discarded')
+            await this.adapter.remove(entry.backup)
+          } else {
             await this.adapter.rename(entry.backup, entry.target)
             console.debug(`[abele-sync] put ${entry.target} back after an interrupted write`)
           }
@@ -378,7 +430,11 @@ export class VaultWriter {
         }
         this.deps.journal.drop(entry)
       } catch (error) {
-        console.debug(`[abele-sync] could not finish tidying after ${entry.target}`, error)
+        throw new EngineError(
+          'io',
+          `cannot recover ${entry.target}; scan refused while a replacement is unfinished`,
+          error
+        )
       }
     }
   }
@@ -412,8 +468,21 @@ export class VaultWriter {
   private async there(path: string): Promise<boolean> {
     try {
       return (await this.adapter.stat(path)) !== null
-    } catch {
-      return false
+    } catch (cause) {
+      const code =
+        typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null
+      if (code === 'ENOENT' || code === 'ENOTDIR') return false
+      throw new EngineError('io', `cannot stat ${path}`, cause)
+    }
+  }
+
+  private async unchanged(path: string, before: ArrayBuffer): Promise<void> {
+    if (!(await this.there(path)))
+      throw new EngineError('conflict', `${path} changed while its replacement was prepared`)
+    const current = new Uint8Array(await this.adapter.readBinary(path))
+    const original = new Uint8Array(before)
+    if (current.length !== original.length || current.some((value, at) => value !== original[at])) {
+      throw new EngineError('conflict', `${path} changed while its replacement was prepared`)
     }
   }
 
@@ -424,6 +493,11 @@ export class VaultWriter {
       console.debug(`[abele-sync] left ${path} behind`, error)
     }
   }
+}
+
+async function signature(bytes: ArrayBuffer): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 /** The app as the vault's local storage, where the running plugin always has one. */
