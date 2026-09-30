@@ -44,4 +44,5 @@ it('describes every registered palette command in the agent reference', () => {
   }
   expect(commands).toBeGreaterThan(0)
   expect([...new Set(missing)].sort()).toEqual([])
-})
+  // Building the TypeScript program shares CPU with the whole fast tier; this is not a speed assertion.
+}, 30_000)
