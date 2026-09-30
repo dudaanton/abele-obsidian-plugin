@@ -6,7 +6,7 @@
         is separate from applying settings. Only install code from devices you trust.
       </p>
       <ul class="abele-plugin-code__list">
-        <li v-for="label in Object.values(names)" :key="label">{{ label }}</li>
+        <li v-for="plugin in plugins" :key="plugin.id">{{ plugin.label }}</li>
       </ul>
       <p class="abele-plugin-code__text">
         Nothing listed has been installed. Keep local code leaves this device's code unchanged; new
@@ -39,11 +39,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Notice } from 'obsidian'
 import type { ChangeItem } from '@abele/sync-protocol'
 import { SyncService } from '@/sync/SyncService'
 import { appliedNotice, keptNotice } from '@/sync/stagedSettings'
+import { codePluginIds } from '@/sync/stagedPluginCode'
 import { reasonOf } from '@/sync/format'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
@@ -58,6 +59,14 @@ const sync = SyncService.getInstance()
 const busy = ref(false)
 const error = ref<string | null>(null)
 const reloadable = sync.codePrompt.reloader.available()
+// A local edit can remove one plugin's changes while the remaining question stays open.
+// This is already the code-only lane, so no own-folder exclusion is needed here.
+const plugins = computed(() =>
+  [...new Set(props.changes.flatMap((one) => codePluginIds(one, '')))].map((id) => ({
+    id,
+    label: props.names[id] ?? id,
+  }))
+)
 const close = (): void => {
   if (!busy.value) emit('close', props.questionKey)
 }

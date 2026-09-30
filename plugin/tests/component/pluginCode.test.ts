@@ -22,12 +22,15 @@ const service = {
   })),
   applySettingsAndReload: vi.fn(),
 }
-const changes = [{ path: '.obsidian/plugins/sample/main.js', version_id: 'shown' }] as ChangeItem[]
-const open = () =>
+const changes = [
+  { path: '.obsidian/plugins/sample/main.js', prev_path: null, version_id: 'shown' },
+  { path: '.obsidian/plugins/fresh/main.js', prev_path: null, version_id: 'fresh' },
+] as ChangeItem[]
+const open = (shown = changes) =>
   mount(PluginCodeModal, {
     props: {
       questionKey: 1,
-      changes,
+      changes: shown,
       names: {
         sample: 'Sample tool (sample) — Changed · Version 2.0.0',
         fresh: 'Fresh tool — New',
@@ -61,16 +64,22 @@ describe('the separate plugin-code confirmation', () => {
     expect(view.text()).toContain('code that can run in Obsidian and access your vault')
     expect(view.text()).toContain('separate from applying settings')
   })
+  it('does not list a plugin whose changes are no longer in the question', () => {
+    const view = open([changes[0]])
+    expect(view.findAll('li').map((one) => one.text())).toEqual([
+      'Sample tool (sample) — Changed · Version 2.0.0',
+    ])
+  })
   it('installs only the versions shown through the code action', async () => {
     const view = open()
     await press(view, 'Install and reload')
-    expect(service.applyPluginCodeAndReload).toHaveBeenCalledExactlyOnceWith(['shown'])
+    expect(service.applyPluginCodeAndReload).toHaveBeenCalledExactlyOnceWith(['shown', 'fresh'])
     expect(service.applySettingsAndReload).not.toHaveBeenCalled()
   })
   it('declines through Keep local code, without installing anything', async () => {
     const view = open()
     await press(view, 'Keep local code')
-    expect(service.keepLocalPluginCode).toHaveBeenCalledExactlyOnceWith(['shown'])
+    expect(service.keepLocalPluginCode).toHaveBeenCalledExactlyOnceWith(['shown', 'fresh'])
     expect(service.applyPluginCodeAndReload).not.toHaveBeenCalled()
   })
   it('Later closes without deciding', async () => {
