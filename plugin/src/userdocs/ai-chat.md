@@ -27,7 +27,9 @@ can read them, in chats and other Abele image imports. Converted external import
 PNG; a HEIC already in the vault stays beside its new PNG copy. On desktop without native
 HEIC support, a short message explains that conversion is available on iPhone/iPad. The
 original is kept and attached as a file, not a picture the model can see. Sending waits until
-imports finish, even if you view a delegated run or return a drawing while they are pending.
+imports finish, even if you view a delegated run, receive text from **Use in AI agent**, return
+a drawing, or close and reopen the whole chat panel while they are pending. Your draft and
+its pending attachments stay with the conversation.
 Opening another conversation in the same tab cancels the old conversation's pending imports;
 they never appear in the new conversation.
 

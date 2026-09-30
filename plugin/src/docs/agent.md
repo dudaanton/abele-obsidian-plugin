@@ -108,7 +108,9 @@ an existing image in your reply, use `![[Attachments/sample-image.png]]` with it
 Text `read`/`write`/`edit` tools are not binary image editors. Pending imports belong to the
 conversation that started them, not its tab: loading or resetting the conversation cancels
 its pending attachments. Drawing returns and draft edits preserve unrelated imports. Send
-waits until the current draft's imports finish, including after viewing a delegated run.
+waits until the current draft's imports finish, including after viewing a delegated run,
+receiving new composer text, or closing and reopening the whole chat panel. Draft text,
+attachments and pending imports belong to the conversation session, not either UI component.
 
 HEIC/HEIF imports become PNG only when the platform decodes them natively (iPhone/iPad).
 Then only the PNG is attached and sent to the model; refer to its labeled path. External

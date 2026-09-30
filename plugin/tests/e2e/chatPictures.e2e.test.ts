@@ -81,12 +81,13 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
     }
   }, 90_000)
 
-  it.each(['reset', 'drawing', 'run'])('preserves conversation ownership and the import barrier across %s', async (scenario) => {
+  it.each(['reset', 'drawing', 'run', 'run-text', 'panel'])('preserves conversation ownership and the import barrier across %s', async (scenario) => {
     const result = JSON.parse(await evalLong(`(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
       const until = async fn => { for (let i = 0; i < 160; i++) { const value = fn(); if (value) return value; await wait(50) } throw new Error('UI did not appear') }
       const chats = window.__abeleTest.ChatService.getInstance()
       const prior = chats.activeTabId.value
+      const layout = app.workspace.getLayout()
       const tab = chats.createTab()
       if (tab === prior) return { error: 'No free temporary chat tab' }
       const runId = 'run:sample-import-probe'
@@ -124,11 +125,22 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
           input.addAttachment(original)
           chats.pendingInput.value = { text: '', tabId: tab, replaceAttachment: original.path, attachments: [drawn.path] }
           await wait(100)
+        } else if (${JSON.stringify(scenario)} === 'panel') {
+          const leaf = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
+          if (!leaf) throw new Error('No chat sidebar leaf')
+          leaf.detach()
+          await until(() => !host())
+          await chats.revealSidebar()
+          await until(composer)
+          await wait(100)
         } else {
           chats.runTabs.set(runId, { type: 'abele-run', runId: 'sample-import-probe', agentName: 'Sample', task: 'Fabricated read-only run', branches: [], status: 'done', parentChat: '' })
           chats.tabOrder.value = [...chats.tabOrder.value, runId]
           chats.switchTab(runId)
           await until(() => !host())
+          if (${JSON.stringify(scenario)} === 'run-text') {
+            chats.pendingInput.value = { text: 'Incoming sample passage', tabId: tab }
+          }
           chats.switchTab(tab)
           await until(composer)
           await wait(100)
@@ -148,7 +160,7 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
           ready.keyTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))
           await wait(50)
         }
-        return { before, paths, scope, sends: sends.length }
+        return { before, paths, scope, sends: sends.length, sentText: sends.at(-1)?.[0] }
       } catch (e) { return { error: String(e?.stack || e) } }
       finally {
         if (release) release()
@@ -158,6 +170,7 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
         if (chats.getRun(runId)) await chats.closeTab(runId)
         await chats.closeTab(tab)
         if (prior) chats.switchTab(prior)
+        if (${JSON.stringify(scenario)} === 'panel') await app.workspace.changeLayout(layout)
       }
     })()`, 120_000))
     expect(result.error).toBeUndefined()
@@ -170,6 +183,7 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
       const name = onPhone() ? '.png' : '.heic'
       expect(result.paths.some((p: string) => p.endsWith('sample-' + scenario + name))).toBe(true)
       expect(result.sends).toBe(1)
+      if (scenario === 'run-text') expect(result.sentText).toBe('Incoming sample passage')
     }
   }, 150_000)
 
