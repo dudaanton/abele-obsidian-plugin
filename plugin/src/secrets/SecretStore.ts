@@ -111,6 +111,14 @@ export class SecretStore {
     this.record(id, '')
   }
 
+  /** Removing a local connection must not revoke a credential another device still uses.
+   * The shared copy remains in the synced-key catalog, where it can be revoked deliberately.
+   */
+  forgetLocal(id: string): void {
+    this.forget(id)
+    this.version.value++
+  }
+
   /** Waits for writes to the settings file already under way. */
   flush(): Promise<void> {
     return this.saving

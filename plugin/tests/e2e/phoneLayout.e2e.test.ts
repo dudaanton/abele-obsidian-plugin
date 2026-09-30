@@ -74,6 +74,8 @@ const DIALOGS = [
   'transfer-send',
   'transfer-preview',
   'transfer-scan',
+  'github-connections',
+  'github-connection',
   'agent-editor',
   'lint-rule',
   'ask-name',

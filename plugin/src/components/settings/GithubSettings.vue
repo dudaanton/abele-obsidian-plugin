@@ -42,33 +42,50 @@
       </Section>
 
       <Section
-        title="Access"
-        desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Without one, only public repositories can be read, 60 requests an hour, and discussions not at all. Notifications are the exception: GitHub serves them only to a classic token with the notifications scope, set as the Notifications token below."
+        title="Connections"
+        desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Each connection has its own server and account; choose one default per server. Notifications need a classic token with the notifications scope, set in Notifications token below."
       >
-        <Setting name="Token" desc="Stored in the keychain, never in the settings file.">
-          <SecretField
-            v-model="tokenInput"
-            :value="stored"
-            placeholder="github_pat_..."
-            replace-placeholder="New token..."
-            save-tooltip="Save the token"
-            what="The token"
-            @save="saveToken"
-          >
-            <template #actions>
-              <Icon
-                icon="trash-2"
-                with-bg
-                tooltip="Forget the token"
-                @click="confirmingForget = true"
-              />
-            </template>
-          </SecretField>
+        <EmptyState
+          v-if="!settings.connections.length"
+          text="No connections. Public github.com repositories are read anonymously."
+        />
+        <Setting
+          v-for="connection in settings.connections"
+          :key="connection.id"
+          :name="connection.name + (connection.isDefault ? ' · Default' : '')"
+          :desc="connectionDescription(connection)"
+        >
+          <Button
+            text="Check"
+            tooltip="Check this connection's account and repository access"
+            @click="editConnection(connection, true)"
+          />
+          <Button
+            text="Edit"
+            tooltip="Edit this connection's name, server, token and owner preferences"
+            @click="editConnection(connection)"
+          />
+          <Button
+            text="Delete"
+            tooltip="Remove this connection after confirmation"
+            @click="deletingConnection = connection"
+          />
         </Setting>
+        <EmptyState v-if="connectionMessage" :text="connectionMessage" />
+        <Button
+          text="Add connection"
+          tooltip="Create a connection with its own keychain token"
+          @click="addConnection"
+        />
+      </Section>
 
+      <Section
+        title="Notifications"
+        desc="A fine-grained personal access token can read repository content, but GitHub serves notifications only to a classic token with the notifications scope. Set the Notifications token below for the retained single inbox. It stays bound to the server where it was set."
+      >
         <Setting
           name="Notifications token"
-          desc="Optional. A classic personal access token with the notifications scope, used only by the notifications panel: GitHub does not let a fine-grained token read notifications. Empty: the panel uses the token above. Stored in the keychain."
+          desc="Optional. A classic personal access token with the notifications scope, used only by the notifications panel: GitHub does not let a fine-grained token read notifications. Empty: the panel uses the default connection. Stored in the keychain."
         >
           <SecretField
             v-model="notificationsInput"
@@ -89,38 +106,6 @@
             </template>
           </SecretField>
         </Setting>
-
-        <Setting
-          name="Server"
-          desc="Only for GitHub Enterprise: its address, like https://github.example.com. Leave empty for github.com."
-        >
-          <Input
-            :model-value="settings.server"
-            placeholder="github.com"
-            @update:model-value="updateServer"
-          />
-        </Setting>
-
-        <Setting
-          name="Check access"
-          desc="Ask GitHub what the token can read. Give a repository — owner/name or any link into it — to try each permission on it; leave it empty to see only whose token it is."
-        >
-          <div class="abele-github-settings__row abele-github-settings__row_wrap">
-            <Input
-              v-model="checkRepo"
-              class="abele-github-settings__repo"
-              placeholder="owner/repo or a GitHub link"
-            />
-            <Button
-              text="Check"
-              :disabled="checking"
-              tooltip="Send a few read requests to GitHub with the token and show what each one answers"
-              @click="check"
-            />
-          </div>
-        </Setting>
-        <EmptyState v-if="checkResult" :text="checkResult" />
-        <GithubAccessReport v-if="report" :report="report" />
       </Section>
 
       <Section title="Pages" desc="How a GitHub tab lays out what it shows.">
@@ -202,14 +187,23 @@
       </Section>
     </template>
 
+    <GithubConnectionEditor
+      v-if="editingConnection"
+      :connection="editingConnection"
+      :connections="settings.connections"
+      :is-new="newConnection"
+      :check-on-open="checkOnOpen"
+      :error-message="connectionMessage"
+      @save="saveConnection"
+      @close="editingConnection = null"
+    />
     <ConfirmModal
-      v-if="confirmingForget"
-      title="Forget the GitHub token"
-      message="Remove the token from the keychain? Private repositories and discussions stop opening until a new one is set."
-      confirm-text="Forget"
-      confirm-tooltip="Remove the token from the keychain"
-      @confirm="forgetToken"
-      @close="confirmingForget = false"
+      v-if="deletingConnection"
+      title="Delete GitHub connection"
+      :message="`Delete ${deletingConnection.name}? Its local token will be forgotten; other connections are kept.`"
+      confirm-tooltip="Delete this connection and forget its local token"
+      @confirm="deleteConnection"
+      @close="deletingConnection = null"
     />
     <ConfirmModal
       v-if="confirmingForgetNotifications"
@@ -237,41 +231,121 @@ import Icon from '../obsidian/Icon.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
-import GithubAccessReport from './GithubAccessReport.vue'
+import GithubConnectionEditor from './GithubConnectionEditor.vue'
+import { keychainId } from '@/secrets/keychainId'
+import type { GithubConnection } from '@/github/connections'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,
-  GITHUB_TOKEN_KEY_ID,
   githubSettingsFrom,
   type GithubSettings,
 } from '@/github/settings'
-import { checkGithubAccess, resetGithubClients } from '@/github/GithubService'
-import type { AccessReport } from '@/github/accessCheck'
+import { resetGithubClients } from '@/github/GithubService'
 import { githubUsers } from '@/github/users'
 import { PAGE_WIDTH_MAX, PAGE_WIDTH_MIN } from '@/github/pageWidth'
 import { projectLegacy } from '@/github/connections'
+import { endpoints } from '@/github/urls'
 
 const config = AbeleConfig.getInstance()
+const editingConnection = ref<GithubConnection | null>(null)
+const deletingConnection = ref<GithubConnection | null>(null)
+const newConnection = ref(false)
+const checkOnOpen = ref(false)
+const connectionMessage = ref('')
+let originalConnection = ''
+
+const connectionDescription = (connection: GithubConnection) => {
+  void secrets().version.value
+  const token = connection.keyId ? secrets().get(connection.keyId) : ''
+  const available = token
+    ? 'Token available on this device'
+    : secrets().status.value === 'locked'
+      ? 'Synced keys locked'
+      : 'No token on this device'
+  const expiry = connection.expiresAt ? Date.parse(connection.expiresAt) - Date.now() : Infinity
+  return [
+    connection.account?.login ?? 'Account not checked',
+    connection.server || 'github.com',
+    available,
+    expiry < 7 * 86400000 ? 'Token expires within seven days' : '',
+    connection.owners.join(', '),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+const editConnection = (connection: GithubConnection, check = false) => {
+  newConnection.value = false
+  originalConnection = JSON.stringify(connection)
+  checkOnOpen.value = check
+  editingConnection.value = connection
+}
+const addConnection = () => {
+  newConnection.value = true
+  checkOnOpen.value = false
+  const id = crypto.randomUUID()
+  editingConnection.value = {
+    id,
+    name: '',
+    server: '',
+    keyId: keychainId('abele-gh', id),
+    owners: [],
+    isDefault: false,
+  }
+}
+async function saveConnection(connection: GithubConnection, token?: string | null): Promise<void> {
+  connection = { ...connection, keyId: connection.keyId || keychainId('abele-gh', connection.id) }
+  const current = githubSettingsFrom(config.github)
+  const index = current.connections.findIndex((c) => c.id === connection.id)
+  if (
+    !newConnection.value &&
+    (index < 0 || JSON.stringify(current.connections[index]) !== originalConnection)
+  ) {
+    connectionMessage.value =
+      'This connection changed elsewhere. Close this draft and edit its current settings.'
+    return
+  }
+  try {
+    if (token !== undefined) secrets().set(connection.keyId, token ?? '')
+  } catch {
+    connectionMessage.value =
+      'Could not save the token to the keychain. Nothing was changed; try again.'
+    return
+  }
+  if (connection.isDefault) {
+    const origin = endpoints(connection.server).origin
+    current.connections = current.connections.map((c) =>
+      endpoints(c.server).origin === origin ? { ...c, isDefault: false } : c
+    )
+  }
+  if (index < 0) current.connections.push(connection)
+  else current.connections[index] = connection
+  config.github = projectLegacy(githubSettingsFrom(current))
+  Object.assign(settings, config.github)
+  await config.saveSettings()
+  editingConnection.value = null
+  connectionMessage.value = ''
+}
+async function deleteConnection(): Promise<void> {
+  const connection = deletingConnection.value
+  if (!connection) return
+  const current = githubSettingsFrom(config.github)
+  current.connections = current.connections.filter((c) => c.id !== connection.id)
+  // An imported duplicate secret slot may still belong to another connection.
+  if (connection.keyId && !current.connections.some((c) => c.keyId === connection.keyId))
+    secrets().forgetLocal(connection.keyId)
+  config.github = projectLegacy(githubSettingsFrom(current))
+  Object.assign(settings, config.github)
+  await config.saveSettings()
+  deletingConnection.value = null
+}
 
 const settings = reactive<GithubSettings>(githubSettingsFrom(config.github))
-const tokenInput = ref('')
 const secretVersion = ref(0)
-const checking = ref(false)
-const checkResult = ref('')
-const checkRepo = ref('')
-const report = ref<AccessReport | null>(null)
-const confirmingForget = ref(false)
 const notificationsInput = ref('')
 const confirmingForgetNotifications = ref(false)
 
 // Settings changed on disk — synced from another device — are shown rather than overwritten.
 watch(config.version, () => Object.assign(settings, githubSettingsFrom(config.github)))
-
-const stored = computed(() => {
-  void secretVersion.value
-  void secrets().version.value
-  return settings.keyId ? secrets().get(settings.keyId) : ''
-})
 
 const storedNotifications = computed(() => {
   void secretVersion.value
@@ -283,9 +357,6 @@ const storedNotifications = computed(() => {
 const save = async () => {
   config.github = projectLegacy(githubSettingsFrom(settings))
   Object.assign(settings, config.github)
-  resetGithubClients()
-  checkResult.value = ''
-  report.value = null
   await config.saveSettings()
 }
 
@@ -348,30 +419,6 @@ const toggle = (key: 'enabled' | 'openLinks') => {
 
 const saveServer = debounce((): void => void save(), 500)
 
-const updateServer = (value: string) => {
-  const oldServer = settings.server
-  settings.server = value.trim()
-  const active = settings.connections.find((c) => c.server === oldServer && c.isDefault)
-  if (active) {
-    active.server = settings.server
-    active.account = undefined
-    active.checkedAt = undefined
-    active.expiresAt = undefined
-  } else if (settings.server && !settings.connections.length) {
-    settings.connections = [
-      {
-        id: 'github-legacy',
-        name: 'GitHub Enterprise',
-        server: settings.server,
-        keyId: settings.keyId,
-        owners: [],
-        isDefault: true,
-      },
-    ]
-  }
-  saveServer()
-}
-
 /** `owner/repo` of a pinned address, and the server it is on. */
 const pinName = (url: string) => {
   try {
@@ -404,49 +451,6 @@ const updateSearchLimit = (value: string) => {
   saveServer()
 }
 
-const saveToken = () => {
-  const value = tokenInput.value.trim()
-  if (!value) return
-  const active = settings.connections.find((c) => c.server === settings.server && c.isDefault)
-  const keyId = active?.keyId || settings.keyId || GITHUB_TOKEN_KEY_ID
-  settings.keyId = keyId
-  if (active) {
-    active.keyId = keyId
-    active.account = undefined
-    active.checkedAt = undefined
-    active.expiresAt = undefined
-  } else {
-    settings.connections = [
-      {
-        id: 'github-legacy',
-        name: settings.server ? 'GitHub Enterprise' : 'GitHub',
-        server: settings.server,
-        keyId,
-        owners: [],
-        isDefault: true,
-      },
-    ]
-  }
-  secrets().set(keyId, value)
-  tokenInput.value = ''
-  secretVersion.value++
-  void save()
-}
-
-const forgetToken = () => {
-  if (settings.keyId) secrets().set(settings.keyId, '')
-  const active = settings.connections.find((c) => c.server === settings.server && c.isDefault)
-  if (active) {
-    active.keyId = ''
-    active.account = undefined
-    active.checkedAt = undefined
-    active.expiresAt = undefined
-  }
-  settings.keyId = ''
-  secretVersion.value++
-  void save()
-}
-
 const saveNotificationsToken = () => {
   const value = notificationsInput.value.trim()
   if (!value) return
@@ -458,6 +462,7 @@ const saveNotificationsToken = () => {
   secrets().set(GITHUB_NOTIFICATIONS_TOKEN_KEY_ID, value)
   notificationsInput.value = ''
   secretVersion.value++
+  resetGithubClients()
   void save()
 }
 
@@ -466,21 +471,8 @@ const forgetNotificationsToken = () => {
   if (keyId) secrets().set(keyId, '')
   settings.notifications = { keyId: '' }
   secretVersion.value++
+  resetGithubClients()
   void save()
-}
-
-const check = async () => {
-  checking.value = true
-  report.value = null
-  checkResult.value = 'Asking GitHub…'
-  try {
-    report.value = await checkGithubAccess(checkRepo.value)
-    checkResult.value = ''
-  } catch (e) {
-    checkResult.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    checking.value = false
-  }
 }
 </script>
 

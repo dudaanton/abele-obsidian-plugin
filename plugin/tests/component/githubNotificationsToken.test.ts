@@ -7,6 +7,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
 import SecretField from '@/components/settings/SecretField.vue'
+import Button from '@/components/obsidian/Button.vue'
+import Input from '@/components/obsidian/Input.vue'
+import ConnectionEditor from '@/components/settings/GithubConnectionEditor.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -54,12 +57,21 @@ describe('the notifications token setting', () => {
       enabled: true,
     })
     const view = mount(GithubSettings)
-    const field = view
-      .findAllComponents(SecretField)
+    view
+      .findAllComponents(Button)
+      .find((b) => b.props('text') === 'Edit')!
+      .vm.$emit('click')
+    await flushPromises()
+    const editor = view.findComponent(ConnectionEditor)
+    const field = editor
+      .findAllComponents(Input)
       .find((f) => f.props('placeholder') === 'github_pat_...')!
     field.vm.$emit('update:model-value', 'github_pat_new')
     await flushPromises()
-    field.vm.$emit('save')
+    editor
+      .findAllComponents(Button)
+      .find((b) => b.props('text') === 'Save')!
+      .vm.$emit('click')
     await flushPromises()
     expect(AbeleConfig.getInstance().github.connections[0].keyId).toBe('custom-slot')
     expect(app.secretStorage.getSecret('custom-slot')).toBe('github_pat_new')

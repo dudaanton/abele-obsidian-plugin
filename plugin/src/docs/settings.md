@@ -134,9 +134,12 @@ means the plugin's own, which needs no key and no account.
 `github.enabled` is the whole integration, off unless the person turned it on: GitHub issues,
 pull requests, discussions, commits and files at a ref open in tabs of their own, read only.
 `github.openLinks` decides whether a click on such a link in a note opens that tab instead of
-the browser. `github.server` is a GitHub Enterprise address, empty for github.com.
-`github.keyId` names the keychain slot holding the person's fine-grained token and, like every
-key, is out of reach of these tools. The token needs read access to Contents, Issues, Pull
+the browser. `github.connections` lists named connections with stable IDs, a `server` address
+(empty for github.com), `owners` preferences and `isDefault` per server. Optional `account`
+metadata is discovered by the access check, not typed by an agent. Every connection's `keyId`
+names its keychain slot and is out of reach of these tools. `github.server` and `github.keyId`
+remain compatibility projections for old plugin versions, not a second list of connections.
+The token needs read access to Contents, Issues, Pull
 requests and Discussions; without one only public repositories open, and discussions not at all.
 While it is on, agents also have the read-only GitHub tools (the `tools` section, GitHub); with it
 off they are not offered at all.

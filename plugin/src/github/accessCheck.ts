@@ -82,6 +82,7 @@ export interface AccessReport {
   /** Why no token was sent although one is set, when that is the case. */
   tokenNote?: string
   login?: string
+  avatarUrl?: string
   /** Why `/user` failed, when it did. */
   identityError?: string
   /** When the token stops working, as GitHub reports it for a token with an expiry. */
@@ -205,7 +206,9 @@ export async function checkAccess({
   }
 
   const identity = client.hasToken
-    ? client.probe<{ login?: string }>('/user', { what: 'the account the token belongs to' })
+    ? client.probe<{ login?: string; avatar_url?: string }>('/user', {
+        what: 'the account the token belongs to',
+      })
     : client.probe<{ rate?: { remaining: number; limit: number } }>('/rate_limit', {
         what: 'the request limit',
       })
@@ -235,8 +238,13 @@ export async function checkAccess({
   } else if (who.error) {
     report.identityError = who.error.message
   } else {
-    const body = who.body as { login?: string; rate?: { remaining: number; limit: number } } | null
+    const body = who.body as {
+      login?: string
+      avatar_url?: string
+      rate?: { remaining: number; limit: number }
+    } | null
     report.login = body?.login
+    report.avatarUrl = body?.avatar_url
     report.expires = header(who.headers, 'github-authentication-token-expiration')
     report.scopes = header(who.headers, 'x-oauth-scopes')
     const remaining = body?.rate?.remaining ?? header(who.headers, 'x-ratelimit-remaining')

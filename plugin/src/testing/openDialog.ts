@@ -1,4 +1,12 @@
-import { createApp, type Component } from 'vue'
+import {
+  createApp,
+  defineComponent,
+  h,
+  onUnmounted,
+  onMounted,
+  nextTick,
+  type Component,
+} from 'vue'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
@@ -25,6 +33,11 @@ import TransferPreviewModal from '@/components/settings/transfer/TransferPreview
 import TransferScanModal from '@/components/settings/transfer/TransferScanModal.vue'
 import AgentEditorModal from '@/components/settings/ai/AgentEditorModal.vue'
 import LintRuleModal from '@/components/settings/LintRuleModal.vue'
+import GithubConnectionEditor from '@/components/settings/GithubConnectionEditor.vue'
+import GithubSettings from '@/components/settings/GithubSettings.vue'
+import ObsidianModal from '@/components/obsidian/Modal.vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { githubSettingsFrom } from '@/github/settings'
 import { BUILTIN_RULES } from '@/linter/rules'
 import { DEFAULT_LINTER_SETTINGS, ruleSetting } from '@/linter/settings'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -41,7 +54,11 @@ export const repairExamples = (count: number): HighlightRepairCandidate[] =>
     suggested: `epubcfi(/6/2!/4/${i * 2 + 3}:1)`,
     text: `Fabricated sample passage ${i + 1} with enough words to wrap in a narrow dialog and describe a proposed location.`,
     label: `Sample chapter ${i + 1} — an intentionally long chapter label`,
-    context: { pre: 'A short invented paragraph before the passage. ', match: 'Fabricated sample passage', post: ' and an invented paragraph after it.' },
+    context: {
+      pre: 'A short invented paragraph before the passage. ',
+      match: 'Fabricated sample passage',
+      post: ' and an invented paragraph after it.',
+    },
     anchored: i !== 0,
   }))
 
@@ -140,6 +157,59 @@ const DIALOGS: Record<string, () => void> = {
       codes: 1,
     }),
   'transfer-scan': () => mountAlone(TransferScanModal),
+  'github-connections': () => {
+    const config = AbeleConfig.getInstance()
+    const original = config.github
+    config.github = githubSettingsFrom({
+      enabled: true,
+      connections: Array.from({ length: 8 }, (_, i) => ({
+        id: `sample-${i}`,
+        name: `Sample connection ${i + 1} with a long descriptive name`,
+        server: 'https://github.enterprise.sample.example.test:8443',
+        keyId: '',
+        owners: ['sample-organization/long-repository-name'],
+        isDefault: i === 0,
+        account: { login: `sample-account-${i + 1}` },
+      })),
+    })
+    mountAlone(
+      defineComponent({
+        emits: ['close'],
+        setup(_props, { emit }) {
+          onUnmounted(() => {
+            config.github = original
+          })
+          onMounted(() => {
+            void nextTick(() => {
+              const heading = Array.from(
+                document.querySelectorAll('.abele-settings__github .abele-section__heading')
+              ).find((el) => el.textContent === 'Connections')
+              heading?.scrollIntoView({ block: 'start' })
+            })
+          })
+          return () =>
+            h(
+              ObsidianModal,
+              { title: 'GitHub connections', size: 'tall', onClose: () => emit('close') },
+              { default: () => h(GithubSettings) }
+            )
+        },
+      })
+    )
+  },
+  'github-connection': () =>
+    mountAlone(GithubConnectionEditor, {
+      connection: {
+        id: 'sample-connection',
+        name: 'An intentionally long connection name for a narrow screen',
+        server: 'https://github.enterprise.sample.example.test:8443',
+        keyId: '',
+        owners: ['sample-organization', 'sample-organization/long-repository-name', 'sample-*'],
+        isDefault: true,
+        account: { login: 'sample-enterprise-account' },
+      },
+      connections: [],
+    }),
   'agent-editor': () =>
     mountAlone(AgentEditorModal, { agentId: AgentRegistry.getInstance().list()[0]?.id ?? '' }),
   // A rule with settings of its own, its changes going nowhere.
@@ -156,7 +226,8 @@ const DIALOGS: Record<string, () => void> = {
     }),
   'discussion-remove': () => void askWhatToRemove(HIGHLIGHT),
   'book-repair-one': () => void askToRepairLinks(GlobalStore.getInstance().app, repairExamples(1)),
-  'book-repair-many': () => void askToRepairLinks(GlobalStore.getInstance().app, repairExamples(12)),
+  'book-repair-many': () =>
+    void askToRepairLinks(GlobalStore.getInstance().app, repairExamples(12)),
 }
 
 /** The names `openDialog` knows, for a probe to walk. */

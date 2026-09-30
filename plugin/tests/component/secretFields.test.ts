@@ -27,12 +27,14 @@ vi.mock('@/secrets/clipboard', async (importOriginal) => {
 import SecretField from '@/components/settings/SecretField.vue'
 import GeneralSettings from '@/components/settings/ai/GeneralSettings.vue'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
+import Button from '@/components/obsidian/Button.vue'
+import ConnectionEditor from '@/components/settings/GithubConnectionEditor.vue'
 import FinanceSettings from '@/components/settings/FinanceSettings.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import { CLEAR_AFTER_MS } from '@/secrets/clipboard'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
-import { GITHUB_TOKEN_KEY_ID, DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
+import { GITHUB_TOKEN_KEY_ID, githubSettingsFrom } from '@/github/settings'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { voiceKeyId } from '@/ai/transcriptionSettings'
 import { DEFAULT_VOICE_SETTINGS } from '@/ai/transcriptionSettings'
@@ -185,14 +187,19 @@ describe('the AI settings', () => {
 
 describe('the GitHub token', () => {
   it('can be shown and copied where it is entered', async () => {
-    AbeleConfig.getInstance().github = {
-      ...DEFAULT_GITHUB_SETTINGS,
+    AbeleConfig.getInstance().github = githubSettingsFrom({
       enabled: true,
       keyId: GITHUB_TOKEN_KEY_ID,
-    }
+    })
     app.secretStorage.setSecret(GITHUB_TOKEN_KEY_ID, 'fake-github-value')
     const view = mount(GithubSettings)
-    const field = fieldHolding(view, 'fake-github-value')!
+    view
+      .findAllComponents(Button)
+      .find((b) => b.props('text') === 'Edit')!
+      .vm.$emit('click')
+    await flushPromises()
+    const editor = view.findComponent(ConnectionEditor)
+    const field = fieldHolding(editor, 'fake-github-value')!
     expect(view.text()).not.toContain('fake-github-value')
 
     await icon(field, 'Show the key')!.trigger('click')

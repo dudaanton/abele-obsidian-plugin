@@ -400,7 +400,14 @@ list does not reimport an old token. Connection entries can be selected individu
 transfer; keys travel only when the transfer includes keys. The separate notifications credential
 is still part of the GitHub general settings block. Its `boundKeyId` and `boundServer` retain
 its original server when the projected default moves to another host; the old-version
-`notifications.keyId` is blanked if the old plugin would send it to the wrong host.
+`notifications.keyId` is blanked if the old plugin would send it to the wrong host. Deleting a
+connection forgets its local keychain slot, not the encrypted shared copy another device may
+still use; unused shared keys can be revoked deliberately in the synced-key catalog.
+
+Repository trees, downloaded search indexes and pending builds use an opaque credential
+generation, not a host/repository-only key. These are session memory, never settings or note
+files. Token replacement, server edits, connection removal and key-store lock changes retire
+the previous generation; a retired request cannot publish a late result.
 
 ## GitHub links
 

@@ -46,7 +46,7 @@ const HIDDEN = [
 ]
 
 /** Key names that hold a secret wherever they turn up, however deep. */
-export const SECRET_KEYS = /^(apiKeyId|keyId|apiKey|token|secret|password|secretStore)$/i
+export const SECRET_KEYS = /^(apiKeyId|keyId|boundKeyId|apiKey|token|secret|password|secretStore)$/i
 
 /** What a secret reads as in anything returned, and what an echo of it is recognised by. */
 export const HIDDEN_VALUE = '<hidden>'

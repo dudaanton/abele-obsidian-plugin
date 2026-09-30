@@ -17,11 +17,19 @@ large READMEs with many unmatched backticks no longer repeatedly rescan the enti
 The integration is off until you turn it on in **Settings → Abele → GitHub**. Without a token only
 public repositories open, and discussions not at all. For private repositories, create a
 fine-grained personal access token on GitHub with read-only access to **Contents**, **Issues**,
-**Pull requests** and **Discussions**, and paste it into the **Token** field. It is kept in the
-device's keychain. **Check access** tells you what the token can read, and why a request was
-refused.
+**Pull requests** and **Discussions**. Under **Connections**, choose **Add connection**, give it
+a name and paste the token into its editor. The token is kept in the keychain only when you
+choose **Save**; checking access or cancelling does not store it. **Check access** discovers the
+account and tests repository permissions with that connection alone. A repository on another
+server needs its own connection.
 
-GitHub Enterprise works too: put your server's address in **Server**.
+Each connection has a server (empty is github.com), an optional repository-owner list, and a
+**Default for this server** mark. Exactly one connection is default on each configured server.
+GitHub Enterprise addresses may include an explicit scheme and port. Existing token/server
+settings migrate to one connection with the same keychain slot, without re-entering a token.
+The list travels as individually selectable entries in settings transfer, with tokens only when
+keys are included. Synced keys include every connection. Delete asks for confirmation and
+forgets the local slot without revoking the shared token on other devices.
 
 ## What opens in a tab
 
@@ -68,7 +76,10 @@ often as GitHub allows, and the refresh button asks at once.
 GitHub lets only a **classic** personal access token read notifications, with the
 **notifications** scope (or **repo**). A fine-grained token cannot, whatever it is given. Put a
 classic one in **Settings → Abele → GitHub → Notifications token**: the panel reads with it, and
-everything else keeps your main token. Left empty, the panel uses the main token.
+everything else keeps the default connection's token. This classic token stays bound to the
+server where it was set, even if the default moves to another host. Left empty, the panel uses
+the default connection's token. The existing single inbox is retained; adding connections does
+not combine their notifications.
 
 ## Linking and quoting
 

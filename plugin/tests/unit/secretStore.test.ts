@@ -60,6 +60,22 @@ function device(on: Shared, ids: string[] = []): Device {
 afterEach(() => vi.restoreAllMocks())
 
 describe('turning the store on', () => {
+  it('forgetting a deleted connection locally does not revoke a shared token on other devices', async () => {
+    const on = shared()
+    const local = device(on, ['sample-connection-key'])
+    local.keychain.setSecret('sample-connection-key', 'invented-token')
+    await local.store.enable('sample-passphrase', FAST)
+    const writes = local.writes
+    local.store.forgetLocal('sample-connection-key')
+    await local.store.flush()
+    expect(local.keychain.getSecret('sample-connection-key')).toBeNull()
+    expect(local.writes).toBe(writes)
+    const other = device(on, ['sample-connection-key'])
+    await other.store.load()
+    await other.store.unlock('sample-passphrase')
+    expect(other.store.get('sample-connection-key')).toBe('invented-token')
+  })
+
   it('moves the secrets the settings point at into it, and nothing else from the keychain', async () => {
     const on = shared()
     const mac = device(on, ['abele-github-token', 'abele-brave-search', 'abele-empty'])

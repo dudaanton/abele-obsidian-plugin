@@ -10,11 +10,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import { requestUrl } from 'obsidian'
-import GithubSettings from '@/components/settings/GithubSettings.vue'
-import Button from '@/components/obsidian/Button.vue'
+import GithubAccessReport from '@/components/settings/GithubAccessReport.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GITHUB_TOKEN_KEY_ID, DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
-import { resetGithubClients } from '@/github/GithubService'
+import { resetGithubClients, checkGithubAccess } from '@/github/GithubService'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -23,7 +22,9 @@ vi.mock('obsidian', async (importOriginal) => ({
   requestUrl: vi.fn(),
 }))
 
-vi.mock('@/github/transport', async () => ({ singleHopRequest: (await import('obsidian')).requestUrl }))
+vi.mock('@/github/transport', async () => ({
+  singleHopRequest: (await import('obsidian')).requestUrl,
+}))
 
 const TOKEN = 'github_pat_SECRETVALUE0123456789' // made up — repo-guard: allow
 
@@ -56,15 +57,25 @@ const REFUSED = {
   json: { message: 'Resource not accessible by personal access token' },
 }
 
-const open = () => mount(GithubSettings, { attachTo: document.body })
+// Preserve the legacy facade's reports and host-selection guarantees. Connection-editor
+// interactions (including rejecting a cross-server draft) have their own component suite.
+const open = () =>
+  mount(GithubAccessReport, {
+    attachTo: document.body,
+    props: {
+      report: {
+        api: '',
+        host: '',
+        tokenHost: '',
+        tokenConfigured: false,
+        token: { attached: false, length: 0, kind: 'none' },
+        rows: [],
+      } as never,
+    },
+  })
 
 async function check(wrapper: ReturnType<typeof open>, repo = '') {
-  if (repo)
-    await wrapper
-      .find('.abele-github-settings__repo input, input.abele-github-settings__repo')
-      .setValue(repo)
-  const button = wrapper.findAllComponents(Button).find((b) => b.props('text') === 'Check')!
-  await button.trigger('click')
+  await wrapper.setProps({ report: await checkGithubAccess(repo) })
   await flushPromises()
 }
 
