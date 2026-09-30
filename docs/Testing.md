@@ -211,7 +211,11 @@ Three files, three concerns:
   cleanup, and a past-row anchor after reopening. On desktop, renders a frozen pre-history stylesheet on
   the same live DOM/build/theme path (retaining only the intentional new banner rule), captures
   the original date block in place, and asserts identical bounds and zero changed pixels. A
-  one-pixel row translation must fail the comparison. The reference build is cached under
+  one-pixel row translation must fail the comparison. The counted banner stays available to hide
+  history again: hide/reveal cycles hold surviving rows within 1 px; hiding the read past region
+  puts the nearest remaining row at its read position. Short-list collapse releases unnecessary
+  spacer room, and reopening a footer restores both revealed and hidden history states.
+  The reference build is cached under
   `plugin/node_modules/.cache/timeline-style-reference/` with its own locked dependencies;
   before/after/canary pictures go to the run's `task-timeline` screenshot directory.
 - `drawerPanels.e2e.test.ts` — **every sidebar opened into a closed phone drawer**. Opens each

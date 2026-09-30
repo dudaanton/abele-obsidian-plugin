@@ -28,6 +28,12 @@ interface Probe {
   hiddenAnchor?: number[]
   futureAnchor?: number[]
   revealAnchor?: number[]
+  collapseAnchor?: number[]
+  rerevealAnchor?: number[]
+  removedPastAnchor?: number[]
+  collapsed?: string[]
+  collapseSummary?: string
+  restoredCollapsed?: boolean
   scrollRevealed?: string[]
   nativeInput?: boolean
   nativeScroll?: number[]
@@ -99,6 +105,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     const strip = () => root.querySelector('.abele-timeline__history')
     const revealClick = async () => {
       const el = strip()
+      const expanded = el.getAttribute('aria-expanded')
       if (window.__e2eHost) {
         const r = el.getBoundingClientRect()
         const x = r.left + r.width / 2, y = r.top + r.height / 2
@@ -108,7 +115,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
         try {
           await window.__e2eHost.tap(x, y)
           await wait(200)
-          if (el.isConnected) throw Error('Banner tap did not reveal history: ' + JSON.stringify({ x, y, hit: document.elementFromPoint(x, y)?.className, received }))
+          if (!el.isConnected || el.getAttribute('aria-expanded') === expanded) throw Error('Banner tap did not toggle history: ' + JSON.stringify({ x, y, hit: document.elementFromPoint(x, y)?.className, received }))
         } finally {
           for (const type of ['touchstart', 'touchend', 'click']) document.removeEventListener(type, record, true)
         }
@@ -216,6 +223,11 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       await wait(1200)
       report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
       report.revealed = dates()
+      const beforeCollapse = row(0).getBoundingClientRect().top
+      await revealClick()
+      await wait(1200)
+      report.collapseAnchor = [beforeCollapse, row(0).getBoundingClientRect().top]
+      report.collapsed = dates()
       root.querySelector('.abele-timeline__search-toggle').click()
       await wait(100)
       const input = root.querySelector('.abele-timeline__search input')
@@ -329,6 +341,24 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     root.querySelector('.abele-timeline__completed-toggle').click()
     await wait(1200)
     report.futureAnchor = [futureBefore, row(25)?.getBoundingClientRect().top ?? -9999]
+    const beforeCollapse = row(25).getBoundingClientRect().top
+    await revealClick()
+    await wait(1200)
+    report.collapseAnchor = [beforeCollapse, row(25).getBoundingClientRect().top]
+    report.collapsed = dates()
+    report.collapseSummary = strip()?.textContent.trim() ?? null
+    const beforeRereveal = row(25).getBoundingClientRect().top
+    await revealClick()
+    await wait(1200)
+    report.rerevealAnchor = [beforeRereveal, row(25).getBoundingClientRect().top]
+    align(row(-40)); await wait(1000)
+    const removedBefore = row(-40).getBoundingClientRect().top
+    await revealClick()
+    await wait(1200)
+    report.removedPastAnchor = [removedBefore, row(0, 0).getBoundingClientRect().top]
+    await shot('hidden-past')
+    await revealClick()
+    await wait(1200)
     if (${footer}) {
       // A past row's saved anchor is useful only if reopening actually recreates that day.
       root.querySelector('.abele-timeline__completed-toggle').click()
@@ -344,6 +374,15 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       const returned = [...(reopened?.querySelectorAll('.abele-task-view') ?? [])].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item -1 1.md')
       report.restoredHistory = !!returned
       report.restoredAnchor = [beforeReturn, returned ? returned.getBoundingClientRect().top - leaf.view.containerEl.querySelector('.cm-scroller').getBoundingClientRect().top : -9999]
+      reopened.querySelector('.abele-timeline__history').click()
+      await wait(1200)
+      await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample item 0 1.md'))
+      await wait(500)
+      await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample group.md'))
+      await wait(2000)
+      const foldedAgain = leaf.view.containerEl.querySelector('.abele-timeline')
+      report.restoredCollapsed = foldedAgain?.querySelector('.abele-timeline__history')?.getAttribute('aria-expanded') === 'false' &&
+        ![...foldedAgain.querySelectorAll('.abele-timeline__date-block')].some(x => x.dataset.abeleAnchor < 'date:' + day(0))
     }
   } catch (e) { report.error = String(e) + '\n' + (e?.stack ?? '') }
   finally { leaf?.detach(); config.rememberNotePlaces = remembered }
@@ -409,7 +448,8 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.error).toBeUndefined()
           expect(p.emptySpace).toBe(0)
           expect(p.revealed).toHaveLength(2)
-          for (const pair of [p.anchored, p.hiddenAnchor, p.revealAnchor]) {
+          expect(p.collapsed).toHaveLength(1)
+          for (const pair of [p.anchored, p.hiddenAnchor, p.revealAnchor, p.collapseAnchor]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
           }
@@ -432,12 +472,25 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(Math.abs(displacement - p.nativeDistance!)).toBeLessThanOrEqual(24)
           expect(p.nativeSettled).toBeGreaterThanOrEqual(displacement - 2)
           expect(p.revealed).toHaveLength(65)
-          expect(p.countAfter).toBeNull()
+          expect(p.countAfter).toContain('90 unfinished · Hide all')
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
           expect(p.sticky).toBeLessThanOrEqual(2)
           expect(p.overflow).toBeLessThanOrEqual(1)
           expect(p.revealAnchor).toHaveLength(2)
           expect(Math.abs(p.revealAnchor![1] - p.revealAnchor![0])).toBeLessThanOrEqual(1)
+        }
+      )
+      it.skipIf(kind === 'desktop' && onPhone())(
+        `${kind}, ${owner}: hides and reopens history without moving a surviving row, or replaces a removed past row with its nearest remaining row`,
+        () => {
+          const p = probe()
+          expect(p.error).toBeUndefined()
+          expect(p.collapsed!.every((date) => date >= p.initial![0])).toBe(true)
+          expect(p.collapseSummary).toContain('90 unfinished · Show all')
+          for (const pair of [p.collapseAnchor, p.rerevealAnchor, p.removedPastAnchor]) {
+            expect(pair).toHaveLength(2)
+            expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
+          }
         }
       )
       if (index === 1)
@@ -447,6 +500,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
             const p = probe()
             expect(p.error).toBeUndefined()
             expect(p.restoredHistory).toBe(true)
+            expect(p.restoredCollapsed).toBe(true)
             expect(p.restoredAnchor).toHaveLength(2)
             expect(Math.abs(p.restoredAnchor![1] - p.restoredAnchor![0])).toBeLessThanOrEqual(2)
           }
