@@ -46,6 +46,24 @@ function maplibreWorkerPlugin(prod: boolean) {
   }
 }
 
+/** Carry the HEIC decoder as inert worker source in the single-file release. */
+function heicWorkerPlugin(prod: boolean) {
+  const id = 'virtual:heic-worker'
+  return {
+    name: 'abele-heic-worker',
+    resolveId(source: string) { return source === id ? '\0' + id : null },
+    async load(source: string) {
+      if (source !== '\0' + id) return null
+      const bundled = await esbuild({
+        entryPoints: [path.resolve(__dirname, 'src/media/heicWorker.ts')],
+        bundle: true, write: false, format: 'iife', platform: 'browser',
+        minify: prod, target: 'es2020',
+      })
+      return `export default ${JSON.stringify(bundled.outputFiles[0].text)}`
+    },
+  }
+}
+
 export default defineConfig(async ({ mode }) => {
   const { resolve } = path
   const prod = mode === 'production'
@@ -59,6 +77,7 @@ export default defineConfig(async ({ mode }) => {
     plugins: [
       vue(),
       maplibreWorkerPlugin(prod),
+      heicWorkerPlugin(prod),
       {
         name: 'abele-changelog',
         resolveId(id: string) {

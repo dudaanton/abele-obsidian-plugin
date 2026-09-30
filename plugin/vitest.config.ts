@@ -18,6 +18,7 @@ export default defineConfig({
       // start WebGL, but Vite still has to resolve the dynamic import while collecting files.
       'virtual:maplibre-worker': path.resolve(__dirname, 'tests/mocks/maplibreWorker.ts'),
       'virtual:abele-changelog': path.resolve(__dirname, 'tests/mocks/changelog.ts'),
+      'virtual:heic-worker': path.resolve(__dirname, 'tests/mocks/heicWorker.ts'),
     },
   },
   test: {
