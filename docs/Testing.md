@@ -201,6 +201,15 @@ Three files, three concerns:
   them. Writes a PNG of every screen to `/tmp/abele-phone/` — **look at them before a release**;
   the 1.18.0 dialog passed every measurement anyone had thought to make and was still wrong to
   the eye. Restores desktop mode and the window size after itself.
+- `taskTimelineScroll.e2e.test.ts` — **folded history and stable task anchors**, in the sidebar
+  and note footer, at desktop and phone width and on the real phone. Measures swipe displacement
+  from the touch events received by the page, completed-toggle anchors, spacer cleanup, and a
+  past-row anchor after reopening. On desktop, also renders a frozen pre-history stylesheet on
+  the same live DOM/build/theme path (retaining only the intentional new banner rule), captures
+  the original date block in place, and asserts identical bounds and zero changed pixels. A
+  one-pixel row translation must fail the comparison. The reference build is cached under
+  `plugin/node_modules/.cache/timeline-style-reference/` with its own locked dependencies;
+  before/after/canary pictures go to the run's `task-timeline` screenshot directory.
 - `drawerPanels.e2e.test.ts` — **every sidebar opened into a closed phone drawer**. Opens each
   panel into the folded right drawer under `emulateMobile`, slides the drawer open and checks the
   pane holds something. A panel teleported by selector mounted nowhere there. Pictures go to

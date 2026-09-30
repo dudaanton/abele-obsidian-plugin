@@ -3,12 +3,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { timelineStyleReference } from './helpers/timelineStyleReference'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const FOLDER = 'Sample timeline probe'
 const SHOTS = shotDir('task-timeline')
 const PHASE = process.env.TIMELINE_SHOT_PHASE ?? 'after'
+let referenceCss = ''
 interface Probe {
   error?: string
   initial?: string[]
@@ -19,6 +21,13 @@ interface Probe {
   hiddenAnchor?: number[]
   futureAnchor?: number[]
   revealAnchor?: number[]
+  revealInput?: number
+  appearancePixels?: number
+  appearanceCanary?: number
+  appearanceRects?: number[][]
+  emptySpace?: number
+  restoredHistory?: boolean
+  restoredAnchor?: number[]
   lazy?: boolean
   sticky?: number
   chromeGap?: number
@@ -96,35 +105,46 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
         const fs = require('fs'); fs.mkdirSync(shots, { recursive: true })
         const wc = require('@electron/remote').getCurrentWebContents()
         const el = blocks().find(x => x.dataset.abeleAnchor === 'date:' + day(0))
-        const r = el?.getBoundingClientRect()
-        // Photograph the unchanged block at a fixed camera origin with its inherited theme
-        // context. Fractional scroll offsets (and the editor's virtual transforms) otherwise
-        // change text antialiasing without changing any styling or relative position.
-        const camera = name === 'unchanged' && el ? el.cloneNode(true) : null
-        let cameraContext = null
-        if (camera) {
-          camera.style.position = 'fixed'
-          camera.style.left = Math.round(r.left) + 'px'
-          camera.style.top = '200px'
-          camera.style.width = r.width + 'px'
-          camera.style.zIndex = '10000'
-          camera.style.backgroundColor = 'var(--background-primary)'
-          cameraContext = document.createElement('div')
-          cameraContext.className = ${footer} ? 'abele-footer-view' : 'abele-timeline-sidebar'
-          const inherited = getComputedStyle(el)
-          for (const property of inherited) {
-            if (property.startsWith('--') || ['font-family', 'font-size', 'font-weight', 'line-height', 'color', 'letter-spacing'].includes(property))
-              cameraContext.style.setProperty(property, inherited.getPropertyValue(property))
-          }
-          cameraContext.style.pointerEvents = 'none'
-          cameraContext.appendChild(camera)
-          document.body.appendChild(cameraContext)
+        const capture = async suffix => {
+          // Let stylesheet replacement and the editor's deferred measuring/raster work settle.
+          // No tolerance: even a one-pixel appearance difference remains a test failure.
+          await wait(200)
+          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+          const r = el.getBoundingClientRect()
+          const rect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
+          const image = await wc.capturePage(rect)
+          fs.writeFileSync(path.replace('.png', suffix + '.png'), image.toPNG())
+          return { pixels: image.toBitmap(), rect: [r.left, r.top, r.width, r.height] }
         }
-        await wait(100)
-        const cr = camera?.getBoundingClientRect()
-        const rect = cr ? { x: Math.round(cr.left), y: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) } : undefined
-        fs.writeFileSync(path, (await wc.capturePage(rect)).toPNG())
-        cameraContext?.remove()
+        if (name === 'unchanged') {
+          // Compare the ORIGINAL block in its real scroll owner, not a clone or a moved
+          // camera. The frozen stylesheet is rendered on this very build/DOM/theme path.
+          // Only the intentional new banner rule is retained in both captures.
+          const sheet = [...document.querySelectorAll('style')].find(s => s.textContent.includes('.abele-timeline__date-block'))
+          if (!sheet) throw Error('timeline stylesheet not found')
+          const current = sheet.textContent
+          const banner = [...sheet.sheet.cssRules].filter(r => r.selectorText === '.abele-timeline__history').map(r => r.cssText).join('\n')
+          const difference = (a, b) => {
+            if (a.length !== b.length) return -1
+            let changed = 0
+            for (let i = 0; i < a.length; i += 4) if (!a.subarray(i, i + 4).equals(b.subarray(i, i + 4))) changed++
+            return changed
+          }
+          try {
+            sheet.textContent = fs.readFileSync(${JSON.stringify(referenceCss)}, 'utf8') + '\n' + banner
+            const before = await capture('-before')
+            sheet.textContent = current
+            const after = await capture('-after')
+            report.appearanceRects = [before.rect, after.rect]
+            report.appearancePixels = difference(before.pixels, after.pixels)
+            // Positive sensitivity control: a one-pixel change of an existing row must be
+            // detected. It changes neither the test expectation nor the reference.
+            sheet.textContent += '\n.abele-timeline__tasks { transform: translateX(1px) !important; }'
+            const canary = await capture('-canary')
+            report.appearanceCanary = difference(after.pixels, canary.pixels)
+          } finally { sheet.textContent = current }
+          await capture('')
+        } else fs.writeFileSync(path, (await wc.capturePage()).toPNG())
       }
       report.shots.push(path)
     }
@@ -150,6 +170,13 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       root.querySelector('.abele-timeline__completed-toggle').click()
       await wait(1200)
       report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
+      root.querySelector('.abele-timeline__search-toggle').click()
+      await wait(100)
+      const input = root.querySelector('.abele-timeline__search input')
+      input.value = 'sample-no-match'
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await wait(1200)
+      report.emptySpace = root.querySelector('.abele-timeline__anchor-space').getBoundingClientRect().height
       return JSON.stringify(report)
     }
 
@@ -158,6 +185,15 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     scroller.scrollTop += first.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0)
     await wait(400)
     const beforeReveal = row(0).getBoundingClientRect().top
+    let touchY = null, inputDistance = 0
+    const touchStart = e => { touchY = e.touches[0]?.clientY ?? null }
+    const touchMove = e => {
+      const y = e.touches[0]?.clientY ?? null
+      if (touchY !== null && y !== null) inputDistance += y - touchY
+      touchY = y
+    }
+    scroller.addEventListener('touchstart', touchStart, { capture: true, passive: true })
+    scroller.addEventListener('touchmove', touchMove, { capture: true, passive: true })
     if (window.__e2eHost) {
       const r = scroller.getBoundingClientRect()
       // Start in the scroll content, clear of the native floating navigation header.
@@ -166,6 +202,9 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     } else root.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }))
     await wait(800)
     report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
+    report.revealInput = window.__e2eHost ? inputDistance : 80
+    scroller.removeEventListener('touchstart', touchStart, true)
+    scroller.removeEventListener('touchmove', touchMove, true)
     report.revealed = dates()
     report.countAfter = strip()?.textContent.trim() ?? null
     // Keep the first incomplete row under the eye while completed rows appear above it.
@@ -200,6 +239,22 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     root.querySelector('.abele-timeline__completed-toggle').click()
     await wait(1200)
     report.futureAnchor = [futureBefore, row(25)?.getBoundingClientRect().top ?? -9999]
+    if (${footer}) {
+      // A past row's saved anchor is useful only if reopening actually recreates that day.
+      root.querySelector('.abele-timeline__completed-toggle').click()
+      await wait(1200)
+      config.rememberNotePlaces = true
+      align(row(-1)); await wait(1500)
+      const beforeReturn = row(-1).getBoundingClientRect().top - scroller.getBoundingClientRect().top
+      await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample item 0 1.md'))
+      await wait(500)
+      await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample group.md'))
+      await wait(2000)
+      const reopened = leaf.view.containerEl.querySelector('.abele-timeline')
+      const returned = [...(reopened?.querySelectorAll('.abele-task-view') ?? [])].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item -1 1.md')
+      report.restoredHistory = !!returned
+      report.restoredAnchor = [beforeReturn, returned ? returned.getBoundingClientRect().top - leaf.view.containerEl.querySelector('.cm-scroller').getBoundingClientRect().top : -9999]
+    }
   } catch (e) { report.error = String(e && e.stack || e) }
   finally { leaf?.detach(); config.rememberNotePlaces = remembered }
   return JSON.stringify(report)
@@ -212,6 +267,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
     shortMobile: Probe[] = []
   let state: { size: number[]; layout: unknown } | null = null
   beforeAll(async () => {
+    if (!onPhone()) referenceCss = await timelineStyleReference()
     state = JSON.parse(
       evalRaw(
         `JSON.stringify({ size: window.__e2eHost ? [] : require('@electron/remote').getCurrentWindow().getContentSize(), layout: app.workspace.getLayout() })`
@@ -259,6 +315,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         () => {
           const p = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
           expect(p.error).toBeUndefined()
+          expect(p.emptySpace).toBe(0)
           for (const pair of [p.anchored, p.hiddenAnchor]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(2)
@@ -277,9 +334,36 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
           expect(p.sticky).toBeLessThanOrEqual(2)
           expect(p.overflow).toBeLessThanOrEqual(1)
+          expect(p.revealAnchor).toHaveLength(2)
+          expect(p.revealInput).toBeGreaterThan(0)
+          expect(
+            Math.abs(p.revealAnchor![1] - p.revealAnchor![0] - p.revealInput!)
+          ).toBeLessThanOrEqual(2)
           if (!onPhone()) {
-            expect(p.revealAnchor).toHaveLength(2)
             expect(Math.abs(p.revealAnchor![1] - p.revealAnchor![0] - 80)).toBeLessThanOrEqual(2)
+          }
+        }
+      )
+      if (index === 1)
+        it.skipIf(kind === 'desktop' && onPhone())(
+          `${kind}, ${owner}: reopening restores a revealed past-row anchor`,
+          () => {
+            const p = probe()
+            expect(p.error).toBeUndefined()
+            expect(p.restoredHistory).toBe(true)
+            expect(p.restoredAnchor).toHaveLength(2)
+            expect(Math.abs(p.restoredAnchor![1] - p.restoredAnchor![0])).toBeLessThanOrEqual(2)
+          }
+        )
+      it.skipIf(onPhone())(
+        `${kind}, ${owner}: existing date blocks are pixel-identical in place`,
+        () => {
+          for (const p of [probe(), (kind === 'desktop' ? shortDesktop : shortMobile)[index]]) {
+            expect(p.error).toBeUndefined()
+            expect(p.appearanceRects).toHaveLength(2)
+            expect(p.appearanceRects![1]).toEqual(p.appearanceRects![0])
+            expect(p.appearancePixels).toBe(0)
+            expect(p.appearanceCanary).toBeGreaterThan(0)
           }
         }
       )
