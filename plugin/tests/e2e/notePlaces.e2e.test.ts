@@ -21,6 +21,7 @@ import {
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
+import { WAIT_PRELUDE, wait as pause } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele note places e2e'
@@ -29,8 +30,6 @@ const OTHER = `${DIR}/other-sample.md`
 const GROWING = `${DIR}/growing-sample.md`
 const EMBEDDED = `${DIR}/embedded-sample.md`
 const BOOK = `${DIR}/rich.epub`
-
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 200 sections, four lines each: "## Section n", a blank, a paragraph, a blank. */
 /**
@@ -58,11 +57,18 @@ const LONG_TEXT = Array.from(
 ).join('\n')
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 10000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = fn(); if (v) return v } catch {} await wait(100) }
-    return null
+  ${WAIT_PRELUDE}
+  // These are observation windows, not readiness sleeps: a late restore must still be caught.
+  const observeRestoredPlace = () => wait(1500)
+  const observeExplicitTarget = () => wait(1800)
+  const noteDrawn = async (leaf, text) => {
+    const ready = await until(() => {
+      const v = leaf.view
+      const selector = v.getMode() === 'preview' ? '.markdown-preview-view' : '.cm-content'
+      return [...v.containerEl.querySelectorAll(selector)].some(el =>
+        el.getClientRects().length && el.textContent.includes(text))
+    })
+    if (!ready) throw Error('The note did not draw: ' + text)
   }
   const file = (p) => app.vault.getAbstractFileByPath(p)
   const notesOf = (path) => app.workspace.getLeavesOfType('markdown').filter((l) => l.view.file?.path === path)
@@ -148,27 +154,33 @@ const comesBack = (): Record<string, Back> & { error?: string } =>
       app.vault.setConfig('defaultViewMode', m)
       const leaf = newLeaf()
       await leaf.openFile(file(${JSON.stringify(LONG)}), { active: true })
-      await wait(800)
+      await noteDrawn(leaf, 'Section')
       const left = await scrollTo(leaf, 400)
       await leaf.openFile(file(${JSON.stringify(OTHER)}), { active: true })
-      await wait(500)
+      await noteDrawn(leaf, 'A short note.')
       await leaf.openFile(file(${JSON.stringify(LONG)}), { active: true })
-      await wait(1200)
+      await until(() => Math.abs(scrollOf(leaf) - left) < 3)
       const back = scrollOf(leaf)
-      await wait(1500)
+      await observeRestoredPlace()
       out[m] = { left, back, later: scrollOf(leaf) }
       // Scrolled elsewhere and the tab closed at once, before anything saved it on its own.
-      const left2 = await (async () => { leaf.view.currentMode.applyScroll(300); await wait(200); return scrollOf(leaf) })()
+      const left2 = await (async () => {
+        leaf.view.currentMode.applyScroll(300)
+        // Stay inside the one-second sampling interval: closing must save this place itself.
+        if (!(await until(() => Math.abs(scrollOf(leaf) - 300) < 3, 500)))
+          throw Error('The close-time scroll did not land before periodic sampling')
+        return scrollOf(leaf)
+      })()
       leaf.detach()
-      await wait(300)
+      await until(() => !leaf.containerEl.isConnected)
       const again = newLeaf()
       await again.openFile(file(${JSON.stringify(LONG)}), { active: true })
-      await wait(1200)
+      await until(() => Math.abs(scrollOf(again) - left2) < 3)
       const back2 = scrollOf(again)
-      await wait(1500)
+      await observeRestoredPlace()
       out[m + ':closed'] = { left: left2, back: back2, later: scrollOf(again) }
       again.detach()
-      await wait(300)
+      await until(() => !again.containerEl.isConnected)
     }
     return out
   `)
@@ -181,22 +193,22 @@ const headingWins = (): Record<string, Jump> & { error?: string } =>
       app.vault.setConfig('defaultViewMode', m)
       const leaf = newLeaf()
       await leaf.openFile(file(${JSON.stringify(LONG)}), { active: true })
-      await wait(800)
+      await noteDrawn(leaf, 'Section')
       const saved = await scrollTo(leaf, 500)
       await leaf.openFile(file(${JSON.stringify(OTHER)}), { active: true })
-      await wait(500)
+      await noteDrawn(leaf, 'A short note.')
       app.workspace.setActiveLeaf(leaf, { focus: true })
       const peak = furthest(() => leaf)
       await app.workspace.openLinkText('long-sample#Section 5', ${JSON.stringify(OTHER)}, false)
       await until(() => leaf.view.file?.path === ${JSON.stringify(LONG)}, 5000)
-      await wait(600)
       const sel = m === 'preview' ? 'h2' : '.cm-line'
+      await until(() => shows(leaf, sel, 'Section 5'))
       const landed = scrollOf(leaf)
       const shown = shows(leaf, sel, 'Section 5')
-      await wait(1800)
+      await observeExplicitTarget()
       out[m] = { saved, landed, later: scrollOf(leaf), peak: peak(), shows: shown, showsLater: shows(leaf, sel, 'Section 5') }
       leaf.detach()
-      await wait(300)
+      await until(() => !leaf.containerEl.isConnected)
     }
     return out
   `)
@@ -208,9 +220,9 @@ const highlightWins = (): Record<string, Jump> & { error?: string } =>
     await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
     const view = leaf.view
     await until(() => view.model?.status === 'ready', 15000)
-    await wait(600)
+    await until(() => view.reading && view.engine.renderer.getContents()[0]?.doc?.querySelector('h1'))
     await view.engine.goTo(2)
-    await wait(600)
+    await until(() => view.engine.renderer.getContents()[0]?.doc?.querySelector('h1')?.textContent === 'Chapter 3')
     const doc = view.engine.renderer.getContents()[0]?.doc
     const h1 = doc.querySelector('h1')
     const range = doc.createRange()
@@ -225,28 +237,29 @@ const highlightWins = (): Record<string, Jump> & { error?: string } =>
     // The highlight far up, a long run of text under it to be left in.
     const filler = Array.from({ length: 150 }, (_, i) => 'Line ' + (i + 1) + ' of the reader’s own writing.').join('\\n\\n')
     await app.vault.process(file(path), (md) => md + '\\n\\n' + filler + '\\n')
-    await wait(500)
+    const endLine = (await app.vault.read(file(path))).trimEnd().split('\\n').length - 1
+    await until(() => app.metadataCache.getFileCache(file(path))?.sections?.at(-1)?.position.end.line === endLine)
     const out = {}
     for (const m of ['preview', 'source']) {
       app.vault.setConfig('defaultViewMode', m)
       const note = newLeaf()
       await note.openFile(file(path), { active: true })
-      await wait(800)
+      await noteDrawn(note, 'Chapter')
       const saved = await scrollTo(note, 250)
       note.detach()
-      await wait(300)
+      await until(() => !note.containerEl.isConnected)
       app.workspace.setActiveLeaf(leaf, { focus: true })
       const peak = furthest(() => notesOf(path)[0])
       await view.reading.openNote(h)
       const nl = await until(() => notesOf(path)[0], 5000)
-      await wait(600)
       const sel = m === 'preview' ? '.abele-line-flash, .callout' : '.abele-line-flash, .cm-line, .cm-callout'
+      await until(() => shows(nl, sel, 'Chapter'))
       const landed = scrollOf(nl)
       const shown = shows(nl, sel, 'Chapter')
-      await wait(1800)
+      await observeExplicitTarget()
       out[m] = { saved, landed, later: scrollOf(nl), peak: peak(), shows: shown, showsLater: shows(nl, sel, 'Chapter') }
       for (const l of notesOf(path)) l.detach()
-      await wait(300)
+      await until(() => notesOf(path).length === 0)
     }
     return out
   `)
@@ -278,7 +291,7 @@ const settles = (wheel: boolean): Record<string, Settle> & { error?: string } =>
       const saved = await scrollTo(leaf, 300)
       await wait(1000)
       await leaf.openFile(file(${JSON.stringify(OTHER)}), { active: true })
-      await wait(500)
+      await noteDrawn(leaf, 'A short note.')
       // Every scroll made to the note from here on, by the frame it was made at: the restore's.
       let at = -1
       const scrolled = []
@@ -309,7 +322,7 @@ const settles = (wheel: boolean): Record<string, Settle> & { error?: string } =>
       renderer.applyScroll = own.apply
       out[m] = { tops, scrolled, saved, end: scrollOf(leaf), ...(${wheel} ? { wheelFrom: WHEEL_FROM } : {}) }
       leaf.detach()
-      await wait(300)
+      await until(() => !leaf.containerEl.isConnected)
     }
     return out
   `)
@@ -393,7 +406,11 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  const sized = evalAsync<boolean>(`(async () => {
+    ${WAIT_PRELUDE}
+    return !!(await until(() => innerWidth === ${width} && innerHeight === ${height}))
+  })()`)
+  if (!sized) throw new Error('The window did not reach its requested size')
 }
 
 const createFixtures = () => {
@@ -468,8 +485,8 @@ describe.skipIf(!available)('notes come back where they were left', () => {
     const r = run<{ before: number; after: number }>(`
       const key = 'abele-note-places'
       const count = () => Object.keys(app.loadLocalStorage(key) ?? {}).filter((p) => p.startsWith(${JSON.stringify(DIR)})).length
-      // Written a moment after a change; the unload of the plugin writes at once.
-      await wait(2500)
+      // Wait for the actual debounced write, not an assumed save delay.
+      if (!(await until(() => count() > 0))) throw Error('No note places were persisted')
       const before = count()
       const tmp = ${JSON.stringify(DIR)} + '/gone-sample.md'
       await app.vault.create(tmp, 'x')
@@ -477,7 +494,10 @@ describe.skipIf(!available)('notes come back where they were left', () => {
       await app.vault.delete(file(${JSON.stringify(OTHER)}))
       await app.vault.create(${JSON.stringify(OTHER)}, 'A short note.\\n')
       await app.vault.rename(file(${JSON.stringify(LONG)}), ${JSON.stringify(DIR)} + '/renamed-sample.md')
-      await wait(2500)
+      await until(() => {
+        const places = app.loadLocalStorage(key) ?? {}
+        return places[${JSON.stringify(DIR)} + '/renamed-sample.md'] && !places[${JSON.stringify(LONG)}]
+      })
       const places = app.loadLocalStorage(key) ?? {}
       const after = places[${JSON.stringify(DIR)} + '/renamed-sample.md'] && !places[${JSON.stringify(LONG)}] ? 1 : 0
       await app.vault.rename(file(${JSON.stringify(DIR)} + '/renamed-sample.md'), ${JSON.stringify(LONG)})
