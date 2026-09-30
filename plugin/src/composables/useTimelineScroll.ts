@@ -14,11 +14,19 @@ function pinnedTop(owner: HTMLElement): number {
   const body = owner.ownerDocument.body
   if (!body.classList.contains('is-phone')) return top
   const safe = parseFloat(getComputedStyle(body).getPropertyValue('--safe-area-inset-top')) || 0
-  const header = owner
-    .closest('.workspace-leaf')
-    ?.querySelector('.view-header')
-    ?.getBoundingClientRect()
-  return Math.max(top, safe, header?.height ? header.bottom : 0)
+  const header = owner.closest('.workspace-leaf')?.querySelector('.view-header')
+  // Floating phone controls can overflow a zero-height header wrapper. Its own rectangle
+  // alone does not describe the area which still intercepts taps above the timeline.
+  const chromeBottom = header
+    ? Math.max(
+        0,
+        ...[header, ...Array.from(header.querySelectorAll('*'))].map((el) => {
+          const box = el.getBoundingClientRect()
+          return box.width && box.height ? box.bottom : 0
+        })
+      )
+    : 0
+  return Math.max(top, safe, chromeBottom)
 }
 
 /** Holds a visible row through insertions and completed toggles. All scrolling stays native. */

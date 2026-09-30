@@ -204,6 +204,24 @@ describe('timeline scroll ownership', () => {
     expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('0px')
   })
 
+  it('pins below visible navigation controls even when their header wrapper has zero height', async () => {
+    document.body.classList.add('is-phone')
+    cleanups.push(() => document.body.classList.remove('is-phone'))
+    const p = await pane(100)
+    p.owner.classList.add('workspace-leaf')
+    const header = document.createElement('div')
+    header.classList.add('view-header')
+    const control = document.createElement('div')
+    header.append(control)
+    const strip = document.createElement('div')
+    p.owner.append(header, strip)
+    vi.spyOn(header, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 0))
+    vi.spyOn(control, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 40, 40))
+    p.history.value = strip
+    await nextTick()
+    expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('40px')
+  })
+
   it('follows navigation moving after the first scroll frame without resize or transition events', async () => {
     document.body.classList.add('is-phone')
     cleanups.push(() => document.body.classList.remove('is-phone'))

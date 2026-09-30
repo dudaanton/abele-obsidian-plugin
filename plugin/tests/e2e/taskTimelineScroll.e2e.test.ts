@@ -115,12 +115,19 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       } else el.click()
     }
     const row = (d, n = 1) => [...root.querySelectorAll('.abele-task-view')].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item ' + d + ' ' + n + '.md')
+    const chromeBottom = () => {
+      if (!document.body.classList.contains('is-phone')) return 0
+      const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
+      const header = scroller.closest('.workspace-leaf')?.querySelector('.view-header')
+      return Math.max(safe, ...[header, ...(header?.querySelectorAll('*') ?? [])].filter(Boolean).map(el => {
+        const r = el.getBoundingClientRect()
+        return r.width && r.height ? r.bottom : 0
+      }))
+    }
     const usableTop = () => {
       const viewport = scroller.getBoundingClientRect().top
       if (!document.body.classList.contains('is-phone')) return viewport
-      const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
-      const header = scroller.closest('.workspace-leaf')?.querySelector('.view-header')?.getBoundingClientRect()
-      return Math.max(viewport, safe, header?.height ? header.bottom : 0)
+      return Math.max(viewport, chromeBottom())
     }
     const align = el => {
       // Model a reader's input before positioning, so a prior patch's temporary hold ends.
@@ -218,10 +225,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     const stickyScroll = scroller.scrollTop
     scroller.scrollTop += 400
     await wait(400)
-    const safeTop = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
-    const navigation = scroller.closest('.workspace-leaf')?.querySelector('.view-header')?.getBoundingClientRect()
-    const chromeBottom = document.body.classList.contains('is-phone') ? Math.max(safeTop, navigation?.height ? navigation.bottom : 0) : 0
-    report.chromeGap = strip().getBoundingClientRect().top - chromeBottom
+    report.chromeGap = strip().getBoundingClientRect().top - chromeBottom()
     report.sticky = Math.abs(strip().getBoundingClientRect().top - usableTop())
     scroller.scrollTop = stickyScroll
     await wait(400)
