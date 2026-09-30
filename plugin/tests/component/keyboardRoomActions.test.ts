@@ -107,12 +107,10 @@ for (const layout of ['phone', 'desktop', 'tablet'] as const) {
       }
     )
 
-    it('does not reveal buttons, links, list rows or non-typing controls', async () => {
+    it('does not reveal buttons, links, list rows or action-only controls', async () => {
       await open()
       const list = document.querySelector<HTMLElement>('.list')!
-      for (const control of list.querySelectorAll<HTMLElement>(
-        'button, a, [tabindex], input, select'
-      )) {
+      for (const control of list.querySelectorAll<HTMLElement>('button, a, [tabindex], input')) {
         scroll.mockClear()
         const before = list.scrollTop
         control.focus()
@@ -123,6 +121,39 @@ for (const layout of ['phone', 'desktop', 'tablet'] as const) {
     })
   })
 }
+
+describe('native select fields on a phone', () => {
+  beforeEach(() => document.body.classList.add('is-mobile', 'is-phone'))
+
+  it.each(['variable', 'event'] as const)(
+    'reveals the select and respects its system picker height reported by %s',
+    async (signal) => {
+      await open()
+      const select = document.querySelector<HTMLSelectElement>('select')!
+      select.focus()
+      if (signal === 'variable') {
+        document.documentElement.style.setProperty('--keyboard-height', '336px')
+      } else {
+        const event = new Event('keyboardWillShow')
+        Object.assign(event, { keyboardHeight: 336 })
+        window.dispatchEvent(event)
+      }
+      await settle()
+
+      expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+      // happy-dom proxies select elements; bound methods receive the underlying node.
+      expect(scroll.mock.contexts.every((field) => select.isSameNode(field as Node))).toBe(true)
+      const container = document.querySelector<HTMLElement>('.modal-container')!
+      expect(container.classList.contains('abele-keyboard-room')).toBe(true)
+      expect(container.style.getPropertyValue('--abele-room-height')).toBe('508px')
+
+      // A height left behind after closing the picker must not keep the dialog fitted.
+      select.blur()
+      await settle()
+      expect(container.classList.contains('abele-keyboard-room')).toBe(false)
+    }
+  )
+})
 
 it('still centres a text field and fits the dialog above its keyboard on a phone', async () => {
   document.body.classList.add('is-mobile', 'is-phone')

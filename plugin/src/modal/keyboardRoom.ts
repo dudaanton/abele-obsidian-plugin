@@ -34,6 +34,9 @@ const LIFTED = 'abele-keyboard-lift'
  */
 const CAPPED = 'abele-keyboard-capped'
 
+/** Fields covered by a system input panel: text keyboards and the native select picker. */
+const INPUT_FIELD = `${TYPED}, select`
+
 /**
  * Keeps a dialog inside the part of the screen the on-screen keyboard leaves free, and the
  * field being typed into in sight.
@@ -176,16 +179,16 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   const shrinks = (panel: HTMLElement) =>
     panel.classList.contains('abele-modal') && !panel.classList.contains('mod-lg')
 
-  /** The dialog's typing field that has focus, if any — never a button, card or list row. */
+  /** The dialog's input field that has focus, if any — never a button, card or list row. */
   const focused = (): Element | null => {
     const box = dialog()
     const active = box?.ownerDocument.activeElement
     // Not `instanceof HTMLElement`: a dialog opened from the settings window lives in that
     // window's document, whose elements belong to another realm.
-    if (!box || !active || active === box || !box.contains(active) || !active.matches(TYPED))
+    if (!box || !active || active === box || !box.contains(active) || !active.matches(INPUT_FIELD))
       return null
     // Focus lands between pointerdown and click. Scrolling an action here can move it away
-    // from the press and swallow a touch click; only typing fields need keyboard reveal.
+    // from the press and swallow a touch click; only input fields need system-panel reveal.
     return active
   }
 
@@ -324,7 +327,7 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
       bottom = Math.min(bottom, viewportBottom)
     }
 
-    const typing = focused()?.matches(TYPED) ?? false
+    const typing = focused() !== null
     const height = Math.max(keyboardVar(doc), announced)
     const full = fullHeight(win)
     let keyboardTop: number | null = null
@@ -419,7 +422,7 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   // Obsidian's toolbar lands after the keyboard: measured again where it stands still.
   const toolbar = watchToolbar(
     win,
-    () => (focused()?.matches(TYPED) ? toolbarTop(doc) : null),
+    () => (focused() ? toolbarTop(doc) : null),
     () => fittedBar,
     fit
   )
