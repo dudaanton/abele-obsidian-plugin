@@ -48,7 +48,13 @@ function connected({ token = false, isMobile = false } = {}): void {
     deviceName: 'Laptop',
     migrated: true,
   }
-  if (token) app.secretStorage.setSecret(TOKEN_ID, 'the-device-token')
+  if (token) {
+    app.secretStorage.setSecret(TOKEN_ID, 'the-device-token')
+    app.secretStorage.setSecret(
+      `${TOKEN_ID}-server`,
+      JSON.stringify({ server: OLD, token: 'the-device-token' })
+    )
+  }
 }
 
 beforeEach(() => {

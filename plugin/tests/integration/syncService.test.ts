@@ -1076,6 +1076,10 @@ describe('SyncService — a ledger no file can carry', () => {
   function secondVault(tokenId: string, token: string): void {
     app = buildFakeVault([])
     app.secretStorage.setSecret(tokenId, token)
+    app.secretStorage.setSecret(
+      `${tokenId}-server`,
+      JSON.stringify({ server: server.BASE_URL, token })
+    )
     secretStore = createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin)
     setSecrets(secretStore)
   }

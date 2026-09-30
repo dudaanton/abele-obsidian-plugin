@@ -7,6 +7,7 @@ import {
   type VaultInfo,
 } from '@abele/sync-protocol'
 import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
+import { bindDeviceToken, boundDeviceToken, tokenServerId } from '@/secrets/deviceSecret'
 import {
   isOwnTransferred,
   type SharedSelective,
@@ -313,7 +314,7 @@ export class Enrolment {
    */
   async enrolSibling(name: string): Promise<Sibling> {
     const own = this.host.connection()
-    const token = isDeviceSecretId(own.deviceTokenId) ? secrets().device.get(own.deviceTokenId) : ''
+    const token = boundDeviceToken(secrets().device, own.deviceTokenId, own.enrolledUrl) ?? ''
     if (own.serverUrl === '' || own.vaultId === '' || token === '') {
       throw new Error('this device is not connected')
     }
@@ -379,7 +380,8 @@ export class Enrolment {
   ): string | null {
     const { tokenId, selective, join, ...where } = enrolled
     const before = secrets().device.get(tokenId)
-    secrets().device.set(tokenId, token)
+    const beforeServer = secrets().device.get(tokenServerId(tokenId))
+    bindDeviceToken(secrets().device, tokenId, token, where.serverUrl)
     let dropped: string | null = null
     const ledger = readLedgerId(app)
     if (ledger.stateId === '' || ledger.vaultId !== where.vaultId) {
@@ -399,6 +401,7 @@ export class Enrolment {
       // Not saved, so not enrolled here: the keychain and the ledger go back to what they were
       // (pi review #6). The server keeps the device, which the device list can revoke.
       secrets().device.set(tokenId, before)
+      secrets().device.set(tokenServerId(tokenId), beforeServer)
       writeLedgerId(app, ledger)
       this.host.note(`the server made ${where.deviceName}, but this device did not keep it`)
       throw error
@@ -457,8 +460,8 @@ export class Enrolment {
       await this.host.teardown()
       const own = this.host.connection()
       const tokenId = own.deviceTokenId
-      const token = isDeviceSecretId(tokenId) ? secrets().device.get(tokenId) : ''
       const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
+      const token = boundDeviceToken(secrets().device, tokenId, serverUrl) ?? ''
       if (token !== '' && serverUrl !== '') {
         const told = await this.revoker.leave(
           { serverUrl, deviceId: own.deviceId, deviceName: own.deviceName },
@@ -474,7 +477,10 @@ export class Enrolment {
       }
       // The secret goes and the id stays: `token()` reads a missing secret as no device, which
       // is exactly the truth.
-      if (tokenId !== '') secrets().device.remove(tokenId)
+      if (tokenId !== '' && token !== '') {
+        secrets().device.remove(tokenId)
+        secrets().device.remove(tokenServerId(tokenId))
+      }
       this.host.saveConnection({
         serverUrl: '',
         enrolledUrl: '',

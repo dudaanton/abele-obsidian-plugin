@@ -4,7 +4,66 @@
  * `data.json` can write, so the road checks the name rather than trusting it — pointed at a
  * provider's key, it would otherwise send that key to a server and delete it on Disconnect.
  */
+import { normalizeServerUrl, serverUrlProblem, PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
+
+/** Identity comparison is separate from transport policy; legacy plain HTTP is never sent. */
+function bindingServer(server: string): string | null {
+  const allowed = normalizeServerUrl(server)
+  if (allowed !== null) return allowed
+  if (serverUrlProblem(server) !== PLAIN_HTTP_REFUSED) return null
+  const parsed = new URL(server)
+  return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`
+}
+
 export const DEVICE_SECRET_PREFIX = 'abele-sync-device-'
+
+interface DeviceRoad {
+  get(id: string): string
+  set(id: string, value: string): void
+}
+
+export const tokenServerId = (id: string): string => `${id}-server`
+
+/** Binding is stored beside the token in the device-only keychain, shared by mobile vaults. */
+export function bindDeviceToken(
+  device: DeviceRoad,
+  id: string,
+  token: string,
+  server: string
+): void {
+  const origin = bindingServer(server)
+  if (!isDeviceSecretId(id) || origin === null) throw new Error('invalid device token binding')
+  // The proof includes the exact value in one keychain entry. Two independent keychain
+  // writes can otherwise persist an old token beside a new origin after an id is reused.
+  const proof = JSON.stringify({ server: origin, token })
+  device.set(tokenServerId(id), proof)
+  device.set(id, token)
+  if (device.get(tokenServerId(id)) !== proof || device.get(id) !== token)
+    throw new Error('device token binding was not kept')
+}
+
+export function boundDeviceToken(device: DeviceRoad, id: string, server: string): string | null {
+  if (!isDeviceSecretId(id)) return null
+  const origin = bindingServer(server)
+  const raw = device.get(tokenServerId(id))
+  if (origin === null || raw === '') return null
+  let binding: { server?: unknown; token?: unknown }
+  try {
+    const read: unknown = JSON.parse(raw)
+    if (read === null || typeof read !== 'object') return null
+    binding = read as typeof binding
+  } catch {
+    return null
+  }
+  const token = device.get(id)
+  if (
+    typeof binding.server !== 'string' ||
+    bindingServer(binding.server) !== origin ||
+    binding.token !== token
+  )
+    return null
+  return token === '' ? null : token
+}
 
 /** Whether an id is one the device-only road may touch: the prefix and something after it. */
 export function isDeviceSecretId(id: string | undefined | null): id is string {

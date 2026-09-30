@@ -1,8 +1,10 @@
 import { Platform, type App } from 'obsidian'
 import { ref, type Ref } from 'vue'
-import { normalizeServerUrl, serverUrlProblem } from '@abele/sync-protocol'
+import { normalizeServerUrl, serverUrlProblem, PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
+import { PLAIN_HTTP_CONNECTION } from './engineRunner'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
+import { boundDeviceToken } from '@/secrets/deviceSecret'
 import {
   CONNECTION_KEY,
   connectionProblem,
@@ -57,6 +59,19 @@ export class ConnectionKeeper {
 
   /** What was wrong with the record as it was read, or null. */
   damage(): string | null {
+    const own = this.connection.value
+    if (
+      own.serverUrl !== '' &&
+      this.holdsToken(own.deviceTokenId) &&
+      boundDeviceToken(secrets().device, own.deviceTokenId, own.serverUrl) === null
+    ) {
+      const problem = serverUrlProblem(own.serverUrl)
+      return (
+        (problem === PLAIN_HTTP_REFUSED ? PLAIN_HTTP_CONNECTION : problem) ??
+        enrolledElsewhere(own.serverUrl, own.enrolledUrl) ??
+        'the device token has no binding to this server; disconnect and sign in again'
+      )
+    }
     return this.damaged
   }
 
@@ -186,6 +201,11 @@ export class ConnectionKeeper {
     if (moves && next.serverUrl !== '' && this.holdsToken(next.deviceTokenId)) {
       const elsewhere = enrolledElsewhere(next.serverUrl, next.enrolledUrl)
       if (elsewhere !== null) throw new Error(elsewhere)
+      if (boundDeviceToken(secrets().device, next.deviceTokenId, next.serverUrl) === null) {
+        throw new Error(
+          'this device token has no binding to this server; it may only go to the server that minted it'
+        )
+      }
     }
     return edit
   }
@@ -246,8 +266,7 @@ export class ConnectionKeeper {
   token(): string | null {
     const id = this.connection.value.deviceTokenId
     if (!isDeviceSecretId(id)) return null
-    const secret = secrets().device.get(id)
-    return secret === '' ? null : secret
+    return boundDeviceToken(secrets().device, id, this.connection.value.serverUrl)
   }
 
   /**

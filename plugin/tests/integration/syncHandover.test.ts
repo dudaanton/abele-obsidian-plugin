@@ -146,6 +146,40 @@ async function accepted(token: string, vaultId: string): Promise<boolean> {
   }
 }
 
+describe('a keychain id cannot move a token between servers', () => {
+  it('refuses a token value resurrected under an id whose binding belongs to a newer token', async () => {
+    await connect()
+    const id = conn().deviceTokenId
+    // Model a partial keychain persistence failure after an id was reused for a new sign-in.
+    // The binding is the new one, but the old value comes back when secure storage is reread.
+    app.secretStorage.setSecret(id, 'absd_stale-from-another-server')
+    bearers = []
+    await expect(service.updateConnection({ deviceTokenId: id })).rejects.toThrow(
+      /binding|minted|server/
+    )
+    expect(bearers).not.toContain('Bearer absd_stale-from-another-server')
+  })
+  it.each([null, 'https://other.example'])(
+    'refuses a foreign token id with binding %s before sending it',
+    async (binding) => {
+      await connect()
+      Platform.isMobile = true
+      const id = 'abele-sync-device-foreign'
+      app.secretStorage.setSecret(id, 'absd_foreign-token')
+      if (binding !== null)
+        app.secretStorage.setSecret(
+          `${id}-server`,
+          JSON.stringify({ server: binding, token: 'absd_foreign-token' })
+        )
+      bearers = []
+      await expect(service.updateConnection({ deviceTokenId: id })).rejects.toThrow(
+        /binding|minted|server/
+      )
+      expect(bearers).not.toContain('Bearer absd_foreign-token')
+    }
+  )
+})
+
 describe('Disconnect tells the server', () => {
   it('has the server stop accepting the device, and forgets the token', async () => {
     const { accountToken, vaultId, deviceId, token } = await connect()
@@ -302,6 +336,11 @@ describe('Disconnect tells the server', () => {
    */
   it('keeps a device on plain http to another machine as one the server cannot be told of', async () => {
     const { token } = await connect()
+    // Model a token genuinely minted on the legacy plain-http address, including its origin.
+    app.secretStorage.setSecret(
+      `${conn().deviceTokenId}-server`,
+      JSON.stringify({ server: 'http://192.168.1.5:8787', token })
+    )
     await service.destroy()
     app.saveLocalStorage(CONNECTION_KEY, {
       ...readConnection(app),

@@ -24,6 +24,7 @@
 import { SyncClient } from '@abele/sync-core'
 import { PLAIN_HTTP_REFUSED, serverUrlProblem } from '@abele/sync-protocol'
 import { secrets } from '@/secrets/SecretStore'
+import { bindDeviceToken, boundDeviceToken, tokenServerId } from '@/secrets/deviceSecret'
 import { REVOKE_SECRET_PREFIX, type DeviceConnection, type PendingRevoke } from './connection'
 import { randomStem } from './ids'
 import { messageOf } from './messages'
@@ -179,7 +180,7 @@ export class Revoker {
   private keep(device: Leaving, token: string, plainHttp: boolean, why: string): boolean {
     const tokenId = newRevokeSecretId()
     try {
-      secrets().device.set(tokenId, token)
+      bindDeviceToken(secrets().device, tokenId, token, device.serverUrl)
     } catch (error) {
       this.host.note(
         `the server was not told that ${device.deviceName || device.deviceId} left (${why}), ` +
@@ -233,6 +234,7 @@ export class Revoker {
     const entry = this.host.connection().pendingRevoke.find((item) => item.tokenId === tokenId)
     if (entry === undefined) return
     secrets().device.remove(tokenId)
+    secrets().device.remove(tokenServerId(tokenId))
     this.drop(new Set([tokenId]))
     this.host.note(
       `stopped waiting to tell ${entry.serverUrl} that ${entry.deviceName || entry.deviceId} ` +
@@ -246,14 +248,15 @@ export class Revoker {
       // Never sent, never given up: the person forgets it, from the line the Sync tab shows.
       if (entry.plainHttp) continue
       const who = `${entry.deviceName || entry.deviceId} on ${entry.serverUrl}`
-      const token = secrets().device.get(entry.tokenId)
-      if (token === '') {
+      const raw = secrets().device.get(entry.tokenId)
+      if (raw === '') {
         done.add(entry.tokenId)
         this.host.note(`the token kept to tell the server that ${who} left is gone; given up`)
         continue
       }
       if (this.now() - Date.parse(entry.since) > PENDING_REVOKE_MAX_MS) {
         secrets().device.remove(entry.tokenId)
+        secrets().device.remove(tokenServerId(entry.tokenId))
         done.add(entry.tokenId)
         this.host.note(
           `gave up telling the server that ${who} left: a month has passed. The server still ` +
@@ -266,9 +269,15 @@ export class Revoker {
           `Telling ${entry.serverUrl} that ${entry.deviceName || entry.deviceId} left…`
         )
       }
+      const token = boundDeviceToken(secrets().device, entry.tokenId, entry.serverUrl)
+      if (token === null) {
+        this.host.note(`the token kept for ${who} has no binding to that server; it was not sent`)
+        continue
+      }
       const told = await tellServer(entry.serverUrl, token, this.host.transport(), this.timeoutMs)
       if (told.told === 'failed') continue
       secrets().device.remove(entry.tokenId)
+      secrets().device.remove(tokenServerId(entry.tokenId))
       done.add(entry.tokenId)
       this.host.note(
         told.told === 'unusable'
