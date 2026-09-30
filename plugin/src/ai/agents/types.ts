@@ -56,7 +56,7 @@ export interface AgentDefinition {
   interceptorAgentId: string
   /** How much of the conversation the interceptor sees: 0 the draft, -1 all of it, N the last N. */
   interceptorContextDepth: number
-  /** Agent review runs alongside the main turn without holding the message. Scripts ignore it. */
+  /** Agent or script review runs alongside the main turn without holding the message. */
   interceptorReplyOnly: boolean
   /**
    * A script that decides about each message instead of a reviewing agent, by its `@name`; see

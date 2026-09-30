@@ -241,6 +241,28 @@ describe('reply-only script interceptors', () => {
     expect(annotations(reopened, 'First question')).toEqual(['First review'])
   })
 
+  it('persists a script-specific chat override independently of the agent default', async () => {
+    const { session, writer, registry } = await setupScript()
+    session.interceptor.script.value = 'Sample guard'
+    session.interceptor.replyOnly.value = true
+    session.interceptor.pattern.value = '^/review'
+    await session.addUserNote('Sample note')
+    expect(metadata).toMatchObject({
+      interceptorScript: 'Sample guard',
+      interceptorReplyOnly: true,
+      interceptorPattern: '^/review',
+    })
+    registry.update(writer.id, { interceptorScript: '', interceptorReplyOnly: false })
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(file)
+    expect(reopened.interceptor.followsAgent).toBe(false)
+    expect(reopened.interceptor.route('/review next')).toMatchObject({
+      kind: 'script',
+      script: 'Sample guard',
+      replyOnly: true,
+    })
+  })
+
   it.each([undefined, null, true])('keeps a silent result (%s) invisible', async (value) => {
     const { session, pending } = await setupScript()
     await sentWithoutWaiting(session, 'Silent question')

@@ -262,11 +262,14 @@ model; the original chat record is retained. The map's **Show my
 location** action keeps its position only in the live map and discards it when the map is closed.
 
 A chat that chose its own interceptor rather than following its agent's keeps the choice in its
-metadata: `interceptorAgentId`, `interceptorContextDepth` and `interceptorReplyOnly` for a reviewing
-agent, `interceptorScript` for a script, `interceptorPattern` for the messages it is shown.
-`interceptorReplyOnly: true` sends the message at once while the agent reviewer answers beside it;
-absent or false keeps draft review. The reply is stored on the reviewed message in `interceptorChat`,
-with `interceptorName` and `interceptorCollapsed`, not as an assistant turn in the main conversation.
+metadata: `interceptorAgentId` and `interceptorContextDepth` for a reviewing agent,
+`interceptorScript` for a script, `interceptorPattern` for the messages it is shown, and
+`interceptorReplyOnly` for either kind. `interceptorReplyOnly: true` sends the message at once
+while the agent reviewer or script may answer beside it; absent or false keeps draft review
+or the script's blocking decision. The reply is stored on the reviewed message in
+`interceptorChat`, with `interceptorName` and `interceptorCollapsed`, not as an assistant turn
+in the main conversation. A script's side reply also has `interceptorScript: true`; ignored
+rewrites, holds and tool policies, or failures and timeouts, leave notes in `interceptorChat`.
 Following the agent stores no interceptor override. Agent definitions in the plugin's settings also
 hold `interceptorReplyOnly` (false by default), and it travels with the agent in settings transfer. A message a
 script held back, or one it was stopped on, stays in the chat as a draft (`draft: true`,

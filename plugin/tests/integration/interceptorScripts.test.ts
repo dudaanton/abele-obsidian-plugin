@@ -408,6 +408,23 @@ describe("a script's say over the turn's tool calls", () => {
     }
   )
 
+  it('never invokes a reply-only approval callback', async () => {
+    setup()
+    session.interceptor.script.value = 'Guard'
+    session.interceptor.replyOnly.value = true
+    const approve = vi.fn(() => true)
+    withPolicy(approve)
+    turnsPlan = [[call('c1')]]
+    await session.sendMessage('go')
+    await vi.waitFor(() =>
+      expect(session.messages.value[0].interceptorChat?.[0].content).toMatch(
+        /ignored tool-approval/
+      )
+    )
+    expect(approve).not.toHaveBeenCalled()
+    expect(session.pendingToolCalls.value.map((c) => c.id)).toEqual(['c1'])
+  })
+
   it('ignores denial in reply-only mode and keeps asking as usual', async () => {
     setup()
     session.interceptor.script.value = 'Guard'
