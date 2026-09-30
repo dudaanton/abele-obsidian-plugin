@@ -8,10 +8,16 @@ describe('timeline date loading', () => {
     const days = ref<[string, string[]][]>([])
     const source = vi.fn(() => days.value)
     const window = scope.run(() =>
-      useTimelineDays(source, () => '2030-06-15', () => [], 20, {
-        initial: 1,
-        record: () => {},
-      })
+      useTimelineDays(
+        source,
+        () => '2030-06-15',
+        () => [],
+        20,
+        {
+          initial: 1,
+          record: () => {},
+        }
+      )
     )!
     try {
       expect(source).toHaveBeenCalledTimes(1)
