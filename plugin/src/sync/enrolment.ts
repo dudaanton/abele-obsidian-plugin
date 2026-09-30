@@ -7,7 +7,12 @@ import {
   type VaultInfo,
 } from '@abele/sync-protocol'
 import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
-import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
+import {
+  isOwnTransferred,
+  type SharedSelective,
+  type Sibling,
+  type TransferredConnection,
+} from '@/transfer/connection'
 import type { DeviceConnection, JoinState } from './connection'
 import { sideOf } from './joinState'
 import { keptLedger } from './join'
@@ -346,6 +351,7 @@ export class Enrolment {
    * server cannot be reached now — so nothing is left enrolled that nobody holds.
    */
   async revokeTransferred(arrived: TransferredConnection, token: string): Promise<void> {
+    if (isOwnTransferred(this.host.connection(), arrived)) return
     const serverUrl = normalizeServerUrl(arrived.serverUrl) ?? arrived.serverUrl
     await this.revoker.leave(
       { serverUrl, deviceId: arrived.deviceId, deviceName: arrived.deviceName },

@@ -44,6 +44,17 @@ export interface TransferredConnection {
   deviceName: string
 }
 
+/** A saved transfer may be reopened after this very device was adopted. Never revoke it. */
+export function isOwnTransferred(own: DeviceConnection, arrived: TransferredConnection): boolean {
+  return (
+    own.deviceId !== '' &&
+    own.deviceId === arrived.deviceId &&
+    own.vaultId === arrived.vaultId &&
+    normalizeServerUrl(own.serverUrl) !== null &&
+    normalizeServerUrl(own.serverUrl) === normalizeServerUrl(arrived.serverUrl)
+  )
+}
+
 /** The device the sending side had the server make, and its token. */
 export interface Sibling extends TransferredConnection {
   token: string

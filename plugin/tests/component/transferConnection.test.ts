@@ -333,6 +333,19 @@ describe('receiving the connection', () => {
     )
   })
 
+  it('does not revoke its own adopted device when the saved transfer is reopened', async () => {
+    service.connection.value = { ...home(), deviceId: 'd2' }
+    const applying = await received()
+    expect(rowOf(applying).text()).toContain('Already connected to this vault')
+    await click(applying, 'Apply')
+    applying.unmount()
+    const closing = await received()
+    closing.unmount()
+    await flushPromises()
+    expect(service.revokeTransferred).not.toHaveBeenCalled()
+    expect(service.adoptTransferred).not.toHaveBeenCalled()
+  })
+
   it('is skipped by a device that already syncs that vault, and the spare device revoked', async () => {
     service.connection.value = { ...home(), deviceId: 'd9' }
     const screen = await received()

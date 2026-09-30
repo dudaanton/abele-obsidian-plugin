@@ -138,6 +138,7 @@ import {
   CONNECTION_TOKEN,
   connectionTitle,
   matchConnection,
+  isOwnTransferred,
   readTransferred,
 } from '@/transfer/connection'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -482,7 +483,9 @@ const release = () => {
   const got = arrived.value
   if (done.value || busy.value || got === null || got.connection === null) return
   done.value = true
-  void syncService.revokeTransferred(got.connection, got.token)
+  if (!isOwnTransferred(syncService.connection.value, got.connection)) {
+    void syncService.revokeTransferred(got.connection, got.token)
+  }
 }
 
 const onClose = () => {
@@ -541,7 +544,9 @@ const applyConnection = async (
       return `The sync connection was not taken: ${reason}`
     }
   }
-  void syncService.revokeTransferred(got.connection, got.token)
+  if (!isOwnTransferred(syncService.connection.value, got.connection)) {
+    void syncService.revokeTransferred(got.connection, got.token)
+  }
   return undefined
 }
 
