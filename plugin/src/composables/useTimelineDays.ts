@@ -21,7 +21,10 @@ export function useTimelineDays<T>(
   watch(
     all,
     () => {
-      if (upper.value === null) upper.value = pageEnd(memory.initial)
+      if (upper.value === null) {
+        if (terms().length) lower.value = all.value[0]?.[0] ?? null
+        upper.value = pageEnd(terms().length ? 1 : memory.initial)
+      }
     },
     { flush: 'sync' }
   )
@@ -52,7 +55,8 @@ export function useTimelineDays<T>(
     if (previous) lower.value = previous[0]
   }
   const reset = () => {
-    lower.value = null
+    // A label changes the source, not the search: its matching past days must stay visible.
+    lower.value = terms().length ? (all.value[0]?.[0] ?? null) : null
     upper.value = pageEnd()
   }
   let beforeSearch: { lower: string | null; upper: string | null } | null = null
