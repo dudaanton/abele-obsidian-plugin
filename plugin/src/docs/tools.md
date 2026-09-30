@@ -261,9 +261,11 @@ the words, then `book_highlight` with the find's link as `book` and the exact wo
 ## Maps
 
 `current_location` requests one fresh position from the device running this chat, not another
-synced device. It defaults to Ask in each agent's tool access (Off / Ask / Auto). Script-started agents and delegated runs cannot ask for
-confirmation, so location in Ask mode is refused; only an explicit Auto mode permits it there.
-Other tools retain their usual script permissions. Location is personal data: request it only when the answer depends on where the person is. The JSON answer
+synced device. It defaults to Ask in each agent's tool access (Off / Ask / Auto). Script
+`ctx.agent()` runs permit Ask and Auto without confirmation, like other enabled feature tools;
+Off keeps it unavailable. Delegated chat runs still refuse Ask because they cannot prompt for
+approval; Auto permits it there. Location is personal data: request it only when the answer
+depends on where the person is. The JSON answer
 has `latitude`, `longitude`, `accuracy` (metres), `timestamp` (Unix milliseconds from the
 provider), and `device` (the answering Obsidian platform, not a unique hardware identifier).
 A request takes at most 15 seconds, including permission prompts. Denied, unavailable and

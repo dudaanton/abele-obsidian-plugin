@@ -84,12 +84,12 @@ function agent(mode: 'ask' | 'auto' | 'off') {
 }
 
 describe('location permission with nobody to confirm', () => {
-  it('refuses Ask in script ctx.agent before requesting any device data', async () => {
+  it('permits Ask in script ctx.agent like other enabled feature tools', async () => {
     const target = agent('ask')
     const ctx = buildScriptContext({ params: {}, signal: new AbortController().signal, logs: [] })
     const result = await ctx.agent('Find nearby places', { agent: target.id })
-    expect(device.get).not.toHaveBeenCalled()
-    expect(result).toMatch(/current_location.*(approval|confirmation).*(cannot|nobody|unattended)/i)
+    expect(device.get).toHaveBeenCalledOnce()
+    expect(JSON.parse(result as string).latitude).toBe(12.345)
   })
 
   it('permits explicitly automatic location in script ctx.agent', async () => {

@@ -10,7 +10,8 @@ export function createCurrentLocationTool(): AgentTool {
       'Location is personal data: request it only when the answer depends on where the person is. ' +
       'Returns latitude, longitude, accuracy in metres, timestamp in Unix milliseconds, and the answering device platform. ' +
       'Requires device location permission and may fail on desktop platforms without a location provider. ' +
-      'Script-started agents and delegated runs cannot confirm Ask-mode requests; only explicit Auto permits location there. ' +
+      'Script ctx.agent() runs permit Ask and Auto like other enabled feature tools, without confirmation. ' +
+      'Delegated chat runs cannot confirm Ask-mode requests; only Auto permits location there. ' +
       'No address lookup is sent automatically; use geocode separately only if a place name is needed.',
     parameters: { type: 'object', properties: {} },
     execute: async (_id, _params, signal) => ({
