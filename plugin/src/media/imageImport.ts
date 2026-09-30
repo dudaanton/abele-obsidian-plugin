@@ -40,6 +40,10 @@ export async function normalizeImageImport(
     return { name: name.replace(/\.(heic|heif)$/i, '') + '.png', blob: png }
   } catch {
     // A platform without native decoding keeps the original as a file, never mislabeled PNG.
-    return { name, blob, unconvertedHeic: true }
+    // Persist MIME-only type information in the vault filename: a renamed .jpg would otherwise
+    // be treated as model pixels, and an extensionless file as text when a chat is reopened.
+    const ext = /^image\/heif(?:-|;|$)/i.test(blob.type) ? '.heif' : '.heic'
+    const storedName = isHeicImport(name) ? name : name + ext
+    return { name: storedName, blob, unconvertedHeic: true }
   }
 }

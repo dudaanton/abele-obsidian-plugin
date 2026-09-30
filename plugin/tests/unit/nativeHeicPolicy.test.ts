@@ -36,6 +36,18 @@ it('keeps an existing unsupported vault HEIC without creating a second copy', as
   expect(app.vault.getFiles()).toHaveLength(1)
   expect(Notice.shown.at(-1)).toMatch(/HEIC.*iPhone\/iPad/i)
 })
+it.each(['sample', 'sample.jpg'])('retains HEIC type through storage and message resolution for MIME-only %s', async (name) => {
+  const app = useVault([])
+  const made = await importExternalFile(new File(['BINARY-SAMPLE-NOT-TEXT'], name, { type: 'image/heic' }))
+  expect(await app.vault.readBinary(made)).toEqual(new TextEncoder().encode('BINARY-SAMPLE-NOT-TEXT').buffer)
+  expect(made.path).toBe(`Attachments/${name}.heic`)
+  const seen = vi.fn()
+  const parts = await resolveAttachmentsForApi([made.path], seen)
+  expect(parts).toEqual([{ type: 'text', text: `[File attachment: ${made.path} (HEIC/HEIF; not converted)]` }])
+  expect(seen).not.toHaveBeenCalled()
+  expect(JSON.stringify(parts)).not.toContain('BINARY-SAMPLE-NOT-TEXT')
+})
+
 it('labels a non-converted HEIC as a binary file, not model pixels or decoded text', async () => {
   useVault([{ path: 'Pictures/sample.heic', content: 'BINARY-SAMPLE-NOT-TEXT' }])
   const parts = await resolveAttachmentsForApi(['Pictures/sample.heic'])

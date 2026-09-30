@@ -10,8 +10,10 @@ Images imported through Abele's chat, gallery, file importer and media downloads
 as vault attachments. HEIC/HEIF inputs become PNG only where native decoding is available
 (iPhone/iPad), before allocating a collision-free filename. Converted external imports keep
 only PNG; an existing vault HEIC is kept beside its new PNG copy. Without native decoding,
-HEIC is kept with its original extension and bytes: an external file is imported unchanged,
-and an existing vault file is reused without making a duplicate. A notice explains that
+HEIC is kept with its original bytes: an external file is imported unchanged,
+except that a HEIC/HEIF recognized only by MIME gets `.heic`/`.heif` appended to its filename
+(e.g. `sample.jpg.heic`). That suffix preserves the binary type through storage and chat reloads.
+An existing vault file is reused without making a duplicate. A notice explains that
 conversion is available on iPhone/iPad. Chat attachments store the resulting file's vault
 path, not base64 bytes or a temporary system path.
 
