@@ -28,6 +28,33 @@ beforeEach(() => {
 })
 
 describe('showing a form', () => {
+  // BUG: the second request replaces the shared fields and resolver, stranding the first caller.
+  it.fails('keeps two simultaneous forms in order and settles each caller once', async () => {
+    const results: Array<unknown> = []
+    const first = showFormModal([{ name: 'first', label: 'First', type: 'text' }])
+      .then((value) => results.push(['first', value]))
+    const firstResolve = store().scriptFormResolve.value
+    const second = showFormModal([{ name: 'second', label: 'Second', type: 'text' }])
+      .then((value) => results.push(['second', value]))
+    const secondResolve = store().scriptFormResolve.value
+    try {
+      expect(store().scriptFormFields.value.map((field) => field.name)).toEqual(['first'])
+      store().scriptFormResolve.value?.({ first: 'one' })
+      await Promise.resolve()
+      expect(results).toEqual([['first', { first: 'one' }]])
+      expect(store().scriptFormFields.value.map((field) => field.name)).toEqual(['second'])
+      store().scriptFormResolve.value?.({ second: 'two' })
+      await Promise.resolve()
+      expect(results).toEqual([['first', { first: 'one' }], ['second', { second: 'two' }]])
+    } finally {
+      firstResolve?.(null)
+      secondResolve?.(null)
+      store().scriptFormResolve.value?.(null)
+      await Promise.all([first, second])
+      store().scriptFormModalOpened.value = false
+    }
+  })
+
   it('opens the modal on the fields it was given', () => {
     const fields: FormField[] = [{ name: 'query', label: 'Query', type: 'text' }]
 

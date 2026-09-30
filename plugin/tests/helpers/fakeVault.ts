@@ -18,6 +18,7 @@
  */
 import { TFile, TFolder, TAbstractFile } from 'obsidian'
 import { dump as dumpYaml, load as loadYaml } from 'js-yaml'
+import { OperationDelays } from './deferred'
 
 export interface FakeLinkCache {
   link: string
@@ -64,6 +65,10 @@ export interface FakeFileCache {
 }
 
 export interface FakeApp {
+  delays: OperationDelays<'frontmatter' | 'metadata'>
+  fileManager: {
+    processFrontMatter(file: TFile, fn: (frontmatter: Record<string, unknown>) => void): Promise<void>
+  }
   vault: {
     getResourcePath(file: TFile): string
     getFiles(): TFile[]
@@ -156,6 +161,7 @@ function quote(value: unknown): string {
 }
 
 export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
+  const delays = new OperationDelays<'frontmatter' | 'metadata'>()
   const files: TFile[] = []
   const byPath = new Map<string, TFile>()
   const folders = new Map<string, TFolder>()
@@ -643,10 +649,12 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       },
       /**
        * Obsidian's frontmatter editor: the properties parsed, handed to `fn` to change in place,
-       * and written back above the untouched body. The metadata cache sees the result at once,
-       * where the real one catches up a moment later.
+       * and written back above the untouched body. Tests can hold persistence and cache
+       * delivery separately; without a gate both retain their immediate default.
        */
       async processFrontMatter(file: TFile, fn: (frontmatter: Record<string, unknown>) => void) {
+        const writing = delays.take('frontmatter')
+        if (writing) await writing
         stats.modify++
         const raw = rawByPath.get(file.path) ?? ''
         const match = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(raw)
@@ -655,14 +663,19 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         const body = match ? raw.slice(match[0].length) : raw
         const head = Object.keys(frontmatter).length ? `---\n${dumpYaml(frontmatter)}---\n` : ''
         rawByPath.set(file.path, head + body)
-        const cached = cacheByPath.get(file.path)
-        if (cached) cached.frontmatter = { ...frontmatter }
-        else
-          cacheByPath.set(file.path, {
-            frontmatter: { ...frontmatter },
-            links: [],
-            frontmatterLinks: [],
-          })
+        const publish = () => {
+          const cached = cacheByPath.get(file.path)
+          if (cached) cached.frontmatter = { ...frontmatter }
+          else
+            cacheByPath.set(file.path, {
+              frontmatter: { ...frontmatter },
+              links: [],
+              frontmatterLinks: [],
+            })
+        }
+        const metadata = delays.take('metadata')
+        if (metadata) void metadata.then(publish)
+        else publish()
       },
       /**
        * The real one also rewrites every link pointing at the file; nothing here needs that
@@ -688,6 +701,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         },
       }
     })(),
+    delays,
     stats,
     resetStats() {
       stats.getFiles = 0

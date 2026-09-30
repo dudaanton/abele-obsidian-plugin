@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useRecorder } from '@/audio/useRecorder'
+import { deferred } from '../helpers/deferred'
 
 class FakeRecorder {
   static isTypeSupported = (type: string) => type === 'audio/webm;codecs=opus'
@@ -221,6 +222,27 @@ describe('stopping', () => {
 })
 
 describe('starting over', () => {
+  // BUG: disposal does not invalidate getUserMedia; a late grant starts an invisible recorder.
+  it.fails('releases a microphone granted after the screen was disposed', async () => {
+    const permission = deferred<unknown>()
+    const { win, tracks } = fakeWindow({ getUserMedia: () => permission.promise })
+    const recorder = useRecorder(win)
+    const start = vi.spyOn(FakeRecorder.prototype, 'start')
+    try {
+      const starting = recorder.start()
+      expect(recorder.state.value).toBe('requesting')
+      recorder.dispose()
+      permission.resolve({ getTracks: () => tracks })
+      await starting
+      expect(tracks[0].stop).toHaveBeenCalledOnce()
+      expect(start).not.toHaveBeenCalled()
+      expect(recorder.state.value).not.toBe('recording')
+    } finally {
+      recorder.dispose()
+      start.mockRestore()
+    }
+  })
+
   it('forgets the recording, the bars and the clock', async () => {
     const { win, fire } = fakeWindow()
     const recorder = useRecorder(win)
