@@ -164,6 +164,27 @@ describe('what has happened to a file', () => {
     expect(screen.findAllComponents(Card)).toHaveLength(4)
   })
 
+  it('pages beyond fifty versions and can preview and restore an older version', async () => {
+    client.versions
+      .mockResolvedValueOnce(Array.from({ length: 50 }, (_, n) => version({ no: 100 - n })))
+      .mockResolvedValueOnce(Array.from({ length: 50 }, (_, n) => version({ no: 50 - n })))
+      .mockResolvedValueOnce([])
+    const screen = open()
+    await flushPromises()
+    const older = () =>
+      screen.findAllComponents(Button).find((b) => b.props('text') === 'Load older')
+    expect(older()).toBeDefined()
+    await older()!.trigger('click')
+    await flushPromises()
+    expect(client.versions).toHaveBeenLastCalledWith('file-1', { limit: 50, before: 51 })
+    expect(titles(screen)).toHaveLength(100)
+    await cardFor(screen, 20)!.trigger('click')
+    await flushPromises()
+    expect(client.versionBytes).toHaveBeenCalledWith('file-1', 'v20')
+    await confirmRestore(screen, 20)
+    expect(client.restore).toHaveBeenCalledWith('file-1', 'v20', expect.any(String))
+  })
+
   it('lists the versions newest first', async () => {
     const screen = open()
     await flushPromises()

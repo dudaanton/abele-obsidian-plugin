@@ -58,6 +58,13 @@
             </div>
           </Card>
         </CardGrid>
+        <Button
+          v-if="hasOlder"
+          text="Load older"
+          :disabled="loadingOlder || busy"
+          tooltip="Read the next page of older versions from the server"
+          @click="loadOlder"
+        />
       </div>
     </div>
 
@@ -162,6 +169,8 @@ const TEXT_EXTENSIONS = [
 const sync = SyncService.getInstance()
 
 const versions = ref<VersionInfo[]>([])
+const hasOlder = ref(false)
+const loadingOlder = ref(false)
 /** What the list says when there is no list: reading, unreachable, unsynced, or empty. */
 const notice = ref<string | null>('Reading this file’s history…')
 /** What went wrong, said above the list without taking it away. */
@@ -340,6 +349,24 @@ async function restore(): Promise<void> {
   }
 }
 
+async function loadOlder(): Promise<void> {
+  if (client === null || loadingOlder.value || !hasOlder.value) return
+  const before = versions.value[versions.value.length - 1]?.no
+  if (before === undefined) return
+  loadingOlder.value = true
+  error.value = null
+  try {
+    const page = await client.versions(fileId, { limit: PAGE, before })
+    const known = new Set(versions.value.map((version) => version.version_id))
+    versions.value.push(...page.filter((version) => !known.has(version.version_id)))
+    hasOlder.value = page.length === PAGE
+  } catch (failure) {
+    error.value = `Older versions could not be read: ${reasonOf(failure)}`
+  } finally {
+    loadingOlder.value = false
+  }
+}
+
 onMounted(async () => {
   client = sync.client()
   if (client === null) {
@@ -358,6 +385,7 @@ onMounted(async () => {
     fileId = entry.fileId
     currentVersionId = entry.versionId
     versions.value = await client.versions(fileId, { limit: PAGE })
+    hasOlder.value = versions.value.length === PAGE
     notice.value =
       versions.value.length === 0 ? 'The server holds no versions of this file yet.' : null
   } catch (failure) {

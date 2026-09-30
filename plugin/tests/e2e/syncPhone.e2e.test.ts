@@ -5,7 +5,7 @@
  * sync dialogs cannot be measured there: a history, a trash and a log are only worth looking
  * at when they are long, and only a server makes them long. So this file makes a vault of its
  * own the way `sync.e2e.test.ts` does — a real server, an account, a device paired to it — and
- * fills it: one note with fifty versions, forty files deleted, a log with lines no phone is
+ * fills it: one note with seventy-five versions, forty files deleted, a log with lines no phone is
  * wide enough for. Then it asks of each screen what the phone probe asks of the chat's:
  *
  * - nothing reaches past the right edge of the screen;
@@ -66,7 +66,7 @@ const NARROW = 320
 /** A note deep enough in folders that its path, above the list, has to wrap on a phone. */
 const HISTORY_NOTE =
   'Sync probe/A folder with a name long enough to wrap on a phone/History of one note.md'
-const VERSIONS = 50
+const VERSIONS = 75
 const DELETED = 40
 
 const why = siblingMissing() ?? obsidianMissing()
@@ -249,15 +249,27 @@ function fillLog(): void {
 
 // ─── the screens ──────────────────────────────────────────────────────────────────────────────
 
-/** Opens the history of the seeded note and waits for all fifty cards. */
+/** Opens the history and explicitly pages past the first fifty cards. */
 const OPEN_HISTORY = `
   await closeDialog()
   window.__abeleTest.GlobalStore.getInstance().versionHistoryPath.value = ${JSON.stringify(HISTORY_NOTE)}
-  if (!(await until(() => document.querySelectorAll('.abele-version-history .abele-card').length >= ${VERSIONS}, 20000)))
-    throw new Error('the history never listed ${VERSIONS} versions: ' + document.querySelectorAll('.abele-version-history .abele-card').length)
+  if (!(await until(() => document.querySelectorAll('.abele-version-history .abele-card').length >= 50, 20000)))
+    throw new Error('the history never listed its first fifty versions')
   await wait(300)
   const modal = document.querySelector('.abele-version-history').closest('.modal')
   const body = modal.querySelector('.abele-modal__body')
+  const older = [...modal.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Load older')
+  if (!older) throw new Error('no Load older button for a retained history beyond fifty')
+  older.scrollIntoView({ block: 'center' })
+  await wait(200)
+  const paging = await screen('sync history paging ' + window.innerWidth, modal, body)
+  const br = older.getBoundingClientRect()
+  paging.extra = { buttonInView: br.top >= 0 && br.bottom <= window.innerHeight && br.left >= 0 && br.right <= window.innerWidth }
+  older.click()
+  if (!(await until(() => modal.querySelectorAll('.abele-card').length >= ${VERSIONS}, 20000)))
+    throw new Error('the older page never arrived')
+  modal.querySelector('.abele-version-history__list').scrollTop = 0
+  await wait(200)
   const cardNamed = (title) => [...modal.querySelectorAll('.abele-card')].find(
     (el) => el.querySelector('.abele-card__name')?.textContent.trim() === title)
 `
@@ -266,7 +278,9 @@ const OPEN_HISTORY = `
 const historyScreens = (suffix: string): string => `
   ${OPEN_HISTORY}
   const out = {}
+  out['sync history paging' + ${JSON.stringify(suffix)}] = paging
   out['sync history' + ${JSON.stringify(suffix)}] = await screen('sync history' + ${JSON.stringify(suffix)}, modal, body)
+  out['sync history' + ${JSON.stringify(suffix)}].extra = { versions: modal.querySelectorAll('.abele-card').length }
   const card = cardNamed('#25')
   card.click()
   if (!(await until(() => card.querySelector('.abele-version-history__diff'), 10000)))
@@ -527,6 +541,19 @@ describe.skipIf(why !== null)('the sync screens on a phone', () => {
   it('measures at the widths it meant to', () => {
     for (const label of PHONE_SCREENS)
       expect(phone[label]?.width, label).toBe(label.endsWith('320') ? NARROW : PHONE.width)
+  })
+
+  it('loads retained history beyond fifty with a reachable paging button at every width', () => {
+    for (const [screens, suffix] of [
+      [phone, ''],
+      [phone, ' 320'],
+      [desktop, ' desktop'],
+    ] as const) {
+      expect(screens[`sync history${suffix}`]?.extra.versions).toBe(VERSIONS)
+      expect(screens[`sync history paging${suffix}`]?.extra.buttonInView).toBe(true)
+      expect(screens[`sync history paging${suffix}`]?.over).toEqual([])
+      expect(screens[`sync history paging${suffix}`]?.clipped).toEqual([])
+    }
   })
 
   it.each(PHONE_SCREENS)('%s: nothing reaches past the edge of the screen', (label) => {
