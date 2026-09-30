@@ -28,6 +28,8 @@ export default defineConfig({
     // that stops group resolution from silently going quadratic again.
     include: [
       'tests/unit/**/*.test.ts',
+      // Test infrastructure has its own home, but remains part of the fast gate.
+      'tests/harness/**/*.test.ts',
       'tests/integration/**/*.test.ts',
       // Component tier: Vue components mounted against happy-dom. It computes no layout, so
       // these assert what reaches the DOM and in what order, never how it looks.
