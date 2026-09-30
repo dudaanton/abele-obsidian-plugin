@@ -13,6 +13,7 @@ import { DRAWING_VIEW_TYPE, IMAGE_INK_VIEW_TYPE } from './viewType'
 import type { DrawingView } from './DrawingView'
 import type { Rect } from './items'
 import type { EmbedAnchor } from './embedRelink'
+import { ChatService } from '@/ai/ChatService'
 
 /** What was found in each SVG, by path, while it has the size and time it had. */
 export const known = new Map<string, { mtime: number; size: number; drawing: boolean }>()
@@ -145,7 +146,10 @@ export async function openImageInk(
   const leaf = app.workspace.getLeaf('tab')
   await leaf.setViewState({
     type: IMAGE_INK_VIEW_TYPE,
-    state: { path, chat, embed, replaceAttachment },
+    state: {
+      path, chat, embed, replaceAttachment,
+      chatVersion: chat ? ChatService.getInstance().getSession(chat)?.conversationVersion.value : undefined,
+    },
     active: true,
   })
   await app.workspace.revealLeaf(leaf)

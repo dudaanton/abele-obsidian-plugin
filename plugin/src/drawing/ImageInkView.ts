@@ -42,6 +42,7 @@ export class ImageInkView extends ItemView {
   private path = ''
   /** The chat the picture came from, to send it back to; empty when it came from the vault. */
   private chat = ''
+  private chatVersion: number | null = null
   private replaceAttachment = ''
   /** The embed in a note the picture was opened from; null when it came from anywhere else. */
   private embed: EmbedAnchor | null = null
@@ -94,9 +95,10 @@ export class ImageInkView extends ItemView {
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    const s = (state ?? {}) as { path?: unknown; chat?: unknown; embed?: unknown; replaceAttachment?: unknown }
+    const s = (state ?? {}) as { path?: unknown; chat?: unknown; embed?: unknown; replaceAttachment?: unknown; chatVersion?: unknown }
     const path = typeof s.path === 'string' ? s.path : ''
     this.chat = typeof s.chat === 'string' ? s.chat : ''
+    this.chatVersion = typeof s.chatVersion === 'number' ? s.chatVersion : null
     this.replaceAttachment = typeof s.replaceAttachment === 'string' ? s.replaceAttachment : ''
     this.embed = anchorOf(s.embed)
     if (path && path !== this.path) {
@@ -107,7 +109,7 @@ export class ImageInkView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return { path: this.path, chat: this.chat, embed: this.embed, replaceAttachment: this.replaceAttachment }
+    return { path: this.path, chat: this.chat, chatVersion: this.chatVersion, embed: this.embed, replaceAttachment: this.replaceAttachment }
   }
 
   /** The picture, under an empty sheet of ink, ready to draw on. */
@@ -246,14 +248,27 @@ export class ImageInkView extends ItemView {
 
   /** A new picture, attached to what is being written in the chat it came from. */
   async sendToChat(file: TFile): Promise<boolean> {
+    const chats = ChatService.getInstance()
+    const tabId = this.chat || chats.activeTabId.value || undefined
+    const origin = tabId ? chats.getSession(tabId) : undefined
+    const version = this.chat ? this.chatVersion : origin?.conversationVersion.value
+    const owns = () => !tabId || (!!origin && !origin.isDestroyed &&
+      chats.getSession(tabId) === origin && origin.conversationVersion.value === version)
+    if (!owns()) {
+      new Notice('The original conversation changed. Save the picture and attach it to the intended chat.')
+      return false
+    }
     const made = await this.saveNew(file, false)
     if (!made) return false
-    const chats = ChatService.getInstance()
-    const tabId = this.chat && chats.getSession(this.chat) ? this.chat : undefined
+    if (!owns()) {
+      new Notice(`Saved as ${made.path}. The conversation changed; attach the picture to the intended chat.`)
+      return false
+    }
     if (tabId) chats.switchTab(tabId)
     chats.pendingInput.value = {
       text: '', tabId, attachments: [made.path], focus: true,
       replaceAttachment: this.replaceAttachment || undefined,
+      conversationVersion: typeof version === 'number' ? version : undefined,
     }
     this.replaceAttachment = made.path
     await chats.revealSidebar()
