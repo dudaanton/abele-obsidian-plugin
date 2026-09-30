@@ -20,7 +20,7 @@ export const KEYBOARD_EVENTS = [
 
 /** A field the on-screen keyboard comes up for. */
 export const TYPED =
-  'textarea, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="range"]):not([type="color"]):not([type="file"])'
+  'textarea, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="range"]):not([type="color"]):not([type="file"])'
 
 /**
  * A field that brings a scroller of its own: Obsidian's note editor, put into forms as a note

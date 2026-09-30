@@ -176,13 +176,16 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   const shrinks = (panel: HTMLElement) =>
     panel.classList.contains('abele-modal') && !panel.classList.contains('mod-lg')
 
-  /** The dialog's element that has focus, if any. */
+  /** The dialog's typing field that has focus, if any — never a button, card or list row. */
   const focused = (): Element | null => {
     const box = dialog()
     const active = box?.ownerDocument.activeElement
     // Not `instanceof HTMLElement`: a dialog opened from the settings window lives in that
     // window's document, whose elements belong to another realm.
-    if (!box || !active || active === box || !box.contains(active)) return null
+    if (!box || !active || active === box || !box.contains(active) || !active.matches(TYPED))
+      return null
+    // Focus lands between pointerdown and click. Scrolling an action here can move it away
+    // from the press and swallow a touch click; only typing fields need keyboard reveal.
     return active
   }
 
