@@ -139,7 +139,9 @@ const script = (footer: boolean) => String.raw`(async () => {
     const beforeReveal = row(0).getBoundingClientRect().top
     if (window.__e2eHost) {
       const r = scroller.getBoundingClientRect()
-      await window.__e2eHost.swipe(r.left + r.width/2, r.top + 100, r.left + r.width/2, r.top + 250)
+      // Start in the scroll content, clear of the native floating navigation header.
+      const y = r.top + Math.max(200, r.height * 0.45)
+      await window.__e2eHost.swipe(r.left + r.width/2, y, r.left + r.width/2, y + 80)
     } else root.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }))
     await wait(800)
     report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
@@ -182,12 +184,12 @@ describe.skipIf(!available)('task timeline scrolling', () => {
     mobile: Probe[] = []
   let state: { size: number[]; layout: unknown } | null = null
   beforeAll(async () => {
-    if (!onPhone()) {
-      state = JSON.parse(
-        evalRaw(
-          `JSON.stringify({ size: require('@electron/remote').getCurrentWindow().getContentSize(), layout: app.workspace.getLayout() })`
-        )
+    state = JSON.parse(
+      evalRaw(
+        `JSON.stringify({ size: window.__e2eHost ? [] : require('@electron/remote').getCurrentWindow().getContentSize(), layout: app.workspace.getLayout() })`
       )
+    )
+    if (!onPhone()) {
       for (const footer of [false, true])
         desktop.push(JSON.parse(await evalLong(script(footer), 100000)))
       await reloadApp('app.emulateMobile(true)')
@@ -205,10 +207,12 @@ describe.skipIf(!available)('task timeline scrolling', () => {
       60000
     )
     if (state) {
-      evalRaw(
-        `require('@electron/remote').getCurrentWindow().setContentSize(${state.size.join(',')}); 'restored'`
-      )
-      await reloadApp('app.emulateMobile(false)')
+      if (!onPhone()) {
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${state.size.join(',')}); 'restored'`
+        )
+        await reloadApp('app.emulateMobile(false)')
+      }
       evalRaw(
         `(async () => { await app.workspace.changeLayout(${JSON.stringify(state.layout)}); return 'restored' })()`,
         60000
