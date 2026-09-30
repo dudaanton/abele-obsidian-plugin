@@ -187,7 +187,23 @@ export class GithubClient {
     body: unknown,
     what?: string
   ): GithubError {
-    return errorFor(status, headers, body, this.hasToken, what, this.noTokenReason)
+    return this.safeError(errorFor(status, headers, body, this.hasToken, what, this.noTokenReason))
+  }
+
+  private hideCredential(text: string): string {
+    return this.token ? text.split(this.token).join('<hidden>') : text
+  }
+
+  private safeError(error: GithubError): GithubError {
+    const refusal = error.refusal
+    return new GithubError(error.kind, this.hideCredential(error.message), error.status, {
+      ...refusal,
+      reason: this.hideCredential(refusal.reason),
+      fix: refusal.fix && this.hideCredential(refusal.fix),
+      needed: refusal.needed && this.hideCredential(refusal.needed),
+      githubSaid: refusal.githubSaid && this.hideCredential(refusal.githubSaid),
+      graphql: refusal.graphql && this.hideCredential(refusal.graphql),
+    })
   }
 
   get tokenInfo(): TokenInfo {
@@ -525,7 +541,7 @@ export class GithubClient {
     }
 
     if (response.status < 200 || response.status >= 300) {
-      throw errorFor(response.status, response.headers, body, true, what)
+      throw this.safeError(errorFor(response.status, response.headers, body, true, what))
     }
 
     const errors = body?.errors ?? []
@@ -535,9 +551,9 @@ export class GithubClient {
     if (errors.length > 0) {
       const first = errors[0]
       // GraphQL answers 200 with the refusal inside; its message is what says which refusal.
-      if (first.type === 'NOT_FOUND') throw errorFor(404, response.headers, first, true, what)
-      if (first.type === 'FORBIDDEN') throw errorFor(403, response.headers, first, true, what)
-      throw new GithubError('other', `GitHub: ${errors.map((e) => e.message).join('; ')}`)
+      if (first.type === 'NOT_FOUND') throw this.safeError(errorFor(404, response.headers, first, true, what))
+      if (first.type === 'FORBIDDEN') throw this.safeError(errorFor(403, response.headers, first, true, what))
+      throw new GithubError('other', this.hideCredential(`GitHub: ${errors.map((e) => e.message).join('; ')}`))
     }
     if (!body?.data) throw new GithubError('other', 'GitHub sent back an empty answer.')
     return body.data

@@ -170,6 +170,21 @@ describe('credential destination confinement', () => {
   })
 })
 
+describe('authentication material never becomes diagnostic output', () => {
+  it('redacts a server echo of the bearer token in a refusal and its metadata', async () => {
+    const request = vi.fn(async () => respond({ status: 403, json: { message: 'Refused invented-private-token' }, headers: { 'x-accepted-github-permissions': 'invented-private-token' } }))
+    const c = client(request, 'invented-private-token')
+    const result = await c.probe('/user')
+    expect(JSON.stringify(result.error)).not.toContain('invented-private-token')
+    expect(result.error?.message).not.toContain('invented-private-token')
+  })
+
+  it('redacts token echoes in GraphQL error messages', async () => {
+    const request = vi.fn(async () => respond({ json: { errors: [{ type: 'OTHER', message: 'invented-private-token' }] } }))
+    await expect(client(request, 'invented-private-token').graphql('query { viewer { login } }', {})).rejects.toMatchObject({ message: expect.not.stringContaining('invented-private-token') })
+  })
+})
+
 describe('redirects are new requests', () => {
   it('an API redirect outside the REST boundary is refused before the second send', async () => {
     const request = vi.fn(async () =>
