@@ -450,6 +450,18 @@ watch(
     gap: var(--size-4-2);
     padding: var(--size-4-1) var(--size-4-2);
     border-bottom: 1px solid var(--background-modifier-border);
+
+    // The tabs scroll inside the drawer; their min-content width must not push the close
+    // control off the drawer (and, on a phone, off the screen altogether).
+    // Equal specificity to the phone tabs' no-shrink rule, which must yield here.
+    .abele-tabs:not(.abele-tabs_vertical) {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    > .abele-obsidian-icon {
+      flex-shrink: 0;
+    }
   }
 
   &__note {

@@ -190,7 +190,7 @@ describe.skipIf(!available)('a book on a phone', () => {
     drawer?: { left: number; right: number; rows: number } | null
     afterPick?: { panel: boolean; chapter: string }
     dialog?: { left: number; right: number; width: number } | null
-    search?: { hits: number; over: number }
+    search?: { hits: number; over: number; closeInside: boolean; stripInside: boolean; focusOutside: boolean; focusedRingInside: boolean }
     bar?: { over: number; height: number } | null
     speech?: { over: number; bottom: number; height: number; rows: number } | null
   } = {}
@@ -275,15 +275,48 @@ describe.skipIf(!available)('a book on a phone', () => {
       await wait(400)
       await view.reading.search('plain text')
       await wait(400)
-      const edge = (sel) => {
+      const edge = (sel, skipScrollContents = false) => {
         let over = 0
-        for (const el of view.contentEl.querySelectorAll(sel + ', ' + sel + ' *')) {
+        const walk = (el) => {
           const r = el.getBoundingClientRect()
           if (r.width) over = Math.max(over, Math.round(r.right - window.innerWidth))
+          // A tab inside a sideways scrolling strip can be offscreen by design. The strip
+          // itself and every other element in the drawer must still fit the phone screen.
+          const style = getComputedStyle(el)
+          if (skipScrollContents && (style.overflowX === 'auto' || style.overflowX === 'scroll')) return
+          for (const child of el.children) walk(child)
         }
+        const root = view.contentEl.querySelector(sel)
+        if (root) walk(root)
         return over
       }
-      report.search = { hits: view.contentEl.querySelectorAll('.abele-book-search__hit').length, over: edge('.abele-book-reader__panel') }
+      const searchPanel = view.contentEl.querySelector('.abele-book-reader__panel')
+      const head = searchPanel.querySelector('.abele-book-reader__panel-head')
+      const close = head.querySelector('.abele-obsidian-icon')?.getBoundingClientRect()
+      const strip = head.querySelector('.abele-tabs')?.getBoundingClientRect()
+      const panelRight = searchPanel.getBoundingClientRect().right
+      const tabStrip = head.querySelector('.abele-tabs')
+      const lastTab = tabStrip.querySelector('.abele-tabs__tab:last-child')
+      const scrollBefore = tabStrip.scrollLeft
+      document.activeElement?.blur()
+      tabStrip.scrollLeft = 0
+      const focusOutside = lastTab.getBoundingClientRect().right > tabStrip.getBoundingClientRect().right
+      lastTab.focus() // As keyboard focus does, without preventScroll or a probe-side scroll.
+      const focused = lastTab.getBoundingClientRect()
+      const bounds = tabStrip.getBoundingClientRect()
+      const shadow = (getComputedStyle(lastTab).boxShadow.match(/-?\\d+(\\.\\d+)?px/g) || []).map(parseFloat)
+      const reach = shadow.length >= 4 ? Math.max(0, shadow[2]) + Math.max(0, shadow[3]) : 0
+      const focusedRingInside = focused.left - reach >= bounds.left && focused.right + reach <= bounds.right
+      lastTab.blur()
+      tabStrip.scrollLeft = scrollBefore
+      report.search = {
+        hits: view.contentEl.querySelectorAll('.abele-book-search__hit').length,
+        over: edge('.abele-book-reader__panel', true),
+        closeInside: !!close && close.right <= panelRight,
+        stripInside: !!strip && strip.right <= panelRight,
+        focusOutside,
+        focusedRingInside,
+      }
       await shoot('rich-search')
       view.model.panel = false
       view.reading.stopSearch()
@@ -389,6 +422,10 @@ describe.skipIf(!available)('a book on a phone', () => {
   it('the search in the drawer and the bar for selected words fit the screen', () => {
     expect(overlays.search?.hits).toBeGreaterThan(0)
     expect(overlays.search?.over).toBeLessThanOrEqual(0)
+    expect(overlays.search?.stripInside).toBe(true)
+    expect(overlays.search?.closeInside).toBe(true)
+    expect(overlays.search?.focusOutside).toBe(true)
+    expect(overlays.search?.focusedRingInside).toBe(true)
     expect(overlays.bar).toBeTruthy()
     expect(overlays.bar!.over).toBeLessThanOrEqual(0)
     // Two rows at most: the colours, and what can be done.
