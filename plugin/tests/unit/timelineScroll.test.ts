@@ -204,6 +204,23 @@ describe('timeline scroll ownership', () => {
     expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('0px')
   })
 
+  it('reserves the native phone header hit area even while its visual header is collapsed', async () => {
+    document.body.classList.add('is-phone')
+    document.body.style.setProperty('--safe-area-inset-top', '20px')
+    document.body.style.setProperty('--view-header-height', '40px')
+    cleanups.push(() => {
+      document.body.classList.remove('is-phone')
+      document.body.style.removeProperty('--safe-area-inset-top')
+      document.body.style.removeProperty('--view-header-height')
+    })
+    const p = await pane(100)
+    const strip = document.createElement('div')
+    p.owner.append(strip)
+    p.history.value = strip
+    await nextTick()
+    expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('60px')
+  })
+
   it('corrects a sticky banner when the scroll owner padding is not its sticky origin', async () => {
     document.body.classList.add('is-phone')
     cleanups.push(() => document.body.classList.remove('is-phone'))

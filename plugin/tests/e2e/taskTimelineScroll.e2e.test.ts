@@ -117,9 +117,11 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     const row = (d, n = 1) => [...root.querySelectorAll('.abele-task-view')].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item ' + d + ' ' + n + '.md')
     const chromeBottom = () => {
       if (!document.body.classList.contains('is-phone')) return 0
-      const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
+      const bodyStyle = getComputedStyle(document.body)
+      const safe = parseFloat(bodyStyle.getPropertyValue('--safe-area-inset-top')) || 0
+      const nativeHeader = parseFloat(bodyStyle.getPropertyValue('--view-header-height')) || 0
       const viewport = scroller.getBoundingClientRect()
-      return Math.max(safe, ...[...document.querySelectorAll('.view-header')].flatMap(header =>
+      return Math.max(safe + nativeHeader, ...[...document.querySelectorAll('.view-header')].flatMap(header =>
         [header, ...header.querySelectorAll('*')].map(el => {
           const r = el.getBoundingClientRect()
           return r.width && r.height && r.right > viewport.left && r.left < viewport.right &&

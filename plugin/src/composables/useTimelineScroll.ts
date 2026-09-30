@@ -14,7 +14,10 @@ function pinnedTop(owner: HTMLElement): number {
   const top = viewport.top
   const body = owner.ownerDocument.body
   if (!body.classList.contains('is-phone')) return top
-  const safe = parseFloat(getComputedStyle(body).getPropertyValue('--safe-area-inset-top')) || 0
+  const bodyStyle = getComputedStyle(body)
+  const safe = parseFloat(bodyStyle.getPropertyValue('--safe-area-inset-top')) || 0
+  // Native navigation retains its tap region when the visual header collapses on a pan.
+  const nativeHeader = parseFloat(bodyStyle.getPropertyValue('--view-header-height')) || 0
   // Phone navigation can float outside its scroll leaf, and its controls can overflow a
   // zero-height wrapper. Measure rendered chrome overlapping this pane, not just its header.
   const chromeBottom = Math.max(
@@ -33,7 +36,7 @@ function pinnedTop(owner: HTMLElement): number {
       })
     )
   )
-  return Math.max(top, safe, chromeBottom)
+  return Math.max(top, safe + nativeHeader, chromeBottom)
 }
 
 /** Holds a visible row through insertions and completed toggles. All scrolling stays native. */
