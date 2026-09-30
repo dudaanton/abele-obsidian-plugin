@@ -418,6 +418,11 @@ Three files, three concerns:
   a reader font change, and a late paragraph style change that moves words without resizing their
   block. The late change happens after the startup font checks have expired. Pictures go to
   `abele-overlay-reflow` under the run's screenshot directory.
+- `bookOverlayOrigin.e2e.test.ts` — **a new overlay starts at its frame's origin**, desktop and
+  real phone. Checks actual search and saved-highlight rectangles in the attachment microtask,
+  before resize observers can repair a wrong origin, then after sidebar changes, a delayed vault
+  font, returning to a chapter, two-column layout and scrolling. A generated font file exercises
+  the fonts-folder path; a tall desktop viewport exercises one visible column with two enabled.
 - `bookSelectionPlace.e2e.test.ts` — **a word is selected where it is drawn**, desktop and phone
   (`tests/fixtures/books/latvianBook.ts`, made-up justified text in a monospace font): for every
   word on the page, the middle of its measured box must hit that word, once the page has settled

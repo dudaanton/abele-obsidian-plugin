@@ -427,6 +427,10 @@ class View {
     set overlayer(overlayer) {
         this.#overlayer = overlayer
         this.#element.append(overlayer.element)
+        // ABELE PATCH: load() laid out the frame before this layer existed. Place and size it
+        // now, not on the next body resize (which may never come). At left: 0 a paginated layer
+        // starts one whole page before its frame, painting the next page's marks on this one.
+        this.expand()
     }
     get overlayer() {
         return this.#overlayer

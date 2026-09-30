@@ -94,6 +94,12 @@ Every change is marked `ABELE PATCH` at its site.
    carrying `cfi` is drawn there and kept under its `value`, so the marks of notes linking to
    words (`abele-link:<cfi>`) live beside a highlight on the same words instead of replacing it.
 
+10. **An overlay is positioned when it is attached** (`paginator.js`, `View.overlayer`). The
+    frame is laid out before its overlay exists. Leaving the new SVG at its default origin until
+    a later resize notification places paginated marks a whole page before their words. Attaching
+    it now immediately applies the frame's layout, including the scrolled page's margins, rather
+    than relying on another resize or font event to place it.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that
