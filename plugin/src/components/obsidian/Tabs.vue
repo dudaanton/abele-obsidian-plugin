@@ -132,12 +132,13 @@ const emit = defineEmits<{
 }
 
 /**
- * On a phone a row of secondary tabs stays one row and scrolls sideways, the way a phone's own
- * tab strips do. Wrapped, the agent editor's six sections stood on two rows and pushed the page
- * down under them.
+ * On a phone every horizontal strip stays one row and scrolls sideways, with the same theme
+ * styling as before. Limiting this to secondary tabs left a dialog's primary navigation
+ * wrapped on two rows. Vertical settings navigation remains a list.
  */
-.is-phone .abele-tabs_secondary:not(.abele-tabs_vertical) {
+.is-phone .abele-tabs:not(.abele-tabs_vertical) {
   flex-wrap: nowrap;
+  flex-shrink: 0;
   overflow-x: auto;
   scrollbar-width: none;
   // Room for a focused tab's ring, which a scrolling box would otherwise cut. Not pulled back

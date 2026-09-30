@@ -94,6 +94,8 @@ interface Screen {
   stranded: string[]
   /** Ancestors that cut the focus ring of the field the screen focused, with how much of it. */
   clipped: string[]
+  /** Horizontal tab strips: row count and tabs taller than their strip. */
+  tabs?: { name: string; count: number; rows: number; clipped: string[] }[]
   /** The root's height as a share of the window's. */
   fill: number
   /** Where the picture went. */
@@ -168,7 +170,22 @@ const probeScript = `(async () => {
       }
     }
 
-    return { over, scrollers, capped, stranded, fill: Math.round((box.height / window.innerHeight) * 100) / 100 }
+    // Horizontal navigation is one scrolling row, not a wrapped second row. Right-edge
+    // overflow cannot catch wrapping: every tab still fits inside the sheet.
+    const tabs = [...root.querySelectorAll('.abele-tabs:not(.abele-tabs_vertical)')]
+      .filter((strip) => strip.getBoundingClientRect().width > 0 && getComputedStyle(strip).visibility !== 'hidden')
+      .map((strip) => {
+        const bounds = strip.getBoundingClientRect()
+        const items = [...strip.querySelectorAll('.abele-tabs__tab')].filter((tab) => tab.getBoundingClientRect().width > 0)
+        const rows = new Set(items.map((tab) => Math.round(tab.getBoundingClientRect().top)))
+        const clipped = items.filter((tab) => {
+          const r = tab.getBoundingClientRect()
+          return r.top < bounds.top - 1 || r.bottom > bounds.bottom + 1
+        }).map((tab) => tab.textContent.trim())
+        return { name: name(strip), count: items.length, rows: rows.size, clipped }
+      })
+
+    return { over, scrollers, capped, stranded, tabs, fill: Math.round((box.height / window.innerHeight) * 100) / 100 }
   }
 
   /**
@@ -1052,6 +1069,27 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(d?.edges?.[1] ?? 9999).toBeLessThanOrEqual(PHONE.height)
     expect(d?.hidden ?? ['no report']).toEqual([])
   })
+
+  it.each(['scope', 'skills', 'prompts', 'tools', 'settings', 'debug'])(
+    'setup %s: all six tabs stay on one row without shrinking the strip',
+    (tab) => {
+      const strips = report['setup ' + tab]?.tabs
+      expect(strips?.length ?? 0).toBe(1)
+      expect(strips?.[0].count).toBe(6)
+      expect(strips?.[0].rows).toBe(1)
+      expect(strips?.[0].clipped).toEqual([])
+    }
+  )
+
+  it.each([...screens, ...DIALOGS])(
+    '%s: horizontal tab strips keep to one unclipped row',
+    (label) => {
+      for (const strip of report[label]?.tabs ?? []) {
+        expect(strip.rows, strip.name).toBe(1)
+        expect(strip.clipped, strip.name).toEqual([])
+      }
+    }
+  )
 
   it.each(screens)('%s: nothing reaches past the edge of the screen', (label) => {
     expect(report[label]?.over ?? ['no report']).toEqual([])
