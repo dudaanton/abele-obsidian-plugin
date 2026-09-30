@@ -114,6 +114,14 @@ async function run<T>(device: Device, body: string, fast = false): Promise<T> {
 }
 
 async function putBinary(device: Device, path: string, bytes: Uint8Array): Promise<void> {
+  if (device === 'desktop') {
+    // Large local diagnostic EPUBs/fonts need not traverse hundreds of CLI eval messages.
+    // Use the leased vault's filesystem boundary and wait for its ordinary file watcher.
+    const root = await run<string>('desktop', `return JSON.stringify(app.vault.adapter.getBasePath())`)
+    writeFileSync(join(root, path), bytes, { flag: 'wx' })
+    await run('desktop', `await until(()=>app.vault.getAbstractFileByPath(${JSON.stringify(path)}));return JSON.stringify(true)`)
+    return
+  }
   const data = Buffer.from(bytes).toString('base64')
   await run(
     device,
