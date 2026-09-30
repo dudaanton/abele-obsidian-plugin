@@ -542,7 +542,9 @@ function toggleSkill(name: string): void {
   min-height: 16em;
   max-height: 60vh;
   overflow-y: auto;
-  padding: var(--size-2-2) calc(var(--size-2-2) + var(--size-4-1)) var(--size-2-2) var(--size-2-2);
+  // Prompt and scope controls extend into the row gutter; leave their rings room on both sides.
+  padding: var(--size-2-2) calc(var(--size-2-2) + var(--size-4-1)) var(--size-2-2)
+    calc(var(--size-2-2) + var(--size-4-1));
   margin: calc(-1 * var(--size-2-2)) 0 calc(-1 * var(--size-2-2)) calc(-1 * var(--size-2-2));
 }
 
