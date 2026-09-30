@@ -10,22 +10,29 @@ function scrollOwner(el: HTMLElement): HTMLElement {
 
 /** The usable top of a phone pane is below its status bar and floating navigation. */
 function pinnedTop(owner: HTMLElement): number {
-  const top = owner.getBoundingClientRect().top
+  const viewport = owner.getBoundingClientRect()
+  const top = viewport.top
   const body = owner.ownerDocument.body
   if (!body.classList.contains('is-phone')) return top
   const safe = parseFloat(getComputedStyle(body).getPropertyValue('--safe-area-inset-top')) || 0
-  const header = owner.closest('.workspace-leaf')?.querySelector('.view-header')
-  // Floating phone controls can overflow a zero-height header wrapper. Its own rectangle
-  // alone does not describe the area which still intercepts taps above the timeline.
-  const chromeBottom = header
-    ? Math.max(
-        0,
-        ...[header, ...Array.from(header.querySelectorAll('*'))].map((el) => {
-          const box = el.getBoundingClientRect()
-          return box.width && box.height ? box.bottom : 0
-        })
-      )
-    : 0
+  // Phone navigation can float outside its scroll leaf, and its controls can overflow a
+  // zero-height wrapper. Measure rendered chrome overlapping this pane, not just its header.
+  const chromeBottom = Math.max(
+    0,
+    ...Array.from(body.querySelectorAll('.view-header')).flatMap((header) =>
+      [header, ...Array.from(header.querySelectorAll('*'))].map((el) => {
+        const box = el.getBoundingClientRect()
+        return box.width &&
+          box.height &&
+          box.right > viewport.left &&
+          box.left < viewport.right &&
+          box.bottom > viewport.top &&
+          box.top < viewport.bottom
+          ? box.bottom
+          : 0
+      })
+    )
+  )
   return Math.max(top, safe, chromeBottom)
 }
 
@@ -222,8 +229,8 @@ export function useTimelineScroll(
       const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(followChrome)
       resize?.observe(owner)
       const chrome = owner.closest('.workspace-leaf')
-      const header = chrome?.querySelector('.view-header')
-      if (header) resize?.observe(header)
+      for (const header of Array.from(owner.ownerDocument.querySelectorAll('.view-header')))
+        resize?.observe(header)
       chrome?.addEventListener('transitionend', followChrome)
       const scroll = () => {
         const own =

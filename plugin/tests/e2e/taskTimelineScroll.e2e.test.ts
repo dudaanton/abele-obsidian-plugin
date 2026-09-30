@@ -118,11 +118,14 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     const chromeBottom = () => {
       if (!document.body.classList.contains('is-phone')) return 0
       const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--safe-area-inset-top')) || 0
-      const header = scroller.closest('.workspace-leaf')?.querySelector('.view-header')
-      return Math.max(safe, ...[header, ...(header?.querySelectorAll('*') ?? [])].filter(Boolean).map(el => {
-        const r = el.getBoundingClientRect()
-        return r.width && r.height ? r.bottom : 0
-      }))
+      const viewport = scroller.getBoundingClientRect()
+      return Math.max(safe, ...[...document.querySelectorAll('.view-header')].flatMap(header =>
+        [header, ...header.querySelectorAll('*')].map(el => {
+          const r = el.getBoundingClientRect()
+          return r.width && r.height && r.right > viewport.left && r.left < viewport.right &&
+            r.bottom > viewport.top && r.top < viewport.bottom ? r.bottom : 0
+        })
+      ))
     }
     const usableTop = () => {
       const viewport = scroller.getBoundingClientRect().top
