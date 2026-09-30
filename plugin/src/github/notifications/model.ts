@@ -30,7 +30,7 @@ export interface RawNotification {
 }
 
 export interface GithubNotification {
-  /** The thread's id: what marking it read names. */
+  /** The thread's id: what marking it read or done names. */
   id: string
   unread: boolean
   /** GitHub's own word for why it arrived: `mention`, `review_requested`… */

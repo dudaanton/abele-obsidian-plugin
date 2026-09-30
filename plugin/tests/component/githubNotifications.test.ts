@@ -1,9 +1,10 @@
 /**
  * The GitHub notifications panel from canned API answers: unread ones stand out, the filters
- * narrow the list, a click opens the item in a tab and marks it read on GitHub, the check and
- * "mark all" mark read, and a refused token is explained for what notifications need.
+ * narrow the list, opening does not write, Done and bulk Read are distinct, and a refused
+ * token is explained. Superseded check-to-read expectations remain explicit legacy failures;
+ * the current inbox contract is covered by githubNotificationsInbox.test.ts.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import type { RequestUrlParam } from 'obsidian'
@@ -59,8 +60,12 @@ const ROUTES: Record<string, Route> = {
     const all = new URL(req.url).searchParams.get('all') === 'true'
     return { json: all ? LIST : LIST.filter((n) => n.unread), headers: { 'X-Poll-Interval': '60' } }
   },
-  '/notifications/threads/1': { status: 205 },
-  '/notifications/threads/2': { status: 205 },
+  '/notifications/threads/1': (req: RequestUrlParam) => ({
+    status: req.method === 'DELETE' ? 204 : 205,
+  }),
+  '/notifications/threads/2': (req: RequestUrlParam) => ({
+    status: req.method === 'DELETE' ? 204 : 205,
+  }),
   '/repos/acme/widgets/notifications': { status: 205 },
 }
 
@@ -77,6 +82,7 @@ const calls = (request: { mock: { calls: [RequestUrlParam][] } }, method: string
 beforeEach(() => {
   document.body.replaceChildren()
 })
+afterEach(() => vi.restoreAllMocks())
 
 describe('the notifications panel', () => {
   // BUG: legacy expectation says read rows have no check; Done is now available on every row.
@@ -117,7 +123,7 @@ describe('the notifications panel', () => {
     expect(options).toEqual(['All repositories', 'acme/gadgets (1)', 'acme/widgets (2)'])
   })
 
-  it('opens a click in a tab at the latest comment, and leaves it unread: only the check marks read', async () => {
+  it('opens a click in a tab at the latest comment, and leaves it unread without writing', async () => {
     const { wrapper, onOpen, request } = panel(ROUTES)
     await vi.waitFor(() => expect(wrapper.findAll('.abele-github-notification')).toHaveLength(3))
     await wrapper.find('[data-id="2"] .tree-item-self').trigger('click')
@@ -127,6 +133,7 @@ describe('the notifications panel', () => {
       false
     )
     expect(calls(request, 'PATCH')).toEqual([])
+    expect(calls(request, 'DELETE')).toEqual([])
     expect(rows(wrapper).find((r) => r.id === '2')?.unread).toBe(true)
   })
 

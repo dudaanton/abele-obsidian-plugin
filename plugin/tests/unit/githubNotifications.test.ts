@@ -1,7 +1,7 @@
 /**
  * GitHub notifications: reading the Notifications API's answer, working out the page each one
  * leads to from the API addresses it carries, polling the way GitHub asks (the poll interval,
- * `If-Modified-Since`), marking read, and what a refusal says about the token.
+ * `If-Modified-Since`), marking read or done, and what a refusal says about the token.
  */
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
