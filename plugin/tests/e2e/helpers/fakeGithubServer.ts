@@ -457,6 +457,7 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
  * answered 304 the way GitHub answers it.
  */
 const readThreads = new Set<string>()
+const doneThreads = new Set<string>()
 let notificationsChanged = new Date('2026-09-05T10:00:00Z')
 
 function notificationList(web: string) {
@@ -508,7 +509,9 @@ function notificationList(web: string) {
       read: true,
     },
   ]
-  return all.map(({ read, ...n }) => ({ ...n, unread: !read && !readThreads.has(n.id) }))
+  return all
+    .filter((n) => !doneThreads.has(n.id))
+    .map(({ read, ...n }) => ({ ...n, unread: !read && !readThreads.has(n.id) }))
 }
 
 function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
@@ -526,6 +529,13 @@ function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web:
     })
   }
   const thread = /^\/api\/v3\/notifications\/threads\/(\d+)$/.exec(url.pathname)
+  if (thread && req.method === 'DELETE') {
+    doneThreads.add(thread[1])
+    readThreads.add(thread[1])
+    notificationsChanged = new Date()
+    res.writeHead(204)
+    return res.end()
+  }
   if (thread && req.method === 'PATCH') {
     readThreads.add(thread[1])
     notificationsChanged = new Date()
@@ -534,7 +544,11 @@ function notifications(req: IncomingMessage, res: ServerResponse, url: URL, web:
   }
   if (url.pathname !== '/api/v3/notifications' || req.method !== 'GET') return notFound(res)
   const lastModified = notificationsChanged.toUTCString()
-  const headers = { 'Last-Modified': lastModified, 'X-Poll-Interval': '60' }
+  const headers = {
+    'Last-Modified': lastModified,
+    'X-Poll-Interval': '60',
+    'X-OAuth-Scopes': 'notifications',
+  }
   const since = req.headers['if-modified-since']
   if (since && Date.parse(String(since)) >= Date.parse(lastModified)) {
     res.writeHead(304, headers)

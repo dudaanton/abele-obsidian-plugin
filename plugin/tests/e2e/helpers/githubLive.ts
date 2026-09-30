@@ -23,7 +23,7 @@ export interface FakeGithub {
   origin: string
   /** `<origin>/acme/widgets`. */
   web: string
-  /** Every request so far, as `GET /api/v3/…` (or POST, PATCH, PUT). */
+  /** Every request so far, as `GET /api/v3/…` (or POST, PATCH, PUT, DELETE). */
   requests(): string[]
   stop(): void
 }
@@ -74,7 +74,7 @@ export async function startFakeGithub(
   return {
     origin,
     web: `${origin}/${OWNER}/${REPO}`,
-    requests: () => lines.filter((l) => /^(GET|POST|PATCH|PUT) /.test(l)),
+    requests: () => lines.filter((l) => /^(GET|POST|PATCH|PUT|DELETE) /.test(l)),
     stop: () => {
       unexpose()
       child.kill()

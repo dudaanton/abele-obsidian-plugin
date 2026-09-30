@@ -312,7 +312,9 @@ async function markAllRead() {
     const before = shown.value.filter((n) => n.unread).map((n) => n.id)
     await inbox().markAllRead(props.state.which, props.state.repo)
     for (const id of before) readHere.add(id)
-    items.value = inbox().cached(props.state.which)
+    const read = new Map((inbox().cached(props.state.which) ?? []).map((n) => [n.id, n]))
+    // Read is not Done: preserve rows retained by a poll, which are not in the API cache.
+    items.value = (items.value ?? []).map((n) => read.get(n.id) ?? n)
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

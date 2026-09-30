@@ -1,11 +1,11 @@
 /**
  * The GitHub notifications panel in the app, against the fake GitHub server:
  *
- * - the command opens it in the right sidebar, with the unread ones from the server;
+ * - the command opens it in the right sidebar, with read and unread inbox rows;
  * - a click on the pull request's opens it in a tab at the latest comment and leaves it unread;
- *   its check marks the thread read on the server (a PATCH), and the row stays, no longer bold;
+ *   its check marks the thread Done on the server (DELETE), removing it from the inbox;
  * - a discussion, which GitHub names by title only, is found and opened in a tab;
- * - "All" shows the read one, the repository filter narrows to one repository, and "mark all as
+ * - Unread filters the read row out, All restores it, the repository filter narrows, and "mark all as
  *   read" PUTs and leaves nothing unread;
  * - on a phone (`emulateMobile`) the panel fits the screen and a row still opens its item.
  *
@@ -134,7 +134,9 @@ describe.skipIf(!available)('GitHub notifications', () => {
     useNotificationsToken()
   })
 
-  it('opens in the sidebar with the unread ones; a click opens the pull request at its comment, and only the check marks it read', async () => {
+  // The old unread-default/check-to-read expectations are intentionally replaced with the
+  // documented GitHub inbox contract: read rows stay in All, the check is Done, and opens do not write.
+  it('opens in the sidebar with read and unread rows; a click opens the pull request at its comment, and the check marks it Done', async () => {
     const r = evalAsync<{
       error?: string
       inSidebar?: boolean
@@ -160,7 +162,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       const box = panel().getBoundingClientRect()
       report.onScreen = !app.workspace.rightSplit.collapsed && box.width > 0 && box.left < innerWidth
       report.where = { collapsed: app.workspace.rightSplit.collapsed, left: Math.round(box.left), width: Math.round(box.width), screen: innerWidth }
-      report.shot = await shoot('desktop-unread.png')
+      report.shot = await shoot('desktop-inbox.png')
       panel().querySelector('[data-id="101"] .tree-item-self').click()
       const leaf = await until(() => githubLeaves()[0], 20000)
       if (!leaf) return { ...report, error: 'no tab opened' }
@@ -169,7 +171,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       await wait(500)
       report.afterOpen = rowsOf().map(({ id, unread }) => ({ id, unread }))
       panel().querySelector('[data-id="101"] .abele-github-notification__mark .abele-obsidian-icon').click()
-      await until(() => rowsOf().find((r) => r.id === '101' && !r.unread), 10000)
+      await until(() => !rowsOf().some((r) => r.id === '101'), 10000)
       report.after = rowsOf().map(({ id, unread }) => ({ id, unread }))
       return report
     })()`)
@@ -180,22 +182,25 @@ describe.skipIf(!available)('GitHub notifications', () => {
       { id: '101', title: 'Rework the widget loader', unread: true },
       { id: '102', title: 'Loader hangs on an empty list', unread: true },
       { id: '103', title: 'How should paging work?', unread: true },
+      { id: '104', title: 'An old question', unread: false },
     ])
     expect(r.url).toBe(`${gh.web}/pull/${PULL}#issuecomment-${LATE_COMMENT}`)
     expect(r.afterOpen).toEqual([
       { id: '101', unread: true },
       { id: '102', unread: true },
       { id: '103', unread: true },
+      { id: '104', unread: false },
     ])
     expect(r.after).toEqual([
-      { id: '101', unread: false },
       { id: '102', unread: true },
       { id: '103', unread: true },
+      { id: '104', unread: false },
     ])
     await serverLog()
     // Once, by the check; opening asked nothing of the kind.
-    expect(gh.requests().filter((l) => l.startsWith('PATCH '))).toEqual([
-      'PATCH /api/v3/notifications/threads/101',
+    expect(gh.requests().filter((l) => l.startsWith('PATCH '))).toEqual([])
+    expect(gh.requests().filter((l) => l.startsWith('DELETE '))).toEqual([
+      'DELETE /api/v3/notifications/threads/101',
     ])
     expect(r.shot).toMatch(/\.png$/)
   })
@@ -213,20 +218,25 @@ describe.skipIf(!available)('GitHub notifications', () => {
     expect(r.url).toBe(`${gh.web}/discussions/3`)
   })
 
-  it('shows read ones under "All", narrows to a repository, and marks everything read', async () => {
+  it('filters Unread and All, narrows to a repository, marks everything read without Done, then finishes a read row', async () => {
     const r = evalAsync<{
       error?: string
       all?: string[]
       repos?: string[]
       narrowed?: string[]
       afterAll?: boolean
+      afterRead?: string[]
+      afterDone?: string[]
       shot?: string
     }>(`(async () => {
       ${PRELUDE}
       ${PANEL}
       if (!(await openPanel())) return { error: 'no panel' }
+      panel().querySelectorAll('.abele-github-notifications__which .abele-tabs__tab')[0].click()
+      if (!(await until(() => ready() && rowsOf().length === 2, 20000)))
+        return { error: 'unread never showed: ' + JSON.stringify(rowsOf()) }
       panel().querySelectorAll('.abele-github-notifications__which .abele-tabs__tab')[1].click()
-      if (!(await until(() => ready() && rowsOf().length === 4, 20000)))
+      if (!(await until(() => ready() && rowsOf().length === 3, 20000)))
         return { error: 'all never showed: ' + JSON.stringify(rowsOf()) }
       const report = { all: rowsOf().map((r) => r.id) }
       const select = panel().querySelector('.abele-github-notifications__repo select')
@@ -237,18 +247,25 @@ describe.skipIf(!available)('GitHub notifications', () => {
       report.narrowed = rowsOf().map((r) => r.id)
       select.value = ''
       select.dispatchEvent(new Event('change', { bubbles: true }))
-      await until(() => rowsOf().length === 4, 5000)
+      await until(() => rowsOf().length === 3, 5000)
       panel().querySelector('.abele-github-notifications__read-all').click()
       report.afterAll = !!(await until(() => rowsOf().every((r) => !r.unread), 10000))
+      report.afterRead = rowsOf().map((r) => r.id)
       report.shot = await shoot('desktop-all.png')
+      panel().querySelector('[data-id="104"] .abele-github-notification__mark .abele-obsidian-icon').click()
+      await until(() => !rowsOf().some((r) => r.id === '104'), 10000)
+      report.afterDone = rowsOf().map((r) => r.id)
       return report
     })()`)
     expect(r.error).toBeUndefined()
-    expect(r.all).toEqual(['101', '102', '103', '104'])
-    expect(r.repos).toEqual(['All repositories', 'acme/widgets (3)', 'other/gadgets (1)'])
+    expect(r.all).toEqual(['102', '103', '104'])
+    expect(r.repos).toEqual(['All repositories', 'acme/widgets (2)', 'other/gadgets (1)'])
     expect(r.narrowed).toEqual(['104'])
     expect(r.afterAll).toBe(true)
+    expect(r.afterRead).toEqual(['102', '103', '104'])
+    expect(r.afterDone).toEqual(['102', '103'])
     await serverLog()
+    expect(gh.requests()).toContain('DELETE /api/v3/notifications/threads/104')
     expect(gh.requests()).toContain('PUT /api/v3/notifications')
     // Asked again for a list that had not changed, it was answered "not modified".
     expect(

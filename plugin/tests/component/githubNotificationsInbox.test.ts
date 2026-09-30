@@ -143,6 +143,30 @@ describe('polling and bulk read', () => {
   })
 })
 
+describe('bulk read with rows retained by a poll', () => {
+  it('does not remove a retained row: bulk Read is not Done', async () => {
+    let now = Date.parse('2026-01-03T10:00:00Z')
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    let current = [notes[0]]
+    const { wrapper } = panel(
+      {
+        '/notifications': (req: RequestUrlParam) =>
+          req.method === 'PUT' ? { status: 205 } : { json: current },
+      },
+      'unread'
+    )
+    await flushPromises()
+    current = [{ ...notes[0], id: '13', updated_at: '2026-01-03T09:00:00Z' }]
+    now += 61_000
+    await refresh(wrapper)
+    expect(ids(wrapper)).toEqual(['13', '11'])
+    await wrapper.find('.abele-github-notifications__read-all').trigger('click')
+    await flushPromises()
+    expect(ids(wrapper)).toEqual(['13', '11'])
+    expect(wrapper.findAll('.is-unread')).toHaveLength(0)
+  })
+})
+
 describe('refresh and write ordering', () => {
   it('disables Done while a refresh is in flight, then permits it on the refreshed row', async () => {
     const { wrapper, client, request } = panel({
