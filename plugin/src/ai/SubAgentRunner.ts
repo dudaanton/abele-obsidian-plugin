@@ -65,7 +65,17 @@ function isToolAllowed(
   if (toolMode === 'off') {
     return { allowed: false, reason: `${toolName} is not enabled` }
   }
-  // 'ask' and 'auto' both allowed for sub-agents (no interactive prompt)
+  // Location is personal device data. A script-started agent cannot obtain confirmation;
+  // only an explicit automatic mode authorises this request. Other tools keep their policy.
+  if (toolName === 'current_location' && toolMode !== 'auto') {
+    return {
+      allowed: false,
+      reason:
+        'current_location requires confirmation, but a script-started agent has nobody to confirm. ' +
+        'Set Current location to Auto for this agent to permit unattended location requests.',
+    }
+  }
+  // Other feature tools keep allowing both 'ask' and 'auto' without an interactive prompt.
   return { allowed: true }
 }
 

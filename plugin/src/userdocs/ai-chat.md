@@ -141,7 +141,9 @@ run your scripts; and delegate work to other agents.
 
 **Current location**, under **Maps** in an agent's **Access** tab, asks your device where it is.
 It starts on **Ask**: each request needs your approval unless you choose **Auto**; **Off** removes
-the tool. Your device may also ask for location permission. The answer includes the position,
+the tool. In scripts and delegated runs nobody can approve a request: **Ask** refuses location
+there; choose **Auto** explicitly if that agent should be allowed to request it unattended.
+Your device may also ask for location permission. The answer includes the position,
 accuracy, time and which platform answered — always the device running the chat, not another
 synced device. It is sent to the model and kept in the conversation like any other tool answer.
 The agent should request it only for questions that depend on where you are. There is no
