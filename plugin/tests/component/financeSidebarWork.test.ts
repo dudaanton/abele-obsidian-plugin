@@ -91,8 +91,11 @@ async function addTransaction(name: string) {
 }
 
 beforeEach(() => {
+  // Reproduce the original failure regardless of the host's date or timezone:
+  // October has begun locally while UTC is still in September.
+  vi.stubEnv('TZ', 'Europe/Moscow')
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-  vi.setSystemTime(new Date(2026, 9, 1, 0, 15))
+  vi.setSystemTime(new Date('2026-10-01T00:15:00+03:00'))
   installFakeIntersectionObserver()
   app = useVault(fixture())
   AbeleConfig.getInstance().pinnedCurrencies = 'EUR'
@@ -110,6 +113,7 @@ afterEach(() => {
   store.accountsList.value?.cleanup()
   store.accountsList.value = null
   vi.useRealTimers()
+  vi.unstubAllEnvs()
 })
 
 function work() {
@@ -143,6 +147,37 @@ async function mountSidebar(active = true) {
 }
 
 describe('finance sidebar — work per new transaction', () => {
+  it('puts new same-day notes on the first page at a non-UTC month boundary', async () => {
+    expect(dayjs().format('YYYY-MM-DD HH:mm Z')).toBe('2026-10-01 00:15 +03:00')
+    expect(new Date().toISOString()).toBe('2026-09-30T21:15:00.000Z')
+
+    const w = await mountSidebar()
+    const initialPage = shownTitles(w)
+    expect(initialPage).toHaveLength(20)
+    // More than a page already shares today's date, so date ordering alone cannot
+    // make a newly created note visible. Its creation time must break the tie.
+    const sameDay = [...GlobalStore.getInstance().transactionsList.value!.transactions.values()]
+      .filter((tx) => tx.date?.format('YYYY-MM-DD') === '2026-10-01')
+      .map((tx) => tx.transactionPath)
+    expect(sameDay).toHaveLength(23)
+    for (const path of initialPage) expect(sameDay).toContain(path)
+
+    await addTransaction('first of month')
+    expect(shownTitles(w)).toEqual(initialPage)
+    vi.advanceTimersByTime(SETTLE)
+    await settle()
+    expect(shownTitles(w)).toEqual(['Transactions/first of month.md', ...initialPage.slice(0, 19)])
+
+    await addTransaction('newest of month')
+    vi.advanceTimersByTime(SETTLE)
+    await settle()
+    expect(shownTitles(w)).toEqual([
+      'Transactions/newest of month.md',
+      'Transactions/first of month.md',
+      ...initialPage.slice(0, 18),
+    ])
+  })
+
   /**
    * What a new transaction costs with no sidebar at all — the balance index's rebuild and
    * nothing else. Taken on the second transaction: the first also carries the index's
