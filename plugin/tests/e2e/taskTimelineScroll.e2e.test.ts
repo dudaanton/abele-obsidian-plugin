@@ -229,8 +229,9 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       if (y !== null && fingerY !== null) inputDistance += y - fingerY
       fingerY = y
     }
-    // Measure while the finger lifts, before release velocity can add native inertia.
-    const touchEnd = () => { nativeEnd = scroller.scrollTop }
+    // WebKit's compositor applies the last pan after touchend. Measure the first painted
+    // release frame, not stale main-thread scrollTop in the event, nor the later inertial end.
+    const touchEnd = () => { requestAnimationFrame(() => { nativeEnd = scroller.scrollTop }) }
     const wheel = e => { moves++; prevented ||= e.defaultPrevented; inputDistance -= e.deltaY }
     scroller.addEventListener('touchstart', touchStart, { passive: true })
     scroller.addEventListener('touchmove', touchMove, { passive: true })
@@ -259,6 +260,18 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       })
     }
     await wait(800)
+    // The phone's physical swipe can keep coasting after the host call returns. Wait for
+    // native motion to end before another case positions rows or taps a moving banner.
+    let lastTop = scroller.scrollTop, stableSince = Date.now()
+    const settleDeadline = Date.now() + 8000
+    while (Date.now() - stableSince < 1000) {
+      if (Date.now() > settleDeadline) throw Error('native scrolling did not settle')
+      await wait(100)
+      if (Math.abs(scroller.scrollTop - lastTop) > 0.5) {
+        lastTop = scroller.scrollTop
+        stableSince = Date.now()
+      }
+    }
     report.nativeInput = moves > 0 && !prevented
     report.nativeScroll = [nativeBefore, nativeEnd ?? scroller.scrollTop]
     report.nativeDistance = inputDistance
