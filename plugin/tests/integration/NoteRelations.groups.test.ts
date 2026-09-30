@@ -125,8 +125,12 @@ describe('NoteRelations — group edits and lifecycle', () => {
   })
 
   it('prunes a deleted group subtree but retains a member with a second route', async () => {
+    const orphan = await app.vault.create('Entries/Branch only.md', '')
+    app.setFrontmatter(orphan.path, { groups: ['[[Groups/Seedlings]]'] })
+    app.metadataCache.resolvedLinks[orphan.path] = { [BRANCH]: 1 }
     app.metadataCache.resolvedLinks[LEAF][ROOT] = 1
     const r = open()
+    expect(paths(r)).toContain(orphan.path)
     const branch = file(BRANCH)
     await app.vault.delete(branch)
     delete app.metadataCache.resolvedLinks[BRANCH]
@@ -240,6 +244,30 @@ describe('NoteRelations — group edits and lifecycle', () => {
     await resolve()
     expect([...r.tasks.keys()]).toEqual([LEAF])
   })
+
+  // BUG: group expansion resolves a bare name from '' instead of from the member's path.
+  // With two folders containing a group of the same name, direct backlinks show up but
+  // their descendants disappear even though Obsidian resolved the group link correctly.
+  it.fails(
+    'expands the locally resolved group when its basename is shared by another folder',
+    () => {
+      app = useVault([
+        { path: 'East/Trees.md' },
+        { path: 'West/Trees.md' },
+        { path: 'East/Branch.md', frontmatter: { groups: ['[[Trees]]'] } },
+        { path: LEAF, frontmatter: { type: 'task', groups: ['[[East/Branch]]'] } },
+      ])
+      // The fixture's initial backlink builder uses no source path. Model the resolved
+      // result explicitly; getFirstLinkpathDest itself supports the nearby-note rule.
+      app.metadataCache.resolvedLinks['East/Branch.md'] = { 'East/Trees.md': 1 }
+      expect(app.metadataCache.getFirstLinkpathDest('Trees.md', 'East/Branch.md')?.path).toBe(
+        'East/Trees.md'
+      )
+      const r = open('East/Trees.md')
+      expect([...r.notes.keys()]).toEqual(['East/Branch.md'])
+      expect([...r.tasks.keys()]).toEqual([LEAF])
+    }
+  )
 
   // BUG: addBacklink's hasPath guard skips reclassification on metadata changes. Changing a
   // backlink from a plain note to a task leaves it under Backlinks until the footer reopens.
