@@ -692,6 +692,8 @@ Missing group or relation snapshot baselines fail without writing anything. Only
 `UPDATE_GROUP_SNAPSHOT=1` or `UPDATE_RELATIONS_SNAPSHOT=1` flag approves a new baseline; review
 that diff before committing it.
 
+Sync server-backed suites require an explicit checked fixture; missing security-gate inputs fail.
+
 ### Load time
 
 `loadTime.e2e.test.ts` switches the plugin off and on again inside the running app seven
@@ -921,13 +923,13 @@ What it needs, and what it says when something is missing:
 - **Obsidian running with a vault open.** That window is only used to send the message that opens
   the test vault; nothing is written to it. It is `OBSIDIAN_TEST_VAULT` when set, else the window
   in front. Without one the suite skips.
-- **The sync repository, built.** The server, its admin CLI and the daemon are taken from
-  `abele-sync`'s own `dist`, never built here. It is looked for five directories up from
-  `tests/e2e/helpers` — beside the repository in a plain checkout, beside the worktree's folder in
-  a worktree, where a symlink to the real checkout does — or wherever `ABELE_SYNC_DIR` points.
-  Run `npm run build` there first. Without it the suite skips, naming the path it looked at.
-- **This plugin, built for testing.** `npm run build:test`, newer than `src/` and than the sync
-  repository's `core` and `protocol` `dist`, which the bundle inlines. A missing, stale or
+- **An explicit revision-checked sync fixture.** `ABELE_SYNC_DIR` names a clean-archive fixture
+  prepared by `node scripts/vendor-sync.mjs <repository> <pinned-commit> fixture`. The server,
+  admin CLI and daemon come from that fixture's checked `dist`; no sibling is inferred.
+  Missing/changed/wrong-revision fixture provenance fails, rather than silently skipping.
+  See [pinned sync inputs](Sync%20build%20inputs%20proposal.md) for rebuild/update instructions.
+- **This plugin, built for testing.** `npm run build:test`, newer than `src/` and the pinned
+  `vendor/sync` payloads, which the bundle inlines. A missing, stale or
   production build fails the suite at once, saying so; it is not built for you, because a build
   takes longer than a test worker may stay silent.
 

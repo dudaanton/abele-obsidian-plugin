@@ -42,7 +42,8 @@
       "vitest.node.config.ts",
       "vitest.perf.config.ts",
       "vitest.size.config.ts",
-      "watch.sh"
+      "watch.sh",
+      "vendor"
     ]
   },
 
@@ -56,7 +57,9 @@
       "plugin/vendor/node/abele-channel-protocol-0.0.0.tgz",
       "plugin/vendor/node/abele-node-protocol-0.0.0.tgz",
       "plugin/vendor/node/abele-channel-client-0.0.0.tgz",
-      "plugin/vendor/node/abele-node-client-0.0.0.tgz"
+      "plugin/vendor/node/abele-node-client-0.0.0.tgz",
+      "plugin/vendor/sync/abele-sync-core-0.0.0-68bb5bb893a9.tgz",
+      "plugin/vendor/sync/abele-sync-protocol-0.0.0-68bb5bb893a9.tgz"
     ],
     "homePaths": []
   }

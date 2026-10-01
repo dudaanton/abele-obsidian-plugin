@@ -1,9 +1,5 @@
-import {
-  serverHarness,
-  TEST_PASSWORD,
-  type Harness,
-} from '../../../../abele-sync/packages/core/tests/helpers/harness.js'
-import { wsFor } from '../../../../abele-sync/packages/core/tests/helpers/serverFetch.js'
+import { serverHarness, TEST_PASSWORD, type Harness } from '@abele/sync-test-harness'
+import { wsFor } from '@abele/sync-test-socket'
 
 /**
  * The real sync server, in this process, for the plugin's integration tests.
@@ -11,8 +7,8 @@ import { wsFor } from '../../../../abele-sync/packages/core/tests/helpers/server
  * The engine's own tests already run against a whole Fastify app on an in-memory database and
  * a temporary blob directory, with a `fetch` that goes through `app.inject` and a real `ws` on
  * a free port. This is that harness and nothing more: a second copy would be a second thing to
- * keep true to the server. The sibling repo is read from its sources, through the two aliases
- * in `vitest.config.ts` that mirror the core's own config.
+ * keep true to the server. An explicit revision-checked clean-archive fixture supplies those
+ * sources through vitest.config.ts. No sibling checkout is inferred.
  *
  * Because the server is Node — better-sqlite3, `node:fs`, Fastify — **every test file that
  * calls this must start with `// @vitest-environment node`.** The plugin's default environment

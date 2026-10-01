@@ -14,19 +14,16 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { verifySyncFixture } from '../../../scripts/verify-sync-inputs.mjs'
 
 /** Thrown when the sibling repository is absent or unbuilt; the suite skips on it. */
 export class SiblingUnavailableError extends Error {}
 
 /**
- * The `abele-sync` beside this checkout — five levels up from `plugin/tests/e2e/helpers`, which
- * is beside the repository in the main checkout and beside the worktree in a worktree — or
- * wherever `ABELE_SYNC_DIR` says.
+ * Only the explicit clean-archive ABELE_SYNC_DIR fixture; its provenance must match the
+ * pinned plugin packages. Missing input is a failure, not sibling resolution or a skip.
  */
-const SIBLING = resolved(
-  process.env.ABELE_SYNC_DIR ?? fileURLToPath(new URL('../../../../../abele-sync', import.meta.url))
-)
+const SIBLING = process.env.ABELE_SYNC_DIR ? resolved(process.env.ABELE_SYNC_DIR) : ''
 /**
  * The path with its links followed. In a worktree the sibling is reached through a symlink, and
  * the admin CLI runs only when the script it was started as is the file it is — a check that
@@ -73,8 +70,10 @@ export const siblingPath = SIBLING
 
 /** Why the sibling cannot be used, in words that say what to do about it; null when it can. */
 export function siblingMissing(): string | null {
-  if (siblingBuilt()) return null
-  return `${SIBLING} has no built server and daemon — run \`npm run build\` there, or point ABELE_SYNC_DIR at a built abele-sync`
+  verifySyncFixture(SIBLING)
+  if (!siblingBuilt())
+    throw new SiblingUnavailableError('the explicit sync fixture has no built server and daemon')
+  return null
 }
 
 /**
@@ -84,6 +83,7 @@ export function siblingMissing(): string | null {
  * everything — and `kill` removes what the server wrote inside it.
  */
 export async function spawnSyncServer(dir: string): Promise<SyncServer> {
+  verifySyncFixture(SIBLING)
   if (!siblingBuilt()) {
     throw new SiblingUnavailableError(`${SIBLING} has no built server or daemon`)
   }

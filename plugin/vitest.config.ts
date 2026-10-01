@@ -1,6 +1,10 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { verifySyncFixture } from './scripts/verify-sync-inputs.mjs'
+
+const fixture = process.env.ABELE_SYNC_DIR ? verifySyncFixture(process.env.ABELE_SYNC_DIR) : null
+const missingFixture = path.resolve(__dirname, 'tests/helpers/missingSyncFixture.ts')
 
 /**
  * Fast tier: unit + integration. No running Obsidian required, so this is what CI and the
@@ -12,17 +16,21 @@ export default defineConfig({
     // An array rather than a map because one entry is a regular expression; the order is the
     // order they are tried in, so the specific names come before the one-character `@`.
     alias: [
-      // `tests/helpers/syncServer.ts` runs the real sync server from the sibling repo's
-      // sources rather than its build, so the two aliases the core's own vitest config
-      // declares have to hold here too: the protocol package, and whatever of the server a
-      // test helper imports (written with `.js`, as its ESM sources spell it).
+      // Server fixtures are explicit clean-archive inputs, never an implicit sibling.
+      // Production and pure tests resolve protocol/core from the pinned npm payloads.
       {
-        find: '@abele/sync-protocol',
-        replacement: path.resolve(__dirname, '../../abele-sync/packages/protocol/src/index.ts'),
+        find: '@abele/sync-test-harness',
+        replacement: fixture ? `${fixture}/packages/core/tests/helpers/harness.ts` : missingFixture,
+      },
+      {
+        find: '@abele/sync-test-socket',
+        replacement: fixture
+          ? `${fixture}/packages/core/tests/helpers/serverFetch.ts`
+          : missingFixture,
       },
       {
         find: /^@abele\/sync-server\/(.*)\.js$/,
-        replacement: `${path.resolve(__dirname, '../../abele-sync/packages/server')}/$1.ts`,
+        replacement: fixture ? `${fixture}/packages/server/$1.ts` : missingFixture,
       },
       { find: '@', replacement: path.resolve(__dirname, 'src') },
       // Production code imports the real plugin API; tests get the stand-in so that

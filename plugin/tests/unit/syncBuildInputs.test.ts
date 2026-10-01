@@ -8,12 +8,10 @@ const manifest = JSON.parse(
 )
 
 describe('reproducible sync build inputs', () => {
-  // BUG: the packaging proposal needs review before replacing the mutable file dependencies.
-  it.fails('does not run a mutation of a sibling checkout before production builds', () => {
+  it('does not run a mutation of a sibling checkout before production builds', () => {
     expect(JSON.stringify(manifest.scripts)).not.toContain('../../abele-sync')
   })
-  // BUG: npm installs symlinks whose exports point at another checkout's unproven dist.
-  it.fails('pins both packaged inputs instead of resolving a mutable sibling dist', () => {
+  it('pins both packaged inputs instead of resolving a mutable sibling dist', () => {
     for (const name of ['@abele/sync-core', '@abele/sync-protocol']) {
       expect(manifest.dependencies[name]).toMatch(/^file:vendor\/sync\/.*\.tgz$/)
     }

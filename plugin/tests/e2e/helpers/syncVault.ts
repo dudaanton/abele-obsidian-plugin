@@ -39,7 +39,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { activeVaultName, obsidianUnavailableReason, vaultCli, type VaultCli } from './obsidianCli'
-import { delay, siblingPath } from './syncServer'
+import { delay } from './syncServer'
 
 /** `plugin/`, four levels up from `plugin/tests/e2e/helpers`. */
 const PLUGIN_DIR = fileURLToPath(new URL('../../..', import.meta.url))
@@ -165,8 +165,7 @@ export function buildProblem(): string | null {
   const built = statSync(main).mtimeMs
   const newest = Math.max(
     newestMs(join(PLUGIN_DIR, 'src')),
-    newestMs(join(siblingPath, 'packages/core/dist')),
-    newestMs(join(siblingPath, 'packages/protocol/dist'))
+    newestMs(join(PLUGIN_DIR, 'vendor/sync'))
   )
   if (built < newest) return `${main} is older than the source it is built from; ${fix}`
   if (!readFileSync(main, 'utf8').includes('__abeleTest'))

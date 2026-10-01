@@ -98,6 +98,8 @@ export default [
   {
     ignores: [
       '**/node_modules/**',
+      // Disposable clean-archive build/test fixtures, never project source or committed.
+      '.scratch/**',
       'plugin/build/**',
       'plugin/dist/**',
       'plugin/coverage/**',

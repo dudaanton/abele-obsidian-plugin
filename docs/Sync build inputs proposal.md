@@ -1,10 +1,39 @@
 # Reproducible sync inputs: baseline and proposal
 
-Task 03 is **blocked pending review of the packaging mechanism**. No vendor import,
-dependency installation, sibling build or release is performed by this change. The build
-still has the defects below; the expected-failure tests must become ordinary passing tests
-when the proposal is implemented. A recorded source revision is not a provenance claim
-for an existing `dist` directory.
+Task 03's packaging mechanism is now implemented on the concept branch. Both build-input
+assertions are ordinary passing tests. Core/protocol are committed npm archives produced
+from clean committed source, not a live sibling `dist`. No release is performed.
+
+## Rebuild and verify
+
+```sh
+cd plugin
+node scripts/vendor-sync.mjs <sync-repository> <exact-commit> vendor
+# Review provenance.json and archives; update the two existing file dependencies and the
+# repository guard's two exact archive exceptions, then regenerate the lock.
+npm install --package-lock-only --ignore-scripts
+npm ci --ignore-scripts
+node scripts/verify-sync-inputs.mjs
+node scripts/vendor-sync.mjs <sync-repository> <same-exact-commit> fixture
+# The command prints ABELE_SYNC_DIR; use that explicit directory for server-backed tests.
+ABELE_SYNC_DIR=<prepared-fixture> npm test
+ABELE_SYNC_DIR=<prepared-fixture> npm run test:e2e -- <sync-suite-file>
+```
+
+For work/phase4b, resolve its reviewed commit first (`git rev-parse work/phase4b`), then use
+that full immutable hash in **both** commands. Never pack a moving branch or reuse its live
+build output. Upgrading requires reviewing the archived package diff, updating dependency
+archive names/lock and narrow guard exceptions, and regenerating the fixture. The current
+pin is main `68bb5bb`; phase4b is not active through these inputs.
+
+The builder exports with git archive into checkout-local scratch, installs the archived
+lock (no manual node_modules links), builds with source maps disabled, and packs distinct
+revision versions. Provenance records source trees, upstream lock/toolchain and archive
+checksums/integrity plus installed file checksums. Build/types/test preflights verify archive,
+lock and installed bytes and reject links. Production and pure tests need no server checkout.
+The explicit server fixture carries matching revision plus checksums of source/tests/dist;
+missing, changed or wrong-revision input fails instead of resolving a sibling or silently
+skipping server tests. No sibling-mutating lifecycle hook remains.
 
 ## Inspected baseline
 
@@ -25,9 +54,9 @@ references, not an immutable package payload. Thus a clean plugin checkout is ne
 self-contained nor reproducible, and tests can exercise protocol sources different from
 the core bundled by Vite.
 
-`tests/unit/syncBuildInputs.test.ts` was observed red for both causes. The guarantees remain
-as `it.fails` with `BUG:` comments, not removed/loosened expectations. The proposed artifact
-path is intentionally specified so the decision is reviewable.
+`tests/unit/syncBuildInputs.test.ts` was observed red for both causes. The same assertions
+now pass without `it.fails`; their expectations were not changed. Checksum/link/fixture
+regressions are covered by `syncInputVerification.test.ts`.
 
 ## Proposed bounded mechanism
 
@@ -56,10 +85,9 @@ path is intentionally specified so the decision is reviewable.
    builds, and reproducible package/checksum comparisons. Tampered/missing tarballs, a linked
    installed package, wrong fixture revision, and implicit sibling resolution must fail.
 
-This is a packaging proposal, **not yet the chosen implementation**. The manager/architect
-should approve it before a vendor drop; source vendoring is an alternative but imports a
-larger upstream source surface and complicates update ownership. A revision-only environment
-variable or checking the final bundle does not close the mutable-dist hole.
+This artifact mechanism was approved before implementation. Source vendoring would import
+a larger source surface. A revision-only environment variable or checking the final bundle
+would not close the mutable-dist hole.
 
 ## Parked-module map
 
