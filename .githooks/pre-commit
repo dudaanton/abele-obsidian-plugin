@@ -52,6 +52,6 @@ echo "pre-commit: running the tests related to the staged files…"
     npm test --silent
   else
     # shellcheck disable=SC2086
-    npx vitest related --run --passWithNoTests --silent $staged
+    npx vitest related --run --passWithNoTests --silent=true $staged
   fi
 )
