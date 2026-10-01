@@ -29,15 +29,21 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
     const r=evalAsync<{over:string[];shot:string}>(`(async()=>{
       ${PRELUDE}
       const config=window.__abeleTest.AbeleConfig.getInstance()
-      const names=config.github.connections.map(c=>c.name)
+      const connections=config.github.connections
       let leaf
       try {
-        for(const c of config.github.connections)c.name += ' with a long descriptive account label that wraps on a phone'
+        // Separate identities keep this layout probe out of the routing-memory assertion below.
+        config.github.connections=connections.map(c=>({...c,id:'layout-'+c.id,name:c.name+' with a long descriptive account label that wraps on a phone'}))
         config.version.value++
         leaf=await openTab(${JSON.stringify(gh.web+'/issues/7')})
         await until(()=>leaf.view.model.screen.title,15000)
         const root=leaf.view.containerEl.querySelector('.abele-github')
-        await settledLayout(root)
+        let previous=''
+        if (!(await until(()=>{
+          if (!root?.isConnected || !root.clientHeight) return false
+          const box=root.getBoundingClientRect(), current=[box.x,box.y,box.width,box.height,root.scrollHeight].join(',')
+          const stable=current===previous;previous=current;return stable
+        }))) throw new Error('The account header did not reach a stable layout')
         const edge=root.getBoundingClientRect()
         const over=[...root.querySelectorAll('button,.abele-empty-state')].filter(el=>{
           const r=el.getBoundingClientRect()
@@ -47,7 +53,7 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
         return {over,shot}
       } finally {
         leaf?.detach()
-        config.github.connections.forEach((c,i)=>c.name=names[i])
+        config.github.connections=connections
         config.version.value++
       }
     })()`)
