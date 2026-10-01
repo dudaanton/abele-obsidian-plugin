@@ -3,6 +3,7 @@ import { vaultCli } from './helpers/obsidianCli'
 import { waitFor } from './helpers/syncVault'
 import { metadataVersionProbe } from './helpers/metadataVersionProbe'
 import { assertVersionEvidence } from './helpers/metadataVersionAssertions'
+import { withProbeFolder } from './helpers/probeFolder'
 
 /** Feasibility gate: unavailable native evidence is a failure, never a skipped success. */
 describe('desktop exact-version metadata feasibility', () => {
@@ -29,12 +30,10 @@ describe('desktop exact-version metadata feasibility', () => {
     const vault = process.env.OBSIDIAN_TEST_VAULT
     if (!vault) throw new Error('OBSIDIAN_TEST_VAULT must name an exclusively leased pool vault')
     const cli = vaultCli(vault)
-    const root = 'CacheRestartProbe'
-    try {
+    await withProbeFolder(cli, 'CacheRestartProbe', async (root) => {
       const before = cli.evalAwait<any>(`(async () => {
         const v = app.vault, m = app.metadataCache, crypto = require('crypto')
         const sha = text => crypto.createHash('sha256').update(text).digest('hex')
-        await v.createFolder('${root}')
         const text = 'Synced baseline\\n[[baseline-missing]]\\n'
         let resolve
         const captured = new Promise(r => { resolve = r })
@@ -98,12 +97,6 @@ describe('desktop exact-version metadata feasibility', () => {
             link.original
           )
       }
-    } finally {
-      cli.evalAwait(`(async () => {
-        const folder = app.vault.getAbstractFileByPath('${root}')
-        if (folder) await app.vault.delete(folder, true)
-        return true
-      })()`)
-    }
+    })
   })
 })

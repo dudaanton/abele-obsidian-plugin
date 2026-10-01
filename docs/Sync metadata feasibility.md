@@ -26,7 +26,10 @@ cd plugin
 OBSIDIAN_TEST_VAULT=<leased-pool-vault> npm run test:e2e -- tests/e2e/metadataVersion.e2e.test.ts
 ```
 
-The native file fails rather than skips when its vault/evidence is unavailable. Its JSON
+Both native probes use unique random directory names. Cleanup is authorized only by a
+successful acknowledged folder create; an existing directory, rejected create or lost reply
+never grants ownership and is not deleted. Ownership failures are covered by executable
+cleanup regressions. The native file fails rather than skips when its vault/evidence is unavailable. Its JSON
 output includes source bytes, event data/SHA, copied cache/hash, capture generation, exact
 link/embed spellings, resolved paths, synthetic ledger IDs and unresolved spellings.
 

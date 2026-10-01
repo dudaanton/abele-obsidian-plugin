@@ -1,9 +1,10 @@
 /** Runs inside the native desktop window. No publication code or timer-based evidence. */
 export const metadataVersionProbe = String.raw`(async () => {
-  const root = 'CacheVersionProbe'
   const m = app.metadataCache
   const v = app.vault
   const crypto = require('crypto')
+  const root = 'CacheVersionProbe-' + crypto.randomBytes(16).toString('hex')
+  let owned = false
   const sha = data => crypto.createHash('sha256').update(data).digest('hex')
   const clone = data => JSON.parse(JSON.stringify(data))
   const events = []
@@ -56,6 +57,7 @@ export const metadataVersionProbe = String.raw`(async () => {
   try {
     if (v.getAbstractFileByPath(root)) throw new Error('Probe folder already exists')
     await v.createFolder(root)
+    owned = true
     for (const name of ['original', 'applied', 'local', 'merged']) {
       await v.createBinary(root + '/' + name + '.png', new Uint8Array([1,2,3]).buffer)
     }
@@ -144,7 +146,9 @@ export const metadataVersionProbe = String.raw`(async () => {
     v.readBinary = originalRead
     for (const ref of refs) { m.offref(ref); v.offref(ref) }
     await app.workspace.changeLayout(originalLayout)
-    const folder = v.getAbstractFileByPath(root)
-    if (folder) await v.delete(folder, true)
+    if (owned) {
+      const folder = v.getAbstractFileByPath(root)
+      if (folder) await v.delete(folder, true)
+    }
   }
 })()`
