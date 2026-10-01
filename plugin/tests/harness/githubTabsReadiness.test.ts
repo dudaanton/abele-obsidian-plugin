@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { WAIT_PRELUDE } from '../e2e/helpers/wait'
 
 const source = readFileSync(resolve(__dirname, '../e2e/githubTabs.e2e.test.ts'), 'utf8')
-const settleSource = source.match(/const settle = ([\s\S]*?)\n        const middle/)![1]
+const settleSource = source.match(/const settle = ([\s\S]*?)\n {8}const middle/)![1]
 const settle = new Function(`${WAIT_PRELUDE}; return ${settleSource}`)() as (
   el: unknown
 ) => Promise<void>
