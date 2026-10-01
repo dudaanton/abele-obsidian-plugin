@@ -23,11 +23,14 @@ export function placeSelectionBar(
   words: Box,
   bar: { width: number; height: number },
   frame: { width: number; top?: number; bottom?: number },
-  touch: boolean
+  touch: boolean,
+  options: { calloutBelow?: boolean } = {}
 ): { top: number; left: number } {
   const roof = frame.top ?? 0
   const floor = frame.bottom ?? Infinity
-  const below = words.bottom + (touch ? HANDLE_CLEARANCE : GAP)
+  // Near the top of an iOS chat the native menu can move under the selection instead
+  // of above it. Reserve both its height and the handle when that host opts in.
+  const below = words.bottom + (touch ? HANDLE_CLEARANCE + (options.calloutBelow ? CALLOUT_CLEARANCE : 0) : GAP)
   const above = words.top - bar.height - (touch ? CALLOUT_CLEARANCE : GAP)
   const fitsBelow = below + bar.height <= floor
   const fitsAbove = above >= roof

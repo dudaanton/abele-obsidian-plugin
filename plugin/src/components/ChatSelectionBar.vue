@@ -109,7 +109,8 @@ async function position() {
     { top: words.top - frame.top, bottom: words.bottom - frame.top, left: words.left - frame.left },
     { width: el.offsetWidth, height: el.offsetHeight },
     { width: frameEl.clientWidth, top: view.top - frame.top, bottom: view.bottom - frame.top },
-    true
+    true,
+    { calloutBelow: true }
   )
   place.top = at.top
   place.left = at.left

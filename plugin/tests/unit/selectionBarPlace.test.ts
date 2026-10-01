@@ -5,6 +5,10 @@ import { CALLOUT_CLEARANCE, HANDLE_CLEARANCE, placeSelectionBar } from '@/helper
 const bar = { width: 100, height: 30 }
 
 describe('with a finger', () => {
+  it('can reserve the native callout below a near-top chat selection', () => {
+    const at = placeSelectionBar({ top: 100, bottom: 140, left: 20 }, bar, { width: 390 }, true, { calloutBelow: true })
+    expect(at.top).toBe(140 + HANDLE_CLEARANCE + CALLOUT_CLEARANCE)
+  })
   it('goes under the words, clear of the end handle', () => {
     const at = placeSelectionBar({ top: 100, bottom: 140, left: 20 }, bar, { width: 390 }, true)
     expect(at).toEqual({ top: 140 + HANDLE_CLEARANCE, left: 20 })
