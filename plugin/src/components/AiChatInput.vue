@@ -673,9 +673,11 @@ const onKeydown = (e: KeyboardEvent) => {
   }
 }
 
-// Cmd/Ctrl+Enter: Obsidian intercepts this at document level,
-// so we catch it on the capture phase before Obsidian does
+// Cmd/Ctrl+Enter is send in either field. The borrowed editor's scope first
+// shields it from Obsidian's earlier window-capture follow-link hotkey.
 const onCaptureKeydown = (e: KeyboardEvent) => {
+  // A borrowed editor submits through its scope before this listener is reached.
+  if (editor && e.defaultPrevented) return
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && hasFocus()) {
     e.preventDefault()
     e.stopImmediatePropagation()

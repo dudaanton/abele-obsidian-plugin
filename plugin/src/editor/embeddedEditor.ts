@@ -19,7 +19,7 @@
  */
 import { Prec, type Extension } from '@codemirror/state'
 import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/view'
-import type { App } from 'obsidian'
+import { Scope, type App } from 'obsidian'
 
 /** What the borrowed editor looks like from here: only the parts this module touches. */
 interface BorrowedEditor {
@@ -28,7 +28,7 @@ interface BorrowedEditor {
   editor: { cm: EditorView; focus(): void; getValue(): string }
   editorEl: HTMLElement
   containerEl?: HTMLElement
-  scope?: unknown
+  scope?: Scope
   set(value: string, clear?: boolean): void
   get(): string
   load?(): void
@@ -63,6 +63,8 @@ interface Workspace {
   activeEditor: unknown
   on(name: 'active-leaf-change', callback: () => void): unknown
   offref(ref: unknown): void
+  /** Suggesters push their own scopes, whose parent is the app rather than this field. */
+  editorSuggest?: { suggests: { scope: Scope }[] }
 }
 
 interface KeymapWithScopes {
@@ -166,6 +168,11 @@ export function createEmbeddedEditor(
   const keys = (app as unknown as { keymap: KeymapWithScopes }).keymap
   let previousActive: unknown = undefined
   let scopePushed = false
+  const suggestionKeys: { scope: Scope; binding: ReturnType<Scope['register']> }[] = []
+  const submit = () => {
+    options.onSubmit?.()
+    return false
+  }
 
   class FormEditor extends Base {
     /** No file: every extension of ours that needs one stays silent in a form. */
@@ -230,6 +237,13 @@ export function createEmbeddedEditor(
     // What the editor commands and the suggester look for on whatever is active.
     controller.owner.editMode = controller
     controller.owner.editor = controller.editor
+    if (options.onSubmit) {
+      // Obsidian's window-capture hotkeys run before CodeMirror and before a form's
+      // capture listener. Shadow follow-link here, in the scope it consults first.
+      const scope = new Scope(controller.scope ?? app.scope)
+      scope.register(['Mod'], 'Enter', submit)
+      controller.scope = scope
+    }
     controller.load?.()
     controller.set(options.value ?? '', true)
   } catch (error) {
@@ -273,6 +287,14 @@ export function createEmbeddedEditor(
     if (!scopePushed && controller.scope) {
       keys.pushScope(controller.scope)
       scopePushed = true
+      // A cursor inside a wikilink opens the link suggester, which pushes a scope
+      // bypassing the field's. Give that scope the same submit key, only while
+      // this field is focused; its normal Enter and click handling stay untouched.
+      if (options.onSubmit) {
+        for (const { scope } of workspace.editorSuggest?.suggests ?? []) {
+          suggestionKeys.push({ scope, binding: scope.register(['Mod'], 'Enter', submit) })
+        }
+      }
     }
     if (!leafRef) {
       leafRef = workspace.on('active-leaf-change', () => claimToolbar())
@@ -303,6 +325,7 @@ export function createEmbeddedEditor(
   }
 
   function deactivate(): void {
+    for (const { scope, binding } of suggestionKeys.splice(0)) scope.unregister(binding)
     if (scopePushed) {
       keys.popScope(controller.scope)
       scopePushed = false
