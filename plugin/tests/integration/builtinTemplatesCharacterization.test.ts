@@ -179,7 +179,7 @@ describe('TransactionNoteTemplate', () => {
 
   // BUG: createNoteWithTemplate prepares _renderedTemplate before the existing-file check.
   // When creation is skipped, the next call with explicit content consumes that stale body.
-  it.fails(
+  it(
     'does not reuse a prepared template after opening an already existing transaction',
     async () => {
       const env = templateHarness([{ path: 'Ledger/existing.md', content: 'Existing' }])
@@ -198,6 +198,31 @@ describe('TransactionNoteTemplate', () => {
       )
       expect(await env.app.vault.read(env.app.vault.getFileByPath('Ledger/new.md')!)).toContain(
         'Explicit body'
+      )
+    }
+  )
+
+  it.each(['skipped', 'failed'])(
+    'clears prepared content after a %s creation, including direct rendering',
+    async (outcome) => {
+      const env = templateHarness([{ path: 'Ledger/existing.md', content: 'Existing' }])
+      await env.template('---\ntype: template\ntemplate_for: transaction\n---\nStale template', {
+        template_for: 'transaction',
+      })
+      AbeleConfig.getInstance().transactionTemplatePath = 'Templates/sample.md'
+      const template = new TransactionNoteTemplate(env.app)
+      if (outcome === 'failed')
+        vi.spyOn(env.workspace, 'openLinkText').mockImplementation(() => {
+          throw new Error('sample open failure')
+        })
+      const pending = template.createNoteWithTemplate({
+        transactionName: 'existing', transactionFolder: 'Ledger',
+      })
+      if (outcome === 'failed') await expect(pending).rejects.toThrow('sample open failure')
+      else await pending
+      expect(template.createTemplate({ content: 'Explicit body' })).toContain('Explicit body')
+      expect(await env.app.vault.read(env.app.vault.getFileByPath('Ledger/existing.md')!)).toBe(
+        'Existing'
       )
     }
   )

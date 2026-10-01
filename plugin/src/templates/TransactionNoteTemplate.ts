@@ -117,7 +117,12 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
       }
     }
 
-    return super.createNoteWithTemplate(params, focus, overwrite)
+    try {
+      await super.createNoteWithTemplate(params, focus, overwrite)
+    } finally {
+      // The base class may return before createTemplate consumes the prepared body.
+      this._renderedTemplate = null
+    }
   }
 
   private setFrontmatterProp(content: string, key: string, value: any, force = false): string {
