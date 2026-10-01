@@ -2,7 +2,6 @@ import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TemplateService } from '@/templates/TemplateService'
 import { getAvailablePath, openFile } from '@/helpers/vaultUtils'
-import { updateNoteFrontmatter } from '@/helpers/notesUtils'
 
 /**
  * Create a new note with the given file as its group
@@ -22,8 +21,8 @@ export async function createNoteInGroup(groupFile: TFile): Promise<void> {
   await TemplateService.getInstance().applyDefaultTemplate(file)
 
   // Set groups frontmatter
-  await updateNoteFrontmatter(file.path, {
-    groups: [`[[${groupFile.basename}]]`],
+  await app.fileManager.processFrontMatter(file, (frontmatter) => {
+    frontmatter.groups = [`[[${groupFile.basename}]]`]
   })
 
   // Open the new note

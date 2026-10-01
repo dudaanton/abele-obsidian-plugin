@@ -14,6 +14,7 @@ import {
   createNoteFromTemplate,
 } from '@/helpers/notesUtils'
 import { templateHarness } from '../helpers/templateHarness'
+import { createNoteInGroup } from '@/commands/createNoteInGroup'
 
 // Assert the object handed to the host serializer, not JSON masquerading as host YAML.
 // Actual host formatting/cache timestamp coercion remains an Obsidian integration concern.
@@ -249,6 +250,27 @@ describe('frontmatter read and write surfaces', () => {
     expect(
       getNoteBody(await env.app.vault.read(env.app.vault.getFileByPath('Notes/sample.md')!))
     ).toBe('\n\n\nBody')
+  })
+})
+
+describe('notes created in a group', () => {
+  // BUG: the generic frontmatter updater treats name as a rename instruction and removes it.
+  it('retains default-template properties while adding group membership', async () => {
+    const env = templateHarness([{ path: 'Notes/Sample group.md' }])
+    await env.template(
+      '---\nname: Sample display name\ncustom:\n  keep: true\nstart: 2028-03-01T18:45:12Z\n---\n\nBody\n',
+      { template_for: 'default' }
+    )
+    await createNoteInGroup(env.app.vault.getFileByPath('Notes/Sample group.md')!)
+    const file = env.app.vault.getFileByPath('Notes/Untitled.md')!
+    expect(await parse(await env.app.vault.read(file))).toMatchObject({
+      name: 'Sample display name',
+      custom: { keep: true },
+      start: '2028-03-01T10:45:12',
+      groups: ['[[Sample group]]'],
+      content: '\nBody\n',
+    })
+    expect(env.workspace.openLinkText).toHaveBeenLastCalledWith(file.path, '', false)
   })
 })
 
