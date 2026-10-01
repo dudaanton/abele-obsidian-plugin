@@ -1,10 +1,10 @@
 /**
  * How long a script waits for the network.
  *
- * Nothing here used to say: `ctx.fetch` and the two downloads waited for as long as the
- * platform waited, and a script that wanted to give up after ten seconds — or to sit through a
- * five-minute export — had no way to say so. Now each call takes a `timeout` in milliseconds,
- * any value, and without one they wait as long as they always did.
+ * `ctx.fetch` has a five-minute ceiling, including when its timeout is omitted or longer.
+ * A shorter timeout still ends the wait earlier. Downloads also accept a timeout to shorten
+ * their service deadline. These expectations deliberately replace the old unlimited-fetch
+ * contract with the approved five-minute limit.
  *
  * What is asserted is the waiting and the giving up, not the request: `requestUrl` is
  * Obsidian's and is stubbed here with a promise the test controls.
@@ -70,37 +70,44 @@ describe('a request with a timeout', () => {
     expect(answered.text).toBe('here')
   })
 
-  /** Any value: the point of the setting is that nothing here decides what is reasonable. */
-  // BUG: legacy unlimited-timeout contract conflicts with the approved five-minute fetch cap.
-  it.fails('takes a timeout longer than anything this plugin would have chosen', async () => {
+  it('caps an explicitly longer fetch timeout at five minutes', async () => {
     neverAnswers()
     const ctx = context()
 
-    const pending = ctx.fetch('https://example.com/export', { timeout: 20 * 60 * 1000 })
-    const settled = expect(pending).rejects.toThrow(/timed out after 1200s/)
-    // Keep a changed deadline's rejection handled while fake time advances; assert it below.
-    void settled.catch(() => {})
+    const pending = ctx.fetch('https://sample.example/export', { timeout: 20 * 60 * 1000 })
+    let finished = false
+    void pending.then(
+      () => (finished = true),
+      () => (finished = true)
+    )
+    const settled = expect(pending).rejects.toThrow(/timed out after 300s/)
 
-    // Still waiting well past every timeout the platform or this plugin has ever had.
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1)
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1)
+    expect(finished).toBe(false)
+    await vi.advanceTimersByTimeAsync(2)
 
     await settled
+    expect(finished).toBe(true)
   })
 
-  // BUG: legacy indefinite waiting conflicts with the approved five-minute fetch cap.
-  it.fails('waits as long as it always did when nobody said otherwise', async () => {
+  it('uses the five-minute fetch deadline when no timeout is supplied', async () => {
     neverAnswers()
     const ctx = context()
 
-    let settled = false
-    void ctx.fetch('https://example.com/slow').then(
-      () => (settled = true),
-      () => (settled = true)
+    const pending = ctx.fetch('https://sample.example/slow')
+    let finished = false
+    void pending.then(
+      () => (finished = true),
+      () => (finished = true)
     )
-    await vi.advanceTimersByTimeAsync(60 * 60 * 1000)
+    const settled = expect(pending).rejects.toThrow(/timed out after 300s/)
 
-    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1)
+    expect(finished).toBe(false)
+    await vi.advanceTimersByTimeAsync(2)
+
+    await settled
+    expect(finished).toBe(true)
   })
 })
 
