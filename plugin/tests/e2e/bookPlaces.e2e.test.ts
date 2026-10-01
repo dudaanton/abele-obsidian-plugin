@@ -13,6 +13,7 @@ import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obs
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub, RICH_BOOK_ID } from '../fixtures/books/richBook'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader places e2e'
@@ -20,20 +21,29 @@ const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/long.pdf`
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 10000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(100) }
-    return null
-  }
+  ${WAIT_PRELUDE}
   const placesFile = window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath || 'abele-book-places.json'
   const saved = async () => JSON.parse(await app.vault.adapter.read(placesFile))
   const leafOf = (path) => app.workspace.getLeavesOfType('abele-book').find((l) => l.getViewState().state?.file === path)
   const ready = async (leaf) => {
     await leaf.loadIfDeferred?.()
-    await until(() => leaf.view.model?.status === 'ready', 15000)
-    await wait(800)
+    if (!await until(() => {
+      const v = leaf.view
+      return v.model?.status === 'ready' && v.model.chapter && v.engine?.lastLocation?.cfi &&
+        v.engine.renderer?.getContents().some(c => c.doc?.readyState === 'complete')
+    })) throw new Error('reader did not become ready with a page and location')
     return leaf.view
+  }
+  const chapterAt = async (book, index) => {
+    const href = book.model.toc[index].href
+    await book.engine.goTo(href)
+    if (!await until(() => book.model.currentHref === href && book.engine.lastLocation?.cfi))
+      throw new Error('reader did not reach chapter ' + (index + 1))
+  }
+  const written = async (view, matches) => {
+    if (!await until(async () => Object.entries(await saved()).some(([key, place]) =>
+      matches(key, place) && place.cfi === view.engine.lastLocation?.cfi)))
+      throw new Error('reader place was not written')
   }
 `
 
@@ -76,16 +86,28 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
         return ready(leaf)
       }
       const book = await open(${JSON.stringify(BOOK)})
-      await book.engine.goTo(book.model.toc[2].href); await wait(600)
-      await book.engine.renderer.next(); await wait(600)
+      await chapterAt(book, 2)
+      const firstPage = book.engine.lastLocation.cfi
+      await book.engine.renderer.next()
+      if (!await until(() => book.engine.lastLocation?.cfi !== firstPage))
+        throw new Error('reader did not turn the page')
       const chapter = book.model.chapter
       const pdf = await open(${JSON.stringify(PDF)})
-      await pdf.engine.goTo(6); await wait(1200)
+      await pdf.engine.goTo(6)
+      if (!await until(() => pdf.model.chapter?.startsWith('Page 7 of 12')))
+        throw new Error('PDF did not reach page 7')
       const page = pdf.model.chapter
-      // The place is written a moment after the last turn.
-      await wait(2500)
+      // Observe the debounced writes on disk, without flushing them on the test's behalf.
+      await written(book, key => key === 'id:' + ${JSON.stringify(RICH_BOOK_ID)})
+      await written(pdf, (_key, place) => place.path === ${JSON.stringify(PDF)})
       app.workspace.requestSaveLayout()
-      await wait(2500)
+      if (!await until(async () => {
+        const layout = JSON.parse(await app.vault.adapter.read(app.vault.configDir + '/workspace.json'))
+        const leaves = node => [node, ...(node.children || []).flatMap(leaves)]
+        const tabs = leaves(layout.main)
+        return layout.active === pdf.leaf.id && [book, pdf].every(view =>
+          tabs.some(tab => tab.id === view.leaf.id && tab.state?.state?.file === view.file.path))
+      })) throw new Error('book tabs were not saved in the workspace')
       const places = await saved()
       return {
         chapter, page,
@@ -137,6 +159,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       const book = await ready(bookLeaf)
       app.workspace.setActiveLeaf(pdfLeaf, { focus: true })
       const pdf = await ready(pdfLeaf)
+      // Observation window: restoration must not overwrite either saved place later.
       await wait(2500)
       const places = await saved()
       return {
@@ -168,6 +191,9 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       // In front: the tab before showed the PDF.
       app.workspace.setActiveLeaf(bookLeaf, { focus: true })
       const book = await ready(bookLeaf)
+      // Keep the activation dwell: looked-again resets the reading clock after its layout
+      // debounce, with no public completion signal. The turns below must happen afterwards.
+      await wait(800)
       const key = 'id:' + ${JSON.stringify(RICH_BOOK_ID)}
       const full = require('path').join(app.vault.adapter.getBasePath(), placesFile)
       // Another device's place arriving as a sync writes it: on disk, beside the app.
@@ -186,14 +212,16 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
         }
       })
       seen.observe(document.body, { childList: true, subtree: true })
-      await book.engine.goTo(book.model.toc[0].href); await wait(600)
+      await chapterAt(book, 0)
       const first = book.engine.lastLocation.cfi
-      await book.engine.goTo(book.model.toc[1].href); await wait(600)
+      await chapterAt(book, 1)
       const second = book.engine.lastLocation.cfi
       const nextWant = book.model.chapter
       // Read here just now: what arrives waits, and nothing is said.
-      await book.engine.goTo(book.model.toc[2].href); await wait(2500)
+      await chapterAt(book, 2)
+      await written(book, savedKey => savedKey === key)
       await arrive(first)
+      // Observation window: an incoming place must not interrupt current reading.
       await wait(3000)
       const stayed = book.model.chapter
       // Another tab, then this one again: it goes where the other device got to, and says so.
@@ -201,11 +229,13 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       app.workspace.setActiveLeaf(bookLeaf, { focus: true })
       await until(() => book.model.chapter?.startsWith('Chapter 1'), 15000)
       const followed = book.model.chapter
+      // The follow operation announces completion after navigating, not just relocating.
+      if (!await until(() => told.size === 1)) throw new Error('follow notice did not appear')
       // Not read here since: the next place follows at once, without another notice.
-      await wait(300)
       await arrive(second)
       await until(() => book.model.chapter === nextWant, 15000)
       const next = book.model.chapter
+      // Observation window: no duplicate notice or debounced echo of the followed place.
       await wait(2500)
       seen.disconnect()
       // Followed, not read: the other device's place stays in the file, not this tab's echo.
