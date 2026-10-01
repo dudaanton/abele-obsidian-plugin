@@ -18,17 +18,47 @@ import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './help
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader zoom e2e'
 const PDF = `${DIR}/long.pdf`
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 8000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
-    return null
+  ${WAIT_PRELUDE}
+  const ready = async (fn, label) => {
+    const value = await until(fn)
+    if (!value) throw Error('Timed out: ' + label)
+    return value
+  }
+  const pageReady = async (view, index = R(view).index) => {
+    let previous = ''
+    return ready(() => {
+      if (R(view).index !== index) return false
+      const doc = page(view, index), image = doc?.querySelector('#canvas img')
+      if (!image?.complete || !image.naturalWidth) return false
+      const f = frame(doc)
+      if (!f.width || !f.height) return false
+      const position = JSON.stringify([f.left, f.top, f.width, f.height])
+      const stable = position === previous
+      previous = position
+      return stable && doc
+    }, 'PDF page image and layout')
+  }
+  const go = async (view, index) => {
+    await view.engine.goTo(index)
+    return pageReady(view, index)
+  }
+  const zoomReady = async (view, applied) => {
+    await ready(applied, 'PDF zoom applied')
+    await pageReady(view)
+    // The drawing toolbar replaces the zoom controls while ink is on.
+    if (!view.model.ink.on)
+      await ready(() => q(view, '.abele-book-reader__zoom')?.textContent.trim() === Math.round(R(view).scale * 100) + '%', 'PDF zoom label')
+  }
+  const reset = async (view) => {
+    view.zoom('reset')
+    await zoomReady(view, () => view.pdfZoom.value === null && R(view).getAttribute('zoom') === view.pdfZoom.zoom)
   }
   const cdp = require('@electron/remote').getCurrentWebContents().debugger
   const wheel = (x, y, deltaY) =>
@@ -44,7 +74,6 @@ const PRELUDE = `
     // then heard before the lift, which on a loaded machine otherwise came first and cut the pinch short.
     await wait(100)
     await touches('touchEnd', [])
-    await wait(900)
   }
   const input = (type, x, y, pointerType, force, buttons) =>
     cdp.sendCommand('Input.dispatchMouseEvent', { type, x: Math.round(x), y: Math.round(y), button: 'left', buttons, clickCount: 1, pointerType, force })
@@ -52,19 +81,18 @@ const PRELUDE = `
     await input('mousePressed', x0, y0, 'pen', 0.5, 1)
     for (let i = 1; i <= 12; i++) { await input('mouseMoved', x0 + (x1 - x0) * i / 12, y0 + (y1 - y0) * i / 12, 'pen', 0.5, 1); await wait(8) }
     await input('mouseReleased', x1, y1, 'pen', 0, 0)
+    // Observe the completed pen input before counting strokes and measuring their placement.
     await wait(200)
   }
   const open = async (path) => {
-    await until(() => app.workspace.layoutReady, 15000)
-    let leaf
-    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
+    await ready(() => app.workspace.layoutReady, 'workspace layout')
+    const leaf = await ready(() => app.workspace.getLeaf('tab'), 'reader tab group')
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     await app.workspace.revealLeaf(leaf)
-    await until(() => leaf.view?.model?.status === 'ready' && leaf.view.pdfZoom, 15000)
+    await ready(() => leaf.view?.model?.status === 'ready' && leaf.view.pdfZoom, 'PDF zoom view')
     const view = leaf.view
     if (view.model.panel) view.model.panel = false
-    await until(() => view.engine.renderer.getContents().some((c) => c.doc?.querySelector('#canvas img')), 8000)
-    await wait(600)
+    await pageReady(view)
     return { leaf, view }
   }
   const R = (view) => view.engine.renderer
@@ -76,7 +104,7 @@ const PRELUDE = `
     const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.querySelector('.menu-item-title')?.textContent.trim() === title), 3000)
     if (!item) { document.querySelector('.menu')?.remove(); return false }
     item.click()
-    await wait(150)
+    await ready(() => !document.querySelector('.menu'), 'zoom menu closed')
     return true
   }
   /** Where a point of the screen is on a page, as fractions of the page. */
@@ -94,7 +122,6 @@ const PRELUDE = `
     const cfg = window.__abeleTest.AbeleConfig.getInstance()
     cfg.reader = { ...cfg.reader, ...over }
     await cfg.saveSettings()
-    await wait(300)
   }
 `
 
@@ -139,12 +166,15 @@ describe.skipIf(!available)('zooming a PDF', () => {
   afterAll(() => {
     evalRaw(
       `(async () => {
-        for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+        const leaves = app.workspace.getLeavesOfType('abele-book')
+        const inks = leaves.map(leaf => leaf.view.ink)
+        for (const leaf of leaves) leaf.detach()
+        // Cleanup must finish pending ink writes before removing their folder.
+        await Promise.all(inks.map(ink => ink?.flush()))
         app.saveLocalStorage('abele-pdf-zoom', null)
         const cfg = window.__abeleTest.AbeleConfig.getInstance()
         cfg.reader = ${JSON.stringify(savedReader)}
         await cfg.saveSettings()
-        await new Promise((r) => setTimeout(r, 1500))
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
         return 'ok'
@@ -167,15 +197,14 @@ describe.skipIf(!available)('zooming a PDF', () => {
       label?: string
     }>(`
       const { view } = await open(${JSON.stringify(PDF)})
-      await view.engine.goTo(1); await wait(800)
-      const doc = page(view, 1)
+      const doc = await go(view, 1)
       const f = frame(doc)
       const x = f.left + f.width * 0.3, y = Math.min(f.top + f.height * 0.3, innerHeight - 200)
       const at = onPage(doc, x, y)
       const before = R(view).scale
       const wordBefore = word(doc)
       for (let i = 0; i < 4; i++) { await wheel(x, y, -60); await wait(30) }
-      await wait(1200)
+      await zoomReady(view, () => R(view).scale > before * 1.3)
       const after = R(view).scale
       const still = onPage(doc, x, y)
       // As many pixels as the screen has, or as a page may take in memory (8 million), not fewer.
@@ -210,29 +239,34 @@ describe.skipIf(!available)('zooming a PDF', () => {
       forgotten?: boolean
     }>(`
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
-      view.zoom('reset'); await wait(800)
+      await reset(view)
       const doc = page(view, 1)
       const f = frame(doc)
       const cx = f.left + f.width * 0.5, cy = Math.min(f.top + f.height * 0.4, innerHeight - 250)
       const at = onPage(doc, cx, cy)
       const before = R(view).scale
       await pinch(cx, cy, 100, 200)
+      await zoomReady(view, () => R(view).scale > before * 1.7)
       const pinched = R(view).scale
       const still = onPage(page(view, 1), cx, cy)
-      q(view, '.abele-book-reader__zoom-in').click(); await wait(600)
+      q(view, '.abele-book-reader__zoom-in').click()
+      await zoomReady(view, () => R(view).scale > pinched)
       const stepped = R(view).scale
       // Fit the page, from the menu of the zoom shown between the buttons.
       q(view, '.abele-book-reader__zoom').click()
-      const menu = await pickMenu('Fit the page'); await wait(600)
+      const menu = await pickMenu('Fit the page')
+      await zoomReady(view, () => R(view).getAttribute('zoom') === 'fit-page')
       const box = R(view).getBoundingClientRect()
       const fitPage = frame(page(view, R(view).index)).height <= box.height
-      view.zoom('in'); await wait(600)
+      const fitScale = R(view).scale
+      view.zoom('in')
+      await zoomReady(view, () => R(view).scale > fitScale)
       const kept0 = R(view).scale
+      await ready(() => Number(JSON.parse(app.loadLocalStorage('abele-pdf-zoom') || '{}')[view.key]) === kept0, 'book zoom persisted')
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
-      await wait(800)
       const again = await open(${JSON.stringify(PDF)})
       const kept = R(again.view).scale - kept0
-      again.view.zoom('reset'); await wait(600)
+      await reset(again.view)
       const afterReset = R(again.view).scale - before
       const forgotten = !JSON.parse(app.loadLocalStorage('abele-pdf-zoom') || '{}')[again.view.key]
       return { before, pinched, at, still, stepped, menu, fitPage, kept, afterReset, forgotten }
@@ -264,7 +298,7 @@ describe.skipIf(!available)('zooming a PDF', () => {
       point?: number[]
     }>(`
       const view = app.workspace.getLeavesOfType('abele-book')[0]?.view ?? (await open(${JSON.stringify(PDF)})).view
-      await view.engine.goTo(2); await wait(800)
+      await go(view, 2)
       q(view, '.abele-book-reader__draw').click()
       await until(() => q(view, '.abele-ink-overlay'))
       const doc = page(view, 2)
@@ -277,8 +311,10 @@ describe.skipIf(!available)('zooming a PDF', () => {
       f = frame(doc)
       const cx = f.left + f.width * 0.4, cy = f.top + f.height * 0.22
       await pinch(cx, cy, 120, 200)
+      // Negative observation: a pinch must add no stroke, including after input has settled.
+      // Keep the original 900 ms post-lift plus 600 ms observation window.
+      await wait(1500)
       const pinched = R(view).scale
-      await wait(600)
       const pathsAfter = doc.querySelectorAll(':scope > svg.abele-ink path').length
       const inkAfter = inPage(doc, path().getBoundingClientRect())
       const svg = doc.querySelector(':scope > svg.abele-ink').getBoundingClientRect()
@@ -294,10 +330,10 @@ describe.skipIf(!available)('zooming a PDF', () => {
       const point = [last.points[0] / view.ink.pages.get(2).width - want.fx, last.points[1] / view.ink.pages.get(2).height - want.fy]
       const o = q(view, '.abele-ink-overlay').getBoundingClientRect()
       for (let i = 0; i < 3; i++) { await wheel(o.left + o.width / 2, o.top + o.height / 2, 60); await wait(30) }
-      await wait(1000)
+      await zoomReady(view, () => R(view).scale < pinched)
       const wheeled = R(view).scale
       q(view, '.abele-book-ink__done').click()
-      await wait(300)
+      await ready(() => !q(view, '.abele-ink-overlay'), 'drawing overlay closed')
       return { before, pinched, wheeled, paths, pathsAfter, inkBefore, inkAfter, svgFits, point }
     `)
     expect(r.error).toBeUndefined()
@@ -324,22 +360,27 @@ describe.skipIf(!available)('zooming a PDF', () => {
       app.saveLocalStorage('abele-pdf-zoom', null)
       await settings({ pdfLayout: 'paginated', pdfZoom: 'auto' })
       const { view } = await open(${JSON.stringify(PDF)})
-      await view.engine.goTo(1); await wait(800)
+      await go(view, 1)
       const before = R(view).scale
       const el = R(view)
       // Stepped in until the page is wider than the tab, not a fixed number of steps: how wide
       // the tab is depends on the sidebars the file before left open, and six steps made the
       // page wider than a tab between two sidebars but not than one filling the window.
       const overflows = () => el.scrollWidth > el.clientWidth + 1
-      for (let i = 0; i < 16 && !overflows(); i++) { view.zoom('in'); await wait(250) }
-      await wait(800)
+      for (let i = 0; i < 16 && !overflows(); i++) {
+        const previous = R(view).scale
+        view.zoom('in')
+        await zoomReady(view, () => R(view).scale > previous)
+      }
       const after = R(view).scale
       const wide = overflows()
-      el.scrollLeft = 0; await wait(100)
+      el.scrollLeft = 0
+      await ready(() => el.scrollLeft === 0, 'left edge scrolled into view')
       const doc = await until(() => R(view).getContents().map((c) => c.doc).find((d) => d?.querySelector('#canvas img') && frame(d).width > 0))
       const leftEdge = frame(doc).left - el.getBoundingClientRect().left
-      view.zoom('reset'); await wait(600)
+      await reset(view)
       await settings({ pdfLayout: 'scrolled', pdfZoom: 'fit-width' })
+      await ready(() => R(view).localName.startsWith('abele-pdf-scroll-') && view.model.status === 'ready', 'scrolled renderer restored')
       return { before, after, wide, leftEdge }
     `)
     expect(r.error).toBeUndefined()
