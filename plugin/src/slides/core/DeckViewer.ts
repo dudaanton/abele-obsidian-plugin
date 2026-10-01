@@ -1,5 +1,5 @@
 import { scopeCss } from '@/scripting/view/scopeCss'
-import type { BlockRenderer, Deck, MediaResolver, Slide } from './model'
+import type { BlockRenderer, Deck, FullscreenHost, MediaResolver, Slide } from './model'
 import {
   fitSlide,
   navigate,
@@ -52,7 +52,7 @@ export class DeckViewer {
     host: HTMLElement,
     private readonly renderer: BlockRenderer,
     private readonly media: MediaResolver,
-    options: { fullscreen?: boolean } = {}
+    private readonly options: { fullscreen?: boolean; fullscreenHost?: FullscreenHost } = {}
   ) {
     const doc = host.ownerDocument
     this.root = doc.createElement('div')
@@ -83,16 +83,19 @@ export class DeckViewer {
     this.resize = new ResizeObserver(() => this.scale())
     this.resize.observe(this.viewport)
     const listen = { signal: this.abort.signal }
-    this.root.addEventListener('keydown', this.onKey, { ...listen, capture: true })
+    this.root.addEventListener('keydown', this.handleKey, { ...listen, capture: true })
     // In presenting mode the overlay owns the window, including focus accidentally left outside it.
     doc.addEventListener('keydown', this.onWindowKey, { ...listen, capture: true })
     doc.addEventListener(
       'fullscreenchange',
       () => {
-        if (this.fullscreenOwned && doc.fullscreenElement !== this.root) this.exitPresenting()
+        if (!options.fullscreenHost && this.fullscreenOwned && doc.fullscreenElement !== this.root)
+          this.exitPresenting()
       },
       listen
     )
+    const unwatchFullscreen = options.fullscreenHost?.watchExited?.(() => this.exitPresenting())
+    this.abort.signal.addEventListener('abort', () => unwatchFullscreen?.(), { once: true })
     this.viewport.addEventListener('pointerdown', this.onPointerDown, listen)
     this.viewport.addEventListener('pointerup', this.onPointerUp, listen)
     this.viewport.addEventListener(
@@ -354,11 +357,14 @@ export class DeckViewer {
     this.play.setAttribute('aria-label', 'Exit presentation')
     this.root.focus()
     this.scale()
-    if (fullscreen && this.root.requestFullscreen) {
+    const host = this.options.fullscreenHost
+    if (fullscreen && (host || this.root.requestFullscreen)) {
       try {
-        await this.root.requestFullscreen()
+        if (host) await host.enter()
+        else await this.root.requestFullscreen()
         if (this.closed || !this.placeholder) {
-          if (doc.fullscreenElement === this.root) await doc.exitFullscreen()
+          if (host) await host.exit()
+          else if (doc.fullscreenElement === this.root) await doc.exitFullscreen()
         } else this.fullscreenOwned = true
       } catch {
         /* The full-window surface remains usable when element fullscreen is unavailable. */
@@ -374,8 +380,10 @@ export class DeckViewer {
     this.root.classList.remove('abele-deck-presenting')
     this.play.textContent = 'Play'
     this.play.setAttribute('aria-label', 'Play')
-    if (this.fullscreenOwned && doc.fullscreenElement === this.root)
-      void doc.exitFullscreen().catch(() => {})
+    if (this.fullscreenOwned) {
+      if (this.options.fullscreenHost) void this.options.fullscreenHost.exit().catch(() => {})
+      else if (doc.fullscreenElement === this.root) void doc.exitFullscreen().catch(() => {})
+    }
     this.fullscreenOwned = false
     this.focusBefore?.focus()
     this.focusBefore = null
@@ -383,9 +391,10 @@ export class DeckViewer {
   }
 
   private onWindowKey = (event: KeyboardEvent): void => {
-    if (this.placeholder) this.onKey(event)
+    if (this.placeholder) this.handleKey(event)
   }
-  private onKey = (event: KeyboardEvent): void => {
+  /** Hosts with a capture-phase hotkey scope can forward navigation before swallowing the key. */
+  handleKey = (event: KeyboardEvent): void => {
     if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) return
     if (event.key === 'Escape' && this.placeholder) {
       event.preventDefault()

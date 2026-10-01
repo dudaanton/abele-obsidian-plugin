@@ -40,6 +40,13 @@ export interface Deck {
   css: string
 }
 
+/** Some embedded browsers delegate fullscreen to their native window instead of the DOM API. */
+export interface FullscreenHost {
+  enter(): Promise<void>
+  exit(): Promise<void>
+  watchExited?(exited: () => void): () => void
+}
+
 /** The adapter owns rendering lifetimes, including live markdown processors. */
 export interface BlockRenderer {
   render(block: MarkdownBlock, target: HTMLElement): Promise<() => void>

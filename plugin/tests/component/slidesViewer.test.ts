@@ -130,6 +130,26 @@ describe('bounded deck rendering', () => {
     Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null })
   })
 
+  it('uses a host fullscreen controller and releases it when the view closes', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const native = {
+      enter: vi.fn(async () => {}),
+      exit: vi.fn(async () => {}),
+      watchExited: vi.fn(() => vi.fn()),
+    }
+    const viewer = new DeckViewer(host, { render: async () => () => {} }, media, {
+      fullscreenHost: native,
+    })
+    viewers.push(viewer)
+    await viewer.setDeck(parseDeck('# Example'))
+    await viewer.present(true)
+    expect(native.enter).toHaveBeenCalledTimes(1)
+    viewer.destroy()
+    expect(native.exit).toHaveBeenCalledTimes(1)
+    expect(native.watchExited.mock.results[0].value).toHaveBeenCalledTimes(1)
+  })
+
   it('disposes late asynchronous renders even when the viewer has already closed', async () => {
     let finish!: (value: () => void) => void
     const disposed = vi.fn()

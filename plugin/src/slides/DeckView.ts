@@ -11,6 +11,7 @@ import { DeckFollower } from './core/DeckFollower'
 import { parseDeck } from './core/markdown'
 import { noteDeckSource, noteMedia, noteRenderer } from './adapter'
 import { DECK_VIEW_TYPE, sourceLeaves } from './opening'
+import { desktopFullscreen } from './fullscreen'
 
 /** Read-only file adapter: only the source editor writes, never the viewer's preview buffer. */
 export class DeckView extends FileView {
@@ -35,7 +36,10 @@ export class DeckView extends FileView {
       ' ',
       'Escape',
     ])
-      this.scope.register([], key, () => undefined)
+      this.scope.register([], key, (event) => {
+        this.viewer?.handleKey(event)
+        return event.defaultPrevented ? false : undefined
+      })
     this.follower = new DeckFollower(
       noteDeckSource(this.app, () => this.file),
       (deck) => {
@@ -116,7 +120,7 @@ export class DeckView extends FileView {
       this.contentEl,
       noteRenderer(this.app, () => this.file?.path ?? ''),
       noteMedia(this.app, () => this.file?.path ?? ''),
-      { fullscreen: !Platform.isMobile }
+      { fullscreen: !Platform.isMobile, fullscreenHost: desktopFullscreen(this.contentEl) }
     )
     this.viewer
       .button('Edit source', () => void this.edit(false))
