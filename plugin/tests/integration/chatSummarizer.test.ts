@@ -15,6 +15,7 @@ import type { Message, ModelConfig, ToolCallContent } from '@/ai/client'
 let nextResponse = ''
 /** Set to throw from the stream instead of yielding. */
 let nextError: Error | null = null
+let nextStreamError: string | null = null
 /** Every (systemPrompt, messages) pair the stub was called with. */
 const calls: Array<{ model: ModelConfig; system: string; messages: Message[] }> = []
 
@@ -24,6 +25,7 @@ vi.mock('@/ai/client/OpenAIClient', () => {
       calls.push({ model: _model, system, messages })
       if (nextError) throw nextError
       yield { type: 'text_delta' as const, delta: nextResponse }
+      if (nextStreamError) yield { type: 'error' as const, error: nextStreamError }
     }
   }
   return { OpenAIClient }
@@ -88,6 +90,7 @@ function assistantMessage(total: number): ChatMessage {
 beforeEach(() => {
   nextResponse = ''
   nextError = null
+  nextStreamError = null
   calls.length = 0
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' }
 })
@@ -135,6 +138,21 @@ describe('ChatSummarizer.generateTitle', () => {
 })
 
 describe('ChatSummarizer.compact', () => {
+  it.each(['manual', 'automatic'] as const)(
+    'reports a streamed failure during %s compaction without replacing history',
+    async (kind) => {
+      nextResponse = 'Partial summary'
+      nextStreamError = 'Sample connection failure'
+      const { host, applied, saveCount } = buildHost({ messages: ref([assistantMessage(999)]) })
+      const summarizer = new ChatSummarizer(host)
+      if (kind === 'manual') await summarizer.compact()
+      else await summarizer.autoCompactIfNeeded()
+      expect(host.error.value).toBe('Compact failed: Sample connection failure')
+      expect(applied).toEqual([])
+      expect(saveCount()).toBe(0)
+    }
+  )
+
   it('hands the summary to the host and saves', async () => {
     nextResponse = 'They discussed the parser.'
     const { host, applied, saveCount } = buildHost()

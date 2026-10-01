@@ -283,8 +283,10 @@ export class ChatSummarizer {
         this.host.toolDefs(),
         { signal }
       )) {
+        if (event.type === 'error') throw new Error(event.error)
         if (event.type === 'text_delta') summary += event.delta
       }
+      if (signal.aborted) return
 
       summary = summary.trim()
       if (!summary) return
