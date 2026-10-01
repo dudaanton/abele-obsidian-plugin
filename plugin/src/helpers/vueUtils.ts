@@ -1,6 +1,5 @@
 import { nanoid } from 'nanoid'
 import { App } from 'obsidian'
-import { createPinia } from 'pinia'
 import { createApp, defineComponent, Component as VueComponent } from 'vue'
 
 /**
@@ -47,12 +46,8 @@ export class VueRenderer {
     mountPoint.id = id
     container.appendChild(mountPoint)
 
-    const pinia = createPinia()
-
     // Create a Vue app with the component
     const app = createApp(component, props)
-
-    app.use(pinia)
 
     // Mount the app to the container
     app.mount(`#${id}`)

@@ -15,7 +15,6 @@ import { GlobalStore } from './stores/GlobalStore'
 import { pasteFromClipboard } from './commands/pasteFromClipboard'
 import { registerFocusRelease } from './helpers/fieldFocus'
 import { createApp, App as VueApp } from 'vue'
-import { createPinia } from 'pinia'
 import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
 import { AgentRegistry } from './ai/agents/AgentRegistry'
@@ -144,7 +143,6 @@ export default class AbelePlugin extends Plugin {
     document.body.appendChild(rootContainer)
 
     this.vueApp = createApp(VueEntry)
-    this.vueApp.use(createPinia())
 
     // Catch errors from Teleport unmounting when CM6 removes widget DOM
     let suppressedSeen = false
