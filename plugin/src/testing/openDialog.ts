@@ -42,7 +42,6 @@ import GithubConnectionEditor from '@/components/settings/GithubConnectionEditor
 import { connectionApproval } from '@/github/approveConnection'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import { githubSettingsFrom } from '@/github/settings'
 import { BUILTIN_RULES } from '@/linter/rules'
 import { DEFAULT_LINTER_SETTINGS, ruleSetting } from '@/linter/settings'
