@@ -9,6 +9,9 @@ import {
 } from 'vue'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { reviewKeyDestinations } from '@/secrets/destinationReview'
+import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
 import AiReplyOriginalDialog from '@/components/AiReplyOriginalDialog.vue'
@@ -132,6 +135,22 @@ const DIALOGS: Record<string, () => void> = {
         }],
       },
     }),
+  'key-destinations': () => {
+    const config = AbeleConfig.getInstance()
+    const previous = config.ai
+    config.ai = { ...previous, providers: [
+      { id: 'sample-secure', name: 'Sample secure provider', apiKeyId: 'sample-secure-key', baseUrl: 'https://api.sample.example/v1', models: [] },
+      { id: 'sample-home', name: 'Sample home provider', apiKeyId: 'sample-home-key', baseUrl: 'http://192.168.8.20:1234/v1', models: [] },
+    ] }
+    const modal = reviewKeyDestinations()
+    modal.onClose = () => { config.ai = previous }
+  },
+  'saved-key-request': () => {
+    const config = AbeleConfig.getInstance()
+    const previous = config.ai
+    config.ai = { ...previous, secrets: [{ name: 'Sample key', keyId: 'sample-request-key' }] }
+    void approveScriptKeyRequest({ url: 'https://api.sample.example/data', headers: { Authorization: '${abele_key:Sample key}' } }).catch(() => {}).finally(() => { config.ai = previous })
+  },
   confirm: () =>
     mountAlone(ConfirmModal, {
       title: 'Delete model',

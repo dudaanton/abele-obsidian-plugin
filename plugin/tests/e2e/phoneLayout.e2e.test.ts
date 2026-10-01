@@ -54,6 +54,8 @@ const SHOTS = shotDir('abele-phone')
 const DIALOGS = [
   'reply-revision',
   'reply-original',
+  'key-destinations',
+  'saved-key-request',
   'confirm',
   'date',
   'recurrence',

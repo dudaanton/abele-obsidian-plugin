@@ -11,7 +11,7 @@ import {
 } from './keyTransport'
 
 /** A device-local decision, deliberately separate from saving or importing settings. */
-export function reviewKeyDestinations(): void {
+export function reviewKeyDestinations(): Modal {
   const modal = new Modal(GlobalStore.getInstance().app)
   modal.setTitle('Review key destinations')
   const render = () => {
@@ -65,4 +65,5 @@ export function reviewKeyDestinations(): void {
   }
   render()
   modal.open()
+  return modal
 }

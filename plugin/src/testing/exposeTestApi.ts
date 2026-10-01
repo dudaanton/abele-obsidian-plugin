@@ -40,6 +40,11 @@ import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools
 import { createGithubTools } from '@/ai/tools/github'
 import { createAgentTools } from '@/ai/tools'
 import { renderMap } from '@/helpers/mapRender'
+import { normalizeMapBlock } from '@/helpers/mapConfig'
+import { reviewKeyDestinations } from '@/secrets/destinationReview'
+import { approveScriptKeyRequest } from '@/secrets/requestApproval'
+import { desktopTransport, getDesktopNet } from '@/helpers/netTransport'
+import { request as networkRequest } from '@/helpers/http'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import { importExternalFile, resolveAttachmentsForApi } from '@/ai/attachments'
 import { normalizeImageImport } from '@/media/imageImport'
@@ -193,6 +198,14 @@ interface AbeleTestApi {
   githubEndpoints: typeof endpoints
   /** Every tool an agent could be handed now, MCP servers' included, to call as an agent would. */
   createAgentTools: typeof createAgentTools
+  networkSecurity: {
+    normalizeMapBlock: typeof normalizeMapBlock
+    reviewKeyDestinations: typeof reviewKeyDestinations
+    approveScriptKeyRequest: typeof approveScriptKeyRequest
+    networkRequest: typeof networkRequest
+    desktopTransport: typeof desktopTransport
+    getDesktopNet: typeof getDesktopNet
+  }
   /** The renderer shared by note maps and AbeleMap, for control/layout probes. */
   renderMap: typeof renderMap
   /** A vault picture as it goes to a model. */
@@ -713,6 +726,14 @@ export function exposeTestApi(plugin: Plugin): void {
     GithubClient,
     githubEndpoints: endpoints,
     createAgentTools,
+    networkSecurity: {
+      normalizeMapBlock,
+      reviewKeyDestinations,
+      approveScriptKeyRequest,
+      networkRequest,
+      desktopTransport,
+      getDesktopNet,
+    },
     renderMap,
     prepareImageForApi,
     importExternalFile,
