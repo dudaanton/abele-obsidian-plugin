@@ -229,7 +229,7 @@ describe('frontmatter read and write surfaces', () => {
 
   // BUG: updateNoteFrontmatter formats every parsed Date with DATE_FORMAT, unlike the
   // fixed parseNoteContent path. Editing an unrelated field deletes a timestamp's time.
-  it.fails('preserves an unquoted datetime when updating an unrelated property', async () => {
+  it('preserves an unquoted datetime when updating an unrelated property', async () => {
     const env = templateHarness([
       { path: 'Notes/sample.md', raw: '---\nstart: 2028-03-01T18:45:12Z\n---\nBody' },
     ])

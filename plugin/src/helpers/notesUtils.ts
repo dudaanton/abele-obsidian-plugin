@@ -106,8 +106,9 @@ export const updateNoteFrontmatter = async (
     (obj, key) => {
       let value = parsed.attributes[key]
       if (value instanceof Date) {
-        // Convert to DATE_FORMAT if it's a Date object
-        value = dayjs(value).format(DATE_FORMAT)
+        const d = dayjs(value)
+        const hasTime = d.hour() !== 0 || d.minute() !== 0 || d.second() !== 0
+        value = hasTime ? d.format('YYYY-MM-DDTHH:mm:ss') : d.format(DATE_FORMAT)
       }
 
       obj[key] = value
