@@ -7,6 +7,7 @@
 import { Keymap, Notice, SuggestModal, setIcon, type App } from 'obsidian'
 import { githubClient, githubSettings, openGithubUrl, connectionClient } from '../GithubService'
 import { preferredConnection } from '../connections'
+import { sameConnectionServer } from '../connectionRouting'
 import { watch, type WatchStopHandle } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
@@ -235,7 +236,7 @@ export class RepoPicker extends SuggestModal<RepoRow> {
       return false
     }
     const opened =
-      this.connectionId && repo.host === this.host
+      this.connectionId && sameConnectionServer({server:this.client.endpoints.origin},repo)
         ? await openGithubUrl(
             this.app,
             repoUrlOf({ ...repo, origin: this.client.endpoints.origin }),

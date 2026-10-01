@@ -19,6 +19,7 @@ import {
   recentRepos,
   rememberRepo,
   repoFromUrl,
+  repoUrlOf,
   repoRows,
   setPinned,
   type RepoEntry,
@@ -137,6 +138,25 @@ describe('the rows', () => {
 })
 
 describe('pinned repositories', () => {
+  it('keeps two explicit Enterprise ports distinct in pins, recents and picker choices', async () => {
+    const first={host:'git.sample.test',origin:'http://git.sample.test:8080',owner:'sample',repo:'project'}
+    const second={...first,origin:'https://git.sample.test:8443'}
+    AbeleConfig.getInstance().github=githubSettingsFrom({connections:[
+      {id:'first',name:'First',server:first.origin,keyId:'',owners:[],isDefault:true},
+      {id:'second',name:'Second',server:second.origin,keyId:'',owners:[],isDefault:true},
+    ]})
+    await setPinned(first,true)
+    await setPinned(second,true)
+    expect(pinnedRepos().map(repoUrlOf)).toEqual([first.origin+'/sample/project',second.origin+'/sample/project'])
+    const local=storage()
+    rememberRepo(local,first);rememberRepo(local,second)
+    expect(recentRepos(local).map(repoUrlOf)).toEqual([second.origin+'/sample/project',first.origin+'/sample/project'])
+    const opened=vi.spyOn(service,'openGithubUrl').mockResolvedValue(true)
+    const picker=new RepoPicker({workspace:{}} as unknown as App)
+    await picker.choose(second,false)
+    expect(opened.mock.calls[0][1]).toBe(second.origin+'/sample/project')
+  })
+
   it('are kept in the settings by their address, and saved', async () => {
     const repo = { host: 'github.com', owner: 'acme', repo: 'widgets' }
     await setPinned(repo, true)

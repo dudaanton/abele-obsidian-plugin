@@ -18,6 +18,7 @@ type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
 export interface RepoLike {
   host: string
+  origin?: string
   owner: string
   repo: string
 }
@@ -99,7 +100,7 @@ const repoName = (r: RepoLike) => `${r.owner}/${r.repo}`
  * so it goes as one part: `loadFolder` then has only the one split to try.
  */
 async function rootAt(client: GithubClient, t: RepoLike, ref: string): Promise<FolderData> {
-  const tree: Of<'tree'> = { kind: 'tree', host: t.host, owner: t.owner, repo: t.repo, rest: [ref] }
+  const tree: Of<'tree'> = { kind: 'tree', host: t.host, origin:t.origin, owner: t.owner, repo: t.repo, rest: [ref] }
   return loadFolder(client, tree)
 }
 

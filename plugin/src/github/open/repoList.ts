@@ -45,7 +45,10 @@ export function repoFromUrl(url: string): RepoRef | null {
     return null
   }
   const t = parseGithubUrl(url, [host])
-  return t?.kind === 'repo' ? { host: t.host, owner: t.owner, repo: t.repo } : null
+  const origin=new URL(url).origin
+  return t?.kind === 'repo' ? { host:t.host,owner:t.owner,repo:t.repo,
+    ...(origin!==`https://${t.host}` ? {origin} : {}),
+  } : null
 }
 
 // --- Pinned: in the settings ---
@@ -107,8 +110,9 @@ interface RawRepo {
   stargazers_count?: number
 }
 
-export const entryOf = (host: string, r: RawRepo): RepoEntry => ({
+export const entryOf = (host: string, r: RawRepo, origin?: string): RepoEntry => ({
   host,
+  ...(origin && origin!==`https://${host}` ? {origin} : {}),
   owner: r.owner.login,
   repo: r.name,
   description: r.description?.trim() || undefined,
@@ -149,9 +153,9 @@ export function accountRepos(client: GithubClient, now = Date.now()): Promise<Ac
     if (own.status === 'rejected' && starred.status === 'rejected') throw own.reason
     const failed = own.status === 'rejected' ? own : starred.status === 'rejected' ? starred : null
     return {
-      own: own.status === 'fulfilled' ? own.value.items.map((r) => entryOf(host, r)) : [],
+      own: own.status === 'fulfilled' ? own.value.items.map((r) => entryOf(host, r, client.endpoints.origin)) : [],
       starred:
-        starred.status === 'fulfilled' ? starred.value.items.map((r) => entryOf(host, r)) : [],
+        starred.status === 'fulfilled' ? starred.value.items.map((r) => entryOf(host, r, client.endpoints.origin)) : [],
       problem: failed
         ? failed.reason instanceof Error
           ? failed.reason.message.split('\n')[0]
@@ -173,7 +177,7 @@ export async function searchRepos(client: GithubClient, text: string): Promise<R
     `/search/repositories?q=${encodeURIComponent(`${text} in:name`)}&per_page=10`,
     { what: 'repositories' }
   )
-  return (found.items ?? []).map((r) => entryOf(client.endpoints.webHost, r))
+  return (found.items ?? []).map((r) => entryOf(client.endpoints.webHost, r, client.endpoints.origin))
 }
 
 // --- The rows ---

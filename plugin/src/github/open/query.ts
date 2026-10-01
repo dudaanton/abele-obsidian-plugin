@@ -140,6 +140,13 @@ export function parseOpenQuery(input: string, ctx: QueryContext): OpenQuery {
   return { kind: 'text', repo: ctx.repo, text }
 }
 
-export const repoKey = (r: RepoRef): string => `${r.host}/${r.owner}/${r.repo}`.toLowerCase()
+export const repoKey = (r: RepoRef): string => {
+  let server=normaliseHost(r.host)
+  if(r.origin){
+    const url=new URL(r.origin)
+    if(url.protocol!=='https:' || url.port) server=`${url.protocol}//${normaliseHost(url.hostname)}${url.port ? ':'+url.port : ''}`
+  }
+  return `${server}/${r.owner}/${r.repo}`.toLowerCase()
+}
 
 export const repoName = (r: RepoRef): string => `${r.owner}/${r.repo}`

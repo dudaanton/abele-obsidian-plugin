@@ -27,7 +27,7 @@ export interface ConnectionCandidate {
 
 /** Link aliases are not authenticated destinations: schemes and ports still distinguish servers. */
 export function sameConnectionServer(
-  connection: GithubConnection,
+  connection: Pick<GithubConnection,'server'>,
   target: Pick<RoutingInput, 'host' | 'origin'>
 ): boolean {
   const e = endpoints(connection.server)

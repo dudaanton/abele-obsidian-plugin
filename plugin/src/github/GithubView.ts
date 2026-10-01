@@ -242,7 +242,7 @@ export class GithubView extends ItemView {
     )
     const t = this.model.target
     if (t) {
-      const repo = { host: t.host, owner: t.owner, repo: t.repo }
+      const repo = { host: t.host, origin:t.origin, owner: t.owner, repo: t.repo }
       const pinned = isPinned(repo)
       menu.addItem((item) =>
         item
