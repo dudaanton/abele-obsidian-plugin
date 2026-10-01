@@ -10,8 +10,21 @@ export function isLocalAddress(host: string): boolean {
   if (h.startsWith('[')) {
     const ip = h.slice(1, -1)
     if (ip === '::' || /^(fc|fd|fe[89ab]|fec|fed|fee|fef|ff)/.test(ip)) return true
-    // IPv4-mapped/compatible and transition ranges can embed non-public IPv4 addresses.
-    if (/^(::|64:ff9b:|2002:)/.test(ip)) return true
+    // Classify the embedded IPv4, not the whole transition range: public addresses stay public.
+    const halves = ip.split('::')
+    const left = halves[0] ? halves[0].split(':') : []
+    const right = halves[1] ? halves[1].split(':') : []
+    const parts =
+      halves.length === 2
+        ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right]
+        : left
+    const groups = parts.map((part) => parseInt(part, 16))
+    const embedded = (hi: number, lo: number) =>
+      isLocalAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`)
+    if (groups.slice(0, 5).every((g) => g === 0) && (groups[5] === 0 || groups[5] === 0xffff))
+      return embedded(groups[6], groups[7])
+    if (groups[0] === 0x64 && groups[1] === 0xff9b) return embedded(groups[6], groups[7])
+    if (groups[0] === 0x2002) return embedded(groups[1], groups[2])
     return false
   }
   if (/^\d+(\.\d+){3}$/.test(h)) {

@@ -20,6 +20,12 @@ describe('note map styles', () => {
   ])('refuses %s in a note', (style) => {
     expect(normalizeMapBlock({ center: [10, 20], style })).toHaveProperty('error')
   })
+  it.each(['https://[::ffff:808:808]/style.json', 'https://[2002:808:808::]/style.json'])(
+    'keeps public IPv4-embedded HTTPS styles: %s',
+    (style) => {
+      expect(normalizeMapBlock({ center: [10, 20], style })).not.toHaveProperty('error')
+    }
+  )
   it('accepts a public HTTPS style', () => {
     expect(
       normalizeMapBlock({ center: [10, 20], style: 'https://tiles.example/style.json' })
