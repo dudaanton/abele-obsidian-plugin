@@ -76,6 +76,7 @@ const showDetails = () => {
   modal?.close()
   modal = new Modal(AbeleConfig.getInstance().plugin.app)
   modal.setTitle('Line blame')
+  modal.contentEl.addClass('abele-github-blame-detail-body')
   modal.contentEl.createEl('p', {
     text: `${props.commit.author} · ${formatDate(props.commit.date)}`,
   })
@@ -178,6 +179,9 @@ onBeforeUnmount(() => {
 }
 .is-mobile .abele-github-blame-range__date {
   display: none;
+}
+.abele-github-blame-detail-body {
+  overflow-wrap: anywhere;
 }
 .abele-github-blame-details {
   white-space: pre-wrap;

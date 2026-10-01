@@ -125,7 +125,12 @@ describe.skipIf(!available)('file blame on a phone', () => {
       button.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', button: 0, clientX: ${at.x}, clientY: ${at.y}, bubbles: true }))
       return 'pressed'
     })()`)
-    const result = evalAsync<{ details: string; sameLeaf: boolean; url: string }>(`(async () => {
+    const result = evalAsync<{
+      details: string
+      sameLeaf: boolean
+      url: string
+      sideways: number
+    }>(`(async () => {
       ${PRELUDE}
       const modal = await until(() => document.querySelector('.modal:has(.abele-github-blame-details)'))
       if (!modal) throw Error('Long press did not show details')
@@ -138,12 +143,15 @@ describe.skipIf(!available)('file blame on a phone', () => {
         const image = await require('@electron/remote').getCurrentWebContents().capturePage()
         require('fs').writeFileSync(shot, image.toPNG())
       }
+      const content = modal.querySelector('.modal-content')
+      const sideways = content.scrollWidth - content.clientWidth
       const leaf = githubLeaves()[0]
       const open = [...modal.querySelectorAll('button')].find(b => b.textContent === 'Open commit')
       open.click()
       if (!(await until(() => leaf.view.model.url.includes('/commit/') && !document.querySelector('.abele-github-blame-details')))) throw Error('Commit did not open')
-      return { details, sameLeaf: githubLeaves()[0] === leaf, url: leaf.view.model.url }
+      return { details, sideways, sameLeaf: githubLeaves()[0] === leaf, url: leaf.view.model.url }
     })()`)
+    expect(result.sideways).toBe(0)
     expect(result.details).toContain('Full sample explanation for this range.')
     expect(result.details).toContain('4 Mar 2025')
     expect(result.sameLeaf).toBe(true)
