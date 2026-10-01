@@ -104,6 +104,32 @@ describe('buildLedger', () => {
     expect(resolve).toHaveBeenCalledTimes(4)
     expect(buildLedger([], resolve, ctime)).toEqual([])
   })
+
+  it('memoises source-aware links and misses per folder, not across folders', () => {
+    useVault([
+      { path: 'SampleA/First.md' },
+      { path: 'SampleA/Second.md' },
+      { path: 'SampleB/Third.md' },
+    ])
+    const items = ['SampleA/First', 'SampleA/Second', 'SampleB/Third'].map((id) =>
+      tx(id, { from: '[[Wallet]]', to: '[[Missing]]' })
+    )
+    const fromSource = vi.fn((link: string, sourcePath: string) =>
+      link === '[[Wallet]]' ? sourcePath.replace(/[^/]+$/, 'Wallet.md') : null
+    )
+    const entries = buildLedger(items, { fromSource }, () => 0)
+    expect(entries.map(({ from, to }) => ({ from, to }))).toEqual([
+      { from: 'SampleA/Wallet.md', to: null },
+      { from: 'SampleA/Wallet.md', to: null },
+      { from: 'SampleB/Wallet.md', to: null },
+    ])
+    expect(fromSource.mock.calls).toEqual([
+      ['[[Wallet]]', 'SampleA/First.md'],
+      ['[[Missing]]', 'SampleA/First.md'],
+      ['[[Wallet]]', 'SampleB/Third.md'],
+      ['[[Missing]]', 'SampleB/Third.md'],
+    ])
+  })
 })
 
 describe('useFinanceLedger — reactive public surface', () => {
@@ -213,10 +239,7 @@ describe('useFinanceLedger — reactive public surface', () => {
     expect(view.entries.value[0].tx.title).toBe('New title')
   })
 
-  // BUG: unlike BalanceIndex (64e30464), the screen ledger resolves from the vault
-  // root and memoises only the wikilink. Two same-named accounts in different folders
-  // resolve to neither (or to the root note), so type/day/period totals disagree with balances.
-  it.fails('resolves duplicate wallet names from each transaction note, like BalanceIndex', () => {
+  it('resolves duplicate wallet names from each transaction note, like BalanceIndex', () => {
     useVault([
       { path: 'Home/Wallet.md', frontmatter: { type: 'account', accountType: 'asset' } },
       { path: 'Work/Wallet.md', frontmatter: { type: 'account', accountType: 'asset' } },

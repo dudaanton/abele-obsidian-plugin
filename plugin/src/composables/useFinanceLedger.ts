@@ -40,19 +40,28 @@ export interface LedgerEntry {
  * Every loaded, dated transaction, newest first (by date, then by when its note was created).
  * Link resolution is memoised for the whole pass: a vault has thousands of transactions but
  * a few dozen accounts, so it costs one lookup per account rather than two per transaction.
+ * A source-aware resolver is cached per folder, matching Obsidian's link resolution;
+ * a plain callback remains available for context-independent links.
  */
 export function buildLedger(
   transactions: Iterable<Transaction>,
-  resolveLink: (wikilink: string) => string | null,
+  resolveLink:
+    | ((wikilink: string) => string | null)
+    | { fromSource: (wikilink: string, sourcePath: string) => string | null },
   ctimeOf: (path: string) => number
 ): LedgerEntry[] {
   const resolved = new Map<string, string | null>()
-  const resolve = (wikilink: string | null): string | null => {
+  const resolve = (wikilink: string | null, sourcePath: string): string | null => {
     if (!wikilink) return null
-    let path = resolved.get(wikilink)
+    const folder = sourcePath.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/')) : ''
+    const key = typeof resolveLink === 'function' ? wikilink : `${folder}\u0000${wikilink}`
+    let path = resolved.get(key)
     if (path === undefined) {
-      path = resolveLink(wikilink)
-      resolved.set(wikilink, path)
+      path =
+        typeof resolveLink === 'function'
+          ? resolveLink(wikilink)
+          : resolveLink.fromSource(wikilink, sourcePath)
+      resolved.set(key, path)
     }
     return path
   }
@@ -61,13 +70,14 @@ export function buildLedger(
   for (const live of transactions) {
     const raw = toRaw(live)
     if (!raw.loaded || !raw.date) continue
+    const sourcePath = raw.transactionPath
     entries.push({
       tx: live,
       id: raw.id,
       date: raw.date.format(DATE_FORMAT),
-      ctime: ctimeOf(raw.transactionPath),
-      from: resolve(raw.from),
-      to: resolve(raw.to),
+      ctime: ctimeOf(sourcePath),
+      from: resolve(raw.from, sourcePath),
+      to: resolve(raw.to, sourcePath),
       amount: raw.amount,
       currency: raw.currency,
     })
@@ -120,10 +130,10 @@ export function useFinanceLedger(
   const entries = shallowRef<LedgerEntry[]>([])
   const rebuilds = shallowRef(0)
 
-  const resolveLink = (wikilink: string): string | null => {
+  const resolveLink = (wikilink: string, sourcePath: string): string | null => {
     const linkPath = wikilinkToPath(wikilink)
     if (!linkPath) return null
-    return store.app.metadataCache.getFirstLinkpathDest(linkPath, '')?.path ?? null
+    return store.app.metadataCache.getFirstLinkpathDest(linkPath, sourcePath)?.path ?? null
   }
   const ctimeOf = (path: string): number => {
     const file = store.app.vault.getAbstractFileByPath(path) as { stat?: { ctime?: number } }
@@ -138,7 +148,9 @@ export function useFinanceLedger(
   const rebuild = (retrack = true): void => {
     if (retrack) tracker?.()
     const tl = toRaw(unref(store.transactionsList)) as TransactionsList | null
-    entries.value = tl ? buildLedger(tl.transactions.values(), resolveLink, ctimeOf) : []
+    entries.value = tl
+      ? buildLedger(tl.transactions.values(), { fromSource: resolveLink }, ctimeOf)
+      : []
     rebuilds.value++
   }
 
