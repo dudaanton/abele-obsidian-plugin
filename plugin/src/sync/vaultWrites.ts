@@ -2,6 +2,8 @@ import type { App, DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import type { LocalStorage } from './ledgerId'
+import { WriteJournal, type JournalEntry } from './writeJournal'
+export { WriteJournal, JOURNAL_KEY, RECOVERED_WRITES_KEY, type JournalEntry } from './writeJournal'
 
 /**
  * How the sync replaces a file in the vault without ever leaving half of one behind.
@@ -28,18 +30,6 @@ import type { LocalStorage } from './ledgerId'
  * The temp and backup names start with a dot, which keeps them out of Obsidian's file index, and
  * `isAdapterTemp` keeps them out of the config-folder walk, where hidden names are listed.
  */
-
-/** Where the unfinished replacements are written down, in this vault's local storage. */
-export const JOURNAL_KEY = 'abele-sync-writes'
-
-/** A replacement under way: the file, the new bytes' temp name, and the old bytes' backup name. */
-export interface JournalEntry {
-  target: string
-  temp?: string
-  backup?: string
-  replacementSha?: string
-  installed?: boolean
-}
 
 /**
  * The temp names this process is using right now, whichever `ObsidianFileSystem` made them — a
@@ -123,62 +113,6 @@ export function nativeOf(adapter: DataAdapter): NativeFs | null {
     },
   }
 }
-
-/** The journal of replacements under way, in this vault's local storage. */
-export class WriteJournal {
-  constructor(private readonly storage: LocalStorage | null) {}
-
-  entries(): JournalEntry[] {
-    let raw: unknown
-    try {
-      raw = this.storage?.loadLocalStorage(JOURNAL_KEY) ?? null
-    } catch (cause) {
-      throw new EngineError('io', 'cannot read the write journal', cause)
-    }
-    if (raw === null) return []
-    if (!Array.isArray(raw)) throw new EngineError('io', 'the write journal is not an array')
-    const entries = raw.filter(
-      (entry): entry is JournalEntry =>
-        entry !== null &&
-        typeof entry === 'object' &&
-        typeof (entry as JournalEntry).target === 'string'
-    )
-    if (entries.length !== raw.length)
-      throw new EngineError('io', 'the write journal contains an unreadable entry')
-    return entries
-  }
-
-  add(entry: JournalEntry): void {
-    this.save([...this.entries(), entry])
-  }
-
-  drop(entry: JournalEntry): void {
-    this.save(this.entries().filter((held) => !sameEntry(held, entry)))
-  }
-
-  replace(entry: JournalEntry, next: JournalEntry): void {
-    this.save(this.entries().map((held) => (sameEntry(held, entry) ? next : held)))
-  }
-
-  private save(entries: JournalEntry[]): void {
-    try {
-      if (this.storage === null) throw new Error('no durable local storage')
-      this.storage.saveLocalStorage(JOURNAL_KEY, entries.length === 0 ? null : entries)
-      const back = this.storage.loadLocalStorage(JOURNAL_KEY)
-      if (JSON.stringify(back) !== JSON.stringify(entries.length === 0 ? null : entries))
-        throw new Error('journal was not kept')
-    } catch (cause) {
-      throw new EngineError(
-        'io',
-        'cannot save the write journal; no replacement was started',
-        cause
-      )
-    }
-  }
-}
-
-const sameEntry = (a: JournalEntry, b: JournalEntry): boolean =>
-  a.target === b.target && a.temp === b.temp && a.backup === b.backup
 
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
@@ -397,9 +331,10 @@ export class VaultWriter {
 
   /**
    * Put back whatever a crash left half done, from the journal: a file found only at its
-   * backup name goes back under its own; a backup beside a file that is there is the old copy
-   * of a finished replacement and goes; a temp goes. An entry a step fails on stays for next
-   * time. Entries this process is still working through are left alone.
+   * backup name goes back under its own. A backup beside exact replacement bytes can go;
+   * beside an independently edited target it is preserved with a durable locator instead.
+   * A stale installed flag cannot authorize deletion. Temps go, active intents complete, and
+   * scans resume. An entry an IO step fails on stays for retry; live writes are left alone.
    */
   async recover(): Promise<void> {
     for (const entry of this.deps.journal.entries()) {
@@ -411,15 +346,22 @@ export class VaultWriter {
       }
       try {
         if (entry.backup !== undefined && (await this.there(entry.backup))) {
-          if (await this.there(entry.target)) {
-            const installed =
-              entry.installed === true ||
-              (entry.replacementSha !== undefined &&
-                (await signature(await this.adapter.readBinary(entry.target))) ===
-                  entry.replacementSha)
-            if (!installed)
-              throw new Error('the backup and target both exist; neither may be discarded')
-            await this.adapter.remove(entry.backup)
+          if (this.deps.journal.protects(entry.backup)) {
+            // A completed preservation decision outlives a later target edit/reversion/delete.
+          } else if (await this.there(entry.target)) {
+            const matchesReplacement =
+              entry.replacementSha !== undefined &&
+              (await signature(await this.adapter.readBinary(entry.target))) ===
+                entry.replacementSha
+            if (matchesReplacement) await this.adapter.remove(entry.backup)
+            else {
+              // Do not overwrite the independent target or discard the old copy. Keep the
+              // backup hidden (not a new uploadable identity), and persist its locator first.
+              this.deps.journal.preserve(entry)
+              console.debug(
+                `[abele-sync] preserved previous bytes of ${entry.target} at ${entry.backup}; scanning can resume`
+              )
+            }
           } else {
             await this.adapter.rename(entry.backup, entry.target)
             console.debug(`[abele-sync] put ${entry.target} back after an interrupted write`)

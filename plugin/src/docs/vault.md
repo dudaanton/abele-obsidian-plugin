@@ -1167,7 +1167,14 @@ a vault is synced by the command-line client, is its state and never syncs eithe
 alone unless asked. A hidden `.abele-sync-….tmp` or `.abele-sync-….old` file beside a note is a
 file the sync is writing that moment; unfinished replacements are recovered before each scan,
 not only at startup. A recovery error stops the scan rather than treating the gap as a delete. Never delete an `.old` by hand: it can be
-the only copy of that file.
+the only copy of that file. If both a backup and an independently edited target survive an
+interruption, the target is left untouched and the backup is retained under its hidden name.
+The device-local `abele-sync-recovered-writes` record maps each preserved backup to its original
+target and intended replacement hash. It is persisted before the active write intent completes,
+so scanning resumes without treating the backup as a new uploadable file. A stale installed flag
+never authorizes discarding it. A later edit, reversion or deletion of the target does not undo
+the preservation decision. Keep these backup bytes/locators until the person has reviewed and
+copied out what is needed; recovery never overwrites the edited target automatically.
 
 Several records are kept in Obsidian's local storage for this vault, which no file carries: under
 `abele-sync-connection`, this device's connection — the server (and the one it enrolled on), the
