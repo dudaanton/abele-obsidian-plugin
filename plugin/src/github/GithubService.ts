@@ -66,9 +66,10 @@ export const parseForSettings = (url: string): GithubTarget | null => {
   if (parsed.username || parsed.password) return null
   const origin = parsed.origin
   // Preserve noncanonical origins too, so routing refuses a wrong public scheme/port.
-  if (target.host !== 'github.com' || parsed.protocol !== 'https:' || parsed.port) target.origin = origin
+  if (target.host !== 'github.com' || parsed.protocol !== 'https:' || parsed.port)
+    target.origin = origin
   const rows = githubSettings().connections ?? []
-  if (rows.length && !routeConnections(rows,target).length) return null
+  if (rows.length && !routeConnections(rows, target).length) return null
   return target
 }
 
@@ -286,7 +287,14 @@ export async function openGithubUrl(
     state: {
       url,
       ...(chosen?.id
-        ? { connectionId: chosen.id, connectionIntent: (context.manual || (context.sourceId===chosen.id && context.sourceIntent==='manual')) ? 'manual' : 'automatic' }
+        ? {
+            connectionId: chosen.id,
+            connectionIntent:
+              context.manual ||
+              (context.sourceId === chosen.id && context.sourceIntent === 'manual')
+                ? 'manual'
+                : 'automatic',
+          }
         : {}),
       ...(context.allowedIds
         ? {

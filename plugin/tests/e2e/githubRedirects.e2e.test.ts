@@ -54,11 +54,11 @@ describe.skipIf(!available)('GitHub redirect credential confinement', () => {
   })
 
   it('sends GraphQL as a JSON object rather than a quoted JSON string through the platform adapter', () => {
-    const result=evalAsync<{echo:string;variables:{name:string}}>(`(async()=>{
+    const result = evalAsync<{ echo: string; variables: { name: string } }>(`(async()=>{
       const client = new window.__abeleTest.GithubClient(window.__abeleTest.githubEndpoints(${JSON.stringify(origin)}), 'invented-query-token')
       return await client.graphql('query { sample }',{name:'sample-variable'})
     })()`)
-    expect(result).toEqual({echo:'query { sample }',variables:{name:'sample-variable'}})
+    expect(result).toEqual({ echo: 'query { sample }', variables: { name: 'sample-variable' } })
   })
 
   it('the GitHub client never forwards its token through a cross-origin archive redirect', async () => {

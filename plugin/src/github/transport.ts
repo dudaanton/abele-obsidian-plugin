@@ -119,7 +119,9 @@ function desktopRequest(request: RequestUrlParam): Promise<RequestUrlResponse> {
             }
             resolve(response(r.statusCode ?? 0, headers, decoded))
           } catch (error) {
-            reject(error)
+            reject(
+              error instanceof Error ? error : new Error('Could not decode the HTTP response.')
+            )
           }
         })
       }

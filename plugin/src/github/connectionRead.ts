@@ -47,23 +47,31 @@ export async function readConnectionItem(
     explicitId: model.connectionIntent === 'manual' ? model.connectionId : undefined,
     allowedIds: allowed,
   })
-  const contexts = new Map(candidates.map(c=>[c.id,c.id ? connectionClient(c.id) : githubClient(target.host)]))
+  const contexts = new Map(
+    candidates.map((c) => [c.id, c.id ? connectionClient(c.id) : githubClient(target.host)])
+  )
   const result = await fallback.read({
     candidates,
     retry,
     repo: `${target.origin ?? `https://${target.host}`}/${target.owner}/${target.repo}`,
     item: targetKey(target),
     generation: connectionGeneration,
-    label: id=>githubSettings().connections.find(c=>c.id===id)?.name ?? 'Anonymous',
+    label: (id) => githubSettings().connections.find((c) => c.id === id)?.name ?? 'Anonymous',
     manual: model.connectionIntent === 'manual',
     read: async (id) => {
       if (!permitted(id))
         throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
       const rawClient = contexts.get(id)!
       rawClient.assertCurrent()
-      const client = model.allowedConnections ? guardedGithubClient(rawClient,()=> {
-        if (!permitted(id)) throw new GithubError('other','The agent no longer has access to this GitHub connection.')
-      }) : rawClient
+      const client = model.allowedConnections
+        ? guardedGithubClient(rawClient, () => {
+            if (!permitted(id))
+              throw new GithubError(
+                'other',
+                'The agent no longer has access to this GitHub connection.'
+              )
+          })
+        : rawClient
       await primaryAccess(client, target)
       return client
     },

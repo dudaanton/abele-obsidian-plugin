@@ -28,8 +28,14 @@ const factories = [
 ]
 
 function labelled(result: AgentToolResult, label: string): AgentToolResult {
-  return {...result,content:result.content.map((block,i)=>i===0 && block.type==='text' ?
-    {...block,text:clip(`${clip(label,500)}\n\n${block.text}`,MAX_OUTPUT)} : block)}
+  return {
+    ...result,
+    content: result.content.map((block, i) =>
+      i === 0 && block.type === 'text'
+        ? { ...block, text: clip(`${clip(label, 500)}\n\n${block.text}`, MAX_OUTPUT) }
+        : block
+    ),
+  }
 }
 
 export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
@@ -60,15 +66,33 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           signal
         )
         const itemKey = operation.target ? targetKey(operation.target) : ''
-        const knownRefusal = !!itemKey && !operation.explicit && routingMemory.wasRefused(operation.connectionId,operation.client.cacheNamespace,itemKey)
+        const knownRefusal =
+          !!itemKey &&
+          !operation.explicit &&
+          routingMemory.wasRefused(operation.connectionId, operation.client.cacheNamespace, itemKey)
         try {
-          if (knownRefusal) throw new GithubError('not-found','Access to this item was refused recently. Choose a connection explicitly to retry now.',404)
+          if (knownRefusal)
+            throw new GithubError(
+              'not-found',
+              'Access to this item was refused recently. Choose a connection explicitly to retry now.',
+              404
+            )
           const result = await factory(operation).execute(id, params, signal)
           operation.assertAccess()
-          if (operation.target && operation.connectionId) routingMemory.succeeded(`${operation.target.origin ?? `https://${operation.target.host}`}/${operation.target.owner}/${operation.target.repo}`,operation.connectionId,operation.client.cacheNamespace)
+          if (operation.target && operation.connectionId)
+            routingMemory.succeeded(
+              `${operation.target.origin ?? `https://${operation.target.host}`}/${operation.target.owner}/${operation.target.repo}`,
+              operation.connectionId,
+              operation.client.cacheNamespace
+            )
           if (tool.name === 'github_views') return result
-          const connection = githubSettings().connections.find(c=>c.id===operation.connectionId)
-          return labelled(result,`GitHub connection: ${connection?.name ?? 'Anonymous'}${connection?.account ? ` · ${connection.account.login}` : ''}`)
+          const connection = githubSettings().connections.find(
+            (c) => c.id === operation.connectionId
+          )
+          return labelled(
+            result,
+            `GitHub connection: ${connection?.name ?? 'Anonymous'}${connection?.account ? ` · ${connection.account.login}` : ''}`
+          )
         } catch (error) {
           operation.assertAccess()
           if (
@@ -81,10 +105,19 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           // Do not switch identity for a secondary section that failed after a readable item.
           let primaryDenied = knownRefusal
           if (!knownRefusal) {
-            try { await primaryAccess(operation.client, operation.target) } catch (probeError) {
-              if (probeError instanceof GithubError && ['not-found','forbidden','sso'].includes(probeError.kind)) {
-                primaryDenied=true
-                routingMemory.refused(operation.connectionId,operation.client.cacheNamespace,itemKey)
+            try {
+              await primaryAccess(operation.client, operation.target)
+            } catch (probeError) {
+              if (
+                probeError instanceof GithubError &&
+                ['not-found', 'forbidden', 'sso'].includes(probeError.kind)
+              ) {
+                primaryDenied = true
+                routingMemory.refused(
+                  operation.connectionId,
+                  operation.client.cacheNamespace,
+                  itemKey
+                )
               } else throw probeError
             }
           }
@@ -92,16 +125,22 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           for (const candidate of operation.candidates.filter(
             (c) => c !== operation.connectionId
           )) {
-            const candidateRow=githubSettings().connections.find(c=>c.id===candidate)
-            if(!candidateRow || endpoints(candidateRow.server).api !== operation.client.endpoints.api) continue
-            if (routingMemory.wasRefused(candidate,connectionGeneration(candidate),itemKey)) continue
+            const candidateRow = githubSettings().connections.find((c) => c.id === candidate)
+            if (
+              !candidateRow ||
+              endpoints(candidateRow.server).api !== operation.client.endpoints.api
+            )
+              continue
+            if (routingMemory.wasRefused(candidate, connectionGeneration(candidate), itemKey))
+              continue
             const next = await toolOperation(
               tool.name,
               { ...params, connection: candidate },
               access ?? { agent: () => null },
               signal
             )
-            if(next.client.endpoints.api !== operation.client.endpoints.api) throw new Error('The GitHub fallback connection changed to a different server.')
+            if (next.client.endpoints.api !== operation.client.endpoints.api)
+              throw new Error('The GitHub fallback connection changed to a different server.')
             try {
               await primaryAccess(next.client, next.target!)
             } catch (probeError) {
@@ -109,15 +148,23 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
                 probeError instanceof GithubError &&
                 ['not-found', 'forbidden', 'sso'].includes(probeError.kind)
               ) {
-                routingMemory.refused(candidate,next.client.cacheNamespace,itemKey)
+                routingMemory.refused(candidate, next.client.cacheNamespace, itemKey)
                 continue
               }
               throw probeError
             }
             const result = await factory(next).execute(id, params, signal)
             next.assertAccess()
-            if (next.target) routingMemory.succeeded(`${next.target.origin ?? `https://${next.target.host}`}/${next.target.owner}/${next.target.repo}`,next.connectionId,next.client.cacheNamespace)
-            return labelled(result,`Read using GitHub connection ${githubSettings().connections.find(c=>c.id===candidate)?.name ?? candidate}; the first connection could not access the item.`)
+            if (next.target)
+              routingMemory.succeeded(
+                `${next.target.origin ?? `https://${next.target.host}`}/${next.target.owner}/${next.target.repo}`,
+                next.connectionId,
+                next.client.cacheNamespace
+              )
+            return labelled(
+              result,
+              `Read using GitHub connection ${githubSettings().connections.find((c) => c.id === candidate)?.name ?? candidate}; the first connection could not access the item.`
+            )
           }
           throw error
         }

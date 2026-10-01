@@ -82,7 +82,12 @@
 
         <div v-if="main.error.value" class="abele-github__error">
           <EmptyState :text="main.error.value" />
-          <Button text="Try again" icon="refresh-cw" tooltip="Ask GitHub again" @click="reload(true)" />
+          <Button
+            text="Try again"
+            icon="refresh-cw"
+            tooltip="Ask GitHub again"
+            @click="reload(true)"
+          />
         </div>
         <EmptyState v-else-if="!main.data.value" text="Loading from GitHub…" />
 
@@ -310,7 +315,11 @@ const props = defineProps<{
   enabled: boolean
   clientFor: (host: string) => GithubClient
   /** Connection-aware primary loading; secondary loads stay on clientFor. */
-  primaryLoad?: (target: GithubTarget, promote: (target: GithubTarget) => void, retry?: boolean) => Promise<ItemData>
+  primaryLoad?: (
+    target: GithubTarget,
+    promote: (target: GithubTarget) => void,
+    retry?: boolean
+  ) => Promise<ItemData>
   peopleClient?: () => GithubClient
   accountName?: string
   onChooseAccount?: () => void
@@ -361,9 +370,13 @@ const main = useLoad<ItemData>(() => {
     props.primaryLoad ??
     ((target: GithubTarget, promote: (target: GithubTarget) => void) =>
       loadItem(currentClient, target, promote))
-  return read(currentTarget, (t) => {
-    if (active && generation === loadGeneration && currentClient === client()) promoted.value = t
-  }, retryPrimary)
+  return read(
+    currentTarget,
+    (t) => {
+      if (active && generation === loadGeneration && currentClient === client()) promoted.value = t
+    },
+    retryPrimary
+  )
 })
 
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
@@ -530,7 +543,9 @@ provide(LINKER, linker)
 /** The repository shown: comments and messages resolve their relative links and images in it. */
 const repo = computed<RepoFile | null>(() => {
   const t = target.value
-  return t ? { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo, ref: 'HEAD', path: '' } : null
+  return t
+    ? { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo, ref: 'HEAD', path: '' }
+    : null
 })
 provide(GITHUB_REPO, repo)
 // The people in it are looked up with the tab's own client: its server, its token.

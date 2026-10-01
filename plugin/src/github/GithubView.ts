@@ -178,8 +178,15 @@ export class GithubView extends ItemView {
           .setIcon('user-round')
           .setChecked(connection.id === this.model.connectionId)
           .onClick(() => {
-            void this.leaf.setViewState({ type:GITHUB_VIEW_TYPE, active:true,
-              state:{url:this.model.url,connectionId:connection.id,connectionIntent:'manual'} })
+            void this.leaf.setViewState({
+              type: GITHUB_VIEW_TYPE,
+              active: true,
+              state: {
+                url: this.model.url,
+                connectionId: connection.id,
+                connectionIntent: 'manual',
+              },
+            })
           })
       )
     }
@@ -303,8 +310,13 @@ export class GithubView extends ItemView {
           onChooseAccount: () => {
             const menu = new Menu()
             this.accountMenu(menu)
-            const rect = this.containerEl.querySelector('.abele-github__account')?.getBoundingClientRect()
-            menu.showAtPosition({x:rect?.left ?? 0,y:rect?.bottom ?? 0},this.containerEl.ownerDocument)
+            const rect = this.containerEl
+              .querySelector('.abele-github__account')
+              ?.getBoundingClientRect()
+            menu.showAtPosition(
+              { x: rect?.left ?? 0, y: rect?.bottom ?? 0 },
+              this.containerEl.ownerDocument
+            )
           },
           primaryLoad: (githubSettings().connections ?? []).length
             ? async (
@@ -329,7 +341,10 @@ export class GithubView extends ItemView {
             this.refreshHeader()
           },
           onOpen: (url: string, pane?: PaneType | false): void =>
-            void openGithubUrl(this.app, url, pane ?? false, { sourceId: this.model.connectionId, sourceIntent:this.model.connectionIntent }),
+            void openGithubUrl(this.app, url, pane ?? false, {
+              sourceId: this.model.connectionId,
+              sourceIntent: this.model.connectionIntent,
+            }),
           keys: this.keys,
           onState: () => this.app.workspace.requestSaveLayout(),
         })

@@ -1,9 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw } from './helpers/obsidianCli'
-import { startFakeGithub, enableGithub, restoreGithub, evalAsync, PRELUDE, type FakeGithub } from './helpers/githubLive'
+import {
+  startFakeGithub,
+  enableGithub,
+  restoreGithub,
+  evalAsync,
+  PRELUDE,
+  type FakeGithub,
+} from './helpers/githubLive'
 import { targets, onPhone } from './helpers/target'
 import { shotDir } from './helpers/shots'
-const SHOTS=shotDir('abele-github-connections')
+const SHOTS = shotDir('abele-github-connections')
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -11,7 +18,7 @@ const available = isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('connection-aware GitHub tabs', () => {
   let gh: FakeGithub
   beforeAll(async () => {
-    gh = await startFakeGithub({mode:'accounts'})
+    gh = await startFakeGithub({ mode: 'accounts' })
     enableGithub(gh.origin)
     evalRaw(`(() => {
       const config = window.__abeleTest.AbeleConfig.getInstance()
@@ -22,11 +29,17 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
       return 'ok'
     })()`)
   })
-  afterAll(() => { try {restoreGithub()} finally {gh?.stop()} })
+  afterAll(() => {
+    try {
+      restoreGithub()
+    } finally {
+      gh?.stop()
+    }
+  })
 
   it('keeps a long account label and fallback notice inside the real phone viewport', () => {
     if (!onPhone()) return // Desktop phone emulation is covered by githubPhone and phoneLayout.
-    const r=evalAsync<{over:string[];shot:string;menuOpened:boolean}>(`(async()=>{
+    const r = evalAsync<{ over: string[]; shot: string; menuOpened: boolean }>(`(async()=>{
       ${PRELUDE}
       const config=window.__abeleTest.AbeleConfig.getInstance()
       const connections=config.github.connections
@@ -35,7 +48,7 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
         // Separate identities keep this layout probe out of the routing-memory assertion below.
         config.github.connections=connections.map(c=>({...c,id:'layout-'+c.id,name:c.name+' with a long descriptive account label that wraps on a phone'}))
         config.version.value++
-        leaf=await openTab(${JSON.stringify(gh.web+'/issues/7')})
+        leaf=await openTab(${JSON.stringify(gh.web + '/issues/7')})
         await until(()=>leaf.view.model.screen.title,15000)
         const root=leaf.view.containerEl.querySelector('.abele-github')
         let previous=''
@@ -49,7 +62,7 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
           const r=el.getBoundingClientRect()
           return r.width>0 && (r.right>Math.min(edge.right,innerWidth)+1 || el.scrollWidth>el.clientWidth+1)
         }).map(el=>el.className)
-        const shot=await window.__e2eHost.shot(${JSON.stringify(SHOTS+'/account-header.png')})
+        const shot=await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/account-header.png')})
         root.querySelector('button.abele-obsidian-button').click()
         const menuOpened=!!(await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.startsWith('Open as Sample')),5000))
         document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
@@ -60,14 +73,21 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
         config.version.value++
       }
     })()`)
-    console.info('account header screenshot',r.shot)
+    console.info('account header screenshot', r.shot)
     expect(r.over).toEqual([])
     expect(r.menuOpened).toBe(true)
     expect(r.shot).toMatch(/\.png$/)
   })
 
   it('falls back to the account that can read the primary item, then preserves manual refusal and history', () => {
-    const r = evalAsync<{id?:string;notice?:string;history?:boolean;cleared?:boolean;denied?:boolean;state?:unknown}>(`(async()=>{
+    const r = evalAsync<{
+      id?: string
+      notice?: string
+      history?: boolean
+      cleared?: boolean
+      denied?: boolean
+      state?: unknown
+    }>(`(async()=>{
       ${PRELUDE}
       const leaf = await openTab(${JSON.stringify(gh.web + '/issues/7')})
       const found = await until(()=>leaf.view.model.connectionId === 'two' && leaf.view.model.screen.title,20000)
@@ -89,6 +109,6 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
     expect(r.history).toBe(true)
     expect(r.cleared).toBe(true)
     expect(r.denied).toBe(true)
-    expect(r.state).toMatchObject({connectionId:'one',connectionIntent:'manual'})
+    expect(r.state).toMatchObject({ connectionId: 'one', connectionIntent: 'manual' })
   })
 })

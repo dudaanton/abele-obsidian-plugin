@@ -85,8 +85,9 @@ export async function toolOperation(
     }
   }
   if (target?.origin) {
-    const apiAlias = rows.find(c=>new URL(endpoints(c.server).api).origin === target!.origin)
-    if (apiAlias && endpoints(apiAlias.server).webHost === target.host) target.origin=endpoints(apiAlias.server).origin
+    const apiAlias = rows.find((c) => new URL(endpoints(c.server).api).origin === target!.origin)
+    if (apiAlias && endpoints(apiAlias.server).webHost === target.host)
+      target.origin = endpoints(apiAlias.server).origin
   }
   if (!connection && name !== 'github_views') {
     if (target) {
@@ -139,10 +140,13 @@ export async function toolOperation(
   const client = connection ? connectionClient(connection.id) : anonymous
   const generation = client.cacheNamespace
   let approved = ''
-  const asked = connection && connectionMode(access.agent(),connection.id)==='ask'
+  const asked = connection && connectionMode(access.agent(), connection.id) === 'ask'
   if (connection) {
     await authorizeConnection(access.agent, connection, access.approve, signal)
-    if (connectionClient(connection.id).cacheNamespace !== generation) throw new Error('The GitHub connection changed while awaiting approval. Ask again for its current endpoint and token.')
+    if (connectionClient(connection.id).cacheNamespace !== generation)
+      throw new Error(
+        'The GitHub connection changed while awaiting approval. Ask again for its current endpoint and token.'
+      )
     approved = asked ? connection.id : ''
   }
   if (!connection && name !== 'github_views' && target && target.host !== 'github.com')
@@ -161,7 +165,7 @@ export async function toolOperation(
   }
   const canReadTab = (id: string | undefined) => {
     if (!id) return true
-    if (!(githubSettings().connections ?? []).some(c=>c.id===id)) return false
+    if (!(githubSettings().connections ?? []).some((c) => c.id === id)) return false
     if (selected && id !== connection?.id) return false
     return connectionMode(access.agent(), id) === 'auto' || id === approved
   }
@@ -172,7 +176,7 @@ export async function toolOperation(
         `- ${c.name} [${c.id}] — ${c.server || 'github.com'}${c.account ? ` · ${c.account.login}` : ''} — ${connectionMode(access.agent(), c.id) === 'auto' ? 'On' : connectionMode(access.agent(), c.id) === 'ask' ? 'Ask' : 'Off'}`
     ),
   ].join('\n')
-  const guardedClient = guardedGithubClient(client,assertAccess)
+  const guardedClient = guardedGithubClient(client, assertAccess)
   return {
     connectionId: connection?.id ?? '',
     agentId: originalAgent,

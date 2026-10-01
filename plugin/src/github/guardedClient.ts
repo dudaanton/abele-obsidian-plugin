@@ -11,7 +11,10 @@ export function guardedGithubClient(client: GithubClient, assertAccess: () => vo
         assertAccess()
         const result = value.apply(receiver, args)
         return result && typeof result.then === 'function'
-          ? result.then((resolved: unknown) => { assertAccess(); return resolved })
+          ? result.then((resolved: unknown) => {
+              assertAccess()
+              return resolved
+            })
           : result
       }
     },

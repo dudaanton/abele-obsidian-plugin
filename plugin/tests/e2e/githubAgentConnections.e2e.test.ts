@@ -40,13 +40,13 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
   })
 
   it('Ask gates the actual execution factory and accepts one operation without changing the mode', async () => {
-    const result=evalAsync<{asked:boolean;mode:string;code:string}>(`(async()=>{
+    const result = evalAsync<{ asked: boolean; mode: string; code: string }>(`(async()=>{
       ${PRELUDE}
       const id=window.__connectionAgents[1]
       const agent=window.__abeleTest.AgentRegistry.getInstance().get(id)
       agent.githubConnections.two='ask'
       const tool=window.__abeleTest.createAgentTools({agentId:id,githubApproval:window.__abeleTest.connectionApproval(app)}).find(t=>t.name==='github_file')
-      const pending=tool.execute('ask-once',{repo:${JSON.stringify(gh.web+'/blob/main/src/app.ts')},connection:'Sample two'})
+      const pending=tool.execute('ask-once',{repo:${JSON.stringify(gh.web + '/blob/main/src/app.ts')},connection:'Sample two'})
       const button=await until(()=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Allow once'),5000)
       const asked=!!button
       button?.click()

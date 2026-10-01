@@ -237,12 +237,17 @@ async function check(): Promise<void> {
 function save(): void {
   if (!draft.name.trim() || !validServer.value) return
   const connection = {
-    ...draft, name:draft.name.trim(), server:draft.server.trim(),
-    owners:owners.value.split(/[\n,]/).map(s=>s.trim()).filter(Boolean),
-    ...(draft.account ? {account:{...draft.account}} : {}),
+    ...draft,
+    name: draft.name.trim(),
+    server: draft.server.trim(),
+    owners: owners.value
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+    ...(draft.account ? { account: { ...draft.account } } : {}),
   }
   const value = token.value.trim() || (forget.value ? null : undefined)
-  if (lastRate) emit('save',connection,value,lastRate)
-  else emit('save',connection,value)
+  if (lastRate) emit('save', connection, value, lastRate)
+  else emit('save', connection, value)
 }
 </script>

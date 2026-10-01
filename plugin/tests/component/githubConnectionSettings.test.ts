@@ -17,11 +17,19 @@ beforeEach(() => {
 
 describe('connection settings list', () => {
   it('does not forget a slot still used by the notifications credential when its connection is deleted', async () => {
-    const app=useVault([]),config=AbeleConfig.getInstance()
-    config.github=githubSettingsFrom({enabled:true,keyId:'shared-classic',notifications:{keyId:'shared-classic'}})
-    app.secretStorage.setSecret('shared-classic','invented-classic')
-    const view=mount(GithubSettings)
-    view.findAllComponents(Button).find(b=>b.props('text')==='Delete')!.vm.$emit('click')
+    const app = useVault([]),
+      config = AbeleConfig.getInstance()
+    config.github = githubSettingsFrom({
+      enabled: true,
+      keyId: 'shared-classic',
+      notifications: { keyId: 'shared-classic' },
+    })
+    app.secretStorage.setSecret('shared-classic', 'invented-classic')
+    const view = mount(GithubSettings)
+    view
+      .findAllComponents(Button)
+      .find((b) => b.props('text') === 'Delete')!
+      .vm.$emit('click')
     await flushPromises()
     view.findComponent(ConfirmModal).vm.$emit('confirm')
     await flushPromises()

@@ -45,15 +45,13 @@ beforeEach(() => {
   app.secretStorage.setSecret('public-key', 'invented-public')
   app.secretStorage.setSecret('enterprise-key', 'invented-enterprise')
   actor = { id: 'sample-agent', githubConnections: { public: 'auto', enterprise: 'off' } }
-  request
-    .mockReset()
-    .mockResolvedValue({
-      status: 200,
-      headers: {},
-      json: { items: [] },
-      text: 'sample code',
-      arrayBuffer: new ArrayBuffer(0),
-    })
+  request.mockReset().mockResolvedValue({
+    status: 200,
+    headers: {},
+    json: { items: [] },
+    text: 'sample code',
+    arrayBuffer: new ArrayBuffer(0),
+  })
 })
 const tools = (approve?: () => Promise<boolean>) =>
   createGithubTools({ agent: () => actor, approve })
@@ -90,26 +88,56 @@ describe('GitHub tool connection contracts', () => {
     expect(request).not.toHaveBeenCalled()
   })
   it('remembers a primary refusal for an automatic tool choice instead of probing the same denied owner rule again', async () => {
-    const config=AbeleConfig.getInstance()
-    config.github.connections[0].owners=['sample']
-    config.github.connections.push({id:'alternate',name:'Alternate',server:'',keyId:'alternate-key',owners:[],isDefault:false})
-    GlobalStore.getInstance().app.secretStorage.setSecret('alternate-key','invented-alternate')
-    Object.assign(actor.githubConnections,{alternate:'auto'})
-    request.mockImplementation(async r=>r.headers?.Authorization==='Bearer invented-public' ?
-      {status:404,headers:{},json:{message:'Not found'},text:'',arrayBuffer:new ArrayBuffer(0)} :
-      {status:200,headers:{},json:{type:'file',encoding:'base64',content:btoa('export const sample = 1')},text:'export const sample = 1',arrayBuffer:new ArrayBuffer(0)})
-    const params={repo:'https://github.com/sample/fallback-memory/blob/main/file.ts'}
-    expect(JSON.stringify(await run('github_file',params))).toContain('Alternate')
-    const denied=request.mock.calls.filter(([r])=>r.headers?.Authorization==='Bearer invented-public').length
+    const config = AbeleConfig.getInstance()
+    config.github.connections[0].owners = ['sample']
+    config.github.connections.push({
+      id: 'alternate',
+      name: 'Alternate',
+      server: '',
+      keyId: 'alternate-key',
+      owners: [],
+      isDefault: false,
+    })
+    GlobalStore.getInstance().app.secretStorage.setSecret('alternate-key', 'invented-alternate')
+    Object.assign(actor.githubConnections, { alternate: 'auto' })
+    request.mockImplementation(async (r) =>
+      r.headers?.Authorization === 'Bearer invented-public'
+        ? {
+            status: 404,
+            headers: {},
+            json: { message: 'Not found' },
+            text: '',
+            arrayBuffer: new ArrayBuffer(0),
+          }
+        : {
+            status: 200,
+            headers: {},
+            json: { type: 'file', encoding: 'base64', content: btoa('export const sample = 1') },
+            text: 'export const sample = 1',
+            arrayBuffer: new ArrayBuffer(0),
+          }
+    )
+    const params = { repo: 'https://github.com/sample/fallback-memory/blob/main/file.ts' }
+    expect(JSON.stringify(await run('github_file', params))).toContain('Alternate')
+    const denied = request.mock.calls.filter(
+      ([r]) => r.headers?.Authorization === 'Bearer invented-public'
+    ).length
     expect(denied).toBeGreaterThan(0)
-    expect(JSON.stringify(await run('github_file',params))).toContain('Alternate')
-    expect(request.mock.calls.filter(([r])=>r.headers?.Authorization==='Bearer invented-public')).toHaveLength(denied)
+    expect(JSON.stringify(await run('github_file', params))).toContain('Alternate')
+    expect(
+      request.mock.calls.filter(([r]) => r.headers?.Authorization === 'Bearer invented-public')
+    ).toHaveLength(denied)
   })
 
   it('keeps the text answer in the first content block while naming its connection', async () => {
-    const result=await run('github_search',{query:'sample',type:'issues'})
-    expect(result.content[0]).toMatchObject({type:'text',text:expect.stringContaining('Issues and pull requests matching')})
-    expect(result.content[0]).toMatchObject({text:expect.stringContaining('GitHub connection: Personal')})
+    const result = await run('github_search', { query: 'sample', type: 'issues' })
+    expect(result.content[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('Issues and pull requests matching'),
+    })
+    expect(result.content[0]).toMatchObject({
+      text: expect.stringContaining('GitHub connection: Personal'),
+    })
   })
 
   it('resolves explicit Enterprise before parsing shorthand', async () => {
@@ -189,12 +217,23 @@ describe('GitHub tool connection contracts', () => {
   })
 
   it('refuses a warmed repository index after connection access is turned Off', async () => {
-    const client=connectionClient('public'), sha='a'.repeat(40)
-    const index=new RepoIndex()
-    index.add('private.ts','private cached content')
-    indexes.set(`${client.cacheNamespace}:${indexKey('github.com','sample','project',sha)}`,index)
-    actor.githubConnections.public='off'
-    await expect(run('github_grep',{repo:'sample/project',connection:'Personal',ref:sha,query:'private'})).rejects.toThrow(/access|disabled/i)
+    const client = connectionClient('public'),
+      sha = 'a'.repeat(40)
+    const index = new RepoIndex()
+    index.add('private.ts', 'private cached content')
+    indexes.set(
+      `${client.cacheNamespace}:${indexKey('github.com', 'sample', 'project', sha)}`,
+      index
+    )
+    actor.githubConnections.public = 'off'
+    await expect(
+      run('github_grep', {
+        repo: 'sample/project',
+        connection: 'Personal',
+        ref: sha,
+        query: 'private',
+      })
+    ).rejects.toThrow(/access|disabled/i)
     expect(request).not.toHaveBeenCalled()
     indexes.clear()
   })
@@ -221,12 +260,16 @@ describe('GitHub tool connection contracts', () => {
   })
 
   it('refuses an endpoint or token replacement while its connection approval is pending', async () => {
-    actor.githubConnections.public='ask'
-    const approve=vi.fn(async()=>{
-      AbeleConfig.getInstance().github.connections[0].server='https://changed.example.test'
+    actor.githubConnections.public = 'ask'
+    const approve = vi.fn(async () => {
+      AbeleConfig.getInstance().github.connections[0].server = 'https://changed.example.test'
       return true
     })
-    await expect(tools(approve).find(t=>t.name==='github_search')!.execute('change',{query:'sample',type:'issues'})).rejects.toThrow(/connection changed/i)
+    await expect(
+      tools(approve)
+        .find((t) => t.name === 'github_search')!
+        .execute('change', { query: 'sample', type: 'issues' })
+    ).rejects.toThrow(/connection changed/i)
     expect(request).not.toHaveBeenCalled()
   })
 

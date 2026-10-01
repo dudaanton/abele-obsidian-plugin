@@ -188,15 +188,40 @@ describe('GitHub connection migration', () => {
 
 describe('connection transfer', () => {
   it('normalizes defaults only after all selected connections arrive, preserving a later default', () => {
-    const original={...DEFAULT_SETTINGS,github:githubSettingsFrom({connections:[
-      {id:'first',name:'First',server:'',keyId:'first-key',owners:[],isDefault:false},
-      {id:'second',name:'Second',server:'',keyId:'second-key',owners:[],isDefault:true},
-    ]})}
-    const entries=collectEntries(original).filter(e=>e.section==='github-connections'||e.section==='github')
-    for(const batch of [entries,[...entries].reverse()]) {
-      const imported=applyEntries(batch,{...DEFAULT_SETTINGS,github:githubSettingsFrom()},'replace')
-      expect(imported.github?.connections.find(c=>c.id==='second')?.isDefault).toBe(true)
-      expect(imported.github?.connections.find(c=>c.id==='first')?.isDefault).toBe(false)
+    const original = {
+      ...DEFAULT_SETTINGS,
+      github: githubSettingsFrom({
+        connections: [
+          {
+            id: 'first',
+            name: 'First',
+            server: '',
+            keyId: 'first-key',
+            owners: [],
+            isDefault: false,
+          },
+          {
+            id: 'second',
+            name: 'Second',
+            server: '',
+            keyId: 'second-key',
+            owners: [],
+            isDefault: true,
+          },
+        ],
+      }),
+    }
+    const entries = collectEntries(original).filter(
+      (e) => e.section === 'github-connections' || e.section === 'github'
+    )
+    for (const batch of [entries, [...entries].reverse()]) {
+      const imported = applyEntries(
+        batch,
+        { ...DEFAULT_SETTINGS, github: githubSettingsFrom() },
+        'replace'
+      )
+      expect(imported.github?.connections.find((c) => c.id === 'second')?.isDefault).toBe(true)
+      expect(imported.github?.connections.find((c) => c.id === 'first')?.isDefault).toBe(false)
     }
   })
 
