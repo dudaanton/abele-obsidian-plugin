@@ -155,11 +155,15 @@ skill with the `skill` tool when the task matches; do not paste its text into a 
 ## Delegation
 
 An agent can hand a self-contained piece of work to another agent with the `delegate` tool. The
-sub-run has its own agent, its own scope and its own conversation; only its result comes back.
-`maxDelegateDepth` limits how deep this can nest, and 0 forbids it.
+sub-run has its own agent and conversation, but never more access than its parent: its scope
+is the intersection (an empty target scope inherits), permissions and tool modes take the
+stricter value, and GitHub connection rights and skill selection are bounded too. Only its
+result comes back. `maxDelegateDepth` counts from the root; the narrowest chain limit wins,
+and 0 forbids delegation. Hard limits are 3 levels, 20 items per call and 50 branch runs per
+root conversation while it is open, shared across concurrent and nested calls.
 
 Delegate when the work is genuinely separate — a long search, a second opinion, a job needing
-different permissions. Do not delegate what is one tool call away.
+different expertise within the same access. Do not delegate what is one tool call away.
 
 ## Chats
 

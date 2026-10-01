@@ -44,10 +44,13 @@ export function offeredSkills(agent: AgentDefinition | null, scope?: ScopeResolv
 export function skillNeedsApproval(
   name: unknown,
   agent: AgentDefinition | null,
-  scope: ScopeResolver
+  scope: ScopeResolver,
+  ceiling?: ReadonlySet<string>
 ): boolean {
   return (
-    typeof name === 'string' && !offeredSkills(agent, scope).some((skill) => skill.name === name)
+    typeof name === 'string' &&
+    (!offeredSkills(agent, scope).some((skill) => skill.name === name) ||
+      (!!ceiling && !ceiling.has(name)))
   )
 }
 
@@ -80,7 +83,7 @@ ${list}`
 }
 
 export function createSkillTool(
-  options: { agentId?: string; scope?: ScopeResolver } = {}
+  options: { agentId?: string; scope?: ScopeResolver; skillCeiling?: ReadonlySet<string> } = {}
 ): AgentTool {
   const agentOf = (id = options.agentId) => (id ? AgentRegistry.getInstance().get(id) : null)
   const tool: Omit<AgentTool, 'description'> = {
@@ -98,7 +101,11 @@ export function createSkillTool(
       if (!skillName) throw new Error('Missing required parameter: name')
 
       const agent = agentOf(ctx?.agentId)
-      if (ctx && !ctx.approved && skillNeedsApproval(skillName, agent, ctx.scope)) {
+      if (
+        ctx &&
+        !ctx.approved &&
+        skillNeedsApproval(skillName, agent, ctx.scope, ctx.skillCeiling)
+      ) {
         throw new Error(
           `Skill "${skillName}" requires approval: it is not offered by this agent's skills folder, scope and selection.`
         )
@@ -115,6 +122,12 @@ export function createSkillTool(
     },
   }
   return describedLazily(tool, () =>
-    buildDescription(GlobalStore.getInstance().app ? offeredSkills(agentOf(), options.scope) : [])
+    buildDescription(
+      GlobalStore.getInstance().app
+        ? offeredSkills(agentOf(), options.scope).filter(
+            (skill) => !options.skillCeiling || options.skillCeiling.has(skill.name)
+          )
+        : []
+    )
   )
 }

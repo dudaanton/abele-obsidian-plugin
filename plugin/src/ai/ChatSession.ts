@@ -80,7 +80,7 @@ import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { isScriptPath } from '@/scripting/scriptPath'
 import { createEditSelectionTool } from './tools/EditSelectionTool'
-import { loadSkillContent, skillNeedsApproval } from './tools/SkillTool'
+import { loadSkillContent, skillNeedsApproval, offeredSkills } from './tools/SkillTool'
 import type { ToolContext } from './toolContext'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
@@ -144,6 +144,7 @@ export interface SessionOptions {
   kind?: SessionKind
   agentId?: string
   depth?: number
+  root?: ChatSession
   parent?: SessionParent
   /** Called instead of writing a chat file, for a run whose coordinator owns persistence. */
   onPersist?: () => void
@@ -480,6 +481,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
   /** How many delegations deep this run sits. 0 for a chat a person opened. */
   public readonly depth: number
+  public readonly root: ChatSession
+  public depthLimit = Number.POSITIVE_INFINITY
+  public delegatedRuns = 0
+  public skillCeiling: ReadonlySet<string> | undefined
+  public githubConnectionCeiling: Record<string, ToolMode> | undefined
   /** Where a run came from, so its branch can be shown in the right place. */
   public readonly parent: SessionParent | null
   /** A run persists through its coordinator, never through ChatStorage. */
@@ -493,6 +499,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.id = id || nanoid()
     this.kindRef = shallowRef(options.kind ?? 'chat')
     this.depth = options.depth ?? 0
+    this.root = options.root ?? this
     this.parent = options.parent ?? null
     this.onPersist = options.onPersist ?? null
     this.scopeResolver = new ScopeResolver()
@@ -686,31 +693,33 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.applyScope(entries, fullVault)
   }
 
-  /**
-   * Adds a delegating chat's scope on top of this run's own.
-   *
-   * Union, not replacement: the agent's scope says where it normally works, while the parent
-   * holds the task and therefore the files the task is about. Either alone leaves a run unable
-   * to do what it was asked.
-   */
-  applyScopeUnion(entries: ScopeEntry[], options: { fullVaultAccess?: boolean } = {}): void {
-    const own = this.overrides.value.scope ?? this.agent.value?.scope ?? []
-    const seen = new Set(own.map((e) => `${e.type}:${e.path}`))
-    const merged = [...own]
+  /** Restrict a run to the delegating parent's access, beneath its own selected scope. */
+  applyRunScope(entries: ScopeEntry[], fullVaultAccess: boolean, ceiling: ScopeResolver): void {
+    this.overrides.value = { ...this.overrides.value, scope: [...entries], fullVaultAccess }
+    this.scopeResolver.setCeiling(ceiling)
+    this.applyScope(entries, fullVaultAccess)
+  }
 
-    for (const entry of entries) {
-      const key = `${entry.type}:${entry.path}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      merged.push(entry)
+  offeredSkillNames(): ReadonlySet<string> {
+    return new Set(
+      offeredSkills(this.agent.value, this.scopeResolver)
+        .filter((skill) => !this.skillCeiling || this.skillCeiling.has(skill.name))
+        .map((skill) => skill.name)
+    )
+  }
+
+  /** Per-connection rights are runtime-bound too, not just the GitHub tool switches. */
+  githubAgent(): AgentDefinition | null {
+    const agent = this.agent.value
+    if (!agent || !this.githubConnectionCeiling) return agent
+    const modes: Record<string, ToolMode> = {}
+    const rank = { off: 0, ask: 1, auto: 2 }
+    for (const id of Object.keys(agent.githubConnections ?? {})) {
+      const own = agent.githubConnections?.[id] ?? 'off'
+      const parent = this.githubConnectionCeiling[id] ?? 'off'
+      modes[id] = rank[own] <= rank[parent] ? own : parent
     }
-
-    const fullVault =
-      Boolean(options.fullVaultAccess) ||
-      (this.overrides.value.fullVaultAccess ?? this.agent.value?.fullVaultAccess ?? false)
-
-    this.overrides.value = { ...this.overrides.value, scope: merged, fullVaultAccess: fullVault }
-    this.applyScope(merged, fullVault)
+    return { ...agent, githubConnections: modes }
   }
 
   /** The text the conversation ended on — what a delegated run reports back. */
@@ -885,6 +894,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const allTools = createAgentTools({
       agentId: agent?.id,
       scope: this.scopeResolver,
+      skillCeiling: this.skillCeiling,
+      githubAgent: () => this.githubAgent(),
       githubApproval:
         this.kind === 'run'
           ? undefined
@@ -960,6 +971,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           scope: this.scopeResolver,
           session: this,
           agentId: this.agent.value?.id,
+          skillCeiling: this.skillCeiling,
           interactive: this.kind !== 'run',
           approved: callerCtx?.approved,
         }
@@ -1037,7 +1049,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     if (
       toolName === 'skill' &&
-      skillNeedsApproval(args?.name, this.agent.value, this.scopeResolver)
+      skillNeedsApproval(args?.name, this.agent.value, this.scopeResolver, this.skillCeiling)
     )
       return true
 
@@ -2066,6 +2078,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.results.settle()
     this.abort()
     this.abortBackground()
+    if (this.root === this) this.delegatedRuns = 0
     this.allInternalMessages = []
     this.allChatMessages = []
     this.activeLeafId = null

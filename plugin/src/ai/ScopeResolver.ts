@@ -22,6 +22,22 @@ export class ScopeResolver {
   /** Cached resolved paths — invalidated on scope change */
   private _cache: Set<string> | null = null
 
+  /** Runtime-only delegation ceiling; it is not a permission loaded from a chat file. */
+  private ceiling: ScopeResolver | null = null
+
+  setCeiling(scope: ScopeResolver): void {
+    this.ceiling = scope
+    this._cache = null
+  }
+
+  snapshot(): ScopeResolver {
+    const copy = new ScopeResolver()
+    copy.entries.value = this.entries.value.map((entry) => ({ ...entry }))
+    copy.fullVaultAccess.value = this.fullVaultAccess.value
+    copy.ceiling = this.ceiling?.snapshot() ?? null
+    return copy
+  }
+
   /** Default for direct tool calls. Chats pass their own scope in the call context. */
   static getInstance(): ScopeResolver {
     if (!ScopeResolver.instance) {
@@ -117,7 +133,7 @@ export class ScopeResolver {
 
     if (this.fullVaultAccess.value) {
       for (const file of app.vault.getFiles()) {
-        result.add(file.path)
+        if (!this.ceiling || this.ceiling.isInScope(file.path)) result.add(file.path)
       }
       this._cache = result
       return result
@@ -156,7 +172,7 @@ export class ScopeResolver {
     // and a scope over the chat folder is not a scope over those notes. A chat reaches another
     // agent only by being attached, as the words exchanged in it (`chatForAgent`).
     for (const path of result) {
-      if (isChatLog(path)) result.delete(path)
+      if (isChatLog(path) || (this.ceiling && !this.ceiling.isInScope(path))) result.delete(path)
     }
 
     this._cache = result
@@ -165,12 +181,14 @@ export class ScopeResolver {
 
   /** Check if a file path is within scope */
   isInScope(path: string): boolean {
+    if (this.ceiling && !this.ceiling.isInScope(path)) return false
     if (this.fullVaultAccess.value) return true
     return this.resolve().has(path)
   }
 
   /** Check if a folder is within scope (any file inside it is in scope) */
   isFolderInScope(folderPath: string): boolean {
+    if (this.ceiling && !this.ceiling.isFolderInScope(folderPath)) return false
     if (this.fullVaultAccess.value) return true
     const normalized = folderPath.replace(/\/+$/, '')
     // Direct folder entry
@@ -192,7 +210,7 @@ export class ScopeResolver {
 
   /** Filter paths to only those in scope */
   filterInScope(paths: string[]): string[] {
-    if (this.fullVaultAccess.value) return paths
+    if (this.fullVaultAccess.value) return this.ceiling ? this.ceiling.filterInScope(paths) : paths
     const resolved = this.resolve()
     return paths.filter((p) => resolved.has(p))
   }

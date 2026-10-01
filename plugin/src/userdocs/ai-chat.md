@@ -215,6 +215,15 @@ unusual values — over your finances, over notes such as daily notes with `weig
 over the rows of a base. Ask "how has my spending on food changed this year?" or "does my sleep
 go with my weight?", and the agent answers from the computed figures, with a chart if you ask.
 
+## Delegated subtasks
+
+A subtask never gets more access than the chat that starts it. It uses the stricter permissions
+and tools of the parent and worker, with both scopes intersected; a worker with no scope
+inherits the parent's. This also bounds selected skills and GitHub connections. A subtask
+cannot read a note the parent cannot read. Delegation stops at the narrowest depth setting
+in the chain, with a hard maximum of 3 levels, 20 items per call and 50 branch runs in a root
+conversation while it is open. Concurrent and nested subtasks share that budget.
+
 ## MCP servers
 
 **Settings → Abele → AI Agent → MCP** connects MCP servers reached over HTTP; nothing is started on

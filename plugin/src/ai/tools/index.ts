@@ -212,6 +212,8 @@ export interface AgentToolsOptions {
    */
   agentId?: string
   scope?: ScopeResolver
+  skillCeiling?: ReadonlySet<string>
+  githubAgent?: () => import('../agents/types').AgentDefinition | null
 }
 
 /**
@@ -266,7 +268,11 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createReadImageTool(),
     createLookAtDrawingTool(),
     createFetchTool(),
-    createSkillTool({ agentId: options.agentId, scope: options.scope }),
+    createSkillTool({
+      agentId: options.agentId,
+      scope: options.scope,
+      skillCeiling: options.skillCeiling,
+    }),
     createGenerateImageTool(),
     createEditImageTool(),
     createEvalJsTool(),
@@ -308,7 +314,12 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)
-    tools.push(...createGithubTools({ agent: resolveAgent, approve: options.githubApproval }))
+    tools.push(
+      ...createGithubTools({
+        agent: options.githubAgent ?? resolveAgent,
+        approve: options.githubApproval,
+      })
+    )
 
   // Absent while the settings are being loaded — `codeToolDescriptions` asks then.
   const config = AbeleConfig.getInstance().ai

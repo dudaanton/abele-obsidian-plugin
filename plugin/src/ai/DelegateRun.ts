@@ -5,6 +5,7 @@ import { ChatService } from './ChatService'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { RunStorage, type RunBranch, type RunFile, type RunStatus } from './RunStorage'
 import type { AgentDefinition } from './agents/types'
+import type { PermissionMode, ToolMode } from './types'
 
 /** How often the run file is rewritten while sub-agents are streaming. */
 const PERSIST_INTERVAL_MS = 300
@@ -102,16 +103,13 @@ export class DelegateRun {
       kind: 'run',
       agentId: agent.id,
       depth: parent.depth + 1,
+      root: parent.root,
       parent: { sessionId: parent.id, toolCallId: parentToolCallId },
       onPersist: () => this.schedulePersist(),
     })
     this.sessions.push(session)
 
-    // The target agent's own scope, plus whatever the delegating chat has open. Without the
-    // union a chat could not hand a sub-agent the very file it wants processed.
-    session.applyScopeUnion(parent.scopeResolver.entries.value, {
-      fullVaultAccess: parent.scopeResolver.fullVaultAccess.value,
-    })
+    boundRunToParent(session, parent)
 
     const message = this.options.items.length ? `${this.options.task}\n\n${item}` : item
 
@@ -176,11 +174,55 @@ export class DelegateRun {
   }
 }
 
-/** Whether an agent is allowed to hand work further down the chain. */
+export const MAX_DELEGATE_DEPTH = 3
+export const MAX_DELEGATE_ITEMS = 20
+export const MAX_RUNS_PER_CHAT = 50
+
+const PERMISSION_RANK: Record<PermissionMode, number> = {
+  'confirm-all': 0,
+  'allow-edit': 1,
+  'allow-all': 2,
+}
+const TOOL_RANK: Record<ToolMode, number> = { off: 0, ask: 1, auto: 2 }
+
+function intersectModes(
+  a: Record<string, ToolMode>,
+  b: Record<string, ToolMode>
+): Record<string, ToolMode> {
+  const result: Record<string, ToolMode> = {}
+  for (const name of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const x = a[name] ?? 'off'
+    const y = b[name] ?? 'off'
+    result[name] = TOOL_RANK[x] <= TOOL_RANK[y] ? x : y
+  }
+  return result
+}
+
+/** No target can widen its parent's access; empty target scopes inherit the parent's. */
+export function boundRunToParent(run: ChatSession, parent: ChatSession): void {
+  const target = run.agent.value
+  const inherit = !target?.fullVaultAccess && !target?.scope.length
+  run.applyRunScope(
+    inherit ? parent.scopeResolver.entries.value : target.scope,
+    inherit ? parent.scopeResolver.fullVaultAccess.value : target.fullVaultAccess,
+    parent.scopeResolver.snapshot()
+  )
+  if (PERMISSION_RANK[parent.permissionMode.value] < PERMISSION_RANK[run.permissionMode.value])
+    run.permissionMode.value = parent.permissionMode.value
+  run.toolModes.value = intersectModes(parent.toolModes.value, run.toolModes.value)
+  run.depthLimit = Math.min(parent.depthLimit, parent.agent.value?.maxDelegateDepth ?? 0)
+  run.skillCeiling = parent.offeredSkillNames()
+  run.githubConnectionCeiling = intersectModes(
+    parent.githubAgent()?.githubConnections ?? {},
+    target?.githubConnections ?? {}
+  )
+}
+
+/** Whether an agent is allowed to hand work further down the root-bounded chain. */
 export function canDelegate(session: ChatSession): boolean {
   const agent = session.agent.value
   if (!agent) return false
-  return session.depth < agent.maxDelegateDepth
+  return session.depth < Math.min(MAX_DELEGATE_DEPTH, agent.maxDelegateDepth, session.depthLimit)
 }
 
 /** Resolves a delegation target by id or name, utility agents included. */

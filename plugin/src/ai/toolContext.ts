@@ -6,6 +6,7 @@ export interface ToolContext {
   scope: ScopeResolver
   session?: ChatSession
   agentId?: string
+  skillCeiling?: ReadonlySet<string>
   interactive: boolean
   /** A person approved this particular call. */
   approved?: boolean

@@ -1,6 +1,12 @@
 import type { AgentTool } from '../client'
 import { AgentRegistry } from '../agents/AgentRegistry'
-import { DelegateRun, canDelegate, resolveTargetAgent } from '../DelegateRun'
+import {
+  DelegateRun,
+  canDelegate,
+  resolveTargetAgent,
+  MAX_DELEGATE_ITEMS,
+  MAX_RUNS_PER_CHAT,
+} from '../DelegateRun'
 import type { RunBranch } from '../RunStorage'
 import { describedLazily } from './lazyDescription'
 
@@ -21,8 +27,8 @@ function buildDescription(): string {
     .join('\n')
 
   return [
-    'Hand a task to another agent. The sub-agent runs with its own instructions, tools and',
-    'permissions, plus whatever files this chat has in scope. Its whole conversation is kept',
+    'Hand a task to another agent. Its instructions are its own, but its tools, scope and',
+    'permissions never exceed this chat and are the stricter of both. Its conversation is kept',
     'and can be opened, so you do not need to summarise it back.',
     '',
     'Pass `items` to fan out: each item gets its own sub-agent and its own fresh context.',
@@ -65,7 +71,7 @@ export function createDelegateTool(): AgentTool {
       const task = params.task as string
       const items = (params.items as string[]) ?? []
       const batchSize = Math.min(
-        Math.max((params.batch_size as number) || DEFAULT_BATCH_SIZE, 1),
+        Math.max(Math.floor(Number(params.batch_size) || DEFAULT_BATCH_SIZE), 1),
         MAX_BATCH_SIZE
       )
 
@@ -84,6 +90,14 @@ export function createDelegateTool(): AgentTool {
         )
       }
 
+      if (!Array.isArray(items) || items.some((item) => typeof item !== 'string'))
+        throw new Error('items must be a list of strings')
+      if (items.length > MAX_DELEGATE_ITEMS)
+        throw new Error(`Delegate at most ${MAX_DELEGATE_ITEMS} items per call`)
+      const runs = items.length || 1
+      if (parent.root.delegatedRuns + runs > MAX_RUNS_PER_CHAT)
+        throw new Error(`At most ${MAX_RUNS_PER_CHAT} delegated runs are allowed per root chat`)
+
       const target = resolveTargetAgent(agentName)
       if (!target) {
         const available = AgentRegistry.getInstance()
@@ -93,6 +107,8 @@ export function createDelegateTool(): AgentTool {
         throw new Error(`Agent "${agentName}" not found. Available: ${available || 'none'}`)
       }
 
+      // Reserve before any await so concurrent branches share the same budget.
+      parent.root.delegatedRuns += runs
       const run = new DelegateRun({
         agent: target,
         task,
