@@ -249,6 +249,12 @@ export default [
    * All three are explained at their site and in docs/Obsidian compliance.md. Left as warnings
    * so a *new* violation of any of these rules elsewhere still fails the build.
    */
+  // Presentation core is shared with hosts without Obsidian's Document.win/createEl extensions.
+  // Native DOM creation is intentional here; the adapter still uses Obsidian's element helpers.
+  {
+    files: ['plugin/src/slides/core/**/*.ts'],
+    rules: { 'obsidianmd/prefer-create-el': 'off' },
+  },
   {
     files: ['plugin/src/scripting/ScriptService.ts'],
     rules: {

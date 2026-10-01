@@ -1,0 +1,128 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DeckViewer } from '@/slides/core/DeckViewer'
+import { parseDeck } from '@/slides/core/markdown'
+import type { BlockRenderer, MediaResolver } from '@/slides/core/model'
+
+const viewers: DeckViewer[] = []
+afterEach(() => {
+  viewers.splice(0).forEach((v) => v.destroy())
+  document.body.replaceChildren()
+  vi.restoreAllMocks()
+})
+const media: MediaResolver = {
+  resolve: (ref) => ({ url: ref, video: ref.endsWith('.mp4]]') }),
+  readCss: async () => 'body { --sample-style: 1; } h1 { opacity: .9; }',
+}
+const made = (source: string, renderer?: BlockRenderer) => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const dispose = vi.fn()
+  const render = vi.fn(async (block, target) => {
+    target.textContent = block.source
+    return dispose
+  })
+  const viewer = new DeckViewer(host, renderer ?? { render }, media)
+  viewers.push(viewer)
+  return { viewer, host, dispose, render, load: () => viewer.setDeck(parseDeck(source)) }
+}
+
+describe('bounded deck rendering', () => {
+  it('renders only current slide and neighbours and releases their processors when paging or closing', async () => {
+    const { viewer, host, render, dispose, load } = made(
+      Array.from({ length: 60 }, (_, i) => `# Slide ${i + 1}`).join('\n---\n')
+    )
+    await load()
+    expect(render).toHaveBeenCalledTimes(2)
+    expect(host.querySelectorAll('.abele-slide')).toHaveLength(2)
+    expect(host.querySelectorAll('.abele-slide:not([hidden])')).toHaveLength(1)
+    await viewer.go(30)
+    expect(host.querySelectorAll('.abele-slide')).toHaveLength(3)
+    expect(dispose).toHaveBeenCalledTimes(2)
+    expect(host.querySelector('.abele-deck-count')?.textContent).toBe('31 / 60')
+    viewer.destroy()
+    expect(dispose).toHaveBeenCalledTimes(5)
+  })
+
+  it('never renders speaker notes, scopes both CSS sources and keeps custom classes on the slide', async () => {
+    const { host, load } = made(
+      '---\ntype: presentation\ntheme: "[[sample.css]]"\n---\n::slide{layout=split class="sample-class"}::\n## Heading\n::left::\nLeft\n::right::\nRight\n\n> [!notes]\n> Private text\n\n```css\nbody { --inline: 1; }\n```'
+    )
+    await load()
+    expect(host.textContent).not.toContain('Private text')
+    expect(host.querySelector('.sample-class')).not.toBeNull()
+    expect(host.querySelectorAll('.abele-slide-region')).toHaveLength(3)
+    const style = host.querySelector('style')!.textContent!
+    expect(style).toContain('--sample-style: 1')
+    expect(style).toContain('--inline: 1')
+    expect(style).not.toMatch(/(^|\})\s*body\s*\{/)
+    expect(style).toContain('.abele-slide h1')
+  })
+
+  it('pauses inactive videos, autoplays only on entry with muted inline playback, and offers manual playback on rejection', async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockRejectedValue(new Error('not allowed'))
+    const { viewer, host, load } = made(
+      '::slide{bg="[[sample-video.mp4]]" autoplay}::\n# Video\n---\n# Next'
+    )
+    await load()
+    await Promise.resolve()
+    const video = host.querySelector('video')!
+    expect(video.muted).toBe(true)
+    expect(video.playsInline).toBe(true)
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('.abele-slide-play')?.textContent).toBe('Play video')
+    await viewer.go('next')
+    expect(pause).toHaveBeenCalled()
+    expect(host.querySelectorAll('.abele-slide:not([hidden]) video')).toHaveLength(0)
+  })
+
+  it('disposes late asynchronous renders even when the viewer has already closed', async () => {
+    let finish!: (value: () => void) => void
+    const disposed = vi.fn()
+    const { viewer, load } = made('# Delayed', {
+      render: () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    })
+    const pending = load()
+    await Promise.resolve()
+    await Promise.resolve()
+    viewer.destroy()
+    finish(disposed)
+    await pending
+    expect(disposed).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not steal keyboard or gestures from editable fields, links, media or live controls', async () => {
+    const { viewer, host, load } = made('# One\n---\n# Two\n---\n# Three')
+    await load()
+    const input = document.createElement('input')
+    host.querySelector('.abele-slide:not([hidden])')!.append(input)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(viewer.index).toBe(0)
+    viewer.root.focus()
+    viewer.root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await viewer.ready
+    expect(viewer.index).toBe(1)
+    viewer.root.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true })
+    )
+    expect(viewer.index).toBe(1)
+  })
+
+  it('moves the same viewer into a window overlay and restores it on escape or destroy', async () => {
+    const { viewer, host, load } = made('# One')
+    await load()
+    await viewer.present(false)
+    expect(viewer.root.parentElement).toBe(document.body)
+    expect(viewer.root.classList.contains('abele-deck-presenting')).toBe(true)
+    viewer.root.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(viewer.root.parentElement).toBe(host)
+    await viewer.present(false)
+    viewer.destroy()
+    expect(document.querySelector('.abele-deck-presenting')).toBeNull()
+  })
+})
