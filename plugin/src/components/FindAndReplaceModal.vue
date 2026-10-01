@@ -50,6 +50,7 @@
         >
           <a @click="goToNote(result.oldPath)">{{ result.oldPath }}</a>
           <Diff :text-left="result.oldRaw" :text-right="result.newRaw" />
+          <div v-if="result.error" role="alert">{{ result.error }}</div>
           <ObsidianIcon
             v-if="result.oldRaw !== result.newRaw"
             icon="replace"
@@ -86,8 +87,12 @@ const useFilesInAgent = (
 ) => import('@/helpers/useFilesInAgent').then((m) => m.useFilesInAgent(...args))
 import { stringifyYaml, TFile } from 'obsidian'
 import { useInfiniteScroll } from '@vueuse/core'
-import { getEditorForFile } from '@/helpers/vaultUtils'
-import { getNoteBody, replaceNoteBody } from '@/helpers/notesUtils'
+import { getNoteBody } from '@/helpers/notesUtils'
+import {
+  applyReplacementPreview,
+  replacementFrontmatter,
+  type ReplacementPreview,
+} from '@/helpers/bulkReplacement'
 
 const scrollContainer = ref<HTMLElement | null>(null)
 const setScrollContainer = (id: string) => {
@@ -115,16 +120,7 @@ useInfiniteScroll(
 const criteria = ref<Criterion[]>([new Criterion()])
 const replacements = ref<ReplacementAction[]>([new ReplacementAction()])
 
-interface SearchResult {
-  oldPath: string
-  newPath: string
-  oldFrontmatter: Record<string, any>
-  newFrontmatter: Record<string, any>
-  oldRaw: string
-  newRaw: string
-  oldContent: string | null
-  newContent: string | null
-}
+type SearchResult = ReplacementPreview
 
 const searchResults = ref<SearchResult[]>([])
 const searchResultsToShow = computed(() =>
@@ -156,7 +152,19 @@ const search = async () => {
   for (const note of notes) {
     const path = note.path
     const name = note.name.replace(/\.md$/, '')
-    const frontmatter = app.metadataCache.getFileCache(note)?.frontmatter
+    if (
+      criteria.value
+        .filter((c) => c.isValid())
+        .some(
+          (c) =>
+            (c.type === 'path' && !c.checkPathCriterion(path)) ||
+            (c.type === 'name' && !c.checkPathCriterion(name))
+        )
+    )
+      continue
+    const sourceText = await app.vault.read(note)
+    const sourceMtime = note.stat.mtime
+    const frontmatter = replacementFrontmatter(sourceText)
 
     let content: string | null = null
     let matchesAllCriteria = true
@@ -177,8 +185,7 @@ const search = async () => {
         break
       }
       if (criterion.type === 'content') {
-        content = await app.vault.read(note)
-        content = getNoteBody(content)
+        content = getNoteBody(sourceText)
 
         if (!criterion.checkContentCriterion(content)) {
           matchesAllCriteria = false
@@ -191,7 +198,9 @@ const search = async () => {
       continue
     }
 
-    const value = {
+    const value: SearchResult = {
+      sourceText,
+      sourceMtime,
       oldPath: note.path,
       newPath: note.path,
       oldFrontmatter: frontmatter,
@@ -208,8 +217,7 @@ const search = async () => {
       value.newPath = replacement.applyPathReplacement(value.newPath)
       if (replacement.type === 'replace-in-content') {
         if (value.oldContent === null) {
-          value.oldContent = await app.vault.read(note)
-          value.oldContent = getNoteBody(value.oldContent)
+          value.oldContent = getNoteBody(sourceText)
           value.newContent = value.oldContent
         }
         value.newContent = replacement.applyContentReplacement(value.newContent)
@@ -225,41 +233,7 @@ const search = async () => {
 
 const replaceOne = async (searchResult: SearchResult) => {
   const { app } = GlobalStore.getInstance()
-  const file = app.vault.getAbstractFileByPath(searchResult.oldPath)
-  if (file && file instanceof TFile) {
-    app.fileManager.processFrontMatter(file, (frontmatter) => {
-      for (const [key, value] of Object.entries(searchResult.newFrontmatter)) {
-        frontmatter[key] = value
-      }
-      for (const key of Object.keys(frontmatter || {})) {
-        if (!(key in searchResult.newFrontmatter)) {
-          console.debug('Deleting key', key)
-          delete frontmatter[key]
-        }
-      }
-    })
-
-    if (searchResult.oldContent !== searchResult.newContent && searchResult.newContent !== null) {
-      const oldContent = await app.vault.read(file)
-      const newContent = replaceNoteBody(oldContent, searchResult.newContent)
-      await app.vault.modify(file, newContent)
-    }
-
-    // If there is editor, it might have already written old content,
-    // so we can update its state without losing user changes.
-    const editor = getEditorForFile(file)
-    if (editor) {
-      const newValue = await app.vault.read(file)
-      editor.setValue(newValue)
-    }
-
-    if (searchResult.oldPath !== searchResult.newPath) {
-      app.fileManager.renameFile(file, searchResult.newPath)
-    }
-    searchResult.oldFrontmatter = searchResult.newFrontmatter
-    searchResult.oldPath = searchResult.newPath
-    searchResult.oldRaw = searchResult.newRaw
-  }
+  await applyReplacementPreview(app, searchResult)
 }
 
 const replace = async () => {

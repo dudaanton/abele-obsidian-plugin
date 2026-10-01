@@ -123,6 +123,8 @@ or use a device that supports location. No guessed or IP-based position is subst
 notes at once: pick the notes by path, name, property or content, then rewrite their text or
 their properties. It understands frontmatter rather than treating it as text. The same tool is a
 view type in Obsidian Bases, **Find and replace**, which works on the notes a base finds.
+Properties and body are saved together before a move completes. A note changed after the preview
+is skipped with an explanation; search or preview again to apply changes to its current text.
 
 ## Media
 
