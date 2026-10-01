@@ -17,7 +17,8 @@
  * element away from the page, which is swapped in whole.
  */
 import type { Component } from 'obsidian'
-import { renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
+import { renderUntrustedMarkdown, type RenderPolicy } from '@/markdown/renderUntrusted'
+import { guardGithubImages } from './remoteImages'
 import { prepareMarkdown, finishCode } from '@/markdown/untrustedCode'
 export { ZWSP, guardInlineCode } from '@/markdown/untrustedCode'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -37,6 +38,22 @@ export function finishGithubMarkdown(el: HTMLElement, repo: RepoFile): void {
   rewriteRendered(el, repo)
 }
 
+/** GitHub-only rules: replies intentionally keep their normal internet images. */
+export function githubPolicy(repo: RepoFile, approved = new Set<string>()): RenderPolicy {
+  return {
+    github: true,
+    before: (el) => {
+      for (const embed of Array.from(el.querySelectorAll('.internal-embed')))
+        embed.classList.add('is-loaded')
+      guardGithubImages(el, repo, approved)
+    },
+    after: (el) => {
+      finishGithubMarkdown(el, repo)
+      guardGithubImages(el, repo, approved)
+    },
+  }
+}
+
 /**
  * Renders GitHub text into `el`, replacing what was there. Built away from the page and swapped
  * in whole, so the element never stands empty while the renderer works.
@@ -45,11 +62,11 @@ export async function renderGithubMarkdown(
   el: HTMLElement,
   text: string,
   repo: RepoFile,
-  component: Component
+  component: Component,
+  approved?: Set<string>
 ): Promise<void> {
   const next = createDiv()
-  await renderUntrustedMarkdown(next, text, component, '', { github: true })
-  finishGithubMarkdown(next, repo)
+  await renderUntrustedMarkdown(next, text, component, '', githubPolicy(repo, approved))
   el.replaceChildren(...Array.from(next.childNodes))
 }
 

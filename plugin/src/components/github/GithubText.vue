@@ -36,6 +36,7 @@ const target = ref<HTMLElement>()
 let component: Component | null = null
 /** Which render is the current one: a later text must not be overwritten by an earlier render. */
 let generation = 0
+const approvedImages = new Set<string>()
 /** Pictures read through the API, let go of with the text. */
 const objectUrls: string[] = []
 
@@ -43,7 +44,7 @@ const render = async () => {
   if (!target.value || !component) return
   const mine = ++generation
   const next = createDiv()
-  await renderGithubMarkdown(next, props.text, props.repo, component)
+  await renderGithubMarkdown(next, props.text, props.repo, component, approvedImages)
   if (mine !== generation || !target.value) return
   for (const img of Array.from(next.querySelectorAll('img')))
     retryImageThroughApi(img, props.client, props.repo, (url) => objectUrls.push(url))

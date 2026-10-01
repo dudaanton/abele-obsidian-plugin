@@ -48,7 +48,7 @@ import {
   sourcesOf,
 } from '@/github/markdownPreview'
 import { retryImageThroughApi, type RepoFile } from '@/github/markdownLinks'
-import { finishGithubMarkdown } from '@/github/safeMarkdown'
+import { githubPolicy } from '@/github/safeMarkdown'
 import { LINE_CONTEXT, elementTop, pinIntoView, scrollParent } from '@/github/scrollTo'
 
 /**
@@ -121,6 +121,7 @@ const setContent = (i: number, el: unknown) => {
 
 let component: Component | null = null
 let renderRun = 0
+const approvedImages = new Set<string>()
 const objectUrls: string[] = []
 
 /** An image the raw address refused: once more through the API, when there is a token. */
@@ -140,14 +141,19 @@ const renderAll = async () => {
     if (!el || !source) continue
     const next = createDiv()
     try {
-      await renderUntrustedMarkdown(next, source, component, '', { github: true })
+      await renderUntrustedMarkdown(
+        next,
+        source,
+        component,
+        '',
+        githubPolicy(props.file, approvedImages)
+      )
     } catch (e) {
       // One block that will not render is shown as its text; the rest of the file still is.
       console.debug('Abele: a markdown block did not render', e)
       next.replaceChildren(createEl('pre', { text: source }))
     }
     if (mine !== renderRun) return
-    finishGithubMarkdown(next, props.file)
     finishFootnotes(next, list[i], sources.value)
     for (const img of Array.from(next.querySelectorAll('img'))) retryThroughApi(img)
     el.replaceChildren(...Array.from(next.childNodes))

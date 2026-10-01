@@ -9,7 +9,8 @@ Chat replies, thinking, run output, script markdown and GitHub text show other p
 blocks and inline queries as code, without executing them. Do not rely on Dataview or similar
 processors to calculate a reply. Abele's own chart, map and gallery output and Mermaid diagrams
 remain available in chat and scripts. Ordinary notes keep their processors; remote images in
-replies still load normally.
+replies still load normally. In GitHub text only, third-party images and badges wait behind a
+button naming their host; GitHub-hosted and repository images load automatically.
 
 ## Files
 

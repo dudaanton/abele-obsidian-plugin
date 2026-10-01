@@ -3,6 +3,10 @@
 Issues, pull requests, discussions, commits and files from GitHub, opened in Obsidian tabs. It only
 reads: nothing is ever written to GitHub.
 
+Images hosted by GitHub (or the repository's Enterprise server) load normally. Images from
+other sites, including README badges, appear as buttons naming the site; tap one to load that
+image. This applies to files, comments and GitHub snippets. It does not change images in AI replies.
+
 ## Turning it on
 
 The integration is off until you turn it on in **Settings → Abele → GitHub**. Without a token only
