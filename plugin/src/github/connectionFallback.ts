@@ -4,6 +4,7 @@ import { ConnectionMemory, type ConnectionCandidate } from './connectionRouting'
 export interface ConnectionAttempt {
   id: string
   error: string
+  reason?: string
 }
 export interface ConnectionRead<T> {
   id: string
@@ -54,7 +55,7 @@ export class ConnectionFallback {
         if (!(e instanceof GithubError) || !['not-found', 'forbidden', 'sso'].includes(e.kind))
           throw e
         this.memory.refused(id, generation, o.item)
-        attempts.push({ id, error: e.message })
+        attempts.push({ id, error: e.message, reason:e.reason })
         if (o.manual) throw e
       }
     }

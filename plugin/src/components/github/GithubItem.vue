@@ -30,10 +30,11 @@
       <template v-else>
         <Button
           v-if="accountName"
+          class="abele-github__account"
           :text="accountName"
           icon="user-round"
           tooltip="Open as another GitHub account"
-          @click="(event: MouseEvent) => onChooseAccount?.(event)"
+          @click="onChooseAccount?.()"
         />
         <EmptyState v-if="model.connectionNotice" :text="model.connectionNotice" />
         <GithubFindBar
@@ -311,7 +312,7 @@ const props = defineProps<{
   primaryLoad?: (target: GithubTarget, promote: (target: GithubTarget) => void, retry?: boolean) => Promise<ItemData>
   peopleClient?: () => GithubClient
   accountName?: string
-  onChooseAccount?: (event: MouseEvent) => void
+  onChooseAccount?: () => void
   /** Tells the tab its name once the item's title is known. */
   onTitle?: (title: string) => void
   /** Opens another GitHub URL: by the usual rule, or in a new tab, split or window. */
@@ -694,6 +695,14 @@ watch(
   // Diffs want the width a code review wants, not a line of prose.
   &:has(.abele-github-files, .abele-github-blob) {
     max-width: none;
+  }
+
+  &__account {
+    max-width: 100%;
+    height: auto;
+    min-height: var(--input-height);
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   &__fallback,

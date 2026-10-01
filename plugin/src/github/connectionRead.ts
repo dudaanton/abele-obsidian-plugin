@@ -85,7 +85,7 @@ export async function readConnectionItem(
     data,
     shown,
     notice: result.attempts.length
-      ? `Opened as ${name(result.id)}. ${result.attempts.map((a) => `${name(a.id)}: ${a.error}`).join(' ')}`
+      ? `Opened as ${name(result.id)}. ${result.attempts.map((a) => `${name(a.id)}: ${a.reason ?? a.error}`).join(' ')}`
       : '',
   }
 }

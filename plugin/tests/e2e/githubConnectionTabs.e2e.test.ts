@@ -26,7 +26,7 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
 
   it('keeps a long account label and fallback notice inside the real phone viewport', () => {
     if (!onPhone()) return // Desktop phone emulation is covered by githubPhone and phoneLayout.
-    const r=evalAsync<{over:string[];shot:string}>(`(async()=>{
+    const r=evalAsync<{over:string[];shot:string;menuOpened:boolean}>(`(async()=>{
       ${PRELUDE}
       const config=window.__abeleTest.AbeleConfig.getInstance()
       const connections=config.github.connections
@@ -50,7 +50,10 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
           return r.width>0 && (r.right>Math.min(edge.right,innerWidth)+1 || el.scrollWidth>el.clientWidth+1)
         }).map(el=>el.className)
         const shot=await window.__e2eHost.shot(${JSON.stringify(SHOTS+'/account-header.png')})
-        return {over,shot}
+        root.querySelector('button.abele-obsidian-button').click()
+        const menuOpened=!!(await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.startsWith('Open as Sample')),5000))
+        document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
+        return {over,shot,menuOpened}
       } finally {
         leaf?.detach()
         config.github.connections=connections
@@ -59,6 +62,7 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
     })()`)
     console.info('account header screenshot',r.shot)
     expect(r.over).toEqual([])
+    expect(r.menuOpened).toBe(true)
     expect(r.shot).toMatch(/\.png$/)
   })
 

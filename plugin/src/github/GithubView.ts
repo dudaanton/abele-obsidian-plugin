@@ -300,10 +300,11 @@ export class GithubView extends ItemView {
               ? `${row.name}${row.account ? ` · ${row.account.login}` : ''}`
               : 'Anonymous'
             : undefined,
-          onChooseAccount: (event: MouseEvent) => {
+          onChooseAccount: () => {
             const menu = new Menu()
             this.accountMenu(menu)
-            menu.showAtMouseEvent(event)
+            const rect = this.containerEl.querySelector('.abele-github__account')?.getBoundingClientRect()
+            menu.showAtPosition({x:rect?.left ?? 0,y:rect?.bottom ?? 0},this.containerEl.ownerDocument)
           },
           primaryLoad: (githubSettings().connections ?? []).length
             ? async (
