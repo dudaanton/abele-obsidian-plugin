@@ -53,6 +53,14 @@ With **Open GitHub links in Obsidian** on, a click on a GitHub link in a note op
 
 Anything else, such as a release, still goes to the browser.
 
+## File tree width
+
+On a wide screen, drag the divider beside the file tree to resize it. The tree stays between
+12em and the smaller of 40% of the tab or 36em. Double-click the divider to restore its default
+18em width. You can also focus the divider with Tab: Left/Right resize, Shift makes larger steps,
+Home/End choose the limits, and Enter resets. The width is remembered in this vault on this device
+only, not synced or transferred. On a narrow screen the tree remains a drawer over the content.
+
 ## Choosing an account
 
 A link inside a GitHub tab keeps that tab's connection on the same server. Otherwise an open

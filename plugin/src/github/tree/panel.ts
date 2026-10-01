@@ -7,6 +7,8 @@
  * so it always starts closed there.
  */
 export const PANEL_KEY = 'abele-github-tree-panel'
+/** Desktop split width in CSS pixels, local to this vault on this device; null restores 18em. */
+export const WIDTH_KEY = 'abele-github-tree-width'
 
 export function initialPanel(phone: boolean, stored: unknown): boolean {
   return !phone && stored === true

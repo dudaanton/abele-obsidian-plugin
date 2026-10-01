@@ -420,6 +420,15 @@ restrictions on a tab are runtime-only, never written as persistent grants. Each
 also identifies the exact credential generation approved, not only the connection ID; token,
 server, or key-store state changes invalidate it for primary and secondary tab loads.
 
+## GitHub file tree layout
+
+Obsidian's vault-scoped local storage holds `abele-github-tree-panel` (whether a new desktop
+GitHub tab starts with the tree open) and `abele-github-tree-width` (the desktop split width in
+CSS pixels, or null for the default 18em). The width is clamped to fit the current tab without
+rewriting the saved preference. These are device-local UI choices, not plugin settings, synced
+files or settings-transfer entries. A narrow tab keeps its drawer layout regardless of the
+remembered desktop width.
+
 ## GitHub links
 
 A GitHub tab writes plain markdown links into a note when the person asks it to — "Insert into

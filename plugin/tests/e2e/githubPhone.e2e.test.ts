@@ -444,6 +444,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       error?: string
       startsClosed?: boolean
       position?: string
+      dividerHidden?: boolean
       panel?: { left: number; right: number }
       screen?: number
       main?: { before: number; after: number; sideways: number }
@@ -483,6 +484,8 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       await settledLayout(panel)
       const p = panel.getBoundingClientRect()
       report.position = getComputedStyle(panel).position
+      const divider = panel.querySelector('.abele-github-layout__resize')
+      report.dividerHidden = !!divider && getComputedStyle(divider).display === 'none' && divider.tabIndex === -1
       report.panel = { left: Math.round(p.left), right: Math.round(p.right) }
       report.main = { before: Math.round(before), after: Math.round(main.getBoundingClientRect().width),
         sideways: main.scrollWidth - main.clientWidth }
@@ -508,6 +511,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     expect(r.error).toBeUndefined()
     expect(r.startsClosed).toBe(true)
     expect(r.position).toBe('absolute')
+    expect(r.dividerHidden).toBe(true)
     expect(r.panel!.left).toBeGreaterThanOrEqual(0)
     expect(r.panel!.right).toBeLessThanOrEqual(r.screen!)
     // The code keeps its whole width: the drawer lies over it.

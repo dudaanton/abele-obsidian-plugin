@@ -18,6 +18,8 @@ import {
   enableGithub,
   evalAsync,
   restoreGithub,
+  realDrag,
+  centreOf,
   startFakeGithub,
   type FakeGithub,
 } from './helpers/githubLive'
@@ -64,16 +66,21 @@ const TREE = `
 
 /** The device's remembered panel choice, which a click on the tree icon writes. */
 const PANEL_KEY = 'abele-github-tree-panel'
+const WIDTH_KEY = 'abele-github-tree-width'
 
 describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
   let gh: FakeGithub
   let panelChoice = 'null'
+  let panelWidth = 'null'
 
   beforeAll(async () => {
     gh = await startFakeGithub()
     enableGithub(gh.origin)
     panelChoice = evalRaw(
       `JSON.stringify(app.loadLocalStorage(${JSON.stringify(PANEL_KEY)}) ?? null)`
+    )
+    panelWidth = evalRaw(
+      `JSON.stringify(app.loadLocalStorage(${JSON.stringify(WIDTH_KEY)}) ?? null)`
     )
   }, 60_000)
 
@@ -90,7 +97,8 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
       restoreGithub()
       // Put the person's own choice back: the run's clicks are not theirs.
       evalRaw(
-        `app.saveLocalStorage(${JSON.stringify(PANEL_KEY)}, ${panelChoice.replace(/^=> /, '')})`
+        `app.saveLocalStorage(${JSON.stringify(PANEL_KEY)}, ${panelChoice.replace(/^=> /, '')});
+         app.saveLocalStorage(${JSON.stringify(WIDTH_KEY)}, ${panelWidth.replace(/^=> /, '')})`
       )
     } finally {
       gh?.stop()
@@ -225,6 +233,90 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
     expect(r.beside!.mainLeft).toBeGreaterThanOrEqual(r.beside!.panelRight - 1)
     expect(r.beside!.panelWidth).toBeGreaterThan(150)
     expect(r.shot).toMatch(/\.png$/)
+  })
+
+  it('drags the divider and remembers its width after closing and reopening the tab', () => {
+    const ready = evalAsync<{ error?: string; width?: number }>(`(async () => {
+      ${PRELUDE}
+      app.saveLocalStorage(${JSON.stringify(PANEL_KEY)}, true)
+      app.saveLocalStorage(${JSON.stringify(WIDTH_KEY)}, null)
+      const leaf = await openTab(${JSON.stringify(`${gh.web}/blob/main/src/app.ts`)})
+      const root = leaf.view.containerEl
+      if (!(await until(() => loaded(leaf, 'src/app.ts') && root.querySelector('.abele-github-tree'), 20000)))
+        return { error: 'no file tree' }
+      const layout = root.querySelector('.abele-github-layout')
+      if (layout.getBoundingClientRect().width <= 640) return { error: 'desktop split is too narrow' }
+      return { width: root.querySelector('.abele-github-layout__panel').getBoundingClientRect().width }
+    })()`)
+    expect(ready.error).toBeUndefined()
+    const handle = centreOf(
+      `app.workspace.getLeavesOfType('abele-github')[0]?.view.containerEl.querySelector('.abele-github-layout__resize')`
+    )
+    expect(handle, 'the file tree has a draggable divider').not.toBeNull()
+    realDrag(handle!, { x: handle!.x - 50, y: handle!.y })
+    const result = evalAsync<{ width: number; stored: number; reopened: number }>(`(async () => {
+      ${PRELUDE}
+      const leaf = githubLeaves()[0]
+      const width = leaf.view.containerEl.querySelector('.abele-github-layout__panel').getBoundingClientRect().width
+      const stored = app.loadLocalStorage(${JSON.stringify(WIDTH_KEY)})
+      leaf.detach()
+      const next = await openTab(${JSON.stringify(`${gh.web}/pull/42/files`)})
+      await until(() => loaded(next, 'Rework the widget loader') && next.view.containerEl.querySelector('.abele-github-tree'), 20000)
+      const reopened = next.view.containerEl.querySelector('.abele-github-layout__panel').getBoundingClientRect().width
+      return { width, stored, reopened }
+    })()`)
+    expect(result.width).toBeCloseTo(ready.width! - 50, 0)
+    expect(result.stored).toBeCloseTo(result.width, 0)
+    expect(result.reopened).toBeCloseTo(result.width, 0)
+  })
+
+  it('keeps the split within its limits and double-click restores the default width', () => {
+    const r = evalAsync<{
+      error?: string
+      min?: number
+      max?: number
+      widthMin?: number
+      widthMax?: number
+      reset?: number
+      expectedReset?: number
+      stored?: unknown
+      focus?: boolean
+    }>(`(async () => {
+      ${PRELUDE}
+      app.saveLocalStorage(${JSON.stringify(PANEL_KEY)}, true)
+      const leaf = await openTab(${JSON.stringify(`${gh.web}/blob/main/src/app.ts`)})
+      const root = leaf.view.containerEl
+      if (!(await until(() => loaded(leaf, 'src/app.ts') && root.querySelector('.abele-github-layout__resize')?.tabIndex === 0, 20000)))
+        return { error: 'no desktop divider' }
+      const handle = root.querySelector('.abele-github-layout__resize')
+      const panel = root.querySelector('.abele-github-layout__panel')
+      const layout = root.querySelector('.abele-github-layout')
+      const measure = () => panel.getBoundingClientRect().width
+      const key = async (key) => {
+        handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+        await new Promise(resolve => requestAnimationFrame(resolve))
+      }
+      handle.focus()
+      const report = { focus: document.activeElement === handle, min: Number(handle.getAttribute('aria-valuemin')), max: Number(handle.getAttribute('aria-valuemax')) }
+      await key('Home')
+      await key('ArrowLeft')
+      report.widthMin = measure()
+      await key('End')
+      await key('ArrowRight')
+      report.widthMax = measure()
+      handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      report.reset = measure()
+      report.expectedReset = Math.min(parseFloat(getComputedStyle(layout).fontSize) * 18, layout.getBoundingClientRect().width * 0.4)
+      report.stored = app.loadLocalStorage(${JSON.stringify(WIDTH_KEY)})
+      return report
+    })()`)
+    expect(r.error).toBeUndefined()
+    expect(r.focus).toBe(true)
+    expect(r.widthMin).toBeCloseTo(r.min!, 0)
+    expect(r.widthMax).toBeCloseTo(r.max!, 0)
+    expect(r.reset).toBeCloseTo(r.expectedReset!, 0)
+    expect(r.stored).toBeNull()
   })
 
   it('opens a folder whose branch holds a slash', () => {
