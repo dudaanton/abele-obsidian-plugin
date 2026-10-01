@@ -43,19 +43,22 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
   })
 
   it('an implicit read selects the permitted account instead of the Off server default', () => {
-    const text=evalAsync<string>(`(async()=>{
+    const { text } = evalAsync<{ text: string }>(`(async()=>{
       const tool=window.__abeleTest.createAgentTools({agentId:window.__connectionAgents[1]}).find(t=>t.name==='github_read')
-      return JSON.stringify(await tool.execute('implicit-read',{item:${JSON.stringify(gh.web+'/issues/7')}}))
+      return {text:JSON.stringify(await tool.execute('implicit-read',{item:${JSON.stringify(gh.web + '/issues/7')}}))}
     })()`)
     expect(text).toContain('Loader hangs on an empty list')
     expect(text).toContain('Sample two')
   })
 
-  it.each(['off','ask'])('an agent-opened tab never fetches people with its %s server-default connection', async mode => {
-    const profileQueries=()=>gh.requests().filter(line=>line.startsWith('POST /api/graphql')).length
-    await new Promise(resolve=>setImmediate(resolve))
-    const before=profileQueries()
-    const shown=evalAsync<boolean>(`(async()=>{
+  it.each(['off', 'ask'])(
+    'an agent-opened tab never fetches people with its %s server-default connection',
+    async (mode) => {
+      const profileQueries = () =>
+        gh.requests().filter((line) => line.startsWith('POST /api/graphql')).length
+      await new Promise((resolve) => setImmediate(resolve))
+      const before = profileQueries()
+      const shown = evalAsync<boolean>(`(async()=>{
       ${PRELUDE}
       const agent=window.__abeleTest.AgentRegistry.getInstance().get(window.__connectionAgents[1])
       const previous=agent.githubConnections.one
@@ -64,15 +67,16 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
         agent.githubConnections.one=${JSON.stringify(mode)}
         await window.__abeleTest.githubUsers().clear()
         const tool=window.__abeleTest.createAgentTools({agentId:agent.id}).find(t=>t.name==='github_open')
-        await tool.execute('open-profiles',{url:${JSON.stringify(gh.web+'/issues/7')},connection:'Sample two'})
+        await tool.execute('open-profiles',{url:${JSON.stringify(gh.web + '/issues/7')},connection:'Sample two'})
         leaf=githubLeaves()[0]
         return !!(await until(()=>leaf?.view.containerEl.textContent.includes('Bob Example'),15000))
       } finally {leaf?.detach();agent.githubConnections.one=previous}
     })()`)
-    expect(shown).toBe(true)
-    expect(await until(()=>profileQueries()>before)).toBeTruthy()
-    expect(gh.requests().filter(line=>line.includes('account=one'))).toEqual([])
-  })
+      expect(shown).toBe(true)
+      expect(await until(() => profileQueries() > before)).toBeTruthy()
+      expect(gh.requests().filter((line) => line.includes('account=one'))).toEqual([])
+    }
+  )
 
   it('Ask gates the actual execution factory and accepts one operation without changing the mode', async () => {
     const result = evalAsync<{ asked: boolean; mode: string; code: string }>(`(async()=>{
@@ -96,8 +100,8 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
   })
 
   it('does not use an old Ask grant when a tool-opened tab receives another account token', async () => {
-    const before=gh.requests().filter(line=>line.includes('account=one')).length
-    const result=evalAsync<{loaded:boolean;refused:boolean;empty:boolean}>(`(async()=>{
+    const before = gh.requests().filter((line) => line.includes('account=one')).length
+    const result = evalAsync<{ loaded: boolean; refused: boolean; empty: boolean }>(`(async()=>{
       ${PRELUDE}
       const config=window.__abeleTest.AbeleConfig.getInstance()
       const agent=window.__abeleTest.AgentRegistry.getInstance().get(window.__connectionAgents[1])
@@ -106,7 +110,7 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
       try {
         agent.githubConnections.two='ask'
         const tool=window.__abeleTest.createAgentTools({agentId:agent.id,githubApproval:window.__abeleTest.connectionApproval(app)}).find(t=>t.name==='github_open')
-        const pending=tool.execute('open-with-grant',{url:${JSON.stringify(gh.web+'/issues/7')},connection:'Sample two'})
+        const pending=tool.execute('open-with-grant',{url:${JSON.stringify(gh.web + '/issues/7')},connection:'Sample two'})
         const approve=await until(()=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Allow once'),5000)
         if(!approve) throw new Error('The connection approval did not open')
         approve.click();await pending
@@ -121,26 +125,26 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
         agent.githubConnections.two=previous;config.version.value++
       }
     })()`)
-    expect(result).toEqual({loaded:true,refused:true,empty:true})
+    expect(result).toEqual({ loaded: true, refused: true, empty: true })
     // Yield through the request-log stream after the app has settled the refused load.
-    await new Promise(resolve=>setImmediate(resolve))
-    expect(gh.requests().filter(line=>line.includes('account=one'))).toHaveLength(before)
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(gh.requests().filter((line) => line.includes('account=one'))).toHaveLength(before)
   })
 
   it('falls back for a commit even when the first account can read repository metadata', () => {
-    const text=evalAsync<string>(`(async()=>{
+    const { text } = evalAsync<{ text: string }>(`(async()=>{
       const config=window.__abeleTest.AbeleConfig.getInstance()
       const agent=window.__abeleTest.AgentRegistry.getInstance().get(window.__connectionAgents[0])
       const previous=agent.githubConnections.two, owners=config.github.connections[0].owners
       try {
         agent.githubConnections.two='auto'
-        config.github.connections[0].owners=[${JSON.stringify(OWNER+'/'+REPO)}]
+        config.github.connections[0].owners=[${JSON.stringify(OWNER + '/' + REPO)}]
         const tool=window.__abeleTest.createAgentTools({agentId:agent.id}).find(t=>t.name==='github_commits')
-        return JSON.stringify(await tool.execute('commit-scope',{repo:${JSON.stringify(gh.web)},sha:${JSON.stringify(HEAD_SHA)}}))
+        return {text:JSON.stringify(await tool.execute('commit-scope',{repo:${JSON.stringify(gh.web)},sha:${JSON.stringify(HEAD_SHA)}}))}
       } finally {agent.githubConnections.two=previous;config.github.connections[0].owners=owners}
     })()`)
     expect(text).toContain('Sample two')
-    expect(text).toContain(HEAD_SHA.slice(0,7))
+    expect(text).toContain(HEAD_SHA.slice(0, 7))
   })
 
   it('uses the executing agent, refuses forbidden explicit access, and hides a loaded private tab', async () => {
