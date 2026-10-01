@@ -14,8 +14,13 @@ export async function primaryAccess(client: GithubClient, target: GithubTarget):
     if (result.error) throw result.error
   }
   switch (target.kind) {
-    case 'issue':
-      return rest(`${base}/issues/${target.number}`)
+    case 'issue': {
+      const issue=await client.probe<{pull_request?:unknown}>(`${base}/issues/${target.number}`)
+      if(issue.error) throw issue.error
+      // An issue URL can name a PR. Its metadata is still primary, not an optional review.
+      if(issue.body?.pull_request) await rest(`${base}/pulls/${target.number}`)
+      return
+    }
     case 'pull':
       return rest(`${base}/pulls/${target.number}`)
     case 'commit':

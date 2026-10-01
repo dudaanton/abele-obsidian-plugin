@@ -14,6 +14,21 @@ beforeEach(() => {
 })
 
 describe('fallback only on the primary item', () => {
+  it('checks the pull request primary endpoint when an issue URL promotes to a pull request', async () => {
+    const app=useVault([]), config=AbeleConfig.getInstance()
+    config.github=githubSettingsFrom({enabled:true,connections:['issue-first','pull-second'].map((id,i)=>({id,name:id,server:'',keyId:`${id}-key`,owners:[],isDefault:i===0}))})
+    for(const c of config.github.connections) app.secretStorage.setSecret(c.keyId,`invented-${c.id}`)
+    stubs.request.mockImplementation(async r=>({
+      status:r.url.includes('/pulls/') && r.headers.Authorization==='Bearer invented-issue-first' ? 403 : 200,
+      headers:{},json:r.url.includes('/issues/') ? {pull_request:{}} : {number:3},text:'',arrayBuffer:new ArrayBuffer(0),
+    }))
+    stubs.load.mockResolvedValue({title:'Sample pull request'})
+    const target={kind:'issue' as const,host:'github.com',owner:'sample',repo:'promotion',number:3}
+    const result=await readConnectionItem({url:'https://github.com/sample/promotion/issues/3',connectionId:'issue-first',nonce:0,target,screen:emptyScreen()},target)
+    expect(result.connectionId).toBe('pull-second')
+    expect(stubs.load).toHaveBeenCalledOnce()
+  })
+
   it('does not send the repository to a fallback connection whose server changed during the first probe', async () => {
     const app = useVault([]),
       config = AbeleConfig.getInstance()
