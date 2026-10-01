@@ -277,7 +277,9 @@ describe('core note settings loaded from saved data', () => {
     (value) => {
       const config = AbeleConfig.getInstance()
       config.applySettings(
-        Object.fromEntries(Object.keys(supplied).map((key) => [key, value])) as unknown as AbeleSettings
+        Object.fromEntries(
+          Object.keys(supplied).map((key) => [key, value])
+        ) as unknown as AbeleSettings
       )
       expect(config).toMatchObject(
         Object.fromEntries(Object.keys(supplied).map((key) => [key, DEFAULT_SETTINGS[key]]))

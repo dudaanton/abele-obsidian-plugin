@@ -651,7 +651,8 @@ export default class AbelePlugin extends Plugin {
 
                 const cache = this.app.metadataCache.getFileCache(file)
                 const existing = cache?.frontmatter?.aliases
-                if (Array.isArray(existing) ? existing.includes(alias) : existing === alias) continue
+                if (Array.isArray(existing) ? existing.includes(alias) : existing === alias)
+                  continue
 
                 await this.app.fileManager.processFrontMatter(file, (fm) => {
                   if (!fm.aliases) fm.aliases = []

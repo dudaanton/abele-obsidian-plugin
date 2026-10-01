@@ -276,7 +276,10 @@ export class GlobalStore {
       if (this.initialized.value) return syncFileMetadata({ type: 'modify', file })
     })
     // Hosts without metadata notifications retain the existing file-event adapter.
-    if (!this.fileMetadataRef) this.vaultWatcher.registerCallback(syncFileMetadata)
+    if (!this.fileMetadataRef)
+      this.vaultWatcher.registerCallback((event) => {
+        void syncFileMetadata(event)
+      })
   }
 
   public initTasksList(): void {
