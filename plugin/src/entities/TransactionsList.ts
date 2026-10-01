@@ -126,8 +126,8 @@ export class TransactionsList {
   }
 
   private removeTransactions(): void {
-    this.transactions.forEach((transaction) => {
-      this.removeTransaction(transaction.transactionPath)
+    this.transactions.forEach((_transaction, path) => {
+      this.removeTransaction(path)
     })
   }
 

@@ -119,10 +119,7 @@ describe.each(['account', 'transaction'] as const)('%s list metadata lifecycle',
     expect(tracked().size).toBe(0)
   })
 
-  // BUG: the FileWatcher updates the entity path immediately on rename, but the
-  // list map is re-keyed only at resolved. cleanup removes by the new path and
-  // leaves the old map entry and its live watcher behind if closed in between.
-  it.fails('empties the list when cleaned up between rename and metadata resolution', async () => {
+  it('empties the list when cleaned up between rename and metadata resolution', async () => {
     resolve()
     const moved = file()
     await GlobalStore.getInstance().app.fileManager.renameFile(moved, 'Archive/Two.md')

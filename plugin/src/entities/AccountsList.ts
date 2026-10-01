@@ -135,8 +135,8 @@ export class AccountsList {
   }
 
   private removeAccounts(): void {
-    this.accounts.forEach((account) => {
-      this.removeAccount(account.accountPath)
+    this.accounts.forEach((_account, path) => {
+      this.removeAccount(path)
     })
   }
 
