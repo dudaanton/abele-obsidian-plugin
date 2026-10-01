@@ -328,7 +328,7 @@ export class GithubView extends ItemView {
             this.refreshHeader()
           },
           onOpen: (url: string, pane?: PaneType | false): void =>
-            void openGithubUrl(this.app, url, pane ?? false, { sourceId: this.model.connectionId }),
+            void openGithubUrl(this.app, url, pane ?? false, { sourceId: this.model.connectionId, sourceIntent:this.model.connectionIntent }),
           keys: this.keys,
           onState: () => this.app.workspace.requestSaveLayout(),
         })

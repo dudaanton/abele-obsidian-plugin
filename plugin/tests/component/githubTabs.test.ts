@@ -68,6 +68,20 @@ beforeEach(() => {
 })
 
 describe('connection state', () => {
+  it('inherits manual intent inside the same server but reroutes automatically across servers', async () => {
+    AbeleConfig.getInstance().github.connections=[
+      {id:'one',name:'One',server:'',keyId:'',owners:[],isDefault:true},
+      {id:'two',name:'Two',server:'',keyId:'',owners:[],isDefault:false},
+      {id:'enterprise',name:'Enterprise',server:'https://git.sample.test',keyId:'',owners:[],isDefault:true},
+    ]
+    const first=workspace([])
+    await openGithubUrl(first.app,PR,false,{sourceId:'two',sourceIntent:'manual'})
+    expect(first.created[0].leaf.state).toMatchObject({state:{connectionId:'two',connectionIntent:'manual'}})
+    const cross=workspace([])
+    await openGithubUrl(cross.app,'https://git.sample.test/sample/repo/issues/1',false,{sourceId:'two',sourceIntent:'manual'})
+    expect(cross.created[0].leaf.state).toMatchObject({state:{connectionId:'enterprise',connectionIntent:'automatic'}})
+  })
+
   it('account menu navigation goes through the leaf so Obsidian records back/forward history', async () => {
     const {GithubView}=await import('@/github/GithubView')
     AbeleConfig.getInstance().github.connections=['one','two'].map((id,i)=>({id,name:id,server:'',keyId:'',owners:[],isDefault:i===0}))

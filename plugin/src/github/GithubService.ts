@@ -244,6 +244,7 @@ export async function openGithubUrl(
   pane: PaneType | false = false,
   context: {
     sourceId?: string
+    sourceIntent?: 'manual' | 'automatic'
     connectionId?: string
     manual?: boolean
     allowedIds?: string[]
@@ -285,7 +286,7 @@ export async function openGithubUrl(
     state: {
       url,
       ...(chosen?.id
-        ? { connectionId: chosen.id, connectionIntent: context.manual ? 'manual' : 'automatic' }
+        ? { connectionId: chosen.id, connectionIntent: (context.manual || (context.sourceId===chosen.id && context.sourceIntent==='manual')) ? 'manual' : 'automatic' }
         : {}),
       ...(context.allowedIds
         ? {

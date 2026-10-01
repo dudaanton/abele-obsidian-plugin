@@ -66,7 +66,7 @@ export function linkClickHandler(app: App) {
     const source = (app.workspace?.getLeavesOfType?.(GITHUB_VIEW_TYPE) ?? [])
       .map((leaf) => leaf.view as GithubView)
       .find((view) => view.containerEl?.contains(target))
-    if (source?.model?.connectionId) void openGithubUrl(app, link.url, pane, { sourceId: source.model.connectionId })
+    if (source?.model?.connectionId) void openGithubUrl(app, link.url, pane, { sourceId: source.model.connectionId, sourceIntent:source.model.connectionIntent })
     else void openGithubUrl(app, link.url, pane)
   }
 }

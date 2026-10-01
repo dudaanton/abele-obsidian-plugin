@@ -49,10 +49,12 @@ const ICONS: Record<RowKind, string> = {
 /** The repository something was last opened in from the picker, this session. */
 let lastPicked: RepoRef | null = null
 let lastPickedConnection: string | undefined
+let lastPickedManual = false
 
 export const forgetLastPicked = () => {
   lastPicked = null
   lastPickedConnection = undefined
+  lastPickedManual = false
 }
 
 const repoOfTarget = (model: GithubViewModel | undefined): RepoRef | null => {
@@ -92,6 +94,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   private readonly defaultOrigin: string
   private timer: number | null = null
   private readonly contextId?: string
+  private readonly contextManual: boolean
   private readonly choices = new Map<string, { id?: string; client: GithubClient }>()
   private choice(host: string, repo?: RepoRef): { id?: string; client: GithubClient } {
     const key = JSON.stringify([host, repo?.origin, repo?.owner, repo?.repo])
@@ -129,6 +132,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
         ? activeView.model
         : (remembered?.view as unknown as { model?: GithubViewModel })?.model
     this.contextId = model?.connectionId ?? lastPickedConnection
+    this.contextManual = model?.connectionId ? model.connectionIntent==='manual' : lastPickedManual
     this.search = search ?? new OpenSearch((host, repo) => this.choice(host, repo).client)
     this.repo = pickerRepo(app)
     const preferred = preferredConnection(githubSettings().connections ?? [])
@@ -253,9 +257,10 @@ export class OpenPicker extends SuggestModal<OpenRow> {
       new Notice('The connection changed. Reopen the picker to search with its current token.')
       return false
     }
-    if (row.repo) lastPickedConnection = chosen?.id
+    const manual = this.contextManual && chosen?.id === this.contextId
+    if (row.repo) { lastPickedConnection = chosen?.id; lastPickedManual = manual }
     const opened = chosen?.id
-      ? await openGithubUrl(this.app, url, pane, { connectionId: chosen.id })
+      ? await openGithubUrl(this.app, url, pane, { connectionId: chosen.id, ...(manual ? {manual:true} : {}) })
       : await openGithubUrl(this.app, url, pane)
     if (!opened) new Notice('Abele cannot show that in a GitHub tab.')
     return opened
