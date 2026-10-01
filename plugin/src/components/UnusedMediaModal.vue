@@ -16,7 +16,7 @@
       </div>
 
       <div v-if="!scanning && scanned && items.length === 0" class="abele-unused-media__status">
-        No unused media found.
+        {{ scanError || 'No unused media found.' }}
       </div>
 
       <template v-if="items.length > 0">
@@ -83,6 +83,7 @@ import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { vaultUrl } from '@/helpers/vaultUrl'
+import { collectMediaReferences } from '@/helpers/mediaReferences'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -105,6 +106,7 @@ interface MediaFileItem {
 const items = ref<MediaFileItem[]>([])
 const scanning = ref(false)
 const scanned = ref(false)
+const scanError = ref('')
 const scannedFiles = ref(0)
 const totalFiles = ref(0)
 const deleting = ref(false)
@@ -133,63 +135,14 @@ const getMediaType = (ext: string): 'image' | 'video' | 'audio' | 'other' => {
 const scan = async () => {
   scanning.value = true
   scanned.value = false
+  scanError.value = ''
   items.value = []
   scannedFiles.value = 0
 
   try {
-    // Collect all referenced file paths
-    const referenced = new Set<string>()
-
-    // 1. Obsidian's resolved links (wikilinks, markdown links)
-    const allLinks = app.metadataCache.resolvedLinks
-    for (const sourcePath in allLinks) {
-      for (const targetPath in allLinks[sourcePath]) {
-        referenced.add(targetPath)
-      }
-    }
-
-    // 2. Scan all markdown files for URLs/paths in HTML tags and frontmatter
-    const mdFiles = app.vault.getMarkdownFiles()
-    totalFiles.value = mdFiles.length
-
-    const htmlRefRegex = /(?:src|poster|href)=["']([^"']+)["']/gi
-
-    const addRef = (ref: string, sourcePath: string) => {
-      if (!ref || ref.startsWith('http')) return
-      const resolved = app.metadataCache.getFirstLinkpathDest(ref, sourcePath)
-      if (resolved) referenced.add(resolved.path)
-      else referenced.add(ref)
-    }
-
-    // Extract all string values from frontmatter recursively
-    const extractStrings = (val: unknown, sourcePath: string) => {
-      if (typeof val === 'string') {
-        addRef(val, sourcePath)
-      } else if (Array.isArray(val)) {
-        for (const item of val) extractStrings(item, sourcePath)
-      } else if (val && typeof val === 'object') {
-        for (const v of Object.values(val)) extractStrings(v, sourcePath)
-      }
-    }
-
-    for (const file of mdFiles) {
-      const content = await app.vault.cachedRead(file)
-
-      // HTML attributes
-      htmlRefRegex.lastIndex = 0
-      let match: RegExpExecArray | null
-      while ((match = htmlRefRegex.exec(content)) !== null) {
-        addRef(match[1], file.path)
-      }
-
-      // All frontmatter values — any string that resolves to a vault file
-      const fm = app.metadataCache.getFileCache(file)?.frontmatter
-      if (fm) {
-        extractStrings(fm, file.path)
-      }
-
-      scannedFiles.value++
-    }
+    totalFiles.value = app.vault.getFiles().length
+    const referenced = await collectMediaReferences(app)
+    scannedFiles.value = totalFiles.value
 
     // 3. Find unreferenced media files
     const allFiles = app.vault.getFiles()
@@ -209,6 +162,9 @@ const scan = async () => {
 
     // Sort by size descending
     items.value.sort((a, b) => b.size - a.size)
+  } catch (err: unknown) {
+    items.value = []
+    scanError.value = `Scan failed; nothing will be deleted: ${err instanceof Error ? err.message : String(err)}`
   } finally {
     scanning.value = false
     scanned.value = true
@@ -222,6 +178,9 @@ const deleteOne = async (item: MediaFileItem) => {
   if (!(file instanceof TFile)) return
 
   try {
+    if ((await collectMediaReferences(app)).has(file.path)) {
+      throw new Error('File is now referenced. Scan again before deleting.')
+    }
     await app.fileManager.trashFile(file)
     const idx = items.value.indexOf(item)
     if (idx !== -1) items.value[idx] = { ...item, status: 'deleted' }
