@@ -330,6 +330,72 @@ describe('reply-only script interceptors', () => {
     expect(session.messages.value.filter((m) => m.role === 'assistant')).toHaveLength(2)
   })
 
+  describe.each(['reset', 'load'] as const)('a script finishing during %s', (transition) => {
+    it.each([
+      { reply: 'Late review' },
+      { hold: 'Late hold' },
+      { text: 'Late rewrite' },
+      { approve: true },
+      42,
+    ])('discards %j while the old conversation is being saved', async (result) => {
+      const { session, pending } = await setupScript()
+      await sentWithoutWaiting(session, 'Old question')
+      const oldMessage = session.messages.value[0]
+      // Force reset's outgoing save to write, rather than taking the log's noop path.
+      session.chatTitle.value = 'Changed sample title'
+      const loadedFile = { path: 'AI/Chats/loaded.abchat', basename: 'loaded' } as TFile
+      const freshFile = { path: 'AI/Chats/fresh.abchat', basename: 'fresh' } as TFile
+      vi.mocked(ChatStorage.getInstance().loadChat).mockResolvedValue({
+        metadata: null,
+        messages: [],
+      })
+      let releaseOutgoing!: () => void
+      let releaseLate!: () => void
+      const outgoing = new Promise<void>((resolve) => {
+        releaseOutgoing = resolve
+      })
+      const late = new Promise<void>((resolve) => {
+        releaseLate = resolve
+      })
+      const targets: Array<string | undefined> = []
+      vi.mocked(ChatStorage.getInstance().saveChat).mockImplementation(
+        async (_snapshot, _plan, target) => {
+          targets.push(target?.path)
+          if (targets.length === 1) await outgoing
+          if (targets.length === 2) await late
+          return target ?? freshFile
+        }
+      )
+      const saves = vi.spyOn(session, 'save')
+      const changing = transition === 'reset' ? session.reset() : session.load(loadedFile)
+      let accepted: string[] = []
+      try {
+        await vi.waitFor(() => expect(targets).toEqual([file.path]))
+        // The old bubble still exists and cancellation has not happened yet. Only the
+        // conversation version says it is no longer allowed to accept a script's result.
+        pending.get('Old question')!.resolve(result)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        accepted = (oldMessage.interceptorChat ?? []).map((m) => m.content)
+      } finally {
+        releaseOutgoing()
+        await changing
+        releaseLate()
+        await session.flush()
+      }
+      expect(session.currentChatFile.value?.path ?? null).toBe(
+        transition === 'load' ? loadedFile.path : null
+      )
+      expect(accepted).toEqual([])
+      expect(saves).toHaveBeenCalledTimes(1)
+      expect(targets).toEqual([file.path])
+      await session.addUserNote('New observation')
+      expect(targets.at(-1)).toBe(transition === 'load' ? loadedFile.path : undefined)
+      expect(session.currentChatFile.value?.path).toBe(
+        transition === 'load' ? loadedFile.path : freshFile.path
+      )
+    })
+  })
+
   it('cancels on reset and discards late results even when the script ignores abort', async () => {
     const { session, pending } = await setupScript()
     await sentWithoutWaiting(session, 'Old question')

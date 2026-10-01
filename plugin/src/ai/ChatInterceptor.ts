@@ -49,6 +49,8 @@ type ReviewRefs = { [K in keyof ReviewProgress]: Ref<ReviewProgress[K]> }
 
 /** The slice of a chat the interceptor touches. */
 export interface InterceptorHost {
+  /** Advances before reset/load starts saving the outgoing conversation. */
+  conversationVersion: Readonly<Ref<number>>
   messages: Ref<ChatMessage[]>
   findMessage(id: string): ChatMessage | undefined
   updateVisibleMessages(): void
@@ -244,6 +246,7 @@ export class ChatInterceptor {
     route: Extract<InterceptRoute, { kind: 'script' }>,
     input: InterceptInput
   ): Promise<void> {
+    const version = this.host.conversationVersion.value
     const message = this.host.findMessage(messageId)
     if (!message || this.replyControllers.has(messageId)) return
     const controller = new AbortController()
@@ -255,8 +258,11 @@ export class ChatInterceptor {
     this.host.updateVisibleMessages()
     try {
       const outcome = await runInterceptorScript(route.script, input, controller.signal)
+      // Reset/load may still be saving the old bubble and have not aborted us yet.
+      // Never enqueue another old-conversation save after that transition has begun.
+      if (controller.signal.aborted || version !== this.host.conversationVersion.value) return
       const current = this.host.findMessage(messageId)
-      if (controller.signal.aborted || !current) return
+      if (!current) return
       const lines = route.broken
         ? [`The pattern does not compile (${route.broken}), so every message goes to the script.`]
         : []

@@ -27,6 +27,7 @@ const deleteChat = vi.fn()
 /** A real interceptor over a stand-in chat whose agent asks for `defaultId`. */
 function interceptorFor(defaultId: string) {
   return new ChatInterceptor({
+    conversationVersion: ref(0),
     messages: ref([]),
     findMessage: () => undefined,
     updateVisibleMessages: () => {},

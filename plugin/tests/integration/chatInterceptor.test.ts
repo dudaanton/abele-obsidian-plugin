@@ -52,6 +52,7 @@ function draftMessage(content = 'Draft text'): ChatMessage {
 function buildHost(messages: ChatMessage[]) {
   let saves = 0
   const host: InterceptorHost = {
+    conversationVersion: ref(0),
     messages: ref(messages),
     findMessage: (id) => messages.find((m) => m.id === id),
     updateVisibleMessages: () => {},
