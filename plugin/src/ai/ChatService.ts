@@ -52,6 +52,10 @@ export class ChatService {
    */
   private runTabs = new Map<string, RunFile>()
   private tabsRestored = false
+  private restoringTabs = false
+  private restoreGeneration = 0
+  private continueRestore: (() => void) | null = null
+  private restoringFiles = new Map<string, Promise<void>>()
   public readonly activeTabId = ref<string | null>(null)
   public readonly tabOrder = ref<string[]>([])
 
@@ -79,9 +83,7 @@ export class ChatService {
    * A result of the search across chats, for the chat component: once the chat at `path` is in
    * front, the find bar opens on `query` at the message it was found in.
    */
-  public readonly pendingFind = ref<{ path: string; query: string; messageId: string } | null>(
-    null
-  )
+  public readonly pendingFind = ref<{ path: string; query: string; messageId: string } | null>(null)
 
   /**
    * Set to open the history of chats with its search in the chat in front — the command that
@@ -142,6 +144,11 @@ export class ChatService {
   /** Call after plugin load to restore tabs from previous session */
   async restoreTabs(): Promise<void> {
     this.tabsRestored = true
+    const generation = ++this.restoreGeneration
+    this.continueRestore?.()
+    this.continueRestore = null
+    this.restoringTabs = false
+    this.restoringFiles.clear()
     const { app } = GlobalStore.getInstance()
     const state = ChatService.loadTabsState(app)
     if (!state) {
@@ -155,24 +162,56 @@ export class ChatService {
     this.tabOrder.value = []
     this.activeTabId.value = null
 
+    this.restoringTabs = true
     try {
       if (!state.tabs?.length) {
         this.createTab()
         return
       }
 
-      let restoredAny = false
+      const activeIndex = Math.max(0, Math.min(state.activeIndex || 0, state.tabs.length - 1))
+      const order = [activeIndex, ...state.tabs.map((_, i) => i).filter((i) => i !== activeIndex)]
+      const slots: Array<string | undefined> = []
+      const publish = (index: number, session: ChatSession) => {
+        slots[index] = session.id
+        this.sessions.set(session.id, session)
+        const restored = slots.filter((id): id is string => !!id && this.sessions.has(id))
+        // Tabs opened while restoration was reading stay after the saved layout.
+        this.tabOrder.value = [...new Set([...restored, ...this.tabOrder.value])]
+        // Select once. Background hydration must not steal a later user selection.
+        if (!this.activeTabId.value) this.activeTabId.value = session.id
+      }
 
-      for (const tab of state.tabs) {
+      for (const index of order) {
+        if (index !== activeIndex) {
+          // One conversation per turn after the active one is usable, not a chain of parses
+          // that delays its first frame. Completion still means every saved tab is hydrated.
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+              this.continueRestore = null
+              resolve()
+            }, 0)
+            this.continueRestore = () => {
+              clearTimeout(timer)
+              resolve()
+            }
+          })
+        }
+        if (generation !== this.restoreGeneration) return
+        const tab = state.tabs[index]
         if (!tab.chatFilePath) {
-          // Empty tab — just create a new one
-          this.createTab()
-          restoredAny = true
+          publish(index, new ChatSession(this))
           continue
         }
 
         const file = app.vault.getAbstractFileByPath(tab.chatFilePath)
         if (!(file instanceof TFile)) continue
+
+        const existing = this.getSessionByFile(file.path)
+        if (existing) {
+          publish(index, existing)
+          continue
+        }
 
         // A comment file may already have a session on it: the note's editor initialises
         // before `onLayoutReady`, so a marker on screen has been read and loaded by the time
@@ -182,9 +221,11 @@ export class ChatService {
           try {
             const adopted = await comments.handOverToTab(file.basename)
             if (!adopted) continue
-            this.sessions.set(adopted.id, adopted)
-            this.tabOrder.value = [...this.tabOrder.value, adopted.id]
-            restoredAny = true
+            if (generation !== this.restoreGeneration) {
+              adopted.destroy()
+              return
+            }
+            publish(index, adopted)
           } catch (e) {
             console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
           }
@@ -193,37 +234,45 @@ export class ChatService {
 
         const session = new ChatSession(this)
         this.sessions.set(session.id, session)
-        this.tabOrder.value = [...this.tabOrder.value, session.id]
 
+        const loading = session.load(file)
+        this.restoringFiles.set(file.path, loading)
         try {
-          await session.load(file)
+          await loading
+          if (generation !== this.restoreGeneration) {
+            session.destroy()
+            return
+          }
         } catch (e) {
           console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
           session.destroy()
           this.sessions.delete(session.id)
           this.tabOrder.value = this.tabOrder.value.filter((id) => id !== session.id)
+          if (generation !== this.restoreGeneration) return
           continue
+        } finally {
+          if (this.restoringFiles.get(file.path) === loading) this.restoringFiles.delete(file.path)
         }
 
-        restoredAny = true
+        publish(index, session)
       }
 
-      if (!restoredAny) {
-        this.createTab()
-        return
-      }
-
-      // Restore active tab
-      const activeIdx = Math.min(state.activeIndex, this.tabOrder.value.length - 1)
-      this.activeTabId.value = this.tabOrder.value[Math.max(0, activeIdx)]
+      if (!this.tabOrder.value.length) this.createTab()
     } catch (e) {
       console.error('[Abele] Failed to parse saved tabs:', e)
-      if (this.sessions.size === 0) this.createTab()
+      if (generation === this.restoreGeneration && this.sessions.size === 0) this.createTab()
+    } finally {
+      if (generation === this.restoreGeneration) {
+        this.restoringTabs = false
+        this.saveTabs()
+      }
     }
   }
 
   /** Persist current tabs state to localStorage */
   saveTabs(): void {
+    // An early selection/save must not persist just the hydrated prefix and lose pending tabs.
+    if (this.restoringTabs) return
     const state: TabsState = {
       tabs: this.tabOrder.value
         .filter((id) => !this.runTabs.has(id))
@@ -295,6 +344,7 @@ export class ChatService {
    * one file are two writers on one log.
    */
   async openChatInTab(tabId: string, file: TFile): Promise<void> {
+    if (await this.waitForRestoringFile(file.path)) return
     const already = this.getSessionByFile(file.path)
     if (already) {
       this.switchTab(already.id)
@@ -559,6 +609,18 @@ export class ChatService {
     }
   }
 
+  private async waitForRestoringFile(path: string): Promise<boolean> {
+    const loading = this.restoringFiles.get(path)
+    if (!loading) return false
+    const generation = this.restoreGeneration
+    await loading
+    if (generation === this.restoreGeneration) {
+      const session = this.getSessionByFile(path)
+      if (session) this.switchTab(session.id)
+    }
+    return true
+  }
+
   getSessionByFile(filePath: string): ChatSession | null {
     for (const session of this.sessions.values()) {
       if (session.currentChatFile.value?.path === filePath) {
@@ -570,6 +632,7 @@ export class ChatService {
 
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
   async openChatFile(file: TFile): Promise<void> {
+    if (await this.waitForRestoringFile(file.path)) return
     // Already open → switch to it
     const existing = this.getSessionByFile(file.path)
     if (existing) {
@@ -833,6 +896,11 @@ export class ChatService {
   // ── Cleanup ───────────────────────────────────────────────────
 
   destroy(): void {
+    this.restoreGeneration++
+    this.continueRestore?.()
+    this.continueRestore = null
+    this.restoringTabs = false
+    this.restoringFiles.clear()
     for (const session of this.sessions.values()) {
       // Obsidian's unload is synchronous, so this cannot be awaited. Writes are deferred by
       // a fraction of a second at most, and a turn ends with one, so what is at risk here is
