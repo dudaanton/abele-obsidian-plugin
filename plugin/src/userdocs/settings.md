@@ -3,6 +3,14 @@
 What each tab of **Settings → Abele** holds. **Documentation**, at the top right of each tab,
 opens the page for that tab.
 
+## Links that write notes
+
+An `obsidian://abele` link with note content now asks every time before writing. The preview
+shows the path and the complete contents after the change, as plain text. Cancel writes nothing;
+a missing daily note is created only after acceptance. Only ordinary Markdown notes are allowed,
+not scripts, files inside the configured scripts folder, hidden folders or Obsidian's settings
+folder. If the note changes while the preview is open, open the link again to review it.
+
 ## Tasks
 
 The tasks folder, the quick choices of dates, times and repeats in the task editor, the busy day

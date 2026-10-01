@@ -1,143 +1,71 @@
 import { App, Notice, TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { Journal } from '@/entities/Journal'
 import { renderTemplate } from '@/helpers/notesUtils'
-import { normalizePath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
+import { confirmProtocolWrite } from './protocolConfirm'
+import { protocolNotePath, type ProtocolWrite } from './protocolWrite'
 import dayjs from 'dayjs'
 
-export interface ProtocolParams {
-  daily?: string
-  journal?: string
-  data: string
-  path?: string
-  mode?: 'append' | 'replace'
-}
+export type { ProtocolWrite } from './protocolWrite'
 
-function parseProtocolParams(params: Record<string, string>): ProtocolParams {
-  return {
-    daily: params.daily,
-    journal: params.journal,
-    data: params.data,
-    path: params.path,
-    mode: (params.mode as 'append' | 'replace') || 'append',
-  }
-}
-
-function findJournal(journalName: string): Journal | null {
-  const config = AbeleConfig.getInstance()
-  return config.journals.find((j) => j.name.toLowerCase() === journalName.toLowerCase()) || null
-}
-
-function validateParams(params: ProtocolParams): string | null {
-  if (!params.data) {
-    return 'Missing required parameter: data'
-  }
-
-  if (params.daily !== undefined) {
-    if (!params.journal) {
-      return 'Parameter "journal" is required when "daily" is specified'
-    }
-
-    const journal = findJournal(params.journal)
-    if (!journal) {
-      return `Journal "${params.journal}" not found`
-    }
-
-    if (journal.recurrence !== 'daily') {
-      return `Journal "${params.journal}" is not a daily journal (recurrence: ${journal.recurrence})`
-    }
-  } else if (!params.path) {
-    return 'Either "daily" or "path" parameter is required'
-  }
-
-  return null
-}
-
-async function getOrCreateDailyNote(app: App, journal: Journal): Promise<TFile | null> {
-  const today = dayjs()
-
-  if (!journal.newPathTemplate) {
-    new Notice('Abele: Journal has no path template configured')
-    return null
-  }
-
-  const notePath = normalizePath(
-    renderTemplate(journal.newPathTemplate, { date: today.format(DATE_FORMAT) })
-  )
-
-  let file = app.vault.getAbstractFileByPath(notePath)
-
-  if (file instanceof TFile) {
-    return file
-  }
-
-  // Create the daily note using journal's method
-  journal.createJournalNote(today)
-
-  // Wait a bit for file creation and return it
-  await new Promise((resolve) => window.setTimeout(resolve, 500))
-
-  file = app.vault.getAbstractFileByPath(notePath)
-  if (file instanceof TFile) {
-    return file
-  }
-
-  new Notice('Abele: Failed to create daily note')
-  return null
-}
-
-async function getFileByPath(app: App, path: string): Promise<TFile | null> {
-  const normalizedPath = normalizePath(path)
-  const file = app.vault.getAbstractFileByPath(normalizedPath)
-
-  if (file instanceof TFile) {
-    return file
-  }
-
-  new Notice(`Abele: File not found: ${normalizedPath}`)
-  return null
-}
-
-async function modifyFileContent(
-  app: App,
-  file: TFile,
-  data: string,
-  mode: 'append' | 'replace'
-): Promise<void> {
-  if (mode === 'replace') {
-    await app.vault.modify(file, data)
-  } else {
-    const currentContent = await app.vault.read(file)
-    const newContent = currentContent + '\n' + data
-    await app.vault.modify(file, newContent)
-  }
-}
-
+/** A URL can be opened by any page. Never write until the exact note and text are accepted. */
 export async function handleProtocolAction(
   app: App,
-  params: Record<string, string>
+  params: Record<string, string>,
+  confirm: (write: ProtocolWrite) => Promise<boolean> = confirmProtocolWrite
 ): Promise<void> {
-  const parsed = parseProtocolParams(params)
-
-  const validationError = validateParams(parsed)
-  if (validationError) {
-    new Notice(`Abele: ${validationError}`)
-    return
+  const notice = (message: string) => {
+    new Notice(`Abele: ${message}`)
   }
-
-  let file: TFile | null = null
-
-  if (parsed.daily !== undefined) {
-    const journal = findJournal(parsed.journal)
-    if (!journal) return // Already validated above
-
-    file = await getOrCreateDailyNote(app, journal)
-  } else if (parsed.path) {
-    file = await getFileByPath(app, parsed.path)
+  if (!params.data) return notice('Missing required parameter: data')
+  const config = AbeleConfig.getInstance()
+  const protectedFolders = () => [app.vault.configDir, config.ai?.scriptsFolder ?? '']
+  const date = dayjs().format(DATE_FORMAT)
+  const journal =
+    params.daily !== undefined
+      ? config.journals.find((j) => j.name.toLowerCase() === (params.journal ?? '').toLowerCase())
+      : undefined
+  if (params.daily !== undefined && (!journal || journal.recurrence !== 'daily'))
+    return notice('A daily journal is required')
+  const rawPath = journal
+    ? renderTemplate(journal.newPathTemplate || '', { date })
+    : params.path || ''
+  const path = protocolNotePath(rawPath, protectedFolders())
+  if (!path)
+    return notice(
+      'Links can write only ordinary notes, outside scripts, hidden and settings folders'
+    )
+  const existing = app.vault.getAbstractFileByPath(path)
+  if (existing && !(existing instanceof TFile)) return notice(`Not a note: ${path}`)
+  if (!existing && !journal) return notice(`File not found: ${path}`)
+  const current = existing instanceof TFile ? await app.vault.read(existing) : null
+  let base = current ?? ''
+  if (current === null && journal?.templatePath) {
+    const template = app.vault.getAbstractFileByPath(journal.templatePath)
+    if (template instanceof TFile) base = renderTemplate(await app.vault.read(template), { date })
   }
-
-  if (!file) return
-
-  await modifyFileContent(app, file, parsed.data, parsed.mode)
+  const mode = params.mode === 'replace' ? 'replace' : 'append'
+  const content = mode === 'replace' ? params.data : `${base}\n${params.data}`
+  if (!(await confirm({ path, mode, current, content, creates: current === null }))) return
+  // Settings, the file identity or its contents may have changed while the dialog was open.
+  if (
+    !protocolNotePath(path, protectedFolders()) ||
+    app.vault.getAbstractFileByPath(path) !== existing
+  )
+    return notice('The target changed; open the link again to review it')
+  if (existing instanceof TFile) {
+    let changed = false
+    await app.vault.process(existing, (now) => {
+      if (existing.path !== path || now !== current) {
+        changed = true
+        return now
+      }
+      return content
+    })
+    if (changed) notice('The note changed; open the link again to review it')
+  } else {
+    const parent = path.split('/').slice(0, -1).join('/')
+    if (parent && !app.vault.getAbstractFileByPath(parent)) await app.vault.createFolder(parent)
+    await app.vault.create(path, content)
+  }
 }

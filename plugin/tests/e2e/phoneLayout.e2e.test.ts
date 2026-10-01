@@ -657,6 +657,15 @@ const probeScript = `(async () => {
       report['icon picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'icon picker did not open' }
     }
 
+    window.__abeleTest.openProtocolWrite()
+    if (await until(() => document.querySelector('.modal .abele-protocol-write'), 5000)) {
+      const modal = document.querySelector('.modal')
+      await screen('link write', modal, modal.querySelector('.abele-modal__body'))
+      await closeDialog()
+    } else {
+      report['link write'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'write preview did not open' }
+    }
+
     // The MCP settings as a phone shows them: the tab with the seeded server, then its dialog.
     try {
       app.setting.open()
@@ -1129,6 +1138,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'chat picker',
     'icon picker',
     'icon picker search',
+    'link write',
     'secrets list',
     'settings ai keys',
     'settings finance keys',

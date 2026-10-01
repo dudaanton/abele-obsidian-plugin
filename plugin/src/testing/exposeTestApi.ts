@@ -48,6 +48,7 @@ import { githubUsers } from '@/github/users'
 import { calendars } from '@/calendars/CalendarService'
 import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
+import { confirmProtocolWrite } from '@/helpers/protocolConfirm'
 import { openIconPicker } from './openIconPicker'
 import { openSecretsList } from './openSecretsList'
 import { openMcpServer } from './openMcpServer'
@@ -227,6 +228,8 @@ interface AbeleTestApi {
   chatHistoryPaths(): string[]
   /** Opens the icon picker dialog by itself, for the layout probes. */
   openIconPicker(current?: string): void
+  /** Opens a write preview without writing any file. */
+  openProtocolWrite(): void
   /** Opens the list of keys (Settings → Transfer → Synced keys → All keys), for the layout probes. */
   openSecretsList(): void
   /** Opens Add MCP server with a URL filled in, for the layout probes; nothing is saved. */
@@ -717,6 +720,15 @@ export function exposeTestApi(plugin: Plugin): void {
     resolvedSystemPrompt,
     chatHistoryPaths,
     openIconPicker,
+    openProtocolWrite: () =>
+      void confirmProtocolWrite({
+        path: 'Sample folder/sample-note.md',
+        mode: 'replace',
+        current: 'Previous sample text',
+        content:
+          'Sample text sent from another app.\nA second line long enough to wrap on a narrow screen.',
+        creates: false,
+      }),
     openSecretsList,
     openMcpServer,
     openRewind,

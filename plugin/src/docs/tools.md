@@ -13,6 +13,11 @@ replies still load normally. In GitHub text only, third-party images and badges 
 button naming their host; GitHub-hosted and repository images load automatically. GitHub
 frames and forms are removed, and inline styling keeps only colour and alignment.
 
+An `obsidian://abele` content-write link requires confirmation showing the target path and
+complete resulting text. It writes only ordinary Markdown notes outside hidden, settings and
+configured scripts folders. This also applies to daily notes: cancellation creates nothing.
+Do not use these links as a silent-write shortcut.
+
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,

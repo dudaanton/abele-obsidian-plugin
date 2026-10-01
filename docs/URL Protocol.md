@@ -10,6 +10,13 @@ obsidian://abele?action=<action>&param1=value1&param2=value2
 
 All parameter values must be URL-encoded.
 
+Content writes require confirmation every time. The dialog shows the path and full resulting
+contents as plain text; a replacement also offers the current contents for comparison. Cancel
+writes nothing, including for a missing daily note. Only ordinary Markdown notes outside hidden,
+settings and configured scripts folders are allowed. Non-note extensions, absolute paths and
+traversal are refused. If the target changes while the dialog is open, open the link again.
+Named links that run a configured script or command keep their existing behaviour.
+
 ## Sync Handling
 
 All protocol actions wait for Obsidian Sync to complete before executing. This ensures data consistency when vault is syncing after app launch.
@@ -24,13 +31,13 @@ Adds or replaces content in a note.
 
 #### Parameters
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `data` | Yes | Content to add (URL-encoded) |
-| `daily` | No* | If present, targets today's daily note |
-| `journal` | No* | Journal name (required with `daily`) |
-| `path` | No* | Path to target note (required without `daily`) |
-| `mode` | No | `append` (default) or `replace` |
+| Parameter | Required | Description                                    |
+| --------- | -------- | ---------------------------------------------- |
+| `data`    | Yes      | Content to add (URL-encoded)                   |
+| `daily`   | No\*     | If present, targets today's daily note         |
+| `journal` | No\*     | Journal name (required with `daily`)           |
+| `path`    | No\*     | Path to target note (required without `daily`) |
+| `mode`    | No       | `append` (default) or `replace`                |
 
 \* Either `daily` + `journal` or `path` must be provided.
 
@@ -55,21 +62,25 @@ obsidian://abele?path=Notes/inbox&data=New%20item
 #### Examples
 
 **Append text to daily note:**
+
 ```
 obsidian://abele?daily&journal=Daily&data=-%20Task%20from%20external%20app
 ```
 
 **Replace content in a note:**
+
 ```
 obsidian://abele?path=Scratch/temp&data=Fresh%20content&mode=replace
 ```
 
 **Add multiline content:**
+
 ```
 obsidian://abele?daily&journal=Daily&data=%23%23%20Meeting%20Notes%0A%0A-%20Point%201%0A-%20Point%202
 ```
 
 Decoded `data`:
+
 ```markdown
 ## Meeting Notes
 
@@ -93,4 +104,3 @@ Errors are displayed as Obsidian notices:
 - `Either "daily" or "path" parameter is required`
 - `File not found: <path>`
 - `Failed to create daily note`
-
