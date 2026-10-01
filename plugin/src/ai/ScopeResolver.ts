@@ -253,8 +253,23 @@ export class ScopeResolver {
   private buildGroupIndex(): Map<string, string[]> {
     const { app } = GlobalStore.getInstance()
     const index = new Map<string, string[]>()
+    const files = app.vault.getFiles()
+    // Count each link suffix once, rather than scanning all same-name notes per link.
+    const key = (path: string) =>
+      path.split('#')[0].replace(/\.md$/i, '').normalize('NFC').toLowerCase()
+    const suffixCounts = new Map<string, number>()
+    const exact = new Set<string>()
+    for (const file of files) {
+      const path = key(file.path)
+      exact.add(path)
+      const segments = path.split('/')
+      for (let n = 0; n < segments.length; n++) {
+        const suffix = segments.slice(n).join('/')
+        suffixCounts.set(suffix, (suffixCounts.get(suffix) ?? 0) + 1)
+      }
+    }
 
-    for (const file of app.vault.getFiles()) {
+    for (const file of files) {
       const groups = app.metadataCache.getFileCache(file)?.frontmatter?.groups
       if (!Array.isArray(groups)) continue
 
@@ -264,6 +279,11 @@ export class ScopeResolver {
         const linkpath = wikilinkToPath(group)
         if (!linkpath) continue
 
+        const target = key(linkpath)
+        // An explicit vault path is unambiguous. Bare names and partial paths must have
+        // only one candidate even if Obsidian happens to prefer one of their namesakes.
+        if (!(target.includes('/') && exact.has(target)) && (suffixCounts.get(target) ?? 0) > 1)
+          continue
         const dest = app.metadataCache.getFirstLinkpathDest(linkpath, file.path)
         if (!dest) continue
 

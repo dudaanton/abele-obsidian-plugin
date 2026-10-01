@@ -33,7 +33,7 @@ describe('ScopeResolver — group boundaries and invalidation', () => {
     expect(scope.resolveGroupPaths('Missing.md')).toEqual([])
   })
 
-  it('resolves duplicate group names from the member note rather than from the vault root', () => {
+  it('refuses ambiguous group names even when one is beside the member, and accepts explicit paths', () => {
     const app = useVault([
       { path: 'East/Trees.md' },
       { path: 'West/Trees.md' },
@@ -45,6 +45,9 @@ describe('ScopeResolver — group boundaries and invalidation', () => {
       delete app.metadataCache.resolvedLinks[key]
     const scope = new ScopeResolver()
     scope.addGroup('East/Trees.md')
+    expect(scope.getAccessiblePaths()).toEqual(['East/Trees.md'])
+    app.setFrontmatter('East/Apple.md', { groups: ['[[East/Trees]]'] })
+    scope.invalidate()
     expect(scope.getAccessiblePaths()).toEqual(['East/Apple.md', 'East/Trees.md'])
   })
 

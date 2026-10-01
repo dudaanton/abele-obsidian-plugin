@@ -172,6 +172,8 @@ A **utility agent** is hidden from that list. Scripts, other agents and intercep
 The **scope** is the part of the vault a chat can open. It is built from files, folders, patterns
 such as `Journal/**/*.md`, and groups. A group grants every note that belongs to it through
 `groups`, at any depth. This is how you give an agent "this project" in a vault without folders.
+If two notes answer to a short group link, it no longer grants membership in an agent's scope.
+Write the full path, for example `[[Projects/Hub]]`, to say which group you mean.
 
 **Full vault access** turns the scope off. Anything outside the scope is refused.
 
