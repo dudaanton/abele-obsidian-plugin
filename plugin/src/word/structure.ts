@@ -259,16 +259,23 @@ export function renderTextRun(
   doc: WordPackage,
   r: TextRun,
   value: string,
-  format?: { name: string; enabled: boolean }
+  format?: { name: string; enabled: boolean },
+  omitted: XmlNode[] = [],
+  omitText = false
 ): string {
   if (!r.run) throw new Error('No text run')
   const source = doc.xml.get('word/document.xml')!
   let open = source.slice(r.node.start, r.node.openEnd).replace(/\/\s*>$/, '>')
   if (/^\s|\s$/.test(value) && r.node.attrs['xml:space'] !== 'preserve')
     open = preserveXmlSpace(open)
-  const patches: Patch[] = [
-    { start: r.node.start, end: r.node.end, text: open + escapeXml(value) + `</${r.node.name}>` },
-  ]
+  const patches: Patch[] = omitted.map((node) => ({ start: node.start, end: node.end, text: '' }))
+  if (omitText) patches.push({ start: r.node.start, end: r.node.end, text: '' })
+  else if (value !== r.text)
+    patches.push({
+      start: r.node.start,
+      end: r.node.end,
+      text: open + escapeXml(value) + `</${r.node.name}>`,
+    })
   if (format) {
     const name = format.name
     const val = name === 'u' ? (format.enabled ? 'single' : 'none') : format.enabled ? '1' : '0'
@@ -299,14 +306,26 @@ export function inlineSlice(
     }
     const r = runs.get(node)
     if (r) {
-      cursor = r.offset + r.text.length
+      const owns = (at: number) => at >= from && (at < to || (at === to && to === p.text.length))
       const begin = Math.max(0, from - r.offset)
       const end = Math.min(r.text.length, to - r.offset)
-      if (begin >= end) return ''
-      const fragment =
-        begin === 0 && end === r.text.length
-          ? rawNode(source, node)
-          : renderTextRun(doc, r, r.text.slice(begin, end))
+      const keepText = r.text.length ? begin < end : owns(r.offset)
+      let at = r.offset
+      let content = keepText
+      const omitted: XmlNode[] = []
+      for (const atom of node.children) {
+        if (isW(atom, 'rPr')) continue
+        if (atom === r.node) {
+          at += r.text.length
+          continue
+        }
+        if (owns(at)) content = true
+        else omitted.push(atom)
+      }
+      cursor = r.offset + r.text.length
+      if (!content) return ''
+      const value = keepText ? r.text.slice(begin, end) : ''
+      const fragment = renderTextRun(doc, r, value, undefined, omitted, !keepText)
       return carryNamespaces(fragment, node, context)
     }
     // Zero-length metadata is retained on one side, never duplicated or discarded.
