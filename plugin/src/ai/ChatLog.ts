@@ -297,6 +297,18 @@ export class ChatLogWriter {
     this.clean = true
   }
 
+  /** Whether another writer changed the file since this session last read or saved it. */
+  matches(parsed: ParsedChat): boolean {
+    return (
+      parsed.version === 2 &&
+      !!parsed.metadata &&
+      metaLine(parsed.metadata) === this.metaLine &&
+      parsed.messages.length === this.messageLines.size &&
+      parsed.internalMessages.length === this.internalCount &&
+      parsed.messages.every((message) => this.messageLines.get(message.id) === messageLine(message))
+    )
+  }
+
   /** What the next write should be. Pure: call `commit` once the write has happened. */
   plan(snapshot: ChatSnapshot): ChatWritePlan {
     const live = liveRecords(snapshot)

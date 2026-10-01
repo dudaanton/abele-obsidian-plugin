@@ -4,6 +4,8 @@ import { parseChat } from './ChatLog'
 import { getPathToLeaf } from './chatTree'
 import { conversationLines, firstQuestion, renderLines } from './chatText'
 import type { ChatMessage, CommentAnchor } from './types'
+import type { ReplyHighlight } from './replyAnnotations'
+import { HIGHLIGHT_COLORS } from '@/reader/highlights'
 
 /**
  * Comments asked about a passage of an agent's answer, inside a chat.
@@ -33,7 +35,7 @@ export interface PaintedComment {
 /** The icons carry a digit; text inside them is not part of the answer. */
 function isOurs(node: Node): boolean {
   const parent = node.parentElement
-  return !!parent?.closest('.abele-comment-marker')
+  return !!parent?.closest('.abele-comment-marker, .copy-code-button')
 }
 
 /** The answer's text nodes in order, with where each starts in the text the reader sees. */
@@ -51,6 +53,11 @@ function textNodes(root: HTMLElement): Array<{ node: Text; start: number }> {
 
 function textOf(nodes: Array<{ node: Text }>): string {
   return nodes.map(({ node }) => node.textContent ?? '').join('')
+}
+
+/** Shared by the source adapter and selections, so both measure exactly the same text. */
+export function messageRenderedText(root: HTMLElement): string {
+  return textOf(textNodes(root))
 }
 
 /** Where a range boundary falls in the answer's text. */
@@ -127,7 +134,13 @@ function unpaint(root: HTMLElement): void {
 }
 
 /** Wraps `[from, to)` of the answer's text, node by node. Returns the last wrapper. */
-function wrap(root: HTMLElement, from: number, to: number, cls: string): HTMLElement | null {
+function wrap(
+  root: HTMLElement,
+  from: number,
+  to: number,
+  cls: string,
+  decorate?: (el: HTMLElement) => void
+): HTMLElement | null {
   let last: HTMLElement | null = null
   for (const { node, start } of textNodes(root)) {
     const length = node.textContent?.length ?? 0
@@ -142,6 +155,7 @@ function wrap(root: HTMLElement, from: number, to: number, cls: string): HTMLEle
     const span = root.ownerDocument.win.createSpan()
     span.className = cls
     span.setAttribute(PAINTED, '')
+    decorate?.(span)
     piece.replaceWith(span)
     span.appendChild(piece)
     last = span
@@ -200,6 +214,33 @@ export function paintMessageComments(
 
     if (after) after.after(icon)
     else endOf(root).appendChild(icon)
+  }
+}
+
+/** Reuse the note highlight classes; annotations never enter the markdown source. */
+export function paintReplyHighlights(root: HTMLElement, highlights: ReplyHighlight[]): void {
+  for (const el of Array.from(root.querySelectorAll('[data-reply-highlight]')))
+    el.replaceWith(...Array.from(el.childNodes))
+  root.normalize()
+  const text = textOf(textNodes(root))
+  for (const highlight of highlights) {
+    if (
+      !HIGHLIGHT_COLORS.includes(highlight.color) ||
+      !highlight.quote ||
+      !Number.isInteger(highlight.start) ||
+      highlight.start < 0 ||
+      !text.startsWith(highlight.quote, highlight.start)
+    )
+      continue
+    wrap(
+      root,
+      highlight.start,
+      highlight.start + highlight.quote.length,
+      `abele-highlight abele-highlight--${highlight.color}`,
+      (span) => {
+        span.dataset.replyHighlight = highlight.id
+      }
+    )
   }
 }
 

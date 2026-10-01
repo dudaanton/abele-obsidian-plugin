@@ -28,7 +28,11 @@ import type {
   ToolDefinition,
 } from './client'
 import { ChatStorage } from './ChatStorage'
-import { ChatLogWriter, type ChatSnapshot } from './ChatLog'
+import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot } from './ChatLog'
+import { projectReplyHistory, undoRevision, type ReplyProposal } from './replyAnnotations'
+import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
+import { createReplyRevisionTool, REPLY_REVISION_TOOL } from './tools/ReplyRevisionTool'
+import { CommentService } from './CommentService'
 import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import {
   ChatInterceptor,
@@ -214,7 +218,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   public readonly conversationVersion = ref(0)
   /** The live conversation owns this draft, including imports, independently of every view. */
   public readonly draft = ref<ChatDraft>({ text: '', attachments: [] })
-  private get generation(): number { return this.conversationVersion.value }
+  private get generation(): number {
+    return this.conversationVersion.value
+  }
   /** What an interceptor script said about the tool calls of the turn running now. */
   private readonly turnPolicy = new TurnPolicy()
   private lastModelId = ''
@@ -291,6 +297,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   private get isBusy(): boolean {
     return (
+      this.replyChanging ||
       this.isStreaming.value ||
       this.isCompacting.value ||
       this.isExecutingTool.value ||
@@ -311,7 +318,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * conversation under one of them asks here first.
    */
   get isMidTurn(): boolean {
-    if (this.isStreaming.value || this.isCompacting.value) return true
+    if (this.replyChanging || this.isStreaming.value || this.isCompacting.value) return true
     if (this.interceptor.working.value) return true
     return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
   }
@@ -908,6 +915,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       !this.anchor.value.cfi &&
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     const withSelection = offered ? [...filtered, createEditSelectionTool(this)] : filtered
+    if (this.kind === 'comment' && this.anchor.value?.message && this.anchor.value.quote)
+      withSelection.push(createReplyRevisionTool(this))
 
     // A discussion about words in a book reads that book, whatever its agent's own tools: the
     // read-only book tools come with the anchor, as the note comes into a note comment's scope.
@@ -1010,6 +1019,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
     const mode = this.permissionMode.value
+
+    // This tool only records a proposal. Accepting it is a separate owner action, never a
+    // permission mode, tool call or automatic approval.
+    if (toolName === REPLY_REVISION_TOOL) return false
 
     // Out-of-scope file access always requires approval, whatever the mode says about writes.
     if (this.outOfScopePath(toolName, args)) return true
@@ -1162,6 +1175,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
               toolResult: resultText,
               toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
               toolMap: (event.result.details as ToolMapDetails)?.map,
+              replyProposal: (event.result.details as { replyProposal?: ReplyProposal })
+                ?.replyProposal,
               toolStatus: event.isError ? 'rejected' : 'approved',
             }
           }
@@ -1246,10 +1261,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     for (let i = internal.length - 1; i >= 0; i--) {
       const m = internal[i]
       if (m.role === 'system' && m.content.startsWith(ChatSummarizer.COMPACT_MARKER)) {
-        return internal.slice(i)
+        return projectReplyHistory(path, internal.slice(i))
       }
     }
-    return internal
+    return projectReplyHistory(path, internal)
   }
 
   /**
@@ -1556,6 +1571,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           toolResult: resultText,
           toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
           toolMap: (toolResult.details as ToolMapDetails)?.map,
+          replyProposal: (toolResult.details as { replyProposal?: ReplyProposal })?.replyProposal,
           toolStatus: isError ? ('rejected' as const) : ('approved' as const),
         }
       }
@@ -2139,6 +2155,103 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
 
     return overrides
+  }
+
+  /** Serializes owner changes with normal saves, publishing only after durable success. */
+  private replyChanging = false
+
+  async changeReply(id: string, change: (message: ChatMessage) => ChatMessage): Promise<void> {
+    if (this.isMidTurn || this.isBusy || this.moving.value)
+      throw new Error('This chat is working. Wait for its turn to finish.')
+    this.replyChanging = true
+    try {
+      const file = this.currentChatFile.value
+      if (!file) throw new Error('The reply is no longer available.')
+      while (this.writing) await this.writing
+      const { app } = GlobalStore.getInstance()
+      if (!this.log.matches(parseChat(await app.vault.read(file))))
+        throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+      await this.flush()
+      const before = this.allChatMessages.find((m) => m.id === id)
+      if (!before) throw new Error('The reply is no longer available.')
+      const after = change(before)
+      const snapshot = this.snapshot()
+      let written = ''
+      const operation = GlobalStore.getInstance().app.vault.process(file, (content) => {
+        const parsed = parseChat(content)
+        if (!this.log.matches(parsed))
+          throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+        written = serializeChat({
+          ...snapshot,
+          messages: snapshot.messages.map((m) => (m.id === id ? after : m)),
+        })
+        return written
+      })
+      this.writing = operation.then(
+        (): void => {},
+        (): void => {}
+      )
+      try {
+        await operation
+        this.log.adopt(parseChat(written))
+        this.updateChatMessage(
+          (m) => m.id === id,
+          () => after
+        )
+      } finally {
+        this.writing = null
+      }
+    } finally {
+      this.replyChanging = false
+      void this.drainQueue()
+    }
+  }
+
+  async highlightReply(
+    id: string,
+    quote: string,
+    start: number,
+    color: HighlightColor
+  ): Promise<void> {
+    if (!quote.trim() || !Number.isInteger(start) || start < 0 || !HIGHLIGHT_COLORS.includes(color))
+      throw new Error('Select some words in a model reply first.')
+    await this.changeReply(id, (message) => {
+      if (message.role !== 'assistant' || message.draft)
+        throw new Error('Only model replies can be highlighted.')
+      const kept = (message.highlights ?? []).filter((h) => h.quote !== quote || h.start !== start)
+      return { ...message, highlights: [...kept, { id: nanoid(), quote, start, color }] }
+    })
+  }
+
+  async removeReplyHighlight(id: string, highlight: string): Promise<void> {
+    await this.changeReply(id, (message) => ({
+      ...message,
+      highlights: (message.highlights ?? []).filter((h) => h.id !== highlight),
+    }))
+  }
+
+  async undoReplyRevision(id: string): Promise<void> {
+    await this.changeReply(id, (message) => undoRevision(message, Date.now()))
+  }
+
+  private replyDeciding = false
+
+  async decideReplyProposal(id: string, accept: boolean): Promise<void> {
+    if (this.replyDeciding || this.isMidTurn || this.isBusy)
+      throw new Error('Wait for this chat to finish its turn.')
+    const proposal = this.allChatMessages.find((m) => m.id === id)?.replyProposal
+    if (!proposal || proposal.status !== 'pending')
+      throw new Error('This proposal is no longer pending.')
+    this.replyDeciding = true
+    try {
+      if (accept) await CommentService.getInstance().acceptReplyProposal(proposal)
+      await this.changeReply(id, (message) => ({
+        ...message,
+        replyProposal: { ...proposal, status: accept ? 'accepted' : 'rejected' },
+      }))
+    } finally {
+      this.replyDeciding = false
+    }
   }
 
   // ── Save / Load ────────────────────────────────────────────────

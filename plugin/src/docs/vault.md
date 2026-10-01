@@ -304,6 +304,31 @@ A tool result too long to send whole carries `stored`: its key and the whole tex
 sent only the start of it; `read_result` reads the rest by that key, for as long as the chat file
 holds the message — compaction and closing the chat included.
 
+## Reply highlights and revisions
+
+Assistant `msg` records may carry `highlights`: entries with `id`, `quote` (rendered text),
+`start` (UTF-16 offset in that rendered text), and `color` (yellow, green, blue, pink, purple,
+or orange). They are owner annotations, not markdown inserted in `content`. They travel in the
+chat file and survive reopen and file sync. Provider history does not include their colours or
+turn them into instructions or emphasis. A highlight whose exact anchor no longer matches is
+not relocated to another occurrence; its removal remains available in the message actions.
+
+A comment tool-call `msg` may carry `replyProposal`: `id`, `parent` (chat path), `message` (parent
+reply id), `before` (expected full source), `from` and `old` (verified source passage), `text`
+(replacement markdown), `request` (owner message), `author`, `at` (epoch milliseconds), and
+`status` (`pending`, `accepted`, or `rejected`). A pending proposal changes nothing in the parent.
+Only the owner's diff acceptance applies it, with a stale-source check. Tool permission modes
+never bypass that decision.
+
+An accepted parent reply keeps its id and timestamp, replaces `content`, and appends a
+`revisions` entry: `proposal`, `before`, `after`, `author`, `at`, and the previous `highlights`.
+Rendered annotations are retained with the previous version, not guessed onto changed text.
+Undo restores that version and its highlights, marking the revision with `undoneAt`. The oldest
+`before` remains the original. These fields survive log compaction and file sync. Internal `int`
+records remain append-only: when building model history, the plugin substitutes the current
+reply's text, retaining tool and reasoning blocks. If compaction omitted that reply, its current
+wording is supplied as a correction to the summary. Do not edit these records by hand.
+
 ## Comments
 
 A comment chat is a conversation anchored to one place in a note. The anchor is a marker
@@ -360,8 +385,9 @@ A comment is a chat, so its own messages can carry comments too, to any depth: t
 in the comment file's metadata, and the new comment's `anchor.note` is that comment file's path.
 Following `anchor.note` upwards from any comment ends at the note or the ordinary chat where it all
 started. A comment is tied to a message by the message's id, which neither compacting the
-conversation nor editing a message changes — an edit starts a new branch and leaves the old
-message where it was — so an anchor stays put; if its words no longer read the same, its icon sits
+conversation nor editing a user message changes — a user edit starts a new branch and leaves
+the old message where it was. An accepted reply revision changes that reply in place and keeps
+its original in `revisions`; if its words no longer read the same, its icon sits
 dimmed at the end of the message. Deleting a comment deletes every comment under it, at every
 depth, and deleting a chat deletes the whole tree hung on it.
 

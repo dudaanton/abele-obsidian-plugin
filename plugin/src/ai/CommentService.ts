@@ -13,10 +13,11 @@ import { ChatSession } from './ChatSession'
 import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
-import { parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
+import { parseChat, parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
+import { acceptRevision, type ReplyProposal } from './replyAnnotations'
 import { firstQuestion } from './chatText'
 import { baseName, commentLineage, commentName, commentTrail, type TrailStep } from './commentTrail'
-import { type ChatMetadata, type CommentAnchor } from './types'
+import { type ChatMessage, type ChatMetadata, type CommentAnchor } from './types'
 
 /**
  * What became of a comment somebody asked to open as a chat.
@@ -1022,6 +1023,73 @@ export class CommentService implements CommentInfoSource {
   /** True for a path in the comment folder, which is what a comment on a comment hangs from. */
   isCommentPath(path: string): boolean {
     return path === this.commentPath(idOf(path))
+  }
+
+  /** Read through the owner when open; never create a second writer on a parent file. */
+  async readReply(path: string, id: string): Promise<ChatMessage> {
+    const live = this.sessionOnFile(path)
+    if (live) {
+      const message = live.allMessages.value.find((m) => m.id === id)
+      if (message) return message
+    }
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile) || file.extension !== 'abchat')
+      throw new Error('The parent chat is unavailable.')
+    const parsed = parseChat(await app.vault.read(file))
+    const message =
+      parsed.metadata?.type === 'abele-chat' && parsed.messages.find((m) => m.id === id)
+    if (!message) throw new Error('The parent reply is unavailable.')
+    return message
+  }
+
+  /** The selection offset lives in the parent, beside the comment's message id. */
+  async replyCommentStart(path: string, commentId: string): Promise<number> {
+    const live = this.sessionOnFile(path)
+    let comments = live?.messageComments.value
+    if (!comments) {
+      const { app } = GlobalStore.getInstance()
+      const file = app.vault.getAbstractFileByPath(path)
+      if (file instanceof TFile) comments = parseChatMetadata(await app.vault.read(file))?.comments
+    }
+    const start = comments?.find((comment) => comment.id === commentId)?.start
+    if (start === undefined)
+      throw new Error('The selected passage is unavailable. Start a new comment.')
+    return start
+  }
+
+  /** Owner action only. The proposal tool has no path into this method. */
+  async acceptReplyProposal(proposal: ReplyProposal): Promise<void> {
+    const change = (message: ChatMessage): ChatMessage => {
+      // Recovery after a parent write succeeded but recording the child decision failed.
+      // An accepted version stays accepted even after undo; replay must never reapply it.
+      if (message.revisions?.some((revision) => revision.proposal === proposal.id)) return message
+      return acceptRevision(message, proposal, Date.now())
+    }
+    const live = this.sessionOnFile(proposal.parent)
+    if (live) {
+      await live.changeReply(proposal.message, change)
+      return
+    }
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(proposal.parent)
+    if (!(file instanceof TFile) || file.extension !== 'abchat')
+      throw new Error('The parent chat is unavailable.')
+    await app.vault.process(file, (content) => {
+      // A tab opened during the read: it owns this file now. Retrying goes through that owner.
+      if (this.sessionOnFile(proposal.parent))
+        throw new Error('The parent chat was opened. Review the proposal again.')
+      const parsed = parseChat(content)
+      if (parsed.metadata?.type !== 'abele-chat') throw new Error('The parent chat is unavailable.')
+      const message = parsed.messages.find((m) => m.id === proposal.message)
+      if (!message) throw new Error('The parent reply is unavailable.')
+      const after = change(message)
+      return serializeChat({
+        ...parsed,
+        metadata: parsed.metadata,
+        messages: parsed.messages.map((m) => (m.id === message.id ? after : m)),
+      })
+    })
   }
 
   // ── The trail ─────────────────────────────────────────────────

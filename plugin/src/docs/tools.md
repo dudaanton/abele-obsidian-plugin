@@ -24,6 +24,20 @@ accept only HTTP(S) or mail; local note links are unchanged. Book figure preview
 book's own images, table previews preserve XML text, and book frames start without scripting
 until the reader applies its platform policy.
 
+## Reply revision proposals
+
+`propose_reply_revision` is available only in a comment on selected words of a chat message.
+Use it only when the latest user message explicitly asks you to rewrite or clarify that passage,
+not merely to discuss it. Supply `text` (the full replacement markdown for that passage) and
+`request` (the latest user message verbatim). It refuses non-assistant targets and selections
+that cannot be safely mapped back to markdown.
+
+The tool records a proposal, never an edit. The owner opens **Review reply revision**, sees the
+passage diff, and chooses **Accept**, **Reject**, or **Later**. Automatic tool permissions cannot
+accept it. Do not claim the parent was changed after proposing. Never edit a chat with file tools.
+The parent must be idle and unchanged since the proposal; otherwise ask for a new selection and
+proposal. To revise again after acceptance, start a new comment on the revised words.
+
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,
