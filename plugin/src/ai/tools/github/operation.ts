@@ -100,9 +100,12 @@ export async function toolOperation(
       if (shown?.connectionId && connectionMode(access.agent(), shown.connectionId) === 'off') {
         throw new Error('The matching open GitHub tab uses a connection this agent cannot access.')
       }
-      const candidate = resolveConnectionCandidates(target, { openId: shown?.connectionId })[0]
+      const candidate = resolveConnectionCandidates(target, {
+        openId: shown?.connectionId,
+        allowedIds: rows.filter(c=>connectionMode(access.agent(),c.id)!=='off').map(c=>c.id),
+      })[0]
       connection = rows.find((c) => c.id === candidate?.id)
-      if (!candidate) throw new Error('No GitHub connection is configured for this server.')
+      if (!candidate) throw new Error('No permitted GitHub connection is available for this server.')
     } else connection = preferred
   }
   if (connection && target) {

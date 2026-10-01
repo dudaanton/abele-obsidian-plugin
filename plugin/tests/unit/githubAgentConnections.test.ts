@@ -140,6 +140,21 @@ describe('GitHub tool connection contracts', () => {
     })
   })
 
+  it('selects an allowed same-server account before an Off default or owner rule', async () => {
+    const config=AbeleConfig.getInstance()
+    actor.githubConnections.public='off'
+    config.github.connections[0].owners=['sample']
+    config.github.connections.push({id:'allowed',name:'Allowed',server:'',keyId:'allowed-sample-key',owners:[],isDefault:false})
+    Object.assign(actor.githubConnections,{allowed:'auto'})
+    GlobalStore.getInstance().app.secretStorage.setSecret('allowed-sample-key','invented-allowed')
+    request.mockImplementation(async r=>({status:200,headers:{},text:'',arrayBuffer:new ArrayBuffer(0),
+      json:r.url.includes('/comments') ? [] : {number:1,title:'Allowed account issue',state:'open',labels:[],body:'Sample body',user:{login:'ghost'},html_url:'https://github.com/sample/allowed-choice/issues/1',created_at:'2026-01-01'},
+    }))
+    const result=await run('github_read',{item:'https://github.com/sample/allowed-choice/issues/1'})
+    expect(JSON.stringify(result)).toContain('Allowed account issue')
+    expect(request.mock.calls.every(([r])=>r.headers?.Authorization==='Bearer invented-allowed')).toBe(true)
+  })
+
   it('resolves explicit Enterprise before parsing shorthand', async () => {
     actor.githubConnections.enterprise = 'auto'
     await run('github_search', {

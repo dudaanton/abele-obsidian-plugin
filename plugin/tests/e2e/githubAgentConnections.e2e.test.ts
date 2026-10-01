@@ -41,8 +41,18 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
     }
   })
 
+  it('an implicit read selects the permitted account instead of the Off server default', () => {
+    const text=evalAsync<string>(`(async()=>{
+      const tool=window.__abeleTest.createAgentTools({agentId:window.__connectionAgents[1]}).find(t=>t.name==='github_read')
+      return JSON.stringify(await tool.execute('implicit-read',{item:${JSON.stringify(gh.web+'/issues/7')}}))
+    })()`)
+    expect(text).toContain('Loader hangs on an empty list')
+    expect(text).toContain('Sample two')
+  })
+
   it.each(['off','ask'])('an agent-opened tab never fetches people with its %s server-default connection', async mode => {
     const profileQueries=()=>gh.requests().filter(line=>line.startsWith('POST /api/graphql')).length
+    await new Promise(resolve=>setImmediate(resolve))
     const before=profileQueries()
     const shown=evalAsync<boolean>(`(async()=>{
       ${PRELUDE}
