@@ -102,6 +102,21 @@ describe('presentation markdown codec', () => {
     expect(deck.slides[1].title).toBe('Two')
   })
 
+  it('keeps thematic breaks and fences inside list items without swallowing later slide boundaries', () => {
+    for (const list of [
+      '- A sample item\n\n  ---\n\n  More item text',
+      '- ```markdown\n  ---\n  ::left::\n  ```\n\n  After the example',
+      '1. Numbered example\n\n   ~~~~md\n   ---\n   ~~~~',
+      '- Outer\n  - ```md\n    ---\n    ```',
+    ]) {
+      const deck = parseDeck(`# Lists\n\n${list}\n\n---\n# Next slide`)
+      expect(deck.slides, list).toHaveLength(2)
+      expect(content(deck, 0), list).toContain(list)
+      expect(deck.slides[0].regions).toHaveLength(1)
+      expect(deck.slides[1].title).toBe('Next slide')
+    }
+  })
+
   it('keeps empty slides and defaults invalid options safely', () => {
     const deck = parseDeck(
       '---\ntype: presentation\naspect: nonsense\n---\n---\n::slide{layout=missing dim=5 fit=unknown}::\n---'

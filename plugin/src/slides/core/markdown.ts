@@ -1,4 +1,5 @@
 import { load, dump } from 'js-yaml'
+import { splitMarkdown } from '@/github/markdownBlocks'
 import {
   LAYOUTS,
   type Attribute,
@@ -48,38 +49,34 @@ function settings(attributes: Record<string, Attribute>): SlideSettings {
   }
 }
 
-/** Lines where deck syntax is live; code examples and raw HTML code remain ordinary content. */
-function syntaxLines(lines: string[]): boolean[] {
-  let fence = '',
-    length = 0,
-    html = ''
-  return lines.map((line) => {
-    if (html) {
-      if (new RegExp(`</${html}\\s*>`, 'i').test(line)) html = ''
-      return false
-    }
-    const tag = /^ {0,3}<(pre|script|style|textarea)\b/i.exec(line)
-    if (!fence && tag) {
-      if (!new RegExp(`</${tag[1]}\\s*>`, 'i').test(line)) html = tag[1]
-      return false
-    }
-    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
-    if (fence) {
-      if (marker && marker[1][0] === fence && marker[1].length >= length && !marker[2].trim())
-        fence = ''
-      return false
-    }
-    if (marker) {
-      fence = marker[1][0]
-      length = marker[1].length
-      return false
-    }
-    return !/^( {4}|\t|\s*>)/.test(line)
-  })
+/** The shared block scanner is pure Markdown code, with no app or storage API. Prepending a
+ * blank disables its frontmatter heuristic: the deck codec has already handled properties. */
+function markdownBlocks(lines: string[]) {
+  // Region directives are deck block boundaries, so they interrupt a list's lazy paragraph
+  // continuation just as a heading would. Indented directives still remain inside that list.
+  const scan = lines.map((line) =>
+    line.replace(/^( {0,3})::(?:left|right|cell)::$/, '$1# deck-region')
+  )
+  return splitMarkdown('\n' + scan.join('\n')).map((block) => ({
+    ...block,
+    start: block.start - 2,
+    end: block.end - 2,
+  }))
+}
+
+/** Deck markers are only top-level syntax, never a list/quote/code example or HTML body. */
+function syntaxLines(lines: string[], blocks = markdownBlocks(lines)): boolean[] {
+  const live = lines.map(() => true)
+  for (const block of blocks) {
+    if (!['code', 'list-item', 'quote', 'html', 'math', 'footnote'].includes(block.kind)) continue
+    for (let i = block.start; i <= block.end; i++) live[i] = false
+  }
+  return live
 }
 
 function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
-  const live = syntaxLines(lines)
+  const blocks = markdownBlocks(lines)
+  const live = syntaxLines(lines, blocks)
   const first = lines.findIndex((l) => l.trim())
   const attributes = first >= 0 && live[first] ? parseSlideMarker(lines[first]) : null
   const slide: Slide = {
@@ -110,7 +107,7 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
       continue
     }
     const style = /^ {0,3}(`{3,}|~{3,})css\s*$/.exec(line)
-    if (style && !insideCode(lines, i)) {
+    if (style && blocks.some((b) => b.kind === 'code' && b.start === i)) {
       const styles: string[] = []
       const close = new RegExp(`^ {0,3}${style[1][0]}{${style[1].length},}\\s*$`)
       while (i + 1 < lines.length && !close.test(lines[i + 1])) styles.push(lines[++i])
@@ -138,7 +135,9 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
 /** Whether this line starts in a fenced or raw HTML code block, not counting its own opener. */
 function insideCode(lines: string[], index: number): boolean {
   // A sentinel has no deck syntax of its own, so its liveness reports the preceding state.
-  return !syntaxLines([...lines.slice(0, index), 'sentinel'])[index]
+  return markdownBlocks([...lines.slice(0, index), 'sentinel']).some(
+    (b) => ['code', 'html', 'math'].includes(b.kind) && b.start <= index && b.end >= index
+  )
 }
 
 export function parseDeck(source: string): Deck {
