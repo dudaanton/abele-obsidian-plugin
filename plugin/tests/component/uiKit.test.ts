@@ -442,7 +442,9 @@ describe('ConfirmModal', () => {
   const mountConfirm = () =>
     mount(ConfirmModal, {
       props,
-      global: { stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
 
   it('names what is about to be lost', () => {
@@ -475,6 +477,22 @@ describe('ConfirmModal', () => {
 
     expect(view.emitted('confirm')).toHaveLength(1)
     expect(view.emitted('close')).toHaveLength(1)
+  })
+})
+
+describe('button content', () => {
+  it('allows composed content while retaining the kit button and its accessible tooltip', async () => {
+    const view = mount(Button, {
+      props: { text: 'Fallback', tooltip: 'Open sample commit' },
+      slots: {
+        default: '<span class="sample-author">Sample Author</span><span>Sample change</span>',
+      },
+    })
+    expect(view.get('.sample-author').text()).toBe('Sample Author')
+    expect(view.text()).not.toContain('Fallback')
+    expect(view.attributes('aria-label')).toBe('Open sample commit')
+    await view.trigger('click')
+    expect(view.emitted('click')).toHaveLength(1)
   })
 })
 

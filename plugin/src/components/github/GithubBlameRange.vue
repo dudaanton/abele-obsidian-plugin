@@ -1,9 +1,9 @@
 <template>
   <div class="abele-github-blame-range">
-    <button
-      ref="button"
+    <Button
       class="clickable-icon abele-github-blame-range__open"
-      :aria-label="details"
+      :text="splitMessage(commit.message).title"
+      :tooltip="details"
       @click="open"
       @pointerdown="press"
       @pointerup="cancel"
@@ -22,22 +22,22 @@
       <span class="abele-github-blame-range__message">{{
         splitMessage(commit.message).title
       }}</span>
-    </button>
+    </Button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { Modal, setTooltip } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { formatDate, splitMessage } from '@/github/format'
 import type { CommitSummary } from '@/github/api'
 import GithubUser from './GithubUser.vue'
 import Avatar from '../obsidian/Avatar.vue'
+import Button from '../obsidian/Button.vue'
 
 const props = defineProps<{ commit: CommitSummary }>()
 const emit = defineEmits<{ (e: 'open', sha: string): void }>()
-const button = ref<HTMLElement>()
 const details = computed(
   () =>
     `${props.commit.author} · ${formatDate(props.commit.date)}\n${props.commit.sha}\n${props.commit.message}`
@@ -57,11 +57,6 @@ const relativeDate = computed(() => {
   }
   return format.format(0, 'second')
 })
-const tooltip = () => {
-  if (button.value) setTooltip(button.value, details.value)
-}
-onMounted(tooltip)
-watch(details, tooltip)
 let timer: number | undefined
 let held = false
 let start = { x: 0, y: 0 }
@@ -114,7 +109,7 @@ onBeforeUnmount(() => {
 
 <style lang="scss">
 .abele-github-blame {
-  width: 320px;
+  width: 20rem;
   max-width: 40vw;
   font-family: var(--font-interface);
   font-size: var(--font-ui-smaller);
@@ -129,7 +124,7 @@ onBeforeUnmount(() => {
   }
 }
 .abele-github-blame-range {
-  width: 320px;
+  width: 20rem;
   max-width: 40vw;
   height: 1lh;
   overflow: hidden;
@@ -174,7 +169,7 @@ onBeforeUnmount(() => {
 }
 .is-mobile .abele-github-blame,
 .is-mobile .abele-github-blame-range {
-  width: 140px;
+  width: 8.75rem;
   max-width: 36vw;
 }
 .is-mobile .abele-github-blame-range__date {
