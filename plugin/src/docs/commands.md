@@ -19,6 +19,12 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Copy link to selected lines — copies a link to the selected line range in the current note
 - Comment here — opens a comment chat for the selected passage
 
+## Presentations
+
+- Open presentation — view the current `type: presentation` note as a deck
+- Preview presentation beside editor — retain the source editor and open a live deck beside it
+- Play presentation — show on one screen, desktop fullscreen or a full-window mobile overlay
+
 ## Finance and time
 
 - Create new transaction — and *Create new transaction and insert into current note*, which leaves a link behind

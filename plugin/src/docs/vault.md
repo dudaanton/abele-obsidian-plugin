@@ -4,6 +4,16 @@ The shape of every kind of note the plugin owns: which `type` marks it, which pr
 carries, and where new ones are put. Dates are `YYYY-MM-DD` and times are `HH:mm` unless said
 otherwise; a note that breaks that is a note the plugin will read wrongly.
 
+## Presentations
+
+`type: presentation` marks an ordinary Markdown note that opens as a deck. Deck frontmatter
+stores `aspect` (`16:9`, `4:3`, `9:16`) and optional `theme` (a vault CSS wikilink or `default`).
+Standalone `---` lines split slides outside properties and code; `***` is a horizontal rule
+within a slide. A slide may start with `::slide{layout=split bg="[[sample-image.png]]" dim=0.4}::`.
+Region markers are `::left::`, `::right::`, and `::cell::`. Speaker reminders are ordinary
+`> [!notes]` callouts retained in the note but excluded from audience rendering. Fenced `css`
+blocks store deck styling. Nothing is written to a side file. See `slides` for the full codec.
+
 ## Device-local key destinations
 
 Obsidian's vault-scoped local storage holds `abele-key-destinations-v1`: key identifiers and

@@ -84,6 +84,11 @@ bound to the **main** window's document:
 - `createDiv()` — always builds in the main window, detached until appended.
 - `someDoc.win.createDiv()` — builds in *that* document's window.
 
+Presentation core (`plugin/src/slides/core/`) intentionally uses native `Document.createElement`
+in the host element's own document. It has no Obsidian API or extended-DOM dependency, so the
+same model and viewer can be hosted in another app. Only `prefer-create-el` is disabled for that
+core directory in the lint configuration; the Obsidian adapter still uses the app's factories.
+
 Anything that must appear in the window the user is looking at — a suggester popup under a
 field in the settings window, a modal's mount point — uses the second form. Obsidian's own
 types do not declare those methods on `Window`; `src/obsidian-window.d.ts` adds them, with the

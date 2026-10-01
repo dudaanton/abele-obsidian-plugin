@@ -11,6 +11,7 @@ import scripts from './scripts.md?raw'
 import github from './github.md?raw'
 import books from './books.md?raw'
 import drawing from './drawing.md?raw'
+import slides from './slides.md?raw'
 import writing from './writing.md?raw'
 import transfer from './transfer.md?raw'
 import settings from './settings.md?raw'
@@ -67,6 +68,7 @@ const FILES: [id: string, source: string][] = [
   ['github', github],
   ['books', books],
   ['drawing', drawing],
+  ['slides', slides],
   ['history', history],
   ['writing', writing],
   ['linter', linter],

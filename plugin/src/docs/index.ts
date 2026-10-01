@@ -9,6 +9,7 @@ import settings from './settings.md?raw'
 import history from './history.md?raw'
 import analytics from './analytics.md?raw'
 import display from './display.md?raw'
+import slides from './slides.md?raw'
 
 /**
  * The plugin's reference, written for agents rather than for people.
@@ -42,6 +43,7 @@ const FILES: [id: string, source: string][] = [
   ['agent', agent],
   ['tools', tools],
   ['display', display],
+  ['slides', slides],
   ['scripts', scripts],
   ['templates', templates],
   ['commands', commands],
