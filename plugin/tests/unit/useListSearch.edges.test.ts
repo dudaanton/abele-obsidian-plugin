@@ -165,9 +165,8 @@ describe('list search — bounded reads and concurrent changes', () => {
     expect(s.results.value).toEqual([])
   })
 
-  // BUG: a completed read is stamped with the file's current mtime, not the mtime when
-  // reading started. Editing during cachedRead can cache old text as the new version forever.
-  it.fails('rereads a note edited while its earlier text was still being read', async () => {
+  // Text from an in-flight read must retain the read-start mtime so edits invalidate it.
+  it('rereads a note edited while its earlier text was still being read', async () => {
     source.value = [row(0)]
     const old = deferred<string>()
     const read = vi
@@ -185,6 +184,29 @@ describe('list search — bounded reads and concurrent changes', () => {
     await type(s, 'fresh')
     expect(s.results.value.map((r) => r.path)).toEqual([row(0).path])
     expect(read).toHaveBeenCalledTimes(2)
+  })
+
+  it('captures each batch mtime when its read starts, not when the pass starts', async () => {
+    source.value = Array.from({ length: 51 }, (_, i) => row(i))
+    app = useVault(source.value.map((r) => ({ path: r.path })))
+    const firstBatch = deferred<string>()
+    const read = vi
+      .spyOn(app.vault, 'cachedRead')
+      .mockImplementation((file) =>
+        file.path === row(50).path ? Promise.resolve('fresh pears') : firstBatch.promise
+      )
+    const s = search()
+    s.toggle()
+    await nextTick()
+    expect(read).toHaveBeenCalledTimes(50)
+    const file = app.vault.getFileByPath(row(50).path)!
+    await app.vault.modify(file, 'fresh pears')
+    file.stat.mtime++
+    firstBatch.resolve('apples')
+    await flushPromises()
+    await type(s, 'fresh')
+    expect(s.results.value.map((r) => r.path)).toEqual([row(50).path])
+    expect(read).toHaveBeenCalledTimes(51)
   })
 
   it('caches by raw item and mtime, rereads only the changed note and stops the typing timer on disposal', async () => {

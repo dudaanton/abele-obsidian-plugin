@@ -100,15 +100,20 @@ export function useListSearch<T extends object>(
     for (let at = 0; at < stale.length; at += READ_BATCH) {
       const batch = stale.slice(at, at + READ_BATCH)
       const bodies = await Promise.all(
-        batch.map(([, file]) => app.vault.cachedRead(file).catch((): null => null))
+        batch.map(async ([, file]) => {
+          // The file may change while this read is pending; do not label old text as new.
+          const mtime = file.stat.mtime
+          const raw = await app.vault.cachedRead(file).catch((): null => null)
+          return { raw, mtime }
+        })
       )
       // A newer pass has started — the list or the notes changed; its reads replace these.
       if (current !== run) return
-      batch.forEach(([item, file], i) => {
-        const raw = bodies[i]
+      batch.forEach(([item], i) => {
+        const { raw, mtime } = bodies[i]
         if (raw === null || raw === undefined) return
         const text = options.textOf(item, getNoteBody(raw)).toLowerCase()
-        index.set(toRaw(item), { mtime: file.stat.mtime, text })
+        index.set(toRaw(item), { mtime, text })
       })
       revision.value++
     }
