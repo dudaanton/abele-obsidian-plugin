@@ -4,6 +4,8 @@ import { caseKey } from '@abele/sync-protocol'
 import type { LocalStorage } from './ledgerId'
 import { WriteJournal, type JournalEntry } from './writeJournal'
 export { WriteJournal, JOURNAL_KEY, RECOVERED_WRITES_KEY, type JournalEntry } from './writeJournal'
+import type { NativeFs } from './nativeVaultFs'
+export { nativeOf, type NativeFs } from './nativeVaultFs'
 
 /**
  * How the sync replaces a file in the vault without ever leaving half of one behind.
@@ -18,8 +20,9 @@ export { WriteJournal, JOURNAL_KEY, RECOVERED_WRITES_KEY, type JournalEntry } fr
  * (`Destination file already exists!`), so how the name is taken depends on what is underneath:
  *
  * - **Desktop.** The adapter is Node's `fs` under a queue, and holds it as `fsPromises`;
- *   `getFullPath` maps a vault path to the disk's own spelling of it. `rename(2)` over an existing
- *   file replaces it in one step — the file is the old one or the new one at every instant.
+ *   `getFullPath` maps a vault path to the disk's spelling. Final comparison and `rename(2)`
+ *   run inside that same local-save queue. Unfenced native adapters instead preserve a backup
+ *   and install exclusively (or hold if no safe capability exists).
  * - **Anything else (a phone).** Capacitor's filesystem is reachable only through the adapter, so
  *   the file steps aside first: the old one to a backup name, the new one into its place, the
  *   backup removed. Between the two renames the file is at the backup name and nowhere else, so
@@ -48,70 +51,6 @@ export function isAdapterTemp(path: string): boolean {
 /** Whether it is a temp holding new bytes only, which a sweep may remove. */
 export function isDroppableTemp(path: string): boolean {
   return isAdapterTemp(path) && path.endsWith('.tmp') && !inFlight.has(path)
-}
-
-/** Node's `fs.promises`, as Obsidian's desktop adapter holds it. */
-interface NodeFsPromises {
-  rename(from: string, to: string): Promise<void>
-  rmdir(path: string): Promise<void>
-}
-
-/** The desktop adapter's own hands on the disk; null on a phone. */
-export interface NativeFs {
-  /** `rename(2)`: replaces a file standing at `to`. */
-  rename(from: string, to: string): Promise<void>
-  /** `rmdir(2)`: removes an empty folder and refuses (ENOTEMPTY) one holding anything. */
-  rmdirEmpty(folder: string): Promise<void>
-}
-
-/**
- * Obsidian desktop's `fs.promises` and `getFullPath`, when this adapter has them — the
- * `FileSystemAdapter`. Neither the phone's adapter nor a test's fake does, and both are then
- * driven through the adapter's public methods alone.
- */
-export function nativeOf(adapter: DataAdapter): NativeFs | null {
-  const raw = adapter as unknown as {
-    fsPromises?: Partial<NodeFsPromises>
-    getFullPath?: (path: string) => string
-    reconcileInternalFile?: (path: string) => Promise<void>
-  }
-  const fsp = raw.fsPromises
-  const full = raw.getFullPath
-  if (
-    typeof full !== 'function' ||
-    fsp === undefined ||
-    typeof fsp.rename !== 'function' ||
-    typeof fsp.rmdir !== 'function'
-  ) {
-    return null
-  }
-  const rename = fsp.rename.bind(fsp)
-  const rmdir = fsp.rmdir.bind(fsp)
-  const at = (path: string): string => full.call(adapter, path)
-  /**
-   * The adapter's picture of the disk brought up to date at once, as its own methods do after
-   * every write; the file watcher would get there too, a moment later.
-   */
-  const reconcile = async (...paths: string[]): Promise<void> => {
-    if (typeof raw.reconcileInternalFile !== 'function') return
-    for (const path of paths) {
-      try {
-        await raw.reconcileInternalFile.call(adapter, path)
-      } catch (error) {
-        console.debug(`[abele-sync] Obsidian did not look at ${path} again`, error)
-      }
-    }
-  }
-  return {
-    async rename(from, to) {
-      await rename(at(from), at(to))
-      await reconcile(from, to)
-    },
-    async rmdirEmpty(folder) {
-      await rmdir(at(folder))
-      await reconcile(folder)
-    },
-  }
 }
 
 /** What `VaultWriter` is handed by the file system that owns it. */
@@ -159,8 +98,8 @@ export class VaultWriter {
       if (!exists) {
         await this.takeFreeName(temp, path)
         this.deps.installed?.(path)
-      } else if (this.deps.native !== null) {
-        await this.replaceNative(this.deps.native, temp, await this.held(path))
+      } else if (this.deps.native?.replaceFenced) {
+        await this.deps.native.replaceFenced(temp, await this.held(path), before)
         this.deps.installed?.(path)
       } else {
         const held = await this.held(path)
@@ -173,7 +112,13 @@ export class VaultWriter {
         }
         this.deps.journal.replace(entry, swapping)
         entry = swapping
-        if (!(await this.replaceBySwap(temp, held, backup, before))) {
+        if (this.deps.native !== null && !this.deps.native.installExclusive) {
+          throw new EngineError(
+            'io',
+            'native replacement has no write fence or exclusive-install capability'
+          )
+        }
+        if (!(await this.replaceBySwap(temp, held, backup, before, this.deps.native))) {
           // The old file could not be put back under its name: the entry stays for the next
           // listing, which tries again.
           await this.dropQuietly(temp)
@@ -184,9 +129,16 @@ export class VaultWriter {
         const installed = { ...entry, installed: true }
         this.deps.journal.replace(entry, installed)
         entry = installed
-        await this.dropQuietly(backup)
-        // A backup that would not be removed stays in the journal, for the next listing.
-        if (await this.there(backup)) return
+        if (this.deps.native !== null) {
+          // An unfenced adapter may have an open writer to the moved inode. Keep that copy
+          // recoverable instead of claiming the original byte check excluded every writer.
+          this.deps.journal.preserve(entry)
+          await this.dropQuietly(temp)
+        } else {
+          await this.dropQuietly(backup)
+          // A backup that would not be removed stays in the journal, for the next listing.
+          if (await this.there(backup)) return
+        }
       }
     } catch (error) {
       if (inFlight.has(temp)) {
@@ -215,17 +167,8 @@ export class VaultWriter {
     }
   }
 
-  /** The desktop: one `rename(2)` over the old file. */
-  private async replaceNative(native: NativeFs, temp: string, path: string): Promise<void> {
-    try {
-      await native.rename(temp, path)
-    } catch (cause) {
-      throw new EngineError('io', `cannot write ${path}`, cause)
-    }
-  }
-
   /**
-   * A phone: the old file to its backup name, the new one into its place, the backup removed —
+   * Adapter swap: the old file to its backup name, the new one into its place —
    * written down in the journal first, so a crash between them is put back (`recover`). False
    * when the new file would not take the name and the old one would not go back under it either:
    * it is left at the backup name, for the next listing to put back.
@@ -234,21 +177,25 @@ export class VaultWriter {
     temp: string,
     path: string,
     backup: string,
-    before: ArrayBuffer | null
+    before: ArrayBuffer | null,
+    native: NativeFs | null
   ): Promise<boolean> {
     inFlight.add(backup)
     try {
       try {
-        await this.adapter.rename(path, backup)
+        if (native) await native.rename(path, backup)
+        else await this.adapter.rename(path, backup)
       } catch (cause) {
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
       try {
         if (before !== null) await this.unchanged(backup, before)
-        await this.adapter.rename(temp, path)
+        if (native?.installExclusive) await native.installExclusive(temp, path)
+        else await this.adapter.rename(temp, path)
       } catch (cause) {
         try {
-          await this.adapter.rename(backup, path)
+          if (native?.installExclusive) await native.installExclusive(backup, path)
+          else await this.adapter.rename(backup, path)
         } catch {
           console.debug(`[abele-sync] ${path} is left at ${backup} until the next listing`)
           return false
@@ -338,6 +285,9 @@ export class VaultWriter {
    */
   async recover(): Promise<void> {
     for (const entry of this.deps.journal.entries()) {
+      if (entry.backup !== undefined && inFlight.has(entry.backup)) {
+        throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
+      }
       if (
         (entry.temp !== undefined && inFlight.has(entry.temp)) ||
         (entry.backup !== undefined && inFlight.has(entry.backup))

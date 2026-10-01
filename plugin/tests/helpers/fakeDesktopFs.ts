@@ -17,8 +17,19 @@ export interface DesktopCalls {
   rmdirs: string[]
 }
 
-export function withDesktopFs(app: FakeApp): DesktopCalls {
+export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}): DesktopCalls {
   const adapter = app.vault.adapter
+  const write = adapter.writeBinary.bind(adapter)
+  let tail: Promise<unknown> = Promise.resolve()
+  const queue = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = tail.then(operation)
+    tail = result.catch(() => {})
+    return result
+  }
+  if (options.fenced !== false) {
+    Object.assign(adapter, { queue })
+    adapter.writeBinary = (path, data, opts) => queue(() => write(path, data, opts))
+  }
   const calls: DesktopCalls = { renames: [], rmdirs: [] }
   const vaultPath = (full: string): string => {
     if (!full.startsWith(ROOT)) throw new Error(`ENOENT: outside the vault: ${full}`)
@@ -27,6 +38,16 @@ export function withDesktopFs(app: FakeApp): DesktopCalls {
   Object.assign(adapter, {
     getFullPath: (path: string): string => ROOT + path,
     fsPromises: {
+      async readFile(path: string): Promise<Uint8Array> {
+        return new Uint8Array(await adapter.readBinary(vaultPath(path)))
+      },
+      async link(fullFrom: string, fullTo: string): Promise<void> {
+        const from = vaultPath(fullFrom),
+          to = vaultPath(fullTo)
+        if (await adapter.exists(to))
+          throw Object.assign(new Error(`EEXIST: ${to}`), { code: 'EEXIST' })
+        await write(to, await adapter.readBinary(from))
+      },
       async rename(fullFrom: string, fullTo: string): Promise<void> {
         const from = vaultPath(fullFrom)
         const to = vaultPath(fullTo)
@@ -38,7 +59,7 @@ export function withDesktopFs(app: FakeApp): DesktopCalls {
           const bytes = await adapter.readBinary(from)
           const at = await adapter.stat(from)
           await adapter.remove(from)
-          await adapter.writeBinary(to, bytes, { mtime: at?.mtime ?? 0, ctime: at?.ctime ?? 0 })
+          await write(to, bytes, { mtime: at?.mtime ?? 0, ctime: at?.ctime ?? 0 })
           return
         }
         await adapter.rename(from, to)

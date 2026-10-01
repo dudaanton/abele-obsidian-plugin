@@ -144,12 +144,10 @@ for (const platform of ['phone', 'desktop'] as const) {
 }
 
 describe('ObsidianFileSystem writes on the desktop', () => {
-  // BUG: native rename has no compare-and-swap. The final byte check closes the long temp-write
-  // window, but an independent write after that check and before rename still needs a writer
-  // fence or an inode-preserving recovery copy. Keep this guarantee visible until it holds.
-  it.fails('preserves an independent edit made at the native rename boundary', async () => {
+  it('preserves an independent edit made at the native rename boundary', async () => {
     const app = buildFakeVault(VAULT)
-    withDesktopFs(app)
+    // No cooperative adapter queue: preserve the independently written source at the native boundary.
+    withDesktopFs(app, { fenced: false })
     const raw = app.vault.adapter as unknown as {
       fsPromises: { rename(from: string, to: string): Promise<void> }
     }
@@ -162,9 +160,93 @@ describe('ObsidianFileSystem writes on the desktop', () => {
       )
       await rename(from, to)
     }
-    const fs = new ObsidianFileSystem(app as unknown as App)
-    await fs.writeAtomic('Note.md', text('remote'), 9000).catch(() => undefined)
+    const written: string[] = []
+    const fs = new ObsidianFileSystem(app as unknown as App, {
+      onEngineWrite: (path) => written.push(path),
+    })
+    expect(await codeOf(fs.writeAtomic('Note.md', text('remote'), 9000))).toBe('conflict')
     expect(read(await fs.read('Note.md'))).toBe('last-instant local edit')
+    expect(written).toEqual([])
+  })
+
+  it('serializes a local save queued at replacement rather than dropping its bytes', async () => {
+    const app = buildFakeVault(VAULT)
+    withDesktopFs(app)
+    const raw = app.vault.adapter as unknown as {
+      fsPromises: { rename(from: string, to: string): Promise<void> }
+    }
+    const rename = raw.fsPromises.rename.bind(raw.fsPromises)
+    let save: Promise<void> | null = null
+    raw.fsPromises.rename = async (from, to) => {
+      save = app.vault.adapter.writeBinary(
+        'Note.md',
+        text('queued local edit').buffer as ArrayBuffer
+      )
+      await rename(from, to)
+    }
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    await fs.writeAtomic('Note.md', text('remote'), 9000)
+    await save
+    expect(read(await fs.read('Note.md'))).toBe('queued local edit')
+  })
+
+  it('never overwrites a local recreation at an unfenced exclusive-install boundary', async () => {
+    const app = buildFakeVault(VAULT)
+    withDesktopFs(app, { fenced: false })
+    const raw = app.vault.adapter as unknown as {
+      fsPromises: { link(from: string, to: string): Promise<void> }
+    }
+    const link = raw.fsPromises.link.bind(raw.fsPromises)
+    let once = true
+    raw.fsPromises.link = async (from, to) => {
+      if (once) {
+        once = false
+        await app.vault.adapter.writeBinary(
+          'Note.md',
+          text('recreated locally').buffer as ArrayBuffer
+        )
+      }
+      await link(from, to)
+    }
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    expect(await codeOf(fs.writeAtomic('Note.md', text('remote'), 9000))).toBe('io')
+    expect(read(await fs.read('Note.md'))).toBe('recreated locally')
+    await listed(fs)
+    const kept = app.loadLocalStorage('abele-sync-recovered-writes') as { backup: string }[]
+    expect(kept).toHaveLength(1)
+    expect(read(await app.vault.adapter.readBinary(kept[0]!.backup))).toBe('the whole old note')
+  })
+
+  it('does not let another scanner interpret a live unfenced swap gap as deletion', async () => {
+    const app = buildFakeVault(VAULT)
+    withDesktopFs(app, { fenced: false })
+    const raw = app.vault.adapter as unknown as {
+      fsPromises: { link(from: string, to: string): Promise<void> }
+    }
+    const link = raw.fsPromises.link.bind(raw.fsPromises)
+    let entered!: () => void, release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const ready = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    raw.fsPromises.link = async (from, to) => {
+      entered()
+      await ready
+      await link(from, to)
+    }
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    const write = fs.writeAtomic('Note.md', text('remote'), 9000)
+    await waiting
+    try {
+      expect(await app.vault.adapter.exists('Note.md')).toBe(false)
+      expect(await codeOf(listed(new ObsidianFileSystem(app as unknown as App)))).toBe('io')
+    } finally {
+      release()
+      await write
+    }
+    expect(read(await fs.read('Note.md'))).toBe('remote')
   })
 
   it('replaces the file with one rename over it', async () => {

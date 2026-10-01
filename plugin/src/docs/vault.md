@@ -1173,7 +1173,13 @@ The device-local `abele-sync-recovered-writes` record maps each preserved backup
 target and intended replacement hash. It is persisted before the active write intent completes,
 so scanning resumes without treating the backup as a new uploadable file. A stale installed flag
 never authorizes discarding it. A later edit, reversion or deletion of the target does not undo
-the preservation decision. Keep these backup bytes/locators until the person has reviewed and
+the preservation decision. On desktop, the final comparison and replacement use the same
+adapter write queue as ordinary local saves: earlier edits hold replacement, later saves run
+after it. A native adapter without that queue uses a journalled backup and atomic exclusive
+link installation; it refuses to overwrite a recreated target and keeps the old inode's bytes
+recoverable. Adapters with neither safe capability hold replacement. This is not an OS-wide
+compare-and-swap guarantee against unrelated processes bypassing the adapter queue.
+Keep these backup bytes/locators until the person has reviewed and
 copied out what is needed; recovery never overwrites the edited target automatically.
 
 Several records are kept in Obsidian's local storage for this vault, which no file carries: under

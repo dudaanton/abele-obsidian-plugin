@@ -86,6 +86,7 @@ import { newDrawing, openImageInk } from '@/drawing/files'
 import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
 import { desktopTransport } from '@/sync/desktopTransport'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { showScriptApproval, scriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
@@ -180,6 +181,7 @@ interface AbeleTestApi {
   /** Production transport selection, for native credential/redirect probes. */
   syncTransport: typeof transportOf
   desktopTransport: typeof desktopTransport
+  ObsidianFileSystem: typeof ObsidianFileSystem
   scriptTrust: {
     activate: typeof activateScriptProvenance
     load: typeof scriptForExecution
@@ -735,6 +737,7 @@ export function exposeTestApi(plugin: Plugin): void {
     SyncService,
     syncTransport: transportOf,
     desktopTransport,
+    ObsidianFileSystem,
     scriptTrust: {
       activate: activateScriptProvenance,
       load: scriptForExecution,
