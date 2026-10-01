@@ -184,7 +184,7 @@ describe('Log relatedText and content', () => {
 
   // BUG: traversal iterates truthy groups without checking Array.isArray. A YAML mapping
   // or number on any related note makes the entire log body fail to load.
-  it.fails.each([42, { project: 'Orchard' }])(
+  it.each([42, { project: 'Orchard' }])(
     'ignores malformed groups %j instead of throwing',
     async (groups) => {
       app = useVault([

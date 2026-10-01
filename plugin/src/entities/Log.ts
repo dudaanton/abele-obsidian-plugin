@@ -62,7 +62,7 @@ export class Log {
 
     const groups = frontmatter?.groups
 
-    for (const group of groups || []) {
+    for (const group of Array.isArray(groups) ? groups : []) {
       if (!isWikilink(group)) continue
 
       const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), '')
