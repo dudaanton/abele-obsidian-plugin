@@ -287,7 +287,7 @@ describe('TimeEntryList metadata batches', () => {
 
   // BUG: changed only adds matching entries, never removes a note whose type was changed.
   // Converting a timer into a regular note leaves it in the timer list until restart.
-  it.fails('removes an entry when its type ceases to be time-entry', () => {
+  it('removes an entry when its type ceases to be time-entry', () => {
     list = new TimeEntryList()
     resolved()
     app.setFrontmatter(PATH, { type: 'note' })

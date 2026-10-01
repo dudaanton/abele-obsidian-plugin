@@ -103,6 +103,8 @@ export class TimeEntryList {
         this.relationsCallbacksQueue.push(() => {
           if (this.isEntryPath(file.path)) {
             this.addEntry(file.path)
+          } else {
+            this.removeEntry(file.path)
           }
         })
       })
