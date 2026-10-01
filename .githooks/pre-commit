@@ -35,7 +35,7 @@ if [ ! -d node_modules ]; then
   exit 0
 fi
 
-echo "pre-commit: running unit and integration tests…"
+echo "pre-commit: running the tests related to the staged files…"
 # Guards above must see the committing index. Tests below must not inherit the hook's
 # repository context: a fixture's cwd is otherwise overridden by GIT_DIR/INDEX_FILE.
 # Strip every GIT_* key, including configuration overrides and future Git variables.
@@ -43,5 +43,15 @@ echo "pre-commit: running unit and integration tests…"
   for name in $(env | awk -F= '/^GIT_[^=]*=/{print $1}'); do
     unset "$name"
   done
-  npm test --silent
+  # Only the tests related to what is staged: agents commit in small steps, several at once, and a
+  # full run on every commit took most of the machine. The landing check, the release and CI run
+  # the whole suite. A change to the test harness, configuration or dependencies runs everything.
+  staged=$(git -C "$repo_root" diff --cached --name-only --diff-filter=ACMR -- plugin | sed 's#^plugin/##')
+  if [ -z "$staged" ]; then exit 0; fi
+  if echo "$staged" | grep -qE '^(package(-lock)?\.json|vitest[^/]*|tsconfig[^/]*|vite\.config[^/]*|tests/(helpers|mocks|setup)[^ ]*)'; then
+    npm test --silent
+  else
+    # shellcheck disable=SC2086
+    npx vitest related --run --passWithNoTests --silent $staged
+  fi
 )
