@@ -6,7 +6,7 @@
 
     <template v-if="enabled">
       <Setting name="Key destinations" desc="Review addresses changed outside this device before sending keys there.">
-        <Button text="Review" @click="reviewKeyDestinations" />
+        <Button text="Review" tooltip="Review and confirm where this device sends keys" @click="reviewKeyDestinations" />
       </Setting>
       <Section title="Providers">
         <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">
@@ -474,7 +474,7 @@
                 <div>
                   <div v-for="origin in secret.allowedOrigins || []" :key="origin">
                     <span>{{ origin }}</span>
-                    <Button text="Remove" @click="removeSecretOrigin(sIdx, origin)" />
+                    <Button text="Remove" tooltip="Remove this address from the key's allowed list" @click="removeSecretOrigin(sIdx, origin)" />
                   </div>
                   <span v-if="!secret.allowedOrigins?.length">None yet</span>
                 </div>

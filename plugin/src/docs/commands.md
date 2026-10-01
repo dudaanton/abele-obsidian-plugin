@@ -53,6 +53,8 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Open quick menu — opens the configured quick actions without pressing the floating button
 - Show script runs · Show script API reference
 - Review scripts waiting for confirmation — reviews scripts awaiting this device's approval
+- Review key destinations — confirms new service addresses on this device and manages explicit
+  home-network HTTP exceptions. Keys stay held until the recipient is approved here
 - Open GitHub link or item — the GitHub link under the cursor opens straight away; otherwise a
   picker takes a pasted link (github.com or the configured server), or `#123`, `owner/repo#123`,
   a commit SHA, a branch, `owner/repo`, or words of a title, and offers what GitHub has for it

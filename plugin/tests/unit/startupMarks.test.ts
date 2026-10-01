@@ -42,6 +42,8 @@ describe('startup mark boundaries', () => {
         },
         createPluginSecrets: () => ({}),
         setSecrets: noop,
+        initializeDestinations: noop,
+        setRequestGuard: noop,
         setKeyboardDiagnostics: noop,
         process: { env: { NODE_ENV: 'production' } },
         AbeleSettingTab: class {},
