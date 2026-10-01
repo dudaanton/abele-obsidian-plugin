@@ -24,6 +24,7 @@ describe('credential redirects', () => {
       headers: {
         Authorization: 'Bearer sample-key',
         'X-Api-Key': 'sample-key',
+        'X-Subscription-Token': 'sample-search-key',
         Accept: 'application/json',
       },
     })

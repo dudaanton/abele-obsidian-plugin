@@ -175,6 +175,8 @@ describe('calling one', () => {
       keyId: 'abele-mcp-srv1',
       headers: { 'X-Extra': '${abele_key:extra}' },
     })
+    // A stored credential is sent only to a configured recipient.
+    AbeleConfig.getInstance().ai.mcpServers = [configured]
     configured.tools = await McpService.getInstance().fetchTools(configured)
     AbeleConfig.getInstance().ai = {
       ...AbeleConfig.getInstance().ai,

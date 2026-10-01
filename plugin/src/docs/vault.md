@@ -4,6 +4,13 @@ The shape of every kind of note the plugin owns: which `type` marks it, which pr
 carries, and where new ones are put. Dates are `YYYY-MM-DD` and times are `HH:mm` unless said
 otherwise; a note that breaks that is a note the plugin will read wrongly.
 
+## Device-local key destinations
+
+Obsidian's vault-scoped local storage holds `abele-key-destinations-v1`: key identifiers and
+approved HTTP(S) origins, never key values. It is not exported or synced. Existing service
+origins are recorded once on upgrade; a changed origin arriving elsewhere needs confirmation
+on this device. Deleting or changing ordinary notes does not approve a destination.
+
 ## Imported images
 
 Images imported through Abele's chat, gallery, file importer and media downloads are stored

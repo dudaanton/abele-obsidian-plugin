@@ -1,5 +1,12 @@
 # Settings
 
+Service keys are bound to configured origins. An origin introduced by sync, import or
+`write_settings` is held until the person runs **Review key destinations** on this device.
+Saving an unrelated setting does not approve it. Editing the actual destination in its local
+settings screen does. Initial upgrade records existing destinations once; later approvals are
+device-local and never travel with settings. GitHub's connection transport is separate.
+
+
 What the plugin's own settings are and what each group of them decides, for `read_settings` and
 `write_settings`. Paths are dotted: `tasksFolder`, `ai.chatFolder`, `ai.agents.0.name`. One
 setting per write, and the new value must be of the same type as the old one — read it first.

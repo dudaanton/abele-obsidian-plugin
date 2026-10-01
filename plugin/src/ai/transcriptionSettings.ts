@@ -5,7 +5,7 @@
  * image generation can share it: a person with an OpenRouter account should not have to paste
  * the same key twice.
  */
-import { secrets } from '@/secrets/SecretStore'
+import { keyFor } from '@/secrets/destinations'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_TRANSCRIPTION, type TranscribeOptions } from './transcription'
 import type { VoiceSettings } from './types'
@@ -32,7 +32,7 @@ export function transcriptionOptions(): TranscribeOptions {
   const settings = voiceSettings()
 
   return {
-    apiKey: secrets().get(voiceKeyId(settings)) || '',
+    apiKey: keyFor(voiceKeyId(settings), settings.endpoint || DEFAULT_TRANSCRIPTION.endpoint, AbeleConfig.getInstance()),
     modelId: settings.modelId || DEFAULT_TRANSCRIPTION.modelId,
     endpoint: settings.endpoint || DEFAULT_TRANSCRIPTION.endpoint,
     language: settings.language || undefined,

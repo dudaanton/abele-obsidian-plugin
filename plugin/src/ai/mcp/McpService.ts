@@ -2,7 +2,8 @@
  * The plugin's connections to MCP servers: one client per server, kept while its address and
  * credentials stay the same, so a legacy server's session is reused from call to call.
  */
-import { secrets } from '@/secrets/SecretStore'
+import { keyFor } from '@/secrets/destinations'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { substituteSecrets } from '@/ai/tools/secretUtils'
 import { McpClient, type McpRequest } from './McpClient'
 import type { McpCallResult, McpServer, McpToolSnapshot } from './types'
@@ -30,7 +31,7 @@ export class McpService {
     for (const [name, value] of Object.entries(server.headers ?? {})) {
       if (name.trim()) headers[name.trim()] = substituteSecrets(value)
     }
-    const bearer = token ?? (server.keyId ? secrets().get(server.keyId) : '')
+    const bearer = token ?? (server.keyId ? keyFor(server.keyId, server.url, AbeleConfig.getInstance()) : '')
     if (bearer) headers.Authorization = `Bearer ${bearer}`
     return headers
   }

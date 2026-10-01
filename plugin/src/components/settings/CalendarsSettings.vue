@@ -214,6 +214,7 @@ import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import SecretField from './SecretField.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
+import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 import { KIT_COLORS, KIT_COLOR_NAMES, type KitColor } from '@/constants/colors'
 import {
   DEFAULT_REFRESH_MINUTES,
@@ -260,7 +261,9 @@ const sourceOptions = [
 ]
 
 const save = async () => {
+  const before = keyDestinations(config)
   config.calendars = calendarSettingsFrom(JSON.parse(JSON.stringify(settings)))
+  acceptIntroducedDestinations(before, keyDestinations(config))
   await config.saveSettings()
 }
 const saveLater = debounce((): void => void save(), 600, true)

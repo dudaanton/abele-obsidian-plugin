@@ -163,6 +163,8 @@ export interface ModelConfig {
   name: string
   baseUrl: string
   apiKey: string
+  /** A stored key is held until its destination is approved on this device. */
+  keyError?: string
   contextWindow: number
   maxTokens: number
   supportsReasoning: boolean

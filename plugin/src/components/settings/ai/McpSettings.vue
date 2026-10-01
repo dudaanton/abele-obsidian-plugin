@@ -75,6 +75,7 @@ import { McpService } from '@/ai/mcp/McpService'
 import { mcpKeyId, renameServerTools } from '@/ai/mcp/settings'
 import { createMcpServer, type McpServer } from '@/ai/mcp/types'
 import { secrets } from '@/secrets/SecretStore'
+import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 
 const config = AbeleConfig.getInstance()
 
@@ -94,7 +95,9 @@ function addServer(): void {
 
 /** Written into the settings whole: this tab is the only one that owns the list. */
 function persist(): void {
+  const before = keyDestinations(config)
   config.ai = { ...config.ai, mcpServers: JSON.parse(JSON.stringify(servers.value)) }
+  acceptIntroducedDestinations(before, keyDestinations(config))
   // A changed address or token must not be answered by a connection made with the old one.
   McpService.getInstance().reset()
   void config.saveSettings()

@@ -1,4 +1,4 @@
-import { secrets } from '@/secrets/SecretStore'
+import { keyFor } from '@/secrets/destinations'
 import { request as requestUrl } from '@/helpers/http'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IMAGE_API_DEFAULTS, ImageProvider, ImageModelConfig2, resolveImageModel } from '../types'
@@ -37,7 +37,7 @@ async function getApiKey(provider: ImageProvider): Promise<string> {
   if (!provider.apiKeyId)
     throw new Error(`API key not configured for image provider "${provider.name}"`)
   // `getSecret` reads from the OS keychain synchronously; there is nothing to await.
-  const key = secrets().get(provider.apiKeyId)
+  const key = keyFor(provider.apiKeyId, getEndpoint(provider), AbeleConfig.getInstance())
   if (!key) throw new Error(`API key not found in keychain for image provider "${provider.name}"`)
   return key
 }

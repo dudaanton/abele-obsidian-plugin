@@ -98,6 +98,7 @@ import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { debounce } from 'obsidian'
+import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 
 const transactionPathTemplate = ref(AbeleConfig.getInstance().transactionPathTemplate)
 const transactionTemplatePath = ref(AbeleConfig.getInstance().transactionTemplatePath)
@@ -117,6 +118,7 @@ const fireflyToken = computed(() => {
 
 const saveSettings = debounce(async () => {
   const config = AbeleConfig.getInstance()
+  const before = keyDestinations(config)
   config.transactionPathTemplate = transactionPathTemplate.value.trim()
   config.transactionTemplatePath = transactionTemplatePath.value.trim()
   config.accountsFolder = accountsFolder.value.endsWith('/')
@@ -129,6 +131,7 @@ const saveSettings = debounce(async () => {
   config.pinnedCurrencies = pinnedCurrencies.value.trim()
   config.fireflyBaseUrl = fireflyBaseUrl.value.trim().replace(/\/$/, '')
 
+  acceptIntroducedDestinations(before, keyDestinations(config))
   await config.saveSettings()
 }, 500)
 

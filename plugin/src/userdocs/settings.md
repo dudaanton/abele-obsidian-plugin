@@ -113,6 +113,12 @@ notes where you left them (see [Where you left off](writing#where-you-left-off))
 coordinates property and map style for maps, and keyboard diagnostics, a troubleshooting panel
 for the on-screen keyboard.
 
+Service keys now stay with their configured address. If an address changes by sync, import,
+or an agent, the key is held on this device. Run **Abele: Review key destinations** from the
+command palette, or use **AI → General → Key destinations → Review**, to allow each address.
+Changing an address yourself in its settings screen records that decision locally. Other
+devices still ask once. Existing addresses are recorded automatically on the first upgrade.
+
 On desktop, a service redirect to another origin no longer receives the request's
 Authorization, API-key or cookie headers. Requests with a saved key in the redirected URL or
 body stop instead. Mobile's native request transport does not expose redirect control, so

@@ -56,13 +56,17 @@ export async function readTextLimited(response: Response, max: number): Promise<
   }
 }
 
+let requestGuard: ((request: RequestUrlParam) => void) | undefined
+export function setRequestGuard(guard: typeof requestGuard): void { requestGuard = guard }
+export function checkRequest(request: RequestUrlParam): void { requestGuard?.(request) }
+
 let transportOverride: RequestTransport | undefined
 export function setRequestTransport(transport: RequestTransport | undefined): void {
   transportOverride = transport
 }
 const redirects = new Set([301, 302, 303, 307, 308])
 const credentialHeader =
-  /^(authorization|proxy-authorization|cookie|x-api-key|api-key|x-auth-token)$/i
+  /^(authorization|proxy-authorization|cookie|x-api-key|api-key|x-auth-token|x-subscription-token)$/i
 export function headerValue(headers: Record<string, string>, name: string): string | undefined {
   return Object.entries(headers ?? {}).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]
 }
@@ -72,6 +76,7 @@ export function headerValue(headers: Record<string, string>, name: string): stri
  * Mobile: Obsidian's native transport does not expose redirect control; see user docs.
  */
 export async function request(options: NetworkRequest): Promise<RequestUrlResponse> {
+  checkRequest(options)
   const controller = new AbortController()
   const ms =
     Number.isFinite(options.timeoutMs) && options.timeoutMs! > 0

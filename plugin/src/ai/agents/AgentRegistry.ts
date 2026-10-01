@@ -1,4 +1,4 @@
-import { secrets } from '@/secrets/SecretStore'
+import { providerKey } from '@/secrets/destinations'
 import { reactive, ref, isReactive } from 'vue'
 import { TFile } from 'obsidian'
 import dayjs from 'dayjs'
@@ -186,7 +186,7 @@ export class AgentRegistry {
       id: found.model.id,
       name: found.model.name,
       baseUrl: found.provider.baseUrl,
-      apiKey: secrets().get(found.provider.apiKeyId) || '',
+      ...providerKey(found.provider.apiKeyId, found.provider.baseUrl, AbeleConfig.getInstance()),
       contextWindow: found.model.contextWindow,
       maxTokens: found.model.maxTokens,
       supportsReasoning: found.model.supportsReasoning,

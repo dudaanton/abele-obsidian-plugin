@@ -124,6 +124,7 @@ import Input from './obsidian/Input.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import { ref } from 'vue'
 import { request as requestUrl } from '@/helpers/http'
+import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   migrateFromFirefly,
@@ -174,8 +175,10 @@ const startMigration = async () => {
   verificationResults.value = []
 
   // Save settings for future use
+  const before = keyDestinations(config)
   config.fireflyBaseUrl = baseUrl.value.trim().replace(/\/$/, '')
   setFireflyToken(token.value)
+  acceptIntroducedDestinations(before, keyDestinations(config))
   await config.saveSettings()
 
   const migrationConfig: MigrationConfig = {

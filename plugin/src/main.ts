@@ -115,6 +115,9 @@ import { registerNotePlaces } from './notePlaces/register'
 import { registerGithub } from '@/github/register'
 import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
+import { initializeDestinations, checkRequestDestinations } from '@/secrets/destinations'
+import { setRequestGuard } from '@/helpers/http'
+import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { markLoad } from '@/helpers/loadMarks'
 import { installUntrustedGuard, uninstallUntrustedGuard } from '@/markdown/renderUntrusted'
 import { beginStartup, startupStep, startupStepAsync } from '@/helpers/startupSteps'
@@ -212,6 +215,8 @@ export default class AbelePlugin extends Plugin {
       )
       // After the store: a token moved out of the settings lands in it when it is open here.
       await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
+      initializeDestinations(AbeleConfig.getInstance())
+      setRequestGuard((request) => checkRequestDestinations(request, AbeleConfig.getInstance()))
 
       // Apply body classes from settings
       if (AbeleConfig.getInstance().fullWidthSidebars) {
@@ -670,6 +675,7 @@ export default class AbelePlugin extends Plugin {
 
   /** The commands and ribbon icons that are there whatever the settings. */
   private registerCommands() {
+    this.addCommand({ id: 'review-key-destinations', name: 'Review key destinations', callback: reviewKeyDestinations })
     this.addCommand({
       id: 'create-task',
       name: 'Create new task',
@@ -1355,6 +1361,7 @@ export default class AbelePlugin extends Plugin {
 
   onunload() {
     uninstallUntrustedGuard()
+    setRequestGuard(undefined)
     setSecrets(null)
     document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
     setKeyboardDiagnostics(false)

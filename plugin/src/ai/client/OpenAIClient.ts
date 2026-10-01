@@ -1,4 +1,4 @@
-import { request as requestUrl, withDeadline, readTextLimited } from '@/helpers/http'
+import { request as requestUrl, withDeadline, readTextLimited, checkRequest } from '@/helpers/http'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import type {
   AssistantMessage,
@@ -153,9 +153,11 @@ export class OpenAIClient {
     try {
       // Preparation and connection failures are turn outcomes too: throwing past the loop
       // would discard the tool calls and results it has already accumulated this run.
+      if (model.keyError) throw new Error(model.keyError)
       const resolved = await OpenAIClient.resolveVaultImages(messages)
       const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
       options.signal?.throwIfAborted()
+      checkRequest({ url: this.getUrl(model), headers: { Authorization: `Bearer ${model.apiKey}` } })
       // Unlike requestUrl, fetch streams the answer and accepts Stop's abort signal.
       const response = await withDeadline(window.fetch(this.getUrl(model), {
         method: 'POST',

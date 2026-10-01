@@ -5,6 +5,9 @@
     </Setting>
 
     <template v-if="enabled">
+      <Setting name="Key destinations" desc="Review addresses changed outside this device before sending keys there.">
+        <Button text="Review" @click="reviewKeyDestinations" />
+      </Setting>
       <Section title="Providers">
         <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">
           <div class="abele-ai-provider__header">
@@ -597,6 +600,8 @@
 
 <script setup lang="ts">
 import { DEFAULT_REWIND_LIMIT_MB } from '@/ai/rewind/ChatRewind'
+import { keyFor, keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
+import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { secrets as secretStore } from '@/secrets/SecretStore'
 import { MEMORY_PLACEHOLDER } from '@/ai/agents/memory'
 import { ref, computed, reactive } from 'vue'
@@ -753,6 +758,7 @@ const modelOptions = computed(() => {
 })
 
 const save = debounce(async () => {
+  const before = keyDestinations(config)
   // Merged, never rebuilt. This tab owns providers, keys and background prompts; agents,
   // scripts and chat history belong to other screens, and a wholesale rebuild would silently
   // drop whatever this component does not happen to know about.
@@ -772,6 +778,7 @@ const save = debounce(async () => {
     secrets: JSON.parse(JSON.stringify(secrets.value)),
     prompts: JSON.parse(JSON.stringify(prompts.value)),
   }
+  acceptIntroducedDestinations(before, keyDestinations(config))
   await config.saveSettings()
 }, 500)
 
@@ -862,7 +869,9 @@ const voiceModelNote = computed(
 )
 
 const saveVoice = () => {
+  const before = keyDestinations(config)
   config.ai = { ...config.ai, voice: { ...voice.value } }
+  acceptIntroducedDestinations(before, keyDestinations(config))
   save()
 }
 
@@ -1149,7 +1158,7 @@ const fetchModels = async (pIdx: number) => {
   delete fetchError[provider.id]
 
   try {
-    const models = await client.fetchModels(provider.baseUrl, apiKey)
+    const models = await client.fetchModels(provider.baseUrl, keyFor(provider.apiKeyId, provider.baseUrl, config))
     remoteModels[provider.id] = models
   } catch (err: unknown) {
     fetchError[provider.id] = err instanceof Error ? err.message : String(err)
