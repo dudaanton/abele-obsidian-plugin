@@ -34,6 +34,7 @@ import {
 import type { RestoreInfo, ViewHost } from './view/View'
 import type { AutomationEvent } from '@/automations/types'
 import { ref } from 'vue'
+import { scriptForExecution } from './trust/scriptExecutionGate'
 
 /**
  * How to run a script, beyond which one and with what.
@@ -625,7 +626,7 @@ export class ScriptService {
       const script = this.scripts.get(path)
       if (!script) throw new Error(`Script not found: ${path}`)
       const verdict = this.verdict(script)
-      if (verdict === 'confirmed') return script
+      if (verdict === 'confirmed') return scriptForExecution(GlobalStore.getInstance().app, path)
       if (!ASKS_A_PERSON.has(source)) throw new ScriptWaitingError(script.meta.name, verdict)
       const confirmed = await this.review(script, signal)
       signal?.throwIfAborted()
@@ -982,9 +983,8 @@ export class ScriptService {
         intercept: opts.intercept,
       })
 
-      // Running the user's own script is the feature. The code comes from a `.js` file the
-      // user wrote in their own vault, and it is handed only the capabilities in `ctx`; there
-      // is no way to execute it without a compiler.
+      // The common gate checked the current full-byte snapshot and its managed provenance.
+      // All commands, nested calls, views, agents and automations compile only that snapshot.
       const fn = compile(script.code)
 
       const result = await waitForScript(() => fn(ctx), signal)

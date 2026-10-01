@@ -13,9 +13,10 @@ import { useVault } from '../helpers/testEnv'
 
 let service: ScriptService
 
-/** Puts a script in the index without a vault folder to discover it from. */
+/** Matching current source and discovery entry, without running discovery. */
 function register(name: string, code: string): string {
   const path = `Scripts/${name}.js`
+  useVault([{ path, content: `// @name ${name}\n${code}` }])
   const scripts = (service as unknown as { scripts: Map<string, unknown> }).scripts
   scripts.set(path, { path, code, commandId: '', meta: { name, description: '', params: [] } })
   return path

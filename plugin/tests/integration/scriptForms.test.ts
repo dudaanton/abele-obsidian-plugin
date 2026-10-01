@@ -45,8 +45,11 @@ function script(name: string, code: string): ParsedScript {
   }
 }
 
-/** The service with two scripts in it, without touching the vault or the command palette. */
+/** Matching source files and discovery entries, without invoking the command palette. */
 function withScripts(...scripts: ParsedScript[]): ScriptService {
+  useVault(
+    scripts.map((one) => ({ path: one.path, content: `// @name ${one.meta.name}\n${one.code}` }))
+  )
   const service = ScriptService.getInstance()
   const map = new Map(scripts.map((one) => [one.path, one]))
   ;(service as unknown as { scripts: Map<string, ParsedScript> }).scripts = map

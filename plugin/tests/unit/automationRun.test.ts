@@ -13,11 +13,13 @@ import { normalizeRule, type AutomationEvent, type AutomationRule } from '@/auto
 import { useVault } from '../helpers/testEnv'
 
 let service: ScriptService
+let app: ReturnType<typeof useVault>
 let marks: { path: string; chain: string[] }[]
 const marker = { markChain: (path: string, chain: string[]) => marks.push({ path, chain }) }
 
-function register(name: string, code: string, params: string[] = []): string {
+async function register(name: string, code: string, params: string[] = []): Promise<string> {
   const path = `Scripts/${name}.js`
+  await app.vault.create(path, `// @name ${name}\n${code}`)
   const scripts = (service as unknown as { scripts: Map<string, unknown> }).scripts
   scripts.set(path, {
     path,
@@ -59,7 +61,7 @@ const rule = (overrides: Partial<AutomationRule> = {}) =>
 const lastRun = () => ScriptRuns.getInstance().runs.value[0]
 
 beforeEach(() => {
-  useVault([{ path: 'Tasks/Buy milk.md', frontmatter: { type: 'task' }, content: 'milk' }])
+  app = useVault([{ path: 'Tasks/Buy milk.md', frontmatter: { type: 'task' }, content: 'milk' }])
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
   ScriptRuns.destroy()
   ScriptService.destroy()
@@ -72,7 +74,7 @@ beforeEach(() => {
 
 describe('the script', () => {
   it('reads what happened as `event`', async () => {
-    register(
+    await register(
       'Log',
       'return JSON.stringify({ kind: event.kind, path: event.path, before: event.before, changed: event.changed, origin: event.origin })'
     )
@@ -91,7 +93,7 @@ describe('the script', () => {
   })
 
   it('gets its parameters filled in from the note, as a header button would', async () => {
-    register('Log', 'return params.line', ['line'])
+    await register('Log', 'return params.line', ['line'])
 
     await runAutomation(
       rule({ params: { line: '{{title}} in {{area}} ({{event}})' } }),
@@ -104,7 +106,7 @@ describe('the script', () => {
   })
 
   it('of a deleted note, from what the note was', async () => {
-    register('Log', 'return params.line', ['line'])
+    await register('Log', 'return params.line', ['line'])
 
     await runAutomation(
       rule({ event: 'note.deleted', params: { line: '{{title}} was {{type}}' } }),
@@ -123,7 +125,7 @@ describe('the script', () => {
   })
 
   it('marks every note it writes with the chain that led to it', async () => {
-    register('Log', "await write(event.path, 'done'); await create('Log.md', 'x')")
+    await register('Log', "await write(event.path, 'done'); await create('Log.md', 'x')")
 
     await runAutomation(rule(), event(), ['r0', 'r1'], marker)
 
@@ -134,7 +136,7 @@ describe('the script', () => {
   })
 
   it('may call its own variable `event`, as scripts written before this did', async () => {
-    register('Log', 'const event = 1\nreturn String(event + 1)')
+    await register('Log', 'const event = 1\nreturn String(event + 1)')
 
     await runAutomation(rule(), event(), ['r1'], marker)
 
@@ -142,7 +144,7 @@ describe('the script', () => {
   })
 
   it('run any other way, finds `event` empty', async () => {
-    const path = register('Log', 'return String(event)')
+    const path = await register('Log', 'return String(event)')
 
     await expect(service.execute(path, {}, { source: 'command' })).resolves.toBe('null')
   })
@@ -150,7 +152,7 @@ describe('the script', () => {
 
 describe('a failure', () => {
   it('is a failed run in the list and one notice, not an exception', async () => {
-    register('Log', "throw new Error('no log note')")
+    await register('Log', "throw new Error('no log note')")
 
     await runAutomation(rule(), event(), ['r1'], marker)
     await runAutomation(rule(), event(), ['r1'], marker)

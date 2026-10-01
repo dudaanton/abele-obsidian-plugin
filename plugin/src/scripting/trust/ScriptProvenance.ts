@@ -83,6 +83,21 @@ export class ScriptProvenance {
     })
   }
 
+  /** Approval is device/vault/connection/identity/SHA bound, never path or discovered code. */
+  async approved(record: ManagedScript, sha: string): Promise<boolean> {
+    if (
+      !record.fileId ||
+      record.binding.facet !== 'personal' ||
+      !sameBinding(record.binding, this.binding)
+    )
+      return false
+    return (await this.meta.getMeta(this.approvalKey(record, sha))) === 'approved'
+  }
+
+  private approvalKey(record: ManagedScript, sha: string): string {
+    return `script-approval:${JSON.stringify([record.binding, record.fileId, sha])}`
+  }
+
   private async save(path: string, record: ManagedScript): Promise<void> {
     const value = JSON.stringify(record)
     await this.meta.setMeta(key(path), value)

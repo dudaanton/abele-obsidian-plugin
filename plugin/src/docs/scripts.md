@@ -62,6 +62,14 @@ inflated. STORE entries count their stored byte sizes even when unpacked sizes a
 or multiple entries share one payload. Ordinary nested and hidden files inside
 the target still extract. The path/size validation is storage-independent.
 
+## Execution trust
+
+Every entry point reads the current full file, not discovery-cached source. Managed snapshots
+are hashed and require device-local permission for that exact connection, remote file identity and
+SHA. Shared/agent connections refuse execution. Missing or unknown provenance blocks a run;
+rename, restore, adoption, a nested call or an automation cannot bypass the common gate.
+Ordinary local scripts in a vault that has never been sync-managed continue to run locally.
+
 ## The header
 
 Every script starts with a comment block declaring what it is. Without `@name` the file is

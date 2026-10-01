@@ -25,8 +25,9 @@ const TASK = 'Tasks/Buy milk.md'
 const file = (path: string) => app.vault.getAbstractFileByPath(path) as TFile
 const vault = () => app.vault as unknown as Record<string, unknown>
 
-function register(name: string, code: string) {
+async function register(name: string, code: string) {
   const path = `Scripts/${name}.js`
+  await app.vault.create(path, `// @name ${name}\n${code}`)
   const scripts = (ScriptService.getInstance() as unknown as { scripts: Map<string, unknown> })
     .scripts
   scripts.set(path, { path, code, commandId: '', meta: { name, description: '', params: [] } })
@@ -75,8 +76,8 @@ describe('with no automation switched on', () => {
 })
 
 describe('switched on', () => {
-  beforeEach(() => {
-    register('Log', "await write(event.path, 'milk\\n\\ndone'); return 'logged'")
+  beforeEach(async () => {
+    await register('Log', "await write(event.path, 'milk\\n\\ndone'); return 'logged'")
     config.automations = [
       // `task.changed` with no throttle: the script's own write matches it again, and nothing
       // but the loop guard stands between them.
