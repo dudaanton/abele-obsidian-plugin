@@ -100,7 +100,7 @@ import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubAccessReport from './GithubAccessReport.vue'
 import { secrets } from '@/secrets/SecretStore'
-import { GithubClient } from '@/github/client'
+import { GithubClient, type GithubRate } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import { checkAccess, parseRepoInput, type AccessReport } from '@/github/accessCheck'
 import { validConnectionServer, type GithubConnection } from '@/github/connections'
@@ -114,7 +114,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'save', connection: GithubConnection, token?: string | null): void
+  (e: 'save', connection: GithubConnection, token?: string | null, rate?: GithubRate): void
 }>()
 const draft = reactive<GithubConnection>(JSON.parse(JSON.stringify(props.connection)))
 const token = ref('')
@@ -122,6 +122,7 @@ const forget = ref(false)
 const owners = ref(draft.owners.join('\n'))
 const repoInput = ref('')
 const report = ref<AccessReport | null>(null)
+let lastRate: GithubRate | null = null
 const message = ref('')
 const checking = ref(false)
 let generation = 0
@@ -157,6 +158,7 @@ watch(
     generation++
     checking.value = false
     report.value = null
+    lastRate = null
     delete draft.account
     delete draft.checkedAt
     delete draft.expiresAt
@@ -213,6 +215,7 @@ async function check(): Promise<void> {
     })
     if (!open || generation !== requestGeneration) return
     report.value = result
+    lastRate = client.rate.value
     message.value = ''
     if (result.login) {
       draft.account = {
@@ -233,19 +236,13 @@ async function check(): Promise<void> {
 
 function save(): void {
   if (!draft.name.trim() || !validServer.value) return
-  emit(
-    'save',
-    {
-      ...draft,
-      name: draft.name.trim(),
-      server: draft.server.trim(),
-      owners: owners.value
-        .split(/[\n,]/)
-        .map((s) => s.trim())
-        .filter(Boolean),
-      ...(draft.account ? { account: { ...draft.account } } : {}),
-    },
-    token.value.trim() || (forget.value ? null : undefined)
-  )
+  const connection = {
+    ...draft, name:draft.name.trim(), server:draft.server.trim(),
+    owners:owners.value.split(/[\n,]/).map(s=>s.trim()).filter(Boolean),
+    ...(draft.account ? {account:{...draft.account}} : {}),
+  }
+  const value = token.value.trim() || (forget.value ? null : undefined)
+  if (lastRate) emit('save',connection,value,lastRate)
+  else emit('save',connection,value)
 }
 </script>

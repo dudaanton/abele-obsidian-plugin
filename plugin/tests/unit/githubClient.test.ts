@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
-import { GithubClient, GithubError, errorFor } from '@/github/client'
+import { GithubClient, GithubError, errorFor, anonymousGithubRate } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import {
   loadBlob,
@@ -56,6 +56,7 @@ describe('requests', () => {
     await a.get('/user'); await a.get('/user'); await b.get('/rate_limit')
     expect(a.rate.value).toMatchObject({ remaining:8, limit:5000, reset:1800000000000, resource:'core' })
     expect(b.rate.value).toMatchObject({ remaining:0, limit:60 })
+    expect(anonymousGithubRate.value).toMatchObject({remaining:0,limit:60})
   })
 
   it('sends the token as a bearer header and asks for the pinned API version', async () => {

@@ -137,12 +137,15 @@ function bytesBase64(bytes: Uint8Array): string {
 const MAX_PAGES = 10
 const PER_PAGE = 100
 
+export interface GithubRate { remaining:number; limit:number; reset?:number; resource?:string }
+/** Public anonymous quota is shared by the device, not by an account. No content is shared. */
+export const anonymousGithubRate = shallowRef<GithubRate | null>(null)
 let clientGeneration = 0
 
 export class GithubClient {
   /** Opaque credential generation, never derived from a secret. Content caches bind to it. */
   readonly cacheNamespace = `github-${++clientGeneration}`
-  readonly rate = shallowRef<{ remaining: number; limit: number; reset?: number; resource?: string } | null>(null)
+  readonly rate = shallowRef<GithubRate | null>(null)
   private current = true
   get isCurrent(): boolean {
     return this.current
@@ -279,6 +282,7 @@ export class GithubClient {
       this.rate.value = { remaining:Number(remaining), limit:Number(limit),
         reset: reset && Number.isFinite(Number(reset)) ? Number(reset)*1000 : undefined,
         resource:header(response.headers,'x-ratelimit-resource') }
+      if (!this.hasToken && this.endpoints.webHost==='github.com') anonymousGithubRate.value=this.rate.value
     }
     const location = header(response.headers, 'location')
     if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response

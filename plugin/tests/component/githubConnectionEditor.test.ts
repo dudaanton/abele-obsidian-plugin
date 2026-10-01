@@ -36,6 +36,17 @@ const press = async (view: ReturnType<typeof mount>, text: string) => {
 }
 
 describe('GitHub connection draft', () => {
+  it('returns the observed quota separately from persisted connection metadata', async () => {
+    const view=mount(GithubConnectionEditor,{props:{connection:row,connections:[row]}})
+    view.findAllComponents(Input).find(i=>i.props('placeholder')==='github_pat_...')!.vm.$emit('update:modelValue','invented-rate-token')
+    request.mockResolvedValue({...reply('sample-user'),headers:{'x-ratelimit-remaining':'42','x-ratelimit-limit':'5000'}})
+    await press(view,'Check access')
+    await press(view,'Save')
+    expect(view.emitted('save')?.[0]?.[2]).toMatchObject({remaining:42,limit:5000})
+    expect(view.emitted('save')?.[0]?.[0]).not.toHaveProperty('rate')
+    view.unmount()
+  })
+
   it('checking a typed token never stores it; cancel leaves settings unchanged', async () => {
     const app = useVault([])
     const view = mount(GithubConnectionEditor, { props: { connection: row, connections: [row] } })

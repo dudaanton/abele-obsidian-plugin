@@ -72,6 +72,8 @@
             @click="deletingConnection = connection"
           />
         </Setting>
+        <Setting v-if="!settings.connections.some(c => endpoints(c.server).webHost === 'github.com')"
+          name="Public github.com (anonymous)" :desc="anonymousGithubRate ? `${anonymousGithubRate.remaining} of ${anonymousGithubRate.limit} requests remaining${anonymousGithubRate.reset ? ' · resets ' + new Date(anonymousGithubRate.reset).toLocaleTimeString() : ''}` : 'Quota not observed yet; normally 60 requests an hour shared by this device.'" />
         <EmptyState v-if="connectionMessage" :text="connectionMessage" />
         <Button
           text="Add connection"
@@ -235,6 +237,7 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import GithubConnectionEditor from './GithubConnectionEditor.vue'
 import { keychainId } from '@/secrets/keychainId'
+import { anonymousGithubRate, type GithubRate } from '@/github/client'
 import type { GithubConnection } from '@/github/connections'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
@@ -296,7 +299,7 @@ const addConnection = () => {
     isDefault: false,
   }
 }
-async function saveConnection(connection: GithubConnection, token?: string | null): Promise<void> {
+async function saveConnection(connection: GithubConnection, token?: string | null, rate?: GithubRate): Promise<void> {
   connection = { ...connection, keyId: connection.keyId || keychainId('abele-gh', connection.id) }
   const current = githubSettingsFrom(config.github)
   const index = current.connections.findIndex((c) => c.id === connection.id)
@@ -326,6 +329,7 @@ async function saveConnection(connection: GithubConnection, token?: string | nul
   config.github = projectLegacy(githubSettingsFrom(current))
   Object.assign(settings, config.github)
   await config.saveSettings()
+  if (rate) connectionClient(connection.id).rate.value = rate
   editingConnection.value = null
   connectionMessage.value = ''
 }
