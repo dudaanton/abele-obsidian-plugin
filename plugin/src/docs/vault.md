@@ -28,6 +28,14 @@ section; local destination and HTTP approvals do not.
 `abele-key-http-origins-v1` holds explicitly allowed home-network HTTP origins on this device;
 it contains no secrets and does not travel either.
 
+## Word files
+
+Word documents remain ordinary binary `.docx` attachments at their original vault paths.
+Opening and reading creates no Markdown conversion, cache note or persistent document setting.
+The Word view displays a disposable rendering of the package; it does not rewrite the file.
+Large packages use a paged text view. External relationships and active HTML chunks are omitted
+from the rendering only, not removed from the original document.
+
 ## Imported images
 
 Images imported through Abele's chat, gallery, file importer and media downloads are stored

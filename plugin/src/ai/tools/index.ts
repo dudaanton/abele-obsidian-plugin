@@ -43,6 +43,7 @@ import { createRememberTool } from './RememberTool'
 import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
 import { createBookTools } from './BookTools'
+import { createDocxTools } from './DocxTools'
 import { createLintTool, createLintFixTool } from './LintTools'
 import { githubSettings } from '@/github/GithubService'
 import { createMcpTools } from '../mcp/tools'
@@ -75,6 +76,7 @@ export function getToolRegistry(): ToolInfo[] {
     'Network',
     'GitHub',
     'Books',
+    'Word',
     'AI',
     'Vault data',
     'Maps',
@@ -311,6 +313,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   // Books and PDFs in the vault, as far as the chat's scope reaches: read, and marked — highlights
   // and bookmarks, written where the reader writes them. The book files are never changed.
   tools.push(...createBookTools())
+  tools.push(...createDocxTools())
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)

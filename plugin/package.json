@@ -66,6 +66,7 @@
     "@codemirror/merge": "^6.11.0",
     "@vueuse/core": "^13.4.0",
     "dayjs": "^1.11.18",
+    "docx-preview": "0.4.1",
     "dom-to-image-more": "^3.7.2",
     "echarts": "6.1.0",
     "fflate": "^0.8.2",

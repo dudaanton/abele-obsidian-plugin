@@ -39,6 +39,8 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { sampleDocx } from '../fixtures/docx/sampleDocx'
+const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
@@ -1067,6 +1069,20 @@ const probeScript = `(async () => {
       mapHandle?.destroy()
       mapRoot.remove()
     }
+    const wordPath = 'sample-word-layout.docx'
+    const wordBytes = Uint8Array.from(atob(${JSON.stringify(WORD_SAMPLE)}), c => c.charCodeAt(0))
+    const wordFile = await app.vault.createBinary(wordPath, wordBytes.buffer)
+    const wordLeaf = app.workspace.getLeaf('tab')
+    try {
+      await wordLeaf.setViewState({ type: 'abele-word', state: { file: wordPath }, active: true })
+      await app.workspace.revealLeaf(wordLeaf)
+      await until(() => wordLeaf.view.contentEl.querySelector('iframe')?.contentDocument?.querySelector('section.docx'), 15000)
+      await screen('word document', wordLeaf.view.contentEl)
+      report['word document'].handEditing = !!wordLeaf.view.contentEl.querySelector('.abele-word-edit')
+    } finally {
+      wordLeaf.detach()
+      await app.vault.delete(wordFile)
+    }
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
@@ -1173,6 +1189,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'docs search result',
     'script form picker',
     'map location',
+    'word document',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -1184,6 +1201,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s === 'mcp server' ||
       s === 'rewind'
   )
+
+  it('Word documents offer no hand editing on a phone', () => {
+    expect((report['word document'] as Screen & { handEditing?: boolean })?.handEditing).toBe(false)
+  })
 
   it('reaches every screen', () => {
     expect(report.run?.error ?? '').toBe('')

@@ -1,0 +1,40 @@
+.abele-word {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  overflow: hidden;
+}
+.abele-word-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+}
+.abele-word-toolbar input[type='number'] {
+  width: 5em;
+}
+.abele-word-preview {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: var(--background-primary);
+}
+.abele-word-text {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--size-4-2);
+}
+.abele-word-text[hidden] {
+  display: none;
+}
+.abele-word-paragraph {
+  padding: var(--size-4-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.abele-word-paragraph-number {
+  color: var(--text-muted);
+}

@@ -10,6 +10,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   DEFAULT_AI_SETTINGS,
   BOOK_TOOL_MODES,
+  DOCX_TOOL_MODES,
   LINT_TOOL_MODES,
   LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
@@ -146,6 +147,7 @@ describe('loading settings with nothing to migrate', () => {
       ...MAP_TOOL_MODES,
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
+      ...DOCX_TOOL_MODES,
       ...LINT_TOOL_MODES,
       ...LOCATION_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,

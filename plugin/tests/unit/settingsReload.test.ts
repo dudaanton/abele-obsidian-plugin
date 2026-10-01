@@ -15,6 +15,7 @@ import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig
 import {
   DEFAULT_AI_SETTINGS,
   BOOK_TOOL_MODES,
+  DOCX_TOOL_MODES,
   LINT_TOOL_MODES,
   LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
@@ -50,6 +51,7 @@ function settingsWith(headerButtons: HeaderButtonDefinition[]) {
     ...MAP_TOOL_MODES,
     ...GITHUB_TOOL_MODES,
     ...BOOK_TOOL_MODES,
+    ...DOCX_TOOL_MODES,
     ...LINT_TOOL_MODES,
     ...LOCATION_TOOL_MODES,
     ...ANALYTICS_TOOL_MODES,

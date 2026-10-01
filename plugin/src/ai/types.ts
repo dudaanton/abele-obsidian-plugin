@@ -395,6 +395,9 @@ export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
  */
 export const LINT_TOOL_MODES: Record<string, ToolMode> = { lint: 'auto', lint_fix: 'ask' }
 
+/** Word tools have independent Off/Ask/On modes, like book tools. */
+export const DOCX_TOOL_MODES: Record<string, ToolMode> = { docx_views: 'auto', docx_read: 'auto', docx_search: 'auto' }
+
 /** Personal device data: ask before every request unless the person chooses another mode. */
 export const LOCATION_TOOL_MODES: Record<string, ToolMode> = { current_location: 'ask' }
 
@@ -425,6 +428,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     ...LOCATION_TOOL_MODES,
     ...GITHUB_TOOL_MODES,
     ...BOOK_TOOL_MODES,
+    ...DOCX_TOOL_MODES,
   },
   scriptsEnabled: false,
   scriptsFolder: '',

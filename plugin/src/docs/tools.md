@@ -43,6 +43,18 @@ accept it. Do not claim the parent was changed after proposing. Never edit a cha
 The parent must be idle and unchanged since the proposal; otherwise ask for a new selection and
 proposal. To revise again after acceptance, start a new comment on the revised words.
 
+## Word documents
+
+`docx_views`, `docx_read`, `docx_search` read `.docx` files by exact vault path, only inside
+this chat's scope. Each has its own Off/Ask/On mode in the agent editor. `docx_read` returns
+numbered paragraphs with styles and table/row/cell coordinates; supplementary headers,
+footers, comments and notes follow the body. Deleted revisions are excluded; inserted
+revisions and field results may be visible but are not ordinary editable text. Read a bounded
+paragraph window; use `offset` to continue a long window. `docx_search` searches literal text
+across run boundaries and returns paragraph numbers and offsets; `after` pages the finds.
+`docx_views` lists open in-scope documents and their current text window. Do not use text-file
+writes on a binary Word package.
+
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,
