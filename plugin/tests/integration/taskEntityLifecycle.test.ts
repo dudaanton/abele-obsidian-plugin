@@ -200,7 +200,18 @@ describe('Task load, lazy body and watcher lifecycle', () => {
 
   // BUG: successful load/loadContent never resets taskNotFound. A missing link remains
   // "Task not found" after its note is created and the entity is explicitly refreshed.
-  it.fails('recovers from a temporarily missing metadata cache', async () => {
+  it('clears missing state when its body can be read again', async () => {
+    const env = taskHarness()
+    const task = make('[[sample-recovered]]')
+    await task.loadContent()
+    expect(task.taskNotFound).toBe(true)
+    await env.app.vault.create('sample-recovered.md', 'Recovered body')
+    await task.loadContent()
+    expect(task.taskNotFound).toBe(false)
+    expect(task.content).toBe('Recovered body')
+  })
+
+  it('recovers from a temporarily missing metadata cache', async () => {
     const env = taskHarness()
     const cache = vi.spyOn(env.app.metadataCache, 'getFileCache').mockReturnValueOnce(null)
     const task = make()

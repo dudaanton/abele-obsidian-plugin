@@ -159,7 +159,9 @@ describe('task card content and date presentation', () => {
   })
 
   it('renders a missing task with an orphan-removal action and no checkbox', async () => {
-    task.taskNotFound = true
+    task = reactive(
+      new Task({ wikilink: '[[sample-missing]]', filePath: 'Daily/2028-01-31.md' })
+    ) as Task
     const remove = vi.spyOn(task, 'removeOrphanedLink').mockImplementation(() => {})
     await render()
     expect(view.text()).toBe('Task not found')

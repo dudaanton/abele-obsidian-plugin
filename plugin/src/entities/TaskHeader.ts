@@ -47,6 +47,7 @@ export class TaskHeader {
     const task = editor ? await parseNoteContent(file, editor.getValue()) : null
 
     if (task) {
+      this.taskNotFound = false
       this.createdAt = parseDateOrNull(task.created)
       this.completedAt = parseDateOrNull(task.completed)
       this.recurrence = task.recurrence || null

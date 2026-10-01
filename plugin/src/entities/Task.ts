@@ -130,6 +130,7 @@ export class Task {
     const task = await getNoteData(this.taskPath)
 
     if (task) {
+      this.taskNotFound = false
       const lines = task.content.split('\n').filter((line: string) => line.trim() !== '')
       this.title = lines.length > 0 ? lines[0] : 'New Task'
       this.description = lines.slice(1).join('\n')
@@ -148,6 +149,7 @@ export class Task {
     const frontmatter = getFrontmatterFromCache(this.taskPath)
 
     if (frontmatter) {
+      this.taskNotFound = false
       this.createdAt = parseDateOrNull(frontmatter.created)
       this.completedAt = parseDateOrNull(frontmatter.completed)
       this.recurrence = frontmatter.recurrence || null

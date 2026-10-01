@@ -46,6 +46,17 @@ describe('editing dates in the task note header', () => {
     expect(header.due.format('YYYY-MM-DD')).toBe('2028-03-01')
   })
 
+  it('clears missing state after its editor becomes available again', async () => {
+    const env = taskHarness()
+    const views = vi.spyOn(env.app.workspace, 'getLeavesOfType').mockReturnValueOnce([])
+    const header = make()
+    await header.load()
+    expect(header.taskNotFound).toBe(true)
+    views.mockRestore()
+    await header.load(true)
+    expect(header.taskNotFound).toBe(false)
+  })
+
   it('loads unsaved editor frontmatter rather than cache, once unless forced', async () => {
     const env = taskHarness({ due: '2028-02-01' })
     env.editor.setValue(
