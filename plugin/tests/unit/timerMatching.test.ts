@@ -16,7 +16,7 @@ describe('timer note matching with real path helpers', () => {
 
   // BUG: wikilinkToPath appends .md, while entryFor strips it from both candidate paths.
   // Starting a timer for a normal markdown note never turns its button into Stop Timer.
-  it.fails.each(['[[Orchard]]', '[[Notes/Orchard]]', '[[Notes/Orchard.md|Fruit]]'])(
+  it.each(['[[Orchard]]', '[[Notes/Orchard]]', '[[Notes/Orchard.md|Fruit]]'])(
     'recognises a running timer grouped under %s',
     (group) => {
       expect(timerActiveFor('Notes/Orchard.md', [running(['[[Meadow]]']), running([group])])).toBe(

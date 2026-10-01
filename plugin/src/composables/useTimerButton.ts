@@ -17,7 +17,7 @@ function entryFor(filePath: string, entries: readonly TimeEntry[]): TimeEntry | 
   const pathNoExt = filePath.replace(/\.md$/, '')
   return entries.find((entry) =>
     entry.groups.some((g) => {
-      const linkPath = wikilinkToPath(g)
+      const linkPath = wikilinkToPath(g)?.replace(/\.md$/, '')
       return linkPath === basename || linkPath === pathNoExt
     })
   )
