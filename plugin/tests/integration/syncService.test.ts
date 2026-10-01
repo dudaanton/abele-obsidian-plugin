@@ -1084,7 +1084,7 @@ describe('SyncService — a ledger no file can carry', () => {
     setSecrets(secretStore)
   }
 
-  it('opens a fresh ledger in a vault handed a connection on the same machine', async () => {
+  it('requires recovery rather than silently minting a ledger for a handed connection', async () => {
     const { other } = await connect()
     await synced()
     const tokenId = conn().deviceTokenId
@@ -1097,10 +1097,15 @@ describe('SyncService — a ledger no file can carry', () => {
     storeConnection(handed)
     service = SyncService.getInstance()
     start()
-    await synced()
+    await waitFor(
+      'missing descriptor to require recovery',
+      () => service.status.value.state === 'error'
+    )
 
-    // A first run on an empty ledger walks the manifest and takes the vault down.
-    expect(await read('Existing.md')).toBe('already here')
+    expect(service.status.value.lastError).toContain('Sync recovery required')
+    expect(service.isConnected()).toBe(false)
+    expect(await app.vault.adapter.exists('Existing.md')).toBe(false)
+    expect(app.loadLocalStorage('abele-sync-ledger')).toBeNull()
     expect(await serverPaths(other)).toContain('Existing.md')
   })
 
@@ -1143,8 +1148,8 @@ describe('SyncService — a ledger no file can carry', () => {
 
   /**
    * A build of this branch that kept the ledger id in `data.json` was never released, so
-   * nothing moves it out: an id the file still names is ignored, and the vault starts a ledger
-   * of its own — a walk of the manifest that deletes nothing.
+   * nothing moves it out: an id the file still names is ignored. A saved connection without
+   * its device-local descriptor now requires recovery, never an implicit new ledger.
    */
   it('never opens the ledger an id left in data.json names', async () => {
     const { vaultId, other } = await connect()
@@ -1168,12 +1173,14 @@ describe('SyncService — a ledger no file can carry', () => {
       await AbeleConfig.getInstance().loadSettings()
       service = SyncService.getInstance()
       start()
-      await synced()
+      await waitFor(
+        'missing local descriptor to require recovery',
+        () => service.status.value.state === 'error'
+      )
 
-      const fresh = ledger() as { stateId: string; vaultId: string }
-      expect(fresh.stateId).not.toBe('')
-      expect(fresh.stateId).not.toBe(stateId)
-      expect(fresh.vaultId).toBe(vaultId)
+      expect(service.status.value.lastError).toContain('Sync recovery required')
+      expect(service.isConnected()).toBe(false)
+      expect(ledger()).toBeNull()
       expect(await serverPaths(other)).toContain('Existing.md')
       expect(await read('Existing.md')).toBe('already here')
 
@@ -1462,17 +1469,42 @@ describe('SyncService — a ledger closed under it', () => {
     await waitFor('the delete to go through', () => deleting.readyState === 'done')
   })
 
-  it('starts again on Sync now once the ledger is gone', async () => {
-    await connect()
+  it('can recover only after explicit Forget and a reviewed enrolment', async () => {
+    const { vaultId, other } = await connect()
+    await synced()
+    const previous = ledgerOf().stateId
+    const deleting = indexedDB.deleteDatabase(stateDatabaseName(previous))
+    await waitFor('the lost ledger to close', () => !service.isConnected())
+    await waitFor('the delete to complete', () => deleting.readyState === 'done')
+    await service.syncNow()
+    expect(service.status.value.lastError).toContain('Sync recovery required')
+    const before = await other.state()
+    await service.forget()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Recovery fixture', null)
+    await synced()
+    expect(ledgerOf().stateId).not.toBe(previous)
+    expect(await serverPaths(other)).toContain('Existing.md')
+    expect(await read('Existing.md')).toBe('already here')
+    expect((await other.state()).head_seq).toBe(before.head_seq)
+  })
+
+  it('keeps Sync now held for explicit recovery once the ledger is gone', async () => {
+    const { other } = await connect()
     await synced()
     const deleting = indexedDB.deleteDatabase(stateDatabaseName(ledgerOf().stateId))
     await waitFor('the engine to stop', () => !service.isConnected())
     await waitFor('the delete to go through', () => deleting.readyState === 'done')
 
+    const before = await other.state()
+    await app.vault.create('sample-unsent.md', 'Unsent bytes survive ledger loss')
     await service.syncNow()
-    await synced()
-
-    expect(service.isConnected()).toBe(true)
+    await service.syncNow()
+    expect(service.status.value.state).toBe('error')
+    expect(service.status.value.lastError).toContain('Sync recovery required')
+    expect(service.isConnected()).toBe(false)
+    expect(await other.state()).toEqual(before)
+    expect(await read('sample-unsent.md')).toBe('Unsent bytes survive ledger loss')
   })
 })
 

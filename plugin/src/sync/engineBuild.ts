@@ -8,8 +8,8 @@ import { ObsidianFileSystem } from './ObsidianFileSystem'
 import { selectiveFrom, type DeviceConnection, type JoinState } from './connection'
 import type { EngineHost } from './engineRunner'
 import { factoryOf, fallbackMsOf, pollMsOf, socketOf, transportOf } from './environment'
-import { newStateId } from './ids'
-import { readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
+import { readLedgerId, type LedgerId } from './ledgerId'
+import { requireLedger, LedgerRecoveryRequired } from './ledgerRecovery'
 import { summarise } from './messages'
 import { OwnSettingsWatch, ownSettingsPath } from './ownSettings'
 import { noop } from './queue'
@@ -57,22 +57,11 @@ export interface BuiltEngine {
   vault: VaultClient
 }
 
-/**
- * The ledger the engine is about to be built on, minted when this vault has none for the vault
- * the connection names.
- *
- * `chooseVault` mints one as it enrols. This is for a connection that arrived some other way —
- * a transfer, a move out of `data.json` — which names a server vault and carries no ledger id at
- * all: a fresh one is what makes the first run a walk of the manifest rather than a delete of
- * everything this disk does not hold.
- */
-function ledgerFor(app: App, vaultId: string, board: StatusBoard): LedgerId {
+/** Only an explicit enrolment may mint a ledger. Existing descriptors require recovery. */
+function ledgerFor(app: App, vaultId: string): LedgerId {
   const held = readLedgerId(app)
   if (held.stateId !== '' && held.vaultId === vaultId) return held
-  const minted = { stateId: newStateId(), vaultId }
-  writeLedgerId(app, minted)
-  board.note('a fresh ledger for this vault: the first sync walks the whole manifest')
-  return minted
+  throw new LedgerRecoveryRequired()
 }
 
 /** Makes the engine's parts and the engine; nothing is left holding the ledger if it throws. */
@@ -89,13 +78,12 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     (replaced) => host.settingsArrived(replaced),
     () => host.settingsMeaning()
   )
-  const store = await IndexedDbStateStore.open(
-    factoryOf(deps),
-    stateDatabaseName(ledgerFor(app, connection.vaultId, board).stateId)
-  )
+  const ledger = ledgerFor(app, connection.vaultId)
+  const store = await IndexedDbStateStore.open(factoryOf(deps), stateDatabaseName(ledger.stateId))
   store.onClosedElsewhere(() => recipe.closedElsewhere(store))
   settings.useLedger(store)
   try {
+    await requireLedger(app, store, ledger)
     const trust = await activateScriptProvenance(
       app,
       {

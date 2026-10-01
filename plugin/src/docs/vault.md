@@ -1139,6 +1139,17 @@ adoption do not make received bytes into trusted local code. A missing store beh
 requires recovery; never delete the marker to bypass a hold. The marker carries no approval
 and a copied marker does not authorize another vault/device.
 
+A saved sync connection without its ledger descriptor, or with empty/evicted ledger storage,
+stops with **Sync recovery required**, before creating an engine, uploading/deleting files or
+initializing script provenance. A durable `ledger-identity-v1` header and device-local
+`abele-sync-ledger-proof` sentinel distinguish a legitimate empty vault from loss. Explicit
+enrolment alone writes a one-use `abele-sync-ledger-bootstrap` authorization, consumed before
+sync starts. Positive legacy state can acquire the header; an unprovable empty ledger cannot.
+Restore this device's ledger backup, or use **Forget** and explicitly review a new join. Do not
+edit metadata to bypass the hold. No link baseline or script trust is inferred from current
+files during recovery. Independent script-provenance holds/approvals are not cleared by
+forgetting the sync ledger.
+
 When the person syncs the vault with Abele Sync, a few files in it are the sync's. A note whose
 name ends in `(Conflicted copy <device> <YYYYMMDDHHMM>)` — `Plan (Conflicted copy laptop
 202609041530).md` — is another device's version of the note beside it, written when both changed
@@ -1158,7 +1169,7 @@ file the sync is writing that moment; unfinished replacements are recovered befo
 not only at startup. A recovery error stops the scan rather than treating the gap as a delete. Never delete an `.old` by hand: it can be
 the only copy of that file.
 
-Four records are kept in Obsidian's local storage for this vault, which no file carries: under
+Several records are kept in Obsidian's local storage for this vault, which no file carries: under
 `abele-sync-connection`, this device's connection — the server (and the one it enrolled on), the
 vault and its name, the device it enrolled as, the keychain name of its token, whether it is
 paused, what of the vault it takes, a join in progress (which side wins where this vault and the

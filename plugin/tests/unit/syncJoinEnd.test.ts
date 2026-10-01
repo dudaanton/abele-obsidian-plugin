@@ -37,6 +37,10 @@ vi.mock('@/sync/IndexedDbStateStore', () => ({
     }),
   },
 }))
+vi.mock('@/sync/ledgerRecovery', () => ({
+  requireLedger: async () => undefined,
+  LedgerRecoveryRequired: class extends Error {},
+}))
 vi.mock('@/scripting/trust/scriptTrustStorage', () => ({
   activateScriptProvenance: async () => ({ store: { close: () => undefined }, provenance: {} }),
 }))

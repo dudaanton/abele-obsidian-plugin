@@ -20,6 +20,7 @@ import { keptLedger } from './join'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { NO_LEDGER, readLedgerId, writeLedgerId } from './ledgerId'
 import { newSecretId, newStateId } from './ids'
+import { authorizeLedgerBootstrap, LEDGER_BOOTSTRAP_KEY } from './ledgerRecovery'
 import { messageOf } from './messages'
 import { USER_AGENT } from './transport'
 import { Revoker, withTimeout } from './revoke'
@@ -384,11 +385,14 @@ export class Enrolment {
     bindDeviceToken(secrets().device, tokenId, token, where.serverUrl)
     let dropped: string | null = null
     const ledger = readLedgerId(app)
-    if (ledger.stateId === '' || ledger.vaultId !== where.vaultId) {
-      dropped = ledger.stateId === '' ? null : ledger.stateId
-      writeLedgerId(app, { stateId: newStateId(), vaultId: where.vaultId })
-    }
+    const bootstrap = app.loadLocalStorage(LEDGER_BOOTSTRAP_KEY)
     try {
+      if (ledger.stateId === '' || ledger.vaultId !== where.vaultId) {
+        dropped = ledger.stateId === '' ? null : ledger.stateId
+        const minted = { stateId: newStateId(), vaultId: where.vaultId }
+        writeLedgerId(app, minted)
+        authorizeLedgerBootstrap(app, minted)
+      }
       this.host.saveConnection({
         ...where,
         enrolledUrl: where.serverUrl,
@@ -403,6 +407,7 @@ export class Enrolment {
       secrets().device.set(tokenId, before)
       secrets().device.set(tokenServerId(tokenId), beforeServer)
       writeLedgerId(app, ledger)
+      app.saveLocalStorage(LEDGER_BOOTSTRAP_KEY, bootstrap)
       this.host.note(`the server made ${where.deviceName}, but this device did not keep it`)
       throw error
     }

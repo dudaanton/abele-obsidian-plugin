@@ -33,9 +33,9 @@ export interface LocalStorage {
 }
 
 /**
- * The record as it stands. None at all, or one that is malformed, reads as no ledger, and the
- * next build mints one: a ledger is a cache of what the server holds, so a fresh one costs a walk
- * of the manifest and deletes nothing.
+ * The record as it stands. Missing/malformed records read as no ledger. Only explicit
+ * enrolment may mint a replacement; an existing connection stops for recovery rather than
+ * interpreting lost storage as a new vault and manufacturing creates or trust.
  */
 export function readLedgerId(storage: LocalStorage): LedgerId {
   const raw = storage.loadLocalStorage(LEDGER_KEY)

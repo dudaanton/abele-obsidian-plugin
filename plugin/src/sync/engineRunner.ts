@@ -559,7 +559,7 @@ export class EngineRunner {
       if (this.store !== store) return
       await this.teardown()
       const message =
-        'another window of this app closed the sync ledger; reload Obsidian to sync again'
+        'another window of this app closed the sync ledger; Sync now checks it, but missing state requires explicit recovery before files can move'
       this.board.note(message)
       this.board.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: message })
     })
