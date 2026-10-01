@@ -25,6 +25,7 @@ import { evalAsync } from './helpers/githubLive'
 import { buildProseEpub } from '../fixtures/books/proseBook'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { until, WAIT_PRELUDE } from './helpers/wait'
 
 targets('desktop')
 
@@ -43,12 +44,7 @@ const reload = async (how: string): Promise<void> => {
 }
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 15000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
-    return null
-  }
+  ${WAIT_PRELUDE}
   const api = window.__abeleTest.reader
   const cdp = require('@electron/remote').getCurrentWebContents().debugger
   const open = async (path) => {
@@ -58,22 +54,25 @@ const PRELUDE = `
     for (const l of old) if (l !== leaf) l.detach()
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     const view = leaf.view
-    await until(() => view.model?.status === 'ready' && view.reading, 15000)
+    if (!await until(() => view.model?.status === 'ready' && view.reading))
+      throw new Error('reader did not become ready')
     if (view.model.panel) { view.model.panel = false }
-    await wait(800)
+    if (!await until(() => {
+      const doc = contents(view)?.doc
+      return !view.contentEl.querySelector('.abele-book-reader__panel') && height(view) > 0 &&
+        doc?.readyState === 'complete' && doc.fonts.status === 'loaded'
+    })) throw new Error('reader page did not become ready')
     return { leaf, view }
   }
   const press = async (key, code, keyCode) => {
     await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode })
     await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode })
-    await wait(700)
   }
   const tap = async (x, y) => {
     const p = [{ x: Math.round(x), y: Math.round(y), id: 0 }]
     await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: p })
-    await wait(60)
+    await wait(60) // Gesture duration, not a readiness delay.
     await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-    await wait(600)
   }
   const toggle = () => app.commands.executeCommandById('abele:reader-toggle-zen')
   const R = (view) => view.engine.renderer
@@ -83,6 +82,9 @@ const PRELUDE = `
   const shown = (el) => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0
   const header = (view) => view.containerEl.querySelector(':scope > .view-header')
   const foot = (view) => view.contentEl.querySelector('.abele-book-reader__foot')
+  const still = (view) => ![view.containerEl, document.querySelector('.mobile-navbar')].filter(Boolean)
+    .some(el => el.getAnimations({ subtree: true }).some(a => a.playState === 'running' || a.playState === 'pending'))
+  const selectionBar = (view) => view.contentEl.querySelector('.abele-book-selection')
   /** Where the highlight is drawn and where its words are, a line each. */
   const boxes = (view, cfi) => {
     const c = contents(view)
@@ -94,6 +96,19 @@ const PRELUDE = `
     const words = [...range.getClientRects()]
       .map((r) => [Math.round(r.left + frame.left), Math.round(r.top + frame.top)])
     return { drawn, words }
+  }
+  const marksReady = async (view, cfi) => {
+    if (!await until(() => {
+      const b = boxes(view, cfi)
+      return still(view) && b.drawn.length > 0 && b.drawn.length === b.words.length &&
+        b.drawn.every((d, i) => d.every((n, axis) => Math.abs(n - b.words[i][axis]) <= 1))
+    })) throw new Error('highlight did not settle on its words')
+  }
+  const chapterStart = async (view) => {
+    const href = view.model.toc[0].href
+    await view.engine.goTo(href)
+    if (!await until(() => view.model.currentHref === href && contents(view)?.doc?.fonts.status === 'loaded'))
+      throw new Error('reader did not reach the first chapter')
   }
   /** Words on the page on screen highlighted yellow; returns the highlight's place. */
   const highlight = async (view) => {
@@ -120,8 +135,8 @@ const PRELUDE = `
     doc.getSelection().removeAllRanges()
     view.model.active = null
     await until(() => contents(view).overlayer.element.querySelector('rect'), 5000)
-    await until(() => !view.model.selection && !view.model.active, 3000)
-    await wait(500)
+    await until(() => !view.model.selection && !view.model.active && !selectionBar(view), 3000)
+    await marksReady(view, cfi)
     return cfi
   }
   /**
@@ -134,8 +149,10 @@ const PRELUDE = `
     for (let i = 0; i < 6; i++) {
       const out = await selectLastLineHere(view, name)
       if (out.wouldCover) return out
+      const before = view.engine.lastLocation?.cfi
       await view.engine.next()
-      await wait(800)
+      if (!await until(() => view.engine.lastLocation?.cfi !== before))
+        throw new Error('reader did not turn to the next page')
     }
     return selectLastLineHere(view, name)
   }
@@ -163,8 +180,7 @@ const PRELUDE = `
     range.setStart(end.node, Math.max(0, end.i - 4)); range.setEnd(end.node, end.i + 1)
     if (range.getClientRects().length > 1) range.setStart(end.node, end.i)
     doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
-    await until(() => view.model.selection, 3000)
-    await wait(600)
+    await until(() => view.model.selection && shown(selectionBar(view)) && shown(foot(view)) && still(view), 3000)
     const words = [...range.getClientRects()].map((r) => ({ top: r.top + frame.top, bottom: r.bottom + frame.top }))
     const f = foot(view).getBoundingClientRect()
     const covered = words.some((w) => w.bottom > f.top + 1 && w.top < f.bottom - 1)
@@ -174,8 +190,7 @@ const PRELUDE = `
     if (name && wouldCover) await shot(name)
     const out = { foot: shown(foot(view)), covered, wouldCover, words: words.map((w) => Math.round(w.top)), bar: [Math.round(f.top), Math.round(f.bottom)], page: [Math.round(box.top), Math.round(box.bottom)], height: height(view) }
     doc.getSelection().removeAllRanges()
-    await until(() => !view.model.selection, 3000)
-    await wait(300)
+    await until(() => !view.model.selection && !selectionBar(view), 3000)
     return out
   }
   const shot = async (name) => {
@@ -285,20 +300,20 @@ describe.skipIf(!available)('zen mode', () => {
     }>(`
       api.zen.set(false)
       const { view } = await open(${JSON.stringify(PROSE)})
-      await view.engine.goTo(view.model.toc[0].href); await wait(600)
+      await chapterStart(view)
       const cfi = await highlight(view)
       const state = () => ({ height: height(view), header: shown(header(view)), foot: shown(foot(view)), boxes: boxes(view, cfi) })
       const before = state()
 
       await toggle()
-      await until(() => height(view) > before.height + 40, 5000)
-      await wait(1500)
+      await until(() => height(view) > before.height + 40 && !shown(header(view)) && !shown(foot(view)), 5000)
+      await marksReady(view, cfi)
       const zen = { ...state(), cls: view.containerEl.classList.contains('abele-book_zen') }
       await shot('desktop')
 
       // The mouse at the top of the tab: the header over the page, the page as it was.
       view.containerEl.querySelector('.abele-book-zen-edge').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-      await wait(500)
+      await until(() => view.model.zenPeek && shown(header(view)) && still(view))
       const peek = {
         height: height(view),
         header: shown(header(view)),
@@ -308,7 +323,7 @@ describe.skipIf(!available)('zen mode', () => {
       await shot('desktop-peek')
       // And away from it: gone a moment later.
       stage(view).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-      await wait(1500)
+      await until(() => !shown(header(view)) && !view.model.zenPeek)
       const peekGone = !shown(header(view)) && !view.model.zenPeek
 
       // Words selected bring up their bar, over the page.
@@ -316,20 +331,18 @@ describe.skipIf(!available)('zen mode', () => {
       const p = [...doc.querySelectorAll('p')].find((el) => el.getBoundingClientRect().width > 0 && (el.firstChild?.length ?? 0) > 80)
       const range = doc.createRange(); range.setStart(p.firstChild, 2); range.setEnd(p.firstChild, 8)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
-      await until(() => view.model.selection, 3000)
-      await wait(400)
+      await until(() => view.model.selection && shown(selectionBar(view)) && shown(foot(view)) && still(view), 3000)
       const selected = { foot: shown(foot(view)), height: height(view) }
       doc.getSelection().removeAllRanges()
-      await until(() => !view.model.selection, 3000)
-      await wait(300)
+      await until(() => !view.model.selection && !selectionBar(view), 3000)
       // Words on the last line: the bar goes where it covers none of them.
       const last = await selectLastLine(view, 'desktop-last-line')
 
       // Esc, as the keyboard sends it, to whatever holds the focus.
       view.takeFocus()
       await press('Escape', 'Escape', 27)
-      await until(() => height(view) < zen.height - 40, 5000)
-      await wait(1500)
+      await until(() => height(view) < zen.height - 40 && shown(header(view)) && shown(foot(view)), 5000)
+      await marksReady(view, cfi)
       const after = { ...state(), on: api.zen.state().on }
       return { before, zen, peek, peekGone, selected, last, after }
     `)
@@ -364,7 +377,8 @@ describe.skipIf(!available)('zen mode', () => {
   it('on a phone, hides Obsidian’s navigation its own way, and a tap in the middle brings it back for a moment', async () => {
     await reload('app.emulateMobile(true)')
     evalRaw(`(() => { ${WINDOW}.setContentSize(390, 844); return 'ok' })()`)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    if (!(await until(() => evalJson<boolean>('innerWidth === 390 && innerHeight === 844'))))
+      throw new Error('phone viewport did not reach the requested size')
     const r = run<{
       error?: string
       phone?: boolean
@@ -377,15 +391,16 @@ describe.skipIf(!available)('zen mode', () => {
     }>(`
       api.zen.set(false)
       const { view } = await open(${JSON.stringify(PROSE)})
-      await view.engine.goTo(view.model.toc[0].href); await wait(800)
+      await chapterStart(view)
       const cfi = await highlight(view)
       const navbar = document.querySelector('.mobile-navbar')
       const before = { height: height(view), nav: !!navbar, boxes: boxes(view, cfi) }
       await shot('phone-before')
 
       await toggle()
-      await until(() => height(view) > before.height + 40, 5000)
-      await wait(1500)
+      await until(() => height(view) > before.height + 40 && document.body.classList.contains('is-hidden-nav') &&
+        getComputedStyle(header(view)).opacity === '0' && (!navbar || getComputedStyle(navbar).opacity === '0') && still(view), 5000)
+      await marksReady(view, cfi)
       const zen = {
         height: height(view),
         hidden: document.body.classList.contains('is-hidden-nav'),
@@ -398,7 +413,7 @@ describe.skipIf(!available)('zen mode', () => {
       // A tap in the middle of the page, as a finger taps.
       const box = stage(view).getBoundingClientRect()
       await tap(box.left + box.width / 2, box.top + box.height / 2)
-      await wait(600)
+      await until(() => view.model.zenPeek && !document.body.classList.contains('is-hidden-nav') && shown(foot(view)) && still(view))
       const f = foot(view)
       const peek = {
         height: height(view),
@@ -408,13 +423,13 @@ describe.skipIf(!available)('zen mode', () => {
         navTop: navbar ? Math.round(navbar.getBoundingClientRect().top) : 0,
       }
       await shot('phone-peek')
-      await wait(4500)
+      await until(() => !view.model.zenPeek && document.body.classList.contains('is-hidden-nav') && !shown(foot(view)) && still(view))
       const expired = { hidden: document.body.classList.contains('is-hidden-nav'), foot: shown(foot(view)) }
       const last = await selectLastLine(view, 'phone-last-line')
 
       await toggle()
-      await until(() => height(view) < zen.height - 40, 5000)
-      await wait(1500)
+      await until(() => height(view) < zen.height - 40 && !document.body.classList.contains('is-hidden-nav') && still(view), 5000)
+      await marksReady(view, cfi)
       const after = { height: height(view), hidden: document.body.classList.contains('is-hidden-nav'), boxes: boxes(view, cfi) }
       return { phone: app.isMobile, before, zen, peek, expired, last, after }
     `)
