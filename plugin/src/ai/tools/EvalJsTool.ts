@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { javascriptLanguage } from '@codemirror/lang-javascript'
 
 const EVAL_TIMEOUT = 10_000 // 10 seconds
 
@@ -27,7 +28,13 @@ export function createEvalJsTool(): AgentTool {
 
 export function refusalFor(code: string): string | null {
   // import() is syntax, not a replaceable global. Generated code is disabled below.
-  return /\bimport\b/.test(code) ? 'eval_js cannot use import; inline the required code.' : null
+  // Parse tokens rather than rejecting ordinary strings and comments containing this word.
+  const cursor = javascriptLanguage.parser.parse(code).cursor()
+  let refused = false
+  do {
+    if (cursor.name === 'import' || (cursor.type.isError && /\bimport\b/.test(code))) refused = true
+  } while (!refused && cursor.next())
+  return refused ? 'eval_js cannot use import; inline the required code.' : null
 }
 
 /** Compile once, after removing network capabilities and runtime code generation. */

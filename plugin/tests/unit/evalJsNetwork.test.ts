@@ -48,6 +48,8 @@ describe('eval_js network isolation', () => {
   it('refuses dynamic imports before starting the worker', () => {
     expect(refusalFor('import("https://sample.example/module.js")')).toMatch(/import/)
     expect(refusalFor('40 + 2')).toBeNull()
+    expect(refusalFor('"import".toUpperCase()')).toBeNull()
+    expect(refusalFor('// import is data here\n40 + 2')).toBeNull()
   })
   it('cannot recover network APIs through the global prototype', () => {
     let value: unknown
