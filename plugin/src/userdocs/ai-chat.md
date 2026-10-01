@@ -13,6 +13,11 @@ Chats with AI models that can read and change your notes, inside limits you set.
 
 ## Chatting
 
+Other plugins' executable blocks (for example `dataviewjs`) and inline queries in replies,
+thinking, run output and script markdown are shown as code, not executed. The same applies to
+GitHub text. Your notes still use installed plugins normally. Abele charts, maps, galleries and
+Mermaid diagrams in replies still render, and internet images still load as before.
+
 Type your message and press **Shift+Enter** or **Cmd/Ctrl+Enter** to send it; **Enter** starts a
 new line. The paperclip attaches files from the vault or from disk, pictures included, and other
 agent chats; files can also be dropped or pasted onto the message box.
@@ -35,14 +40,14 @@ they never appear in the new conversation.
 
 Commands typed in the message box:
 
-| Command | What it does |
-|---|---|
-| `/new` | Start a new chat |
-| `/load` | Open the chat history |
-| `/compact` | Replace older messages with a summary, to make room |
-| `/scope` | Choose which notes the chat may open |
-| `/prompt` | Insert a saved prompt |
-| `/<skill name>` | Run a skill |
+| Command         | What it does                                        |
+| --------------- | --------------------------------------------------- |
+| `/new`          | Start a new chat                                    |
+| `/load`         | Open the chat history                               |
+| `/compact`      | Replace older messages with a summary, to make room |
+| `/scope`        | Choose which notes the chat may open                |
+| `/prompt`       | Insert a saved prompt                               |
+| `/<skill name>` | Run a skill                                         |
 
 Up to 20 chats can be open at once, as tabs. Every chat is saved as a file in the chat folder
 (`AI/Chats` by default), so it survives a restart and can be found again in the history. When a
@@ -96,7 +101,7 @@ Press the icon beside one of your messages and pick:
 - **Undo changes** — takes back what that one message's turn changed and nothing else. Offered
   only where the turn changed something.
 
-A file you changed yourself after the agent did is marked *changed since* and left alone, unless
+A file you changed yourself after the agent did is marked _changed since_ and left alone, unless
 you choose to put it back anyway. The copies that make this possible are kept on this device
 only, in the plugin's folder, not in the chat — a chat opened on another device cannot be
 rewound there. How much room they may take is **Rewind space** in the AI settings, under Chat

@@ -3,6 +3,14 @@
 The tool catalogue, grouped as the settings screen groups it, with the distinctions that are
 easy to get wrong. Which of these an agent actually has depends on its own tool settings.
 
+## Rendered output
+
+Chat replies, thinking, run output, script markdown and GitHub text show other plugins' code
+blocks and inline queries as code, without executing them. Do not rely on Dataview or similar
+processors to calculate a reply. Abele's own chart, map and gallery output and Mermaid diagrams
+remain available in chat and scripts. Ordinary notes keep their processors; remote images in
+replies still load normally.
+
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,

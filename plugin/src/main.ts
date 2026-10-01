@@ -115,6 +115,7 @@ import { registerGithub } from '@/github/register'
 import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
 import { markLoad } from '@/helpers/loadMarks'
+import { installUntrustedGuard, uninstallUntrustedGuard } from '@/markdown/renderUntrusted'
 import { beginStartup, startupStep, startupStepAsync } from '@/helpers/startupSteps'
 import { startStartupScripts } from '@/scripting/startupRunner'
 import { claimVueSetters } from '@/helpers/vueGlobals'
@@ -434,6 +435,7 @@ export default class AbelePlugin extends Plugin {
 
   /** What the plugin adds to notes: editor extensions, post-processors and code blocks. */
   private registerEditor() {
+    installUntrustedGuard()
     this.registerEditorExtension(taskStateField)
     this.registerEditorExtension(galleryExtensions)
     this.registerEditorExtension(createHeaderExtension())
@@ -1350,6 +1352,7 @@ export default class AbelePlugin extends Plugin {
   }
 
   onunload() {
+    uninstallUntrustedGuard()
     setSecrets(null)
     document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
     setKeyboardDiagnostics(false)

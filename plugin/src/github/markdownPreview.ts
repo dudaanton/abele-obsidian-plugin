@@ -107,7 +107,7 @@ export function pickBlock(
 }
 
 /** Fence languages drawn as code. Anything else a plugin may claim as a block of its own. */
-const PLAIN_LANGUAGES = new Set(
+export const PLAIN_LANGUAGES = new Set(
   (
     'text txt plain plaintext md markdown mdx diff patch sh bash zsh shell console shellsession ' +
     'powershell ps1 bat cmd fish js javascript mjs cjs jsx ts typescript tsx json json5 jsonc ' +
@@ -120,15 +120,24 @@ const PLAIN_LANGUAGES = new Set(
   ).split(' ')
 )
 
-const FENCE_LINE = /^([ \t>]*?)(`{3,}|~{3,})[ \t]*([^\s`]*)(.*)$/
+/** Abele's declarative visual blocks remain available in chat and script output. */
+export const ABELE_LANGUAGES = new Set([
+  'abele-chart',
+  'abele-map',
+  'abele-message',
+  'abele-github',
+])
+
+const FENCE_LINE =
+  /^((?:[ \t]|>|[-+*](?=[ \t])|\d{1,9}[.)](?=[ \t]))*)(`{3,}|~{3,})[ \t]*([^\s`]*)(.*)$/
 
 /**
  * Fenced blocks with a language nothing but a plugin knows are shown as plain text: a README
  * with a ```dataviewjs block, rendered here as it is, would run that plugin's code in the vault.
  * Only opening fences are touched — the text inside a block is never changed.
  */
-export function neutraliseFences(text: string): string {
-  const lines = text.split('\n')
+export function neutraliseFences(text: string, ownBlocks = false): string {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
   let open: { char: string; length: number } | null = null
   for (let i = 0; i < lines.length; i++) {
     const m = FENCE_LINE.exec(lines[i])
@@ -141,7 +150,11 @@ export function neutraliseFences(text: string): string {
     }
     if (fence[0] === '`' && rest.includes('`')) continue
     open = { char: fence[0], length: fence.length }
-    if (lang && !PLAIN_LANGUAGES.has(lang.toLowerCase())) {
+    if (
+      lang &&
+      !PLAIN_LANGUAGES.has(lang.toLowerCase()) &&
+      !(ownBlocks && ABELE_LANGUAGES.has(lang.toLowerCase()))
+    ) {
       lines[i] = `${prefix}${fence}text${rest}`
     }
   }

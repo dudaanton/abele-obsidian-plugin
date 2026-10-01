@@ -30,9 +30,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Component, MarkdownRenderer, Platform } from 'obsidian'
+import { Component, Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
 import type { GithubClient } from '@/github/client'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
@@ -48,7 +48,7 @@ import {
   sourcesOf,
 } from '@/github/markdownPreview'
 import { retryImageThroughApi, type RepoFile } from '@/github/markdownLinks'
-import { finishGithubMarkdown, guardInlineCode } from '@/github/safeMarkdown'
+import { finishGithubMarkdown } from '@/github/safeMarkdown'
 import { LINE_CONTEXT, elementTop, pinIntoView, scrollParent } from '@/github/scrollTo'
 
 /**
@@ -133,7 +133,6 @@ const renderAll = async () => {
   component = new Component()
   component.load()
   await nextTick()
-  const app = GlobalStore.getInstance().app
   const list = blocks.value
   for (let i = 0; i < list.length; i++) {
     const el = contents[i]
@@ -141,7 +140,7 @@ const renderAll = async () => {
     if (!el || !source) continue
     const next = createDiv()
     try {
-      await MarkdownRenderer.render(app, guardInlineCode(source), next, '', component)
+      await renderUntrustedMarkdown(next, source, component, '', { github: true })
     } catch (e) {
       // One block that will not render is shown as its text; the rest of the file still is.
       console.debug('Abele: a markdown block did not render', e)

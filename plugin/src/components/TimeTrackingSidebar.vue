@@ -20,6 +20,7 @@
       <div class="abele-time-tracking-sidebar__active-groups">
         <template v-for="(group, idx) in active.groups" :key="idx">
           <ObsidianMarkdown
+            trusted
             :text="ensureWikilinkAlias(group)"
             :file-path="active.entryPath"
             class="abele-time-tracking-sidebar__link"

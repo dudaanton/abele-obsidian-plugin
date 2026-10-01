@@ -8,6 +8,7 @@
  * need nothing granted: they read GitHub, not the vault.
  */
 import { Notice } from 'obsidian'
+import { PLAIN_LANGUAGES } from './markdownPreview'
 import { ChatService } from '@/ai/ChatService'
 import { markdownLink, type GithubLink } from './permalinks'
 
@@ -47,7 +48,8 @@ function fenceFor(code: string): string {
 function languageOf(quote: Quote): string {
   if (quote.diff) return 'diff'
   const name = quote.path.split('/').pop() ?? ''
-  return name.includes('.') ? (name.split('.').pop() ?? '').toLowerCase() : ''
+  const lang = name.includes('.') ? (name.split('.').pop() ?? '').toLowerCase() : ''
+  return PLAIN_LANGUAGES.has(lang) ? lang : 'text'
 }
 
 /**

@@ -20,7 +20,12 @@
         @click.stop="task.toggle"
     /></label>
     <div class="abele-task-view__content">
-      <ObsidianMarkdown v-if="contentLoaded" :text="task.title ?? ''" :file-path="task.filePath" />
+      <ObsidianMarkdown
+        trusted
+        v-if="contentLoaded"
+        :text="task.title ?? ''"
+        :file-path="task.filePath"
+      />
       <div v-if="labels.length || priorityMark" class="abele-task-view__labels">
         <ObsidianIcon
           v-if="priorityMark"
@@ -33,6 +38,7 @@
         <Badge v-for="label in labels" :key="label.text" :text="label.text" :color="label.color" />
       </div>
       <ObsidianMarkdown
+        trusted
         v-if="task.description && showDescription && contentLoaded"
         :text="task.description"
         :file-path="task.filePath"

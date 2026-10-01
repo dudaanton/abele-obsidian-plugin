@@ -12,6 +12,7 @@
       <span class="abele-time-entry-item__groups">
         <template v-for="(group, idx) in entry.groups" :key="idx">
           <ObsidianMarkdown
+            trusted
             :text="ensureWikilinkAlias(group)"
             :file-path="entry.entryPath"
             class="abele-time-entry-item__link"

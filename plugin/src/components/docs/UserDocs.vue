@@ -66,7 +66,7 @@
       @click.capture="onArticleClick"
     >
       <div class="abele-user-docs__page">
-        <Markdown :text="page.rendered" as-document @rendered="onRendered" />
+        <Markdown trusted :text="page.rendered" as-document @rendered="onRendered" />
       </div>
     </article>
   </div>

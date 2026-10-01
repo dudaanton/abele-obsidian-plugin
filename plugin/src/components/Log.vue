@@ -3,8 +3,9 @@
     <div class="abele-log__line" />
     <div class="abele-log__content">
       <div class="abele-log__links">
-        <ObsidianMarkdown class="abele-log__file-link" :text="log.wikilink" />
+        <ObsidianMarkdown trusted class="abele-log__file-link" :text="log.wikilink" />
         <ObsidianMarkdown
+          trusted
           v-if="dateLink && shoudShowDate"
           class="abele-log__file-date"
           :text="dateLink"
@@ -12,6 +13,7 @@
       </div>
       <div v-if="contentLoaded" class="abele-log__file-content-wrapper">
         <ObsidianMarkdown
+          trusted
           class="abele-log__file-content"
           :class="{ 'abele-log__file-content--collapsed': isCollapsible && !isExpanded }"
           :text="log.content"

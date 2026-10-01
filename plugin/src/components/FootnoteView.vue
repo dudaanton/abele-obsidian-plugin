@@ -7,7 +7,7 @@
         <a class="abele-footnote-card__action abele-footnote-card__delete" @click="remove">✕</a>
       </div>
     </div>
-    <Markdown :text="footnote.content" :file-path="footnote.filePath" />
+    <Markdown trusted :text="footnote.content" :file-path="footnote.filePath" />
   </div>
 </template>
 

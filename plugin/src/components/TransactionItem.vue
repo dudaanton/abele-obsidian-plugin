@@ -12,6 +12,7 @@
     <div class="abele-transaction-view__content">
       <div class="abele-transaction-view__main">
         <ObsidianMarkdown
+          trusted
           v-if="contentLoaded"
           :text="transaction.title ?? ''"
           :file-path="transaction.transactionPath"
@@ -24,6 +25,7 @@
         />
       </div>
       <ObsidianMarkdown
+        trusted
         v-if="transaction.description && showDescription && contentLoaded"
         :text="transaction.description"
         :file-path="transaction.transactionPath"
@@ -32,6 +34,7 @@
       <div class="abele-transaction-view__info">
         <span v-if="transaction.from || transaction.to" class="abele-transaction-view__accounts">
           <ObsidianMarkdown
+            trusted
             v-if="transaction.from && contentLoaded"
             :text="transaction.from"
             :file-path="transaction.transactionPath"
@@ -39,6 +42,7 @@
           />
           <span v-if="transaction.from && transaction.to"> → </span>
           <ObsidianMarkdown
+            trusted
             v-if="transaction.to && contentLoaded"
             :text="transaction.to"
             :file-path="transaction.transactionPath"

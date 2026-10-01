@@ -902,6 +902,18 @@ export class TextFileView extends ItemView {}
  * is written in as text. That is enough for tests that ask what a component put on screen
  * and around it; how the markdown itself comes out is Obsidian's business.
  */
+/** Registry only: rendering tests explicitly run processors on the DOM they construct. */
+export const MarkdownPreviewRenderer = {
+  postProcessors: [] as Array<(el: HTMLElement, ctx?: unknown) => unknown>,
+  codeBlockPostProcessors: {} as Record<string, unknown>,
+  registerPostProcessor(processor: (el: HTMLElement) => unknown, _order?: number) {
+    this.postProcessors.push(processor)
+  },
+  unregisterPostProcessor(processor: (el: HTMLElement) => unknown) {
+    this.postProcessors = this.postProcessors.filter((p) => p !== processor)
+  },
+}
+
 export const MarkdownRenderer = {
   render: async (
     _app: unknown,

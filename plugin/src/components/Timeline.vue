@@ -88,7 +88,7 @@
             <div class="abele-timeline__date-line" />
           </div>
           <div class="abele-timeline__block-content">
-            <ObsidianMarkdown class="timeline__date" :text="getDateWikilink(date)" />
+            <ObsidianMarkdown trusted class="timeline__date" :text="getDateWikilink(date)" />
             <div class="abele-timeline__tasks">
               <template v-for="item in dateItems" :key="item.key">
                 <CalendarEventView

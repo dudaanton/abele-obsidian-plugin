@@ -11,12 +11,15 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Component, Keymap, MarkdownRenderer } from 'obsidian'
 import { onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
+import { markUntrusted, renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
 import { createRenderQueue } from '@/helpers/renderQueue'
 import { holdBackUnfinished, PENDING_LABEL } from '@/helpers/unfinishedBlock'
 import { offer, recordInto, stopRecording, take, type Part } from './markdownParts'
 
 const props = defineProps<{
   text: string
+  /** Vault-owned text keeps installed plugins' processors. Replies and script output do not. */
+  trusted?: boolean
   filePath?: string
   /**
    * For a whole document rather than a line or two of prose.
@@ -122,7 +125,9 @@ const renderContent = async () => {
   recordInto(next)
   let sigs: Array<string | null> = []
   try {
-    await MarkdownRenderer.render(GlobalStore.getInstance().app, text, next, path, own)
+    if (props.trusted)
+      await MarkdownRenderer.render(GlobalStore.getInstance().app, text, next, path, own)
+    else await renderUntrustedMarkdown(next, text, own, path)
   } catch (error) {
     own.unload()
     throw error
@@ -191,7 +196,7 @@ const renderContent = async () => {
  */
 const adopt = (): boolean => {
   const el = target.value
-  if (!el || props.streaming || !props.text) return false
+  if (!el || props.trusted || props.streaming || !props.text) return false
   const offered = take(props.text, el.doc)
   if (!offered) return false
   parts = offered.parts
@@ -209,6 +214,7 @@ let host: HTMLElement | null = null
 
 onMounted(() => {
   host = target.value ?? null
+  if (host && !props.trusted) markUntrusted(host)
   component = new Component()
   component.load()
   if (adopt()) return
@@ -256,7 +262,7 @@ watch(
  */
 onBeforeUnmount(() => {
   const doc = host?.doc
-  if (!props.streaming || !parts.length || !shownText || !doc) return
+  if (props.trusted || !props.streaming || !parts.length || !shownText || !doc) return
   const owners = ownersOf(parts)
   // Short of the text if a render for newer text was still to come.
   const partial = shownPartial || shownText !== (props.text || '')
