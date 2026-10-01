@@ -7,6 +7,8 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { githubSettingsFrom } from '@/github/settings'
 import { GithubUsers, setGithubUsers } from '@/github/users'
 import { useVault } from '../helpers/testEnv'
+import { flushPromises } from '@vue/test-utils'
+import { createGithubTools } from '@/ai/tools/github'
 
 const request = vi.hoisted(() => vi.fn())
 vi.mock('@/github/transport', () => ({ singleHopRequest: request }))
@@ -58,7 +60,14 @@ function setup(mode: 'off' | 'ask') {
   view = new GithubView(leaf)
   view.app = app as unknown as App
   Object.defineProperty(view, 'contentEl', { value: view.containerEl.children[1] })
-  Object.assign(app, { workspace: { requestSaveLayout: vi.fn(), getLeavesOfType: () => [leaf] } })
+  Object.assign(app, {
+    workspace: {
+      requestSaveLayout: vi.fn(),
+      getLeavesOfType: () => [leaf],
+      getLeaf: () => leaf,
+      revealLeaf: vi.fn(async () => {}),
+    },
+  })
   leaf.view = view
   document.body.append(view.containerEl)
   request.mockImplementation(async (r) => ({
@@ -81,10 +90,39 @@ function setup(mode: 'off' | 'ask') {
             created_at: '2026-01-01',
           },
   }))
-  return { app, agent, view }
+  return { app, agent, view, leaf }
 }
 
 describe('an agent-opened tab capability', () => {
+  it('does not reuse an Ask grant for a replacement token when the tab reloads', async () => {
+    const { app, agent, view, leaf } = setup('off')
+    agent.githubConnections!.selected = 'ask'
+    vi.spyOn(leaf, 'setViewState').mockImplementation(async (state) =>
+      view.setState(state.state, { history: false })
+    )
+    const approve = vi.fn(async () => true)
+    const tool = createGithubTools({ agent: () => agent, approve }).find(
+      (t) => t.name === 'github_open'
+    )!
+    await tool.execute('grant-once', {
+      url: 'https://github.com/sample/repo/issues/1',
+      connection: 'Selected',
+    })
+    view.model.tree = false
+    await view.onOpen()
+    await vi.waitFor(() => expect(view.containerEl.textContent).toContain('Sample Author'))
+    expect(approve).toHaveBeenCalledOnce()
+    expect(view.getState()).not.toHaveProperty('approvedConnections')
+    app.secretStorage.setSecret('selected-sample-key', 'invented-replacement')
+    AbeleConfig.getInstance().version.value++
+    await flushPromises()
+    expect(
+      request.mock.calls.filter(([r]) => r.headers?.Authorization === 'Bearer invented-replacement')
+    ).toEqual([])
+    expect(view.model.screen.title).toBe('')
+    expect(view.containerEl.textContent).toMatch(/may not use|access|approval/i)
+  })
+
   it.each(['off', 'ask'] as const)(
     'never uses a %s server-default token for people requested by a tab opened as another account',
     async (mode) => {

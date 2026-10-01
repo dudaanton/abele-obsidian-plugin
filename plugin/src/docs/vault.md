@@ -416,7 +416,9 @@ restriction; it is not persisted as permission granted by the person. Each store
 hold `githubConnections`, a map from stable connection IDs to `off`, `ask` or `auto` (shown as
 Off, Ask, On). A missing ID means Off. It travels with the agent; unresolved IDs remain visible
 in its Access settings until the connection arrives. One-operation approvals and executing-agent
-restrictions on a tab are runtime-only, never written as persistent grants.
+restrictions on a tab are runtime-only, never written as persistent grants. Each Ask grant
+also identifies the exact credential generation approved, not only the connection ID; token,
+server, or key-store state changes invalidate it for primary and secondary tab loads.
 
 ## GitHub links
 

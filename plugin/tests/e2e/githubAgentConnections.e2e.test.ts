@@ -22,7 +22,8 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
       const config=window.__abeleTest.AbeleConfig.getInstance()
       config.github.connections=['one','two'].map((id,i)=>({id,name:'Sample '+id,server:${JSON.stringify(gh.origin)},keyId:'sample-agent-'+id,owners:[],isDefault:i===0}))
       const before=app.secretStorage.getSecret
-      app.secretStorage.getSecret=function(id){return id==='sample-agent-one'?'invented-connection-one':id==='sample-agent-two'?'invented-connection-two':before.call(this,id)}
+      window.__connectionSelectedToken='invented-connection-two'
+      app.secretStorage.getSecret=function(id){return id==='sample-agent-one'?'invented-connection-one':id==='sample-agent-two'?window.__connectionSelectedToken:before.call(this,id)}
       const registry=window.__abeleTest.AgentRegistry.getInstance()
       window.__connectionAgents=[registry.create({name:'Sample first',githubConnections:{one:'auto',two:'off'}}).id,registry.create({name:'Sample second',githubConnections:{one:'off',two:'auto'}}).id]
       config.version.value++
@@ -32,7 +33,7 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
   afterAll(() => {
     try {
       evalRaw(
-        `(()=>{const r=window.__abeleTest.AgentRegistry.getInstance();for(const id of window.__connectionAgents||[])r.remove(id);delete window.__connectionAgents;return 'ok'})()`
+        `(()=>{const r=window.__abeleTest.AgentRegistry.getInstance();for(const id of window.__connectionAgents||[])r.remove(id);delete window.__connectionAgents;delete window.__connectionSelectedToken;return 'ok'})()`
       )
       restoreGithub()
     } finally {
@@ -81,6 +82,38 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
     expect(result.asked).toBe(true)
     expect(result.mode).toBe('ask')
     expect(result.code).toContain('const widgets = loadWidgets(count)')
+  })
+
+  it('does not use an old Ask grant when a tool-opened tab receives another account token', async () => {
+    const before=gh.requests().filter(line=>line.includes('account=one')).length
+    const result=evalAsync<{loaded:boolean;refused:boolean;empty:boolean}>(`(async()=>{
+      ${PRELUDE}
+      const config=window.__abeleTest.AbeleConfig.getInstance()
+      const agent=window.__abeleTest.AgentRegistry.getInstance().get(window.__connectionAgents[1])
+      const previous=agent.githubConnections.two
+      let leaf
+      try {
+        agent.githubConnections.two='ask'
+        const tool=window.__abeleTest.createAgentTools({agentId:agent.id,githubApproval:window.__abeleTest.connectionApproval(app)}).find(t=>t.name==='github_open')
+        const pending=tool.execute('open-with-grant',{url:${JSON.stringify(gh.web+'/issues/7')},connection:'Sample two'})
+        const approve=await until(()=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Allow once'),5000)
+        if(!approve) throw new Error('The connection approval did not open')
+        approve.click();await pending
+        leaf=githubLeaves()[0]
+        const loaded=!!(await until(()=>leaf?.view.model.screen.title,15000))
+        window.__connectionSelectedToken='invented-connection-one'
+        config.version.value++
+        const refused=!!(await until(()=>/may not use|access|approval/i.test(leaf.view.model.screen.error),10000))
+        return {loaded,refused,empty:leaf.view.model.screen.title===''}
+      } finally {
+        leaf?.detach();window.__connectionSelectedToken='invented-connection-two'
+        agent.githubConnections.two=previous;config.version.value++
+      }
+    })()`)
+    expect(result).toEqual({loaded:true,refused:true,empty:true})
+    // Yield through the request-log stream after the app has settled the refused load.
+    await new Promise(resolve=>setImmediate(resolve))
+    expect(gh.requests().filter(line=>line.includes('account=one'))).toHaveLength(before)
   })
 
   it('uses the executing agent, refuses forbidden explicit access, and hides a loaded private tab', async () => {

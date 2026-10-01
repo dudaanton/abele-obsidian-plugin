@@ -40,7 +40,7 @@ const legacyDefaultHost = () => endpoints(githubSettings().server).webHost
 export interface GithubToolOperation {
   connectionId: string
   agentId?: string
-  approvedIds: string[]
+  approvedConnections: Record<string, string>
   explicit: boolean
   target?: GithubTarget
   candidates: string[]

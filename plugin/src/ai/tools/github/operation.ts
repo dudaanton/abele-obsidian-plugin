@@ -180,7 +180,7 @@ export async function toolOperation(
   return {
     connectionId: connection?.id ?? '',
     agentId: originalAgent,
-    approvedIds: approved ? [approved] : [],
+    approvedConnections: approved ? { [approved]: generation } : {},
     explicit: !!selected,
     target: target ?? undefined,
     candidates,

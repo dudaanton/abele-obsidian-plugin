@@ -12,7 +12,8 @@ export interface GithubViewModel {
   /** Runtime-only restriction for an agent-opened tab; never persisted as a user permission. */
   allowedConnections?: string[]
   executionAgentId?: string
-  approvedConnections?: string[]
+  /** Operation-local Ask grants: connection ID to the exact credential generation approved. */
+  approvedConnections?: Record<string, string>
   /** Null for a URL no GitHub tab can show. */
   target: GithubTarget | null
   /** Moves on every navigation, even to the same URL, so the line or comment is found again. */

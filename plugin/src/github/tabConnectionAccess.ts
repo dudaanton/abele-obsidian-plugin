@@ -15,7 +15,14 @@ export function tabAccessSnapshot(model: TabAccess): TabAccess {
   return {
     allowedConnections: model.allowedConnections && [...model.allowedConnections],
     executionAgentId: model.executionAgentId,
-    approvedConnections: model.approvedConnections && [...model.approvedConnections],
+    approvedConnections:
+      model.approvedConnections && !Array.isArray(model.approvedConnections)
+        ? Object.fromEntries(
+            Object.entries(model.approvedConnections).filter(
+              ([, value]) => typeof value === 'string'
+            )
+          )
+        : {},
   }
 }
 
@@ -26,9 +33,10 @@ export function tabConnectionAllowed(scope: TabAccess, id: string): boolean {
     ? AgentRegistry.getInstance().get(scope.executionAgentId)
     : null
   const mode = connectionMode(agent, id)
+  const approved = scope.approvedConnections?.[id]
   return (
     scope.allowedConnections.includes(id) &&
-    (mode === 'auto' || (mode === 'ask' && !!scope.approvedConnections?.includes(id)))
+    (mode === 'auto' || (mode === 'ask' && !!approved && approved === connectionGeneration(id)))
   )
 }
 

@@ -19,7 +19,7 @@ import { readConnectionItem } from './connectionRead'
 import { GithubError } from './client'
 import type { GithubTarget } from './urls'
 import { sameConnectionServer } from './connectionRouting'
-import { clientForTab } from './tabConnectionAccess'
+import { clientForTab, tabAccessSnapshot } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
@@ -96,7 +96,7 @@ export class GithubView extends ItemView {
         connectionIntent?: string
         allowedConnections?: string[]
         executionAgentId?: string
-        approvedConnections?: string[]
+        approvedConnections?: Record<string, string>
       }
       let connectionId = requested.connectionId
       const exists = (githubSettings().connections ?? []).some((c) => c.id === connectionId)
@@ -121,9 +121,10 @@ export class GithubView extends ItemView {
       if (accountChanged || url !== this.model.url) Object.assign(this.model.screen, emptyScreen())
       this.model.connectionId = connectionId
       this.model.connectionIntent = requested.connectionIntent === 'manual' ? 'manual' : 'automatic'
-      this.model.allowedConnections = requested.allowedConnections
-      this.model.executionAgentId = requested.executionAgentId
-      this.model.approvedConnections = requested.approvedConnections
+      const access=tabAccessSnapshot(requested)
+      this.model.allowedConnections = access.allowedConnections
+      this.model.executionAgentId = access.executionAgentId
+      this.model.approvedConnections = access.approvedConnections
       const mode = (state as { mode?: unknown }).mode
       this.model.url = url
       this.model.target = target

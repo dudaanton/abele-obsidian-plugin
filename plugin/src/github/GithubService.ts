@@ -262,7 +262,7 @@ export async function openGithubUrl(
     manual?: boolean
     allowedIds?: string[]
     agentId?: string
-    approvedIds?: string[]
+    approvedConnections?: Record<string, string>
   } = {}
 ): Promise<boolean> {
   const target = parseForSettings(url)
@@ -312,7 +312,7 @@ export async function openGithubUrl(
         ? {
             allowedConnections: context.allowedIds,
             executionAgentId: context.agentId,
-            approvedConnections: context.approvedIds,
+            approvedConnections: context.approvedConnections,
           }
         : {}),
     },

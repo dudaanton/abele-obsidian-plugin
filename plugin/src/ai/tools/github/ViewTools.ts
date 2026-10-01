@@ -238,7 +238,7 @@ export function createGithubOpenTool(
             manual: operation.explicit,
             allowedIds: operation.allowedIds,
             agentId: operation.agentId,
-            approvedIds: operation.approvedIds,
+            approvedConnections: operation.approvedConnections,
           })
         : await openGithubUrl(app, url, params.new_tab === true ? 'tab' : false)
       if (!opened) throw new Error(`No GitHub tab can show ${url}.`)
