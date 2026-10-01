@@ -70,6 +70,16 @@ SHA. Shared/agent connections refuse execution. Missing or unknown provenance bl
 rename, restore, adoption, a nested call or an automation cannot bypass the common gate.
 Ordinary local scripts in a vault that has never been sync-managed continue to run locally.
 
+Personal managed scripts use **until confirmed**: run one manually from the script library or
+command palette to review its full source, file identity, connection and SHA-256. **Approve
+and run** stores permission for those exact bytes on this device. A changed file/identity or
+connection while the dialog is open invalidates the decision. New bytes need a new decision;
+rename alone preserves identity. Shared/agent policy is **refuse**, with no approval bypass.
+Agents, automations, nested scripts and restored views never open approval dialogs: unapproved
+runs return a hold/error. Approving on one device does not authorize another, and nothing in
+settings transfer carries these permissions. This execution policy does not disable note-event
+automations; their event handling is independent of code approval.
+
 ## The header
 
 Every script starts with a comment block declaring what it is. Without `@name` the file is

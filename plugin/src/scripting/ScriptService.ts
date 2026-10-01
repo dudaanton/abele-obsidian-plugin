@@ -34,7 +34,8 @@ import {
 import type { RestoreInfo, ViewHost } from './view/View'
 import type { AutomationEvent } from '@/automations/types'
 import { ref } from 'vue'
-import { scriptForExecution } from './trust/scriptExecutionGate'
+import { scriptForExecution, assertScriptContext } from './trust/scriptExecutionGate'
+import { showScriptApproval } from './trust/scriptApprovalPrompt'
 
 /**
  * How to run a script, beyond which one and with what.
@@ -43,6 +44,8 @@ import { scriptForExecution } from './trust/scriptExecutionGate'
  * third place means the same as it always did — so nothing that called it before has to change.
  */
 export interface ExecuteOptions {
+  /** Explicit user gesture only. Agent, automation, nested and restored runs never prompt. */
+  allowApprovalPrompt?: boolean
   signal?: AbortSignal
   /**
    * Shows the script's form and answers with what was filled in, or `null` if it was dismissed.
@@ -626,7 +629,7 @@ export class ScriptService {
       const script = this.scripts.get(path)
       if (!script) throw new Error(`Script not found: ${path}`)
       const verdict = this.verdict(script)
-      if (verdict === 'confirmed') return scriptForExecution(GlobalStore.getInstance().app, path)
+      if (verdict === 'confirmed') return scriptForExecution(GlobalStore.getInstance().app, path, ASKS_A_PERSON.has(source) ? (request) => showScriptApproval(request, signal) : undefined)
       if (!ASKS_A_PERSON.has(source)) throw new ScriptWaitingError(script.meta.name, verdict)
       const confirmed = await this.review(script, signal)
       signal?.throwIfAborted()
@@ -985,6 +988,7 @@ export class ScriptService {
 
       // The common gate checked the current full-byte snapshot and its managed provenance.
       // All commands, nested calls, views, agents and automations compile only that snapshot.
+      assertScriptContext(GlobalStore.getInstance().app, script)
       const fn = compile(script.code)
 
       const result = await waitForScript(() => fn(ctx), signal)
@@ -1055,6 +1059,7 @@ export class ScriptService {
       const result = await this.execute(path, params, {
         formHandler: showFormModal,
         source: 'command',
+        allowApprovalPrompt: true,
       })
       if (result.trim()) {
         new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)

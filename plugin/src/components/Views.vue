@@ -98,6 +98,11 @@
     v-if="migrateFromTogglModalOpened"
     @close="migrateFromTogglModalOpened = false"
   />
+  <ScriptApprovalModal
+    v-if="scriptApprovalDialog"
+    :key="scriptApprovalDialog.id"
+    :request="scriptApprovalDialog"
+  />
   <ScriptFormModal
     v-if="scriptFormModalOpened && scriptFormResolve"
     :key="scriptFormId"
@@ -144,7 +149,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
+import { scriptApprovalDialog, cancelScriptApprovals } from '@/scripting/trust/scriptApprovalPrompt'
+onBeforeUnmount(cancelScriptApprovals)
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import NoteWidgets from './NoteWidgets.vue'
@@ -165,6 +172,7 @@ import MigrateFromFireflyModal from './MigrateFromFireflyModal.vue'
 import MigrateDataviewFieldsModal from './MigrateDataviewFieldsModal.vue'
 import MigrateFromTogglModal from './MigrateFromTogglModal.vue'
 import ScriptFormModal from './ScriptFormModal.vue'
+import ScriptApprovalModal from './ScriptApprovalModal.vue'
 import VersionHistoryModal from './sync/VersionHistoryModal.vue'
 import DeletedFilesModal from './sync/DeletedFilesModal.vue'
 import HeldDeletesModal from './sync/HeldDeletesModal.vue'

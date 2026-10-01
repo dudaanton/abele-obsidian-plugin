@@ -247,6 +247,7 @@ const start = async (run: ScriptRun, params: Record<string, unknown>) => {
   try {
     const result = await ScriptService.getInstance().execute(run.path, params, {
       formHandler: showFormModal,
+      allowApprovalPrompt: true,
       // Run again by hand, an agent's or an automation's run is the person's own.
       source: rerunSource(run),
       book: run.book,

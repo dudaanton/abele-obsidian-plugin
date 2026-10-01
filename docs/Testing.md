@@ -598,6 +598,11 @@ contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current
   two fingers zoom. The canvas keeps what it drew on `canvas.abeleHits`, which is how the test
   finds a bar by name. Pictures in `/tmp/abele-phone/timeline-*.png`.
 
+- `scriptApproval.e2e.test.ts` — **exact-byte script consent**: uses the existing dialog
+  geometry/focus-ring and phone-window helpers on a leased vault. Checks native IndexedDB
+  approval through the real dialog, desktop controls, and 390/320-wide sheets with one readable
+  body scroller. Captures both metadata and scrolled source views in checkout-local scratch;
+  inspect every screenshot. This is desktop phone emulation, not physical iOS certification.
 - `sync.e2e.test.ts` — **sync, with nothing stubbed**. Starts the sibling repository's sync
   server and daemon, opens a vault of its own in the running Obsidian with this branch's build in
   it, and pairs it the way the Sync tab does. Then: a note made in Obsidian reaches the daemon

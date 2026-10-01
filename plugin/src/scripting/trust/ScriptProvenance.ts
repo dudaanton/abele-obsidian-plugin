@@ -94,6 +94,22 @@ export class ScriptProvenance {
     return (await this.meta.getMeta(this.approvalKey(record, sha))) === 'approved'
   }
 
+  async approve(path: string, expected: ManagedScript, sha: string): Promise<void> {
+    if (!/^[a-f0-9]{64}$/.test(sha)) throw new Error('Exact full-content SHA is required')
+    const current = await this.lookup(path)
+    if (
+      !current?.fileId ||
+      current.fileId !== expected.fileId ||
+      current.binding.facet !== 'personal' ||
+      !sameBinding(current.binding, expected.binding)
+    )
+      throw new Error('Script identity or policy changed during approval')
+    const key = this.approvalKey(current, sha)
+    await this.meta.setMeta(key, 'approved')
+    if ((await this.meta.getMeta(key)) !== 'approved')
+      throw new Error('Script approval was not persisted')
+  }
+
   private approvalKey(record: ManagedScript, sha: string): string {
     return `script-approval:${JSON.stringify([record.binding, record.fileId, sha])}`
   }

@@ -85,6 +85,9 @@ import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
 import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
+import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
+import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
+import { showScriptApproval, scriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
 import { openEpub } from '@/reader/openBook'
@@ -175,6 +178,12 @@ interface AbeleTestApi {
   SyncService: typeof SyncService
   /** Production transport selection, for native credential/redirect probes. */
   syncTransport: typeof transportOf
+  scriptTrust: {
+    activate: typeof activateScriptProvenance
+    load: typeof scriptForExecution
+    confirm: typeof showScriptApproval
+    dialog: typeof scriptApprovalDialog
+  }
   ChatService: typeof ChatService
   NodeService: typeof NodeService
   ChatStorage: typeof ChatStorage
@@ -723,6 +732,12 @@ export function exposeTestApi(plugin: Plugin): void {
     ScopeResolver,
     SyncService,
     syncTransport: transportOf,
+    scriptTrust: {
+      activate: activateScriptProvenance,
+      load: scriptForExecution,
+      confirm: showScriptApproval,
+      dialog: scriptApprovalDialog,
+    },
     ChatService,
     NodeService,
     ChatStorage,

@@ -1132,7 +1132,7 @@ aliases and changed endpoint URLs are refused with a request for a fresh call; t
 ## Sync
 
 `.abele-script-managed` is a device-local recovery marker for script provenance. It is hidden
-and never synced. Managed file identities and future exact-byte execution approvals live in a
+and never synced. Managed file identities and exact-byte execution approvals live in a
 separate device-local IndexedDB database, selected by `abele-script-provenance` in this vault's
 local storage—not in `data.json` or a transferable settings section. Rename, restore and
 adoption do not make received bytes into trusted local code. A missing store behind a marker

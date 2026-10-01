@@ -67,7 +67,11 @@ export async function runScriptByName(
     const result = await ScriptService.getInstance().execute(
       script.path,
       scriptParams(script, supplied),
-      { source, formHandler: showFormModal }
+      {
+        source,
+        formHandler: showFormModal,
+        allowApprovalPrompt: source === 'note' || source === 'link' || source === 'command',
+      }
     )
     if (result?.trim()) {
       new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)

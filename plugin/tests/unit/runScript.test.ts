@@ -93,7 +93,7 @@ describe('running one', () => {
         mode: 'full',
         depth: '2',
       },
-      { source: 'note', formHandler: showFormModal }
+      { source: 'note', formHandler: showFormModal, allowApprovalPrompt: true }
     )
   })
 
@@ -103,7 +103,13 @@ describe('running one', () => {
     expect(execute.mock.calls[0][2]).toEqual({
       source: 'note',
       formHandler: showFormModal,
+      allowApprovalPrompt: true,
     })
+  })
+
+  it('does not request approval UI for an automated caller', async () => {
+    await runScriptByName('Fetch', {}, 'Sample automation', 'automation')
+    expect(execute.mock.calls[0][2].allowApprovalPrompt).toBe(false)
   })
 
   it('says so rather than executing anything when the name matches no script', async () => {

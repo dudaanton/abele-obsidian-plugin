@@ -131,7 +131,7 @@ describe('a note of a configured type', () => {
         query: 'The Third Man',
         mode: 'full',
       },
-      { source: 'note', formHandler: showFormModal }
+      { source: 'note', formHandler: showFormModal, allowApprovalPrompt: true }
     )
   })
 

@@ -8,6 +8,10 @@
     </Setting>
 
     <template v-if="scriptsEnabled">
+      <Setting
+        name="Synced script policy"
+        desc="Personal sync: until confirmed on this device. Shared and agent connections: refuse. Run a script manually to review its exact bytes. Missing provenance requires recovery; approvals never sync."
+      />
       <Setting name="Scripts folder" desc="Vault folder containing .js script files.">
         <Search
           :model-value="scriptsFolder"
