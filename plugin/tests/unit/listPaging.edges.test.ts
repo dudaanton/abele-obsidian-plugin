@@ -100,9 +100,22 @@ describe('tail paging — delayed sources and anchoring', () => {
     expect(paged.visible.value).toEqual(source.value.slice(2))
   })
 
-  // BUG: reset (also the shrinking-source watcher) sets held to null without anchoring the
-  // newly shown last page. The next append recalculates its start and drops the oldest row.
-  it.fails.each(['reset', 'shrink'] as const)(
+  // Reset and shrink must anchor the newly shown page before any later append.
+  it('waits for a new source after shrinking to empty and resetting', async () => {
+    const source = ref(items(20))
+    const paged = scope.run(() => useTailPagedList(() => source.value, 3))!
+    source.value = []
+    await nextTick()
+    paged.reset()
+    source.value = items(10)
+    await nextTick()
+    expect(paged.visible.value).toEqual(items(10).slice(7))
+    source.value.push('reply')
+    await nextTick()
+    expect(paged.visible.value).toEqual([...items(10).slice(7), 'reply'])
+  })
+
+  it.each(['reset', 'shrink'] as const)(
     'keeps the first visible row on append after %s',
     async (action) => {
       const source = ref(items(20))

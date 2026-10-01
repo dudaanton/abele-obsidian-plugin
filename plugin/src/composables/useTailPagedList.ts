@@ -74,7 +74,7 @@ export function useTailPagedList<T>(
   }
 
   const reset = (): void => {
-    held.value = null
+    held.value = total.value > 0 ? Math.max(0, total.value - pageSize) : null
   }
 
   const showFrom = (start: number): void => {
@@ -88,7 +88,7 @@ export function useTailPagedList<T>(
       // conversation, or one whose history was rewritten. Holding on to a window grown for the
       // old one would render the whole of the new one.
       if (now < before) {
-        held.value = null
+        reset()
         return
       }
       // The first sight of a non-empty list is what the window is anchored against; after
