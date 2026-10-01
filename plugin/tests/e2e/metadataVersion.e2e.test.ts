@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { vaultCli } from './helpers/obsidianCli'
 import { waitFor } from './helpers/syncVault'
 import { metadataVersionProbe } from './helpers/metadataVersionProbe'
+import { assertVersionEvidence } from './helpers/metadataVersionAssertions'
 
 /** Feasibility gate: unavailable native evidence is a failure, never a skipped success. */
 describe('desktop exact-version metadata feasibility', () => {
@@ -18,12 +19,7 @@ describe('desktop exact-version metadata feasibility', () => {
       expect(result.versions[version].evidence.sha).toBe(result.versions[version].sha)
       expect(result.versions[version].evidence.cacheHash).toMatch(/^[0-9a-f]{64}$/)
     }
-    expect(result.versions.applied.evidence.links).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ spelling: 'sample.png', targetId: 'sample-target-id' }),
-        expect.objectContaining({ spelling: 'not-yet-present', path: null }),
-      ])
-    )
+    assertVersionEvidence(result)
     expect(result.versions.pasteBufferMatches).toBe(true)
     expect(result.pasteOrder[0].kind).toBe('create')
     expect(result.pasteOrder.some((event: any) => event.kind === 'note-save')).toBe(true)
@@ -44,7 +40,7 @@ describe('desktop exact-version metadata feasibility', () => {
         const captured = new Promise(r => { resolve = r })
         const ref = m.on('changed', (file, data, cache) => {
           if (file.path === '${root}/sample.md' && sha(data) === sha(text)) {
-            resolve({ fileId: 'restart-file', versionId: 'settled-version', sha: sha(data), cache: JSON.parse(JSON.stringify(cache)) })
+            resolve({ fileId: 'restart-file', versionId: 'settled-version', source: text, data, sha: sha(data), cache: JSON.parse(JSON.stringify(cache)) })
           }
         })
         try {
@@ -74,13 +70,34 @@ describe('desktop exact-version metadata feasibility', () => {
         const v = app.vault, sha = text => require('crypto').createHash('sha256').update(text).digest('hex')
         const baseline = JSON.parse(await v.adapter.read('${root}/baseline.json'))
         const file = v.getAbstractFileByPath('${root}/sample.md')
-        return { baseline, currentSha: sha(await v.read(file)), cache: app.metadataCache.getFileCache(file) }
+        const data = await v.read(file)
+        return { baseline, currentData: data, currentSha: sha(data), cache: app.metadataCache.getFileCache(file) }
       })()`)
       console.info(JSON.stringify({ restart: after }, null, 2))
       expect(after.baseline).toEqual(before)
       expect(after.currentSha).not.toBe(before.sha)
-      expect(after.cache.links.map((link: any) => link.link)).toEqual(['latest-link'])
-      expect(after.baseline.cache.links.map((link: any) => link.link)).toEqual(['baseline-missing'])
+      expect(after.currentData).toBe('Advanced local bytes\n[[latest-link]]\n')
+      expect(before.data).toBe(before.source)
+      expect(
+        after.cache.links.map((link: any) => ({ spelling: link.link, original: link.original }))
+      ).toEqual([{ spelling: 'latest-link', original: '[[latest-link]]' }])
+      expect(
+        after.baseline.cache.links.map((link: any) => ({
+          spelling: link.link,
+          original: link.original,
+        }))
+      ).toEqual([{ spelling: 'baseline-missing', original: '[[baseline-missing]]' }])
+      expect(after.cache.embeds ?? []).toEqual([])
+      expect(after.baseline.cache.embeds ?? []).toEqual([])
+      for (const [cache, data] of [
+        [before.cache, before.data],
+        [after.cache, after.currentData],
+      ]) {
+        for (const link of cache.links)
+          expect(data.slice(link.position.start.offset, link.position.end.offset)).toBe(
+            link.original
+          )
+      }
     } finally {
       cli.evalAwait(`(async () => {
         const folder = app.vault.getAbstractFileByPath('${root}')

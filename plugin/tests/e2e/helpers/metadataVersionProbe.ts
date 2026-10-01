@@ -21,17 +21,19 @@ export const metadataVersionProbe = String.raw`(async () => {
     // The supported changed event supplies the text parsed by this cache, not a later read.
     const captured = {
       path: file.path,
+      data,
       sha: sha(Buffer.from(data, 'utf8')),
       generation: events.length + 1,
       cacheHash: sha(JSON.stringify(cache)),
       cache: clone(cache),
-      links: [...(cache.links || []), ...(cache.embeds || [])].map(link => {
+      links: [...(cache.links || []).map(link => ({...link, kind: 'link'})), ...(cache.embeds || []).map(link => ({...link, kind: 'embed'}))].map(link => {
         const target = m.getFirstLinkpathDest(link.link.split('#')[0], file.path)
         return {
+          kind: link.kind,
           spelling: link.link,
           original: link.original,
           path: target?.path ?? null,
-          targetId: target?.path === root + '/sample.png' ? 'sample-target-id' : null,
+          targetId: ['original', 'applied', 'local', 'merged'].find(name => target?.path === root + '/' + name + '.png')?.concat('-target-id') ?? null,
         }
       }),
     }
@@ -49,21 +51,23 @@ export const metadataVersionProbe = String.raw`(async () => {
   const bind = (bytes, versionId) => {
     const evidence = matching(bytes)
     // No matched complete event means unknown, even if getFileCache is populated.
-    return { fileId: 'sample-note-id', versionId, sha: sha(bytes), evidence: evidence ? clone(evidence) : null }
+    return { fileId: 'sample-note-id', versionId, source: bytes, sha: sha(bytes), evidence: evidence ? clone(evidence) : null }
   }
   try {
     if (v.getAbstractFileByPath(root)) throw new Error('Probe folder already exists')
     await v.createFolder(root)
-    await v.createBinary(root + '/sample.png', new Uint8Array([1,2,3]).buffer)
+    for (const name of ['original', 'applied', 'local', 'merged']) {
+      await v.createBinary(root + '/' + name + '.png', new Uint8Array([1,2,3]).buffer)
+    }
     refs.push(m.on('changed', capture))
     const nonce = crypto.randomBytes(8).toString('hex')
-    const first = nonce + '\nRemote baseline\n![[sample.png]]\n[[not-yet-present]]\n'
+    const first = nonce + '\nRemote baseline\n[[original-only]]\n![[original.png]]\n'
     const note = await v.create(root + '/sample.md', first)
     await wait(() => matching(first), 'remote baseline cache')
     versions.remote = bind(first, 'remote-version')
     // Pause the real worker after readBinary captured the remote-applied bytes.
-    const remote = nonce + '\nRemote apply\n![[sample.png]]\n[[not-yet-present]]\n'
-    const local = nonce + '\nImmediate local edit\n[[different-missing]]\n'
+    const remote = nonce + '\nRemote apply\n[[applied-only]]\n[[applied-unresolved]]\n![[applied.png]]\n'
+    const local = nonce + '\nImmediate local edit\n[[local-only]]\n[[local-second]]\n![[local.png]]\n'
     const started = new Promise(resolve => { releaseStarted = resolve })
     m.work = async function(bytes) {
       if (armed && sha(Buffer.from(bytes)) === sha(remote)) {
@@ -87,7 +91,7 @@ export const metadataVersionProbe = String.raw`(async () => {
     versions.local = bind(local, 'local-version')
     const preserved = clone(versions.applied)
     // A settled merge result becomes a new baseline, not a local-authorship assertion.
-    const merged = remote + 'Merged paragraph\n[[merged-missing]]\n'
+    const merged = nonce + '\nMerged paragraph\n[[merged-only]]\n[[local-only]]\n![[merged.png]]\n![[applied.png]]\n'
     await v.modify(note, merged)
     await wait(() => matching(merged), 'settled merge cache')
     versions.merged = bind(merged, 'merged-version')
@@ -103,7 +107,11 @@ export const metadataVersionProbe = String.raw`(async () => {
     refs.push(v.on('create', f => { if (f.path.startsWith(root + '/')) pasteOrder.push({ kind: 'create', path: f.path }) }))
     refs.push(v.on('modify', f => { if (f.path === note.path) pasteOrder.push({ kind: 'note-save', path: f.path }) }))
     const oldAttachment = v.getConfig('attachmentFolderPath')
+    const oldLinkFormat = v.getConfig('newLinkFormat')
+    const oldMarkdown = v.getConfig('useMarkdownLinks')
     v.setConfig('attachmentFolderPath', './')
+    v.setConfig('newLinkFormat', 'shortest')
+    v.setConfig('useMarkdownLinks', false)
     try {
       const transfer = new DataTransfer()
       transfer.items.add(new File([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64')], 'pasted-sample.png', { type: 'image/png' }))
@@ -111,12 +119,15 @@ export const metadataVersionProbe = String.raw`(async () => {
       leaf.view.containerEl.querySelector('.cm-content').dispatchEvent(ev)
       await wait(() => events.some(e => e.path === note.path && e.cache.embeds?.some(x => !merged.includes(x.original))), 'native paste cache')
       const paste = events.find(e => e.path === note.path && e.cache.embeds?.some(x => !merged.includes(x.original)))
-      versions.pasted = { fileId: 'sample-note-id', versionId: 'pending-paste', sha: paste.sha, evidence: clone(paste) }
+      versions.pasted = { fileId: 'sample-note-id', versionId: 'pending-paste', source: editor.getValue(), sha: paste.sha, evidence: clone(paste) }
       versions.pasteBufferMatches = sha(editor.getValue()) === paste.sha
     } finally {
       v.setConfig('attachmentFolderPath', oldAttachment)
+      v.setConfig('newLinkFormat', oldLinkFormat)
+      v.setConfig('useMarkdownLinks', oldMarkdown)
     }
     return {
+      root,
       versions,
       pendingWasUnknown: pending.evidence === null,
       currentFileAdvancedDuringParse: advanced === local,
