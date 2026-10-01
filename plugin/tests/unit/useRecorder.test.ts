@@ -223,7 +223,7 @@ describe('stopping', () => {
 
 describe('starting over', () => {
   // BUG: disposal does not invalidate getUserMedia; a late grant starts an invisible recorder.
-  it.fails('releases a microphone granted after the screen was disposed', async () => {
+  it('releases a microphone granted after the screen was disposed', async () => {
     const permission = deferred<unknown>()
     const { win, tracks } = fakeWindow({ getUserMedia: () => permission.promise })
     const recorder = useRecorder(win)
@@ -241,6 +241,23 @@ describe('starting over', () => {
       recorder.dispose()
       start.mockRestore()
     }
+  })
+
+  it('does not let an older permission result replace a newer recording', async () => {
+    const permission = deferred<unknown>()
+    const { win, tracks } = fakeWindow({ getUserMedia: () => permission.promise })
+    const recorder = useRecorder(win)
+    const first = recorder.start()
+    const nextTracks = [track()]
+    win.navigator.mediaDevices.getUserMedia = (() =>
+      Promise.resolve({ getTracks: () => nextTracks })) as never
+    await recorder.start()
+    permission.resolve({ getTracks: () => tracks })
+    await first
+    expect(tracks[0].stop).toHaveBeenCalledOnce()
+    expect(nextTracks[0].stop).not.toHaveBeenCalled()
+    expect(recorder.state.value).toBe('recording')
+    recorder.dispose()
   })
 
   it('forgets the recording, the bars and the clock', async () => {

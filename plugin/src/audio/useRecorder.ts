@@ -55,6 +55,7 @@ export function useRecorder(win: Window & typeof window): Recorder {
   let ticker: number | null = null
   let startedAt = 0
   let accumulated = 0
+  let generation = 0
 
   const supportedType = (): string | undefined =>
     MIME_TYPES.find((type) => win.MediaRecorder?.isTypeSupported?.(type))
@@ -86,7 +87,9 @@ export function useRecorder(win: Window & typeof window): Recorder {
   }
 
   const release = () => {
+    generation++
     stopTicking()
+    if (recorder && recorder.state !== 'inactive') recorder.stop()
     stream?.getTracks().forEach((track) => track.stop())
     stream = null
     recorder = null
@@ -96,11 +99,19 @@ export function useRecorder(win: Window & typeof window): Recorder {
   }
 
   const start = async (): Promise<void> => {
+    release()
+    const request = generation
     error.value = ''
     state.value = 'requesting'
     try {
-      stream = await win.navigator.mediaDevices.getUserMedia({ audio: true })
+      const granted = await win.navigator.mediaDevices.getUserMedia({ audio: true })
+      if (request !== generation) {
+        granted.getTracks().forEach((track) => track.stop())
+        return
+      }
+      stream = granted
     } catch {
+      if (request !== generation) return
       error.value = 'No microphone. Obsidian needs permission to use it.'
       state.value = 'idle'
       return
@@ -152,12 +163,14 @@ export function useRecorder(win: Window & typeof window): Recorder {
     elapsed.value = accumulated
 
     const current = recorder
+    const request = generation
     const finished = new Promise<void>((resolve) => {
       if (!current) return resolve()
       current.onstop = () => resolve()
     })
     current?.stop()
     await finished
+    if (request !== generation) return null
 
     recording.value = new Blob(chunks, { type: current?.mimeType || 'audio/webm' })
     state.value = 'recorded'
@@ -188,6 +201,9 @@ export function useRecorder(win: Window & typeof window): Recorder {
     resume,
     stop,
     reset,
-    dispose: release,
+    dispose: () => {
+      release()
+      state.value = 'idle'
+    },
   }
 }
