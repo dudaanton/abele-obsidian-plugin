@@ -63,6 +63,8 @@ export interface TabChanges {
 }
 
 export interface TabCodeSource {
+  /** A detached account view cannot open delayed results or pickers. */
+  alive?(): boolean
   client(): GithubClient
   repo(): RepoRef
   /** The ref as a person reads it — a branch, a short SHA. */
@@ -116,7 +118,7 @@ export class TabCode implements CodeNav {
   private snapshot(): { code: TabCode; current: () => boolean } {
     const key = this.identity(), src = this.src, client = src.client(), repo = {...src.repo()}, label = src.refLabel()
     const sha = src.sha(), blob = src.blob(), limit = src.limitBytes()
-    const current = () => this.identity() === key && client.isCurrent !== false
+    const current = () => this.src.alive?.() !== false && this.identity() === key && client.isCurrent !== false
     const code = new TabCode({ ...src, client: () => client, repo: () => repo, refLabel: () => label,
       sha: () => sha, blob: () => blob, limitBytes: () => limit,
       open: (url, pane) => { if (current()) src.open(url,pane) },

@@ -38,10 +38,17 @@ export interface SearchRequestState {
 }
 
 export function useTabSearch(o: TabSearchOptions) {
+  let alive=true
+  let definitionPicker: DefinitionPicker | null = null
+  onBeforeUnmount(()=>{alive=false;definitionPicker?.close();definitionPicker=null})
   const findOpen = ref(false)
   const findNonce = ref(0)
   const searchOpen = ref(false)
   const searchRequest = ref<SearchRequestState | null>(null)
+  watch(()=>o.shown.value ? o.client().cacheNamespace : '',()=>{
+    definitionPicker?.close(); definitionPicker=null
+    searchRequest.value=null; searchOpen.value=false; findOpen.value=false
+  },{flush:'sync'})
 
   /** The SHA the tab's code is at, asked once per item. */
   let shaFor: { key: string; sha: Promise<string> } | null = null
@@ -136,6 +143,7 @@ export function useTabSearch(o: TabSearchOptions) {
   }
 
   const code = new TabCode({
+    alive:()=>alive,
     client: o.client,
     repo,
     refLabel,
@@ -158,10 +166,13 @@ export function useTabSearch(o: TabSearchOptions) {
       }
     },
     pick: (hits, at, name) => {
-      const r = repo()
-      new DefinitionPicker(GlobalStore.getInstance().app, hits, name, (hit, newTab) =>
+      const r = repo(), client=o.client(), label=refLabel()
+      definitionPicker?.close()
+      definitionPicker = new DefinitionPicker(GlobalStore.getInstance().app, hits, name, (hit, newTab) => {
+        if (!alive || client !== o.client() || JSON.stringify(repo()) !== JSON.stringify(r) || label !== refLabel()) return
         o.open(blobUrl(r, at, hit.path, hit.line), newTab ? 'tab' : false)
-      ).open()
+      })
+      definitionPicker.open()
     },
   })
 

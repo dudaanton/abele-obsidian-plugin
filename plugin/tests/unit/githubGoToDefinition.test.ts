@@ -51,6 +51,18 @@ beforeEach(() => {
 })
 
 describe('go to definition', () => {
+  it('does not open or offer private definitions after the originating account view is unmounted', async () => {
+    let finish!: (sha:string)=>void
+    let alive=true
+    const {code,open,pick}=source(100,{sha:()=>new Promise(resolve=>{finish=resolve}),alive:()=>alive})
+    const pending=code.goToDefinition('makeWidget','src/app.ts')
+    alive=false
+    finish(SHA)
+    await pending
+    expect(open).not.toHaveBeenCalled()
+    expect(pick).not.toHaveBeenCalled()
+  })
+
   it('never mixes a pending SHA from one account with another account client', async () => {
     let finish!: (sha: string) => void
     const { code, src, open, request } = source(100, { sha: () => new Promise(resolve => { finish = resolve }) })
