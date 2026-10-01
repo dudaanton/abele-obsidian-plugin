@@ -31,7 +31,9 @@ lock (no manual node_modules links), builds with source maps disabled, and packs
 revision versions. Provenance records source trees, upstream lock/toolchain and archive
 checksums/integrity plus installed file checksums. Build/types/test preflights verify archive,
 lock and installed bytes and reject links. Production and pure tests need no server checkout.
-The explicit server fixture carries matching revision plus checksums of source/tests/dist;
+All server test helpers, including seed/blob/commit constructors, resolve through aliases to
+that same checked fixture; no relative sibling helper import remains. The explicit server
+fixture carries matching revision plus checksums of source/tests/dist;
 missing, changed or wrong-revision input fails instead of resolving a sibling or silently
 skipping server tests. No sibling-mutating lifecycle hook remains.
 

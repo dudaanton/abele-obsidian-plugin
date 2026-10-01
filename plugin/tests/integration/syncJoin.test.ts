@@ -13,7 +13,7 @@ import type { SharedSelective } from '@/transfer/connection'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
-import { create, seed, shaOf } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { create, seed, shaOf } from '@abele/sync-test-seed'
 
 /**
  * Joining a vault that has files, from a vault that has files too (phase 3b, decision 7).

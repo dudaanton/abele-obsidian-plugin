@@ -19,6 +19,10 @@ export default defineConfig({
       // Server fixtures are explicit clean-archive inputs, never an implicit sibling.
       // Production and pure tests resolve protocol/core from the pinned npm payloads.
       {
+        find: '@abele/sync-test-seed',
+        replacement: fixture ? `${fixture}/packages/core/tests/helpers/seed.ts` : missingFixture,
+      },
+      {
         find: '@abele/sync-test-harness',
         replacement: fixture ? `${fixture}/packages/core/tests/helpers/harness.ts` : missingFixture,
       },

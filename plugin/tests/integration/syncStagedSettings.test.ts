@@ -10,12 +10,7 @@ import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
-import {
-  blob,
-  create,
-  seed,
-  shaOf,
-} from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { blob, create, seed, shaOf } from '@abele/sync-test-seed'
 
 /**
  * Obsidian settings changed on another device (phase 3b, decision 11).

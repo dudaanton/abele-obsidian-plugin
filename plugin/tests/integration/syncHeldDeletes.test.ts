@@ -10,7 +10,7 @@ import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
-import { blob, create, seed } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { blob, create, seed } from '@abele/sync-test-seed'
 import { decidedNotice } from '@/sync/heldDeletes'
 
 /**

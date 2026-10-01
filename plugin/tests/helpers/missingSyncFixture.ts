@@ -4,4 +4,8 @@ throw new Error(
 export const serverHarness: never = undefined as never
 export const TEST_PASSWORD: never = undefined as never
 export const wsFor: never = undefined as never
+export const blob: never = undefined as never
+export const create: never = undefined as never
+export const seed: never = undefined as never
+export const shaOf: never = undefined as never
 export type Harness = never

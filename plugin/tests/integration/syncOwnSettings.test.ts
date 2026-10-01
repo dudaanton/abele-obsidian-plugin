@@ -12,7 +12,7 @@ import type { SecretStoreFile } from '@/secrets/storeFile'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
-import { blob, seed } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { blob, seed } from '@abele/sync-test-seed'
 
 /**
  * Abele's own `data.json` syncs between two devices, and settles.

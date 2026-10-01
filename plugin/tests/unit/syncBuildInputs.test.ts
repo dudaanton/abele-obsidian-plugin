@@ -8,6 +8,22 @@ const manifest = JSON.parse(
 )
 
 describe('reproducible sync build inputs', () => {
+  it('routes every server-backed seed helper through the explicit pinned fixture', () => {
+    for (const name of [
+      'syncJoin',
+      'syncOwnSettings',
+      'syncService',
+      'syncHeldDeletes',
+      'syncStagedSettings',
+    ]) {
+      const source = readFileSync(
+        fileURLToPath(new URL(`../integration/${name}.test.ts`, import.meta.url)),
+        'utf8'
+      )
+      expect(source).not.toContain('../../../../abele-sync/')
+      expect(source).toContain("from '@abele/sync-test-seed'")
+    }
+  })
   it('does not run a mutation of a sibling checkout before production builds', () => {
     expect(JSON.stringify(manifest.scripts)).not.toContain('../../abele-sync')
   })

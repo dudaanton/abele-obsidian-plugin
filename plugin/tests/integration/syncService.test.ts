@@ -21,7 +21,7 @@ import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
-import { blob, create, seed } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { blob, create, seed } from '@abele/sync-test-seed'
 
 /**
  * The service against a real server, a real engine and a real state database.
