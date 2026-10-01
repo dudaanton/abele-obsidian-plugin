@@ -114,6 +114,24 @@ describe('TemplateService discovery and hierarchy', () => {
     expect(service().getTemplatesByType('absent')).toEqual([])
   })
 
+  it('rediscovers templates after metadata edits, moves, renames and deletion', async () => {
+    const env = templateHarness()
+    const template = await env.template('Body')
+    expect(service().getTemplatesByType('sample')).toHaveLength(1)
+    await env.app.fileManager.renameFile(template.file, 'Moved/renamed.md')
+    expect(
+      service()
+        .discoverTemplates()
+        .map((t) => [t.name, t.file.path])
+    ).toEqual([['renamed', 'Moved/renamed.md']])
+    env.app.setFrontmatter(template.file.path, { type: 'template', template_for: 'default' })
+    expect(service().getNonDefaultTemplates()).toEqual([])
+    expect(service().getDefaultTemplate()?.file).toBe(template.file)
+    await env.app.vault.delete(template.file)
+    expect(service().discoverTemplates()).toEqual([])
+    expect(service().getDefaultTemplate()).toBeNull()
+  })
+
   it('reuses directory nodes in encounter order, leaves root templates at root', async () => {
     const env = templateHarness()
     const root = await env.template('', {}, 'root.md')

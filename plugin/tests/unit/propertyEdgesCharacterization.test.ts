@@ -39,7 +39,7 @@ describe('date property calendar and clock edges', () => {
     '2028-1-1',
     '',
     null,
-    new Date(),
+    new Date('2028-03-01T00:00:00Z'),
   ])('rejects invalid date %j', (value) => {
     expect(parseDateValue(value)).toBeNull()
   })
