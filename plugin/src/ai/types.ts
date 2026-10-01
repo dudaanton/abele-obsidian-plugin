@@ -1,4 +1,5 @@
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
+import type { ReplyHighlight, ReplyProposal, ReplyRevision } from './replyAnnotations'
 import type { TFile } from 'obsidian'
 import type { DraftImports } from './draftImports'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
@@ -557,6 +558,11 @@ export interface ChatMessage {
   /** The interceptor was a script: there is nobody to reply to in the side conversation. */
   interceptorScript?: boolean
   subAgentRun?: SubAgentRunRef
+  /** Owner annotations and accepted versions travel with this message record. */
+  highlights?: ReplyHighlight[]
+  revisions?: ReplyRevision[]
+  /** A side agent's proposal; never applied by the tool itself. */
+  replyProposal?: ReplyProposal
 }
 
 /** Where a comment chat sits: the note holding its marker, and the text it was made on. */
