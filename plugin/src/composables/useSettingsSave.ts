@@ -12,7 +12,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
  * `reseed` copies the shared settings back into the screen when they change underneath it —
  * sync bringing another device's copy, most often. What was copied at mount is then stale, and
  * the next edit would write it back over what arrived. An edit of the screen's own still
- * waiting to be written is newer than anything that could have arrived, so it is left alone.
+ * waiting to be written is rebased by the shared service onto the incoming fields first.
  */
 export function useSettingsSave(apply: () => void, reseed: () => void) {
   const config = AbeleConfig.getInstance()
@@ -25,7 +25,7 @@ export function useSettingsSave(apply: () => void, reseed: () => void) {
   }
 
   const save = () => {
-    apply()
+    config.editSettings(apply)
     if (timer !== null) window.clearTimeout(timer)
     timer = window.setTimeout(() => {
       timer = null
@@ -40,9 +40,7 @@ export function useSettingsSave(apply: () => void, reseed: () => void) {
     write()
   })
 
-  watch(config.version, () => {
-    if (timer === null) reseed()
-  })
+  watch(config.version, reseed)
 
   return { save }
 }

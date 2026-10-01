@@ -11,7 +11,7 @@ const advance = useFakeClock()
 
 // BUG: reload replaces the applied local edit while the debounce keeps the screen from reseeding;
 // the eventual save writes incoming settings instead of reconciling the pending edit.
-it.fails('preserves a pending local edit and unrelated incoming settings across a reload', async () => {
+it('preserves a pending local edit and unrelated incoming settings across a reload', async () => {
   useVault([])
   const disk = new FakeSettings()
   const config = AbeleConfig.getInstance()
@@ -20,15 +20,21 @@ it.fails('preserves a pending local edit and unrelated incoming settings across 
   const incoming = { ...config.exportSettings(), refreshDelay: 777 }
   const field = ref(config.tasksFolder)
   let save!: () => void
-  const view = mount(defineComponent({
-    setup() {
-      ;({ save } = useSettingsSave(
-        () => { config.tasksFolder = field.value },
-        () => { field.value = config.tasksFolder },
-      ))
-      return () => h('input', { value: field.value })
-    },
-  }))
+  const view = mount(
+    defineComponent({
+      setup() {
+        ;({ save } = useSettingsSave(
+          () => {
+            config.tasksFolder = field.value
+          },
+          () => {
+            field.value = config.tasksFolder
+          }
+        ))
+        return () => h('input', { value: field.value })
+      },
+    })
+  )
   try {
     field.value = 'Sample local tasks'
     save()
@@ -46,7 +52,8 @@ it.fails('preserves a pending local edit and unrelated incoming settings across 
     write.release()
     await advance()
     expect(disk.saved.at(-1)).toMatchObject({
-      tasksFolder: 'Sample local tasks', refreshDelay: 777,
+      tasksFolder: 'Sample local tasks',
+      refreshDelay: 777,
     })
   } finally {
     view.unmount()

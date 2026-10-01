@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { SettingsEdits, settingsSnapshot } from './settingsEdits'
 import { nanoid } from 'nanoid'
 import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
@@ -466,11 +467,27 @@ export class AbeleConfig {
     return AbeleConfig.instance
   }
 
+  private pendingEdits = new SettingsEdits()
+
+  /** Apply a screen's edit now, remembering only the fields it actually changed. */
+  editSettings(apply: () => void): void {
+    // Before initialization there is no incoming settings file to reconcile against.
+    if (!this.plugin) {
+      apply()
+      return
+    }
+    const before = settingsSnapshot(this.exportSettings())
+    apply()
+    this.pendingEdits.record(before, settingsSnapshot(this.exportSettings()))
+  }
+
   public init(plugin: AbelePlugin): void {
+    this.pendingEdits = new SettingsEdits()
     this.plugin = plugin
   }
 
   public destroy(): void {
+    this.pendingEdits = new SettingsEdits()
     this.plugin = null
   }
 
@@ -493,6 +510,8 @@ export class AbeleConfig {
     const candidates = pruneToolDescriptions(stored?.ai?.prompts?.toolDescriptions).kept
     const defaults = Object.keys(candidates).length ? await codeToolDescriptions() : {}
     const migrated = this.applySettings(stored ?? undefined, defaults)
+    // Include edits made before or during the read, without reverting unrelated incoming fields.
+    this.applySettings(this.pendingEdits.apply(this.exportSettings()), defaults)
 
     // Migration only rewrites the settings held in memory. Persisting it here is what stops
     // the same migration running again on the next launch — and, for the Comment agent,
@@ -557,7 +576,9 @@ export class AbeleConfig {
       )
       return
     }
-    await this.plugin.saveData(this.exportSettings())
+    const written = this.pendingEdits.written()
+    await this.plugin.saveData(settingsSnapshot(this.exportSettings()))
+    written()
   }
 
   /**
