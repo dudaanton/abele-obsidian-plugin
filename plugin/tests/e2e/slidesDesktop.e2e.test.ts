@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { SAMPLE_VIDEO } from '../fixtures/slides'
 
 targets('desktop')
 const available = isObsidianRunning() && hasTestApi()
@@ -68,6 +69,44 @@ describe.skipIf(!available)('single-screen desktop presentation', () => {
     )
     expect(result.paged, JSON.stringify(result)).toBe(true)
     expect(result.keys, JSON.stringify(result)).toEqual([true, true, true, true])
+  })
+
+  it('keeps real popout fields editable and background video controls configured', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{${PRELUDE}
+      const path='sample-popout-deck.md',videoPath='sample-popout-video.mp4'
+      let pop,file,videoFile
+      try {
+        if(app.vault.getAbstractFileByPath(path)||app.vault.getAbstractFileByPath(videoPath))throw Error('sample popout fixture already exists')
+        videoFile=await app.vault.createBinary(videoPath,Uint8Array.from(atob(${JSON.stringify(SAMPLE_VIDEO)}),c=>c.charCodeAt(0)).buffer)
+        file=await app.vault.create(path,'---\\ntype: presentation\\n---\\n::slide{bg="[[sample-popout-video.mp4]]"}::\\n# Window\\n---\\n# Next')
+        if(!await until(()=>app.metadataCache.getFirstLinkpathDest(videoPath,path)))throw Error('sample media not indexed')
+        pop=app.workspace.openPopoutLeaf()
+        await pop.setViewState({type:'abele-deck',state:{file:path},active:true})
+        app.workspace.setActiveLeaf(pop,{focus:true})
+        const viewer=pop.view.viewer;await viewer.ready
+        const doc=viewer.root.ownerDocument,win=doc.defaultView
+        const input=doc.createElement('input');viewer.viewport.querySelector('.abele-slide:not([hidden])').append(input)
+        input.focus();input.dispatchEvent(new win.KeyboardEvent('keydown',{key:' ',bubbles:true}))
+        const video=viewer.viewport.querySelector('video')
+        const result={otherDocument:doc!==document,foreignInput:!(input instanceof Element),foreignVideo:!(video instanceof HTMLVideoElement),index:viewer.index,controls:video.controls,loop:video.loop}
+        viewer.root.focus();viewer.root.dispatchEvent(new win.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))
+        await viewer.ready;result.navigation=viewer.index===1
+        return JSON.stringify(result)
+      } finally {
+        app.workspace.setActiveLeaf(leaf,{focus:true});pop?.detach()
+        if(file)await app.vault.delete(file)
+        if(videoFile)await app.vault.delete(videoFile)
+      }
+    })()`)
+    )
+    expect(result.otherDocument).toBe(true)
+    expect(result.foreignInput).toBe(true)
+    expect(result.foreignVideo).toBe(true)
+    expect(result.index).toBe(0)
+    expect(result.controls).toBe(true)
+    expect(result.loop).toBe(true)
+    expect(result.navigation).toBe(true)
   })
 
   it('requests native fullscreen from Play and restores the tab on escape', async () => {

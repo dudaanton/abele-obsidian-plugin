@@ -22,12 +22,18 @@ const SOURCE = `---
 type: presentation
 aspect: '16:9'
 ---
-::slide{layout=title}::
+::slide{layout=title class=sample-accent}::
 # Sample deck
 A short introduction
 
 > [!notes]
 > Private reminder
+
+> [!tip]
+> Public suggestion
+>
+> > [!notes]
+> > Hidden nested reminder
 
 ---
 ::slide{layout=split}::
@@ -89,6 +95,7 @@ A caption
 # Section
 
 \`\`\`css
+@import "./sample-parent.css";
 body { --sample-deck-only: 1; }
 \`\`\`
 `
@@ -125,6 +132,8 @@ beforeAll(async () => {
     const dir=${JSON.stringify(DIR)}
     if (app.vault.getAbstractFileByPath(dir)) throw Error('sample fixture directory already exists')
     await app.vault.createFolder(dir)
+    await app.vault.create(dir+'/sample-parent.css','@import "./sample-imported.css";')
+    await app.vault.create(dir+'/sample-imported.css','.workspace { display: none !important } body { --sample-imported: yes } .sample-accent { --sample-root-class: yes } .sample-accent h1 { --sample-heading-class: yes }')
     await app.vault.create(dir+'/sample-image.svg',${JSON.stringify(SAMPLE_IMAGE)})
     const bytes=Uint8Array.from(atob(${JSON.stringify(SAMPLE_VIDEO)}),c=>c.charCodeAt(0))
     await app.vault.createBinary(dir+'/sample-video.mp4',bytes.buffer)
@@ -155,7 +164,13 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
       const result = { slides: viewer.viewport.querySelectorAll('.abele-slide').length,
         notes: viewer.root.textContent.includes('Private reminder'),
         body: getComputedStyle(document.body).getPropertyValue('--sample-deck-only'),
-        scoped: getComputedStyle(active()).getPropertyValue('--sample-deck-only').trim() }
+        scoped: getComputedStyle(active()).getPropertyValue('--sample-deck-only').trim(),
+        nested:viewer.root.textContent.includes('Hidden nested reminder'),
+        imported:getComputedStyle(active()).getPropertyValue('--sample-imported').trim(),
+        rootClass:getComputedStyle(active()).getPropertyValue('--sample-root-class').trim(),
+        headingClass:getComputedStyle(active().querySelector('h1')).getPropertyValue('--sample-heading-class').trim(),
+        globalImport:getComputedStyle(document.body).getPropertyValue('--sample-imported').trim(),
+        workspaceVisible:getComputedStyle(document.querySelector('.workspace')).display!=='none' }
       result.shot=await picture('desktop-title')
       await viewer.go(1)
       result.regions=[...active().querySelectorAll('.abele-slide-region')].map(el=>el.className)
@@ -167,6 +182,12 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
     expect(r.notes).toBe(false)
     expect(r.body.trim()).toBe('')
     expect(r.scoped).toBe('1')
+    expect(r.nested).toBe(false)
+    expect(r.imported).toBe('yes')
+    expect(r.rootClass).toBe('yes')
+    expect(r.headingClass).toBe('yes')
+    expect(r.globalImport).toBe('')
+    expect(r.workspaceVisible).toBe(true)
     expect(r.regions).toHaveLength(3)
     expect(r.image).toBe(true)
   })
