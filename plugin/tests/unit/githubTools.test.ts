@@ -125,6 +125,62 @@ beforeEach(() => {
   configure()
 })
 
+describe('file attribution', () => {
+  it('returns only blame ranges intersecting the requested line window at the requested ref', async () => {
+    configure({ token: 'sample-token' })
+    const commit = {
+      oid: 'a'.repeat(40),
+      message: 'Sample change\n\nDetails',
+      committedDate: '2025-03-04T12:00:00Z',
+      author: { name: 'Sample Author' },
+    }
+    serve({
+      '/repos/sample-org/sample-repo/contents/sample.ts': { json: { type: 'file' } },
+      '/graphql': (req) => {
+        expect(JSON.parse(req.body!).variables).toEqual({
+          owner: 'sample-org',
+          repo: 'sample-repo',
+          ref: 'topic/sample',
+          path: 'sample.ts',
+        })
+        return {
+          json: {
+            data: {
+              repository: {
+                object: {
+                  blame: {
+                    ranges: [
+                      { startingLine: 1, endingLine: 8, commit },
+                      {
+                        startingLine: 9,
+                        endingLine: 20,
+                        commit: { ...commit, oid: 'b'.repeat(40) },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        }
+      },
+    })
+    const out = await run('github_file', {
+      repo: 'sample-org/sample-repo',
+      path: 'sample.ts',
+      ref: 'topic/sample',
+      blame: true,
+      start_line: 4,
+      end_line: 6,
+    })
+    expect(out).toContain('4–6')
+    expect(out).toContain('Sample Author')
+    expect(out).toContain('Sample change')
+    expect(out).toContain('a'.repeat(40))
+    expect(out).not.toContain('b'.repeat(40))
+  })
+})
+
 describe('offered', () => {
   it('only while the GitHub integration is on', () => {
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }

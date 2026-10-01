@@ -214,6 +214,13 @@ the next part rather than trying to get everything at once.
 - `github_file` — code at a ref (`ref`, the default branch without one): a file's numbered lines,
   600 whole or 400 at a time (`start_line`, `end_line`), a folder's entries, or with
   `recursive: true` the whole tree under `path`. A `blob/…` link names file, ref and lines itself.
+  `blame: true` returns last-changing commit ranges instead of source: full SHA, author, date
+  and the first message line, limited to `start_line`–`end_line` (400 lines by default, at most
+  1500). It needs a token and reads GraphQL at the specified ref; errors use the same client as
+  the tab. In the file tab the **Blame** toggle shows a virtualized gutter; clicking a range
+  opens its commit, hover or long press reveals the full message and date. It temporarily
+  shows markdown as source. Results are memory-only, bounded and cached briefly per client,
+  repository, ref and path; changing credentials does not reuse another client's results.
 - `github_commits` — a pull request's commits (`pull` or its link), one commit's message and diffs
   (`sha` or its link), a comparison (`base` and `head`, or a `compare/a...b` link; `compare/b`
   alone is `b` against the default branch), or the history of `ref`, of one `path` when given.

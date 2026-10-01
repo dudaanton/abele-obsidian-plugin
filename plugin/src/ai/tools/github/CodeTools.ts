@@ -15,6 +15,7 @@ import { githubUsers, personLabel, peopleServer } from '@/github/users'
 import { commitRequest, commitHistoryQuery } from '@/github/commitRequest'
 import { GithubError, type GithubClient } from '@/github/client'
 import { utf8 } from '@/github/contents'
+import { loadBlame } from '@/github/blame'
 import { blobCandidates } from '@/github/urls'
 import { loadCompare } from '@/github/compare'
 import { splitMessage } from '@/github/format'
@@ -198,6 +199,7 @@ export function createGithubFileTool(
       "A repository's code at a branch, tag or commit: a file's lines, numbered, or a folder's entries. " +
       '`repo` takes owner/repo or a link — a `blob/…` link names the file, ref and lines by itself, a `tree/…` link a folder. ' +
       'A file longer than 600 lines comes back 400 lines at a time: use start_line/end_line (at most 1500 lines a call). ' +
+      '`blame: true` returns commit ranges instead of source for that window (400 lines by default); needs a token. ' +
       '`recursive: true` lists the whole tree under `path` (500 entries at most) — the way to get a map of an unknown codebase. Without `ref`, the default branch. Read-only.',
     parameters: {
       type: 'object',
@@ -210,6 +212,11 @@ export function createGithubFileTool(
         },
         start_line: { type: 'number', description: 'First line to show, 1-based' },
         end_line: { type: 'number', description: 'Last line to show' },
+        blame: {
+          type: 'boolean',
+          description:
+            'Return last-changing commit, author, date and message per line range instead of source',
+        },
         recursive: {
           type: 'boolean',
           description: 'List every file under path, not only its direct entries',
@@ -247,9 +254,30 @@ export function createGithubFileTool(
           `${at.path} is a submodule: ${body.submodule_git_url ?? 'another repository'} at ${body.sha}.`
         )
       }
-      const content = await fileText(client, repo, at.path, body)
       const start = params.start_line !== undefined ? whole(params.start_line, 1) : w.lines?.start
       const end = params.end_line !== undefined ? whole(params.end_line, 1) : w.lines?.end
+      if (params.blame === true) {
+        const ref = at.ref || (await defaultBranch(client, repo))
+        const ranges = await loadBlame(client, { ...repo, ref, path: at.path })
+        const from = start ?? 1
+        const to = Math.min(Math.max(from, end ?? from + DEFAULT_LINES - 1), from + MAX_LINES - 1)
+        const visible = ranges.filter((r) => r.end >= from && r.start <= to)
+        const rows = visible.map(
+          (r) =>
+            `${Math.max(from, r.start)}–${Math.min(to, r.end)}  ${r.commit.sha}  ${day(r.commit.date)}  ${r.commit.author}  ${splitMessage(r.commit.message).title}`
+        )
+        const total = ranges[ranges.length - 1]?.end ?? 0
+        return answer(
+          [
+            `${repoName(repo)}@${ref} · ${at.path} — blame, lines ${from}–${Math.min(to, total)}`,
+            ...rows,
+            ...(to < total
+              ? [`[More ranges: call again with blame=true and start_line=${to + 1}.]`]
+              : []),
+          ].join('\n')
+        )
+      }
+      const content = await fileText(client, repo, at.path, body)
       return answer(numbered(repo, at.ref, at.path, content, start, end))
     },
   }
