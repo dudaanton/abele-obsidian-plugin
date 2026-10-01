@@ -2,7 +2,9 @@ import { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
-import { openDocx } from '@/word/package'
+import { wordRevision } from '@/word/write'
+import { loadWordBytes as openDocx, prepareWordChange, writeWordChange } from '@/word/vaultAdapter'
+import type { WordEdit } from '@/word/edit'
 import { DOCX_VIEW_TYPE, type DocxView } from '@/word/DocxView'
 
 export function namedDocx(input: unknown): TFile {
@@ -20,6 +22,47 @@ const integer = (value: unknown, fallback: number, max: number) =>
 const properties = { path: { type: 'string', description: 'Exact vault path of a .docx file' } }
 export function createDocxTools(): AgentTool[] {
   return [
+    {
+      name: 'docx_edit',
+      label: 'Edit Word document',
+      category: 'Word',
+      description:
+        'Patch Word text in place without rebuilding other XML parts. Read with docx_read first and pass its revision token. replace requires one unique old_text in a numbered paragraph; insert uses a character offset. Fields/revisions and supplementary parts are read-only. Uses this tool’s own Off/Ask/On mode and the write confirmation preview.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...properties,
+          revision: { type: 'string' },
+          operation: { type: 'string', enum: ['replace', 'insert'] },
+          paragraph: { type: 'number' },
+          old_text: { type: 'string' },
+          new_text: { type: 'string' },
+          offset: { type: 'number' },
+          text: { type: 'string' },
+        },
+        required: ['path', 'revision', 'operation', 'paragraph'],
+      },
+      execute: async (_id, params, signal) => {
+        const file = namedDocx(params.path)
+        if (typeof params.revision !== 'string' || !params.revision)
+          throw new Error('Read with docx_read first and pass its revision')
+        const app = GlobalStore.getInstance().app
+        const prepared = await prepareWordChange(
+          app,
+          file,
+          params as unknown as WordEdit,
+          params.revision
+        )
+        signal?.throwIfAborted()
+        await writeWordChange(app, file, prepared.original, prepared.updated, signal)
+        return {
+          ...answer(
+            `Edited ${file.path}; revision ${wordRevision(prepared.updated)}. Read again after structural edits.`
+          ),
+          details: { path: file.path, diff: prepared.diff },
+        }
+      },
+    },
     {
       name: 'docx_views',
       label: 'Word tabs',
@@ -71,7 +114,7 @@ export function createDocxTools(): AgentTool[] {
         const limit = integer(params.limit, 12000, 25000)
         const text = doc.read(start, count, Number.MAX_SAFE_INTEGER)
         return answer(
-          `${file.path}: ${doc.paragraphs.length} paragraphs; window from ${start}, characters ${offset}–${Math.min(text.length, offset + limit)} of ${text.length}.\n\n${text.slice(offset, offset + limit)}${offset + limit < text.length ? `\n[Continue with offset ${offset + limit}.]` : `\n[Next paragraph window: start ${start + count}.]`}`
+          `${file.path}: revision ${wordRevision(doc.original)}; ${doc.paragraphs.length} paragraphs; window from ${start}, characters ${offset}–${Math.min(text.length, offset + limit)} of ${text.length}.\n\n${text.slice(offset, offset + limit)}${offset + limit < text.length ? `\n[Continue with offset ${offset + limit}.]` : `\n[Next paragraph window: start ${start + count}.]`}`
         )
       },
     },

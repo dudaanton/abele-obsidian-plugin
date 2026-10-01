@@ -18,4 +18,17 @@ preview. Packages are limited to 32 MB compressed, 96 MB unpacked and 8 MB per X
 The agent can list open Word tabs, read numbered paragraph windows, and search document text,
 including text split across formatting runs, table cells, headers, footers and notes. Give it the
 file's path. The Word tools appear in the agent's tool settings with **Off**, **Ask** and **On**
-choices; they can only read documents in the chat's scope. Reading does not convert or save the file.
+choices; they can only read documents in the chat's scope. Reading does not convert or save the file. The agent can also replace or insert text after
+reading the document. By default it shows the change and asks for confirmation before writing.
+
+## Editing text
+
+On desktop, choose **Text paragraphs**, then **Edit text** beside a paragraph. Edit the text and
+choose **Save**, or **Cancel** to leave it alone. Existing table-cell text is edited the same way.
+Phone tabs are read-only by hand; an agent can edit on either device.
+
+Only touched text runs change. The document's styles, numbering, pictures and other package
+parts are kept, not converted to Markdown and rebuilt. Text inside tracked revisions or field
+results is read-only, as are headers, footers and notes. Unsupported structures are kept intact.
+If the file changes while you are editing, saving refuses the older edit; cancel and reopen it.
+

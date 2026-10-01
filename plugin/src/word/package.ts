@@ -80,7 +80,10 @@ export async function saveParts(
   for (const [name, bytes] of changed) if (bytes) parts[name] = bytes
   return pack(parts)
 }
-export async function openDocx(original: Uint8Array): Promise<WordPackage> {
+export async function openDocx(
+  original: Uint8Array,
+  yieldTask?: () => Promise<void>
+): Promise<WordPackage> {
   if (original.length > MAX_ARCHIVE)
     throw new Error('Document is too large (32 MB compressed limit)')
   const archive = openZip(original)
@@ -112,7 +115,7 @@ export async function openDocx(original: Uint8Array): Promise<WordPackage> {
     const source = archive.loadText(name)
     if (source !== null) {
       xml.set(name, source)
-      trees.set(name, await parseXml(source))
+      trees.set(name, await parseXml(source, yieldTask))
     }
   }
   const root = trees.get('word/document.xml')

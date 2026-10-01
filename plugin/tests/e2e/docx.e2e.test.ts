@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sampleDocx } from '../fixtures/docx/sampleDocx'
+import { strFromU8, unzipSync } from 'fflate'
 import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -76,6 +77,31 @@ describe.skipIf(!available)('Word document view', () => {
     expect(result.over).toBe(false)
     console.info(result.shot)
   })
+  it('saves desktop paragraph edits without altering other package parts', () => {
+    if (onPhone()) return // Phone editing is agent-only.
+    const data = evalAsync<string>(`(async () => {
+      const view = app.workspace.getLeavesOfType('abele-word').find(l => l.view.file?.path === ${JSON.stringify(PATH)}).view
+      const root = view.contentEl;
+      [...root.querySelectorAll('button')].find(b => b.textContent === 'Text paragraphs').click()
+      const row = root.querySelector('[data-paragraph="2"]')
+      row.querySelector('.abele-word-edit').click()
+      row.querySelector('textarea').value = 'Updated item';
+      [...row.querySelectorAll('button')].find(b => b.textContent === 'Save').click()
+      for (let i=0;i<150;i++) {
+        if (view.document?.paragraphs[1]?.text === 'Updated item') break
+        await new Promise(r => setTimeout(r,100))
+      }
+      const bytes = new Uint8Array(await app.vault.readBinary(view.file))
+      let raw = ''; for (const b of bytes) raw += String.fromCharCode(b)
+      return JSON.stringify(btoa(raw))
+    })()`)
+    const before = unzipSync(sampleDocx())
+    const after = unzipSync(new Uint8Array(Buffer.from(data, 'base64')))
+    expect(strFromU8(after['word/document.xml'])).toContain('Updated item')
+    for (const name of Object.keys(before))
+      if (name !== 'word/document.xml') expect(after[name], name).toEqual(before[name])
+  })
+
   it('fits a phone screen and offers no hand-editing controls', async () => {
     if (!onPhone()) {
       evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390,844)")

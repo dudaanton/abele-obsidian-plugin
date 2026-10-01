@@ -3,7 +3,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, onUnmounted } from 'vue'
+import { ref, shallowRef, onMounted, watch, onUnmounted } from 'vue'
 import { MergeView } from '@codemirror/merge'
 import { EditorView } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
@@ -14,7 +14,8 @@ const props = defineProps<{
 }>()
 
 const el = ref<HTMLElement>()
-const editor = ref<MergeView>()
+// CodeMirror owns native observers and private class fields; Vue must not proxy it.
+const editor = shallowRef<MergeView | null>(null)
 
 const updateEditor = (force = false) => {
   if (el.value) {

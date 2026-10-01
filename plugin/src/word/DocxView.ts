@@ -1,7 +1,11 @@
-import { FileView, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
+import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
+import { applyWordEdit } from './edit'
+import { paragraphTextEdit } from './textEditor'
+import { loadWordBytes, writeWordChange } from './vaultAdapter'
+import type { WordParagraph } from './package'
 import { renderAsync } from 'docx-preview'
 import './word.css'
-import { openDocx, type WordPackage } from './package'
+import type { WordPackage } from './package'
 import { cleanRendered, safeRenderBytes, WORD_CSP } from './renderSafety'
 
 export const DOCX_VIEW_TYPE = 'abele-word'
@@ -9,12 +13,14 @@ export class DocxView extends FileView {
   document: WordPackage | null = null
   paragraph = 1
   private token = 0
+  private editing = false
   private frame: HTMLIFrameElement | null = null
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && file.path === this.file?.path) void this.onLoadFile(file)
+        if (file instanceof TFile && file.path === this.file?.path && !this.editing)
+          void this.onLoadFile(file)
       })
     )
   }
@@ -30,6 +36,7 @@ export class DocxView extends FileView {
   async onLoadFile(file: TFile): Promise<void> {
     const token = ++this.token
     this.document = null
+    this.editing = false
     this.contentEl.empty()
     this.contentEl.addClass('abele-word')
     const status = this.contentEl.createDiv({
@@ -37,7 +44,7 @@ export class DocxView extends FileView {
       cls: 'abele-word-status',
     })
     try {
-      const doc = await openDocx(new Uint8Array(await this.app.vault.readBinary(file)))
+      const doc = await loadWordBytes(new Uint8Array(await this.app.vault.readBinary(file)))
       if (token !== this.token) return
       this.document = doc
       status.remove()
@@ -53,6 +60,37 @@ export class DocxView extends FileView {
     this.frame?.remove()
     this.frame = null
     this.contentEl.empty()
+  }
+  private editParagraph(row: HTMLElement, doc: WordPackage, p: WordParagraph): void {
+    if (this.editing) return
+    this.editing = true
+    const form = row.createDiv({ cls: 'abele-word-editor' })
+    const input = form.createEl('textarea', {
+      attr: { 'aria-label': `Edit paragraph ${p.number}` },
+    })
+    input.value = p.text
+    const save = form.createEl('button', { text: 'Save', cls: 'mod-cta' })
+    const cancel = form.createEl('button', { text: 'Cancel' })
+    const status = form.createDiv({ attr: { role: 'status' } })
+    cancel.onclick = () => {
+      this.editing = false
+      form.remove()
+      if (this.file) void this.onLoadFile(this.file)
+    }
+    save.onclick = async () => {
+      save.disabled = true
+      try {
+        if (!this.file) throw new Error('Document is no longer open')
+        const updated = await applyWordEdit(doc, paragraphTextEdit(p, input.value))
+        await writeWordChange(this.app, this.file, doc.original, updated)
+        this.editing = false
+        await this.onLoadFile(this.file)
+      } catch (error) {
+        status.setText((error as Error).message)
+        save.disabled = false
+      }
+    }
+    input.focus()
   }
   protected async showDocument(doc: WordPackage, token = this.token): Promise<void> {
     const bar = this.contentEl.createDiv({ cls: 'abele-word-toolbar' })
@@ -78,6 +116,10 @@ export class DocxView extends FileView {
         })
         row.createSpan({ text: `${p.number}. `, cls: 'abele-word-paragraph-number' })
         row.createSpan({ text: p.text || '(empty paragraph)' })
+        if (!Platform.isMobile && p.editable && p.runs.length) {
+          const edit = row.createEl('button', { text: 'Edit text', cls: 'abele-word-edit' })
+          edit.onclick = () => this.editParagraph(row, doc, p)
+        }
       }
     }
     go.onclick = page

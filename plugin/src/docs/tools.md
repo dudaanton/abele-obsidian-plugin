@@ -55,6 +55,15 @@ across run boundaries and returns paragraph numbers and offsets; `after` pages t
 `docx_views` lists open in-scope documents and their current text window. Do not use text-file
 writes on a binary Word package.
 
+`docx_edit` patches existing text runs. Read first with `docx_read` and pass its `revision`;
+a stale token is refused. `replace` takes `paragraph`, a unique `old_text` and `new_text`.
+`insert` takes `paragraph`, `offset` (UTF-16 character index) and `text`. One operation per call;
+use the resulting revision for the next call. Fields and tracked revisions, and supplementary
+parts, are read-only. It defaults to Ask with a diff/argument preview in the usual confirmation;
+its own Off/Ask/On mode is independent of general file write permissions. Unknown XML and every
+unchanged package part survive byte-identically. Text replacements preserve run properties,
+including runs split inside a word; replacement text takes the first affected run's formatting.
+
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,

@@ -34,6 +34,20 @@
       />
     </template>
 
+    <template v-else-if="message.toolName === 'docx_edit'">
+      <div class="abele-tool-approval__path">{{ params.path }}</div>
+      <Diff
+        v-if="wordPreview"
+        :text-left="wordPreview.old"
+        :text-right="wordPreview.new"
+        class="abele-tool-approval__diff"
+      />
+      <div v-else>{{ wordPreviewError || 'Preparing Word edit preview…' }}</div>
+      <pre
+        class="abele-tool-approval__code"
+      ><code>{{ JSON.stringify(params, null, 2) }}</code></pre>
+    </template>
+
     <!-- eval_js: show code -->
     <template v-else-if="message.toolName === 'eval_js'">
       <pre class="abele-tool-approval__code"><code>{{ params.code }}</code></pre>
@@ -134,6 +148,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
 import { WRITE_TOOLS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
+import { prepareWordChange } from '@/word/vaultAdapter'
+import type { WordEdit } from '@/word/edit'
 
 const props = defineProps<{
   message: ChatMessage
@@ -226,6 +242,37 @@ watch(
         // An unreadable file is not worth an error in an approval prompt — it falls back to
         // showing the content that would be written.
       })
+  },
+  { immediate: true }
+)
+
+const wordPreview = ref<{ old: string; new: string } | null>(null)
+const wordPreviewError = ref('')
+let wordPreviewVersion = 0
+watch(
+  () => JSON.stringify(params.value),
+  async () => {
+    const version = ++wordPreviewVersion
+    wordPreview.value = null
+    wordPreviewError.value = ''
+    if (props.message.toolName !== 'docx_edit') return
+    try {
+      const path = String(params.value.path || '')
+      if (!session.value?.scopeResolver.isInScope(path))
+        throw new Error('Document is outside this chat’s scope')
+      const app = GlobalStore.getInstance().app
+      const file = app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile)) throw new Error('Document not found')
+      const prepared = await prepareWordChange(
+        app,
+        file,
+        params.value as unknown as WordEdit,
+        String(params.value.revision || '')
+      )
+      if (version === wordPreviewVersion) wordPreview.value = prepared.diff
+    } catch (error) {
+      if (version === wordPreviewVersion) wordPreviewError.value = (error as Error).message
+    }
   },
   { immediate: true }
 )

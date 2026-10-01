@@ -34,7 +34,10 @@ export function decodeXml(text: string): string {
     throw new Error('Unsupported XML entities')
   })
 }
-export async function parseXml(source: string): Promise<XmlNode> {
+export async function parseXml(
+  source: string,
+  yieldTask: () => Promise<void> = () => Promise.resolve()
+): Promise<XmlNode> {
   if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('DOCTYPE and entities are not supported')
   const stack: XmlNode[] = []
   let root: XmlNode | undefined
@@ -100,8 +103,8 @@ export async function parseXml(source: string): Promise<XmlNode> {
     }
     // Yield to input/paint while indexing large documents; no DOM construction is needed.
     if (++count % 4000 === 0) {
-      // Pure byte model: also used without a browser window.
-      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0))
+      // The client supplies a task yield; the byte model also works without a browser.
+      await yieldTask()
     }
   }
   if (stack.length || !root || source.slice(previous).trim()) throw new Error('Malformed XML')

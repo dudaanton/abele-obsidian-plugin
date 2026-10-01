@@ -34,7 +34,11 @@ Word documents remain ordinary binary `.docx` attachments at their original vaul
 Opening and reading creates no Markdown conversion, cache note or persistent document setting.
 The Word view displays a disposable rendering of the package; it does not rewrite the file.
 Large packages use a paged text view. External relationships and active HTML chunks are omitted
-from the rendering only, not removed from the original document.
+from the rendering only, not removed from the original document. Text edits patch only affected
+`w:t` lexical spans in `word/document.xml`; untouched XML/ZIP parts are retained as their original
+uncompressed bytes. A no-op retains the exact original ZIP. Edited packages are re-compressed,
+so ZIP container bytes may differ; no Markdown intermediary is written. Conflicting external
+changes are refused rather than replaced by an older edit.
 
 ## Imported images
 
