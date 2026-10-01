@@ -156,6 +156,49 @@ export function ancestor(n: XmlNode, local: string): XmlNode | undefined {
   for (let p = n.parent; p; p = p.parent) if (isW(p, local)) return p
 }
 export const rawNode = (source: string, node: XmlNode) => source.slice(node.start, node.end)
+
+/** Preserve inherited bindings when moving a fragment out of its original container. */
+export function carryNamespaces(
+  fragment: string,
+  node: XmlNode,
+  destination: Record<string, string>
+): string {
+  const declarations = Object.entries({ '': '', ...node.namespaces })
+    .filter(
+      ([prefix, uri]) =>
+        prefix !== 'xml' &&
+        uri !== (destination[prefix] ?? (prefix === '' ? '' : undefined)) &&
+        node.attrs[prefix ? `xmlns:${prefix}` : 'xmlns'] === undefined
+    )
+    .map(([prefix, uri]) => ` ${prefix ? `xmlns:${prefix}` : 'xmlns'}="${escapeXml(uri)}"`)
+    .join('')
+  if (!declarations) return fragment
+  const length = node.openEnd - node.start
+  const open = fragment.slice(0, length).replace(/(\/?>)$/, (_, end: string) => declarations + end)
+  return open + fragment.slice(length)
+}
+export function carryContents(
+  source: string,
+  node: XmlNode,
+  destination: Record<string, string>
+): string {
+  const content = source.slice(node.openEnd, node.closeStart)
+  return patchXml(
+    content,
+    node.children.map((child) => ({
+      start: child.start - node.openEnd,
+      end: child.end - node.openEnd,
+      text: carryNamespaces(rawNode(source, child), child, destination),
+    }))
+  )
+}
+export function sameNamespaces(a: Record<string, string>, b: Record<string, string>): boolean {
+  return [...new Set([...Object.keys(a), ...Object.keys(b), ''])].every(
+    (prefix) =>
+      (a[prefix] ?? (prefix === '' ? '' : undefined)) ===
+      (b[prefix] ?? (prefix === '' ? '' : undefined))
+  )
+}
 export interface Patch {
   start: number
   end: number

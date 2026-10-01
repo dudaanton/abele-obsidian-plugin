@@ -16,6 +16,8 @@ import {
 } from './structure'
 import {
   ancestor,
+  carryContents,
+  sameNamespaces,
   attr,
   child,
   descendants,
@@ -177,7 +179,7 @@ export async function paragraphOperation(
     const q = doc.paragraphs.find((n) => n.node === next)!
     assertPlain(q)
     let left = inlineSlice(doc, p, 0, p.text.length)
-    let right = inlineSlice(doc, q, 0, q.text.length)
+    let right = inlineSlice(doc, q, 0, q.text.length, p.node.namespaces)
     const last = p.runs.at(-1)
     const first = q.runs[0]
     // Coalesce only equivalent direct boundary runs; differing formats and links stay separate.
@@ -185,7 +187,8 @@ export async function paragraphOperation(
       last?.run?.parent === p.node &&
       first?.run?.parent === q.node &&
       p.node.children.at(-1) === last.run &&
-      q.node.children.find((n) => !isW(n, 'pPr')) === first.run
+      q.node.children.find((n) => !isW(n, 'pPr')) === first.run &&
+      sameNamespaces(last.run.namespaces, first.run.namespaces)
     ) {
       const signature = (r: typeof first) =>
         rawNode(source, r.run!).replace(rawNode(source, r.node), '#text')
@@ -239,7 +242,7 @@ export async function paragraphOperation(
           {
             start: existing.start,
             end: existing.end,
-            text: source.slice(existing.openEnd, existing.closeStart),
+            text: carryContents(source, existing, p.node.namespaces),
           },
         ]
     } else if ([...links].some(Boolean))
@@ -254,11 +257,12 @@ export async function paragraphOperation(
     if (!['https:', 'http:', 'mailto:'].includes(url.protocol))
       throw new Error('Unsupported link URL')
     const id = await m.relation(e.url, `${R}/hyperlink`, true)
+    const linkNamespaces = { ...p.node.namespaces, w: W, r: R }
     const fragment = wTag(
       'hyperlink',
       existing
-        ? source.slice(existing.openEnd, existing.closeStart)
-        : inlineSlice(doc, p, from, to),
+        ? carryContents(source, existing, linkNamespaces)
+        : inlineSlice(doc, p, from, to, linkNamespaces),
       `xmlns:r="${R}" r:id="${id}"`
     )
     return existing

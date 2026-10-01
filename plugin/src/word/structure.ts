@@ -1,6 +1,7 @@
 import type { WordPackage, WordParagraph, TextRun } from './package'
 import {
   ancestor,
+  carryNamespaces,
   child,
   descendants,
   escapeXml,
@@ -279,16 +280,22 @@ export function renderTextRun(
   )
 }
 /** A paragraph's inline XML sliced by text offsets, retaining hyperlink and run wrappers. */
-export function inlineSlice(doc: WordPackage, p: WordParagraph, from: number, to: number): string {
+export function inlineSlice(
+  doc: WordPackage,
+  p: WordParagraph,
+  from: number,
+  to: number,
+  destination = p.node.namespaces
+): string {
   if (from === to) return ''
   const source = doc.xml.get(p.part)!
   const runs = new Map(p.runs.map((r) => [r.run, r]))
   let cursor = 0
-  const slice = (node: XmlNode): string => {
+  const slice = (node: XmlNode, context: Record<string, string>): string => {
     if (isW(node, 'pPr')) return ''
     if (isW(node, 'hyperlink')) {
-      const content = node.children.map(slice).join('')
-      return content ? nodeWithContent(source, node, content) : ''
+      const content = node.children.map((child) => slice(child, node.namespaces)).join('')
+      return content ? carryNamespaces(nodeWithContent(source, node, content), node, context) : ''
     }
     const r = runs.get(node)
     if (r) {
@@ -296,13 +303,18 @@ export function inlineSlice(doc: WordPackage, p: WordParagraph, from: number, to
       const begin = Math.max(0, from - r.offset)
       const end = Math.min(r.text.length, to - r.offset)
       if (begin >= end) return ''
-      if (begin === 0 && end === r.text.length) return rawNode(source, node)
-      return renderTextRun(doc, r, r.text.slice(begin, end))
+      const fragment =
+        begin === 0 && end === r.text.length
+          ? rawNode(source, node)
+          : renderTextRun(doc, r, r.text.slice(begin, end))
+      return carryNamespaces(fragment, node, context)
     }
     // Zero-length metadata is retained on one side, never duplicated or discarded.
-    return cursor >= from && (cursor < to || to === p.text.length) ? rawNode(source, node) : ''
+    return cursor >= from && (cursor < to || to === p.text.length)
+      ? carryNamespaces(rawNode(source, node), node, context)
+      : ''
   }
-  return p.node.children.map(slice).join('')
+  return p.node.children.map((child) => slice(child, destination)).join('')
 }
 export function newParagraphWith(doc: WordPackage, p: WordParagraph, content: string): string {
   let xml = paragraphWith(doc, p, content)
