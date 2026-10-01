@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { WAIT_PRELUDE } from '../e2e/helpers/wait'
 
 const source = readFileSync(resolve(__dirname, '../e2e/bookOverlayReflow.e2e.test.ts'), 'utf8')
-const checkSource = source.match(/const check = ([\s\S]*?)\n      const shot/)![1]
+const checkSource = source.match(/const check = ([\s\S]*?)\n {6}const shot/)![1]
 
 function probe() {
   const checks: unknown[] = []
