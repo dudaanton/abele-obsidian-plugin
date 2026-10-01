@@ -32,6 +32,8 @@ import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildFigureEpub } from '../fixtures/books/figureBook'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { evalAsync } from './helpers/githubLive'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
@@ -44,14 +46,17 @@ const SHOTS = shotDir('abele-phone')
 /** An iPhone keyboard with its suggestion bar, in points. */
 const KEYBOARD = 336
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const setWindowSize = async (width: number, height: number): Promise<void> => {
   if (onPhone()) return
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  const sized = evalAsync<boolean>(`(async () => {
+    ${WAIT_PRELUDE}
+    return !!(await until(() => innerWidth === ${width} && innerHeight === ${height}))
+  })()`)
+  if (!sized) throw new Error('The window did not reach its requested size')
 }
 /**
  * The app's DevTools debugger, which the touches and clicks here are sent through, attached the
@@ -72,12 +77,11 @@ const reload = async (how: string): Promise<void> => {
 }
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 8000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
-    return null
-  }
+  ${WAIT_PRELUDE}
+  // These intervals also test that a tap or a sideways swipe does NOT turn a book page.
+  // A condition that is already true immediately after the gesture would miss a late turn.
+  const observeTap = () => wait(800)
+  const observeTableSwipe = () => wait(900)
   // On a real phone the harness's host touches the screen and takes the pictures (helpers/phone.ts).
   const host = window.__e2eHost
   const cdp = host ? null : require('@electron/remote').getCurrentWebContents().debugger
@@ -100,7 +104,7 @@ const PRELUDE = `
     if (Math.hypot(x1 - x0, y1 - y0) < 8) return host.tap(x0, y0)
     return host.swipe(x0, y0, x1, y1)
   }
-  const tap = async (x, y) => { await touch('touchStart', [[x, y]]); await wait(60); await touch('touchEnd'); await wait(800) }
+  const tap = async (x, y) => { await touch('touchStart', [[x, y]]); await wait(60); await touch('touchEnd'); await observeTap() }
   const shoot = async (name) => {
     if (host) return host.shot(${JSON.stringify(SHOTS)} + '/controls-' + name + '.png')
     const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
@@ -113,7 +117,12 @@ const PRELUDE = `
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     const view = leaf.view
     await until(() => view.model?.status === 'ready', 15000)
-    await wait(800)
+    const doc = await until(() => view.reading && view.engine.renderer.getContents()[0]?.doc)
+    if (!doc) throw Error('The book did not open its document')
+    await doc.fonts.ready
+    if (!(await until(() => doc.body.getBoundingClientRect().height > 0 &&
+      [...doc.images].every(img => img.complete && img.naturalWidth > 0))))
+      throw Error('The book did not draw its content')
     return { leaf, view }
   }
   const R = (view) => view.engine.renderer
@@ -128,10 +137,12 @@ const PRELUDE = `
   const turnTo = async (view, el) => {
     // A picture has no size until it has loaded, and would then seem to be anywhere.
     await until(() => el.localName !== 'img' || (el.complete && el.naturalWidth), 5000)
-    await wait(300)
-    await R(view).scrollToAnchor(el); await wait(700)
-    const s = R(view).getBoundingClientRect(), p = onScreen(view, el)
-    return !!p.width && p.left >= s.left - 2 && p.left + p.width / 2 < s.right
+    await el.ownerDocument.fonts.ready
+    await R(view).scrollToAnchor(el)
+    return !!(await until(() => {
+      const s = R(view).getBoundingClientRect(), p = onScreen(view, el)
+      return !!p.width && p.left >= s.left - 2 && p.left + p.width / 2 < s.right
+    }))
   }
   const keyboard = (height) => {
     if (height) document.documentElement.style.setProperty('--keyboard-height', height + 'px')
@@ -299,17 +310,24 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     }>(`
       const { leaf, view } = await open(${JSON.stringify(RICH)})
       view.model.settingsOpen = true
-      await wait(900)
-      const box = document.querySelector('.abele-book-reader__settings')
+      const box = await until(() => document.querySelector('.abele-book-reader__settings'))
+      if (!(await until(() => [...box.querySelectorAll('.setting-item-name')].some(el => el.textContent === 'Template') &&
+        box.getBoundingClientRect().bottom <= innerHeight)))
+        throw Error('Settings did not finish opening: ' + JSON.stringify({ bottom: box.getBoundingClientRect().bottom, height: innerHeight, names: [...box.querySelectorAll('.setting-item-name')].map(el => el.textContent) }))
+      // A mounted bottom sheet can still be sliding into place; measure its final geometry.
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      if (!(await until(() => box.closest('.modal-container').getAnimations({ subtree: true }).every(a => a.playState !== 'running'))))
+        throw Error('Settings opening animation did not finish')
       const rows = [...box.querySelectorAll('.setting-item')]
       const scrolls = box.scrollHeight > box.clientHeight + 10
       box.scrollTop = box.scrollHeight
-      await wait(400)
+      if (!(await until(() => Math.round(rows[rows.length - 1].getBoundingClientRect().bottom) <= Math.round(box.getBoundingClientRect().bottom))))
+        throw Error('Settings did not reach the end: ' + JSON.stringify({ top: box.scrollTop, client: box.clientHeight, height: box.scrollHeight }))
       const last = rows[rows.length - 1]
       const settings = { scrolls, last: last.querySelector('.setting-item-name')?.textContent ?? '', lastBottom: Math.round(last.getBoundingClientRect().bottom), boxBottom: Math.round(box.getBoundingClientRect().bottom), height: innerHeight }
       await shoot('settings-bottom')
       view.model.settingsOpen = false
-      await wait(400)
+      if (!(await until(() => !document.querySelector('.modal-container')))) throw Error('Settings modal did not close')
 
       // A note, as a tap on its mark opens it.
       await view.engine.goTo(view.model.toc[0].href); await wait(600)
@@ -320,8 +338,9 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const button = document.querySelector('.abele-book-reader__note-actions button')?.getBoundingClientRect()
       const note = button ? [Math.round(button.top), Math.round(button.bottom), innerHeight] : []
       await shoot('note')
-      view.model.footnote && document.querySelector('.modal-close-button')?.click()
-      await wait(500)
+      // Phone dialogs put Close in the header; the desktop close control may not exist.
+      ;(document.querySelector('.modal-container .modal-header-button') ?? document.querySelector('.modal-container .modal-close-button'))?.click()
+      if (!(await until(() => !document.querySelector('.modal-container')))) throw Error('Footnote modal did not close')
 
       // A comment on a highlight.
       view.model.commenting = { cfi: 'epubcfi(/6/2!/4/2,/1:0,/1:5)', color: 'yellow', text: 'Chapter', comment: '', label: 'Chapter 1' }
@@ -330,7 +349,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const comment = buttons.length ? [Math.round(Math.min(...buttons.map((b) => b.top))), Math.round(Math.max(...buttons.map((b) => b.bottom))), innerHeight] : []
       await shoot('comment')
       view.model.commenting = null
-      await wait(400)
+      if (!(await until(() => !document.querySelector('.modal-container')))) throw Error('Comment modal did not close')
       leaf.detach()
       return { settings, note, comment }
     `)
@@ -357,7 +376,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       window.__abeleTest.openIconPicker('play')
       await until(() => document.querySelector('.modal input'), 4000)
       for (const el of document.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
-      await wait(400)
+      await until(() => document.querySelector('.modal')?.getBoundingClientRect().height > 0)
       const dialog = document.querySelector('.modal')
       const before = Math.round(dialog.getBoundingClientRect().height)
       const input = dialog.querySelector('input')
@@ -368,10 +387,13 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
         await host.tap(f.left + f.width / 2, f.top + f.height / 2)
         await until(() => kb() > 0, 5000)
       } else {
-        input.focus(); await wait(200)
+        input.focus()
+        await until(() => document.activeElement === input)
         keyboard(${KEYBOARD})
       }
-      await wait(800)
+      await until(() => document.querySelector('.modal-container')?.classList.contains('abele-keyboard-cover') &&
+        (dialog.querySelector('.abele-keyboard-scroller') || dialog.classList.contains('abele-keyboard-scroller') ||
+          (host && dialog.querySelector('.abele-icon-picker__scroller'))))
       const after = Math.round(dialog.getBoundingClientRect().height)
       const cover = document.querySelector('.modal-container').className
       const given = dialog.querySelector('.abele-keyboard-scroller') ?? (dialog.classList.contains('abele-keyboard-scroller') ? dialog : null)
@@ -382,7 +404,10 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       // How much of the scroller lies under the keyboard, and how far it can scroll past the end
       // of what it holds: at least that much, so its last row can be brought above the keyboard.
       const scroller = sc ? { under: Math.round(sc.getBoundingClientRect().bottom - keyboardTop), reach: given ? parseInt(sc.style.getPropertyValue('--abele-keyboard-cover')) : 0 } : null
-      if (sc) { sc.scrollTop = sc.scrollHeight; await wait(300) }
+      if (sc) {
+        sc.scrollTop = sc.scrollHeight
+        await until(() => sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 1)
+      }
       const lastItem = sc && (host ? [...sc.querySelectorAll('.abele-icon-picker__icon')].pop() : sc.lastElementChild)
       const field = lastItem ? Math.round(lastItem.getBoundingClientRect().bottom - keyboardTop) : 999
       await shoot('keyboard-icon-picker')
@@ -390,7 +415,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       input.blur()
       // A phone's dialog has its close button in the header instead.
       ;(document.querySelector('.modal-container .modal-close-button') ?? document.querySelector('.modal-container .modal-header-button'))?.click()
-      await wait(500)
+      await until(() => !dialog.isConnected)
       return { before, after, cover, scroller, field }
     `)
     expect(r.error).toBeUndefined()
@@ -431,22 +456,26 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       await until(() => view.model.figure, 3000)
       const opened = view.model.figure?.kind ?? ''
       await until(() => document.querySelector('.abele-book-figure'), 3000)
-      await wait(400)
-      await shoot('figure-viewer')
       const canvas = () => document.querySelector('.abele-book-figure__canvas').style.transform
       const scaleOf = () => Number(/scale\\(([\\d.]+)\\)/.exec(canvas())?.[1] ?? 0)
+      await until(() => scaleOf() > 0)
+      await shoot('figure-viewer')
       const fitScale = scaleOf()
       const f = document.querySelector('.abele-book-figure').getBoundingClientRect()
       const cx = f.left + f.width / 2, cy = f.top + f.height / 2
       await touch('touchStart', [[cx - 30, cy], [cx + 30, cy]])
       for (let i = 1; i <= 6; i++) { await touch('touchMove', [[cx - 30 - i * 25, cy], [cx + 30 + i * 25, cy]]); await wait(30) }
-      await touch('touchEnd'); await wait(400)
+      await touch('touchEnd')
+      await until(() => scaleOf() > fitScale * 2)
       const zoomed = scaleOf() > fitScale * 2
       await shoot('figure-zoomed')
-      document.querySelector('.abele-book-figure__controls [aria-label="Fit it on the screen"]').click(); await wait(300)
+      document.querySelector('.abele-book-figure__controls [aria-label="Fit it on the screen"]').click()
+      await until(() => Math.abs(scaleOf() - fitScale) < 0.000001)
       await touch('touchStart', [[cx, cy - 80]])
       for (let i = 1; i <= 6; i++) { await touch('touchMove', [[cx + 2, cy - 80 + i * 30]]); await wait(20) }
-      await touch('touchEnd'); await wait(700)
+      await touch('touchEnd')
+      // The content unmounts before the closing modal stops intercepting page gestures.
+      await until(() => !view.model.figure && !document.querySelector('.modal-container'))
       const viewer = { opened, pages: [p0, R(view).page], zoomed, closed: !view.model.figure && !document.querySelector('.abele-book-figure') }
       // The wide table: it scrolls sideways under a finger, and the page stays.
       await turnTo(view, tableEl)
@@ -456,17 +485,16 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const ty = t.top + Math.min(t.height / 2, 20)
       await touch('touchStart', [[t.left + t.width - 20, ty]])
       for (let i = 1; i <= 6; i++) { await touch('touchMove', [[t.left + t.width - 20 - i * 30, ty]]); await wait(16) }
-      await touch('touchEnd'); await wait(900)
+      await touch('touchEnd'); await observeTableSwipe()
       const table = { scrolls, pages: [pt0, R(view).page], scrolled: tableEl.scrollLeft }
       await tap(t.left + 30, ty)
       const tableOpened = view.model.figure?.kind ?? ''
-      await until(() => document.querySelector('.abele-book-figure__table'), 3000)
-      await wait(600)
+      await until(() => document.querySelector('.abele-book-figure__table')?.contentDocument?.querySelector('table'), 3000)
       const frame = document.querySelector('.abele-book-figure__table')
       await shoot('figure-table')
       const tableViewer = { opened: tableOpened, frame: !!frame, sandbox: frame?.getAttribute('sandbox') ?? null }
       view.model.figure = null
-      await wait(300)
+      await until(() => !document.querySelector('.modal-container'))
       leaf.detach()
       return { scan, dot, table, viewer, tableViewer }
     `)
