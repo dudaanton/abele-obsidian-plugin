@@ -534,7 +534,7 @@ export class GithubClient {
     return `data:${type};base64,${bytesBase64(new Uint8Array(response.arrayBuffer))}`
   }
 
-  /** GraphQL, which is the only way to discussions. It always needs a token. */
+  /** GraphQL, including discussions and line blame. It always needs a token. */
   async graphql<T>(
     query: string,
     variables: Record<string, unknown>,
@@ -548,7 +548,7 @@ export class GithubClient {
     if (!this.token) {
       throw new GithubError(
         'auth',
-        'GitHub only shows discussions to a signed-in request. Add a token in Abele settings → GitHub.'
+        `GitHub requires a signed-in request to read ${what ?? 'this data'} through GraphQL. Add a token in Abele settings → GitHub.${this.noTokenReason ? ` ${this.noTokenReason}` : ''}`
       )
     }
     const response = await this.send(
