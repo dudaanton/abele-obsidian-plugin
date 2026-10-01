@@ -254,7 +254,7 @@ export class Task {
 
   async writeTaskToFile(focus = false, overwrite = true) {
     const { app } = GlobalStore.getInstance()
-    new TaskNoteTemplate(app).createNoteWithTemplate(this, focus, overwrite)
+    return new TaskNoteTemplate(app).createNoteWithTemplate(this, focus, overwrite)
   }
 
   removeOrphanedLink() {

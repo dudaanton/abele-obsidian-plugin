@@ -203,7 +203,7 @@ describe('task completion in a card and in the note header', () => {
 
   // BUG: writeTaskToFile starts createNoteWithTemplate without returning/awaiting it.
   // Callers awaiting completion/creation can observe the old file before the write finishes.
-  it.fails('awaiting a task write waits for persistence', async () => {
+  it('awaiting a task write waits for persistence', async () => {
     taskHarness()
     const pending = gate()
     let saved = false
@@ -211,6 +211,8 @@ describe('task completion in a card and in the note header', () => {
       await pending.promise
       saved = true
     })
+    // Let storage finish independently of its caller, including when that caller awaits it.
+    queueMicrotask(pending.release)
     try {
       await card().writeTaskToFile()
       expect(saved).toBe(true)
