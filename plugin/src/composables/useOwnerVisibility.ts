@@ -31,7 +31,7 @@ export function useOwnerVisibility(
     visible.value = false
     if (!next || !doc) return
     const owner = doc
-    const win = owner.defaultView as (Window & typeof globalThis) | null
+    const win = owner.defaultView
     const Observer = win?.IntersectionObserver
     // Hosts without intersection reporting should keep a visible display live, not frozen.
     if (!Observer) {
