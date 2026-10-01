@@ -6,6 +6,11 @@ Saving an unrelated setting does not approve it. Editing the actual destination 
 settings screen does. Initial upgrade records existing destinations once; later approvals are
 device-local and never travel with settings. GitHub's connection transport is separate.
 
+Named saved keys have an `allowedOrigins` list. It travels with their settings, but approvals
+do not: each device confirms newly arrived origins. The request confirmation can add an address;
+the key's card in AI → General → Secrets shows the list and lets the person remove addresses.
+A permitted origin does not remove the per-request question.
+
 Keys use HTTPS, except loopback HTTP and explicitly allowed home-network HTTP origins (port
 included). **Review key destinations** shows the unencrypted warning and lets the person allow
 or remove those exceptions. Public HTTP is not eligible. Keyless local services are unchanged.

@@ -29,7 +29,7 @@ export class McpService {
   headersFor(server: McpServer, token?: string): Record<string, string> {
     const headers: Record<string, string> = {}
     for (const [name, value] of Object.entries(server.headers ?? {})) {
-      if (name.trim()) headers[name.trim()] = substituteSecrets(value)
+      if (name.trim()) headers[name.trim()] = substituteSecrets(value, server.url)
     }
     const bearer = token ?? (server.keyId ? keyFor(server.keyId, server.url, AbeleConfig.getInstance()) : '')
     if (bearer) headers.Authorization = `Bearer ${bearer}`

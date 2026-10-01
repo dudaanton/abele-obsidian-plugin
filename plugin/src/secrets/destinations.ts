@@ -37,6 +37,10 @@ export function keyDestinations(settings: AbeleSettings): Destination[] {
   )
   add(ai?.braveSearchApiKey, 'Brave Search', 'https://api.search.brave.com')
   add(FIREFLY_TOKEN_KEY_ID, 'Firefly III', settings.fireflyBaseUrl)
+  for (const secret of ai?.secrets ?? []) {
+    for (const origin of secret.allowedOrigins ?? [])
+      add(secret.keyId, secret.name || 'Saved key', origin)
+  }
   for (const server of ai?.mcpServers ?? [])
     add(server.keyId, server.name || 'MCP server', server.url)
   for (const feed of settings.calendars?.feeds ?? []) {
@@ -72,7 +76,11 @@ export function checkKeyDestination(keyId: string, url: string, settings: AbeleS
   policy().check(keyId, url, keyDestinations(settings))
 }
 /** Also protects service clients passed a cached or manually assembled credential header. */
-export function checkRequestDestinations(request: RequestUrlParam, settings: AbeleSettings): void {
+export function checkRequestDestinations(
+  request: RequestUrlParam,
+  settings: AbeleSettings
+): string[] {
+  const carried: string[] = []
   const headers = Object.values(request.headers ?? {})
   if (
     Object.entries(request.headers ?? {}).some(
@@ -91,9 +99,13 @@ export function checkRequestDestinations(request: RequestUrlParam, settings: Abe
       (f) => f.source === 'caldav' && f.keyId === keyId
     )
     const basic = calendar ? basicAuth(calendar.username, value) : null
-    if (headers.some((h) => h.includes(value) || (basic && h === basic)))
+    if (headers.some((h) => h.includes(value) || (basic && h === basic))) {
       checkKeyDestination(keyId, request.url, settings)
+      carried.push(value)
+      if (basic) carried.push(basic)
+    }
   }
+  return carried
 }
 
 export function providerKey(

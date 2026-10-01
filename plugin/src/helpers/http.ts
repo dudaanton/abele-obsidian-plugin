@@ -56,9 +56,13 @@ export async function readTextLimited(response: Response, max: number): Promise<
   }
 }
 
-let requestGuard: ((request: RequestUrlParam) => void) | undefined
-export function setRequestGuard(guard: typeof requestGuard): void { requestGuard = guard }
-export function checkRequest(request: RequestUrlParam): void { requestGuard?.(request) }
+let requestGuard: ((request: RequestUrlParam) => string[]) | undefined
+export function setRequestGuard(guard: typeof requestGuard): void {
+  requestGuard = guard
+}
+export function checkRequest(request: RequestUrlParam): string[] {
+  return requestGuard?.(request) ?? []
+}
 
 let transportOverride: RequestTransport | undefined
 export function setRequestTransport(transport: RequestTransport | undefined): void {
@@ -76,13 +80,20 @@ export function headerValue(headers: Record<string, string>, name: string): stri
  * Mobile: Obsidian's native transport does not expose redirect control; see user docs.
  */
 export async function request(options: NetworkRequest): Promise<RequestUrlResponse> {
-  checkRequest(options)
+  const carried = checkRequest(options)
   const controller = new AbortController()
   const ms =
     Number.isFinite(options.timeoutMs) && options.timeoutMs! > 0
       ? options.timeoutMs!
       : DEFAULT_TIMEOUT_MS
-  return withDeadline(sendRequest(options, controller.signal), ms, () => controller.abort())
+  return withDeadline(
+    sendRequest(
+      { ...options, secretValues: [...(options.secretValues ?? []), ...carried] },
+      controller.signal
+    ),
+    ms,
+    () => controller.abort()
+  )
 }
 
 async function sendRequest(

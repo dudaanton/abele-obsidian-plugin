@@ -117,6 +117,8 @@ export interface AiChatHistoryEntry {
 export interface AiSecret {
   name: string
   keyId: string // reference for Obsidian keychain
+  /** HTTP(S) origins allowed for substitution; each device confirms new origins locally. */
+  allowedOrigins?: string[]
 }
 
 export type ImageApiType = 'openai' | 'openrouter'

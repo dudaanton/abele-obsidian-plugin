@@ -1,18 +1,10 @@
 import type { AgentTool } from '../client'
 import { request as requestUrl } from '@/helpers/http'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { substituteSecrets } from './secretUtils'
+import { prepareSecretRequest, redactSecrets } from './secretUtils'
 import { describedLazily } from './lazyDescription'
 
 const MAX_RESPONSE_SIZE = 100 * 1024 // 100 KB
-
-function substituteInHeaders(headers: Record<string, string>): Record<string, string> {
-  const result: Record<string, string> = {}
-  for (const [key, value] of Object.entries(headers)) {
-    result[key] = substituteSecrets(value)
-  }
-  return result
-}
 
 const FETCH_DESCRIPTION =
   'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. You can pass custom headers (e.g. Authorization, Content-Type) as key-value pairs. Use this to interact with APIs, fetch web pages, or download data.'
@@ -54,19 +46,9 @@ export function createFetchTool(): AgentTool {
       const rawUrl = params.url as string
       if (!rawUrl) throw new Error('Missing required parameter: url')
 
-      const url = substituteSecrets(rawUrl)
+      const prepared = prepareSecretRequest({ url: rawUrl, headers: (params.headers as Record<string, string>) || {}, body: params.body as string | undefined })
       const method = ((params.method as string) || 'GET').toUpperCase()
-      const headers = substituteInHeaders((params.headers as Record<string, string>) || {})
-      const rawBody = params.body as string | undefined
-      const body = rawBody ? substituteSecrets(rawBody) : undefined
-
-      const response = await requestUrl({
-        url,
-        method,
-        headers,
-        body: body || undefined,
-        throw: false,
-      })
+      const response = await requestUrl({ ...prepared, method, throw: false })
 
       let responseBody = ''
       const contentType = response.headers['content-type'] || ''
@@ -85,7 +67,7 @@ export function createFetchTool(): AgentTool {
         responseBody = responseBody.slice(0, MAX_RESPONSE_SIZE) + '\n\n[... truncated]'
       }
 
-      const result = [`HTTP ${response.status}`, responseBody].join('\n\n')
+      const result = redactSecrets([`HTTP ${response.status}`, responseBody].join('\n\n'), prepared.secretValues)
 
       return { content: [{ type: 'text', text: result }] }
     },

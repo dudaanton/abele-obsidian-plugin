@@ -3,7 +3,7 @@ import { request as requestUrl } from '@/helpers/http'
 import { getAttachmentFolder } from './imageUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
-import { substituteSecrets } from './secretUtils'
+import { prepareSecretRequest, redactSecrets } from './secretUtils'
 import { createImportedBinary } from '@/media/importImageFile'
 
 function extFromContentType(contentType: string): string | null {
@@ -60,31 +60,26 @@ async function downloadToVault(
   signal?: AbortSignal
 ): Promise<string> {
   signal?.throwIfAborted()
-  const url = substituteSecrets(rawUrl)
-
-  // Substitute secrets in header values
-  const headers: Record<string, string> = {}
-  if (rawHeaders) {
-    for (const [k, v] of Object.entries(rawHeaders)) {
-      headers[k] = substituteSecrets(v)
-    }
-  }
+  const prepared = prepareSecretRequest({ url: rawUrl, headers: rawHeaders, body })
+  const { url, headers } = prepared
 
   const reqOpts: {
     url: string
     method: string
     headers?: Record<string, string>
     body?: string
+    secretValues: string[]
     contentType?: string
     throw: boolean
   } = {
     url,
+    secretValues: prepared.secretValues,
     method: method || 'GET',
     throw: false,
   }
   if (Object.keys(headers).length) reqOpts.headers = headers
   if (body) {
-    reqOpts.body = body
+    reqOpts.body = prepared.body
     if (!headers['content-type'] && !headers['Content-Type']) {
       reqOpts.contentType = 'application/json'
     }
@@ -93,7 +88,7 @@ async function downloadToVault(
   const response = await requestUrl(reqOpts)
   signal?.throwIfAborted()
   if (response.status < 200 || response.status >= 300) {
-    const text = response.text?.slice(0, 500) || ''
+    const text = redactSecrets(response.text?.slice(0, 500) || '', prepared.secretValues)
     throw new Error(`HTTP ${response.status}: ${text}`)
   }
 

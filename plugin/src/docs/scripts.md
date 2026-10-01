@@ -4,6 +4,14 @@ Scripts are JavaScript files in the vault's scripts folder that run inside Obsid
 vault access. They are how a person automates something too specific for a feature, and how an
 agent leaves behind something repeatable instead of doing the same work again next week.
 
+## Saved keys
+
+Using `${abele_key:name}` in `ctx.fetch`, `ctx.downloadImage` or `ctx.downloadFile` opens a
+confirmation for each request. It shows the named keys and recipient, without their values.
+The confirmation can add that origin to the key's allowed-address list. Cancelling sends
+nothing; Stop dismisses the question. A saved key cannot be used in the URL's authority.
+A script-started agent cannot make requests requiring this interactive approval.
+
 ## Network limits
 
 `ctx.fetch` waits at most five minutes, including redirects, and accepts at most 20 MB.

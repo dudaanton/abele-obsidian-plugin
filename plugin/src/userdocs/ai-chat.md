@@ -11,6 +11,15 @@ Chats with AI models that can read and change your notes, inside limits you set.
 4. On the **Agents** tab, open the `Default` agent and give it that model.
 5. Open the chat with **Show AI chat sidebar**, or the robot in the ribbon.
 
+## Saved keys in requests
+
+When the agent substitutes a saved key into a request, it always asks first, including in
+Auto mode and discussions in the margin. The confirmation names the keys and the destination;
+**Allow this address for these keys** adds a recipient, then **Approve** sends the request.
+Allowing an address does not stop future requests asking. This also covers MCP headers that
+substitute saved named keys. Agent policies and delegated runs cannot approve these requests
+silently. Requests without saved keys keep their existing permissions.
+
 ## JavaScript calculations
 
 **Evaluate JavaScript** is for calculations, not downloads. It runs for at most 10 seconds

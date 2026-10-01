@@ -20,7 +20,8 @@ import { createDownloadImageTool, createDownloadFileTool } from '@/ai/tools/Down
 import { runSubAgent } from '@/ai/SubAgentRunner'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { createAgentTools } from '@/ai/tools'
-import { substituteSecrets } from '@/ai/tools/secretUtils'
+import { prepareSecretRequest, redactSecrets } from '@/ai/tools/secretUtils'
+import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import type { FormAnswers, FormField } from './types'
 import { answerPickers } from './formPickers'
 import { filterCriteria } from '@/helpers/noteFilter'
@@ -423,18 +424,13 @@ export function buildScriptContext(opts: {
         timeout?: number
       }
     ): Promise<{ status: number; headers: Record<string, string>; data: any; text: string }> {
-      const headers: Record<string, string> = {}
-      if (fetchOpts?.headers) {
-        for (const [k, v] of Object.entries(fetchOpts.headers)) {
-          headers[k] = substituteSecrets(v)
-        }
-      }
+      const raw = { url, headers: fetchOpts?.headers, body: fetchOpts?.body }
+      await approveScriptKeyRequest(raw, s)
+      const prepared = prepareSecretRequest(raw)
       const response = await withTimeout(
         (signal) => waitForScript(() => requestUrl({
-          url: substituteSecrets(url),
+          ...prepared,
           method: fetchOpts?.method || 'GET',
-          headers,
-          body: fetchOpts?.body ? substituteSecrets(fetchOpts.body) : undefined,
           throw: false,
           timeoutMs: 300_000,
         }), signal),
@@ -444,15 +440,17 @@ export function buildScriptContext(opts: {
         track
       )
       const contentType = response.headers['content-type'] || ''
-      let data: any = response.text
+      const text = redactSecrets(response.text, prepared.secretValues)
+      let data: any = text
       if (contentType.includes('application/json')) {
         try {
-          data = response.json
+          data = JSON.parse(text)
         } catch {
           /* keep text */
         }
       }
-      return { status: response.status, headers: response.headers, data, text: response.text }
+      const headers = Object.fromEntries(Object.entries(response.headers).map(([k, v]) => [k, redactSecrets(v, prepared.secretValues)]))
+      return { status: response.status, headers, data, text }
     },
 
     async downloadImage(
@@ -464,6 +462,7 @@ export function buildScriptContext(opts: {
       const opts =
         typeof filenameOrOpts === 'string' ? { filename: filenameOrOpts } : filenameOrOpts
       const { timeout, ...rest } = opts ?? {}
+      await approveScriptKeyRequest({ url, headers: rest.headers }, s)
       return stripPrefix(
         await withTimeout((signal) => call(downloadImageTool, { url, ...rest }, signal), timeout, url, s, track)
       )
@@ -482,6 +481,7 @@ export function buildScriptContext(opts: {
       }
     ): Promise<string> {
       const { timeout, ...rest } = opts ?? {}
+      await approveScriptKeyRequest({ url, headers: rest.headers, body: rest.body }, s)
       return stripPrefix(
         await withTimeout((signal) => call(downloadFileTool, { url, ...rest }, signal), timeout, url, s, track)
       )

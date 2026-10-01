@@ -10,6 +10,9 @@ Obsidian's vault-scoped local storage holds `abele-key-destinations-v1`: key ide
 approved HTTP(S) origins, never key values. It is not exported or synced. Existing service
 origins are recorded once on upgrade; a changed origin arriving elsewhere needs confirmation
 on this device. Deleting or changing ordinary notes does not approve a destination.
+Named keys in `ai.secrets` store `allowedOrigins`, a list of recipient HTTP(S) origins beside
+the keychain identifier, not the secret value. This list travels in the stored-keys transfer
+section; local destination and HTTP approvals do not.
 `abele-key-http-origins-v1` holds explicitly allowed home-network HTTP origins on this device;
 it contains no secrets and does not travel either.
 

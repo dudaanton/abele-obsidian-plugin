@@ -166,7 +166,7 @@ describe('calling one', () => {
     app.secretStorage.setSecret('abele-secret-extra', 'value-9')
     AbeleConfig.getInstance().ai = {
       ...DEFAULT_AI_SETTINGS,
-      secrets: [{ name: 'extra', keyId: 'abele-secret-extra' }],
+      secrets: [{ name: 'extra', keyId: 'abele-secret-extra', allowedOrigins: [new URL(server.url).origin] }],
     }
     const configured = createMcpServer({
       id: 'srv1',

@@ -67,6 +67,12 @@
       </div>
     </template>
 
+    <div v-if="keyInfo?.names.length" class="abele-tool-approval__param">
+      <span>Saved keys: {{ keyInfo.names.join(', ') }} → {{ keyInfo.origin }}</span>
+      <span>Every request with a saved key needs approval.</span>
+      <Button v-if="keyInfo.missing.length" text="Allow this address for these keys" @click="allowKeyAddress" />
+    </div>
+
     <!-- Edit JSON (toggle) -->
     <div v-if="isEditing" class="abele-tool-approval__editor">
       <Input
@@ -78,6 +84,7 @@
       <div v-if="parseError" class="abele-tool-approval__parse-error">{{ parseError }}</div>
     </div>
 
+    <div v-if="parseError && !isEditing" class="abele-tool-approval__parse-error">{{ parseError }}</div>
     <div class="abele-tool-approval__actions">
       <Button text="Approve" @click="approve" />
       <Button
@@ -100,6 +107,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { needsSecretApproval, secretRequestInfo, secretRequestForTool, allowSecretOrigin } from '@/ai/tools/secretUtils'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
@@ -118,6 +126,22 @@ const session = computed(() => ChatService.getInstance().activeSession.value)
 const isEditing = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const keyRevision = ref(0)
+const effectiveParams = computed(() => {
+  try { return isEditing.value ? JSON.parse(editedArgs.value) : params.value } catch { return {} }
+})
+const keyRequest = computed(() => needsSecretApproval(props.message.toolName ?? '', effectiveParams.value))
+const keyInfo = computed(() => {
+  void keyRevision.value
+  if (!keyRequest.value) return null
+  try { return secretRequestInfo(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)!) } catch { return null }
+})
+const allowKeyAddress = () => {
+  try {
+    for (const name of keyInfo.value?.missing ?? []) allowSecretOrigin(name, keyInfo.value!.origin)
+    keyRevision.value++
+  } catch (error) { parseError.value = (error as Error).message }
+}
 
 const headerText = computed(() => {
   switch (props.message.toolName) {
@@ -221,7 +245,7 @@ const approveAllWrites = () => {
  */
 const canAllowAll = computed(() => {
   const name = props.message.toolName
-  if (!name) return false
+  if (!name || keyRequest.value) return false
   const s = session.value
   if (!s) return false
   return s.getToolMode(name) === 'ask'

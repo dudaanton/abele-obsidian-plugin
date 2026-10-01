@@ -1,4 +1,5 @@
 import { AgentLoop } from './client/AgentLoop'
+import { needsSecretApproval } from './tools/secretUtils'
 import type { AgentTool, ModelConfig, Message, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
 import { ChatSession } from './ChatSession'
@@ -34,6 +35,7 @@ function isToolAllowed(
   const activeSession = ChatSession.getActiveSession()
   const mode = activeSession?.permissionMode.value ?? AbeleConfig.getInstance().ai.permissionMode
 
+  if (needsSecretApproval(toolName, args)) return { allowed: false, reason: 'Saved-key requests require interactive approval' }
   if (toolName === 'delegate') return { allowed: false, reason: 'Sub-agents cannot delegate' }
 
   // Scope check for file tools

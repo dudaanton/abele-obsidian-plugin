@@ -10,6 +10,14 @@ you have read or trust.
 
 ## Network requests
 
+A request using a saved `${abele_key:name}` now asks before sending, even when its address
+was allowed before. The dialog shows which keys and which address, without exposing values.
+**Allow address and send** adds a new recipient to those keys' allowed list; **Send once**
+approves just this request to an already allowed address. Cancel or Stop sends nothing.
+Manage the address list under **AI → General → Secrets**. It travels with settings, but other
+devices still need to confirm new addresses. An agent started by a script cannot approve this
+question for you.
+
 Script `fetch` requests stop waiting after five minutes and reject responses over 20 MB.
 A shorter `timeout` still works; zero or a longer timeout no longer means an unlimited wait.
 Other buffered service requests use a 30-second default. Image generation has up to five minutes.

@@ -66,7 +66,7 @@ beforeEach(async () => {
   const config = AbeleConfig.getInstance()
   config.ai = {
     ...DEFAULT_AI_SETTINGS,
-    secrets: [{ name: 'Weather', keyId: 'abele-secret-weather' }],
+    secrets: [{ name: 'Weather', keyId: 'abele-secret-weather', allowedOrigins: ['https://api.sample.example'] }],
     braveSearchApiKey: 'abele-brave-search',
     providers: [
       {
@@ -94,7 +94,7 @@ describe('features read their keys through the store', () => {
   })
 
   it('named keys in scripts and fetch calls', () => {
-    expect(substituteSecrets('token=${abele_key:Weather}')).toBe('token=weather-key')
+    expect(substituteSecrets('token=${abele_key:Weather}', 'https://api.sample.example')).toBe('token=weather-key')
   })
 
   it('voice input', () => {

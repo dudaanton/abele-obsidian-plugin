@@ -8,6 +8,7 @@ import {
   type ShallowRef,
 } from 'vue'
 import { TFile, Notice } from 'obsidian'
+import { needsSecretApproval } from './tools/secretUtils'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -1023,6 +1024,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
+    if (needsSecretApproval(toolName, args)) return true
     const mode = this.permissionMode.value
 
     // This tool only records a proposal. Accepting it is a separate owner action, never a
@@ -1949,6 +1951,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   /** What the interceptor script said about a call that would ask; `ask` when it said nothing. */
   private policyFor(id: string, name: string, args: Record<string, unknown> | undefined) {
+    if (needsSecretApproval(name, args)) return Promise.resolve({ kind: 'ask' as const })
     return this.turnPolicy.decide(id, name, args ?? {}, !!this.outOfScopePath(name, args))
   }
 

@@ -470,6 +470,15 @@
                 />
                 <Icon icon="copy" tooltip="Copy the key" @click="copySecret(secret.keyId)" />
               </div>
+              <Setting name="Allowed addresses" desc="Add an address from a request's confirmation. Each saved-key request still asks.">
+                <div>
+                  <div v-for="origin in secret.allowedOrigins || []" :key="origin">
+                    <span>{{ origin }}</span>
+                    <Button text="Remove" @click="removeSecretOrigin(sIdx, origin)" />
+                  </div>
+                  <span v-if="!secret.allowedOrigins?.length">None yet</span>
+                </div>
+              </Setting>
               <div class="abele-ai-secret__row">
                 <Button
                   text="Save"
@@ -1080,6 +1089,11 @@ const removeSecret = (idx: number) => {
   }
   secrets.value.splice(idx, 1)
   delete secretValueInputs[idx]
+  save()
+}
+
+const removeSecretOrigin = (idx: number, origin: string) => {
+  secrets.value[idx].allowedOrigins = (secrets.value[idx].allowedOrigins ?? []).filter((entry: string) => entry !== origin)
   save()
 }
 
