@@ -99,6 +99,8 @@ export class TasksList {
         this.relationsCallbacksQueue.push(() => {
           if (this.isTaskPath(file.path)) {
             this.addTask(file.path)
+          } else {
+            this.removeTask(file.path)
           }
         })
       })

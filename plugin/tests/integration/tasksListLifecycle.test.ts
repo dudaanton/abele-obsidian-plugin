@@ -158,7 +158,7 @@ describe('the vault-wide task list', () => {
 
   // BUG: changed events only add tasks; changing type from task to note never removes one.
   // A note converted away from a task remains in the sidebar until plugin reload.
-  it.fails('removes a note whose type is no longer task', () => {
+  it('removes a note whose type is no longer task', () => {
     const env = start()
     env.resolved()
     env.app.setFrontmatter(TASK_PATH, { type: 'note' })
