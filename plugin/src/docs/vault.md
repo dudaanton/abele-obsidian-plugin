@@ -706,6 +706,15 @@ heading would: `[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]` (an EPUB
 `[[Papers/Paper.pdf#page=4]]` (a PDF page, from 1). A click opens the file there. Give the link a
 label saying what is there, usually the chapter.
 
+### Navigation panel width
+
+Obsidian's vault-scoped local storage holds `abele-book-panel-width`: the reader's desktop
+navigation split width in CSS pixels, or null for the default 21em. The split uses the same
+12em minimum and smaller-of-40%-or-36em maximum as the GitHub file tree. A narrower tab clamps
+the displayed width without rewriting the saved preference. This is a device-local UI choice,
+not a plugin setting, synced file or settings-transfer entry. On narrow screens the navigation
+panel remains a drawer, independent of the remembered desktop width.
+
 ### Book highlights
 
 A book's highlights are kept, by default, in `<book name> highlights.md` beside it, with

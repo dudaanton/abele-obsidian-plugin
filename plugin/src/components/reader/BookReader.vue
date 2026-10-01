@@ -1,9 +1,14 @@
 <template>
-  <div class="abele-book-reader" :class="{ 'abele-book-reader_panel': model.panel }">
+  <div
+    ref="layout"
+    class="abele-book-reader abele-panel-layout"
+    :class="{ 'abele-book-reader_panel': model.panel, 'abele-panel-layout_open': model.panel }"
+    :style="panelStyle"
+  >
     <template v-if="model.panel && model.status === 'ready'">
       <!-- Over the page, on a narrow screen: a tap beside the drawer closes it. -->
       <div class="abele-book-reader__backdrop" @click="emit('panel', false)" />
-      <div class="abele-book-reader__panel">
+      <div class="abele-book-reader__panel abele-resizable-panel">
         <div ref="panelHead" class="abele-book-reader__panel-head">
           <Tabs
             :tabs="panelTabs"
@@ -39,6 +44,11 @@
           @go="emit('go-highlight', $event, narrow())"
           @discuss="emit('discuss', $event)"
           @open-note="emit('open-note', undefined, $event)"
+        />
+        <PanelResizeHandle
+          class="abele-book-reader__resize"
+          label="Navigation panel width"
+          v-bind="divider"
         />
       </div>
     </template>
@@ -175,6 +185,9 @@
  * The page itself is the engine's element, which the tab makes and puts into the stage.
  */
 import { computed, onMounted, ref, watch } from 'vue'
+import PanelResizeHandle from '../obsidian/PanelResizeHandle.vue'
+import { usePanelResize } from '../obsidian/usePanelResize'
+import { PANEL_WIDTH_KEY } from '@/reader/panel'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import BookFooter from './BookFooter.vue'
@@ -300,6 +313,8 @@ const openSearchList = () => {
   emit('panel', true)
 }
 
+const layout = ref<HTMLElement>()
+const { style: panelStyle, divider } = usePanelResize(layout, PANEL_WIDTH_KEY, 21)
 const stage = ref<HTMLElement>()
 const noteStage = ref<HTMLElement>()
 
@@ -430,11 +445,13 @@ watch(
   }
 
   &__panel {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 0 0 auto;
-    width: 21em;
-    max-width: 45%;
+    width: var(--abele-panel-width);
+    min-width: 12em;
+    max-width: min(40%, 36em);
     border-inline-end: 1px solid var(--background-modifier-border);
     background-color: var(--background-primary);
   }
@@ -630,6 +647,7 @@ body.abele-eink:has(.mod-active > .abele-book_zen) .mobile-navbar {
     inset-inline-start: 0;
     z-index: 2;
     width: min(85%, 22em);
+    min-width: 0;
     max-width: none;
     box-shadow: var(--shadow-l);
   }

@@ -21,6 +21,13 @@ switches between pages and scrolling. The list button in the tab's header opens 
 the search button searches the whole book. A tap on a note mark opens the note over the page. A
 tap on a picture or a table opens it full screen.
 
+On a wide screen, drag the divider beside the navigation panel to give **Contents**, **Search**,
+**Highlights** or **Bookmarks** more or less room. The page reflows to fit, with its marks staying
+on their words. Double-click the divider to reset its width; when focused, the arrow keys resize
+it, Shift moves farther, Home and End reach the limits, and Enter resets. The width is remembered
+on this device only, not synced. On a phone or in a narrow tab, the panel stays a drawer over the
+page.
+
 A PDF zooms with a pinch — two fingers on a touch screen, also while drawing, or Ctrl with the
 mouse wheel — or with the zoom buttons under the page, which also fit the page or its width. Each
 PDF keeps its zoom on the device it was set on.
