@@ -640,7 +640,7 @@ import { keyFor, keyDestinations, acceptIntroducedDestinations } from '@/secrets
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { secrets as secretStore } from '@/secrets/SecretStore'
 import { MEMORY_PLACEHOLDER } from '@/ai/agents/memory'
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, watch, onBeforeUnmount } from 'vue'
 import { Notice, debounce } from 'obsidian'
 import { nanoid } from 'nanoid'
 import Setting from '../../obsidian/Setting.vue'
@@ -794,8 +794,23 @@ const modelOptions = computed(() => {
   return options
 })
 
-const save = debounce(async () => {
-  const before = keyDestinations(config)
+let pendingSave = false
+const write = () => {
+  pendingSave = false
+  void config.saveSettings().catch((err) => console.error('[Abele] Failed to save AI settings', err))
+}
+const persist = debounce(write, 500, true)
+const save = () => {
+  config.editSettings(() => {
+    const before = keyDestinations(config)
+    applyFields()
+    acceptIntroducedDestinations(before, keyDestinations(config))
+  })
+  pendingSave = true
+  persist()
+}
+
+const applyFields = () => {
   // Merged, never rebuilt. This tab owns providers, keys and background prompts; agents,
   // scripts and chat history belong to other screens, and a wholesale rebuild would silently
   // drop whatever this component does not happen to know about.
@@ -815,10 +830,33 @@ const save = debounce(async () => {
     defaultImageModel: defaultImageModel.value,
     secrets: JSON.parse(JSON.stringify(secrets.value)),
     prompts: JSON.parse(JSON.stringify(prompts.value)),
+    autoRetry: { ...retry.value },
+    voice: { ...voice.value },
   }
-  acceptIntroducedDestinations(before, keyDestinations(config))
-  await config.saveSettings()
-}, 500)
+}
+
+watch(config.version, () => {
+  enabled.value = config.ai.enabled
+  providers.value = JSON.parse(JSON.stringify(config.ai.providers))
+  auxiliaryModelId.value = config.ai.auxiliaryModelId
+  sequentialAuxiliary.value = config.ai.sequentialAuxiliary
+  chatFolder.value = config.ai.chatFolder
+  rewindLimitMb.value = config.ai.rewindLimitMb ?? DEFAULT_REWIND_LIMIT_MB
+  commentAgentId.value = config.ai.commentAgentId ?? ''
+  commentFolder.value = config.ai.commentFolder ?? DEFAULT_AI_SETTINGS.commentFolder
+  braveSearchApiKey.value = config.ai.braveSearchApiKey
+  imageProviders.value = JSON.parse(JSON.stringify(config.ai.imageProviders || []))
+  defaultImageModel.value = config.ai.defaultImageModel || ''
+  secrets.value = JSON.parse(JSON.stringify(config.ai.secrets || []))
+  prompts.value = JSON.parse(JSON.stringify(config.ai.prompts || {}))
+  retry.value = { ...DEFAULT_RETRY, ...(config.ai.autoRetry ?? {}) }
+  voice.value = { ...DEFAULT_VOICE_SETTINGS, ...(config.ai.voice ?? {}) }
+})
+
+onBeforeUnmount(() => {
+  persist.cancel?.()
+  if (pendingSave) write()
+})
 
 const toggleEnabled = () => {
   enabled.value = !enabled.value
@@ -875,7 +913,6 @@ const retry = ref<RetrySettings>({ ...DEFAULT_RETRY, ...(config.ai.autoRetry ?? 
 
 const setRetry = (key: keyof RetrySettings, value: number) => {
   retry.value = { ...retry.value, [key]: value }
-  config.ai = { ...config.ai, autoRetry: { ...retry.value } }
   save()
 }
 
@@ -906,12 +943,7 @@ const voiceModelNote = computed(
   () => TRANSCRIPTION_MODELS.find((m) => m.id === voice.value.modelId)?.note ?? ''
 )
 
-const saveVoice = () => {
-  const before = keyDestinations(config)
-  config.ai = { ...config.ai, voice: { ...voice.value } }
-  acceptIntroducedDestinations(before, keyDestinations(config))
-  save()
-}
+const saveVoice = () => save()
 
 const setVoice = (key: keyof VoiceSettings, value: string) => {
   voice.value = { ...voice.value, [key]: value }
