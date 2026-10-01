@@ -241,7 +241,7 @@ describe('frontmatter read and write surfaces', () => {
 
   // BUG: this writer uses front-matter.body directly and inserts one blank line; changing
   // a property destroys additional leading body blank lines despite the parser's spacing fix.
-  it.fails('preserves body spacing when updating frontmatter', async () => {
+  it('preserves body spacing when updating frontmatter', async () => {
     const env = templateHarness([
       { path: 'Notes/sample.md', raw: '---\nkey: old\n---\n\n\n\nBody' },
     ])

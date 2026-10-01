@@ -129,8 +129,12 @@ export const updateNoteFrontmatter = async (
   // Convert the updated frontmatter to YAML
   const yamlFrontmatter = stringifyYaml(updatedAttributes)
 
-  // Add the frontmatter delimiters
-  const updatedContent = `---\n${yamlFrontmatter}\n---\n\n${parsed.body}`
+  // Keep the body exactly as written after an ordinary frontmatter fence.
+  const body =
+    parsed.frontmatter !== undefined && frontMatterRegex.test(content)
+      ? getNoteBody(content)
+      : `\n${parsed.body}`
+  const updatedContent = `---\n${yamlFrontmatter}\n---\n${body}`
 
   // Save the updated content back to the file
   await app.vault.modify(file, updatedContent)
