@@ -575,11 +575,17 @@ export function applyEntries(
         )
       owners.set(keyId, origin)
     }
-    for (const connection of github.connections) bind(connection.keyId, connection.server)
-    bind(
-      github.notifications.boundKeyId ?? github.notifications.keyId,
-      github.notifications.boundServer ?? github.server
-    )
+    const bindSettings = (value: ReturnType<typeof githubSettingsFrom>) => {
+      for (const connection of value.connections) bind(connection.keyId, connection.server)
+      bind(value.notifications.boundKeyId ?? value.notifications.keyId,
+        value.notifications.boundServer ?? value.server)
+    }
+    // A transfer without keys leaves local/synced secrets in their slots. Validate against
+    // the pre-transfer bindings too: replacing a row (or a whole section) cannot erase the
+    // evidence that an existing slot belongs to a different server. A new server needs a
+    // distinct slot, even if its connection was independently migrated with the same ID.
+    bindSettings(githubSettingsFrom(settings.github))
+    bindSettings(github)
   }
   return next
 }

@@ -210,6 +210,27 @@ describe('GitHub connection migration', () => {
 })
 
 describe('connection transfer', () => {
+  it.each(['merge', 'replace'] as const)('rejects %s rebinding of a previously held slot even when its old row disappears', (mode) => {
+    const receiver = { ...DEFAULT_SETTINGS, github: githubSettingsFrom({ server: 'https://first.sample.test', keyId: 'shared-legacy-slot' }) }
+    const sender = { ...DEFAULT_SETTINGS, github: githubSettingsFrom({ server: 'https://second.sample.test', keyId: 'shared-legacy-slot' }) }
+    const selected = collectEntries(sender).filter(e => e.section === 'github-connections')
+    expect(selected[0].id).toBe('github-legacy')
+    const payload = buildPayload(selected, null)
+    expect(payload.secrets).toEqual({})
+    expect(() => applyEntries(payload.entries, receiver, mode)).toThrow(/another server|different servers/i)
+    expect(receiver.github.connections[0].server).toBe('https://first.sample.test')
+    // A different incoming ID must not bypass the same previous-slot check in replace mode.
+    const renamed = selected.map(e => ({ ...e, id: 'incoming', data: { ...(e.data as object), id: 'incoming' } }))
+    expect(() => applyEntries(renamed, receiver, mode)).toThrow(/another server|different servers/i)
+  })
+
+  it('retains a previous notification binding when validating a replacing general block', () => {
+    const receiver = { ...DEFAULT_SETTINGS, github: githubSettingsFrom({ server:'https://first.sample.test', notifications:{keyId:'classic-shared-slot'} }) }
+    const sender = { ...DEFAULT_SETTINGS, github: githubSettingsFrom({ server:'https://second.sample.test', notifications:{keyId:'classic-shared-slot'} }) }
+    const selected = collectEntries(sender).filter(e => e.section === 'github')
+    expect(() => applyEntries(selected, receiver, 'replace')).toThrow(/another server|different servers/i)
+  })
+
   it('normalizes defaults only after all selected connections arrive, preserving a later default', () => {
     const original = {
       ...DEFAULT_SETTINGS,

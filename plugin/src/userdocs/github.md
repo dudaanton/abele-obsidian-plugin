@@ -29,7 +29,10 @@ GitHub Enterprise addresses may include an explicit scheme and port. Existing to
 settings migrate to one connection with the same keychain slot, without re-entering a token.
 The list travels as individually selectable entries in settings transfer, with tokens only when
 keys are included. Synced keys include every connection. Delete asks for confirmation and
-forgets the local slot without revoking the shared token on other devices.
+forgets the local slot without revoking the shared token on other devices. A transfer cannot
+reuse a receiving device's existing token slot for a different server, even when replacing the
+whole list or sending no keys. Such a transfer is refused before applying settings or keys;
+create a separate connection with its own token slot on the sending device first.
 
 ## What opens in a tab
 
