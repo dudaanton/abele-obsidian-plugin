@@ -77,4 +77,4 @@ it('anchors tag history, includes pending bump, and reproduces bytes when tagged
   } finally {
     rmSync(repo, { recursive: true, force: true })
   }
-})
+}, 120_000) // initialises repositories and clones one; git takes seconds when the machine is busy
