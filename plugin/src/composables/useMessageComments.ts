@@ -8,7 +8,14 @@ import {
 } from 'vue'
 import { Menu } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
-import { paintMessageComments, selectionAnchor, type PaintedComment } from '@/ai/messageComments'
+import {
+  paintMessageComments,
+  paintReplyHighlights,
+  selectionAnchor,
+  type PaintedComment,
+} from '@/ai/messageComments'
+import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
+import type { ReplyHighlight } from '@/ai/replyAnnotations'
 import type { MessageComment } from '@/ai/types'
 
 type Ask = (quote?: string, start?: number) => void
@@ -25,7 +32,13 @@ type Ask = (quote?: string, start?: number) => void
  * phone has already let it go. What the press on the message's icon found is kept for the
  * action row it opens, which is where a phone's "Ask here" is.
  */
-export function useMessageComments(comments: () => MessageComment[] | undefined, ask: Ask) {
+export function useMessageComments(
+  comments: () => MessageComment[] | undefined,
+  ask: Ask,
+  highlights: () => ReplyHighlight[] | undefined = () => [],
+  highlight?: (quote: string, start: number, color: HighlightColor) => void,
+  removeHighlight?: (id: string) => void
+) {
   const content = ref<ComponentPublicInstance | null>(null)
   const root = (): HTMLElement | null => (content.value?.$el as HTMLElement | undefined) ?? null
 
@@ -59,9 +72,10 @@ export function useMessageComments(comments: () => MessageComment[] | undefined,
     const el = root()
     if (!el) return
     paintMessageComments(el, painted.value, (id) => service.openFrom([id]))
+    paintReplyHighlights(el, highlights() ?? [])
   }
 
-  watch(painted, paint, { deep: true, flush: 'post' })
+  watch([painted, highlights], paint, { deep: true, flush: 'post' })
 
   let held: { quote: string; start: number } | null = null
 
@@ -108,6 +122,25 @@ export function useMessageComments(comments: () => MessageComment[] | undefined,
         .setIcon('message-circle-plus')
         .onClick(() => ask(anchor.quote, anchor.start))
     )
+    if (highlight) {
+      for (const color of HIGHLIGHT_COLORS)
+        menu.addItem((item) =>
+          item
+            .setTitle(`Highlight in ${color}`)
+            .setIcon('highlighter')
+            .onClick(() => highlight(anchor.quote, anchor.start, color))
+        )
+    }
+    const end = anchor.start + anchor.quote.length
+    for (const mark of highlights() ?? []) {
+      if (mark.start >= end || mark.start + mark.quote.length <= anchor.start) continue
+      menu.addItem((item) =>
+        item
+          .setTitle(`Remove ${mark.color} highlight`)
+          .setIcon('eraser')
+          .onClick(() => removeHighlight?.(mark.id))
+      )
+    }
     menu.showAtMouseEvent(event)
   }
 

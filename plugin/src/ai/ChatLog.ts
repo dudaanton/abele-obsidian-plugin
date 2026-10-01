@@ -262,6 +262,7 @@ export class ChatLogWriter {
   private messageLines = new Map<string, string>()
   private internalCount = 0
   private records = 0
+  private legacySnapshot: string | null = null
   /** Whether the file is known to end with a whole line, so an append may start right there. */
   private clean = true
 
@@ -270,9 +271,15 @@ export class ChatLogWriter {
     if (parsed.version !== 2) {
       // A version 1 file is migrated by the first save, which rewrites it as a log.
       this.forget()
+      this.legacySnapshot = JSON.stringify([
+        parsed.metadata,
+        parsed.messages,
+        parsed.internalMessages,
+      ])
       return
     }
 
+    this.legacySnapshot = null
     this.metaLine = parsed.metadata ? metaLine(parsed.metadata) : ''
     this.messageLines = new Map(parsed.messages.map((m) => [m.id, messageLine(m)]))
     this.internalCount = parsed.internalMessages.length
@@ -290,6 +297,7 @@ export class ChatLogWriter {
 
   /** Forgets the file, so the next save writes the whole conversation. */
   forget(): void {
+    this.legacySnapshot = null
     this.metaLine = ''
     this.messageLines = new Map()
     this.internalCount = 0
@@ -299,6 +307,12 @@ export class ChatLogWriter {
 
   /** Whether another writer changed the file since this session last read or saved it. */
   matches(parsed: ParsedChat): boolean {
+    if (parsed.version === 1)
+      return (
+        this.legacySnapshot !== null &&
+        this.legacySnapshot ===
+          JSON.stringify([parsed.metadata, parsed.messages, parsed.internalMessages])
+      )
     return (
       parsed.version === 2 &&
       !!parsed.metadata &&

@@ -52,6 +52,8 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'reply-revision',
+  'reply-original',
   'confirm',
   'date',
   'recurrence',

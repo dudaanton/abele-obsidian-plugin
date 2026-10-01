@@ -107,6 +107,7 @@
         v-if="messagesContainer && canComment && !composing"
         :scroller="messagesContainer"
         @ask="onAskHere"
+        @highlight="onHighlight"
       />
 
       <!-- Over a comment on a message: the way down to it, every level a way back. -->
@@ -182,6 +183,10 @@
           @retry-message="onRetryMessage"
           @insert-into-note="onInsertIntoNote"
           @ask-here="onAskHere"
+          @highlight="onHighlight"
+          @remove-highlight="onRemoveHighlight"
+          @review-revision="onReviewRevision"
+          @undo-revision="onUndoRevision"
           @edit-message="onEditMessage"
           @rewind="onRewind"
           @confirm-draft="onConfirmDraft"
@@ -317,6 +322,12 @@
     </template>
 
     <!-- Modals -->
+    <AiReplyRevisionDialog
+      v-if="replyReview"
+      :proposal="replyReview.proposal"
+      :decide="replyReview.decide"
+      @close="replyReview = null"
+    />
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
     <AiRewindDialog
       v-if="rewinding && session"
@@ -346,12 +357,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import ChatSelectionBar from './ChatSelectionBar.vue'
+import AiReplyRevisionDialog from './AiReplyRevisionDialog.vue'
+import type { ReplyProposal } from '@/ai/replyAnnotations'
+import type { HighlightColor } from '@/reader/highlights'
 import ChatFindBar from './ChatFindBar.vue'
 import { useChatFind } from '@/composables/useChatFind'
 import { useFindKey } from '@/composables/useFindKey'
@@ -569,6 +583,28 @@ const canComment = computed(
 const onAskHere = (messageId: string, quote?: string, start?: number) => {
   const s = session.value
   if (s) void CommentService.getInstance().createOnMessage(s, messageId, quote, start)
+}
+
+const replyReview = shallowRef<{
+  proposal: ReplyProposal
+  decide: (accept: boolean) => Promise<void>
+} | null>(null)
+const reportReplyError = (error: unknown) =>
+  new Notice(error instanceof Error ? error.message : String(error))
+const onHighlight = (id: string, quote: string, start: number, color: HighlightColor) => {
+  void session.value?.highlightReply(id, quote, start, color).catch(reportReplyError)
+}
+const onRemoveHighlight = (id: string, highlight: string) => {
+  void session.value?.removeReplyHighlight(id, highlight).catch(reportReplyError)
+}
+const onUndoRevision = (id: string) => {
+  void session.value?.undoReplyRevision(id).catch(reportReplyError)
+}
+const onReviewRevision = (id: string) => {
+  const owner = session.value
+  const proposal = owner?.allMessages.value.find((message) => message.id === id)?.replyProposal
+  if (!owner || !proposal || proposal.status !== 'pending') return
+  replyReview.value = { proposal, decide: (accept) => owner.decideReplyProposal(id, accept) }
 }
 
 const onEditMessage = (messageId: string) => {

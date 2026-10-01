@@ -90,6 +90,32 @@ views scripts open.
 The chat's settings button opens one dialog with everything about this chat: its scope, skills,
 prompts, permissions, model and tools.
 
+## Highlighting and revising replies
+
+Select words in a finished model reply. On a computer, right-click and choose **Highlight in…**;
+on a phone, lift your finger and wait for the selection bar, then tap a colour. The six colours
+are the same as in books, using the note highlight styling. Tap a highlight to remove it, or
+press the message's icon to see its highlights and their **Remove** buttons. Selecting the same
+words again lets you change their colour. Highlights stay with the chat when it is reopened or
+synced. They are visual annotations; they do not alter what the model reads.
+
+To ask for a revision, select the passage and choose **Ask here**. In that side discussion,
+explicitly ask the agent to rewrite or clarify those words. Its proposal has a **Review reply
+revision** button: you see the old passage and the proposed replacement before choosing
+**Accept**, **Reject**, or **Later**. Nothing changes just because the agent proposes it, even
+when tools are allowed to run automatically.
+
+Accept changes that passage in the parent reply and marks it with the editing agent and time.
+The parent agent reads the revised wording from then on. **View original** shows the original
+reply; **Undo last revision** restores the previous version. The original and undo history travel
+with the chat, unlike file rewind. Highlights stay with the old version and return on undo;
+mark the revised version afresh.
+
+Wait for both chats to finish working before accepting. If the parent changed elsewhere, reopen
+it and ask for a fresh proposal. A selection crossing complex or partial markdown syntax may
+not map safely; select a complete passage or words within one formatted span instead. To revise
+an accepted replacement again, select its new words and start a new comment.
+
 ## Rewind
 
 Everything an agent changes in your vault from a chat is remembered, so you can take it back.

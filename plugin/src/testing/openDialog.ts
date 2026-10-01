@@ -10,6 +10,8 @@ import {
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
+import AiReplyOriginalDialog from '@/components/AiReplyOriginalDialog.vue'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import RecurrencePickerModal from '@/components/RecurrencePickerModal.vue'
 import DateRangePickerModal from '@/components/DateRangePickerModal.vue'
@@ -96,6 +98,40 @@ function mountAlone(component: Component, props: Record<string, unknown> = {}): 
  * own openers; the chat's two dialogs open from the chat.
  */
 const DIALOGS: Record<string, () => void> = {
+  'reply-revision': () =>
+    mountAlone(AiReplyRevisionDialog, {
+      proposal: {
+        id: 'sample-proposal',
+        parent: 'sample-chat.abchat',
+        message: 'sample-reply',
+        before: 'A small lantern glows.',
+        from: 2,
+        old: 'small lantern',
+        text: 'bright lamp that lights the garden path',
+        request: 'Please clarify the selected description.',
+        author: 'Sample editor',
+        at: 1,
+        status: 'pending',
+      },
+      decide: async () => {},
+    }),
+  'reply-original': () =>
+    mountAlone(AiReplyOriginalDialog, {
+      message: {
+        id: 'sample-reply',
+        role: 'assistant',
+        timestamp: 1,
+        content: 'A bright lamp glows.',
+        revisions: [{
+          proposal: 'sample-proposal',
+          before: 'A **small lantern** glows beside the garden path.',
+          after: 'A bright lamp glows.',
+          author: 'Sample editor',
+          at: 1,
+          highlights: [],
+        }],
+      },
+    }),
   confirm: () =>
     mountAlone(ConfirmModal, {
       title: 'Delete model',

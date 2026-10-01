@@ -14,6 +14,18 @@
       tooltip="Start a comment on the selected words, kept with them in this chat"
       @click="ask"
     />
+    <div v-if="shown.highlight" class="abele-chat-selection__colors" aria-label="Highlight colour">
+      <Button
+        v-for="color in HIGHLIGHT_COLORS"
+        :key="color"
+        text="ab"
+        :data-highlight-color="color"
+        :aria-label="`Highlight in ${color}`"
+        :tooltip="`Highlight in ${color}`"
+        @click="highlight(color)"
+        ><span :class="`abele-highlight abele-highlight--${color}`">ab</span></Button
+      >
+    </div>
   </div>
 </template>
 
@@ -21,6 +33,7 @@
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
 import { Platform } from 'obsidian'
 import Button from './obsidian/Button.vue'
+import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import { selectionAnchor } from '@/ai/messageComments'
 import { SettledSelection } from '@/helpers/settledSelection'
 import { placeSelectionBar } from '@/helpers/selectionBarPlace'
@@ -42,6 +55,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'ask', messageId: string, quote: string, start: number): void
+  (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void
 }>()
 
 interface Asked {
@@ -49,6 +63,7 @@ interface Asked {
   quote: string
   start: number
   range: Range
+  highlight: boolean
 }
 
 const shown = shallowRef<Asked | null>(null)
@@ -69,7 +84,12 @@ function read(): Asked | null {
   if (!el || !props.scroller.contains(el)) return null
   const anchor = selectionAnchor(el, range)
   if (!anchor) return null
-  return { id: el.dataset.askMessage, ...anchor, range }
+  return {
+    id: el.dataset.askMessage,
+    ...anchor,
+    range,
+    highlight: el.dataset.highlightReply === 'true',
+  }
 }
 
 async function position() {
@@ -111,6 +131,14 @@ function ask() {
   if (asked) emit('ask', asked.id, asked.quote, asked.start)
 }
 
+function highlight(color: HighlightColor) {
+  const asked = shown.value
+  pressing = false
+  shown.value = null
+  if (asked?.highlight) emit('highlight', asked.id, asked.quote, asked.start, color)
+  doc.getSelection()?.removeAllRanges()
+}
+
 let watcher: SettledSelection | null = null
 let frame = 0
 const onScroll = () => {
@@ -150,6 +178,9 @@ onBeforeUnmount(() => {
   position: absolute;
   z-index: var(--layer-popover);
   display: flex;
+  flex-wrap: wrap;
+  max-width: calc(100% - var(--size-4-2));
+  gap: var(--size-4-1);
   padding: var(--size-4-1);
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -158,6 +189,12 @@ onBeforeUnmount(() => {
   visibility: hidden;
   user-select: none;
   -webkit-user-select: none;
+
+  &__colors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-2-1);
+  }
 
   &_placed {
     visibility: visible;

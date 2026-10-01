@@ -7,7 +7,7 @@
     @click="$emit('click')"
   >
     <span v-if="icon" ref="iconEl" class="abele-obsidian-button__icon" />
-    {{ text }}
+    <slot>{{ text }}</slot>
   </button>
 </template>
 

@@ -80,6 +80,7 @@ async function propose() {
     2
   ))!
   await child.addUserNote('Please rewrite the selected passage.')
+  child.permissionMode.value = 'allow-all'
   const result = await createReplyRevisionTool(child).execute('proposal', {
     text: 'bright lamp',
     request: 'Please rewrite the selected passage.',
@@ -88,6 +89,22 @@ async function propose() {
 }
 
 describe('reply annotation persistence and owner decisions', () => {
+  it('annotates a legacy chat safely and migrates its snapshot without another turn', async () => {
+    const old = await disk()
+    await app.vault.modify(
+      file(),
+      JSON.stringify({
+        metadata: old.metadata,
+        messages: old.messages,
+        internalMessages: old.internalMessages,
+      })
+    )
+    const p = await parent()
+    await p.highlightReply('reply', 'small', 2, 'yellow')
+    expect((await disk()).version).toBe(2)
+    expect((await disk()).messages[0].highlights?.[0].quote).toBe('small')
+  })
+
   it('persists colours and removals on the message through reopen', async () => {
     const p = await parent()
     await p.highlightReply('reply', 'small lantern', 2, 'blue')

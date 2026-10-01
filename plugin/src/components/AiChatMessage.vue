@@ -2,7 +2,7 @@
   <div
     class="abele-chat-msg"
     :class="[`abele-chat-msg_${message.role}`, { 'abele-chat-msg--draft': message.draft }]"
-    @click.capture="previewContentImage"
+    @click.capture="onMessageClick"
   >
     <!-- Icon — clickable to expand details -->
     <div
@@ -80,6 +80,19 @@
             }}<template v-if="message.usage.speed"> · {{ message.usage.speed }} t/s</template></span
           >
         </div>
+        <div
+          v-for="mark in message.highlights ?? []"
+          :key="mark.id"
+          class="abele-chat-msg__detail-row"
+        >
+          <span :class="`abele-highlight abele-highlight--${mark.color}`">{{ mark.quote }}</span>
+          <Button
+            text="Remove"
+            :tooltip="`Remove highlight: ${mark.quote}`"
+            :aria-label="`Remove highlight: ${mark.quote}`"
+            @click="emit('remove-highlight', message.id, mark.id)"
+          />
+        </div>
         <div v-if="message.toolParams" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__detail-label">Params</span>
           <pre data-find-part="params">{{ toolParamsText(message.toolParams) }}</pre>
@@ -128,6 +141,16 @@
         </span>
         <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->
         <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
+        <div v-if="message.replyProposal" class="abele-chat-msg__revision">
+          <Button
+            v-if="message.replyProposal.status === 'pending'"
+            text="Review reply revision"
+            icon="git-compare"
+            tooltip="Compare the selected passage before accepting or rejecting the replacement"
+            @click="emit('review-revision', message.id)"
+          />
+          <span v-else>Reply revision {{ message.replyProposal.status }}</span>
+        </div>
 
         <div
           v-if="message.toolStatus === 'approved' && imageUrl"
@@ -199,11 +222,28 @@
         :ref="comments.content"
         :text="message.content"
         :data-ask-message="canComment ? message.id : undefined"
+        :data-highlight-reply="
+          canComment && message.role === 'assistant' && !message.draft ? 'true' : undefined
+        "
         data-find-part="content"
         @rendered="comments.paint"
         @contextmenu="onContentMenu"
       />
       <Markdown v-else-if="message.content" :text="message.content" data-find-part="content" />
+
+      <div v-if="lastRevision" class="abele-chat-msg__revision">
+        <span
+          >Edited by {{ lastRevision.author }} · {{ formatTime(lastRevision.at)
+          }}{{ lastRevision.undoneAt ? ' · undone' : '' }}</span
+        >
+        <Button text="View original" tooltip="Read the original reply or undo the last revision" @click="originalOpen = true" />
+      </div>
+      <AiReplyOriginalDialog
+        v-if="originalOpen"
+        :message="message"
+        @undo="emit('undo-revision', message.id)"
+        @close="originalOpen = false"
+      />
 
       <!-- Attachments -->
       <div v-if="message.attachments?.length" class="abele-chat-msg__attachments">
@@ -358,6 +398,9 @@ import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
 import { Menu, Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import Button from './obsidian/Button.vue'
+import AiReplyOriginalDialog from './AiReplyOriginalDialog.vue'
+import type { HighlightColor } from '@/reader/highlights'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
 import Markdown from './obsidian/Markdown.vue'
@@ -418,12 +461,42 @@ const emit = defineEmits<{
   (e: 'ask-here', messageId: string, quote?: string, start?: number): void
   /** Take back file changes: everything from this message on, or this turn's alone. */
   (e: 'rewind', messageId: string, mode: 'since' | 'turn'): void
+  (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void
+  (e: 'remove-highlight', messageId: string, highlightId: string): void
+  (e: 'review-revision', messageId: string): void
+  (e: 'undo-revision', messageId: string): void
 }>()
 
 const comments = useMessageComments(
   () => props.comments,
-  (quote, start) => emit('ask-here', props.message.id, quote, start)
+  (quote, start) => emit('ask-here', props.message.id, quote, start),
+  () => props.message.highlights,
+  props.message.role === 'assistant' && !props.message.draft
+    ? (quote, start, color) => emit('highlight', props.message.id, quote, start, color)
+    : undefined,
+  (id) => emit('remove-highlight', props.message.id, id)
 )
+
+const originalOpen = ref(false)
+const lastRevision = computed(() => props.message.revisions?.at(-1))
+
+function onMessageClick(event: MouseEvent) {
+  previewContentImage(event)
+  const el = (event.target as HTMLElement).closest<HTMLElement>('[data-reply-highlight]')
+  if (!props.canComment || !el || !el.ownerDocument.getSelection()?.isCollapsed) return
+  const mark = props.message.highlights?.find((h) => h.id === el.dataset.replyHighlight)
+  if (!mark) return
+  event.preventDefault()
+  event.stopPropagation()
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle(`Remove ${mark.color} highlight`)
+      .setIcon('eraser')
+      .onClick(() => emit('remove-highlight', props.message.id, mark.id))
+  )
+  menu.showAtMouseEvent(event)
+}
 
 // Only where a comment can be kept: elsewhere a right-click stays the browser's own. Not on a
 // touch screen, where the long press that fires it is the one selecting the words: the menu
@@ -761,6 +834,15 @@ const shortTime = (ts: number) => dayjs(ts).format('HH:mm')
   white-space: nowrap;
 }
 
+// WebKit touch panes can inherit user-select:none. Desktop emulation permits scripted
+// ranges regardless, so opt the actual rendered words into native selection explicitly.
+.abele-chat-msg__body [data-ask-message],
+.abele-chat-msg__body [data-ask-message] :not(button, .abele-comment-marker, .abele-comment-marker *) {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
 .abele-chat-msg__body {
   flex: 1;
   min-width: 0;
@@ -942,6 +1024,16 @@ body.is-phone
       background-color: var(--background-secondary);
     }
   }
+}
+
+.abele-chat-msg__revision {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  align-items: center;
+  margin-top: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-small);
 }
 
 .abele-chat-msg__compact-label {
