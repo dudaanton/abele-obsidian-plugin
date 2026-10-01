@@ -2,13 +2,10 @@ import type { ErrorBody } from '@abele/sync-protocol'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 
 /**
- * The Obsidian transport: the engine's `fetch`, built on Obsidian's own `requestUrl`.
- *
- * The engine speaks plain `fetch` and nothing else, so this is the whole of what makes it
- * an Obsidian client. `requestUrl` is what the plugin API offers instead: it goes out
- * through the app rather than the WebView, which is why a server on another origin answers
- * at all — a browser `fetch` would need CORS on desktop and would be refused outright on
- * mobile.
+ * Translate native HTTP answers to the engine's `fetch` contract, without browser CORS.
+ * Desktop uses the non-following adapter in desktopTransport.ts. Obsidian's requestUrl
+ * remains the mobile native path until its separate pre-follow feasibility gate is solved.
+ * This translator cannot prevent redirects followed by an underlying native implementation.
  */
 
 /** What this plugin calls itself to a sync server. */
@@ -20,7 +17,10 @@ export const USER_AGENT = 'abele-obsidian-plugin'
  * of its own, neither of which is used here — and a narrower type is one a test can stand
  * in for with a plain async function.
  */
-export type RequestUrlFn = (request: RequestUrlParam) => Promise<RequestUrlResponse>
+export type RequestUrlFn = (
+  request: RequestUrlParam,
+  signal?: AbortSignal | null
+) => Promise<RequestUrlResponse>
 
 /** Statuses the fetch spec says carry no body; `Response` refuses to be built with one. */
 const BODILESS_STATUS = new Set([204, 205, 304])
@@ -54,14 +54,23 @@ export function fetchViaRequestUrl(requestUrl: RequestUrlFn): typeof fetch {
     // The url only: the headers carry the device token, and this line goes to a console
     // anyone can open.
     console.debug(`[abele-sync] ${method} ${url}`)
-    const answer = await requestUrl({
-      url,
-      method,
-      headers,
-      throw: false,
-      ...(body === undefined ? {} : { body }),
-      ...(contentType === undefined ? {} : { contentType }),
-    })
+    const answer = await requestUrl(
+      {
+        url,
+        method,
+        headers,
+        throw: false,
+        ...(body === undefined ? {} : { body }),
+        ...(contentType === undefined ? {} : { contentType }),
+      },
+      init?.signal
+    )
+
+    // Defence in depth only. A native adapter must prevent following before returning here;
+    // Obsidian's requestUrl does not expose that control (the mobile gate remains separate).
+    if (answer.status >= 300 && answer.status < 400 && answer.status !== 304) {
+      throw new Error('sync transport refuses redirects')
+    }
 
     if (answer.status < LOWEST_STATUS || answer.status > HIGHEST_STATUS) {
       return outOfRange(answer.status)

@@ -1,12 +1,14 @@
 import { Platform, requestUrl } from 'obsidian'
 import { PHONE_POLL_MS, phoneSocket } from './phone'
 import { fetchViaRequestUrl, wsFor } from './transport'
+import { desktopTransport } from './desktopTransport'
 
 /**
  * What a test replaces to run the service against a server in its own process.
  *
- * Production passes none of it: the transport is Obsidian's `requestUrl`, the socket is the
- * WebView's own, and the database is the window's IndexedDB. A test hands over a `fetch` into
+ * Production passes none of it: desktop transport is native non-following HTTP; mobile still
+ * needs its separate native gate. The socket is the WebView's own and the database is the
+ * window's IndexedDB. A test hands over a `fetch` into
  * the running server, a `WebSocket` bound to its port, and an `IDBFactory` of its own so that
  * no two tests share a database.
  */
@@ -20,9 +22,10 @@ export interface SyncServiceDeps {
   pollMs?: number
 }
 
-/** The engine's `fetch`: Obsidian's `requestUrl`, which no CORS rule and no phone refuses. */
+/** Desktop must refuse redirects before following, not inspect requestUrl's final response. */
 export function transportOf(deps: SyncServiceDeps): typeof fetch {
-  return deps.fetch ?? fetchViaRequestUrl(requestUrl)
+  if (deps.fetch) return deps.fetch
+  return Platform.isMobile ? fetchViaRequestUrl(requestUrl) : desktopTransport()
 }
 
 /** A phone's refuses to open, whatever a test hands in: a phone must never hold one. */

@@ -37,6 +37,20 @@ function fake(reply: (request: RequestUrlParam) => RequestUrlResponse | Promise<
 }
 
 describe('fetchViaRequestUrl', () => {
+  it.each([301, 302, 303, 307, 308])(
+    'refuses redirect status %s instead of returning it as sync data',
+    async (status) => {
+      const { fetch } = fake(() =>
+        answer({ status, headers: { location: 'https://elsewhere.example/' } })
+      )
+      await expect(
+        fetch('https://sync.example/v1/vaults', {
+          headers: { authorization: 'Bearer sample-device' },
+        })
+      ).rejects.toThrow(/refuses redirects/)
+    }
+  )
+
   it('sends a GET with no body and reads the answer back', async () => {
     const { fetch, seen } = fake(() =>
       answer({ status: 200, arrayBuffer: bufferOf('{"ok":true}') })

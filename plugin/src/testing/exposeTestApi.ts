@@ -84,6 +84,7 @@ import { connectionApproval } from '@/github/approveConnection'
 import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
 import { SyncService } from '@/sync/SyncService'
+import { transportOf } from '@/sync/environment'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
 import { openEpub } from '@/reader/openBook'
@@ -172,6 +173,8 @@ interface AbeleTestApi {
    * server rather than the plugin.
    */
   SyncService: typeof SyncService
+  /** Production transport selection, for native credential/redirect probes. */
+  syncTransport: typeof transportOf
   ChatService: typeof ChatService
   NodeService: typeof NodeService
   ChatStorage: typeof ChatStorage
@@ -719,6 +722,7 @@ export function exposeTestApi(plugin: Plugin): void {
     setKeyboardDiagnostics,
     ScopeResolver,
     SyncService,
+    syncTransport: transportOf,
     ChatService,
     NodeService,
     ChatStorage,
