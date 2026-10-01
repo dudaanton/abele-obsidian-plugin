@@ -5,8 +5,11 @@
  * repository's front page.
  */
 import { Keymap, Notice, SuggestModal, setIcon, type App } from 'obsidian'
-import { githubClient, githubSettings, openGithubUrl } from '../GithubService'
-import { endpoints } from '../urls'
+import { githubClient, githubSettings, openGithubUrl, connectionClient } from '../GithubService'
+import { preferredConnection } from '../connections'
+import { watch, type WatchStopHandle } from 'vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { secrets } from '@/secrets/SecretStore'
 import { repoKey, type RepoRef } from './query'
 import {
   accountRepos,
@@ -46,6 +49,9 @@ const OWNER_REPO = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/
 
 export class RepoPicker extends SuggestModal<RepoRow> {
   private readonly client: GithubClient
+  private readonly connectionId?: string
+  private stopWatching?: WatchStopHandle
+  private invalidated = false
   private readonly host: string
   private account: AccountRepos | null = null
   private accountProblem = ''
@@ -54,8 +60,12 @@ export class RepoPicker extends SuggestModal<RepoRow> {
 
   constructor(app: App, client?: GithubClient) {
     super(app)
-    this.client = client ?? githubClient()
-    this.host = endpoints(githubSettings().server).webHost
+    this.connectionId = client
+      ? undefined
+      : preferredConnection(githubSettings().connections ?? [])?.id
+    this.client =
+      client ?? (this.connectionId ? connectionClient(this.connectionId) : githubClient())
+    this.host = this.client.endpoints.webHost
     this.limit = 50
     this.setPlaceholder('Repository name, owner/repo')
     this.setInstructions([
@@ -75,6 +85,19 @@ export class RepoPicker extends SuggestModal<RepoRow> {
 
   onOpen(): void {
     void super.onOpen?.()
+    this.stopWatching = watch(
+      () => {
+        void AbeleConfig.getInstance().version.value
+        void secrets().version.value
+        const id = preferredConnection(githubSettings().connections ?? [])?.id
+        return id ? connectionClient(id).cacheNamespace : githubClient().cacheNamespace
+      },
+      () => {
+        this.invalidated = true
+        this.refresh()
+      },
+      { flush: 'sync' }
+    )
     if (!this.client.hasToken) {
       this.accountProblem = 'Your own and starred repositories are listed with a token.'
       return
@@ -93,6 +116,8 @@ export class RepoPicker extends SuggestModal<RepoRow> {
   }
 
   onClose(): void {
+    this.stopWatching?.()
+    this.stopWatching = undefined
     super.onClose?.()
     if (this.timer !== null) window.clearTimeout(this.timer)
     this.timer = null
@@ -157,6 +182,10 @@ export class RepoPicker extends SuggestModal<RepoRow> {
   }
 
   getSuggestions(query: string): RepoRow[] {
+    if (this.invalidated) {
+      this.emptyStateText = 'The GitHub connection changed. Reopen this picker.'
+      return []
+    }
     this.search(query)
     const rows = repoRows(this.sources(query), query, this.limit)
     const notes: RepoRow[] = []
@@ -201,7 +230,19 @@ export class RepoPicker extends SuggestModal<RepoRow> {
   }
 
   async choose(repo: RepoRef, pane: 'tab' | false): Promise<boolean> {
-    const opened = await openGithubUrl(this.app, repoUrlOf(repo), pane)
+    if (this.invalidated || this.client.isCurrent === false) {
+      new Notice('The GitHub connection changed. Reopen this picker.')
+      return false
+    }
+    const opened =
+      this.connectionId && repo.host === this.host
+        ? await openGithubUrl(
+            this.app,
+            repoUrlOf({ ...repo, origin: this.client.endpoints.origin }),
+            pane,
+            { connectionId: this.connectionId }
+          )
+        : await openGithubUrl(this.app, repoUrlOf(repo), pane)
     if (!opened) new Notice(`Abele cannot show ${repoKey(repo)} in a GitHub tab.`)
     return opened
   }

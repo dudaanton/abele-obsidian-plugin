@@ -60,6 +60,38 @@ afterEach(() => {
 })
 
 describe('the repository a bare number means', () => {
+  it('keeps the last GitHub tab account when the current leaf is a note', async () => {
+    AbeleConfig.getInstance().github.connections = ['default', 'last'].map((id, i) => ({
+      id,
+      name: id,
+      server: '',
+      keyId: '',
+      owners: [],
+      isDefault: i === 0,
+    }))
+    const leaf = githubLeaf('https://github.com/octo-org/used/issues/1')
+    Object.assign(leaf.view.model, { connectionId: 'last' })
+    service.noteActiveLeaf(leaf as never)
+    const workspace = {
+      getMostRecentLeaf: () => ({ view: { getViewType: () => 'markdown' } }),
+      getLeavesOfType: () => [leaf],
+    }
+    const opened = vi.spyOn(service, 'openGithubUrl').mockResolvedValue(true)
+    const picker = new OpenPicker({ workspace } as unknown as App)
+    await picker.choose(
+      {
+        kind: 'issue',
+        title: 'Sample',
+        url: 'https://github.com/octo-org/used/issues/2',
+        repo: { host: 'github.com', owner: 'octo-org', repo: 'used' },
+      },
+      false
+    )
+    expect(opened).toHaveBeenCalledWith(expect.anything(), expect.any(String), false, {
+      connectionId: 'last',
+    })
+  })
+
   it('is the one the active GitHub tab shows', () => {
     const leaf = githubLeaf('https://github.com/octo-org/octo-repo/pull/1')
     expect(pickerRepo(app(leaf))).toEqual({

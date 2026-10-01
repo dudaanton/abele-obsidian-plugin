@@ -8,6 +8,9 @@
  * names its own.
  */
 import { Keymap, Notice, SuggestModal, setIcon, type App } from 'obsidian'
+import { watch, type WatchStopHandle } from 'vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { secrets } from '@/secrets/SecretStore'
 import { parseRepoInput } from '../accessCheck'
 import {
   githubClient,
@@ -54,7 +57,9 @@ export const forgetLastPicked = () => {
 
 const repoOfTarget = (model: GithubViewModel | undefined): RepoRef | null => {
   const t = model?.target
-  return t ? { host: t.host, ...(t.origin ? {origin:t.origin} : {}), owner: t.owner, repo: t.repo } : null
+  return t
+    ? { host: t.host, ...(t.origin ? { origin: t.origin } : {}), owner: t.owner, repo: t.repo }
+    : null
 }
 
 /** The repository a bare number or a title is looked up in; see the top of the file. */
@@ -80,6 +85,8 @@ export function pickerRepo(app: App): RepoRef | null {
 
 export class OpenPicker extends SuggestModal<OpenRow> {
   private readonly search: OpenSearch
+  private stopWatching?: WatchStopHandle
+  private invalidated = false
   private readonly repo: RepoRef | null
   private readonly defaultHost: string
   private readonly defaultOrigin: string
@@ -87,13 +94,19 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   private readonly contextId?: string
   private readonly choices = new Map<string, { id?: string; client: GithubClient }>()
   private choice(host: string, repo?: RepoRef): { id?: string; client: GithubClient } {
-    const key = JSON.stringify([host,repo?.origin,repo?.owner,repo?.repo])
+    const key = JSON.stringify([host, repo?.origin, repo?.owner, repo?.repo])
     const previous = this.choices.get(key)
     if (previous) return previous
-    const target = { kind:'repo' as const, host, origin:repo?.origin, owner:repo?.owner ?? '', repo:repo?.repo ?? '' }
-    const id = resolveConnectionCandidates(target, { sourceId:this.contextId })[0]?.id
-    const chosen = { id, client:id ? connectionClient(id) : githubClient(host) }
-    this.choices.set(key,chosen)
+    const target = {
+      kind: 'repo' as const,
+      host,
+      origin: repo?.origin,
+      owner: repo?.owner ?? '',
+      repo: repo?.repo ?? '',
+    }
+    const id = resolveConnectionCandidates(target, { sourceId: this.contextId })[0]?.id
+    const chosen = { id, client: id ? connectionClient(id) : githubClient(host) }
+    this.choices.set(key, chosen)
     return chosen
   }
 
@@ -103,10 +116,20 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     search?: OpenSearch
   ) {
     super(app)
-    const active = app.workspace.getMostRecentLeaf?.() ?? lastUsedGithubLeaf()
-    const model = (active?.view as unknown as {model?:GithubViewModel})?.model
+    const active = app.workspace.getMostRecentLeaf?.()
+    const activeView = active?.view as unknown as {
+      model?: GithubViewModel
+      getViewType?(): string
+    }
+    const last = lastUsedGithubLeaf()
+    const remembered =
+      last && (app.workspace.getLeavesOfType?.(GITHUB_VIEW_TYPE) ?? []).includes(last) ? last : null
+    const model =
+      activeView?.getViewType?.() === GITHUB_VIEW_TYPE
+        ? activeView.model
+        : (remembered?.view as unknown as { model?: GithubViewModel })?.model
     this.contextId = model?.connectionId ?? lastPickedConnection
-    this.search = search ?? new OpenSearch((host,repo) => this.choice(host,repo).client)
+    this.search = search ?? new OpenSearch((host, repo) => this.choice(host, repo).client)
     this.repo = pickerRepo(app)
     const preferred = preferredConnection(githubSettings().connections ?? [])
     this.defaultHost = endpoints(preferred?.server ?? githubSettings().server).webHost
@@ -127,6 +150,14 @@ export class OpenPicker extends SuggestModal<OpenRow> {
 
   onOpen(): void {
     void super.onOpen?.()
+    this.stopWatching = watch(
+      [AbeleConfig.getInstance().version, secrets().version],
+      () => {
+        this.invalidated = true
+        this.inputEl.dispatchEvent(new Event('input'))
+      },
+      { flush: 'sync' }
+    )
     if (this.initial) {
       this.inputEl.value = this.initial
       this.inputEl.dispatchEvent(new Event('input'))
@@ -134,6 +165,8 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   }
 
   onClose(): void {
+    this.stopWatching?.()
+    this.stopWatching = undefined
     super.onClose?.()
     if (this.timer !== null) window.clearTimeout(this.timer)
     this.timer = null
@@ -149,6 +182,11 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   }
 
   getSuggestions(query: string): OpenRow[] {
+    if (this.invalidated) {
+      this.emptyStateText =
+        'GitHub settings or keys changed. Reopen the picker to search with current connections.'
+      return []
+    }
     const q = this.parse(query)
     // A new input: whatever was waiting to be asked for the one before is not asked now.
     if (this.timer !== null) window.clearTimeout(this.timer)
@@ -194,6 +232,10 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   }
 
   async choose(row: OpenRow, pane: 'tab' | false): Promise<boolean> {
+    if (this.invalidated) {
+      new Notice('GitHub settings or keys changed. Reopen the picker.')
+      return false
+    }
     if (row.kind === 'note') return false
     let url = row.url
     if (!url && row.resolve) {
@@ -206,10 +248,15 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     }
     if (!url) return false
     if (row.repo) lastPicked = row.repo
-    const chosen = row.repo ? this.choice(row.repo.host,row.repo) : undefined
-    if (chosen?.client.isCurrent === false) { new Notice('The connection changed. Reopen the picker to search with its current token.'); return false }
+    const chosen = row.repo ? this.choice(row.repo.host, row.repo) : undefined
+    if (chosen?.client.isCurrent === false) {
+      new Notice('The connection changed. Reopen the picker to search with its current token.')
+      return false
+    }
     if (row.repo) lastPickedConnection = chosen?.id
-    const opened = chosen?.id ? await openGithubUrl(this.app, url, pane, {connectionId:chosen.id}) : await openGithubUrl(this.app, url, pane)
+    const opened = chosen?.id
+      ? await openGithubUrl(this.app, url, pane, { connectionId: chosen.id })
+      : await openGithubUrl(this.app, url, pane)
     if (!opened) new Notice('Abele cannot show that in a GitHub tab.')
     return opened
   }
