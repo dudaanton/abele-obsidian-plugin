@@ -8,7 +8,11 @@ import {
   type SlideSettings,
 } from './model'
 
-const block = (source: string): MarkdownBlock => ({ type: 'markdown', source: source.trim() })
+// Blank boundary lines are codec spacing; indentation and hard-break spaces are Markdown data.
+const block = (source: string): MarkdownBlock => ({
+  type: 'markdown',
+  source: source.replace(/^(?:[ \t]*\n)+|(?:\n[ \t]*)+$/g, ''),
+})
 const SEPARATOR = /^ {0,3}---\s*$/
 const REGION = /^::(left|right|cell)::$/
 
@@ -195,6 +199,7 @@ export function serializeDeck(deck: Deck): string {
     aspect: deck.settings.aspect,
   }
   if (deck.settings.theme) properties.theme = deck.settings.theme
+  else delete properties.theme
   const slides = deck.slides.map((slide) => {
     const s = slide.settings
     const attributes: Record<string, Attribute> = {

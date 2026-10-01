@@ -145,6 +145,31 @@ describe('presentation markdown codec', () => {
     expect(restored.slides[0].settings.attributes.steps).toBe(true)
   })
 
+  it('preserves leading code indentation in each region and speaker notes through a round trip', () => {
+    const deck = parseDeck(
+      '    # code, not a heading\n\n---\n::slide{layout=split}::\n::left::\n    const sample = 1\n::right::\n\tconst other = 2\n\n> [!notes]\n>     private code'
+    )
+    expect(content(deck, 0)).toBe('    # code, not a heading')
+    expect(deck.slides[1].regions[1].blocks[0].source).toBe('    const sample = 1')
+    expect(deck.slides[1].regions[2].blocks[0].source).toBe('\tconst other = 2')
+    expect(deck.slides[1].notes[0].source).toBe('    private code')
+    const restored = parseDeck(serializeDeck(deck))
+    expect(content(restored, 0)).toBe(content(deck, 0))
+    expect(restored.slides[1].regions).toEqual(deck.slides[1].regions)
+    expect(restored.slides[1].notes).toEqual(deck.slides[1].notes)
+  })
+
+  it('removes a cleared theme instead of reviving stale frontmatter', () => {
+    const deck = parseDeck(
+      '---\ntype: presentation\ntheme: "[[sample-old-theme.css]]"\ncustom: retain\n---\n# Example'
+    )
+    deck.settings.theme = ''
+    const restored = parseDeck(serializeDeck(deck))
+    expect(restored.settings.theme).toBe('')
+    expect(restored.settings.properties.theme).toBeUndefined()
+    expect(restored.settings.properties.custom).toBe('retain')
+  })
+
   it('does not promote a mid-slide marker into settings', () => {
     const deck = parseDeck('# Text\n\n::slide{layout=quote}::')
     expect(deck.slides[0].settings.layout).toBe('content')
