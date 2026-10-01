@@ -85,6 +85,7 @@ import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
 import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
+import { desktopTransport } from '@/sync/desktopTransport'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { showScriptApproval, scriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
@@ -178,6 +179,7 @@ interface AbeleTestApi {
   SyncService: typeof SyncService
   /** Production transport selection, for native credential/redirect probes. */
   syncTransport: typeof transportOf
+  desktopTransport: typeof desktopTransport
   scriptTrust: {
     activate: typeof activateScriptProvenance
     load: typeof scriptForExecution
@@ -732,6 +734,7 @@ export function exposeTestApi(plugin: Plugin): void {
     ScopeResolver,
     SyncService,
     syncTransport: transportOf,
+    desktopTransport,
     scriptTrust: {
       activate: activateScriptProvenance,
       load: scriptForExecution,

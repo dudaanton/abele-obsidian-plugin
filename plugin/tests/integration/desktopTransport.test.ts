@@ -5,6 +5,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { transportOf } from '@/sync/environment'
 import * as obsidian from 'obsidian'
 
+vi.mock('@/sync/desktopNet', () => ({
+  sessionAwareNet: () => ({
+    session: {
+      fetch: (url: RequestInfo | URL, options: RequestInit) => {
+        expect(options.redirect).toBe('manual')
+        expect(options.credentials).toBe('omit')
+        expect(options.cache).toBe('no-store')
+        return globalThis.fetch(url, options)
+      },
+    },
+    bytes: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+    body: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+    controller: () => new AbortController(),
+  }),
+}))
+
+// Socket-level translation checks use a manual-redirect Node fetch test port. Native Electron
+// session/redirect/proxy behavior is asserted independently in the desktop e2e gate.
 const servers: Server[] = []
 async function listen(handler: RequestListener): Promise<string> {
   const server = createServer(handler)

@@ -1,15 +1,11 @@
 import { Platform } from 'obsidian'
 import type { RequestUrlFn } from './transport'
 import { fetchViaRequestUrl } from './transport'
+import { sessionAwareNet, type SessionFetch } from './desktopNet'
 
-/**
- * Node's native HTTP client never follows redirects, caches responses, or supplies cookies.
- * The Obsidian API exposes no pre-follow redirect control. Inspecting its final response is
- * too late to protect a device token or a sign-in body. Load Node only on desktop: this module
- * is safe to bundle on mobile, but its factory must not be called there.
- */
-export function desktopTransport(): typeof fetch {
-  return fetchViaRequestUrl(desktopRequest)
+/** Session-aware native networking without browser CORS or automatic redirects. */
+export function desktopTransport(session?: SessionFetch): typeof fetch {
+  return fetchViaRequestUrl((input, signal) => desktopRequest(input, signal, session))
 }
 
 function abortError(signal?: AbortSignal | null): Error {
@@ -18,7 +14,11 @@ function abortError(signal?: AbortSignal | null): Error {
     : new DOMException('The request was aborted', 'AbortError')
 }
 
-const desktopRequest: RequestUrlFn = async (input, signal) => {
+const desktopRequest = async (
+  input: Parameters<RequestUrlFn>[0],
+  signal?: AbortSignal | null,
+  session?: SessionFetch
+): ReturnType<RequestUrlFn> => {
   if (!Platform.isDesktop) throw new Error('native desktop sync transport is unavailable')
   if (signal?.aborted) throw abortError(signal)
   const url = new URL(input.url)
@@ -28,55 +28,63 @@ const desktopRequest: RequestUrlFn = async (input, signal) => {
   if (url.username || url.password) {
     throw new TypeError('sync transport refuses credentials in a URL')
   }
-  // No browser fetch/CORS, redirect library, cookie jar, or native response cache.
-  // HTTPS keeps the native client's certificate and hostname validation enabled.
-  // Native dynamic import() stays a browser import in Obsidian's CJS plugin loader.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- guarded desktop-only native module, verified in the live probe
-  const http = require(
-    url.protocol === 'https:' ? 'node:https' : 'node:http'
-  ) as typeof import('node:http')
-  return new Promise((resolve, reject) => {
-    const request = http.request(url, {
-      method: input.method ?? 'GET',
-      headers: { ...input.headers, 'cache-control': 'no-store' },
-    })
-    const abort = () => request.destroy(abortError(signal))
-    signal?.addEventListener('abort', abort, { once: true })
-    request.once('close', () => signal?.removeEventListener('abort', abort))
-    request.once('error', reject)
-    request.once('response', (response) => {
-      const status = response.statusCode ?? 0
-      if (status >= 300 && status < 400 && status !== 304) {
-        // Stop at headers, before reading a redirect body or ever creating a second request.
-        reject(new Error('sync transport refuses redirects'))
-        response.destroy()
-        request.destroy()
-        return
-      }
-      const chunks: Uint8Array[] = []
-      let size = 0
-      response.on('data', (chunk: Uint8Array) => {
-        chunks.push(chunk)
-        size += chunk.byteLength
+  const native = sessionAwareNet(session)
+  const controller = native.controller()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  try {
+    // Electron's main-process implementation owns the full native request lifecycle. Manual
+    // redirect policy is set BEFORE starting it, not inferred from a final followed response.
+    const response = await native.session
+      .fetch(url.href, {
+        method: input.method ?? 'GET',
+        redirect: 'manual',
+        credentials: 'omit',
+        cache: 'no-store',
+        headers: { ...input.headers, 'cache-control': 'no-store, no-cache', pragma: 'no-cache' },
+        signal: controller.signal,
+        ...(input.body === undefined
+          ? {}
+          : { body: typeof input.body === 'string' ? input.body : native.body(input.body) }),
       })
-      response.once('error', reject)
-      response.once('aborted', () => reject(new Error('sync response was interrupted')))
-      response.once('end', () => {
-        const bytes = new Uint8Array(size)
-        let offset = 0
-        for (const chunk of chunks) {
-          bytes.set(chunk, offset)
-          offset += chunk.byteLength
+      .catch((error: unknown) => {
+        // Electron's native manual policy rejects at the redirect before exposing a Response.
+        if ((error as { message?: unknown } | null)?.message === 'Redirect was cancelled') {
+          throw new Error('sync transport refuses redirects')
         }
-        const headers: Record<string, string> = {}
-        for (const [name, value] of Object.entries(response.headers)) {
-          if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(', ') : value
-        }
-        resolve({ status, headers, arrayBuffer: bytes.buffer, json: null, text: '' })
+        throw error
       })
-    })
-    if (input.body !== undefined)
-      request.write(typeof input.body === 'string' ? input.body : new Uint8Array(input.body))
-    request.end()
-  })
+    if (signal?.aborted) throw abortError(signal)
+    if (
+      response.type === 'opaqueredirect' ||
+      (response.status >= 300 && response.status < 400 && response.status !== 304)
+    ) {
+      // The main-process net implementation paused at this response; no second request exists.
+      await response.body?.cancel()
+      throw new Error('sync transport refuses redirects')
+    }
+    const headers: Record<string, string> = {}
+    // Iterate synchronously through the bridge: a remote forEach callback would run later,
+    // after constructing the response, and could drop its headers.
+    const iterator = (response.headers as Headers & { keys(): Iterator<string> }).keys()
+    for (;;) {
+      const next = iterator.next()
+      if (next.done) break
+      headers[next.value] = response.headers.get(next.value) ?? ''
+    }
+    const bytes = native.bytes(await response.arrayBuffer())
+    if (signal?.aborted) throw abortError(signal)
+    return {
+      status: response.status,
+      headers,
+      arrayBuffer: bytes.buffer as ArrayBuffer,
+      json: null,
+      text: '',
+    }
+  } catch (error) {
+    if (signal?.aborted) throw abortError(signal)
+    throw error
+  } finally {
+    signal?.removeEventListener('abort', abort)
+  }
 }
