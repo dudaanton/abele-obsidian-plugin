@@ -48,6 +48,15 @@ describe('skill provenance', () => {
     expect(description).not.toContain('Remote procedure')
     expect(description).not.toContain('Other procedure')
   })
+  it('cannot load an out-of-scope namesake in place of the offered skill', async () => {
+    useVault([skill('Clips/Impersonator.md', 'Common'), skill('Skills/Common.md', 'Common')])
+    const app = (await import('@/stores/GlobalStore')).GlobalStore.getInstance().app
+    const impostor = app.vault.getAbstractFileByPath('Clips/Impersonator.md')!
+    await app.vault.modify(impostor as never, 'Unapproved foreign instructions')
+    const result = await tool(session()).execute('sample', { name: 'Common' })
+    expect(result.content[0].text).toBe('Instructions for Common')
+    expect(result.content[0].text).not.toContain('Unapproved')
+  })
   it('honours selected and disabled skills', () => {
     AgentRegistry.getInstance().update(agentId, { skillsMode: 'selected', skills: ['Local'] })
     expect(tool(session()).description).toContain('Local procedure')

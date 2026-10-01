@@ -451,6 +451,10 @@ and remove items themselves in the agent's settings, under Memory.
 
 `list_templates`, `apply_template`, `skill`.
 
+`skill` offers only notes in `ai.skillsFolder` or the caller's scope, narrowed by the agent's
+selection. Loading another asks before that call. A foreign note with the same skill name
+cannot stand in for an offered skill; the loader resolves from the offered candidates first.
+
 ## Docs
 
 `template_docs`, `chart_docs`, `script_api_docs`, and this reference itself, `query_docs`.

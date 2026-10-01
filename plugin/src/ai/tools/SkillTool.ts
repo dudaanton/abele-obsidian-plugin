@@ -54,9 +54,11 @@ export function skillNeedsApproval(
   )
 }
 
-export async function loadSkillContent(skillName: string): Promise<string | null> {
+export async function loadSkillContent(
+  skillName: string,
+  skills = discoverSkills()
+): Promise<string | null> {
   const { app } = GlobalStore.getInstance()
-  const skills = discoverSkills()
   const skill = skills.find((s) => s.name === skillName)
   if (!skill) return null
 
@@ -110,11 +112,19 @@ export function createSkillTool(
           `Skill "${skillName}" requires approval: it is not offered by this agent's skills folder, scope and selection.`
         )
       }
-      const content = await loadSkillContent(skillName)
+      // Resolve from the offered candidates first: a foreign namesake cannot impersonate
+      // a skill whose name passed approval. Direct user/script choices can still load others.
+      const offered = offeredSkills(agent, ctx?.scope ?? options.scope)
+      const candidates = ctx
+        ? offered.some((skill) => skill.name === skillName)
+          ? offered
+          : ctx.approved
+            ? discoverSkills()
+            : []
+        : discoverSkills()
+      const content = await loadSkillContent(skillName, candidates)
       if (content === null) {
-        const available = offeredSkills(agent, ctx?.scope ?? options.scope)
-          .map((s) => s.name)
-          .join(', ')
+        const available = offered.map((s) => s.name).join(', ')
         throw new Error(`Skill "${skillName}" not found. Available: ${available || 'none'}`)
       }
 
