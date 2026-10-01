@@ -600,22 +600,8 @@ export class NoteRelations {
             // update tracked path
             this.filePath = file.path
 
-            const oldJournal = this.journal
-            this.journal = null
-            this.journalDate = null
-            for (const journal of AbeleConfig.getInstance().journals) {
-              const date = journal.checkIfNotePathIsJournal(this.filePath)
-              if (date) {
-                this.journal = journal
-                this.journalDate = date
-
-                break
-              }
-            }
-            if (oldJournal !== this.journal) {
-              this.removeRemainingRelations()
-              this.findRelations(this.filePath)
-            }
+            // A rename can change the day without changing the journal definition.
+            this.retellJournal()
           } else if (file instanceof TFile) {
             this.relationRenameCallback(oldPath, file.path)
           }

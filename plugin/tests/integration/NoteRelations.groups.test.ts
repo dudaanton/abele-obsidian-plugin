@@ -313,28 +313,24 @@ describe('NoteRelations — group edits and lifecycle', () => {
     }
   })
 
-  // BUG: the tracked-note rename branch compares journal identity but not journalDate.
-  // Renaming one daily note to the next day keeps the old day's entries until reopening.
-  it.fails(
-    'rebuilds the dated relations when the tracked daily note is renamed to another day',
-    async () => {
-      app = useVault([
-        { path: 'Journals/2028/2028-02-29.md', frontmatter: { type: 'journal' } },
-        { path: 'Entries/Leap.md', frontmatter: { date: '2028-02-29' } },
-        { path: 'Entries/March.md', frontmatter: { date: '2028-03-01' } },
-      ])
-      configureAbele({ journals: [dailyJournal()] })
-      const old = 'Journals/2028/2028-02-29.md'
-      const next = 'Journals/2028/2028-03-01.md'
-      const r = open(old)
-      await resolve()
-      const root = file(old)
-      await app.fileManager.renameFile(root, next)
-      app.emit('vault', 'rename', root, old)
-      await resolve()
-      expect(r.filePath).toBe(next)
-      expect(r.journalDate?.format('YYYY-MM-DD')).toBe('2028-03-01')
-      expect(paths(r)).toEqual(paths(open(next)))
-    }
-  )
+  // A rename within one journal must replace the old day's dated entries.
+  it('rebuilds the dated relations when the tracked daily note is renamed to another day', async () => {
+    app = useVault([
+      { path: 'Journals/2028/2028-02-29.md', frontmatter: { type: 'journal' } },
+      { path: 'Entries/Leap.md', frontmatter: { date: '2028-02-29' } },
+      { path: 'Entries/March.md', frontmatter: { date: '2028-03-01' } },
+    ])
+    configureAbele({ journals: [dailyJournal()] })
+    const old = 'Journals/2028/2028-02-29.md'
+    const next = 'Journals/2028/2028-03-01.md'
+    const r = open(old)
+    await resolve()
+    const root = file(old)
+    await app.fileManager.renameFile(root, next)
+    app.emit('vault', 'rename', root, old)
+    await resolve()
+    expect(r.filePath).toBe(next)
+    expect(r.journalDate?.format('YYYY-MM-DD')).toBe('2028-03-01')
+    expect(paths(r)).toEqual(paths(open(next)))
+  })
 })
