@@ -214,6 +214,7 @@ export class TaskHeader {
 
     const newContent = new TaskNoteTemplate(app).createTemplate({
       ...this,
+      oldProps: { ...currentContent, content: undefined },
       content: currentContent.content,
     })
 

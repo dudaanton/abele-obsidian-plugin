@@ -224,7 +224,7 @@ describe('editing dates in the task note header', () => {
 
   // BUG: writes use oldProps from load, not the current parsed frontmatter. Editing a label
   // and then choosing a due date before the watcher reloads silently restores the old label.
-  it.fails('preserves frontmatter edited since the header last loaded', async () => {
+  it('preserves frontmatter edited since the header last loaded', async () => {
     const env = taskHarness({ labels: ['garden'] })
     const header = make()
     await header.load()
