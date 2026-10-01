@@ -143,7 +143,11 @@ export async function repoIndex(
     void pending.then(
       (index) => {
         building.delete(key)
-        if (client.isCurrent !== false) indexes.set(key, index)
+        // A guarded client can revoke capability while the archive is being unpacked. The
+        // awaiting caller below reports that refusal; this independent callback must not reject.
+        let current = false
+        try { current = client.isCurrent !== false } catch { return }
+        if (current) indexes.set(key, index)
       },
       () => building.delete(key)
     )

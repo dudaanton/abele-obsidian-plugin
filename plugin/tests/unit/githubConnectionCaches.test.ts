@@ -7,6 +7,7 @@ import { repoTree, forgetRepoTrees } from '@/github/tree/repoTree'
 import { repoIndex, indexes, cachedIndex } from '@/github/search/source'
 import { loadLatestRelease } from '@/github/repoPage/repoHome'
 import { createLinker } from '@/github/linking'
+import { guardedGithubClient } from '@/github/guardedClient'
 import type { RequestUrlResponse } from 'obsidian'
 
 const repo = { host: 'github.com', owner: 'sample-org', repo: 'sample-repo' }
@@ -30,6 +31,16 @@ beforeEach(() => {
 })
 
 describe('connection content isolation', () => {
+  it('rejects a capability revoked during unpacking without an unhandled cache-write rejection', async () => {
+    let allowed=true
+    const raw=new GithubClient(endpoints(''),'invented-one',async r=>r.url.includes('/tarball/') ? reply(200,{},archive) : reply(200,{tree:[{type:'blob',path:'sample.ts',size:20}]}))
+    const client=guardedGithubClient(raw,()=>{if(!allowed)throw new Error('Connection access changed')})
+    await expect(repoIndex(client,repo,sha,{limitBytes:1000,onStage:stage=>{if(stage==='indexing')allowed=false}})).rejects.toThrow('Connection access changed')
+    expect(cachedIndex(raw,repo,sha)).toBeUndefined()
+    // The runner also checks that the independent cache-settlement callback did not reject.
+    await new Promise(resolve=>setTimeout(resolve,0))
+  })
+
   it('pins the same branch independently when a tab moves to another repository', async () => {
     const c = new GithubClient(endpoints(''), 'invented-one', async (r) => ({
       ...reply(200),
