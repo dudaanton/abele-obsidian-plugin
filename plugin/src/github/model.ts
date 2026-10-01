@@ -5,6 +5,12 @@ import type { BlobMode } from './markdownPreview'
 /** What a GitHub tab renders from; the view writes it, the Vue side reads it. */
 export interface GithubViewModel {
   url: string
+  /** Stable connection ID, never a token or keychain slot. Empty/absent is public anonymous. */
+  connectionId?: string
+  connectionIntent?: 'automatic' | 'manual'
+  connectionNotice?: string
+  /** Runtime-only restriction for an agent-opened tab; never persisted as a user permission. */
+  allowedConnections?: string[]
   /** Null for a URL no GitHub tab can show. */
   target: GithubTarget | null
   /** Moves on every navigation, even to the same URL, so the line or comment is found again. */

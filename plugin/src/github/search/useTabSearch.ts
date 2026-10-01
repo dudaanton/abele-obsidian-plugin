@@ -48,7 +48,7 @@ export function useTabSearch(o: TabSearchOptions) {
 
   const repo = () => {
     const t = o.shown.value
-    return { host: t.host, owner: t.owner, repo: t.repo }
+    return { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo }
   }
 
   const sha = (): Promise<string> => {

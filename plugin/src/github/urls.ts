@@ -8,6 +8,8 @@
 
 interface Repo {
   host: string
+  /** Exact web origin when a resolved connection supplies a scheme or nonstandard port. */
+  origin?: string
   owner: string
   repo: string
   /** What follows `#`, kept for scrolling to a comment. */
@@ -391,7 +393,7 @@ export async function diffAnchorHash(path: string): Promise<string> {
 
 /** A stable key for "the same item", ignoring which tab or line the link pointed at. */
 export function targetKey(t: GithubTarget): string {
-  const repo = `${t.host}/${t.owner}/${t.repo}`.toLowerCase()
+  const repo = `${t.origin ?? t.host}/${t.owner}/${t.repo}`.toLowerCase()
   switch (t.kind) {
     case 'issue':
     case 'pull':

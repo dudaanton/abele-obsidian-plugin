@@ -5,6 +5,8 @@
 import { secrets } from '@/secrets/SecretStore'
 import { watch } from 'vue'
 import { ConnectionClients } from './connectionClients'
+import { ConnectionMemory, routeConnections, type ConnectionCandidate } from './connectionRouting'
+import type { GithubViewModel } from './model'
 import type { App, PaneType, WorkspaceLeaf } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GithubClient } from './client'
@@ -47,12 +49,52 @@ export function connectionClient(id: string): GithubClient {
 
 /** github.com always; an Enterprise host besides it when one is configured. */
 export function githubHosts(): string[] {
-  const { webHost } = endpoints(githubSettings().server)
-  return webHost === 'github.com' ? ['github.com'] : ['github.com', webHost]
+  const settings = githubSettings()
+  return [
+    ...new Set([
+      'github.com',
+      endpoints(settings.server).webHost,
+      ...(settings.connections ?? []).map((c) => endpoints(c.server).webHost),
+    ]),
+  ]
 }
 
-export const parseForSettings = (url: string): GithubTarget | null =>
-  parseGithubUrl(url, githubHosts())
+export const parseForSettings = (url: string): GithubTarget | null => {
+  const target = parseGithubUrl(url, githubHosts())
+  if (!target) return null
+  const origin = new URL(url).origin
+  // Preserve the exact Enterprise endpoint identity alongside the parsed target.
+  if (target.host !== 'github.com') target.origin = origin
+  return target
+}
+
+export const routingMemory = new ConnectionMemory()
+export const connectionGeneration = (id: string): string => {
+  try {
+    return id ? connectionClient(id).cacheNamespace : githubClient('github.com').cacheNamespace
+  } catch {
+    return ''
+  }
+}
+export function resolveConnectionCandidates(
+  target: GithubTarget,
+  options: {
+    sourceId?: string
+    openId?: string
+    explicitId?: string
+    allowedIds?: string[]
+  } = {}
+): ConnectionCandidate[] {
+  const settings = githubSettings()
+  const rows = settings.connections ?? []
+  const repo = `${target.origin ?? `https://${target.host}`}/${target.owner}/${target.repo}`
+  return routeConnections(rows, {
+    ...target,
+    ...options,
+    rememberedId: routingMemory.success(repo, connectionGeneration),
+    allowed: options.allowedIds ? (c) => options.allowedIds!.includes(c.id) : undefined,
+  })
+}
 
 /** One client per server and token, so the ETag cache survives between tabs. */
 const clients = new Map<string, GithubClient>()
@@ -144,6 +186,7 @@ export function resetGithubClients(): void {
 }
 
 interface KeyedView {
+  model?: GithubViewModel
   targetKey?(): string | null
   getViewType?(): string
 }
@@ -194,11 +237,34 @@ function reusableLeaf(leaves: WorkspaceLeaf[]): WorkspaceLeaf | null {
 export async function openGithubUrl(
   app: App,
   url: string,
-  pane: PaneType | false = false
+  pane: PaneType | false = false,
+  context: {
+    sourceId?: string
+    connectionId?: string
+    manual?: boolean
+    allowedIds?: string[]
+  } = {}
 ): Promise<boolean> {
   const target = parseForSettings(url)
   if (!target) return false
   const key = targetKey(target)
+  const matching = app.workspace
+    .getLeavesOfType(GITHUB_VIEW_TYPE)
+    .map((l) => (l.view as unknown as KeyedView).model)
+    .find(
+      (m) =>
+        m?.target?.host === target.host &&
+        m?.target?.owner === target.owner &&
+        m?.target?.repo === target.repo
+    )
+  const chosen = resolveConnectionCandidates(target, {
+    sourceId: context.sourceId,
+    openId: matching?.connectionId,
+    explicitId: context.connectionId,
+    allowedIds: context.allowedIds,
+  })[0]
+  // Legacy fixtures and callers without a configured connection still read public GitHub.
+  if (!chosen && (githubSettings().connections ?? []).length) return false
 
   let leaf: WorkspaceLeaf
   if (pane) {
@@ -208,7 +274,17 @@ export async function openGithubUrl(
     const same = leaves.find((l) => (l.view as unknown as KeyedView).targetKey?.() === key)
     leaf = same ?? reusableLeaf(leaves) ?? app.workspace.getLeaf('tab')
   }
-  await leaf.setViewState({ type: GITHUB_VIEW_TYPE, state: { url }, active: true })
+  await leaf.setViewState({
+    type: GITHUB_VIEW_TYPE,
+    state: {
+      url,
+      ...(chosen?.id
+        ? { connectionId: chosen.id, connectionIntent: context.manual ? 'manual' : 'automatic' }
+        : {}),
+      ...(context.allowedIds ? { allowedConnections: context.allowedIds } : {}),
+    },
+    active: true,
+  })
   await app.workspace.revealLeaf(leaf)
   lastGithubLeaf = leaf
   // Offered first among the recent ones by "Open GitHub repository…" on this device.

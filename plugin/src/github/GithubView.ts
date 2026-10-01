@@ -8,12 +8,17 @@
 import {
   ItemView,
   Scope,
-  type Menu,
+  Menu,
   type PaneType,
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { createApp, reactive, type App as VueApp } from 'vue'
+import { createApp, reactive, h, type App as VueApp } from 'vue'
+import { secrets } from '@/secrets/SecretStore'
+import { readConnectionItem } from './connectionRead'
+import { GithubError } from './client'
+import type { GithubTarget } from './urls'
+import { sameConnectionServer } from './connectionRouting'
 import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
@@ -27,6 +32,8 @@ import { GITHUB_NOTIFICATIONS_VIEW_TYPE } from './notifications/NotificationsVie
 import {
   GITHUB_VIEW_TYPE,
   githubClient,
+  connectionClient,
+  resolveConnectionCandidates,
   githubSettings,
   openGithubUrl,
   parseForSettings,
@@ -70,6 +77,10 @@ export class GithubView extends ItemView {
 
   getState(): Record<string, unknown> {
     const state: Record<string, unknown> = { url: this.model.url }
+    if (this.model.connectionId) {
+      state.connectionId = this.model.connectionId
+      state.connectionIntent = this.model.connectionIntent ?? 'automatic'
+    }
     if (this.model.mode) state.mode = this.model.mode
     if (this.model.tree !== undefined) state.tree = this.model.tree
     return state
@@ -79,9 +90,35 @@ export class GithubView extends ItemView {
     const url = (state as { url?: unknown } | null)?.url
     if (typeof url === 'string' && url) {
       const target = parseForSettings(url)
-      if (!target || targetKey(target) !== this.targetKey()) this.title = ''
-      // A tab a link was followed in keeps where it was, for its back arrow.
-      if (result && this.model.url && url !== this.model.url) result.history = true
+      const requested = state as {
+        connectionId?: string
+        connectionIntent?: string
+        allowedConnections?: string[]
+      }
+      let connectionId = requested.connectionId
+      const exists = (githubSettings().connections ?? []).some((c) => c.id === connectionId)
+      this.model.connectionNotice = ''
+      if (connectionId && !exists) {
+        connectionId = undefined
+        this.model.connectionNotice =
+          'The saved connection was removed. Selected another connection using the link rules.'
+      }
+      if (target) {
+        const chosen = resolveConnectionCandidates(target, {
+          explicitId: connectionId,
+          allowedIds: requested.allowedConnections,
+        })[0]
+        connectionId = chosen?.id || undefined
+      }
+      const accountChanged = connectionId !== this.model.connectionId
+      if (!target || targetKey(target) !== this.targetKey() || accountChanged) this.title = ''
+      // Account-only navigation is history too. Clear agent-readable private content immediately.
+      if (result && this.model.url && (url !== this.model.url || accountChanged))
+        result.history = true
+      if (accountChanged || url !== this.model.url) Object.assign(this.model.screen, emptyScreen())
+      this.model.connectionId = connectionId
+      this.model.connectionIntent = requested.connectionIntent === 'manual' ? 'manual' : 'automatic'
+      this.model.allowedConnections = requested.allowedConnections
       const mode = (state as { mode?: unknown }).mode
       this.model.url = url
       this.model.target = target
@@ -124,8 +161,55 @@ export class GithubView extends ItemView {
     this.fillQuickMenu(menu)
   }
 
+  private accountMenu(menu: Menu): void {
+    const target = this.model.target
+    if (!target) return
+    const rows = githubSettings().connections.filter((c) => sameConnectionServer(c, target))
+    for (const connection of rows) {
+      menu.addItem((item) =>
+        item
+          .setTitle(
+            `Open as ${connection.name}${connection.account ? ` · ${connection.account.login}` : ''}`
+          )
+          .setIcon('user-round')
+          .setChecked(connection.id === this.model.connectionId)
+          .onClick(() => {
+            void this.setState(
+              { url: this.model.url, connectionId: connection.id, connectionIntent: 'manual' },
+              { history: false }
+            )
+          })
+      )
+    }
+    const current = rows.find((c) => c.id === this.model.connectionId)
+    if (current)
+      menu.addItem((item) =>
+        item
+          .setTitle(`Always use ${current.name} for ${target.owner}`)
+          .setChecked(current.owners.some((o) => o.toLowerCase() === target.owner.toLowerCase()))
+          .onClick(async () => {
+            const settings = githubSettings(),
+              owner = target.owner.toLowerCase()
+            const checked = current.owners.some((o) => o.toLowerCase() === owner)
+            settings.connections = settings.connections.map((c) =>
+              sameConnectionServer(c, target)
+                ? {
+                    ...c,
+                    owners: [
+                      ...c.owners.filter((o) => ![owner, `${owner}/*`].includes(o.toLowerCase())),
+                      ...(!checked && c.id === current.id ? [target.owner] : []),
+                    ],
+                  }
+                : c
+            )
+            await AbeleConfig.getInstance().saveSettings()
+          })
+      )
+  }
+
   /** The tab's own items: its ⋯ menu, and the quick button's menu over it. */
   fillQuickMenu(menu: Menu): void {
+    this.accountMenu(menu)
     menu.addItem((item) =>
       item
         .setTitle('Open another GitHub item…')
@@ -179,18 +263,70 @@ export class GithubView extends ItemView {
     this.contentEl.empty()
     this.contentEl.addClass('abele-github-view')
     const mountPoint = this.contentEl.createDiv({ cls: 'abele-github-view__mount' })
-    this.vue = createApp(GithubItem, {
-      model: this.model,
-      enabled: githubSettings().enabled,
-      clientFor: (host: string) => githubClient(host),
-      onTitle: (title: string) => {
-        this.title = title
-        this.refreshHeader()
+    this.vue = createApp({
+      render: () => {
+        void AbeleConfig.getInstance().version.value
+        void secrets().version.value
+        const id = this.model.connectionId
+        const row = githubSettings().connections?.find((c) => c.id === id)
+        if (id && !row && this.model.target) {
+          const chosen = resolveConnectionCandidates(this.model.target)[0]
+          this.model.connectionId = chosen?.id || undefined
+          this.model.connectionNotice =
+            'The connection was removed; selected another using the link rules.'
+          Object.assign(this.model.screen, emptyScreen())
+        }
+        const client = this.model.connectionId
+          ? connectionClient(this.model.connectionId)
+          : githubClient(this.model.target?.host)
+        return h(GithubItem, {
+          key: client.cacheNamespace,
+          model: this.model,
+          enabled: githubSettings().enabled,
+          clientFor: () => client,
+          peopleClient: () => {
+            const target = this.model.target
+            const row =
+              target &&
+              githubSettings().connections.find(
+                (c) => c.isDefault && sameConnectionServer(c, target)
+              )
+            return row ? connectionClient(row.id) : githubClient(target?.host)
+          },
+          accountName: (githubSettings().connections ?? []).length
+            ? row
+              ? `${row.name}${row.account ? ` · ${row.account.login}` : ''}`
+              : 'Anonymous'
+            : undefined,
+          onChooseAccount: (event: MouseEvent) => {
+            const menu = new Menu()
+            this.accountMenu(menu)
+            menu.showAtMouseEvent(event)
+          },
+          primaryLoad: (githubSettings().connections ?? []).length
+            ? async (target: GithubTarget, promote: (target: GithubTarget) => void) => {
+                const startedId = this.model.connectionId,
+                  startedUrl = this.model.url
+                const result = await readConnectionItem(this.model, target)
+                if (this.model.connectionId !== startedId || this.model.url !== startedUrl)
+                  throw new GithubError('other', 'The tab changed while loading.')
+                promote(result.shown)
+                if (result.notice) this.model.connectionNotice = result.notice
+                this.model.connectionId = result.connectionId || undefined
+                this.app.workspace.requestSaveLayout()
+                return result.data
+              }
+            : undefined,
+          onTitle: (title: string) => {
+            this.title = title
+            this.refreshHeader()
+          },
+          onOpen: (url: string, pane?: PaneType | false): void =>
+            void openGithubUrl(this.app, url, pane ?? false, { sourceId: this.model.connectionId }),
+          keys: this.keys,
+          onState: () => this.app.workspace.requestSaveLayout(),
+        })
       },
-      onOpen: (url: string, pane?: PaneType | false): void =>
-        void openGithubUrl(this.app, url, pane ?? false),
-      keys: this.keys,
-      onState: () => this.app.workspace.requestSaveLayout(),
     })
     this.vue.mount(mountPoint)
   }

@@ -78,8 +78,8 @@ export async function loadItem(
         const folder = await loadFolder(client, t)
         if (folder.path) return folder
         // The root at a ref is the front page at that ref, as the branch switcher opens it.
-        const { host, owner, repo, anchor } = t
-        const home: Of<'repo'> = { kind: 'repo', host, owner, repo, anchor, ref: folder.ref }
+        const { host, origin, owner, repo, anchor } = t
+        const home: Of<'repo'> = { kind: 'repo', host, origin, owner, repo, anchor, ref: folder.ref }
         promote(home)
         return await loadRepoHome(client, home, folder)
       } catch (e) {

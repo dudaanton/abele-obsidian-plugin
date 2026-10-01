@@ -1,4 +1,4 @@
-import { ref, shallowRef, type Ref, type ShallowRef } from 'vue'
+import { ref, shallowRef, onScopeDispose, getCurrentScope, type Ref, type ShallowRef } from 'vue'
 
 export interface Loaded<T> {
   data: ShallowRef<T | null>
@@ -6,6 +6,8 @@ export interface Loaded<T> {
   loading: Ref<boolean>
   /** Starts a load. A load still running when the next starts is ignored when it lands. */
   load(): Promise<void>
+  /** Clear data and invalidate every pending completion before switching credentials/items. */
+  clear(): void
 }
 
 /** One request's life on screen: nothing yet, loading, an answer, or what went wrong. */
@@ -32,5 +34,12 @@ export function useLoad<T>(fetch: () => Promise<T>): Loaded<T> {
     }
   }
 
-  return { data, error, loading, load }
+  const clear = () => {
+    generation++
+    data.value = null
+    error.value = null
+    loading.value = false
+  }
+  if (getCurrentScope()) onScopeDispose(clear)
+  return { data, error, loading, load, clear }
 }

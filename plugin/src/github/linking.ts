@@ -132,7 +132,7 @@ export function createLinker(o: {
       const t = o.shown()
       const data = o.data()
       if (!t || !data) return null
-      const repo = { host: t.host, owner: t.owner, repo: t.repo }
+      const repo = { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo }
       switch (t.kind) {
         case 'issue':
         case 'pull':

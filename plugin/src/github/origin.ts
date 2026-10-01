@@ -15,5 +15,5 @@ export function webOrigin(host: string): string {
 }
 
 /** `<origin>/<owner>/<repo>`, each part encoded. */
-export const repoWeb = (r: { host: string; owner: string; repo: string }): string =>
-  `${webOrigin(r.host)}/${encodeURIComponent(r.owner)}/${encodeURIComponent(r.repo)}`
+export const repoWeb = (r: { host: string; origin?: string; owner: string; repo: string }): string =>
+  `${r.origin ?? webOrigin(r.host)}/${encodeURIComponent(r.owner)}/${encodeURIComponent(r.repo)}`

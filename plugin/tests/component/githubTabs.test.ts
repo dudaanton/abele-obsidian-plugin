@@ -67,6 +67,39 @@ beforeEach(() => {
   AbeleConfig.getInstance().github = { ...DEFAULT_GITHUB_SETTINGS, enabled: true }
 })
 
+describe('connection state', () => {
+  it('persists account changes as history even when the URL is unchanged', async () => {
+    const { GithubView } = await import('@/github/GithubView')
+    const settings = AbeleConfig.getInstance().github
+    settings.connections = ['one', 'two'].map((id, i) => ({
+      id,
+      name: id,
+      server: '',
+      keyId: '',
+      owners: [],
+      isDefault: i === 0,
+    }))
+    const view = new GithubView(new WorkspaceLeaf())
+    await view.setState(
+      { url: PR, connectionId: 'one', connectionIntent: 'manual' },
+      { history: false }
+    )
+    const next = { history: false }
+    await view.setState({ url: PR, connectionId: 'two', connectionIntent: 'manual' }, next)
+    expect(next.history).toBe(true)
+    expect(view.getState()).toMatchObject({
+      url: PR,
+      connectionId: 'two',
+      connectionIntent: 'manual',
+    })
+    view.model.screen.title = 'Private old title'
+    view.model.screen.selection = { text: 'private' } as never
+    await view.setState({ url: PR, connectionId: 'one' }, { history: false })
+    expect(view.model.screen.title).not.toContain('Private')
+    expect(JSON.stringify(view.model.screen)).not.toContain('private')
+  })
+})
+
 describe('a plain click on a GitHub link', () => {
   it('brings forward the tab already showing the item, pointed at the new line', async () => {
     const other = new Leaf(ISSUE)

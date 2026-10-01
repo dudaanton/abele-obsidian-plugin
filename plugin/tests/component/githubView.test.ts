@@ -7,13 +7,32 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
-import { ISSUE, PULL, file, openTab as open, type Reply } from '../helpers/githubTab'
+import { ISSUE, PULL, file, openTab as open, clientWith, type Reply } from '../helpers/githubTab'
 import { parseGithubUrl } from '@/github/urls'
 import { useVault } from '../helpers/testEnv'
 
 beforeEach(() => {
   useVault([])
   document.body.replaceChildren()
+})
+
+describe('connection switching', () => {
+  it('clears private content and selection before a different account answers the same URL', async () => {
+    const { wrapper, model } = open('https://github.com/o/r/issues/5', {
+      '/repos/o/r/issues/5': { json: { ...ISSUE, title: 'Private first account' } },
+      '/repos/o/r/issues/5/comments': { json: [] },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Private first account')
+    model.screen.selection = { text: 'private-selection' } as never
+    const denied = clientWith({})
+    await wrapper.setProps({ clientFor: () => denied.client })
+    expect(wrapper.text()).not.toContain('Private first account')
+    expect(JSON.stringify(model.screen)).not.toContain('private-selection')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Private first account')
+    expect(wrapper.text()).toMatch(/not found/i)
+  })
 })
 
 describe('an issue', () => {

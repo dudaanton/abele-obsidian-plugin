@@ -63,7 +63,11 @@ export function linkClickHandler(app: App) {
 
     evt.preventDefault()
     evt.stopImmediatePropagation()
-    void openGithubUrl(app, link.url, pane)
+    const source = (app.workspace?.getLeavesOfType?.(GITHUB_VIEW_TYPE) ?? [])
+      .map((leaf) => leaf.view as GithubView)
+      .find((view) => view.containerEl?.contains(target))
+    if (source?.model?.connectionId) void openGithubUrl(app, link.url, pane, { sourceId: source.model.connectionId })
+    else void openGithubUrl(app, link.url, pane)
   }
 }
 

@@ -8,8 +8,8 @@
 import { repoWeb } from '@/github/origin'
 import { parseRepoInput, type RepoRef } from '@/github/accessCheck'
 import type { GithubClient } from '@/github/client'
-import { githubClient, githubHosts, githubSettings, parseForSettings } from '@/github/GithubService'
-import { endpoints, normaliseHost, type GithubTarget } from '@/github/urls'
+import { githubClient, githubSettings } from '@/github/GithubService'
+import { endpoints, normaliseHost, parseGithubUrl, type GithubTarget } from '@/github/urls'
 import type { DiffFile } from '@/github/api'
 import { parsePatch } from '@/github/patch'
 import type { AgentToolResult } from '../../client'
@@ -54,7 +54,9 @@ export function parseNamed(input: unknown): Named {
     }
   }
 
-  const target = parseForSettings(text)
+  // Keep the legacy tool context confined until per-agent connection approval is applied.
+  const hosts = ['github.com', defaultHost()]
+  const target = parseGithubUrl(text, hosts)
   if (target) {
     const repo = { host: target.host, owner: target.owner, repo: target.repo }
     const number = 'number' in target ? target.number : undefined
@@ -67,7 +69,7 @@ export function parseNamed(input: unknown): Named {
       `"${text}" is not a GitHub repository or item. Give a link, owner/repo or owner/repo#12.`
     )
   }
-  if (!githubHosts().includes(normaliseHost(repo.host))) {
+  if (!hosts.includes(normaliseHost(repo.host))) {
     throw new Error(
       `${repo.host} is neither github.com nor the GitHub server set in the settings, so it is not read.`
     )

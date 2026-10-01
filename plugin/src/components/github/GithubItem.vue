@@ -28,6 +28,14 @@
       </div>
 
       <template v-else>
+        <Button
+          v-if="accountName"
+          :text="accountName"
+          icon="user-round"
+          tooltip="Open as another GitHub account"
+          @click="(event: MouseEvent) => onChooseAccount?.(event)"
+        />
+        <EmptyState v-if="model.connectionNotice" :text="model.connectionNotice" />
         <GithubFindBar
           v-if="tabSearch.findOpen.value && root"
           ref="findBar"
@@ -272,7 +280,7 @@ import { swappedUrl, type CompareData } from '@/github/compare'
 import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
-import { SCREEN, chatSubject } from '@/github/screen'
+import { SCREEN, chatSubject, emptyScreen } from '@/github/screen'
 import { GITHUB_REPO } from '@/github/repoContext'
 import { GITHUB_PEOPLE } from '@/github/users'
 import { pageWidthCss } from '@/github/pageWidth'
@@ -299,6 +307,11 @@ const props = defineProps<{
   model: GithubViewModel
   enabled: boolean
   clientFor: (host: string) => GithubClient
+  /** Connection-aware primary loading; secondary loads stay on clientFor. */
+  primaryLoad?: (target: GithubTarget, promote: (target: GithubTarget) => void) => Promise<ItemData>
+  peopleClient?: () => GithubClient
+  accountName?: string
+  onChooseAccount?: (event: MouseEvent) => void
   /** Tells the tab its name once the item's title is known. */
   onTitle?: (title: string) => void
   /** Opens another GitHub URL: by the usual rule, or in a new tab, split or window. */
@@ -331,11 +344,24 @@ const shown = computed<GithubTarget>(() => promoted.value ?? target.value)
 
 const client = () => props.clientFor(target.value.host)
 
-const main = useLoad<ItemData>(() =>
-  loadItem(client(), target.value, (t) => {
-    promoted.value = t
+let loadGeneration = 0
+let active = true
+onBeforeUnmount(() => {
+  active = false
+  loadGeneration++
+})
+const main = useLoad<ItemData>(() => {
+  const generation = loadGeneration,
+    currentClient = client(),
+    currentTarget = target.value
+  const read =
+    props.primaryLoad ??
+    ((target: GithubTarget, promote: (target: GithubTarget) => void) =>
+      loadItem(currentClient, target, promote))
+  return read(currentTarget, (t) => {
+    if (active && generation === loadGeneration && currentClient === client()) promoted.value = t
   })
-)
+})
 
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
 const commits = useLoad(() => loadPullCommits(client(), shown.value as Of<'pull'>))
@@ -505,7 +531,7 @@ const repo = computed<RepoFile | null>(() => {
 })
 provide(GITHUB_REPO, repo)
 // The people in it are looked up with the tab's own client: its server, its token.
-provide(GITHUB_PEOPLE, () => (target.value ? client() : null))
+provide(GITHUB_PEOPLE, () => (target.value ? (props.peopleClient?.() ?? client()) : null))
 
 // What is on screen, for an agent to ask about: the diffs and the file view add their part.
 const screen = props.model.screen
@@ -595,33 +621,41 @@ const scrollToAnchor = async () => {
 onBeforeUnmount(() => unpin())
 
 const reload = async () => {
+  const generation = ++loadGeneration
   promoted.value = null
-  files.data.value = null
-  commits.data.value = null
+  files.clear()
+  commits.clear()
   await main.load()
+  if (!active || generation !== loadGeneration) return
   if (pullTab.value === 'files') await files.load()
   if (pullTab.value === 'commits') await commits.load()
   void scrollToAnchor()
 }
 
+const loadKey = computed(() =>
+  target.value ? `${client().cacheNamespace}:${targetKey(target.value)}` : null
+)
+
 // A tab that follows a link to another item must not draw the new item from the old one's data
 // while it loads — a pull request read as a file has no text. Cleared the moment the target
 // changes, before anything computed from it is asked again.
 watch(
-  () => (target.value ? targetKey(target.value) : null),
+  () => loadKey.value,
   () => {
+    loadGeneration++
     promoted.value = null
-    main.data.value = null
-    main.error.value = null
-    screen.expanded.splice(0)
-    screen.selection = null
+    main.clear()
+    files.clear()
+    commits.clear()
+    Object.assign(screen, emptyScreen())
+    props.onTitle?.('')
   },
   { flush: 'sync' }
 )
 
 // A new item loads from scratch; the same item at another line or comment only moves there.
 watch(
-  () => (target.value ? targetKey(target.value) : null),
+  () => loadKey.value,
   (key) => {
     if (!key || !props.enabled) return
     const t = target.value
