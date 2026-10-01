@@ -157,10 +157,14 @@ async function drawPage(
   const canvas = activeWindow.createEl('canvas')
   canvas.height = viewport.height
   canvas.width = viewport.width
-  await page.render({ canvasContext: canvas.getContext('2d'), canvas, viewport }).promise
-  if (!current()) return
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  canvas.width = canvas.height = 0
+  let blob: Blob | null = null
+  try {
+    await page.render({ canvasContext: canvas.getContext('2d'), canvas, viewport }).promise
+    if (!current()) return
+    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  } finally {
+    canvas.width = canvas.height = 0
+  }
   if (!blob || !current()) return
   const img = doc.createElementNS(XHTML_NS, 'img') as HTMLImageElement
   img.alt = ''
@@ -190,6 +194,7 @@ async function drawPage(
       viewport,
     })
     await textLayer.render()
+    if (!current()) return
     const end = doc.createElementNS(XHTML_NS, 'div')
     end.className = 'endOfContent'
     container.append(end)
@@ -233,7 +238,7 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
   const urls = new Map<number, string>()
   const pages = new Map<
     number,
-    { src: string; onZoom: (z: { doc: Document; scale: number }) => void }
+    { src: string; onZoom: (z: { doc: Document; scale: number }) => void; unload: () => void }
   >()
   /** The drawing a page frame last asked for; an older one still finishing is dropped. */
   const drawing = new WeakMap<Document, number>()
@@ -249,27 +254,51 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
       const { width, height } = page.getViewport({ scale: 1 })
       const url = URL.createObjectURL(new Blob([pdfPageHtml(width, height)], { type: 'text/html' }))
       urls.set(i, url)
+      let active = true
+      const documents = new Set<Document>()
+      const unload = () => {
+        if (!active) return
+        active = false
+        for (const doc of documents) {
+          drawing.set(doc, (drawing.get(doc) ?? 0) + 1)
+          drawnAt.delete(doc)
+          renderedAt.delete(doc)
+          for (const img of Array.from(doc.querySelectorAll('#canvas img'))) {
+            URL.revokeObjectURL((img as HTMLImageElement).src)
+            img.remove()
+          }
+          doc.querySelector('.textLayer')?.replaceChildren()
+          doc.querySelector('.annotationLayer')?.replaceChildren()
+        }
+        documents.clear()
+        URL.revokeObjectURL(url)
+        urls.delete(i)
+        pages.delete(i)
+        page.cleanup?.()
+      }
       const onZoom = ({ doc, scale }: { doc: Document; scale: number }): void => {
+        if (!active) return
+        documents.add(doc)
         // Asked again at the size it already has — the engine lays out more often than sizes
         // change — it is left alone: drawing it again would replace its text, and lose a selection.
         if (drawnAt.get(doc) === scale) return
         drawnAt.set(doc, scale)
         const turn = (drawing.get(doc) ?? 0) + 1
         drawing.set(doc, turn)
-        void drawPage(lib, page, doc, scale, () => drawing.get(doc) === turn)
+        void drawPage(lib, page, doc, scale, () => active && drawing.get(doc) === turn)
           .then(() => {
-            if (drawing.get(doc) === turn)
+            if (active && drawing.get(doc) === turn)
               pageEvents.dispatchEvent(
                 new CustomEvent<PdfPageDrawn>('drawn', { detail: { doc, index: i } })
               )
           })
           .catch((e) => console.warn('[Abele] a PDF page could not be drawn', e))
       }
-      const entry = { src: url, onZoom }
+      const entry = { src: url, onZoom, unload }
       pages.set(i, entry)
       return entry as unknown as string
     },
-    unload: () => {},
+    unload: () => pages.get(i)?.unload(),
   }))
 
   const destIndex = async (href: string): Promise<number> => {
@@ -366,6 +395,7 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
   return {
     book,
     destroy: () => {
+      for (const page of [...pages.values()]) page.unload()
       for (const url of urls.values()) URL.revokeObjectURL(url)
       urls.clear()
       pages.clear()
