@@ -226,7 +226,7 @@
           canComment && message.role === 'assistant' && !message.draft ? 'true' : undefined
         "
         data-find-part="content"
-        @rendered="comments.paint"
+        @rendered="onReplyRendered"
         @contextmenu="onContentMenu"
       />
       <Markdown v-else-if="message.content" :text="message.content" data-find-part="content" />
@@ -394,7 +394,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { flashMessagePassage } from '@/ai/messageComments'
 import dayjs from 'dayjs'
 import { Menu, Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -562,7 +563,20 @@ const revealPart = (part: FindPart) => {
     emit('toggle-interceptor', props.message.id)
 }
 
-defineExpose({ revealPart })
+const replyRendered = ref(false)
+watch(() => props.message.content, () => { replyRendered.value = false })
+function onReplyRendered() {
+  comments.paint()
+  replyRendered.value = true
+}
+/** Undefined while rendering; null only when the rendered passage is genuinely missing. */
+function revealPassage(quote: string, start?: number): HTMLElement | null | undefined {
+  if (!replyRendered.value) return undefined
+  const root = comments.content.value?.$el as HTMLElement | undefined
+  return root ? flashMessagePassage(root, quote, start) : null
+}
+
+defineExpose({ revealPart, revealPassage })
 
 const FILE_TOOLS = [
   'read',

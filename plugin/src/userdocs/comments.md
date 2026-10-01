@@ -26,7 +26,10 @@ right-click menu on a computer, or on a phone from the small bar that comes up u
 once you lift your finger. A comment
 opens on that message, on the chat's own agent, and knows what was said before it. A message in a
 comment can be commented on in turn, to any depth. The trail at the top of a comment leads back
-up.
+up. Both the back arrow and a level in the trail return to the selected words inside the parent
+reply, briefly marking just that passage—even far down a long answer. Repeated words use the
+recorded selection position. If those words have disappeared, or the comment was on the whole
+message, you return to the message instead.
 
 ## Opening a comment as a full chat
 

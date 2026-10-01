@@ -217,6 +217,32 @@ export function paintMessageComments(
   }
 }
 
+/** Return navigation paints only the passage; comment badges do not contribute offsets. */
+export function flashMessagePassage(
+  root: HTMLElement,
+  quote: string,
+  start = 0
+): HTMLElement | null {
+  for (const el of Array.from(root.querySelectorAll('[data-reply-return]')))
+    el.replaceWith(...Array.from(el.childNodes))
+  root.normalize()
+  const found = locateQuote(messageRenderedText(root), quote, start)
+  if (!found) return null
+  let first: HTMLElement | null = null
+  wrap(root, found.from, found.to, 'abele-footnote-flash', (span) => {
+    span.dataset.replyReturn = ''
+    first ??= span
+  })
+  const marks = Array.from(root.querySelectorAll<HTMLElement>('[data-reply-return]'))
+  root.ownerDocument.defaultView?.setTimeout(() => {
+    for (const mark of marks) {
+      // Repainted or unmounted while the flash was running: only unwrap our own nodes.
+      if (root.contains(mark)) mark.replaceWith(...Array.from(mark.childNodes))
+    }
+  }, 2500)
+  return first
+}
+
 /** Reuse the note highlight classes; annotations never enter the markdown source. */
 export function paintReplyHighlights(root: HTMLElement, highlights: ReplyHighlight[]): void {
   for (const el of Array.from(root.querySelectorAll('[data-reply-highlight]')))

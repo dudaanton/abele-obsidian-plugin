@@ -11,6 +11,7 @@ import { parseChat, serializeChat } from '@/ai/ChatLog'
 import { EMPTY_USAGE } from '@/ai/client'
 import { createReplyRevisionTool, REPLY_REVISION_TOOL } from '@/ai/tools/ReplyRevisionTool'
 import type { ReplyProposal } from '@/ai/replyAnnotations'
+import { revealAnchor } from '@/ai/openChat'
 
 vi.mock('@/editor/CommentPlugin', () => ({
   dispatchCommentsChanged: vi.fn(),
@@ -109,6 +110,12 @@ async function stagedProposal() {
 }
 
 describe('reply annotation persistence and owner decisions', () => {
+  it('returns from a comment to its recorded selected passage rather than just the message id', async () => {
+    const { child } = await propose()
+    await revealAnchor(child.commentId!, child.anchor.value!)
+    expect(ChatService.getInstance().pendingReveal.value).toBe('reply')
+    expect(ChatService.getInstance().pendingPassage.value).toEqual({ path: PATH, message: 'reply', quote: 'small lantern', start: 2 })
+  })
   it('does not apply a proposal rejected by sync before the local decision', async () => {
     const { child, id } = await stagedProposal()
     const own = child.currentChatFile.value!

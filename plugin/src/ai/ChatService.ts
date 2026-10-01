@@ -84,6 +84,8 @@ export class ChatService {
    * The chat component consumes it, as it does `pendingInput`.
    */
   public readonly pendingReveal = ref<string | null>(null)
+  /** A comment return can address a passage within that message, in one specific chat. */
+  public readonly pendingPassage = ref<{ path: string; message: string; quote: string; start?: number } | null>(null)
 
   /**
    * A result of the search across chats, for the chat component: once the chat at `path` is in

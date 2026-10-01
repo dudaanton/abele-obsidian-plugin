@@ -71,7 +71,7 @@ export async function openLink(
  * view and flashed there — on its branch, switched to when another is showing. False, and the
  * person told, when the chat has been deleted since.
  */
-export async function revealAnswer(anchor: CommentAnchor): Promise<boolean> {
+export async function revealAnswer(anchor: CommentAnchor, commentId?: string): Promise<boolean> {
   const { app } = GlobalStore.getInstance()
   const chat = app.vault.getAbstractFileByPath(anchor.note)
   if (!anchor.message || !(chat instanceof TFile)) {
@@ -79,7 +79,19 @@ export async function revealAnswer(anchor: CommentAnchor): Promise<boolean> {
     return false
   }
   await openChat(chat)
-  ChatService.getInstance().pendingReveal.value = anchor.message
+  const service = ChatService.getInstance()
+  let start: number | undefined
+  if (anchor.quote && commentId) {
+    try {
+      start = await CommentService.getInstance().replyCommentStart(anchor.note, commentId)
+    } catch {
+      /* Missing metadata still has a quote; navigation can use its nearest occurrence. */
+    }
+  }
+  service.pendingPassage.value = anchor.quote
+    ? { path: anchor.note, message: anchor.message, quote: anchor.quote, start }
+    : null
+  service.pendingReveal.value = anchor.message
   return true
 }
 
@@ -89,19 +101,27 @@ export async function revealAnswer(anchor: CommentAnchor): Promise<boolean> {
  * button and by every level of the trail over it, each passing the level below the one it opens.
  */
 export async function revealAnchor(commentId: string, anchor: CommentAnchor): Promise<boolean> {
-  if (anchor.message) return revealAnswer(anchor)
+  if (anchor.message) return revealAnswer(anchor, commentId)
 
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(anchor.note)
   if (!(file instanceof TFile)) {
-    new Notice(anchor.cfi ? 'The book this was asked in has been deleted' : 'The note this was asked in has been deleted')
+    new Notice(
+      anchor.cfi
+        ? 'The book this was asked in has been deleted'
+        : 'The note this was asked in has been deleted'
+    )
     return false
   }
 
   // A discussion in a book goes back to its words there: the book opens at them, selected.
   if (anchor.cfi) {
     const { placeSubpath } = await import('@/reader/bookLinks')
-    await app.workspace.openLinkText(`${anchor.note}${placeSubpath({ cfi: anchor.cfi })}`, '', false)
+    await app.workspace.openLinkText(
+      `${anchor.note}${placeSubpath({ cfi: anchor.cfi })}`,
+      '',
+      false
+    )
     return true
   }
 

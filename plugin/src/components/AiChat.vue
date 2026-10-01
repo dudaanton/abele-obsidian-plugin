@@ -1318,7 +1318,9 @@ const REVEAL_CONTEXT = 3
  * would. It is then held in place while the messages around it render, as a remembered place
  * is, and flashed so the eye finds it.
  */
-const revealMessage = async (messageId: string) => {
+let revealing = 0
+const revealMessage = async (messageId: string, passage?: { quote: string; start?: number }) => {
+  const generation = ++revealing
   const s = session.value
   if (!s) return
   if (!s.messages.value.some((m) => m.id === messageId)) {
@@ -1340,16 +1342,28 @@ const revealMessage = async (messageId: string) => {
   await nextTick()
   const el = messagesContainer.value
   const target = el?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`)
-  if (!el || !target) return
+  if (!el || !target || session.value !== s || generation !== revealing) return
+  let selected: HTMLElement | null | undefined
+  if (passage) {
+    const until = Date.now() + 3000
+    do {
+      selected = messageRefs.get(messageId)?.revealPassage(passage.quote, passage.start)
+      if (selected !== undefined) break
+      await new Promise<void>(resolve => el.win.setTimeout(resolve, 30))
+      if (session.value !== s || generation !== revealing || !target.isConnected) return
+    } while (Date.now() < until)
+  }
   shouldAutoScroll = false
-  anchor = { el: target, offset: REVEAL_OFFSET_PX }
+  anchor = { el: selected ?? target, offset: REVEAL_OFFSET_PX }
   holdAnchor()
   bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
   holdAnchorAWhile(el)
-  target.classList.remove('abele-footnote-flash')
-  void target.offsetWidth
-  target.classList.add('abele-footnote-flash')
-  window.setTimeout(() => target.classList.remove('abele-footnote-flash'), 2500)
+  if (!selected) {
+    target.classList.remove('abele-footnote-flash')
+    void target.offsetWidth
+    target.classList.add('abele-footnote-flash')
+    window.setTimeout(() => target.classList.remove('abele-footnote-flash'), 2500)
+  }
 }
 
 // ── Find in this chat ──
@@ -1428,8 +1442,12 @@ watch(
   () => [chatService.pendingReveal.value, session.value, messagesContainer.value] as const,
   ([messageId, s, el]) => {
     if (!messageId || !s || !el) return
+    const passage = chatService.pendingPassage.value
+    if (passage && passage.message === messageId && passage.path !== s.currentChatFile.value?.path) return
     chatService.pendingReveal.value = null
-    void revealMessage(messageId)
+    chatService.pendingPassage.value = null
+    composing.value = false
+    void revealMessage(messageId, passage?.message === messageId ? passage : undefined)
   },
   { immediate: true, flush: 'post' }
 )
