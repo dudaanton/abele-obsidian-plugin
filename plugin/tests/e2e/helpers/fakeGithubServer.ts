@@ -413,6 +413,22 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
     query?: string
     variables?: Record<string, unknown>
   }
+  if (query?.includes('blame(path:')) {
+    const text = filesAt(String(variables?.ref ?? 'main'))?.[String(variables?.path)]
+    if (typeof text !== 'string') return send(res, 200, { data: { repository: { object: null } } })
+    const lines = text.trimEnd().split('\n').length
+    const ranges = Array.from({ length: Math.ceil(lines / 4) }, (_, i) => ({
+      startingLine: i * 4 + 1,
+      endingLine: Math.min(lines, i * 4 + 4),
+      commit: {
+        oid: i % 2 ? FIRST_SHA : HEAD_SHA,
+        message: `Sample attribution ${i + 1}\n\nFull sample explanation for this range.`,
+        committedDate: '2025-03-04T12:00:00Z',
+        author: { name: 'Sample Author', user: null, avatarUrl: `${web}/avatars/u/sample-author` },
+      },
+    }))
+    return send(res, 200, { data: { repository: { object: { blame: { ranges } } } } })
+  }
   if (query?.includes('type:DISCUSSION')) {
     const d = fixtures(web).discussion
     const q = String(variables?.q ?? '')

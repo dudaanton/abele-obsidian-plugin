@@ -1,5 +1,8 @@
 <template>
   <div ref="editorEl" class="abele-github-code abele-github-blob__code" />
+  <Teleport v-for="host in blameHosts" :key="host.id" :to="host.element">
+    <GithubBlameRange :commit="host.range.commit" @open="(sha) => emit('commit', sha)" />
+  </Teleport>
   <Teleport v-if="barHost && hasBar" :to="barHost">
     <slot name="bar" />
   </Teleport>
@@ -11,6 +14,9 @@ import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
 import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
+import type { BlameRange } from '@/github/blame'
+import type { BlameHost } from '@/github/blameGutter'
+import GithubBlameRange from './GithubBlameRange.vue'
 
 /**
  * A file at a ref, as code: its lines numbered, the lines a link named marked, and lines
@@ -21,6 +27,7 @@ const props = withDefaults(
   defineProps<{
     text: string
     path: string
+    blame?: BlameRange[] | null
     /** The lines the link named. */
     range?: LineRange
     /** Lines the person selected before this view was drawn — in the rendered view, say. */
@@ -28,16 +35,34 @@ const props = withDefaults(
     /** A line to bring into view when drawn, rather than the first marked one. */
     focus?: { line: number; context: number } | null
   }>(),
-  { range: undefined, selected: null, focus: null }
+  { range: undefined, selected: null, focus: null, blame: null }
 )
 
 const emit = defineEmits<{
   (e: 'select', span: LineSpan | null): void
+  (e: 'commit', sha: string): void
 }>()
 
 const editorEl = ref<HTMLElement>()
 let viewer: CodeViewer | null = null
 let unpin = () => {}
+let hostId = 0
+const blameHosts = shallowRef<(BlameHost & { id: number })[]>([])
+const applyBlame = () =>
+  viewer?.blame(
+    props.blame
+      ? {
+          ranges: props.blame,
+          add: (host) => {
+            blameHosts.value = [...blameHosts.value, { ...host, id: ++hostId }]
+          },
+          remove: (el) => {
+            blameHosts.value = blameHosts.value.filter((h) => h.element !== el)
+          },
+        }
+      : null
+  )
+watch(() => props.blame, applyBlame)
 
 /** Where CodeMirror draws the selection's bar just now, and whether there is one. */
 const barHost = shallowRef<HTMLElement | null>(null)
@@ -73,6 +98,7 @@ const draw = async (focus: { line: number; context: number } | null) => {
     focus?.line
   )
   viewer = drawn
+  applyBlame()
   if (focus) {
     unpin = pinIntoView(editorEl.value, () => drawn.lineTop(focus.line), {
       context: focus.context,

@@ -1,6 +1,15 @@
 <template>
   <div class="abele-github-blob">
-    <div v-if="markdown || range" class="abele-github-blob__toolbar">
+    <div v-if="markdown || range || client" class="abele-github-blob__toolbar">
+      <Button
+        v-if="client"
+        text="Blame"
+        icon="git-commit-horizontal"
+        aria-label="Toggle line blame"
+        :aria-pressed="blaming"
+        tooltip="Toggle line blame"
+        @click="toggleBlame"
+      />
       <div v-if="range" class="abele-github-blob__range">
         {{ linesLabel({ from: range.start, to: range.end }) }}
         <span v-if="range.start > lineCount" class="abele-github-blob__warning">
@@ -10,15 +19,23 @@
       <Tabs
         v-if="markdown"
         class="abele-github-blob__modes"
-        :model-value="mode"
+        :model-value="blaming ? 'code' : mode"
         :tabs="modes"
         level="secondary"
         @update:model-value="switchTo"
       />
     </div>
 
+    <div v-if="blaming && blameBusy" role="status">Loading line blame…</div>
+    <GithubNotice
+      v-if="blaming && blameError"
+      :text="blameError"
+      :busy="blameBusy"
+      @retry="askBlame"
+    />
+
     <GithubMarkdown
-      v-if="mode === 'preview'"
+      v-if="mode === 'preview' && !blaming"
       ref="preview"
       :text="text"
       :file="file"
@@ -46,10 +63,12 @@
       ref="code"
       :text="text"
       :path="file.path"
+      :blame="blaming ? blameRanges : null"
       :range="range"
       :selected="selected"
       :focus="focus"
       @select="onSelect"
+      @commit="(sha) => emit('open', `${repoWeb(file)}/commit/${encodeURIComponent(sha)}`)"
     >
       <template #bar>
         <GithubSelectionBar
@@ -66,7 +85,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref, shallowRef, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import Button from '../obsidian/Button.vue'
+import GithubNotice from './GithubNotice.vue'
+import { loadBlame, type BlameRange } from '@/github/blame'
+import { repoWeb } from '@/github/origin'
 import Tabs from '../obsidian/Tabs.vue'
 import GithubCode from './GithubCode.vue'
 import GithubMarkdown from './GithubMarkdown.vue'
@@ -109,6 +132,53 @@ const emit = defineEmits<{
   (e: 'mode', mode: BlobMode): void
   (e: 'open', url: string): void
 }>()
+
+const blaming = ref(false)
+const blameBusy = ref(false)
+const blameError = ref('')
+const blameRanges = shallowRef<BlameRange[] | null>(null)
+let blameRequest = 0
+const askBlame = async () => {
+  const client = props.client
+  if (!client) return
+  const request = ++blameRequest
+  blameBusy.value = true
+  blameError.value = ''
+  try {
+    const ranges = await loadBlame(client, props.file)
+    if (request === blameRequest) blameRanges.value = ranges
+  } catch (error) {
+    if (request === blameRequest)
+      blameError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    if (request === blameRequest) blameBusy.value = false
+  }
+}
+const toggleBlame = () => {
+  blaming.value = !blaming.value
+  if (blaming.value) void askBlame()
+}
+watch(
+  () => [
+    props.client,
+    props.file.host,
+    props.file.owner,
+    props.file.repo,
+    props.file.ref,
+    props.file.path,
+    props.text,
+  ],
+  () => {
+    ++blameRequest
+    blaming.value = false
+    blameRanges.value = null
+    blameBusy.value = false
+    blameError.value = ''
+  }
+)
+onBeforeUnmount(() => {
+  ++blameRequest
+})
 
 const markdown = computed(() => isMarkdownPath(props.file.path))
 const config = AbeleConfig.getInstance()
@@ -191,8 +261,8 @@ const preview = shallowRef<View | null>(null)
 const code = shallowRef<View | null>(null)
 
 const switchTo = (next: string) => {
-  if (next === mode.value || (next !== 'preview' && next !== 'code')) return
-  const view = mode.value === 'code' ? code.value : preview.value
+  if ((!blaming.value && next === mode.value) || (next !== 'preview' && next !== 'code')) return
+  const view = mode.value === 'code' || blaming.value ? code.value : preview.value
   const lines =
     selected.value ?? (props.range ? { from: props.range.start, to: props.range.end } : null)
   if (lines && view?.shows(lines)) {
@@ -201,6 +271,7 @@ const switchTo = (next: string) => {
     const top = view?.topLine() ?? null
     focus.value = top ? { line: top, context: 0 } : null
   }
+  blaming.value = false
   emit('mode', next)
 }
 </script>

@@ -129,6 +129,21 @@ selection). The bar under them copies a link or inserts one into the note you we
 **Insert with code** puts the lines themselves into the note as a card, and **Insert as quote**
 does the same for a comment. Every comment has link buttons in its header. Links point at a fixed commit, so they keep showing the same lines.
 
+## Line blame
+
+In a file, **Blame** shows who last changed each range of lines: the author, relative date and
+first line of the commit message. It uses the file's displayed branch, tag or commit, not the
+repository's default branch. Markdown switches temporarily to source while blame is on.
+Click a range's message to open that commit in the same tab; hover for the full message and
+exact date. On a phone, hold the range to open these details, with an **Open commit** button.
+The compact phone gutter keeps the author and message; the date is in the details. Press
+**Blame** again to give the code its full width back.
+
+Blame needs a token, even for public files, because GitHub serves it through GraphQL. It uses
+the same connection as the file. A refused request leaves the file readable and offers
+**Try again**. Results stay in memory briefly per connection, repository, ref and path;
+only visible gutter rows are drawn, including in large files.
+
 ## Searching
 
 **Mod+F** in a GitHub tab finds text in everything the tab shows, folded diffs included. The

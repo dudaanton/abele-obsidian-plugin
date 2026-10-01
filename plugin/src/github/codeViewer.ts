@@ -5,7 +5,7 @@
  * thousand lines costs what twenty do, and it gives selection, copying and the same highlighting
  * the plugin's own code view uses.
  */
-import { EditorState, RangeSetBuilder, type Extension } from '@codemirror/state'
+import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state'
 import {
   Decoration,
   EditorView,
@@ -21,6 +21,7 @@ import { languageFor } from './languages'
 import { lineSelection, type SelectionHooks } from './lineSelection'
 import { scrollParent } from './scrollTo'
 import { codeNavAddon } from './search/navAddon'
+import { blameGutter, type BlameGutter } from './blameGutter'
 
 export interface Viewer {
   /**
@@ -47,6 +48,7 @@ export interface Viewer {
 export interface CodeViewer extends Viewer {
   /** Marks `range` instead, and makes its first line the one `targetTop` finds. */
   mark(range: LineRange): void
+  blame(options: BlameGutter | null): void
 }
 
 class NumberMarker extends GutterMarker {
@@ -262,11 +264,13 @@ export function mountCode(
     return out
   }
   const selection = lineSelection({ ...hooks, initial: lines(range) })
+  const blame = new Compartment()
 
   const viewer = mount(
     parent,
     text,
     [
+      blame.of([]),
       lineNumbers({ domEventHandlers: selection.gutterHandlers }),
       selection.extension,
       ...languageFor(path),
@@ -275,6 +279,9 @@ export function mountCode(
   )
   return {
     ...viewer,
+    blame(options) {
+      viewer.view.dispatch({ effects: blame.reconfigure(options ? blameGutter(options) : []) })
+    },
     mark(next) {
       viewer.retarget(next.start)
       selection.mark(viewer.view, lines(next))
