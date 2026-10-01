@@ -296,7 +296,8 @@ describe('applying a template', () => {
     const env = templateHarness([{ path: 'sample.md', content: 'Existing' }])
     const file = env.app.vault.getFileByPath('sample.md')!
     await env.template('Default body', {
-      template_for: 'default', callbacks: 'command:sample',
+      template_for: 'default',
+      callbacks: 'command:sample',
     })
     expect(await service().applyDefaultTemplate(file, true)).toBe(false)
     expect(await env.app.vault.read(file)).toBe('Existing')
@@ -348,15 +349,12 @@ describe('applying a template', () => {
 
   // BUG: target properties are appended, not merged. Repeating a body key creates duplicate
   // YAML mapping keys and the resulting note cannot be read by front-matter/js-yaml.
-  it(
-    'overrides a body property with a target property without producing invalid YAML',
-    async () => {
-      const env = templateHarness()
-      const template = await env.template('---\nlabels: old\n---\nBody', {
-        template_for_labels: ['new'],
-      })
-      const file = await service().createNoteFromTemplate(template, new Map())
-      expect(propertiesOf(await env.app.vault.read(file))).toEqual({ labels: ['new'] })
-    }
-  )
+  it('overrides a body property with a target property without producing invalid YAML', async () => {
+    const env = templateHarness()
+    const template = await env.template('---\nlabels: old\n---\nBody', {
+      template_for_labels: ['new'],
+    })
+    const file = await service().createNoteFromTemplate(template, new Map())
+    expect(propertiesOf(await env.app.vault.read(file))).toEqual({ labels: ['new'] })
+  })
 })

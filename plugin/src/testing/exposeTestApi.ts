@@ -24,6 +24,9 @@ import { NoteRelations } from '@/entities/NoteRelations'
 import { Log } from '@/entities/Log'
 import { Journal } from '@/entities/Journal'
 import { TimeEntry } from '@/entities/TimeEntry'
+import { TemplateService } from '@/templates/TemplateService'
+import { UserTemplate } from '@/templates/UserTemplate'
+import { TransactionNoteTemplate } from '@/templates/TransactionNoteTemplate'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptTrust } from '@/scripting/ScriptTrust'
 import { LinterService } from '@/linter/LinterService'
@@ -135,6 +138,9 @@ interface AbeleTestApi {
   Log: typeof Log
   Journal: typeof Journal
   TimeEntry: typeof TimeEntry
+  TemplateService: typeof TemplateService
+  UserTemplate: typeof UserTemplate
+  TransactionNoteTemplate: typeof TransactionNoteTemplate
   AbeleConfig: typeof AbeleConfig
   /** A synthetic update notice; no installed manifest or local marker is modified. */
   showChangelogOffer: typeof showOffer
@@ -656,6 +662,9 @@ export function exposeTestApi(plugin: Plugin): void {
     Log,
     Journal,
     TimeEntry,
+    TemplateService,
+    UserTemplate,
+    TransactionNoteTemplate,
     AbeleConfig,
     secrets,
     newDrawing,

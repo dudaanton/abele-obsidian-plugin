@@ -86,34 +86,33 @@ describe('default template on newly created notes', () => {
 
   // BUG: the emptiness check happens before the awaited template read. Text arriving
   // after that check is overwritten by the final vault.modify rather than preserved.
-  it(
-    'preserves content arriving while the default template itself is being read',
-    async () => {
-      const env = await setup()
-      const reading = gate()
-      const resume = gate()
-      const read = env.app.vault.read.bind(env.app.vault)
-      vi.spyOn(env.app.vault, 'read').mockImplementation(async (file) => {
-        if (file.path === 'Templates/sample.md') {
-          reading.release()
-          await resume.promise
-        }
-        return read(file)
-      })
-      const pending = env.callback(env.file)
-      await vi.advanceTimersByTimeAsync(1000)
-      await reading.promise
-      await env.app.vault.modify(env.file, 'Concurrent content')
-      resume.release()
-      await pending
-      expect(await read(env.file)).toBe('Concurrent content')
-    }
-  )
+  it('preserves content arriving while the default template itself is being read', async () => {
+    const env = await setup()
+    const reading = gate()
+    const resume = gate()
+    const read = env.app.vault.read.bind(env.app.vault)
+    vi.spyOn(env.app.vault, 'read').mockImplementation(async (file) => {
+      if (file.path === 'Templates/sample.md') {
+        reading.release()
+        await resume.promise
+      }
+      return read(file)
+    })
+    const pending = env.callback(env.file)
+    await vi.advanceTimersByTimeAsync(1000)
+    await reading.promise
+    await env.app.vault.modify(env.file, 'Concurrent content')
+    resume.release()
+    await pending
+    expect(await read(env.file)).toBe('Concurrent content')
+  })
 
   it('preserves unsaved input arriving during the template read and skips callbacks', async () => {
     const env = await setup()
     env.app.setFrontmatter('Templates/sample.md', {
-      type: 'template', template_for: 'default', callbacks: 'command:sample',
+      type: 'template',
+      template_for: 'default',
+      callbacks: 'command:sample',
     })
     const reading = gate()
     const resume = gate()
