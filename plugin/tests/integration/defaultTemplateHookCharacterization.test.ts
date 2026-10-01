@@ -7,12 +7,14 @@ import { gate } from '../helpers/taskHarness'
 import { configureAbele, dailyJournal } from '../helpers/testEnv'
 import { templateHarness } from '../helpers/templateHarness'
 
+const enabledSteps = vi.hoisted(() => ({ workspaceEvents: false }))
+
 // Drive public onload while omitting unrelated startup subsystems, never calling the
 // private registration method or copying its event handler into the test.
 vi.mock('@/helpers/startupSteps', () => ({
   beginStartup: vi.fn(),
   startupStep: (name: string, run: () => void) => {
-    if (name === 'links') run()
+    if (name === 'links' || (name === 'workspace events' && enabledSteps.workspaceEvents)) run()
   },
   startupStepAsync: async () => {},
 }))
@@ -25,6 +27,7 @@ vi.mock('@/helpers/fieldFocus', () => ({ registerFocusRelease: vi.fn() }))
 vi.mock('@/helpers/keyboardDiagnostics', () => ({ setKeyboardDiagnostics: vi.fn() }))
 
 beforeEach(() => {
+  enabledSteps.workspaceEvents = false
   vi.useFakeTimers()
   vi.stubEnv('NODE_ENV', 'production')
   vi.spyOn(console, 'debug').mockImplementation(() => {})
@@ -39,7 +42,8 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-async function setup() {
+async function setup(workspaceEvents = false) {
+  enabledSteps.workspaceEvents = workspaceEvents
   const env = templateHarness([
     { path: 'Notes/empty.md' },
     { path: 'Notes/content.md', content: 'keep' },
@@ -47,11 +51,16 @@ async function setup() {
   ])
   await env.template('Default body', { template_for: 'default' })
   const ready: (() => void)[] = []
-  Object.assign(env.app.workspace, { onLayoutReady: (fn: () => void) => ready.push(fn) })
+  const workspaceOn = vi.fn((_name: string, _callback: (...args: any[]) => void) => ({}))
+  Object.assign(env.app.workspace, {
+    onLayoutReady: (fn: () => void) => ready.push(fn),
+    on: workspaceOn,
+  })
   const on = vi.spyOn(env.app.vault, 'on')
   const plugin = Object.assign(Object.create(AbelePlugin.prototype) as AbelePlugin, {
     app: env.app,
     addSettingTab: vi.fn(),
+    addCommand: vi.fn(),
     registerEvent: vi.fn(),
     registerObsidianProtocolHandler: vi.fn(),
   })
@@ -61,8 +70,40 @@ async function setup() {
   const callback = on.mock.calls.find(([name]) => name === 'create')![1] as (
     file: TAbstractFile
   ) => Promise<void>
-  return { ...env, callback, file: env.app.vault.getFileByPath('Notes/empty.md')! }
+  return { ...env, callback, workspaceOn, file: env.app.vault.getFileByPath('Notes/empty.md')! }
 }
+
+describe('aliases created from the editor menu', () => {
+  // BUG: duplicate checking assumes the cached aliases value is an array.
+  it('preserves a scalar alias while adding a new one', async () => {
+    const env = await setup(true)
+    const file = env.app.vault.getFileByPath('Notes/content.md')!
+    await env.app.vault.modify(file, '---\naliases: Existing label\n---\nkeep')
+    env.app.setFrontmatter(file.path, { aliases: 'Existing label' })
+    const listener = env.workspaceOn.mock.calls
+      .filter(([name]) => name === 'editor-menu')
+      .at(-1)![1]
+    let click!: () => Promise<void>
+    const item = {
+      setTitle: () => item,
+      setIcon: () => item,
+      onClick: (fn: typeof click) => {
+        click = fn
+        return item
+      },
+    }
+    listener(
+      { addItem: (fn: (entry: typeof item) => void) => fn(item) },
+      { getSelection: () => '[[Notes/content|New label]]' }
+    )
+    await click()
+    expect(env.app.metadataCache.getFileCache(file)?.frontmatter?.aliases).toEqual([
+      'Existing label',
+      'New label',
+    ])
+    expect((await env.app.vault.read(file)).endsWith('---\nkeep')).toBe(true)
+  })
+})
 
 describe('default template on newly created notes', () => {
   it('registers after layout readiness, waits the grace period and fills an empty note', async () => {
