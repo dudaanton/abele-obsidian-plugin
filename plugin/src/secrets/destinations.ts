@@ -1,6 +1,7 @@
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { RequestUrlParam } from 'obsidian'
 import { basicAuth } from '@/calendars/http'
+import { checkKeyTransport } from './keyTransport'
 import { IMAGE_API_DEFAULTS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -50,18 +51,39 @@ export function acceptDestinations(destinations: Destination[]): void {
   policy().accept(destinations)
 }
 export function pendingDestinations(settings: AbeleSettings): Destination[] {
-  return policy().pending(keyDestinations(settings))
+  const destinations = keyDestinations(settings)
+  const pending = policy().pending(destinations)
+  return destinations.filter((d) => {
+    if (pending.includes(d)) return true
+    try {
+      checkKeyTransport(d.origin)
+      return false
+    } catch {
+      return true
+    }
+  })
 }
 export function acceptIntroducedDestinations(before: Destination[], after: Destination[]): void {
   const previous = new Set(before.map((d) => JSON.stringify([d.keyId, d.origin])))
   acceptDestinations(after.filter((d) => !previous.has(JSON.stringify([d.keyId, d.origin]))))
 }
 export function checkKeyDestination(keyId: string, url: string, settings: AbeleSettings): void {
+  checkKeyTransport(url)
   policy().check(keyId, url, keyDestinations(settings))
 }
 /** Also protects service clients passed a cached or manually assembled credential header. */
 export function checkRequestDestinations(request: RequestUrlParam, settings: AbeleSettings): void {
   const headers = Object.values(request.headers ?? {})
+  if (
+    Object.entries(request.headers ?? {}).some(
+      ([name, value]) =>
+        value.replace(/^Bearer\s*/i, '').trim() &&
+        /^(authorization|proxy-authorization|cookie|x-api-key|api-key|x-auth-token|x-subscription-token)$/i.test(
+          name
+        )
+    )
+  )
+    checkKeyTransport(request.url)
   for (const keyId of new Set(keyDestinations(settings).map((d) => d.keyId))) {
     const value = secrets().get(keyId)
     if (!value) continue

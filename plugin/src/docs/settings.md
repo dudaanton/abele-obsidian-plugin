@@ -6,6 +6,10 @@ Saving an unrelated setting does not approve it. Editing the actual destination 
 settings screen does. Initial upgrade records existing destinations once; later approvals are
 device-local and never travel with settings. GitHub's connection transport is separate.
 
+Keys use HTTPS, except loopback HTTP and explicitly allowed home-network HTTP origins (port
+included). **Review key destinations** shows the unencrypted warning and lets the person allow
+or remove those exceptions. Public HTTP is not eligible. Keyless local services are unchanged.
+
 
 What the plugin's own settings are and what each group of them decides, for `read_settings` and
 `write_settings`. Paths are dotted: `tasksFolder`, `ai.chatFolder`, `ai.agents.0.name`. One

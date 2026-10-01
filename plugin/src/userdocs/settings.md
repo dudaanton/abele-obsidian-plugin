@@ -119,6 +119,12 @@ command palette, or use **AI → General → Key destinations → Review**, to a
 Changing an address yourself in its settings screen records that decision locally. Other
 devices still ask once. Existing addresses are recorded automatically on the first upgrade.
 
+Keys are sent over HTTPS. HTTP to this device's loopback address still works; a home-network
+server needs an explicit **Allow unencrypted HTTP** decision in **Review key destinations**.
+The warning explains that anyone on the network path can read the key. The exception includes
+the port, stays on this device and can be removed in the same dialog. Public HTTP addresses
+cannot receive keys. Services needing no key can still use HTTP.
+
 On desktop, a service redirect to another origin no longer receives the request's
 Authorization, API-key or cookie headers. Requests with a saved key in the redirected URL or
 body stop instead. Mobile's native request transport does not expose redirect control, so
