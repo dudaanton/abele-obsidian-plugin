@@ -68,20 +68,24 @@ export class TaskHeader {
   }
 
   async toggle() {
-    if (this.completedAt) {
-      this.completedAt = null
-    } else {
-      this.completedAt = dayjs()
+    const file = getFileByPath(this.filePath)
+    const editor = file ? getEditorForFile(file) : null
+    if (!editor) return
 
-      const task = new Task({ wikilink: pathToWikilink(this.filePath) })
-
-      await task.load()
-      await task.loadContent()
-      await task.createNewRecurrentTask()
+    const currentContent = await parseNoteContent(file, editor.getValue())
+    const task = new Task({
+      ...this,
+      wikilink: pathToWikilink(this.filePath),
+      content: currentContent.content,
+      oldProps: { ...currentContent, content: undefined },
+    })
+    try {
+      await task.toggleCompletion()
+      this.completedAt = task.completedAt
+      return await this.writeContentToEditor()
+    } finally {
       task.cleanup()
     }
-
-    return this.writeContentToEditor()
   }
 
   async addEventDate(relativeDate?: string) {

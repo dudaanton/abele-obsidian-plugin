@@ -122,21 +122,21 @@ describe('task completion in a card and in the note header', () => {
     expect(await parseNoteContent(next, await env.read(next))).toMatchObject({ due: '2028-02-03' })
   })
 
-  it('characterizes the header path: recurrence currently starts from the persisted old due date', async () => {
+  it('header recurrence starts from the completion just made, like the card', async () => {
     const env = taskHarness({ due: '2028-01-05', recurrence: 'every 3 days from completion' })
     const task = header()
     await task.load()
     await task.toggle()
     expect(env.app.vault.getMarkdownFiles().map((file) => file.path)).toEqual([
       TASK_PATH,
-      'Tasks/Water seedlings 2028-01-08.md',
+      'Tasks/Water seedlings 2028-02-03.md',
     ])
     expect(task.completedAt?.format('YYYY-MM-DD')).toBe('2028-01-31')
   })
 
   // BUG: TaskHeader.toggle sets only its own completedAt; its temporary Task reloads the
   // unchecked note and never receives that timestamp. Header/card clicks yield different dates.
-  it.fails('header recurrence from completion uses the date just completed', async () => {
+  it('header recurrence from completion uses the date just completed', async () => {
     const env = taskHarness({ due: '2028-01-05', recurrence: 'every 3 days from completion' })
     const task = header()
     await task.load()
@@ -145,6 +145,75 @@ describe('task completion in a card and in the note header', () => {
       'Tasks/Water seedlings 2028-02-03.md'
     )
   })
+
+  it.each(['card', 'header'] as const)(
+    '%s advances both endpoints from the exact completion instant when requested',
+    async (surface) => {
+      const env = taskHarness({
+        date: '2028-01-02',
+        due: '2028-01-05',
+        recurrence: 'every 2 hours from completion',
+      })
+      const task = surface === 'card' ? card() : header()
+      await task.load()
+      await task.toggle()
+      const next = env.app.vault.getMarkdownFiles().find((file) => file.path !== TASK_PATH)!
+      expect(await parseNoteContent(next, await env.read(next))).toMatchObject({
+        date: '2028-02-01',
+        due: '2028-02-01',
+      })
+      expect(task.completedAt?.format('YYYY-MM-DD HH:mm')).toBe('2028-01-31 23:30')
+    }
+  )
+
+  it('header recurrence uses the editor endpoints and body rather than the persisted note', async () => {
+    const env = taskHarness({ due: '2028-01-05', recurrence: 'every month', labels: ['garden'] })
+    env.editor.setValue(env.text().replace('2028-01-05', '2028-01-20'))
+    const task = header()
+    await task.load()
+    env.editor.setValue(env.text().replace('garden', 'orchard') + '\nUnsaved detail\n')
+    await task.toggle()
+    const next = env.app.vault.getMarkdownFiles().find((file) => file.path !== TASK_PATH)!
+    expect(await parseNoteContent(next, await env.read(next))).toMatchObject({
+      due: '2028-02-20',
+      labels: ['orchard'],
+      content: TASK_BODY.replace(/- \[x\]/gi, '- [ ]') + '\nUnsaved detail\n',
+    })
+  })
+
+  it.each(['card', 'header'] as const)(
+    '%s awaits creation of the next occurrence before completion resolves',
+    async (surface) => {
+      taskHarness({ due: '2028-01-05', recurrence: 'every day' })
+      const task = surface === 'card' ? card() : header()
+      await task.load()
+      const pending = gate()
+      const entered = gate()
+      const original = TaskNoteTemplate.prototype.createNoteWithTemplate
+      vi.spyOn(TaskNoteTemplate.prototype, 'createNoteWithTemplate').mockImplementation(
+        async function (next, focus, overwrite) {
+          if (next.taskPath !== TASK_PATH) {
+            entered.release()
+            await pending.promise
+          }
+          return original.call(this, next, focus, overwrite)
+        }
+      )
+      let finished = false
+      const completing = task.toggle().then(() => {
+        finished = true
+      })
+      try {
+        await entered.promise
+        await vi.advanceTimersByTimeAsync(0)
+        expect(finished).toBe(false)
+      } finally {
+        pending.release()
+        await completing
+      }
+      expect(finished).toBe(true)
+    }
+  )
 
   it.each([null, '', 'not a rule'])(
     'does not duplicate a task for recurrence %j',

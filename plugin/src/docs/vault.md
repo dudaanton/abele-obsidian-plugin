@@ -75,6 +75,13 @@ settings, never on the task. There is no nesting: the task's own body is its des
 
 Completion is `completed` being set. Do not add a `done` or `status` property.
 
+Completing a repeating task through its header or card creates the same next occurrence:
+advance each existing `date` and `due` by `recurrence`, or calculate them from the instant of
+completion when the rule says `from completion`. Missing endpoints remain absent. The copy
+has no `completed` property and its subtasks are unchecked; undoing completion creates no copy.
+Counted rules skip inactive periods: `every 2 weeks on Monday` advances two weeks, and
+`every 2 months on 15` advances two months after the current month's 15th.
+
 ## Calendar views in bases
 
 A `.base` file can show the notes it finds on a calendar: a view with `type: abele-calendar`.

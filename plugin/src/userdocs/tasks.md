@@ -35,6 +35,14 @@ in **Settings → Abele → Tasks**.
 A task with a `recurrence` creates its next copy when you tick it off, with the date moved on by
 the rule: daily, weekly, monthly, yearly or a rule of your own.
 
+The note header and the card checkbox work the same way. Normally each existing scheduled day
+and deadline advances from its own date. Add `from completion` to calculate the next dates from
+when you tick the task off instead. The new copy has unchecked subtasks; undoing the original's
+completion does not create another copy.
+
+Counted rules respect the interval: `every 2 weeks on Monday` skips the intervening week,
+and `every 2 months on 15` skips the intervening month after the current month's 15th.
+
 ## Priority and labels
 
 `priority` is `low`, `medium` or `high`. It puts a task higher in the list of tasks without a

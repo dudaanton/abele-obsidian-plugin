@@ -238,7 +238,8 @@ export class Task {
     }
   }
 
-  async toggle() {
+  /** Shared completion transition; each surface persists the original note in its own way. */
+  async toggleCompletion() {
     if (this.completedAt) {
       this.completedAt = null
     } else {
@@ -246,9 +247,12 @@ export class Task {
       if (!this.content) {
         await this.loadContent()
       }
-      this.createNewRecurrentTask()
+      await this.createNewRecurrentTask()
     }
+  }
 
+  async toggle() {
+    await this.toggleCompletion()
     return this.writeTaskToFile()
   }
 
