@@ -329,7 +329,7 @@ export class Task {
       if (this.date && this.date.isBefore(this.due, 'day')) {
         // adding all the dates between date and due
         let current = this.date.add(1, 'day')
-        while (current.isBefore(this.due)) {
+        while (current.isBefore(this.due, 'day')) {
           dates.push(current.format(DATE_FORMAT))
           current = current.add(1, 'day')
         }

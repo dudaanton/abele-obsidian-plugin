@@ -90,7 +90,7 @@ describe('task dates and ordering', () => {
 
   // BUG: the range loop compares instants, then unconditionally appends the due day again.
   // Event 09:00 on Monday, due 17:00 Tuesday yields Tuesday twice to calendar/list consumers.
-  it.fails('lists a timed due day only once', () => {
+  it('lists a timed due day only once', () => {
     const task = new Task({
       wikilink: '[[Seed]]',
       date: dayjs('2028-01-03 09:00'),
