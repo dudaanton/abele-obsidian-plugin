@@ -34,11 +34,14 @@ function cleanParsedPages(book: EPUB): void {
 }
 
 /** What stands in for a chapter in a format no page can be safely drawn from. */
-const UNSHOWN_CHAPTER = sanitizePage(
-  '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Not shown</title></head>' +
-    '<body><p>This part of the book is in a format the reader does not show.</p></body></html>',
-  MIME.XHTML
-).data
+let unshownChapter: string | undefined
+function fallbackChapter(): string {
+  return (unshownChapter ??= sanitizePage(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Not shown</title></head>' +
+      '<body><p>This part of the book is in a format the reader does not show.</p></body></html>',
+    MIME.XHTML
+  ).data)
+}
 
 interface ManifestItem {
   href: string
@@ -92,9 +95,9 @@ function replaceChaptersThatAreNotPages(book: EPUB): () => void {
       }
       continue
     }
-    section.load = () => (unshown ??= pageUrl(UNSHOWN_CHAPTER))
+    section.load = () => (unshown ??= pageUrl(fallbackChapter()))
     section.unload = () => {}
-    section.createDocument = () => new DOMParser().parseFromString(UNSHOWN_CHAPTER, MIME.XHTML)
+    section.createDocument = () => new DOMParser().parseFromString(fallbackChapter(), MIME.XHTML)
   }
   return () => {
     for (const url of urls) URL.revokeObjectURL(url)

@@ -11,20 +11,25 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
-use([
-  LineChart,
-  BarChart,
-  PieChart,
-  HeatmapChart,
-  ScatterChart,
-  CalendarComponent,
-  GridComponent,
-  TooltipComponent,
-  LegendComponent,
-  TitleComponent,
-  VisualMapComponent,
-  CanvasRenderer,
-])
+let registered = false
+function ensureRegistered() {
+  if (registered) return
+  use([
+    LineChart,
+    BarChart,
+    PieChart,
+    HeatmapChart,
+    ScatterChart,
+    CalendarComponent,
+    GridComponent,
+    TooltipComponent,
+    LegendComponent,
+    TitleComponent,
+    VisualMapComponent,
+    CanvasRenderer,
+  ])
+  registered = true
+}
 
 const THEME_NAME = 'obsidian-abele'
 
@@ -134,6 +139,7 @@ function buildTheme(): Record<string, any> {
 
 /** Initialize an ECharts instance with the Obsidian theme applied */
 export function echartsInit(el: HTMLElement): EChartsType {
+  ensureRegistered()
   registerTheme(THEME_NAME, buildTheme())
   return init(el, THEME_NAME)
 }

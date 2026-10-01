@@ -125,7 +125,8 @@ function markerElement(el: HTMLElement, colour: string): HTMLElement {
  * Draws the map and hands back the way to take it down again.
  *
  * Asynchronous because of the dynamic imports; callers that are torn down before it resolves
- * get a handle that has already disposed of everything.
+ * get a handle that has already disposed of everything. These imports are inlined into the
+ * one-file release: they defer map/worker construction, not bundled module evaluation.
  */
 export async function renderMap(el: HTMLElement, config: MapConfig): Promise<MapHandle> {
   const [maplibre, worker] = await Promise.all([
