@@ -19,6 +19,7 @@
 import type { Component } from 'obsidian'
 import { renderUntrustedMarkdown, type RenderPolicy } from '@/markdown/renderUntrusted'
 import { guardGithubImages } from './remoteImages'
+import { guardGithubMarkup } from './markupSafety'
 import { prepareMarkdown, finishCode } from '@/markdown/untrustedCode'
 export { ZWSP, guardInlineCode } from '@/markdown/untrustedCode'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -43,6 +44,7 @@ export function githubPolicy(repo: RepoFile, approved = new Set<string>()): Rend
   return {
     github: true,
     before: (el) => {
+      guardGithubMarkup(el)
       for (const embed of Array.from(el.querySelectorAll('.internal-embed')))
         embed.classList.add('is-loaded')
       guardGithubImages(el, repo, approved)

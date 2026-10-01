@@ -7,6 +7,10 @@ Images hosted by GitHub (or the repository's Enterprise server) load normally. I
 other sites, including README badges, appear as buttons naming the site; tap one to load that
 image. This applies to files, comments and GitHub snippets. It does not change images in AI replies.
 
+GitHub markup cannot embed frames or forms. Inline styling keeps only text colour, background
+colour and alignment, so a page cannot position a fake window over Obsidian. Some unusual
+README layouts therefore look simpler here.
+
 ## Turning it on
 
 The integration is off until you turn it on in **Settings → Abele → GitHub**. Without a token only

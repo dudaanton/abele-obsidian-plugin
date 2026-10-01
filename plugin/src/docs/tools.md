@@ -10,7 +10,8 @@ blocks and inline queries as code, without executing them. Do not rely on Datavi
 processors to calculate a reply. Abele's own chart, map and gallery output and Mermaid diagrams
 remain available in chat and scripts. Ordinary notes keep their processors; remote images in
 replies still load normally. In GitHub text only, third-party images and badges wait behind a
-button naming their host; GitHub-hosted and repository images load automatically.
+button naming their host; GitHub-hosted and repository images load automatically. GitHub
+frames and forms are removed, and inline styling keeps only colour and alignment.
 
 ## Files
 
