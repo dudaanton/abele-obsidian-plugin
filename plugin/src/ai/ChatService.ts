@@ -187,12 +187,12 @@ export class ChatService {
           // One conversation per turn after the active one is usable, not a chain of parses
           // that delays its first frame. Completion still means every saved tab is hydrated.
           await new Promise<void>((resolve) => {
-            const timer = setTimeout(() => {
+            const timer = window.setTimeout(() => {
               this.continueRestore = null
               resolve()
             }, 0)
             this.continueRestore = () => {
-              clearTimeout(timer)
+              window.clearTimeout(timer)
               resolve()
             }
           })
