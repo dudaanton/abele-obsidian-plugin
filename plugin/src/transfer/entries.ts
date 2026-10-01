@@ -133,6 +133,7 @@ export const SECTIONS: Section[] = [
       'rewindLimitMb',
       'commentAgentId',
       'commentFolder',
+      'skillsFolder',
       'braveSearchApiKey',
       'defaultImageModel',
       'systemPrompt',
@@ -335,10 +336,15 @@ export const SECTIONS: Section[] = [
     kind: 'list',
     id: 'github-connections',
     label: 'GitHub connections',
-    read: (settings) => settings.github?.connections ?? (settings.github ? githubSettingsFrom(settings.github).connections : []),
+    read: (settings) =>
+      settings.github?.connections ??
+      (settings.github ? githubSettingsFrom(settings.github).connections : []),
     write: (settings, items) => {
       // A partial batch must not invent a default that overrides a later arriving default.
-      settings.github = { ...(settings.github ?? githubSettingsFrom()), connections: items as GithubConnection[] }
+      settings.github = {
+        ...(settings.github ?? githubSettingsFrom()),
+        connections: items as GithubConnection[],
+      }
     },
     secretsOf: (item) =>
       (item as GithubConnection).keyId ? [(item as GithubConnection).keyId] : [],
@@ -506,7 +512,10 @@ export function applyEntries(
   // settings are JSON on disk anyway, so nothing survives the trip that was not already there.
   const next = JSON.parse(JSON.stringify(settings)) as AbeleSettings
 
-  const arriving = settingsOnly(entries).sort((a,b)=>Number(a.section==='github-connections')-Number(b.section==='github-connections'))
+  const arriving = settingsOnly(entries).sort(
+    (a, b) =>
+      Number(a.section === 'github-connections') - Number(b.section === 'github-connections')
+  )
   for (const entry of arriving) {
     if (entry.section !== 'github-connections') continue
     const c = entry.data as Partial<GithubConnection> | null
@@ -577,8 +586,10 @@ export function applyEntries(
     }
     const bindSettings = (value: ReturnType<typeof githubSettingsFrom>) => {
       for (const connection of value.connections) bind(connection.keyId, connection.server)
-      bind(value.notifications.boundKeyId ?? value.notifications.keyId,
-        value.notifications.boundServer ?? value.server)
+      bind(
+        value.notifications.boundKeyId ?? value.notifications.keyId,
+        value.notifications.boundServer ?? value.server
+      )
     }
     // A transfer without keys leaves local/synced secrets in their slots. Validate against
     // the pre-transfer bindings too: replacing a row (or a whole section) cannot erase the

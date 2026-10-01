@@ -80,7 +80,7 @@ import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { isScriptPath } from '@/scripting/scriptPath'
 import { createEditSelectionTool } from './tools/EditSelectionTool'
-import { loadSkillContent } from './tools/SkillTool'
+import { loadSkillContent, skillNeedsApproval } from './tools/SkillTool'
 import type { ToolContext } from './toolContext'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
@@ -884,6 +884,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // Bound to this chat's agent, so `remember` writes where this chat's prompt reads from.
     const allTools = createAgentTools({
       agentId: agent?.id,
+      scope: this.scopeResolver,
       githubApproval:
         this.kind === 'run'
           ? undefined
@@ -1033,6 +1034,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     // Out-of-scope file access always requires approval, whatever the mode says about writes.
     if (this.outOfScopePath(toolName, args)) return true
+
+    if (
+      toolName === 'skill' &&
+      skillNeedsApproval(args?.name, this.agent.value, this.scopeResolver)
+    )
+      return true
 
     // Core read tools: never need approval
     if (ChatSession.READ_TOOLS.includes(toolName)) return false
@@ -1479,7 +1486,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         this.toolAbortController = controller
         this.isExecutingTool.value = true
         try {
-          await this.executeCurrentPendingTool(head?.args, controller.signal)
+          await this.executeCurrentPendingTool(head?.args, controller.signal, !!head)
         } finally {
           this.toolAbortController = null
         }
@@ -1521,7 +1528,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   private async executeCurrentPendingTool(
     modifiedArgs?: Record<string, unknown>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    approved = false
   ): Promise<void> {
     const tc = this.pendingToolCalls.value[0]
     if (!tc) return
@@ -1556,7 +1564,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     let toolResult: AgentToolResult
     let isError = false
     try {
-      toolResult = await tool.execute(tc.id, args, signal)
+      toolResult = await tool.execute(tc.id, args, signal, {
+        scope: this.scopeResolver,
+        interactive: this.kind !== 'run',
+        approved,
+      })
     } catch (err: unknown) {
       toolResult = {
         content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }],

@@ -230,7 +230,11 @@ the agents that need it.
 ## Skills and prompts
 
 A **skill** is a note with `type: abele-skill` that teaches an agent how to do something. The
-agent loads it when a task needs it. Each agent may use all skills, none, or a chosen few.
+agent loads it when a task needs it. Set **Skills folder** on the AI **General** tab for skills
+offered to all agents, or keep a skill inside the agent's scope. Each agent may use all of
+those skills, none, or a chosen few. Other skill notes do not appear in its tool instructions;
+loading one asks you first, even with automatic permissions. Choosing a skill yourself from
+the picker or typing its slash command still works.
 
 A **prompt** is a note with `type: abele-prompt`: text you insert into a chat with `/prompt`. Its
 `{{ placeholders }}` become fields to fill in first.

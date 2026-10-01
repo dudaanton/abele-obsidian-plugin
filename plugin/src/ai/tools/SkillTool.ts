@@ -2,6 +2,10 @@ import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
 import { describedLazily } from './lazyDescription'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { AgentRegistry } from '../agents/AgentRegistry'
+import type { AgentDefinition } from '../agents/types'
+import type { ScopeResolver } from '../ScopeResolver'
 
 export interface SkillInfo {
   path: string
@@ -26,6 +30,25 @@ export function discoverSkills(): SkillInfo[] {
     }
   }
   return results.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** Instructions are offered only from the chosen folder or the caller's scope. */
+export function offeredSkills(agent: AgentDefinition | null, scope?: ScopeResolver): SkillInfo[] {
+  const folder = (AbeleConfig.getInstance().ai?.skillsFolder ?? '').trim().replace(/^\/+|\/+$/g, '')
+  const reachable = discoverSkills().filter(
+    (skill) => (folder && skill.path.startsWith(`${folder}/`)) || scope?.isInScope(skill.path)
+  )
+  return agent ? AgentRegistry.getInstance().visibleSkills(agent, reachable) : reachable
+}
+
+export function skillNeedsApproval(
+  name: unknown,
+  agent: AgentDefinition | null,
+  scope: ScopeResolver
+): boolean {
+  return (
+    typeof name === 'string' && !offeredSkills(agent, scope).some((skill) => skill.name === name)
+  )
 }
 
 export async function loadSkillContent(skillName: string): Promise<string | null> {
@@ -56,7 +79,10 @@ Available skills:
 ${list}`
 }
 
-export function createSkillTool(): AgentTool {
+export function createSkillTool(
+  options: { agentId?: string; scope?: ScopeResolver } = {}
+): AgentTool {
+  const agentOf = (id = options.agentId) => (id ? AgentRegistry.getInstance().get(id) : null)
   const tool: Omit<AgentTool, 'description'> = {
     name: 'skill',
     label: 'Skill',
@@ -67,13 +93,19 @@ export function createSkillTool(): AgentTool {
       },
       required: ['name'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const skillName = params.name as string
       if (!skillName) throw new Error('Missing required parameter: name')
 
+      const agent = agentOf(ctx?.agentId)
+      if (ctx && !ctx.approved && skillNeedsApproval(skillName, agent, ctx.scope)) {
+        throw new Error(
+          `Skill "${skillName}" requires approval: it is not offered by this agent's skills folder, scope and selection.`
+        )
+      }
       const content = await loadSkillContent(skillName)
       if (content === null) {
-        const available = discoverSkills()
+        const available = offeredSkills(agent, ctx?.scope ?? options.scope)
           .map((s) => s.name)
           .join(', ')
         throw new Error(`Skill "${skillName}" not found. Available: ${available || 'none'}`)
@@ -82,10 +114,7 @@ export function createSkillTool(): AgentTool {
       return { content: [{ type: 'text', text: content }] }
     },
   }
-  return describedLazily(tool, describe)
-}
-
-/** The skills in the vault — none yet while the settings load, before the app is handed over. */
-function describe(): string {
-  return buildDescription(GlobalStore.getInstance().app ? discoverSkills() : [])
+  return describedLazily(tool, () =>
+    buildDescription(GlobalStore.getInstance().app ? offeredSkills(agentOf(), options.scope) : [])
+  )
 }

@@ -48,6 +48,7 @@ import { githubSettings } from '@/github/GithubService'
 import { createMcpTools } from '../mcp/tools'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import type { ToolContext } from '../toolContext'
+import type { ScopeResolver } from '../ScopeResolver'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -210,6 +211,7 @@ export interface AgentToolsOptions {
    * that happens to be open, which may be on a different agent entirely.
    */
   agentId?: string
+  scope?: ScopeResolver
 }
 
 /**
@@ -264,7 +266,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createReadImageTool(),
     createLookAtDrawingTool(),
     createFetchTool(),
-    createSkillTool(),
+    createSkillTool({ agentId: options.agentId, scope: options.scope }),
     createGenerateImageTool(),
     createEditImageTool(),
     createEvalJsTool(),

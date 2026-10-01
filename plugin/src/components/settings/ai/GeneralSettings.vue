@@ -5,8 +5,15 @@
     </Setting>
 
     <template v-if="enabled">
-      <Setting name="Key destinations" desc="Review addresses changed outside this device before sending keys there.">
-        <Button text="Review" tooltip="Review and confirm where this device sends keys" @click="reviewKeyDestinations" />
+      <Setting
+        name="Key destinations"
+        desc="Review addresses changed outside this device before sending keys there."
+      >
+        <Button
+          text="Review"
+          tooltip="Review and confirm where this device sends keys"
+          @click="reviewKeyDestinations"
+        />
       </Setting>
       <Section title="Providers">
         <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">
@@ -218,6 +225,19 @@
             :model-value="commentFolder"
             placeholder="AI/Comments"
             @update:model-value="updateField('commentFolder', $event)"
+          />
+        </Setting>
+      </Section>
+
+      <Section title="Skills">
+        <Setting
+          name="Skills folder"
+          desc="Skills here are offered to every agent. Elsewhere, only skills in the chat's scope are offered; loading another skill asks first. The agent's skill selection still applies."
+        >
+          <Input
+            :model-value="skillsFolder"
+            placeholder="AI/Skills"
+            @update:model-value="updateField('skillsFolder', $event)"
           />
         </Setting>
       </Section>
@@ -470,11 +490,18 @@
                 />
                 <Icon icon="copy" tooltip="Copy the key" @click="copySecret(secret.keyId)" />
               </div>
-              <Setting name="Allowed addresses" desc="Add an address from a request's confirmation. Each saved-key request still asks.">
+              <Setting
+                name="Allowed addresses"
+                desc="Add an address from a request's confirmation. Each saved-key request still asks."
+              >
                 <div>
                   <div v-for="origin in secret.allowedOrigins || []" :key="origin">
                     <span>{{ origin }}</span>
-                    <Button text="Remove" tooltip="Remove this address from the key's allowed list" @click="removeSecretOrigin(sIdx, origin)" />
+                    <Button
+                      text="Remove"
+                      tooltip="Remove this address from the key's allowed list"
+                      @click="removeSecretOrigin(sIdx, origin)"
+                    />
                   </div>
                   <span v-if="!secret.allowedOrigins?.length">None yet</span>
                 </div>
@@ -688,6 +715,7 @@ const migrateChats = async () => {
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
 const chatFolder = ref(config.ai.chatFolder)
+const skillsFolder = ref(config.ai.skillsFolder ?? '')
 const rewindLimitMb = ref(config.ai.rewindLimitMb ?? DEFAULT_REWIND_LIMIT_MB)
 const commentAgentId = ref(config.ai.commentAgentId ?? '')
 const commentFolder = ref(config.ai.commentFolder ?? DEFAULT_AI_SETTINGS.commentFolder)
@@ -781,6 +809,7 @@ const save = debounce(async () => {
     rewindLimitMb: rewindLimitMb.value,
     commentAgentId: commentAgentId.value,
     commentFolder: commentFolder.value,
+    skillsFolder: skillsFolder.value.trim().replace(/^\/+|\/+$/g, ''),
     braveSearchApiKey: braveSearchApiKey.value,
     imageProviders: JSON.parse(JSON.stringify(imageProviders.value)),
     defaultImageModel: defaultImageModel.value,
@@ -1093,7 +1122,9 @@ const removeSecret = (idx: number) => {
 }
 
 const removeSecretOrigin = (idx: number, origin: string) => {
-  secrets.value[idx].allowedOrigins = (secrets.value[idx].allowedOrigins ?? []).filter((entry: string) => entry !== origin)
+  secrets.value[idx].allowedOrigins = (secrets.value[idx].allowedOrigins ?? []).filter(
+    (entry: string) => entry !== origin
+  )
   save()
 }
 
@@ -1172,7 +1203,10 @@ const fetchModels = async (pIdx: number) => {
   delete fetchError[provider.id]
 
   try {
-    const models = await client.fetchModels(provider.baseUrl, keyFor(provider.apiKeyId, provider.baseUrl, config))
+    const models = await client.fetchModels(
+      provider.baseUrl,
+      keyFor(provider.apiKeyId, provider.baseUrl, config)
+    )
     remoteModels[provider.id] = models
   } catch (err: unknown) {
     fetchError[provider.id] = err instanceof Error ? err.message : String(err)
@@ -1282,6 +1316,9 @@ const updateField = (field: string, value: string) => {
     }
     case 'commentAgentId':
       commentAgentId.value = value
+      break
+    case 'skillsFolder':
+      skillsFolder.value = value
       break
     case 'commentFolder':
       commentFolder.value = value

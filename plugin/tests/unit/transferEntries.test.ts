@@ -74,6 +74,16 @@ describe('location access travelling with agents', () => {
   })
 })
 
+describe('the skills folder travelling', () => {
+  it('round-trips with AI general settings', () => {
+    const source = settings()
+    source.ai.skillsFolder = 'Library/Skills'
+    const entry = collectEntries(source).find((e) => e.section === 'ai-general')!
+    const received = applyEntries([entry], settings())
+    expect(received.ai.skillsFolder).toBe('Library/Skills')
+  })
+})
+
 describe('what the sending side offers', () => {
   it('makes an entry of every provider, named the way the settings name it', () => {
     const entries = collectEntries(settings())

@@ -288,6 +288,8 @@ drawing cannot read is shown as it is and left alone.
 Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent how to do
 something and is loaded on demand with the `skill` tool; a prompt is a reusable piece of text
 for the person to insert into a chat. Both are ordinary notes and can be edited as such.
+Skills are offered from the configured `ai.skillsFolder` or the calling chat's scope; loading
+another asks first. The folder choice is saved with AI general settings and travels on transfer.
 
 ## Chats
 

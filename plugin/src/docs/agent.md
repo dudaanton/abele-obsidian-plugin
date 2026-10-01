@@ -146,9 +146,11 @@ rest of the draft. Drawing from a sent message attaches a new picture instead.
 
 ## Skills
 
-Skills are notes with `type: abele-skill` describing how to do something. An agent can be
-allowed all of them, none, or a chosen few. Load one with the `skill` tool when the task
-matches its name; do not paste a skill's text into a prompt by hand.
+Skills are notes with `type: abele-skill` describing how to do something. Offered skills come
+from `ai.skillsFolder` or this chat's scope, narrowed by the agent's all/none/selected choice.
+Other skill notes do not inject descriptions into the tool list. Loading one not offered asks
+for approval of that call, even under allow-all; unattended runs cannot approve it. Load a
+skill with the `skill` tool when the task matches; do not paste its text into a prompt by hand.
 
 ## Delegation
 
