@@ -1,6 +1,13 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { FormField } from './types'
 
+interface FormRequest {
+  open(): void
+}
+
+// The modal belongs to a store (and its root window), not to the script that asks for it.
+const queues = new WeakMap<GlobalStore, FormRequest[]>()
+
 /**
  * Put a form on screen and wait for an answer — `null` if it was dismissed.
  *
@@ -15,23 +22,37 @@ export function showFormModal(
 ): Promise<Record<string, string> | null> {
   signal?.throwIfAborted()
   const store = GlobalStore.getInstance()
+  const queue = queues.get(store) ?? []
+  queues.set(store, queue)
   return new Promise((resolve, reject) => {
-    const answer = (values: Record<string, string> | null) => {
+    let settled = false
+    const finish = (values: Record<string, string> | null, stopped = false) => {
+      if (settled) return
+      settled = true
       signal?.removeEventListener('abort', abort)
-      resolve(values)
-    }
-    const abort = () => {
-      // Another run may have opened its own form meanwhile; close only this one's dialog.
-      if (store.scriptFormResolve.value === answer) {
+      const active = queue[0] === request
+      queue.splice(queue.indexOf(request), 1)
+      if (active) {
         store.scriptFormModalOpened.value = false
         store.scriptFormResolve.value = null
       }
-      reject(new Error('Script stopped'))
+      if (stopped) reject(new Error('Script stopped'))
+      else resolve(values)
+      if (active) queue[0]?.open()
     }
+    const answer = (values: Record<string, string> | null) => finish(values)
+    const abort = () => finish(null, true)
+    const request: FormRequest = {
+      open: () => {
+        store.scriptFormId.value++
+        store.scriptFormFields.value = fields
+        store.scriptFormResolve.value = answer
+        store.scriptFormModalOpened.value = true
+      },
+    }
+    queue.push(request)
     signal?.addEventListener('abort', abort, { once: true })
-    store.scriptFormFields.value = fields
-    store.scriptFormResolve.value = answer
-    store.scriptFormModalOpened.value = true
+    if (queue.length === 1) request.open()
   })
 }
 

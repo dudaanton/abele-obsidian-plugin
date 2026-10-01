@@ -6,7 +6,7 @@
  * `ScriptService`, which meant anything else wanting a modal — the API reference command —
  * would have had to write those refs itself and drift from how scripts do it.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { showFormModal, showMarkdown } from '@/scripting/formModal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { FormField } from '@/scripting/types'
@@ -27,15 +27,19 @@ beforeEach(() => {
   store().scriptFormResolve.value = null
 })
 
+afterEach(() => answer(null))
+
 describe('showing a form', () => {
   // BUG: the second request replaces the shared fields and resolver, stranding the first caller.
-  it.fails('keeps two simultaneous forms in order and settles each caller once', async () => {
+  it('keeps two simultaneous forms in order and settles each caller once', async () => {
     const results: Array<unknown> = []
-    const first = showFormModal([{ name: 'first', label: 'First', type: 'text' }])
-      .then((value) => results.push(['first', value]))
+    const first = showFormModal([{ name: 'first', label: 'First', type: 'text' }]).then((value) =>
+      results.push(['first', value])
+    )
     const firstResolve = store().scriptFormResolve.value
-    const second = showFormModal([{ name: 'second', label: 'Second', type: 'text' }])
-      .then((value) => results.push(['second', value]))
+    const second = showFormModal([{ name: 'second', label: 'Second', type: 'text' }]).then(
+      (value) => results.push(['second', value])
+    )
     const secondResolve = store().scriptFormResolve.value
     try {
       expect(store().scriptFormFields.value.map((field) => field.name)).toEqual(['first'])
@@ -45,7 +49,10 @@ describe('showing a form', () => {
       expect(store().scriptFormFields.value.map((field) => field.name)).toEqual(['second'])
       store().scriptFormResolve.value?.({ second: 'two' })
       await Promise.resolve()
-      expect(results).toEqual([['first', { first: 'one' }], ['second', { second: 'two' }]])
+      expect(results).toEqual([
+        ['first', { first: 'one' }],
+        ['second', { second: 'two' }],
+      ])
     } finally {
       firstResolve?.(null)
       secondResolve?.(null)
@@ -53,6 +60,35 @@ describe('showing a form', () => {
       await Promise.all([first, second])
       store().scriptFormModalOpened.value = false
     }
+  })
+
+  it('can cancel a queued form without closing the active one', async () => {
+    const controller = new AbortController()
+    const first = showFormModal([{ name: 'first', label: 'First', type: 'text' }])
+    const cancelled = showFormModal([], undefined, controller.signal)
+    const rejected = expect(cancelled).rejects.toThrow('Script stopped')
+    controller.abort()
+    await rejected
+    expect(store().scriptFormFields.value[0].name).toBe('first')
+    expect(store().scriptFormModalOpened.value).toBe(true)
+    answer({ first: 'one' })
+    await expect(first).resolves.toEqual({ first: 'one' })
+  })
+
+  it('cancels the active form and opens a fresh instance for the next caller', async () => {
+    const controller = new AbortController()
+    const first = showFormModal([], undefined, controller.signal)
+    const rejected = expect(first).rejects.toThrow('Script stopped')
+    const id = store().scriptFormId.value
+    const staleAnswer = store().scriptFormResolve.value
+    const second = showFormModal([{ name: 'next', label: 'Next', type: 'text' }])
+    controller.abort()
+    await rejected
+    expect(store().scriptFormId.value).toBeGreaterThan(id)
+    staleAnswer?.(null)
+    expect(store().scriptFormModalOpened.value).toBe(true)
+    answer({ next: 'two' })
+    await expect(second).resolves.toEqual({ next: 'two' })
   })
 
   it('opens the modal on the fields it was given', () => {

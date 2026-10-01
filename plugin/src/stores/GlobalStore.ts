@@ -53,6 +53,7 @@ export class GlobalStore {
   public readonly migrateDataviewFieldsModalOpened = ref(false)
   public readonly migrateFromTogglModalOpened = ref(false)
   public readonly scriptFormModalOpened = ref(false)
+  public readonly scriptFormId = ref(0)
   public readonly scriptFormFields = ref<FormField[]>([])
   public readonly scriptFormResolve = ref<((result: Record<string, string> | null) => void) | null>(
     null

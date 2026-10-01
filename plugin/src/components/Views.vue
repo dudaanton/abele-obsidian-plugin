@@ -100,9 +100,9 @@
   />
   <ScriptFormModal
     v-if="scriptFormModalOpened && scriptFormResolve"
+    :key="scriptFormId"
     :fields="scriptFormFields"
     :resolve="scriptFormResolve"
-    @close="scriptFormModalOpened = false"
   />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
@@ -158,6 +158,7 @@ const {
   migrateDataviewFieldsModalOpened,
   migrateFromTogglModalOpened,
   scriptFormModalOpened,
+  scriptFormId,
   scriptFormFields,
   scriptFormResolve,
   timelineSidebarIds,
