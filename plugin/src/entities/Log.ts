@@ -106,8 +106,9 @@ export class Log {
     targetWikilinks.push(`[[${path.replace(/\.md$/, '')}`)
     targetWikilinks.push(`[[${path}`)
     targetWikilinks.push(`[[${getNameFromPath(path)}`)
+    targetWikilinks.push(`[[${getNameFromPath(path)}.md`)
 
-    return targetWikilinks
+    return targetWikilinks.flatMap((link) => [`${link}]]`, `${link}|`, `${link}#`])
   }
 
   /**

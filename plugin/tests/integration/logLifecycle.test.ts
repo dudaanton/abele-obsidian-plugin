@@ -143,6 +143,9 @@ describe('Log relatedText and content', () => {
   it.each([
     '[[Notes/Orchard]]',
     '[[Notes/Orchard.md]]',
+    '[[Orchard.md]]',
+    '[[Orchard.md|Fruit]]',
+    '[[Orchard.md#Harvest]]',
     '[[Orchard|Fruit]]',
     '[[Orchard#Harvest]]',
   ])('selects full paths, extensions, aliases and headings: %s', async (link) => {
@@ -200,7 +203,7 @@ describe('Log relatedText and content', () => {
 
   // BUG: relatedText matches link prefixes without a delimiter. A paragraph linking only
   // Orchard Annex leaks into Orchard once another paragraph really links Orchard.
-  it.fails('does not select an unrelated note with a shared name prefix', async () => {
+  it('does not select an unrelated note with a shared name prefix', async () => {
     app = useVault([
       { path: PATH, content: 'Keep [[Orchard]].\n\nDrop [[Orchard Annex]].' },
       { path: TARGET },
