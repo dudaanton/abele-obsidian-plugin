@@ -76,6 +76,26 @@ describe('reading-mode slide dividers', () => {
     expect(deck.slides).toHaveLength(2)
   })
 
+  it('replaces markers split by rendered wikilinks without consuming following prose', () => {
+    const source =
+      '---\ntype: presentation\n---\n::slide{bg="[[sample-video.mp4]]" autoplay}::\nFollowing prose'
+    const el = document.createElement('div'),
+      p = document.createElement('p'),
+      link = document.createElement('a')
+    link.textContent = 'sample-video'
+    p.append(
+      document.createTextNode('::slide{bg="'),
+      link,
+      document.createTextNode('" autoplay}::\nFollowing prose')
+    )
+    el.append(p)
+    slideDividers(el, {
+      getSectionInfo: () => ({ text: source, lineStart: 3, lineEnd: 4 }),
+    } as never)
+    expect(el.textContent).toBe('Slide 1 · content\nFollowing prose')
+    expect(el.querySelector('a')).toBeNull()
+  })
+
   it('does nothing in a normal note or rendered slide without source positions', () => {
     const el = document.createElement('div')
     const p = document.createElement('p')

@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   evalJson,
@@ -120,6 +121,7 @@ beforeAll(async () => {
   if (!onPhone())
     minimum = evalJson("require('@electron/remote').getCurrentWindow().getMinimumSize()")
   const result = await evalLong(`(async () => {
+    for(const button of document.querySelectorAll('.notice button'))if(button.textContent==='Dismiss')button.click()
     const dir=${JSON.stringify(DIR)}
     if (app.vault.getAbstractFileByPath(dir)) throw Error('sample fixture directory already exists')
     await app.vault.createFolder(dir)
@@ -218,6 +220,40 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
     expect(r.map.lost).toBe(false)
   })
 
+  it('lays out split columns, grid cells, full-bleed media and centered slides on the fixed canvas', async () => {
+    const r = JSON.parse(
+      await evalLong(`(async () => { ${PRELUDE}
+      const result={}
+      for(const [index,name] of [[1,'split'],[5,'grid'],[6,'image'],[7,'quote'],[8,'section']]) {
+        await viewer.go(index)
+        await Promise.race([new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))),wait(3000).then(()=>{throw Error('window not drawing')})])
+        const slide=active(),box=slide.getBoundingClientRect()
+        if(name==='split') {
+          const left=slide.querySelector('.abele-slide-region-left').getBoundingClientRect(),right=slide.querySelector('.abele-slide-region-right').getBoundingClientRect()
+          result.split=left.width>0 && right.width>0 && left.right<=right.left
+        }
+        if(name==='grid') {
+          const cells=[...slide.querySelectorAll('.abele-slide-region-cell')].map(el=>el.getBoundingClientRect())
+          result.grid=cells.length===4 && cells.every(c=>c.width>0 && c.height>0 && c.left>=box.left && c.right<=box.right+1 && c.bottom<=box.bottom+1)
+        }
+        if(name==='image') {
+          const image=slide.querySelector('img')
+          if(!await until(()=>image.complete && image.naturalWidth>0))throw Error('full-bleed image did not load')
+          const media=image.getBoundingClientRect()
+          result.image=Math.abs(media.width-box.width)<1 && Math.abs(media.height-box.height)<1
+        }
+        result[name+'Shot']=await picture('layout-'+name)
+      }
+      result.unchanged=await app.vault.read(leaf.view.file)===${JSON.stringify(SOURCE)}
+      return JSON.stringify(result)
+    })()`)
+    )
+    expect(r.unchanged).toBe(true)
+    expect(r.split).toBe(true)
+    expect(r.grid).toBe(true)
+    expect(r.image).toBe(true)
+  })
+
   it('previews changes beside the source editor and keeps the selected slide', async () => {
     const r = JSON.parse(
       await evalLong(`(async () => { ${PRELUDE}
@@ -234,6 +270,27 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
     expect(r.index).toBe(1)
     expect(r.source).toBe('markdown')
     expect(r.preview).toBe('abele-deck')
+  })
+
+  it('shows slide dividers in source reading mode without raw settings markers', async () => {
+    const r = JSON.parse(
+      await evalLong(`(async () => { ${PRELUDE}
+      const source=app.workspace.createLeafBySplit(leaf,'vertical')
+      await source.openFile(leaf.view.file,{state:{abeleDeckSource:true,mode:'preview'}})
+      if(!await until(()=>source.view.contentEl.querySelector('.abele-slide-divider')))throw Error('reading dividers did not render')
+      const labels=new Set([...source.view.contentEl.querySelectorAll('.abele-slide-divider')].map(el=>el.textContent))
+      const scroller=source.view.contentEl.querySelector('.markdown-preview-view')
+      scroller.scrollTop=scroller.scrollHeight
+      if(!await until(()=>[...source.view.contentEl.querySelectorAll('.abele-slide-divider')].some(el=>el.textContent==='Slide 9 · section')))throw Error('last reading divider did not render after scrolling')
+      for(const el of source.view.contentEl.querySelectorAll('.abele-slide-divider'))labels.add(el.textContent)
+      // MarkdownView keeps its raw editor buffer too; the reading renderer is the audience here.
+      const result={labels:[...labels],raw:scroller.textContent.includes('::slide{'),rawNodes:[...scroller.querySelectorAll('p')].filter(el=>el.textContent.includes('::slide{')).map(el=>el.outerHTML)}
+      source.detach();return JSON.stringify(result)
+    })()`)
+    )
+    expect(r.labels).toContain('Slide 2 · split')
+    expect(r.labels).toContain('Slide 9 · section')
+    expect(r.raw, JSON.stringify(r)).toBe(false)
   })
 
   it('fits a phone layout, fills the window for play, and pages with taps, swipes and keyboard', async () => {
@@ -273,11 +330,24 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
       result.swipe=await until(()=>viewer.index===1)
       viewer.root.focus();viewer.root.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))
       await viewer.ready;result.keyboard=viewer.index===8
+      result.windowPrint=typeof window.print
+      if(window.__e2eHost) {
+        try {
+          await window.__e2eHost.orientation('landscape')
+          if(!await until(()=>window.innerWidth>window.innerHeight))throw Error('phone did not turn')
+          await Promise.race([new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))),wait(3000).then(()=>{throw Error('window not drawing')})])
+          const box=active().getBoundingClientRect()
+          result.landscape={ratio:box.width/box.height,fits:box.left>=0 && box.right<=window.innerWidth+1 && box.bottom<=window.innerHeight+1}
+          result.landscapeShot=await picture('phone-landscape')
+        } finally { await window.__e2eHost.orientation('portrait') }
+      }
       viewer.root.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
       result.restored=viewer.root.parentElement===leaf.view.contentEl
       return JSON.stringify(result)
     })()`)
     )
+    mkdirSync(SHOTS, { recursive: true })
+    writeFileSync(`${SHOTS}/platform-findings.json`, JSON.stringify(r, null, 2))
     expect(r.fill).toBeCloseTo(1, 2)
     expect(r.ratio).toBeCloseTo(16 / 9, 2)
     expect(r.outside).toBe(false)
@@ -286,5 +356,9 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
     expect(r.swipe, JSON.stringify(r)).toBe(true)
     expect(r.keyboard).toBe(true)
     expect(r.restored).toBe(true)
+    if (onPhone()) {
+      expect(r.landscape.ratio).toBeCloseTo(16 / 9, 2)
+      expect(r.landscape.fits).toBe(true)
+    }
   })
 })

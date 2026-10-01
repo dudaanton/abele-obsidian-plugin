@@ -36,24 +36,32 @@ export function slideDividers(el: HTMLElement, ctx: MarkdownPostProcessorContext
       slide.markerLine <= info.lineEnd
     ) {
       const paragraphs = el.matches('p') ? [el] : Array.from(el.querySelectorAll('p'))
-      for (const p of paragraphs) {
-        for (const node of Array.from(p.childNodes)) {
-          if (
-            node.nodeType !== Node.TEXT_NODE ||
-            !node.textContent?.includes(lines[slide.markerLine].trim())
-          )
-            continue
-          const marker = lines[slide.markerLine].trim()
-          const text = node.textContent!
-          const at = text.indexOf(marker)
-          node.replaceWith(
-            el.ownerDocument.createTextNode(text.slice(0, at)),
-            divider(),
-            el.ownerDocument.createTextNode(text.slice(at + marker.length))
-          )
-          break
-        }
-      }
+      for (const p of paragraphs) replaceRenderedMarker(p, divider)
     }
   })
+}
+
+/** Wikilinks inside a directive become anchors, so the marker can span several DOM text nodes.
+ * Delete exactly its rendered text range, keeping any prose on the next line in the paragraph. */
+function replaceRenderedMarker(p: HTMLElement, divider: () => HTMLElement): void {
+  const marker = /^\s*::slide(?:\{(?:[^"'{}]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')*\})?::/.exec(
+    p.textContent ?? ''
+  )
+  if (!marker) return
+  const doc = p.ownerDocument
+  const walker = doc.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+  let remaining = marker[0].length
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const length = node.textContent?.length ?? 0
+    if (remaining > length) {
+      remaining -= length
+      continue
+    }
+    const range = doc.createRange()
+    range.setStart(p, 0)
+    range.setEnd(node, remaining)
+    range.deleteContents()
+    p.prepend(divider())
+    return
+  }
 }
