@@ -180,127 +180,131 @@ export default class AbelePlugin extends Plugin {
 
   async onload() {
     markLoad('onloadStart')
-    // Every step below runs on its own: one that throws is named in the console and the rest of
-    // the start goes on, instead of leaving the sidebars and everything after it unregistered.
-    beginStartup()
-    // First, so it runs before every other layout-ready callback registered below.
-    this.app.workspace.onLayoutReady(() => markLoad('layoutStart'))
-    dayjs.extend(weekday)
-    dayjs.extend(updateLocale)
-    dayjs.extend(dayOfYear)
+    try {
+      // Every step below runs on its own: one that throws is named in the console and the rest of
+      // the start goes on, instead of leaving the sidebars and everything after it unregistered.
+      beginStartup()
+      // First, so it runs before every other layout-ready callback registered below.
+      this.app.workspace.onLayoutReady(() => markLoad('layoutStart'))
+      dayjs.extend(weekday)
+      dayjs.extend(updateLocale)
+      dayjs.extend(dayOfYear)
 
-    AbeleConfig.getInstance().init(this)
-    ;(window as any).process = (window as any).process || {
-      env: { NODE_ENV: 'production' },
-    } // Ensure process is defined for Node.js compatibility
+      AbeleConfig.getInstance().init(this)
+      ;(window as any).process = (window as any).process || {
+        env: { NODE_ENV: 'production' },
+      } // Ensure process is defined for Node.js compatibility
 
-    await startupStepAsync('settings', () => AbeleConfig.getInstance().loadSettings())
-    // Settings were just replaced wholesale; anything resolving an agent must see the new set.
-    startupStep('agents', () => AgentRegistry.getInstance().notifyConfigReloaded())
+      await startupStepAsync('settings', () => AbeleConfig.getInstance().loadSettings())
+      // Settings were just replaced wholesale; anything resolving an agent must see the new set.
+      startupStep('agents', () => AgentRegistry.getInstance().notifyConfigReloaded())
 
-    // Before anything asks for a key. Opening costs one decryption: the passphrase was turned
-    // into a key when this device was unlocked, not now.
-    const secretStore = createPluginSecrets(this)
-    setSecrets(secretStore)
-    await startupStepAsync('synced secrets', () =>
-      secretStore.load().catch((e) => {
-        console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)
-      })
-    )
-    // After the store: a token moved out of the settings lands in it when it is open here.
-    await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
+      // Before anything asks for a key. Opening costs one decryption: the passphrase was turned
+      // into a key when this device was unlocked, not now.
+      const secretStore = createPluginSecrets(this)
+      setSecrets(secretStore)
+      await startupStepAsync('synced secrets', () =>
+        secretStore.load().catch((e) => {
+          console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)
+        })
+      )
+      // After the store: a token moved out of the settings lands in it when it is open here.
+      await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
 
-    // Apply body classes from settings
-    if (AbeleConfig.getInstance().fullWidthSidebars) {
-      document.body.classList.add('abele-full-width-sidebars')
-    }
-    if (AbeleConfig.getInstance().halfWidthSidebarsOnTablet) {
-      document.body.classList.add('abele-half-width-sidebars')
-    }
-    setKeyboardDiagnostics(AbeleConfig.getInstance().keyboardDiagnostics)
-
-    // The store takes the week start and the rest of what it draws from out of the settings.
-    startupStep('store', () => GlobalStore.getInstance().init(this.app))
-    // Under every tool that writes, so a chat can take back what its agent changed.
-    startupStep('change tracker', () => ChangeTracker.install(this.app))
-
-    // External calendars: kept events at layout-ready, then read over the network on a timer.
-    startupStep('calendars', () => startCalendars(this))
-
-    // Development builds expose plugin internals to the e2e suite, which drives the app
-    // through `obsidian eval`. Vite inlines NODE_ENV, so in a production build this folds to
-    // `if (false)` and the import is tree-shaken away. It must stay a static import: a
-    // dynamic one makes Rollup emit a separate chunk, and the install scripts copy only
-    // main.js, which would ship a stub that cannot resolve its own bundle.
-    if (process.env.NODE_ENV !== 'production') {
-      exposeTestApi(this)
-    }
-
-    // Vault files and metadata cache are not fully available during onload().
-    // Deferring TasksList creation until layout is ready ensures getMarkdownFiles()
-    // and getFileCache() return complete data.
-    // One step each: an index that throws no longer keeps the ones after it from being built.
-    this.app.workspace.onLayoutReady(() => {
-      startupStep('tasks index', () => GlobalStore.getInstance().initTasksList())
-      startupStep('finance index', () => GlobalStore.getInstance().initFinance())
-      startupStep('time tracking index', () => GlobalStore.getInstance().initTimeTracking())
-      void startupStepAsync('css snippets', () => SnippetService.getInstance().init())
-      if (AbeleConfig.getInstance().ai.enabled) {
-        void startupStepAsync('chat tabs', () => ChatService.getInstance().restoreTabs())
+      // Apply body classes from settings
+      if (AbeleConfig.getInstance().fullWidthSidebars) {
+        document.body.classList.add('abele-full-width-sidebars')
       }
-    })
+      if (AbeleConfig.getInstance().halfWidthSidebarsOnTablet) {
+        document.body.classList.add('abele-half-width-sidebars')
+      }
+      setKeyboardDiagnostics(AbeleConfig.getInstance().keyboardDiagnostics)
 
-    this.addSettingTab(new AbeleSettingTab(this.app, this))
+      // The store takes the week start and the rest of what it draws from out of the settings.
+      startupStep('store', () => GlobalStore.getInstance().init(this.app))
+      // Under every tool that writes, so a chat can take back what its agent changed.
+      startupStep('change tracker', () => ChangeTracker.install(this.app))
 
-    // On a phone a tap beside a field does not take its focus away, so the keyboard stays up.
-    registerFocusRelease(this)
+      // External calendars: kept events at layout-ready, then read over the network on a timer.
+      startupStep('calendars', () => startCalendars(this))
 
-    console.debug('Abele Plugin loaded.')
+      // Development builds expose plugin internals to the e2e suite, which drives the app
+      // through `obsidian eval`. Vite inlines NODE_ENV, so in a production build this folds to
+      // `if (false)` and the import is tree-shaken away. It must stay a static import: a
+      // dynamic one makes Rollup emit a separate chunk, and the install scripts copy only
+      // main.js, which would ship a stub that cannot resolve its own bundle.
+      if (process.env.NODE_ENV !== 'production') {
+        exposeTestApi(this)
+      }
 
-    startupStep('views', () => this.registerViews())
+      // Vault files and metadata cache are not fully available during onload().
+      // Deferring TasksList creation until layout is ready ensures getMarkdownFiles()
+      // and getFileCache() return complete data.
+      // One step each: an index that throws no longer keeps the ones after it from being built.
+      this.app.workspace.onLayoutReady(() => {
+        startupStep('tasks index', () => GlobalStore.getInstance().initTasksList())
+        startupStep('finance index', () => GlobalStore.getInstance().initFinance())
+        startupStep('time tracking index', () => GlobalStore.getInstance().initTimeTracking())
+        void startupStepAsync('css snippets', () => SnippetService.getInstance().init())
+        if (AbeleConfig.getInstance().ai.enabled) {
+          void startupStepAsync('chat tabs', () => ChatService.getInstance().restoreTabs())
+        }
+      })
 
-    // GitHub issues, pull requests, discussions and files in tabs of their own; off by default.
-    startupStep('github', () => registerGithub(this))
+      this.addSettingTab(new AbeleSettingTab(this.app, this))
 
-    // Books from the vault — `.epub` — in a reader tab of their own.
-    startupStep('books', () => registerReader(this))
+      // On a phone a tap beside a field does not take its focus away, so the keyboard stays up.
+      registerFocusRelease(this)
 
-    // Drawings: an SVG made by the plugin opens in a tab to draw on, pen, marker and eraser.
-    startupStep('drawings', () => registerDrawing(this))
+      console.debug('Abele Plugin loaded.')
 
-    // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
-    startupStep('line links', () => registerLineLinks(this))
+      startupStep('views', () => this.registerViews())
 
-    // Notes come back where they were left, unless opened at a place of their own.
-    startupStep('note places', () => registerNotePlaces(this))
+      // GitHub issues, pull requests, discussions and files in tabs of their own; off by default.
+      startupStep('github', () => registerGithub(this))
 
-    // Some properties drawn by the plugin: wallet balances, sums in numbers, file cards.
-    startupStep('property widgets', () => registerPropertyWidgets(this))
+      // Books from the vault — `.epub` — in a reader tab of their own.
+      startupStep('books', () => registerReader(this))
 
-    // The linter: notes checked against rules of the person's choosing, a tab listing what is wrong.
-    startupStep('linter', () => registerLinter(this))
+      // Drawings: an SVG made by the plugin opens in a tab to draw on, pen, marker and eraser.
+      startupStep('drawings', () => registerDrawing(this))
 
-    startupStep('bases views', () => this.registerBasesViews())
+      // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
+      startupStep('line links', () => registerLineLinks(this))
 
-    startupStep('vue', () => this.initializeVue())
+      // Notes come back where they were left, unless opened at a place of their own.
+      startupStep('note places', () => registerNotePlaces(this))
 
-    startupStep('editor', () => this.registerEditor())
+      // Some properties drawn by the plugin: wallet balances, sums in numbers, file cards.
+      startupStep('property widgets', () => registerPropertyWidgets(this))
 
-    startupStep('workspace events', () => this.registerWorkspaceEvents())
+      // The linter: notes checked against rules of the person's choosing, a tab listing what is wrong.
+      startupStep('linter', () => registerLinter(this))
 
-    startupStep('commands', () => this.registerCommands())
-    startupStep('changelog', () => registerChangelog(this))
+      startupStep('bases views', () => this.registerBasesViews())
 
-    // AI Agent — conditional on settings, and switched on later as often as at startup
-    startupStep('agent', () => this.syncAiFeatures())
+      startupStep('vue', () => this.initializeVue())
 
-    startupStep('links', () => this.registerLinks())
+      startupStep('editor', () => this.registerEditor())
 
-    // The very last layout-ready callback of the start: whatever reads `starting` after it is
-    // in a running session.
-    this.app.workspace.onLayoutReady(() => {
-      this.starting = false
-    })
+      startupStep('workspace events', () => this.registerWorkspaceEvents())
+
+      startupStep('commands', () => this.registerCommands())
+      startupStep('changelog', () => registerChangelog(this))
+
+      // AI Agent — conditional on settings, and switched on later as often as at startup
+      startupStep('agent', () => this.syncAiFeatures())
+
+      startupStep('links', () => this.registerLinks())
+    } finally {
+      // Last even with AI disabled or an unexpected startup failure. These bracket synchronous
+      // registration/layout work, not the asynchronous jobs launched by the callbacks.
+      this.app.workspace.onLayoutReady(() => {
+        this.starting = false
+        markLoad('layoutEnd')
+      })
+      markLoad('onloadEnd')
+    }
   }
 
   /** The panes the plugin opens: the sidebars, the code and documentation tabs. */
@@ -1343,10 +1347,6 @@ export default class AbelePlugin extends Plugin {
         void showMarkdown(SCRIPT_API_DOCS + '\n\n---\n\n' + SCRIPT_VIEW_DOCS)
       },
     })
-
-    // Last, so it runs after every other layout-ready callback registered above.
-    this.app.workspace.onLayoutReady(() => markLoad('layoutEnd'))
-    markLoad('onloadEnd')
   }
 
   onunload() {
