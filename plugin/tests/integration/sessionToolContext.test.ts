@@ -65,6 +65,36 @@ describe('concurrent tool calls', () => {
     await expect(reading).rejects.toThrow(/scope/)
   })
 
+  it('asks questions in the calling chat rather than the selected tab', async () => {
+    const project = scoped('Project')
+    const separate = scoped('Separate')
+    project.toolModes.value = { questions: 'auto' }
+    ChatService.getInstance().adoptSession(separate)
+    const own = vi.spyOn(project, 'askQuestions').mockResolvedValue(['own answer'])
+    const other = vi.spyOn(separate, 'askQuestions').mockResolvedValue(['other answer'])
+    const result = await toolOf(project, 'questions').execute('sample', {
+      questions: [{ question: 'Choose a label', options: ['one', 'two'] }],
+    })
+    expect(own).toHaveBeenCalledOnce()
+    expect(other).not.toHaveBeenCalled()
+    expect(text(result)).toContain('own answer')
+    expect(text(result)).not.toContain('other answer')
+  })
+  it('does not borrow the selected chat for an unattended questionnaire', async () => {
+    const selected = scoped('Separate')
+    ChatService.getInstance().adoptSession(selected)
+    const ask = vi.spyOn(selected, 'askQuestions').mockResolvedValue(['other answer'])
+    const { createQuestionsTool } = await import('@/ai/tools/QuestionsTool')
+    await expect(
+      createQuestionsTool().execute(
+        'sample',
+        { questions: [{ question: 'Choose a label', options: ['one'] }] },
+        undefined,
+        { scope: new ScopeResolver(), interactive: false }
+      )
+    ).rejects.toThrow(/interactive/)
+    expect(ask).not.toHaveBeenCalled()
+  })
   it('keeps files created after an await in the calling scope', async () => {
     const project = scoped('Project')
     const separate = scoped('Separate')

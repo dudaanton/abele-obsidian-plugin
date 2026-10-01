@@ -29,11 +29,12 @@ export function createQuestionsTool(): AgentTool {
       },
       required: ['questions'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const questions = params.questions as { question: string; options: string[] }[]
       if (!questions?.length) throw new Error('No questions provided')
 
-      const session = ChatService.getInstance().activeSession.value
+      if (ctx && !ctx.interactive) throw new Error('Questions require an interactive chat')
+      const session = ctx ? ctx.session : ChatService.getInstance().activeSession.value
       if (!session) throw new Error('No active session')
 
       const answers = await session.askQuestions(questions)
