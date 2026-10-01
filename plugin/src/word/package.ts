@@ -90,6 +90,12 @@ export async function saveParts(
   changed: Map<string, Uint8Array | null>
 ): Promise<Uint8Array> {
   if (!changed.size) return doc.original
+  // Validate every edited XML part before any caller can replace the source archive.
+  for (const [name, bytes] of changed)
+    if (bytes && /\.(?:xml|rels)$/.test(name)) {
+      if (bytes.length > MAX_XML) throw new Error('Document XML is too large')
+      await parseXml(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes))
+    }
   const parts: Record<string, Uint8Array> = {}
   for (const entry of doc.archive.entries) {
     const bytes = changed.has(entry.filename)

@@ -104,6 +104,15 @@ export async function parseXml(
         if (k === 'xmlns') namespaces[''] = v
         else if (k.startsWith('xmlns:')) namespaces[k.slice(6)] = v
       }
+      const expandedAttributes = new Set<string>()
+      for (const key of Object.keys(attrs)) {
+        if (key === 'xmlns' || key.startsWith('xmlns:')) continue
+        const [prefix, local] = key.includes(':') ? key.split(':') : ['', key]
+        if (prefix && !namespaces[prefix]) throw new Error('Undefined XML attribute namespace')
+        const expanded = `${prefix ? namespaces[prefix] : ''}|${local}`
+        if (expandedAttributes.has(expanded)) throw new Error('Duplicate XML attribute')
+        expandedAttributes.add(expanded)
+      }
       const [prefix, local] = name.includes(':') ? name.split(':') : ['', name]
       if (prefix && !namespaces[prefix]) throw new Error('Undefined XML namespace')
       const self = /\/\s*>$/.test(raw)

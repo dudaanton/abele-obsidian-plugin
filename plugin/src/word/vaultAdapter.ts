@@ -39,6 +39,10 @@ export async function writeWordChange(
   updated: Uint8Array,
   signal?: AbortSignal
 ): Promise<void> {
+  signal?.throwIfAborted()
+  // Both hand edits and agent writes must fail before storage changes when the result is broken.
+  await loadWordBytes(updated)
+  signal?.throwIfAborted()
   const previous = writes.get(file.path) ?? Promise.resolve()
   const saving = previous
     .catch(() => {})
