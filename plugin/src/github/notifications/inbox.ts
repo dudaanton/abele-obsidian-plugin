@@ -296,8 +296,24 @@ export class NotificationInbox {
       `/notifications/threads/${encodeURIComponent(id)}`,
       { what: 'marking the notification done' }
     )
-    // Unlike Read, Done has only one documented successful status; 304 is not a deletion.
-    if (answer.error || answer.status !== 204) this.refuse(answer)
+    // A write failure is not a failure to list notifications. Preserve SSO/policy causes
+    // instead of replacing them with generic advice to add the read scope.
+    if (answer.error || answer.status !== 204) {
+      const error = answer.error
+      let detail = error?.message ?? `Expected HTTP 204, but GitHub answered ${answer.status}.`
+      if (error?.kind === 'policy') {
+        detail = `${error.reason} Ask an organization owner to authorize this token for notifications. This API does not support fine-grained tokens.${error.githubSaid ? `\nGitHub said: "${error.githubSaid}"` : ''}`
+      } else if (answer.status === 404) {
+        detail =
+          'The notification thread was not found or is not accessible to this token. Refresh the list and check the token’s access to the repository.'
+        if (error?.githubSaid) detail += `\nGitHub said: "${error.githubSaid}"`
+      }
+      throw new GithubError(
+        error?.kind ?? 'other',
+        `Done failed for thread ${id} (HTTP ${answer.status}, ${this.separate ? 'notifications token' : 'main token'}).\n${detail}`,
+        answer.status
+      )
+    }
     for (const k of this.kept.values()) k.items = k.items.filter((n) => n.id !== id)
     this.invalidateValidators()
   }

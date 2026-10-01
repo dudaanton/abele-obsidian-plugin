@@ -51,6 +51,10 @@
       {{ accessHint }}
     </div>
 
+    <div v-if="enabled && doneError" class="abele-github-notifications__error" role="alert">
+      <GithubNotice :text="doneError" :retry="false" />
+    </div>
+
     <EmptyState v-if="!enabled">
       The GitHub integration is off. Turn it on in Abele settings → GitHub.
     </EmptyState>
@@ -116,7 +120,11 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import GithubNotice from './GithubNotice.vue'
 import { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
-import { inboxFor, type NotificationsState } from '@/github/notifications/inbox'
+import {
+  inboxFor,
+  type NotificationInbox,
+  type NotificationsState,
+} from '@/github/notifications/inbox'
 import { ago, reasonText, subjectType, type GithubNotification } from '@/github/notifications/model'
 
 /**
@@ -157,6 +165,11 @@ const items = shallowRef<GithubNotification[] | null>(null)
 /** This panel's version, not a cutoff looked up in the inbox another panel may have polled. */
 const listedAt = ref('')
 const error = ref('')
+/** A successful poll is not a successful retry of Done. */
+const doneError = ref('')
+const failedDoneId = ref('')
+/** Rows belong to the client that listed them, even if settings change before a click. */
+const displayedInbox = shallowRef<NotificationInbox | null>(null)
 const busy = ref(false)
 const truncated = ref(false)
 const accessHint = ref('')
@@ -251,8 +264,18 @@ async function refresh(force = false) {
   now.value = Date.now()
   const which = props.state.which
   const client = reader().client
+  const source = inbox()
+  const changedSource = source !== displayedInbox.value
+  if (changedSource) {
+    items.value = null
+    listedAt.value = ''
+    readHere.clear()
+    doneError.value = ''
+    failedDoneId.value = ''
+    displayedInbox.value = source
+  }
   try {
-    const page = await inbox().load(which, force)
+    const page = await source.load(which, force)
     // The list or credential changed meanwhile: this answer is not what is shown.
     if (props.enabled && client === reader().client && which === props.state.which) {
       items.value = force || !items.value ? page.items : keepInView(items.value, page.items)
@@ -278,6 +301,9 @@ watch(
     listedAt.value = ''
     error.value = ''
     accessHint.value = ''
+    doneError.value = ''
+    failedDoneId.value = ''
+    displayedInbox.value = null
     readHere.clear()
     marking.clear()
     if (props.enabled) void refresh()
@@ -295,7 +321,8 @@ function setWhich(which: string) {
 watch(
   () => props.state.which,
   (which) => {
-    const page = inbox().cachedPage(which)
+    const source = inbox()
+    const page = source === displayedInbox.value ? source.cachedPage(which) : null
     items.value = page?.items ?? null
     listedAt.value = page?.listedAt ?? ''
     readHere.clear()
@@ -310,18 +337,25 @@ function setRepo(repo: string) {
 
 /** Done on GitHub and here, including a read row retained on screen after an unread poll. */
 async function markDone(n: GithubNotification) {
-  if (busy.value || marking.has(n.id)) return
+  const source = displayedInbox.value
+  if (busy.value || marking.has(n.id) || !source) return
   busy.value = true
   marking.add(n.id)
   const client = reader().client
   try {
-    await inbox().markDone(n.id)
-    if (client !== reader().client) return
+    await source.markDone(n.id)
+    if (!props.enabled || client !== reader().client || source !== displayedInbox.value) return
     readHere.delete(n.id)
     items.value = (items.value ?? []).filter((item) => item.id !== n.id)
-    error.value = ''
+    if (failedDoneId.value === n.id) {
+      doneError.value = ''
+      failedDoneId.value = ''
+    }
   } catch (e) {
-    if (client === reader().client) error.value = e instanceof Error ? e.message : String(e)
+    if (props.enabled && client === reader().client && source === displayedInbox.value) {
+      failedDoneId.value = n.id
+      doneError.value = e instanceof Error ? e.message : String(e)
+    }
   } finally {
     marking.delete(n.id)
     finishBusy()
@@ -329,16 +363,16 @@ async function markDone(n: GithubNotification) {
 }
 
 async function markAllRead() {
-  if (busy.value || !listedAt.value) return
+  const source = displayedInbox.value
+  if (busy.value || !listedAt.value || !source) return
   busy.value = true
   const client = reader().client
-  const currentInbox = inbox()
   try {
     const before = shown.value.filter((n) => n.unread).map((n) => n.id)
-    await currentInbox.markAllRead(listedAt.value, props.state.repo)
-    if (client !== reader().client) return
+    await source.markAllRead(listedAt.value, props.state.repo)
+    if (!props.enabled || client !== reader().client || source !== displayedInbox.value) return
     for (const id of before) readHere.add(id)
-    const read = new Map((currentInbox.cached(props.state.which) ?? []).map((n) => [n.id, n]))
+    const read = new Map((source.cached(props.state.which) ?? []).map((n) => [n.id, n]))
     // Read is not Done: preserve rows retained by a poll, which are not in the API cache.
     items.value = (items.value ?? []).map((n) => read.get(n.id) ?? n)
     error.value = ''
@@ -356,8 +390,10 @@ async function markAllRead() {
 async function open(n: GithubNotification, event: MouseEvent | KeyboardEvent) {
   const pane = event instanceof MouseEvent ? paneForClick(event, false) : false
   const client = reader().client
-  const where = await inbox().open(n)
-  if (!props.enabled || client !== reader().client) return
+  const source = displayedInbox.value
+  if (!source) return
+  const where = await source.open(n)
+  if (!props.enabled || client !== reader().client || source !== displayedInbox.value) return
   if (pane === null || !where.tab) emit('external', where.url)
   else emit('open', where.url, pane)
 }
