@@ -58,7 +58,7 @@ export function createReplyRevisionTool(session: ChatSession): AgentTool {
         replyMarkdownText
       )
       const replyProposal: ReplyProposal = {
-        id,
+        id: `${session.commentId}:${id}`,
         parent: anchor.note,
         message: message.id,
         before: message.content,

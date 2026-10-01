@@ -150,6 +150,12 @@ describe('reply annotation persistence and owner decisions', () => {
     expect((await disk()).messages[0].content).toBe(TEXT)
   })
 
+  it('namespaces proposal ids by comment so independent tool calls cannot collide', async () => {
+    const first = await propose()
+    const second = await propose()
+    expect(first.proposal.id).not.toBe(second.proposal.id)
+  })
+
   it('refuses a proposal that does not cite the current owner message', async () => {
     const { child } = await propose()
     await expect(
