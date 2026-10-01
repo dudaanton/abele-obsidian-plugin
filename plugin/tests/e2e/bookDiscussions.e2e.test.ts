@@ -23,6 +23,7 @@ import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader discussions e2e'
@@ -32,7 +33,6 @@ const NOTE = `${DIR}/rich highlights.md`
 const PDF_NOTE = `${DIR}/plain highlights.md`
 const SHOTS = shotDir('abele-phone')
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const reload = async (how: string): Promise<void> => {
   await reloadApp(how)
   evalRaw(
@@ -44,16 +44,15 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  const sized = evalAsync<boolean>(`(async () => {
+    ${WAIT_PRELUDE}
+    return !!(await until(() => innerWidth === ${width} && innerHeight === ${height}))
+  })()`)
+  if (!sized) throw new Error('The window did not reach its requested size')
 }
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 8000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(100) }
-    return null
-  }
+  ${WAIT_PRELUDE}
   const comments = window.__abeleTest.CommentService.getInstance()
   const open = async (path) => {
     // A new tab in the main area, made beside a leaf there before the book tabs of the last
@@ -70,22 +69,37 @@ const PRELUDE = `
       wait(15000),
     ])
     for (const l of old) if (l !== leaf) l.detach()
-    await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 15000)
-    await wait(600)
+    if (!(await until(() => {
+      const view = leaf.view
+      const doc = view?.engine?.renderer?.getContents()[0]?.doc
+      const frame = doc?.defaultView?.frameElement?.getBoundingClientRect()
+      return view?.model?.status === 'ready' && view.reading &&
+        frame?.width > 0 && frame?.height > 0 && doc.body.getBoundingClientRect().height > 0
+    }, 15000))) throw Error('The discussion page did not draw')
     return { leaf, view: leaf.view }
   }
   const docOf = (view) => view.engine.renderer.getContents()[0].doc
+  const chapterStart = async (view, chapter) => {
+    await view.engine.goTo(view.model.toc[chapter].href)
+    if (!(await until(() => docOf(view).querySelector('h1')?.textContent === 'Chapter ' + (chapter + 1) &&
+      view.engine.renderer.page === 1 && docOf(view).body.getBoundingClientRect().height > 0)))
+      throw Error('The requested discussion chapter did not open at its start')
+  }
   /** Selects characters of the first paragraph of a chapter, as a person would. */
   const selectIn = async (view, chapter, from, to) => {
-    await view.engine.goTo(view.model.toc[chapter].href); await wait(600)
+    await chapterStart(view, chapter)
     const doc = docOf(view)
     const p = [...doc.querySelectorAll('p')].find((x) => x.textContent.length > 40)
     const range = doc.createRange(); range.setStart(p.firstChild, from); range.setEnd(p.firstChild, to)
     doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
-    await until(() => view.model.selection, 3000)
-    // The bar comes once the words have rested: it stays hidden while they are being selected.
-    await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000)
-    await wait(100)
+    // Selecting an existing mark offers that mark's bar instead of a new selection.
+    // Both bars stay hidden while the words are being selected.
+    if (!(await until(() => (view.model.selection ?? view.model.active)?.text === range.toString() && !view.model.selecting &&
+      view.contentEl.querySelector('.abele-book-selection')?.getBoundingClientRect().height > 0, 3000)))
+      throw Error('The discussion selection bar did not appear: ' + JSON.stringify({
+        expected: range.toString(), selected: (view.model.selection ?? view.model.active)?.text, selecting: view.model.selecting,
+        bar: !!view.contentEl.querySelector('.abele-book-selection'), connected: range.startContainer.isConnected,
+      }))
     return range
   }
   const askIcon = (view) => [...view.contentEl.querySelectorAll('.abele-book-selection .abele-obsidian-icon')]
@@ -246,7 +260,9 @@ describe.skipIf(!available)('discussions in books', () => {
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
       const id = view.model.highlights.find((h) => h.discussion).discussion
       await closeChat()
-      await view.engine.goTo(view.model.toc[2].href); await wait(700)
+      await chapterStart(view, 2)
+      if (!(await until(() => view.engine.renderer.getContents()[0].overlayer?.element?.querySelector('.abele-discussion-bubble'))))
+        throw Error('The discussion mark did not draw before the tap')
       const doc = docOf(view)
       const p = [...doc.querySelectorAll('p')].find((x) => x.textContent.length > 40)
       const range = doc.createRange(); range.setStart(p.firstChild, 2); range.setEnd(p.firstChild, 8)
@@ -306,12 +322,16 @@ describe.skipIf(!available)('discussions in books', () => {
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
       await closeChat()
       view.model.panelTab = 'highlights'; view.model.panel = true
-      await wait(500)
       const items = () => view.contentEl.querySelectorAll('.abele-book-highlights__item')
+      if (!(await until(() => items().length === view.model.highlights.length &&
+        view.contentEl.querySelector('.abele-book-highlights__filter select'))))
+        throw Error('The discussion panel did not list the highlights')
       const all = items().length
       const select = view.contentEl.querySelector('.abele-book-highlights__filter select')
       select.value = 'discussions'; select.dispatchEvent(new Event('change', { bubbles: true }))
-      await wait(300)
+      if (!(await until(() => items().length === view.model.highlights.filter(h => h.discussion).length &&
+        [...items()].every(item => item.querySelector('.abele-book-highlights__label .abele-obsidian-icon')))))
+        throw Error('The discussion filter did not show the discussions')
       const only = items().length
       view.contentEl.querySelector('.abele-book-highlights__item_discussion .abele-book-highlights__label .abele-obsidian-icon').click()
       const opened = await until(() => comments.open.value, 5000)
@@ -325,11 +345,22 @@ describe.skipIf(!available)('discussions in books', () => {
   })
 
   it('after the app is reloaded, the mark is drawn again and a tap opens the same chat', async () => {
-    run(`await closeChat(); app.workspace.requestSaveLayout(); await wait(1500); return {}`)
+    const saved = run<{ error?: string }>(`
+      await closeChat()
+      const book = app.workspace.getLeavesOfType('abele-book')[0]
+      app.workspace.requestSaveLayout()
+      if (!(await until(async () => {
+        const layout = JSON.parse(await app.vault.adapter.read(app.vault.configDir + '/workspace.json'))
+        const leaves = node => [node, ...(node.children || []).flatMap(leaves)]
+        return leaves(layout.main).some(node => node.id === book.id && node.state?.state?.file === ${JSON.stringify(BOOK)})
+      }))) throw Error('The discussion book tab was not saved before reload')
+      return {}
+    `)
+    expect(saved.error).toBeUndefined()
     await reload('window.location.reload()')
     const r = run<{ error?: string; bubble?: boolean; tapped?: string | null }>(`
       const { leaf, view } = await open(${JSON.stringify(BOOK)})
-      await view.engine.goTo(view.model.toc[2].href); await wait(900)
+      await chapterStart(view, 2)
       const overlay = view.engine.renderer.getContents()[0].overlayer?.element
       const bubble = !!(await until(() => overlay?.querySelector('.abele-discussion-bubble'), 5000))
       const doc = docOf(view)
@@ -359,7 +390,8 @@ describe.skipIf(!available)('discussions in books', () => {
         const buttons = [...modal.querySelectorAll('button')].map((b) => b.textContent.trim())
         ;[...modal.querySelectorAll('button')].find((b) => b.textContent.trim() === label).click()
         await done
-        await wait(500)
+        if (!(await until(() => !document.querySelector('.modal') && !view.model.highlights.some(item => item.cfi === h.cfi))))
+          throw Error('The removed discussion mark did not leave the book')
         return buttons
       }
       const plain = view.model.highlights.find((h) => h.plain)
@@ -405,7 +437,9 @@ describe.skipIf(!available)('discussions in books', () => {
       step('open')
       const { view } = await open(${JSON.stringify(PDF)})
       step('opened ' + view.model?.status + ' ' + view.model?.message)
-      if (view.model.panel) { view.model.panel = false; await wait(300) }
+      if (view.model.panel) view.model.panel = false
+      if (!(await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))))
+        throw Error('The PDF contents panel did not close')
       step('goto')
       await Promise.race([view.engine.goTo(0), wait(5000)])
       step('text')
@@ -414,14 +448,14 @@ describe.skipIf(!available)('discussions in books', () => {
         const c = view.engine?.renderer?.getContents?.() ?? []
         return { error: 'the page never drew its text: ' + JSON.stringify({ status: view.model.status, message: view.model.message, kind: view.model.kind, file: view.file?.path, contents: c.length, docs: c.map((x) => x.doc?.body?.innerHTML.slice(0, 80)), shown: view.containerEl.isShown?.(), size: [view.contentEl.clientWidth, view.contentEl.clientHeight], renderer: view.engine?.renderer?.localName }) }
       }
-      await wait(500)
+      if (!(await until(() => doc.querySelector('.textLayer span')?.getBoundingClientRect().height > 0)))
+        throw Error('The PDF discussion text did not draw')
       const span = doc.querySelector('.textLayer span')
       const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 6)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
-      await until(() => view.model.selection, 3000)
-      await wait(200)
       // The bar comes once the words have rested: it stays hidden while they are being selected.
-      await until(() => askIcon(view), 3000)
+      if (!(await until(() => view.model.selection?.text === range.toString() && !view.model.selecting && askIcon(view), 3000)))
+        throw Error('The PDF discussion selection bar did not appear')
       step('ask'); askIcon(view).click()
       const id = await until(() => view.model.highlights.find((h) => h.discussion)?.discussion, 8000)
       step('asked')
@@ -462,12 +496,15 @@ describe.skipIf(!available)('discussions in books', () => {
       await until(() => view.model.highlights.find((h) => h.discussion), 8000)
       await closeChat(); app.workspace.rightSplit.collapse()
       view.reading.clearSelection(); view.model.active = null
-      await wait(800)
+      if (!(await until(() => !view.contentEl.querySelector('.abele-book-selection') &&
+        view.engine.renderer.getContents()[0].overlayer?.element?.querySelector('.abele-discussion-bubble'))))
+        throw Error('The phone discussion mark did not appear after clearing the selection')
       const overlay = view.engine.renderer.getContents()[0].overlayer?.element
       const bubble = !!overlay?.querySelector('.abele-discussion-bubble')
       await shoot('phone-marked')
       view.model.panelTab = 'highlights'; view.model.panel = true
-      await wait(700)
+      if (!(await until(() => view.contentEl.querySelector('.abele-book-highlights__item')?.getBoundingClientRect().height > 0)))
+        throw Error('The phone discussion panel did not draw its items')
       await shoot('phone-panel')
       const items = view.contentEl.querySelectorAll('.abele-book-highlights__item').length
       view.model.panel = false
