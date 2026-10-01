@@ -43,10 +43,28 @@ const maplibre = vi.hoisted(() => {
   class NavigationControl {}
   class FullscreenControl {}
   class ScaleControl {}
-  class Marker {}
+  const markers: Marker[] = []
+  class Marker {
+    togglePopup = vi.fn()
+    constructor(readonly options: { element: HTMLElement }) {
+      markers.push(this)
+    }
+    setLngLat() {
+      return this
+    }
+    addTo() {
+      return this
+    }
+    setPopup() {
+      return this
+    }
+  }
   class Popup {
     content: HTMLElement | null = null
     setLngLat() {
+      return this
+    }
+    setText() {
       return this
     }
     setDOMContent(content: HTMLElement) {
@@ -61,6 +79,7 @@ const maplibre = vi.hoisted(() => {
   }
 
   return {
+    markers,
     controls,
     positions,
     handlers,
@@ -108,9 +127,25 @@ beforeEach(() => {
   maplibre.handlers.clear()
   maplibre.setFeatures([])
   geo.reverseGeocode.mockReset()
+  maplibre.markers.length = 0
 })
 
 describe('map controls', () => {
+  it('toggles a pin popup without forwarding the press to the base-map lookup', async () => {
+    const handle = await renderMap(document.createElement('div'), {
+      ...config,
+      points: [{ lat: 10, lon: 20, label: 'Sample point' }],
+    })
+    const marker = maplibre.markers[0]
+    const parent = document.createElement('div')
+    parent.appendChild(marker.options.element)
+    const baseClick = vi.fn()
+    parent.addEventListener('click', baseClick)
+    marker.options.element.click()
+    expect(marker.togglePopup).toHaveBeenCalledOnce()
+    expect(baseClick).not.toHaveBeenCalled()
+    handle.destroy()
+  })
   it('keeps the scale away from expanded bottom attribution on a narrow map', async () => {
     await renderMap(document.createElement('div'), config)
     const scale = maplibre.controls.find((control) => control instanceof maplibre.ScaleControl)

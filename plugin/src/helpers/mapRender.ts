@@ -12,8 +12,8 @@ import { MapLocationControl } from './mapLocationControl'
  * install with nothing configured. A style URL in the settings replaces it for anyone who
  * would rather pay their own provider.
  *
- * Everything here loads on demand. MapLibre is the largest thing in the bundle by a distance,
- * and a vault with no maps in it should never pay for parsing it.
+ * Map construction waits for the first map, but the single-file build still includes
+ * MapLibre's JavaScript. Its CSS is part of the stylesheet loaded by Obsidian.
  */
 
 const LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/bright'
@@ -165,8 +165,6 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
 
   for (const point of config.points) {
     const pin = markerElement(el, point.color || colour)
-    // A pin has its own popup. Do not also treat the same press as a request for the base map.
-    pin.addEventListener('click', (event) => event.stopPropagation())
     const marker = new maplibre.Marker({ element: pin })
       .setLngLat([point.lon, point.lat])
       .addTo(map)
@@ -174,6 +172,12 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
     if (point.label) {
       marker.setPopup(new maplibre.Popup({ offset: 12 }).setText(point.label))
     }
+    // MapLibre normally toggles via the map's delegated click. Keep the press away from
+    // the base-map lookup, but explicitly preserve that popup action before stopping it.
+    pin.addEventListener('click', (event) => {
+      marker.togglePopup()
+      event.stopPropagation()
+    })
   }
 
   let lookup = 0
