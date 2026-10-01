@@ -7,6 +7,8 @@ import { Journal, type JournalDTO } from '@/entities/Journal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { dailyJournal, useVault } from '../helpers/testEnv'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { NoteRelations } from '@/entities/NoteRelations'
+import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 
 // Match main.ts's Dayjs setup, but restore the global locale and TZ after every case.
 dayjs.extend(dayOfYear)
@@ -164,6 +166,56 @@ describe.each([0, 1, 6])('numeric weekly dates with week start %s', (weekStart) 
       }
     }
   })
+})
+
+describe('journal relation recognition after a rename', () => {
+  it.each([true, false])(
+    'uses the same default-journal rule on opening and renaming (isDefault %s)',
+    async (isDefault) => {
+      const app = useVault([
+        { path: 'Notes/sample.md', frontmatter: { type: 'note' } },
+        {
+          path: 'Tasks/Sample dated task.md',
+          frontmatter: { type: 'task', date: '2024-03-31' },
+          content: 'Sample dated task',
+        },
+      ])
+      const config = AbeleConfig.getInstance()
+      const oldJournals = config.journals
+      config.journals = [
+        new Journal(
+          dailyJournal({
+            id: 'sample-secondary',
+            type: 'secondary-journal',
+            newPathTemplate: 'Secondary/{{date}}',
+            isDefault,
+          })
+        ),
+      ]
+      const file = app.vault.getFileByPath('Notes/sample.md')!
+      const relations = new NoteRelations(file.path)
+      let reopened: NoteRelations | undefined
+      try {
+        app.emit('metadataCache', 'resolved')
+        app.setFrontmatter(file.path, { type: 'secondary-journal' })
+        await GlobalStore.getInstance().app.fileManager.renameFile(file, 'Secondary/2024-03-31.md')
+        app.emit('vault', 'rename', file, 'Notes/sample.md')
+        app.emit('metadataCache', 'changed', file)
+        app.emit('metadataCache', 'resolved')
+        reopened = new NoteRelations(file.path)
+        expect(relations.journal?.id ?? null).toBe(isDefault ? 'sample-secondary' : null)
+        expect(relations.journal?.id ?? null).toBe(reopened.journal?.id ?? null)
+        expect(date(relations.journalDate)).toBe(date(reopened.journalDate))
+        expect([...relations.tasks.keys()]).toEqual([...reopened.tasks.keys()])
+        expect(relations.tasks.size).toBe(isDefault ? 1 : 0)
+      } finally {
+        reopened?.cleanup()
+        relations.cleanup()
+        VaultWatcherWrapper.destroy()
+        config.journals = oldJournals
+      }
+    }
+  )
 })
 
 describe('journal configuration, lookup and creation', () => {
