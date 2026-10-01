@@ -49,6 +49,10 @@ export function parseDateValue(value: unknown): DateValue | null {
   const hasTime = sep !== undefined
   if (hasTime && (Number(h) > 23 || Number(mi) > 59 || (s !== undefined && Number(s) > 59)))
     return null
+  if (zone && zone !== 'Z') {
+    const offset = zone.slice(1).replace(':', '')
+    if (Number(offset.slice(0, 2)) > 23 || Number(offset.slice(2)) > 59) return null
+  }
   return {
     year,
     month,

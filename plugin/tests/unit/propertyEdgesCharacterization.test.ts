@@ -85,6 +85,21 @@ describe('date property calendar and clock edges', () => {
   it('rejects timestamps with seconds outside the clock range', () => {
     expect(parseDateValue('2028-03-01T12:00:99')).toBeNull()
   })
+
+  // BUG: timezone offsets are syntactically matched without checking clock ranges.
+  it.each(['+24:00', '-2400', '+00:60', '-0060'])(
+    'rejects timestamp timezone offset %s outside the clock range',
+    (zone) => {
+      expect(parseDateValue(`2028-03-01T12:00:00${zone}`)).toBeNull()
+    }
+  )
+
+  it.each(['+23:59', '-2359', '+00:00', '-0000', 'Z'])(
+    'accepts valid timestamp timezone offset %s',
+    (zone) => {
+      expect(parseDateValue(`2028-03-01T12:00:59${zone}`)?.zone).toBe(zone)
+    }
+  )
 })
 
 describe('priority and label coercion edges', () => {
