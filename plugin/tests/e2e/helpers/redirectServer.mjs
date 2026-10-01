@@ -21,7 +21,17 @@ sink.listen(0, '127.0.0.1', () => {
       path: req.url,
       authenticated: !!req.headers.authorization,
     })
-    if (req.url === '/same-origin' || req.url === '/api/v3/same-origin') {
+    if (req.url === '/api/graphql') {
+      let body = ''
+      req.on('data',chunk=>{body+=chunk.toString()})
+      req.on('end',()=>{
+        let parsed
+        try { parsed=JSON.parse(body) } catch { parsed=null }
+        const valid=parsed && typeof parsed==='object' && typeof parsed.query==='string'
+        res.writeHead(valid ? 200 : 400, {'Content-Type':'application/json'})
+        res.end(JSON.stringify(valid ? {data:{echo:parsed.query,variables:parsed.variables}} : {message:'Expected a JSON object'}))
+      })
+    } else if (req.url === '/same-origin' || req.url === '/api/v3/same-origin') {
       res.writeHead(302, { Location: '/landed' })
       res.end()
     } else if (req.url === '/other-origin' || req.url === '/api/v3/other-origin') {

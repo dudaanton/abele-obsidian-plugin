@@ -87,7 +87,21 @@ function desktopRequest(request: RequestUrlParam): Promise<RequestUrlResponse> {
               .filter(([, v]) => v !== undefined)
               .map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v)])
           )
-          resolve(response(r.statusCode ?? 0, headers, bytes))
+          try {
+            const encoding = headers['content-encoding']?.toLowerCase().trim()
+            let decoded = bytes
+            if (encoding && encoding !== 'identity') {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports -- Node-only HTTP content decoding; absent on mobile.
+              const zlib = (require('zlib') ?? (window as typeof window & {require?:(name:string)=>unknown}).require?.('zlib')) as typeof import('node:zlib')
+              for (const method of encoding.split(',').map(s=>s.trim()).reverse()) {
+                if (method==='gzip' || method==='x-gzip') decoded=new Uint8Array(zlib.gunzipSync(decoded))
+                else if (method==='deflate') decoded=new Uint8Array(zlib.inflateSync(decoded))
+                else if (method==='br') decoded=new Uint8Array(zlib.brotliDecompressSync(decoded))
+                else if (method!=='identity') throw new Error('Unsupported HTTP content encoding.')
+              }
+            }
+            resolve(response(r.statusCode ?? 0, headers, decoded))
+          } catch (error) { reject(error) }
         })
       }
     )
