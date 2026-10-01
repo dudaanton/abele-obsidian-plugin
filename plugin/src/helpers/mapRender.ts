@@ -94,7 +94,7 @@ function isDark(el: HTMLElement): boolean {
   return doc.body.classList.contains('theme-dark')
 }
 
-function styleFor(config: MapConfig, el: HTMLElement): string {
+export function styleFor(config: MapConfig, el: HTMLElement): string {
   if (config.style) return config.style
 
   const configured = AbeleConfig.getInstance().mapStyleUrl

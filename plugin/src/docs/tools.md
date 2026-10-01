@@ -385,7 +385,9 @@ Interactive maps have zoom, compass, fullscreen and scale controls. Pressing a p
 labelled by the base map shows its details; pressing a building or an unlabelled point resolves
 the nearest address and coordinates. A route is drawn by handing over the encoded line the routing service returned — `route`, with
 `routePrecision: 6` for Valhalla and `5` for OSRM — which is what the chat does for `route`.
-Nothing about the block needs the network except the tiles.
+A `style` URL supplied in a map block must be public HTTPS, without credentials. Local and
+HTTP styles are accepted only from the user's Maps setting, not from a note or tool result.
+Nothing about the block needs the network except its style and tiles.
 
 These are public services run on donations. They are asked one request at a time, about a second
 apart, and repeat answers come from memory rather than the network — so a long batch of lookups

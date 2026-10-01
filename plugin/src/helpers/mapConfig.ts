@@ -1,4 +1,5 @@
 import { parseYaml } from 'obsidian'
+import { publicHttpsUrl } from './networkAddress'
 
 /**
  * What a map is, before anything draws it.
@@ -203,6 +204,12 @@ export function parseMapBlock(source: string): MapConfig | { error: string } {
 
 /** The same, for a block that arrived as data rather than as text. */
 export function normalizeMapBlock(block: MapBlock): MapConfig | { error: string } {
+  if (block.style && !publicHttpsUrl(block.style)) {
+    return {
+      error:
+        'A map style in a note must use a public HTTPS address without credentials. Local or HTTP styles can be set in Settings → Maps.',
+    }
+  }
   const points = [...parsePoints(block.points), ...parsePoints(block.point)]
   const lines = parseLines(block)
   const center = block.center ? parsePoint(block.center) : null
