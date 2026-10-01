@@ -14,6 +14,7 @@ import { toolOperation, type GithubToolAccess } from './operation'
 import { clip, MAX_OUTPUT, type GithubToolOperation } from './shared'
 import { GithubError } from '@/github/client'
 import { primaryAccess } from '@/github/primaryAccess'
+import { endpoints } from '@/github/urls'
 
 const factories = [
   createGithubViewsTool,
@@ -90,12 +91,15 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           for (const candidate of operation.candidates.filter(
             (c) => c !== operation.connectionId
           )) {
+            const candidateRow=githubSettings().connections.find(c=>c.id===candidate)
+            if(!candidateRow || endpoints(candidateRow.server).api !== operation.client.endpoints.api) continue
             const next = await toolOperation(
               tool.name,
               { ...params, connection: candidate },
               access ?? { agent: () => null },
               signal
             )
+            if(next.client.endpoints.api !== operation.client.endpoints.api) throw new Error('The GitHub fallback connection changed to a different server.')
             try {
               await primaryAccess(next.client, next.target!)
             } catch (probeError) {
