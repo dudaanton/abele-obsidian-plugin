@@ -175,7 +175,7 @@ export class McpClient {
 
   private async call(method: string, params: Record<string, unknown>, signal?: AbortSignal) {
     if (signal?.aborted) throw stopped()
-    await this.ensureEra()
+    await this.withStop(() => this.ensureEra(), signal)
 
     if (this.era === 'modern') return this.modern(method, params, signal)
 
@@ -185,7 +185,7 @@ export class McpClient {
       // A legacy server that restarted has forgotten the session: begin a new one, once.
       if (error instanceof McpError && error.status === 404 && this.session) {
         this.session = null
-        await this.initialize()
+        await this.withStop(() => this.initialize(), signal)
         return this.legacy(method, params, signal)
       }
       throw error
@@ -255,7 +255,7 @@ export class McpClient {
   private async legacy(method: string, params: Record<string, unknown>, signal?: AbortSignal) {
     const id = this.nextId++
     const response = await this.withStop(
-      this.post({ jsonrpc: '2.0', id, method, params }, this.legacyHeaders()),
+      () => this.post({ jsonrpc: '2.0', id, method, params }, this.legacyHeaders()),
       signal,
       () => {
         // The legacy way to say it: a notification, answered or not.
@@ -306,7 +306,7 @@ export class McpClient {
     }
     // Modern servers take the end of the stream as the cancellation; `requestUrl` cannot end
     // one, so a stopped call is simply no longer waited for.
-    const response = await this.withStop(this.post(body, headers), signal)
+    const response = await this.withStop(() => this.post(body, headers), signal)
     return readResult(response, id)
   }
 
@@ -330,8 +330,9 @@ export class McpClient {
   }
 
   /** The request, or a rejection the moment Stop is pressed — whichever comes first. */
-  private withStop<T>(work: Promise<T>, signal?: AbortSignal, onStop?: () => void): Promise<T> {
-    if (!signal) return work
+  private withStop<T>(work: () => Promise<T>, signal?: AbortSignal, onStop?: () => void): Promise<T> {
+    if (signal?.aborted) return Promise.reject(stopped())
+    if (!signal) return work()
     return new Promise<T>((resolve, reject) => {
       const abort = () => {
         onStop?.()
@@ -339,7 +340,7 @@ export class McpClient {
       }
       if (signal.aborted) return abort()
       signal.addEventListener('abort', abort, { once: true })
-      work.then(
+      work().then(
         (value) => {
           signal.removeEventListener('abort', abort)
           resolve(value)

@@ -25,8 +25,8 @@ function connecting(legacy: boolean) {
 }
 
 describe.each([false, true])('Stop during connection (legacy: %s)', (legacy) => {
-  // BUG: ensureEra is awaited without observing the caller's cancellation signal.
-  it.fails('settles the caller while discovery is still unanswered', async () => {
+  // Discovery must observe the caller's cancellation signal.
+  it('settles the caller while discovery is still unanswered', async () => {
     const { client, gate } = connecting(legacy)
     const controller = new AbortController()
     let stopped = false
@@ -44,8 +44,8 @@ describe.each([false, true])('Stop during connection (legacy: %s)', (legacy) => 
     }
   })
 
-  // BUG: withStop receives an already-started HTTP request before checking the aborted signal.
-  it.fails('does not dispatch a stopped tool when the connection eventually completes', async () => {
+  // Completing discovery must not dispatch a tool whose caller stopped.
+  it('does not dispatch a stopped tool when the connection eventually completes', async () => {
     const { client, gate, methods } = connecting(legacy)
     const controller = new AbortController()
     const call = client.callTool('sample', {}, controller.signal)
