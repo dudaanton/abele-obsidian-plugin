@@ -9,6 +9,7 @@ import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './h
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf, buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
+import { until, WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader scroll e2e'
@@ -16,26 +17,45 @@ const LONG = `${DIR}/long.pdf`
 const PLAIN = `${DIR}/plain.pdf`
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 10000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = fn(); if (v) return v } catch {} await wait(100) }
-    return null
+  ${WAIT_PRELUDE}
+  const ready = async (fn, label) => {
+    const value = await until(fn)
+    if (!value) throw Error('Timed out: ' + label)
+    return value
   }
+  const pageReady = async (view, index = view.engine.renderer.index) => {
+    let previous = ''
+    return ready(() => {
+      const renderer = view.engine.renderer
+      if (renderer.index !== index) return false
+      const doc = renderer.getContents().find(c => c.index === index || c.index === undefined)?.doc
+      const image = doc?.querySelector('#canvas img')
+      const bounds = doc?.defaultView?.frameElement?.getBoundingClientRect()
+      if (!image?.complete || !image.naturalWidth || !bounds?.width || !bounds.height) return false
+      const position = JSON.stringify([bounds.left, bounds.top, bounds.width, bounds.height])
+      const stable = position === previous
+      previous = position
+      return stable && doc
+    }, 'PDF page ' + index + ' drawn and settled')
+  }
+  const written = async (view, path) => ready(async () => {
+    const file = window.__abeleTest.AbeleConfig.getInstance().reader.placesPath || 'abele-book-places.json'
+    const places = JSON.parse(await app.vault.adapter.read(file))
+    return Object.values(places).some(p => p.path === path && p.cfi === view.engine.lastLocation?.cfi)
+  }, 'PDF place persisted')
   const open = async (path) => {
-    const leaf = app.workspace.getLeaf('tab')
+    // Closing the last tab rebuilds its tab group on a later turn.
+    const leaf = await ready(() => app.workspace.getLeaf('tab'), 'reader tab group')
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     const view = leaf.view
-    await until(() => view.model?.status === 'ready', 15000)
-    await until(() => view.engine.renderer.getContents().some((c) => c.doc.querySelector('#canvas img')), 8000)
-    await wait(400)
+    await ready(() => view.model?.status === 'ready', 'reader ready')
+    await pageReady(view)
     return { leaf, view }
   }
   const settings = async (over) => {
     const cfg = window.__abeleTest.AbeleConfig.getInstance()
     cfg.reader = { ...cfg.reader, ...over }
     await cfg.saveSettings()
-    await wait(300)
   }
 `
 
@@ -102,13 +122,18 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
     }>(`
       const { leaf, view } = await open(${JSON.stringify(LONG)})
       await view.engine.goTo(0)
-      await wait(600)
+      await pageReady(view, 0)
       const r = view.engine.renderer
       const drawn = () => r.getContents().map((c) => c.index).sort((a, b) => a - b)
       const out = { tag: r.localName.replace(/-[a-z]{6}$/, ''), drawn: drawn(), findings: view.pages.flatMap((p) => p.findings), sandbox: view.pages[0]?.sandbox }
       // Scrolled by hand, the way a person scrolls: the page being read follows.
-      for (let i = 0; i < 12; i++) { await r.next(); await wait(120) }
-      await wait(800)
+      for (let i = 0; i < 12; i++) {
+        const before = view.model.fraction
+        await r.next()
+        await ready(() => view.model.fraction > before, 'scroll progress')
+      }
+      await pageReady(view)
+      await ready(() => !drawn().includes(0) && drawn().includes(r.index) && view.model.chapter === 'Page ' + (r.index + 1) + ' of 40', 'scrolled page and recycled frames')
       out.afterScroll = { index: r.index, chapter: view.model.chapter, drawn: drawn() }
       leaf.detach()
       return out
@@ -139,11 +164,11 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
       await until(() => view.engine.renderer.index === 1, 5000)
       const afterToc = view.engine.renderer.index
       await view.engine.goTo(2)
-      await wait(2000)
+      await pageReady(view, 2)
+      await written(view, ${JSON.stringify(PLAIN)})
       leaf.detach()
-      await wait(300)
       ;({ leaf, view } = await open(${JSON.stringify(PLAIN)}))
-      await wait(800)
+      await pageReady(view, 2)
       const reopened = view.engine.renderer.index
       leaf.detach()
       return { afterLink, afterToc, reopened }
@@ -166,19 +191,22 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
     }>(`
       const { leaf, view } = await open(${JSON.stringify(LONG)})
       await view.engine.goTo(5)
-      await wait(600)
+      await pageReady(view, 5)
       const r = view.engine.renderer
       const before = r.scale
       view.zoom('in')
-      await wait(400)
+      await ready(() => r.scale > before, 'key zoom applied')
+      await pageReady(view, 5)
       const afterIn = r.scale
       const doc = r.getContents().find((c) => c.index === r.index).doc
       doc.dispatchEvent(new WheelEvent('wheel', { deltaY: -10, ctrlKey: true, bubbles: true, cancelable: true }))
-      await wait(400)
+      await ready(() => r.scale > afterIn, 'wheel zoom applied')
+      await pageReady(view, 5)
       const afterPinch = r.scale
       const index = r.index
       view.zoom('reset')
-      await wait(400)
+      await ready(() => Math.abs(r.scale - before) < 0.0005, 'zoom reset applied')
+      await pageReady(view, 5)
       const out = { before, afterIn, afterPinch, reset: r.scale, index, same: r.index === 5 }
       leaf.detach()
       return out
@@ -201,15 +229,16 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
     }>(`
       let { leaf, view } = await open(${JSON.stringify(LONG)})
       await view.engine.goTo(7)
-      await wait(2000)
+      await pageReady(view, 7)
+      await written(view, ${JSON.stringify(LONG)})
       await settings({ pdfLayout: 'paginated' })
-      await until(() => view.engine?.renderer?.localName.startsWith('foliate-fxl-') && view.model.status === 'ready', 10000)
-      await wait(800)
+      await ready(() => view.engine?.renderer?.localName.startsWith('foliate-fxl-') && view.model.status === 'ready', 'paginated PDF renderer')
+      await pageReady(view, 7)
       const paged = view.engine.renderer.localName.replace(/-[a-z]{6}$/, '')
       const pagedIndex = view.engine.renderer.index
       await settings({ pdfLayout: 'scrolled' })
-      await until(() => view.engine?.renderer?.localName.startsWith('abele-pdf-scroll-') && view.model.status === 'ready', 10000)
-      await wait(800)
+      await ready(() => view.engine?.renderer?.localName.startsWith('abele-pdf-scroll-') && view.model.status === 'ready', 'scrolled PDF renderer')
+      await pageReady(view, 7)
       const out = { paged, pagedIndex, back: view.engine.renderer.localName.replace(/-[a-z]{6}$/, ''), backIndex: view.engine.renderer.index }
       leaf.detach()
       return out
@@ -224,7 +253,6 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
   describe('on a phone', () => {
     const PHONE = { width: 390, height: 844 }
     let size: [number, number] = [0, 0]
-    const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
     const reload = async (how: string): Promise<void> => {
       await reloadApp(how)
     }
@@ -233,7 +261,13 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
         `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${w}, ${h}); return 'ok' })()`,
         30_000
       )
-      await pause(1500)
+      const resized = await until(() => {
+        const size = evalJson<number[]>(
+          `require('@electron/remote').getCurrentWindow().getContentSize()`
+        )
+        return size[0] === w && size[1] === h
+      })
+      if (!resized) throw Error('PDF scroll window did not resize')
     }
 
     beforeAll(async () => {
@@ -262,7 +296,7 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
       }>(`
         const { leaf, view } = await open(${JSON.stringify(LONG)})
         await view.engine.goTo(0)
-        await wait(800)
+        await pageReady(view, 0)
         const frame = view.engine.renderer.getContents().find((c) => c.index === 0).doc.defaultView.frameElement.getBoundingClientRect()
         const whole = view.contentEl.querySelector('.abele-book-reader').getBoundingClientRect()
         const bar = document.querySelector('.mobile-navbar')?.getBoundingClientRect()
@@ -270,7 +304,8 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
         const shot = ${JSON.stringify(shotDir('abele-phone') + '/book-pdf-scroll.png')}
         if (img) { require('fs').mkdirSync(${JSON.stringify(shotDir('abele-phone'))}, { recursive: true }); require('fs').writeFileSync(shot, img.toPNG()) }
         await view.engine.renderer.next()
-        await wait(600)
+        await ready(() => view.model.fraction > 0.03, 'phone scroll progress')
+        await pageReady(view)
         const out = {
           phone: document.body.classList.contains('is-phone'),
           pageWidth: Math.round(frame.width),
