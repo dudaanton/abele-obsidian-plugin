@@ -148,6 +148,16 @@ describe('searching text', () => {
 })
 
 describe('searching files that are not an archive', () => {
+  it('keeps searching later files when one file exceeds its own match cap', async () => {
+    const result = await searchFiles([
+      { path: 'sample-noisy.ts', text: 'needle\n'.repeat(150) },
+      { path: 'sample-other.ts', text: 'needle' },
+    ], { text: 'needle' }, { limit: 500, perFile: 100 })
+    expect(result.files.map((file) => file.path)).toEqual(['sample-noisy.ts', 'sample-other.ts'])
+    expect(result.files[0].matches).toHaveLength(100)
+    expect(result.capped).toBe(true)
+  })
+
   it('searches any list of files the same way', async () => {
     const result = await searchFiles([{ path: 'a.ts', text: 'one\ntwo\none' }], { text: 'one' })
     expect(result.files[0].matches.map((m) => m.line)).toEqual([1, 3])

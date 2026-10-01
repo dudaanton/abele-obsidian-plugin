@@ -129,7 +129,8 @@ export async function searchFiles(
     const matches = searchText(file.text, re, perFile + 1)
     if (matches.length === 0) continue
     total += matches.length
-    if (capped) continue
+    // A per-file cap says some matches were omitted, not that the whole page is full.
+    if (returned >= limit) continue
     const room = limit - returned
     const kept = matches.slice(0, Math.min(perFile, room))
     returned += kept.length
