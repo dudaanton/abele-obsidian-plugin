@@ -673,16 +673,6 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-radius: var(--radius-s);
   font-size: var(--font-ui-smaller);
   padding: var(--size-4-1) var(--size-4-2);
-  display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-2);
-}
-
-/* The host's accessible button size must take up space, not cover the popup's text. */
-.abele-map .maplibregl-popup-close-button {
-  position: static;
-  order: 1;
-  flex-shrink: 0;
 }
 
 .abele-map .maplibregl-popup-tip {
