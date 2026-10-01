@@ -21,6 +21,9 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { NoteRelations } from '@/entities/NoteRelations'
+import { Log } from '@/entities/Log'
+import { Journal } from '@/entities/Journal'
+import { TimeEntry } from '@/entities/TimeEntry'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptTrust } from '@/scripting/ScriptTrust'
 import { LinterService } from '@/linter/LinterService'
@@ -129,6 +132,9 @@ interface AbeleTestApi {
   CommentService: typeof CommentService
   AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
+  Log: typeof Log
+  Journal: typeof Journal
+  TimeEntry: typeof TimeEntry
   AbeleConfig: typeof AbeleConfig
   /** A synthetic update notice; no installed manifest or local marker is modified. */
   showChangelogOffer: typeof showOffer
@@ -647,6 +653,9 @@ export function exposeTestApi(plugin: Plugin): void {
     CommentService,
     AgentRegistry,
     GlobalStore,
+    Log,
+    Journal,
+    TimeEntry,
     AbeleConfig,
     secrets,
     newDrawing,
