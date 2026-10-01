@@ -15,7 +15,7 @@
  * The older HTTP+SSE transport (2024-11-05) is not spoken: it is deprecated, and it needs a
  * stream held open for every answer, which `requestUrl` cannot hold.
  */
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import { parseSseData } from './sse'
 import type { McpCallResult, McpToolSnapshot } from './types'
 

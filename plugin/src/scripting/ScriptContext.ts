@@ -1,4 +1,5 @@
-import { MarkdownView, Notice, requestUrl, TFile } from 'obsidian'
+import { MarkdownView, Notice, TFile } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import dayjs from 'dayjs'
 import { nanoid } from 'nanoid'
 import type { AgentTool } from '@/ai/client'

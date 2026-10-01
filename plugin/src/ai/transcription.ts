@@ -6,7 +6,7 @@
  * to type out what it hears. That asking matters: a chat model given speech will cheerfully
  * *answer* it instead, so the instruction is explicit and the temperature is nailed to zero.
  */
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 
 export interface TranscriptionModel {
   id: string

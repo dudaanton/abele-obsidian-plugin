@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import { getAttachmentFolder } from './imageUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'

@@ -113,6 +113,11 @@ notes where you left them (see [Where you left off](writing#where-you-left-off))
 coordinates property and map style for maps, and keyboard diagnostics, a troubleshooting panel
 for the on-screen keyboard.
 
+On desktop, a service redirect to another origin no longer receives the request's
+Authorization, API-key or cookie headers. Requests with a saved key in the redirected URL or
+body stop instead. Mobile's native request transport does not expose redirect control, so
+this protection is not yet available there. GitHub uses a separate transport.
+
 A map style written in an `abele-map` block must use a public HTTPS address without a username
 or password. A local or HTTP style in a note shows an error instead of loading. Your map style
 in settings can still point at a local server or use HTTP.

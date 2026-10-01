@@ -123,7 +123,7 @@ import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import { ref } from 'vue'
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   migrateFromFirefly,

@@ -3,7 +3,7 @@
  * front of and which works the same on a phone. Behind a function of its own so tests can send
  * the same requests to a server they start themselves.
  */
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 
 export interface HttpRequest {
   url: string

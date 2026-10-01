@@ -1,4 +1,4 @@
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 
 /**
  * Maps, addresses and routes, from services that cost nothing and ask for nothing.

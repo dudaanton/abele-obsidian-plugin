@@ -1,5 +1,5 @@
 import { secrets } from '@/secrets/SecretStore'
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IMAGE_API_DEFAULTS, ImageProvider, ImageModelConfig2, resolveImageModel } from '../types'
 

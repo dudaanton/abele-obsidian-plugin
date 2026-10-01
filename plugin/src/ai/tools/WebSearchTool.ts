@@ -1,7 +1,7 @@
 import { secrets } from '@/secrets/SecretStore'
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 
 export function createWebSearchTool(): AgentTool {
   return {

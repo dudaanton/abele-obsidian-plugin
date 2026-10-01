@@ -87,7 +87,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { TFile, TFolder, requestUrl } from 'obsidian'
+import { TFile, TFolder } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'

@@ -1,4 +1,4 @@
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TimeEntryNoteTemplate } from '@/templates/TimeEntryNoteTemplate'
 import { getAvailablePath } from '@/helpers/vaultUtils'

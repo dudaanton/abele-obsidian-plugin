@@ -87,7 +87,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { FileSystemAdapter, Menu, Notice, Platform, TFile, requestUrl } from 'obsidian'
+import { FileSystemAdapter, Menu, Notice, Platform, TFile } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createImportedBinary } from '@/media/importImageFile'

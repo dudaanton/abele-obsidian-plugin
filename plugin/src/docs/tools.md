@@ -393,6 +393,14 @@ These are public services run on donations. They are asked one request at a time
 apart, and repeat answers come from memory rather than the network — so a long batch of lookups
 takes as long as it takes rather than getting the person's address blocked.
 
+## Network redirects
+
+On desktop, service and script requests follow redirects explicitly. Authentication headers
+and substituted keys are not forwarded to another origin; a redirect carrying a key in its URL
+or retained body is refused. Mobile's native Obsidian transport does not expose redirects, so
+this guarantee is not available there yet. Streamed chat uses the browser's credential-stripping
+redirect handling. GitHub has its own transport.
+
 ## AI
 
 `generate_image`, `edit_image`, `eval_js`, `questions`, `delegate`, `remember`, `forget`.

@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { substituteSecrets } from './secretUtils'
 import { describedLazily } from './lazyDescription'

@@ -1,4 +1,4 @@
-import { requestUrl } from 'obsidian'
+import { request as requestUrl } from '@/helpers/http'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import type {
   AssistantMessage,
