@@ -600,30 +600,31 @@ export function buildScriptContext(opts: {
     // ── Zip ──
 
     async unzip(zipPath: string, targetFolder?: string): Promise<string[]> {
-      const { unzipSync } = await import('fflate')
+      const { extractArchive, MAX_ZIP_BYTES } = await import('./unzip')
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(zipPath)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${zipPath}`)
 
       const folder = targetFolder ?? zipPath.replace(/\.zip$/i, '')
-
+      if (file.stat.size > MAX_ZIP_BYTES) throw new Error('Archive size exceeds 64 MB')
       const buf = await app.vault.readBinary(file)
-      const entries = unzipSync(new Uint8Array(buf))
-
-      const created: string[] = []
-      for (const [name, data] of Object.entries(entries)) {
-        if (name.endsWith('/')) continue // skip directories
-        const path = `${folder}/${name}`
-        const dir = path.split('/').slice(0, -1).join('/')
-        s.throwIfAborted()
-        if (dir && !app.vault.getAbstractFileByPath(dir)) {
-          await app.vault.createFolder(dir)
-        }
-        s.throwIfAborted()
-        await app.vault.createBinary(path, data.buffer as ArrayBuffer)
-        created.push(path)
-      }
-      return created
+      return extractArchive(
+        new Uint8Array(buf),
+        folder,
+        {
+          write: async (path, data) => {
+            const dir = path.split('/').slice(0, -1).join('/')
+            s.throwIfAborted()
+            if (dir && !app.vault.getAbstractFileByPath(dir)) await app.vault.createFolder(dir)
+            s.throwIfAborted()
+            await app.vault.createBinary(
+              path,
+              data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+            )
+          },
+        },
+        s
+      )
     },
 
     // ── Vault helpers ──

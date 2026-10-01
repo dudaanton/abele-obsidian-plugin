@@ -187,7 +187,7 @@ Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inje
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| \`unzip(zipPath, targetFolder?)\` | \`string[]\` | Extract zip archive to vault, returns list of created file paths. Target folder defaults to zip filename without extension |
+| \`unzip(zipPath, targetFolder?)\` | \`string[]\` | Extract zip inside the target folder (defaults to zip filename without extension). Rejects escaping paths before any write; maximum 64 MB compressed, 512 MB unpacked and 5000 entries. Returns created file paths |
 
 ---
 

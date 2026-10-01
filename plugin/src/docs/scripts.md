@@ -30,6 +30,13 @@ out-of-scope source files, edits under confirm-all, and deletes/moves/copies wit
 Auto feature tools still run, including explicitly automatic memory. These rules also apply
 when an automation starts the script; direct script operations keep their existing access.
 
+## Archive extraction
+
+`unzip()` validates every entry before writing any of them. Entries cannot escape the target
+folder or use absolute paths. Limits are 64 MB compressed, 512 MB total unpacked, and 5000
+entries; declared sizes are checked before inflation. Ordinary nested and hidden files inside
+the target still extract. The path/size validation is storage-independent.
+
 ## The header
 
 Every script starts with a comment block declaring what it is. Without `@name` the file is

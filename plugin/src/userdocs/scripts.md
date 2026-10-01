@@ -15,6 +15,13 @@ Scripts run inside Obsidian with full access to your vault, so they are off unti
 in **Settings → Abele → Scripts → General** and choose the folder they live in. Only run scripts
 you have read or trust.
 
+## Archives
+
+Script `unzip()` keeps every extracted file inside its target folder. An archive with an
+absolute or escaping path is refused before any file is created. Limits are 64 MB compressed,
+512 MB unpacked and 5000 entries. Ordinary nested and hidden files inside the folder still
+extract as before.
+
 ## Network requests
 
 A request using a saved `${abele_key:name}` asks before sending to an address not yet allowed
