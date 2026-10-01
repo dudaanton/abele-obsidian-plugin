@@ -309,7 +309,12 @@ export class ScriptService {
     }
   }
 
+  private initialized = false
+  private disposed = false
+
   init() {
+    if (this.initialized || this.disposed) return
+    this.initialized = true
     // Settled either way: a saved tab waiting on the index must get an answer even when the
     // first discovery threw.
     void this.discover().finally(() => this.markReady())
@@ -374,6 +379,9 @@ export class ScriptService {
   }
 
   private cleanup() {
+    this.disposed = true
+    this.discoverAgain = false
+    this.markReady()
     this.toolbar?.stop()
     this.toolbar = null
     if (this.watcherCallbackId) {
@@ -440,6 +448,7 @@ export class ScriptService {
    * covers whatever changed in between.
    */
   discover(): Promise<void> {
+    if (this.disposed) return Promise.resolve()
     if (this.discovering) {
       this.discoverAgain = true
       return this.discovering
@@ -448,7 +457,7 @@ export class ScriptService {
       // Whoever asked for the index first — `init`, or a test — it has been read now.
       this.markReady()
       this.discovering = null
-      if (this.discoverAgain) {
+      if (this.discoverAgain && !this.disposed) {
         this.discoverAgain = false
         void this.discover()
       }
@@ -490,6 +499,8 @@ export class ScriptService {
       }
     }
 
+    // A disabled service's outstanding reads must never recreate its commands.
+    if (this.disposed) return
     // Everything read: the swap itself is synchronous, so nothing observes the gap.
     this.unregisterAllCommands()
     this.scripts = next

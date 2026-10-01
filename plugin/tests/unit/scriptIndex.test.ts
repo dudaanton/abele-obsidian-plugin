@@ -131,6 +131,29 @@ describe('rebuilding the index', () => {
   })
 })
 
+describe('service lifetime', () => {
+  it('registers one watcher and toolbar even when initialization is requested twice', async () => {
+    const toolbar = vi.spyOn(ScriptToolbar.prototype, 'start').mockImplementation(() => {})
+    const watching = vi.spyOn(VaultWatcherWrapper.getInstance(), 'registerCallback')
+    service.init()
+    service.init()
+    await service.discover()
+    expect(watching).toHaveBeenCalledOnce()
+    expect(toolbar).toHaveBeenCalledOnce()
+    ScriptService.destroy()
+  })
+
+  it('does not restore commands after being destroyed while reading a script', async () => {
+    const [gate] = slowReads(1)
+    const reading = service.discover()
+    await gate.entered
+    ScriptService.destroy()
+    gate.release()
+    await reading
+    expect(commands.size).toBe(0)
+  })
+})
+
 describe('settings preserved before scripts arrive', () => {
   it('drops only a known removed script mode, including its agents', async () => {
     const config = AbeleConfig.getInstance()

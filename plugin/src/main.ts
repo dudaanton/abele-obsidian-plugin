@@ -680,7 +680,11 @@ export default class AbelePlugin extends Plugin {
 
   /** The commands and ribbon icons that are there whatever the settings. */
   private registerCommands() {
-    this.addCommand({ id: 'review-key-destinations', name: 'Review key destinations', callback: reviewKeyDestinations })
+    this.addCommand({
+      id: 'review-key-destinations',
+      name: 'Review key destinations',
+      callback: reviewKeyDestinations,
+    })
     this.addCommand({
       id: 'create-task',
       name: 'Create new task',
@@ -1087,6 +1091,8 @@ export default class AbelePlugin extends Plugin {
 
   /** True once the scripts in the vault have been read and turned into commands. */
   private scriptsStarted = false
+  private scriptsFolderStarted = ''
+  private scriptStartGeneration = 0
 
   /**
    * True until the last of this start's layout-ready callbacks: scripts switched on after that
@@ -1107,6 +1113,15 @@ export default class AbelePlugin extends Plugin {
    */
   syncAiFeatures() {
     const { ai } = AbeleConfig.getInstance()
+    if (
+      this.scriptsStarted &&
+      (!ai.enabled || !ai.scriptsEnabled || this.scriptsFolderStarted !== ai.scriptsFolder)
+    ) {
+      this.scriptsStarted = false
+      this.scriptStartGeneration = (this.scriptStartGeneration ?? 0) + 1
+      AutomationService.destroy()
+      ScriptService.destroy()
+    }
     if (!ai.enabled) return
 
     if (!this.aiFeaturesRegistered) {
@@ -1118,7 +1133,10 @@ export default class AbelePlugin extends Plugin {
     // restart of its own.
     if (ai.scriptsEnabled && !this.scriptsStarted) {
       this.scriptsStarted = true
+      this.scriptsFolderStarted = ai.scriptsFolder
+      const generation = (this.scriptStartGeneration = (this.scriptStartGeneration ?? 0) + 1)
       this.app.workspace.onLayoutReady(() => {
+        if (!this.scriptsStarted || generation !== this.scriptStartGeneration) return
         const atStart = this.starting
         ScriptService.getInstance().init()
         // The host a script's `view()` reaches for; registered before any script can run.
@@ -1126,7 +1144,11 @@ export default class AbelePlugin extends Plugin {
         // Automations name their script, so they wait for the index that finds it.
         void ScriptService.getInstance().ready.then(() => {
           // Not after an unload that came first.
-          if (AbeleConfig.getInstance().plugin === this) {
+          if (
+            AbeleConfig.getInstance().plugin === this &&
+            this.scriptsStarted &&
+            generation === this.scriptStartGeneration
+          ) {
             AutomationService.getInstance().start(this.app)
           }
         })

@@ -102,6 +102,32 @@ describe('scripts, the switch behind the switch', () => {
     expect(init).toHaveBeenCalledOnce()
   })
 
+  it('cancels a pending startup when switched off before layout is ready', () => {
+    const init = vi.spyOn(ScriptService.getInstance(), 'init').mockImplementation(() => {})
+    const destroy = vi.spyOn(ScriptService, 'destroy').mockImplementation(() => {})
+    settings({ enabled: true, scriptsEnabled: true })
+    const { plugin, ready } = aPlugin()
+    plugin.syncAiFeatures()
+    settings({ enabled: true, scriptsEnabled: false })
+    plugin.syncAiFeatures()
+    for (const fn of ready) fn()
+    expect(init).not.toHaveBeenCalled()
+    expect(destroy).toHaveBeenCalledOnce()
+  })
+
+  it('restarts the index when its configured folder changes', () => {
+    const init = vi.spyOn(ScriptService.getInstance(), 'init').mockImplementation(() => {})
+    vi.spyOn(ScriptService, 'destroy').mockImplementation(() => {})
+    settings({ enabled: true, scriptsEnabled: true, scriptsFolder: 'Scripts' })
+    const { plugin, ready } = aPlugin()
+    plugin.syncAiFeatures()
+    ready.shift()!()
+    settings({ enabled: true, scriptsEnabled: true, scriptsFolder: 'Other scripts' })
+    plugin.syncAiFeatures()
+    ready.shift()!()
+    expect(init).toHaveBeenCalledTimes(2)
+  })
+
   it('are not read again on the next save', () => {
     const init = vi.spyOn(ScriptService.getInstance(), 'init').mockImplementation(() => {})
     settings({ enabled: true, scriptsEnabled: true })

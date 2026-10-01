@@ -114,13 +114,8 @@ const { save } = useSettingsSave(
 
 const toggleScriptsEnabled = () => {
   scriptsEnabled.value = !scriptsEnabled.value
-  // First, so the index that starts below reads the setting it was started for.
+  // Saving goes through the plugin's single lifetime owner for scripts and automations.
   save()
-  if (scriptsEnabled.value && scriptsFolder.value) {
-    ScriptService.getInstance().init()
-  } else if (!scriptsEnabled.value) {
-    ScriptService.destroy()
-  }
 }
 
 const updateScriptsFolder = (value: string) => {
