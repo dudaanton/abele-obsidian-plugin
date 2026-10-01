@@ -11,6 +11,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { buildJustifiedEpub } from '../fixtures/books/justifiedBook'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -84,17 +85,22 @@ describe.skipIf(!available)('book overlay reflow', () => {
     JSON.parse(
       await evalLong(
         `(async () => {
-    const wait = ms => new Promise(r => setTimeout(r, ms))
-    const until = async f => { for (let i=0; i<200; i++) { const x=f(); if(x) return x; await wait(50) } throw Error('reader did not settle') }
+    ${WAIT_PRELUDE}
+    const ready = async (fn, label) => {
+      const value = await until(fn)
+      if (!value) throw Error('Timed out: ' + label)
+      return value
+    }
     try {
       const cfg = window.__abeleTest.AbeleConfig.getInstance()
       let leaf; try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
       await leaf.setViewState({ type:'abele-book', state:{file:${JSON.stringify(BOOK)}}, active:true })
-      const v = await until(() => leaf.view.model?.status === 'ready' && leaf.view.reading && leaf.view)
+      const v = await ready(() => leaf.view.model?.status === 'ready' && leaf.view.reading && leaf.view, 'reader ready')
       v.model.panel = false
-      await v.engine.goTo(0); await wait(800)
+      await v.engine.goTo(0)
       const contents = () => v.engine.renderer.getContents()[0]
-      const doc = contents().doc
+      const doc = await ready(() => contents()?.doc?.getElementById('p1-0-0') && contents().doc, 'fixture chapter')
+      await doc.fonts.ready
       const p = doc.getElementById('p1-0-0')
       // Read the target directly from the fixture, not by resolving the place used to draw it.
       const range = (length) => { const r=doc.createRange(); r.setStart(p.firstChild,0); r.setEnd(p.firstChild,length); return r }
@@ -107,41 +113,59 @@ describe.skipIf(!available)('book overlay reflow', () => {
       const old = app.vault.getAbstractFileByPath(path)
       if (old) await app.vault.modify(old,note); else await app.vault.create(path,note)
       await v.reading.loadHighlights()
-      await until(() => v.model.highlights.length)
+      await ready(() => v.model.highlights.length, 'saved highlight')
       await v.reading.search(query)
       // The fixture repeats words later. Only the first hit is in our target paragraph.
       const hit = v.model.search.groups[0].hits[0]
       await v.reading.goToHit(hit)
       const checks = []
       const rect = r => [r.left,r.top,r.width,r.height]
-      const check = async name => {
-        await wait(600)
-        const c = contents(), frame = doc.defaultView.frameElement.getBoundingClientRect()
-        const words = r => [...r.getClientRects()].map(b => [b.left+frame.left,b.top+frame.top,b.width,b.height])
-        // Measure the drawn SVG itself, not attributes plus an assumed origin.
-        const groups = [...c.overlayer.element.children]
-        const search = [...groups.find(g => g.getAttribute('fill') === 'none').querySelectorAll('rect')].map(r => rect(r.getBoundingClientRect()))
-        const highlight = groups.filter(g => g.getAttribute('fill') !== 'none').flatMap(g => [...g.querySelectorAll('rect')].map(r => rect(r.getBoundingClientRect())))
-        checks.push({name,search,highlight,words:words(range(query.length)),savedWords:words(range(65)),block:rect(p.getBoundingClientRect())})
+      const check = async (name, applied = () => true) => {
+        let previous = '', last = null
+        const result = await until(() => {
+          // Old rectangles can agree perfectly before Vue applies the requested change.
+          if (!applied()) return false
+          const c = contents(), frame = doc.defaultView.frameElement.getBoundingClientRect()
+          const words = r => [...r.getClientRects()].map(b => [b.left+frame.left,b.top+frame.top,b.width,b.height])
+          // Measure the drawn SVG itself, not attributes plus an assumed origin.
+          const groups = [...c.overlayer.element.children]
+          const search = [...groups.find(g => g.getAttribute('fill') === 'none').querySelectorAll('rect')].map(r => rect(r.getBoundingClientRect()))
+          const highlight = groups.filter(g => g.getAttribute('fill') !== 'none').flatMap(g => [...g.querySelectorAll('rect')].map(r => rect(r.getBoundingClientRect())))
+          last = {name,search,highlight,words:words(range(query.length)),savedWords:words(range(65)),block:rect(p.getBoundingClientRect())}
+          const matches = (actual, expected) => expected.length > 0 && actual.length === expected.length &&
+            expected.every((w,j) => actual[j].every((value,i) => Math.abs(value-w[i]) < 1))
+          const current = JSON.stringify(last)
+          const stable = current === previous
+          previous = current
+          return stable && matches(search,last.words) && matches(highlight,last.savedWords) && last
+        })
+        if (!result) throw Error(name + ': overlays did not settle on their words: ' + JSON.stringify(last))
+        checks.push(result)
       }
       const shot = async name => {
         ${onPhone() ? `await window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/' + name + '.png')` : `const img = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + name + '.png', img.toPNG())`}
       }
       await check('initial')
       v.model.panelTab='search'; v.model.panel=true
-      await check('sidebar open')
+      await check('sidebar open', () => !!v.contentEl.querySelector('.abele-book-reader__panel'))
       await shot(${JSON.stringify(mobile ? 'phone-sidebar' : 'desktop-sidebar')})
       v.model.panel=false
-      await check('sidebar closed')
-      ${!onPhone() ? `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '430, 844' : '1100, 860'}); await check('resized')` : ''}
+      await check('sidebar closed', () => !v.contentEl.querySelector('.abele-book-reader__panel'))
+      ${!onPhone() ? `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '430, 844' : '1100, 860'}); await check('resized', () => innerWidth === ${mobile ? 430 : 1100} && innerHeight === ${mobile ? 844 : 860})` : ''}
+      const fontSize = () => parseFloat(doc.defaultView.getComputedStyle(p).fontSize)
+      const originalSize = fontSize()
       cfg.reader={...cfg.reader,font:'sans',fontSize:120}; await cfg.saveSettings()
-      await check('reader font changed')
+      await check('reader font changed', () => fontSize() > originalSize)
       cfg.reader={...cfg.reader,font:'serif',fontSize:100}; await cfg.saveSettings()
       // Outlive the startup font-repair timers: a later change must not depend on their luck.
       await wait(13000)
       await check('before late paragraph style')
       p.style.setProperty('text-indent','4em','important')
-      await check('late paragraph style')
+      const beforeStyle = checks[checks.length - 1].words[0][0]
+      await check('late paragraph style', () => {
+        const frame = doc.defaultView.frameElement.getBoundingClientRect()
+        return Math.abs(range(query.length).getClientRects()[0].left + frame.left - beforeStyle) > 10
+      })
       await shot(${JSON.stringify(mobile ? 'phone-late' : 'desktop-late')})
       return JSON.stringify({checks,count:v.model.search.count})
     } catch (e) { return JSON.stringify({error:String(e.stack || e)}) }
