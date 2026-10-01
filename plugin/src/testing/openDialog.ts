@@ -169,6 +169,9 @@ const DIALOGS: Record<string, () => void> = {
     const config = AbeleConfig.getInstance(),
       registry = AgentRegistry.getInstance(),
       original = config.github
+    const save = config.saveSettings
+    // Touching Off/Ask/On in a layout fixture must never write its sample data to disk.
+    config.saveSettings = async () => { config.version.value++ }
     config.github = githubSettingsFrom({
       connections: Array.from({ length: 6 }, (_, i) => ({
         id: `sample-${i}`,
@@ -190,6 +193,7 @@ const DIALOGS: Record<string, () => void> = {
           onUnmounted(() => {
             config.github = original
             registry.remove(agent.id)
+            config.saveSettings = save
           })
           onMounted(() => {
             void nextTick(() =>
@@ -206,6 +210,8 @@ const DIALOGS: Record<string, () => void> = {
   'github-connections': () => {
     const config = AbeleConfig.getInstance()
     const original = config.github
+    const save = config.saveSettings
+    config.saveSettings = async () => { config.version.value++ }
     config.github = githubSettingsFrom({
       enabled: true,
       connections: Array.from({ length: 8 }, (_, i) => ({
@@ -224,6 +230,7 @@ const DIALOGS: Record<string, () => void> = {
         setup(_props, { emit }) {
           onUnmounted(() => {
             config.github = original
+            config.saveSettings = save
           })
           onMounted(() => {
             void nextTick(() => {
