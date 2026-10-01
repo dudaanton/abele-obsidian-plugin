@@ -1,4 +1,5 @@
-import { Modal, Setting } from 'obsidian'
+import { Setting } from 'obsidian'
+import { ShellModal } from '@/modal/ShellModal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { acceptDestinations, pendingDestinations } from './destinations'
@@ -11,17 +12,19 @@ import {
 } from './keyTransport'
 
 /** A device-local decision, deliberately separate from saving or importing settings. */
-export function reviewKeyDestinations(): Modal {
-  const modal = new Modal(GlobalStore.getInstance().app)
-  modal.setTitle('Review key destinations')
+export function reviewKeyDestinations(): ShellModal {
+  const modal = new ShellModal(GlobalStore.getInstance().app, {
+    title: 'Review key destinations',
+    footer: true,
+  })
   const render = () => {
-    modal.contentEl.empty()
-    modal.contentEl.createEl('p', {
+    modal.bodyEl.empty()
+    modal.footerEl!.empty()
+    modal.bodyEl.createEl('p', {
       text: 'An address changed outside this device. Keys stay here until you allow the new address. This decision is not synced.',
     })
     const pending = pendingDestinations(AbeleConfig.getInstance())
-    if (!pending.length)
-      modal.contentEl.createEl('p', { text: 'No destinations need confirmation.' })
+    if (!pending.length) modal.bodyEl.createEl('p', { text: 'No destinations need confirmation.' })
     for (const destination of pending) {
       let unencrypted = false
       try {
@@ -29,7 +32,7 @@ export function reviewKeyDestinations(): Modal {
       } catch {
         unencrypted = true
       }
-      const setting = new Setting(modal.contentEl)
+      const setting = new Setting(modal.bodyEl)
         .setName(destination.name)
         .setDesc(
           destination.origin +
@@ -41,9 +44,11 @@ export function reviewKeyDestinations(): Modal {
         )
         continue
       }
-      setting.addButton((button) =>
+      // Keep the recipient beside its pinned action: several keys may need the same choice.
+      new Setting(modal.footerEl!).setName(destination.name).addButton((button) =>
         button
           .setButtonText(unencrypted ? 'Allow unencrypted HTTP' : 'Allow on this device')
+          .setTooltip(destination.origin)
           .onClick(() => {
             if (unencrypted) allowHttpOrigin(destination.origin)
             acceptDestinations([destination])
@@ -52,15 +57,13 @@ export function reviewKeyDestinations(): Modal {
       )
     }
     for (const origin of allowedHttpOrigins()) {
-      new Setting(modal.contentEl)
-        .setName('HTTP exception')
-        .setDesc(origin)
-        .addButton((button) =>
-          button.setButtonText('Remove').onClick(() => {
-            forgetHttpOrigin(origin)
-            render()
-          })
-        )
+      new Setting(modal.bodyEl).setName('HTTP exception').setDesc(origin)
+      new Setting(modal.footerEl!).setName(origin).addButton((button) =>
+        button.setButtonText('Remove').onClick(() => {
+          forgetHttpOrigin(origin)
+          render()
+        })
+      )
     }
   }
   render()

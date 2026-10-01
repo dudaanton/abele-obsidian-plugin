@@ -867,6 +867,10 @@ const probeScript = `(async () => {
         const d = modal.getBoundingClientRect()
         report[label].edges = [Math.round(d.top), Math.round(d.bottom)]
         const footer = modal.querySelector('.abele-modal__footer')
+        if (dialogName === 'key-destinations' || dialogName === 'saved-key-request') {
+          report[label].pinnedActions = footer ? [...footer.querySelectorAll('button')].map(b => b.textContent.trim()) : []
+          report[label].bodyActions = [...modal.querySelectorAll('.abele-modal__body button')].map(b => b.textContent.trim())
+        }
         report[label].hidden = footer
           ? [...footer.querySelectorAll('button')]
               .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.top < 0 || r.bottom > window.innerHeight) })
@@ -1205,6 +1209,18 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(d?.edges?.[0] ?? -1).toBeGreaterThanOrEqual(0)
     expect(d?.edges?.[1] ?? 9999).toBeLessThanOrEqual(PHONE.height)
     expect(d?.hidden ?? ['no report']).toEqual([])
+  })
+
+  it.each([
+    ['key-destinations', ['Allow on this device', 'Allow unencrypted HTTP']],
+    ['saved-key-request', ['Cancel', 'Allow address and send']],
+  ])('%s: approval actions are in the pinned footer, not the scrolling body', (name, actions) => {
+    const dialog = report['dialog ' + name] as Screen & {
+      pinnedActions?: string[]
+      bodyActions?: string[]
+    }
+    expect(dialog?.pinnedActions).toEqual(actions)
+    expect(dialog?.bodyActions).toEqual([])
   })
 
   it('focusing an offscreen tab brings its whole focus ring into the scrolling strip', () => {
