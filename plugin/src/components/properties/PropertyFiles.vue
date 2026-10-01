@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 /**
  * A File, Files or cover property drawn as cards: the file's name, what kind it is, and its picture
  * where it has one. Pressing a card picks another file in its place; the arrow opens it, the cross
@@ -143,7 +144,7 @@ function remove(index: number) {
 }
 
 function open(entry: Entry) {
-  if (entry.url) window.open(entry.url)
+  if (entry.url) openExternal(entry.url)
   else if (entry.file) void app.workspace.getLeaf(false).openFile(entry.file)
 }
 </script>

@@ -6,6 +6,7 @@
  * override from inside — and it is the version every other diagram in the vault is drawn with.
  * Nothing here calls `initialize`, because that would reconfigure it for Obsidian as well.
  */
+import { cleanDiagram } from './cleanDiagram'
 import { loadMermaid } from 'obsidian'
 import { withTheme, type DiagramTheme } from './mermaidSource'
 
@@ -112,6 +113,7 @@ export function placeDiagram(
   const parsed = new DOMParser().parseFromString(markup, 'text/html')
   const svg = parsed.body.querySelector('svg')
   if (!svg) throw new Error('Mermaid returned no drawing')
+  cleanDiagram(svg)
   const node = el.doc.importNode(svg, true)
 
   node.setAttribute('width', String(diagram.width))

@@ -43,6 +43,20 @@ describe('plugin blocks in text from outside notes', () => {
     chart.unmount()
   })
 
+  it('keeps note links but removes external app protocols from replies', async () => {
+    useVault([])
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _md, el) => {
+      el.innerHTML =
+        '<a href="obsidian://abele?path=sample-note">Write</a><a class="internal-link" data-href="sample-note" href="sample-note">Note</a><a href="mailto:sample@example.org">Mail</a>'
+    })
+    const wrapper = mount(Markdown, { props: { text: 'sample links' } })
+    await vi.waitFor(() => expect(wrapper.findAll('a')).toHaveLength(3))
+    expect(wrapper.findAll('a')[0].attributes('href')).toBeUndefined()
+    expect(wrapper.findAll('a')[1].attributes('data-href')).toBe('sample-note')
+    expect(wrapper.findAll('a')[2].attributes('href')).toBe('mailto:sample@example.org')
+    wrapper.unmount()
+  })
+
   it('leaves internet images in replies loading normally', async () => {
     useVault([])
     vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _md, el) => {

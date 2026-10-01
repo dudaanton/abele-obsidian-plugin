@@ -19,7 +19,10 @@ configured scripts folders. This also applies to daily notes: cancellation creat
 Do not use these links as a silent-write shortcut.
 
 Chart tooltip names and property values are literal text, not HTML; existing chart formats
-and settings are unchanged.
+and settings are unchanged. Mermaid SVG is cleaned before insertion. External browser links
+accept only HTTP(S) or mail; local note links are unchanged. Book figure previews only use the
+book's own images, table previews preserve XML text, and book frames start without scripting
+until the reader applies its platform policy.
 
 ## Files
 

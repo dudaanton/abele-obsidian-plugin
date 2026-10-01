@@ -1,3 +1,4 @@
+import { openExternal } from '@/helpers/openExternal'
 import { Menu, Notice } from 'obsidian'
 import type { CalendarEvent } from './events'
 import { createMeetingNote } from './meetingNote'
@@ -25,7 +26,7 @@ export function openEventMenu(event: CalendarEvent, day: string, e: MouseEvent |
       item
         .setTitle('Open the event link')
         .setIcon('external-link')
-        .onClick(() => window.open(event.url, '_blank'))
+        .onClick(() => openExternal(event.url, '_blank'))
     )
   }
   if (e instanceof MouseEvent) menu.showAtMouseEvent(e)

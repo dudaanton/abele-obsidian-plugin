@@ -59,7 +59,11 @@ import { ChatRewind } from '@/ai/rewind/ChatRewind'
 import { memoryStore } from '@/ai/rewind/RewindStore'
 import { showFormModal } from '@/scripting/formModal'
 import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
-import { TFile } from 'obsidian'
+import { TFile, Component, MarkdownRenderer, MarkdownPreviewRenderer } from 'obsidian'
+import { renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
+import { renderGithubMarkdown } from '@/github/safeMarkdown'
+import { tablePage } from '@/reader/figures'
+import { placeDiagram } from '@/mermaid/renderMermaid'
 import { newDrawing, openImageInk } from '@/drawing/files'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
@@ -128,6 +132,15 @@ export interface NoteRenderSample {
 }
 
 interface AbeleTestApi {
+  rendering: {
+    Component: typeof Component
+    MarkdownRenderer: typeof MarkdownRenderer
+    MarkdownPreviewRenderer: typeof MarkdownPreviewRenderer
+    renderUntrustedMarkdown: typeof renderUntrustedMarkdown
+    renderGithubMarkdown: typeof renderGithubMarkdown
+    tablePage: typeof tablePage
+    placeDiagram: typeof placeDiagram
+  }
   ScopeResolver: typeof ScopeResolver
   ChatService: typeof ChatService
   ChatStorage: typeof ChatStorage
@@ -719,6 +732,15 @@ export function exposeTestApi(plugin: Plugin): void {
     agentsSnapshot,
     resolvedSystemPrompt,
     chatHistoryPaths,
+    rendering: {
+      Component,
+      MarkdownRenderer,
+      MarkdownPreviewRenderer,
+      renderUntrustedMarkdown,
+      renderGithubMarkdown,
+      tablePage,
+      placeDiagram,
+    },
     openIconPicker,
     openProtocolWrite: () =>
       void confirmProtocolWrite({

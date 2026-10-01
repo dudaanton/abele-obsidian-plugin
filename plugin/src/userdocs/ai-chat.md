@@ -16,7 +16,9 @@ Chats with AI models that can read and change your notes, inside limits you set.
 Other plugins' executable blocks (for example `dataviewjs`) and inline queries in replies,
 thinking, run output and script markdown are shown as code, not executed. The same applies to
 GitHub text. Your notes still use installed plugins normally. Abele charts, maps, galleries and
-Mermaid diagrams in replies still render, and internet images still load as before.
+Mermaid diagrams in replies still render, and internet images still load as before. Mermaid
+output is cleaned before it joins the page. External links open only HTTP(S) or email addresses;
+links to notes remain available.
 
 Type your message and press **Shift+Enter** or **Cmd/Ctrl+Enter** to send it; **Enter** starts a
 new line. The paperclip attaches files from the vault or from disk, pictures included, and other

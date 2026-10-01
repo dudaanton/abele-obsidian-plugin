@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 import { computed } from 'vue'
 import type { PaneType } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
@@ -65,7 +66,7 @@ const glyph = computed(
 
 const open = (event: MouseEvent | KeyboardEvent) => {
   const pane = event instanceof MouseEvent ? paneForClick(event, false) : false
-  if (pane === null) window.open(props.item.url)
+  if (pane === null) openExternal(props.item.url)
   else emit('open', props.item.url, pane)
 }
 </script>

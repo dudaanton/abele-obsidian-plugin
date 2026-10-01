@@ -138,8 +138,10 @@ export function isRunnableUrl(value: string): boolean {
 
 function isUnsafeDataUrl(value: string): boolean {
   const v = squash(value)
-  if (!v.startsWith('data:')) return false
-  return !SAFE_DATA_URL.test(v)
+  for (const m of v.matchAll(/(^|,)data:/g)) {
+    if (!SAFE_DATA_URL.test(v.slice((m.index ?? 0) + m[1].length))) return true
+  }
+  return false
 }
 
 /** A hidden element of the same namespace, standing where a removed one was. */

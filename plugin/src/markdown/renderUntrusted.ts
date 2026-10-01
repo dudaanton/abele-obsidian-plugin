@@ -11,6 +11,7 @@ import {
   type MarkdownPostProcessor,
 } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { guardExternalLinks } from './externalLinks'
 import { prepareMarkdown, finishCode, guardCode } from './untrustedCode'
 
 export interface RenderPolicy {
@@ -74,5 +75,6 @@ export async function renderUntrustedMarkdown(
   )
   // Code is guarded before processors, not here after Abele has drawn its own blocks.
   policy.after?.(el)
+  guardExternalLinks(el)
   finishCode(el)
 }

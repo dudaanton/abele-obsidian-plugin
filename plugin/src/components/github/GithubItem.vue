@@ -233,6 +233,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Button from '../obsidian/Button.vue'
@@ -557,7 +558,7 @@ watch(tabTitle, (title) => {
 })
 
 const openInBrowser = (url: string) => {
-  if (url) window.open(url)
+  if (url) openExternal(url)
 }
 
 /** The same two versions the other way round, in this tab: its back arrow returns. */

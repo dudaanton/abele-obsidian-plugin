@@ -21,7 +21,7 @@ function automatic(src: string, repo: RepoFile): boolean {
 
 function placeholder(img: Element, src: string, approved: Set<string>): HTMLElement {
   const doc = img.ownerDocument
-  const button = doc.createElement('button')
+  const button = doc.win.createEl('button')
   const url = new URL(src)
   const alt = img.getAttribute('alt') || 'Image'
   button.type = 'button'
@@ -32,7 +32,7 @@ function placeholder(img: Element, src: string, approved: Set<string>): HTMLElem
     event.preventDefault()
     event.stopPropagation()
     approved.add(src)
-    const loaded = doc.createElement('img')
+    const loaded = doc.win.createEl('img')
     loaded.src = src
     loaded.alt = alt
     for (const size of ['width', 'height']) {

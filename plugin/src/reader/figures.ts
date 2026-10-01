@@ -28,6 +28,8 @@ export type BookFigure =
 export const MIN_FIGURE_PX = 64
 
 const XLINK = 'http://www.w3.org/1999/xlink'
+// A book's CSP does not apply in the app's full-screen viewer.
+const bookImage = (src: string) => /^(blob:|data:image\/)/i.test(src.trim())
 
 /** The picture or table a tap on `target` is on, if it is on one worth opening. */
 export function figureAt(target: Element | null): BookFigure | null {
@@ -37,7 +39,7 @@ export function figureAt(target: Element | null): BookFigure | null {
     const r = img.getBoundingClientRect()
     if (r.width < MIN_FIGURE_PX && r.height < MIN_FIGURE_PX) return null
     const src = img.currentSrc || img.src
-    if (!src) return null
+    if (!bookImage(src)) return null
     return {
       kind: 'image',
       src,
@@ -53,7 +55,7 @@ export function figureAt(target: Element | null): BookFigure | null {
     const r = svg.getBoundingClientRect()
     if (r.width < MIN_FIGURE_PX && r.height < MIN_FIGURE_PX) return null
     const src = image.getAttribute('href') ?? image.getAttributeNS(XLINK, 'href') ?? ''
-    if (!src) return null
+    if (!bookImage(src)) return null
     const w = Number(image.getAttribute('width')) || r.width
     const h = Number(image.getAttribute('height')) || r.height
     return { kind: 'image', src, alt: svg.getAttribute('aria-label') ?? '', width: w, height: h }
@@ -70,6 +72,20 @@ export function figureAt(target: Element | null): BookFigure | null {
   return null
 }
 
+/** XML CDATA must remain text when the XHTML table is read by an HTML parser. */
+function markupOf(el: Element): string {
+  const copy = el.cloneNode(true) as Element
+  const walker = copy.ownerDocument.createTreeWalker(copy, 0xffffffff)
+  const nodes: Node[] = []
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node)
+  for (const node of nodes) {
+    if (node.nodeType === 4)
+      node.parentNode?.replaceChild(copy.ownerDocument.createTextNode(node.nodeValue ?? ''), node)
+    else if (node.nodeType === 7 || node.nodeType === 8) node.parentNode?.removeChild(node)
+  }
+  return copy.outerHTML
+}
+
 /**
  * The table on a page of its own, with the book's styles and the same policy as every page: no
  * script, nothing from outside the book. It is shown in a frame that runs nothing either.
@@ -78,9 +94,9 @@ export function tablePage(table: HTMLTableElement): string {
   const doc = table.ownerDocument
   const styles = Array.from(doc.head?.querySelectorAll('style, link[rel~="stylesheet"]') ?? [])
     .filter((el) => el.localName === 'style' || /^(blob|data):/.test(el.getAttribute('href') ?? ''))
-    .map((el) => el.outerHTML)
+    .map(markupOf)
     .join('\n')
-  const source = `<!DOCTYPE html><html><head>${styles}<style>html, body { margin: 0; padding: 8px; background: Canvas; color: CanvasText; overflow: hidden; } table { margin: 0 !important; }</style></head><body>${table.outerHTML}</body></html>`
+  const source = `<!DOCTYPE html><html><head>${styles}<style>html, body { margin: 0; padding: 8px; background: Canvas; color: CanvasText; overflow: hidden; } table { margin: 0 !important; }</style></head><body>${markupOf(table)}</body></html>`
   // Cleaned again, though the page it came from already was, and given the book's policy.
   const page = new DOMParser().parseFromString(source, 'text/html')
   cleanDocument(page)

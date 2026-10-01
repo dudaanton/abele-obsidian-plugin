@@ -31,6 +31,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 import type { PaneType } from 'obsidian'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -79,13 +80,13 @@ const emit = defineEmits<{
 const openAll = (event?: MouseEvent) => {
   if (!props.allUrl) return
   const pane = event ? paneForClick(event, false) : false
-  if (pane === null || props.allExternal) window.open(props.allUrl)
+  if (pane === null || props.allExternal) openExternal(props.allUrl)
   else emit('open', props.allUrl, pane)
 }
 
 const open = (row: ListRow, event: MouseEvent) => {
   const pane = paneForClick(event, false)
-  if (pane === null || row.external) window.open(row.url)
+  if (pane === null || row.external) openExternal(row.url)
   else emit('open', row.url, pane)
 }
 </script>

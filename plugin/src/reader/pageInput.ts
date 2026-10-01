@@ -2,6 +2,7 @@
  * What a page of a book answers to: keys, a tap at its edges, a swipe, a tap on a highlight, and
  * a link out of the book.
  */
+import { openExternal } from '@/helpers/openExternal'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { isOpenableExternal } from './bookSafety'
 import { swipeDirection } from './swipe'
@@ -124,7 +125,7 @@ export function pinchZoom(host: Pick<PageHost, 'zoom' | 'fixed'>): (e: WheelEven
 export function onExternalLink(e: CustomEvent<{ href_?: string }>): void {
   e.preventDefault()
   const href = e.detail?.href_ ?? ''
-  if (isOpenableExternal(href)) window.open(href, '_blank')
+  if (isOpenableExternal(href)) openExternal(href, '_blank')
 }
 
 /**

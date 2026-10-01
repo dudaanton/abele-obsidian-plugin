@@ -3,6 +3,7 @@
  * and able to live anywhere a view can. The workspace keeps its filters; the Vue side does the
  * rest, the way a GitHub tab does.
  */
+import { openExternal } from '@/helpers/openExternal'
 import { ItemView, type PaneType, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
 import { createApp, reactive, type App as VueApp } from 'vue'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
@@ -56,7 +57,7 @@ export class NotificationsView extends ItemView {
       state: this.state,
       onOpen: (url: string, pane: PaneType | false): void =>
         void openGithubUrl(this.app, url, pane),
-      onExternal: (url: string): void => void window.open(url),
+      onExternal: (url: string): void => void openExternal(url),
       onState: () => this.app.workspace.requestSaveLayout(),
     })
     this.vue.mount(mountPoint)

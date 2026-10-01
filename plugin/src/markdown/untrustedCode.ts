@@ -5,15 +5,43 @@ import { neutraliseFences, PLAIN_LANGUAGES, ABELE_LANGUAGES } from '@/github/mar
 export const ZWSP = '​'
 const FENCE_LINE =
   /^(?:[ \t]|>|[-+*](?=[ \t])|\d{1,9}[.)](?=[ \t]))*(`{3,}|~{3,})[ \t]*([^\s`]*)(.*)$/
-const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)/g
+/** Pair runs by length in one pass, rather than rescan the remaining README for every run. */
+function guardParagraph(text: string): string {
+  const runs: { at: number; length: number }[] = []
+  for (let i = 0; i < text.length; ) {
+    if (text[i] !== '`') {
+      i++
+      continue
+    }
+    const at = i
+    while (text[i] === '`') i++
+    runs.push({ at, length: i - at })
+  }
+  const next = new Array<number>(runs.length).fill(-1)
+  const seen = new Map<number, number>()
+  for (let i = runs.length - 1; i >= 0; i--) {
+    next[i] = seen.get(runs[i].length) ?? -1
+    seen.set(runs[i].length, i)
+  }
+  const out: string[] = []
+  let copied = 0
+  for (let i = 0; i < runs.length; i++) {
+    const end = next[i]
+    if (end < 0) continue
+    const start = runs[i].at + runs[i].length
+    const padded = runs[end].at - start > 1 && text[start] === ' '
+    out.push(text.slice(copied, start), padded ? ` ${ZWSP}` : ZWSP)
+    copied = padded ? start + 1 : start
+    i = end
+  }
+  return out.join('') + text.slice(copied)
+}
 
 function guardSpans(text: string): string {
-  return text.replace(CODE_SPAN, (whole, ticks: string, content: string) => {
-    if (!content || /\n[ \t]*\n/.test(content)) return whole
-    const padded = content.length > 1 && content.startsWith(' ')
-    const guarded = padded ? ` ${ZWSP}${content.slice(1)}` : `${ZWSP}${content}`
-    return `${ticks}${guarded}${ticks}`
-  })
+  return text
+    .split(/(\n[ \t]*\n)/)
+    .map(guardParagraph)
+    .join('')
 }
 
 export function guardInlineCode(text: string): string {

@@ -9,7 +9,8 @@ image. This applies to files, comments and GitHub snippets. It does not change i
 
 GitHub markup cannot embed frames or forms. Inline styling keeps only text colour, background
 colour and alignment, so a page cannot position a fake window over Obsidian. Some unusual
-README layouts therefore look simpler here.
+README layouts therefore look simpler here. External links open only HTTP(S) or email, and
+large READMEs with many unmatched backticks no longer repeatedly rescan the entire text.
 
 ## Turning it on
 

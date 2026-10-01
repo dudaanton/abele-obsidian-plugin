@@ -17,8 +17,10 @@ it('does not interpolate note names directly into HTML tooltip formatters', () =
 
 it('keeps names and property values as literal tooltip text', () => {
   const name = '<img src="sample" onerror="sample()"> & sample'
-  const tooltip = document.createElement('div')
-  tooltip.innerHTML = `<b>${escapeHtml(name)}</b><br>${escapeHtml(42)}`
+  const tooltip = new DOMParser().parseFromString(
+    `<b>${escapeHtml(name)}</b><br>${escapeHtml(42)}`,
+    'text/html'
+  ).body
   expect(tooltip.querySelector('img')).toBeNull()
   expect(tooltip.textContent).toBe(`${name}42`)
 })

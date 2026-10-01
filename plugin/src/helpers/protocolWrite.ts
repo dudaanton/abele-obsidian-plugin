@@ -10,7 +10,12 @@ export interface ProtocolWrite {
 /** Ordinary relative notes only. Validate before normalising so traversal never disappears. */
 export function protocolNotePath(raw: string, protectedFolders: string[]): string | null {
   const path = raw.trim()
-  if (!path || /[\\:\x00-\x1f\x7f]/.test(path)) return null
+  if (
+    !path ||
+    /[\\:]/.test(path) ||
+    Array.from(path).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
+  )
+    return null
   const segments = path.split('/')
   if (segments.some((s) => !s || s.startsWith('.'))) return null
   const name = segments[segments.length - 1]

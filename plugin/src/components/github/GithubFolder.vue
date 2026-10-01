@@ -40,6 +40,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { PaneType } from 'obsidian'
 import TreeItem from '../obsidian/TreeItem.vue'
@@ -91,7 +92,7 @@ const open = (entry: FolderEntry, event: MouseEvent) => {
   const url = urlOf(entry)
   const pane = paneForClick(event, false)
   // A submodule is another repository, at a commit only GitHub's own page names.
-  if (pane === null || entry.kind === 'submodule') window.open(url)
+  if (pane === null || entry.kind === 'submodule') openExternal(url)
   else emit('open', url, pane)
 }
 

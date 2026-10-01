@@ -10,7 +10,9 @@ open in the reader when you click them in the file explorer, and so do PDFs. To 
 Obsidian's own viewer instead, turn off **Open PDF files in the Abele reader** in
 **Settings → Abele → Books**; **Open in Abele reader** in a PDF's menu then still opens one here.
 
-The reader never changes a book file.
+The reader never changes a book file. The full-screen figure viewer opens only pictures held
+inside the book, not a remote URL the book page itself cannot load. Table previews keep XML text
+as text when they are opened separately. External links open only web pages or email.
 
 ## Reading
 
@@ -81,7 +83,7 @@ A note can hold the same rule in its properties, which is what a translation car
 
 ```yaml
 word-forms: [māja, mājas, mājā]
-word-books: ["[[Books/Novel.epub]]"]
+word-books: ['[[Books/Novel.epub]]']
 ```
 
 Then tapping the word opens the card. Put `word-language: lv` and `word-scope: language` to
@@ -124,10 +126,12 @@ there, and tapping it opens the card.
 // @param into string "Translate into" = "English"
 
 if (!book) return 'Select a word in a book and run this from the bar'
-const translation = (await agent(
-  `Translate "${params.word}" into ${params.into} as it is used in this sentence. ` +
-  `Answer with the translation only.\n\n${book.sentence}`
-)).trim()
+const translation = (
+  await agent(
+    `Translate "${params.word}" into ${params.into} as it is used in this sentence. ` +
+      `Answer with the translation only.\n\n${book.sentence}`
+  )
+).trim()
 const name = params.word.replace(/[\\/:*?"<>|#^[\]]/g, ' ').trim()
 const path = `Cards/${name}.md`
 const card = [

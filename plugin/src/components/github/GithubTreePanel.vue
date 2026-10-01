@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 import { computed, nextTick, reactive, ref, shallowRef, watch } from 'vue'
 import { Keymap, type PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
@@ -225,7 +226,7 @@ const pick = (node: TreeNode, event: MouseEvent) => {
   const url = blobUrlAt(props.repo, version.value.ref, node.path)
   const pane = paneForClick(event, false)
   // A submodule is another repository, at a commit only GitHub's own page names.
-  if (pane === null || node.kind === 'submodule') window.open(url)
+  if (pane === null || node.kind === 'submodule') openExternal(url)
   else emit('open', url, pane, overlaid())
 }
 </script>

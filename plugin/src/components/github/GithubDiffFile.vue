@@ -104,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -276,7 +277,7 @@ const openFolder = (evt: MouseEvent, url: string) => {
   if (evt.defaultPrevented) return
   evt.preventDefault()
   const pane = paneForClick(evt, false)
-  if (pane === null) window.open(url)
+  if (pane === null) openExternal(url)
   else emit('open', url, pane)
 }
 
@@ -300,7 +301,7 @@ const openFile = (evt: MouseEvent) => {
   const url = currentUrl()
   if (!url) return
   const pane = paneForClick(evt, false)
-  if (pane === null) window.open(url)
+  if (pane === null) openExternal(url)
   else emit('open', url, pane)
 }
 

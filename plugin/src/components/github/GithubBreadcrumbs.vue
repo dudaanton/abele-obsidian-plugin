@@ -22,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import { openExternal } from '@/helpers/openExternal'
 import type { PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
 import type { Crumb } from '@/github/tree/fileTree'
@@ -47,7 +48,7 @@ const follow = (event: MouseEvent, url: string) => {
   if (event.defaultPrevented) return
   event.preventDefault()
   const pane = paneForClick(event, false)
-  if (pane === null) window.open(url)
+  if (pane === null) openExternal(url)
   else emit('open', url, pane)
 }
 </script>
