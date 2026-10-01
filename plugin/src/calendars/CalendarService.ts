@@ -16,7 +16,7 @@ import type { CalendarEvent } from './events'
 import { compareEvents, eventDays } from './events'
 import { readFeed } from './fetch'
 import type { Requester } from './http'
-import type { TimeWindow } from './ics'
+import { parseIcs, type TimeWindow } from './ics'
 import type { CalendarFeed, CalendarSettings } from './settings'
 
 /** How far back and ahead a calendar is unrolled. */
@@ -50,6 +50,7 @@ interface CachedFeed {
   fingerprint: string
   at: number
   etag?: string
+  ics?: string
   events: CalendarEvent[]
 }
 
@@ -125,7 +126,9 @@ export class CalendarService {
       for (const feed of this.deps.settings().feeds) {
         const kept = this.cache.feeds[feed.id]
         if (!kept || kept.fingerprint !== this.fingerprint(feed)) continue
-        this.state.events[feed.id] = markRaw(kept.events)
+        this.state.events[feed.id] = markRaw(
+          kept.ics ? parseIcs(kept.ics, feed.id, this.window()) : kept.events
+        )
         this.statusOf(feed.id).at = kept.at
       }
       this.state.version++
@@ -159,17 +162,28 @@ export class CalendarService {
     const kept = this.cache.feeds[feed.id]
     const sameSource = kept?.fingerprint === fingerprint
     try {
+      if (sameSource && kept.ics) {
+        this.state.events[feed.id] = markRaw(parseIcs(kept.ics, feed.id, this.window()))
+      }
       const secret = feed.keyId ? this.deps.secret(feed.keyId) : ''
       const read = await readFeed(
         feed,
         secret,
         this.window(),
         this.deps.request,
-        sameSource ? kept?.etag : undefined
+        // Old event-only caches need one full read before an unchanged response is useful.
+        sameSource && kept.ics ? kept.etag : undefined
       )
       const at = this.now()
-      const events = read.unchanged && kept ? kept.events : read.events
-      this.cache.feeds[feed.id] = { fingerprint, at, etag: read.etag, events }
+      const ics = read.unchanged ? kept?.ics : read.ics
+      const events = read.unchanged && ics ? parseIcs(ics, feed.id, this.window()) : read.events
+      this.cache.feeds[feed.id] = {
+        fingerprint,
+        at,
+        etag: read.etag,
+        events,
+        ...(ics ? { ics } : {}),
+      }
       this.state.events[feed.id] = markRaw(events)
       status.at = at
       status.error = null

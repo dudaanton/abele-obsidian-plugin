@@ -9,6 +9,8 @@ import { normalizeCalendarUrl, type CalendarFeed } from './settings'
 
 export interface FeedRead {
   events: CalendarEvent[]
+  /** The calendar itself, so recurring events can be expanded again as the window moves. */
+  ics?: string
   /** What the link's server said identifies this version; sent back next time. */
   etag?: string
   /** The link has not changed since `etag`: the events kept from last time still stand. */
@@ -56,6 +58,7 @@ export async function readFeed(
   }
   return {
     events: parseIcs(response.text, feed.id, window),
+    ics: response.text,
     etag: header(response, 'etag') || undefined,
   }
 }
