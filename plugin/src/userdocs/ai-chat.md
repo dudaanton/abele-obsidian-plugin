@@ -11,6 +11,12 @@ Chats with AI models that can read and change your notes, inside limits you set.
 4. On the **Agents** tab, open the `Default` agent and give it that model.
 5. Open the chat with **Show AI chat sidebar**, or the robot in the ribbon.
 
+## JavaScript calculations
+
+**Evaluate JavaScript** is for calculations, not downloads. It runs for at most 10 seconds
+without network, files, storage or other workers. Imports, `eval`, `Function` and string timers
+are unavailable. Network requests belong in the Fetch tool or a script instead.
+
 ## Chatting
 
 Other plugins' executable blocks (for example `dataviewjs`) and inline queries in replies,
