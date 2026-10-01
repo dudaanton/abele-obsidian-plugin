@@ -131,7 +131,7 @@ does the same for a comment. Every comment has link buttons in its header. Links
 
 ## Line blame
 
-In a file's sticky path header, **Blame** shows who last changed each range of lines: the author, relative date and
+At the top of a file, below its pinned path, **Blame** shows who last changed each range of lines: the author, relative date and
 first line of the commit message. It uses the file's displayed branch, tag or commit, not the
 repository's default branch. Markdown switches temporarily to source while blame is on.
 Click a range's message to open that commit in the same tab; hover for the full message and

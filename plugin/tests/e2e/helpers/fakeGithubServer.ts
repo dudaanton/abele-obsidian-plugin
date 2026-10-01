@@ -34,15 +34,23 @@ import {
   TAG,
   FIRST_SHA,
   changedFiles,
-  filesAt,
+  filesAt as repositoryFilesAt,
   fixtures,
   foldersOf,
   tarball,
 } from './fakeGithubRepo'
 
+import { wideGithubReadme } from './wideGithubReadme'
+
 const port = Number(process.argv[2] ?? 0)
 const mode = process.argv[3] ?? ''
 const legacy = mode === 'legacy' || mode === 'no-raw'
+const fixtureFilesAt = (ref: string, web: string) => {
+  const files = repositoryFilesAt(ref)
+  return files && mode === 'wide-readme'
+    ? { ...files, 'src/README.md': wideGithubReadme(web) }
+    : files
+}
 const accountOf = (req: IncomingMessage): 'one' | 'two' | 'anonymous' =>
   req.headers.authorization === 'Bearer invented-connection-one' ? 'one' :
   req.headers.authorization === 'Bearer invented-connection-two' ? 'two' : 'anonymous'
@@ -190,7 +198,7 @@ function avatarPng(login: string): Buffer {
   const [r, g, b] = [0, 120, 240].map((shift) =>
     Math.round(127 + 100 * Math.cos(((hue + shift) * Math.PI) / 180))
   )
-  const size = 40
+  const size = login === 'sample-wide.png' ? 1600 : 40
   const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array(size).fill([r, g, b]).flat())])
   const chunk = (type: string, data: Buffer) => {
     const head = Buffer.alloc(4)
@@ -214,6 +222,7 @@ function avatarPng(login: string): Buffer {
 
 function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
   const f = fixtures(web)
+  const filesAt = (ref: string) => fixtureFilesAt(ref, web)
   const accept = String(req.headers.accept ?? '')
   if (url.pathname === '/api/v3/user') {
     const account = accountOf(req)
@@ -418,7 +427,7 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
     `POST /api/graphql operation=${profiles ? 'profiles' : 'other'}${profiles ? ` logins=${Object.values(variables ?? {}).join(',')}` : ''}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`
   )
   if (query?.includes('blame(path:')) {
-    const text = filesAt(String(variables?.ref ?? 'main'))?.[String(variables?.path)]
+    const text = fixtureFilesAt(String(variables?.ref ?? 'main'), web)?.[String(variables?.path)]
     if (typeof text !== 'string') return send(res, 200, { data: { repository: { object: null } } })
     const lines = text.trimEnd().split('\n').length
     const ranges = Array.from({ length: Math.ceil(lines / 4) }, (_, i) => ({

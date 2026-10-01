@@ -73,8 +73,53 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
+<style lang="scss">
 .abele-github-text {
   white-space-collapse: collapse;
+}
+
+// Obsidian supplies the reading-view styling, but these renderers are outside its
+// preview sizer. Bound their intrinsic widths here rather than clipping the whole tab.
+.abele-github-text,
+.abele-github-md {
+  min-width: 0;
+  overflow-wrap: anywhere;
+
+  .table-wrapper {
+    max-width: 100%;
+    // A reading-view table keeps its columns and scrolls inside the document.
+    overflow-x: auto;
+  }
+
+  table {
+    overflow-wrap: normal;
+    display: block;
+    max-width: 100%;
+    // A renderer without Obsidian's table wrapper needs the same local scroller.
+    overflow-x: auto;
+  }
+
+  pre {
+    max-width: 100%;
+    white-space: pre;
+    // Code keeps its source lines; only the code box, never the tab, scrolls sideways.
+    overflow-x: auto;
+  }
+
+  pre code {
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  :not(pre) > code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+  }
 }
 </style>

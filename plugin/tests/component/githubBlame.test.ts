@@ -47,7 +47,7 @@ enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
 
 describe('line blame in the file view', () => {
-  it('keeps the file toolbar inside the sticky path header without changing its blame actions', async () => {
+  it('keeps the file toolbar below the path without changing its blame actions', async () => {
     const { wrapper, onOpen } = openTab(
       'https://github.com/sample-org/sample-repo/blob/main/sample.ts',
       {

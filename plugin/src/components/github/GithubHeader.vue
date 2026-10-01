@@ -1,5 +1,5 @@
 <template>
-  <header ref="root" class="abele-github-header">
+  <header ref="root" class="abele-github-header" :class="{ 'abele-github-header_path': crumbs }">
     <div class="abele-github-header__top">
       <div class="abele-github-header__repo">{{ crumbs ? '' : repo }}</div>
       <div class="abele-github-header__actions">
@@ -41,7 +41,7 @@
         />
       </div>
     </div>
-    <h2 class="abele-github-header__title">
+    <h2 ref="path" class="abele-github-header__title">
       <GithubBreadcrumbs
         v-if="crumbs"
         :crumbs="crumbs"
@@ -51,19 +51,21 @@
       <template v-else>{{ title }}</template>
       <span v-if="number" class="abele-github-header__number">#{{ number }}</span>
     </h2>
-    <slot name="file-actions" />
-    <div v-if="state || labels?.length" class="abele-github-header__badges">
-      <Badge v-if="state" :text="state" :accent="accentStates.includes(state)" />
-      <Badge v-for="label in labels" :key="label.name" :text="label.name" />
-    </div>
-    <div v-if="meta.length" class="abele-github-header__meta">
-      <span v-for="(part, i) in meta" :key="i">
-        <template v-if="typeof part === 'string'">{{ part }}</template>
-        <template v-else>
-          <GithubUser :login="part.login" :avatar="part.avatar" />
-          <template v-if="part.after">{{ ` ${part.after}` }}</template>
-        </template>
-      </span>
+    <div class="abele-github-header__details">
+      <slot name="file-actions" />
+      <div v-if="state || labels?.length" class="abele-github-header__badges">
+        <Badge v-if="state" :text="state" :accent="accentStates.includes(state)" />
+        <Badge v-for="label in labels" :key="label.name" :text="label.name" />
+      </div>
+      <div v-if="meta.length" class="abele-github-header__meta">
+        <span v-for="(part, i) in meta" :key="i">
+          <template v-if="typeof part === 'string'">{{ part }}</template>
+          <template v-else>
+            <GithubUser :login="part.login" :avatar="part.avatar" />
+            <template v-if="part.after">{{ ` ${part.after}` }}</template>
+          </template>
+        </span>
+      </div>
     </div>
   </header>
 </template>
@@ -124,13 +126,14 @@ const emit = defineEmits<{
   (e: 'open', url: string, pane: PaneType | false): void
 }>()
 
-// Keep native line jumps clear even when a long path wraps or theme fonts change.
+// Only the path obscures a line jump, including when it wraps or theme fonts change.
 const root = ref<HTMLElement>()
-useResizeObserver(root, () => {
+const path = ref<HTMLElement>()
+useResizeObserver(path, () => {
   const head = root.value
   head?.parentElement?.style.setProperty(
     '--abele-github-header-height',
-    `${head.getBoundingClientRect().height}px`
+    `${path.value?.getBoundingClientRect().height ?? 0}px`
   )
 })
 
@@ -139,16 +142,29 @@ const accentStates = ['open', 'draft']
 </script>
 
 <style lang="scss">
-// Only the file view pins the main header, not issue, repository or folder headings.
-.abele-github:has(> .abele-github-blob) {
-  > .abele-github-header {
+// A file or folder pins just its path. The header has no containing box here, so the
+// path's sticky range is the document, not the short-lived controls above and below it.
+.abele-github-header.abele-github-header_path {
+  display: contents;
+
+  > .abele-github-header__title {
     position: sticky;
     // The tab scroller has theme padding; pin against its edge, not below that padding.
     top: calc(-1 * var(--size-4-3));
     z-index: 1;
     background: var(--background-primary);
+    padding-block: var(--size-4-2);
+    border-bottom: 1px solid var(--background-modifier-border);
   }
 
+  > .abele-github-header__details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-2);
+  }
+}
+
+.abele-github:has(> .abele-github-header_path) {
   .cm-line,
   .abele-github-md__block {
     scroll-margin-top: calc(var(--abele-github-header-height, 0px) + var(--size-4-2));
@@ -162,6 +178,10 @@ const accentStates = ['open', 'draft']
   padding-bottom: var(--size-4-3);
   border-bottom: 1px solid var(--background-modifier-border);
   margin-bottom: var(--size-4-3);
+
+  &__details {
+    display: contents;
+  }
 
   &__top {
     display: flex;

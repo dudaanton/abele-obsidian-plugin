@@ -126,7 +126,7 @@ const props = withDefaults(
     /** What the tab was switched to, kept in its state; unset follows the link. */
     mode?: BlobMode
     client?: GithubClient
-    /** In a tab, file actions share the sticky path header; standalone previews stay inline. */
+    /** In a tab, file actions sit below the pinned path; standalone previews stay inline. */
     toolbarHost?: HTMLElement | null
   }>(),
   { range: undefined, plain: false, mode: undefined, client: undefined, toolbarHost: null }
@@ -282,6 +282,7 @@ const switchTo = (next: string) => {
 
 <style lang="scss">
 .abele-github-blob {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);

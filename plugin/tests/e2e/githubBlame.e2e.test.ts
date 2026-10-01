@@ -163,7 +163,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
       marked: boolean
       lateRange: boolean
       count: number
-      togglePinned: boolean
+      toggleScrolledAway: boolean
       toggleHit: boolean
       toggledOff: boolean
     }>(`(async () => {
@@ -179,18 +179,19 @@ describe.skipIf(!available)('file blame on a phone', () => {
         lateRange: [...root.querySelectorAll('.abele-github-blame-range')].some(e => e.textContent.includes('Sample attribution 88')),
         count: root.querySelectorAll('.abele-github-blame-range').length,
       }
-      const header = root.querySelector('.abele-github-header')
       const toggle = root.querySelector('button[aria-label="Toggle line blame"]')
       const main = root.querySelector('.abele-github-layout__main')
-      const before = toggle.getBoundingClientRect().top
       const initial = main.scrollTop
       // A user scroll interrupts the link's settling pin; a bare scrollTop assignment does not.
       main.dispatchEvent(new Event('wheel', { bubbles: true }))
       main.scrollTop += 240
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      // Only the path remains pinned. Blame stays reachable by returning to the top.
+      report.toggleScrolledAway = toggle.getBoundingClientRect().bottom <= main.getBoundingClientRect().top && main.scrollTop - initial > 200
+      main.scrollTop = 0
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const box = toggle.getBoundingClientRect()
       const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
-      report.togglePinned = header.contains(toggle) && Math.abs(box.top - before) <= 1 && main.scrollTop - initial > 200
       report.toggleHit = toggle === hit || toggle.contains(hit)
       const shot = ${JSON.stringify(`${SHOTS}/github-blame-sticky.png`)}
       if (window.__e2eHost) await window.__e2eHost.shot(shot)
@@ -205,7 +206,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
     expect(report.marked).toBe(true)
     expect(report.lateRange).toBe(true)
     expect(report.count).toBeLessThan(100)
-    expect(report.togglePinned).toBe(true)
+    expect(report.toggleScrolledAway).toBe(true)
     expect(report.toggleHit).toBe(true)
     expect(report.toggledOff).toBe(true)
   })

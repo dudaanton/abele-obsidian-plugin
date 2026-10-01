@@ -96,12 +96,12 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
   const container = scrollParent(from)
   if (!container) return () => {}
 
-  // File controls share the pinned path header. Keep the requested source context below
-  // that header, including when a path or toolbar wraps after the initial measurement.
+  // Only the path stays pinned; controls scroll away. Keep the requested source context
+  // below the path, including when it wraps after the initial measurement.
   const header = from
     .closest('.abele-github-blob')
     ?.closest('.abele-github')
-    ?.querySelector<HTMLElement>(':scope > .abele-github-header')
+    ?.querySelector<HTMLElement>(':scope > .abele-github-header_path > .abele-github-header__title')
   const context = () => {
     if (!header) return o.context
     const style = win.getComputedStyle(header)

@@ -60,7 +60,7 @@ const marked = (w: VueWrapper) =>
   w.findAll('.abele-github-md__block_marked').map((b) => b.attributes('data-start'))
 const markedLines = (w: VueWrapper) =>
   w.findAll('.abele-github-code__line_target').map((l) => l.text())
-// File controls now live beside the path in the sticky header, not in the scrolling blob.
+// File controls live below the pinned path, not in the scrolling blob.
 const activeMode = (w: VueWrapper) => w.find('.abele-github-header .abele-tabs__tab_active').text()
 
 async function switchTo(w: VueWrapper, label: 'Preview' | 'Code') {

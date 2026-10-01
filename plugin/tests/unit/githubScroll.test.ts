@@ -70,14 +70,17 @@ describe('pinning a target into view', () => {
     expect(pane.scrollTop).toBe(800 - 96)
   })
 
-  it('keeps linked lines and their context below a sticky file header as its toolbar grows', () => {
+  it('keeps linked lines and their context below the pinned path as it wraps', () => {
     inner.classList.add('abele-github')
     const header = inner.appendChild(document.createElement('header'))
-    header.classList.add('abele-github-header')
-    header.style.position = 'sticky'
-    header.style.top = '-12px'
+    header.classList.add('abele-github-header', 'abele-github-header_path')
+    const path = header.appendChild(document.createElement('h2'))
+    path.classList.add('abele-github-header__title')
+    path.style.position = 'sticky'
+    path.style.top = '-12px'
     let height = 140
-    header.getBoundingClientRect = () => rect(PANE_TOP - 12, height)
+    path.getBoundingClientRect = () => rect(PANE_TOP - 12, height)
+    header.getBoundingClientRect = () => rect(PANE_TOP - 300, 500)
     const blob = inner.appendChild(document.createElement('div'))
     blob.classList.add('abele-github-blob')
     blob.appendChild(target)
