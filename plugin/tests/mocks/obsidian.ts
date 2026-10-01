@@ -206,8 +206,8 @@ export function prepareFuzzySearch(
  * do the work directly — so this passes calls straight through rather than deferring them,
  * which would leave timers dangling after a test finishes.
  */
-export function debounce<T extends (...args: never[]) => unknown>(fn: T): T {
-  return fn
+export function debounce<T extends (...args: never[]) => unknown>(fn: T): T & { cancel(): void } {
+  return Object.assign(fn, { cancel() {} })
 }
 
 /**

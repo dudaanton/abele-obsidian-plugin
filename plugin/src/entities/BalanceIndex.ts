@@ -3,7 +3,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from 'dayjs'
-import { debounce, EventRef, normalizePath, TFile } from 'obsidian'
+import { debounce, type Debouncer, EventRef, normalizePath, TFile } from 'obsidian'
 import { ref, toRaw } from 'vue'
 import { AccountsList } from './AccountsList'
 import { Transaction } from './Transaction'
@@ -29,7 +29,7 @@ export class BalanceIndex {
   public readonly version = ref(0)
 
   private eventRefs: EventRef[] = []
-  private debouncedRebuild: () => void
+  private debouncedRebuild: Debouncer<[], void>
 
   constructor(transactionsList: TransactionsList, accountsList: AccountsList) {
     this.transactionsList = transactionsList
@@ -432,6 +432,7 @@ export class BalanceIndex {
   }
 
   cleanup(): void {
+    this.debouncedRebuild.cancel()
     const { app } = GlobalStore.getInstance()
 
     this.eventRefs.forEach((ref) => {

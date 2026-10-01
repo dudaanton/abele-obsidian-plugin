@@ -137,10 +137,7 @@ describe('BalanceIndex deferred events', () => {
     expect(bi.version.value).toBe(version + 1)
   })
 
-  // BUG: cleanup unregisters events and empties caches, but does not cancel the
-  // pending debounced rebuild. Closing finance during an edit lets the disposed
-  // index rebuild and publish a version afterwards.
-  it.fails('cancels a scheduled rebuild on cleanup', () => {
+  it('cancels a scheduled rebuild on cleanup', () => {
     app.emit('metadataCache', 'changed', app.vault.getFileByPath('Tx.md'))
     const version = bi.version.value
     bi.cleanup()
