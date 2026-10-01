@@ -55,6 +55,40 @@ describe('scopeCss', () => {
     )
   })
 
+  it('can address the scope root and its descendants without matching adjacent app elements', () => {
+    const host = document.createElement('div')
+    host.setAttribute('data-deck-id', 'sample')
+    const slide = document.createElement('section'),
+      title = document.createElement('h1')
+    slide.className = 'abele-slide sample-accent'
+    slide.append(title)
+    host.append(slide)
+    const outside = document.createElement('div')
+    outside.className = 'sample-neighbour'
+    host.append(outside)
+    const prefix = '[data-deck-id="sample"] .abele-slide'
+    const scoped = scopeCss(
+      '.sample-accent { opacity: .5 } .sample-accent h1 { opacity: .8 } .sample-accent + .sample-neighbour { opacity: 0 }',
+      prefix,
+      { includeRoot: true }
+    )
+    const selectors = [...scoped.matchAll(/([^{}]+)\{/g)].map((m) => m[1].trim())
+    expect([...host.querySelectorAll(selectors[0])]).toContain(slide)
+    expect([...host.querySelectorAll(selectors[1])]).toContain(title)
+    expect([...host.querySelectorAll(selectors[2])]).not.toContain(outside)
+    expect(
+      scopeCss('.sample-accent::before { content: "{},;" }', prefix, { includeRoot: true })
+    ).toContain(':where(')
+  })
+
+  it('does not split CSS strings, attribute values or functional selector lists as structure', () => {
+    const source =
+      '.a:is(.one, .two), [data-label="x,y"] { content: "}; .outside { color: red; }"; background: url("sample,a.svg"); }'
+    const scoped = scopeCss(source, P)
+    expect(scoped).toContain(`${P} .a:is(.one, .two), ${P} [data-label="x,y"]`)
+    expect(scoped).toContain('content: "}; .outside { color: red; }";')
+  })
+
   it('does not throw on unbalanced braces and keeps what parsed', () => {
     expect(squash(scopeCss('.a { b: 1 } .c { d: 2', P))).toBe(`${P} .a { b: 1 }`)
   })

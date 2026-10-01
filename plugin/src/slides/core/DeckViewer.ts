@@ -144,7 +144,8 @@ export class DeckViewer {
       if (this.closed || revision !== this.revision) return
       this.stylesheet.textContent = scopeCss(
         `${theme}\n${deck.css}`,
-        `[data-deck-id="${this.scopeId}"] .abele-slide`
+        `[data-deck-id="${this.scopeId}"] .abele-slide`,
+        { includeRoot: true }
       )
     })()
     this.ready = Promise.all([render, styles]).then(() => {})
