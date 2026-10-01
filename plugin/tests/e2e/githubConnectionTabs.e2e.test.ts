@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw } from './helpers/obsidianCli'
 import { startFakeGithub, enableGithub, restoreGithub, evalAsync, PRELUDE, type FakeGithub } from './helpers/githubLive'
-import { targets } from './helpers/target'
+import { targets, onPhone } from './helpers/target'
+import { shotDir } from './helpers/shots'
+const SHOTS=shotDir('abele-github-connections')
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -21,6 +23,38 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
     })()`)
   })
   afterAll(() => { try {restoreGithub()} finally {gh?.stop()} })
+
+  it('keeps a long account label and fallback notice inside the real phone viewport', () => {
+    if (!onPhone()) return // Desktop phone emulation is covered by githubPhone and phoneLayout.
+    const r=evalAsync<{over:string[];shot:string}>(`(async()=>{
+      ${PRELUDE}
+      const config=window.__abeleTest.AbeleConfig.getInstance()
+      const names=config.github.connections.map(c=>c.name)
+      let leaf
+      try {
+        for(const c of config.github.connections)c.name += ' with a long descriptive account label that wraps on a phone'
+        config.version.value++
+        leaf=await openTab(${JSON.stringify(gh.web+'/issues/7')})
+        await until(()=>leaf.view.model.screen.title,15000)
+        const root=leaf.view.containerEl.querySelector('.abele-github')
+        await settledLayout(root)
+        const edge=root.getBoundingClientRect()
+        const over=[...root.querySelectorAll('button,.abele-empty-state')].filter(el=>{
+          const r=el.getBoundingClientRect()
+          return r.width>0 && (r.right>Math.min(edge.right,innerWidth)+1 || el.scrollWidth>el.clientWidth+1)
+        }).map(el=>el.className)
+        const shot=await window.__e2eHost.shot(${JSON.stringify(SHOTS+'/account-header.png')})
+        return {over,shot}
+      } finally {
+        leaf?.detach()
+        config.github.connections.forEach((c,i)=>c.name=names[i])
+        config.version.value++
+      }
+    })()`)
+    console.info('account header screenshot',r.shot)
+    expect(r.over).toEqual([])
+    expect(r.shot).toMatch(/\.png$/)
+  })
 
   it('falls back to the account that can read the primary item, then preserves manual refusal and history', () => {
     const r = evalAsync<{id?:string;notice?:string;history?:boolean;cleared?:boolean;denied?:boolean;state?:unknown}>(`(async()=>{
