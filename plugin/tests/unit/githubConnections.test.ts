@@ -7,6 +7,29 @@ import { DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 const legacy = { enabled: true, server: 'https://git.example.test', keyId: 'old-slot' }
 
 describe('GitHub connection migration', () => {
+  it('does not reimport legacy credentials when a present connection list is malformed', () => {
+    for (const connections of [null, {}, 'invalid']) {
+      const settings=githubSettingsFrom({...legacy,connections} as never)
+      expect(settings.connections).toEqual([])
+      expect(settings.keyId).toBe('')
+    }
+  })
+
+  it('never reassigns a token with an invalid server value to public GitHub', () => {
+    const legacyBad=githubSettingsFrom({server:42,keyId:'private-slot',notifications:{keyId:'classic-slot'}} as never)
+    expect(legacyBad.connections).toEqual([])
+    expect(legacyBad.keyId).toBe('')
+    expect(legacyBad.notifications.keyId).toBe('')
+    const badBinding=githubSettingsFrom({server:'',notifications:{keyId:'classic-slot',boundKeyId:'classic-slot',boundServer:42}} as never)
+    expect(badBinding.notifications.keyId).toBe('')
+    expect(badBinding.notifications.boundKeyId).toBeUndefined()
+  })
+
+  it('normalizes malformed compatibility fields without breaking settings load', () => {
+    const settings=githubSettingsFrom({server:42,keyId:{bad:true},legacyServer:[],defaultRepo:null} as never)
+    expect(settings).toMatchObject({server:'',keyId:'',legacyServer:'',defaultRepo:'',connections:[]})
+  })
+
   it('keeps the old slot and server, with a stable identity across devices', () => {
     const one = githubSettingsFrom(legacy)
     const two = githubSettingsFrom(legacy)

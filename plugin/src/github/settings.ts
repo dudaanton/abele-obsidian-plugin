@@ -1,5 +1,5 @@
 /** The GitHub integration's settings, kept under `github` in the plugin's settings. */
-import { normalizeConnections, projectLegacy, type GithubConnection } from './connections'
+import { normalizeConnections, projectLegacy, validConnectionServer, type GithubConnection } from './connections'
 export interface GithubSettings {
   /** The whole feature. Off: no link is intercepted and no command does anything. */
   enabled: boolean
@@ -83,27 +83,34 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   notifications: { keyId: '' },
 }
 
+const stringSetting = (value: unknown): string => typeof value==='string' ? value : ''
+const serverSetting = (value: unknown): string | null => {
+  if (value === undefined || value === '') return ''
+  if (typeof value !== 'string') return null
+  const address=value.trim()
+  return !address || validConnectionServer(address) ? address : null
+}
+function notificationsFrom(stored: Partial<GithubSettings> | undefined): GithubSettings['notifications'] {
+  const raw=stored?.notifications
+  const keyId=stringSetting(raw?.keyId), boundKeyId=stringSetting(raw?.boundKeyId) || keyId
+  if (!boundKeyId) return {keyId:''}
+  const boundServer=serverSetting(raw?.boundServer === undefined ? stored?.server : raw.boundServer)
+  // An unreadable binding is unavailable, not permission to send its token to github.com.
+  return boundServer === null ? {keyId:''} : {keyId,boundKeyId,boundServer}
+}
+
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings =>
   projectLegacy({
     ...DEFAULT_GITHUB_SETTINGS,
     ...(stored ?? {}),
+    server: serverSetting(stored?.server) ?? '',
+    keyId: stringSetting(stored?.keyId),
+    legacyServer: typeof stored?.legacyServer==='string' ? stored.legacyServer : undefined,
+    defaultRepo: stringSetting(stored?.defaultRepo),
     connections: normalizeConnections(stored?.connections, stored ?? {}),
     // A settings file from before pinning, or one edited by hand, holds nothing usable here.
     pinnedRepos: Array.isArray(stored?.pinnedRepos)
       ? stored.pinnedRepos.filter((p): p is PinnedRepo => typeof p?.url === 'string')
       : [],
-    notifications: {
-      keyId: typeof stored?.notifications?.keyId === 'string' ? stored.notifications.keyId : '',
-      ...(stored?.notifications?.boundKeyId
-        ? {
-            boundKeyId: stored.notifications.boundKeyId,
-            boundServer: stored.notifications.boundServer ?? stored?.server ?? '',
-          }
-        : stored?.notifications?.keyId
-          ? {
-              boundKeyId: stored.notifications.keyId,
-              boundServer: stored.server ?? '',
-            }
-          : {}),
-    },
+    notifications: notificationsFrom(stored),
   })

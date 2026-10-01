@@ -21,7 +21,8 @@ export function normalizeConnections(
   raw: unknown,
   legacy: { server?: string; keyId?: string }
 ): GithubConnection[] {
-  const old = typeof legacy.server === 'string' ? legacy.server : ''
+  if (raw === undefined && legacy.server !== undefined && typeof legacy.server !== 'string') return []
+  const old = typeof legacy.server === 'string' ? legacy.server.trim() : ''
   const keyId = typeof legacy.keyId === 'string' ? legacy.keyId : ''
   const migrated =
     old || keyId
@@ -36,7 +37,7 @@ export function normalizeConnections(
           },
         ]
       : []
-  const incoming: unknown[] = Array.isArray(raw) ? raw : migrated
+  const incoming: unknown[] = raw === undefined ? migrated : Array.isArray(raw) ? raw : []
   const seen = new Set<string>()
   const defaults = new Set<string>()
   const result: GithubConnection[] = []
