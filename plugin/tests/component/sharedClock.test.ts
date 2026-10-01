@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref, type EffectScope } from 'vue'
+import { computed, effectScope, nextTick, ref, watch, type EffectScope } from 'vue'
+import dayjs from 'dayjs'
 import { useDate } from '@/composables/useDate'
 
 const scopes: EffectScope[] = []
@@ -37,6 +38,32 @@ it('shares one minute clock, does no frame polling and stops when all consumers 
   expect(dates[0].now.value.format('YYYY-MM-DD')).toBe('2024-01-02')
   expect(dates[1].now.value).toBe(old)
   expect(vi.getTimerCount()).toBe(1)
+})
+
+it('notifies all cached date labels when one getter catches up across midnight', async () => {
+  const scope = effectScope()
+  scopes.push(scope)
+  const { due, dateLabel, dueLabel, changed } = scope.run(() => {
+    const { now } = useDate()
+    const date = dayjs(new Date(2024, 0, 2))
+    const due = ref(dayjs(new Date(2024, 0, 3)))
+    const dateLabel = computed(() => date.diff(now.value.startOf('day'), 'day'))
+    const dueLabel = computed(() => due.value.diff(now.value.startOf('day'), 'day'))
+    const changed = vi.fn()
+    watch(now, changed, { flush: 'sync' })
+    return { due, dateLabel, dueLabel, changed }
+  })!
+  expect(dateLabel.value).toBe(1)
+  expect(dueLabel.value).toBe(2)
+  vi.setSystemTime(new Date(2024, 0, 2, 12))
+  due.value = dayjs(new Date(2024, 0, 4))
+  // Only this computed was invalidated by its own data. Its read discovers the new day.
+  expect(dueLabel.value).toBe(2)
+  expect(dateLabel.value).toBe(0)
+  expect(changed).toHaveBeenCalledTimes(1)
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(dateLabel.value).toBe(0)
+  expect(changed).toHaveBeenCalledTimes(1)
 })
 
 it('suspends when the document hides and catches up once on return', async () => {

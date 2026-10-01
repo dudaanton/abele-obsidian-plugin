@@ -44,7 +44,9 @@ export function useDisplayClock(
         track()
         // A suspended device or wall-clock adjustment may resume between ticks. A consumer
         // reading the clock then gets today's date immediately, without a frame poll.
-        if (running && key(value) !== key(Date.now())) value = Date.now()
+        // Publish catch-up just like a scheduled tick. A silent assignment would make that
+        // tick see an unchanged bucket and leave other computed labels cached on the old day.
+        if (running) update(Date.now())
         return value
       },
       set() {
