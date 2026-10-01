@@ -109,7 +109,7 @@ exception is genuinely needed it lives in `eslint.config.mjs`, which is this pro
 with the reason recorded there. The review still sees and reports those findings — as
 ordinary findings rather than as suppressions.
 
-## Three findings that stand
+## Findings that stand
 
 **Scripts are compiled with `new Function`** (`src/scripting/ScriptService.ts`). Running a
 script the user wrote in their own vault requires compiling it; there is no variant of the
@@ -129,6 +129,13 @@ has run — `styles.css`, which is written before any script is, cannot hold it.
 made in the tab's own document, so a view in a popout window is styled where it is drawn, and
 every selector in it is prefixed with the tab's root (`scopeCss`), so nothing the script writes
 reaches past its tab. Reported by `no-forbidden-elements`.
+
+**MapLibre's stylesheet is installed on demand** (`src/helpers/mapStyles.ts`). Its rules and
+embedded control images are carried as text in the single JavaScript asset, rather than parsed
+as global CSS in every window on every startup. The first map installs them in its own document;
+subsequent maps share that element, and the last map removes it. This deliberately trades the
+`styles.css` recommendation for first-use styling. Reported by `no-forbidden-elements`; the local
+exception applies only to this loader, and the community review still sees the finding.
 
 ## Known gaps
 

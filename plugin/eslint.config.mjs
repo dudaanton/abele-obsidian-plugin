@@ -228,7 +228,7 @@ export default [
   },
 
   /**
-   * Three findings this plugin cannot clear, recorded here rather than silenced at the call site.
+   * Deliberate findings recorded here rather than silenced at the call site.
    *
    * Obsidian's preset forbids `eslint-disable` comments for its own rules, and its review
    * reports any it finds as a **Risk** — which is what a first submission was rejected for. So
@@ -246,7 +246,10 @@ export default [
    *     rest of the app — so it goes into a `<style>` made in the tab's own document with every
    *     selector prefixed by the tab's root.
    *
-   * All three are explained at their site and in docs/Obsidian compliance.md. Left as warnings
+   *   - MapLibre's stylesheet is installed only while a window contains maps, instead of
+   *     parsing its rules in every window at startup. The last map removes it again.
+   *
+   * These are explained at their site and in docs/Obsidian compliance.md. Left as warnings
    * so a *new* violation of any of these rules elsewhere still fails the build.
    */
   {
@@ -261,7 +264,7 @@ export default [
     rules: { 'obsidianmd/settings-tab/prefer-setting-definitions': 'warn' },
   },
   {
-    files: ['plugin/src/components/ScriptView.vue'],
+    files: ['plugin/src/components/ScriptView.vue', 'plugin/src/helpers/mapStyles.ts'],
     rules: { 'obsidianmd/no-forbidden-elements': 'warn' },
   },
 

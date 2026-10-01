@@ -6,7 +6,7 @@ const documents = new WeakMap<Document, { style: HTMLStyleElement; users: number
 export function acquireMapStyles(doc: Document): () => void {
   let entry = documents.get(doc)
   if (!entry) {
-    const style = doc.createElement('style')
+    const style = doc.win.createEl('style')
     style.dataset.abeleMap = ''
     style.textContent = css
     doc.head.appendChild(style)
