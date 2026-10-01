@@ -28,6 +28,7 @@ const probe = String.raw`(async () => {
   const chatPath = 'AI/Chats/sample-script-reply.abchat'
   const name = 'Sample side reviewer'
   const madeDirs = []
+  const madeFiles = []
   const pending = new Map()
   const inputs = []
   globalThis.__sampleScriptReviews = { pending, inputs }
@@ -59,17 +60,19 @@ const probe = String.raw`(async () => {
     for (const dir of ['AI', 'AI/Chats', folder]) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); madeDirs.unshift(dir) }
     }
-    await app.vault.create(scriptPath, [
+    const scriptFile = await app.vault.create(scriptPath, [
       '// @name ' + name,
       '// @interceptor 30',
       'globalThis.__sampleScriptReviews.inputs.push({ text: message.text, earlier: chat.messages.length })',
       'return await new Promise(resolve => globalThis.__sampleScriptReviews.pending.set(message.text, resolve))',
     ].join('\n'))
+    madeFiles.push(scriptFile)
     await scripts.discover()
     const indexed = scripts.get(scriptPath)
     if (!indexed) throw new Error('sample script was not indexed')
     scripts.confirm(indexed)
     const file = await app.vault.create(chatPath, JSON.stringify({ v: 2, k: 'meta', type: 'abele-chat', title: 'Sample script reply' }) + '\n')
+    madeFiles.push(file)
     await chats.openChatFile(file)
     await chats.revealSidebar()
     session = chats.getSessionByFile(chatPath)
@@ -116,7 +119,11 @@ const probe = String.raw`(async () => {
     for (const resolve of pending.values()) resolve()
     if (session) await chats.deleteChat(session.id)
     window.fetch = realFetch
-    for (const path of [chatPath, scriptPath]) { const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file) }
+    // Creation can fail on a collision. Never delete that pre-existing file, or a
+    // replacement someone created at the same path after our fixture was removed.
+    for (const file of madeFiles.reverse()) {
+      if (app.vault.getAbstractFileByPath(file.path) === file) await app.vault.delete(file)
+    }
     cfg.scriptsFolder = oldFolder
     await scripts.discover()
     if (oldTab) chats.activeTabId.value = oldTab
