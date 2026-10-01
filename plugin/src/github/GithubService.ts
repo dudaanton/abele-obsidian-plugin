@@ -142,15 +142,26 @@ function cachedClient(ends: Endpoints, token: string, noTokenReason?: string): G
  * fine-grained main token needs one beside it — else the main token's client. `separate` says
  * which, for a refusal to name the right field.
  */
+const notificationClients = new ConnectionClients(
+  () => {
+    const settings=githubSettings(), keyId=settings.notifications?.boundKeyId ?? settings.notifications?.keyId
+    return keyId ? [{id:'notifications',name:'GitHub notifications',server:settings.notifications?.boundServer ?? settings.server,
+      keyId,owners:[] as string[],isDefault:true}] : []
+  },
+  keyId=>secrets().get(keyId) ?? '',
+  ()=>secrets().status.value
+)
+
 export function notificationsClient(): { client: GithubClient; separate: boolean } {
   const settings = githubSettings()
   const keyId = settings.notifications?.boundKeyId ?? settings.notifications?.keyId
   const token = keyId ? (secrets().get(keyId) ?? '').trim() : ''
-  if (!token) return { client: githubClient(), separate: false }
-  return {
-    client: cachedClient(endpoints(settings.notifications?.boundServer ?? settings.server), token),
-    separate: true,
+  notificationClients.reconcile()
+  if (!token) {
+    const main=settings.connections?.find(c=>c.isDefault && endpoints(c.server).origin===endpoints(settings.server).origin)
+    return {client:main ? connectionClient(main.id) : githubClient(),separate:false}
   }
+  return {client:notificationClients.client('notifications'),separate:true}
 }
 
 /**
@@ -187,6 +198,7 @@ export function resetGithubClients(): void {
   for (const client of clients.values()) client.retire()
   clients.clear()
   connectionClients?.reconcile()
+  notificationClients.reconcile()
   forgetRepoTrees()
 }
 

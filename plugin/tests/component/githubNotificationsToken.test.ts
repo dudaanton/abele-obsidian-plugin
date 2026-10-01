@@ -24,6 +24,7 @@ import { GithubError } from '@/github/client'
 import { notificationsRefusal } from '@/github/notifications/inbox'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
+import { secrets } from '@/secrets/SecretStore'
 
 let app: FakeApp
 
@@ -129,6 +130,24 @@ describe('the Access section', () => {
 })
 
 describe('which token the notifications are read with', () => {
+  it('retires the separate inbox generation on lock/unlock even while the local token remains available', () => {
+    const config=AbeleConfig.getInstance()
+    config.github=githubSettingsFrom({...config.github,notifications:{keyId:GITHUB_NOTIFICATIONS_TOKEN_KEY_ID}})
+    app.secretStorage.setSecret(GITHUB_NOTIFICATIONS_TOKEN_KEY_ID,'ghp_invented_classic')
+    const store=secrets(), beforeStatus=store.status.value
+    try {
+      const first=notificationsClient().client
+      store.status.value='locked'
+      const locked=notificationsClient().client
+      expect(locked.cacheNamespace).not.toBe(first.cacheNamespace)
+      expect(first.isCurrent).toBe(false)
+      store.status.value=beforeStatus
+      const unlocked=notificationsClient().client
+      expect(unlocked.cacheNamespace).not.toBe(first.cacheNamespace)
+      expect(locked.isCurrent).toBe(false)
+    } finally {store.status.value=beforeStatus}
+  })
+
   it('keeps its server when the main connection moves to another host', () => {
     const config = AbeleConfig.getInstance()
     config.github = githubSettingsFrom({
