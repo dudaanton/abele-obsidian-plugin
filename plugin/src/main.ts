@@ -215,8 +215,6 @@ export default class AbelePlugin extends Plugin {
       )
       // After the store: a token moved out of the settings lands in it when it is open here.
       await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
-      initializeDestinations(AbeleConfig.getInstance())
-      setRequestGuard((request) => checkRequestDestinations(request, AbeleConfig.getInstance()))
 
       // Apply body classes from settings
       if (AbeleConfig.getInstance().fullWidthSidebars) {
@@ -229,6 +227,8 @@ export default class AbelePlugin extends Plugin {
 
       // The store takes the week start and the rest of what it draws from out of the settings.
       startupStep('store', () => GlobalStore.getInstance().init(this.app))
+      initializeDestinations(AbeleConfig.getInstance())
+      setRequestGuard((request) => checkRequestDestinations(request, AbeleConfig.getInstance()))
       // Under every tool that writes, so a chat can take back what its agent changed.
       startupStep('change tracker', () => ChangeTracker.install(this.app))
 

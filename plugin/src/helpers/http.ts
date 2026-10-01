@@ -14,14 +14,14 @@ export const DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 
 /** A deadline even for platform operations that cannot be cancelled. Never includes URL keys. */
 export function withDeadline<T>(work: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>
+  let timer: number
   const expiry = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
+    timer = window.setTimeout(() => {
       reject(new Error(`Request timed out after ${Math.round(ms / 1000)}s`))
       onTimeout?.()
     }, ms)
   })
-  return Promise.race([work, expiry]).finally(() => clearTimeout(timer))
+  return Promise.race([work, expiry]).finally(() => window.clearTimeout(timer))
 }
 
 function checkSize(answer: RequestUrlResponse, max: number): void {
