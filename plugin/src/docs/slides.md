@@ -36,7 +36,8 @@ video playback on entry, muted with `playsinline` for mobile WebViews. A rejecte
 
 ## Speaker notes and CSS
 
-A `> [!notes]` callout belongs to that slide's speaker notes. Folded forms (`[!notes]-` and
+A `> [!notes]` callout belongs to that slide's speaker notes, including callouts nested in public
+quotes or list items. Code examples of this syntax remain ordinary code. Folded forms (`[!notes]-` and
 `[!notes]+`) work too. The callout is retained in the portable deck model and source note but
 is never sent to the audience renderer. Presenter view is a later stage.
 

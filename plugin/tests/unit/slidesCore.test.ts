@@ -136,6 +136,45 @@ describe('presentation markdown codec', () => {
     expect(content(deck, 0)).not.toContain('Private heading')
   })
 
+  it('extracts speaker notes nested in public quotes and list items without exposing their text', () => {
+    const deck = parseDeck(
+      '# Nested notes\n\n> [!tip]\n> Visible advice\n>\n> > [!notes]+\n> > Nested reminder\n> >\n> > - Private checklist\n>\n> More visible advice\n\n- Public item\n\n  > [!notes]\n  > List reminder\n\n- Next public item\n\n> [!notes]\n> A final reminder\nPrivate lazy continuation\n\nPublic ending'
+    )
+    expect(deck.slides[0].notes.map((n) => n.source)).toEqual([
+      'Nested reminder\n\n- Private checklist',
+      'List reminder',
+      'A final reminder\nPrivate lazy continuation',
+    ])
+    const publicText = content(deck, 0)
+    for (const secret of [
+      'Nested reminder',
+      'Private checklist',
+      'List reminder',
+      'A final reminder',
+      'Private lazy continuation',
+    ])
+      expect(publicText).not.toContain(secret)
+    for (const visible of [
+      'Visible advice',
+      'More visible advice',
+      'Public item',
+      'Next public item',
+      'Public ending',
+    ])
+      expect(publicText).toContain(visible)
+    const restored = parseDeck(serializeDeck(deck))
+    expect(restored.slides[0].notes).toEqual(deck.slides[0].notes)
+    expect(content(restored, 0)).not.toContain('Nested reminder')
+  })
+
+  it('leaves notes syntax inside quoted and list-contained code examples as code', () => {
+    const source =
+      '> ```md\n> > [!notes]\n> > Quoted code example\n> ```\n\n- ```md\n  > [!notes]\n  > List code example\n  ```\n\n>     [!notes]\n>     Indented example'
+    const deck = parseDeck(source)
+    expect(deck.slides[0].notes).toEqual([])
+    expect(content(deck, 0)).toBe(source)
+  })
+
   it('serializes edited settings rather than stale directive values', () => {
     const deck = parseDeck(
       '::slide{layout=image bg="[[sample-image.png]]" dim=0.5 fit=contain class=sample autoplay steps}::\n# Sample'

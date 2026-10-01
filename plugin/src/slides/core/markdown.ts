@@ -74,7 +74,47 @@ function syntaxLines(lines: string[], blocks = markdownBlocks(lines)): boolean[]
   return live
 }
 
+/** Walk quote/list containers structurally. Only real callouts are private; quoted or indented
+ * code examples are left intact. Masking lines preserves codec locations and parent containers. */
+function extractSpeakerNotes(lines: string[]): { audience: string[]; notes: MarkdownBlock[] } {
+  const audience = [...lines]
+  const notes: MarkdownBlock[] = []
+  for (const container of markdownBlocks(lines)) {
+    if (container.kind !== 'quote' && container.kind !== 'list-item') continue
+    const original = lines.slice(container.start, container.end + 1)
+    const prefixes: string[] = []
+    const body = original.map((line, index) => {
+      const prefix =
+        container.kind === 'quote'
+          ? (/^ {0,3}> ?/.exec(line)?.[0] ?? '')
+          : index === 0
+            ? (/^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/.exec(line)?.[0] ?? '')
+            : (/^[ \t]*/.exec(line)?.[0].slice(0, prefixes[0].length) ?? '')
+      prefixes.push(prefix)
+      return line.slice(prefix.length)
+    })
+    if (container.kind === 'quote' && /^ {0,3}\[!notes\][+-]?(?:[ \t].*)?$/i.test(body[0])) {
+      notes.push(block(body.slice(1).join('\n')))
+      for (let i = container.start; i <= container.end; i++) audience[i] = ''
+      continue
+    }
+    const inner = extractSpeakerNotes(body)
+    if (!inner.notes.length) continue
+    notes.push(...inner.notes)
+    const empty = inner.audience.every((line) => !line.trim())
+    inner.audience.forEach((line, i) => {
+      audience[container.start + i] = empty
+        ? ''
+        : line === body[i]
+          ? original[i]
+          : prefixes[i] + line
+    })
+  }
+  return { audience, notes }
+}
+
 function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
+  const { audience, notes } = extractSpeakerNotes(lines)
   const blocks = markdownBlocks(lines)
   const live = syntaxLines(lines, blocks)
   const first = lines.findIndex((l) => l.trim())
@@ -83,7 +123,7 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
     settings: settings(attributes ?? {}),
     title: '',
     regions: [],
-    notes: [],
+    notes,
     sourceLine,
     ...(attributes ? { markerLine: sourceLine + first } : {}),
   }
@@ -95,17 +135,8 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
     text = []
   }
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+    const line = audience[i]
     if (attributes && i === first) continue
-    // Speaker notes use blockquote syntax, so intentionally inspected separately from live lines.
-    if (/^ {0,3}>\s*\[!notes\][+-]?(?:\s.*)?$/i.test(line) && !insideCode(lines, i)) {
-      const notes: string[] = []
-      while (i + 1 < lines.length && /^ {0,3}>/.test(lines[i + 1])) {
-        notes.push(lines[++i].replace(/^ {0,3}> ?/, ''))
-      }
-      slide.notes.push(block(notes.join('\n')))
-      continue
-    }
     const style = /^ {0,3}(`{3,}|~{3,})css\s*$/.exec(line)
     if (style && blocks.some((b) => b.kind === 'code' && b.start === i)) {
       const styles: string[] = []
@@ -130,14 +161,6 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
   }
   flush()
   return slide
-}
-
-/** Whether this line starts in a fenced or raw HTML code block, not counting its own opener. */
-function insideCode(lines: string[], index: number): boolean {
-  // A sentinel has no deck syntax of its own, so its liveness reports the preceding state.
-  return markdownBlocks([...lines.slice(0, index), 'sentinel']).some(
-    (b) => ['code', 'html', 'math'].includes(b.kind) && b.start <= index && b.end >= index
-  )
 }
 
 export function parseDeck(source: string): Deck {
