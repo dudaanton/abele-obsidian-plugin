@@ -1,30 +1,32 @@
 <template>
   <div class="abele-github-blob">
-    <div v-if="markdown || range || client" class="abele-github-blob__toolbar">
-      <Button
-        v-if="client"
-        text="Blame"
-        icon="git-commit-horizontal"
-        aria-label="Toggle line blame"
-        :aria-pressed="blaming"
-        tooltip="Toggle line blame"
-        @click="toggleBlame"
-      />
-      <div v-if="range" class="abele-github-blob__range">
-        {{ linesLabel({ from: range.start, to: range.end }) }}
-        <span v-if="range.start > lineCount" class="abele-github-blob__warning">
-          — the file has only {{ lineCount }} lines.
-        </span>
+    <Teleport :to="toolbarHost ?? 'body'" :disabled="!toolbarHost">
+      <div v-if="markdown || range || client" class="abele-github-blob__toolbar">
+        <Button
+          v-if="client"
+          text="Blame"
+          icon="git-commit-horizontal"
+          aria-label="Toggle line blame"
+          :aria-pressed="blaming"
+          tooltip="Toggle line blame"
+          @click="toggleBlame"
+        />
+        <div v-if="range" class="abele-github-blob__range">
+          {{ linesLabel({ from: range.start, to: range.end }) }}
+          <span v-if="range.start > lineCount" class="abele-github-blob__warning">
+            — the file has only {{ lineCount }} lines.
+          </span>
+        </div>
+        <Tabs
+          v-if="markdown"
+          class="abele-github-blob__modes"
+          :model-value="blaming ? 'code' : mode"
+          :tabs="modes"
+          level="secondary"
+          @update:model-value="switchTo"
+        />
       </div>
-      <Tabs
-        v-if="markdown"
-        class="abele-github-blob__modes"
-        :model-value="blaming ? 'code' : mode"
-        :tabs="modes"
-        level="secondary"
-        @update:model-value="switchTo"
-      />
-    </div>
+    </Teleport>
 
     <div v-if="blaming && blameBusy" role="status">Loading line blame…</div>
     <GithubNotice
@@ -124,8 +126,10 @@ const props = withDefaults(
     /** What the tab was switched to, kept in its state; unset follows the link. */
     mode?: BlobMode
     client?: GithubClient
+    /** In a tab, file actions share the sticky path header; standalone previews stay inline. */
+    toolbarHost?: HTMLElement | null
   }>(),
-  { range: undefined, plain: false, mode: undefined, client: undefined }
+  { range: undefined, plain: false, mode: undefined, client: undefined, toolbarHost: null }
 )
 
 const emit = defineEmits<{

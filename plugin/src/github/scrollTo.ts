@@ -96,6 +96,20 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
   const container = scrollParent(from)
   if (!container) return () => {}
 
+  // File controls share the pinned path header. Keep the requested source context below
+  // that header, including when a path or toolbar wraps after the initial measurement.
+  const header = from
+    .closest('.abele-github-blob')
+    ?.closest('.abele-github')
+    ?.querySelector<HTMLElement>(':scope > .abele-github-header')
+  const context = () => {
+    if (!header) return o.context
+    const style = win.getComputedStyle(header)
+    if (style.position !== 'sticky') return o.context
+    const clearance = header.getBoundingClientRect().height + (parseFloat(style.top) || 0)
+    return o.context + Math.max(0, clearance)
+  }
+
   running.get(container)?.()
 
   let cancelTick: () => void = () => {}
@@ -126,9 +140,10 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
       const estimated = typeof found === 'object'
       const top = estimated ? found.estimate : found
       const offset = top - container.getBoundingClientRect().top
-      if (placedAt === 0 || Math.abs(offset - o.context) > 2) {
+      const padding = context()
+      if (placedAt === 0 || Math.abs(offset - padding) > 2) {
         const before = container.scrollTop
-        placeAt(container, top, o.context)
+        placeAt(container, top, padding)
         // At the end of the scroll range the target is as high as it gets: that is still too.
         if (placedAt === 0 || container.scrollTop !== before) stillSince = now
         if (placedAt === 0) placedAt = now

@@ -217,7 +217,7 @@ the next part rather than trying to get everything at once.
   `blame: true` returns last-changing commit ranges instead of source: full SHA, author, date
   and the first message line, limited to `start_line`–`end_line` (400 lines by default, at most
   1500). It needs a token and reads GraphQL at the specified ref; errors use the same client as
-  the tab. In the file tab the **Blame** toggle shows a virtualized gutter; clicking a range
+  the tab. In the file tab the sticky path header's **Blame** toggle shows a virtualized gutter; clicking a range
   opens its commit, hover or long press reveals the full message and date. It temporarily
   shows markdown as source. Results are memory-only, bounded and cached briefly per client,
   repository, ref and path; changing credentials does not reuse another client's results.

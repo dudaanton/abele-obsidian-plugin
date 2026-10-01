@@ -70,6 +70,25 @@ describe('pinning a target into view', () => {
     expect(pane.scrollTop).toBe(800 - 96)
   })
 
+  it('keeps linked lines and their context below a sticky file header as its toolbar grows', () => {
+    inner.classList.add('abele-github')
+    const header = inner.appendChild(document.createElement('header'))
+    header.classList.add('abele-github-header')
+    header.style.position = 'sticky'
+    header.style.top = '-12px'
+    let height = 140
+    header.getBoundingClientRect = () => rect(PANE_TOP - 12, height)
+    const blob = inner.appendChild(document.createElement('div'))
+    blob.classList.add('abele-github-blob')
+    blob.appendChild(target)
+    pinIntoView(target, elementTop(find), { context: 96 })
+    expect(pane.scrollTop).toBe(800 - (140 - 12) - 96)
+    height = 180
+    vi.advanceTimersByTime(60)
+    expect(pane.scrollTop).toBe(800 - (180 - 12) - 96)
+    pane.dispatchEvent(new Event('wheel'))
+  })
+
   it('waits for a target that is not there yet', () => {
     let there = false
     pinIntoView(

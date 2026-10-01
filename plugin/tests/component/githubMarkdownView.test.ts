@@ -60,10 +60,11 @@ const marked = (w: VueWrapper) =>
   w.findAll('.abele-github-md__block_marked').map((b) => b.attributes('data-start'))
 const markedLines = (w: VueWrapper) =>
   w.findAll('.abele-github-code__line_target').map((l) => l.text())
-const activeMode = (w: VueWrapper) => w.find('.abele-github-blob .abele-tabs__tab_active').text()
+// File controls now live beside the path in the sticky header, not in the scrolling blob.
+const activeMode = (w: VueWrapper) => w.find('.abele-github-header .abele-tabs__tab_active').text()
 
 async function switchTo(w: VueWrapper, label: 'Preview' | 'Code') {
-  const tab = w.findAll('.abele-github-blob .abele-tabs__tab').find((t) => t.text() === label)!
+  const tab = w.findAll('.abele-github-header .abele-tabs__tab').find((t) => t.text() === label)!
   await tab.trigger('click')
   await flushPromises()
 }
@@ -140,7 +141,7 @@ describe('a markdown file', () => {
       '/repos/o/r/contents/src/a.ts': { text: 'let a' },
     })
     await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
-    expect(wrapper.find('.abele-github-blob .abele-tabs').exists()).toBe(false)
+    expect(wrapper.find('.abele-github-header .abele-tabs').exists()).toBe(false)
   })
 })
 

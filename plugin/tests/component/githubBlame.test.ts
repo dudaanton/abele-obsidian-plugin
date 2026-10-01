@@ -4,6 +4,7 @@ import GithubBlob from '@/components/github/GithubBlob.vue'
 import { GithubClient, GithubError } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import { useVault } from '../helpers/testEnv'
+import { openTab } from '../helpers/githubTab'
 
 const file = {
   host: 'github.com',
@@ -46,6 +47,28 @@ enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
 
 describe('line blame in the file view', () => {
+  it('keeps the file toolbar inside the sticky path header without changing its blame actions', async () => {
+    const { wrapper, onOpen } = openTab(
+      'https://github.com/sample-org/sample-repo/blob/main/sample.ts',
+      {
+        '/repos/sample-org/sample-repo/contents/sample.ts': { text: 'one\ntwo\nthree' },
+        '/repos/sample-org/sample-repo/commits/main': { text: sha },
+        '/graphql': { json: { data: response() } },
+      }
+    )
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    const header = wrapper.get('.abele-github-header')
+    const button = header.get('button[aria-label="Toggle line blame"]')
+    expect(wrapper.find('.abele-github-blob .abele-github-blob__toolbar').exists()).toBe(false)
+    await button.trigger('click')
+    await flushPromises()
+    expect(button.attributes('aria-pressed')).toBe('true')
+    await wrapper.get('.abele-github-blame-range button').trigger('click')
+    expect(onOpen).toHaveBeenCalledWith(`https://github.com/sample-org/sample-repo/commit/${sha}`)
+    await button.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.abele-github-blame').exists()).toBe(false)
+  })
   it('loads only on demand, groups lines, opens the commit inside the tab, and toggles off', async () => {
     const { wrapper, request } = setup()
     await flushPromises()

@@ -65,7 +65,11 @@
           @chat="chatAbout"
           @find="showFind"
           @search="tabSearch.openSearch"
-        />
+        >
+          <template #file-actions>
+            <div v-if="shown.kind === 'blob' && blob" ref="blobToolbar" />
+          </template>
+        </GithubHeader>
 
         <EmptyState v-if="model.connectionNotice" :text="model.connectionNotice" />
 
@@ -209,6 +213,7 @@
             :range="blobRange"
             :plain="blobPlain"
             :mode="model.mode"
+            :toolbar-host="blobToolbar"
             :client="client()"
             @mode="setMode"
             @open="(url: string) => onOpen?.(url)"
@@ -334,6 +339,7 @@ const props = defineProps<{
 }>()
 
 const root = ref<HTMLElement>()
+const blobToolbar = ref<HTMLElement | null>(null)
 
 // How wide the text runs, from the settings, followed at once when they change.
 const config = AbeleConfig.getInstance()

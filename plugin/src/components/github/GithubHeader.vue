@@ -51,6 +51,7 @@
       <template v-else>{{ title }}</template>
       <span v-if="number" class="abele-github-header__number">#{{ number }}</span>
     </h2>
+    <slot name="file-actions" />
     <div v-if="state || labels?.length" class="abele-github-header__badges">
       <Badge v-if="state" :text="state" :accent="accentStates.includes(state)" />
       <Badge v-for="label in labels" :key="label.name" :text="label.name" />

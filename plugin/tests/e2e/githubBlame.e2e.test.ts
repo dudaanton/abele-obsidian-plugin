@@ -159,7 +159,14 @@ describe.skipIf(!available)('file blame on a phone', () => {
   })
 
   it('draws attribution near a linked line far down the file without expanding every range', () => {
-    const report = evalAsync<{ marked: boolean; lateRange: boolean; count: number }>(`(async () => {
+    const report = evalAsync<{
+      marked: boolean
+      lateRange: boolean
+      count: number
+      togglePinned: boolean
+      toggleHit: boolean
+      toggledOff: boolean
+    }>(`(async () => {
       ${PRELUDE}
       const leaf = githubLeaves()[0]
       await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(`${gh.web}/blob/main/src/long.ts#L350`)} }, active: true })
@@ -167,14 +174,39 @@ describe.skipIf(!available)('file blame on a phone', () => {
       if (!(await until(() => root.querySelector('.abele-github-code__line_target')?.textContent.includes('setting350')))) throw Error('Linked line missing')
       root.querySelector('button[aria-label="Toggle line blame"]').click()
       if (!(await until(() => [...root.querySelectorAll('.abele-github-blame-range')].some(e => e.textContent.includes('Sample attribution 88'))))) throw Error('Late attribution missing')
-      return {
+      const report = {
         marked: placeInView(root.querySelector('.abele-github-code__line_target')).inView,
         lateRange: [...root.querySelectorAll('.abele-github-blame-range')].some(e => e.textContent.includes('Sample attribution 88')),
         count: root.querySelectorAll('.abele-github-blame-range').length,
       }
+      const header = root.querySelector('.abele-github-header')
+      const toggle = root.querySelector('button[aria-label="Toggle line blame"]')
+      const main = root.querySelector('.abele-github-layout__main')
+      const before = toggle.getBoundingClientRect().top
+      const initial = main.scrollTop
+      // A user scroll interrupts the link's settling pin; a bare scrollTop assignment does not.
+      main.dispatchEvent(new Event('wheel', { bubbles: true }))
+      main.scrollTop += 240
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      const box = toggle.getBoundingClientRect()
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      report.togglePinned = header.contains(toggle) && Math.abs(box.top - before) <= 1 && main.scrollTop - initial > 200
+      report.toggleHit = toggle === hit || toggle.contains(hit)
+      const shot = ${JSON.stringify(`${SHOTS}/github-blame-sticky.png`)}
+      if (window.__e2eHost) await window.__e2eHost.shot(shot)
+      else {
+        const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+        require('fs').writeFileSync(shot, image.toPNG())
+      }
+      toggle.click()
+      report.toggledOff = !!(await until(() => !root.querySelector('.abele-github-blame')))
+      return report
     })()`)
     expect(report.marked).toBe(true)
     expect(report.lateRange).toBe(true)
     expect(report.count).toBeLessThan(100)
+    expect(report.togglePinned).toBe(true)
+    expect(report.toggleHit).toBe(true)
+    expect(report.toggledOff).toBe(true)
   })
 })
