@@ -134,41 +134,6 @@ export class OpenAIClient {
     tools: ToolDefinition[],
     options: StreamOptions = {}
   ): AsyncGenerator<StreamEvent> {
-    // Resolve vault: image references to base64 data URLs before sending
-    const resolved = await OpenAIClient.resolveVaultImages(messages)
-    const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
-
-    // `requestUrl` buffers the whole response and takes no abort signal, so it can neither
-    // stream tokens as they arrive nor be stopped mid-answer. Both are the point of this call:
-    // tokens appear as the model produces them, and Stop cancels the request. Every other
-    // request in this file goes through `requestUrl`. Named on `window` for the same reason
-    // the timers are — it is the window's own implementation that is wanted.
-    const response = await window.fetch(this.getUrl(model), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${model.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: options.signal,
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error')
-      const errorMsg: AssistantMessage = this.makeErrorMessage(
-        model,
-        `HTTP ${response.status}: ${errorText}`
-      )
-      yield { type: 'error', error: errorMsg.errorMessage ?? '', message: errorMsg }
-      return
-    }
-
-    if (!response.body) {
-      const errorMsg = this.makeErrorMessage(model, 'No response body')
-      yield { type: 'error', error: errorMsg.errorMessage ?? '', message: errorMsg }
-      return
-    }
-
     // State for assembling the response
     const output: AssistantMessage = {
       role: 'assistant',
@@ -184,6 +149,27 @@ export class OpenAIClient {
     let reasoningField: string | null = null
 
     try {
+      // Preparation and connection failures are turn outcomes too: throwing past the loop
+      // would discard the tool calls and results it has already accumulated this run.
+      const resolved = await OpenAIClient.resolveVaultImages(messages)
+      const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
+      options.signal?.throwIfAborted()
+      // Unlike requestUrl, fetch streams the answer and accepts Stop's abort signal.
+      const response = await window.fetch(this.getUrl(model), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${model.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      })
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error')
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+      if (!response.body) throw new Error('No response body')
+
       for await (const chunk of this.parseSSE(response.body, options.signal)) {
         if (!chunk || typeof chunk !== 'object') continue
 
@@ -282,7 +268,7 @@ export class OpenAIClient {
     } catch (err: unknown) {
       if (currentBlock) yield* this.finishBlock(currentBlock, output)
 
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (options.signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
         output.stopReason = 'aborted'
         yield { type: 'done', message: output }
         return
@@ -429,7 +415,10 @@ export class OpenAIClient {
 
       if (msg.role === 'assistant') {
         // Error/aborted messages: insert placeholder to preserve turn structure
-        if (msg.stopReason === 'error' || msg.stopReason === 'aborted') {
+        if (
+          (msg.stopReason === 'error' || msg.stopReason === 'aborted') &&
+          !msg.content.some((block) => block.type === 'toolCall')
+        ) {
           result.push({ role: 'assistant', content: '[Response interrupted]' })
           continue
         }
@@ -614,18 +603,6 @@ export class OpenAIClient {
     }
   }
 
-  private makeErrorMessage(model: ModelConfig, error: string): AssistantMessage {
-    return {
-      role: 'assistant',
-      content: [],
-      model: model.id,
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
-      stopReason: 'error',
-      errorMessage: error,
-      timestamp: Date.now(),
-    }
-  }
-
   /**
    * Parse Server-Sent Events from a ReadableStream.
    * Handles `data: [DONE]`, multi-line data fields, and partial chunks.
@@ -641,7 +618,7 @@ export class OpenAIClient {
 
     try {
       while (true) {
-        if (signal?.aborted) break
+        signal?.throwIfAborted()
 
         const { done, value } = await reader.read()
         if (done) break

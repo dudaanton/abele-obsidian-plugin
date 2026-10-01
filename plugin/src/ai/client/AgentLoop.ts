@@ -190,6 +190,15 @@ export class AgentLoop {
           },
         })
       }
+    } catch (err) {
+      // Return the accumulated history even if preparation or an iteration hook fails.
+      // The caller commits it only once run resolves; rejecting here loses completed writes.
+      if (!signal.aborted) {
+        this.emit({
+          type: 'stream_event',
+          event: { type: 'error', error: err instanceof Error ? err.message : String(err) },
+        })
+      }
     } finally {
       this._isRunning = false
       this.abortController = null
