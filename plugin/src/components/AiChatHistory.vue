@@ -104,6 +104,8 @@ import {
 } from '@/ai/chatHistoryOrder'
 import { DATE_FORMAT } from '@/constants/dates'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { ChatService } from '@/ai/ChatService'
+import { confirmAction } from '@/modal/confirm'
 import { CommentService } from '@/ai/CommentService'
 import { SummaryBackfill } from '@/ai/ChatDigest'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -336,9 +338,24 @@ const select = (path: string) => {
 }
 
 const remove = async (path: string) => {
-  // Comments on its answers have no other way in, so they go first, while it can say which.
-  await CommentService.getInstance().removeCommentsOn(path)
-  await ChatStorage.getInstance().deleteChat(path)
+  const { app } = GlobalStore.getInstance()
+  if (
+    !(await confirmAction(app, {
+      title: 'Delete chat',
+      message: 'Delete this chat and its comments? This cannot be undone.',
+    }))
+  )
+    return
+  const service = ChatService.getInstance()
+  const session = service.getSessionByFile(path)
+  if (session) {
+    // The live session must stop owning the file before it is removed.
+    await service.deleteChat(session.id)
+  } else {
+    // Comments on its answers have no other way in, so they go first, while it can say which.
+    await CommentService.getInstance().removeCommentsOn(path)
+    await ChatStorage.getInstance().deleteChat(path)
+  }
   allChats.value = allChats.value.filter((c) => c.path !== path)
   files.delete(path)
 }

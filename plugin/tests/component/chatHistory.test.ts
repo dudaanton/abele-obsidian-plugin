@@ -25,6 +25,10 @@ import type { FakeApp } from '../helpers/fakeVault'
 import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import dayjs from 'dayjs'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import Icon from '@/components/obsidian/Icon.vue'
+import { confirmAction } from '@/modal/confirm'
+
+vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn() }))
 
 vi.mock('@/editor/CommentPlugin', () => ({
   dispatchCommentsChanged: vi.fn(),
@@ -102,6 +106,7 @@ const cardOf = (view: VueWrapper, path: string) =>
   view.findAllComponents(Card).find((c) => c.attributes('data-path') === path)!
 
 beforeEach(() => {
+  vi.mocked(confirmAction).mockResolvedValue(false)
   prompts.length = 0
   resetFakeIntersectionObservers()
   installFakeIntersectionObserver()
@@ -143,6 +148,36 @@ afterEach(() => {
 })
 
 describe('a card in the chat history', () => {
+  it('asks before deleting a chat and leaves it intact on cancel', async () => {
+    const remove = vi.spyOn(ChatStorage.getInstance(), 'deleteChat')
+    const card = cardOf(await open(), NEW)
+    await card
+      .findAllComponents(Icon)
+      .find((icon) => icon.props('icon') === 'trash')!
+      .vm.$emit('click')
+    await flushPromises()
+    expect(confirmAction).toHaveBeenCalledOnce()
+    expect(remove).not.toHaveBeenCalled()
+    expect(app.vault.getFileByPath(NEW)).not.toBeNull()
+  })
+
+  it('closes a live tab before deleting its file after confirmation', async () => {
+    vi.mocked(confirmAction).mockResolvedValue(true)
+    const service = ChatService.getInstance()
+    const id = service.createTab()
+    const session = service.getSession(id)!
+    session.currentChatFile.value = app.vault.getFileByPath(NEW)
+    const card = cardOf(await open(), NEW)
+    await card
+      .findAllComponents(Icon)
+      .find((icon) => icon.props('icon') === 'trash')!
+      .vm.$emit('click')
+    await flushPromises()
+    expect(service.getSession(id)).toBeNull()
+    expect(app.vault.getFileByPath(NEW)).toBeNull()
+    expect(cardOf(wrapper!, NEW)).toBeUndefined()
+  })
+
   it('shows the whole title, the summary and the date', async () => {
     const card = cardOf(await open(), NEW)
 
