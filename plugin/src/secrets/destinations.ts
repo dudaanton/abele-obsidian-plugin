@@ -95,14 +95,12 @@ export function checkRequestDestinations(
   for (const keyId of new Set(keyDestinations(settings).map((d) => d.keyId))) {
     const value = secrets().get(keyId)
     if (!value) continue
-    const calendar = settings.calendars?.feeds.find(
-      (f) => f.source === 'caldav' && f.keyId === keyId
-    )
-    const basic = calendar ? basicAuth(calendar.username, value) : null
-    if (headers.some((h) => h.includes(value) || (basic && h === basic))) {
+    const basics = (settings.calendars?.feeds ?? [])
+      .filter((f) => f.source === 'caldav' && f.keyId === keyId)
+      .map((f) => basicAuth(f.username, value))
+    if (headers.some((h) => h.includes(value) || basics.includes(h))) {
       checkKeyDestination(keyId, request.url, settings)
-      carried.push(value)
-      if (basic) carried.push(basic)
+      carried.push(value, ...basics)
     }
   }
   return carried

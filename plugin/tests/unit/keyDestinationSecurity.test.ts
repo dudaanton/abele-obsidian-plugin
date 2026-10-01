@@ -9,10 +9,12 @@ import {
   pendingDestinations,
   keyDestinations,
   acceptIntroducedDestinations,
+  checkRequestDestinations,
 } from '@/secrets/destinations'
 
 beforeEach(() => {
-  useVault([])
+  const app = useVault([])
+  app.secretStorage.setSecret('sample-calendar-key', 'sample-password')
   AbeleConfig.getInstance().ai = {
     ...DEFAULT_AI_SETTINGS,
     providers: [
@@ -67,6 +69,34 @@ describe('device-local key destination approval', () => {
     expect(() => checkKeyDestination('sample-key', 'https://arrived.example/v1', config)).toThrow(
       /confirm|review/i
     )
+  })
+  it('holds every account when calendar feeds share one password slot', () => {
+    const config = AbeleConfig.getInstance()
+    config.calendars = {
+      refreshMinutes: 30,
+      feeds: ['one', 'two'].map((suffix) => ({
+        id: suffix,
+        name: `Sample ${suffix}`,
+        color: 'blue' as const,
+        enabled: true,
+        source: 'caldav' as const,
+        keyId: 'sample-calendar-key',
+        server: 'https://calendar.sample.example',
+        username: `sample-${suffix}`,
+        calendarUrl: '',
+      })),
+    }
+    initializeDestinations(config)
+    config.calendars.feeds[1].server = 'https://changed.sample.example'
+    expect(() =>
+      checkRequestDestinations(
+        {
+          url: 'https://changed.sample.example/path',
+          headers: { Authorization: `Basic ${btoa('sample-two:sample-password')}` },
+        },
+        config
+      )
+    ).toThrow(/confirm|review/i)
   })
   it('rejects credentials in URLs and non-HTTP protocols', () => {
     const config = AbeleConfig.getInstance()
