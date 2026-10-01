@@ -31,7 +31,7 @@
         </span>
       </div>
       <div class="abele-time-tracking-sidebar__active-elapsed">
-        {{ formatDurationLong(activeElapsedMap[active.id] || 0) }}
+        <ElapsedTime :start="active.start" />
       </div>
     </div>
 
@@ -104,6 +104,7 @@ import Tabs from './obsidian/Tabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import TimeEntryItem from './TimeEntryItem.vue'
+import ElapsedTime from './ElapsedTime.vue'
 import dayjs from 'dayjs'
 
 type ChartTab = 'daily' | 'groups'
@@ -119,49 +120,12 @@ const activeEntries = computed(
   () => (timeEntryList.value?.activeEntries ?? []) as unknown as TimeEntry[]
 )
 
-// Active timers elapsed — one counter per active entry
-const activeElapsedMap = ref<Record<string, number>>({})
-let activeInterval: ReturnType<typeof setInterval> | null = null
-
-const updateActiveElapsed = () => {
-  const map: Record<string, number> = {}
-  for (const entry of activeEntries.value) {
-    if (entry.start) {
-      map[entry.id] = dayjs().diff(entry.start, 'second')
-    }
-  }
-  activeElapsedMap.value = map
-}
-
-watch(
-  () => activeEntries.value.length,
-  (count) => {
-    if (activeInterval) window.clearInterval(activeInterval)
-    if (count > 0) {
-      updateActiveElapsed()
-      activeInterval = window.setInterval(updateActiveElapsed, 1000)
-    } else {
-      activeElapsedMap.value = {}
-    }
-  },
-  { immediate: true }
-)
-
 onUnmounted(() => {
-  if (activeInterval) window.clearInterval(activeInterval)
   dailyChart?.dispose()
   dailyObserver?.disconnect()
   groupsPieChart?.dispose()
   groupsPieObserver?.disconnect()
 })
-
-const formatDurationLong = (seconds: number): string => {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(h)}:${pad(m)}:${pad(s)}`
-}
 
 const formatDurationShort = (seconds: number): string => {
   const h = Math.floor(seconds / 3600)

@@ -1,18 +1,22 @@
-import { useNow } from '@vueuse/core'
 import dayjs from 'dayjs'
-import { ref, watch } from 'vue'
+import { customRef, watch, type MaybeRefOrGetter } from 'vue'
+import { useDisplayClock } from './useDisplayClock'
 
-export function useDate() {
-  const nowDate = useNow()
-  const now = ref<dayjs.Dayjs>(dayjs(nowDate.value))
-
-  watch(nowDate, (newDate) => {
-    if (!now.value.isSame(newDate, 'date')) {
-      now.value = dayjs(newDate)
+export function useDate(active: MaybeRefOrGetter<boolean> = true, owner?: () => Document) {
+  const time = useDisplayClock('day', active, owner)
+  let date = dayjs(time.value)
+  const now = customRef<dayjs.Dayjs>((track, trigger) => {
+    watch(time, () => trigger(), { flush: 'sync' })
+    return {
+      get() {
+        track()
+        if (date.valueOf() !== time.value) date = dayjs(time.value)
+        return date
+      },
+      set() {
+        /* read-only local day */
+      },
     }
   })
-
-  return {
-    now,
-  }
+  return { now }
 }

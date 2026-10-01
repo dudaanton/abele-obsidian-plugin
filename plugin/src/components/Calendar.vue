@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-calendar">
+  <div ref="clockEl" class="abele-calendar">
     <div class="abele-calendar__header">
       <div class="abele-calendar__header-month-year">
         {{ dayjs().month(selectedMonth).format('MMMM') }} {{ selectedYear }}
@@ -81,6 +81,7 @@
 </template>
 
 <script setup lang="ts">
+import { useElementVisibility } from '@vueuse/core'
 import { useDate } from '@/composables/useDate'
 import dayjs from 'dayjs'
 import { computed, ref, unref, watch } from 'vue'
@@ -94,7 +95,9 @@ import { Journal } from '@/entities/Journal'
 import { useCalendarDays } from '@/composables/useCalendarDays'
 import type { KitColor } from '@/constants/colors'
 
-const { now: today } = useDate()
+const clockEl = ref<HTMLElement>()
+const visible = useElementVisibility(clockEl)
+const { now: today } = useDate(visible, () => clockEl.value?.ownerDocument ?? document)
 const props = defineProps<{
   selectedDate?: dayjs.Dayjs
   journal?: Journal

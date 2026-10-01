@@ -16,13 +16,14 @@
 import { TasksList } from '@/entities/TasksList'
 import Timeline from './Timeline.vue'
 import Calendar from './Calendar.vue'
-import { computed, unref } from 'vue'
+import { computed, ref, unref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Menu, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { createTask } from '@/commands/createTask'
 import dayjs from 'dayjs'
 import { useCalendarDays } from '@/composables/useCalendarDays'
+import { useElementVisibility } from '@vueuse/core'
 import { useDate } from '@/composables/useDate'
 import { DATE_FORMAT } from '@/constants/dates'
 
@@ -78,7 +79,9 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
   menu.showAtMouseEvent(event)
 }
 
-const { now } = useDate()
+const container = ref<HTMLElement>()
+const visible = useElementVisibility(container)
+const { now } = useDate(visible, () => container.value?.ownerDocument ?? document)
 // Past events are history, not something to do: the list of what is coming starts today.
 const upcomingEvents = useCalendarDays((day) => day >= now.value.format(DATE_FORMAT))
 

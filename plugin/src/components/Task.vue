@@ -73,7 +73,7 @@
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { Task } from '@/entities/Task'
 import dayjs from 'dayjs'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import Badge from './obsidian/Badge.vue'
@@ -81,7 +81,9 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { labelColor, type TaskPriority } from '@/helpers/taskMeta'
 import type { KitColor } from '@/constants/colors'
 import { openFile } from '@/helpers/vaultUtils'
-import { useElementVisibility, useIntervalFn } from '@vueuse/core'
+import { useIntersectionObserver } from '@vueuse/core'
+import { useDisplayClock } from '@/composables/useDisplayClock'
+import { useDate } from '@/composables/useDate'
 import { Menu } from 'obsidian'
 import { useFooterTaskOpen } from '@/composables/useFooterView'
 
@@ -91,7 +93,15 @@ const props = defineProps<{
 }>()
 
 const taskEl = ref<HTMLElement | null>(null)
-const isVisible = useElementVisibility(taskEl)
+const isVisible = ref(false)
+const clockVisible = ref(true)
+useIntersectionObserver(taskEl, (entries) => {
+  const latest = entries.reduce<IntersectionObserverEntry | undefined>(
+    (last, entry) => (!last || entry.time >= last.time ? entry : last),
+    undefined
+  )
+  if (latest) isVisible.value = clockVisible.value = latest.isIntersecting
+})
 const contentLoaded = ref(false)
 
 watch(
@@ -169,10 +179,20 @@ const dateTimeText = computed(() => {
   return props.task.dateTime.format('HH:mm')
 })
 
-const now = ref(dayjs())
-const { pause: pauseTimer } = useIntervalFn(() => {
-  now.value = dayjs()
-}, 1000)
+// Until the first intersection report, keep the already visible date labels live. Content
+// loading still waits for a positive report above; an explicit hidden report pauses both clocks.
+const owner = () => taskEl.value?.ownerDocument ?? document
+const { now: today } = useDate(clockVisible, owner)
+const clock = useDisplayClock(
+  'minute',
+  () =>
+    clockVisible.value && !!props.task.dateTime && !!props.atTimeline && !props.task.completedAt,
+  owner,
+  // Flooring the remaining minutes changes one second after the exact minute. Preserve
+  // that display boundary without waking every task on every second.
+  () => (props.task.dateTime?.valueOf() ?? 0) + 1000
+)
+const now = computed(() => dayjs(clock.value))
 
 const timeLeftText = computed(() => {
   if (!props.task.dateTime || !props.atTimeline) return ''
@@ -189,15 +209,10 @@ const timeLeftText = computed(() => {
   return `(in ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')})`
 })
 
-onUnmounted(() => {
-  pauseTimer()
-})
-
 const getDiffText = (date: dayjs.Dayjs | null) => {
   if (!date) return ''
 
-  const now = dayjs()
-  const diff = date.startOf('day').diff(now.startOf('day'), 'day')
+  const diff = date.startOf('day').diff(today.value.startOf('day'), 'day')
 
   if (diff === 0) return '(Today)'
   if (diff === 1) return '(Tomorrow)'
@@ -226,10 +241,9 @@ const isOverdue = computed(() => {
   if (!props.task.due) return false
   if (props.task.completedAt) return false
 
-  const now = dayjs()
   const due = props.task.due
 
-  return due.startOf('day').isBefore(now.startOf('day'))
+  return due.startOf('day').isBefore(today.value.startOf('day'))
 })
 
 const onCardClick = (e: MouseEvent) => {
