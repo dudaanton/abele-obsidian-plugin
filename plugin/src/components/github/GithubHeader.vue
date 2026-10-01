@@ -1,5 +1,5 @@
 <template>
-  <header class="abele-github-header">
+  <header ref="root" class="abele-github-header">
     <div class="abele-github-header__top">
       <div class="abele-github-header__repo">{{ crumbs ? '' : repo }}</div>
       <div class="abele-github-header__actions">
@@ -68,6 +68,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import Icon from '../obsidian/Icon.vue'
 import Badge from '../obsidian/Badge.vue'
 import GithubBreadcrumbs from './GithubBreadcrumbs.vue'
@@ -121,11 +123,37 @@ const emit = defineEmits<{
   (e: 'open', url: string, pane: PaneType | false): void
 }>()
 
+// Keep native line jumps clear even when a long path wraps or theme fonts change.
+const root = ref<HTMLElement>()
+useResizeObserver(root, () => {
+  const head = root.value
+  head?.parentElement?.style.setProperty(
+    '--abele-github-header-height',
+    `${head.getBoundingClientRect().height}px`
+  )
+})
+
 /** The states that mean "still going": the ones worth drawing the eye to. */
 const accentStates = ['open', 'draft']
 </script>
 
 <style lang="scss">
+// Only the file view pins the main header, not issue, repository or folder headings.
+.abele-github:has(> .abele-github-blob) {
+  > .abele-github-header {
+    position: sticky;
+    // The tab scroller has theme padding; pin against its edge, not below that padding.
+    top: calc(-1 * var(--size-4-3));
+    z-index: 1;
+    background: var(--background-primary);
+  }
+
+  .cm-line,
+  .abele-github-md__block {
+    scroll-margin-top: calc(var(--abele-github-header-height, 0px) + var(--size-4-2));
+  }
+}
+
 .abele-github-header {
   display: flex;
   flex-direction: column;

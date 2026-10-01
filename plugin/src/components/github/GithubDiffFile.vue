@@ -7,6 +7,7 @@
     :data-path="file.path"
   >
     <div
+      ref="head"
       class="abele-github-file__head"
       role="button"
       tabindex="0"
@@ -104,6 +105,7 @@
 </template>
 
 <script setup lang="ts">
+import { useResizeObserver } from '@vueuse/core'
 import { openExternal } from '@/helpers/openExternal'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
@@ -150,6 +152,14 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement>()
+const head = ref<HTMLElement>()
+useResizeObserver(head, () => {
+  if (!head.value) return
+  root.value?.style.setProperty(
+    '--abele-github-file-header-height',
+    `${head.value.getBoundingClientRect().height}px`
+  )
+})
 const editorEl = ref<HTMLElement>()
 const expanded = ref(props.initiallyOpen || !!props.anchor)
 
@@ -371,13 +381,22 @@ onBeforeUnmount(() => {
 .abele-github-file {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  overflow: hidden;
+  // Clip rounded corners without introducing a scroll container that traps the sticky head.
+  overflow: clip;
+
+  .cm-line {
+    scroll-margin-top: calc(var(--abele-github-file-header-height, 0px) + var(--size-4-2));
+  }
 
   &_target {
     border-color: var(--interactive-accent);
   }
 
   &__head {
+    position: sticky;
+    top: calc(-1 * var(--size-4-3));
+    z-index: 1;
+    border-bottom: 1px solid var(--background-modifier-border);
     display: flex;
     align-items: center;
     flex-wrap: wrap;
