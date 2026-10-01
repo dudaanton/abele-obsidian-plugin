@@ -25,13 +25,11 @@ export function paragraphTextEdit(p: WordParagraph, next: string): WordEdit {
       offset: from,
       text: next.slice(from, newEnd),
     }
-  // Repeated substrings: use the complete paragraph, which is unambiguous.
-  if (p.text.indexOf(old) !== from || p.text.indexOf(old, from + 1) >= 0)
-    return { operation: 'replace', paragraph: p.number, old_text: p.text, new_text: next }
   return {
     operation: 'replace',
     paragraph: p.number,
     old_text: old,
+    offset: from,
     new_text: next.slice(from, newEnd),
   }
 }

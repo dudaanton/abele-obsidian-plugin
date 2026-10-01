@@ -190,9 +190,15 @@ export async function applyWordEdit(
     validText(edit.old_text)
     validText(edit.new_text)
     if (!edit.old_text) throw new Error('Replacement requires nonempty old_text')
-    start = p.text.indexOf(edit.old_text)
-    if (start < 0 || p.text.indexOf(edit.old_text, start + 1) >= 0)
-      throw new Error('old_text must have one unique match in the paragraph')
+    if (edit.offset !== undefined) {
+      start = edit.offset
+      if (p.text.slice(start, start + edit.old_text.length) !== edit.old_text)
+        throw new Error('old_text does not match the selected text range')
+    } else {
+      start = p.text.indexOf(edit.old_text)
+      if (start < 0 || p.text.indexOf(edit.old_text, start + 1) >= 0)
+        throw new Error('old_text must have one unique match in the paragraph')
+    }
     end = start + edit.old_text.length
     text = edit.new_text
   } else if (edit.operation === 'insert') {

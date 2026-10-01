@@ -56,7 +56,8 @@ across run boundaries and returns paragraph numbers and offsets; `after` pages t
 writes on a binary Word package.
 
 `docx_edit` patches text, formatting and basic structure. Read first with `docx_read` and pass its `revision`;
-a stale token is refused. `replace` takes `paragraph`, a unique `old_text` and `new_text`.
+a stale token is refused. `replace` takes `paragraph`, a unique `old_text` and `new_text`. With an explicit `offset`,
+`old_text` must match that exact range instead; repeated words elsewhere are untouched.
 `insert` takes `paragraph`, `offset` (UTF-16 character index) and `text`. One operation per call;
 use the resulting revision for the next call. Fields and tracked revisions, and supplementary
 parts, are read-only. It defaults to Ask with a diff/argument preview in the usual confirmation;
