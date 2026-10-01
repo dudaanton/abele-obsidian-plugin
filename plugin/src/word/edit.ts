@@ -100,6 +100,8 @@ export function textPatches(
     )
       throw new Error('Range splits a Unicode character')
   validText(replacement)
+  // Equality is a range-level no-op: redistributing equal text would still change its formatting.
+  if (p.text.slice(start, end) === replacement) return []
   const touched = p.runs
     .filter((r) =>
       end > start
