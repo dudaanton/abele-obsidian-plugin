@@ -371,6 +371,9 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       select?: Record<string, string>
       name?: { x: number; y: number }
       brace?: { x: number; y: number }
+      hit?: string
+      nav?: boolean
+      hitsLine?: boolean
     }>(`(async () => {
       ${PRELUDE}
       const leaf = githubLeaves()[0]
@@ -399,8 +402,12 @@ describe.skipIf(!available)('a pull request on a phone', () => {
         return null
       }
       const content = line.textContent
+      const point = box(content.indexOf('startApp') + 2, content.indexOf('startApp') + 3)
       const style = (el) => el ? getComputedStyle(el).webkitUserSelect : 'missing'
       return {
+        hit:point ? document.elementFromPoint(point.x,point.y)?.outerHTML.slice(0,300) : 'no point',
+        nav:!!line.closest('.abele-code-nav'),
+        hitsLine:!!point && line.contains(document.elementFromPoint(point.x,point.y)),
         select: {
           line: style(line),
           gutter: style(root.querySelector('.abele-github-file .cm-gutterElement')),
@@ -411,6 +418,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       }
     })()`)
     expect(prepared.error).toBeUndefined()
+    expect(prepared.hitsLine, JSON.stringify(prepared)).toBe(true)
     expect(prepared.select).toEqual({ line: 'text', gutter: 'none', title: 'text' })
 
     const menuAfter = (at: { x: number; y: number }) =>

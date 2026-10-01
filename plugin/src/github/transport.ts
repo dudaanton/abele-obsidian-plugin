@@ -40,7 +40,9 @@ export async function nativeRequest(
     readTimeout: 60_000,
   })
   // CapacitorHttp decodes application/json itself on iOS even when arraybuffer was requested.
-  const type = Object.entries(r.headers ?? {}).find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? ''
+  const type =
+    Object.entries(r.headers ?? {}).find(([name]) => name.toLowerCase() === 'content-type')?.[1] ??
+    ''
   if (type.toLowerCase().includes('json')) {
     return response(r.status, r.headers ?? {}, new TextEncoder().encode(JSON.stringify(r.data)))
   }
@@ -52,18 +54,28 @@ export async function nativeRequest(
   return response(r.status, r.headers ?? {}, bytes)
 }
 
+function nodeBuiltin(name: string): unknown {
+  const hostRequire = (window as typeof window & { require?: (name: string) => unknown }).require
+  // Prefer the actual desktop host. Obsidian's emulated-mobile plugin loader displays an
+  // error Notice before returning null; invoking it first floods the code view with overlays.
+  if (hostRequire) return hostRequire(name)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Runtime-only Node adapter; static imports break mobile.
+  return require(name)
+}
+
 /** Node HTTP does not follow redirects; keep this request bound to its exact URL. */
 function desktopRequest(request: RequestUrlParam): Promise<RequestUrlResponse> {
   return new Promise((resolve, reject) => {
     const url = new URL(request.url)
     // Runtime-only Node adapter: importing it statically breaks mobile plugin loading.
     const protocol = url.protocol === 'https:' ? 'https' : 'http'
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Runtime-only Node adapter; static imports break mobile.
-    const http = (require(protocol) ??
-      (window as typeof window & { require?: (name: string) => unknown }).require?.(protocol)) as typeof import('node:http')
+    const http = nodeBuiltin(protocol) as typeof import('node:http')
     // Obsidian's module loader returns null for Node built-ins during desktop phone emulation;
     // the host window still has Node. A real phone never takes this desktop adapter.
-    if (!http?.request) { reject(new Error('Node HTTP is unavailable.')); return }
+    if (!http?.request) {
+      reject(new Error('Node HTTP is unavailable.'))
+      return
+    }
     const call = http.request(
       url,
       { method: request.method ?? 'GET', headers: request.headers },
@@ -91,17 +103,24 @@ function desktopRequest(request: RequestUrlParam): Promise<RequestUrlResponse> {
             const encoding = headers['content-encoding']?.toLowerCase().trim()
             let decoded = bytes
             if (encoding && encoding !== 'identity') {
-              // eslint-disable-next-line @typescript-eslint/no-require-imports -- Node-only HTTP content decoding; absent on mobile.
-              const zlib = (require('zlib') ?? (window as typeof window & {require?:(name:string)=>unknown}).require?.('zlib')) as typeof import('node:zlib')
-              for (const method of encoding.split(',').map(s=>s.trim()).reverse()) {
-                if (method==='gzip' || method==='x-gzip') decoded=new Uint8Array(zlib.gunzipSync(decoded))
-                else if (method==='deflate') decoded=new Uint8Array(zlib.inflateSync(decoded))
-                else if (method==='br') decoded=new Uint8Array(zlib.brotliDecompressSync(decoded))
-                else if (method!=='identity') throw new Error('Unsupported HTTP content encoding.')
+              const zlib = nodeBuiltin('zlib') as typeof import('node:zlib')
+              for (const method of encoding
+                .split(',')
+                .map((s) => s.trim())
+                .reverse()) {
+                if (method === 'gzip' || method === 'x-gzip')
+                  decoded = new Uint8Array(zlib.gunzipSync(decoded))
+                else if (method === 'deflate') decoded = new Uint8Array(zlib.inflateSync(decoded))
+                else if (method === 'br')
+                  decoded = new Uint8Array(zlib.brotliDecompressSync(decoded))
+                else if (method !== 'identity')
+                  throw new Error('Unsupported HTTP content encoding.')
               }
             }
             resolve(response(r.statusCode ?? 0, headers, decoded))
-          } catch (error) { reject(error) }
+          } catch (error) {
+            reject(error)
+          }
         })
       }
     )
@@ -119,8 +138,10 @@ export function singleHopRequest(request: RequestUrlParam): Promise<RequestUrlRe
       Capacitor?: { isNativePlatform?(): boolean; Plugins?: { CapacitorHttp?: NativeHttp } }
     }
   ).Capacitor
-  if (bridge?.isNativePlatform?.() && bridge.Plugins?.CapacitorHttp)
-    return nativeRequest(request, bridge.Plugins.CapacitorHttp)
+  if (bridge?.isNativePlatform?.()) {
+    if (bridge.Plugins?.CapacitorHttp) return nativeRequest(request, bridge.Plugins.CapacitorHttp)
+    return Promise.reject(new Error('A redirect-controlled native HTTP transport is unavailable.'))
+  }
   if (typeof require === 'function') return desktopRequest(request)
   // Never fall back to the unsafe auto-redirecting transport if a native bridge is absent.
   return Promise.reject(new Error('A redirect-controlled HTTP transport is unavailable.'))
