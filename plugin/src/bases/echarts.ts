@@ -3,9 +3,7 @@ import type { EChartsType } from 'echarts/core'
 import { LineChart, BarChart, PieChart, HeatmapChart, ScatterChart } from 'echarts/charts'
 import {
   CalendarComponent,
-  DataZoomComponent,
   GridComponent,
-  ToolboxComponent,
   TooltipComponent,
   LegendComponent,
   TitleComponent,
@@ -20,9 +18,7 @@ use([
   HeatmapChart,
   ScatterChart,
   CalendarComponent,
-  DataZoomComponent,
   GridComponent,
-  ToolboxComponent,
   TooltipComponent,
   LegendComponent,
   TitleComponent,

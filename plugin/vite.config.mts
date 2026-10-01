@@ -1,4 +1,4 @@
-import { UserConfig, defineConfig } from 'vite'
+import { defineConfig } from 'vite'
 import path from 'path'
 import { readFileSync } from 'node:fs'
 import { generateChangelog } from './scripts/changelog.mjs'
@@ -81,8 +81,8 @@ export default defineConfig(async ({ mode }) => {
         },
       },
     ],
-    minify: prod,
     build: {
+      minify: prod ? 'esbuild' : false,
       lib: {
         entry: resolve(__dirname, 'src/main.ts'),
         name: 'main',
@@ -139,5 +139,5 @@ export default defineConfig(async ({ mode }) => {
         ],
       },
     },
-  } as UserConfig
+  }
 })
