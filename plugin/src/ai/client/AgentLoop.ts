@@ -81,7 +81,6 @@ export class AgentLoop {
 
   abort() {
     this.abortController?.abort()
-    this._isRunning = false
   }
 
   /**
@@ -100,11 +99,11 @@ export class AgentLoop {
 
     // Forward external abort signal to internal controller
     const externalSignal = opts.streamOptions?.signal
+    const onExternalAbort = () => this.abortController?.abort()
     if (externalSignal) {
       if (externalSignal.aborted) {
         this.abortController.abort()
       } else {
-        const onExternalAbort = () => this.abortController?.abort()
         externalSignal.addEventListener('abort', onExternalAbort, { once: true })
       }
     }
@@ -121,6 +120,7 @@ export class AgentLoop {
           if (injected.length) messages.push(...injected)
         }
 
+        if (signal.aborted) break
         // Stream LLM response
         const assistantMsg = await this.streamTurn(
           opts.model,
@@ -200,6 +200,7 @@ export class AgentLoop {
         })
       }
     } finally {
+      externalSignal?.removeEventListener('abort', onExternalAbort)
       this._isRunning = false
       this.abortController = null
       this.emit({ type: 'agent_end' })

@@ -14,6 +14,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+import { deferred } from '../helpers/deferred'
 import type { Message, ModelConfig } from '@/ai/client'
 
 /** What the fake model replies with, keyed by the user message it receives. */
@@ -131,6 +132,34 @@ async function runDelegate(items: string[] = [], task = 'Do the thing') {
   const result = await run.run()
   return { run, result, parent, worker }
 }
+
+it('forwards a parent stop to a branch already running and records it as aborted', async () => {
+  const { worker } = seedAgents()
+  const parent = parentSession()
+  const controller = new AbortController()
+  const entered = deferred<void>()
+  const stopped = deferred<void>()
+  const abort = vi.spyOn(ChatSession.prototype, 'abort').mockImplementation(() => stopped.resolve())
+  vi.spyOn(ChatSession.prototype, 'sendMessage').mockImplementation(async () => {
+    entered.resolve()
+    await stopped.promise
+  })
+  const run = new DelegateRun({
+    agent: worker,
+    task: 'Read the sample',
+    items: [],
+    batchSize: 1,
+    parent,
+    parentToolCallId: 'sample-call',
+    signal: controller.signal,
+  })
+  const pending = run.run()
+  await entered.promise
+  controller.abort()
+  expect(abort).toHaveBeenCalledOnce()
+  const result = await pending
+  expect(result.branches[0].status).toBe('aborted')
+})
 
 describe('a delegated run', () => {
   it('keeps the sub-agent conversation, not just its answer', async () => {

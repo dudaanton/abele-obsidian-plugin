@@ -200,6 +200,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   public readonly id: string
 
   private agentLoop: AgentLoop | null = null
+  private turnAbortController: AbortController | null = null
   private unsubscribe: (() => void) | null = null
   private streamStartTime = 0
   private allInternalMessages: Message[] = []
@@ -985,6 +986,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           // Before anything is written, so a refused call changes nothing at all.
           const refused = await this.readGuard.check(tool.name, params)
           if (refused) throw new Error(refused)
+          signal?.throwIfAborted()
           const result = await tool.execute(id, params, signal, ctx)
           await this.readGuard.record(tool.name, params, result)
           // After the guard, which has to see a file's text as the tool gave it.
@@ -1355,6 +1357,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   private async runAgentLoopOnce(): Promise<void> {
+    const controller = new AbortController()
+    this.turnAbortController = controller
+    const generation = this.generation
     this.isStreaming.value = true
     this.streamingContent.value = ''
     this.streamingThinking.value = ''
@@ -1387,7 +1392,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       this.readGuard.settle()
       this.results.settle()
       this.agentLoop = new AgentLoop()
-      this.unsubscribe = this.agentLoop.subscribe((event) => this.handleAgentEvent(event))
+      this.unsubscribe = this.agentLoop.subscribe((event) => {
+        if (!this.destroyed && generation === this.generation) this.handleAgentEvent(event)
+      })
 
       const toSend = this.getMessagesForModel()
       const result = await this.agentLoop.run({
@@ -1395,9 +1402,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         systemPrompt: await this.chatService.getSystemPrompt(this),
         tools,
         messages: toSend,
-        streamOptions: model.reasoningEffort
-          ? { reasoningEffort: model.reasoningEffort }
-          : undefined,
+        streamOptions: {
+          ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+          signal: controller.signal,
+        },
         beforeIteration: () => this.takeQueued(),
         beforeToolCall: async (toolName, _id, args) => {
           // Refused before anyone is asked: approving a write that cannot run wastes a click.
@@ -1422,6 +1430,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         },
       })
 
+      if (this.destroyed || generation !== this.generation) return
       // Append only new messages to the full history
       const newMsgs = result.messages.slice(toSend.length)
       this.linkInternalMessages(newMsgs)
@@ -1432,12 +1441,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         await this.processAllPendingToolCalls()
       }
     } catch (err: unknown) {
+      if (controller.signal.aborted || this.destroyed || generation !== this.generation) return
       if (err instanceof DOMException && err.name === 'AbortError') return
       const errObj = err instanceof Error ? err : new Error(String(err))
       if (errObj.name === 'AbortError') return
       this.error.value = errObj.message || 'An unknown error occurred'
       console.error('[Abele AI]', err)
     } finally {
+      if (this.turnAbortController === controller) this.turnAbortController = null
       this.isStreaming.value = false
       this.unsubscribe?.()
       this.unsubscribe = null
@@ -2054,11 +2065,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   abort(): void {
     this.cancelAutoRetry()
+    this.turnAbortController?.abort()
     this.agentLoop?.abort()
+    this.toolAbortController?.abort()
     // A script deciding about a message stops too; the message is kept back as a draft.
     this.interceptor.abort()
     this.turnPolicy.clear()
-    this.isStreaming.value = false
+    // Stay busy until the old loop has committed its partial history and released its tools.
     // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —
     // the chat hands it back to the input rather than dropping it.
     this.queuedMessages.value = []

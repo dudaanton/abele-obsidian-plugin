@@ -22,6 +22,7 @@ import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import type { AgentTool, Message, ToolCallContent } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
+import { deferred } from '../helpers/deferred'
 
 const provider: AiProvider = {
   id: 'p1',
@@ -127,6 +128,26 @@ beforeEach(() => {
 
   turns = []
   duringTool = () => undefined
+})
+
+it('waits for a stopped turn to settle before starting the next message', async () => {
+  const gate = deferred<void>()
+  const entered = deferred<void>()
+  model(async (opts) => {
+    entered.resolve()
+    await gate.promise
+    return { messages: [...opts.messages, reply('old partial answer')] }
+  })
+  const first = session.sendMessage('first question')
+  await entered.promise
+  session.abort()
+  await session.sendMessage('next question')
+  expect(turns).toEqual(['first question'])
+  expect(session.isStreaming.value).toBe(true)
+  gate.resolve()
+  await first
+  expect(turns).toEqual(['first question', 'next question'])
+  expect(session.isStreaming.value).toBe(false)
 })
 
 describe('a message typed while the agent goes on after a tool was answered', () => {

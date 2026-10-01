@@ -113,20 +113,27 @@ export class DelegateRun {
 
     const message = this.options.items.length ? `${this.options.task}\n\n${item}` : item
 
+    const abort = () => session.abort()
+    signal?.addEventListener('abort', abort, { once: true })
     try {
+      if (signal?.aborted) {
+        branch.status = 'aborted'
+        return
+      }
       await session.sendMessage(message)
 
       branch.messages = [...session.allMessages.value]
       branch.result = session.lastAssistantText()
-      branch.status = session.error.value ? 'error' : 'done'
+      branch.status = signal?.aborted ? 'aborted' : session.error.value ? 'error' : 'done'
       if (session.error.value) branch.error = session.error.value
     } catch (err) {
       branch.messages = [...session.allMessages.value]
       branch.status = signal?.aborted ? 'aborted' : 'error'
       branch.error = err instanceof Error ? err.message : String(err)
+    } finally {
+      signal?.removeEventListener('abort', abort)
+      this.schedulePersist()
     }
-
-    this.schedulePersist()
   }
 
   private schedulePersist(): void {
