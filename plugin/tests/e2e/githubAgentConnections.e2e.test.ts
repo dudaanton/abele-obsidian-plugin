@@ -39,6 +39,27 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
     }
   })
 
+  it('Ask gates the actual execution factory and accepts one operation without changing the mode', async () => {
+    const result=evalAsync<{asked:boolean;mode:string;code:string}>(`(async()=>{
+      ${PRELUDE}
+      const id=window.__connectionAgents[1]
+      const agent=window.__abeleTest.AgentRegistry.getInstance().get(id)
+      agent.githubConnections.two='ask'
+      const tool=window.__abeleTest.createAgentTools({agentId:id,githubApproval:window.__abeleTest.connectionApproval(app)}).find(t=>t.name==='github_file')
+      const pending=tool.execute('ask-once',{repo:${JSON.stringify(gh.web+'/blob/main/src/app.ts')},connection:'Sample two'})
+      const button=await until(()=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Allow once'),5000)
+      const asked=!!button
+      button?.click()
+      const code=JSON.stringify(await pending)
+      const mode=agent.githubConnections.two
+      agent.githubConnections.two='auto'
+      return {asked,mode,code}
+    })()`)
+    expect(result.asked).toBe(true)
+    expect(result.mode).toBe('ask')
+    expect(result.code).toContain('const widgets = loadWidgets(count)')
+  })
+
   it('uses the executing agent, refuses forbidden explicit access, and hides a loaded private tab', async () => {
     const result = evalAsync<{ allowed: string; denied: string; views: string }>(`(async()=>{
       ${PRELUDE}

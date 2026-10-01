@@ -855,6 +855,11 @@ const probeScript = `(async () => {
           heading?.scrollIntoView({ block: 'start' })
         }
         await screen(label, modal, modal.querySelector('.abele-modal__body'))
+        if (dialogName === 'github-connection-approval') {
+          for (const p of modal.querySelectorAll('p')) if (p.scrollWidth > p.clientWidth + 1) {
+            report[label].over.push('approval text exceeds its paragraph by ' + (p.scrollWidth-p.clientWidth) + 'px')
+          }
+        }
         const d = modal.getBoundingClientRect()
         report[label].edges = [Math.round(d.top), Math.round(d.bottom)]
         const footer = modal.querySelector('.abele-modal__footer')

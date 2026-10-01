@@ -66,6 +66,7 @@ import { tablePage } from '@/reader/figures'
 import { placeDiagram } from '@/mermaid/renderMermaid'
 import { GithubClient } from '@/github/client'
 import { singleHopRequest } from '@/github/transport'
+import { connectionApproval } from '@/github/approveConnection'
 import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
 import * as bookSafety from '@/reader/bookSafety'
@@ -187,6 +188,7 @@ interface AbeleTestApi {
   createGithubTools: typeof createGithubTools
   requestUrl: typeof requestUrl
   singleHopRequest: typeof singleHopRequest
+  connectionApproval: typeof connectionApproval
   GithubClient: typeof GithubClient
   githubEndpoints: typeof endpoints
   /** Every tool an agent could be handed now, MCP servers' included, to call as an agent would. */
@@ -707,6 +709,7 @@ export function exposeTestApi(plugin: Plugin): void {
     createGithubTools,
     requestUrl,
     singleHopRequest,
+    connectionApproval,
     GithubClient,
     githubEndpoints: endpoints,
     createAgentTools,
