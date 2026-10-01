@@ -23,7 +23,7 @@ import {
   runCli,
 } from './helpers/obsidianCli'
 import {
-  PRELUDE,
+  PRELUDE as GITHUB_PRELUDE,
   enableGithub,
   evalAsync,
   restoreGithub,
@@ -49,7 +49,28 @@ interface Screen {
   shot?: string
 }
 
+// Gesture holds and screenshot retry backoff below are deliberate durations.
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const PRELUDE = `
+  ${GITHUB_PRELUDE}
+  // Sample the geometry, not whether the overflow assertions will pass. The next
+  // measurement must see the same mounted layout, including CodeMirror's own reflow.
+  const settledLayout = async (root) => {
+    let previous
+    if (!(await until(() => {
+      if (!root?.isConnected || !root.getBoundingClientRect().height) return false
+      const boxes = JSON.stringify([innerWidth, innerHeight, visualViewport?.height,
+        ...[root, ...root.querySelectorAll('*')].map(el => {
+          const r = el.getBoundingClientRect()
+          return [r.x, r.y, r.width, r.height, el.scrollWidth, el.scrollHeight]
+        })])
+      const stable = boxes === previous
+      previous = boxes
+      return stable
+    }))) throw Error('The mounted layout did not settle')
+  }
+`
 
 const cdp = (method: string, params: object): void => {
   runCli(['dev:cdp', `method=${method}`, `params=${JSON.stringify(params)}`], 30_000)
@@ -95,7 +116,11 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  const sized = evalAsync<boolean>(`(async () => {
+    ${PRELUDE}
+    return !!(await until(() => innerWidth === ${width} && innerHeight === ${height}))
+  })()`)
+  if (!sized) throw new Error('The window did not reach its requested size')
 }
 
 /** Reloads the page and waits for the plugin to be back. */
@@ -152,7 +177,7 @@ const measure = (
               root.querySelector('.abele-github-home__lang-part')
             : root.querySelectorAll('.abele-github-file .cm-editor').length === 5), 20000)
       if (!ready) return { ...report, error: 'the pull request never showed' }
-      await wait(800)
+      await settledLayout(root)
 
       // The part of the tab that scrolls: the content beside the file tree panel.
       const content = leaf.view.contentEl.querySelector('.abele-github-layout__main') ?? leaf.view.contentEl
@@ -223,12 +248,19 @@ const measurePicker = (
       if (!input) return { ...report, error: 'no picker' }
       input.value = ${JSON.stringify(text)}
       input.dispatchEvent(new Event('input', { bubbles: true }))
-      await wait(200)
-      await until(() => !picker().textContent.includes('Asking GitHub'), 10000)
-      // The repository picker fills in once the account's lists arrive.
-      await until(() => picker().querySelectorAll('.suggestion-item').length > 0, 5000)
+      // The empty link picker offers instructions, not rows. The repository picker
+      // instead fills in once the account's lists arrive. A pending placeholder is
+      // itself a suggestion, so rows alone do not mean GitHub has answered.
+      const emptyLink = ${JSON.stringify(!text && cls === '.abele-github-open')}
+      if (!(await until(() => emptyLink
+        ? picker().textContent.includes('Type a number, words of a title')
+        : !picker().textContent.includes('Asking GitHub') && picker().querySelectorAll('.suggestion-item').length > 0, 10000)))
+        throw Error('The picker did not show its suggestions or empty instructions')
       input.blur()
-      await wait(500)
+      if (!(await until(() => document.activeElement !== input &&
+        (visualViewport?.height ?? innerHeight) >= innerHeight - 1)))
+        throw Error('The picker keyboard did not close')
+      await settledLayout(picker())
       const root = picker()
       report.rows = root.querySelectorAll('.suggestion-item').length
       const edge = window.innerWidth
@@ -347,7 +379,9 @@ describe.skipIf(!available)('a pull request on a phone', () => {
         ?.querySelectorAll('.cm-content .cm-line') ?? [])].find((l) => l.textContent.startsWith('export function startApp')), 15000)
       if (!line) return { error: 'no diff line' }
       line.scrollIntoView({ block: 'center' })
-      await wait(800)
+      if (!(await until(() => line.isConnected && placeInView(line).inView)))
+        throw Error('The code line did not scroll into view')
+      await settledLayout(line)
       const box = (from, to) => {
         const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
         let at = 0
@@ -437,8 +471,8 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       const row = (path) => root.querySelector('.abele-github-tree .tree-item-self[data-path="' + path + '"]')
       if (!(await until(() => row('src/util/format.ts')?.classList.contains('is-active'), 20000)))
         return { ...report, error: 'the panel never marked the file' }
-      await wait(600)
       const panel = root.querySelector('.abele-github-layout__panel')
+      await settledLayout(panel)
       const p = panel.getBoundingClientRect()
       report.position = getComputedStyle(panel).position
       report.panel = { left: Math.round(p.left), right: Math.round(p.right) }
@@ -484,16 +518,20 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       const leaf = githubLeaves()[0] ?? app.workspace.getLeaf(false)
       const root = leaf.view.containerEl
       const look = async (text) => {
-        const el = await until(() => [...root.querySelectorAll('.abele-github-code__line_target, .abele-github-md__block_marked')]
-          .find((e) => e.textContent.includes(text)), 15000)
-        await wait(2500)
-        if (!el || !el.isConnected) return { error: 'nothing marked' }
-        const box = scroller(el).getBoundingClientRect()
-        const drawn = [...root.querySelectorAll('.abele-github-blob .cm-line, .abele-github-md__block')].filter((l) => {
-          const b = l.getBoundingClientRect()
-          return b.height > 0 && b.bottom > box.top && b.top < box.bottom
-        }).length
-        return { inView: placeInView(el).inView, drawn }
+        const result = await until(() => {
+          // CodeMirror can replace a line while bringing it into its drawn viewport.
+          const el = [...root.querySelectorAll('.abele-github-code__line_target, .abele-github-md__block_marked')]
+            .find((e) => e.textContent.includes(text))
+          if (!el?.isConnected || !placeInView(el).inView) return false
+          const box = scroller(el).getBoundingClientRect()
+          const drawn = [...root.querySelectorAll('.abele-github-blob .cm-line, .abele-github-md__block')].filter((l) => {
+            const b = l.getBoundingClientRect()
+            return b.height > 0 && b.bottom > box.top && b.top < box.bottom
+          }).length
+          return drawn > 0 && { inView: placeInView(el).inView, drawn }
+        }, 15000)
+        if (!result) throw Error('The marked lines did not draw on screen')
+        return result
       }
       const steps = []
       for (const [url, text] of [
@@ -504,7 +542,6 @@ describe.skipIf(!available)('a pull request on a phone', () => {
         ['/blob/main/README.md#L10', 'npm install acme-widgets'],
       ]) {
         await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(gh.web)} + url }, active: true })
-        await wait(100)
         steps.push(await look(text))
       }
       return { steps }
