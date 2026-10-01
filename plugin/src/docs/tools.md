@@ -221,6 +221,8 @@ the next part rather than trying to get everything at once.
   opens its commit, hover or long press reveals the full message and date. It temporarily
   shows markdown as source. Results are memory-only, bounded and cached briefly per client,
   repository, ref and path; changing credentials does not reuse another client's results.
+  Blame uses the operation's selected `connection` and its Off / Ask / On permission; a
+  revoked permission or retired credential generation rejects cached and pending answers too.
 - `github_commits` — a pull request's commits (`pull` or its link), one commit's message and diffs
   (`sha` or its link), a comparison (`base` and `head`, or a `compare/a...b` link; `compare/b`
   alone is `b` against the default branch), or the history of `ref`, of one `path` when given.

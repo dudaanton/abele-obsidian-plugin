@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { GithubClient, GithubError } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import { loadBlame, rangeAt } from '@/github/blame'
+import { guardedGithubClient } from '@/github/guardedClient'
 
 const file = {
   host: 'github.com',
@@ -36,6 +37,42 @@ function client() {
 }
 
 describe('file blame', () => {
+  it('never returns warmed blame from a retired connection client', async () => {
+    const c = client()
+    await loadBlame(c, file)
+    c.retire()
+    await expect((async () => loadBlame(c, file))()).rejects.toThrow(/connection changed/i)
+    expect(c.graphql).toHaveBeenCalledTimes(1)
+  })
+  it('rechecks the tab capability before cached reads, even when metadata remains readable', async () => {
+    const raw = client()
+    let allowed = true
+    const c = guardedGithubClient(
+      raw,
+      () => {
+        if (!allowed) throw new Error('Sample access revoked')
+      },
+      true
+    )
+    await loadBlame(c, file)
+    allowed = false
+    await expect((async () => loadBlame(c, file))()).rejects.toThrow('Sample access revoked')
+    expect(raw.graphql).toHaveBeenCalledTimes(1)
+  })
+  it('does not publish a pending answer when its connection retires', async () => {
+    const c = client()
+    let finish!: (value: unknown) => void
+    vi.mocked(c.graphql).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const pending = loadBlame(c, file)
+    c.retire()
+    finish(data)
+    await expect(pending).rejects.toThrow(/connection changed/i)
+  })
   it('names blame, not discussions, when GraphQL requires a token', async () => {
     const c = new GithubClient(endpoints(''), '')
     await expect(loadBlame(c, file)).rejects.toThrow("the file's line blame")

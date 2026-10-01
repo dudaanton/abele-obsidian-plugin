@@ -142,7 +142,9 @@ The compact phone gutter keeps the author and message; the date is in the detail
 Blame needs a token, even for public files, because GitHub serves it through GraphQL. It uses
 the same connection as the file. A refused request leaves the file readable and offers
 **Try again**. Results stay in memory briefly per connection, repository, ref and path;
-only visible gutter rows are drawn, including in large files.
+only visible gutter rows are drawn, including in large files. Changing or removing the
+connection invalidates its cached blame. An agent's `github_file` blame option follows the
+same per-connection **Off / Ask / On** permissions as its other GitHub reads.
 
 ## Searching
 

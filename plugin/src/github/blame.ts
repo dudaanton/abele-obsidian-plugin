@@ -60,16 +60,23 @@ const caches = new WeakMap<
   Map<string, { at: number; value: Promise<BlameRange[]> }>
 >()
 
-export function loadBlame(client: GithubClient, file: FileRef): Promise<BlameRange[]> {
+export async function loadBlame(client: GithubClient, file: FileRef): Promise<BlameRange[]> {
+  // Cached content must obey the same connection lifetime/capability as a network read.
+  client.assertCurrent()
   let cache = caches.get(client)
   if (!cache) caches.set(client, (cache = new Map()))
   const { owner, repo, ref, path } = file
   const key = JSON.stringify([owner, repo, ref, path])
   const found = cache.get(key)
-  if (found && Date.now() - found.at < TTL) return found.value
+  if (found && Date.now() - found.at < TTL) {
+    const ranges = await found.value
+    client.assertCurrent()
+    return ranges
+  }
   const value = client
     .graphql<Answer>(QUERY, { owner, repo, ref, path }, "the file's line blame")
     .then((data) => {
+      client.assertCurrent()
       const raw = data.repository?.object?.blame?.ranges
       if (!raw)
         throw new GithubError('not-found', 'GitHub found no line blame for this file at this ref.')
@@ -102,7 +109,7 @@ export function loadBlame(client: GithubClient, file: FileRef): Promise<BlameRan
     })
   cache.delete(key)
   cache.set(key, { at: Date.now(), value })
-  if (cache.size > LIMIT) cache.delete(cache.keys().next().value!)
+  if (cache.size > LIMIT) cache.delete(cache.keys().next().value)
   return value
 }
 
