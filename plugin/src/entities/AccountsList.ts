@@ -95,6 +95,8 @@ export class AccountsList {
         this.relationsCallbacksQueue.push(() => {
           if (this.isAccountPath(file.path)) {
             this.addAccount(file.path)
+          } else {
+            this.removeAccount(file.path)
           }
         })
       })

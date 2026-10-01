@@ -95,6 +95,8 @@ export class TransactionsList {
         this.relationsCallbacksQueue.push(() => {
           if (this.isTransactionPath(file.path)) {
             this.addTransaction(file.path)
+          } else {
+            this.removeTransaction(file.path)
           }
         })
       })

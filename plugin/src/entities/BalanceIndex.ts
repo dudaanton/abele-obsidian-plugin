@@ -407,7 +407,13 @@ export class BalanceIndex {
     this.eventRefs.push(
       app.metadataCache.on('changed', (file: TFile) => {
         const fm = app.metadataCache.getFileCache(file)?.frontmatter
-        if (fm?.type === 'transaction' || fm?.type === 'account') {
+        const path = normalizePath(file.path)
+        if (
+          fm?.type === 'transaction' ||
+          fm?.type === 'account' ||
+          this.transactionsList.transactions.has(path) ||
+          this.accountsList.accounts.has(path)
+        ) {
           this.debouncedRebuild()
         }
       })

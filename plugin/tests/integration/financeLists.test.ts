@@ -111,9 +111,7 @@ describe.each(['account', 'transaction'] as const)('%s list metadata lifecycle',
     expect(off).toHaveBeenCalledTimes(4)
   })
 
-  // BUG: changing type to note queues only an add check, never a removal. The old
-  // account/transaction continues to appear in finance until the plugin is restarted.
-  it.fails('removes a note that is no longer a financial entity after its type is edited', () => {
+  it('removes a note that is no longer a financial entity after its type is edited', () => {
     resolve()
     app.setFrontmatter('Finance/One.md', { type: 'note' })
     app.emit('metadataCache', 'changed', file())

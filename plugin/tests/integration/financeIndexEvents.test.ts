@@ -127,6 +127,16 @@ describe('BalanceIndex deferred events', () => {
     expect(bi.getNetWorthAtDate(at)).toBe(0)
   })
 
+  it('removes a retyped transaction from balances after the list queue resolves', () => {
+    const version = bi.version.value
+    app.setFrontmatter('Tx.md', { type: 'note' })
+    app.emit('metadataCache', 'changed', app.vault.getFileByPath('Tx.md'))
+    app.emit('metadataCache', 'resolved')
+    vi.advanceTimersByTime(300)
+    expect(bi.getBalanceAtDate('Cash.md', at)).toBe(10)
+    expect(bi.version.value).toBe(version + 1)
+  })
+
   // BUG: cleanup unregisters events and empties caches, but does not cancel the
   // pending debounced rebuild. Closing finance during an edit lets the disposed
   // index rebuild and publish a version afterwards.
