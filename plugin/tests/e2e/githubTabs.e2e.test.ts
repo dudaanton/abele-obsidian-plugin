@@ -22,7 +22,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import {
-  PRELUDE,
+  PRELUDE as GITHUB_PRELUDE,
   centreOf,
   enableGithub,
   evalAsync,
@@ -34,9 +34,32 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { BASE_SHA, HEAD_SHA, LATE_COMMENT, diffHash } from './helpers/fakeGithubRepo'
+import { until } from './helpers/wait'
 
 const NOTE = 'Abele GitHub insert probe.md'
 const available = isObsidianRunning() && hasTestApi()
+
+const PRELUDE = `${GITHUB_PRELUDE}
+  const pinned = async (el) => {
+    let previous = '', since = Date.now()
+    const result = await until(() => {
+      if (!el?.isConnected) return false
+      const container = scroller(el)
+      const at = placeInView(el)
+      const current = JSON.stringify([at, container.scrollTop, container.scrollHeight])
+      if (current !== previous || !at.inView || [...container.querySelectorAll('img')].some(img => !img.complete)) {
+        previous = current
+        since = Date.now()
+        return false
+      }
+      // The link's pin runs until layout has been still for 700 ms. Observe that quiet
+      // period, including the surrounding content's height, rather than sleep 2.5 seconds.
+      return Date.now() - since >= 700 && at
+    })
+    if (!result) throw Error('GitHub link target did not settle in view')
+    return result
+  }
+`
 
 /**
  * Opens a URL in a new GitHub tab and waits for `title`; the tab is `leaf` in what follows. Goes
@@ -56,7 +79,8 @@ const CLICK_NUMBER = `
       .find((e) => e.textContent.trim() === String(n))
     if (!cell) return false
     cell.scrollIntoView({ block: 'center' })
-    await wait(200)
+    if (!(await until(() => cell.isConnected && cell.getBoundingClientRect().height > 0 && placeInView(cell).inView)))
+      throw Error('GitHub gutter did not scroll into view')
     const r = cell.getBoundingClientRect()
     cell.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0,
       clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
@@ -104,8 +128,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
         const el = await until(() => root.querySelector(${JSON.stringify(target)}), 15000)
         if (!el) return { error: 'nothing marked' }
         // The tab keeps the target pinned while what is above it settles.
-        await wait(2500)
-        const at = placeInView(el)
+        const at = await pinned(el)
         leaf.detach()
         return at
       })()`)
@@ -151,8 +174,8 @@ describe.skipIf(!available)('a GitHub tab', () => {
         const look = async (text) => {
           const el = await until(() => [...root.querySelectorAll(${JSON.stringify(target)})]
             .find((e) => e.textContent.includes(text)), 15000)
-          await wait(2500)
           if (!el || !el.isConnected) return { error: 'nothing marked' }
+          await pinned(el)
           const box = scroller(el).getBoundingClientRect()
           // What is drawn inside the visible area: a blank editor draws nothing there.
           const drawn = [...root.querySelectorAll(${JSON.stringify(content)})].filter((l) => {
@@ -164,7 +187,6 @@ describe.skipIf(!available)('a GitHub tab', () => {
         const steps = [await look(${JSON.stringify(texts[0])})]
         for (const [next, text] of [[${JSON.stringify(first)}, ${JSON.stringify(texts[0])}], [${JSON.stringify(url)}, ${JSON.stringify(texts[1])}]]) {
           await leaf.setViewState({ type: 'abele-github', state: { url: next }, active: true })
-          await wait(100)
           steps.push(await look(text))
         }
         leaf.detach()
@@ -241,7 +263,8 @@ describe.skipIf(!available)('a GitHub tab', () => {
         await note.openFile(file, { state: { mode: 'source' } })
         app.workspace.setActiveLeaf(note, { focus: true })
         note.view.editor.setCursor({ line: 2, ch: 0 })
-        await wait(300)
+        if (!(await until(() => app.workspace.activeLeaf === note && note.view.editor.getCursor().line === 2)))
+          return { error: 'note editor did not become active at the insertion point' }
 
         ${opening(`${gh.web}/blob/main/src/app.ts`, 'src/app.ts')}
         await until(() => root.querySelector('.cm-lineNumbers'), 10000)
@@ -293,8 +316,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
         ${opening(`${URL_()}#diff-${diffHash('src/long.ts')}R300`, '...main')}
         const el = await until(() => root.querySelector('.abele-github-code__line_target'), 15000)
         if (!el) return { error: 'nothing marked' }
-        await wait(2500)
-        const at = placeInView(el)
+        const at = await pinned(el)
         const out = {
           inView: at.inView,
           badge: root.querySelector('.abele-github-header .abele-badge')?.textContent.trim(),
@@ -385,12 +407,12 @@ describe.skipIf(!available)('a GitHub tab', () => {
         ${opening(`${gh.web}/blob/main/README.md#L10`, 'README.md')}
         const block = await until(() => root.querySelector('.abele-github-md__block_marked'), 15000)
         if (!block) return { error: 'no marked block' }
-        await wait(2500)
+        await pinned(block)
         const report = { block: block.textContent.trim(), inView: placeInView(block).inView }
         const tab = [...root.querySelectorAll('.abele-github-blob__modes .abele-tabs__tab')].find((t) => t.textContent.includes('Code'))
         tab.click()
         const line = await until(() => root.querySelector('.abele-github-code__line_target'), 15000)
-        await wait(2500)
+        await pinned(line)
         report.line = line?.textContent
         report.lineInView = line ? placeInView(line).inView : false
         leaf.detach()
@@ -518,8 +540,10 @@ describe.skipIf(!available)('a GitHub tab', () => {
           pictures: [...new Set(authors.map((a) => (a.querySelector('img')?.src ?? '').slice(0, 15)))],
           tooltip: authors[1].getAttribute('aria-label'),
         }
+        const login = report.tooltip.split(' · ').pop()
         authors[1].click()
-        await wait(100)
+        if (!(await until(() => authors[1].textContent.trim() === login)))
+          return { error: 'author did not switch to login' }
         report.swapped = authors[1].textContent.trim()
         leaf.detach()
         return report
@@ -531,9 +555,8 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.pictures).toEqual(['data:image/png;'])
       expect(r.tooltip).toMatch(/ · (bob|dave)$/)
       expect(r.swapped).toMatch(/^(bob|dave)$/)
-      // Everyone on the conversation was asked about in one query. The server's log is read only
-      // while the worker is not blocked on an eval, so it is given a moment to arrive.
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // The child server's output is drained only while the worker yields between eval calls.
+      expect(await until(() => queries() > before), 'GitHub query log arrived').toBe(true)
       expect(queries() - before).toBe(1)
     })
   })
@@ -567,7 +590,11 @@ describe.skipIf(!available)('a GitHub tab', () => {
           await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(`${gh.web}/pull/42/files`)} }, active: true })
           const froot = leaf.view.containerEl
           await until(() => froot.querySelector('.abele-github-file .cm-content .cm-line'), 15000)
-          await wait(1000)
+          // CodeMirror also has a zero-height gutter spacer. Presence is enough here:
+          // getComputedStyle below resolves the selection policy even for that spacer.
+          if (!(await until(() => ['.cm-content', '.cm-line', '.cm-gutters', '.cm-gutterElement', '.abele-github-file__stats']
+            .every(s => froot.querySelector('.abele-github-file ' + s)))))
+            return { error: 'diff controls did not mount' }
           Object.assign(text, style(froot, [
             '.abele-github-file .cm-content',
             '.abele-github-file .cm-line',
@@ -625,14 +652,15 @@ describe.skipIf(!available)('a GitHub tab', () => {
         }
         /** Brings \`el\` to the middle of the tab and waits until it stays there: diffs drawn above move it. */
         const settle = async (el) => {
-          let last = null
-          for (let i = 0, same = 0; i < 60 && same < 5; i++) {
+          let last = null, since = Date.now()
+          const settled = await until(() => {
             el.scrollIntoView({ block: 'center' })
-            await wait(200)
             const top = Math.round(el.getBoundingClientRect().top)
-            same = top === last ? same + 1 : 0
-            last = top
-          }
+            if (top !== last) { last = top; since = Date.now() }
+            // Keep the original five 200-ms samples' full second of observed stillness.
+            return Date.now() - since >= 1000
+          })
+          if (!settled) throw Error('GitHub selection target did not settle')
         }
         const middle = (box, side) => ({ x: Math.round(side === 'start' ? box.left + 1 : box.right - 1),
           y: Math.round(box.top + box.height / 2) })
