@@ -5,6 +5,7 @@ import { newStateId } from '@/sync/ids'
 import { CONNECTION_KEY } from '@/sync/connection'
 import { LEDGER_KEY } from '@/sync/ledgerId'
 import { ScriptProvenance, type ScriptBinding } from './ScriptProvenance'
+import { assertCurrentScriptConnection } from './scriptConnection'
 
 export const SCRIPT_SENTINEL = '.abele-script-managed'
 export const SCRIPT_TRUST_KEY = 'abele-script-provenance'
@@ -60,6 +61,7 @@ export async function activateScriptProvenance(
   const fresh = raw === null
   const id = fresh ? newStateId() : descriptor(raw).id
   const value: Descriptor = { id, binding: { ...binding, localVault: id } }
+  assertCurrentScriptConnection(storage, value.binding)
   storage.saveLocalStorage(SCRIPT_TRUST_KEY, value)
   if (JSON.stringify(storage.loadLocalStorage(SCRIPT_TRUST_KEY)) !== JSON.stringify(value))
     throw new Error('Script provenance descriptor was not persisted')
@@ -86,5 +88,7 @@ export async function scriptTrustFor(app: App, factory: IDBFactory = window.inde
     }
     return null
   }
-  return open(descriptor(raw), factory, false)
+  const value = descriptor(raw)
+  assertCurrentScriptConnection(storage, value.binding)
+  return open(value, factory, false)
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { setScriptConnection } from '../helpers/scriptConnection'
 import {
   activateScriptProvenance,
   scriptTrustFor,
@@ -22,6 +23,7 @@ describe('script provenance persistence adapter', () => {
   it('survives reopen/adoption and refuses a missing database behind its sentinel', async () => {
     const app = buildFakeVault([]) as unknown as App
     const factory = new IDBFactory()
+    setScriptConnection(app, binding)
     const first = await activateScriptProvenance(app, binding, factory)
     await first.provenance.record('Scripts/sample.js', 'sample-file')
     first.store.close()

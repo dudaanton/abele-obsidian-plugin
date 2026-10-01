@@ -7,6 +7,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { useVault } from '../helpers/testEnv'
+import { setScriptConnection } from '../helpers/scriptConnection'
 
 let app: ReturnType<typeof useVault>
 let service: ScriptService
@@ -49,6 +50,13 @@ describe('common exact-byte script execution gate', () => {
     async (source) => {
       const factory = new IDBFactory()
       vi.stubGlobal('indexedDB', factory)
+      setScriptConnection(app, {
+        endpoint: 'https://sync.example',
+        vaultId: 'sample-vault',
+        principal: 'sample-device',
+        facet: 'personal',
+        grantId: null,
+      })
       const trust = await activateScriptProvenance(
         app as unknown as App,
         {
@@ -68,6 +76,13 @@ describe('common exact-byte script execution gate', () => {
   it('blocks a nested child whose managed provenance is unknown', async () => {
     const factory = new IDBFactory()
     vi.stubGlobal('indexedDB', factory)
+    setScriptConnection(app, {
+      endpoint: 'https://sync.example',
+      vaultId: 'sample-vault',
+      principal: 'sample-device',
+      facet: 'personal',
+      grantId: null,
+    })
     const trust = await activateScriptProvenance(
       app as unknown as App,
       {

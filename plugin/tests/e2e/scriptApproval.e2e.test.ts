@@ -75,6 +75,7 @@ describe('script approval with existing dialog geometry checks', () => {
       const api = window.__abeleTest.scriptTrust
       const key = 'abele-script-provenance', marker = '.abele-script-managed'
       const saved = app.loadLocalStorage(key)
+      const savedConnection = app.loadLocalStorage('abele-sync-connection')
       const hadMarker = await app.vault.adapter.exists(marker)
       const markerBytes = hadMarker ? await app.vault.adapter.readBinary(marker) : null
       const folder = 'ScriptApprovalProbe', path = folder + '/sample.js'
@@ -83,6 +84,7 @@ describe('script approval with existing dialog geometry checks', () => {
       await app.vault.createFolder(folder)
       try {
         await app.vault.create(path, '// @name Native sample\\nreturn "native-approved"')
+        app.saveLocalStorage('abele-sync-connection', { serverUrl: 'https://sync.example', enrolledUrl: 'https://sync.example', vaultId: 'sample-vault', deviceId: 'sample-native-device', facet: 'personal', grantId: null })
         context = await api.activate(app, { endpoint: 'https://sync.example', vaultId: 'sample-vault', principal: 'sample-native-device', facet: 'personal', grantId: null }, window.indexedDB)
         await context.provenance.record(path, 'sample-native-file')
         identity = await context.provenance.lookup(path)
@@ -102,6 +104,7 @@ describe('script approval with existing dialog geometry checks', () => {
         }
         const created = app.loadLocalStorage(key)
         app.saveLocalStorage(key, saved)
+        app.saveLocalStorage('abele-sync-connection', savedConnection)
         if (markerBytes) await app.vault.adapter.writeBinary(marker, markerBytes)
         else if (await app.vault.adapter.exists(marker)) await app.vault.adapter.remove(marker)
         if (!saved && created?.id) await new Promise((resolve, reject) => {

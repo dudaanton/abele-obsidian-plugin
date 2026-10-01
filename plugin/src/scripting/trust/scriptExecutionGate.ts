@@ -3,6 +3,7 @@ import { sha256 } from '@abele/sync-core'
 import { parseScriptHeader, extractScriptBody } from '../ScriptParser'
 import { scriptTrustFor, SCRIPT_TRUST_KEY } from './scriptTrustStorage'
 import { storageOf } from '@/sync/vaultWrites'
+import { assertCurrentScriptConnection, hasScriptConnection } from './scriptConnection'
 import { sameBinding, type ManagedScript, type ScriptBinding } from './ScriptProvenance'
 import type { ParsedScript } from '../types'
 
@@ -23,14 +24,16 @@ export function assertScriptContext(app: App, script: ParsedScript): void {
     id?: string
     binding?: ScriptBinding
   } | null
-  if (expected === null && !current) return
+  if (expected === null && !current && !hasScriptConnection(storageOf(app))) return
   if (
     expected &&
     current?.binding &&
     current.id === expected.localVault &&
     sameBinding(current.binding, expected)
-  )
+  ) {
+    assertCurrentScriptConnection(storageOf(app), expected)
     return
+  }
   throw new Error('Script connection changed during the execution check')
 }
 const decode = (bytes: Uint8Array) => new TextDecoder('utf-8', { fatal: true }).decode(bytes)

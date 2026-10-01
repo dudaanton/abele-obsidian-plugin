@@ -73,7 +73,11 @@ Ordinary local scripts in a vault that has never been sync-managed continue to r
 Personal managed scripts use **until confirmed**: run one manually from the script library or
 command palette to review its full source, file identity, connection and SHA-256. **Approve
 and run** stores permission for those exact bytes on this device. A changed file/identity or
-connection while the dialog is open invalidates the decision. New bytes need a new decision;
+connection while the dialog is open invalidates the decision. Checks use this vault's actual
+current connection, not only the provenance descriptor last written by an engine. Switching
+connections with a join question still open invalidates old decisions before a new engine
+exists; disconnect retains managed bytes but does not keep an old connection's permission
+active. New bytes need a new decision;
 rename alone preserves identity. Shared/agent policy is **refuse**, with no approval bypass.
 Agents, automations, nested scripts and restored views never open approval dialogs: unapproved
 runs return a hold/error. Approving on one device does not authorize another, and nothing in

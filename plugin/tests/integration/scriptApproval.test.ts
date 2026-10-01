@@ -4,7 +4,8 @@ import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { useVault } from '../helpers/testEnv'
 import { activateScriptProvenance, scriptTrustFor } from '@/scripting/trust/scriptTrustStorage'
-import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
+import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
+import { CONNECTION_KEY } from '@/sync/connection'
 
 const path = 'Scripts/sample.js'
 const bytes = '// @name Sample\nreturn "approved"'
@@ -17,6 +18,14 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 async function managed(facet: 'personal' | 'scoped' = 'personal', principal = 'sample-device') {
+  app.saveLocalStorage(CONNECTION_KEY, {
+    serverUrl: 'https://sync.example',
+    enrolledUrl: 'https://sync.example',
+    vaultId: 'sample-vault',
+    deviceId: principal,
+    facet,
+    grantId: facet === 'scoped' ? 'sample-grant' : null,
+  })
   const context = await activateScriptProvenance(
     app as unknown as App,
     {
@@ -83,6 +92,7 @@ describe('exact-byte local script approval', () => {
     await managed()
     await scriptForExecution(app as unknown as App, path, async () => true)
     const other = useVault([{ path, content: bytes }])
+    other.saveLocalStorage(CONNECTION_KEY, app.loadLocalStorage(CONNECTION_KEY))
     const context = await activateScriptProvenance(
       other as unknown as App,
       {
@@ -139,6 +149,47 @@ describe('exact-byte local script approval', () => {
       return result
     })
     await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/changed/)
+  })
+
+  it('invalidates an open decision when the actual connection changes before a joined engine exists', async () => {
+    await managed()
+    await expect(
+      scriptForExecution(app as unknown as App, path, async () => {
+        app.saveLocalStorage(CONNECTION_KEY, {
+          serverUrl: 'https://other.example',
+          enrolledUrl: 'https://other.example',
+          vaultId: 'other-vault',
+          deviceId: 'other-device',
+          join: { vaultId: 'other-vault', ask: true, prefer: null },
+        })
+        return true
+      })
+    ).rejects.toThrow(/changed/)
+  })
+  it('does not reuse old approval while the actual new connection waits for a join answer', async () => {
+    await managed()
+    const checked = await scriptForExecution(app as unknown as App, path, async () => true)
+    app.saveLocalStorage(CONNECTION_KEY, {
+      serverUrl: 'https://sync.example',
+      enrolledUrl: 'https://sync.example',
+      vaultId: 'other-vault',
+      deviceId: 'other-device',
+      join: { vaultId: 'other-vault', ask: true, prefer: null },
+    })
+    expect(() => assertScriptContext(app as unknown as App, checked)).toThrow(/changed/)
+    await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/changed/)
+  })
+
+  it('does not keep an unconnected local snapshot executable after a managed join begins', async () => {
+    const checked = await scriptForExecution(app as unknown as App, path)
+    app.saveLocalStorage(CONNECTION_KEY, {
+      serverUrl: 'https://sync.example',
+      enrolledUrl: 'https://sync.example',
+      vaultId: 'sample-vault',
+      deviceId: 'sample-device',
+      join: { vaultId: 'sample-vault', ask: true, prefer: null },
+    })
+    expect(() => assertScriptContext(app as unknown as App, checked)).toThrow(/changed/)
   })
 
   it('does not store permission on decline', async () => {
