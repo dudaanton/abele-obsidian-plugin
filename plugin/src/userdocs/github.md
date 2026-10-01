@@ -1,7 +1,7 @@
 # GitHub
 
-Issues, pull requests, discussions, commits and files from GitHub, opened in Obsidian tabs. It only
-reads: nothing is ever written to GitHub.
+Issues, pull requests, discussions, commits and files from GitHub, opened in Obsidian tabs.
+Repository content is read-only. The notifications inbox can mark notifications read or Done.
 
 Images hosted by GitHub (or the repository's Enterprise server) load normally. Images from
 other sites, including README badges, appear as buttons naming the site; tap one to load that
@@ -83,9 +83,11 @@ else you type. **Alt+Enter** pins or unpins the highlighted repository; a GitHub
 **Show GitHub notifications** opens your GitHub notifications in the right sidebar — the unread
 ones, or all of them, from every repository or one. Clicking one opens the pull request, issue or
 discussion in a tab, at the latest comment, and leaves it unread. The check on a row marks it
-read on GitHub; the double check at the top marks them all. Rows never vanish while you read:
-one marked read stays, no longer bold, until you refresh. Releases, workflow runs and alerts open on GitHub. The list refreshes while it is open, as
-often as GitHub allows, and the refresh button asks at once.
+**Done** on GitHub and removes it from the inbox, whether it was read or unread. **Mark all read**
+marks the listed snapshot read without removing rows; notifications arriving after that snapshot
+are left unread. A refreshed unread list keeps previously shown rows visible as read rather than
+making them disappear while you work. Releases, workflow runs and alerts open on GitHub. The list
+refreshes while it is open, as often as GitHub allows, and the refresh button asks at once.
 
 GitHub lets only a **classic** personal access token read notifications, with the
 **notifications** scope (or **repo**). A fine-grained token cannot, whatever it is given. Put a

@@ -1,6 +1,6 @@
 /**
- * Access to the GitHub API. Reads, and the one kind of write there is: marking notifications
- * read (`notifications/`).
+ * Access to the GitHub API. Reads, plus notification-inbox writes: marking notifications
+ * read or Done (`notifications/`).
  *
  * Every hop goes through the redirect-controlled transport (Node HTTP on desktop, native
  * CapacitorHttp on mobile), never requestUrl, which forwards credentials across redirects.

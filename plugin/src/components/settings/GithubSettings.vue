@@ -2,7 +2,7 @@
   <div class="abele-settings__github">
     <Setting
       name="GitHub"
-      desc="Open GitHub issues, pull requests, discussions, commits and files in tabs here, and your notifications in a sidebar. Nothing is written to GitHub except marking notifications read."
+      desc="Open GitHub issues, pull requests, discussions, commits and files in tabs here, and your notifications in a sidebar. Repository content is read-only. Notifications can be marked read or Done."
     >
       <Checkbox :is-enabled="settings.enabled" @toggle="toggle('enabled')" />
     </Setting>
