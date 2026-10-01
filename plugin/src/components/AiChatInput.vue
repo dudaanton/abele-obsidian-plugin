@@ -161,6 +161,7 @@ import Icon from './obsidian/Icon.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
+import { discoverSkills } from '@/ai/tools/SkillTool'
 import { isHeicImport } from '@/media/imageImport'
 import { imageFileForImport } from '@/media/importImageFile'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -325,16 +326,16 @@ const send = () => {
   if (!msg && !attachments.value.length) return
 
   if (msg.startsWith('/')) {
-    const cmd = msg.split(' ')[0].toLowerCase()
-    if (COMMANDS.includes(cmd)) {
-      emit('command', cmd)
-    } else {
-      emit('command', msg)
+    const name = msg.split(/\s+/, 1)[0]
+    const cmd = name.toLowerCase()
+    // A leading slash also appears in paths and prose. Consume only an actual command/skill.
+    if (COMMANDS.includes(cmd) || discoverSkills().some((skill) => skill.name === name.slice(1))) {
+      emit('command', COMMANDS.includes(cmd) ? cmd : msg)
+      write('')
+      setExpanded(false)
+      nextTick(autoResize)
+      return
     }
-    write('')
-    setExpanded(false)
-    nextTick(autoResize)
-    return
   }
 
   const paths = attachments.value.map((f) => f.path)

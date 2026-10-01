@@ -162,6 +162,28 @@ function setup(busy = false, suggesting = false) {
 }
 
 describe('composer submit before Obsidian follows a link', () => {
+  it('sends slash-prefixed prose as a message instead of consuming it as an unknown command', () => {
+    const { wrapper, target } = setup()
+    ;(wrapper.vm as unknown as { setText(value: string): void }).setText(
+      '/sample/path is the file to read'
+    )
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })
+    )
+    expect(wrapper.emitted('send')).toEqual([['/sample/path is the file to read', []]])
+    expect(wrapper.emitted('command')).toBeUndefined()
+  })
+
+  it('still recognizes built-in slash commands', () => {
+    const { wrapper, target } = setup()
+    ;(wrapper.vm as unknown as { setText(value: string): void }).setText('/compact')
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true })
+    )
+    expect(wrapper.emitted('command')).toEqual([['/compact']])
+    expect(wrapper.emitted('send')).toBeUndefined()
+  })
+
   it.each(['metaKey', 'ctrlKey'] as const)(
     'sends once without following the link with %s',
     (modifier) => {
