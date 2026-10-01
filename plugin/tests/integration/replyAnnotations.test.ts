@@ -222,6 +222,15 @@ describe('reply annotation persistence and owner decisions', () => {
     expect(JSON.stringify(history)).toContain('A bright lamp glows.')
   })
 
+  it('does not overwrite an externally changed internal record with an unchanged count', async () => {
+    const p = await parent()
+    const changed = await disk()
+    ;(changed.internalMessages[0] as any).content[0].text = 'A separately corrected transcript.'
+    await app.vault.modify(file(), serializeChat({ ...changed, metadata: changed.metadata! }))
+    await expect(p.highlightReply('reply', 'small', 2, 'yellow')).rejects.toThrow(/changed/)
+    expect((await disk()).internalMessages).toEqual(changed.internalMessages)
+  })
+
   it('does not overwrite an externally changed open chat', async () => {
     const { p, proposal } = await propose()
     const changed = await disk()

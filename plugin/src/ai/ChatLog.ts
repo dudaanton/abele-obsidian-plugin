@@ -261,6 +261,8 @@ export class ChatLogWriter {
   private metaLine = ''
   private messageLines = new Map<string, string>()
   private internalCount = 0
+  /** Exact committed internal records: equal counts alone cannot detect sync edits. */
+  private internalLines: string[] = []
   private records = 0
   private legacySnapshot: string | null = null
   /** Whether the file is known to end with a whole line, so an append may start right there. */
@@ -283,6 +285,7 @@ export class ChatLogWriter {
     this.metaLine = parsed.metadata ? metaLine(parsed.metadata) : ''
     this.messageLines = new Map(parsed.messages.map((m) => [m.id, messageLine(m)]))
     this.internalCount = parsed.internalMessages.length
+    this.internalLines = parsed.internalMessages.map(internalLine)
     this.records = parsed.records
     this.clean = !parsed.torn
   }
@@ -301,6 +304,7 @@ export class ChatLogWriter {
     this.metaLine = ''
     this.messageLines = new Map()
     this.internalCount = 0
+    this.internalLines = []
     this.records = 0
     this.clean = true
   }
@@ -319,6 +323,7 @@ export class ChatLogWriter {
       metaLine(parsed.metadata) === this.metaLine &&
       parsed.messages.length === this.messageLines.size &&
       parsed.internalMessages.length === this.internalCount &&
+      parsed.internalMessages.every((message, i) => this.internalLines[i] === internalLine(message)) &&
       parsed.messages.every((message) => this.messageLines.get(message.id) === messageLine(message))
     )
   }
@@ -375,7 +380,10 @@ export class ChatLogWriter {
       else if (line.startsWith(MSG_START)) {
         const message = JSON.parse(line) as { id: string }
         this.messageLines.set(message.id, JSON.stringify(message))
-      } else if (line.startsWith('{"k":"int"')) this.internalCount++
+      } else if (line.startsWith('{"k":"int"')) {
+        this.internalLines.push(JSON.stringify(JSON.parse(line)))
+        this.internalCount++
+      }
     }
     this.records = plan.records
     this.clean = true
