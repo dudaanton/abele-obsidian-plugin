@@ -15,6 +15,7 @@ interface ReadOptions<T> {
   repo: string
   item: string
   generation(id: string): string
+  label?(id: string): string
   read(id: string): Promise<T>
   manual?: boolean
   retry?: boolean
@@ -60,7 +61,7 @@ export class ConnectionFallback {
     throw new GithubError(
       'forbidden',
       attempts.length
-        ? attempts.map((a) => `${a.id || 'Anonymous'}: ${a.error}`).join('\n')
+        ? attempts.map((a) => `${o.label?.(a.id) ?? (a.id || 'Anonymous')}: ${a.error}`).join('\n')
         : 'No permitted GitHub connection is available for this server.'
     )
   }

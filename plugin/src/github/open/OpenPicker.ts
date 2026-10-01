@@ -54,7 +54,7 @@ export const forgetLastPicked = () => {
 
 const repoOfTarget = (model: GithubViewModel | undefined): RepoRef | null => {
   const t = model?.target
-  return t ? { host: t.host, owner: t.owner, repo: t.repo } : null
+  return t ? { host: t.host, ...(t.origin ? {origin:t.origin} : {}), owner: t.owner, repo: t.repo } : null
 }
 
 /** The repository a bare number or a title is looked up in; see the top of the file. */
@@ -82,14 +82,15 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   private readonly search: OpenSearch
   private readonly repo: RepoRef | null
   private readonly defaultHost: string
+  private readonly defaultOrigin: string
   private timer: number | null = null
   private readonly contextId?: string
   private readonly choices = new Map<string, { id?: string; client: GithubClient }>()
   private choice(host: string, repo?: RepoRef): { id?: string; client: GithubClient } {
-    const key = JSON.stringify([host,repo?.owner,repo?.repo])
+    const key = JSON.stringify([host,repo?.origin,repo?.owner,repo?.repo])
     const previous = this.choices.get(key)
     if (previous) return previous
-    const target = { kind:'repo' as const, host, owner:repo?.owner ?? '', repo:repo?.repo ?? '' }
+    const target = { kind:'repo' as const, host, origin:repo?.origin, owner:repo?.owner ?? '', repo:repo?.repo ?? '' }
     const id = resolveConnectionCandidates(target, { sourceId:this.contextId })[0]?.id
     const chosen = { id, client:id ? connectionClient(id) : githubClient(host) }
     this.choices.set(key,chosen)
@@ -109,6 +110,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     this.repo = pickerRepo(app)
     const preferred = preferredConnection(githubSettings().connections ?? [])
     this.defaultHost = endpoints(preferred?.server ?? githubSettings().server).webHost
+    this.defaultOrigin = endpoints(preferred?.server ?? githubSettings().server).origin
     this.limit = 50
     // Short enough for a phone's field; the empty list under it names the repository.
     this.setPlaceholder(
@@ -141,6 +143,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     return parseOpenQuery(query, {
       hosts: githubHosts(),
       defaultHost: this.defaultHost,
+      defaultOrigin: this.defaultOrigin === 'https://github.com' ? undefined : this.defaultOrigin,
       repo: this.repo,
     })
   }

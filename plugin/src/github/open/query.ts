@@ -10,6 +10,7 @@ import { normaliseHost, parseGithubUrl, type GithubTarget } from '../urls'
 
 export interface RepoRef {
   host: string
+  origin?: string
   owner: string
   repo: string
 }
@@ -40,6 +41,7 @@ export interface QueryContext {
   hosts: string[]
   /** Where `owner/repo` without a host lives: the configured server, else github.com. */
   defaultHost: string
+  defaultOrigin?: string
   /** The repository a bare `#12` or a title means, when there is one. */
   repo: RepoRef | null
 }
@@ -88,13 +90,17 @@ export function parseOpenQuery(input: string, ctx: QueryContext): OpenQuery {
     const host = normaliseHost(url.hostname)
     if (!ctx.hosts.map(normaliseHost).includes(host)) return { kind: 'foreign', host }
     const target = parseGithubUrl(url.href, ctx.hosts)
-    if (target) return { kind: 'link', url: url.href, target }
+    if (target) {
+      if (host !== 'github.com') target.origin = url.origin
+      return { kind: 'link', url: url.href, target }
+    }
     const repo = parseRepoInput(url.href, host)
     return repo ? { kind: 'repo-link', repo } : { kind: 'unreadable' }
   }
 
   const named = (owner: string, repo: string): RepoRef => ({
     host: ctx.defaultHost,
+    ...(ctx.defaultOrigin ? {origin:ctx.defaultOrigin} : {}),
     owner,
     repo: repo.replace(/\.git$/, ''),
   })

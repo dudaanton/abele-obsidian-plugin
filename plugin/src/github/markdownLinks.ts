@@ -14,6 +14,7 @@ import type { GithubClient } from './client'
 /** The file a preview shows: its repository, the ref it was read at, and its path. */
 export interface RepoFile {
   host: string
+  origin?: string
   owner: string
   repo: string
   ref: string
@@ -138,7 +139,7 @@ export function imageSource(src: string, file: RepoFile): ImageSource | null {
       `^https?://${file.host.replace(/\./g, '\\.')}(?::\\d+)?/([^/]+)/([^/]+)/blob/(.+)$`,
       'i'
     ).exec(s)
-    if (page) return { src: `${webOrigin(file.host)}/${page[1]}/${page[2]}/raw/${page[3]}` }
+    if (page) return { src: `${file.origin ?? webOrigin(file.host)}/${page[1]}/${page[2]}/raw/${page[3]}` }
     return { src: s }
   }
   const segments = resolveRepoPath(file.path, parts(s).path)

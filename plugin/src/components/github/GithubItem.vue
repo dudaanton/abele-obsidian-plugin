@@ -444,7 +444,7 @@ const blobFile = computed<RepoFile | null>(() => {
   const t = target.value
   const b = blob.value
   if (!t || !b) return null
-  return { host: t.host, owner: t.owner, repo: t.repo, ref: b.ref, path: b.path }
+  return { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo, ref: b.ref, path: b.path }
 })
 /** Preview or code: the tab keeps it, so back, forward and a restart come back to it. */
 const setMode = (mode: BlobMode) => {
@@ -528,7 +528,7 @@ provide(LINKER, linker)
 /** The repository shown: comments and messages resolve their relative links and images in it. */
 const repo = computed<RepoFile | null>(() => {
   const t = target.value
-  return t ? { host: t.host, owner: t.owner, repo: t.repo, ref: 'HEAD', path: '' } : null
+  return t ? { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo, ref: 'HEAD', path: '' } : null
 })
 provide(GITHUB_REPO, repo)
 // The people in it are looked up with the tab's own client: its server, its token.

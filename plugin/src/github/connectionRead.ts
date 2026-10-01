@@ -52,6 +52,7 @@ export async function readConnectionItem(
     repo: `${target.origin ?? `https://${target.host}`}/${target.owner}/${target.repo}`,
     item: targetKey(target),
     generation: connectionGeneration,
+    label: id=>githubSettings().connections.find(c=>c.id===id)?.name ?? 'Anonymous',
     manual: model.connectionIntent === 'manual',
     read: async (id) => {
       if (!permitted(id))

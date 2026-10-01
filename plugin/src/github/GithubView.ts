@@ -178,10 +178,8 @@ export class GithubView extends ItemView {
           .setIcon('user-round')
           .setChecked(connection.id === this.model.connectionId)
           .onClick(() => {
-            void this.setState(
-              { url: this.model.url, connectionId: connection.id, connectionIntent: 'manual' },
-              { history: false }
-            )
+            void this.leaf.setViewState({ type:GITHUB_VIEW_TYPE, active:true,
+              state:{url:this.model.url,connectionId:connection.id,connectionIntent:'manual'} })
           })
       )
     }

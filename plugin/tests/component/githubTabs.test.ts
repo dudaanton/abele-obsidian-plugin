@@ -6,7 +6,7 @@
  * Mod-click always makes a new one, of the kind `Keymap.isModEvent` names.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { WorkspaceLeaf, type App, type PaneType } from 'obsidian'
+import { WorkspaceLeaf, Menu, type App, type PaneType } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
 import { GITHUB_VIEW_TYPE, noteActiveLeaf, openGithubUrl } from '@/github/GithubService'
@@ -68,6 +68,19 @@ beforeEach(() => {
 })
 
 describe('connection state', () => {
+  it('account menu navigation goes through the leaf so Obsidian records back/forward history', async () => {
+    const {GithubView}=await import('@/github/GithubView')
+    AbeleConfig.getInstance().github.connections=['one','two'].map((id,i)=>({id,name:id,server:'',keyId:'',owners:[],isDefault:i===0}))
+    const leaf=new WorkspaceLeaf()
+    const state=vi.spyOn(leaf,'setViewState')
+    const view=new GithubView(leaf)
+    await view.setState({url:PR,connectionId:'one'}, {history:false})
+    const menu=new Menu()
+    view.fillQuickMenu(menu)
+    menu.items.find(item=>item.title==='Open as two')!.handler!()
+    expect(state).toHaveBeenCalledWith(expect.objectContaining({type:GITHUB_VIEW_TYPE,state:expect.objectContaining({connectionId:'two'})}))
+  })
+
   it('persists account changes as history even when the URL is unchanged', async () => {
     const { GithubView } = await import('@/github/GithubView')
     const settings = AbeleConfig.getInstance().github

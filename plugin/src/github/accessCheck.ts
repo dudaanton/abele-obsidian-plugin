@@ -17,6 +17,7 @@ import { normaliseHost } from './urls'
 
 export interface RepoRef {
   host: string
+  origin?: string
   owner: string
   repo: string
 }
@@ -52,7 +53,7 @@ export function parseRepoInput(input: string, defaultHost: string): RepoRef | nu
   const repo = rawRepo?.replace(/\.git$/, '')
   if (!owner || !repo || !NAME.test(owner) || !NAME.test(repo)) return null
   if (owner === 'orgs' || owner === 'enterprises' || owner === 'settings') return null
-  return { host, owner, repo }
+  return { host, owner, repo, ...(host !== 'github.com' ? {origin:url.origin} : {}) }
 }
 
 export type RowState = 'ok' | 'refused' | 'skipped'
