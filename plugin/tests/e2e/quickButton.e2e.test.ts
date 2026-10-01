@@ -20,6 +20,7 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { shotDir } from './helpers/shots'
+import { until, WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele quick button e2e'
@@ -27,13 +28,15 @@ const NOTE = `${DIR}/Long note.md`
 const BOOK = `${DIR}/rich.epub`
 const SHOTS = shotDir('abele-phone')
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const setWindowSize = async (width: number, height: number): Promise<void> => {
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  if (
+    !(await until(() => evalJson<boolean>(`innerWidth === ${width} && innerHeight === ${height}`)))
+  )
+    throw new Error('viewport did not reach the requested size')
 }
 const attachDebugger = (): void => void runCli(['dev:debug', 'on'], 30_000)
 
@@ -46,16 +49,13 @@ const reload = async (how: string): Promise<void> => {
 }
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 8000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
-    return null
-  }
+  ${WAIT_PRELUDE}
   const cdp = require('@electron/remote').getCurrentWebContents().debugger
   const touch = (type, points = []) => cdp.sendCommand('Input.dispatchTouchEvent', {
     type, touchPoints: points.map(([x, y], id) => ({ x: Math.round(x), y: Math.round(y), id })),
   })
+  // Keep the emulated-phone tap/menu dwell: menu items exist before dismissal is accepted.
+  // For a put-away button this is also the observation window in which no menu may open.
   const tap = async (x, y) => { await touch('touchStart', [[x, y]]); await wait(60); await touch('touchEnd'); await wait(900) }
   const shoot = async (name) => {
     const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
@@ -64,8 +64,19 @@ const PRELUDE = `
   const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom } }
   const fab = () => document.querySelector('.abele-floating-button')
   /** Waits out the button's slide, then says where it stands and what is under it. */
-  const report = async (below) => {
-    await wait(500)
+  const still = el => !el.getAnimations({ subtree: true }).some(a => a.playState === 'running' || a.playState === 'pending')
+  const report = async (below, tucked) => {
+    if (!await until(() => {
+      const b = fab()
+      const under = [...document.querySelectorAll(below)].filter(el => el.getClientRects().length)
+      return b?.style.getPropertyValue('--abele-floating-button-top') && still(b) &&
+        (tucked === undefined || b.classList.contains('abele-floating-button_tucked') === tucked) &&
+        under.length > 0 && under.every(el => {
+          const u = box(el)
+          const sameColumn = u.right > b.offsetLeft && u.left < b.offsetLeft + b.offsetWidth
+          return still(el) && (!sameColumn || b.offsetTop + b.offsetHeight <= u.top)
+        })
+    })) throw new Error('quick button did not finish placement and slide')
     const b = fab()
     const under = [...document.querySelectorAll(below)].filter((e) => e.getClientRects().length).map(box)
     // Where it stands, without the slide to the edge: offsets ignore a transform.
@@ -86,9 +97,11 @@ const PRELUDE = `
       await touch('touchMove', [[from[0] + ((to[0] - from[0]) * i) / steps, from[1] + ((to[1] - from[1]) * i) / steps]])
       await wait(16)
     }
-    await touch('touchEnd'); await wait(900)
+    await touch('touchEnd')
+    await wait(900) // Observation window: this swipe must open neither a menu nor a drawer.
   }
   const menuTitles = () => [...document.querySelectorAll('.menu .menu-item-title')].map((e) => e.textContent)
+  // Keep the existing emulated-phone dismissal sequence and its DOM-removal fallback.
   const closeMenu = async () => {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await wait(400)
@@ -202,26 +215,26 @@ describe.skipIf(!available)('the quick button on a phone', () => {
       const leaf = app.workspace.getLeaf(false)
       await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}), { state: { mode: 'preview' } })
       await until(() => fab())
-      await wait(800)
+      await wait(800) // Keep the note's initial rendering/scroll-restoration dwell.
       document.activeElement?.blur?.()
-      const rest = await report('.mobile-navbar')
+      const rest = await report('.mobile-navbar', false)
       await shoot('note')
       await tapFab()
-      await until(() => document.querySelector('.menu'))
-      await wait(500)
+      await until(() => menuTitles().includes('Documentation') && menuTitles().includes('Command palette') && still(document.querySelector('.menu')))
       const menu = menuTitles()
       await shoot('note-menu')
       await closeMenu()
       const scroller = leaf.view.containerEl.querySelector('.markdown-preview-view')
       for (let i = 0; i < 8; i++) { scroller.scrollTop += 60; await wait(60) }
-      const scrolled = await report('.mobile-navbar')
+      const scrolled = await report('.mobile-navbar', true)
       await shoot('note-tucked')
       for (let i = 0; i < 4; i++) { scroller.scrollTop -= 60; await wait(60) }
-      const back = await report('.mobile-navbar')
+      const back = await report('.mobile-navbar', false)
       await leaf.setViewState({ ...leaf.getViewState(), state: { ...leaf.getViewState().state, mode: 'source' } })
-      await wait(500)
+      if (!await until(() => leaf.view.getMode() === 'source' && leaf.view.editor))
+        throw new Error('note editor did not become ready')
       leaf.view.editor.focus()
-      await wait(600)
+      await until(() => !fab())
       const typing = !fab()
       leaf.view.editor.blur?.(); document.activeElement?.blur?.()
       return { rest, menu, scrolled, back, typing }
@@ -252,13 +265,13 @@ describe.skipIf(!available)('the quick button on a phone', () => {
       document.activeElement?.blur?.()
       // From the top of the note, where a scroll has not tucked it.
       const top = leaf.view.containerEl.querySelector('.markdown-preview-view')
-      top.scrollTop = 40; await wait(100); top.scrollTop = 0; await wait(300)
-      const before = await report('.mobile-navbar')
+      top.scrollTop = 40; await wait(100); top.scrollTop = 0
+      const before = await report('.mobile-navbar', false)
       before.hiddenNav = document.body.classList.contains('is-hidden-nav')
       const r = fab().getBoundingClientRect()
       const y = r.top + r.height / 2
       await swipe([r.left + r.width / 2, y], [innerWidth - 2, y + 4])
-      const away = await report('.mobile-navbar')
+      const away = await report('.mobile-navbar', true)
       await shoot('swiped-away')
       return { before, away, drawer: !app.workspace.rightSplit.collapsed, menu: !!document.querySelector('.menu') }
     `)
@@ -282,9 +295,9 @@ describe.skipIf(!available)('the quick button on a phone', () => {
       const scroller = leaf.view.containerEl.querySelector('.markdown-preview-view')
       for (let i = 0; i < 4; i++) { scroller.scrollTop += 60; await wait(60) }
       for (let i = 0; i < 4; i++) { scroller.scrollTop -= 60; await wait(60) }
-      const reloaded = await report('.mobile-navbar')
+      const reloaded = await report('.mobile-navbar', true)
       await tapFab()
-      const back = await report('.mobile-navbar')
+      const back = await report('.mobile-navbar', false)
       await shoot('brought-back')
       const menu = !!document.querySelector('.menu')
       return { reloaded, back, menu }
@@ -308,23 +321,28 @@ describe.skipIf(!available)('the quick button on a phone', () => {
       const leaf = app.workspace.getLeaf(false)
       await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
       const view = leaf.view
-      await until(() => view.model?.status === 'ready', 15000)
+      if (!await until(() => view.model?.status === 'ready', 15000)) throw new Error('reader did not become ready')
       // From the first chapter, whatever place an earlier run left the book at.
+      // Keep this dwell and the one before turning: the progress watcher deliberately ignores
+      // the first two seconds in a book, with no observable completion signal.
       await view.engine.goTo(view.model.toc[0].href); await wait(800)
       await until(() => fab())
-      await wait(800)
-      const rest = await report('.abele-book-reader__foot, .mobile-navbar')
+      const rest = await report('.abele-book-reader__foot, .mobile-navbar', true)
       await shoot('book')
       await tapFab()
-      await until(() => document.querySelector('.menu'))
-      await wait(500)
+      await until(() => menuTitles().includes('Search in the book') && menuTitles().includes('Highlights') && still(document.querySelector('.menu')))
       const menu = menuTitles()
       await shoot('book-menu')
       await closeMenu()
       await wait(1500)
-      await view.engine.next(); await wait(900)
-      await view.engine.next(); await wait(900)
-      const turned = await report('.abele-book-reader__foot')
+      const turn = async () => {
+        const before = view.engine.lastLocation?.cfi
+        await view.engine.next()
+        if (!await until(() => view.engine.lastLocation?.cfi !== before)) throw new Error('book did not turn the page')
+      }
+      await turn()
+      await turn()
+      const turned = await report('.abele-book-reader__foot', true)
       await shoot('book-tucked')
       leaf.detach()
       return { rest, menu, turned }
@@ -344,14 +362,13 @@ describe.skipIf(!available)('the quick button on a phone', () => {
     const r = run<{ error?: string; rest?: Report; menu?: string[] }>(`
       app.commands.executeCommandById('abele:show-ai-sidebar')
       await until(() => !app.workspace.rightSplit.collapsed && document.querySelector('.workspace-drawer .abele-chat-input'))
-      await wait(1200)
+      await wait(1200) // Obsidian's drawer-opening sequence remains outside this migration.
       document.activeElement?.blur?.()
       await until(() => fab())
       const rest = await report('.workspace-drawer .abele-chat-input')
       await shoot('chat')
       await tapFab()
-      await until(() => document.querySelector('.menu'))
-      await wait(500)
+      await until(() => menuTitles().includes('Start a new chat') && still(document.querySelector('.menu')))
       const menu = menuTitles()
       await shoot('chat-menu')
       await closeMenu()
