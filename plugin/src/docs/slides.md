@@ -56,8 +56,27 @@ editor refresh the deck without changing its current slide. A presentation sourc
 an **Open presentation** header action. The file menu also offers **Edit presentation source**.
 
 **Play presentation** or the deck's **Play** button presents on one screen. Desktop requests
-element fullscreen; if it is unavailable the full-window surface still works. Mobile uses a
+native window fullscreen through the desktop adapter; if it is unavailable the full-window
+surface still works. Mobile uses a
 full-window overlay with safe-area padding, not element fullscreen. **Exit** or Escape returns
 to the same tab. Arrow keys, Page Up/Down, Space, Home and End navigate while the deck is
 focused. On touch screens, tap the outer thirds or swipe horizontally to page. Links, media,
 editable fields and live map/chart/gallery controls keep their own gestures and keys.
+
+## Platform findings for later export
+
+The live phone probe verified muted, inline H.264 video autoplay on entry and pause on leaving.
+ECharts and MapLibre rendered inside the transformed canvas at their logical sizes; the chart's
+existing resize observer and the map's own container sizing were sufficient for the tested
+slides. Portrait and landscape overlays keep the fixed aspect ratio. No `zoom` replacement or
+presentation-specific chart/map resize hook was needed.
+
+On desktop, `window.print` is callable. Electron's remote current web contents also exposes
+`printToPDF`; a direct probe with `{ printBackground: true }` returned bytes beginning `%PDF-`.
+This confirms API availability, not finished slide export: print pagination, snapshots of live
+blocks, media inlining and saving a destination are still stage 5 work. Native fullscreen uses
+the window adapter because element `requestFullscreen` may remain pending in the embedded app.
+On macOS the adapter uses simple native fullscreen (the whole display, without another Space);
+other desktops use regular native window fullscreen. Exiting restores the window's previous mode.
+The phone exposes `window.print`, but a usable print dialog or PDF route was not exercised;
+mobile PDF export is not part of the viewing stage.
