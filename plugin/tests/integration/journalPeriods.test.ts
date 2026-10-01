@@ -120,10 +120,24 @@ describe('journal period navigation', () => {
 
   // BUG: numeric weekly navigation counts from locale week start, but isJournalDate counts
   // from Sunday. With Monday weeks, a date reached by Next is not a journal date.
-  it.fails('recognises the numeric weekly date reached by navigation in a Monday locale', () => {
+  it('recognises the numeric weekly date reached by navigation in a Monday locale', () => {
     dayjs.updateLocale('en', { weekStart: 1 })
     const j = journal('weekly', 1)
     expect(j.isJournalDate(j.getNextDate(dayjs('2024-01-01')))).toBe(true)
+  })
+})
+
+describe.each([0, 1, 6])('numeric weekly dates with week start %s', (weekStart) => {
+  it.each([1, 2, 7, 8])('recognises only day %s in each neighbouring week', (day) => {
+    dayjs.updateLocale('en', { weekStart })
+    const j = journal('weekly', day)
+    for (const from of ['2024-01-01', '2024-03-31', '2024-12-31']) {
+      for (const target of [j.getPrevDate(dayjs(from)), j.getNextDate(dayjs(from))]) {
+        expect(j.isJournalDate(target)).toBe(true)
+        expect(j.isJournalDate(target.add(1, 'day'))).toBe(false)
+        expect(j.isJournalDate(target.subtract(1, 'day'))).toBe(false)
+      }
+    }
   })
 })
 

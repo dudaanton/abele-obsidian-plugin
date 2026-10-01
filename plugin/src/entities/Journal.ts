@@ -245,7 +245,7 @@ export class Journal {
         }
         if (typeof this.dayOfPeriod === 'number') {
           const targetDayOfWeek = (this.dayOfPeriod - 1) % 7
-          return date.day() === targetDayOfWeek
+          return date.isSame(date.startOf('week').add(targetDayOfWeek, 'day'), 'day')
         }
         break
       }
