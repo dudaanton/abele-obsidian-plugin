@@ -12,6 +12,7 @@ import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { buildJustifiedEpub } from '../fixtures/books/justifiedBook'
 import { buildTinyFont } from '../helpers/tinyFont'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -87,8 +88,14 @@ describe.skipIf(!available)('book overlay coordinate origin', () => {
     const report = JSON.parse(
       await evalLong(
         `(async () => {
-      const wait=ms=>new Promise(r=>setTimeout(r,ms))
-      const until=async f=>{for(let i=0;i<200;i++){const x=f();if(x)return x;await wait(50)}throw Error('reader did not settle')}
+      ${WAIT_PRELUDE}
+      const need=async(fn,what)=>{const value=await until(fn);if(!value)throw Error(what+' did not settle');return value}
+      // Cross a paint/observer boundary after the DOM or font condition, not a guessed delay.
+      // Never use this for the attachment-microtask measurement below.
+      const painted=async()=>{
+        let done=false,frame=requestAnimationFrame(()=>{frame=requestAnimationFrame(()=>{done=true})})
+        try{await need(()=>done,'reader paint')}finally{cancelAnimationFrame(frame)}
+      }
       const fonts=window.__abeleTest.reader.fonts(), original=fonts.facesOf
       let release
       const gate=new Promise(resolve=>release=resolve)
@@ -99,11 +106,18 @@ describe.skipIf(!available)('book overlay coordinate origin', () => {
       try {
         let leaf;try{leaf=app.workspace.getLeaf('tab')}catch{leaf=app.workspace.getLeaf(false)}
         await leaf.setViewState({type:'abele-book',state:{file:${JSON.stringify(BOOK)}},active:true})
-        const v=await until(()=>leaf.view.model?.status==='ready'&&leaf.view.reading&&leaf.view)
+        const v=await need(()=>leaf.view.model?.status==='ready'&&leaf.view.reading&&leaf.view,'reader')
         v.model.panel=false
-        await v.engine.goTo(0);await wait(400)
+        await v.engine.goTo(0)
         renderer=v.engine.renderer
         const current=()=>renderer.getContents().find(c=>c.index===0)
+        const pageReady=async()=>{
+          await need(()=>current()?.doc?.readyState==='complete'&&current().doc.fonts.status==='loaded','chapter document')
+          await painted()
+        }
+        const panel=()=>v.contentEl.querySelector('.abele-book-reader__panel')
+        await need(()=>!panel(),'closed sidebar')
+        await pageReady()
         const range=(doc,length)=>{const p=doc.getElementById('p1-2-0'),r=doc.createRange();r.setStart(p.firstChild,0);r.setEnd(p.firstChild,length);return r}
         const doc=current().doc
         const query=String(range(doc,35)).trim(), selected=range(doc,65)
@@ -136,28 +150,34 @@ describe.skipIf(!available)('book overlay coordinate origin', () => {
         }
         renderer.addEventListener('create-overlayer',attached,{capture:true})
         await v.engine.goTo(1);await v.engine.goTo(0)
-        await wait(600);check('first page settled')
-        v.model.panelTab='search';v.model.panel=true;await wait(600);check('sidebar open')
-        await v.reading.goToHit(hit);await wait(600);check('result opened')
-        v.model.panel=false;await wait(600);check('sidebar closed')
+        await pageReady();check('first page settled')
+        v.model.panelTab='search';v.model.panel=true
+        await need(()=>panel()?.getBoundingClientRect().width>0,'open sidebar');await painted();check('sidebar open')
+        await v.reading.goToHit(hit);await pageReady();check('result opened')
+        v.model.panel=false
+        await need(()=>!panel(),'closed sidebar');await painted();check('sidebar closed')
         const count=()=>[...current().doc.fonts].filter(f=>f.family.replace(/"/g,'')===${JSON.stringify(FAMILY)}).length
         const fontsBefore=count()
         // No startup timer is left to conceal missing font reflow notifications.
         await wait(13000);release();fonts.facesOf=original
-        await until(count);await wait(800);check('vault font arrived')
+        await need(()=>count()&&[...current().doc.fonts].every(f=>f.status==='loaded'),'vault font')
+        await pageReady();check('vault font arrived')
         const fontsAfter=count()
-        await v.engine.goTo(1);await v.engine.goTo(0);await wait(600);check('returned with font')
-        await v.reading.goToHit(hit);await wait(600)
+        await v.engine.goTo(1);await v.engine.goTo(0);await pageReady();check('returned with font')
+        await v.reading.goToHit(hit);await pageReady()
         ${
           onPhone()
             ? `await window.__e2eHost.shot(${JSON.stringify(`${SHOTS}/phone.png`)})`
             : `const remote=require('@electron/remote'),cdp=remote.getCurrentWebContents().debugger
         const shot=await cdp.sendCommand('Page.captureScreenshot',{format:'png'});require('fs').writeFileSync(${JSON.stringify(`${SHOTS}/portrait.png`)},Buffer.from(shot.data,'base64'))
-        await cdp.sendCommand('Emulation.setDeviceMetricsOverride',{width:1400,height:800,deviceScaleFactor:1,mobile:false});await wait(800);check('two columns')
-        await v.engine.goTo(1);await v.engine.goTo(0);await wait(600);check('two columns returned')`
+        await cdp.sendCommand('Emulation.setDeviceMetricsOverride',{width:1400,height:800,deviceScaleFactor:1,mobile:false})
+        await need(()=>innerWidth===1400&&innerHeight===800&&renderer.columns===2,'two-column viewport')
+        await pageReady();check('two columns')
+        await v.engine.goTo(1);await v.engine.goTo(0);await pageReady();check('two columns returned')`
         }
         const cfg=window.__abeleTest.AbeleConfig.getInstance();cfg.reader={...cfg.reader,flow:'scrolled'};await cfg.saveSettings()
-        await v.engine.goTo(1);await v.engine.goTo(0);await wait(600);check('scrolled returned')
+        await need(()=>renderer.scrolled,'scrolled layout')
+        await v.engine.goTo(1);await v.engine.goTo(0);await pageReady();check('scrolled returned')
         return JSON.stringify({checks,fontsBefore,fontsAfter})
       }catch(e){return JSON.stringify({error:String(e.stack||e),checks})}
       finally{release();fonts.facesOf=original;if(renderer&&attached)renderer.removeEventListener('create-overlayer',attached,{capture:true})}
