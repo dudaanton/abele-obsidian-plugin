@@ -209,6 +209,7 @@ export class VaultWatcherWrapper {
         this.dispatch(
           {
             type: 'delete',
+            file,
             oldPath: file.path,
           },
           file.path

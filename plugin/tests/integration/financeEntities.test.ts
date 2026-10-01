@@ -304,7 +304,7 @@ describe.each(['account', 'transaction'] as const)('%s lifecycle through vault e
   // BUG: VaultWatcherWrapper omits event.file for delete, but FileWatcher requires
   // a TFile before forwarding it. A standalone header/card keeps stale fields after
   // its note is deleted instead of reporting it missing (list removal masks this).
-  it.fails('marks a standalone entity missing when its backing note is deleted', async () => {
+  it('marks a standalone entity missing when its backing note is deleted', async () => {
     const entity = kind === 'account' ? account() : transaction()
     const path = kind === 'account' ? 'Finance/Wallet.md' : 'Finance/Purchase.md'
     await entity.load()

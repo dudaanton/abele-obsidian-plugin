@@ -172,7 +172,7 @@ describe('TimeEntry public state and lifecycle', () => {
 
   // BUG: VaultWatcherWrapper's delete event omits `file`; FileWatcher requires a TFile.
   // Deleting an open timer outside this entity leaves it apparently present and active.
-  it.fails('notices an external deletion of the watched entry', async () => {
+  it('notices an external deletion of the watched entry', async () => {
     const item = entry()
     await item.load()
     const file = fileAt()

@@ -160,7 +160,7 @@ describe('Task load, lazy body and watcher lifecycle', () => {
 
   // BUG: VaultWatcherWrapper dispatches delete without file, but FileWatcher requires a
   // TFile in that field. A deleted task's existing card never switches to "Task not found".
-  it.fails('marks a deleted task missing through its watcher', async () => {
+  it('marks a deleted task missing through its watcher', async () => {
     const env = taskHarness()
     const task = make()
     await task.load()
