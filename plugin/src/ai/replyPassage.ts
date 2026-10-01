@@ -47,8 +47,13 @@ export async function resolveReplyPassage(
         let left = from,
           right = to
         const edgeChars = /[^\p{L}\p{N}\s]/u
-        while (left > Math.max(0, from - leading.length - 4) && edgeChars.test(source[left - 1])) left--
-        while (right < Math.min(source.length, to + trailing.length + 4) && edgeChars.test(source[right])) right++
+        while (left > Math.max(0, from - leading.length - 4) && edgeChars.test(source[left - 1]))
+          left--
+        while (
+          right < Math.min(source.length, to + trailing.length + 4) &&
+          edgeChars.test(source[right])
+        )
+          right++
         for (let a = from; a >= left; a--) for (let b = to; b <= right; b++) add(a, b)
       }
     }

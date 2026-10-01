@@ -323,7 +323,9 @@ export class ChatLogWriter {
       metaLine(parsed.metadata) === this.metaLine &&
       parsed.messages.length === this.messageLines.size &&
       parsed.internalMessages.length === this.internalCount &&
-      parsed.internalMessages.every((message, i) => this.internalLines[i] === internalLine(message)) &&
+      parsed.internalMessages.every(
+        (message, i) => this.internalLines[i] === internalLine(message)
+      ) &&
       parsed.messages.every((message) => this.messageLines.get(message.id) === messageLine(message))
     )
   }

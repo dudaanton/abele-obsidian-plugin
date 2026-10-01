@@ -11,7 +11,10 @@ describe('mapping selected rendered words back to markdown', () => {
     ['A “**small** lantern!”', '“small lantern!”', 2, '“**small** lantern!”'],
     ['A **small** lantern, then rest.', 'small lantern,', 2, '**small** lantern,'],
   ])('includes selected punctuation in %s', async (source, quote, start, old) => {
-    expect(await resolveReplyPassage(source, quote, Number(start), render)).toEqual({ from: 2, old })
+    expect(await resolveReplyPassage(source, quote, Number(start), render)).toEqual({
+      from: 2,
+      old,
+    })
   })
   it('chooses the selected repeated occurrence, not the first source match', async () => {
     expect(await resolveReplyPassage('lamp then lamp', 'lamp', 10, render)).toEqual({
