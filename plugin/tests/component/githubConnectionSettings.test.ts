@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
 import Editor from '@/components/settings/GithubConnectionEditor.vue'
 import Button from '@/components/obsidian/Button.vue'
+import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { githubSettingsFrom } from '@/github/settings'
 import { useVault } from '../helpers/testEnv'
@@ -15,6 +16,20 @@ beforeEach(() => {
 })
 
 describe('connection settings list', () => {
+  it('does not forget a slot still used by the notifications credential when its connection is deleted', async () => {
+    const app=useVault([]),config=AbeleConfig.getInstance()
+    config.github=githubSettingsFrom({enabled:true,keyId:'shared-classic',notifications:{keyId:'shared-classic'}})
+    app.secretStorage.setSecret('shared-classic','invented-classic')
+    const view=mount(GithubSettings)
+    view.findAllComponents(Button).find(b=>b.props('text')==='Delete')!.vm.$emit('click')
+    await flushPromises()
+    view.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+    expect(config.github.connections).toEqual([])
+    expect(app.secretStorage.getSecret('shared-classic')).toBe('invented-classic')
+    view.unmount()
+  })
+
   it('adds a connection with its own valid keychain slot, without changing settings on cancel', async () => {
     const app = useVault([])
     const view = mount(GithubSettings)

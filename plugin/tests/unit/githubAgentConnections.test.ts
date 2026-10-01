@@ -89,6 +89,12 @@ describe('GitHub tool connection contracts', () => {
     ).rejects.toThrow(/disabled|access/i)
     expect(request).not.toHaveBeenCalled()
   })
+  it('keeps the text answer in the first content block while naming its connection', async () => {
+    const result=await run('github_search',{query:'sample',type:'issues'})
+    expect(result.content[0]).toMatchObject({type:'text',text:expect.stringContaining('Issues and pull requests matching')})
+    expect(result.content[0]).toMatchObject({text:expect.stringContaining('GitHub connection: Personal')})
+  })
+
   it('resolves explicit Enterprise before parsing shorthand', async () => {
     actor.githubConnections.enterprise = 'auto'
     await run('github_search', {

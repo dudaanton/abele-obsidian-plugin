@@ -2,7 +2,7 @@
  * The GitHub tools: read-only access to GitHub for an agent, and to the GitHub tabs the person
  * has open. Offered only while the GitHub integration is on.
  */
-import type { AgentTool } from '../../client'
+import type { AgentTool, AgentToolResult } from '../../client'
 import { createGithubPrFilesTool, createGithubReadTool } from './ItemTools'
 import { createGithubCommitsTool, createGithubFileTool } from './CodeTools'
 import { createGithubSearchTool } from './SearchTool'
@@ -11,7 +11,7 @@ import { createGithubOpenTool, createGithubViewsTool } from './ViewTools'
 
 import { githubSettings, routingMemory } from '@/github/GithubService'
 import { toolOperation, type GithubToolAccess } from './operation'
-import type { GithubToolOperation } from './shared'
+import { clip, MAX_OUTPUT, type GithubToolOperation } from './shared'
 import { GithubError } from '@/github/client'
 import { primaryAccess } from '@/github/primaryAccess'
 
@@ -25,6 +25,11 @@ const factories = [
   createGithubGrepTool,
   createGithubOpenTool,
 ]
+
+function labelled(result: AgentToolResult, label: string): AgentToolResult {
+  return {...result,content:result.content.map((block,i)=>i===0 && block.type==='text' ?
+    {...block,text:clip(`${clip(label,500)}\n\n${block.text}`,MAX_OUTPUT)} : block)}
+}
 
 export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
   return factories.map((factory): AgentTool => {
@@ -45,7 +50,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
       execute: async (id, params, signal) => {
         // Unmigrated test/compatibility callers have only the old single-server context.
         // Runtime settings load always migrates an existing credential into a connection.
-        if (!(githubSettings().connections ?? []).length && !params.connection)
+        if (!access && !(githubSettings().connections ?? []).length && !params.connection)
           return tool.execute(id, params, signal)
         const operation: GithubToolOperation = await toolOperation(
           tool.name,
@@ -59,7 +64,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           if (operation.target && operation.connectionId) routingMemory.succeeded(`${operation.target.origin ?? `https://${operation.target.host}`}/${operation.target.owner}/${operation.target.repo}`,operation.connectionId,operation.client.cacheNamespace)
           if (tool.name === 'github_views') return result
           const connection = githubSettings().connections.find(c=>c.id===operation.connectionId)
-          return {...result,content:[{type:'text',text:`GitHub connection: ${connection?.name ?? 'Anonymous'}${connection?.account ? ` · ${connection.account.login}` : ''}`},...result.content]}
+          return labelled(result,`GitHub connection: ${connection?.name ?? 'Anonymous'}${connection?.account ? ` · ${connection.account.login}` : ''}`)
         } catch (error) {
           operation.assertAccess()
           if (
@@ -104,16 +109,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
             const result = await factory(next).execute(id, params, signal)
             next.assertAccess()
             if (next.target) routingMemory.succeeded(`${next.target.origin ?? `https://${next.target.host}`}/${next.target.owner}/${next.target.repo}`,next.connectionId,next.client.cacheNamespace)
-            return {
-              ...result,
-              content: [
-                {
-                  type: 'text',
-                  text: `Read using GitHub connection ${candidate}; the first connection could not access the item.`,
-                },
-                ...result.content,
-              ],
-            }
+            return labelled(result,`Read using GitHub connection ${githubSettings().connections.find(c=>c.id===candidate)?.name ?? candidate}; the first connection could not access the item.`)
           }
           throw error
         }

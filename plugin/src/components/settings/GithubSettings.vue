@@ -339,7 +339,8 @@ async function deleteConnection(): Promise<void> {
   const current = githubSettingsFrom(config.github)
   current.connections = current.connections.filter((c) => c.id !== connection.id)
   // An imported duplicate secret slot may still belong to another connection.
-  if (connection.keyId && !current.connections.some((c) => c.keyId === connection.keyId))
+  if (connection.keyId && !current.connections.some((c) => c.keyId === connection.keyId) &&
+    connection.keyId !== current.notifications.boundKeyId && connection.keyId !== current.notifications.keyId)
     secrets().forgetLocal(connection.keyId)
   config.github = projectLegacy(githubSettingsFrom(current))
   Object.assign(settings, config.github)
