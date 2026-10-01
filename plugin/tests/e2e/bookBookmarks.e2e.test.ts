@@ -20,6 +20,7 @@ import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub, RICH_BOOK_ID } from '../fixtures/books/richBook'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
+import { until, WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader bookmarks e2e'
@@ -27,15 +28,8 @@ const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/long.pdf`
 const SHOTS = shotDir('abele-phone')
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 10000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(100) }
-    return null
-  }
+  ${WAIT_PRELUDE}
   const cfg = window.__abeleTest.AbeleConfig.getInstance()
   const placesFile = cfg.reader?.placesPath || 'abele-book-places.json'
   const marksFile = placesFile.includes('/') ? placesFile.slice(0, placesFile.lastIndexOf('/')) + '/abele-book-bookmarks.json' : 'abele-book-bookmarks.json'
@@ -48,13 +42,35 @@ const PRELUDE = `
     try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     const view = leaf.view
-    await until(() => view.model?.status === 'ready', 15000)
-    await wait(800)
+    if (!await until(() => view.model?.status === 'ready' && view.bookmarks && view.engine?.lastLocation?.cfi &&
+      button(view)?.getBoundingClientRect().width > 0)) throw new Error('reader bookmarks did not become ready')
     return { leaf, view }
   }
   const button = (view) => view.contentEl.querySelector('.abele-book-reader__bookmark')
-  const press = async (view) => { button(view).click(); await wait(600) }
+  const press = async (view) => {
+    const before = filled(view)
+    button(view).click()
+    if (!await until(() => filled(view) !== null && filled(view) !== before))
+      throw new Error('bookmark button did not toggle')
+  }
   const filled = (view) => button(view)?.classList.contains('abele-obsidian-icon_active') ?? null
+  const chapterAt = async (view, index) => {
+    const href = view.model.toc[index].href
+    await view.engine.goTo(href)
+    if (!await until(() => view.model.currentHref === href && view.engine.lastLocation?.cfi))
+      throw new Error('reader did not reach chapter ' + (index + 1))
+  }
+  const fontSize = (view) => {
+    const doc = view.engine.renderer.getContents()[0].doc
+    return parseFloat(doc.defaultView.getComputedStyle(doc.documentElement).fontSize)
+  }
+  const marksWritten = async (view, key) => {
+    if (!await until(async () => {
+      const live = Object.values((await savedMarks())[key] ?? {}).filter(mark => !mark.deleted)
+      return live.length === view.model.bookmarks.length && view.model.bookmarks.every(mark =>
+        live.some(saved => saved.id === mark.id && saved.cfi === mark.cfi))
+    })) throw new Error('bookmarks were not written')
+  }
   const shoot = async (name) => {
     const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
     if (img) { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/bookmarks-' + name + '.png', img.toPNG()) }
@@ -74,7 +90,10 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  if (
+    !(await until(() => evalJson<boolean>(`innerWidth === ${width} && innerHeight === ${height}`)))
+  )
+    throw new Error('viewport did not reach the requested size')
 }
 
 const reload = async (how: string): Promise<void> => {
@@ -149,25 +168,33 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       const { leaf, view } = await open(${JSON.stringify(BOOK)})
       const key = 'id:' + ${JSON.stringify(RICH_BOOK_ID)}
       for (const b of view.model.bookmarks) await view.bookmarks.remove(b)
-      await wait(300)
-      await view.engine.goTo(view.model.toc[2].href); await wait(700)
+      await until(() => view.model.bookmarks.length === 0 && filled(view) === false)
+      await chapterAt(view, 2)
       const before = filled(view)
       await press(view)
       const after = filled(view)
-      await view.engine.renderer.next(); await wait(700)
+      const firstPage = view.engine.lastLocation.cfi
+      await view.engine.renderer.next()
+      await until(() => view.engine.lastLocation.cfi !== firstPage && filled(view) === false)
       const turned = filled(view)
-      view.model.panelTab = 'bookmarks'; view.model.panel = true; await wait(400)
+      view.model.panelTab = 'bookmarks'; view.model.panel = true
+      await until(() => view.contentEl.querySelectorAll('.abele-book-bookmarks__item').length === 1)
       const rows = [...view.contentEl.querySelectorAll('.abele-book-bookmarks__item')].map((el) => ({
         label: el.querySelector('.abele-book-bookmarks__label')?.textContent ?? '',
         text: el.querySelector('.abele-book-bookmarks__text')?.textContent ?? '',
         active: el.classList.contains('is-active'),
       }))
-      view.contentEl.querySelector('.abele-book-bookmarks__item').click(); await wait(900)
+      view.contentEl.querySelector('.abele-book-bookmarks__item').click()
+      await until(() => filled(view) === true)
       const back = filled(view)
-      cfg.reader = { ...cfg.reader, fontSize: 150 }; cfg.version.value++; await wait(1500)
-      await view.bookmarks.go(view.model.bookmarks[0]); await wait(900)
+      const initialFont = fontSize(view)
+      cfg.reader = { ...cfg.reader, fontSize: 150 }; cfg.version.value++
+      if (!await until(() => Math.abs(fontSize(view) - initialFont * 1.5) < 0.1))
+        throw new Error('reader text did not grow to 150 percent')
+      await view.bookmarks.go(view.model.bookmarks[0])
+      await until(() => filled(view) === true)
       const bigger = filled(view)
-      await wait(1200)
+      await marksWritten(view, key)
       const file = Object.values((await savedMarks())[key] ?? {}).filter((b) => !b.deleted)
       // The tools answer to the chat's scope; for the call it reaches the whole vault.
       const scope = window.__abeleTest.ScopeResolver.getInstance()
@@ -181,7 +208,8 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       await until(() => view.model.bookmarks.length === 0, 10000)
       const gone = view.model.bookmarks.length
       const unfilled = filled(view)
-      cfg.reader = { ...cfg.reader, fontSize: 100 }; cfg.version.value++; await wait(800)
+      cfg.reader = { ...cfg.reader, fontSize: 100 }; cfg.version.value++
+      await until(() => Math.abs(fontSize(view) - initialFont) < 0.1)
       leaf.detach()
       return { before, after, turned, rows, back, bigger, file, views, gone, unfilled }
     `)
@@ -213,14 +241,17 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
     }>(`
       const { leaf, view } = await open(${JSON.stringify(PDF)})
       for (const b of view.model.bookmarks) await view.bookmarks.remove(b)
-      await view.engine.goTo(4); await wait(1200)
+      await view.engine.goTo(4)
+      await until(() => view.model.chapter?.startsWith('Page 5 of 12') && filled(view) === false)
       await press(view)
       await until(() => view.model.bookmarks.length === 1, 5000)
       const [b] = view.model.bookmarks
       const there = filled(view)
-      await view.engine.goTo(8); await wait(1200)
+      await view.engine.goTo(8)
+      await until(() => view.model.chapter?.startsWith('Page 9 of 12') && filled(view) === false)
       const elsewhere = filled(view)
-      await view.bookmarks.go(b); await wait(1200)
+      await view.bookmarks.go(b)
+      await until(() => view.model.chapter?.startsWith('Page 5 of 12') && filled(view) === true)
       const again = filled(view)
       await press(view)
       leaf.detach()
@@ -267,14 +298,21 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         for (const b of view.model.bookmarks) await view.bookmarks.remove(b)
-        await view.engine.goTo(view.model.toc[1].href); await wait(700)
+        await chapterAt(view, 1)
         await press(view)
-        await view.engine.goTo(view.model.toc[2].href); await wait(700)
+        await chapterAt(view, 2)
         await press(view)
         await shoot('button')
         const rect = (el) => { const b = el.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), bottom: Math.round(b.bottom) } }
         const button = rect(view.contentEl.querySelector('.abele-book-reader__bookmark'))
-        view.model.panelTab = 'bookmarks'; view.model.panel = true; await wait(700)
+        view.model.panelTab = 'bookmarks'; view.model.panel = true
+        if (!await until(() => {
+          const active = view.contentEl.querySelector('.abele-book-reader__panel-head .abele-tabs__tab_active')
+          if (!active || active.textContent.trim() !== 'Bookmarks') return false
+          const tab = active.getBoundingClientRect(), strip = active.parentElement.getBoundingClientRect()
+          return view.contentEl.querySelectorAll('.abele-book-bookmarks__item').length === 2 &&
+            tab.width > 0 && tab.left >= strip.left && tab.right <= strip.right
+        })) throw new Error('bookmark drawer did not become ready')
         await shoot('list')
         const drawer = rect(view.contentEl.querySelector('.abele-book-reader__panel'))
         const tabEls = [...view.contentEl.querySelectorAll('.abele-book-reader__panel-head .abele-tabs__tab')]
@@ -283,9 +321,11 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
         const strip = { ...rect(s), sw: s.scrollWidth, cw: s.clientWidth, sl: s.scrollLeft, head: rect(s.parentElement), css: getComputedStyle(s).overflowX + ' ' + getComputedStyle(s).flex }
         const tabs = { right: rect(active).right, left: rect(active).left, label: active.textContent.trim(), rows: new Set(tabEls.map((t) => rect(t).top)).size, strip }
         const rows = [...view.contentEl.querySelectorAll('.abele-book-bookmarks__item')].map(rect)
-        view.model.panel = false; await wait(300)
+        view.model.panel = false
+        await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))
         for (const b of view.model.bookmarks) await view.bookmarks.remove(b)
-        await wait(1000)
+        await until(() => view.model.bookmarks.length === 0)
+        await marksWritten(view, 'id:' + ${JSON.stringify(RICH_BOOK_ID)})
         leaf.detach()
         return { phone: document.body.classList.contains('is-phone'), button, screen: { width: innerWidth, height: innerHeight }, tabs, drawer, rows }
       `)
