@@ -148,12 +148,13 @@ fixed, then edit the rest by hand — and read a note again before editing it af
 
 `web_search` (Brave), `fetch`, `download_image`, `download_file`.
 
-`${abele_key:name}` substitutions require an allowed origin for that named key and a fresh
-human approval for every request, even in Auto mode or a margin discussion. The approval shows
-the names and recipient, never key values, and offers to allow an address. Imported allowed
-origins still need confirmation on this device. Interceptor policies cannot approve these
-requests; unattended agent runs refuse them. MCP tools whose configured headers substitute
-named keys follow the same approval rule. Ordinary keyless local requests and discussion
+`${abele_key:name}` substitutions require an allowed origin for that named key, confirmed on
+this device. The approval shows the names and recipient, never key values, and offers to allow
+an address. Allowing it is remembered: later requests to that origin with those keys do not
+need another key approval. Ordinary tool permissions still apply; approving just a tool call
+does not change the keys' allowed-address lists. Imported allowed origins still need confirmation
+on this device. Interceptor policies cannot approve unconfirmed recipients; unattended agent
+runs refuse them. MCP tools whose configured headers substitute named keys follow the same rule. Ordinary keyless local requests and discussion
 requests keep their existing permissions. A placeholder cannot select the URL's authority.
 Echoed keys are redacted from fetch results.
 

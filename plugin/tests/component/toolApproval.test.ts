@@ -17,6 +17,10 @@ import { ChatService } from '@/ai/ChatService'
 import Button from '@/components/obsidian/Button.vue'
 import type { ChatMessage, PermissionMode, ToolMode } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { allowSecretOrigin } from '@/ai/tools/secretUtils'
+import { initializeDestinations } from '@/secrets/destinations'
 import type { FakeApp } from '../helpers/fakeVault'
 
 const EXISTING = 'Notes/Existing.md'
@@ -54,6 +58,36 @@ async function settled(wrapper: ReturnType<typeof approval>) {
   await nextTick()
   return wrapper
 }
+
+describe('saved-key approval choices', () => {
+  it('keeps Send once separate from remembered addresses and tool permissions', async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai = { ...DEFAULT_AI_SETTINGS, secrets: [{ name: 'sample', keyId: 'sample-key' }] }
+    vi.spyOn(config, 'saveSettings').mockResolvedValue()
+    initializeDestinations(config)
+    allowSecretOrigin('sample', 'https://api.sample.example')
+    const { approvals, toolModes } = sessionIn('confirm-all', 'ask')
+    const wrapper = approval('fetch', {
+      url: 'https://api.sample.example/data',
+      headers: { Authorization: '${abele_key:sample}' },
+    })
+    try {
+      expect(wrapper.text()).toContain('Send once approves only this request')
+      expect(buttonSaying(wrapper, 'Send once')).toBeDefined()
+      expect(buttonSaying(wrapper, 'Allow this address for these keys')).toBeUndefined()
+      const saved = config.saveSettings as ReturnType<typeof vi.fn>
+      saved.mockClear()
+      buttonSaying(wrapper, 'Send once')!.vm.$emit('click')
+      await nextTick()
+      expect(approvals).toEqual(['approved'])
+      expect(toolModes.value).toEqual({})
+      expect(saved).not.toHaveBeenCalled()
+      expect(config.ai.secrets[0].allowedOrigins).toEqual(['https://api.sample.example'])
+    } finally {
+      wrapper.unmount()
+    }
+  })
+})
 
 describe('approving a write to a file that exists', () => {
   it('shows what it does to the file, not just what it would contain', async () => {

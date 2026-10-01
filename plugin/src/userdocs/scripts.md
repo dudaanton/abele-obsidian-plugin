@@ -10,10 +10,11 @@ you have read or trust.
 
 ## Network requests
 
-A request using a saved `${abele_key:name}` now asks before sending, even when its address
-was allowed before. The dialog shows which keys and which address, without exposing values.
-**Allow address and send** adds a new recipient to those keys' allowed list; **Send once**
-approves just this request to an already allowed address. Cancel or Stop sends nothing.
+A request using a saved `${abele_key:name}` asks before sending to an address not yet allowed
+for those keys on this device. The dialog shows which keys and which address, without exposing
+values. **Allow address and send** remembers the address for those keys, so later requests to
+it do not ask again. Paths and query strings can change; a different host, scheme or port needs
+its own approval. Cancel or Stop sends nothing.
 Manage the address list under **AI → General → Secrets**. It travels with settings, but other
 devices still need to confirm new addresses. An agent started by a script cannot approve this
 question for you.

@@ -26,7 +26,14 @@ export function secretRequestForTool(tool: string, args: unknown): SecretRequest
   return null
 }
 export function needsSecretApproval(tool: string, args: unknown): boolean {
-  return secretNames(secretRequestForTool(tool, args)).length > 0
+  const request = secretRequestForTool(tool, args)
+  if (!request || !secretNames(request).length) return false
+  try {
+    return secretRequestInfo(request).missing.length > 0
+  } catch {
+    // Invalid recipients or unknown keys must not bypass the human approval boundary.
+    return true
+  }
 }
 export interface SecretRequest {
   url: string
@@ -59,7 +66,7 @@ export function secretRequestInfo(request: SecretRequest) {
     }),
   }
 }
-/** Only a direct UI action calls this; an allowed address still asks before each request. */
+/** Only a direct UI action calls this; remember both the configured origin and local trust. */
 export function allowSecretOrigin(name: string, url: string): void {
   const origin = httpOrigin(url)
   if (!origin) throw new Error('A saved key requires a valid HTTP(S) origin')

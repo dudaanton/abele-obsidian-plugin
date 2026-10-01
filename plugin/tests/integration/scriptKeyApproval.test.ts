@@ -19,6 +19,7 @@ beforeEach(() => {
     ...DEFAULT_AI_SETTINGS,
     secrets: [{ name: 'sample', keyId: 'sample-key' }],
   }
+  vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue()
   initializeDestinations(AbeleConfig.getInstance())
   allowSecretOrigin('sample', 'https://api.sample.example')
   mocks.approve.mockReset().mockResolvedValue(undefined)
@@ -32,7 +33,7 @@ beforeEach(() => {
     })
 })
 describe('script saved-key confirmation boundary', () => {
-  it('asks on every fetch even after an address was allowed and redacts an echo', async () => {
+  it('checks approval on every fetch and redacts an echo', async () => {
     const ctx = buildScriptContext({ params: {}, signal: new AbortController().signal, logs: [] })
     for (let i = 0; i < 2; i++) {
       const result = await ctx.fetch('https://api.sample.example/data', {

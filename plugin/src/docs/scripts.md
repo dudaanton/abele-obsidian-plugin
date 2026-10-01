@@ -7,8 +7,10 @@ agent leaves behind something repeatable instead of doing the same work again ne
 ## Saved keys
 
 Using `${abele_key:name}` in `ctx.fetch`, `ctx.downloadImage` or `ctx.downloadFile` opens a
-confirmation for each request. It shows the named keys and recipient, without their values.
-The confirmation can add that origin to the key's allowed-address list. Cancelling sends
+confirmation when the origin is not yet allowed for every named key on this device. It shows
+the keys and recipient, without their values. **Allow address and send** remembers that origin
+for those keys; later requests to it do not ask again. Different paths and query strings share
+the same origin, but another host, scheme or port needs its own approval. Cancelling sends
 nothing; Stop dismisses the question. A saved key cannot be used in the URL's authority.
 A script-started agent cannot make requests requiring this interactive approval.
 

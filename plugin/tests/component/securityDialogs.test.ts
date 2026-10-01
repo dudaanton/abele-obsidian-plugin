@@ -149,6 +149,12 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
     async (missing) => {
       state.missing = missing ? ['Sample key'] : []
       const approval = approveScriptKeyRequest(request)
+      if (!missing) {
+        await approval
+        expect(document.querySelector('.modal')).toBeNull()
+        expect(state.allowSecret).not.toHaveBeenCalled()
+        return
+      }
       expect(document.querySelector('.modal.abele-modal')).not.toBeNull()
       expect(document.querySelector('.abele-modal__body')!.textContent).toContain(
         'Key values are never shown here.'

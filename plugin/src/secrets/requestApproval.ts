@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { allowSecretOrigin, secretRequestInfo, type SecretRequest } from '@/ai/tools/secretUtils'
 import { checkKeyTransport } from './keyTransport'
 
-/** Each script request asks, even after the address was added to the saved key's list. */
+/** Ask only for recipients not yet allowed for every named key on this device. */
 export async function approveScriptKeyRequest(
   request: SecretRequest,
   signal?: AbortSignal
@@ -12,6 +12,7 @@ export async function approveScriptKeyRequest(
   if (!info.names.length) return
   signal?.throwIfAborted()
   checkKeyTransport(info.origin)
+  if (!info.missing.length) return
   const approved = await new Promise<boolean>((resolve) => {
     const modal = new ShellModal(GlobalStore.getInstance().app, {
       title: 'Send saved keys?',
@@ -25,11 +26,11 @@ export async function approveScriptKeyRequest(
     })
     if (info.missing.length)
       modal.bodyEl.createEl('p', {
-        text: `Sending also adds this address to the allowed list for: ${info.missing.join(', ')}. Other devices will still ask to confirm it.`,
+        text: `Allow address and send remembers this address for: ${info.missing.join(', ')}. Later requests with these keys to this address will not ask again on this device. Other devices will still ask to confirm it.`,
       })
     modal.addButton('Cancel', () => modal.close())
     modal.addButton(
-      info.missing.length ? 'Allow address and send' : 'Send once',
+      'Allow address and send',
       () => {
         if (signal?.aborted) return
         for (const name of info.missing) allowSecretOrigin(name, request.url)

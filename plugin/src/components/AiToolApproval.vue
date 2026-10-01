@@ -69,7 +69,7 @@
 
     <div v-if="keyInfo?.names.length" class="abele-tool-approval__param">
       <span>Saved keys: {{ keyInfo.names.join(', ') }} → {{ keyInfo.origin }}</span>
-      <span>Every request with a saved key needs approval.</span>
+      <span>Allow this address remembers it for these keys on this device. Send once approves only this request; it does not change the allowed list or tool permissions.</span>
       <Button v-if="keyInfo.missing.length" text="Allow this address for these keys" @click="allowKeyAddress" />
     </div>
 
@@ -86,7 +86,7 @@
 
     <div v-if="parseError && !isEditing" class="abele-tool-approval__parse-error">{{ parseError }}</div>
     <div class="abele-tool-approval__actions">
-      <Button text="Approve" @click="approve" />
+      <Button :text="keyInfo && !keyInfo.missing.length ? 'Send once' : 'Approve'" @click="approve" />
       <Button
         v-if="canApproveAllWrites"
         text="Always allow writes"
@@ -107,7 +107,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { needsSecretApproval, secretRequestInfo, secretRequestForTool, allowSecretOrigin } from '@/ai/tools/secretUtils'
+import { secretNames, secretRequestInfo, secretRequestForTool, allowSecretOrigin } from '@/ai/tools/secretUtils'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
@@ -130,7 +130,7 @@ const keyRevision = ref(0)
 const effectiveParams = computed(() => {
   try { return isEditing.value ? JSON.parse(editedArgs.value) : params.value } catch { return {} }
 })
-const keyRequest = computed(() => needsSecretApproval(props.message.toolName ?? '', effectiveParams.value))
+const keyRequest = computed(() => secretNames(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)).length > 0)
 const keyInfo = computed(() => {
   void keyRevision.value
   if (!keyRequest.value) return null
