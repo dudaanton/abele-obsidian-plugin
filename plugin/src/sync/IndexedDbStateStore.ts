@@ -112,6 +112,13 @@ interface MetaRow {
  * WebKit dropping a transaction, which gets one more go on a fresh connection (`once`).
  */
 export class IndexedDbStateStore implements StateStore {
+  private entryObserver: ((entry: StateEntry) => Promise<void>) | null = null
+
+  /** Independent durable provenance must settle before an identity can be filed/adopted. */
+  observeEntries(observer: (entry: StateEntry) => Promise<void>): void {
+    this.entryObserver = observer
+  }
+
   /** Non-null exactly while a transaction's body is running; a call arriving then joins it. */
   private overlay: Overlay | null = null
   /**
@@ -227,6 +234,7 @@ export class IndexedDbStateStore implements StateStore {
    * `fileId` or its `wirePath` is removed in the same step, so the two can never both be there.
    */
   async put(entry: StateEntry): Promise<void> {
+    await this.entryObserver?.({ ...entry })
     const copy = { ...entry }
     const what = `cannot record ${copy.path}`
     const overlay = this.overlay

@@ -16,6 +16,7 @@ import { noop } from './queue'
 import { SCOPE_KEY, ignoreFor, settingsDeferred } from './scope'
 import type { StatusBoard } from './statusBoard'
 import { USER_AGENT } from './transport'
+import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 
 /**
  * The parts one engine runs on, made from the connection — the filesystem, the ledger, the
@@ -95,7 +96,38 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
   store.onClosedElsewhere(() => recipe.closedElsewhere(store))
   settings.useLedger(store)
   try {
+    const trust = await activateScriptProvenance(
+      app,
+      {
+        endpoint: connection.serverUrl,
+        vaultId: connection.vaultId,
+        principal: connection.deviceId,
+        facet: 'personal',
+        grantId: null,
+      },
+      factoryOf(deps)
+    )
+    const renameRef = app.vault.on('rename', (file, from) => {
+      void trust.provenance
+        .rename(from, file.path)
+        .catch((error) => board.note(`script provenance hold: ${String(error)}`))
+    })
+    const close = store.close.bind(store)
+    store.close = () => {
+      app.vault.offref(renameRef)
+      trust.store.close()
+      close()
+    }
+    // Never replace a crash-surviving pending hold with an older ledger identity.
+    for await (const entry of store.all()) {
+      if (!(await trust.provenance.lookup(entry.path)))
+        await trust.provenance.record(entry.path, entry.fileId)
+    }
+    store.observeEntries((entry) => trust.provenance.record(entry.path, entry.fileId))
     const fs = new ObsidianFileSystem(app, {
+      beforeEngineMutation: async (paths) => {
+        for (const path of paths) await trust.provenance.pending(path)
+      },
       ledger: store,
       ...(pollMs === undefined ? {} : { pollMs }),
       onWatch: (paths) => recipe.noticed(paths),

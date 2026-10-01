@@ -29,8 +29,16 @@ vi.mock('@abele/sync-core', async (original) => ({
 vi.mock('@/sync/IndexedDbStateStore', () => ({
   stateDatabaseName: (id: string) => `abele-sync-${id}`,
   IndexedDbStateStore: {
-    open: async () => ({ onClosedElsewhere: () => undefined, close: () => undefined }),
+    open: async () => ({
+      onClosedElsewhere: () => undefined,
+      close: () => undefined,
+      async *all() {},
+      observeEntries: () => undefined,
+    }),
   },
+}))
+vi.mock('@/scripting/trust/scriptTrustStorage', () => ({
+  activateScriptProvenance: async () => ({ store: { close: () => undefined }, provenance: {} }),
 }))
 vi.mock('@/sync/ObsidianFileSystem', () => ({ ObsidianFileSystem: class {} }))
 vi.mock('@/sync/ledgerId', () => ({
@@ -61,7 +69,7 @@ describe('the end of a join', () => {
     joinedCalls.length = 0
     built.onSync = undefined
     const recipe = {
-      app: { vault: { configDir: '.obsidian' } },
+      app: { vault: { configDir: '.obsidian', on: () => ({}), offref: () => undefined } },
       host: {
         deps: () => ({}),
         manifest: () => ({ id: 'abele' }),

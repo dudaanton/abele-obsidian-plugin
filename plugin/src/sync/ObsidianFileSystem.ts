@@ -33,6 +33,9 @@ const CONFIG_WALK_DEPTH = 32
 const IGNORE_FILE = '.abele-sync-ignore'
 
 export interface ObsidianFileSystemOptions {
+  /** Durable restrictive provenance, completed before native bytes or paths change. */
+  beforeEngineMutation?: (paths: string[]) => Promise<void>
+
   /** Ledger paths absent from the index are checked on disk before a scan calls them deleted. */
   ledger?: Pick<StateStore, 'all'>
   /** How often the config folder is polled; 30 s by default. */
@@ -118,11 +121,13 @@ export class ObsidianFileSystem implements FileSystem {
   private pollNow: (() => void) | null = null
   private readonly writer: VaultWriter
   private readonly journal: WriteJournal
+  private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
 
   constructor(
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
     this.now = options.now ?? ((): number => Date.now())
@@ -230,12 +235,14 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
+    await this.beforeEngineMutation?.([path])
     const standing = await this.onlyFileOrNothing(path)
     const before = standing === null ? null : bytesOf(await this.read(path))
     await this.writer.write(path, bytesOf(bytes), mtime, standing !== null, before)
   }
 
   async move(from: string, to: string): Promise<void> {
+    await this.beforeEngineMutation?.([from, to])
     if (from === to) {
       if ((await this.stat(from)) === null) throw new EngineError('io', `no such file: ${from}`)
       return
@@ -275,6 +282,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async remove(path: string): Promise<void> {
+    await this.beforeEngineMutation?.([path])
     const standing = await this.rawStat(path)
     if (standing === null) return
     if (standing.type !== 'file') throw conflictAt(path, standing)
