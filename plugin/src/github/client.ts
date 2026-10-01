@@ -11,6 +11,7 @@
  */
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import { singleHopRequest } from './transport'
+import { shallowRef } from 'vue'
 import { normaliseHost, type Endpoints } from './urls'
 import {
   RAW,
@@ -141,6 +142,7 @@ let clientGeneration = 0
 export class GithubClient {
   /** Opaque credential generation, never derived from a secret. Content caches bind to it. */
   readonly cacheNamespace = `github-${++clientGeneration}`
+  readonly rate = shallowRef<{ remaining: number; limit: number; reset?: number; resource?: string } | null>(null)
   private current = true
   get isCurrent(): boolean {
     return this.current
@@ -270,6 +272,14 @@ export class GithubClient {
       throw new GithubError('network', `Could not reach ${url.host}.`)
     }
     this.assertCurrent()
+    const remaining = header(response.headers, 'x-ratelimit-remaining')
+    const limit = header(response.headers, 'x-ratelimit-limit')
+    if (remaining !== undefined && limit !== undefined && Number.isFinite(Number(remaining)) && Number.isFinite(Number(limit))) {
+      const reset = header(response.headers, 'x-ratelimit-reset')
+      this.rate.value = { remaining:Number(remaining), limit:Number(limit),
+        reset: reset && Number.isFinite(Number(reset)) ? Number(reset)*1000 : undefined,
+        resource:header(response.headers,'x-ratelimit-resource') }
+    }
     const location = header(response.headers, 'location')
     if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response
     if (hops >= 5 || request.method !== 'GET') {

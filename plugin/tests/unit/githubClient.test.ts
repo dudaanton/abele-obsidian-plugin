@@ -49,6 +49,15 @@ const client = (request: ReturnType<typeof fake>['request'], token = 'tkn') =>
   new GithubClient(endpoints(''), token, request)
 
 describe('requests', () => {
+  it('keeps rate limits per client and observes even unchanged responses', async () => {
+    let n = 0
+    const a = client(vi.fn(async () => respond({ status: n++ ? 304 : 200, json: {}, headers: { etag:'sample', 'X-RateLimit-Remaining':String(10-n),'X-RateLimit-Limit':'5000','X-RateLimit-Reset':'1800000000','X-RateLimit-Resource':'core' } })))
+    const b = client(vi.fn(async () => respond({ json: {}, headers:{'X-RateLimit-Remaining':'0','X-RateLimit-Limit':'60'} })), '')
+    await a.get('/user'); await a.get('/user'); await b.get('/rate_limit')
+    expect(a.rate.value).toMatchObject({ remaining:8, limit:5000, reset:1800000000000, resource:'core' })
+    expect(b.rate.value).toMatchObject({ remaining:0, limit:60 })
+  })
+
   it('sends the token as a bearer header and asks for the pinned API version', async () => {
     const { request, calls } = fake({ '/x': { json: { ok: true } } })
     await client(request).get('/x')

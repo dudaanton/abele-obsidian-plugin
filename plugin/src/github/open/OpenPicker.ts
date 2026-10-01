@@ -16,8 +16,12 @@ import {
   lastUsedGithubLeaf,
   openGithubUrl,
   GITHUB_VIEW_TYPE,
+  connectionClient,
+  resolveConnectionCandidates,
 } from '../GithubService'
 import { endpoints } from '../urls'
+import { preferredConnection } from '../connections'
+import type { GithubClient } from '../client'
 import type { GithubViewModel } from '../model'
 import { parseOpenQuery, type OpenQuery, type RepoRef } from './query'
 import { OpenSearch, kindName, type OpenRow, type RowKind } from './search'
@@ -41,9 +45,11 @@ const ICONS: Record<RowKind, string> = {
 
 /** The repository something was last opened in from the picker, this session. */
 let lastPicked: RepoRef | null = null
+let lastPickedConnection: string | undefined
 
 export const forgetLastPicked = () => {
   lastPicked = null
+  lastPickedConnection = undefined
 }
 
 const repoOfTarget = (model: GithubViewModel | undefined): RepoRef | null => {
@@ -77,6 +83,18 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   private readonly repo: RepoRef | null
   private readonly defaultHost: string
   private timer: number | null = null
+  private readonly contextId?: string
+  private readonly choices = new Map<string, { id?: string; client: GithubClient }>()
+  private choice(host: string, repo?: RepoRef): { id?: string; client: GithubClient } {
+    const key = JSON.stringify([host,repo?.owner,repo?.repo])
+    const previous = this.choices.get(key)
+    if (previous) return previous
+    const target = { kind:'repo' as const, host, owner:repo?.owner ?? '', repo:repo?.repo ?? '' }
+    const id = resolveConnectionCandidates(target, { sourceId:this.contextId })[0]?.id
+    const chosen = { id, client:id ? connectionClient(id) : githubClient(host) }
+    this.choices.set(key,chosen)
+    return chosen
+  }
 
   constructor(
     app: App,
@@ -84,9 +102,13 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     search?: OpenSearch
   ) {
     super(app)
-    this.search = search ?? new OpenSearch((host) => githubClient(host))
+    const active = app.workspace.getMostRecentLeaf?.() ?? lastUsedGithubLeaf()
+    const model = (active?.view as unknown as {model?:GithubViewModel})?.model
+    this.contextId = model?.connectionId ?? lastPickedConnection
+    this.search = search ?? new OpenSearch((host,repo) => this.choice(host,repo).client)
     this.repo = pickerRepo(app)
-    this.defaultHost = endpoints(githubSettings().server).webHost
+    const preferred = preferredConnection(githubSettings().connections ?? [])
+    this.defaultHost = endpoints(preferred?.server ?? githubSettings().server).webHost
     this.limit = 50
     // Short enough for a phone's field; the empty list under it names the repository.
     this.setPlaceholder(
@@ -181,7 +203,10 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     }
     if (!url) return false
     if (row.repo) lastPicked = row.repo
-    const opened = await openGithubUrl(this.app, url, pane)
+    const chosen = row.repo ? this.choice(row.repo.host,row.repo) : undefined
+    if (chosen?.client.isCurrent === false) { new Notice('The connection changed. Reopen the picker to search with its current token.'); return false }
+    if (row.repo) lastPickedConnection = chosen?.id
+    const opened = chosen?.id ? await openGithubUrl(this.app, url, pane, {connectionId:chosen.id}) : await openGithubUrl(this.app, url, pane)
     if (!opened) new Notice('Abele cannot show that in a GitHub tab.')
     return opened
   }

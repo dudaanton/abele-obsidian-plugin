@@ -60,6 +60,20 @@ beforeEach(() => {
 })
 
 describe('a number', () => {
+  it('never reuses another account title from the picker cache', async () => {
+    const allowed = fake({ [`${R}/issues/12`]: {json:{number:12,title:'Private title',state:'open'}} })
+    let client = new GithubClient(endpoints(''),'invented-one',allowed.request)
+    const search = new OpenSearch(() => client)
+    const q = parseOpenQuery('#12',ctx)
+    await search.fetch(q,'github.com')
+    expect(JSON.stringify(search.view(q,'github.com',repo))).toContain('Private title')
+    const denied = fake({})
+    client = new GithubClient(endpoints(''),'invented-two',denied.request)
+    expect(JSON.stringify(search.view(q,'github.com',repo))).not.toContain('Private title')
+    await search.fetch(q,'github.com')
+    expect(denied.request).toHaveBeenCalled()
+  })
+
   it('that is a pull request opens as one, with its title', async () => {
     const { run } = setup({
       [`${R}/issues/12`]: {

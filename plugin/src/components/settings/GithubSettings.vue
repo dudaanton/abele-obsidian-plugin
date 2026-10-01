@@ -242,7 +242,7 @@ import {
   githubSettingsFrom,
   type GithubSettings,
 } from '@/github/settings'
-import { resetGithubClients } from '@/github/GithubService'
+import { resetGithubClients, connectionClient } from '@/github/GithubService'
 import { githubUsers } from '@/github/users'
 import { PAGE_WIDTH_MAX, PAGE_WIDTH_MIN } from '@/github/pageWidth'
 import { projectLegacy } from '@/github/connections'
@@ -265,10 +265,12 @@ const connectionDescription = (connection: GithubConnection) => {
       ? 'Synced keys locked'
       : 'No token on this device'
   const expiry = connection.expiresAt ? Date.parse(connection.expiresAt) - Date.now() : Infinity
+  const rate = config.github.connections?.some(c=>c.id===connection.id) ? connectionClient(connection.id).rate.value : null
   return [
     connection.account?.login ?? 'Account not checked',
     connection.server || 'github.com',
     available,
+    rate ? `${rate.remaining} of ${rate.limit} requests remaining${rate.reset ? ` · resets ${new Date(rate.reset).toLocaleTimeString()}` : ''}` : '',
     expiry < 7 * 86400000 ? 'Token expires within seven days' : '',
     connection.owners.join(', '),
   ]

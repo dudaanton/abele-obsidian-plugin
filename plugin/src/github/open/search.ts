@@ -135,11 +135,14 @@ export class OpenSearch {
   private readonly started = new Map<string, Promise<void>>()
   private readonly settled = new Map<string, Settled>()
 
-  constructor(private readonly clientFor: (host: string) => GithubClient) {}
+  constructor(private readonly clientFor: (host: string, repo?: RepoRef) => GithubClient) {}
+  private repoKey(repo: RepoRef): string {
+    return `${this.clientFor(repo.host, repo).cacheNamespace}:${repoKey(repo)}`
+  }
 
   /** Opens a number the way GitHub has it: a pull request, an issue or a discussion. */
   private async number(repo: RepoRef, n: number): Promise<OpenRow[]> {
-    const client = this.clientFor(repo.host)
+    const client = this.clientFor(repo.host, repo)
     const where = `${repoName(repo)}#${n}`
     try {
       const issue = await client.get<RawIssue>(`${repoApiPath(repo)}/issues/${n}`, {
@@ -199,7 +202,7 @@ export class OpenSearch {
 
   private async issues(repo: RepoRef, text: string): Promise<OpenRow[]> {
     const q = `repo:${repoName(repo)} ${text} in:title`
-    const found = await this.clientFor(repo.host).get<{ items?: RawIssue[] }>(
+    const found = await this.clientFor(repo.host, repo).get<{ items?: RawIssue[] }>(
       `/search/issues?q=${encodeURIComponent(q)}&per_page=${SEARCH_RESULTS}`,
       { what: `the issues of ${repoName(repo)}` }
     )
@@ -217,7 +220,7 @@ export class OpenSearch {
   }
 
   private async discussions(repo: RepoRef, text: string): Promise<OpenRow[]> {
-    const data = await this.clientFor(repo.host).graphql<{
+    const data = await this.clientFor(repo.host, repo).graphql<{
       search?: {
         nodes?: ({
           number?: number
@@ -254,7 +257,7 @@ export class OpenSearch {
 
   /** The first hundred branches, once per repository; typing narrows them here. */
   private async branches(repo: RepoRef): Promise<OpenRow[]> {
-    const page = await this.clientFor(repo.host).get<{ name: string }[]>(
+    const page = await this.clientFor(repo.host, repo).get<{ name: string }[]>(
       `${repoApiPath(repo)}/branches?per_page=${BRANCH_PAGE}`,
       { what: `the branches of ${repoName(repo)}` }
     )
@@ -265,7 +268,7 @@ export class OpenSearch {
   }
 
   private async branchesStarting(repo: RepoRef, prefix: string): Promise<OpenRow[]> {
-    const refs = await this.clientFor(repo.host).get<{ ref: string }[]>(
+    const refs = await this.clientFor(repo.host, repo).get<{ ref: string }[]>(
       `${repoApiPath(repo)}/git/matching-refs/heads/${encodeRef(prefix)}`,
       { what: `the branches of ${repoName(repo)}` }
     )
@@ -276,7 +279,7 @@ export class OpenSearch {
 
   private async commit(repo: RepoRef, sha: string): Promise<OpenRow[]> {
     try {
-      const c = await this.clientFor(repo.host).get<{
+      const c = await this.clientFor(repo.host, repo).get<{
         sha: string
         commit?: { message?: string; author?: { name?: string } }
       }>(`${repoApiPath(repo)}/commits/${encodeURIComponent(sha)}`, { what: 'the commit' })
@@ -309,7 +312,7 @@ export class OpenSearch {
 
   private async repository(repo: RepoRef): Promise<OpenRow[]> {
     try {
-      const r = await this.clientFor(repo.host).get<{
+      const r = await this.clientFor(repo.host, repo).get<{
         default_branch: string
         description?: string | null
         name?: string
@@ -355,7 +358,7 @@ export class OpenSearch {
     switch (q.kind) {
       case 'repo-link': {
         const lookup: Lookup = {
-          key: `repo:${repoKey(q.repo)}`,
+          key: `repo:${this.repoKey(q.repo)}`,
           run: () => this.repository(q.repo),
         }
         lookup.placeholder = {
@@ -371,7 +374,7 @@ export class OpenSearch {
         if (!q.repo) return []
         const repo = q.repo
         const lookup: Lookup = {
-          key: `number:${repoKey(repo)}#${q.number}`,
+          key: `number:${this.repoKey(repo)}#${q.number}`,
           run: () => this.number(repo, q.number),
         }
         lookup.placeholder = {
@@ -389,11 +392,11 @@ export class OpenSearch {
         const words = text.length >= MIN_SEARCH
         if (q.named) {
           const named = q.named
-          out.push({ key: `repo:${repoKey(named)}`, run: () => this.repository(named) })
+          out.push({ key: `repo:${this.repoKey(named)}`, run: () => this.repository(named) })
         }
         const repo = q.repo
         if (repo) {
-          const key = repoKey(repo)
+          const key = this.repoKey(repo)
           if (SHA.test(text)) {
             out.push({
               key: `sha:${key}@${text.toLowerCase()}`,
@@ -405,7 +408,7 @@ export class OpenSearch {
               key: `issues:${key}:${text.toLowerCase()}`,
               run: () => this.issues(repo, text),
             })
-            if (this.clientFor(repo.host).hasToken) {
+            if (this.clientFor(repo.host, repo).hasToken) {
               out.push({
                 key: `discussions:${key}:${text.toLowerCase()}`,
                 run: () => this.discussions(repo, text),
@@ -434,7 +437,7 @@ export class OpenSearch {
           }
         } else if (words && !q.named) {
           out.push({
-            key: `repos:${defaultHost}:${text.toLowerCase()}`,
+            key: `repos:${this.clientFor(defaultHost).cacheNamespace}:${defaultHost}:${text.toLowerCase()}`,
             run: () => this.repositories(defaultHost, text),
           })
         }

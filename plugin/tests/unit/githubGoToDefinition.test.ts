@@ -51,6 +51,19 @@ beforeEach(() => {
 })
 
 describe('go to definition', () => {
+  it('never mixes a pending SHA from one account with another account client', async () => {
+    let finish!: (sha: string) => void
+    const { code, src, open, request } = source(100, { sha: () => new Promise(resolve => { finish = resolve }) })
+    const lookup = code.goToDefinition('makeWidget','src/app.ts')
+    const second = clientWith({})
+    src.client = () => second.client
+    finish(SHA)
+    await lookup
+    expect(second.request).not.toHaveBeenCalled()
+    expect(open).not.toHaveBeenCalled()
+    expect(request.mock.calls.every(([r]) => r.url.includes('api.github.com'))).toBe(true)
+  })
+
   it('opens the one place a name is declared, at its line and commit', async () => {
     const { code, open } = source()
     await code.goToDefinition('makeWidget', 'src/app.ts')
