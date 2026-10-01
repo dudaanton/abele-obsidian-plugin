@@ -386,6 +386,7 @@ import { CommentService } from '@/ai/CommentService'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService, type PendingInput } from '@/ai/ChatService'
+import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
@@ -1714,12 +1715,7 @@ const onSend = async (content: string, attachments: string[] = []) => {
     s.rejectToolCall('User sent a new message')
   }
 
-  const fileRefs = content.match(/@([\w/.@\s-]+\.\w+)/g)
-  if (fileRefs) {
-    for (const r of fileRefs) {
-      s.scopeResolver.addFile(r.slice(1))
-    }
-  }
+  for (const path of fileMentions(content)) s.scopeResolver.addFile(path)
   scrollOnUserSend()
   await s.sendMessage(content, attachments)
 }
