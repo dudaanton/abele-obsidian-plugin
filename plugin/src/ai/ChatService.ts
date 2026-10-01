@@ -55,7 +55,13 @@ export class ChatService {
   private restoringTabs = false
   private restoreGeneration = 0
   private continueRestore: (() => void) | null = null
-  private restoringFiles = new Map<string, Promise<void>>()
+  private loadingFiles = new Map<
+    string,
+    {
+      session: ChatSession | null
+      ready: Promise<ChatSession | null>
+    }
+  >()
   public readonly activeTabId = ref<string | null>(null)
   public readonly tabOrder = ref<string[]>([])
 
@@ -148,7 +154,7 @@ export class ChatService {
     this.continueRestore?.()
     this.continueRestore = null
     this.restoringTabs = false
-    this.restoringFiles.clear()
+    this.loadingFiles.clear()
     const { app } = GlobalStore.getInstance()
     const state = ChatService.loadTabsState(app)
     if (!state) {
@@ -207,54 +213,25 @@ export class ChatService {
         const file = app.vault.getAbstractFileByPath(tab.chatFilePath)
         if (!(file instanceof TFile)) continue
 
-        const existing = this.getSessionByFile(file.path)
-        if (existing) {
-          publish(index, existing)
-          continue
-        }
-
-        // A comment file may already have a session on it: the note's editor initialises
-        // before `onLayoutReady`, so a marker on screen has been read and loaded by the time
-        // this runs. Building a second session here would put two log writers on one file.
-        const comments = CommentService.getInstance()
-        if (comments.isCommentFile(file)) {
-          try {
-            const adopted = await comments.handOverToTab(file.basename)
-            if (!adopted) continue
-            if (generation !== this.restoreGeneration) {
-              adopted.destroy()
-              return
-            }
-            publish(index, adopted)
-          } catch (e) {
-            console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
-          }
-          continue
-        }
-
-        const session = new ChatSession(this)
-        this.sessions.set(session.id, session)
-
-        const loading = session.load(file)
-        this.restoringFiles.set(file.path, loading)
+        let created: ChatSession | null = null
         try {
-          await loading
-          if (generation !== this.restoreGeneration) {
-            session.destroy()
-            return
-          }
+          const session = await this.loadFile(file, () => {
+            created = new ChatSession(this)
+            this.sessions.set(created.id, created)
+            return created
+          })
+          if (generation !== this.restoreGeneration) return
+          if (session) publish(index, session)
         } catch (e) {
           console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
-          session.destroy()
-          this.sessions.delete(session.id)
-          this.tabOrder.value = this.tabOrder.value.filter((id) => id !== session.id)
+          if (created) {
+            const session = created as ChatSession
+            session.destroy()
+            this.sessions.delete(session.id)
+            this.tabOrder.value = this.tabOrder.value.filter((id) => id !== session.id)
+          }
           if (generation !== this.restoreGeneration) return
-          continue
-        } finally {
-          if (this.restoringFiles.get(file.path) === loading) this.restoringFiles.delete(file.path)
         }
-
-        publish(index, session)
       }
 
       if (!this.tabOrder.value.length) this.createTab()
@@ -344,22 +321,18 @@ export class ChatService {
    * one file are two writers on one log.
    */
   async openChatInTab(tabId: string, file: TFile): Promise<void> {
-    if (await this.waitForRestoringFile(file.path)) return
-    const already = this.getSessionByFile(file.path)
-    if (already) {
-      this.switchTab(already.id)
-      return
-    }
-
-    const holder = this.sessions.get(tabId)
-    // A comment's file belongs to a marker; loading another chat over it would repoint the
-    // session at a file the note knows nothing about.
-    const target =
-      holder && holder.kind !== 'comment' ? holder : this.sessions.get(this.createTab())
-    if (!target) return
-
-    await target.load(file)
-    this.saveTabs()
+    const previous = this.sessions.get(tabId)
+    const session = await this.loadFile(file, () => {
+      const holder = this.sessions.get(tabId)
+      // A comment belongs to its marker; an in-flight load has already reserved its holder.
+      if (holder && holder.kind !== 'comment' && !this.isLoading(holder)) return holder
+      if (!this.canCreateTab) {
+        new Notice(ChatService.TABS_FULL)
+        return null
+      }
+      return this.sessions.get(this.createTab()) ?? null
+    })
+    if (session) this.selectLoaded(session, previous)
   }
 
   /**
@@ -609,16 +582,83 @@ export class ChatService {
     }
   }
 
-  private async waitForRestoringFile(path: string): Promise<boolean> {
-    const loading = this.restoringFiles.get(path)
-    if (!loading) return false
+  private isLoading(session: ChatSession): boolean {
+    return [...this.loadingFiles.values()].some((load) => load.session === session)
+  }
+
+  /** Every entry point reserves the file before creating a holder or starting asynchronous I/O. */
+  private loadFile(file: TFile, create: () => ChatSession | null): Promise<ChatSession | null> {
+    const pending = this.loadingFiles.get(file.path)
+    if (pending !== undefined) return pending.ready
+    const existing = this.getSessionByFile(file.path)
+    if (existing) return Promise.resolve(existing)
+
+    let complete!: (session: ChatSession | null) => void
+    let fail!: (error: unknown) => void
+    const ready = new Promise<ChatSession | null>((resolve, reject) => {
+      complete = resolve
+      fail = reject
+    })
+    const entry = { session: null as ChatSession | null, ready }
+    this.loadingFiles.set(file.path, entry)
     const generation = this.restoreGeneration
-    await loading
-    if (generation === this.restoreGeneration) {
-      const session = this.getSessionByFile(path)
-      if (session) this.switchTab(session.id)
+    void (async () => {
+      try {
+        // CommentService may already own a writer loaded by a note's editor. All tab entry
+        // points use that handover, under the same reservation as ordinary chat loads.
+        const comments = CommentService.getInstance()
+        const comment = comments.isCommentFile(file)
+        if (comment && !this.canCreateTab) {
+          new Notice(ChatService.TABS_FULL)
+          complete(null)
+          return
+        }
+        const session = (entry.session = comment
+          ? await comments.handOverToTab(file.basename)
+          : create())
+        if (!session) {
+          complete(null)
+          return
+        }
+        if (!comment) await session.load(file)
+        if (
+          generation !== this.restoreGeneration ||
+          (!comment && this.sessions.get(session.id) !== session)
+        ) {
+          session.destroy()
+          complete(null)
+        } else {
+          this.sessions.set(session.id, session)
+          complete(session)
+        }
+      } catch (error) {
+        fail(error)
+      } finally {
+        if (this.loadingFiles.get(file.path) === entry) this.loadingFiles.delete(file.path)
+      }
+    })()
+    return ready
+  }
+
+  private selectLoaded(session: ChatSession, previous?: ChatSession | null): void {
+    // Adopting a comment does not use the blank holder supplied by the caller. Remove only
+    // a genuinely empty placeholder, never a draft or an existing conversation.
+    if (
+      previous &&
+      previous !== session &&
+      session.kind === 'comment' &&
+      ChatService.isBlank(previous) &&
+      !previous.draft.value.text &&
+      !previous.draft.value.attachments.length &&
+      !previous.draft.value.imports
+    ) {
+      previous.destroy()
+      this.sessions.delete(previous.id)
+      this.tabOrder.value = this.tabOrder.value.filter((id) => id !== previous.id)
     }
-    return true
+    if (!this.tabOrder.value.includes(session.id))
+      this.tabOrder.value = [...this.tabOrder.value, session.id]
+    this.switchTab(session.id)
   }
 
   getSessionByFile(filePath: string): ChatSession | null {
@@ -632,34 +672,18 @@ export class ChatService {
 
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
   async openChatFile(file: TFile): Promise<void> {
-    if (await this.waitForRestoringFile(file.path)) return
-    // Already open → switch to it
-    const existing = this.getSessionByFile(file.path)
-    if (existing) {
-      this.switchTab(existing.id)
-      return
-    }
-
-    // Current tab is empty (no file) → load there
-    const active = this.activeSession.value
-    if (active && !active.currentChatFile.value) {
-      await active.load(file)
-      this.saveTabs()
-      return
-    }
-
-    // createTab() returns the active id at the limit; loading there would replace its chat.
-    if (!this.canCreateTab) {
-      new Notice(ChatService.TABS_FULL)
-      return
-    }
-    // Create new tab and load
-    const tabId = this.createTab()
-    const session = this.sessions.get(tabId)
-    if (session) {
-      await session.load(file)
-      this.saveTabs()
-    }
+    const previous = this.activeSession.value
+    const session = await this.loadFile(file, () => {
+      const active = this.activeSession.value
+      if (active && !active.currentChatFile.value && !this.isLoading(active)) return active
+      // createTab returns the active id at the limit; never load over that conversation.
+      if (!this.canCreateTab) {
+        new Notice(ChatService.TABS_FULL)
+        return null
+      }
+      return this.sessions.get(this.createTab()) ?? null
+    })
+    if (session) this.selectLoaded(session, previous)
   }
 
   /**
@@ -900,7 +924,7 @@ export class ChatService {
     this.continueRestore?.()
     this.continueRestore = null
     this.restoringTabs = false
-    this.restoringFiles.clear()
+    this.loadingFiles.clear()
     for (const session of this.sessions.values()) {
       // Obsidian's unload is synchronous, so this cannot be awaited. Writes are deferred by
       // a fraction of a second at most, and a turn ends with one, so what is at risk here is

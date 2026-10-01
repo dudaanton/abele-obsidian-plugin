@@ -3,6 +3,7 @@ import { watch } from 'vue'
 import { TFile } from 'obsidian'
 import { ChatService } from '@/ai/ChatService'
 import { ChatSession } from '@/ai/ChatSession'
+import { CommentService } from '@/ai/CommentService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -89,6 +90,78 @@ it('reuses an inactive conversation selected while background hydration is in fl
   expect(load.mock.calls.filter(([file]) => file.path === paths[0])).toHaveLength(1)
   expect(service.getAllSessions()).toHaveLength(2)
   expect(service.activeSession.value?.currentChatFile.value?.path).toBe(paths[0])
+})
+
+it.each([
+  ['openChatFile', false],
+  ['openChatInTab', false],
+  ['openChatFile', true],
+  ['openChatInTab', true],
+] as const)(
+  'shares a read started by %s before restoration reaches that saved tab (comment=%s)',
+  async (entry, comment) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+    const paths = ['sample-active', 'sample-background', 'sample-selected'].map(
+      (name) => `SampleChats/${name}.abchat`
+    )
+    const app = useVault(paths.map((path) => ({ path, content: '' })))
+    AgentRegistry.destroy()
+    AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, enabled: true, agents: [] }
+    ChatService.getInstance().destroy()
+    const service = ChatService.getInstance()
+    app.saveLocalStorage('abele-agent-tabs', {
+      tabs: paths.map((chatFilePath) => ({ chatFilePath })),
+      activeIndex: 0,
+    })
+    const load = vi.spyOn(ChatSession.prototype, 'load').mockImplementation(async function (file) {
+      await new Promise((resolve) => setTimeout(resolve, file.path === paths[2] ? 100 : 20))
+      this.currentChatFile.value = file
+    })
+    if (comment) {
+      const comments = CommentService.getInstance()
+      vi.spyOn(comments, 'isCommentFile').mockImplementation((file) => file.path === paths[2])
+      vi.spyOn(comments, 'handOverToTab').mockImplementation(async () => {
+        const borrowed = new ChatSession(service, undefined, { kind: 'comment' })
+        await borrowed.load(app.vault.getAbstractFileByPath(paths[2]) as TFile)
+        return borrowed
+      })
+    }
+    const restoring = service.restoreTabs()
+    await vi.advanceTimersByTimeAsync(21)
+    const file = app.vault.getAbstractFileByPath(paths[2]) as TFile
+    const opening =
+      entry === 'openChatFile'
+        ? service.openChatFile(file)
+        : service.openChatInTab(service.createTab(), file)
+    await vi.advanceTimersByTimeAsync(200)
+    await Promise.all([restoring, opening])
+    expect(load.mock.calls.filter(([file]) => file.path === paths[2])).toHaveLength(1)
+    expect(
+      service.getAllSessions().filter((s) => s.currentChatFile.value?.path === paths[2])
+    ).toHaveLength(1)
+    expect(
+      service.tabOrder.value.map((id) => service.getSession(id)?.currentChatFile.value?.path)
+    ).toEqual(paths)
+    expect(service.activeSession.value?.currentChatFile.value?.path).toBe(paths[2])
+  }
+)
+
+it('coalesces simultaneous history opens before either load has completed', async () => {
+  vi.useFakeTimers()
+  const app = useVault([{ path: 'SampleChats/sample-shared.abchat', content: '' }])
+  const service = ChatService.getInstance()
+  const file = app.vault.getAbstractFileByPath('SampleChats/sample-shared.abchat') as TFile
+  const load = vi.spyOn(ChatSession.prototype, 'load').mockImplementation(async function (file) {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    this.currentChatFile.value = file
+  })
+  const first = service.openChatFile(file)
+  const second = service.openChatFile(file)
+  await vi.advanceTimersByTimeAsync(100)
+  await Promise.all([first, second])
+  expect(load).toHaveBeenCalledTimes(1)
+  expect(service.getAllSessions()).toHaveLength(1)
 })
 
 it('does not publish a conversation that finishes loading after service teardown', async () => {
