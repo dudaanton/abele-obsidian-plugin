@@ -65,13 +65,17 @@ export function routeConnections(
   connections: GithubConnection[],
   input: RoutingInput
 ): ConnectionCandidate[] {
+  const publicOrigin = !input.origin || (() => {
+    try { const url=new URL(input.origin); return url.protocol==='https:' && !url.port && !url.username && !url.password && normaliseHost(url.hostname)==='github.com' } catch { return false }
+  })()
+  const anonymous = publicOrigin && normaliseHost(input.host)==='github.com' && !connections.some(c=>endpoints(c.server).webHost==='github.com')
   const serverRows = connections.filter((c) => sameConnectionServer(c, input))
   // Host-only targets cannot choose between servers sharing a hostname but differing by port/scheme.
   if (!input.origin && new Set(serverRows.map((c) => endpoints(c.server).origin)).size > 1)
     return []
   const rows = serverRows.filter((c) => !input.allowed || input.allowed(c))
   if (input.explicitId !== undefined) {
-    if (input.explicitId === '' && !serverRows.length && normaliseHost(input.host) === 'github.com')
+    if (input.explicitId === '' && anonymous)
       return [{ id: '', reason: 'anonymous' }]
     const chosen = connections.find((c) => c.id === input.explicitId)
     if (!chosen) throw new Error('The requested GitHub connection is unknown or was deleted.')
@@ -81,7 +85,7 @@ export function routeConnections(
       throw new Error('This agent may not use the requested GitHub connection.')
     return [{ id: chosen.id, reason: 'explicit' }]
   }
-  if (!serverRows.length && normaliseHost(input.host) === 'github.com')
+  if (anonymous)
     return [{ id: '', reason: 'anonymous' }]
   const out: ConnectionCandidate[] = []
   const add = (id: string | undefined, reason: ConnectionCandidate['reason']) => {

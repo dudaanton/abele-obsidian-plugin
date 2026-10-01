@@ -174,7 +174,9 @@ export function formatItem(repo: RepoRef, read: Read, page: number): string {
   return out.join('\n')
 }
 
-export function createGithubReadTool(): AgentTool {
+export function createGithubReadTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_read',
     label: 'Read GitHub item',
@@ -191,7 +193,7 @@ export function createGithubReadTool(): AgentTool {
       required: ['item'],
     },
     execute: async (_id, params) => {
-      const { repo, number, kind } = itemOf(parseNamed(params.item))
+      const { repo, number, kind } = itemOf(parseNamed(params.item, operation))
       const read = await load(repo, number, kind)
       await namePeople(repo, read.data)
       return answer(formatItem(repo, read, whole(params.page, 1)))
@@ -199,7 +201,9 @@ export function createGithubReadTool(): AgentTool {
   }
 }
 
-export function createGithubPrFilesTool(): AgentTool {
+export function createGithubPrFilesTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_pr_files',
     label: 'Pull request files',
@@ -219,7 +223,7 @@ export function createGithubPrFilesTool(): AgentTool {
       required: ['item'],
     },
     execute: async (_id, params) => {
-      const named = parseNamed(params.item)
+      const named = parseNamed(params.item, operation)
       const { repo, number, kind } = itemOf(named)
       if (kind && kind !== 'pull' && kind !== 'issue') {
         throw new Error('That is not a pull request.')

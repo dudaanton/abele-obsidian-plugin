@@ -187,7 +187,9 @@ function numbered(
   return out.join('\n')
 }
 
-export function createGithubFileTool(): AgentTool {
+export function createGithubFileTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_file',
     label: 'Read GitHub file',
@@ -215,7 +217,7 @@ export function createGithubFileTool(): AgentTool {
       required: ['repo'],
     },
     execute: async (_id, params) => {
-      const named = parseNamed(params.repo)
+      const named = parseNamed(params.repo, operation)
       const { repo } = named
       const client = clientFor(repo)
       const w = wanted(named, params)
@@ -374,7 +376,9 @@ async function compare(
   return out.join('\n')
 }
 
-export function createGithubCommitsTool(): AgentTool {
+export function createGithubCommitsTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_commits',
     label: 'GitHub commits',
@@ -403,7 +407,7 @@ export function createGithubCommitsTool(): AgentTool {
       required: ['repo'],
     },
     execute: async (_id, params) => {
-      const named = parseNamed(params.repo)
+      const named = parseNamed(params.repo, operation)
       const { repo } = named
       const w = commitsWanted(named, params)
       const path = text(params.path)

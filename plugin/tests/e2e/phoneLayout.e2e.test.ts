@@ -74,6 +74,8 @@ const DIALOGS = [
   'transfer-send',
   'transfer-preview',
   'transfer-scan',
+  'github-connection-approval',
+  'github-agent-access',
   'github-connections',
   'github-connection',
   'agent-editor',

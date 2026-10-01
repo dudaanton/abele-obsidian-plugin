@@ -205,6 +205,25 @@ describe('the agents list', () => {
 })
 
 describe('the agent editor', () => {
+  it('stores Off/Ask/On by connection ID without changing tool permissions or sharing a duplicate map', async () => {
+    const {main}=seedAgents()
+    const config=AbeleConfig.getInstance()
+    config.github={...config.github,connections:[{id:'sample',name:'Sample connection',server:'',keyId:'',owners:[],isDefault:true}]}
+    const before={...main.toolModes}
+    const view=mountEditor(main.id)
+    await view.findAll('.abele-tabs__tab').find(t=>t.text()==='Access')!.trigger('click')
+    const setting=view.findAll('.setting-item').find(s=>s.text().includes('Sample connection'))!
+    const dropdown=setting.findComponent(Dropdown)
+    expect(dropdown.props('modelValue')).toBe('off')
+    dropdown.vm.$emit('update:model-value','ask')
+    expect(main.githubConnections).toEqual({sample:'ask'})
+    expect(main.toolModes).toEqual(before)
+    const copy=AgentRegistry.getInstance().duplicate(main.id)!
+    copy.githubConnections!.sample='auto'
+    expect(main.githubConnections!.sample).toBe('ask')
+    view.unmount()
+  })
+
   it('offers every section', () => {
     const { main } = seedAgents()
 

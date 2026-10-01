@@ -45,6 +45,11 @@ describe('connection routing precedence', () => {
     expect(() => pick({ explicitId: 'enterprise' })).toThrow(/server/i)
     expect(() => pick({ explicitId: 'deleted' })).toThrow(/unknown|deleted/i)
   })
+  it('never turns an unconfigured public port or HTTP URL into anonymous public API access', () => {
+    expect(routeConnections([], {...target,origin:'https://github.com:8443'})).toEqual([])
+    expect(routeConnections([], {...target,origin:'http://github.com'})).toEqual([])
+  })
+
   it('distinguishes Enterprise ports and schemes', () => {
     const ports = [
       row('one', 'http://git.example.test:8080', [], true),

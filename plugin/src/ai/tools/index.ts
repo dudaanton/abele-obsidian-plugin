@@ -202,6 +202,8 @@ export function getToolRegistry(): ToolInfo[] {
 }
 
 export interface AgentToolsOptions {
+  /** Only an interactive executing session may ask for per-connection GitHub access. */
+  githubApproval?: import('@/github/agentAccess').ConnectionApproval
   /**
    * The agent the tools act for — whose memory `remember` and `forget` change. A chat passes its own, a script
    * the agent it runs. Without one, the session executing the call is asked; never the chat
@@ -303,7 +305,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   tools.push(...createBookTools())
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
-  if (everything || githubSettings().enabled) tools.push(...createGithubTools())
+  if (everything || githubSettings().enabled) tools.push(...createGithubTools({agent:resolveAgent,approve:options.githubApproval}))
 
   // Absent while the settings are being loaded — `codeToolDescriptions` asks then.
   const config = AbeleConfig.getInstance().ai

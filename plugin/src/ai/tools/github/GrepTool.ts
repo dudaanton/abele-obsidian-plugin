@@ -34,8 +34,12 @@ const MAX_LIMIT = 500
 const DEFAULT_LIMIT = 100
 
 /** The repository and the ref a `repo` argument names — a pull request means its head. */
-async function locate(input: unknown, ref: string): Promise<{ repo: RepoRef; ref?: string }> {
-  const named = parseNamed(input)
+async function locate(
+  input: unknown,
+  ref: string,
+  operation?: import('./shared').GithubToolOperation
+): Promise<{ repo: RepoRef; ref?: string }> {
+  const named = parseNamed(input, operation)
   const repo = named.repo
   if (ref) return { repo, ref }
   const t = named.target
@@ -58,7 +62,10 @@ async function locate(input: unknown, ref: string): Promise<{ repo: RepoRef; ref
   return { repo }
 }
 
-export async function runGithubGrep(params: Record<string, unknown>): Promise<string> {
+export async function runGithubGrep(
+  params: Record<string, unknown>,
+  operation?: import('./shared').GithubToolOperation
+): Promise<string> {
   const settings = githubSettings()
   const mode = params.mode === 'names' ? 'names' : 'content'
   const query = typeof params.query === 'string' ? params.query : ''
@@ -66,7 +73,7 @@ export async function runGithubGrep(params: Record<string, unknown>): Promise<st
   const offset = whole(params.offset, 0, 0)
   const limit = Math.min(MAX_LIMIT, whole(params.limit, DEFAULT_LIMIT))
 
-  const located = await locate(params.repo, text(params.ref))
+  const located = await locate(params.repo, text(params.ref), operation)
   const repo = located.repo
   const client = clientFor(repo)
   // Named even when it was not asked for, so the answer says which branch it searched.
@@ -139,7 +146,9 @@ export async function runGithubGrep(params: Record<string, unknown>): Promise<st
   }
 }
 
-export function createGithubGrepTool(): AgentTool {
+export function createGithubGrepTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_grep',
     label: 'Grep code at a version',
@@ -185,6 +194,6 @@ export function createGithubGrepTool(): AgentTool {
       },
       required: ['repo'],
     },
-    execute: async (_id, params) => answer(await runGithubGrep(params)),
+    execute: async (_id, params) => answer(await runGithubGrep(params, operation)),
   }
 }

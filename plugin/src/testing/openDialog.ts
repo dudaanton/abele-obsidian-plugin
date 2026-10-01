@@ -34,6 +34,7 @@ import TransferScanModal from '@/components/settings/transfer/TransferScanModal.
 import AgentEditorModal from '@/components/settings/ai/AgentEditorModal.vue'
 import LintRuleModal from '@/components/settings/LintRuleModal.vue'
 import GithubConnectionEditor from '@/components/settings/GithubConnectionEditor.vue'
+import { connectionApproval } from '@/github/approveConnection'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -157,6 +158,51 @@ const DIALOGS: Record<string, () => void> = {
       codes: 1,
     }),
   'transfer-scan': () => mountAlone(TransferScanModal),
+  'github-connection-approval': () =>
+    void connectionApproval(GlobalStore.getInstance().app)({
+      id: 'sample',
+      name: 'Sample account with a long connection label',
+      server: 'https://github.enterprise.sample.example.test:8443',
+      account: { login: 'sample-account' },
+    }),
+  'github-agent-access': () => {
+    const config = AbeleConfig.getInstance(),
+      registry = AgentRegistry.getInstance(),
+      original = config.github
+    config.github = githubSettingsFrom({
+      connections: Array.from({ length: 6 }, (_, i) => ({
+        id: `sample-${i}`,
+        name: `Sample connection ${i + 1} with a long descriptive label`,
+        server: i ? 'https://git.sample.example.test' : '',
+        keyId: '',
+        owners: [] as string[],
+        isDefault: i === 0,
+      })),
+    })
+    const agent = registry.create({
+      name: 'Sample connection permissions',
+      githubConnections: { 'missing-sample': 'ask' },
+    })
+    mountAlone(
+      defineComponent({
+        emits: ['close'],
+        setup(_props, { emit }) {
+          onUnmounted(() => {
+            config.github = original
+            registry.remove(agent.id)
+          })
+          onMounted(() => {
+            void nextTick(() =>
+              Array.from(document.querySelectorAll('.abele-agent-editor .abele-tabs__tab'))
+                .find((el) => el.textContent === 'Access')
+                ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+            )
+          })
+          return () => h(AgentEditorModal, { agentId: agent.id, onClose: () => emit('close') })
+        },
+      })
+    )
+  },
   'github-connections': () => {
     const config = AbeleConfig.getInstance()
     const original = config.github

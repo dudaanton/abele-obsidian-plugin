@@ -878,7 +878,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private getTools(): AgentTool[] {
     const agent = this.agent.value
     // Bound to this chat's agent, so `remember` writes where this chat's prompt reads from.
-    const allTools = createAgentTools({ agentId: agent?.id })
+    const allTools = createAgentTools({ agentId: agent?.id,
+      githubApproval: this.kind === 'run' ? undefined : async (connection,signal) =>
+        (await import('@/github/approveConnection')).connectionApproval(GlobalStore.getInstance().app)(connection,signal),
+    })
 
     // Overrides win over the agent's own tool modes, so a chat that narrowed its permissions
     // stays narrowed. Falls back to the agent when nothing was overridden here.

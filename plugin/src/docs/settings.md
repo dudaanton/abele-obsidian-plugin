@@ -139,6 +139,10 @@ the browser. `github.connections` lists named connections with stable IDs, a `se
 metadata is discovered by the access check, not typed by an agent. Every connection's `keyId`
 names its keychain slot and is out of reach of these tools. `github.server` and `github.keyId`
 remain compatibility projections for old plugin versions, not a second list of connections.
+Each agent's `githubConnections` map stores `off`, `ask` or `auto` per stable connection ID.
+The UI calls these Off, Ask and On. Missing/new IDs are Off for all hosts. A chat's tool-mode
+overrides cannot grant a connection the executing agent lacks; connection permission is separate
+from the tool's own Ask/Off/Auto mode.
 The token needs read access to Contents, Issues, Pull
 requests and Discussions; without one only public repositories open, and discussions not at all.
 While it is on, agents also have the read-only GitHub tools (the `tools` section, GitHub); with it

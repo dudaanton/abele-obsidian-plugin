@@ -1,5 +1,8 @@
 import { ConnectionFallback } from './connectionFallback'
 import { primaryAccess } from './primaryAccess'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { connectionMode } from './agentAccess'
+import { GithubError } from './client'
 import { loadItem, type ItemData } from './loadItem'
 import {
   connectionClient,
@@ -25,10 +28,23 @@ export async function readConnectionItem(
   shown: GithubTarget
   notice: string
 }> {
+  const permitted = (id: string) => {
+    if (!model.allowedConnections) return true
+    if (!id) return true
+    const mode = connectionMode(
+      model.executionAgentId ? AgentRegistry.getInstance().get(model.executionAgentId) : null,
+      id
+    )
+    return (
+      model.allowedConnections.includes(id) &&
+      (mode === 'auto' || (mode === 'ask' && !!model.approvedConnections?.includes(id)))
+    )
+  }
+  const allowed = model.allowedConnections?.filter(permitted)
   const candidates = resolveConnectionCandidates(target, {
     sourceId: model.connectionId,
     explicitId: model.connectionIntent === 'manual' ? model.connectionId : undefined,
-    allowedIds: model.allowedConnections,
+    allowedIds: allowed,
   })
   const result = await fallback.read({
     candidates,
@@ -38,20 +54,29 @@ export async function readConnectionItem(
     generation: connectionGeneration,
     manual: model.connectionIntent === 'manual',
     read: async (id) => {
+      if (!permitted(id))
+        throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
       const client = id ? connectionClient(id) : githubClient(target.host)
-      await primaryAccess(client,target)
+      await primaryAccess(client, target)
       return client
     },
   })
   // All optional sections load only after choosing the identity. A failure in one of them
   // cannot trigger another account probe or overwrite the successful routing preference.
   let shown = target
-  const data = await loadItem(result.value,target,promoted => { shown = promoted })
+  if (!permitted(result.id))
+    throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
+  const data = await loadItem(result.value, target, (promoted) => {
+    shown = promoted
+  })
+  if (!permitted(result.id))
+    throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
   const name = (id: string) =>
     githubSettings().connections.find((c) => c.id === id)?.name ?? 'Anonymous'
   return {
     connectionId: result.id,
-    data, shown,
+    data,
+    shown,
     notice: result.attempts.length
       ? `Opened as ${name(result.id)}. ${result.attempts.map((a) => `${name(a.id)}: ${a.error}`).join(' ')}`
       : '',

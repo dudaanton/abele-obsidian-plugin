@@ -8,6 +8,7 @@ import type { AgentTool } from '../../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
   GITHUB_VIEW_TYPE,
+  githubSettings,
   lastUsedGithubLeaf,
   openGithubUrl,
   parseForSettings,
@@ -44,8 +45,7 @@ interface Shown {
 
 function openTabs(): Shown[] {
   const { app } = GlobalStore.getInstance()
-  return app.workspace
-    .getLeavesOfType(GITHUB_VIEW_TYPE)
+  return (app?.workspace?.getLeavesOfType(GITHUB_VIEW_TYPE) ?? [])
     .map((leaf) => ({ leaf, model: (leaf.view as unknown as { model?: GithubViewModel }).model }))
     .filter((s): s is Shown => !!s.model)
 }
@@ -98,7 +98,9 @@ function describeProse(p: ProseSelection): string[] {
   return [...out, ...quoted]
 }
 
-export function createGithubViewsTool(): AgentTool {
+export function createGithubViewsTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_views',
     label: 'GitHub tabs',
@@ -110,11 +112,26 @@ export function createGithubViewsTool(): AgentTool {
       const tabs = openTabs()
       if (tabs.length === 0) {
         return answer(
-          'No GitHub tab is open. Ask the person for a link, or open one for them with github_open.'
+          (operation ? operation.inventory + '\n\n' : '') +
+            'No GitHub tab is open. Ask the person for a link, or open one for them with github_open.'
         )
       }
       const out = [`${tabs.length} GitHub tab${tabs.length === 1 ? '' : 's'} open.`, '']
-      tabs.forEach((tab, i) => out.push(...describe(i + 1, tab), ''))
+      if (operation) out.unshift(operation.inventory, '')
+      tabs.forEach((tab, i) => {
+        if (operation && !operation.canReadTab(tab.model.connectionId)) {
+          out.push(`${i + 1}. Restricted GitHub tab (connection access not granted).`, '')
+        } else {
+          const connection = githubSettings().connections?.find(
+            (c) => c.id === tab.model.connectionId
+          )
+          out.push(
+            ...describe(i + 1, tab),
+            `   Connection: ${connection?.name || tab.model.connectionId || 'Anonymous'}${connection?.account ? ` · ${connection.account.login}` : ''}`,
+            ''
+          )
+        }
+      })
       return answer(out.join('\n'))
     },
   }
@@ -145,7 +162,9 @@ async function withLines(
   throw new Error('Lines can be shown in a pull request, a commit, a comparison or a file.')
 }
 
-export function createGithubOpenTool(): AgentTool {
+export function createGithubOpenTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_open',
     label: 'Show on GitHub tab',
@@ -169,7 +188,7 @@ export function createGithubOpenTool(): AgentTool {
       required: ['url'],
     },
     execute: async (_id, params) => {
-      const named = parseNamed(params.url)
+      const named = parseNamed(params.url, operation)
       let url = text(params.url)
       if (!named.target) {
         if (!named.number) {
@@ -208,7 +227,15 @@ export function createGithubOpenTool(): AgentTool {
       }
 
       const { app } = GlobalStore.getInstance()
-      const opened = await openGithubUrl(app, url, params.new_tab === true ? 'tab' : false)
+      const opened = operation
+        ? await openGithubUrl(app, url, params.new_tab === true ? 'tab' : false, {
+            connectionId: operation.connectionId,
+            manual: operation.explicit,
+            allowedIds: operation.allowedIds,
+            agentId: operation.agentId,
+            approvedIds: operation.approvedIds,
+          })
+        : await openGithubUrl(app, url, params.new_tab === true ? 'tab' : false)
       if (!opened) throw new Error(`No GitHub tab can show ${url}.`)
       return answer(`Shown in a GitHub tab: ${url}`)
     },

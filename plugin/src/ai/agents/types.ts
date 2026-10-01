@@ -72,6 +72,8 @@ export interface AgentDefinition {
   permissionMode: PermissionMode
   /** Feature tools only — CORE_TOOLS are always available and governed by permissionMode. */
   toolModes: Record<string, ToolMode>
+  /** Per-connection GitHub access. Absent IDs are Off, including newly added connections. */
+  githubConnections?: Record<string, ToolMode>
   scope: ScopeEntry[]
   fullVaultAccess: boolean
 

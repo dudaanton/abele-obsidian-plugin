@@ -199,6 +199,46 @@
           </Setting>
 
           <Section
+            title="GitHub connections"
+            desc="Off: no access. Ask: approve each operation in an interactive chat. On: use without asking. New connections start Off on every server. These choices do not enable an Off tool."
+          >
+            <Setting
+              v-for="connection in githubConnections"
+              :key="connection.id"
+              :name="connection.name"
+              :desc="`${connection.server || 'github.com'}${connection.account ? ' · ' + connection.account.login : ''}`"
+            >
+              <Dropdown
+                :model-value="agent.githubConnections?.[connection.id] ?? 'off'"
+                :options="CONNECTION_MODES"
+                @update:model-value="
+                  patch({
+                    githubConnections: {
+                      ...agent.githubConnections,
+                      [connection.id]: $event as ToolMode,
+                    },
+                  })
+                "
+              />
+            </Setting>
+            <Setting
+              v-for="id in missingGithubConnections"
+              :key="id"
+              :name="`Unavailable connection: ${id}`"
+              desc="This agent refers to a connection not present on this device. Transfer the connection or leave it Off."
+            >
+              <Dropdown
+                :model-value="agent.githubConnections?.[id] ?? 'off'"
+                :options="CONNECTION_MODES"
+                @update:model-value="
+                  patch({
+                    githubConnections: { ...agent.githubConnections, [id]: $event as ToolMode },
+                  })
+                "
+              />
+            </Setting>
+          </Section>
+          <Section
             title="Scope"
             desc="Where this agent works by default. A delegated run also gets whatever the chat
               that delegated to it had open."
@@ -348,6 +388,20 @@ const config = AbeleConfig.getInstance()
 
 /** The stored, reactive agent — edits reach open chats as they are typed. */
 const agent = computed(() => registry.get(props.agentId))
+const CONNECTION_MODES = [
+  { value: 'off', display: 'Off' },
+  { value: 'ask', display: 'Ask' },
+  { value: 'auto', display: 'On' },
+]
+const githubConnections = computed(() => {
+  void config.version.value
+  return config.github?.connections ?? []
+})
+const missingGithubConnections = computed(() =>
+  Object.keys(agent.value?.githubConnections ?? {}).filter(
+    (id) => !githubConnections.value.some((c) => c.id === id)
+  )
+)
 const skills = computed(() => discoverSkills())
 
 const section = ref('basic')

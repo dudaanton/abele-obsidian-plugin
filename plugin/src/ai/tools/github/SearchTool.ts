@@ -47,7 +47,9 @@ function issueRows(items: any[]): string[] {
   })
 }
 
-export function createGithubSearchTool(): AgentTool {
+export function createGithubSearchTool(
+  operation?: import('./shared').GithubToolOperation
+): AgentTool {
   return {
     name: 'github_search',
     label: 'Search GitHub',
@@ -73,7 +75,7 @@ export function createGithubSearchTool(): AgentTool {
       const query = text(params.query)
       if (!query) throw new Error('Give a query.')
       const type = params.type === 'code' ? 'code' : 'issues'
-      const named = text(params.repo) ? parseNamed(params.repo) : null
+      const named = text(params.repo) ? parseNamed(params.repo, operation) : null
       const host = named?.repo.host ?? endpoints(githubSettings().server).webHost
       const q = named ? `${query} repo:${repoName(named.repo)}` : query
       const page = whole(params.page, 1)
@@ -83,7 +85,7 @@ export function createGithubSearchTool(): AgentTool {
         )
       }
 
-      const client = clientFor(named?.repo ?? { host, owner: '', repo: '' })
+      const client = operation?.client ?? clientFor(named?.repo ?? { host, owner: '', repo: '' })
       let body: any
       try {
         body = await client.get<any>(

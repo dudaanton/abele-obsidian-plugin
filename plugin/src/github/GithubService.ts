@@ -62,9 +62,13 @@ export function githubHosts(): string[] {
 export const parseForSettings = (url: string): GithubTarget | null => {
   const target = parseGithubUrl(url, githubHosts())
   if (!target) return null
-  const origin = new URL(url).origin
-  // Preserve the exact Enterprise endpoint identity alongside the parsed target.
-  if (target.host !== 'github.com') target.origin = origin
+  const parsed = new URL(url)
+  if (parsed.username || parsed.password) return null
+  const origin = parsed.origin
+  // Preserve noncanonical origins too, so routing refuses a wrong public scheme/port.
+  if (target.host !== 'github.com' || parsed.protocol !== 'https:' || parsed.port) target.origin = origin
+  const rows = githubSettings().connections ?? []
+  if (rows.length && !routeConnections(rows,target).length) return null
   return target
 }
 
@@ -243,6 +247,8 @@ export async function openGithubUrl(
     connectionId?: string
     manual?: boolean
     allowedIds?: string[]
+    agentId?: string
+    approvedIds?: string[]
   } = {}
 ): Promise<boolean> {
   const target = parseForSettings(url)
@@ -281,7 +287,13 @@ export async function openGithubUrl(
       ...(chosen?.id
         ? { connectionId: chosen.id, connectionIntent: context.manual ? 'manual' : 'automatic' }
         : {}),
-      ...(context.allowedIds ? { allowedConnections: context.allowedIds } : {}),
+      ...(context.allowedIds
+        ? {
+            allowedConnections: context.allowedIds,
+            executionAgentId: context.agentId,
+            approvedConnections: context.approvedIds,
+          }
+        : {}),
     },
     active: true,
   })

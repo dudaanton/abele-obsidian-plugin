@@ -412,7 +412,11 @@ state also holds `connectionId` and `connectionIntent` (automatic or manual) bes
 Account-only navigation adds a history entry. Successful repository routing lives in session
 memory; item refusals expire after roughly ten minutes. Manual owner preferences live only in
 connections' `owners` lists. An agent opening a tab may attach a runtime-only allowed-connection
-restriction; it is not persisted as permission granted by the person.
+restriction; it is not persisted as permission granted by the person. Each stored agent may
+hold `githubConnections`, a map from stable connection IDs to `off`, `ask` or `auto` (shown as
+Off, Ask, On). A missing ID means Off. It travels with the agent; unresolved IDs remain visible
+in its Access settings until the connection arrives. One-operation approvals and executing-agent
+restrictions on a tab are runtime-only, never written as persistent grants.
 
 ## GitHub links
 

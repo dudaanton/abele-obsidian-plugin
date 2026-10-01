@@ -112,7 +112,13 @@ name in code to go to where it is declared; a right-click also offers **Find ref
 
 With the AI chat on, **Chat about this GitHub item**, or the speech bubble in the tab's header,
 starts a chat with a link to the item. **Ask here** does the same for selected lines or words,
-quoted. Agents can also read GitHub themselves while the integration is on.
+quoted. Agents can also read GitHub themselves while the integration is on. In each agent's
+**Access → GitHub connections**, choose **Off**, **Ask**, or **On** for each connection. A new
+connection starts Off on every server. Ask approves one operation in an interactive chat;
+background/delegated runs cannot ask. On still respects the tool's own Off/Ask/Auto setting.
+The tools accept a connection name, and their tab inventory hides content from connections the
+agent cannot use. Granting broad scripting or settings-writing tools is a separate, broader
+permission; this connection list is not a general sandbox.
 
 ## Page width and people
 

@@ -35,13 +35,44 @@ export interface Named {
 }
 
 /** The host a bare `owner/repo` is read from: the configured server, github.com without one. */
-const defaultHost = () => endpoints(githubSettings().server).webHost
+const legacyDefaultHost = () => endpoints(githubSettings().server).webHost
+
+export interface GithubToolOperation {
+  connectionId: string
+  agentId?: string
+  approvedIds: string[]
+  explicit: boolean
+  target?: GithubTarget
+  candidates: string[]
+  client: GithubClient
+  allowedIds: string[]
+  assertAccess(): void
+  canReadTab(id: string | undefined): boolean
+  inventory: string
+}
+const operationOf = new WeakMap<RepoRef, GithubToolOperation>()
+
+export function parseNamed(input: unknown, operation?: GithubToolOperation): Named {
+  const named = parseNamedRaw(input, operation)
+  if (operation) {
+    operation.assertAccess()
+    if (named.repo.host !== operation.client.endpoints.webHost)
+      throw new Error(
+        'The repository is on a different server than the selected GitHub connection.'
+      )
+    named.repo = { ...named.repo, origin: operation.client.endpoints.origin } as RepoRef
+    if (named.target) named.target.origin = operation.client.endpoints.origin
+    operationOf.set(named.repo, operation)
+  }
+  return named
+}
 
 /**
  * A link, `owner/repo#12` or `owner/repo`, read. Only github.com and the configured server are
  * GitHub: any other host is refused rather than sent a token it was never meant to see.
  */
-export function parseNamed(input: unknown): Named {
+function parseNamedRaw(input: unknown, operation?: GithubToolOperation): Named {
+  const defaultHost = () => operation?.client.endpoints.webHost ?? legacyDefaultHost()
   const text = typeof input === 'string' ? input.trim() : ''
   if (!text)
     throw new Error('Name a repository or item: a GitHub link, owner/repo or owner/repo#12.')
@@ -88,7 +119,14 @@ export function parseNamed(input: unknown): Named {
   return { repo, rest }
 }
 
-export const clientFor = (repo: RepoRef): GithubClient => githubClient(repo.host)
+export const clientFor = (repo: RepoRef): GithubClient => {
+  const operation = operationOf.get(repo)
+  if (operation) {
+    operation.assertAccess()
+    return operation.client
+  }
+  return githubClient(repo.host)
+}
 
 export const repoPath = (r: RepoRef) =>
   `/repos/${encodeURIComponent(r.owner)}/${encodeURIComponent(r.repo)}`

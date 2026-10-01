@@ -125,6 +125,7 @@ export class AgentRegistry {
       name: `${source.name} (copy)`,
       prompts: source.prompts.map((p) => ({ ...p })),
       toolModes: { ...source.toolModes },
+      githubConnections: source.githubConnections ? { ...source.githubConnections } : undefined,
       scope: source.scope.map((s) => ({ ...s })),
       skills: [...source.skills],
       memory: (source.memory ?? []).map((m) => ({ ...m })),

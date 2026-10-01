@@ -94,6 +94,8 @@ export class GithubView extends ItemView {
         connectionId?: string
         connectionIntent?: string
         allowedConnections?: string[]
+        executionAgentId?: string
+        approvedConnections?: string[]
       }
       let connectionId = requested.connectionId
       const exists = (githubSettings().connections ?? []).some((c) => c.id === connectionId)
@@ -119,6 +121,8 @@ export class GithubView extends ItemView {
       this.model.connectionId = connectionId
       this.model.connectionIntent = requested.connectionIntent === 'manual' ? 'manual' : 'automatic'
       this.model.allowedConnections = requested.allowedConnections
+      this.model.executionAgentId = requested.executionAgentId
+      this.model.approvedConnections = requested.approvedConnections
       const mode = (state as { mode?: unknown }).mode
       this.model.url = url
       this.model.target = target
@@ -304,7 +308,11 @@ export class GithubView extends ItemView {
             menu.showAtMouseEvent(event)
           },
           primaryLoad: (githubSettings().connections ?? []).length
-            ? async (target: GithubTarget, promote: (target: GithubTarget) => void, retry = false) => {
+            ? async (
+                target: GithubTarget,
+                promote: (target: GithubTarget) => void,
+                retry = false
+              ) => {
                 const startedId = this.model.connectionId,
                   startedUrl = this.model.url
                 const result = await readConnectionItem(this.model, target, retry)

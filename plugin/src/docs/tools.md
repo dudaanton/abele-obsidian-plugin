@@ -138,9 +138,30 @@ into markdown. Downloads land in the vault, so they are subject to scope.
 `github_search`, `github_grep`, `github_open`.
 
 Read-only access to GitHub, offered only while the person has the GitHub integration on. Nothing
-on GitHub is ever written — no comment, no review, no label. They send the person's own token to
-the server set in the settings, so they see what the person's GitHub tabs see, and a refusal
-comes back in the same words the tabs use: the cause, the permission it needed, GitHub's message.
+on GitHub is ever written — no comment, no review, no label. All eight tools accept optional
+`connection`, a connection name or unique ID. Unknown or ambiguous names are refused before a
+request. An explicit choice supplies the server for `owner/repo`, rejects a full URL on another
+server, and never silently falls back. Without it, a matching open tab supplies the account,
+then the same owner/session/default rules as links. A matching tab on a forbidden connection is
+an access error, not permission to read that tab under another identity. Search without `repo`
+uses the preferred default (github.com if configured), never an unrelated active tab.
+
+Every agent has Off/Ask/On for each connection. New connections start **Off**, the same as a
+newly encountered feature tool; there is no public-versus-Enterprise exception. Ask prompts for
+one operation in an interactive chat; unattended/delegated execution refuses Ask. On does not
+enable an Off tool or bypass that tool's own Ask mode. Permissions are rechecked while the
+operation runs and after approval. Automatic alternatives are limited to permitted same-server
+connections and reported in the result. `github_open` carries the connection restriction through
+the asynchronous tab load. Tokens and keychain IDs are never included in the inventory.
+
+`github_views` always lists connection names, servers, discovered accounts and access modes,
+even without tabs. Tabs name their connection. A disallowed tab is only a restricted placeholder:
+no repository title, URL, error, code or prose selection is returned. To read an Ask-mode tab,
+name its connection so that the operation can request approval.
+
+This is a GitHub-tool permission boundary, not a sandbox for arbitrary scripting, raw network,
+settings-writing tools, or content the person pastes into a chat. Broad privileged tools retain
+their own existing permissions.
 
 Every item is named by a link or `owner/repo#12`; a repository by `owner/repo` or any link into
 it. Answers are capped and say where the rest is — a page, a diff window, a line range. Ask for
