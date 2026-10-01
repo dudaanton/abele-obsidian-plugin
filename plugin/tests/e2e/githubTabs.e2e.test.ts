@@ -34,7 +34,6 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { BASE_SHA, HEAD_SHA, LATE_COMMENT, diffHash } from './helpers/fakeGithubRepo'
-import { until } from './helpers/wait'
 
 const NOTE = 'Abele GitHub insert probe.md'
 const available = isObsidianRunning() && hasTestApi()
@@ -513,8 +512,9 @@ describe.skipIf(!available)('a GitHub tab', () => {
 
   describe('people', () => {
     it('are shown by name with their picture, kept as data, the login a click away', async () => {
-      const queries = () => gh.requests().filter((l) => l.startsWith('POST /api/graphql')).length
-      const before = queries()
+      const profiles = (lines: string[]) =>
+        lines.filter((l) => l.startsWith('POST /api/graphql operation=profiles'))
+      const before = profiles(await gh.drainRequests()).length
       const r = evalAsync<{
         error?: string
         meta?: string
@@ -528,8 +528,11 @@ describe.skipIf(!available)('a GitHub tab', () => {
         await window.__abeleTest.githubUsers().clear()
         ${opening(`${gh.web}/pull/42`, 'Rework the widget loader')}
         const named = await until(() => {
-          const a = root.querySelector('.abele-github-comment__author img')
-          return a && a.src.startsWith('data:image/png') &&
+          const authors = [...root.querySelectorAll('.abele-github-comment__author')]
+          const names = authors.map(a => a.textContent.trim())
+          // Every picture and name inspected below must have arrived, not only the first row.
+          return authors.length > 0 && authors.every(a => a.querySelector('img')?.src.startsWith('data:image/png')) &&
+            ['Bob Example', 'carol', 'Dave Example'].every(name => names.includes(name)) &&
             root.querySelector('.abele-github-header__meta').textContent.includes('Alice Example')
         }, 15000)
         if (!named) return { error: 'the names and pictures never came' }
@@ -555,9 +558,10 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.pictures).toEqual(['data:image/png;'])
       expect(r.tooltip).toMatch(/ · (bob|dave)$/)
       expect(r.swapped).toMatch(/^(bob|dave)$/)
-      // The child server's output is drained only while the worker yields between eval calls.
-      expect(await until(() => queries() > before), 'GitHub query log arrived').toBe(true)
-      expect(queries() - before).toBe(1)
+      // Measure only this opening's profile batching, not other operations or output queued by
+      // earlier evals. Both ends use an acknowledged stdout barrier, not a quiet-time guess.
+      const batches = profiles(await gh.drainRequests()).slice(before)
+      expect(batches, batches.join('\n')).toHaveLength(1)
     })
   })
 

@@ -413,6 +413,10 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
     query?: string
     variables?: Record<string, unknown>
   }
+  const profiles = query?.includes('user(login:')
+  console.log(
+    `POST /api/graphql operation=${profiles ? 'profiles' : 'other'}${profiles ? ` logins=${Object.values(variables ?? {}).join(',')}` : ''}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`
+  )
   if (query?.includes('blame(path:')) {
     const text = filesAt(String(variables?.ref ?? 'main'))?.[String(variables?.path)]
     if (typeof text !== 'string') return send(res, 200, { data: { repository: { object: null } } })
@@ -601,7 +605,11 @@ const server = createServer((req, res) => {
   const host = req.headers.host ?? `127.0.0.1:${port}`
   const url = new URL(req.url ?? '/', `http://${host}`)
   const web = `http://${host}`
-  console.log(`${req.method} ${url.pathname}${url.search}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`)
+  // GraphQL is logged after its body is read, so profile requests can be counted on their own.
+  if (!(req.method === 'POST' && url.pathname === '/api/graphql'))
+    console.log(
+      `${req.method} ${url.pathname}${url.search}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`
+    )
   if (mode === 'accounts' && url.pathname.startsWith(`/api/v3/repos/${OWNER}/${REPO}/`) && accountOf(req) !== 'two') return notFound(res)
   if (req.method === 'POST' && url.pathname === '/api/graphql') {
     graphql(req, res, web).catch((e) => send(res, 500, { message: String(e) }))
@@ -613,6 +621,11 @@ const server = createServer((req, res) => {
   }
   if (req.method !== 'GET') return notFound(res)
   rest(req, res, url, web)
+})
+
+// The marker follows preceding request logs on stdout, not on the independent IPC channel.
+process.on('message', (message: { drain?: string }) => {
+  if (message?.drain) console.log(message.drain)
 })
 
 server.listen(port, '127.0.0.1', () => {

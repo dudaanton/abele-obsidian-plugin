@@ -12,6 +12,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createInterface } from 'node:readline'
 import { buildSync } from 'esbuild'
 import { evalRaw, runCli } from './obsidianCli'
 import { onPhone } from './target'
@@ -26,6 +27,8 @@ export interface FakeGithub {
   web: string
   /** Every request so far, as `GET /api/v3/…` (or POST, PATCH, PUT, DELETE). */
   requests(): string[]
+  /** A stdout barrier: returns only after all preceding log lines have reached the worker. */
+  drainRequests(): Promise<string[]>
   stop(): void
 }
 
@@ -50,15 +53,23 @@ export async function startFakeGithub(
     process.execPath,
     [bundle, '0', ...(options.mode ? [options.mode] : [])],
     {
-      stdio: ['ignore', 'pipe', 'inherit'],
+      stdio: ['ignore', 'pipe', 'inherit', 'ipc'],
     }
   )
+  // Read complete lines, including ones split across chunks, from startup onwards. A marker on
+  // this same stream is a barrier even when an eval has blocked the worker's event loop.
+  const lines: string[] = []
+  const output = createInterface({ input: child.stdout! })
+  const barriers = new Map<string, () => void>()
+  let sequence = 0
+  output.on('line', (line) => {
+    if (/^(GET|POST|PATCH|PUT|DELETE) /.test(line)) lines.push(line)
+    barriers.get(line)?.()
+  })
   const port = await new Promise<number>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('the fake GitHub did not start')), 15_000)
-    let out = ''
-    child.stdout!.on('data', (chunk: Buffer) => {
-      out += chunk.toString()
-      const m = /listening (\d+)/.exec(out)
+    output.on('line', (line) => {
+      const m = /^listening (\d+)$/.exec(line)
       if (m) {
         clearTimeout(timer)
         resolve(Number(m[1]))
@@ -66,18 +77,30 @@ export async function startFakeGithub(
     })
     child.on('exit', (code) => reject(new Error(`the fake GitHub exited with ${code}`)))
   })
-  // Read whenever the worker is not blocked on an `eval`; the server writes without waiting.
-  const lines: string[] = []
-  child.stdout!.on('data', (chunk: Buffer) => lines.push(...chunk.toString().split('\n')))
   const origin = `http://127.0.0.1:${port}`
   // On a real phone the same address has to lead here: see `exposeToPhone`.
   const unexpose = onPhone() ? exposeToPhone(port) : () => {}
   return {
     origin,
     web: `${origin}/${OWNER}/${REPO}`,
-    requests: () => lines.filter((l) => /^(GET|POST|PATCH|PUT|DELETE) /.test(l)),
+    requests: () => [...lines],
+    drainRequests: () =>
+      new Promise<string[]>((resolve, reject) => {
+        const marker = `drained ${++sequence}`
+        const timer = setTimeout(() => {
+          barriers.delete(marker)
+          reject(new Error('the fake GitHub request log did not drain'))
+        }, 15_000)
+        barriers.set(marker, () => {
+          clearTimeout(timer)
+          barriers.delete(marker)
+          resolve([...lines])
+        })
+        child.send({ drain: marker })
+      }),
     stop: () => {
       unexpose()
+      output.close()
       child.kill()
       rmSync(dir, { recursive: true, force: true })
     },

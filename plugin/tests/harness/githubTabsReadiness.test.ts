@@ -27,6 +27,27 @@ it('rejects a selection target that keeps moving instead of silently exhausting 
   expect(((await result) as Error).message).toMatch(/selection target/)
 })
 
+it('does not sample people while only the first picture is cached as data', () => {
+  const namedSource = source.match(
+    /const named = await until\(\(\) => \{([\s\S]*?)\n {8}\}, 15000\)/
+  )![1]
+  const authors = ['Bob Example', 'carol', 'Dave Example'].map((textContent, i) => ({
+    textContent,
+    querySelector: () => ({
+      src: i === 1 ? 'http://sample.invalid/avatar.png' : 'data:image/png;base64,sample',
+    }),
+  }))
+  const root = {
+    querySelector: (selector: string) =>
+      selector.includes('img')
+        ? authors[0].querySelector()
+        : { textContent: 'Alice Example opened' },
+    querySelectorAll: () => authors,
+  }
+  const named = new Function('root', namedSource)(root)
+  expect(named).toBe(false)
+})
+
 it('observes a full quiet second after the last movement before aiming a drag', async () => {
   vi.useFakeTimers()
   let top = 10
