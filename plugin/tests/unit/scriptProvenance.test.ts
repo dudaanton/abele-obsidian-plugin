@@ -18,6 +18,7 @@ describe('durable script managed provenance', () => {
     const provenance = await ScriptProvenance.open(meta, binding, true)
     await provenance.record('Scripts/sample.js', 'sample-file')
     await provenance.rename('Scripts/sample.js', 'Media/sample.png')
+    expect(await provenance.lookup('Scripts/sample.js')).toMatchObject({ fileId: null, binding })
     const reopened = await ScriptProvenance.open(meta, binding, false)
     expect(await reopened.lookup('Media/sample.png')).toMatchObject({
       fileId: 'sample-file',
@@ -26,6 +27,14 @@ describe('durable script managed provenance', () => {
     await reopened.record('Scripts/restored.js', 'sample-file')
     expect(await reopened.lookup('Scripts/restored.js')).toMatchObject({ fileId: 'sample-file' })
   })
+  it('keeps old spelling restrictive even for a case-only rename', async () => {
+    const provenance = await ScriptProvenance.open(new MemoryStateStore(), binding, true)
+    await provenance.record('Scripts/sample.js', 'sample-file')
+    await provenance.rename('Scripts/sample.js', 'Scripts/SAMPLE.js')
+    expect(await provenance.lookup('Scripts/sample.js')).toMatchObject({ fileId: null })
+    expect(await provenance.lookup('Scripts/SAMPLE.js')).toMatchObject({ fileId: 'sample-file' })
+  })
+
   it('records an unknown hold before replacement, which persists after a crash', async () => {
     const meta = new MemoryStateStore()
     const provenance = await ScriptProvenance.open(meta, binding, true)

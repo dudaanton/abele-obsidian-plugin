@@ -75,11 +75,14 @@ export class ScriptProvenance {
   async lookup(path: string): Promise<ManagedScript | null> {
     const raw = await this.meta.getMeta(key(path))
     if (raw === null) return null
-    const value: ManagedScript = JSON.parse(String(raw))
+    const value: ManagedScript & { path?: string } = JSON.parse(String(raw))
     if (!value.binding || !sameBinding(value.binding, this.binding)) return null
     if (value.fileId !== null && (typeof value.fileId !== 'string' || !value.fileId)) {
       throw new Error('Script provenance is unreadable')
     }
+    // Case-folded keys cannot grant a renamed spelling's identity to a recreated old path.
+    if (value.path !== undefined && value.path !== path)
+      return { binding: { ...value.binding }, fileId: null }
     return { binding: { ...value.binding }, fileId: value.fileId }
   }
 
@@ -94,11 +97,13 @@ export class ScriptProvenance {
   }
 
   async rename(from: string, to: string): Promise<void> {
+    if (from === to) return
     await this.mutation([from, to], async () => {
       const source = await this.lookup(from)
-      // Unknown source is not a newly trusted local file; keep a restrictive destination hold.
+      // Persist the restrictive source hold first: a crash cannot leave the old name with
+      // usable authority. Destination keeps identity only when the source was proven.
+      await this.save(from, { binding: this.binding, fileId: null })
       await this.save(to, source ?? { binding: this.binding, fileId: null })
-      // Preserve the old alias/tombstone: detached or replaced bytes never become local trust.
     })
   }
 
@@ -137,7 +142,7 @@ export class ScriptProvenance {
   }
 
   private async save(path: string, record: ManagedScript): Promise<void> {
-    const value = JSON.stringify(record)
+    const value = JSON.stringify({ ...record, path })
     await this.meta.setMeta(key(path), value)
     if ((await this.meta.getMeta(key(path))) !== value)
       throw new Error('Script provenance was not persisted')

@@ -82,7 +82,9 @@ before its asynchronous write begins. A pending or changed generation invalidate
 across the awaited approval read and the synchronous compilation boundary; different paths
 do not invalidate one another. The fence is shared across this runtime's IDB connections,
 not reconstructed as permission after a reload. New bytes need a new decision;
-rename alone preserves identity. Shared/agent policy is **refuse**, with no approval bypass.
+rename preserves identity at the proven destination. The old path retains a restrictive
+managed hold, not the moved identity; recreating it with identical bytes cannot reuse approval.
+Recorded path spelling also protects case-only renames in the case-folded ledger namespace. Shared/agent policy is **refuse**, with no approval bypass.
 Agents, automations, nested scripts and restored views never open approval dialogs: unapproved
 runs return a hold/error. Approving on one device does not authorize another, and nothing in
 settings transfer carries these permissions. This execution policy does not disable note-event

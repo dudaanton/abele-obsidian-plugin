@@ -227,6 +227,21 @@ describe('exact-byte local script approval', () => {
     expect(() => assertScriptContext(app as unknown as App, checked)).toThrow(/changed/)
   })
 
+  it('does not grant the moved identity to a same-byte recreation at its old path', async () => {
+    await managed()
+    await scriptForExecution(app as unknown as App, path, async () => true)
+    const moved = 'Scripts/moved.js'
+    await app.vault.adapter.rename(path, moved)
+    const writer = await scriptTrustFor(app as unknown as App, factory)
+    await writer!.provenance.rename(path, moved)
+    writer!.store.close()
+    await app.vault.create(path, bytes)
+    await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/unknown/)
+    expect((await scriptForExecution(app as unknown as App, moved)).code).toContain(
+      'return "approved"'
+    )
+  })
+
   it('does not store permission on decline', async () => {
     await managed()
     await expect(
