@@ -25,6 +25,7 @@ import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader scripts e2e'
@@ -49,7 +50,6 @@ const ECHO = (n: string) => `// @name E2E echo ${n}
 return '${n} ' + params.w`
 const ECHOES = ['one', 'two', 'three']
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // Through the tier's own reload, so phone emulation stays this window's alone.
 const reload = async (how: string): Promise<void> => {
   await reloadApp(how)
@@ -59,16 +59,15 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  const sized = evalAsync<boolean>(`(async () => {
+    ${WAIT_PRELUDE}
+    return !!(await until(() => innerWidth === ${width} && innerHeight === ${height}))
+  })()`)
+  if (!sized) throw new Error('The window did not reach its requested size')
 }
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 8000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(100) }
-    return null
-  }
+  ${WAIT_PRELUDE}
   const open = async (path) => {
     const old = app.workspace.getLeavesOfType('abele-book')
     let main = null
@@ -81,21 +80,37 @@ const PRELUDE = `
       wait(15000),
     ])
     for (const l of old) if (l !== leaf) l.detach()
-    await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 15000)
-    await wait(600)
+    if (!(await until(() => {
+      const view = leaf.view
+      const doc = view?.engine?.renderer?.getContents()[0]?.doc
+      const frame = doc?.defaultView?.frameElement?.getBoundingClientRect()
+      return view?.model?.status === 'ready' && view.reading &&
+        frame?.width > 0 && frame?.height > 0 && doc.body.getBoundingClientRect().height > 0
+    }, 15000))) throw Error('The script page did not draw')
     return { leaf, view: leaf.view }
   }
   const docOf = (view) => view.engine.renderer.getContents()[0].doc
   const paragraph = (doc) => [...doc.querySelectorAll('p')].find((x) => x.textContent.length > 40)
+  const closePanel = async (view) => {
+    view.model.panel = false
+    if (!(await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))))
+      throw Error('The book contents panel did not close')
+  }
+  const chapterStart = async (view, chapter) => {
+    await view.engine.goTo(view.model.toc[chapter].href)
+    if (!(await until(() => docOf(view).querySelector('h1')?.textContent === 'Chapter ' + (chapter + 1) &&
+      view.engine.renderer.page === 1 && paragraph(docOf(view))?.getBoundingClientRect().height > 0)))
+      throw Error('The requested script chapter did not open at its start')
+  }
   const selectIn = async (view, chapter, from, to) => {
-    await view.engine.goTo(view.model.toc[chapter].href); await wait(600)
+    await chapterStart(view, chapter)
     const doc = docOf(view)
     const p = paragraph(doc)
     const range = doc.createRange(); range.setStart(p.firstChild, from); range.setEnd(p.firstChild, to)
     doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
-    await until(() => view.model.selection, 3000)
-    await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000)
-    await wait(100)
+    if (!(await until(() => view.model.selection?.text === range.toString() && !view.model.selecting &&
+      view.contentEl.querySelector('.abele-book-selection')?.getBoundingClientRect().height > 0, 3000)))
+      throw Error('The script selection bar did not appear')
     return range
   }
   const tapOn = (range) => {
@@ -202,7 +217,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       marked?: number
     }>(`
       const { view } = await open(${JSON.stringify(BOOK)})
-      if (view.model.panel) { view.model.panel = false; await wait(300) }
+      await closePanel(view)
       await selectIn(view, 2, 0, 5)
       const button = await until(() => view.contentEl.querySelector('.abele-book-selection [data-script="E2E word card"]'), 5000)
       if (!button) return { button: false }
@@ -211,7 +226,8 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const text = await read(card)
       view.reading.clearSelection()
       const marked = await until(() => marks(view), 5000)
-      await wait(300)
+      if (!(await until(() => !view.contentEl.querySelector('.abele-book-selection') && docOf(view).getSelection().isCollapsed)))
+        throw Error('The script selection did not clear before picturing the mark')
       const img = await require('@electron/remote').getCurrentWebContents().capturePage()
       require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/book-scripts-mark.png', img.toPNG())
@@ -239,7 +255,8 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
     }>(`
       const view = bookLeaf().view
       app.workspace.setActiveLeaf(bookLeaf(), { focus: true })
-      await view.engine.goTo(view.model.toc[2].href); await wait(700)
+      await chapterStart(view, 2)
+      if (!(await until(() => marks(view)))) throw Error('The card mark did not draw before the tap')
       const p = paragraph(docOf(view))
       const range = docOf(view).createRange(); range.setStart(p.firstChild, 1); range.setEnd(p.firstChild, 3)
       tapOn(range)
@@ -254,7 +271,10 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const text = await read(${JSON.stringify(card)})
       const link = /\\[\\[[^\\]]*rich\\.epub#cfi=[^\\]]*\\]\\]/.exec(text)[0]
       await app.vault.create(${JSON.stringify(`${DIR}/Another note.md`)}, 'See ' + link + '\\n')
-      await wait(1500)
+      if (!(await until(() => view.linked.places().some(c => {
+        const paths = view.linked.at(c).map(n => n.path)
+        return paths.includes(${JSON.stringify(card)}) && paths.includes(${JSON.stringify(`${DIR}/Another note.md`)})
+      }) && marks(view)))) throw Error('Both card links did not reach the book mark')
       // The page is made again once its tab shows again: the words are found on it anew.
       const p2 = paragraph(docOf(view))
       const again = docOf(view).createRange(); again.setStart(p2.firstChild, 1); again.setEnd(p2.firstChild, 3)
@@ -300,7 +320,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const bar = () => bookLeaf().view.contentEl.querySelector('.abele-book-selection')
       const titles = (sel) => { const t = [...document.querySelectorAll(sel)].map((e) => e.textContent); return t.length ? t : null }
       const { view } = await open(${JSON.stringify(BOOK)})
-      if (view.model.panel) { view.model.panel = false; await wait(300) }
+      await closePanel(view)
       await selectIn(view, 2, 0, 5)
 
       // A pin in the list of every script puts one on the bar, and runs nothing.
@@ -310,6 +330,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const before = runs().length
       row.querySelector('.abele-book-script-pin').click()
       await until(() => config.reader.selectionScripts.some((c) => c.script === 'E2E echo one'), 3000)
+      // Observation window: pinning must neither run the script nor dismiss its picker.
       await wait(300)
       const stillOpen = !!document.querySelector('.prompt')
       const ranOnPin = runs().length - before
@@ -340,7 +361,8 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const doc = await until(() => pdf.engine.renderer.getContents().map((c) => c.doc).find((d) => d?.querySelector('.textLayer span')), 10000)
       let pdfFolded = false
       if (doc) {
-        await wait(500)
+        if (!(await until(() => doc.querySelector('.textLayer span')?.getBoundingClientRect().height > 0)))
+          throw Error('The PDF script text did not draw')
         const span = doc.querySelector('.textLayer span')
         const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 5)
         doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
@@ -371,11 +393,12 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
   it('in a PDF the card is marked over the page, and a tap on it opens the card', () => {
     const r = run<{ error?: string; card?: string; marked?: boolean; opened?: string | null }>(`
       const { view } = await open(${JSON.stringify(PDF)})
-      if (view.model.panel) { view.model.panel = false; await wait(300) }
+      await closePanel(view)
       await Promise.race([view.engine.goTo(0), wait(5000)])
       const doc = await until(() => view.engine.renderer.getContents().map((c) => c.doc).find((d) => d?.querySelector('.textLayer span')), 10000)
       if (!doc) return { error: 'the page never drew its text' }
-      await wait(500)
+      if (!(await until(() => doc.querySelector('.textLayer span')?.getBoundingClientRect().height > 0)))
+        throw Error('The PDF card text did not draw')
       const span = doc.querySelector('.textLayer span')
       const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 5)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
@@ -425,15 +448,29 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       await window.__abeleTest.ScriptService.getInstance().discover()
       const { view } = await open(${JSON.stringify(BOOK)})
       await selectIn(view, 2, 0, 5)
-      await wait(400)
+      // Observe stable mounted geometry, without waiting for the overflow assertions to pass.
+      const settledLayout = async (root) => {
+        let previous
+        if (!(await until(() => {
+          if (!root?.isConnected || !root.getBoundingClientRect().height) return false
+          const boxes = JSON.stringify([root, ...root.querySelectorAll('*')].map(el => {
+            const r = el.getBoundingClientRect()
+            return [r.x, r.y, r.width, r.height]
+          }))
+          const stable = boxes === previous
+          previous = boxes
+          return stable
+        }))) throw Error('The phone script controls did not settle')
+      }
       const bar = view.contentEl.querySelector('.abele-book-selection')
+      await settledLayout(bar)
       const foot = view.contentEl.querySelector('.abele-book-reader__foot')
       const button = !!bar.querySelector('[data-script="E2E word card"]')
       const img = await require('@electron/remote').getCurrentWebContents().capturePage()
       require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/book-scripts-bar.png', img.toPNG())
-      const shot = async (name) => {
-        await wait(400)
+      const shot = async (name, root) => {
+        await settledLayout(root)
         const img = await require('@electron/remote').getCurrentWebContents().capturePage()
         require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + name + '.png', img.toPNG())
       }
@@ -447,7 +484,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       // The list of every script, a pin at the end of each row.
       bar.querySelector('.abele-book-selection__run-script').click()
       const prompt = await until(() => document.querySelector('.prompt .suggestion-item') && document.querySelector('.prompt'), 3000)
-      await shot('book-scripts-picker')
+      await shot('book-scripts-picker', prompt)
       const pickerOver = prompt ? over(prompt) : ['no list']
       const pins = prompt ? prompt.querySelectorAll('.abele-book-script-pin').length : 0
       document.querySelector('.prompt input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -463,11 +500,11 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       if (!view.contentEl.querySelector('.abele-book-selection')) await selectIn(view, 2, 0, 5)
       const folded = await until(() => view.contentEl.querySelector('.abele-book-selection__scripts'), 3000)
       const bar2 = view.contentEl.querySelector('.abele-book-selection')
+      await shot('book-scripts-folded', bar2)
       const foldedRow = bar2 ? bar2.getBoundingClientRect().height : 0
-      await shot('book-scripts-folded')
       folded?.click()
       const menuEl = await until(() => document.querySelector('.menu'), 3000)
-      await shot('book-scripts-menu')
+      await shot('book-scripts-menu', menuEl)
       const menuOver = menuEl ? over(menuEl) : ['no menu']
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       document.querySelector('.menu')?.remove()
@@ -483,7 +520,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       let entries = 0
       if (section) {
         section.scrollIntoView({ block: 'start' })
-        await shot('book-scripts-settings')
+        await shot('book-scripts-settings', section)
         settingsOver = over(section)
         entries = section.querySelectorAll('.abele-book-scripts-settings__entry').length
       }
