@@ -77,7 +77,7 @@ export function plainText(body: string): string {
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/^#{1,6}\s+/, '')
       .replace(/^>\s?/, '')
-      .replace(/^(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/, '')
+      .replace(/^(?:[-*+]|\d+[.)])\s+(?:\[[ /xX><?!-]\]\s+)?/, '')
       .replace(/^\|(.*)\|$/, '$1')
       .replace(/<[^>]+>/g, '')
       .replace(/(\*\*|__)(.*?)\1/g, '$2')

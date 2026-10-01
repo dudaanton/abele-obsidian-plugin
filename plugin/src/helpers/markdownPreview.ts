@@ -30,7 +30,7 @@ export function previewText(markdown: string): string {
       .replace(/(\*\*\*|\*\*|\*|___|__|_|~~)(?=\S)([\s\S]*?\S)\1/g, '$2')
       // What a line can begin with: a heading, a quote, a bullet, a number, a task box.
       .replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
-      .replace(/^\s*\[[ xX]\]\s+/gm, '')
+      .replace(/^\s*\[[ /xX><?!-]\]\s+/gm, '')
       // A horizontal rule is a line with no words in it.
       .replace(/^\s{0,3}([-*_])(\s*\1){2,}\s*$/gm, ' ')
       // Whatever is left is one line: the card clamps it, and a newline inside a clamp is a
