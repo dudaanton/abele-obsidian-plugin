@@ -8,6 +8,9 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { configureAbele, useVault } from '../helpers/testEnv'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { migrateFromToggl } from '@/commands/migrateFromToggl'
+import { DEFAULT_TIMEOUT_MS, setRequestTransport } from '@/helpers/http'
+import type { RequestUrlResponse } from 'obsidian'
 
 const PATH = 'Timers/Orchard.md'
 const START = '2024-02-29T23:59:30'
@@ -182,6 +185,42 @@ describe('TimeEntry public state and lifecycle', () => {
     app.emit('vault', 'delete', file)
     expect(item.entryNotFound).toBe(true)
   })
+})
+
+describe('Toggl import request deadlines', () => {
+  // The shared HTTP deadline now bounds the formerly unbounded import requests.
+  it.each(['projects', 'time_entries'])(
+    'settles when the %s request never answers',
+    async (endpoint) => {
+      setRequestTransport(async (request) => {
+        if (request.url.includes(`/me/${endpoint}`))
+          return new Promise<RequestUrlResponse>(() => {})
+        return {
+          status: 200,
+          headers: {},
+          json: [],
+          text: '[]',
+          arrayBuffer: new ArrayBuffer(0),
+        } as RequestUrlResponse
+      })
+      try {
+        const pending = migrateFromToggl(
+          'sample-import-token',
+          dayjs('2024-02-01'),
+          dayjs('2024-02-29')
+        )
+        await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS)
+        const result = await pending
+        expect(result.errors).toHaveLength(1)
+        expect(result.errors[0]).toContain('Request timed out after 30s')
+        expect(result.entriesCreated).toBe(0)
+        expect(app.stats.create).toBe(0)
+        expect(app.stats.modify).toBe(0)
+      } finally {
+        setRequestTransport(undefined)
+      }
+    }
+  )
 })
 
 describe('time entry naming after a file edit', () => {
