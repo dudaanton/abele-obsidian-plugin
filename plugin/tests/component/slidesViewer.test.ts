@@ -8,6 +8,7 @@ afterEach(() => {
   viewers.splice(0).forEach((v) => v.destroy())
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 const media: MediaResolver = {
   resolve: (ref) => ({ url: ref, video: ref.endsWith('.mp4]]') }),
@@ -183,6 +184,26 @@ describe('bounded deck rendering', () => {
       new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true, bubbles: true })
     )
     expect(viewer.index).toBe(1)
+  })
+
+  it('keeps foreign-window input keys and video controls independent of ambient constructors', async () => {
+    // Happy DOM shares constructors across windows. Substitute a different realm's constructors
+    // here while the document factory continues to produce its own native element instances.
+    vi.stubGlobal('Element', class OtherRealmElement extends Element {})
+    vi.stubGlobal('HTMLVideoElement', class OtherRealmVideo extends HTMLVideoElement {})
+    const { viewer, host, load } = made(
+      '::slide{bg="[[sample-window-video.mp4]]"}::\n# Window\n---\n# Next'
+    )
+    await load()
+    const input = document.createElement('input')
+    host.querySelector('.abele-slide:not([hidden])')!.append(input)
+    expect(input instanceof Element).toBe(false)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    expect(viewer.index).toBe(0)
+    const video = host.querySelector('video')!
+    expect(video instanceof HTMLVideoElement).toBe(false)
+    expect(video.controls).toBe(true)
+    expect(video.loop).toBe(true)
   })
 
   it('moves the same viewer into a window overlay and restores it on escape or destroy', async () => {

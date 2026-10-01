@@ -18,11 +18,17 @@ interface RenderedSlide {
   attempted: WeakSet<HTMLVideoElement>
 }
 
-const interactive = (target: EventTarget | null): boolean =>
-  target instanceof Element &&
-  !!target.closest(
-    'input, textarea, select, button, a, video, audio, iframe, [contenteditable="true"], .abele-map, .abele-chart-container, .abele-gallery-widget-container'
+const interactive = (target: EventTarget | null): boolean => {
+  // The event may come from another document whose constructors are not this realm's.
+  const element = target as Element | null
+  return (
+    element?.nodeType === 1 &&
+    typeof element.closest === 'function' &&
+    !!element.closest(
+      'input, textarea, select, button, a, video, audio, iframe, [contenteditable="true"], .abele-map, .abele-chart-container, .abele-gallery-widget-container'
+    )
   )
+}
 
 /** A bounded DOM viewer, independent of any app, renderer or file system. */
 export class DeckViewer {
@@ -207,11 +213,12 @@ export class DeckViewer {
     element.hidden = index !== this.index
     const background = this.media.resolve(slide.settings.bg)
     if (background) {
-      const el = doc.createElement(background.video ? 'video' : 'img')
+      const el = background.video ? doc.createElement('video') : doc.createElement('img')
       el.className = 'abele-slide-background'
       el.src = background.url
       el.style.objectFit = slide.settings.fit
-      if (el instanceof HTMLVideoElement) {
+      // The tag is known from construction; never compare a popout's node to a main-window class.
+      if ('controls' in el) {
         el.loop = true
         el.controls = true
       } else el.alt = ''
