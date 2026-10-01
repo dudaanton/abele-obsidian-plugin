@@ -1,5 +1,5 @@
 import { saveParts, xmlBytes, type WordPackage, type WordParagraph } from './package'
-import { escapeXml, patchXml, type Patch } from './xml'
+import { escapeXml, patchXml, preserveXmlSpace, type Patch } from './xml'
 import { assertPlain, isEmptyNode, nodeWithContent, textRun } from './structure'
 import { WordMutation } from './mutation'
 import { paragraphOperation } from './paragraphOps'
@@ -147,7 +147,7 @@ export function textPatches(
     if (isEmptyNode(source, r.node)) {
       let open = source.slice(r.node.start, r.node.openEnd).replace(/\/\s*>$/, '>')
       if (/^\s|\s$/.test(next) && r.node.attrs['xml:space'] !== 'preserve')
-        open = open.replace(/>$/, ' xml:space="preserve">')
+        open = preserveXmlSpace(open)
       patches.push({
         start: r.node.start,
         end: r.node.end,
@@ -161,9 +161,7 @@ export function textPatches(
       patches.push({
         start: r.node.start,
         end: r.node.openEnd,
-        text: open.includes('xml:space=')
-          ? open.replace(/xml:space\s*=\s*(?:"[^"]*"|'[^']*')/, 'xml:space="preserve"')
-          : open.replace(/>$/, ' xml:space="preserve">'),
+        text: preserveXmlSpace(open),
       })
     }
   })

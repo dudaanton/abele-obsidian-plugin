@@ -22,6 +22,14 @@ export const escapeXml = (text: string) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&apos;')
+/** Change an existing whitespace attribute regardless of spacing/quoting; never append a duplicate. */
+export function preserveXmlSpace(open: string): string {
+  const attribute = /(\s+xml:space\s*=\s*)(?:"[^"]*"|'[^']*')/
+  if (attribute.test(open))
+    return open.replace(attribute, (_, prefix: string) => `${prefix}"preserve"`)
+  return open.replace(/(\s*\/?>)$/, (_, close: string) => ` xml:space="preserve"${close}`)
+}
+
 export function decodeXml(text: string): string {
   if (/&(?!(?:amp|lt|gt|quot|apos|#(?:x[0-9a-f]+|[0-9]+));)/i.test(text))
     throw new Error('Invalid XML entities')

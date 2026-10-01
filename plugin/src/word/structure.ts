@@ -6,6 +6,7 @@ import {
   escapeXml,
   isW,
   patchXml,
+  preserveXmlSpace,
   rawNode,
   W,
   type Patch,
@@ -263,9 +264,7 @@ export function renderTextRun(
   const source = doc.xml.get('word/document.xml')!
   let open = source.slice(r.node.start, r.node.openEnd).replace(/\/\s*>$/, '>')
   if (/^\s|\s$/.test(value) && r.node.attrs['xml:space'] !== 'preserve')
-    open = open.includes('xml:space=')
-      ? open.replace(/xml:space\s*=\s*(?:"[^"]*"|'[^']*')/, 'xml:space="preserve"')
-      : open.replace(/>$/, ' xml:space="preserve">')
+    open = preserveXmlSpace(open)
   const patches: Patch[] = [
     { start: r.node.start, end: r.node.end, text: open + escapeXml(value) + `</${r.node.name}>` },
   ]
