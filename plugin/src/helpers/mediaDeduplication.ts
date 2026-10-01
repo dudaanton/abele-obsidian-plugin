@@ -1,6 +1,7 @@
 import { TFile, type App, type ReferenceCache } from 'obsidian'
 import { encodeLinkPath } from '@/drawing/embedRelink'
 import { mediaReferencesInText, resolveMediaTarget } from './mediaReferences'
+import { markdownLinkTargets } from './markdownLinkTargets'
 
 export function equalMediaBytes(left: ArrayBuffer, right: ArrayBuffer): boolean {
   if (left.byteLength !== right.byteLength) return false
@@ -13,30 +14,11 @@ export function equalMediaBytes(left: ArrayBuffer, right: ArrayBuffer): boolean 
 function replaceTarget(original: string, keep: string): string {
   const wiki = /^(!?\[\[)([^\]|#]*)([\s\S]*\]\])$/.exec(original)
   if (wiki) return wiki[1] + keep + wiki[3]
-  const start = original.indexOf('](')
-  if (start >= 0) {
-    let from = start + 2
-    while (/\s/.test(original[from] ?? '') && from < original.length) from++
-    const angle = original[from] === '<'
-    if (angle) from++
-    let to = from
-    let depth = 0
-    for (; to < original.length; to++) {
-      const c = original[to]
-      if (c === '\\') {
-        to++
-        continue
-      }
-      if (angle) {
-        if (c === '>') break
-      } else {
-        if (c === '(') depth++
-        else if (c === ')') {
-          if (depth === 0) break
-          depth--
-        } else if (/\s/.test(c) && depth === 0) break
-      }
-    }
+  const target = markdownLinkTargets(original).find(
+    (span) => span.labelStart === (original.startsWith('!') ? 1 : 0)
+  )
+  if (target) {
+    const { start: from, end: to } = target
     const fragmentAt = original.slice(from, to).indexOf('#')
     const fragment = fragmentAt < 0 ? '' : original.slice(from + fragmentAt, to)
     return original.slice(0, from) + encodeLinkPath(keep) + fragment + original.slice(to)

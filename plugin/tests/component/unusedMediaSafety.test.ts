@@ -89,6 +89,17 @@ describe('unused media safety', () => {
     expect(state.scanError).toContain('Scan failed')
   })
 
+  it('keeps media referenced by balanced Markdown targets inside chat text', async () => {
+    const { state } = await open([
+      {
+        path: 'sample-chat.abchat',
+        content: JSON.stringify({ content: '![sample](sample-image(1).png)' }),
+      },
+      { path: 'sample-image(1).png' },
+    ])
+    expect(state.items).toEqual([])
+  })
+
   it('shows trash errors instead of claiming deletion', async () => {
     const { state, app } = await open([{ path: 'sample-orphan.pdf' }])
     vi.spyOn(app.fileManager as any, 'trashFile').mockRejectedValue(new Error('sample failure'))

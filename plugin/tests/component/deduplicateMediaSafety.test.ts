@@ -159,6 +159,14 @@ describe('deduplicate media safety', () => {
     expect(state.groups[0].status).toBe('error')
   })
 
+  it('keeps escaped label delimiters separate from the Markdown target', async () => {
+    const text = '[sample \\](caption](media/sample-copy.png)'
+    const { state, vault, note } = await open({ text, links: [[text, 'media/sample-copy.png']] })
+    await state.mergeAll()
+    expect(await vault.read(note)).toBe('[sample \\](caption](media/sample-keep.png)')
+    expect(state.groups[0].status).toBe('done')
+  })
+
   it('refuses stale parsed offsets instead of editing unrelated text', async () => {
     const text = '![[media/sample-copy.png]]'
     const { state, vault, note, files } = await open({

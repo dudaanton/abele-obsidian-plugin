@@ -1,5 +1,6 @@
 import type { App } from 'obsidian'
 import { parseYaml } from 'obsidian'
+import { markdownLinkTargets } from './markdownLinkTargets'
 
 /** Formats whose references are not included in Obsidian's Markdown link index. */
 const STRUCTURED = new Set(['abchat', 'json', 'jsonl', 'canvas', 'base', 'yaml', 'yml'])
@@ -131,7 +132,7 @@ function referencesInString(app: App, value: string, source: string): Set<string
   }
   add(value)
   for (const m of value.matchAll(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g)) add(m[1])
-  for (const m of value.matchAll(/\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+["'][^"']*["'])?\s*\)/g)) add(m[1])
+  for (const { start, end } of markdownLinkTargets(value)) add(value.slice(start, end))
   for (const m of value.matchAll(/(?:src|poster|href)\s*=\s*["']([^"']+)["']/gi)) add(m[1])
   return paths
 }
