@@ -292,6 +292,20 @@ describe('applying a template', () => {
     })
   })
 
+  it('guards automatic application without changing explicit default replacement', async () => {
+    const env = templateHarness([{ path: 'sample.md', content: 'Existing' }])
+    const file = env.app.vault.getFileByPath('sample.md')!
+    await env.template('Default body', {
+      template_for: 'default', callbacks: 'command:sample',
+    })
+    expect(await service().applyDefaultTemplate(file, true)).toBe(false)
+    expect(await env.app.vault.read(file)).toBe('Existing')
+    expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+    expect(await service().applyDefaultTemplate(file)).toBe(true)
+    expect(await env.app.vault.read(file)).toBe('Default body')
+    expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
+  })
+
   // BUG: only body variables are checked; a default with required input solely in a
   // template_for_* property is silently applied with that input erased.
   it('refuses a default whose target property still needs user input', async () => {

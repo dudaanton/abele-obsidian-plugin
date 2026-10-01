@@ -86,7 +86,7 @@ describe('default template on newly created notes', () => {
 
   // BUG: the emptiness check happens before the awaited template read. Text arriving
   // after that check is overwritten by the final vault.modify rather than preserved.
-  it.fails(
+  it(
     'preserves content arriving while the default template itself is being read',
     async () => {
       const env = await setup()
@@ -109,6 +109,47 @@ describe('default template on newly created notes', () => {
       expect(await read(env.file)).toBe('Concurrent content')
     }
   )
+
+  it('preserves unsaved input arriving during the template read and skips callbacks', async () => {
+    const env = await setup()
+    env.app.setFrontmatter('Templates/sample.md', {
+      type: 'template', template_for: 'default', callbacks: 'command:sample',
+    })
+    const reading = gate()
+    const resume = gate()
+    const read = env.app.vault.read.bind(env.app.vault)
+    vi.spyOn(env.app.vault, 'read').mockImplementation(async (file) => {
+      if (file.path === 'Templates/sample.md') {
+        reading.release()
+        await resume.promise
+      }
+      return read(file)
+    })
+    const pending = env.callback(env.file)
+    await vi.advanceTimersByTimeAsync(1000)
+    await reading.promise
+    env.workspace.getLeavesOfType.mockReturnValue([
+      { view: { file: env.file, editor: { getValue: () => 'New unsaved input' } } },
+    ] as never)
+    resume.release()
+    await pending
+    expect(await read(env.file)).toBe('')
+    expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+  })
+
+  it('checks the current disk content inside the atomic process callback', async () => {
+    const env = await setup()
+    const process = env.app.vault.process.bind(env.app.vault)
+    vi.spyOn(env.app.vault, 'process').mockImplementation(async (file, fn) => {
+      await env.app.vault.modify(file, 'Arrived at the write boundary')
+      return process(file, fn)
+    })
+    const pending = env.callback(env.file)
+    await vi.runAllTimersAsync()
+    await pending
+    expect(await env.app.vault.read(env.file)).toBe('Arrived at the write boundary')
+    expect(env.app.vault.process).toHaveBeenCalledOnce()
+  })
 
   it('checks unsaved editor content and treats whitespace-only notes as empty', async () => {
     const env = await setup()

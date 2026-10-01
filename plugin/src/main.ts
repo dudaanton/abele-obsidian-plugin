@@ -1061,7 +1061,7 @@ export default class AbelePlugin extends Plugin {
           if (content.trim() !== '') return
 
           // Apply default template
-          await TemplateService.getInstance().applyDefaultTemplate(file)
+          await TemplateService.getInstance().applyDefaultTemplate(file, true)
         })
       )
     })

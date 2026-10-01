@@ -3,7 +3,7 @@ import { dump, load } from 'js-yaml'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { UserTemplate } from './UserTemplate'
 import { parseTemplateVariables, applyTemplateVariables, TemplateVariable } from './TemplateParser'
-import { getAvailablePath } from '@/helpers/vaultUtils'
+import { getAvailablePath, getEditorForFile } from '@/helpers/vaultUtils'
 
 /** Wrap value in quotes if it contains a colon (breaks YAML), but leave wikilinks and arrays as-is */
 function escapeFrontmatterValue(value: string): string {
@@ -209,9 +209,10 @@ export class TemplateService {
   }
 
   /**
-   * Apply default template to a newly created file
+   * Apply default template to a newly created file.
+   * The create hook requests an atomic empty-note guard; explicit callers may replace content.
    */
-  async applyDefaultTemplate(file: TFile): Promise<boolean> {
+  async applyDefaultTemplate(file: TFile, onlyIfEmpty = false): Promise<boolean> {
     console.debug('apply default template for file', file.path)
     const defaultTemplate = this.getDefaultTemplate()
     if (!defaultTemplate) return false
@@ -234,7 +235,18 @@ export class TemplateService {
     content = await this.applyTargetProperties(content, defaultTemplate, variables, new Map())
 
     const { app: vaultApp } = GlobalStore.getInstance()
-    await vaultApp.vault.modify(file, content)
+    if (onlyIfEmpty) {
+      let applied = false
+      await vaultApp.vault.process(file, (current) => {
+        // Recheck both sources at the write boundary, after all async template work.
+        if (current.trim() || getEditorForFile(file)?.getValue().trim()) return current
+        applied = true
+        return content
+      })
+      if (!applied) return false
+    } else {
+      await vaultApp.vault.modify(file, content)
+    }
 
     await this.executeCallbacks(defaultTemplate.callbacks)
 
