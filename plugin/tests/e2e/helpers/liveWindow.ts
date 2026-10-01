@@ -45,7 +45,8 @@ beforeAll(() => {
   if (onPhone()) installPhoneHost()
   again(closeStrayWindows)
   again(notesInEditor)
-  again(() => setBackgroundThrottling(false))
+  // This setter retries a lost reply itself, including when called by reloadApp.
+  setBackgroundThrottling(false)
   again(() => setFocusEmulation(true))
   // Menus a test can open and pick from: see `useDomMenus`.
   again(useDomMenus)

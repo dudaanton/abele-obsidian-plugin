@@ -265,10 +265,15 @@ export function capturedErrors(): string {
 export function setBackgroundThrottling(on: boolean): void {
   // A phone's app is in front, on a screen that stays awake: nothing to throttle.
   if (onPhone()) return
-  evalRaw(
-    `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(${on}); return 'ok' })()`,
-    30_000
-  )
+  const code = `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(${on}); return 'ok' })()`
+  try {
+    evalRaw(code, 30_000)
+  } catch (error) {
+    // Idempotent, including after a reload: a lost CLI reply is not evidence that the remote
+    // setter failed. Retry only that transport failure, with the pair below the worker ceiling.
+    if (!/gave no answer/.test(String(error))) throw error
+    evalRaw(code, 10_000)
+  }
 }
 
 /**

@@ -37,10 +37,8 @@ const WINDOW = `require('@electron/remote').getCurrentWindow()`
 
 const reload = async (how: string): Promise<void> => {
   await reloadApp(how)
+  // reloadApp already disables throttling. Only test bodies need CDP; teardown does not.
   runCli(['dev:debug', 'on'], 30_000)
-  evalRaw(
-    `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
-  )
 }
 
 const PRELUDE = `
@@ -85,6 +83,43 @@ const PRELUDE = `
   const still = (view) => ![view.containerEl, document.querySelector('.mobile-navbar')].filter(Boolean)
     .some(el => el.getAnimations({ subtree: true }).some(a => a.playState === 'running' || a.playState === 'pending'))
   const selectionBar = (view) => view.contentEl.querySelector('.abele-book-selection')
+  const zenState = (leaf, view) => {
+    const active = app.workspace.activeLeaf
+    const navbar = document.querySelector('.mobile-navbar')
+    return {
+      activeLeaf: active?.id ?? null,
+      activeType: active?.view?.getViewType?.() ?? null,
+      front: active === leaf,
+      phone: view.zenChrome?.host.phone,
+      chromeFront: view.zenChrome?.host.front(),
+      on: api.zen.state().on,
+      cls: view.containerEl.classList.contains('abele-book_zen'),
+      peek: view.model.zenPeek,
+      navbarAvailable: !!app.mobileNavbar?.hideNavigation && !!app.mobileNavbar?.restoreNavigation,
+      navbarConnected: !!navbar?.isConnected,
+      navbarOpacity: navbar ? getComputedStyle(navbar).opacity : 'none',
+      hidden: document.body.classList.contains('is-hidden-nav'),
+      headerOpacity: getComputedStyle(header(view)).opacity,
+      header: shown(header(view)),
+      foot: shown(foot(view)),
+      height: height(view),
+      still: still(view),
+    }
+  }
+  const waitChrome = async (leaf, view, label, condition, ms = 15000) => {
+    if (!await until(condition, ms))
+      throw new Error(label + ' did not settle: ' + JSON.stringify(zenState(leaf, view)))
+  }
+  const waitZen = async (leaf, view, on, beforeHeight, phone = false) => {
+    await waitChrome(leaf, view, 'zen transition', () => {
+      const s = zenState(leaf, view)
+      return s.front && s.on === on && s.cls === on && !s.peek && s.still &&
+        (on ? s.height > beforeHeight + 40 : s.height < beforeHeight - 40) &&
+        (phone ? s.phone && s.chromeFront && s.navbarAvailable && s.navbarConnected && s.hidden === on &&
+          s.headerOpacity === (on ? '0' : '1') && s.navbarOpacity === (on ? '0' : '1') :
+          s.header === !on && s.foot === !on)
+    })
+  }
   /** Where the highlight is drawn and where its words are, a line each. */
   const boxes = (view, cfi) => {
     const c = contents(view)
@@ -281,10 +316,30 @@ describe.skipIf(!available)('zen mode', () => {
         await cfg.saveSettings()
         return 'ok'
       })()`
-    evalRaw(clean, 44_000)
-    if (evalRaw(`String(app.isMobile)`) === 'true') await reload('app.emulateMobile(false)')
-    if (size[0])
+    const restoreViewport = async () => {
+      if (!size[0]) return
       evalRaw(`(() => { ${WINDOW}.setContentSize(${size[0]}, ${size[1]}); return 'ok' })()`)
+      if (
+        !(await until(() =>
+          evalJson<boolean>(`innerWidth === ${size[0]} && innerHeight === ${size[1]}`)
+        ))
+      )
+        throw new Error(
+          'desktop viewport did not restore: ' +
+            JSON.stringify({ requested: size, actual: evalJson('[innerWidth, innerHeight]') })
+        )
+    }
+    try {
+      evalRaw(clean, 44_000)
+    } finally {
+      // Restore the window even if fixture cleanup fails. Returning to desktop needs neither
+      // debug activation nor a second remote throttling call after reloadApp has done it.
+      try {
+        if (evalRaw(`String(app.isMobile)`) === 'true') await reloadApp('app.emulateMobile(false)')
+      } finally {
+        await restoreViewport()
+      }
+    }
   }, 120_000)
 
   it('on the desktop, gives the page the room of the header and the row under it, and Esc puts them back', () => {
@@ -299,21 +354,21 @@ describe.skipIf(!available)('zen mode', () => {
       after?: { height: number; header: boolean; foot: boolean; boxes: Boxes; on: boolean }
     }>(`
       api.zen.set(false)
-      const { view } = await open(${JSON.stringify(PROSE)})
+      const { leaf, view } = await open(${JSON.stringify(PROSE)})
       await chapterStart(view)
       const cfi = await highlight(view)
       const state = () => ({ height: height(view), header: shown(header(view)), foot: shown(foot(view)), boxes: boxes(view, cfi) })
       const before = state()
 
       await toggle()
-      await until(() => height(view) > before.height + 40 && !shown(header(view)) && !shown(foot(view)), 5000)
+      await waitZen(leaf, view, true, before.height)
       await marksReady(view, cfi)
       const zen = { ...state(), cls: view.containerEl.classList.contains('abele-book_zen') }
       await shot('desktop')
 
       // The mouse at the top of the tab: the header over the page, the page as it was.
       view.containerEl.querySelector('.abele-book-zen-edge').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-      await until(() => view.model.zenPeek && shown(header(view)) && still(view))
+      await waitChrome(leaf, view, 'desktop peek', () => view.model.zenPeek && shown(header(view)) && still(view))
       const peek = {
         height: height(view),
         header: shown(header(view)),
@@ -323,7 +378,7 @@ describe.skipIf(!available)('zen mode', () => {
       await shot('desktop-peek')
       // And away from it: gone a moment later.
       stage(view).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-      await until(() => !shown(header(view)) && !view.model.zenPeek)
+      await waitChrome(leaf, view, 'desktop peek expiry', () => !shown(header(view)) && !view.model.zenPeek)
       const peekGone = !shown(header(view)) && !view.model.zenPeek
 
       // Words selected bring up their bar, over the page.
@@ -341,7 +396,7 @@ describe.skipIf(!available)('zen mode', () => {
       // Esc, as the keyboard sends it, to whatever holds the focus.
       view.takeFocus()
       await press('Escape', 'Escape', 27)
-      await until(() => height(view) < zen.height - 40 && shown(header(view)) && shown(foot(view)), 5000)
+      await waitZen(leaf, view, false, zen.height)
       await marksReady(view, cfi)
       const after = { ...state(), on: api.zen.state().on }
       return { before, zen, peek, peekGone, selected, last, after }
@@ -379,6 +434,9 @@ describe.skipIf(!available)('zen mode', () => {
     evalRaw(`(() => { ${WINDOW}.setContentSize(390, 844); return 'ok' })()`)
     if (!(await until(() => evalJson<boolean>('innerWidth === 390 && innerHeight === 844'))))
       throw new Error('phone viewport did not reach the requested size')
+    // Obsidian chooses phone vs tablet during startup. The first reload still had the desktop
+    // width; reload at the confirmed phone size, as the other phone reader probes do.
+    await reload('location.reload()')
     const r = run<{
       error?: string
       phone?: boolean
@@ -390,7 +448,7 @@ describe.skipIf(!available)('zen mode', () => {
       after?: { height: number; hidden: boolean; boxes: Boxes }
     }>(`
       api.zen.set(false)
-      const { view } = await open(${JSON.stringify(PROSE)})
+      const { leaf, view } = await open(${JSON.stringify(PROSE)})
       await chapterStart(view)
       const cfi = await highlight(view)
       const navbar = document.querySelector('.mobile-navbar')
@@ -398,8 +456,7 @@ describe.skipIf(!available)('zen mode', () => {
       await shot('phone-before')
 
       await toggle()
-      await until(() => height(view) > before.height + 40 && document.body.classList.contains('is-hidden-nav') &&
-        getComputedStyle(header(view)).opacity === '0' && (!navbar || getComputedStyle(navbar).opacity === '0') && still(view), 5000)
+      await waitZen(leaf, view, true, before.height, true)
       await marksReady(view, cfi)
       const zen = {
         height: height(view),
@@ -413,7 +470,7 @@ describe.skipIf(!available)('zen mode', () => {
       // A tap in the middle of the page, as a finger taps.
       const box = stage(view).getBoundingClientRect()
       await tap(box.left + box.width / 2, box.top + box.height / 2)
-      await until(() => view.model.zenPeek && !document.body.classList.contains('is-hidden-nav') && shown(foot(view)) && still(view))
+      await waitChrome(leaf, view, 'phone peek', () => view.model.zenPeek && !document.body.classList.contains('is-hidden-nav') && shown(foot(view)) && still(view))
       const f = foot(view)
       const peek = {
         height: height(view),
@@ -423,12 +480,12 @@ describe.skipIf(!available)('zen mode', () => {
         navTop: navbar ? Math.round(navbar.getBoundingClientRect().top) : 0,
       }
       await shot('phone-peek')
-      await until(() => !view.model.zenPeek && document.body.classList.contains('is-hidden-nav') && !shown(foot(view)) && still(view))
+      await waitChrome(leaf, view, 'phone peek expiry', () => !view.model.zenPeek && document.body.classList.contains('is-hidden-nav') && !shown(foot(view)) && still(view))
       const expired = { hidden: document.body.classList.contains('is-hidden-nav'), foot: shown(foot(view)) }
       const last = await selectLastLine(view, 'phone-last-line')
 
       await toggle()
-      await until(() => height(view) < zen.height - 40 && !document.body.classList.contains('is-hidden-nav') && still(view), 5000)
+      await waitZen(leaf, view, false, zen.height, true)
       await marksReady(view, cfi)
       const after = { height: height(view), hidden: document.body.classList.contains('is-hidden-nav'), boxes: boxes(view, cfi) }
       return { phone: app.isMobile, before, zen, peek, expired, last, after }
