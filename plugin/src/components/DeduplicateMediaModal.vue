@@ -80,6 +80,7 @@ import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { vaultUrl } from '@/helpers/vaultUrl'
+import { equalMediaBytes, mergeMediaFiles } from '@/helpers/mediaDeduplication'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -167,21 +168,32 @@ const scan = async () => {
     totalFiles.value = allFiles.length
 
     // Hash all media files
-    const hashMap = new Map<string, TFile[]>()
+    const hashMap = new Map<string, TFile[][]>()
     for (const file of allFiles) {
       try {
         const buf = await app.vault.readBinary(file)
         const h = hashBuffer(buf)
         if (!hashMap.has(h)) hashMap.set(h, [])
-        hashMap.get(h)!.push(file)
+        const buckets = hashMap.get(h)!
+        let matching: TFile[] | undefined
+        for (const bucket of buckets) {
+          if (equalMediaBytes(buf, await app.vault.readBinary(bucket[0]))) {
+            matching = bucket
+            break
+          }
+        }
+        if (matching) matching.push(file)
+        else buckets.push([file])
       } catch {
         // skip unreadable
       }
       scannedFiles.value++
     }
 
-    // Build groups for hashes with >1 file
-    for (const [hash, files] of hashMap) {
+    // A short hash only selects candidates. Each bucket has also been compared byte for byte.
+    for (const [hash, files] of [...hashMap].flatMap(([hash, buckets]) =>
+      buckets.map((files) => [hash, files] as const)
+    )) {
       if (files.length < 2) continue
 
       const dupFiles: DupFile[] = files.map((f) => ({
@@ -224,50 +236,7 @@ const mergeGroup = async (gIdx: number) => {
     const keepPath = group.files[0].path
     const removePaths = group.files.slice(1).map((f) => f.path)
 
-    // Rewrite all references in all notes
-    const mdFiles = app.vault.getMarkdownFiles()
-    for (const mdFile of mdFiles) {
-      let content = await app.vault.cachedRead(mdFile)
-      let changed = false
-
-      for (const removePath of removePaths) {
-        if (content.includes(removePath)) {
-          content = content.replaceAll(removePath, keepPath)
-          changed = true
-        }
-        // Also check basename (wikilinks use basenames)
-        const removeName = removePath
-          .split('/')
-          .pop()!
-          .replace(/\.[^.]+$/, '')
-        const keepName = keepPath
-          .split('/')
-          .pop()!
-          .replace(/\.[^.]+$/, '')
-        if (removeName !== keepName && content.includes(removeName)) {
-          // Only replace wikilink-style references: [[name]] or ![[name]]
-          const escaped = removeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          const wikiRe = new RegExp(`(\\[\\[)${escaped}(\\]\\])`, 'g')
-          const newContent = content.replace(wikiRe, `$1${keepName}$2`)
-          if (newContent !== content) {
-            content = newContent
-            changed = true
-          }
-        }
-      }
-
-      if (changed) {
-        await app.vault.modify(mdFile, content)
-      }
-    }
-
-    // Delete duplicate files
-    for (const removePath of removePaths) {
-      const file = app.vault.getAbstractFileByPath(removePath)
-      if (file instanceof TFile) {
-        await app.fileManager.trashFile(file)
-      }
-    }
+    await mergeMediaFiles(app, keepPath, removePaths)
 
     groups.value[gIdx] = { ...group, status: 'done' }
   } catch (err: unknown) {

@@ -4,16 +4,56 @@ import { parseYaml } from 'obsidian'
 /** Formats whose references are not included in Obsidian's Markdown link index. */
 const STRUCTURED = new Set(['abchat', 'json', 'jsonl', 'canvas', 'base', 'yaml', 'yml'])
 
+const MEDIA_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'svg',
+  'ico',
+  'mp4',
+  'webm',
+  'ogv',
+  'mov',
+  'mkv',
+  'mp3',
+  'ogg',
+  'wav',
+  'flac',
+  'aac',
+  'm4a',
+  'pdf',
+]
+
 export function resolveMediaTarget(app: App, target: string, source: string): string | null {
+  const paths = resolveMediaTargets(app, target, source)
+  return paths.length === 1 ? paths[0] : null
+}
+
+function resolveMediaTargets(app: App, target: string, source: string): string[] {
   target = target.trim().replace(/^<|>$/g, '').split('#')[0]
-  if (!target || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(target)) return null
+  if (!target || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(target)) return []
   try {
     target = decodeURIComponent(target)
   } catch {
     /* A literal percent in a vault name. */
   }
   target = target.replace(/\\([ ()])/g, '$1')
-  return app.metadataCache.getFirstLinkpathDest(target, source)?.path ?? target
+  const resolved = app.metadataCache.getFirstLinkpathDest(target, source)
+  if (resolved) return [resolved.path]
+  // Obsidian resolves extensionless notes, but not extensionless attachments. Preserve the
+  // cleanup tool's support for those links without overriding a real note of the same name.
+  // Multiple possible extensions count as used, but cannot be safely rewritten.
+  if (target.length < 500 && !/[\r\n[\]<>]/.test(target)) {
+    const candidates = MEDIA_EXTENSIONS.flatMap((ext) => {
+      const file = app.metadataCache.getFirstLinkpathDest(`${target}.${ext}`, source)
+      return file ? [file.path] : []
+    })
+    if (candidates.length) return [...new Set(candidates)]
+  }
+  return [target]
 }
 
 /**
@@ -54,7 +94,7 @@ export function mediaReferencesInText(
     for (const path of referencesInString(app, s, source)) paths.add(path)
   }
   if (structured) {
-    const ext = source.split('.').pop()!.toLowerCase()
+    const ext = source.split('.').pop().toLowerCase()
     if (['base', 'yaml', 'yml'].includes(ext)) collectStrings(parseYaml(text), add)
     else {
       let value: unknown
@@ -87,8 +127,7 @@ function collectStrings(value: unknown, add: (s: string) => void): void {
 function referencesInString(app: App, value: string, source: string): Set<string> {
   const paths = new Set<string>()
   const add = (target: string) => {
-    const path = resolveMediaTarget(app, target, source)
-    if (path) paths.add(path)
+    for (const path of resolveMediaTargets(app, target, source)) paths.add(path)
   }
   add(value)
   for (const m of value.matchAll(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g)) add(m[1])

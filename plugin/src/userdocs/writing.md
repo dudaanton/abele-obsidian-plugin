@@ -129,9 +129,11 @@ view type in Obsidian Bases, **Find and replace**, which works on the notes a ba
 - **Import files to vault** copies files from your computer into the vault.
 - **Save remote media to vault** downloads pictures a note links from the web and points the
   note at the copies.
-- **Find and delete unused media** lists attachments no note uses.
-- **Deduplicate media attachments** finds identical files, keeps the one used most and points
-  the links at it.
+- **Find and delete unused media** lists attachments no note, chat or structured vault file uses.
+  A scan stops if a reference-bearing file cannot be read, rather than risking its attachments.
+- **Deduplicate media attachments** compares file bytes, keeps the identical copy used most and
+  redirects parsed note links to it. It keeps duplicates when a reference cannot be safely
+  rewritten (for example, a chat attachment or a plain property path), and reports why.
 - **Paste from clipboard at cursor** pastes the clipboard's text as it is.
 - **Preview** in a picture's right-click menu opens it full size.
 
