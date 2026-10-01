@@ -241,7 +241,24 @@ export class NoteRelations {
     const type = frontmatter?.type
     const groups = frontmatter?.groups
 
-    if (!this.hasPath(file.path)) {
+    const destination =
+      type === 'task'
+        ? this.tasks
+        : type === 'transaction'
+          ? this.transactions
+          : type === 'time-entry'
+            ? this.timeEntries
+            : AbeleConfig.getInstance().isLogType(type, file.path)
+              ? this.logs
+              : this.notes
+
+    if (!destination.has(file.path)) {
+      // Keep unchanged entities alive, but dispose the old kind before reclassifying a note.
+      this.removeTask(file.path)
+      this.removeTransaction(file.path)
+      this.removeTimeEntry(file.path)
+      this.removeLog(file.path)
+      this.removeNote(file.path)
       if (type === 'task') {
         this.addTask(file.path)
       } else if (type === 'transaction') {
@@ -296,7 +313,7 @@ export class NoteRelations {
    *   with a per-branch trail and 116 with this set.
    *
    *   Walking a node twice cannot add anything the first walk missed: every add is guarded
-   *   by `hasPath`, and the walk from a given node depends only on that node. So collapsing
+   *   by its destination map, and the walk from a given node depends only on that node. So collapsing
    *   the repeats leaves the resulting relation set unchanged.
    *
    *   The set deliberately lives for one traversal rather than for the instance's lifetime:

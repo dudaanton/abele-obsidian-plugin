@@ -281,9 +281,8 @@ describe('NoteRelations — group edits and lifecycle', () => {
     expect(paths(r)).toEqual(paths(open('East/Trees.md')))
   })
 
-  // BUG: addBacklink's hasPath guard skips reclassification on metadata changes. Changing a
-  // backlink from a plain note to a task leaves it under Backlinks until the footer reopens.
-  it.fails('reclassifies a related note after its type changes', async () => {
+  // A related note changing kind must move sections without reopening the footer.
+  it('reclassifies a related note after its type changes', async () => {
     const r = open()
     await resolve()
     app.setFrontmatter(LEAF, { type: 'task', groups: ['[[Groups/Seedlings]]'] })
@@ -291,6 +290,27 @@ describe('NoteRelations — group edits and lifecycle', () => {
     await resolve()
     expect([...r.tasks.keys()]).toEqual([...open().tasks.keys()])
     expect(r.notes.has(LEAF)).toBe(false)
+  })
+
+  it.each(kinds)('reclassifies every kind of relation starting from %s', async (type, key) => {
+    app.setFrontmatter(LEAF, { type, groups: ['[[Groups/Seedlings]]'] })
+    const r = open()
+    await resolve()
+    let previous = r[key].get(LEAF)!
+    for (const [nextType, nextKey] of kinds.filter(([kind]) => kind !== type)) {
+      const cleanup = vi.spyOn(previous, 'cleanup')
+      app.setFrontmatter(LEAF, { type: nextType, groups: ['[[Groups/Seedlings]]'] })
+      changed(LEAF)
+      await resolve()
+      expect(cleanup).toHaveBeenCalledTimes(1)
+      expect(kinds.filter(([, section]) => r[section].has(LEAF))).toEqual([[nextType, nextKey]])
+      previous = r[nextKey].get(LEAF)!
+      const retained = vi.spyOn(previous, 'cleanup')
+      changed(LEAF)
+      await resolve()
+      expect(r[nextKey].get(LEAF)).toBe(previous)
+      expect(retained).not.toHaveBeenCalled()
+    }
   })
 
   // BUG: the tracked-note rename branch compares journal identity but not journalDate.
