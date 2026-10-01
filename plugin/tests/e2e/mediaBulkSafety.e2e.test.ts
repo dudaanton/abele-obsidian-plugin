@@ -9,8 +9,8 @@ const script = `(async () => {
   const root = 'sample-media-bulk-safety'
   if (app.vault.getAbstractFileByPath(root)) throw new Error('Sample folder already exists')
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn) => {
-    const end = Date.now() + 15000
+  const until = async (fn, timeout = 15000) => {
+    const end = Date.now() + timeout
     while (Date.now() < end) { const value = fn(); if (value) return value; await wait(50) }
     throw new Error('Sample UI did not settle: ' + fn.toString())
   }
@@ -43,7 +43,9 @@ const script = `(async () => {
     await until(() => document.querySelector('.abele-dedup') && !document.querySelector('.abele-dedup__status')?.textContent.includes('Hashing'))
     const group = await until(() => [...document.querySelectorAll('.abele-dedup__group')].find((el) => el.textContent.includes(copyPath)))
     button('Merge', group).click()
-    await until(() => group.querySelector('.abele-dedup__done, .abele-dedup__error'))
+    // Merge reads all reference sources twice before deleting, even for a tiny duplicate.
+    // Thousands of native filesystem reads can exceed a UI-render wait on a real phone.
+    await until(() => group.querySelector('.abele-dedup__done, .abele-dedup__error'), 60000)
     report.merge = group.querySelector('.abele-dedup__done') ? 'done' : 'error'
     report.mergeError = group.querySelector('.abele-dedup__error')?.textContent
     report.links = await app.vault.read(note)
@@ -88,7 +90,7 @@ const script = `(async () => {
 })()`
 
 async function verify() {
-  const answer = await evalLong(script, 45_000)
+  const answer = await evalLong(script, 120_000)
   if (answer.startsWith('Error:')) throw new Error(answer)
   const report = JSON.parse(answer)
   expect(report.merge, report.mergeError).toBe('done')
@@ -110,7 +112,7 @@ describe('media cleanup and bulk replacement safety', () => {
     expect(isObsidianRunning()).toBe(true)
     expect(hasTestApi()).toBe(true)
   })
-  it('uses real parsed links, protects chat media and rejects stale replacements', verify, 60_000)
+  it('uses real parsed links, protects chat media and rejects stale replacements', verify, 150_000)
   it.skipIf(onPhone())(
     'preserves the same guarantees under phone emulation',
     async () => {
@@ -121,6 +123,6 @@ describe('media cleanup and bulk replacement safety', () => {
         await reloadApp('app.emulateMobile(false)')
       }
     },
-    120_000
+    240_000
   )
 })
