@@ -1,0 +1,97 @@
+/* Native inputs keep their own click, focus and hit target. Only alternate states get icons. */
+:is(.HyperMD-task-line, li.task-list-item)[data-task='/'] {
+  --abele-inline-checkbox-icon: var(--abele-checkbox-slash);
+}
+:is(.HyperMD-task-line, li.task-list-item)[data-task='-'] {
+  --abele-inline-checkbox-icon: var(--abele-checkbox-minus);
+}
+:is(.HyperMD-task-line, li.task-list-item)[data-task='>'] {
+  --abele-inline-checkbox-icon: var(--abele-checkbox-arrow-right);
+}
+:is(.HyperMD-task-line, li.task-list-item)[data-task='<'] {
+  --abele-inline-checkbox-icon: var(--abele-checkbox-calendar);
+}
+:is(.HyperMD-task-line, li.task-list-item)[data-task='?'] {
+  --abele-inline-checkbox-icon: var(--abele-checkbox-help-circle);
+}
+:is(.HyperMD-task-line, li.task-list-item)[data-task='!'] {
+  --abele-inline-checkbox-icon: var(--abele-checkbox-circle-alert);
+}
+
+:is(.HyperMD-task-line, li.task-list-item):is(
+  [data-task='/'],
+  [data-task='>'],
+  [data-task='<'],
+  [data-task='?'],
+  [data-task='!']
+) {
+  --checklist-done-decoration: none;
+  --checklist-done-color: var(--text-normal);
+}
+:is(.HyperMD-task-line, li.task-list-item)[data-task='-'] {
+  --checklist-done-decoration: line-through;
+  --checklist-done-color: var(--text-normal);
+}
+
+:is(
+  input.task-list-item-checkbox:is(
+      [data-task='/'],
+      [data-task='-'],
+      [data-task='>'],
+      [data-task='<'],
+      [data-task='?'],
+      [data-task='!']
+    ),
+  li.task-list-item:is(
+      [data-task='/'],
+      [data-task='-'],
+      [data-task='>'],
+      [data-task='<'],
+      [data-task='?'],
+      [data-task='!']
+    )
+    > input.task-list-item-checkbox
+) {
+  background: var(--background-primary);
+  border-color: var(--checkbox-border-color);
+  color: var(--text-normal);
+}
+:is(
+  input.task-list-item-checkbox:is(
+      [data-task='/'],
+      [data-task='-'],
+      [data-task='>'],
+      [data-task='<'],
+      [data-task='?'],
+      [data-task='!']
+    ),
+  li.task-list-item:is(
+      [data-task='/'],
+      [data-task='-'],
+      [data-task='>'],
+      [data-task='<'],
+      [data-task='?'],
+      [data-task='!']
+    )
+    > input.task-list-item-checkbox
+)::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  transform: none;
+  background-color: var(--text-normal);
+  -webkit-mask: var(--abele-inline-checkbox-icon) center / contain no-repeat;
+  mask: var(--abele-inline-checkbox-icon) center / contain no-repeat;
+}
+
+/* During a checkbox hold only: WebKit must not put its text-selection toolbar over the menu. */
+.abele-checkbox-press,
+.abele-checkbox-press * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

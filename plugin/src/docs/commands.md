@@ -13,6 +13,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Paste from clipboard at cursor
 - Insert colored highlight · Remove colored highlight
 - Reindex footnotes
+- Cycle checkbox state — cycles an inline checklist on the current editor line through Open,
+  In progress, Done, Cancelled, Forwarded, Scheduled, Question and Important. Not a task-note
+  completion command; the checkbox's context menu offers the same states directly
 - Copy link to selected lines — copies a link to the selected line range in the current note
 - Comment here — opens a comment chat for the selected passage
 

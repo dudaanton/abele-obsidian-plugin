@@ -2,6 +2,36 @@
 
 Tasks are notes: one note per task, with its dates in properties and its description in the body.
 
+## Checklists inside a note
+
+For small lists, keep the items in the note instead of creating task notes. Write a normal
+Markdown list with a checkbox, using any of these states:
+
+| Marker | State | Symbol |
+|---|---|---|
+| `[ ]` | Open | Empty square |
+| `[/]` | In progress | Slash |
+| `[x]` | Done | Check |
+| `[-]` | Cancelled | Minus |
+| `[>]` | Forwarded | Right arrow |
+| `[<]` | Scheduled | Calendar |
+| `[?]` | Question | Question mark |
+| `[!]` | Important | Exclamation mark |
+
+For example, `- [/] Draft the outline`. Each state has its own symbol in Reading view and
+Live Preview, using your theme's colours. Uppercase `[X]` also means done.
+
+Right-click a checkbox, or hold it on a phone, to choose its state. In the editor,
+**Cycle checkbox state** moves the current line through the table above and then back to Open. Assign
+it a hotkey in Obsidian's settings if you use it often. Undo works as usual. A normal click or
+tap still uses Obsidian's normal checked/unchecked toggle, not the full cycle.
+
+Only Done is completed. Cancelled is no longer open; In progress and the other states are
+still open. Scheduled and Forwarded are labels, not reminders or automatic rescheduling.
+These lists do not become entries in Abele's Todo sidebar, timeline or task-note footer lists.
+A task note's own checkbox still follows its `completed` property, and an embedded task-note
+link keeps its existing behaviour.
+
 ## Creating a task
 
 Run **Create new task**. A new note appears in the tasks folder (`Tasks` unless changed in

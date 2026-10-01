@@ -110,6 +110,7 @@ import { SnippetService } from './services/SnippetService'
 import { startCalendars } from './calendars/start'
 import { dictate } from '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
+import { registerCheckboxes } from './checkboxes/register'
 import { registerNotePlaces } from './notePlaces/register'
 import { registerGithub } from '@/github/register'
 import { secrets, setSecrets } from '@/secrets/SecretStore'
@@ -436,6 +437,7 @@ export default class AbelePlugin extends Plugin {
   /** What the plugin adds to notes: editor extensions, post-processors and code blocks. */
   private registerEditor() {
     installUntrustedGuard()
+    registerCheckboxes(this)
     this.registerEditorExtension(taskStateField)
     this.registerEditorExtension(galleryExtensions)
     this.registerEditorExtension(createHeaderExtension())

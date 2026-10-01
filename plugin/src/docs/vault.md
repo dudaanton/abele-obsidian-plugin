@@ -82,6 +82,39 @@ has no `completed` property and its subtasks are unchecked; undoing completion c
 Counted rules skip inactive periods: `every 2 weeks on Monday` advances two weeks, and
 `every 2 months on 15` advances two months after the current month's 15th.
 
+## Inline checklists
+
+An inline checklist is Markdown in a note's body, not a `type: task` note. Do not create a
+separate task note merely to track a list item. Preserve the list's text, indentation and
+links when editing a marker with the normal note read/edit tools.
+
+| Marker | Meaning | Open | Done |
+|---|---|---|---|
+| `[ ]` | Open | yes | no |
+| `[/]` | In progress | yes | no |
+| `[x]` or `[X]` | Done | no | yes |
+| `[-]` | Cancelled | no | no |
+| `[>]` | Forwarded | yes | no |
+| `[<]` | Scheduled | yes | no |
+| `[?]` | Question | yes | no |
+| `[!]` | Important | yes | no |
+
+Write `- [/] Sample item` while it is in progress and `- [x] Sample item` once it is done.
+Cancellation is not completion. When reporting progress, keep cancelled items separate from
+both done and open items. Do not treat every non-space marker as done, even though Obsidian's
+rendered HTML can mark it `checked`. Leave unknown theme-specific markers unchanged.
+
+The note tools and scripts read/write these markers as ordinary Markdown; there is no
+checklist-item API or automatic inline progress counter. `read_tasks` and the task-note
+lists still deal with task notes and their `completed` property, not these list items.
+Repeating task notes reset completed `[x]` items in their body as before; alternate markers
+are retained. The special `- [ ] [[task-note]]` embed remains a task-note widget, not a new
+inline state control.
+
+Reading view and Live Preview draw each state distinctly. A checkbox's context menu (hold
+on mobile) chooses a state, and **Cycle checkbox state** cycles the editor's current list
+line. Normal clicks keep Obsidian's toggle. Neither action edits fenced code examples.
+
 ## Calendar views in bases
 
 A `.base` file can show the notes it finds on a calendar: a view with `type: abele-calendar`.
