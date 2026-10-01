@@ -60,7 +60,7 @@
           @tree="setPanel(!panelOpen)"
           @swap="swapSides"
           @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
-          @refresh="reload"
+          @refresh="reload(true)"
           @browser="openInBrowser(browserUrl)"
           @chat="chatAbout"
           @find="showFind"
@@ -80,7 +80,7 @@
 
         <div v-if="main.error.value" class="abele-github__error">
           <EmptyState :text="main.error.value" />
-          <Button text="Try again" icon="refresh-cw" tooltip="Ask GitHub again" @click="reload" />
+          <Button text="Try again" icon="refresh-cw" tooltip="Ask GitHub again" @click="reload(true)" />
         </div>
         <EmptyState v-else-if="!main.data.value" text="Loading from GitHub…" />
 
@@ -308,7 +308,7 @@ const props = defineProps<{
   enabled: boolean
   clientFor: (host: string) => GithubClient
   /** Connection-aware primary loading; secondary loads stay on clientFor. */
-  primaryLoad?: (target: GithubTarget, promote: (target: GithubTarget) => void) => Promise<ItemData>
+  primaryLoad?: (target: GithubTarget, promote: (target: GithubTarget) => void, retry?: boolean) => Promise<ItemData>
   peopleClient?: () => GithubClient
   accountName?: string
   onChooseAccount?: (event: MouseEvent) => void
@@ -345,6 +345,7 @@ const shown = computed<GithubTarget>(() => promoted.value ?? target.value)
 const client = () => props.clientFor(target.value.host)
 
 let loadGeneration = 0
+let retryPrimary = false
 let active = true
 onBeforeUnmount(() => {
   active = false
@@ -360,7 +361,7 @@ const main = useLoad<ItemData>(() => {
       loadItem(currentClient, target, promote))
   return read(currentTarget, (t) => {
     if (active && generation === loadGeneration && currentClient === client()) promoted.value = t
-  })
+  }, retryPrimary)
 })
 
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
@@ -620,7 +621,8 @@ const scrollToAnchor = async () => {
 }
 onBeforeUnmount(() => unpin())
 
-const reload = async () => {
+const reload = async (retry = false) => {
+  retryPrimary = retry
   const generation = ++loadGeneration
   promoted.value = null
   files.clear()

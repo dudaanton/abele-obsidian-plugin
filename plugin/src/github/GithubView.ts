@@ -304,10 +304,10 @@ export class GithubView extends ItemView {
             menu.showAtMouseEvent(event)
           },
           primaryLoad: (githubSettings().connections ?? []).length
-            ? async (target: GithubTarget, promote: (target: GithubTarget) => void) => {
+            ? async (target: GithubTarget, promote: (target: GithubTarget) => void, retry = false) => {
                 const startedId = this.model.connectionId,
                   startedUrl = this.model.url
-                const result = await readConnectionItem(this.model, target)
+                const result = await readConnectionItem(this.model, target, retry)
                 if (this.model.connectionId !== startedId || this.model.url !== startedUrl)
                   throw new GithubError('other', 'The tab changed while loading.')
                 promote(result.shown)
