@@ -260,7 +260,7 @@ export class NoteRelations {
       for (const group of groups) {
         if (!isWikilink(group)) continue
 
-        const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), '')
+        const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), file.path)
         if (!groupFile) continue
 
         const groupPath = normalizePath(groupFile.path)
@@ -449,7 +449,7 @@ export class NoteRelations {
     for (const group of groups) {
       if (!isWikilink(group)) continue
 
-      const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), '')
+      const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), file.path)
       if (!groupFile) continue
 
       const groupPath = normalizePath(groupFile.path)

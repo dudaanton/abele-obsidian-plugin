@@ -245,29 +245,41 @@ describe('NoteRelations — group edits and lifecycle', () => {
     expect([...r.tasks.keys()]).toEqual([LEAF])
   })
 
-  // BUG: group expansion resolves a bare name from '' instead of from the member's path.
-  // With two folders containing a group of the same name, direct backlinks show up but
-  // their descendants disappear even though Obsidian resolved the group link correctly.
-  it.fails(
-    'expands the locally resolved group when its basename is shared by another folder',
-    () => {
-      app = useVault([
-        { path: 'East/Trees.md' },
-        { path: 'West/Trees.md' },
-        { path: 'East/Branch.md', frontmatter: { groups: ['[[Trees]]'] } },
-        { path: LEAF, frontmatter: { type: 'task', groups: ['[[East/Branch]]'] } },
-      ])
-      // The fixture's initial backlink builder uses no source path. Model the resolved
-      // result explicitly; getFirstLinkpathDest itself supports the nearby-note rule.
-      app.metadataCache.resolvedLinks['East/Branch.md'] = { 'East/Trees.md': 1 }
-      expect(app.metadataCache.getFirstLinkpathDest('Trees.md', 'East/Branch.md')?.path).toBe(
-        'East/Trees.md'
-      )
-      const r = open('East/Trees.md')
-      expect([...r.notes.keys()]).toEqual(['East/Branch.md'])
-      expect([...r.tasks.keys()]).toEqual([LEAF])
-    }
-  )
+  // Resolve group links from their member so duplicate basenames retain descendants.
+  it('expands the locally resolved group when its basename is shared by another folder', () => {
+    app = useVault([
+      { path: 'East/Trees.md' },
+      { path: 'West/Trees.md' },
+      { path: 'East/Branch.md', frontmatter: { groups: ['[[Trees]]'] } },
+      { path: LEAF, frontmatter: { type: 'task', groups: ['[[East/Branch]]'] } },
+    ])
+    // The fixture's initial backlink builder uses no source path. Model the resolved
+    // result explicitly; getFirstLinkpathDest itself supports the nearby-note rule.
+    app.metadataCache.resolvedLinks['East/Branch.md'] = { 'East/Trees.md': 1 }
+    expect(app.metadataCache.getFirstLinkpathDest('Trees.md', 'East/Branch.md')?.path).toBe(
+      'East/Trees.md'
+    )
+    const r = open('East/Trees.md')
+    expect([...r.notes.keys()]).toEqual(['East/Branch.md'])
+    expect([...r.tasks.keys()]).toEqual([LEAF])
+  })
+
+  it('retains locally grouped descendants through metadata changes and pruning', async () => {
+    app = useVault([
+      { path: 'East/Trees.md' },
+      { path: 'West/Trees.md' },
+      { path: 'East/Branch.md', frontmatter: { groups: ['[[Trees]]'] } },
+      { path: LEAF, frontmatter: { type: 'task', groups: ['[[East/Branch]]'] } },
+    ])
+    app.metadataCache.resolvedLinks['East/Branch.md'] = { 'East/Trees.md': 1 }
+    const r = open('East/Trees.md')
+    await resolve()
+    changed(LEAF)
+    changed('East/Branch.md')
+    await resolve()
+    expect([...r.tasks.keys()]).toEqual([LEAF])
+    expect(paths(r)).toEqual(paths(open('East/Trees.md')))
+  })
 
   // BUG: addBacklink's hasPath guard skips reclassification on metadata changes. Changing a
   // backlink from a plain note to a task leaves it under Backlinks until the footer reopens.
