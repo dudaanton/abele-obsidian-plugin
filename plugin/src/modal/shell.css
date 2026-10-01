@@ -88,7 +88,16 @@
   flex-direction: column;
 }
 
-/* A full dialog is as large as Obsidian lets any dialog be, in both directions. */
+/*
+ * Full-screen content needs the desktop viewport, not the ordinary dialog cap: an unrestricted
+ * note can be wider than that cap, so opening its diagram otherwise makes it smaller. Keep
+ * Obsidian's padding and controls, and leave its mobile sheet and safe-area geometry alone.
+ */
+body:not(.is-mobile) .modal.abele-modal_full {
+  --dialog-max-width: 100vw;
+  --dialog-max-height: 100vh;
+}
+
 .modal.abele-modal_full {
   width: var(--dialog-max-width);
   height: var(--dialog-max-height);

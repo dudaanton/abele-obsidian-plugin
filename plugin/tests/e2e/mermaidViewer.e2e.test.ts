@@ -87,13 +87,28 @@ const reload = async (how: string): Promise<void> => {
 
 describe.skipIf(!available)('the mermaid viewer', () => {
   let trust = 'null'
+  let desktop: {
+    size: [number, number]
+    readable: boolean
+    panels: [boolean, boolean]
+  }
 
   beforeAll(async () => {
+    desktop = evalJson(`({
+      size: require('@electron/remote').getCurrentWindow().getContentSize(),
+      readable: app.vault.getConfig('readableLineLength'),
+      panels: [app.workspace.leftSplit.collapsed, app.workspace.rightSplit.collapsed],
+    })`)
+    await setWindowSize(1280, 800)
     trust = evalRaw(`JSON.stringify(app.loadLocalStorage('mermaid-vault-trust'))`)
       .replace(/^=>\s*/, '')
       .trim()
     evalAsync(`(async () => {
       app.saveLocalStorage('mermaid-vault-trust', true)
+      // Full screen must enlarge even an unrestricted note, not just a reading-width column.
+      app.vault.setConfig('readableLineLength', false)
+      app.workspace.leftSplit.collapse()
+      app.workspace.rightSplit.collapse()
       const old = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
       if (old) await app.vault.delete(old)
       await app.vault.create(${JSON.stringify(NOTE)}, ${JSON.stringify(CONTENT)})
@@ -108,8 +123,13 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       const f = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
       if (f) await app.vault.delete(f)
       app.saveLocalStorage('mermaid-vault-trust', ${trust === 'true' ? 'true' : 'null'})
+      const saved = ${JSON.stringify(desktop)}
+      app.vault.setConfig('readableLineLength', saved.readable)
+      if (!saved.panels[0]) app.workspace.leftSplit.expand()
+      if (!saved.panels[1]) app.workspace.rightSplit.expand()
       return { ok: true }
     })()`)
+    await setWindowSize(...desktop.size)
   })
 
   it('draws the diagram in reading view at the width of the note, instead of Obsidian', () => {
@@ -183,6 +203,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
     const r = evalAsync<{
       error?: string
       inNote?: number
+      inNoteWidth?: number
       full?: { width: number; height: number; scale: number }
       shot?: string
       closed?: boolean
@@ -195,6 +216,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       const canvas = await until(() => drawn(root))
       if (!canvas) return { error: 'no viewer' }
       const inNote = scaleOf(canvas)
+      const inNoteWidth = root.querySelector('.abele-mermaid__frame').getBoundingClientRect().width
       root.querySelector('.abele-mermaid__fullscreen').click()
       const modal = await until(() => document.querySelector('.modal.abele-modal_full'))
       if (!modal) return { error: 'no dialog' }
@@ -207,12 +229,13 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       const shot = await shoot('desktop-fullscreen')
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       const closed = !!(await until(() => !document.querySelector('.modal.abele-modal_full'), 5000))
-      return { inNote, full, shot, closed }
+      return { inNote, inNoteWidth, full, shot, closed }
     })()`,
       90_000
     )
     expect(r.error).toBeUndefined()
     expect(r.full!.height).toBeGreaterThan(300)
+    expect(r.full!.width).toBeGreaterThan(r.inNoteWidth!)
     expect(r.full!.scale).toBeGreaterThan(r.inNote!)
     expect(r.closed).toBe(true)
   })
