@@ -152,7 +152,9 @@ one operation in an interactive chat; unattended/delegated execution refuses Ask
 enable an Off tool or bypass that tool's own Ask mode. Permissions are rechecked while the
 operation runs and after approval. Automatic alternatives are limited to permitted same-server
 connections and reported in the result. `github_open` carries the connection restriction through
-the asynchronous tab load. Tokens and keychain IDs are never included in the inventory.
+the asynchronous tab load, including people, avatars, file trees and secondary sections. These
+reads stay on the permitted tab connection; they do not borrow the server default's token.
+Tokens and keychain IDs are never included in the inventory.
 
 `github_views` always lists connection names, servers, discovered accounts and access modes,
 even without tabs. Tabs name their connection. A disallowed tab is only a restricted placeholder:

@@ -132,6 +132,7 @@ export async function repoIndex(
   sha: string,
   request: IndexRequest
 ): Promise<RepoIndex> {
+  client.assertCurrent?.()
   const key = `${client.cacheNamespace}:${indexKey(repo.host, repo.owner, repo.repo, sha)}`
   const cached = indexes.get(key)
   if (cached) return cached
@@ -204,10 +205,11 @@ export const cachedIndex = (
   client: GithubClient,
   repo: RepoRef,
   sha: string
-): RepoIndex | undefined =>
-  client.isCurrent === false
-    ? undefined
-    : indexes.get(`${client.cacheNamespace}:${indexKey(repo.host, repo.owner, repo.repo, sha)}`)
+): RepoIndex | undefined => {
+  if (client.isCurrent === false) return undefined
+  client.assertCurrent?.()
+  return indexes.get(`${client.cacheNamespace}:${indexKey(repo.host, repo.owner, repo.repo, sha)}`)
+}
 
 /**
  * GitHub's own code search, for a repository too big to download. It searches only the default

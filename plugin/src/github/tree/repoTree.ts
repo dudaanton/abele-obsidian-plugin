@@ -104,6 +104,7 @@ async function read(client: GithubClient, repo: RepoRef, sha: string): Promise<R
 
 /** The tree of a repository at a commit, read once a session. */
 export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Promise<RepoTree> {
+  client.assertCurrent?.()
   const key = `${client.cacheNamespace}:${keyOf(repo, sha)}`
   const known = trees.get(key)
   if (known !== undefined) {

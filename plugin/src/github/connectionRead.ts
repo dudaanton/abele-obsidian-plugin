@@ -1,9 +1,7 @@
 import { ConnectionFallback } from './connectionFallback'
 import { primaryAccess } from './primaryAccess'
-import { AgentRegistry } from '@/ai/agents/AgentRegistry'
-import { connectionMode } from './agentAccess'
+import { clientForTab, tabAccessSnapshot, tabConnectionAllowed } from './tabConnectionAccess'
 import { GithubError } from './client'
-import { guardedGithubClient } from './guardedClient'
 import { loadItem, type ItemData } from './loadItem'
 import {
   connectionClient,
@@ -29,19 +27,9 @@ export async function readConnectionItem(
   shown: GithubTarget
   notice: string
 }> {
-  const permitted = (id: string) => {
-    if (!model.allowedConnections) return true
-    if (!id) return true
-    const mode = connectionMode(
-      model.executionAgentId ? AgentRegistry.getInstance().get(model.executionAgentId) : null,
-      id
-    )
-    return (
-      model.allowedConnections.includes(id) &&
-      (mode === 'auto' || (mode === 'ask' && !!model.approvedConnections?.includes(id)))
-    )
-  }
-  const allowed = model.allowedConnections?.filter(permitted)
+  const scope = tabAccessSnapshot(model)
+  const permitted = (id: string) => tabConnectionAllowed(scope, id)
+  const allowed = scope.allowedConnections?.filter(permitted)
   const candidates = resolveConnectionCandidates(target, {
     sourceId: model.connectionId,
     explicitId: model.connectionIntent === 'manual' ? model.connectionId : undefined,
@@ -63,15 +51,7 @@ export async function readConnectionItem(
         throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
       const rawClient = contexts.get(id)!
       rawClient.assertCurrent()
-      const client = model.allowedConnections
-        ? guardedGithubClient(rawClient, () => {
-            if (!permitted(id))
-              throw new GithubError(
-                'other',
-                'The agent no longer has access to this GitHub connection.'
-              )
-          })
-        : rawClient
+      const client = clientForTab(scope, id, rawClient)
       await primaryAccess(client, target)
       return client
     },

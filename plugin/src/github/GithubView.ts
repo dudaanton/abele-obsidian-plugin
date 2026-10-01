@@ -19,6 +19,7 @@ import { readConnectionItem } from './connectionRead'
 import { GithubError } from './client'
 import type { GithubTarget } from './urls'
 import { sameConnectionServer } from './connectionRouting'
+import { clientForTab } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
@@ -285,9 +286,11 @@ export class GithubView extends ItemView {
             'The connection was removed; selected another using the link rules.'
           Object.assign(this.model.screen, emptyScreen())
         }
-        const client = this.model.connectionId
+        const rawClient = this.model.connectionId
           ? connectionClient(this.model.connectionId)
           : githubClient(this.model.target?.host)
+        const agentOpened = this.model.allowedConnections !== undefined
+        const client = clientForTab(this.model,this.model.connectionId ?? '',rawClient)
         if (this.model.screenNamespace && this.model.screenNamespace !== client.cacheNamespace) {
           Object.assign(this.model.screen,emptyScreen())
           this.title=''
@@ -299,6 +302,9 @@ export class GithubView extends ItemView {
           enabled: githubSettings().enabled,
           clientFor: () => client,
           peopleClient: () => {
+            // A tool may grant only this account, not the server default. Every profile,
+            // picture and secondary section of that tab uses its guarded operation client.
+            if (agentOpened) return client
             const target = this.model.target
             const row =
               target &&

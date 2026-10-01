@@ -9,6 +9,7 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { targets } from './helpers/target'
+import { until } from './helpers/wait'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -37,6 +38,28 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
     } finally {
       gh?.stop()
     }
+  })
+
+  it.each(['off','ask'])('an agent-opened tab never fetches people with its %s server-default connection', async mode => {
+    const profileQueries=()=>gh.requests().filter(line=>line.startsWith('POST /api/graphql')).length
+    const before=profileQueries()
+    const shown=evalAsync<boolean>(`(async()=>{
+      ${PRELUDE}
+      const agent=window.__abeleTest.AgentRegistry.getInstance().get(window.__connectionAgents[1])
+      const previous=agent.githubConnections.one
+      let leaf
+      try {
+        agent.githubConnections.one=${JSON.stringify(mode)}
+        await window.__abeleTest.githubUsers().clear()
+        const tool=window.__abeleTest.createAgentTools({agentId:agent.id}).find(t=>t.name==='github_open')
+        await tool.execute('open-profiles',{url:${JSON.stringify(gh.web+'/issues/7')},connection:'Sample two'})
+        leaf=githubLeaves()[0]
+        return !!(await until(()=>leaf?.view.containerEl.textContent.includes('Bob Example'),15000))
+      } finally {leaf?.detach();agent.githubConnections.one=previous}
+    })()`)
+    expect(shown).toBe(true)
+    expect(await until(()=>profileQueries()>before)).toBeTruthy()
+    expect(gh.requests().filter(line=>line.includes('account=one'))).toEqual([])
   })
 
   it('Ask gates the actual execution factory and accepts one operation without changing the mode', async () => {
