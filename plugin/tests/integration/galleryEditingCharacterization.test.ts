@@ -167,7 +167,7 @@ describe('Gallery editing against the current editor buffer', () => {
 
   // BUG: removeBlock consumes both the preceding newline and the following one. Deleting
   // a gallery between two paragraphs concatenates their text instead of keeping a separator.
-  it.fails('does not join the surrounding text when deleting a middle block', () => {
+  it('does not join the surrounding text when deleting a middle block', () => {
     const env = setup()
     env.gallery.removeBlock()
     expect(env.text()).toBe('Before\nAfter')

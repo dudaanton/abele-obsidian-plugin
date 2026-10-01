@@ -276,9 +276,10 @@ export class Gallery {
     const toLine =
       block.lastImageLine + 1 < lines.length ? block.lastImageLine + 1 : block.lastImageLine
     const toCh = block.lastImageLine + 1 < lines.length ? 0 : lines[block.lastImageLine].length
-    // Also remove preceding newline if header is not on line 0
-    const fromLine = block.headerLine > 0 ? block.headerLine - 1 : 0
-    const fromCh = block.headerLine > 0 ? lines[block.headerLine - 1].length : 0
+    // Remove only one boundary newline, so surrounding paragraphs stay separate.
+    const atEnd = block.lastImageLine + 1 === lines.length
+    const fromLine = atEnd && block.headerLine > 0 ? block.headerLine - 1 : block.headerLine
+    const fromCh = atEnd && block.headerLine > 0 ? lines[fromLine].length : 0
     editor.replaceRange('', { line: fromLine, ch: fromCh }, { line: toLine, ch: toCh })
   }
 
