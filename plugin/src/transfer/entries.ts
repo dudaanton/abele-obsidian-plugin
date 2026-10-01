@@ -335,12 +335,10 @@ export const SECTIONS: Section[] = [
     kind: 'list',
     id: 'github-connections',
     label: 'GitHub connections',
-    read: (settings) => (settings.github ? githubSettingsFrom(settings.github).connections : []),
+    read: (settings) => settings.github?.connections ?? (settings.github ? githubSettingsFrom(settings.github).connections : []),
     write: (settings, items) => {
-      const current = githubSettingsFrom(settings.github)
-      settings.github = projectLegacy(
-        githubSettingsFrom({ ...current, connections: items as GithubConnection[] })
-      )
+      // A partial batch must not invent a default that overrides a later arriving default.
+      settings.github = { ...(settings.github ?? githubSettingsFrom()), connections: items as GithubConnection[] }
     },
     secretsOf: (item) =>
       (item as GithubConnection).keyId ? [(item as GithubConnection).keyId] : [],
@@ -508,7 +506,7 @@ export function applyEntries(
   // settings are JSON on disk anyway, so nothing survives the trip that was not already there.
   const next = JSON.parse(JSON.stringify(settings)) as AbeleSettings
 
-  const arriving = settingsOnly(entries)
+  const arriving = settingsOnly(entries).sort((a,b)=>Number(a.section==='github-connections')-Number(b.section==='github-connections'))
   for (const entry of arriving) {
     if (entry.section !== 'github-connections') continue
     const c = entry.data as Partial<GithubConnection> | null
@@ -565,6 +563,7 @@ export function applyEntries(
 
   if (arriving.some((e) => e.section === 'github' || e.section === 'github-connections')) {
     const github = githubSettingsFrom(next.github)
+    next.github = github
     const owners = new Map<string, string>()
     const bind = (keyId: string | undefined, server: string) => {
       if (!keyId) return
