@@ -142,7 +142,10 @@ describe('local Done fallback', () => {
     const s = server()
     await s.inbox.load('all')
     vi.mocked(s.request).mockRejectedValueOnce(new Error('Sample network interruption'))
-    await expect(s.inbox.markDone(pull().id)).rejects.toThrow('network interruption')
+    await expect(s.inbox.markDone(pull().id)).rejects.toMatchObject({
+      kind: 'network',
+      message: 'Could not reach api.github.com.',
+    })
     expect((await s.inbox.load('all', true)).items).toHaveLength(1)
   })
 

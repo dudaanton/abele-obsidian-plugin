@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { GithubClient } from '@/github/client'
+import { GithubClient, GithubError } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
 import { clientWith, type Reply } from '../helpers/githubTab'
@@ -147,6 +147,71 @@ describe('local Done fallback in the panel', () => {
     expect(w.find('[role="alert"]').exists()).toBe(false)
     expect(w.find(`[data-id="${id}"]`).exists()).toBe(false)
   })
+})
+
+describe('credential changes during Done', () => {
+  it.each([204, 403])(
+    'ignores the old write’s HTTP %s result after switching connections',
+    async (status) => {
+      const first = clientWith({ '/notifications': { json: [notification] } })
+      const nextNote = {
+        ...notification,
+        subject: { ...notification.subject, title: 'Other connection change' },
+      }
+      const next = clientWith({ '/notifications': { json: [nextNote] } })
+      const w = setup(() => first.client)
+      await flushPromises()
+      let release!: () => void
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      vi.spyOn(first.client, 'call').mockImplementationOnce(async () => {
+        await waiting
+        return {
+          status,
+          headers: {},
+          body: null,
+          error:
+            status === 403
+              ? new GithubError('forbidden', 'Sample old connection refusal', status)
+              : undefined,
+        } as never
+      })
+      await w
+        .find(`[data-id="${id}"] .abele-github-notification__mark .abele-obsidian-icon`)
+        .trigger('click')
+      await flushPromises()
+      await w.setProps({ clientFor: () => next.client })
+      expect(w.find(`[data-id="${id}"]`).exists()).toBe(false)
+      release()
+      await flushPromises()
+      expect(w.find(`[data-id="${id}"]`).text()).toContain('Other connection change')
+      expect(w.find('[role="alert"]').exists()).toBe(false)
+      expect(w.find('[role="status"]').exists()).toBe(false)
+      expect(next.request.mock.calls.map(([r]) => r.method)).toEqual(['GET'])
+    }
+  )
+
+  it.each(['refusal', 'fallback'])(
+    'clears an old %s notice when changing connections',
+    async (kind) => {
+      const first = clientWith({
+        '/notifications': { json: [notification] },
+        [`/notifications/threads/${id}`]: { status: kind === 'refusal' ? 403 : 204 },
+      })
+      const next = clientWith({ '/notifications': { json: [notification] } })
+      const w = setup(() => first.client)
+      await flushPromises()
+      await done(w)
+      await refresh(w)
+      expect(w.find(kind === 'refusal' ? '[role="alert"]' : '[role="status"]').exists()).toBe(true)
+      await w.setProps({ clientFor: () => next.client })
+      await flushPromises()
+      expect(w.find(`[data-id="${id}"]`).exists()).toBe(true)
+      expect(w.find('[role="alert"]').exists()).toBe(false)
+      expect(w.find('[role="status"]').exists()).toBe(false)
+    }
+  )
 })
 
 describe('Done identity', () => {
