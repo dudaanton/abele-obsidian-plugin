@@ -6,8 +6,8 @@
  * recording is open, and then ask the chat's log to put things back. The vault is the in-memory
  * one, so what the files hold afterwards is read straight out of it.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { TFile, type App } from 'obsidian'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { TFile, Notice, type App } from 'obsidian'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
@@ -59,6 +59,36 @@ beforeEach(() => {
 afterEach(() => {
   tracker.uninstall()
 })
+
+it.each(['writeBlob', 'writeLog'] as const)(
+  'retries failed %s snapshots with their binary copies intact',
+  async (operation) => {
+    const bytes = new Uint8Array([1, 2, 3]).buffer
+    const write = vi.spyOn(store, operation).mockRejectedValueOnce(new Error('Sample disk failure'))
+    const notices = Notice.shown.length
+    log.record(
+      'modify',
+      [
+        {
+          path: 'sample-image.png',
+          before: { t: 'binary', hash: 'old', size: 3, blob: 'sample-copy' },
+          after: 'new',
+        },
+      ],
+      new Map([['sample-copy', bytes]])
+    )
+    await log.flush()
+    expect(write).toHaveBeenCalledOnce()
+    expect(Notice.shown.slice(notices).some((message) => message.includes('undo'))).toBe(true)
+    await log.flush()
+    expect(write).toHaveBeenCalledTimes(2)
+    expect(new Uint8Array((await store.readBlob('chat-1', 'sample-copy'))!)).toEqual(
+      new Uint8Array(bytes)
+    )
+    expect((await store.readLog('chat-1'))?.entries).toHaveLength(1)
+    write.mockRestore()
+  }
+)
 
 describe('what is recorded', () => {
   it('a write, with the text it replaced', async () => {

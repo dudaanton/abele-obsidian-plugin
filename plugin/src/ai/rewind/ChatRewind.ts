@@ -8,7 +8,7 @@
  * written to least recently go first.
  */
 import { shallowRef } from 'vue'
-import type { App } from 'obsidian'
+import { Notice, type App } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChangeTracker, type Recording } from './ChangeTracker'
 import { adapterStore, type RewindStore } from './RewindStore'
@@ -49,6 +49,7 @@ export class ChatRewind implements Recording {
   private pendingBlobs = new Map<string, ArrayBuffer>()
   private currentTool: string | undefined
   private dirty = false
+  private failureNotified = false
   private writing: Promise<void> = Promise.resolve()
 
   constructor(
@@ -114,6 +115,12 @@ export class ChatRewind implements Recording {
       .then(() => this.writeNow())
       .catch((err) => {
         console.warn('[Abele] Rewind log not written', err)
+        if (!this.failureNotified) {
+          this.failureNotified = true
+          new Notice(
+            'Abele could not save an undo snapshot. Undo is incomplete until a later save succeeds.'
+          )
+        }
       })
     return this.writing
   }
@@ -124,11 +131,17 @@ export class ChatRewind implements Recording {
     if (!key) return
     if (this.loadedKey !== key) await this.load()
     else await this.loading
-    this.dirty = false
+    const entries = this.entries.value
     const blobs = [...this.pendingBlobs]
-    this.pendingBlobs.clear()
     for (const [name, data] of blobs) await this.store.writeBlob(key, name, data)
-    await this.store.writeLog(key, { version: 1, entries: this.entries.value })
+    await this.store.writeLog(key, { version: 1, entries })
+    // Keep everything retryable until both the copies and their index are durable. Changes
+    // recorded during IO belong to the next write and must not have their dirty flag cleared.
+    this.dirty = this.entries.value !== entries
+    for (const [name, data] of blobs) {
+      if (this.pendingBlobs.get(name) === data) this.pendingBlobs.delete(name)
+    }
+    this.failureNotified = false
     await this.prune(key)
   }
 
