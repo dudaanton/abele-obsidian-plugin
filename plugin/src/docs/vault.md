@@ -33,6 +33,8 @@ it contains no secrets and does not travel either.
 Word documents remain ordinary binary `.docx` attachments at their original vault paths.
 Opening and reading creates no Markdown conversion, cache note or persistent document setting.
 The Word view displays a disposable rendering of the package; it does not rewrite the file.
+All parts are inflated through small input chunks with actual per-part/aggregate byte limits.
+The preview receives a rebuilt archive of those validated bytes, never an unchecked original ZIP.
 Large packages use a paged text view. External relationships and active HTML chunks are omitted
 from the rendering only, not removed from the original document. Text edits patch only affected
 `w:t` lexical spans in `word/document.xml`; untouched XML/ZIP parts are retained as their original

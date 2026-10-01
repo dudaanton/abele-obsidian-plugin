@@ -12,6 +12,8 @@ External pictures and links do not connect to the internet. Opening changes noth
 **Text paragraphs** shows numbered text. Enter a paragraph number and choose **Go to paragraph**
 to read a window. Large documents open in this paged text view instead of building a very large
 preview. Packages are limited to 32 MB compressed, 96 MB unpacked and 8 MB per XML part.
+Unpacked limits are checked against the bytes actually produced, not just sizes written in the file;
+a damaged archive with inconsistent sizes is refused.
 
 ## Asking an agent
 

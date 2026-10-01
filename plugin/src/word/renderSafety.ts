@@ -1,12 +1,12 @@
 /** Renderer receives a disposable package; the original package is never cleaned or rebuilt. */
-import { saveParts, xmlBytes, type WordPackage } from './package'
+import { pack, xmlBytes, type WordPackage } from './package'
 import { parseXml, patchXml, descendants, REL } from './xml'
 
 export async function safeRenderBytes(doc: WordPackage): Promise<Uint8Array> {
   const changed = new Map<string, Uint8Array | null>()
   for (const entry of doc.archive.entries) {
     if (/\.(?:html?|xhtml|js|mhtml)$/i.test(entry.filename)) changed.set(entry.filename, null)
-    if (!entry.filename.endsWith('.rels')) continue
+    if (!/\.rels$/i.test(entry.filename)) continue
     const source = doc.archive.loadText(entry.filename)!
     const root = await parseXml(source)
     const external = descendants(root, REL, 'Relationship').filter(
@@ -23,7 +23,16 @@ export async function safeRenderBytes(doc: WordPackage): Promise<Uint8Array> {
         )
       )
   }
-  return saveParts(doc, changed)
+  // JSZip must never inflate an unchecked original archive. These bytes were all streamed
+  // under actual budgets; rebuilding supplies truthful lengths even when no cleanup was needed.
+  const parts: Record<string, Uint8Array> = Object.create(null)
+  for (const entry of doc.archive.entries) {
+    const bytes = changed.has(entry.filename)
+      ? changed.get(entry.filename)
+      : doc.archive.loadBytes(entry.filename)
+    if (bytes) parts[entry.filename] = bytes
+  }
+  return pack(parts)
 }
 export const WORD_CSP =
   "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src 'none'; base-uri 'none'; form-action 'none'"

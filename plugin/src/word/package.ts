@@ -1,6 +1,7 @@
 /** OOXML package model over bytes, with no vault or Obsidian dependency. */
-import { openZip, type ZipLoader } from '@/reader/zipLoader'
-import { strToU8, zip } from 'fflate'
+import type { ZipLoader } from '@/reader/zipLoader'
+import { openWordZip } from './boundedZip'
+import { strToU8, Zip, ZipDeflate, AsyncZipDeflate } from 'fflate'
 import {
   ancestor,
   attr,
@@ -82,9 +83,48 @@ export interface WordPackage {
   ): { total: number; finds: { paragraph: number; offset: number; excerpt: string }[] }
 }
 export const pack = (parts: Record<string, Uint8Array>): Promise<Uint8Array> =>
-  new Promise((resolve, reject) =>
-    zip(parts, { level: 6 }, (error, data) => (error ? reject(error) : resolve(data)))
-  )
+  new Promise((resolve, reject) => {
+    // The streaming writer preserves arbitrary part names without a prototype-keyed flattening map.
+    const chunks: Uint8Array[] = []
+    let length = 0
+    let failed = false
+    const writer = new Zip((error, bytes, final) => {
+      if (failed) return
+      if (error || length + bytes.length > MAX_ARCHIVE) {
+        failed = true
+        writer.terminate()
+        reject(error ?? new Error('Document is too large compressed'))
+        return
+      }
+      chunks.push(bytes)
+      length += bytes.length
+      if (final) {
+        const result = new Uint8Array(length)
+        let at = 0
+        for (const chunk of chunks) {
+          result.set(chunk, at)
+          at += chunk.length
+        }
+        resolve(result)
+      }
+    })
+    try {
+      for (const [name, bytes] of Object.entries(parts)) {
+        if (failed) break
+        const entry =
+          bytes.length >= 160_000
+            ? new AsyncZipDeflate(name, { level: 6 })
+            : new ZipDeflate(name, { level: 6 })
+        writer.add(entry)
+        entry.push(bytes.slice(), true)
+      }
+      if (!failed) writer.end()
+    } catch (error) {
+      failed = true
+      writer.terminate()
+      reject(error)
+    }
+  })
 export async function saveParts(
   doc: WordPackage,
   changed: Map<string, Uint8Array | null>
@@ -96,7 +136,7 @@ export async function saveParts(
       if (bytes.length > MAX_XML) throw new Error('Document XML is too large')
       await parseXml(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes))
     }
-  const parts: Record<string, Uint8Array> = {}
+  const parts: Record<string, Uint8Array> = Object.create(null)
   for (const entry of doc.archive.entries) {
     const bytes = changed.has(entry.filename)
       ? changed.get(entry.filename)
@@ -112,20 +152,11 @@ export async function openDocx(
 ): Promise<WordPackage> {
   if (original.length > MAX_ARCHIVE)
     throw new Error('Document is too large (32 MB compressed limit)')
-  const archive = openZip(original)
-  if (
-    archive.entries.length > 4000 ||
-    new Set(archive.entries.map((e) => e.filename)).size !== archive.entries.length
+  const archive = await openWordZip(
+    original,
+    { compressed: MAX_ARCHIVE, expanded: MAX_EXPANDED, xml: MAX_XML, entries: 4000 },
+    yieldTask
   )
-    throw new Error('Too many or duplicate document parts')
-  if (archive.entries.reduce((n, e) => n + e.size, 0) > MAX_EXPANDED)
-    throw new Error('Document is too large unpacked')
-  for (const e of archive.entries) {
-    if (/\.(?:xml|rels)$/.test(e.filename) && e.size > MAX_XML)
-      throw new Error('Document XML is too large')
-    if (e.filename.startsWith('/') || e.filename.split('/').includes('..'))
-      throw new Error('Invalid document part path')
-  }
   const xml = new Map<string, string>()
   const trees = new Map<string, XmlNode>()
   const names = [
