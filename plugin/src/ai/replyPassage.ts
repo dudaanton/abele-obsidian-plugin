@@ -36,14 +36,19 @@ export async function resolveReplyPassage(
   if (words?.length) {
     const first = words[0],
       last = words.at(-1)!
+    const leading = quote.slice(0, quote.indexOf(first))
+    const trailing = quote.slice(quote.lastIndexOf(last) + last.length)
     for (const from of occurrences(first)) {
       for (const end of occurrences(last)) {
         const to = end + last.length
         if (to <= from || to - from > quote.length * 4 + 200) continue
+        // Punctuation belongs to the selection too. Delimiters may lie between it and
+        // the edge word, so enumerate both, then let the renderer verify the exact range.
         let left = from,
           right = to
-        while (left > Math.max(0, from - 4) && /[*_~`]/.test(source[left - 1])) left--
-        while (right < Math.min(source.length, to + 4) && /[*_~`]/.test(source[right])) right++
+        const edgeChars = /[^\p{L}\p{N}\s]/u
+        while (left > Math.max(0, from - leading.length - 4) && edgeChars.test(source[left - 1])) left--
+        while (right < Math.min(source.length, to + trailing.length + 4) && edgeChars.test(source[right])) right++
         for (let a = from; a >= left; a--) for (let b = to; b <= right; b++) add(a, b)
       }
     }
