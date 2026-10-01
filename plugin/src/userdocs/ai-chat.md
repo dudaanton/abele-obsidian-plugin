@@ -196,8 +196,8 @@ run your scripts; and delegate work to other agents.
 
 **Current location**, under **Maps** in an agent's **Access** tab, asks your device where it is.
 It starts on **Ask**: in an interactive chat, each request needs your approval unless you choose
-**Auto**; **Off** removes the tool. Script `ctx.agent()` runs allow both **Ask** and **Auto**
-without confirmation, just like other enabled tools — you control access to the scripts.
+**Auto**; **Off** removes the tool. Script `ctx.agent()` runs refuse **Ask**, since nobody can
+confirm it there; **Auto** still permits it.
 Delegated chat runs still refuse **Ask** because nobody can approve the request; choose **Auto**
 if that agent should be allowed to request location there.
 Your device may also ask for location permission. The answer includes the position,

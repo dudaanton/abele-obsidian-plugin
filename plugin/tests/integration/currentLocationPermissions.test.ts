@@ -4,6 +4,7 @@ import { runSubAgent } from '@/ai/SubAgentRunner'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { createAgent } from '@/ai/agents/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import type { AgentTool, Message, ModelConfig } from '@/ai/client'
@@ -84,12 +85,12 @@ function agent(mode: 'ask' | 'auto' | 'off') {
 }
 
 describe('location permission with nobody to confirm', () => {
-  it('permits Ask in script ctx.agent like other enabled feature tools', async () => {
+  it('refuses Ask in script ctx.agent because nobody can confirm it', async () => {
     const target = agent('ask')
     const ctx = buildScriptContext({ params: {}, signal: new AbortController().signal, logs: [] })
     const result = await ctx.agent('Find nearby places', { agent: target.id })
-    expect(device.get).toHaveBeenCalledOnce()
-    expect(JSON.parse(result as string).latitude).toBe(12.345)
+    expect(device.get).not.toHaveBeenCalled()
+    expect(result).toMatch(/current_location.*approval/)
   })
 
   it('permits explicitly automatic location in script ctx.agent', async () => {
@@ -129,7 +130,7 @@ describe('location permission with nobody to confirm', () => {
     }
   )
 
-  it('does not change Ask behaviour for any other tool in script-started agents', async () => {
+  it('also refuses Ask for other tools in script-started agents', async () => {
     requestedTool = 'sample_tool'
     const execute = vi
       .fn()
@@ -143,9 +144,9 @@ describe('location permission with nobody to confirm', () => {
     }
     const result = await runSubAgent(
       { systemPrompt: '', userMessage: 'Use the sample tool', tools: [tool], model },
-      { sample_tool: 'ask' }
+      createAgent({ toolModes: { sample_tool: 'ask' } })
     )
-    expect(result).toBe('sample answer')
-    expect(execute).toHaveBeenCalledOnce()
+    expect(result).toMatch(/sample_tool.*approval/)
+    expect(execute).not.toHaveBeenCalled()
   })
 })

@@ -2,6 +2,13 @@
 
 Small JavaScript programs kept in your vault, for anything the plugin does not do by itself.
 
+## Agents started by scripts
+
+Agents called by a script or automation refuse actions that would need confirmation in a chat.
+**Ask** is not automatic permission: choose **Auto** for a tool that should run there. File
+edits follow the chosen agent's permission mode and source-file scope, not another chat's or
+the global mode. Direct file operations in your own scripts are unchanged.
+
 ## Turning scripts on
 
 Scripts run inside Obsidian with full access to your vault, so they are off until you turn them on

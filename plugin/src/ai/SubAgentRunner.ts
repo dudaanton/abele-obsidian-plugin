@@ -2,124 +2,122 @@ import { AgentLoop } from './client/AgentLoop'
 import { needsSecretApproval } from './tools/secretUtils'
 import type { AgentTool, ModelConfig, Message, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
-import { AbeleConfig } from '@/services/AbeleConfig'
-import { CORE_TOOLS } from './types'
-import type { ToolMode } from './types'
+import type { AgentDefinition } from './agents/types'
+import type { ToolContext } from './toolContext'
+import { WRITE_TOOLS } from './types'
+import { skillNeedsApproval } from './tools/SkillTool'
 import { ReadGuard, withReadGuard } from './readGuard'
 import { ResultStore, withResultStore } from './resultStore'
 
 export interface SubAgentTask {
-  /** System prompt for the sub-agent */
   systemPrompt: string
-  /** User message describing the task + item to process */
   userMessage: string
-  /** Tools available to the sub-agent */
   tools: AgentTool[]
-  /** Model config */
   model: ModelConfig
-  /** Abort signal */
   signal?: AbortSignal
 }
 
-/**
- * Check if a tool call is allowed given current parent permissions.
- * Sub-agents: denied = immediate error, no approval prompts.
- */
-function isToolAllowed(
-  toolName: string,
-  toolModes: Record<string, ToolMode>,
-  args?: Record<string, unknown>
-): { allowed: boolean; reason?: string } {
-  const scope = ScopeResolver.getInstance()
-  const mode = AbeleConfig.getInstance().ai.permissionMode
+/** Same source-path checks as an ordinary chat; destination restrictions are separate policy. */
+const SCOPED = [
+  'read',
+  'edit',
+  'replace',
+  'write',
+  'rm',
+  'mv',
+  'cp',
+  'read_image',
+  'look_at_drawing',
+  'ls',
+  'find',
+]
+const READ = [
+  'read',
+  'read_result',
+  'ls',
+  'find',
+  'workspace',
+  'skill',
+  'query_docs',
+  'list_templates',
+  'read_image',
+  'look_at_drawing',
+  'questions',
+]
 
-  if (needsSecretApproval(toolName, args))
-    return { allowed: false, reason: 'Saved-key requests require interactive approval' }
-  if (toolName === 'delegate') return { allowed: false, reason: 'Sub-agents cannot delegate' }
-
-  // Scope check for file tools
-  const SCOPED = ['read', 'edit', 'rm', 'mv', 'cp', 'read_image', 'look_at_drawing', 'ls', 'find']
-  if (args && SCOPED.includes(toolName)) {
-    const path = (args.path || args.from) as string
-    if (path && !scope.isInScope(path)) {
-      return { allowed: false, reason: `Access denied: ${path} is not in workspace scope` }
-    }
-  }
-
-  // Write tools: check permissionMode
-  const WRITE = ['edit', 'rm', 'mv', 'cp', 'create']
-  if (WRITE.includes(toolName)) {
-    if (mode !== 'allow-edit' && mode !== 'allow-all') {
-      return {
-        allowed: false,
-        reason: 'Write operations require allow-edit or allow-all permission mode',
-      }
-    }
-    return { allowed: true }
-  }
-
-  // Core tools: always allowed
-  if (CORE_TOOLS.has(toolName)) return { allowed: true }
-
-  // Feature tools: check toolModes
-  const toolMode = toolModes[toolName] ?? 'off'
-  if (toolMode === 'off') {
-    return { allowed: false, reason: `${toolName} is not enabled` }
-  }
-  // 'ask' and 'auto' both allowed for script-started agents (no interactive prompt).
-  return { allowed: true }
+export function runScopeFor(agent: AgentDefinition): ScopeResolver {
+  const scope = new ScopeResolver()
+  scope.entries.value = [...agent.scope]
+  scope.setFullVaultAccess(agent.fullVaultAccess)
+  return scope
 }
 
-/**
- * Run a single sub-agent task to completion.
- * Returns result text or error — never prompts for approval.
- */
+/** An unattended agent refuses anything an ordinary chat would have to ask about. */
+export function subAgentRefusal(
+  toolName: string,
+  args: Record<string, unknown>,
+  agent: AgentDefinition,
+  scope: ScopeResolver
+): string | null {
+  if (needsSecretApproval(toolName, args)) return 'Saved-key requests require interactive approval'
+  if (toolName === 'delegate') return 'Script-started agents cannot delegate'
+  if (SCOPED.includes(toolName)) {
+    const path = (args.path || args.from) as string
+    if (path && !scope.isInScope(path)) return `Access denied: ${path} is not in workspace scope`
+  }
+  if (toolName === 'skill' && skillNeedsApproval(args.name, agent, scope))
+    return 'This skill needs interactive approval'
+  if (READ.includes(toolName)) return null
+  if (WRITE_TOOLS.includes(toolName)) {
+    return agent.permissionMode === 'allow-edit' || agent.permissionMode === 'allow-all'
+      ? null
+      : `Write operations need approval (permission mode: ${agent.permissionMode})`
+  }
+  if (['rm', 'mv', 'cp'].includes(toolName)) {
+    return agent.permissionMode === 'allow-all'
+      ? null
+      : `${toolName} needs approval (permission mode: ${agent.permissionMode})`
+  }
+  const mode = agent.toolModes[toolName] ?? 'off'
+  return mode === 'auto'
+    ? null
+    : mode === 'off'
+      ? `${toolName} is not enabled`
+      : `${toolName} needs approval, which an unattended agent cannot ask for`
+}
+
+/** Run with the target's own access, never the global settings or the selected chat's. */
 export async function runSubAgent(
   task: SubAgentTask,
-  toolModes: Record<string, ToolMode>
+  agent: AgentDefinition,
+  scope = runScopeFor(agent)
 ): Promise<string> {
   if (task.signal?.aborted) throw new Error('Aborted')
-
-  const agentLoop = new AgentLoop()
-
-  const messages: Message[] = [
-    {
-      role: 'user' as const,
-      content: task.userMessage,
-      timestamp: Date.now(),
-    },
-  ]
-
-  // An agent, even one a script started: it may not write over a file it has not read.
-  const guard = new ReadGuard({ history: () => [], scope: () => ScopeResolver.getInstance() })
-
-  const result = await agentLoop.run({
+  const ctx: ToolContext = { scope, agentId: agent.id, interactive: false }
+  const bound = task.tools.map((tool) => ({
+    ...tool,
+    execute: (id: string, params: Record<string, unknown>, signal?: AbortSignal) =>
+      tool.execute(id, params, signal, ctx),
+  }))
+  const guard = new ReadGuard({ history: () => [], scope: () => scope })
+  const messages: Message[] = [{ role: 'user', content: task.userMessage, timestamp: Date.now() }]
+  const result = await new AgentLoop().run({
     model: task.model,
     systemPrompt: task.systemPrompt,
-    tools: withResultStore(
-      withReadGuard(task.tools, guard),
-      new ResultStore({ messages: () => [] })
-    ),
+    tools: withResultStore(withReadGuard(bound, guard), new ResultStore({ messages: () => [] })),
     messages,
-    streamOptions: {
-      signal: task.signal,
-    },
-    beforeToolCall: async (toolName, _id, args) => {
+    streamOptions: { signal: task.signal },
+    beforeToolCall: async (name, _id, args) => {
       if (task.signal?.aborted) return { block: true, reason: 'Aborted' }
-      const check = isToolAllowed(toolName, toolModes, args)
-      if (!check.allowed) {
-        return { block: true, reason: check.reason }
-      }
+      const reason = subAgentRefusal(name, args, agent, scope)
+      if (reason) return { block: true, reason }
     },
   })
-
-  // Extract final text from last assistant message
-  const lastAssistant = [...result.messages].reverse().find((m) => m.role === 'assistant')
-
-  if (lastAssistant) {
-    const texts = lastAssistant.content.filter((c): c is TextContent => c.type === 'text')
-    if (texts.length) return texts.map((t) => t.text).join('\n')
-  }
-
-  return ''
+  const last = [...result.messages].reverse().find((message) => message.role === 'assistant')
+  return last
+    ? last.content
+        .filter((part): part is TextContent => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n')
+    : ''
 }

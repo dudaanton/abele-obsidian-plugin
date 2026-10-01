@@ -17,7 +17,7 @@ import { createReplaceTool } from '@/ai/tools/ReplaceTool'
 import { createWriteFileTool } from '@/ai/tools/WriteFileTool'
 import { createGenerateImageTool } from '@/ai/tools/GenerateImageTool'
 import { createDownloadImageTool, createDownloadFileTool } from '@/ai/tools/DownloadImageTool'
-import { runSubAgent } from '@/ai/SubAgentRunner'
+import { runSubAgent, runScopeFor } from '@/ai/SubAgentRunner'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { createAgentTools } from '@/ai/tools'
 import { prepareSecretRequest, redactSecrets } from '@/ai/tools/secretUtils'
@@ -207,42 +207,51 @@ export function buildScriptContext(opts: {
     /** The words in a book the run was asked for from; `null` for every other run. */
     book: opts.book ? { ...opts.book } : null,
     /** Vault reader files and their already-stored reader data; unrelated to the selection `book`. */
-    books: createBooksApi((() => {
-      const { app } = GlobalStore.getInstance()
-      return {
-        files: () => app.vault.getFiles(),
-        places: bookPlaces(),
-        highlightCount: (path) => {
-          const leaf = app.workspace.getLeavesOfType(BOOK_VIEW_TYPE)
-            .find((l) => (l.view as { file?: TFile }).file?.path === path)
-          const view = leaf?.view as {
-            model?: { status: string; highlights: unknown[] }
-            reading?: { highlightsLoaded: boolean }
-          } | undefined
-          return view?.model?.status === 'ready' && view.reading?.highlightsLoaded
-            ? view.model.highlights.length : null
-        },
-        getFile: (path) => {
-          const file = app.vault.getAbstractFileByPath(path)
-          return file instanceof TFile ? file : null
-        },
-        leaves: () => app.workspace.getLeavesOfType(BOOK_VIEW_TYPE),
-        newLeaf: () => app.workspace.getLeaf('tab'),
-        reveal: (leaf) => app.workspace.revealLeaf(leaf as ReturnType<typeof app.workspace.getLeaf>),
-        onFilesChanged: (listener) => {
-          const refs = [
-            app.vault.on('create', listener), app.vault.on('delete', listener),
-            app.vault.on('rename', listener), app.vault.on('modify', listener),
-          ]
-          return () => refs.forEach((ref) => app.vault.offref(ref))
-        },
-        onReadersChanged: (listener) => {
-          const ref = app.workspace.on('layout-change', listener)
-          return () => app.workspace.offref(ref)
-        },
-        onDispose: (stop) => booksDisposalFor(AbeleConfig.getInstance().plugin)(stop),
-      } satisfies BooksHost
-    })()),
+    books: createBooksApi(
+      (() => {
+        const { app } = GlobalStore.getInstance()
+        return {
+          files: () => app.vault.getFiles(),
+          places: bookPlaces(),
+          highlightCount: (path) => {
+            const leaf = app.workspace
+              .getLeavesOfType(BOOK_VIEW_TYPE)
+              .find((l) => (l.view as { file?: TFile }).file?.path === path)
+            const view = leaf?.view as
+              | {
+                  model?: { status: string; highlights: unknown[] }
+                  reading?: { highlightsLoaded: boolean }
+                }
+              | undefined
+            return view?.model?.status === 'ready' && view.reading?.highlightsLoaded
+              ? view.model.highlights.length
+              : null
+          },
+          getFile: (path) => {
+            const file = app.vault.getAbstractFileByPath(path)
+            return file instanceof TFile ? file : null
+          },
+          leaves: () => app.workspace.getLeavesOfType(BOOK_VIEW_TYPE),
+          newLeaf: () => app.workspace.getLeaf('tab'),
+          reveal: (leaf) =>
+            app.workspace.revealLeaf(leaf as ReturnType<typeof app.workspace.getLeaf>),
+          onFilesChanged: (listener) => {
+            const refs = [
+              app.vault.on('create', listener),
+              app.vault.on('delete', listener),
+              app.vault.on('rename', listener),
+              app.vault.on('modify', listener),
+            ]
+            return () => refs.forEach((ref) => app.vault.offref(ref))
+          },
+          onReadersChanged: (listener) => {
+            const ref = app.workspace.on('layout-change', listener)
+            return () => app.workspace.offref(ref)
+          },
+          onDispose: (stop) => booksDisposalFor(AbeleConfig.getInstance().plugin)(stop),
+        } satisfies BooksHost
+      })()
+    ),
     /** The message an interceptor script is deciding about; `null` for every other run. */
     message: opts.intercept?.message ?? null,
     /** The chat that message is sent in, read-only; `null` for every other run. */
@@ -428,13 +437,20 @@ export function buildScriptContext(opts: {
       await approveScriptKeyRequest(raw, s)
       const prepared = prepareSecretRequest(raw)
       const response = await withTimeout(
-        (signal) => waitForScript(() => requestUrl({
-          ...prepared,
-          method: fetchOpts?.method || 'GET',
-          throw: false,
-          timeoutMs: 300_000,
-        }), signal),
-        fetchOpts?.timeout && fetchOpts.timeout > 0 ? Math.min(fetchOpts.timeout, 300_000) : 300_000,
+        (signal) =>
+          waitForScript(
+            () =>
+              requestUrl({
+                ...prepared,
+                method: fetchOpts?.method || 'GET',
+                throw: false,
+                timeoutMs: 300_000,
+              }),
+            signal
+          ),
+        fetchOpts?.timeout && fetchOpts.timeout > 0
+          ? Math.min(fetchOpts.timeout, 300_000)
+          : 300_000,
         url,
         s,
         track
@@ -449,7 +465,12 @@ export function buildScriptContext(opts: {
           /* keep text */
         }
       }
-      const headers = Object.fromEntries(Object.entries(response.headers).map(([k, v]) => [k, redactSecrets(v, prepared.secretValues)]))
+      const headers = Object.fromEntries(
+        Object.entries(response.headers).map(([k, v]) => [
+          k,
+          redactSecrets(v, prepared.secretValues),
+        ])
+      )
       return { status: response.status, headers, data, text }
     },
 
@@ -464,7 +485,13 @@ export function buildScriptContext(opts: {
       const { timeout, ...rest } = opts ?? {}
       await approveScriptKeyRequest({ url, headers: rest.headers }, s)
       return stripPrefix(
-        await withTimeout((signal) => call(downloadImageTool, { url, ...rest }, signal), timeout, url, s, track)
+        await withTimeout(
+          (signal) => call(downloadImageTool, { url, ...rest }, signal),
+          timeout,
+          url,
+          s,
+          track
+        )
       )
     },
 
@@ -483,7 +510,13 @@ export function buildScriptContext(opts: {
       const { timeout, ...rest } = opts ?? {}
       await approveScriptKeyRequest({ url, headers: rest.headers, body: rest.body }, s)
       return stripPrefix(
-        await withTimeout((signal) => call(downloadFileTool, { url, ...rest }, signal), timeout, url, s, track)
+        await withTimeout(
+          (signal) => call(downloadFileTool, { url, ...rest }, signal),
+          timeout,
+          url,
+          s,
+          track
+        )
       )
     },
 
@@ -520,14 +553,17 @@ export function buildScriptContext(opts: {
       if (!model) throw new Error(`Agent "${target.name}" has no usable model configured`)
 
       const systemPrompt = await registry.buildSystemPrompt(target)
-      const tools = registry.filterTools(target, createAgentTools({ agentId: target.id }))
+      const scope = runScopeFor(target)
+      const tools = registry.filterTools(target, createAgentTools({ agentId: target.id, scope }))
       const items = agentOpts?.items ?? []
 
       const runOne = (message: string) => {
         s.throwIfAborted()
         return runSubAgent(
           { systemPrompt, userMessage: message, tools, model, signal: s },
-          target.toolModes
+          target,
+          // Each fan-out branch has its own cache and created-file grants.
+          runScopeFor(target)
         )
       }
 
@@ -702,7 +738,10 @@ export function buildScriptContext(opts: {
           'Showing text is not available when one script runs another unless a view is open.'
         )
       }
-      await waitForScript(() => handler([{ name: 'text', label: title ?? '', type: 'markdown', text }]), s)
+      await waitForScript(
+        () => handler([{ name: 'text', label: title ?? '', type: 'markdown', text }]),
+        s
+      )
     },
   }
 
@@ -723,10 +762,29 @@ export function buildScriptContext(opts: {
   }
   guard(context.vocabulary, ['mark', 'off', 'on'])
   return guard(context, [
-    'edit', 'write', 'create', 'remove', 'move', 'copy', 'replace', 'open',
-    'applyTemplate', 'createFromTemplate', 'fetch', 'downloadImage', 'downloadFile',
-    'agent', 'generateImage', 'unzip', 'setCover', 'runScript', 'view',
-    'notice', 'setStatus', 'form', 'show',
+    'edit',
+    'write',
+    'create',
+    'remove',
+    'move',
+    'copy',
+    'replace',
+    'open',
+    'applyTemplate',
+    'createFromTemplate',
+    'fetch',
+    'downloadImage',
+    'downloadFile',
+    'agent',
+    'generateImage',
+    'unzip',
+    'setCover',
+    'runScript',
+    'view',
+    'notice',
+    'setStatus',
+    'form',
+    'show',
   ])
 }
 

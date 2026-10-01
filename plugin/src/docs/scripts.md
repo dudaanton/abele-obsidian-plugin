@@ -22,6 +22,14 @@ to 30 seconds and 20 MB. Desktop requests stop reading at the size limit; on mob
 transport buffers first, so the plugin can only refuse the completed response. A timed-out
 mobile request can still finish in the platform, but its answer is not used.
 
+## Agents started by scripts
+
+`ctx.agent()` uses the target agent's own scope and permission mode, not the global mode or
+whichever chat is open. Anything an ordinary chat would ask about is refused: Ask tools,
+out-of-scope source files, edits under confirm-all, and deletes/moves/copies without allow-all.
+Auto feature tools still run, including explicitly automatic memory. These rules also apply
+when an automation starts the script; direct script operations keep their existing access.
+
 ## The header
 
 Every script starts with a comment block declaring what it is. Without `@name` the file is
