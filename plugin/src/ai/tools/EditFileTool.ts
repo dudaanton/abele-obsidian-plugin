@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { guardChatWrite } from './chatWriteGuard'
 import { EDIT_DESCRIPTION } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
@@ -28,6 +29,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
         new_string: string
       }
       if (!path) throw new Error('Missing required parameter: path')
+      guardChatWrite(path)
       if (old_string == null) throw new Error('Missing required parameter: old_string')
       if (new_string == null) throw new Error('Missing required parameter: new_string')
       if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
@@ -36,6 +38,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
+      guardChatWrite(file.path)
       const content = await app.vault.read(file)
       if (!content.includes(old_string)) {
         throw new Error(`String not found in file: "${old_string.slice(0, 100)}"`)

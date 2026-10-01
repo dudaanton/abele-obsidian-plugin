@@ -32,6 +32,11 @@ not merely to discuss it. Supply `text` (the full replacement markdown for that 
 `request` (the latest user message verbatim). It refuses non-assistant targets and selections
 that cannot be safely mapped back to markdown.
 
+Chat logs cannot be written, edited, replaced, created, or moved with file tools, including
+script `ctx.edit`, `ctx.write`, `ctx.replace`, `ctx.create`, `ctx.move`, and `ctx.copy`
+destinations. Script note operations keep their usual full-vault access; chat management uses
+the chat UI instead.
+
 The tool records a proposal, never an edit. The owner opens **Review reply revision**, sees the
 passage diff, and chooses **Accept**, **Reject**, or **Later**. Automatic tool permissions cannot
 accept it. Do not claim the parent was changed after proposing. Never edit a chat with file tools.

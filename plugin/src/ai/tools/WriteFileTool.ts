@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { guardChatWrite } from './chatWriteGuard'
 import { NUMBERS_NOT_TEXT, READ_FIRST_WRITE } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
@@ -27,6 +28,7 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const path = params.path as string
       const content = params.content as string
       if (!path) throw new Error('Missing required parameter: path')
+      guardChatWrite(path)
       if (content == null) throw new Error('Missing required parameter: content')
       if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
@@ -34,6 +36,7 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
+      guardChatWrite(file.path)
       const old = await app.vault.read(file)
       // Written on this device: a script stays confirmed here; see `ScriptTrust.ts`.
       signal?.throwIfAborted()

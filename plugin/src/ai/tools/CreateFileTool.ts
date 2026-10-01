@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { guardChatWrite } from './chatWriteGuard'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
@@ -26,7 +27,9 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       // Obsidian's own API takes a name with a `#` in it happily, and the note that comes out
       // cannot be linked to from anywhere. Cleaned rather than refused: the work the caller
       // was doing is worth more than the punctuation, and the reply says what it ended up as.
+      guardChatWrite(path)
       const safePath = toSafeVaultPath(path)
+      guardChatWrite(safePath)
       const renamed = describeRename(path, safePath)
 
       const { app } = GlobalStore.getInstance()

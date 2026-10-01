@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { guardChatWrite } from './chatWriteGuard'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
@@ -22,7 +23,9 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const { from, to } = params as { from: string; to: string }
       if (!from) throw new Error('Missing required parameter: from')
       if (!to) throw new Error('Missing required parameter: to')
+      guardChatWrite(to)
       const safeTo = toSafeVaultPath(to)
+      guardChatWrite(safeTo)
       const renamed = describeRename(to, safeTo)
       if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(from)) {
         throw new Error(`Access denied: ${from} is not in workspace scope`)

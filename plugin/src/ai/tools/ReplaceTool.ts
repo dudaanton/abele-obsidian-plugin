@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { guardChatWrite } from './chatWriteGuard'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { ReplacementAction } from '@/entities/ReplacementAction'
@@ -78,6 +79,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       const path = params.path as string
       const rawActions = params.actions as ActionParam[]
       if (!path) throw new Error('Missing required parameter: path')
+      guardChatWrite(path)
       if (!rawActions?.length) throw new Error('Missing required parameter: actions')
 
       if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
@@ -87,6 +89,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
+      guardChatWrite(file.path)
 
       // Build ReplacementAction instances
       const actions = rawActions.map((a) => {
