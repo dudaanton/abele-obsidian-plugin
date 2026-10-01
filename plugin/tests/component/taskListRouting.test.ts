@@ -107,6 +107,58 @@ describe('routing tasks to sidebars and lists', () => {
     expect(rendered()).toEqual(['Early', 'Late', 'Untimed', 'Done'])
   })
 
+  it('keeps sidebar equal-time rows in note-path order across rescans, toggles and remounts', async () => {
+    useVault(
+      ['past', 'today'].flatMap((day) =>
+        ['a', 'b', 'c'].map((name) => ({ path: `Tasks/sample-${day}-${name}.md` }))
+      )
+    )
+    const makeTasks = () =>
+      ['past', 'today'].flatMap((day) =>
+        ['a', 'b', 'c'].map((name) => {
+          const value = new Task({
+            wikilink: `[[Tasks/sample-${day}-${name}]]`,
+            title: `sample-${day}-${name}`,
+            date: dayjs(day === 'past' ? '2028-01-31' : '2028-02-01'),
+            completedAt: name === 'a' ? dayjs('2028-02-01') : undefined,
+          })
+          value.loaded = true
+          return value
+        })
+      )
+    const list = new TasksList()
+    const rescan = (values: Task[]) => {
+      list.tasks.clear()
+      for (const value of values) list.tasks.set(value.taskPath, value)
+    }
+    rescan(makeTasks())
+    GlobalStore.getInstance().tasksList.value = list
+    const open = () => {
+      view = mount(TimelineSidebar, { shallow: true, global: { stubs: { Timeline: false } } })
+    }
+    open()
+    await flushPromises()
+    const folded = rendered()
+    expect(folded).toEqual(['sample-today-b', 'sample-today-c'])
+    await view.find('.abele-timeline__history').trigger('click')
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
+    await flushPromises()
+    const expanded = rendered()
+    expect(expanded).toEqual(makeTasks().map((item) => item.title))
+    // The same files may be enumerated backwards after reload, with fresh runtime IDs.
+    rescan(makeTasks().reverse())
+    await flushPromises()
+    expect(rendered()).toEqual(expanded)
+    await view.find('.abele-timeline__history').trigger('click')
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
+    await flushPromises()
+    expect(rendered()).toEqual(folded)
+    view.unmount()
+    open()
+    await flushPromises()
+    expect(rendered()).toEqual(folded)
+  })
+
   it('Todo hides completed by default and updates its empty message after filtering them', async () => {
     view = mount(TodoList, { props: { tasks: [task('Done', undefined, true)] }, shallow: true })
     expect(rendered()).toEqual([])

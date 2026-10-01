@@ -35,9 +35,14 @@ const tasks = computed(() => {
 
   if (!tasksList) return []
 
-  return Array.from(tasksList.tasks.values()).sort(
-    (a, b) => b.getSortTimestamp() - a.getSortTimestamp()
-  )
+  // Vault enumeration order can reverse on reload. Keep equal-time sidebar rows stable
+  // so hiding history chooses the same nearest replacement, without reordering note lists.
+  return Array.from(tasksList.tasks.entries())
+    .sort(
+      ([pathA, a], [pathB, b]) =>
+        b.getSortTimestamp() - a.getSortTimestamp() || pathA.localeCompare(pathB)
+    )
+    .map(([, task]) => task)
 })
 
 const journal = computed(() => {
