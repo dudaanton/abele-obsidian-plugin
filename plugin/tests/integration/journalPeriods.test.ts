@@ -6,6 +6,7 @@ import { flushPromises } from '@vue/test-utils'
 import { Journal, type JournalDTO } from '@/entities/Journal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { dailyJournal, useVault } from '../helpers/testEnv'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 // Match main.ts's Dayjs setup, but restore the global locale and TZ after every case.
 dayjs.extend(dayOfYear)
@@ -26,6 +27,30 @@ afterEach(() => {
   else process.env.TZ = oldTZ
   vi.useRealTimers()
 })
+describe('journal week start after a settings save', () => {
+  // BUG: only the settings-screen handler updates the store and Dayjs week start.
+  it('applies a week-start change saved outside the settings screen', async () => {
+    useVault([])
+    const config = AbeleConfig.getInstance()
+    const store = GlobalStore.getInstance()
+    const oldPlugin = config.plugin
+    const oldMonday = config.weekStartsOnMonday
+    config.init({ saveData: vi.fn(async () => {}), syncAiFeatures: vi.fn() } as never)
+    config.applySettings({ refreshDelay: 300, weekStartsOnMonday: true })
+    store.applySettings()
+    try {
+      config.weekStartsOnMonday = false
+      await config.saveSettings()
+      expect(store.weekStartsOnMonday.value).toBe(false)
+      expect(dayjs('2024-04-03').startOf('week').format('YYYY-MM-DD')).toBe('2024-03-31')
+    } finally {
+      config.plugin = oldPlugin
+      config.weekStartsOnMonday = oldMonday
+      store.applySettings()
+    }
+  })
+})
+
 const journal = (recurrence: JournalDTO['recurrence'], dayOfPeriod?: JournalDTO['dayOfPeriod']) =>
   new Journal(dailyJournal({ recurrence, dayOfPeriod }))
 const date = (value: dayjs.Dayjs | null) => value?.format('YYYY-MM-DD') ?? null

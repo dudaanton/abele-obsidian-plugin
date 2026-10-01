@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
@@ -524,7 +525,10 @@ export class AbeleConfig {
     // The agent's commands and ribbon icon are registered from a setting, and this is the one
     // road every settings change takes — so switching it on takes effect here rather than at
     // the next restart. Read from the local: the plugin may have unloaded during the write.
-    if (this.plugin === plugin) plugin.syncAiFeatures()
+    if (this.plugin === plugin) {
+      GlobalStore.getInstance().applySettings()
+      plugin.syncAiFeatures()
+    }
   }
 
   /**
