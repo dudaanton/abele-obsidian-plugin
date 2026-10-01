@@ -29,7 +29,12 @@ import type {
 } from './client'
 import { ChatStorage } from './ChatStorage'
 import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot } from './ChatLog'
-import { compatibleReplyHistory, projectReplyHistory, undoRevision, type ReplyProposal } from './replyAnnotations'
+import {
+  compatibleReplyHistory,
+  projectReplyHistory,
+  undoRevision,
+  type ReplyProposal,
+} from './replyAnnotations'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import { createReplyRevisionTool, REPLY_REVISION_TOOL } from './tools/ReplyRevisionTool'
 import { CommentService } from './CommentService'
@@ -2177,9 +2182,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       const after = change(before)
       const snapshot = this.snapshot()
       const messages = snapshot.messages.map((m) => (m.id === id ? after : m))
-      const internalMessages = before.content !== after.content && after.revisions?.length
-        ? compatibleReplyHistory(messages, snapshot.internalMessages)
-        : snapshot.internalMessages
+      const internalMessages =
+        before.content !== after.content && after.revisions?.length
+          ? compatibleReplyHistory(messages, snapshot.internalMessages)
+          : snapshot.internalMessages
       let written = ''
       const operation = GlobalStore.getInstance().app.vault.process(file, (content) => {
         const parsed = parseChat(content)
@@ -2240,20 +2246,51 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     await this.changeReply(id, (message) => undoRevision(message, Date.now()))
   }
 
+  /** Path-only maintenance; safe during a turn and written by this session's usual writer. */
+  followReplyProposalRename(oldPath: string, newPath: string): boolean {
+    let changed = false
+    this.allChatMessages = this.allChatMessages.map((message) => {
+      if (message.replyProposal?.parent !== oldPath) return message
+      changed = true
+      return { ...message, replyProposal: { ...message.replyProposal, parent: newPath } }
+    })
+    if (changed) this.updateVisibleMessages()
+    return changed
+  }
+
   private replyDeciding = false
 
   async decideReplyProposal(id: string, accept: boolean): Promise<void> {
     if (this.replyDeciding || this.isMidTurn || this.isBusy)
       throw new Error('Wait for this chat to finish its turn.')
-    const proposal = this.allChatMessages.find((m) => m.id === id)?.replyProposal
-    if (!proposal || proposal.status !== 'pending')
+    let proposal = this.allChatMessages.find((m) => m.id === id)?.replyProposal
+    if (proposal?.status === 'accepted' && !accept)
+      throw new Error(
+        'This proposal was accepted. Finish applying it, then use Undo on the parent reply.'
+      )
+    const resumable = proposal?.status === 'accepted' && proposal.application === 'pending'
+    if (!proposal || (proposal.status !== 'pending' && !resumable))
       throw new Error('This proposal is no longer pending.')
     this.replyDeciding = true
     try {
-      if (accept) await CommentService.getInstance().acceptReplyProposal(proposal)
+      // Commit the owner decision first under the child file's compare-and-swap guard.
+      // A stale Reject or a failed decision write must never touch the parent. Two vault
+      // files cannot be atomically committed, so application is an explicit recoverable
+      // checkpoint; after durable Accept, Reject is no longer a valid transition.
       await this.changeReply(id, (message) => ({
         ...message,
-        replyProposal: { ...proposal, status: accept ? 'accepted' : 'rejected' },
+        replyProposal: {
+          ...proposal!,
+          status: accept ? 'accepted' : 'rejected',
+          application: accept ? 'pending' : undefined,
+        },
+      }))
+      if (!accept) return
+      proposal = this.allChatMessages.find((m) => m.id === id)!.replyProposal!
+      await CommentService.getInstance().acceptReplyProposal({ ...proposal, status: 'pending' })
+      await this.changeReply(id, (message) => ({
+        ...message,
+        replyProposal: { ...proposal!, application: 'done' },
       }))
     } finally {
       this.replyDeciding = false

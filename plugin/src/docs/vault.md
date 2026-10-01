@@ -318,7 +318,11 @@ reply id), `before` (expected full source), `from` and `old` (verified source pa
 (replacement markdown), `request` (owner message), `author`, `at` (epoch milliseconds), and
 `status` (`pending`, `accepted`, or `rejected`). A pending proposal changes nothing in the parent.
 Only the owner's diff acceptance applies it, with a stale-source check. Tool permission modes
-never bypass that decision.
+never bypass that decision. Acceptance is written to the comment file first with `application:
+"pending"`; only then is the parent changed. A completed application records `application:
+"done"`. If either later write fails, the accepted proposal can be resumed idempotently via
+**Finish accepted revision**, not rejected; undo belongs to the parent reply. A stale externally
+rejected comment or failed initial decision write never changes the parent.
 
 An accepted parent reply keeps its id and timestamp, replaces `content`, and appends a
 `revisions` entry: `proposal`, `before`, `after`, `author`, `at`, and the previous `highlights`.

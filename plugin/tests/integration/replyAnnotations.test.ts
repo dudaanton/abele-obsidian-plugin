@@ -88,7 +88,112 @@ async function propose() {
   return { p, child, proposal: (result.details as { replyProposal: ReplyProposal }).replyProposal }
 }
 
+async function stagedProposal() {
+  const setup = await propose()
+  const { child, proposal } = setup
+  ;(child as any).handleAgentEvent({
+    type: 'tool_start',
+    toolCallId: 'sample-tool',
+    toolName: REPLY_REVISION_TOOL,
+    args: {},
+  })
+  ;(child as any).handleAgentEvent({
+    type: 'tool_end',
+    toolCallId: 'sample-tool',
+    result: { content: [], details: { replyProposal: proposal } },
+    isError: false,
+  })
+  await child.save()
+  const id = child.messages.value.find((m) => m.replyProposal)!.id
+  return { ...setup, id }
+}
+
 describe('reply annotation persistence and owner decisions', () => {
+  it('does not apply a proposal rejected by sync before the local decision', async () => {
+    const { child, id } = await stagedProposal()
+    const own = child.currentChatFile.value!
+    const parsed = parseChat(await app.vault.read(own))
+    parsed.messages.find((m) => m.id === id)!.replyProposal!.status = 'rejected'
+    await app.vault.modify(own, serializeChat({ ...parsed, metadata: parsed.metadata! }))
+    await expect(child.decideReplyProposal(id, true)).rejects.toThrow(/changed|pending/)
+    expect((await disk()).messages[0].content).toBe(TEXT)
+  })
+
+  it('does not touch the parent when the initial child decision write fails', async () => {
+    const { child, id } = await stagedProposal()
+    const process = app.vault.process.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementation(async (file, fn) => {
+      if (file.path === child.currentChatFile.value!.path)
+        throw new Error('sample child write failure')
+      return process(file, fn)
+    })
+    await expect(child.decideReplyProposal(id, true)).rejects.toThrow('sample child write failure')
+    expect((await disk()).messages[0].content).toBe(TEXT)
+  })
+
+  it('persists acceptance before application, refuses a later Reject and resumes after a parent write failure', async () => {
+    const { child, id } = await stagedProposal()
+    const process = app.vault.process.bind(app.vault)
+    const spy = vi.spyOn(app.vault, 'process').mockImplementation(async (file, fn) => {
+      if (file.path === PATH) throw new Error('sample parent write failure')
+      return process(file, fn)
+    })
+    await expect(child.decideReplyProposal(id, true)).rejects.toThrow('sample parent write failure')
+    expect(child.messages.value.find((m) => m.id === id)!.replyProposal).toMatchObject({
+      status: 'accepted',
+      application: 'pending',
+    })
+    await expect(child.decideReplyProposal(id, false)).rejects.toThrow(/accepted/)
+    spy.mockRestore()
+    await child.decideReplyProposal(id, true)
+    expect((await disk()).messages[0].content).toBe('A bright lamp glows.')
+    expect(child.messages.value.find((m) => m.id === id)!.replyProposal).toMatchObject({
+      status: 'accepted',
+      application: 'done',
+    })
+  })
+
+  it('recovers idempotently if recording the completed application in the child fails', async () => {
+    const { child, id } = await stagedProposal()
+    const process = app.vault.process.bind(app.vault)
+    let ownWrites = 0
+    const spy = vi.spyOn(app.vault, 'process').mockImplementation(async (file, fn) => {
+      if (file.path === child.currentChatFile.value!.path && ++ownWrites === 2)
+        throw new Error('sample final child failure')
+      return process(file, fn)
+    })
+    await expect(child.decideReplyProposal(id, true)).rejects.toThrow('sample final child failure')
+    expect((await disk()).messages[0].content).toBe('A bright lamp glows.')
+    await expect(child.decideReplyProposal(id, false)).rejects.toThrow(/accepted/)
+    spy.mockRestore()
+    await child.decideReplyProposal(id, true)
+    expect((await disk()).messages[0].revisions).toHaveLength(1)
+  })
+  it.each([false, true])(
+    'follows a proposed parent rename with comment unloaded=%s',
+    async (unloaded) => {
+      const { child, id } = await stagedProposal()
+      const ownPath = child.currentChatFile.value!.path
+      if (unloaded) {
+        CommentService.getInstance().destroy()
+        ChatService.getInstance().destroy()
+      }
+      const next = 'AI/Chats/sample-moved.abchat'
+      await app.vault.rename(file(), next)
+      await CommentService.getInstance().handleRename(PATH, next)
+      const own = app.vault.getAbstractFileByPath(ownPath) as TFile
+      const parsed = parseChat(await app.vault.read(own))
+      expect(parsed.metadata?.anchor?.note).toBe(next)
+      expect(parsed.messages.find((m) => m.id === id)?.replyProposal?.parent).toBe(next)
+      const session = unloaded ? (await CommentService.getInstance().load(own.basename))! : child
+      await session.decideReplyProposal(id, true)
+      expect(
+        parseChat(await app.vault.read(app.vault.getAbstractFileByPath(next) as TFile)).messages[0]
+          .content
+      ).toBe('A bright lamp glows.')
+    }
+  )
+
   it('annotates a legacy chat safely and migrates its snapshot without another turn', async () => {
     const old = await disk()
     await app.vault.modify(
@@ -130,7 +235,9 @@ describe('reply annotation persistence and owner decisions', () => {
     expect((p as any).getMessagesForModel()[0].content[0].text).toBe('A bright lamp glows.')
     // The original is versioned on the reply; old clients must read the current provider text.
     expect((await disk()).messages[0].revisions?.[0].before).toBe(TEXT)
-    expect((await disk()).internalMessages[0].content).toEqual([{ type: 'text', text: 'A bright lamp glows.' }])
+    expect((await disk()).internalMessages[0].content).toEqual([
+      { type: 'text', text: 'A bright lamp glows.' },
+    ])
     await p.undoReplyRevision('reply')
     expect((p as any).getMessagesForModel()[0].content[0].text).toBe(TEXT)
     expect((await disk()).internalMessages[0].content).toEqual([{ type: 'text', text: TEXT }])
@@ -225,9 +332,22 @@ describe('reply annotation persistence and owner decisions', () => {
     expect(JSON.stringify(history)).toContain('A bright lamp glows.')
     // Emulate the previous client's v2 reader: slice after its last compaction, no projection.
     const persisted = (await disk()).internalMessages
-    const compact = persisted.findLastIndex(m => m.role === 'system' && m.content.startsWith('[Conversation compacted]'))
-    expect(persisted.slice(compact + 1).some(m => m.role === 'assistant' && JSON.stringify(m.content).includes('A bright lamp glows.'))).toBe(true)
-    expect(persisted.slice(compact + 1).some(m => m.role === 'system' && m.content.includes('A bright lamp glows.'))).toBe(false)
+    const compact = persisted.findLastIndex(
+      (m) => m.role === 'system' && m.content.startsWith('[Conversation compacted]')
+    )
+    expect(
+      persisted
+        .slice(compact + 1)
+        .some(
+          (m) =>
+            m.role === 'assistant' && JSON.stringify(m.content).includes('A bright lamp glows.')
+        )
+    ).toBe(true)
+    expect(
+      persisted
+        .slice(compact + 1)
+        .some((m) => m.role === 'system' && m.content.includes('A bright lamp glows.'))
+    ).toBe(false)
   })
 
   it('does not overwrite an externally changed internal record with an unchanged count', async () => {

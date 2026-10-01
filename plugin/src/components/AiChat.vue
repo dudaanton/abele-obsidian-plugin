@@ -603,7 +603,7 @@ const onUndoRevision = (id: string) => {
 const onReviewRevision = (id: string) => {
   const owner = session.value
   const proposal = owner?.allMessages.value.find((message) => message.id === id)?.replyProposal
-  if (!owner || !proposal || proposal.status !== 'pending') return
+  if (!owner || !proposal || (proposal.status !== 'pending' && proposal.application !== 'pending')) return
   replyReview.value = { proposal, decide: (accept) => owner.decideReplyProposal(id, accept) }
 }
 

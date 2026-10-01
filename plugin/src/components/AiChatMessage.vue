@@ -143,8 +143,8 @@
         <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
         <div v-if="message.replyProposal" class="abele-chat-msg__revision">
           <Button
-            v-if="message.replyProposal.status === 'pending'"
-            text="Review reply revision"
+            v-if="message.replyProposal.status === 'pending' || message.replyProposal.application === 'pending'"
+            :text="message.replyProposal.application === 'pending' ? 'Finish accepted revision' : 'Review reply revision'"
             icon="git-compare"
             tooltip="Compare the selected passage before accepting or rejecting the replacement"
             @click="emit('review-revision', message.id)"

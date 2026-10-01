@@ -33,6 +33,8 @@ export interface ReplyProposal {
   author: string
   at: number
   status: 'pending' | 'accepted' | 'rejected'
+  /** Acceptance is durable before application; a failed application can only be resumed. */
+  application?: 'pending' | 'done'
 }
 
 /** Never infer a source range from a rendered offset: markdown offsets are different. */
@@ -122,7 +124,9 @@ export function projectReplyHistory(replies: ChatMessage[], internal: Message[])
     if (seen.has(reply.id)) continue
     projected.push({
       role: 'assistant',
-      content: [{ type: 'text', text: '[Owner-reviewed correction to an earlier reply]\n' + reply.content }],
+      content: [
+        { type: 'text', text: '[Owner-reviewed correction to an earlier reply]\n' + reply.content },
+      ],
       model: '',
       usage: { ...EMPTY_USAGE },
       stopReason: 'stop',
@@ -136,7 +140,9 @@ export function projectReplyHistory(replies: ChatMessage[], internal: Message[])
 /** Materialize current text for v2 clients that have no reply projection implementation. */
 export function compatibleReplyHistory(replies: ChatMessage[], internal: Message[]): Message[] {
   const projected = projectReplyHistory(replies, internal)
-  const compact = projected.findLastIndex(m => m.role === 'system' && m.content.startsWith('[Conversation compacted]'))
+  const compact = projected.findLastIndex(
+    (m) => m.role === 'system' && m.content.startsWith('[Conversation compacted]')
+  )
   if (compact < 0) return projected
   const tail = projected.slice(compact + 1)
   // Append only missing assistant corrections after the summary. Future edits/undo update

@@ -3,14 +3,27 @@
     <div class="abele-reply-revision">
       <p>{{ proposal.author }} · {{ new Date(proposal.at).toLocaleString() }}</p>
       <blockquote>{{ proposal.request }}</blockquote>
-      <p>Only this passage will change. The original stays available in the parent reply.</p>
+      <p v-if="proposal.application === 'pending'">
+        You already accepted this revision. Finish applying it; afterward you can undo it in the
+        parent reply.
+      </p>
+      <p v-else>Only this passage will change. The original stays available in the parent reply.</p>
       <p>Before → proposed replacement</p>
       <Diff :text-left="proposal.old" :text-right="proposal.text" />
       <p v-if="error" role="alert" class="abele-reply-revision__error">{{ error }}</p>
     </div>
     <template #footer>
-      <Button text="Accept" :disabled="busy" @click="choose(true)" />
-      <Button text="Reject" :disabled="busy" @click="choose(false)" />
+      <Button
+        :text="proposal.application === 'pending' ? 'Finish applying' : 'Accept'"
+        :disabled="busy"
+        @click="choose(true)"
+      />
+      <Button
+        v-if="proposal.status === 'pending'"
+        text="Reject"
+        :disabled="busy"
+        @click="choose(false)"
+      />
       <Button text="Later" :disabled="busy" @click="emit('close')" />
     </template>
   </ObsidianModal>

@@ -111,6 +111,10 @@ reply; **Undo last revision** restores the previous version. The original and un
 with the chat, unlike file rewind. Highlights stay with the old version and return on undo;
 mark the revised version afresh.
 
+If applying an accepted revision is interrupted, **Finish accepted revision** resumes it.
+Your Accept is kept before the parent is changed; it cannot turn into Reject afterward. Once
+applied, use the parent reply's undo to put it back.
+
 Wait for both chats to finish working before accepting. If the parent changed elsewhere, reopen
 it and ask for a fresh proposal. A selection crossing complex or partial markdown syntax may
 not map safely; select a complete passage or words within one formatted span instead. To revise

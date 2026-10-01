@@ -841,7 +841,8 @@ export class CommentService implements CommentInfoSource {
         const anchor = loaded.anchor.value
         const anchored = anchor?.note === oldPath
         const wrote = loaded.touched.value.some((note) => note.path === oldPath)
-        if (!anchored && !wrote) continue
+        const proposed = loaded.followReplyProposalRename(oldPath, newPath)
+        if (!anchored && !wrote && !proposed) continue
         if (anchored && anchor) loaded.anchor.value = { ...anchor, note: newPath }
         if (wrote) {
           loaded.touched.value = ChatStorage.renamedNotes(loaded.touched.value, oldPath, newPath)
@@ -851,22 +852,33 @@ export class CommentService implements CommentInfoSource {
         continue
       }
 
-      const metadata = parseChatMetadata(await app.vault.read(child))
-      if (!metadata) continue
-      const anchored = metadata.anchor?.note === oldPath
-      const wrote = metadata.touched?.some((note) => note.path === oldPath) ?? false
-      if (!anchored && !wrote) continue
-      await app.vault.append(
-        child,
-        serializeMetadata({
-          ...metadata,
-          anchor:
-            anchored && metadata.anchor ? { ...metadata.anchor, note: newPath } : metadata.anchor,
-          touched: metadata.touched
-            ? ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
-            : undefined,
+      await app.vault.process(child, (content) => {
+        const parsed = parseChat(content)
+        const metadata = parsed.metadata
+        if (!metadata) return content
+        const anchored = metadata.anchor?.note === oldPath
+        const wrote = metadata.touched?.some((note) => note.path === oldPath) ?? false
+        const proposed = parsed.messages.some(
+          (message) => message.replyProposal?.parent === oldPath
+        )
+        if (!anchored && !wrote && !proposed) return content
+        return serializeChat({
+          ...parsed,
+          metadata: {
+            ...metadata,
+            anchor:
+              anchored && metadata.anchor ? { ...metadata.anchor, note: newPath } : metadata.anchor,
+            touched: metadata.touched
+              ? ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
+              : undefined,
+          },
+          messages: parsed.messages.map((message) =>
+            message.replyProposal?.parent === oldPath
+              ? { ...message, replyProposal: { ...message.replyProposal, parent: newPath } }
+              : message
+          ),
         })
-      )
+      })
     }
 
     dispatchCommentsChanged(newPath)
