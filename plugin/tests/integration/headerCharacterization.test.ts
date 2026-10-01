@@ -123,7 +123,7 @@ describe('Header cache lifecycle', () => {
 
   // BUG: load(true) resets fields only if a frontmatter object exists. Removing the YAML
   // fence leaves the previous type and created date visible in the open header.
-  it.fails('clears old properties when all frontmatter is removed', async () => {
+  it('clears old properties when all frontmatter is removed', async () => {
     const env = templateHarness([
       { path: 'Notes/sample.md', frontmatter: { type: 'sample', created: '2028-03-01' } },
     ])

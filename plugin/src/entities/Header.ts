@@ -40,10 +40,8 @@ export class Header {
 
     const frontmatter = getFrontmatterFromCache(this.filePath)
 
-    if (frontmatter) {
-      this.createdAt = parseDateOrNull(frontmatter.created)
-      this.type = frontmatter.type || null
-    }
+    this.createdAt = parseDateOrNull(frontmatter?.created)
+    this.type = frontmatter?.type || null
 
     this.loaded = true
     this.initWatcher()
