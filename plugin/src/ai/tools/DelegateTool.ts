@@ -37,7 +37,7 @@ function buildDescription(): string {
   ].join('\n')
 }
 
-export function createDelegateTool(): AgentTool {
+export function createDelegateTool(owner?: ChatSession): AgentTool {
   const tool: Omit<AgentTool, 'description'> = {
     name: 'delegate',
     label: 'Delegate to agent',
@@ -78,7 +78,7 @@ export function createDelegateTool(): AgentTool {
       if (!agentName) throw new Error('Missing required parameter: agent')
       if (!task) throw new Error('Missing required parameter: task')
 
-      const parent = ctx?.session
+      const parent = ctx?.session ?? owner
       if (!parent) throw new Error('No active chat to delegate from')
 
       if (!canDelegate(parent)) {

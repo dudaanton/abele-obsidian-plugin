@@ -205,6 +205,8 @@ export function getToolRegistry(): ToolInfo[] {
 }
 
 export interface AgentToolsOptions {
+  /** The invocation's owner, never whichever tab happens to be in front. */
+  session?: ChatSession
   /** Only an interactive executing session may ask for per-connection GitHub access. */
   githubApproval?: import('@/github/agentAccess').ConnectionApproval
   /**
@@ -282,11 +284,11 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createApplyTemplateTool(),
     createDownloadImageTool(),
     createDownloadFileTool(),
-    createDelegateTool(),
+    createDelegateTool(options.session),
     createReplaceTool(),
     createWriteFileTool(),
     createOpenFileTool(),
-    createQuestionsTool(),
+    createQuestionsTool(options.session),
     createChartDocsTool(),
     createQueryDocsTool(),
     createReadSettingsTool(),

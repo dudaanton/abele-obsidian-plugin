@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
-import { ChatService } from '../ChatService'
+import type { ChatSession } from '../ChatSession'
 
-export function createQuestionsTool(): AgentTool {
+export function createQuestionsTool(owner?: ChatSession): AgentTool {
   return {
     name: 'questions',
     label: 'Questions',
@@ -34,7 +34,7 @@ export function createQuestionsTool(): AgentTool {
       if (!questions?.length) throw new Error('No questions provided')
 
       if (ctx && !ctx.interactive) throw new Error('Questions require an interactive chat')
-      const session = ctx ? ctx.session : ChatService.getInstance().activeSession.value
+      const session = ctx?.session ?? owner
       if (!session) throw new Error('No active session')
 
       const answers = await session.askQuestions(questions)

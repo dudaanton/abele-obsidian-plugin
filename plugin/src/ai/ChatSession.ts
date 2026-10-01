@@ -895,6 +895,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const agent = this.agent.value
     // Bound to this chat's agent, so `remember` writes where this chat's prompt reads from.
     const allTools = createAgentTools({
+      session: this,
       agentId: agent?.id,
       scope: this.scopeResolver,
       skillCeiling: this.skillCeiling,
