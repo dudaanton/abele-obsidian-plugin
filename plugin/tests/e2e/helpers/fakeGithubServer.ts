@@ -586,7 +586,7 @@ const server = createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${host}`)
   const web = `http://${host}`
   console.log(`${req.method} ${url.pathname}${url.search}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`)
-  if (mode === 'accounts' && url.pathname.startsWith(`/api/v3/repos/${OWNER}/${REPO}`) && accountOf(req) !== 'two') return notFound(res)
+  if (mode === 'accounts' && url.pathname.startsWith(`/api/v3/repos/${OWNER}/${REPO}/`) && accountOf(req) !== 'two') return notFound(res)
   if (req.method === 'POST' && url.pathname === '/api/graphql') {
     graphql(req, res, web).catch((e) => send(res, 500, { message: String(e) }))
     return

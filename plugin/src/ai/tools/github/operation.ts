@@ -18,6 +18,8 @@ import { GithubClient } from '@/github/client'
 import { guardedGithubClient } from '@/github/guardedClient'
 import type { GithubViewModel } from '@/github/model'
 import type { GithubToolOperation } from './shared'
+import { commitRequest } from '@/github/commitRequest'
+import type { GithubPrimaryTarget } from '@/github/primaryAccess'
 
 export interface GithubToolAccess {
   agent: () => ConnectionAgent | null | undefined
@@ -102,10 +104,13 @@ export async function toolOperation(
       }
       const candidate = resolveConnectionCandidates(target, {
         openId: shown?.connectionId,
-        allowedIds: rows.filter(c=>connectionMode(access.agent(),c.id)!=='off').map(c=>c.id),
+        allowedIds: rows
+          .filter((c) => connectionMode(access.agent(), c.id) !== 'off')
+          .map((c) => c.id),
       })[0]
       connection = rows.find((c) => c.id === candidate?.id)
-      if (!candidate) throw new Error('No permitted GitHub connection is available for this server.')
+      if (!candidate)
+        throw new Error('No permitted GitHub connection is available for this server.')
     } else connection = preferred
   }
   if (connection && target) {
@@ -131,6 +136,24 @@ export async function toolOperation(
       name === 'github_file' && path && !params.recursive
         ? { ...target, kind: 'blob', rest: [ref, ...path.split('/')] }
         : { ...target, kind: 'tree', rest: [ref] }
+  }
+  let primaryTarget: GithubPrimaryTarget | undefined
+  if (target && name === 'github_commits') {
+    const requested = commitRequest({ target }, params)
+    const repo = {
+      host: target.host,
+      origin: target.origin,
+      owner: target.owner,
+      repo: target.repo,
+    }
+    if (requested.kind === 'commit') target = primaryTarget = { ...repo, ...requested }
+    else if (requested.kind === 'compare')
+      target = primaryTarget = { ...repo, ...requested, direct: false }
+    else {
+      primaryTarget = { ...repo, ...requested }
+      if (requested.kind === 'pull-commits')
+        target = { ...repo, kind: 'pull', number: requested.number, tab: 'commits' }
+    }
   }
   const candidates = target
     ? resolveConnectionCandidates(target, {
@@ -186,6 +209,7 @@ export async function toolOperation(
     approvedConnections: approved ? { [approved]: generation } : {},
     explicit: !!selected,
     target: target ?? undefined,
+    primaryTarget,
     candidates,
     client: guardedClient,
     assertAccess,

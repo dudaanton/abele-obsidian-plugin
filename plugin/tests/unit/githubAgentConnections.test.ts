@@ -155,6 +155,31 @@ describe('GitHub tool connection contracts', () => {
     expect(request.mock.calls.every(([r])=>r.headers?.Authorization==='Bearer invented-allowed')).toBe(true)
   })
 
+  it.each([
+    ['commit',{sha:'b'.repeat(40)},'/commits/'],
+    ['pull',{pull:42},'/pulls/42/commits'],
+    ['compare',{base:'main',head:'feature'},'/compare/'],
+    ['history',{ref:'feature/topic',path:'src/sample.ts',page:2},'/commits'],
+  ] as const)('probes the requested %s resource rather than repository metadata before fallback', async (name,args,resource) => {
+    const config=AbeleConfig.getInstance()
+    config.github.connections.push({id:'commit-alternate',name:'Commit alternate',server:'',keyId:'commit-alternate-key',owners:[],isDefault:false})
+    Object.assign(actor.githubConnections,{'commit-alternate':'auto'})
+    GlobalStore.getInstance().app.secretStorage.setSecret('commit-alternate-key','invented-commit-alternate')
+    const base=`/repos/sample/commits-${name}`
+    request.mockImplementation(async r=>{
+      const path=new URL(r.url).pathname
+      const denied=r.headers?.Authorization==='Bearer invented-public' && (path.includes(resource) || path==='/graphql')
+      const json=denied ? {message:'Resource not accessible'} : path===base ? {default_branch:'main'} :
+        name==='commit' ? {sha:'b'.repeat(40),commit:{message:'Sample allowed commit',author:{name:'Sample author',date:'2026-01-01'}},files:[]} :
+        name==='compare' ? {status:'identical',total_commits:0,commits:[],files:[]} : []
+      return {status:denied?403:200,headers:{},json,text:'',arrayBuffer:new ArrayBuffer(0)}
+    })
+    const result=await run('github_commits',{repo:`sample/commits-${name}`,...args})
+    expect(JSON.stringify(result)).toContain('Commit alternate')
+    expect(request.mock.calls.some(([r])=>r.headers?.Authorization==='Bearer invented-commit-alternate' && new URL(r.url).pathname.includes(resource))).toBe(true)
+    expect(request.mock.calls.some(([r])=>new URL(r.url).pathname===base)).toBe(false)
+  })
+
   it('resolves explicit Enterprise before parsing shorthand', async () => {
     actor.githubConnections.enterprise = 'auto'
     await run('github_search', {

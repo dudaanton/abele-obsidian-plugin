@@ -12,6 +12,7 @@ import {
   type DiffFile,
 } from '@/github/api'
 import { githubUsers, personLabel, peopleServer } from '@/github/users'
+import { commitRequest, commitHistoryQuery } from '@/github/commitRequest'
 import { GithubError, type GithubClient } from '@/github/client'
 import { utf8 } from '@/github/contents'
 import { blobCandidates } from '@/github/urls'
@@ -293,36 +294,6 @@ function filesWithPatches(files: DiffFile[], again: string): string[] {
   return out
 }
 
-interface CommitsWanted {
-  pull?: number
-  sha?: string
-  base?: string
-  head?: string
-  /** A lone-ref compare link: head against the default branch. */
-  defaultBase?: boolean
-}
-
-/** Which of the four the link and parameters ask for. */
-function commitsWanted(named: Named, params: Record<string, unknown>): CommitsWanted {
-  const t = named.target
-  const w: CommitsWanted = {
-    sha: text(params.sha) || undefined,
-    base: text(params.base) || undefined,
-    head: text(params.head) || undefined,
-    pull: params.pull !== undefined ? whole(params.pull, 0) || undefined : undefined,
-  }
-  if (t?.kind === 'commit') w.sha ??= t.sha
-  if (t?.kind === 'pull' || t?.kind === 'issue') w.pull ??= t.number
-  if (!t && named.number) w.pull ??= named.number
-  if (t?.kind === 'compare') {
-    // `compare/<head>` is head against the default branch, which the comparison looks up.
-    w.head ??= t.head
-    w.base ??= t.base
-    w.defaultBase = !w.base
-  }
-  return w
-}
-
 async function oneCommit(repo: RepoRef, sha: string, path: string, offset: number, limit: number) {
   const c = await loadCommit(clientFor(repo), { ...repo, kind: 'commit', sha })
   if (c.login) await githubUsers().lookup(clientFor(repo), [c.login])
@@ -409,28 +380,27 @@ export function createGithubCommitsTool(
     execute: async (_id, params) => {
       const named = parseNamed(params.repo, operation)
       const { repo } = named
-      const w = commitsWanted(named, params)
+      const w = commitRequest(named, params)
       const path = text(params.path)
       const offset = whole(params.offset, 1)
       const limit = whole(params.limit, DEFAULT_LINES)
       const page = whole(params.page, 1)
 
-      if (w.sha) return answer(await oneCommit(repo, w.sha, path, offset, limit))
-      if (w.head && (w.base || w.defaultBase))
+      if (w.kind === 'commit') return answer(await oneCommit(repo, w.sha, path, offset, limit))
+      if (w.kind === 'compare')
         return answer(await compare(repo, w.base, w.head, path, offset, limit))
-      if (w.base || w.head) throw new Error('A comparison needs both base and head.')
 
-      if (w.pull) {
+      if (w.kind === 'pull-commits') {
         const all = await loadPullCommits(clientFor(repo), {
           ...repo,
           kind: 'pull',
-          number: w.pull,
+          number: w.number,
           tab: 'commits',
         })
         const first = (page - 1) * 100
         const shown = all.slice(first, first + 100)
         const out = [
-          `Pull request ${repoName(repo)}#${w.pull} — ${all.length} commit${all.length === 1 ? '' : 's'}${shown.length ? ` (${first + 1}–${first + shown.length})` : ''}`,
+          `Pull request ${repoName(repo)}#${w.number} — ${all.length} commit${all.length === 1 ? '' : 's'}${shown.length ? ` (${first + 1}–${first + shown.length})` : ''}`,
           ...(await commitRows(repo, shown)),
         ]
         if (first + shown.length < all.length) out.push(`[More: page=${page + 1}.]`)
@@ -438,19 +408,11 @@ export function createGithubCommitsTool(
         return answer(out.join('\n'))
       }
 
-      const ref = text(params.ref)
-      const query = [
-        ref ? `sha=${encodeURIComponent(ref)}` : '',
-        path ? `path=${encodeURIComponent(path)}` : '',
-        `per_page=${COMMITS_PER_PAGE}`,
-        `page=${page}`,
-      ].filter(Boolean)
-      const list = await clientFor(repo).get<any[]>(
-        `${repoPath(repo)}/commits?${query.join('&')}`,
-        {
-          what: `the commits of ${repoName(repo)}`,
-        }
-      )
+      const ref = w.ref
+      const query = commitHistoryQuery(w, COMMITS_PER_PAGE)
+      const list = await clientFor(repo).get<any[]>(`${repoPath(repo)}/commits?${query}`, {
+        what: `the commits of ${repoName(repo)}`,
+      })
       const out = [
         `${repoName(repo)} — commits on ${ref || 'the default branch'}${path ? ` touching ${path}` : ''}, page ${page}`,
         ...(await commitRows(repo, list.map(restCommit))),

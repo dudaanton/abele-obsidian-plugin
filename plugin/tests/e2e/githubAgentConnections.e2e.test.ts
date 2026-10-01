@@ -10,6 +10,7 @@ import {
 } from './helpers/githubLive'
 import { targets } from './helpers/target'
 import { until } from './helpers/wait'
+import { HEAD_SHA, OWNER, REPO } from './helpers/fakeGithubRepo'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -124,6 +125,22 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
     // Yield through the request-log stream after the app has settled the refused load.
     await new Promise(resolve=>setImmediate(resolve))
     expect(gh.requests().filter(line=>line.includes('account=one'))).toHaveLength(before)
+  })
+
+  it('falls back for a commit even when the first account can read repository metadata', () => {
+    const text=evalAsync<string>(`(async()=>{
+      const config=window.__abeleTest.AbeleConfig.getInstance()
+      const agent=window.__abeleTest.AgentRegistry.getInstance().get(window.__connectionAgents[0])
+      const previous=agent.githubConnections.two, owners=config.github.connections[0].owners
+      try {
+        agent.githubConnections.two='auto'
+        config.github.connections[0].owners=[${JSON.stringify(OWNER+'/'+REPO)}]
+        const tool=window.__abeleTest.createAgentTools({agentId:agent.id}).find(t=>t.name==='github_commits')
+        return JSON.stringify(await tool.execute('commit-scope',{repo:${JSON.stringify(gh.web)},sha:${JSON.stringify(HEAD_SHA)}}))
+      } finally {agent.githubConnections.two=previous;config.github.connections[0].owners=owners}
+    })()`)
+    expect(text).toContain('Sample two')
+    expect(text).toContain(HEAD_SHA.slice(0,7))
   })
 
   it('uses the executing agent, refuses forbidden explicit access, and hides a loaded private tab', async () => {

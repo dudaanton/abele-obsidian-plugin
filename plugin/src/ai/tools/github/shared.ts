@@ -43,6 +43,7 @@ export interface GithubToolOperation {
   approvedConnections: Record<string, string>
   explicit: boolean
   target?: GithubTarget
+  primaryTarget?: import('@/github/primaryAccess').GithubPrimaryTarget
   candidates: string[]
   client: GithubClient
   allowedIds: string[]
@@ -135,13 +136,7 @@ export const repoName = (r: RepoRef) => `${r.owner}/${r.repo}`
 
 export const webUrl = (r: RepoRef) => repoWeb(r)
 
-/** A whole number from a parameter, or the fallback. */
-export function whole(value: unknown, fallback: number, min = 1): number {
-  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
-  return Number.isFinite(n) ? Math.max(min, Math.floor(n)) : fallback
-}
-
-export const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
+export { text, whole } from '@/github/toolParameters'
 
 /** Text cut to `max`, saying how much was left out. */
 export function clip(value: string, max: number): string {

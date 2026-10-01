@@ -13,8 +13,8 @@ import { githubSettings, routingMemory, connectionGeneration } from '@/github/Gi
 import { toolOperation, type GithubToolAccess } from './operation'
 import { clip, MAX_OUTPUT, type GithubToolOperation } from './shared'
 import { GithubError } from '@/github/client'
-import { primaryAccess } from '@/github/primaryAccess'
-import { endpoints, targetKey } from '@/github/urls'
+import { primaryAccess, primaryAccessKey } from '@/github/primaryAccess'
+import { endpoints } from '@/github/urls'
 
 const factories = [
   createGithubViewsTool,
@@ -65,7 +65,8 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           access ?? { agent: () => null },
           signal
         )
-        const itemKey = operation.target ? targetKey(operation.target) : ''
+        const primary = operation.primaryTarget ?? operation.target
+        const itemKey = primary ? primaryAccessKey(primary) : ''
         const knownRefusal =
           !!itemKey &&
           !operation.explicit &&
@@ -106,7 +107,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           let primaryDenied = knownRefusal
           if (!knownRefusal) {
             try {
-              await primaryAccess(operation.client, operation.target)
+              await primaryAccess(operation.client, primary!)
             } catch (probeError) {
               if (
                 probeError instanceof GithubError &&
@@ -142,7 +143,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
             if (next.client.endpoints.api !== operation.client.endpoints.api)
               throw new Error('The GitHub fallback connection changed to a different server.')
             try {
-              await primaryAccess(next.client, next.target!)
+              await primaryAccess(next.client, next.primaryTarget ?? next.target!)
             } catch (probeError) {
               if (
                 probeError instanceof GithubError &&
