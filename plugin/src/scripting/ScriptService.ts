@@ -43,7 +43,11 @@ export interface ExecuteOptions {
    * The run's id travels with it, which is what lets a caller that cannot *show* a form —
    * an agent — park the question against the run and answer it later.
    */
-  formHandler?: (fields: FormField[], runId: string, signal?: AbortSignal) => Promise<Record<string, string> | null>
+  formHandler?: (
+    fields: FormField[],
+    runId: string,
+    signal?: AbortSignal
+  ) => Promise<Record<string, string> | null>
   /** Who asked for the run, for the list of runs. Assumed to be an agent when unsaid: that is
    * the one caller that cannot be given a better answer from inside. */
   source?: RunSource
@@ -110,7 +114,11 @@ const REDECLARED = /Identifier '(\w+)' has already been declared/
 /** A value as the list of runs shows it; one holding a function (an interceptor's `approve`) too. */
 function safeJson(value: unknown): string {
   try {
-    return JSON.stringify(value, (_k, v: unknown) => (typeof v === 'function' ? '[function]' : v), 2)
+    return JSON.stringify(
+      value,
+      (_k, v: unknown) => (typeof v === 'function' ? '[function]' : v),
+      2
+    )
   } catch {
     return String(value)
   }
@@ -396,6 +404,12 @@ export class ScriptService {
     const debouncedDiscover = debounce(() => this.discover(), 1000)
 
     this.watcherCallbackId = VaultWatcherWrapper.getInstance().registerCallback((event) => {
+      if (
+        event.oldPath &&
+        (event.type === 'delete' || (event.type === 'rename' && !isScriptPath(event.newPath ?? '')))
+      ) {
+        this.removeScriptModes(event.oldPath)
+      }
       // Both ends of a move: a script moved out of the folder has to leave the index too.
       if ([event.newPath, event.oldPath].some((p) => !!p && isScriptPath(p))) {
         debouncedDiscover()
@@ -501,7 +515,6 @@ export class ScriptService {
     this.indexed = true
     ScriptTrust.getInstance().sync(this.trustedFiles())
     announceWaiting(this, this.announced)
-    this.cleanupStaleEntries()
   }
 
   // ── Scripts from elsewhere ──
@@ -581,26 +594,31 @@ export class ScriptService {
     }
   }
 
-  /** Remove stale script entries from toolModes */
-  private cleanupStaleEntries() {
-    const validToolNames = new Set(
-      Array.from(this.scripts.values()).map((s) => `script_${scriptSlug(s.meta.name)}`)
+  /** Discovery may see an incomplete synced folder. Only a known removal drops its mode. */
+  private removeScriptModes(path: string) {
+    const removed = Array.from(this.scripts.values()).filter(
+      (script) => script.path === path || script.path.startsWith(`${path}/`)
     )
-
+    const retained = Array.from(this.scripts.values()).filter((script) => !removed.includes(script))
     const config = AbeleConfig.getInstance()
     let dirty = false
-
-    const modes = config.ai.toolModes
-    for (const key of Object.keys(modes)) {
-      if (key.startsWith('script_') && key !== 'script_api_docs' && !validToolNames.has(key)) {
-        delete modes[key]
-        dirty = true
+    for (const script of removed) {
+      const key = `script_${scriptSlug(script.meta.name)}`
+      if (retained.some((other) => `script_${scriptSlug(other.meta.name)}` === key)) continue
+      for (const modes of [
+        config.ai.toolModes,
+        ...(config.ai.agents ?? []).map((a) => a.toolModes),
+      ]) {
+        if (key in modes) {
+          delete modes[key]
+          dirty = true
+        }
       }
     }
-
-    if (dirty) {
-      config.saveSettings()
-    }
+    if (dirty)
+      void config
+        .saveSettings()
+        .catch((err) => console.error('[ScriptService] Could not save removed script modes:', err))
   }
 
   private unregisterAllCommands() {
@@ -835,12 +853,16 @@ export class ScriptService {
     }
     // Admission may have taken a moment; a send stopped meanwhile runs nothing.
     if (signal.aborted) throw new Error('Script stopped')
-    const { value } = await this.run(script, {}, {
-      signal,
-      source: 'interceptor',
-      formHandler: showFormModal,
-      intercept: input,
-    })
+    const { value } = await this.run(
+      script,
+      {},
+      {
+        signal,
+        source: 'interceptor',
+        formHandler: showFormModal,
+        intercept: input,
+      }
+    )
     return value
   }
 
@@ -861,7 +883,10 @@ export class ScriptService {
     const pending = new Set<Promise<unknown>>()
     const track = (work: Promise<unknown>) => {
       pending.add(work)
-      void work.then(() => pending.delete(work), () => pending.delete(work))
+      void work.then(
+        () => pending.delete(work),
+        () => pending.delete(work)
+      )
     }
 
     const runs = ScriptRuns.getInstance()
@@ -912,11 +937,7 @@ export class ScriptService {
       signal.throwIfAborted()
       const output = logs.length ? logs.join('\n') + '\n' : ''
       const resultStr =
-        result !== undefined
-          ? typeof result === 'object'
-            ? safeJson(result)
-            : String(result)
-          : ''
+        result !== undefined ? (typeof result === 'object' ? safeJson(result) : String(result)) : ''
       runs.finish(runId, output + resultStr)
       return { value: result, output }
     } catch (err) {

@@ -13,6 +13,8 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
 import { OperationDelays } from '../helpers/deferred'
+import { VaultWatcherWrapper, type FileChangeEvent } from '@/helpers/VaultWatcherWrapper'
+import { ScriptToolbar } from '@/scripting/toolbarButtons'
 
 const SCRIPT = (name: string) => `// @name ${name}\nreturn '${name}'\n`
 
@@ -126,6 +128,32 @@ describe('rebuilding the index', () => {
 
     expect(service.scriptList.value.map((s) => s.meta.name)).toContain('One')
     expect(service.scriptList.value).toEqual(service.getAll())
+  })
+})
+
+describe('settings preserved before scripts arrive', () => {
+  it('drops only a known removed script mode, including its agents', async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai.toolModes = { script_one: 'auto', script_two: 'ask', script_later: 'ask' } as never
+    let event!: (event: FileChangeEvent) => void
+    vi.spyOn(ScriptToolbar.prototype, 'start').mockImplementation(() => {})
+    vi.spyOn(VaultWatcherWrapper.getInstance(), 'registerCallback').mockImplementation((callback) => {
+      event = callback
+      return Symbol()
+    })
+    service.init()
+    await service.discover()
+    event({ type: 'delete', oldPath: 'Scripts/one.js' })
+    expect(config.ai.toolModes).toEqual({ script_two: 'ask', script_later: 'ask' })
+    ScriptService.destroy()
+  })
+
+  it('keeps unknown script modes when discovery sees an empty folder', async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai.toolModes = { script_later: 'auto', script_api_docs: 'ask' } as never
+    useVault([])
+    await service.discover()
+    expect(config.ai.toolModes).toEqual({ script_later: 'auto', script_api_docs: 'ask' })
   })
 })
 
