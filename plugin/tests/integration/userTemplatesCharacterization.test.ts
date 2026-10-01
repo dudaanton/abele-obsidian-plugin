@@ -302,9 +302,39 @@ describe('applying a template', () => {
     )
   })
 
+  it.each(['create', 'replace', 'default'])(
+    'merges overlapping target properties for %s, preserving other values and body spacing',
+    async (mode) => {
+      const env = templateHarness([{ path: 'empty.md' }])
+      const template = await env.template(
+        '---\n"labels":\n  - old\nsummary: |\n  old text\nkeep:\n  nested: true\ncreated: 2028-03-01\n---\n\n\nBody\n',
+        {
+          template_for: 'default',
+          template_for_labels: ['new'],
+          template_for_summary: 'has: colon',
+          template_for_extra: 'false',
+        }
+      )
+      let file = env.app.vault.getFileByPath('empty.md')!
+      if (mode === 'create') file = await service().createNoteFromTemplate(template, new Map())
+      else if (mode === 'replace')
+        await service().replaceNoteWithTemplate(template, file, new Map())
+      else expect(await service().applyDefaultTemplate(file)).toBe(true)
+      const text = await env.app.vault.read(file)
+      expect(propertiesOf(text)).toEqual({
+        labels: ['new'],
+        summary: 'has: colon',
+        keep: { nested: true },
+        created: new Date('2028-03-01T00:00:00Z'),
+        extra: false,
+      })
+      expect(text.endsWith('---\n\n\nBody\n')).toBe(true)
+    }
+  )
+
   // BUG: target properties are appended, not merged. Repeating a body key creates duplicate
   // YAML mapping keys and the resulting note cannot be read by front-matter/js-yaml.
-  it.fails(
+  it(
     'overrides a body property with a target property without producing invalid YAML',
     async () => {
       const env = templateHarness()

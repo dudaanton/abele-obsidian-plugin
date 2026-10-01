@@ -1,4 +1,5 @@
 import { TFile } from 'obsidian'
+import { dump, load } from 'js-yaml'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { UserTemplate } from './UserTemplate'
 import { parseTemplateVariables, applyTemplateVariables, TemplateVariable } from './TemplateParser'
@@ -268,16 +269,22 @@ export class TemplateService {
     const match = content.match(frontmatterRegex)
 
     if (match) {
-      // Insert properties at the end of existing frontmatter
       const frontmatterContent = match[1]
       const afterFrontmatter = content.slice(match[0].length)
 
       const newProps = resolvedProps
         .map((p) => `${p.name}: ${escapeFrontmatterValue(p.value)}`)
         .join('\n')
-      const newFrontmatter = frontmatterContent.trimEnd() + '\n' + newProps
+      const existing = (load(frontmatterContent) || {}) as Record<string, unknown>
+      // Preserve the original YAML when appending distinct keys. Overlapping keys need
+      // a mapping merge, including quoted keys and multi-line or nested values.
+      if (resolvedProps.some((prop) => Object.hasOwn(existing, prop.name))) {
+        const overrides = load(newProps) as Record<string, unknown>
+        const merged = dump({ ...existing, ...overrides }, { lineWidth: -1 })
+        return `---\n${merged}---${afterFrontmatter}`
+      }
 
-      return `---\n${newFrontmatter}\n---${afterFrontmatter}`
+      return `---\n${frontmatterContent.trimEnd()}\n${newProps}\n---${afterFrontmatter}`
     } else {
       // Create new frontmatter with properties
       const newProps = resolvedProps
