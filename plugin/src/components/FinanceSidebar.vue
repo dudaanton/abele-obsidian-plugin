@@ -175,6 +175,7 @@
 </template>
 
 <script setup lang="ts">
+import { escapeHtml } from '@/helpers/escapeHtml'
 import { addMoney } from '@/helpers/moneySum'
 import { computed, ref, unref, watch, nextTick, onUnmounted, toRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
@@ -531,7 +532,8 @@ function renderPieChart() {
         trigger: 'item',
         enterable: false,
         confine: true,
-        formatter: (p: any) => `${p.marker} ${p.name}: ${formatAmount(p.value)} (${p.percent}%)`,
+        formatter: (p: any) =>
+          `${p.marker} ${escapeHtml(p.name)}: ${escapeHtml(formatAmount(p.value))} (${escapeHtml(p.percent)}%)`,
       },
       series: [
         {
@@ -638,8 +640,8 @@ function renderCalendarChart() {
           const dateStr = params.data[0]
           const data = dayTotals.get(dateStr)
           if (!data || (data.expense === 0 && data.income === 0))
-            return `${dateStr}<br/>No transactions`
-          let html = `<b>${dateStr}</b>`
+            return `${escapeHtml(dateStr)}<br/>No transactions`
+          let html = `<b>${escapeHtml(dateStr)}</b>`
           if (data.income > 0)
             html += `<br/><span style="color:${colors.income}">+${formatAmount(data.income)}</span>`
           if (data.expense > 0)

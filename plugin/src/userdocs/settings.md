@@ -11,6 +11,9 @@ a missing daily note is created only after acceptance. Only ordinary Markdown no
 not scripts, files inside the configured scripts folder, hidden folders or Obsidian's settings
 folder. If the note changes while the preview is open, open the link again to review it.
 
+Chart tooltips display note names and property values literally, not as HTML. The chart library
+is updated; chart settings and data are unchanged.
+
 ## Tasks
 
 The tasks folder, the quick choices of dates, times and repeats in the task editor, the busy day

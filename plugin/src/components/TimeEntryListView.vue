@@ -29,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import { escapeHtml } from '@/helpers/escapeHtml'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
@@ -189,7 +190,7 @@ function renderChart() {
         confine: true,
         formatter: (params: any) => {
           const p = Array.isArray(params) ? params[0] : params
-          return `${p.name}<br/>${formatDurationShort(Math.round(p.value * 3600))}`
+          return `${escapeHtml(p.name)}<br/>${formatDurationShort(Math.round(p.value * 3600))}`
         },
       },
       grid: { left: 40, right: 12, top: 8, bottom: 24 },

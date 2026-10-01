@@ -1,3 +1,4 @@
+import { escapeHtml } from '@/helpers/escapeHtml'
 import { BasesView, BasesPropertyId, NullValue, QueryController } from 'obsidian'
 import { echartsInit, EChartsType } from './echarts'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -348,11 +349,11 @@ export class ChartView extends BasesView {
           formatter: (params: any) => {
             if (timeAxis) {
               const label = dayjs(params.data[0]).format(dateFmt)
-              return `${params.marker} ${params.seriesName}<br/>${label}: ${params.data[1]}`
+              return `${params.marker} ${escapeHtml(params.seriesName)}<br/>${escapeHtml(label)}: ${escapeHtml(params.data[1])}`
             }
             const xIdx = params.data[0]
             const label = xLabels[xIdx] ?? xIdx
-            return `${params.marker} ${params.seriesName}<br/>${label}: ${params.data[1]}`
+            return `${params.marker} ${escapeHtml(params.seriesName)}<br/>${escapeHtml(label)}: ${escapeHtml(params.data[1])}`
           },
         },
         legend: {

@@ -84,6 +84,7 @@
 </template>
 
 <script setup lang="ts">
+import { escapeHtml } from '@/helpers/escapeHtml'
 import { computed, ref, unref, watch, nextTick, onUnmounted } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -417,7 +418,7 @@ function renderGroupsPieChart() {
         enterable: false,
         confine: true,
         formatter: (params: any) => {
-          return `${params.name}<br/>${formatDurationShort(Math.round(params.value * 3600))} (${params.percent}%)`
+          return `${escapeHtml(params.name)}<br/>${formatDurationShort(Math.round(params.value * 3600))} (${escapeHtml(params.percent)}%)`
         },
       },
       series: [

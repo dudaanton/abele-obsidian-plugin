@@ -67,7 +67,7 @@
     "@vueuse/core": "^13.4.0",
     "dayjs": "^1.11.18",
     "dom-to-image-more": "^3.7.2",
-    "echarts": "^6.0.0",
+    "echarts": "6.1.0",
     "fflate": "^0.8.2",
     "fparser": "^4.2.0",
     "front-matter": "^4.0.2",

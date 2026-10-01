@@ -18,6 +18,9 @@ complete resulting text. It writes only ordinary Markdown notes outside hidden, 
 configured scripts folders. This also applies to daily notes: cancellation creates nothing.
 Do not use these links as a silent-write shortcut.
 
+Chart tooltip names and property values are literal text, not HTML; existing chart formats
+and settings are unchanged.
+
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,
