@@ -20,8 +20,12 @@ const maplibre = vi.hoisted(() => {
   const handlers = new Map<string, (event: any) => void>()
   let features: unknown[] = []
   let popupContent: HTMLElement | null = null
+  const construct = vi.fn()
 
   class MockMap {
+    constructor(options: { container: HTMLElement }) {
+      construct(options.container.ownerDocument)
+    }
     addControl(control: unknown, position: string) {
       controls.push(control)
       positions.set(control, position)
@@ -43,10 +47,28 @@ const maplibre = vi.hoisted(() => {
   class NavigationControl {}
   class FullscreenControl {}
   class ScaleControl {}
-  class Marker {}
+  const markers: Marker[] = []
+  class Marker {
+    togglePopup = vi.fn()
+    constructor(readonly options: { element: HTMLElement }) {
+      markers.push(this)
+    }
+    setLngLat() {
+      return this
+    }
+    addTo() {
+      return this
+    }
+    setPopup() {
+      return this
+    }
+  }
   class Popup {
     content: HTMLElement | null = null
     setLngLat() {
+      return this
+    }
+    setText() {
       return this
     }
     setDOMContent(content: HTMLElement) {
@@ -61,6 +83,8 @@ const maplibre = vi.hoisted(() => {
   }
 
   return {
+    construct,
+    markers,
     controls,
     positions,
     handlers,
@@ -108,9 +132,63 @@ beforeEach(() => {
   maplibre.handlers.clear()
   maplibre.setFeatures([])
   geo.reverseGeocode.mockReset()
+  maplibre.construct.mockReset()
+  maplibre.markers.length = 0
+})
+
+describe('map stylesheet lifetime', () => {
+  const styles = (doc: Document) => doc.querySelectorAll('style[data-abele-map]')
+
+  it('installs CSS before construction, only in the map document, and shares it between maps', async () => {
+    const doc = document.implementation.createHTMLDocument()
+    const other = document.implementation.createHTMLDocument()
+    expect(styles(doc)).toHaveLength(0)
+    maplibre.construct.mockImplementation((owner: Document) => {
+      expect(styles(owner)).toHaveLength(1)
+      expect(styles(owner)[0].textContent).toContain('.maplibregl-map')
+    })
+
+    const first = await renderMap(doc.createElement('div'), config)
+    expect(styles(other)).toHaveLength(0)
+    const second = await renderMap(doc.createElement('div'), config)
+    const popout = await renderMap(other.createElement('div'), config)
+    expect(styles(doc)).toHaveLength(1)
+    expect(styles(other)).toHaveLength(1)
+    first.destroy()
+    expect(styles(doc)).toHaveLength(1)
+    second.destroy()
+    expect(styles(doc)).toHaveLength(0)
+    expect(styles(other)).toHaveLength(1)
+    popout.destroy()
+    expect(styles(other)).toHaveLength(0)
+  })
+
+  it('does not retain styles if WebGL construction fails', async () => {
+    const doc = document.implementation.createHTMLDocument()
+    maplibre.construct.mockImplementation(() => {
+      throw new Error('WebGL unavailable')
+    })
+    await expect(renderMap(doc.createElement('div'), config)).rejects.toThrow('WebGL unavailable')
+    expect(styles(doc)).toHaveLength(0)
+  })
 })
 
 describe('map controls', () => {
+  it('toggles a pin popup without forwarding the press to the base-map lookup', async () => {
+    const handle = await renderMap(document.createElement('div'), {
+      ...config,
+      points: [{ lat: 10, lon: 20, label: 'Sample point' }],
+    })
+    const marker = maplibre.markers[0]
+    const parent = document.createElement('div')
+    parent.appendChild(marker.options.element)
+    const baseClick = vi.fn()
+    parent.addEventListener('click', baseClick)
+    marker.options.element.click()
+    expect(marker.togglePopup).toHaveBeenCalledOnce()
+    expect(baseClick).not.toHaveBeenCalled()
+    handle.destroy()
+  })
   it('keeps the scale away from expanded bottom attribution on a narrow map', async () => {
     await renderMap(document.createElement('div'), config)
     const scale = maplibre.controls.find((control) => control instanceof maplibre.ScaleControl)

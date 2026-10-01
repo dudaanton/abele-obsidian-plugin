@@ -40,6 +40,6 @@ export default defineConfig({
     reporters: 'default',
     // A stylesheet imported as text (`?raw`) — the PDF page's layers — is text here too, not
     // emptied the way vitest empties stylesheets by default.
-    css: { include: [/pdfjs-css/] },
+    css: { include: [/pdfjs-css/, /maplibre-gl\.css/] },
   },
 })
