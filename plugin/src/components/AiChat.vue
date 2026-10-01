@@ -1233,7 +1233,12 @@ const scrollOnUserSend = () => {
   doScroll()
 }
 
-watch([messages, streamingContent, streamingThinking], doScroll)
+watch([messages, streamingContent, streamingThinking], () => {
+  // Markdown may still be waiting for its display slot. Keep the resize anchor current
+  // even when the conversation grows without a completed Markdown mutation in this tick.
+  keepGapCurrent()
+  doScroll()
+})
 
 /**
  * The composer opened out over the whole chat, for writing at length (`AiChatInput`). The

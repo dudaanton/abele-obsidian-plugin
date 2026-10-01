@@ -11,6 +11,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Component, Keymap, MarkdownRenderer } from 'obsidian'
 import { onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
+import { createRenderQueue } from '@/helpers/renderQueue'
 import { holdBackUnfinished, PENDING_LABEL } from '@/helpers/unfinishedBlock'
 import { offer, recordInto, stopRecording, take, type Part } from './markdownParts'
 
@@ -121,13 +122,10 @@ const renderContent = async () => {
   recordInto(next)
   let sigs: Array<string | null> = []
   try {
-    await MarkdownRenderer.render(
-      GlobalStore.getInstance().app,
-      text,
-      next,
-      path,
-      own
-    )
+    await MarkdownRenderer.render(GlobalStore.getInstance().app, text, next, path, own)
+  } catch (error) {
+    own.unload()
+    throw error
   } finally {
     sigs = stopRecording(next)
   }
@@ -201,7 +199,7 @@ const adopt = (): boolean => {
   shownText = offered.text
   shownPath = props.filePath || ''
   shownPartial = offered.partial
-  if (shownPartial || shownText !== props.text) void renderContent()
+  if (shownPartial || shownText !== props.text) renderQueue.request(false, true)
   else emit('rendered')
   return true
 }
@@ -217,7 +215,13 @@ onMounted(() => {
   // Or a microtask later, should the streaming markdown it replaces go after it in the pass.
   queueMicrotask(() => {
     if (!component || adopt()) return
-    void renderContent()
+    // An empty new host is already the right output. Do not spend the first streaming
+    // cadence slot on it: the first actual text should be shown without an extra delay.
+    if (!props.text) {
+      emit('rendered')
+      return
+    }
+    renderQueue.request(!!props.streaming, true)
   })
 })
 
@@ -229,15 +233,20 @@ onMounted(() => {
  * fifty renders racing into the same element, and any of them still pending when the chat
  * closed fired at an element that had gone.
  */
-let renderTimer = 0
 const win = () => target.value?.win ?? host?.win ?? window
+const renderQueue = createRenderQueue(renderContent, {
+  now: () => Date.now(),
+  schedule(callback, delay) {
+    const owner = win()
+    const timer = owner.setTimeout(callback, delay)
+    return () => owner.clearTimeout(timer)
+  },
+  error: (error) => console.error('[Abele] Markdown render failed', error),
+})
 
 watch(
   () => [props.text, props.filePath, props.streaming],
-  () => {
-    win().clearTimeout(renderTimer)
-    renderTimer = win().setTimeout(() => void renderContent(), 0)
-  },
+  () => renderQueue.request(!!props.streaming),
   { deep: true }
 )
 
@@ -258,7 +267,7 @@ onBeforeUnmount(() => {
 })
 
 onUnmounted(() => {
-  win().clearTimeout(renderTimer)
+  renderQueue.stop()
   generation++
   component?.unload()
   component = null
