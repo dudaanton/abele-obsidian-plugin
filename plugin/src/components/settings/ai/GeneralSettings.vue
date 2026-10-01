@@ -91,6 +91,7 @@
                 >
                   <Checkbox
                     :is-enabled="isModelAdded(pIdx, rm.id)"
+                    @click.stop
                     @toggle="toggleRemoteModel(pIdx, rm.id)"
                   />
                   <span>{{ rm.id }}</span>
