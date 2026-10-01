@@ -218,9 +218,11 @@ export class TemplateService {
     const body = await defaultTemplate.getBody()
     const { variables, userVariables } = parseTemplateVariables(body)
 
-    // Default template should not have user variables
-    // If it does, skip application
-    if (userVariables.length > 0) {
+    // Automatic application cannot ask for input, including in target-only properties.
+    const hasPropertyInput = defaultTemplate.targetProperties.some(
+      (prop) => parseTemplateVariables(prop.value).userVariables.length > 0
+    )
+    if (userVariables.length > 0 || hasPropertyInput) {
       console.warn('Default template has user variables, skipping auto-application')
       return false
     }

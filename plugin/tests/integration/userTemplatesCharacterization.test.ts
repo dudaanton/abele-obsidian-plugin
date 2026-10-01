@@ -294,7 +294,7 @@ describe('applying a template', () => {
 
   // BUG: only body variables are checked; a default with required input solely in a
   // template_for_* property is silently applied with that input erased.
-  it.fails('refuses a default whose target property still needs user input', async () => {
+  it('refuses a default whose target property still needs user input', async () => {
     const env = templateHarness([{ path: 'empty.md' }])
     await env.template('Body', { template_for: 'default', template_for_topic: '{{Topic}}' })
     expect(await service().applyDefaultTemplate(env.app.vault.getFileByPath('empty.md')!)).toBe(
