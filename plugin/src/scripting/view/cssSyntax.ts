@@ -47,6 +47,8 @@ export function stripCssComments(text: string): string {
       out += text.slice(from, i)
       const end = text.indexOf('*/', i + 2)
       if (end < 0) return out
+      // A comment separates adjacent identifier tokens, but not e.g. .class/*...*/.other.
+      if (/[\w-]/.test(text[i - 1] ?? '') && /[\w-]/.test(text[end + 2] ?? '')) out += ' '
       i = end + 1
       from = i + 1
     }

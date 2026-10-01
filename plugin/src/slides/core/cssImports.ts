@@ -50,16 +50,22 @@ function importRules(css: string): ImportRule[] {
     parentheses = 0,
     brackets = 0
   const add = (end: number) => {
-    const statement = decodeCssEscapes(css.slice(start, end)).trim().replace(/;\s*$/, '')
-    if (!/^@import\b/i.test(statement)) return
+    const statement = css.slice(start, end).trim().replace(/;\s*$/, '')
+    const keyword = /^@((?:\\[0-9a-f]{1,6}[ \t\r\n\f]?|\\[^\r\n\f]|[\w-])+)\s*/i.exec(statement)
+    if (!keyword || decodeCssEscapes(keyword[1]).toLowerCase() !== 'import') return
+    // Decode only identifiers and URL values. Decoding qualifiers would turn escaped layer
+    // names into real braces/semicolons when interpolated into a wrapper's CSS structure.
+    const tail = statement.slice(keyword[0].length)
     const match =
-      /^@import\s*(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)|"([^"]*)"|'([^']*)')\s*([\s\S]*)$/i.exec(
-        statement
+      /^(?:url\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^)]*))\s*\)|"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*([\s\S]*)$/i.exec(
+        tail
       )
     rules.push({
       start,
       end,
-      reference: (match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4] ?? match?.[5] ?? '').trim(),
+      reference: decodeCssEscapes(
+        match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4] ?? match?.[5] ?? ''
+      ).trim(),
       qualifiers: match?.[6] ?? '',
     })
   }

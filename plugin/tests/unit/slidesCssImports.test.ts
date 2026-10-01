@@ -46,6 +46,27 @@ describe('deck CSS import expansion', () => {
     expect(result).toContain('.sample-theme')
   })
 
+  it('retains escaped qualifier identifiers and recognizes comments between import tokens', async () => {
+    const result = await expandCssImports(
+      {
+        id: 'https://styles.example.test/sample-inline.css',
+        css: String.raw`@import/* separator */"sample-theme.css" layer(sample\7b \7d );`,
+      },
+      loader()
+    )
+    expect(result).toContain(String.raw`@layer sample\7b \7d`)
+    expect(result).toContain('.sample-theme')
+    const commented = await expandCssImports(
+      {
+        id: 'https://styles.example.test/sample-inline.css',
+        css: '@import/* separator */url("sample-theme.css");',
+      },
+      loader()
+    )
+    expect(commented).toContain('.sample-theme')
+    expect(commented).not.toContain('@import')
+  })
+
   it('keeps quoted import examples as values and drops failed imports without losing other rules', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
