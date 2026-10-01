@@ -15,7 +15,8 @@ export function createDeleteFileTool(opts?: { skipScope?: boolean }): AgentTool 
       },
       required: ['path'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path')
       if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {

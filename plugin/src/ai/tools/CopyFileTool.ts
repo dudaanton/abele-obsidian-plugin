@@ -17,7 +17,8 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['from', 'to'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const { from, to } = params as { from: string; to: string }
       if (!from) throw new Error('Missing required parameter: from')
       if (!to) throw new Error('Missing required parameter: to')
@@ -33,6 +34,7 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
         throw new Error(`Destination exists: ${safeTo}`)
       }
       const content = await app.vault.read(file)
+      signal?.throwIfAborted()
       await app.vault.create(safeTo, content)
       ScopeResolver.getInstance().invalidate()
       return {

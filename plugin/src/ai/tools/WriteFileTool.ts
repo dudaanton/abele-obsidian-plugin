@@ -22,7 +22,8 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['path', 'content'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const path = params.path as string
       const content = params.content as string
       if (!path) throw new Error('Missing required parameter: path')
@@ -35,7 +36,9 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       const old = await app.vault.read(file)
       // Written on this device: a script stays confirmed here; see `ScriptTrust.ts`.
+      signal?.throwIfAborted()
       await noteLocalScriptWrite(file.path, content)
+      signal?.throwIfAborted()
       await app.vault.modify(file, content)
       return {
         content: [{ type: 'text', text: `Written: ${path}` }],

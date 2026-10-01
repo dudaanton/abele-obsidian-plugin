@@ -6,6 +6,8 @@
  * no answer for is asked about as usual.
  */
 
+import { waitForScript } from '@/scripting/abort'
+
 /** A call as the script sees it: a copy, so changing it changes nothing. */
 export interface PolicyCall {
   name: string
@@ -44,7 +46,11 @@ function copyArgs(args: Record<string, unknown>): Record<string, unknown> {
   }
 }
 
-export function toolPolicy(spec: ToolPolicySpec, scriptName: string): ToolPolicy {
+export function toolPolicy(
+  spec: ToolPolicySpec,
+  scriptName: string,
+  cancellation?: { signal: AbortSignal; onTimeout: () => void }
+): ToolPolicy {
   const refused: PolicyDecision = {
     kind: 'deny',
     reason: `Refused by the interceptor script "${scriptName}"`,
@@ -52,6 +58,7 @@ export function toolPolicy(spec: ToolPolicySpec, scriptName: string): ToolPolicy
 
   return {
     async decide(call) {
+      if (cancellation?.signal.aborted) return ASK
       if (spec.deny.includes(call.name)) return refused
 
       const approve = spec.approve
@@ -65,14 +72,18 @@ export function toolPolicy(spec: ToolPolicySpec, scriptName: string): ToolPolicy
 
       let timer = 0
       try {
-        const answer = await Promise.race([
+        const decide = () => Promise.race([
           Promise.resolve().then(() =>
             approve({ name: call.name, args: copyArgs(call.args), outOfScope: call.outOfScope })
           ),
           new Promise<'timeout'>((resolve) => {
-            timer = window.setTimeout(() => resolve('timeout'), POLICY_DECISION_MS)
+            timer = window.setTimeout(() => {
+              resolve('timeout')
+              cancellation?.onTimeout()
+            }, POLICY_DECISION_MS)
           }),
         ])
+        const answer = await (cancellation ? waitForScript(decide, cancellation.signal) : decide())
         if (answer === true) return { kind: 'approve' }
         if (answer === false) return refused
         if (answer === 'timeout') {
@@ -82,6 +93,7 @@ export function toolPolicy(spec: ToolPolicySpec, scriptName: string): ToolPolicy
         }
         return ASK
       } catch (err) {
+        if (cancellation?.signal.aborted) return ASK
         console.error(`[Abele interceptor] "${scriptName}" failed deciding on ${call.name}`, err)
         return ASK
       } finally {

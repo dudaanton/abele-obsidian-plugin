@@ -293,8 +293,10 @@ export async function saveHighlight(
   book: TFile,
   where: NotesPlace,
   h: Highlight,
-  chatPath?: string
+  chatPath?: string,
+  signal?: AbortSignal
 ): Promise<TFile> {
+  signal?.throwIfAborted()
   // In a note several books share, and no template to say whose it is, the link says.
   const title = where.title || book.basename
   const chapter = h.label.trim()
@@ -311,7 +313,8 @@ export async function saveHighlight(
       kept,
       chatPath,
       undefined,
-      await frameOf(app, where)
+      await frameOf(app, where),
+      signal
     )
     return held.note
   }
@@ -358,11 +361,13 @@ export async function saveHighlight(
       fresh,
       chatPath,
       entry,
-      template ? entryFrame(template) : undefined
+      template ? entryFrame(template) : undefined,
+      signal
     )
     return existing
   }
-  await ensureFolder(app, path)
+  await ensureFolder(app, path, signal)
+  signal?.throwIfAborted()
   // The link back is a File property, drawn as the book's card.
   if (own) assignFileType(app, BOOK_LINK_KEY)
   if (template) {
@@ -371,7 +376,7 @@ export async function saveHighlight(
   }
   if (!own) return app.vault.create(path, `${vars.highlight}\n`)
   const note = await app.vault.create(path, newHighlightsNote(bookLink, book.basename))
-  await write(app, book, note, undefined, fresh, chatPath)
+  await write(app, book, note, undefined, fresh, chatPath, undefined, undefined, signal)
   return note
 }
 
@@ -384,20 +389,24 @@ async function write(
   h: Highlight,
   chatPath?: string,
   entry?: string,
-  frame?: EntryFrame
+  frame?: EntryFrame,
+  signal?: AbortSignal
 ): Promise<void> {
+  signal?.throwIfAborted()
   const link = linkToPlace(app, book, { cfi: h.cfi }, h.label, note.path)
   const chat = h.discussion && chatPath ? chatLink(app, chatPath, note.path) : undefined
-  await app.vault.process(note, (md) =>
-    upsertHighlight(md, h, link, compare, chat, { ofBook, entry, frame })
-  )
+  await app.vault.process(note, (md) => {
+    signal?.throwIfAborted()
+    return upsertHighlight(md, h, link, compare, chat, { ofBook, entry, frame })
+  })
 }
 
 /** The folders a new note's path needs, made. */
-async function ensureFolder(app: App, path: string): Promise<void> {
+async function ensureFolder(app: App, path: string, signal?: AbortSignal): Promise<void> {
   const parts = path.split('/').slice(0, -1)
   for (let i = 1; i <= parts.length; i++) {
     const dir = parts.slice(0, i).join('/')
+    signal?.throwIfAborted()
     if (!app.vault.getAbstractFileByPath(dir)) await app.vault.createFolder(dir)
   }
 }

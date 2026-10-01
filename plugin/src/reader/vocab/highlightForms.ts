@@ -64,6 +64,7 @@ export async function setHighlightForms(
     replace?: boolean
     make?: NewHighlight
     wrote?: (path: string) => void
+    signal?: AbortSignal
   } = {}
 ): Promise<{ highlight: Highlight; note: TFile | null; changed: boolean }> {
   const known = (await readHighlights(app, book, where)).find((h) => h.cfi === cfi)
@@ -91,7 +92,7 @@ export async function setHighlightForms(
   const chat = h.discussion
     ? (await import('../bookDiscussions')).discussionPath(h.discussion)
     : undefined
-  const note = await saveHighlight(app, book, where, h, chat)
+  const note = await saveHighlight(app, book, where, h, chat, opts.signal)
   if (note.path !== told) opts.wrote?.(note.path)
   return { highlight: h, note, changed: true }
 }

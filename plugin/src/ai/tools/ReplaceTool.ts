@@ -73,7 +73,8 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['path', 'actions'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const path = params.path as string
       const rawActions = params.actions as ActionParam[]
       if (!path) throw new Error('Missing required parameter: path')
@@ -111,6 +112,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       // Read current frontmatter
       let frontmatter: Record<string, any> = {}
       await app.fileManager.processFrontMatter(file, (fm) => {
+        signal?.throwIfAborted()
         frontmatter = { ...fm }
       })
       let newFrontmatter = { ...frontmatter }
@@ -133,7 +135,9 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       // Apply frontmatter changes
       const fmChanged = JSON.stringify(frontmatter) !== JSON.stringify(newFrontmatter)
       if (fmChanged) {
+        signal?.throwIfAborted()
         await app.fileManager.processFrontMatter(file, (fm) => {
+          signal?.throwIfAborted()
           for (const [key, value] of Object.entries(newFrontmatter)) {
             fm[key] = value
           }
@@ -149,7 +153,9 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       if (contentChanged && newContent !== null) {
         const raw = await app.vault.read(file)
         const updated = replaceNoteBody(raw, newContent)
+        signal?.throwIfAborted()
         await noteLocalScriptWrite(file.path, updated)
+        signal?.throwIfAborted()
         await app.vault.modify(file, updated)
       }
 
@@ -157,11 +163,13 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       const editor = getEditorForFile(file)
       if (editor && (fmChanged || contentChanged)) {
         const val = await app.vault.read(file)
+        signal?.throwIfAborted()
         editor.setValue(val)
       }
 
       // Move/rename
       if (newPath !== path) {
+        signal?.throwIfAborted()
         await app.fileManager.renameFile(file, newPath)
       }
 

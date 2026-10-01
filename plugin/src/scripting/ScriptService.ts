@@ -16,6 +16,7 @@ import { parseScriptHeader, extractScriptBody } from './ScriptParser'
 import { buildScriptContext, type ScriptContext } from './ScriptContext'
 import { VIEW_GLOBALS } from './view/components'
 import { showFormModal } from './formModal'
+import { waitForScript } from './abort'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import { ScriptToolbar } from './toolbarButtons'
 import type { ParsedScript, FormField } from './types'
@@ -42,7 +43,7 @@ export interface ExecuteOptions {
    * The run's id travels with it, which is what lets a caller that cannot *show* a form —
    * an agent — park the question against the run and answer it later.
    */
-  formHandler?: (fields: FormField[], runId: string) => Promise<Record<string, string> | null>
+  formHandler?: (fields: FormField[], runId: string, signal?: AbortSignal) => Promise<Record<string, string> | null>
   /** Who asked for the run, for the list of runs. Assumed to be an agent when unsaid: that is
    * the one caller that cannot be given a better answer from inside. */
   source?: RunSource
@@ -803,6 +804,7 @@ export class ScriptService {
     const given: ExecuteOptions =
       options instanceof AbortSignal ? { signal: options } : (options ?? {})
     const opts: ExecuteOptions = { ...given, formHandler: given.formHandler ?? formHandler }
+    opts.signal?.throwIfAborted()
     const script = await this.admit(path, opts.source ?? 'agent')
     if (script.meta.interceptor) {
       throw new Error(
@@ -849,12 +851,18 @@ export class ScriptService {
     opts: ExecuteOptions
   ): Promise<{ value: unknown; output: string }> {
     const path = script.path
-    const signal = opts.signal
-
+    opts.signal?.throwIfAborted()
     const combinedController = new AbortController()
-
-    const onAbort = () => combinedController.abort()
-    signal?.addEventListener('abort', onAbort)
+    // Keep the parent's cancellation attached to returned closures (interceptor policies and
+    // view handlers) too, without retaining manual listeners after a completed run.
+    const signal = opts.signal
+      ? AbortSignal.any([opts.signal, combinedController.signal])
+      : combinedController.signal
+    const pending = new Set<Promise<unknown>>()
+    const track = (work: Promise<unknown>) => {
+      pending.add(work)
+      void work.then(() => pending.delete(work), () => pending.delete(work))
+    }
 
     const runs = ScriptRuns.getInstance()
     const runId = runs.start({
@@ -874,13 +882,14 @@ export class ScriptService {
       const handler = opts.formHandler
       const ctx = buildScriptContext({
         params,
-        signal: combinedController.signal,
+        signal,
         logs,
+        onOperation: track,
         // The run's id travels with the question: an agent cannot show a form, so it parks
         // it against the run and answers later — see `executeForAgent`. Left unset when nobody
         // can answer, so the context may still fall back to a dialog once a view is open, and
         // say what is wrong when none is.
-        formHandler: handler ? (fields) => handler(fields, runId) : undefined,
+        formHandler: handler ? (fields) => handler(fields, runId, signal) : undefined,
         onLog: (text) => runs.append(runId, text),
         onStatus: (text) => {
           runs.setNote(runId, text)
@@ -899,13 +908,8 @@ export class ScriptService {
       // is no way to execute it without a compiler.
       const fn = compile(script.code)
 
-      const abortPromise = new Promise<never>((_, reject) => {
-        combinedController.signal.addEventListener('abort', () =>
-          reject(new Error('Script stopped'))
-        )
-      })
-
-      const result = await Promise.race([fn(ctx), abortPromise])
+      const result = await waitForScript(() => fn(ctx), signal)
+      signal.throwIfAborted()
       const output = logs.length ? logs.join('\n') + '\n' : ''
       const resultStr =
         result !== undefined
@@ -918,12 +922,16 @@ export class ScriptService {
     } catch (err) {
       // A script that was told to stop threw the same way a broken one does; the list should
       // not read the two alike, and only the controller knows which happened.
-      if (combinedController.signal.aborted) runs.markStopped(runId)
-      else runs.fail(runId, err instanceof Error ? err.message : String(err))
+      if (signal.aborted) {
+        // Obsidian cannot cancel an issued vault mutation. Keep the row running until all
+        // admitted operations settle; the revoked context prevents any further admissions.
+        if (pending.size) runs.setNote(runId, 'Stopping…')
+        await Promise.allSettled([...pending])
+        runs.markStopped(runId)
+      } else runs.fail(runId, err instanceof Error ? err.message : String(err))
       throw err
     } finally {
       this.renderStatusBar()
-      signal?.removeEventListener('abort', onAbort)
     }
   }
 

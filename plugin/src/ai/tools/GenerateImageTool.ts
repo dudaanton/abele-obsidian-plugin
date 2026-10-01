@@ -17,18 +17,19 @@ export function createGenerateImageTool(): AgentTool {
       },
       required: ['prompt'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const prompt = params.prompt as string
       if (!prompt) throw new Error('Missing required parameter: prompt')
 
       const modelKey = (params.model as string) || undefined
-      const result = await callImageApi({ prompt, modelKey })
+      const result = await callImageApi({ prompt, modelKey, signal })
 
       if (!result.dataUrl) {
         return { content: [{ type: 'text', text: result.text || 'No image generated' }] }
       }
 
-      const savedPath = await saveImageToVault(result.dataUrl)
+      const savedPath = await saveImageToVault(result.dataUrl, undefined, signal)
       ScopeResolver.getInstance().addFile(savedPath)
       const text = result.text
         ? `${result.text}\n\nImage saved: ${savedPath}`

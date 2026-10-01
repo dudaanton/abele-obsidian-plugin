@@ -18,7 +18,8 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       },
       required: ['path', 'content'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const { path, content } = params as { path: string; content: string }
       if (!path) throw new Error('Missing required parameter: path')
       if (content == null) throw new Error('Missing required parameter: content')
@@ -39,10 +40,13 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
         let current = ''
         for (const part of parts) {
           current = current ? `${current}/${part}` : part
+          signal?.throwIfAborted()
           if (!app.vault.getAbstractFileByPath(current)) await app.vault.createFolder(current)
         }
       }
+      signal?.throwIfAborted()
       await noteLocalScriptWrite(safePath, content)
+      signal?.throwIfAborted()
       await app.vault.create(safePath, content)
       // Add new file to scope so agent can read/edit it
       if (!opts?.skipScope) ScopeResolver.getInstance().addFile(safePath)

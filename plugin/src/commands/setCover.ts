@@ -91,7 +91,8 @@ async function generateVideoThumbnail(videoBuffer: ArrayBuffer): Promise<ArrayBu
  * Set a media file as the cover of a note.
  * For videos, generates a thumbnail first.
  */
-export async function setCoverFromMedia(mediaFile: TFile, noteFile: TFile): Promise<void> {
+export async function setCoverFromMedia(mediaFile: TFile, noteFile: TFile, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
   const { app } = GlobalStore.getInstance()
 
   let coverPath: string
@@ -99,12 +100,13 @@ export async function setCoverFromMedia(mediaFile: TFile, noteFile: TFile): Prom
   if (VIDEO_EXTENSIONS.includes(mediaFile.extension.toLowerCase())) {
     const videoBuffer = await app.vault.readBinary(mediaFile)
     const thumbBuffer = await generateVideoThumbnail(videoBuffer)
+    signal?.throwIfAborted()
     if (!thumbBuffer) {
       new Notice('Failed to generate video thumbnail')
       return
     }
 
-    const folder = await getAttachmentFolder()
+    const folder = await getAttachmentFolder(signal)
     const baseName = mediaFile.basename + '-cover'
     const basePath = folder ? `${folder}/${baseName}.jpg` : `${baseName}.jpg`
 
@@ -115,13 +117,16 @@ export async function setCoverFromMedia(mediaFile: TFile, noteFile: TFile): Prom
       counter++
     }
 
+    signal?.throwIfAborted()
     await app.vault.createBinary(targetPath, thumbBuffer)
     coverPath = targetPath
   } else {
     coverPath = mediaFile.path
   }
 
+  signal?.throwIfAborted()
   await app.fileManager.processFrontMatter(noteFile, (frontmatter) => {
+    signal?.throwIfAborted()
     frontmatter.cover = coverPath
   })
 

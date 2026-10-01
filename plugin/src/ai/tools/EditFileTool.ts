@@ -20,7 +20,8 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['path', 'old_string', 'new_string'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const { path, old_string, new_string } = params as {
         path: string
         old_string: string
@@ -41,7 +42,9 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       }
       // A function, not the string: in a replacement string `$&` and `$'` are patterns, not text.
       const updated = content.replace(old_string, () => new_string)
+      signal?.throwIfAborted()
       await noteLocalScriptWrite(file.path, updated)
+      signal?.throwIfAborted()
       await app.vault.modify(file, updated)
       return {
         content: [{ type: 'text', text: `Edited: ${path}` }],

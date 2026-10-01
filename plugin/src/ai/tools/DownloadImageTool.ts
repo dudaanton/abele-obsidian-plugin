@@ -56,8 +56,10 @@ async function downloadToVault(
   overrideExt?: string,
   method?: string,
   rawHeaders?: Record<string, string>,
-  body?: string
+  body?: string,
+  signal?: AbortSignal
 ): Promise<string> {
+  signal?.throwIfAborted()
   const url = substituteSecrets(rawUrl)
 
   // Substitute secrets in header values
@@ -89,6 +91,7 @@ async function downloadToVault(
   }
 
   const response = await requestUrl(reqOpts)
+  signal?.throwIfAborted()
   if (response.status < 200 || response.status >= 300) {
     const text = response.text?.slice(0, 500) || ''
     throw new Error(`HTTP ${response.status}: ${text}`)
@@ -98,7 +101,7 @@ async function downloadToVault(
   const ext = overrideExt || extFromContentType(contentType) || extFromUrl(url) || defaultExt
 
   const { app } = GlobalStore.getInstance()
-  const folder = await getAttachmentFolder()
+  const folder = await getAttachmentFolder(signal)
   const baseName = filename || `file-${nanoid(8)}`
   const basePath = folder ? `${folder}/${baseName}.${ext}` : `${baseName}.${ext}`
 
@@ -111,7 +114,7 @@ async function downloadToVault(
     counter++
   }
 
-  const saved = await createImportedBinary(app, targetPath, new Blob([response.arrayBuffer], { type: contentType }))
+  const saved = await createImportedBinary(app, targetPath, new Blob([response.arrayBuffer], { type: contentType }), signal)
   return saved.path
 }
 
@@ -138,7 +141,7 @@ export function createDownloadImageTool(): AgentTool {
       },
       required: ['url'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
       const url = params.url as string
       if (!url) throw new Error('Missing required parameter: url')
       const targetPath = await downloadToVault(
@@ -147,7 +150,9 @@ export function createDownloadImageTool(): AgentTool {
         'png',
         undefined,
         undefined,
-        params.headers as Record<string, string> | undefined
+        params.headers as Record<string, string> | undefined,
+        undefined,
+        signal
       )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },
@@ -190,7 +195,7 @@ export function createDownloadFileTool(): AgentTool {
       },
       required: ['url'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
       const url = params.url as string
       if (!url) throw new Error('Missing required parameter: url')
       const targetPath = await downloadToVault(
@@ -200,7 +205,8 @@ export function createDownloadFileTool(): AgentTool {
         params.extension as string | undefined,
         params.method as string | undefined,
         params.headers as Record<string, string> | undefined,
-        params.body as string | undefined
+        params.body as string | undefined,
+        signal
       )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },

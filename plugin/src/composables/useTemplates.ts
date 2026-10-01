@@ -19,11 +19,19 @@ export function useTemplates() {
   const userVariables = ref<TemplateVariable[]>([])
   const initialValues = ref<Map<string, string>>(new Map())
   const action = ref<TemplateAction>('create')
+  let flowSignal: AbortSignal | undefined
+  const setFlowSignal = (signal?: AbortSignal) => {
+    flowSignal?.removeEventListener('abort', closeModals)
+    flowSignal = signal
+    signal?.throwIfAborted()
+    signal?.addEventListener('abort', closeModals, { once: true })
+  }
 
   /**
    * Start the template flow for creating a new note
    */
   async function startCreateFlow(selection?: string) {
+    setFlowSignal()
     const service = TemplateService.getInstance()
     action.value = 'create'
     templates.value = service.getNonDefaultTemplates()
@@ -35,6 +43,7 @@ export function useTemplates() {
    * Start the template flow for replacing current note
    */
   async function startReplaceFlow(selection?: string) {
+    setFlowSignal()
     const service = TemplateService.getInstance()
     const { app } = GlobalStore.getInstance()
     const activeFile = app.workspace.getActiveFile()
@@ -54,6 +63,7 @@ export function useTemplates() {
    * Start the template flow for inserting at cursor
    */
   async function startInsertFlow(selection?: string) {
+    setFlowSignal()
     const service = TemplateService.getInstance()
     action.value = 'insert'
     templates.value = service.getNonDefaultTemplates()
@@ -69,7 +79,10 @@ export function useTemplates() {
     isSelectModalOpen.value = false
 
     // Parse template to find user variables
+    const signal = flowSignal
+    signal?.throwIfAborted()
     const body = await template.getBody()
+    signal?.throwIfAborted()
     const { userVariables: parsedVars } = parseTemplateVariables(body)
 
     // Also parse target_folder and target_name for variables
@@ -136,10 +149,13 @@ export function useTemplates() {
 
     const { app } = GlobalStore.getInstance()
 
+    const signal = flowSignal
     try {
+      signal?.throwIfAborted()
       switch (action.value) {
         case 'create': {
-          const file = await service.createNoteFromTemplate(template as UserTemplate, userValues)
+          const file = await service.createNoteFromTemplate(template as UserTemplate, userValues, signal)
+          signal?.throwIfAborted()
           await openFile(file.path)
           break
         }
@@ -182,6 +198,7 @@ export function useTemplates() {
    * Reset all state
    */
   function resetState() {
+    setFlowSignal()
     isSelectModalOpen.value = false
     isVariablesModalOpen.value = false
     templates.value = []
@@ -194,7 +211,8 @@ export function useTemplates() {
   /**
    * Start create flow with a specific template path, skipping the selection modal
    */
-  async function startCreateFlowWithTemplate(templatePath: string) {
+  async function startCreateFlowWithTemplate(templatePath: string, signal?: AbortSignal) {
+    setFlowSignal(signal)
     const service = TemplateService.getInstance()
     const template = service
       .discoverTemplates()

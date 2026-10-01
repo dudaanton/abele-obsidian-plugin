@@ -55,8 +55,8 @@ export async function runInterceptorScript(
 ): Promise<InterceptOutcome> {
   const service = ScriptService.getInstance()
   const controller = new AbortController()
-  const onAbort = () => controller.abort()
-  signal.addEventListener('abort', onAbort)
+  const runSignal = AbortSignal.any([signal, controller.signal])
+  if (runSignal.aborted) return { kind: 'stopped' }
 
   let seconds = INTERCEPTOR_DEFAULT_SECONDS
   let timedOut = false
@@ -76,7 +76,7 @@ export async function runInterceptorScript(
   arm()
 
   const expired = new Promise<'expired'>((resolve) => {
-    controller.signal.addEventListener('abort', () => resolve('expired'))
+    runSignal.addEventListener('abort', () => resolve('expired'), { once: true })
   })
 
   try {
@@ -96,7 +96,7 @@ export async function runInterceptorScript(
     }
 
     const value = await Promise.race([
-      service.intercept(found.path, input, controller.signal),
+      service.intercept(found.path, input, runSignal),
       // A script that ignores its signal still loses the race: what it returns later is dropped.
       expired.then(() => {
         throw new Error('Script stopped')
@@ -116,7 +116,10 @@ export async function runInterceptorScript(
     return {
       ...rest,
       ...(rewriteRequested ? { rewriteRequested: true } : {}),
-      ...(policy ? { policy: toolPolicy(policy, name) } : {}),
+      ...(policy ? { policy: toolPolicy(policy, name, {
+        signal: runSignal,
+        onTimeout: () => controller.abort(),
+      }) } : {}),
     }
   } catch (err) {
     if (timedOut) {
@@ -126,6 +129,5 @@ export async function runInterceptorScript(
     return { kind: 'failed', reason: err instanceof Error ? err.message : String(err) }
   } finally {
     window.clearTimeout(timer)
-    signal.removeEventListener('abort', onAbort)
   }
 }

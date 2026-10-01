@@ -180,7 +180,7 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 \`downloadFile\` options: \`{ filename?, extension?, method?, headers?, body?, timeout? }\` — supports POST for APIs that return binary (e.g. TTS).
 \`downloadImage\` options: \`{ filename?, headers?, timeout? }\`
 
-\`timeout\` is milliseconds and takes any value — two seconds for a search API, twenty minutes for an export. Without it the call waits as long as the platform waits, which is what these have always done. It ends the *waiting*, not the request: a download that timed out may still land in the vault a moment later.
+\`timeout\` is milliseconds and takes any value — two seconds for a search API, twenty minutes for an export. Without it the call waits as long as the platform waits, which is what these have always done. It ends the *waiting* and prevents a late response from starting a vault write. Obsidian cannot recall a request already sent, or cancel a vault write already issued.
 Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inject secrets configured in AI settings.
 
 ### Zip
@@ -555,6 +555,14 @@ names itself (\`const open = …\`, \`function find() {}\`) fails to start with 
 Every run is listed while Obsidian is open — its status, how long it took, each \`log()\` line
 with the time it was printed, and what it returned — under **Show script runs**, where it can
 also be stopped or run again. Nothing about a run is written to the vault.
+
+Stop revokes the run's file-writing, network and prompt APIs, including child scripts and
+automations. Interceptor deadlines do the same; a timed-out approval callback loses its
+capabilities too. Catching an error does not restore them. An already-issued vault mutation
+cannot be cancelled: the row says **Stopping…** until admitted operations settle, then
+**Stopped**. Earlier writes are not rolled back. This is cooperative cancellation, not a
+JavaScript sandbox: check \`signal\` and yield in long loops; Stop cannot interrupt synchronous
+JavaScript or recall requests already sent to a server.
 
 ---
 

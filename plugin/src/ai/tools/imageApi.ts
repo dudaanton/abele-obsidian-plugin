@@ -5,6 +5,7 @@ import { IMAGE_API_DEFAULTS, ImageProvider, ImageModelConfig2, resolveImageModel
 
 interface ImageApiRequest {
   prompt: string
+  signal?: AbortSignal
   /** "providerId::modelId" — if omitted, uses defaultImageModel */
   modelKey?: string
   /** Base64 data URLs of source images (for editing) */
@@ -241,6 +242,7 @@ async function callOpenRouter(
 export async function callImageApi(req: ImageApiRequest): Promise<ImageApiResponse> {
   const { provider, model } = resolve(req.modelKey)
   const apiKey = await getApiKey(provider)
+  req.signal?.throwIfAborted()
 
   if (provider.apiType === 'openai') {
     return callOpenAi(apiKey, provider, model, req)

@@ -7,7 +7,8 @@ import { createImportedBinary } from '@/media/importImageFile'
 /**
  * Get the vault's configured attachment folder path, ensuring it exists.
  */
-export async function getAttachmentFolder(): Promise<string> {
+export async function getAttachmentFolder(signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted()
   const { app } = GlobalStore.getInstance()
   let folder = (app.vault as any).getConfig?.('attachmentFolderPath') || 'Attachments'
   if (folder === '/' || folder === '.') folder = ''
@@ -23,9 +24,9 @@ export async function getAttachmentFolder(): Promise<string> {
  * Save a base64 data URL image to the vault attachments folder.
  * Returns the vault path of the saved file.
  */
-export async function saveImageToVault(dataUrl: string, nameHint?: string): Promise<string> {
+export async function saveImageToVault(dataUrl: string, nameHint?: string, signal?: AbortSignal): Promise<string> {
   const { app } = GlobalStore.getInstance()
-  const folder = await getAttachmentFolder()
+  const folder = await getAttachmentFolder(signal)
 
   // Parse data URL: data:image/png;base64,iVBOR...
   const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/)
@@ -54,7 +55,7 @@ export async function saveImageToVault(dataUrl: string, nameHint?: string): Prom
     counter++
   }
 
-  const saved = await createImportedBinary(app, targetPath, new Blob([buffer], { type: `image/${match[1]}` }))
+  const saved = await createImportedBinary(app, targetPath, new Blob([buffer], { type: `image/${match[1]}` }), signal)
   return saved.path
 }
 

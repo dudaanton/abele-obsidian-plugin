@@ -108,7 +108,8 @@ export function createApplyTemplateTool(): AgentTool {
       },
       required: ['path'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, signal) => {
+      signal?.throwIfAborted()
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path')
 
@@ -133,7 +134,7 @@ export function createApplyTemplateTool(): AgentTool {
 
       console.debug('[apply_template] path:', path, 'variables:', Object.fromEntries(userValues))
 
-      const file = await service.createNoteFromTemplate(template, userValues)
+      const file = await service.createNoteFromTemplate(template, userValues, signal)
       ScopeResolver.getInstance().addFile(file.path)
 
       return {

@@ -27,6 +27,7 @@ import { View, type RestoreInfo, type ViewHost, type ViewOptions } from './view/
 import { VIEW_GLOBALS } from './view/components'
 import { defaultViewHost } from './view/host'
 import { showFormModal } from './formModal'
+import { waitForScript } from './abort'
 import { noteInfo as readNoteInfo, type NoteInfo } from './noteInfo'
 import { scriptAnalytics } from './analyticsApi'
 import { scriptVocabulary } from './vocabularyApi'
@@ -50,6 +51,7 @@ async function call(
   params: Record<string, unknown>,
   signal?: AbortSignal
 ): Promise<string> {
+  signal?.throwIfAborted()
   return text(await tool.execute(nanoid(), params, signal))
 }
 
@@ -65,6 +67,7 @@ async function callForPath(
   fallback: string,
   signal?: AbortSignal
 ): Promise<string> {
+  signal?.throwIfAborted()
   const result = await tool.execute(nanoid(), params, signal)
   const details = result.details as { path?: string } | undefined
   return details?.path ?? fallback
@@ -82,22 +85,32 @@ function stripPrefix(result: string): string {
  * should answer in two seconds and a twenty-minute export are both ordinary. Without one the
  * wait is what it always was, which is however long the platform waits.
  *
- * The request itself is not cancelled: `requestUrl` is Obsidian's and takes no signal, so what
- * this ends is the waiting. The download it was doing may still land in the vault a moment
- * later, which is worth knowing before setting a timeout on one.
+ * requestUrl cannot cancel a request already sent. Revoking the operation's signal prevents
+ * a late download from starting a vault write; an already-issued write must still settle.
  */
-function withTimeout<T>(work: Promise<T>, ms: number | undefined, url: string): Promise<T> {
-  if (!ms || ms <= 0) return work
+function withTimeout<T>(
+  work: (signal: AbortSignal) => Promise<T>,
+  ms: number | undefined,
+  url: string,
+  parent: AbortSignal,
+  track?: (work: Promise<unknown>) => void
+): Promise<T> {
+  parent.throwIfAborted()
+  if (!ms || ms <= 0) return work(parent)
 
+  const controller = new AbortController()
+  const signal = AbortSignal.any([parent, controller.signal])
   let timer = 0
   const expiry = new Promise<never>((_, reject) => {
-    timer = window.setTimeout(
-      () => reject(new Error(`Request to ${url} timed out after ${Math.round(ms / 1000)}s`)),
-      ms
-    )
+    timer = window.setTimeout(() => {
+      const error = new Error(`Request to ${url} timed out after ${Math.round(ms / 1000)}s`)
+      controller.abort(error)
+      reject(error)
+    }, ms)
   })
-
-  return Promise.race([work, expiry]).finally(() => window.clearTimeout(timer))
+  const pending = work(signal)
+  track?.(pending)
+  return Promise.race([pending, expiry]).finally(() => window.clearTimeout(timer))
 }
 
 /**
@@ -115,6 +128,8 @@ export function buildScriptContext(opts: {
   params: Record<string, unknown>
   signal: AbortSignal
   logs: string[]
+  /** Track admitted operations until they settle, including calls a script did not await. */
+  onOperation?: (work: Promise<unknown>) => void
   formHandler?: (fields: FormField[]) => Promise<Record<string, string> | null>
   /** Told each line as it is printed, so a run can be watched rather than only read after. */
   onLog?: (text: string) => void
@@ -140,7 +155,9 @@ export function buildScriptContext(opts: {
   intercept?: { message: unknown; chat: unknown }
 }) {
   const s = opts.signal
+  const track = opts.onOperation
   const wrote = (...paths: Array<string | undefined>) => {
+    s.throwIfAborted()
     if (!opts.onWrite) return
     for (const path of paths) if (path) opts.onWrite(path)
   }
@@ -172,12 +189,14 @@ export function buildScriptContext(opts: {
   const formHandlerNow = ():
     | ((fields: FormField[]) => Promise<Record<string, string> | null>)
     | null => {
-    if (opts.formHandler) return opts.formHandler
-    if (views.some((v) => v.isOpen)) return showFormModal
+    if (opts.formHandler && opts.formHandler !== showFormModal) return opts.formHandler
+    if (opts.formHandler || views.some((v) => v.isOpen)) {
+      return (fields) => showFormModal(fields, undefined, s)
+    }
     return null
   }
 
-  return {
+  const context = {
     params: opts.params,
     signal: s,
     dayjs,
@@ -387,7 +406,8 @@ export function buildScriptContext(opts: {
 
     async createFromTemplate(templatePath: string): Promise<void> {
       const { getTemplateComposable } = await import('@/composables/useTemplates')
-      await getTemplateComposable().startCreateFlowWithTemplate(templatePath)
+      s.throwIfAborted()
+      await getTemplateComposable().startCreateFlowWithTemplate(templatePath, s)
     },
 
     // ── Network ──
@@ -409,15 +429,17 @@ export function buildScriptContext(opts: {
         }
       }
       const response = await withTimeout(
-        requestUrl({
+        (signal) => waitForScript(() => requestUrl({
           url: substituteSecrets(url),
           method: fetchOpts?.method || 'GET',
           headers,
           body: fetchOpts?.body ? substituteSecrets(fetchOpts.body) : undefined,
           throw: false,
-        }),
+        }), signal),
         fetchOpts?.timeout,
-        url
+        url,
+        s,
+        track
       )
       const contentType = response.headers['content-type'] || ''
       let data: any = response.text
@@ -441,7 +463,7 @@ export function buildScriptContext(opts: {
         typeof filenameOrOpts === 'string' ? { filename: filenameOrOpts } : filenameOrOpts
       const { timeout, ...rest } = opts ?? {}
       return stripPrefix(
-        await withTimeout(call(downloadImageTool, { url, ...rest }, s), timeout, url)
+        await withTimeout((signal) => call(downloadImageTool, { url, ...rest }, signal), timeout, url, s, track)
       )
     },
 
@@ -459,7 +481,7 @@ export function buildScriptContext(opts: {
     ): Promise<string> {
       const { timeout, ...rest } = opts ?? {}
       return stripPrefix(
-        await withTimeout(call(downloadFileTool, { url, ...rest }, s), timeout, url)
+        await withTimeout((signal) => call(downloadFileTool, { url, ...rest }, signal), timeout, url, s, track)
       )
     },
 
@@ -499,11 +521,13 @@ export function buildScriptContext(opts: {
       const tools = registry.filterTools(target, createAgentTools({ agentId: target.id }))
       const items = agentOpts?.items ?? []
 
-      const runOne = (message: string) =>
-        runSubAgent(
+      const runOne = (message: string) => {
+        s.throwIfAborted()
+        return runSubAgent(
           { systemPrompt, userMessage: message, tools, model, signal: s },
           target.toolModes
         )
+      }
 
       if (!items.length) return runOne(task)
 
@@ -553,9 +577,11 @@ export function buildScriptContext(opts: {
         if (name.endsWith('/')) continue // skip directories
         const path = `${folder}/${name}`
         const dir = path.split('/').slice(0, -1).join('/')
+        s.throwIfAborted()
         if (dir && !app.vault.getAbstractFileByPath(dir)) {
           await app.vault.createFolder(dir)
         }
+        s.throwIfAborted()
         await app.vault.createBinary(path, data.buffer as ArrayBuffer)
         created.push(path)
       }
@@ -582,12 +608,12 @@ export function buildScriptContext(opts: {
       if (mediaPath) {
         const mediaFile = app.vault.getAbstractFileByPath(mediaPath)
         if (!(mediaFile instanceof TFile)) throw new Error(`Media not found: ${mediaPath}`)
-        await setCoverFromMedia(mediaFile, noteFile)
+        await setCoverFromMedia(mediaFile, noteFile, s)
       } else {
         const content = await app.vault.cachedRead(noteFile)
         const media = findFirstMedia(content, notePath)
         if (!media) throw new Error('No image or video found in note')
-        await setCoverFromMedia(media, noteFile)
+        await setCoverFromMedia(media, noteFile, s)
       }
     },
 
@@ -632,7 +658,7 @@ export function buildScriptContext(opts: {
     analytics: scriptAnalytics(),
 
     /** Vocabulary rules in notes, underlined in books — see `vocabularyApi.ts`. */
-    vocabulary: scriptVocabulary({ book: opts.book, wrote: (path) => wrote(path) }),
+    vocabulary: scriptVocabulary({ book: opts.book, signal: s, wrote: (path) => wrote(path) }),
 
     // ── UI ──
 
@@ -654,7 +680,7 @@ export function buildScriptContext(opts: {
       if (!handler) throw new Error(NO_FORM_HANDLER)
       // A filter the picker cannot honour is the script's mistake, said before anyone is asked.
       for (const field of fields) if (field.type === 'note-picker') filterCriteria(field.filter)
-      const answers = await handler(fields)
+      const answers = await waitForScript(() => handler(fields), s)
       if (!answers) return null
       return answerPickers(GlobalStore.getInstance().app, fields, answers)
     },
@@ -674,9 +700,32 @@ export function buildScriptContext(opts: {
           'Showing text is not available when one script runs another unless a view is open.'
         )
       }
-      await handler([{ name: 'text', label: title ?? '', type: 'markdown', text }])
+      await waitForScript(() => handler([{ name: 'text', label: title ?? '', type: 'markdown', text }]), s)
     },
   }
+
+  // Cancellation revokes capabilities, not JavaScript itself. A script can catch an error
+  // or wake from its own promise later, but none of these operations may start again.
+  const guard = <T extends object>(api: T, keys: Array<keyof T>) => {
+    for (const key of keys) {
+      const operation = api[key]
+      if (typeof operation !== 'function') continue
+      api[key] = ((...args: unknown[]) => {
+        s.throwIfAborted()
+        const result: unknown = operation.apply(api, args)
+        if (result instanceof Promise) opts.onOperation?.(result)
+        return result
+      }) as T[typeof key]
+    }
+    return api
+  }
+  guard(context.vocabulary, ['mark', 'off', 'on'])
+  return guard(context, [
+    'edit', 'write', 'create', 'remove', 'move', 'copy', 'replace', 'open',
+    'applyTemplate', 'createFromTemplate', 'fetch', 'downloadImage', 'downloadFile',
+    'agent', 'generateImage', 'unzip', 'setCover', 'runScript', 'view',
+    'notice', 'setStatus', 'form', 'show',
+  ])
 }
 
 export type ScriptContext = ReturnType<typeof buildScriptContext>

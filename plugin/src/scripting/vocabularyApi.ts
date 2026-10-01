@@ -172,6 +172,7 @@ function bookLink(path: string, from: string): string {
 
 export function scriptVocabulary(opts: {
   book?: BookScriptContext
+  signal?: AbortSignal
   /** Told a note is about to be written, before it is. */
   wrote: (path: string) => void
 }) {
@@ -191,6 +192,7 @@ export function scriptVocabulary(opts: {
     opts.wrote(file.path)
     let after = now
     await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+      opts.signal?.throwIfAborted()
       fn(fm)
       after = structuredClone(fm)
     })
@@ -212,6 +214,7 @@ export function scriptVocabulary(opts: {
       replace,
       make: make && { ...make, color: color as HighlightColor | undefined },
       wrote: opts.wrote,
+      signal: opts.signal,
     })
     return {
       highlight: linkToPlace(app, book, { cfi }, done.highlight.label),

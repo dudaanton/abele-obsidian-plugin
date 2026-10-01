@@ -355,6 +355,9 @@ export class AgentLoop {
     let isError = false
 
     try {
+      // Approval can have waited for input or an interceptor. Stop during that wait must
+      // not admit a request or mutation, even for a tool that cannot cancel once started.
+      signal.throwIfAborted()
       toolResult = await tool.execute(tc.id, args, signal)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)

@@ -8,11 +8,29 @@ import type { FormField } from './types'
  * is writing to the store it watches. Everything that shows a form goes through here: a
  * script asking for its parameters, `form()` inside a script, and the API reference command.
  */
-export function showFormModal(fields: FormField[]): Promise<Record<string, string> | null> {
+export function showFormModal(
+  fields: FormField[],
+  _runId?: string,
+  signal?: AbortSignal
+): Promise<Record<string, string> | null> {
+  signal?.throwIfAborted()
   const store = GlobalStore.getInstance()
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const answer = (values: Record<string, string> | null) => {
+      signal?.removeEventListener('abort', abort)
+      resolve(values)
+    }
+    const abort = () => {
+      // Another run may have opened its own form meanwhile; close only this one's dialog.
+      if (store.scriptFormResolve.value === answer) {
+        store.scriptFormModalOpened.value = false
+        store.scriptFormResolve.value = null
+      }
+      reject(new Error('Script stopped'))
+    }
+    signal?.addEventListener('abort', abort, { once: true })
     store.scriptFormFields.value = fields
-    store.scriptFormResolve.value = resolve
+    store.scriptFormResolve.value = answer
     store.scriptFormModalOpened.value = true
   })
 }

@@ -144,8 +144,10 @@ export class TemplateService {
    */
   async createNoteFromTemplate(
     template: UserTemplate,
-    userValues: Map<string, string>
+    userValues: Map<string, string>,
+    signal?: AbortSignal
   ): Promise<TFile> {
+    signal?.throwIfAborted()
     // Get template body
     const body = await template.getBody()
 
@@ -160,10 +162,10 @@ export class TemplateService {
     const targetPath = await this.resolveTargetPath(template, userValues)
 
     // Create file
-    const file = await this.createFileWithPath(targetPath, content)
+    const file = await this.createFileWithPath(targetPath, content, signal)
 
     // Execute callbacks
-    await this.executeCallbacks(template.callbacks)
+    await this.executeCallbacks(template.callbacks, signal)
 
     return file
   }
@@ -338,7 +340,7 @@ export class TemplateService {
   /**
    * Create file with full path, creating directories if needed
    */
-  private async createFileWithPath(filePath: string, content: string): Promise<TFile> {
+  private async createFileWithPath(filePath: string, content: string, signal?: AbortSignal): Promise<TFile> {
     const { app } = GlobalStore.getInstance()
 
     console.debug(content)
@@ -353,21 +355,24 @@ export class TemplateService {
         currentPath = currentPath ? `${currentPath}/${part}` : part
         const folder = app.vault.getAbstractFileByPath(currentPath)
         if (!folder) {
+          signal?.throwIfAborted()
           await app.vault.createFolder(currentPath)
         }
       }
     }
 
+    signal?.throwIfAborted()
     return await app.vault.create(filePath, content)
   }
 
   /**
    * Execute callbacks sequentially
    */
-  private async executeCallbacks(callbacks: string[]): Promise<void> {
+  private async executeCallbacks(callbacks: string[], signal?: AbortSignal): Promise<void> {
     const { app } = GlobalStore.getInstance()
 
     for (const commandId of callbacks) {
+      signal?.throwIfAborted()
       try {
         await (app as any).commands.executeCommandById(commandId)
       } catch (error) {
