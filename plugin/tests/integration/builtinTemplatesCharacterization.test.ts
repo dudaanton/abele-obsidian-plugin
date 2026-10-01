@@ -177,6 +177,31 @@ describe('TransactionNoteTemplate', () => {
     })
   })
 
+  // BUG: createNoteWithTemplate prepares _renderedTemplate before the existing-file check.
+  // When creation is skipped, the next call with explicit content consumes that stale body.
+  it.fails(
+    'does not reuse a prepared template after opening an already existing transaction',
+    async () => {
+      const env = templateHarness([{ path: 'Ledger/existing.md', content: 'Existing' }])
+      await env.template('---\ntype: template\ntemplate_for: transaction\n---\nStale template', {
+        template_for: 'transaction',
+      })
+      AbeleConfig.getInstance().transactionTemplatePath = 'Templates/sample.md'
+      const template = new TransactionNoteTemplate(env.app)
+      await template.createNoteWithTemplate(
+        { transactionName: 'existing', transactionFolder: 'Ledger' },
+        false
+      )
+      await template.createNoteWithTemplate(
+        { transactionName: 'new', transactionFolder: 'Ledger', content: 'Explicit body' },
+        false
+      )
+      expect(await env.app.vault.read(env.app.vault.getFileByPath('Ledger/new.md')!)).toContain(
+        'Explicit body'
+      )
+    }
+  )
+
   it('does not apply a configured template when explicit content is provided', async () => {
     const env = templateHarness()
     await env.template('---\ntype: template\ntemplate_for: transaction\n---\nIgnored', {

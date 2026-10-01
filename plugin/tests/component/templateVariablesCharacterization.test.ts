@@ -145,13 +145,9 @@ describe('template variable input', () => {
   it('imports a picked disk image and leaves cancellation alone', async () => {
     const env = templateHarness([{ path: 'Media/imported.png' }])
     const w = draw('{{image::image}}')
-    let input: HTMLInputElement
-    vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (
-      this: HTMLInputElement
-    ) {
-      input = this
-    })
+    const clicked = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
     await button(w, 'Disk').trigger('click')
+    const input = clicked.mock.contexts[0] as HTMLInputElement
     expect(input!.accept).toBe('image/*')
     input!.dispatchEvent(new Event('change'))
     await flushPromises()
