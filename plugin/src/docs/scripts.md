@@ -77,7 +77,11 @@ connection while the dialog is open invalidates the decision. Checks use this va
 current connection, not only the provenance descriptor last written by an engine. Switching
 connections with a join question still open invalidates old decisions before a new engine
 exists; disconnect retains managed bytes but does not keep an old connection's permission
-active. New bytes need a new decision;
+active. Every managed identity/hold mutation advances a shared per-path runtime generation
+before its asynchronous write begins. A pending or changed generation invalidates checks
+across the awaited approval read and the synchronous compilation boundary; different paths
+do not invalidate one another. The fence is shared across this runtime's IDB connections,
+not reconstructed as permission after a reload. New bytes need a new decision;
 rename alone preserves identity. Shared/agent policy is **refuse**, with no approval bypass.
 Agents, automations, nested scripts and restored views never open approval dialogs: unapproved
 runs return a hold/error. Approving on one device does not authorize another, and nothing in

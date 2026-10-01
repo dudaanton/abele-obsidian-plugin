@@ -6,6 +6,7 @@ import { useVault } from '../helpers/testEnv'
 import { activateScriptProvenance, scriptTrustFor } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
 import { CONNECTION_KEY } from '@/sync/connection'
+import { ScriptProvenance } from '@/scripting/trust/ScriptProvenance'
 
 const path = 'Scripts/sample.js'
 const bytes = '// @name Sample\nreturn "approved"'
@@ -16,7 +17,10 @@ beforeEach(() => {
   factory = new IDBFactory()
   vi.stubGlobal('indexedDB', factory)
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 async function managed(facet: 'personal' | 'scoped' = 'personal', principal = 'sample-device') {
   app.saveLocalStorage(CONNECTION_KEY, {
     serverUrl: 'https://sync.example',
@@ -189,6 +193,37 @@ describe('exact-byte local script approval', () => {
       deviceId: 'sample-device',
       join: { vaultId: 'sample-vault', ask: true, prefer: null },
     })
+    expect(() => assertScriptContext(app as unknown as App, checked)).toThrow(/changed/)
+  })
+
+  it.each(['pending', 'replacement'])(
+    'rejects %s written while the final approved read is awaited',
+    async (mutation) => {
+      await managed()
+      await scriptForExecution(app as unknown as App, path, async () => true)
+      const approved = ScriptProvenance.prototype.approved
+      let calls = 0
+      vi.spyOn(ScriptProvenance.prototype, 'approved').mockImplementation(
+        async function (record, sha) {
+          const result = await approved.call(this, record, sha)
+          if (++calls === 2) {
+            const writer = await scriptTrustFor(app as unknown as App, factory)
+            if (mutation === 'pending') await writer!.provenance.pending(path)
+            else await writer!.provenance.record(path, 'new-identity')
+            writer!.store.close()
+          }
+          return result
+        }
+      )
+      await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/changed/)
+    }
+  )
+  it('rechecks provenance synchronously at the compilation boundary', async () => {
+    await managed()
+    const checked = await scriptForExecution(app as unknown as App, path, async () => true)
+    const writer = await scriptTrustFor(app as unknown as App, factory)
+    await writer!.provenance.pending(path)
+    writer!.store.close()
     expect(() => assertScriptContext(app as unknown as App, checked)).toThrow(/changed/)
   })
 

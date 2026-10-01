@@ -6,6 +6,7 @@ import { CONNECTION_KEY } from '@/sync/connection'
 import { LEDGER_KEY } from '@/sync/ledgerId'
 import { ScriptProvenance, type ScriptBinding } from './ScriptProvenance'
 import { assertCurrentScriptConnection } from './scriptConnection'
+import { ScriptRevision } from './ScriptRevision'
 
 export const SCRIPT_SENTINEL = '.abele-script-managed'
 export const SCRIPT_TRUST_KEY = 'abele-script-provenance'
@@ -14,6 +15,7 @@ interface Descriptor {
   binding: ScriptBinding
 }
 const database = (id: string) => `abele-script-provenance-${id}`
+const revisions = new Map<string, ScriptRevision>()
 
 function descriptor(raw: unknown): Descriptor {
   if (!raw || typeof raw !== 'object') throw new Error('Script provenance descriptor is missing')
@@ -40,7 +42,12 @@ function descriptor(raw: unknown): Descriptor {
 async function open(value: Descriptor, factory: IDBFactory, fresh: boolean) {
   const store = await IndexedDbStateStore.open(factory, database(value.id))
   try {
-    return { store, provenance: await ScriptProvenance.open(store, value.binding, fresh) }
+    let revision = revisions.get(value.id)
+    if (!revision) {
+      revision = new ScriptRevision()
+      revisions.set(value.id, revision)
+    }
+    return { store, provenance: await ScriptProvenance.open(store, value.binding, fresh, revision) }
   } catch (error) {
     store.close()
     throw error
