@@ -2,8 +2,8 @@
 
 Abele can show GitHub issues, pull requests, discussions, commits, comparisons and files in tabs inside
 Obsidian, so a link in a note opens the thing it points at without a trip to the browser. It
-reads only: nothing is ever written to GitHub. It is off until turned on in **Settings → Abele →
-GitHub**.
+reads repository content only; the notifications panel can mark threads Read or Done. It is off
+until turned on in **Settings → Abele → GitHub**.
 
 ## What opens in a tab
 
@@ -458,7 +458,7 @@ comparisons, and search code, issues and pull requests. It can also put somethin
 open an item or a folder in a GitHub tab, with lines marked. A link it writes in its answer opens in a tab
 like a link in a note.
 
-These tools read and nothing more; the integration still writes nothing to GitHub. They use the
+These tools read and nothing more; only the notifications panel writes Read or Done. They use the
 same token and server as the tabs, so an agent sees exactly what you can, and a refusal comes back
 in the same words. They are offered only while GitHub is on in the settings, and are on for every
 agent; each can be set to **Ask** or **Off** in the agent's tools, under GitHub. Answers are kept
@@ -602,7 +602,11 @@ hand, so a notification looked at and left for later stays unread:
 
 The check on **every row**, read or unread, means **Done**, just like the check on GitHub:
 `DELETE /notifications/threads/{id}` removes it from both inboxes. It does not unsubscribe from
-the thread. A refusal leaves the notification in the local cache and explains the error.
+the thread. Only HTTP 204 counts as success. A refusal keeps the row visible and shows the
+thread ID, HTTP status, token field and cause (including SSO or organization policy); a successful
+poll does not erase that failure. Retry with the row's check after resolving the cause. Done uses
+the exact string thread ID, not a PR or comment ID, and the same token/server that supplied the
+row even if settings changed meanwhile. Refresh switches to the new token without mixing rows.
 **Read** is different: it removes the unread emphasis, but leaves the notification in the inbox.
 
 Polling still does not take a row out from under the reader: a row no longer returned by GitHub
@@ -621,6 +625,21 @@ list is answered "not modified", which GitHub does not count against the hourly 
 notifications are read. Requests on the same inbox are ordered so a slow poll cannot undo Done.
 After a successful Read or Done, both lists discard their old conditional timestamps; the next
 request reads fresh data, even if a thread's new activity falls within the same timestamp second.
+If GitHub returns the **same notification version** after accepting Done with HTTP 204, the
+panel hides it using a **local fallback**, with a notice that GitHub still lists it. This is
+not proof that the web inbox changed. **Show locally hidden** forgets this fallback and asks
+for GitHub's list again. The memory is per client (server and token), lasts only for this plugin
+session, and keeps at most the last 1,000 Done thread versions. It is not saved or synced.
+
+The fallback matches the thread ID, update timestamp, latest comment URL, reason, repository,
+subject type, subject URL and title; read/unread changes alone do not count as new activity.
+A changed timestamp, comment/review URL or other matched field brings the notification back.
+There is no PR-reason blacklist: `author`, `review_requested` and `ci_activity` describe why
+notifications are delivered, not a reliable event log. Filtering by them could hide a later
+comment or review. The panel does not fetch PR state or reviews to enrich notifications and
+never changes subscriptions. This rule protects against unchanged re-listing, not arbitrary
+new activity that the REST and web inboxes might classify differently.
+
 A later round resumes conditional polling. A 304 does not advance the bulk-read cutoff. Each
 panel holds the cutoff of the version it displays and passes that cutoff into bulk Read; a poll
 in another panel cannot move it forward, even while the write waits in the shared inbox queue.

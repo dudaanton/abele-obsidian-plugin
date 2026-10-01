@@ -94,6 +94,61 @@ describe('Done refusals', () => {
   )
 })
 
+describe('local Done fallback in the panel', () => {
+  it('labels unchanged re-listing as local-only and lets the user show the server list', async () => {
+    const { client } = clientWith({
+      '/notifications': { json: [notification] },
+      [`/notifications/threads/${id}`]: { status: 204 },
+    })
+    const w = setup(() => client)
+    await flushPromises()
+    await done(w)
+    await refresh(w)
+    expect(w.find(`[data-id="${id}"]`).exists()).toBe(false)
+    const notice = w.find('[role="status"]')
+    expect(notice.text()).toContain('GitHub still lists 1 unchanged notification')
+    expect(notice.text()).toContain('HTTP 204')
+    expect(notice.text()).toContain('Local fallback')
+    expect(notice.text()).toContain('session only')
+    await notice.find('button').trigger('click')
+    await flushPromises()
+    expect(w.find(`[data-id="${id}"]`).exists()).toBe(true)
+    expect(w.find('[role="status"]').exists()).toBe(false)
+  })
+
+  it('does not restore another panel’s Done as a retained read row during polling', async () => {
+    const { client } = clientWith({
+      '/notifications': { json: [notification] },
+      [`/notifications/threads/${id}`]: { status: 204 },
+    })
+    const first = setup(() => client)
+    const second = setup(() => client)
+    await flushPromises()
+    await done(first)
+    await refresh(first)
+    await (second.vm as unknown as { refresh(): Promise<void> }).refresh()
+    await flushPromises()
+    expect(second.find(`[data-id="${id}"]`).exists()).toBe(false)
+    expect(second.find('[role="status"]').text()).toContain('Local fallback')
+  })
+
+  it('clears a failed Done only after that thread is successfully retried', async () => {
+    let status = 403
+    const { client } = clientWith({
+      '/notifications': { json: [notification] },
+      [`/notifications/threads/${id}`]: () => ({ status }),
+    })
+    const w = setup(() => client)
+    await flushPromises()
+    await done(w)
+    expect(w.find('[role="alert"]').exists()).toBe(true)
+    status = 204
+    await done(w)
+    expect(w.find('[role="alert"]').exists()).toBe(false)
+    expect(w.find(`[data-id="${id}"]`).exists()).toBe(false)
+  })
+})
+
 describe('Done identity', () => {
   it.each([notification.subject, { ...notification.subject, url: null, latest_comment_url: null }])(
     'uses the exact string thread id, never a PR or comment id, for subject %j',
@@ -113,30 +168,29 @@ describe('Done identity', () => {
     }
   )
 
-  it('uses the token and server that supplied the displayed row even after settings change', async () => {
-    const first = clientWith({
-      '/notifications': { json: [notification] },
-      [`/notifications/threads/${id}`]: { status: 204 },
-    })
-    const second = clientWith({ '/notifications': { json: [notification] } })
-    const original = new GithubClient(endpoints(''), 'ghp_sample_first', first.request)
-    const replacement = new GithubClient(
-      endpoints('git.example.test'),
-      'ghp_sample_second',
-      second.request
-    )
-    let current = original
-    const w = setup(() => current)
-    await flushPromises()
-    current = replacement
-    await done(w)
-    expect(second.request).not.toHaveBeenCalled()
-    expect(first.request.mock.calls.map(([r]) => r.method)).toEqual(['GET', 'DELETE'])
-    expect(
-      first.request.mock.calls.every(
-        ([r]) => r.headers?.Authorization === 'Bearer ghp_sample_first'
-      )
-    ).toBe(true)
-    expect(w.find(`[data-id="${id}"]`).exists()).toBe(false)
-  })
+  it.each(['', 'git.example.test'])(
+    'keeps the displayed row’s token and server when settings change to %s',
+    async (server) => {
+      const first = clientWith({
+        '/notifications': { json: [notification] },
+        [`/notifications/threads/${id}`]: { status: 204 },
+      })
+      const second = clientWith({ '/notifications': { json: [notification] } })
+      const original = new GithubClient(endpoints(''), 'ghp_sample_first', first.request)
+      const replacement = new GithubClient(endpoints(server), 'ghp_sample_second', second.request)
+      let current = original
+      const w = setup(() => current)
+      await flushPromises()
+      current = replacement
+      await done(w)
+      expect(second.request).not.toHaveBeenCalled()
+      expect(first.request.mock.calls.map(([r]) => r.method)).toEqual(['GET', 'DELETE'])
+      expect(
+        first.request.mock.calls.every(
+          ([r]) => r.headers?.Authorization === 'Bearer ghp_sample_first'
+        )
+      ).toBe(true)
+      expect(w.find(`[data-id="${id}"]`).exists()).toBe(false)
+    }
+  )
 })

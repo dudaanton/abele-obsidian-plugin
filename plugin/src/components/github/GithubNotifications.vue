@@ -51,6 +51,19 @@
       {{ accessHint }}
     </div>
 
+    <div v-if="enabled && locallyHidden" class="abele-github-notifications__error" role="status">
+      <GithubNotice
+        :text="`GitHub still lists ${locallyHidden} unchanged notification(s) after accepting Done (HTTP 204). Local fallback: hidden for this session only. Check the inbox on GitHub; changed notifications will be shown again.`"
+        :retry="false"
+      />
+      <Button
+        text="Show locally hidden"
+        tooltip="Forget local Done memory and show what GitHub lists"
+        :disabled="busy"
+        @click="clearDoneMemory"
+      />
+    </div>
+
     <div v-if="enabled && doneError" class="abele-github-notifications__error" role="alert">
       <GithubNotice :text="doneError" :retry="false" />
     </div>
@@ -115,6 +128,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch 
 import type { PaneType } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Tabs from '../obsidian/Tabs.vue'
+import Button from '../obsidian/Button.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubNotice from './GithubNotice.vue'
@@ -173,6 +187,7 @@ const displayedInbox = shallowRef<NotificationInbox | null>(null)
 const busy = ref(false)
 const truncated = ref(false)
 const accessHint = ref('')
+const locallyHidden = ref(0)
 const marking = reactive(new Set<string>())
 const now = ref(Date.now())
 const pollSeconds = ref(60)
@@ -230,7 +245,7 @@ function keepInView(
   fresh: GithubNotification[]
 ): GithubNotification[] {
   const listed = new Set(fresh.map((n) => n.id))
-  const gone = shown.filter((n) => !listed.has(n.id))
+  const gone = shown.filter((n) => !listed.has(n.id) && !displayedInbox.value?.isLocallyDone(n))
   if (gone.length)
     console.debug(
       '[abele] GitHub notifications no longer listed, kept in view as read',
@@ -272,6 +287,8 @@ async function refresh(force = false) {
     readHere.clear()
     doneError.value = ''
     failedDoneId.value = ''
+    locallyHidden.value = 0
+    accessHint.value = ''
     displayedInbox.value = source
   }
   try {
@@ -283,6 +300,7 @@ async function refresh(force = false) {
       listedAt.value = page.listedAt
       truncated.value = page.truncated
       accessHint.value = page.accessHint
+      locallyHidden.value = page.locallyHidden
       pollSeconds.value = page.pollSeconds
       error.value = ''
     }
@@ -304,6 +322,7 @@ watch(
     doneError.value = ''
     failedDoneId.value = ''
     displayedInbox.value = null
+    locallyHidden.value = 0
     readHere.clear()
     marking.clear()
     if (props.enabled) void refresh()
@@ -325,6 +344,7 @@ watch(
     const page = source === displayedInbox.value ? source.cachedPage(which) : null
     items.value = page?.items ?? null
     listedAt.value = page?.listedAt ?? ''
+    locallyHidden.value = page?.locallyHidden ?? 0
     readHere.clear()
     void refresh()
   }
@@ -343,7 +363,7 @@ async function markDone(n: GithubNotification) {
   marking.add(n.id)
   const client = reader().client
   try {
-    await source.markDone(n.id)
+    await source.markDone(n.id, n)
     if (!props.enabled || client !== reader().client || source !== displayedInbox.value) return
     readHere.delete(n.id)
     items.value = (items.value ?? []).filter((item) => item.id !== n.id)
@@ -360,6 +380,13 @@ async function markDone(n: GithubNotification) {
     marking.delete(n.id)
     finishBusy()
   }
+}
+
+async function clearDoneMemory() {
+  if (busy.value) return
+  displayedInbox.value?.clearDoneMemory()
+  locallyHidden.value = 0
+  await refresh(true)
 }
 
 async function markAllRead() {

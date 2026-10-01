@@ -83,14 +83,28 @@ else you type. **Alt+Enter** pins or unpins the highlighted repository; a GitHub
 
 ## Notifications
 
-**Show GitHub notifications** opens your GitHub notifications in the right sidebar — the unread
-ones, or all of them, from every repository or one. Clicking one opens the pull request, issue or
-discussion in a tab, at the latest comment, and leaves it unread. The check on a row marks it
-**Done** on GitHub and removes it from the inbox, whether it was read or unread. **Mark all read**
-marks the listed snapshot read without removing rows; notifications arriving after that snapshot
-are left unread. A refreshed unread list keeps previously shown rows visible as read rather than
-making them disappear while you work. Releases, workflow runs and alerts open on GitHub. The list
-refreshes while it is open, as often as GitHub allows, and the refresh button asks at once.
+**Show GitHub notifications** opens your GitHub inbox in the right sidebar — **All** (read and
+unread, not Done) by default, or only unread, from every repository or one. Clicking a row opens
+the pull request, issue or discussion at the latest comment and leaves it unread. The row's
+check means **Done on GitHub**, removing it from the inbox without unsubscribing. The double
+check at the top marks all **read, not Done**; read rows remain in All. Releases, workflow runs
+and alerts open on GitHub. The list refreshes as often as GitHub allows; refresh asks at once.
+
+If Done fails, the row stays and the panel explains GitHub's refusal, including the HTTP status,
+thread ID and which token was used. Refresh does not clear that failure; retry with the row's
+check after fixing the cause. The write uses the same token/server that supplied the row.
+
+If GitHub accepts Done but returns that unchanged notification again, a notice says it is hidden
+by a **local fallback for this session only**, not confirmed removed from the web inbox.
+**Show locally hidden** restores GitHub's list. This memory is not saved or synced; it holds the
+last 1,000 Done thread versions per token/server. Changed notification data, including a new
+update timestamp or comment/review URL, brings the row back; read/unread changes alone do not.
+PR reasons are not filtered, so a later review or mention is not silently discarded.
+
+Bulk Read applies only up to the displayed snapshot; notifications arriving later stay unread.
+Polling retains disappeared rows as read until refresh or a filter change, except explicitly
+Done versions. Switching connections clears the old rows, errors and local-fallback notice;
+responses still in flight from the old connection cannot overwrite the new inbox.
 
 GitHub lets only a **classic** personal access token read notifications, with the
 **notifications** scope (or **repo**). A fine-grained token cannot, whatever it is given. Put a

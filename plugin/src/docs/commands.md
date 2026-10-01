@@ -74,7 +74,13 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   marks all read (of the chosen repository), not Done: read rows remain in All. There is no
   bulk Done REST endpoint. Bulk Read passes the displayed page's cutoff as `last_read_at`,
   without forcing `read: true`; another panel's polling cannot advance that cutoff. Polling
-  keeps disappeared rows dimmed until refresh or filter change.
+  keeps disappeared rows dimmed until refresh or filter change, except explicitly Done versions.
+  Done uses the displayed row's original client and string thread ID. Non-204 replies leave the
+  row visible with a lasting error naming the HTTP status, thread ID and token field; refresh
+  alone does not clear it. If GitHub accepts Done but lists the unchanged version again, a notice
+  labels it as a session-local fallback (last 1,000 Done versions per client, not saved or synced).
+  **Show locally hidden** forgets that fallback. Changed timestamps, comment/review URLs, reasons
+  or subject details reappear; read/unread changes alone do not. No PR-reason blacklist is used.
   Releases, workflow runs and alerts open on GitHub. Needs a classic token with the
   `notifications` or `repo` scope — GitHub does not let a fine-grained token read notifications —
   read from its own setting, `github.notifications.keyId` (Notifications token), else the main

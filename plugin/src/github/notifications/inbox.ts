@@ -25,6 +25,13 @@ const PER_PAGE = 50
 const MAX_PAGES = 4
 /** What GitHub asks for when it says nothing — its documented default. */
 const DEFAULT_POLL_SECONDS = 60
+/** Session-only fallback, bounded independently of how long the plugin stays loaded. */
+const MAX_DONE = 1000
+
+/** Read state is not new activity. Everything else must match to suppress a repeated snapshot. */
+function doneVersion(n: GithubNotification): string {
+  return JSON.stringify([n.updatedAt, n.commentApiUrl, n.reason, n.repo, n.type, n.apiUrl, n.title])
+}
 
 export type Which = 'unread' | 'all'
 
@@ -57,6 +64,8 @@ export interface InboxPage {
   /** More than the pages read: the list stops short of what GitHub has. */
   truncated: boolean
   accessHint: string
+  /** GitHub still returned these exact snapshots after accepting Done with HTTP 204. */
+  locallyHidden: number
 }
 
 /** Do not infer scopes when GitHub did not report them, or demand broader access to read. */
@@ -148,6 +157,7 @@ export function notificationsRefusal(
 
 export class NotificationInbox {
   private kept = new Map<Which, Kept>()
+  private done = new Map<string, string>()
   private pending: Promise<void> = Promise.resolve()
 
   /** A slow list must not republish a thread after a successful write on this same inbox. */
@@ -268,9 +278,22 @@ export class NotificationInbox {
     return this.page(fresh)
   }
 
+  /** Only a confirmed Done of this exact version, never a guess from a PR's reason. */
+  isLocallyDone(n: GithubNotification): boolean {
+    return this.done.get(n.id) === doneVersion(n)
+  }
+
+  /** Escape hatch when the user wants the API list without the session-local fallback. */
+  clearDoneMemory(): void {
+    this.done.clear()
+    this.invalidateValidators()
+  }
+
   private page(k: Kept): InboxPage {
+    const items = k.items.filter((n) => !this.isLocallyDone(n))
     return {
-      items: k.items,
+      items,
+      locallyHidden: k.items.length - items.length,
       listedAt: k.listedAt,
       pollSeconds: k.pollSeconds,
       truncated: k.truncated,
@@ -286,11 +309,18 @@ export class NotificationInbox {
   }
 
   /** Done removes a thread from GitHub's inbox; Read only removes its unread emphasis. */
-  markDone(id: string): Promise<void> {
-    return this.serial(() => this.markDoneNow(id))
+  markDone(id: string, displayed?: GithubNotification): Promise<void> {
+    // The panel may retain an older row than another panel has fetched. Remember only the
+    // version the user actually dismissed, not unseen activity from the shared cache.
+    const snapshot =
+      displayed?.id === id
+        ? displayed
+        : [...this.kept.values()].flatMap((k) => k.items).find((n) => n.id === id)
+    const version = snapshot ? doneVersion(snapshot) : undefined
+    return this.serial(() => this.markDoneNow(id, version))
   }
 
-  private async markDoneNow(id: string): Promise<void> {
+  private async markDoneNow(id: string, version?: string): Promise<void> {
     const answer = await this.client.call(
       'DELETE',
       `/notifications/threads/${encodeURIComponent(id)}`,
@@ -313,6 +343,11 @@ export class NotificationInbox {
         `Done failed for thread ${id} (HTTP ${answer.status}, ${this.separate ? 'notifications token' : 'main token'}).\n${detail}`,
         answer.status
       )
+    }
+    if (version !== undefined) {
+      this.done.delete(id)
+      this.done.set(id, version)
+      if (this.done.size > MAX_DONE) this.done.delete(this.done.keys().next().value!)
     }
     for (const k of this.kept.values()) k.items = k.items.filter((n) => n.id !== id)
     this.invalidateValidators()
