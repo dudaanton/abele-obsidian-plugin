@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { TFile, TFolder } from 'obsidian'
+import { TFile, TFolder, type App, type EventRef } from 'obsidian'
 import { isWikilink } from '@/helpers/pathsHelpers'
 import { isChatLog } from './chatText'
 
@@ -21,6 +21,35 @@ export class ScopeResolver {
 
   /** Cached resolved paths — invalidated on scope change */
   private _cache: Set<string> | null = null
+  private watchedApp: App | null = null
+  private vaultEvents: EventRef[] = []
+  private metadataEvents: EventRef[] = []
+
+  private watchVault(): void {
+    const { app } = GlobalStore.getInstance()
+    if (this.watchedApp === app) return
+    this.stopWatching()
+    this.watchedApp = app
+    this.invalidate()
+    const invalidate = () => this.invalidate()
+    this.vaultEvents = [
+      app.vault.on('create', invalidate),
+      app.vault.on('delete', invalidate),
+      app.vault.on('rename', invalidate),
+    ]
+    this.metadataEvents = [
+      app.metadataCache.on('changed', invalidate),
+      app.metadataCache.on('resolved', invalidate),
+    ]
+  }
+
+  private stopWatching(): void {
+    for (const event of this.vaultEvents) this.watchedApp?.vault.offref(event)
+    for (const event of this.metadataEvents) this.watchedApp?.metadataCache.offref(event)
+    this.vaultEvents = []
+    this.metadataEvents = []
+    this.watchedApp = null
+  }
 
   /** Runtime-only delegation ceiling; it is not a permission loaded from a chat file. */
   private ceiling: ScopeResolver | null = null
@@ -128,6 +157,7 @@ export class ScopeResolver {
 
   /** Resolve all scope entries to a set of file paths */
   resolve(): Set<string> {
+    this.watchVault()
     if (this._cache) return this._cache
 
     const { app } = GlobalStore.getInstance()
@@ -322,8 +352,9 @@ export class ScopeResolver {
   }
 
   destroy(): void {
+    this.stopWatching()
     this.clear()
-    ScopeResolver.instance = null
+    if (ScopeResolver.instance === this) ScopeResolver.instance = null
   }
 
   private patternToRegex(pattern: string): RegExp {
