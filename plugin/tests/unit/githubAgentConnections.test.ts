@@ -89,6 +89,23 @@ describe('GitHub tool connection contracts', () => {
     ).rejects.toThrow(/disabled|access/i)
     expect(request).not.toHaveBeenCalled()
   })
+  it('remembers a primary refusal for an automatic tool choice instead of probing the same denied owner rule again', async () => {
+    const config=AbeleConfig.getInstance()
+    config.github.connections[0].owners=['sample']
+    config.github.connections.push({id:'alternate',name:'Alternate',server:'',keyId:'alternate-key',owners:[],isDefault:false})
+    GlobalStore.getInstance().app.secretStorage.setSecret('alternate-key','invented-alternate')
+    Object.assign(actor.githubConnections,{alternate:'auto'})
+    request.mockImplementation(async r=>r.headers?.Authorization==='Bearer invented-public' ?
+      {status:404,headers:{},json:{message:'Not found'},text:'',arrayBuffer:new ArrayBuffer(0)} :
+      {status:200,headers:{},json:{type:'file',encoding:'base64',content:btoa('export const sample = 1')},text:'export const sample = 1',arrayBuffer:new ArrayBuffer(0)})
+    const params={repo:'https://github.com/sample/fallback-memory/blob/main/file.ts'}
+    expect(JSON.stringify(await run('github_file',params))).toContain('Alternate')
+    const denied=request.mock.calls.filter(([r])=>r.headers?.Authorization==='Bearer invented-public').length
+    expect(denied).toBeGreaterThan(0)
+    expect(JSON.stringify(await run('github_file',params))).toContain('Alternate')
+    expect(request.mock.calls.filter(([r])=>r.headers?.Authorization==='Bearer invented-public')).toHaveLength(denied)
+  })
+
   it('keeps the text answer in the first content block while naming its connection', async () => {
     const result=await run('github_search',{query:'sample',type:'issues'})
     expect(result.content[0]).toMatchObject({type:'text',text:expect.stringContaining('Issues and pull requests matching')})

@@ -36,7 +36,6 @@
           tooltip="Open as another GitHub account"
           @click="onChooseAccount?.()"
         />
-        <EmptyState v-if="model.connectionNotice" :text="model.connectionNotice" />
         <GithubFindBar
           v-if="tabSearch.findOpen.value && root"
           ref="findBar"
@@ -67,6 +66,8 @@
           @find="showFind"
           @search="tabSearch.openSearch"
         />
+
+        <EmptyState v-if="model.connectionNotice" :text="model.connectionNotice" />
 
         <!-- Kept while the tab follows a result, so the next result is still there to take. -->
         <GithubCodeSearch
