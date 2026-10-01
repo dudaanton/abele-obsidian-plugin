@@ -19,10 +19,10 @@ export function connectionApproval(app: App): ConnectionApproval {
           resolve(allowed)
         }
       })(app, { title: 'Allow GitHub connection?', footer: true })
-      const description = modal.bodyEl.createEl('p', {
+      modal.bodyEl.createEl('p', {
+        cls: 'abele-confirm__message',
         text: `Allow this agent operation to use ${connection.name} on ${connection.server || 'github.com'}${connection.account ? ` as ${connection.account.login}` : ''}? Repository content may be sent to the agent's model.`,
       })
-      description.style.overflowWrap = 'anywhere'
       modal.addButton('Cancel', () => modal.close(), {
         tooltip: 'Do not use this GitHub connection',
       })
