@@ -36,9 +36,10 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (app.vault.getAbstractFileByPath(safeTo)) {
         throw new Error(`Destination exists: ${safeTo}`)
       }
-      const content = await app.vault.read(file)
+      const content = await app.vault.readBinary(file)
       signal?.throwIfAborted()
-      await app.vault.create(safeTo, content)
+      // Copy the bytes, never a text-decoded version of an image or other attachment.
+      await app.vault.createBinary(safeTo, content)
       scopeOf(ctx).invalidate()
       return {
         content: [

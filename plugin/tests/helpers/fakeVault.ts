@@ -513,7 +513,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.create++
         stats.written += data.byteLength
         const file = addFile(path)
-        rawByPath.set(path, '')
+        rawByPath.set(path, new TextDecoder().decode(data))
         binByPath.set(path, data.slice(0))
         return file
       },
