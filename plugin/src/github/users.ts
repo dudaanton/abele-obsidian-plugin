@@ -21,6 +21,13 @@ import { reactive, type InjectionKey } from 'vue'
 import type { Plugin } from 'obsidian'
 import { GithubError, type GithubClient } from './client'
 
+/** Server/login remains the people-cache boundary; an explicit scheme or port is part of that server. */
+export function peopleServer(client: GithubClient): string {
+  const url=new URL(client.endpoints.origin)
+  return url.protocol==='https:' && !url.port ? client.endpoints.webHost :
+    `${url.protocol}//${client.endpoints.webHost}${url.port ? ':'+url.port : ''}`
+}
+
 /** How long a name or a picture is trusted before it is asked for again. */
 export const USER_TTL_MS = 7 * 24 * 60 * 60 * 1000
 /** A lookup that failed — a rate limit, no network — is not tried again for this long. */
@@ -178,7 +185,7 @@ export class GithubUsers {
     avatarUrls: Record<string, string> = {}
   ): Promise<void> {
     await this.loaded
-    const host = client.endpoints.webHost
+    const host = peopleServer(client)
     const now = this.now()
     const wanted: string[] = []
     for (const login of new Set(logins.filter(Boolean))) {
@@ -228,7 +235,7 @@ export class GithubUsers {
   }
 
   private async send(client: GithubClient, logins: string[]): Promise<void> {
-    const host = client.endpoints.webHost
+    const host = peopleServer(client)
     const now = this.now()
     const names = logins.filter((l) => {
       const e = this.people.get(keyOf(host, l))
@@ -245,7 +252,7 @@ export class GithubUsers {
   }
 
   private async readNames(client: GithubClient, logins: string[]): Promise<void> {
-    const host = client.endpoints.webHost
+    const host = peopleServer(client)
     const asked = logins.filter((l) => {
       if (!noProfile(l)) return true
       this.settle(host, l, { name: null })
@@ -313,7 +320,7 @@ export class GithubUsers {
   }
 
   private async readPictures(client: GithubClient, logins: string[]): Promise<void> {
-    const host = client.endpoints.webHost
+    const host = peopleServer(client)
     const now = this.now()
     const due = logins
       .map((l) => this.people.get(keyOf(host, l)))

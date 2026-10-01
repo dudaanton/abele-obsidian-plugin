@@ -25,7 +25,7 @@
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import Avatar from '../obsidian/Avatar.vue'
-import { GITHUB_PEOPLE, githubUsers } from '@/github/users'
+import { GITHUB_PEOPLE, githubUsers, peopleServer } from '@/github/users'
 import { githubSettings } from '@/github/GithubService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
@@ -36,7 +36,7 @@ const props = defineProps<{
 }>()
 
 const client = inject(GITHUB_PEOPLE, null)
-const host = computed(() => client?.()?.endpoints.webHost ?? 'github.com')
+const host = computed(() => { const c=client?.(); return c ? peopleServer(c) : 'github.com' })
 
 const person = computed(() => githubUsers().person(host.value, props.login, props.avatar))
 const name = computed(() => {

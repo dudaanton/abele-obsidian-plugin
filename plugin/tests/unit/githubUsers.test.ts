@@ -10,7 +10,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import { GithubClient } from '@/github/client'
 import { endpoints } from '@/github/urls'
-import { GithubUsers, USER_TTL_MS, sizedAvatar, type UserStorage } from '@/github/users'
+import { GithubUsers, USER_TTL_MS, sizedAvatar, peopleServer, type UserStorage } from '@/github/users'
 import { loadCommit, loadIssue, loadIssueConversation } from '@/github/api'
 
 type Reply = {
@@ -30,6 +30,19 @@ function respond(r: Reply): RequestUrlResponse {
     arrayBuffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as RequestUrlResponse
 }
+
+it('keeps people on different explicit server ports apart while retaining the server/login cache', async () => {
+  const first=github({rest:{json:{name:'First server',login:'sample-user'}}})
+  const second=github({rest:{json:{name:'Second server',login:'sample-user'}}})
+  const a=clientFor(first.request,'','http://git.sample.test:8080')
+  const b=clientFor(second.request,'','https://git.sample.test:8443')
+  const users=new GithubUsers()
+  await users.lookup(a,['sample-user'])
+  await users.lookup(b,['sample-user'])
+  expect(second.request).toHaveBeenCalled()
+  expect(users.nameOf(peopleServer(a),'sample-user')).toBe('First server')
+  expect(users.nameOf(peopleServer(b),'sample-user')).toBe('Second server')
+})
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
 

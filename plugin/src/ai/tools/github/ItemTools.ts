@@ -15,7 +15,7 @@ import {
   type PullData,
 } from '@/github/api'
 import { GithubError } from '@/github/client'
-import { githubUsers, personLabel } from '@/github/users'
+import { githubUsers, personLabel, peopleServer } from '@/github/users'
 import {
   answer,
   clientFor,
@@ -112,7 +112,7 @@ export function formatItem(repo: RepoRef, read: Read, page: number): string {
   const d = read.data
   const facts = [
     `State: ${d.state}`,
-    `by ${personLabel(repo.host, d.author)}`,
+    `by ${personLabel(peopleServer(clientFor(repo)), d.author)}`,
     `opened ${day(d.createdAt)}`,
   ]
   if (read.kind === 'pull') {
@@ -151,7 +151,7 @@ export function formatItem(repo: RepoRef, read: Read, page: number): string {
       `## Conversation — ${what} ${first + 1}–${first + shown.length} of ${comments.length}`,
       ''
     )
-    for (const c of shown) out.push(...commentBlock(repo.host, c), '')
+    for (const c of shown) out.push(...commentBlock(peopleServer(clientFor(repo)), c), '')
     if (first + shown.length < comments.length) {
       out.push(`[More: call again with page=${page + 1}.]`)
     }
@@ -250,7 +250,7 @@ export function createGithubPrFilesTool(
             file.reviewComments.map((c) => c.author)
           )
           out.push('', `## Review comments on ${file.path}`, '')
-          for (const c of file.reviewComments) out.push(...commentBlock(repo.host, c), '')
+          for (const c of file.reviewComments) out.push(...commentBlock(peopleServer(clientFor(repo)), c), '')
         }
         if (data.reviewCommentsProblem) out.push('', data.reviewCommentsProblem)
         return answer(out.join('\n'))

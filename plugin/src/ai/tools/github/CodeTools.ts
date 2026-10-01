@@ -11,7 +11,7 @@ import {
   type CommitSummary,
   type DiffFile,
 } from '@/github/api'
-import { githubUsers, personLabel } from '@/github/users'
+import { githubUsers, personLabel, peopleServer } from '@/github/users'
 import { GithubError, type GithubClient } from '@/github/client'
 import { utf8 } from '@/github/contents'
 import { blobCandidates } from '@/github/urls'
@@ -267,7 +267,7 @@ async function commitRows(repo: RepoRef, commits: CommitSummary[]): Promise<stri
   )
   return commits.map(
     (c) =>
-      `${c.sha.slice(0, 7)}  ${day(c.date)}  ${byWhom(repo.host, c)}  ${splitMessage(c.message).title}`
+      `${c.sha.slice(0, 7)}  ${day(c.date)}  ${byWhom(peopleServer(clientFor(repo)), c)}  ${splitMessage(c.message).title}`
   )
 }
 
@@ -328,7 +328,7 @@ async function oneCommit(repo: RepoRef, sha: string, path: string, offset: numbe
   if (c.login) await githubUsers().lookup(clientFor(repo), [c.login])
   const again = `call github_commits again with sha="${c.sha.slice(0, 12)}",`
   const out = [
-    `Commit ${repoName(repo)}@${c.sha.slice(0, 7)} — ${byWhom(repo.host, c)}, ${day(c.date)}`,
+    `Commit ${repoName(repo)}@${c.sha.slice(0, 7)} — ${byWhom(peopleServer(clientFor(repo)), c)}, ${day(c.date)}`,
     `URL: ${c.url}`,
     '',
     clip(c.message.trim(), 5_000),
