@@ -19,10 +19,10 @@ import updateLocale from 'dayjs/plugin/updateLocale'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { syncTaskFileName } from '@/helpers/taskFileName'
 import { transactionFileTarget } from '@/helpers/transactionFileName'
-import { VaultWatcher } from '@/helpers/VaultWatcher'
+import { VaultWatcher, type FileChangeEvent } from '@/helpers/VaultWatcher'
 import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 import type { FormField } from '@/scripting/types'
-import { App, TFile } from 'obsidian'
+import { App, TFile, type EventRef } from 'obsidian'
 import { computed, ref, shallowRef, toRaw } from 'vue'
 import type { FindAndReplaceInstance } from '@/bases/FindAndReplaceView'
 import type { CalendarBaseInstance } from '@/bases/CalendarView'
@@ -132,6 +132,7 @@ export class GlobalStore {
   })
 
   private _vaultWatcher: VaultWatcher
+  private fileMetadataRef: EventRef | null = null
   public get vaultWatcher(): VaultWatcher {
     return this._vaultWatcher
   }
@@ -173,7 +174,7 @@ export class GlobalStore {
     this.initialized.value = true
 
     // TODO: move tasks logic to the more appropriate place
-    this.vaultWatcher.registerCallback(async (event) => {
+    const syncFileMetadata = async (event: FileChangeEvent) => {
       if (event.type === 'modify') {
         const fm = this.app.metadataCache.getFileCache(event.file)?.frontmatter
         const isTask = fm?.type === 'task'
@@ -269,7 +270,13 @@ export class GlobalStore {
           }
         }
       }
+    }
+    // The saved file's type is only current after Obsidian has parsed its metadata.
+    this.fileMetadataRef = app.metadataCache.on?.('changed', (file: TFile) => {
+      if (this.initialized.value) return syncFileMetadata({ type: 'modify', file })
     })
+    // Hosts without metadata notifications retain the existing file-event adapter.
+    if (!this.fileMetadataRef) this.vaultWatcher.registerCallback(syncFileMetadata)
   }
 
   public initTasksList(): void {
@@ -375,6 +382,8 @@ export class GlobalStore {
     this.scriptRunsIds.value = []
     this.scriptViews.value = []
     this._vaultWatcher.cleanup()
+    if (this.fileMetadataRef) this.app.metadataCache.offref(this.fileMetadataRef)
+    this.fileMetadataRef = null
 
     console.debug('GlobalStore destroyed')
   }

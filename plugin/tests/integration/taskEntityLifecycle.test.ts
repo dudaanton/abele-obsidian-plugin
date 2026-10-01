@@ -4,6 +4,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { taskHarness, TASK_BODY, TASK_PATH } from '../helpers/taskHarness'
 import { getBacklinksByPath } from '@/helpers/vaultUtils'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { flushPromises } from '@vue/test-utils'
 
 const models: Task[] = []
 const make = (wikilink = '[[Water seedlings|Alias]]', filePath?: string) => {
@@ -20,6 +22,47 @@ afterEach(() => {
   VaultWatcherWrapper.destroy()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+})
+
+describe('naming when a note first becomes a typed entity', () => {
+  // BUG: the vault modify event still sees the old type before metadata is parsed.
+  it.each([
+    ['task', 'Tasks/Sample renamed title.md'],
+    ['transaction', 'Ledger/2028-03-01 Sample renamed title.md'],
+  ])('handles the first edit assigning type %s', async (type, expectedPath) => {
+    const env = taskHarness({ type: 'note' })
+    const config = AbeleConfig.getInstance()
+    const oldFolder = config.tasksFolder
+    const oldTemplate = config.transactionPathTemplate
+    config.tasksFolder = 'Tasks'
+    config.transactionPathTemplate = 'Ledger/{{date}} {{title}}'
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    try {
+      const saved = `---\ntype: ${type}\ndate: '2028-03-01'\n---\nSample renamed title\n`
+      await env.app.vault.modify(env.file, saved)
+      env.app.emit('vault', 'modify', env.file)
+      await flushPromises()
+      expect(env.file.path).toBe(TASK_PATH)
+      env.app.setFrontmatter(env.file.path, { type, date: '2028-03-01' })
+      env.app.emit('metadataCache', 'changed', env.file)
+      await flushPromises()
+      expect(env.file.path).toBe(expectedPath)
+      expect(await env.app.vault.read(env.file)).toBe(saved)
+      const off = vi.spyOn(env.app.metadataCache, 'offref')
+      store.destroy()
+      expect(off).toHaveBeenCalledOnce()
+      env.app.resetStats()
+      env.app.emit('metadataCache', 'changed', env.file)
+      await flushPromises()
+      expect(env.app.stats.read).toBe(0)
+    } finally {
+      store.destroy()
+      config.tasksFolder = oldFolder
+      config.transactionPathTemplate = oldTemplate
+    }
+  })
 })
 
 describe('Task load, lazy body and watcher lifecycle', () => {

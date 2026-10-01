@@ -203,11 +203,12 @@ describe('time entry naming after a file edit', () => {
     store.init(app as unknown as App)
     try {
       app.emit('vault', 'modify', file)
+      app.emit('metadataCache', 'changed', file)
       await flushPromises()
       expect(file.path).toBe('Timers/2024-02-29 Orchard 23-59.md')
       expect(await app.vault.read(file)).toBe(saved)
     } finally {
-      store.vaultWatcher.cleanup()
+      store.destroy()
       store.initialized.value = wasInitialized
       config.timeEntryPathTemplate = oldTemplate
     }
