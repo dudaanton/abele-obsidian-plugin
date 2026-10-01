@@ -5,6 +5,55 @@ export interface NetworkRequest extends RequestUrlParam {
   /** Values substituted into arbitrary headers, URL or body. Never included in errors. */
   secretValues?: string[]
   maxRedirects?: number
+  timeoutMs?: number
+  maxBytes?: number
+}
+
+export const DEFAULT_TIMEOUT_MS = 30_000
+export const DEFAULT_MAX_BYTES = 20 * 1024 * 1024
+
+/** A deadline even for platform operations that cannot be cancelled. Never includes URL keys. */
+export function withDeadline<T>(work: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Request timed out after ${Math.round(ms / 1000)}s`))
+      onTimeout?.()
+    }, ms)
+  })
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer))
+}
+
+function checkSize(answer: RequestUrlResponse, max: number): void {
+  const declared = Number(headerValue(answer.headers, 'content-length'))
+  const actual =
+    answer.arrayBuffer?.byteLength ?? new TextEncoder().encode(answer.text ?? '').length
+  if (declared > max || actual > max) throw new Error(`Response too large (limit ${max} bytes)`)
+}
+
+/** Read browser-fetch bodies incrementally rather than buffering an unbounded error page. */
+export async function readTextLimited(response: Response, max: number): Promise<string> {
+  if (!response.body) {
+    const text = await response.text()
+    if (new TextEncoder().encode(text).length > max) throw new Error('Response too large')
+    return text
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let size = 0
+  let text = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) return text + decoder.decode()
+      size += value.byteLength
+      if (size > max) throw new Error('Response too large')
+      text += decoder.decode(value, { stream: true })
+    }
+  } finally {
+    void reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
 }
 
 let transportOverride: RequestTransport | undefined
@@ -15,7 +64,7 @@ const redirects = new Set([301, 302, 303, 307, 308])
 const credentialHeader =
   /^(authorization|proxy-authorization|cookie|x-api-key|api-key|x-auth-token)$/i
 export function headerValue(headers: Record<string, string>, name: string): string | undefined {
-  return Object.entries(headers).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]
+  return Object.entries(headers ?? {}).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]
 }
 
 /**
@@ -23,10 +72,32 @@ export function headerValue(headers: Record<string, string>, name: string): stri
  * Mobile: Obsidian's native transport does not expose redirect control; see user docs.
  */
 export async function request(options: NetworkRequest): Promise<RequestUrlResponse> {
-  const { secretValues = [], maxRedirects = 5, ...params } = options
+  const controller = new AbortController()
+  const ms =
+    Number.isFinite(options.timeoutMs) && options.timeoutMs! > 0
+      ? options.timeoutMs!
+      : DEFAULT_TIMEOUT_MS
+  return withDeadline(sendRequest(options, controller.signal), ms, () => controller.abort())
+}
+
+async function sendRequest(
+  options: NetworkRequest,
+  signal: AbortSignal
+): Promise<RequestUrlResponse> {
+  const {
+    secretValues = [],
+    maxRedirects = 5,
+    timeoutMs: _timeout,
+    maxBytes = DEFAULT_MAX_BYTES,
+    ...params
+  } = options
   const net = getDesktopNet()
-  const send = transportOverride ?? (net ? desktopTransport(net) : null)
-  if (!send) return requestUrl(params)
+  const send = transportOverride ?? (net ? desktopTransport(net, maxBytes, signal) : null)
+  if (!send) {
+    const answer = await requestUrl(params)
+    checkSize(answer, maxBytes)
+    return answer
+  }
   const values = [...secretValues]
   for (const [name, value] of Object.entries(params.headers ?? {})) {
     if (credentialHeader.test(name)) values.push(value, value.replace(/^(Bearer|Basic)\s+/i, ''))
@@ -42,7 +113,10 @@ export async function request(options: NetworkRequest): Promise<RequestUrlRespon
   }
   let current = { ...params, headers: { ...params.headers }, throw: false }
   for (let hop = 0; ; hop++) {
+    signal.throwIfAborted()
     const answer = await send(current)
+    signal.throwIfAborted()
+    checkSize(answer, maxBytes)
     const location = headerValue(answer.headers, 'location')
     if (!redirects.has(answer.status) || !location) {
       if (params.throw !== false && answer.status >= 400)
@@ -58,7 +132,7 @@ export async function request(options: NetworkRequest): Promise<RequestUrlRespon
     const toGet =
       (answer.status === 303 && method !== 'HEAD') ||
       ([301, 302].includes(answer.status) && method === 'POST')
-    let body = toGet ? undefined : current.body
+    const body = toGet ? undefined : current.body
     const headers = { ...current.headers }
     if (toGet)
       for (const name of Object.keys(headers))

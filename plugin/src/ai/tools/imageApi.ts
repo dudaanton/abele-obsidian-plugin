@@ -132,6 +132,7 @@ async function callOpenAi(
 
     response = await requestUrl({
       url: endpoint,
+      timeoutMs: 300_000,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -152,6 +153,7 @@ async function callOpenAi(
 
     response = await requestUrl({
       url: endpoint,
+      timeoutMs: 300_000,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -200,6 +202,7 @@ async function callOpenRouter(
 
   const response = await requestUrl({
     url: endpoint,
+    timeoutMs: 300_000,
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,

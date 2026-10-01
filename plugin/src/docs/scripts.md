@@ -4,6 +4,14 @@ Scripts are JavaScript files in the vault's scripts folder that run inside Obsid
 vault access. They are how a person automates something too specific for a feature, and how an
 agent leaves behind something repeatable instead of doing the same work again next week.
 
+## Network limits
+
+`ctx.fetch` waits at most five minutes, including redirects, and accepts at most 20 MB.
+Its `timeout` option can shorten that wait, not remove the cap. Other buffered requests default
+to 30 seconds and 20 MB. Desktop requests stop reading at the size limit; on mobile the native
+transport buffers first, so the plugin can only refuse the completed response. A timed-out
+mobile request can still finish in the platform, but its answer is not used.
+
 ## The header
 
 Every script starts with a comment block declaring what it is. Without `@name` the file is

@@ -1,4 +1,4 @@
-import { request as requestUrl } from '@/helpers/http'
+import { request as requestUrl, withDeadline, readTextLimited } from '@/helpers/http'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import type {
   AssistantMessage,
@@ -144,6 +144,8 @@ export class OpenAIClient {
       timestamp: Date.now(),
     }
 
+    const connection = new AbortController()
+    const signal = options.signal ? AbortSignal.any([options.signal, connection.signal]) : connection.signal
     let currentBlock: (AssistantContentBlock & { partialArgs?: string }) | null = null
     // Track which reasoning field this model uses (reasoning_content, reasoning, reasoning_text)
     let reasoningField: string | null = null
@@ -155,22 +157,22 @@ export class OpenAIClient {
       const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
       options.signal?.throwIfAborted()
       // Unlike requestUrl, fetch streams the answer and accepts Stop's abort signal.
-      const response = await window.fetch(this.getUrl(model), {
+      const response = await withDeadline(window.fetch(this.getUrl(model), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${model.apiKey}`,
         },
         body: JSON.stringify(body),
-        signal: options.signal,
-      })
+        signal,
+      }), 60_000, () => connection.abort())
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error')
+        const errorText = await withDeadline(readTextLimited(response, 64 * 1024), 60_000, () => connection.abort()).catch(() => 'Unreadable or oversized error response')
         throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
       if (!response.body) throw new Error('No response body')
 
-      for await (const chunk of this.parseSSE(response.body, options.signal)) {
+      for await (const chunk of this.parseSSE(response.body, signal)) {
         if (!chunk || typeof chunk !== 'object') continue
 
         // Track usage
@@ -615,15 +617,19 @@ export class OpenAIClient {
     const decoder = new TextDecoder()
     let buffer = ''
     let dataLines: string[] = []
+    let bytes = 0
+    let eventSize = 0
 
     try {
       while (true) {
         signal?.throwIfAborted()
 
-        const { done, value } = await reader.read()
+        const { done, value } = await withDeadline(reader.read(), 60_000, () => { void reader.cancel().catch(() => {}) })
         if (done) break
-
+        bytes += value.byteLength
+        if (bytes > 20 * 1024 * 1024) throw new Error('Chat response too large')
         buffer += decoder.decode(value, { stream: true })
+        if (buffer.length > 2 * 1024 * 1024) throw new Error('Chat event too large')
 
         // Process complete lines
         const lines = buffer.split('\n')
@@ -637,6 +643,7 @@ export class OpenAIClient {
             if (dataLines.length > 0) {
               const jsonStr = dataLines.join('\n')
               dataLines = []
+              eventSize = 0
               try {
                 yield JSON.parse(jsonStr) as StreamChunk
               } catch {
@@ -650,6 +657,8 @@ export class OpenAIClient {
 
           if (stripped === 'data: [DONE]') return
 
+          eventSize += stripped.length
+          if (eventSize > 2 * 1024 * 1024) throw new Error('Chat event too large')
           if (stripped.startsWith('data: ')) {
             dataLines.push(stripped.slice(6))
           } else if (stripped.startsWith('data:')) {
@@ -668,6 +677,7 @@ export class OpenAIClient {
         }
       }
     } finally {
+      void reader.cancel().catch(() => {})
       reader.releaseLock()
     }
   }

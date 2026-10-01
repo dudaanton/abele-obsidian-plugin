@@ -172,7 +172,7 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| \`fetch(url, opts?)\` | \`{ status, headers, data, text }\` | HTTP request |
+| \`fetch(url, opts?)\` | \`{ status, headers, data, text }\` | HTTP request; at most five minutes and 20 MB. \`timeout\` may shorten the wait |
 | \`downloadImage(url, filename?)\` | \`string\` | Download image to vault, returns saved path |
 | \`downloadFile(url, opts?)\` | \`string\` | Download any file to vault, returns saved path |
 

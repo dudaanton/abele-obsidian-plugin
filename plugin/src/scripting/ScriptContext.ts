@@ -419,7 +419,7 @@ export function buildScriptContext(opts: {
         method?: string
         headers?: Record<string, string>
         body?: string
-        /** Milliseconds to wait. Any value; without one, as long as the platform waits. */
+        /** Milliseconds to wait, capped at five minutes; default five minutes. */
         timeout?: number
       }
     ): Promise<{ status: number; headers: Record<string, string>; data: any; text: string }> {
@@ -436,8 +436,9 @@ export function buildScriptContext(opts: {
           headers,
           body: fetchOpts?.body ? substituteSecrets(fetchOpts.body) : undefined,
           throw: false,
+          timeoutMs: 300_000,
         }), signal),
-        fetchOpts?.timeout,
+        fetchOpts?.timeout && fetchOpts.timeout > 0 ? Math.min(fetchOpts.timeout, 300_000) : 300_000,
         url,
         s,
         track

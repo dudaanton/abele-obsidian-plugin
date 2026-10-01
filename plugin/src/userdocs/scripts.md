@@ -8,6 +8,15 @@ Scripts run inside Obsidian with full access to your vault, so they are off unti
 in **Settings → Abele → Scripts → General** and choose the folder they live in. Only run scripts
 you have read or trust.
 
+## Network requests
+
+Script `fetch` requests stop waiting after five minutes and reject responses over 20 MB.
+A shorter `timeout` still works; zero or a longer timeout no longer means an unlimited wait.
+Other buffered service requests use a 30-second default. Image generation has up to five minutes.
+A stalled chat connection or silent stream stops after one minute; chat responses are capped at
+20 MB and individual stream events at 2 MB. Mobile's native transport cannot be cancelled while
+buffering, but late or oversized answers are not used.
+
 ## A script
 
 A script is a `.js` file in the scripts folder that starts with a header:

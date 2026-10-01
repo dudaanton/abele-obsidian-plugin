@@ -46,13 +46,23 @@ function response(
 }
 
 /** Electron redirects are returned unfollowed. Uses the same proxy stack as Obsidian. */
-export function desktopTransport(net: DesktopNet): RequestTransport {
+export function desktopTransport(
+  net: DesktopNet,
+  maxBytes = 20 * 1024 * 1024,
+  signal?: AbortSignal
+): RequestTransport {
   return (params) =>
     new Promise((resolve, reject) => {
+      signal?.throwIfAborted()
       let settled = false
+      const abort = () => {
+        finish(() => reject(new Error('Request aborted')))
+        req.abort()
+      }
       const finish = (action: () => void) => {
         if (settled) return
         settled = true
+        signal?.removeEventListener('abort', abort)
         action()
       }
       const req = net.request({
@@ -64,6 +74,7 @@ export function desktopTransport(net: DesktopNet): RequestTransport {
           ...(params.contentType ? { 'Content-Type': params.contentType } : {}),
         },
       })
+      signal?.addEventListener('abort', abort, { once: true })
       req.on('login', (_info, callback) => callback())
       req.on('error', (error) => finish(() => reject(error)))
       req.on('redirect', (status, _method, url) => {
@@ -94,8 +105,13 @@ export function desktopTransport(net: DesktopNet): RequestTransport {
         incoming.on('data', (chunk) => {
           if (settled) return
           const copy = new Uint8Array(chunk)
-          chunks.push(copy)
           size += copy.length
+          if (size > maxBytes) {
+            finish(() => reject(new Error(`Response too large (limit ${maxBytes} bytes)`)))
+            req.abort()
+            return
+          }
+          chunks.push(copy)
         })
       })
       if (typeof params.body === 'string') req.write(params.body)
