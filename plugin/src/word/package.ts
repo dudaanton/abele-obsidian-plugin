@@ -1,6 +1,7 @@
 /** OOXML package model over bytes, with no vault or Obsidian dependency. */
 import type { ZipLoader } from '@/reader/zipLoader'
 import { openWordZip } from './boundedZip'
+import { foldedWordText } from './search'
 import { strToU8, Zip, ZipDeflate, AsyncZipDeflate } from 'fflate'
 import {
   ancestor,
@@ -80,7 +81,10 @@ export interface WordPackage {
     query: string,
     after: number,
     limit: number
-  ): { total: number; finds: { paragraph: number; offset: number; excerpt: string }[] }
+  ): {
+    total: number
+    finds: { paragraph: number; offset: number; length: number; excerpt: string }[]
+  }
 }
 export const pack = (parts: Record<string, Uint8Array>): Promise<Uint8Array> =>
   new Promise((resolve, reject) => {
@@ -399,17 +403,22 @@ export async function openDocx(
     search(query, after, limit) {
       const q = query.toLowerCase()
       let total = 0
-      const finds: { paragraph: number; offset: number; excerpt: string }[] = []
+      const finds: { paragraph: number; offset: number; length: number; excerpt: string }[] = []
       if (!q) return { total, finds }
       for (const p of paragraphs) {
-        const lower = p.text.toLowerCase()
-        for (let at = lower.indexOf(q); at >= 0; at = lower.indexOf(q, at + q.length)) {
-          if (total >= after && finds.length < limit)
+        const folded = foldedWordText(p.text)
+        for (let at = folded.text.indexOf(q); at >= 0; at = folded.text.indexOf(q, at + q.length)) {
+          if (total >= after && finds.length < limit) {
+            const range = folded.range(at, at + q.length)
             finds.push({
               paragraph: p.number,
-              offset: at,
-              excerpt: p.text.slice(Math.max(0, at - 80), at + q.length + 80),
+              ...range,
+              excerpt: p.text.slice(
+                Math.max(0, range.offset - 80),
+                range.offset + range.length + 80
+              ),
             })
+          }
           total++
         }
       }

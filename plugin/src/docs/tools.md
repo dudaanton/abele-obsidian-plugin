@@ -51,7 +51,8 @@ numbered paragraphs with styles and table/row/cell coordinates; supplementary he
 footers, comments and notes follow the body. Deleted revisions are excluded; inserted
 revisions and field results may be visible but are not ordinary editable text. Read a bounded
 paragraph window; use `offset` to continue a long window. `docx_search` searches literal text
-across run boundaries and returns paragraph numbers and offsets; `after` pages the finds.
+across run boundaries and returns paragraph numbers, original UTF-16 offsets and source lengths;
+case-conversion expansions do not shift those positions; `after` pages the finds.
 `docx_views` lists open in-scope documents and their current text window. Do not use text-file
 writes on a binary Word package.
 

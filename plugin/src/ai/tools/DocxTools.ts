@@ -180,7 +180,7 @@ export function createDocxTools(): AgentTool[] {
         const after = Math.max(0, Math.floor(Number(params.after) || 0))
         const result = doc.search(query, after, integer(params.limit, 20, 40))
         return answer(
-          `${result.total} matches in ${file.path}.\n${result.finds.map((f) => `Paragraph ${f.paragraph}, offset ${f.offset}: ${f.excerpt}`).join('\n')}\n[Continue with after ${after + result.finds.length}.]`
+          `${result.total} matches in ${file.path}.\n${result.finds.map((f) => `Paragraph ${f.paragraph}, offset ${f.offset}, length ${f.length}: ${f.excerpt}`).join('\n')}\n[Continue with after ${after + result.finds.length}.]`
         )
       },
     },
