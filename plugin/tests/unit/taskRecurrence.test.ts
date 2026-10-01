@@ -54,7 +54,7 @@ describe('task recurrence grammar', () => {
 
   // BUG: the weekday regex also matches digits, so the guarded monthdays parser never runs.
   // A recurrence entered as "every month on 1,15" advances a month instead of to the 15th.
-  it.fails('recognizes numbered days of the month', () => {
+  it('recognizes numbered days of the month', () => {
     expect(parser.parse('every month on 1,15')?.specificDays).toEqual({
       type: 'monthdays',
       days: [1, 15],

@@ -107,7 +107,7 @@ export class RecurrenceParser {
 
     // Pattern: on 1,15,30 (days of month)
     const monthdaysMatch = normalized.match(/on\s+([\d,\s]+)(?:\s+from|$)/)
-    if (monthdaysMatch && !weekdaysMatch) {
+    if (monthdaysMatch && !rule.specificDays) {
       const daysStr = monthdaysMatch[1]
       const days = daysStr
         .split(/[,\s]+/)
