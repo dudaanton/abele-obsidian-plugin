@@ -578,6 +578,7 @@ watch(
     ] as const,
   () => {
     const t = target.value ? shown.value : null
+    props.model.screenNamespace = t ? client().cacheNamespace : undefined
     screen.link = itemLink.value
     screen.title = main.data.value ? head.value.title : ''
     screen.kind = t?.kind ?? ''

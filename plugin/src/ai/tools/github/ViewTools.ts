@@ -8,12 +8,14 @@ import type { AgentTool } from '../../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
   GITHUB_VIEW_TYPE,
+  connectionGeneration,
   githubSettings,
   lastUsedGithubLeaf,
   openGithubUrl,
   parseForSettings,
 } from '@/github/GithubService'
 import type { GithubViewModel } from '@/github/model'
+import { sameConnectionServer } from '@/github/connectionRouting'
 import { diffAnchorHash, shortName, type GithubTarget } from '@/github/urls'
 import { answer, clip, parseNamed, text, webUrl, whole } from './shared'
 import { listOf, type ProseSelection } from '@/github/proseSelection'
@@ -119,7 +121,10 @@ export function createGithubViewsTool(
       const out = [`${tabs.length} GitHub tab${tabs.length === 1 ? '' : 's'} open.`, '']
       if (operation) out.unshift(operation.inventory, '')
       tabs.forEach((tab, i) => {
-        if (operation && !operation.canReadTab(tab.model.connectionId)) {
+        const row=githubSettings().connections?.find(c=>c.id===tab.model.connectionId)
+        const current = row ? !!tab.model.target && sameConnectionServer(row,tab.model.target) &&
+          (!tab.model.screenNamespace || tab.model.screenNamespace===connectionGeneration(row.id)) : !tab.model.connectionId && tab.model.target?.host==='github.com'
+        if (operation && (!operation.canReadTab(tab.model.connectionId) || !current)) {
           out.push(`${i + 1}. Restricted GitHub tab (connection access not granted).`, '')
         } else {
           const connection = githubSettings().connections?.find(

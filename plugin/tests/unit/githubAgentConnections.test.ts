@@ -238,6 +238,19 @@ describe('GitHub tool connection contracts', () => {
     indexes.clear()
   })
 
+  it('does not expose tab content from a retired credential generation before the view redraws', async () => {
+    const app=GlobalStore.getInstance().app
+    const old=connectionClient('public')
+    Object.assign(app,{workspace:{getLeavesOfType:()=>[{view:{model:{url:'https://github.com/sample/old-screen',connectionId:'public',screenNamespace:old.cacheNamespace,
+      target:{kind:'repo',host:'github.com',owner:'sample',repo:'old-screen'},
+      screen:{...emptyScreen(),title:'Previous credential private title',selection:{code:'Previous private code'}}}}}]}})
+    app.secretStorage.setSecret('public-key','invented-replacement')
+    const text=JSON.stringify(await run('github_views',{}))
+    expect(text).not.toContain('Previous credential private title')
+    expect(text).not.toContain('Previous private code')
+    expect(text).toContain('Restricted GitHub tab')
+  })
+
   it('rechecks permission before a delayed response becomes tool output', async () => {
     let finish!: (value: unknown) => void
     request.mockImplementation(

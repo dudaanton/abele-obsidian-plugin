@@ -19,6 +19,8 @@ export interface GithubViewModel {
   nonce: number
   /** What the tab has on screen, written by its components and read by `github_views`. */
   screen: GithubScreen
+  /** Runtime provenance for screen data; never serialized into workspace settings. */
+  screenNamespace?: string
   /**
    * A markdown file shown rendered or as code, when the person switched it; unset, the link
    * decides. Part of the tab's state, so back, forward and a restart keep it.

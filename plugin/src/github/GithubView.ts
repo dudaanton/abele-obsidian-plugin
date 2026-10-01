@@ -288,6 +288,11 @@ export class GithubView extends ItemView {
         const client = this.model.connectionId
           ? connectionClient(this.model.connectionId)
           : githubClient(this.model.target?.host)
+        if (this.model.screenNamespace && this.model.screenNamespace !== client.cacheNamespace) {
+          Object.assign(this.model.screen,emptyScreen())
+          this.title=''
+          this.refreshHeader()
+        }
         return h(GithubItem, {
           key: client.cacheNamespace,
           model: this.model,
