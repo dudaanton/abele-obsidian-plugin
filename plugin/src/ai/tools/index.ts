@@ -47,7 +47,7 @@ import { createLintTool, createLintFixTool } from './LintTools'
 import { githubSettings } from '@/github/GithubService'
 import { createMcpTools } from '../mcp/tools'
 import { AgentRegistry } from '../agents/AgentRegistry'
-import { ChatSession } from '../ChatSession'
+import type { ToolContext } from '../toolContext'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -206,7 +206,7 @@ export interface AgentToolsOptions {
   githubApproval?: import('@/github/agentAccess').ConnectionApproval
   /**
    * The agent the tools act for — whose memory `remember` and `forget` change. A chat passes its own, a script
-   * the agent it runs. Without one, the session executing the call is asked; never the chat
+   * the agent it runs. Without one, the call context identifies the agent; never the chat
    * that happens to be open, which may be on a different agent entirely.
    */
   agentId?: string
@@ -245,10 +245,10 @@ export function codeToolDescriptions(): Record<string, string> {
 
 /** The tools with their own descriptions. `everything` adds the ones behind a switch. */
 function buildAgentTools(options: AgentToolsOptions = {}, everything = false): AgentTool[] {
-  const resolveAgent = () =>
-    options.agentId
-      ? AgentRegistry.getInstance().get(options.agentId)
-      : (ChatSession.getActiveSession()?.agent.value ?? null)
+  const resolveAgent = (ctx?: ToolContext) => {
+    const id = options.agentId ?? ctx?.agentId
+    return id ? AgentRegistry.getInstance().get(id) : null
+  }
 
   const tools = [
     createReadFileTool({ numbered: true, budget: READ_BUDGET }),
@@ -305,7 +305,8 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   tools.push(...createBookTools())
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
-  if (everything || githubSettings().enabled) tools.push(...createGithubTools({agent:resolveAgent,approve:options.githubApproval}))
+  if (everything || githubSettings().enabled)
+    tools.push(...createGithubTools({ agent: resolveAgent, approve: options.githubApproval }))
 
   // Absent while the settings are being loaded — `codeToolDescriptions` asks then.
   const config = AbeleConfig.getInstance().ai

@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { contentHash } from '../readGuard'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
@@ -19,7 +19,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       },
       required: ['path', 'content'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       const { path, content } = params as { path: string; content: string }
       if (!path) throw new Error('Missing required parameter: path')
@@ -52,7 +52,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       signal?.throwIfAborted()
       await app.vault.create(safePath, content)
       // Add new file to scope so agent can read/edit it
-      if (!opts?.skipScope) ScopeResolver.getInstance().addFile(safePath)
+      if (!opts?.skipScope) scopeOf(ctx).addFile(safePath)
       return {
         content: [{ type: 'text', text: `Created: ${safePath}${renamed ? ` (${renamed})` : ''}` }],
         // The path as well as the diff: it may not be the one that was asked for, and the

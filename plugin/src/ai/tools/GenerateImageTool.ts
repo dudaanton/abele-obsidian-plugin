@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { saveImageToVault } from './imageUtils'
 import { callImageApi, imageModelParameter } from './imageApi'
 
@@ -17,7 +17,7 @@ export function createGenerateImageTool(): AgentTool {
       },
       required: ['prompt'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       const prompt = params.prompt as string
       if (!prompt) throw new Error('Missing required parameter: prompt')
@@ -30,7 +30,7 @@ export function createGenerateImageTool(): AgentTool {
       }
 
       const savedPath = await saveImageToVault(result.dataUrl, undefined, signal)
-      ScopeResolver.getInstance().addFile(savedPath)
+      scopeOf(ctx).addFile(savedPath)
       const text = result.text
         ? `${result.text}\n\nImage saved: ${savedPath}`
         : `Image saved: ${savedPath}`

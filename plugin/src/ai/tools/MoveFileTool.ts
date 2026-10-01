@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { TFile } from 'obsidian'
 
@@ -18,7 +18,7 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['from', 'to'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       const { from, to } = params as { from: string; to: string }
       if (!from) throw new Error('Missing required parameter: from')
@@ -29,7 +29,7 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const safeTo = toSafeVaultPath(to)
       guardChatWrite(safeTo)
       const renamed = describeRename(to, safeTo)
-      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(from)) {
+      if (!opts?.skipScope && !scopeOf(ctx).isInScope(from)) {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()
@@ -39,7 +39,7 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
         throw new Error(`Destination exists: ${safeTo}`)
       }
       await app.fileManager.renameFile(file, safeTo)
-      ScopeResolver.getInstance().invalidate()
+      scopeOf(ctx).invalidate()
       return {
         content: [
           { type: 'text', text: `Moved: ${from} → ${safeTo}${renamed ? ` (${renamed})` : ''}` },

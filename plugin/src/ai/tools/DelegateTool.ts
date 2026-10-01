@@ -1,6 +1,4 @@
 import type { AgentTool } from '../client'
-import { ChatSession } from '../ChatSession'
-import { ChatService } from '../ChatService'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import { DelegateRun, canDelegate, resolveTargetAgent } from '../DelegateRun'
 import type { RunBranch } from '../RunStorage'
@@ -62,7 +60,7 @@ export function createDelegateTool(): AgentTool {
       },
       required: ['agent', 'task'],
     },
-    execute: async (toolCallId, params, signal) => {
+    execute: async (toolCallId, params, signal, ctx) => {
       const agentName = params.agent as string
       const task = params.task as string
       const items = (params.items as string[]) ?? []
@@ -74,7 +72,7 @@ export function createDelegateTool(): AgentTool {
       if (!agentName) throw new Error('Missing required parameter: agent')
       if (!task) throw new Error('Missing required parameter: task')
 
-      const parent = ChatSession.getActiveSession() ?? ChatService.getInstance().activeSession.value
+      const parent = ctx?.session
       if (!parent) throw new Error('No active chat to delegate from')
 
       if (!canDelegate(parent)) {

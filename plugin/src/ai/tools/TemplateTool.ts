@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { TemplateService } from '@/templates/TemplateService'
 import { parseTemplateVariables } from '@/templates/TemplateParser'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 
 export function createListTemplatesTool(): AgentTool {
   return {
@@ -108,7 +108,7 @@ export function createApplyTemplateTool(): AgentTool {
       },
       required: ['path'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path')
@@ -135,7 +135,7 @@ export function createApplyTemplateTool(): AgentTool {
       console.debug('[apply_template] path:', path, 'variables:', Object.fromEntries(userValues))
 
       const file = await service.createNoteFromTemplate(template, userValues, signal)
-      ScopeResolver.getInstance().addFile(file.path)
+      scopeOf(ctx).addFile(file.path)
 
       return {
         content: [{ type: 'text', text: `Created: ${file.path}` }],

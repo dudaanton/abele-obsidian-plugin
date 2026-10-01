@@ -5,6 +5,7 @@
  * See `src/analytics/` and the `analytics` section of the reference.
  */
 import type { AgentTool } from '../client'
+import { scopeOf } from '../toolContext'
 import { analyzeSource, profileSource, type AnalyzeSpec } from '@/analytics'
 import { AGGS, FILLS, PERIODS } from '@/analytics/resample'
 
@@ -66,9 +67,10 @@ export function createReadDataTool(): AgentTool {
       },
       required: ['source'],
     },
-    execute: async (_id, params) =>
+    execute: async (_id, params, _signal, ctx) =>
       json(
         await profileSource(params.source, {
+          scope: scopeOf(ctx),
           where: params.where as AnalyzeSpec['where'],
           limit: params.limit as number | undefined,
         })
@@ -139,8 +141,12 @@ export function createAnalyzeDataTool(): AgentTool {
       },
       required: ['source'],
     },
-    execute: async (_id, params) =>
-      json(await analyzeSource(params as unknown as AnalyzeSpec & { source: unknown })),
+    execute: async (_id, params, _signal, ctx) =>
+      json(
+        await analyzeSource(params as unknown as AnalyzeSpec & { source: unknown }, {
+          scope: scopeOf(ctx),
+        })
+      ),
   }
 }
 

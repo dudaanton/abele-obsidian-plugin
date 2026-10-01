@@ -2,7 +2,7 @@ import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { EDIT_DESCRIPTION } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
@@ -21,7 +21,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['path', 'old_string', 'new_string'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       const { path, old_string, new_string } = params as {
         path: string
@@ -32,7 +32,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       guardChatWrite(path)
       if (old_string == null) throw new Error('Missing required parameter: old_string')
       if (new_string == null) throw new Error('Missing required parameter: new_string')
-      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
+      if (!opts?.skipScope && !scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()

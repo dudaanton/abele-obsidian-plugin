@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ScopeResolver } from '@/ai/ScopeResolver'
+import { scopeOf } from '@/ai/toolContext'
 import { useVault } from '../helpers/testEnv'
 
 const ROOT = 'Groups/Orchard.md'
@@ -8,7 +9,6 @@ const MEMBER = 'Notes/Apples.md'
 // Scope membership is deliberately narrower than the footer's backlink walk.
 describe('ScopeResolver — group boundaries and invalidation', () => {
   afterEach(() => {
-    ScopeResolver.setActiveInstance(null)
     ScopeResolver.getInstance().destroy()
   })
 
@@ -143,15 +143,14 @@ describe('ScopeResolver — group boundaries and invalidation', () => {
     expect(scope.getAccessiblePaths()).toEqual(['Notes/A.md'])
   })
 
-  it('selects the active session and returns to the default, then replaces a destroyed singleton', () => {
+  it('selects the call context without replacing the default, then replaces a destroyed singleton', () => {
     useVault([])
     const original = ScopeResolver.getInstance()
     original.addFile('Notes/Default.md')
     const session = new ScopeResolver()
     session.addFile('Notes/Session.md')
-    ScopeResolver.setActiveInstance(session)
-    expect(ScopeResolver.getInstance()).toBe(session)
-    ScopeResolver.setActiveInstance(null)
+    expect(scopeOf({ scope: session, interactive: true })).toBe(session)
+    expect(scopeOf()).toBe(original)
     expect(ScopeResolver.getInstance()).toBe(original)
     original.destroy()
     expect(original.entries.value).toEqual([])

@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { TFile, TFolder } from 'obsidian'
 
 export function createLsTool(opts?: { skipScope?: boolean }): AgentTool {
@@ -15,8 +15,8 @@ export function createLsTool(opts?: { skipScope?: boolean }): AgentTool {
         path: { type: 'string', description: 'Folder path. Omit to list top-level scope entries.' },
       },
     },
-    execute: async (_id, params) => {
-      const scope = ScopeResolver.getInstance()
+    execute: async (_id, params, _signal, ctx) => {
+      const scope = scopeOf(ctx)
       const { app } = GlobalStore.getInstance()
       const folderPath = (params.path as string) || ''
 

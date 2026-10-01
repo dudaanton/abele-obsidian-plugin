@@ -1,3 +1,4 @@
+import type { ToolContext } from './toolContext'
 import type { AgentTool, AgentToolResult, Message } from './client'
 import { contentHash } from './readGuard'
 import { estimateTokens } from './tokens'
@@ -233,8 +234,13 @@ const text = (t: string): AgentToolResult => ({ content: [{ type: 'text', text: 
 export function withResultStore(tools: AgentTool[], store: ResultStore): AgentTool[] {
   const wrapped = tools.map((tool) => ({
     ...tool,
-    execute: async (id: string, params: Record<string, unknown>, signal?: AbortSignal) => {
-      const result = await tool.execute(id, params, signal)
+    execute: async (
+      id: string,
+      params: Record<string, unknown>,
+      signal?: AbortSignal,
+      ctx?: ToolContext
+    ) => {
+      const result = await tool.execute(id, params, signal, ctx)
       store.keep(tool.name, id, result)
       return result
     },

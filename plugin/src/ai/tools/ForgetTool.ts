@@ -2,12 +2,15 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { FORGET_TOOL, REMEMBER_TOOL, forgetMemory } from '../agents/memory'
 import type { AgentDefinition } from '../agents/types'
 import type { AgentTool } from '../client'
+import type { ToolContext } from '../toolContext'
 
 /**
  * Removes one item from the memory of the agent that calls it. The agent is resolved the same
  * way `remember` resolves it, for the same reason: two chats on two agents can run at once.
  */
-export function createForgetTool(resolveAgent: () => AgentDefinition | null): AgentTool {
+export function createForgetTool(
+  resolveAgent: (ctx?: ToolContext) => AgentDefinition | null
+): AgentTool {
   return {
     name: FORGET_TOOL,
     label: 'Forget',
@@ -26,9 +29,8 @@ export function createForgetTool(resolveAgent: () => AgentDefinition | null): Ag
       },
       required: ['text'],
     },
-    execute: async (_id, params) => {
-      // Resolved before anything awaits, as in `remember`.
-      const agent = resolveAgent()
+    execute: async (_id, params, _signal, ctx) => {
+      const agent = resolveAgent(ctx)
       if (!agent) throw new Error('forget is only available to an agent; nothing was removed.')
 
       const { text } = params as { text?: string }

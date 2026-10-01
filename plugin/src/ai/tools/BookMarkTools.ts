@@ -7,6 +7,7 @@
  */
 import type { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
+import type { ToolContext } from '../toolContext'
 import { answer, app, link, namedBook, quoted, snippetOf } from './bookToolKit'
 import { loadBookText, type LoadedBook } from '@/reader/bookText'
 import { aroundOf, findQuote, MIN_QUOTE, nearest, quoteKey, wordsOf } from '@/reader/bookQuote'
@@ -82,8 +83,8 @@ const pageOf = (loaded: LoadedBook, place: BookPlace): number =>
   'page' in place ? place.page - 1 : partOf(loaded, place.cfi)
 
 /** The highlight a link names, in the book it names. */
-async function namedHighlight(input: unknown) {
-  const { file, place } = namedBook(input)
+async function namedHighlight(input: unknown, ctx?: ToolContext) {
+  const { file, place } = namedBook(input, ctx)
   if (!place || !('cfi' in place))
     throw new Error('Name the highlight by its link, as book_highlights lists it (#cfi=…).')
   const loaded = await loadBookText(app(), file)
@@ -120,8 +121,8 @@ export function createBookHighlightsTool(): AgentTool {
       },
       required: ['book'],
     },
-    execute: async (_id, params) => {
-      const { file } = namedBook(params.book)
+    execute: async (_id, params, _signal, ctx) => {
+      const { file } = namedBook(params.book, ctx)
       const color = colorFrom(params.color)
       const loaded = await loadBookText(app(), file)
       const where = whereOf(loaded)
@@ -193,8 +194,8 @@ export function createBookHighlightTool(): AgentTool {
       },
       required: ['book', 'text'],
     },
-    execute: async (_id, params) => {
-      const { file, place } = namedBook(params.book)
+    execute: async (_id, params, _signal, ctx) => {
+      const { file, place } = namedBook(params.book, ctx)
       const text = typeof params.text === 'string' ? params.text : ''
       if (quoteKey(text).length < MIN_QUOTE) throw new Error('Quote at least a few letters.')
       if (text.length > MAX_QUOTE)
@@ -308,13 +309,13 @@ export function createBookHighlightEditTool(): AgentTool {
       },
       required: ['highlight'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const color = colorFrom(params.color)
       const note = typeof params.note === 'string' ? params.note.trim() : undefined
       const forms = formsFrom(params.forms)
       if (!color && note === undefined && forms === undefined)
         throw new Error('Give a colour, a note, forms, or several of them.')
-      const { file, where, found } = await namedHighlight(params.highlight)
+      const { file, where, found } = await namedHighlight(params.highlight, ctx)
       const h: Highlight = {
         ...found,
         color: color ?? found.color,
@@ -355,8 +356,8 @@ export function createBookHighlightRemoveTool(): AgentTool {
       },
       required: ['highlight'],
     },
-    execute: async (_id, params) => {
-      const { file, where, found } = await namedHighlight(params.highlight)
+    execute: async (_id, params, _signal, ctx) => {
+      const { file, where, found } = await namedHighlight(params.highlight, ctx)
       if (found.discussion)
         throw new Error(
           'This highlight carries a discussion; the person removes it in the reader, which asks whether to keep the chat.'
@@ -386,10 +387,10 @@ export function createBookBookmarkTool(): AgentTool {
       },
       required: ['book'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const store = bookBookmarks()
       if (!store) throw new Error('Bookmarks are not available: the book reader is not loaded.')
-      const { file, place } = namedBook(params.book)
+      const { file, place } = namedBook(params.book, ctx)
       const loaded = await loadBookText(app(), file)
       const key = keyOf(loaded)
       const marks = await store.list(key)

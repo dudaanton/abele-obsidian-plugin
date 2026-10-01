@@ -89,6 +89,9 @@ only), `interceptorReplyOnly` (boolean, false by default; agents and scripts),
 rest. `allow-all` asks about nothing. Each tool can additionally be set to `off`, `ask` or
 `auto`, which is how a person switches off, say, web access for one agent.
 
+Each tool call carries its own chat's scope and agent, even while other chats run tools at the
+same time. Switching tabs or another chat finishing cannot change that access.
+
 Being refused is not a failure to work around. Say what was refused and why; do not look for
 another tool that does the same thing unwatched.
 

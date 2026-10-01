@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { pathTree } from './compactListing'
 
 const PAGE_SIZE = 100
@@ -19,9 +19,9 @@ export function createListWorkspaceTool(): AgentTool {
         },
       },
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const offset = Math.max(0, (params.offset as number) || 0)
-      const paths = ScopeResolver.getInstance().getAccessiblePaths()
+      const paths = scopeOf(ctx).getAccessiblePaths()
       const total = paths.length
 
       if (total === 0) {

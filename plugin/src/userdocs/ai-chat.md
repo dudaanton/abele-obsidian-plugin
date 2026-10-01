@@ -66,6 +66,9 @@ Commands typed in the message box:
 | `/prompt`       | Insert a saved prompt                               |
 | `/<skill name>` | Run a skill                                         |
 
+Chats working at the same time keep their access separate: each tool uses the scope and agent
+of the chat that called it, not whichever tab is selected or started most recently.
+
 Up to 20 chats can be open at once, as tabs. Every chat is saved as a file in the chat folder
 (`AI/Chats` by default), so it survives a restart and can be found again in the history. When a
 chat grows too long for the model, it is compacted by itself.

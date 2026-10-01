@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { normalizePath } from 'obsidian'
 import { SCRIPT_API_DOCS } from '@/scripting/apiDocs'
 import { SCRIPT_VIEW_DOCS } from '@/scripting/view/viewDocs'
@@ -45,7 +45,7 @@ export function createCreateScriptTool(): AgentTool {
       },
       required: ['name', 'content'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const name = params.name as string
       const content = params.content as string
       if (!name) throw new Error('Missing required parameter: name')
@@ -72,7 +72,7 @@ export function createCreateScriptTool(): AgentTool {
 
       await noteLocalScriptWrite(path, content)
       await app.vault.create(path, content)
-      ScopeResolver.getInstance().addFile(path)
+      scopeOf(ctx).addFile(path)
 
       return {
         content: [

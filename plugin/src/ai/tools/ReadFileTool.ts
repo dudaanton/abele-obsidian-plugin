@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import { chatForAgent, isChatLog } from '../chatText'
 import { READ_DESCRIPTION } from './fileToolDescriptions'
@@ -52,10 +52,10 @@ export function createReadFileTool(opts?: {
       },
       required: ['path'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path')
-      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
+      if (!opts?.skipScope && !scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()

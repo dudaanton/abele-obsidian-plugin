@@ -4,7 +4,7 @@
  */
 import { TFile, type App } from 'obsidian'
 import type { AgentToolResult } from '../client'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf, type ToolContext } from '../toolContext'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { READER_EXTENSIONS } from '@/reader/viewType'
 import { linkToPlace, parsePlaceSubpath, type BookPlace } from '@/reader/bookLinks'
@@ -28,13 +28,16 @@ export const answer = (body: string): AgentToolResult => ({
 })
 
 export const app = (): App => GlobalStore.getInstance().app
-export const inScope = (path: string) => ScopeResolver.getInstance().isInScope(path)
+export const inScope = (path: string, ctx?: ToolContext) => scopeOf(ctx).isInScope(path)
 
 /**
  * The book a call names: a vault path, or a link to a place in it (`[[Book.epub#cfi=…]]`,
  * `Book.epub#page=4`). The place comes back too. A book outside the chat's scope is refused.
  */
-export function namedBook(input: unknown): { file: TFile; place: BookPlace | null } {
+export function namedBook(
+  input: unknown,
+  ctx?: ToolContext
+): { file: TFile; place: BookPlace | null } {
   let text = typeof input === 'string' ? input.trim() : ''
   if (!text) throw new Error('Name a book: its path in the vault, or a link to a place in it.')
   const wiki = /^!?\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/.exec(text)
@@ -56,7 +59,7 @@ export function namedBook(input: unknown): { file: TFile; place: BookPlace | nul
     throw new Error(
       `${file.path} is not a book: the book tools read EPUB, PDF, MOBI, AZW3, FB2 and CBZ files.`
     )
-  if (!inScope(file.path))
+  if (!inScope(file.path, ctx))
     throw new Error(`Access denied: ${file.path} is not in this chat's scope.`)
   return { file, place }
 }

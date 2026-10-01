@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import { findLeafByFile } from './ScreenshotTool'
 import { findScriptView } from './scriptViewLookup'
@@ -75,7 +75,7 @@ export function createInspectViewTool(): AgentTool {
       },
       required: [],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const selector = params.selector as string | undefined
 
       // A script's view has no file behind it, so it is answered before the path checks: its
@@ -96,7 +96,7 @@ export function createInspectViewTool(): AgentTool {
 
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path or view')
-      if (!ScopeResolver.getInstance().isInScope(path)) {
+      if (!scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
 

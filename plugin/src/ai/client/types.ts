@@ -1,3 +1,5 @@
+import type { ToolContext } from '../toolContext'
+
 // ── Message types ────────────────────────────────────────────
 
 export interface TextContent {
@@ -136,7 +138,8 @@ export interface AgentTool extends ToolDefinition {
   execute: (
     toolCallId: string,
     params: Record<string, unknown>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    ctx?: ToolContext
   ) => Promise<AgentToolResult>
 }
 

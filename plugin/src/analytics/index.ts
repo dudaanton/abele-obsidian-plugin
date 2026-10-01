@@ -23,6 +23,7 @@ export type { SourceSpec } from './sources'
  */
 export interface ReadOptions {
   skipScope?: boolean
+  scope?: ScopeResolver
 }
 
 /**
@@ -36,7 +37,7 @@ function inScopeOf(scope: ScopeResolver): (path: string) => boolean {
 export function sourceDeps(opts: ReadOptions = {}): SourceDeps {
   return {
     app: GlobalStore.getInstance().app,
-    inScope: opts.skipScope ? () => true : inScopeOf(ScopeResolver.getInstance()),
+    inScope: opts.skipScope ? () => true : inScopeOf(opts.scope ?? ScopeResolver.getInstance()),
     today: dayjs().format('YYYY-MM-DD'),
     probeType: PROBE_VIEW_TYPE,
   }

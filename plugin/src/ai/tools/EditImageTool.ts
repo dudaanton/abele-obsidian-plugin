@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { readImageAsDataUrl, saveImageToVault } from './imageUtils'
 import { callImageApi, imageModelParameter } from './imageApi'
 
@@ -28,7 +28,7 @@ export function createEditImageTool(): AgentTool {
       },
       required: ['source', 'prompt'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       let rawSource = params.source
       if (typeof rawSource === 'string' && rawSource.startsWith('[')) {
         try {
@@ -42,7 +42,7 @@ export function createEditImageTool(): AgentTool {
       if (!sources.length || !sources[0]) throw new Error('Missing required parameter: source')
       if (!prompt) throw new Error('Missing required parameter: prompt')
 
-      const scope = ScopeResolver.getInstance()
+      const scope = scopeOf(ctx)
       for (const src of sources) {
         if (!scope.isInScope(src)) {
           throw new Error(`File not in scope: ${src}`)

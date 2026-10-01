@@ -6,7 +6,7 @@
  */
 import { TFile, TFolder, normalizePath, type App } from 'obsidian'
 import type { AgentTool } from '../client'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf, type ToolContext } from '../toolContext'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { LinterService } from '@/linter/LinterService'
 import { filesFor, fixFile, lintFiles, rulesFor } from '@/linter/engine'
@@ -26,8 +26,8 @@ function targetOf(app: App, raw: unknown): LintTarget {
   throw new Error(`No note or folder at ${path}`)
 }
 
-function filesInScope(app: App, target: LintTarget): TFile[] {
-  const scope = ScopeResolver.getInstance()
+function filesInScope(app: App, target: LintTarget, ctx?: ToolContext): TFile[] {
+  const scope = scopeOf(ctx)
   return filesFor(app, target, LinterService.getInstance().settings()).filter((f) =>
     scope.isInScope(f.path)
   )
@@ -77,9 +77,9 @@ export function createLintTool(): AgentTool {
         },
       },
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       const { app } = GlobalStore.getInstance()
-      const files = filesInScope(app, targetOf(app, params.path))
+      const files = filesInScope(app, targetOf(app, params.path), ctx)
       const service = LinterService.getInstance()
       const rules = await service.loadRules()
       const run = await lintFiles(app, files, rules, { signal })
@@ -127,9 +127,9 @@ export function createLintFixTool(): AgentTool {
       },
       required: ['path'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       const { app } = GlobalStore.getInstance()
-      const files = filesInScope(app, targetOf(app, params.path))
+      const files = filesInScope(app, targetOf(app, params.path), ctx)
       const rules = await LinterService.getInstance().loadRules()
       const only =
         typeof params.rule === 'string' && params.rule.trim() ? params.rule.trim() : undefined

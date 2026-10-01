@@ -53,14 +53,10 @@ describe('scope', () => {
     const mine = new ScopeResolver()
     const other = new ScopeResolver()
     other.fullVaultAccess.value = true
-    ScopeResolver.setActiveInstance(mine)
-    const deps = sourceDeps()
-    ScopeResolver.setActiveInstance(other)
-    try {
-      expect(deps.inScope('Anything.md')).toBe(false)
-    } finally {
-      ScopeResolver.setActiveInstance(null)
-    }
+    const deps = sourceDeps({ scope: mine })
+    const otherDeps = sourceDeps({ scope: other })
+    expect(otherDeps.inScope('Anything.md')).toBe(true)
+    expect(deps.inScope('Anything.md')).toBe(false)
   })
 })
 

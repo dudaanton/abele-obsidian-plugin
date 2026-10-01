@@ -2,7 +2,7 @@ import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { NUMBERS_NOT_TEXT, READ_FIRST_WRITE } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
@@ -23,14 +23,14 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['path', 'content'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       const path = params.path as string
       const content = params.content as string
       if (!path) throw new Error('Missing required parameter: path')
       guardChatWrite(path)
       if (content == null) throw new Error('Missing required parameter: content')
-      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
+      if (!opts?.skipScope && !scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()

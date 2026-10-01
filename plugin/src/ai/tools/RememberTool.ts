@@ -8,6 +8,7 @@ import {
 } from '../agents/memory'
 import type { AgentDefinition } from '../agents/types'
 import type { AgentTool } from '../client'
+import type { ToolContext } from '../toolContext'
 
 /**
  * Adds one short item to the memory of the agent that calls it, or rewrites one already there
@@ -17,7 +18,9 @@ import type { AgentTool } from '../client'
  * agent, a script the agent it runs — because "the current agent" is not global: two chats on
  * two agents can be mid-turn at once, and each must remember into its own.
  */
-export function createRememberTool(resolveAgent: () => AgentDefinition | null): AgentTool {
+export function createRememberTool(
+  resolveAgent: (ctx?: ToolContext) => AgentDefinition | null
+): AgentTool {
   return {
     name: REMEMBER_TOOL,
     label: 'Remember',
@@ -43,10 +46,8 @@ export function createRememberTool(resolveAgent: () => AgentDefinition | null): 
       },
       required: ['text'],
     },
-    execute: async (_id, params) => {
-      // Resolved before anything awaits: the session that is running this call is only
-      // guaranteed to be the active one until the first await.
-      const agent = resolveAgent()
+    execute: async (_id, params, _signal, ctx) => {
+      const agent = resolveAgent(ctx)
       if (!agent) throw new Error('remember is only available to an agent; nothing was saved.')
 
       const { text, replace } = params as { text?: string; replace?: string }

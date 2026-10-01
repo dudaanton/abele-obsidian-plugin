@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { ReplacementAction } from '@/entities/ReplacementAction'
 import { getNoteBody, replaceNoteBody } from '@/helpers/notesUtils'
 import { getEditorForFile } from '@/helpers/vaultUtils'
@@ -74,7 +74,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       },
       required: ['path', 'actions'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       const path = params.path as string
       const rawActions = params.actions as ActionParam[]
@@ -82,7 +82,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       guardChatWrite(path)
       if (!rawActions?.length) throw new Error('Missing required parameter: actions')
 
-      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
+      if (!opts?.skipScope && !scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
 

@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { Criterion } from '@/entities/Criterion'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { TFile } from 'obsidian'
@@ -105,7 +105,7 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
       },
       required: ['criteria'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const {
         criteria: rawCriteria,
         include_frontmatter: includeFm,
@@ -120,7 +120,7 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
         return { content: [{ type: 'text', text: 'No criteria provided.' }] }
       }
 
-      const scope = ScopeResolver.getInstance()
+      const scope = scopeOf(ctx)
       const { app } = GlobalStore.getInstance()
       const limit = rawLimit || 50
 

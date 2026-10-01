@@ -81,6 +81,7 @@ import { createAgentTools } from './tools'
 import { isScriptPath } from '@/scripting/scriptPath'
 import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent } from './tools/SkillTool'
+import type { ToolContext } from './toolContext'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
 import { isImagePath } from './tools/ReadImageTool'
@@ -151,16 +152,6 @@ export interface SessionOptions {
 }
 
 export class ChatSession implements SummarizerHost, InterceptorHost {
-  /**
-   * The session currently executing a tool or agent loop.
-   * Set before tool/loop execution so DelegateTool can access session context.
-   */
-  private static _activeSession: ChatSession | null = null
-
-  static getActiveSession(): ChatSession | null {
-    return ChatSession._activeSession
-  }
-
   private static readonly TITLE_GENERATION_TRIGGERS = [1]
   /**
    * The turns after which the history summary is written again.
@@ -891,9 +882,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private getTools(): AgentTool[] {
     const agent = this.agent.value
     // Bound to this chat's agent, so `remember` writes where this chat's prompt reads from.
-    const allTools = createAgentTools({ agentId: agent?.id,
-      githubApproval: this.kind === 'run' ? undefined : async (connection,signal) =>
-        (await import('@/github/approveConnection')).connectionApproval(GlobalStore.getInstance().app)(connection,signal),
+    const allTools = createAgentTools({
+      agentId: agent?.id,
+      githubApproval:
+        this.kind === 'run'
+          ? undefined
+          : async (connection, signal) =>
+              (await import('@/github/approveConnection')).connectionApproval(
+                GlobalStore.getInstance().app
+              )(connection, signal),
     })
 
     // Overrides win over the agent's own tool modes, so a chat that narrowed its permissions
@@ -947,8 +944,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   /**
-   * Wrap tools so that ScopeResolver.getInstance() returns this session's
-   * scope resolver during tool execution.
+   * Bind each call to this chat explicitly, including across awaits and concurrent calls.
    */
   private wrapToolsForSession(tools: AgentTool[]): AgentTool[] {
     return tools.map((tool) => ({
@@ -956,10 +952,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       execute: async (
         id: string,
         params: Record<string, unknown>,
-        signal?: AbortSignal
+        signal?: AbortSignal,
+        callerCtx?: ToolContext
       ): Promise<AgentToolResult> => {
-        ScopeResolver.setActiveInstance(this.scopeResolver)
-        ChatSession._activeSession = this
+        const ctx: ToolContext = {
+          scope: this.scopeResolver,
+          session: this,
+          agentId: this.agent.value?.id,
+          interactive: this.kind !== 'run',
+          approved: callerCtx?.approved,
+        }
         // Everything the call changes in the vault is remembered, so the turn can be taken back.
         // A delegated run records nothing of its own: the chat's `delegate` call is open for as
         // long as the run lasts, so what the run changes lands in the chat that asked for it.
@@ -968,7 +970,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           // Before anything is written, so a refused call changes nothing at all.
           const refused = await this.readGuard.check(tool.name, params)
           if (refused) throw new Error(refused)
-          const result = await tool.execute(id, params, signal)
+          const result = await tool.execute(id, params, signal, ctx)
           await this.readGuard.record(tool.name, params, result)
           // After the guard, which has to see a file's text as the tool gave it.
           this.results.keep(tool.name, id, result)
@@ -987,8 +989,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           return result
         } finally {
           await endRecording?.()
-          ScopeResolver.setActiveInstance(null)
-          ChatSession._activeSession = null
         }
       },
     }))

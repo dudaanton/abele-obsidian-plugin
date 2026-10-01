@@ -270,10 +270,10 @@ export class ReadGuard {
 export function withReadGuard(tools: AgentTool[], guard: ReadGuard): AgentTool[] {
   return tools.map((tool) => ({
     ...tool,
-    execute: async (id, params, signal) => {
+    execute: async (id, params, signal, ctx) => {
       const refused = await guard.check(tool.name, params)
       if (refused) throw new Error(refused)
-      const result = await tool.execute(id, params, signal)
+      const result = await tool.execute(id, params, signal, ctx)
       await guard.record(tool.name, params, result)
       return result
     },

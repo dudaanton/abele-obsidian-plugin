@@ -49,13 +49,13 @@ export function createBookViewsTool(): AgentTool {
       "What the person is reading in book tabs (EPUB and PDF): each open book, which one is on screen, the chapter or page they are at and how far in, a link to that place, the words they have selected — quoted, with a link to them — the highlight they tapped, the discussions (chats kept with words, made with Ask here) on the page, where the book's highlights note is, and the pages they bookmarked, with links. " +
       'Call it first when they say "this book", "this passage", "here" or "what does this mean". Read-only.',
     parameters: { type: 'object', properties: {} },
-    execute: async () => {
+    execute: async (_id, _params, _signal, ctx) => {
       // Recognised by type rather than by class: the tools do not load the reader to look at it.
       const views = app()
         .workspace.getLeavesOfType(BOOK_VIEW_TYPE)
         .map((leaf) => leaf.view as unknown as BookView)
         .filter((view) => !!view.model)
-      const shown = views.filter((v) => v.file && inScope(v.file.path))
+      const shown = views.filter((v) => v.file && inScope(v.file.path, ctx))
       const hidden = views.length - shown.length
       if (!shown.length) {
         return answer(
@@ -147,8 +147,8 @@ export function createBookContentsTool(): AgentTool {
       },
       required: ['book'],
     },
-    execute: async (_id, params) => {
-      const { file } = namedBook(params.book)
+    execute: async (_id, params, _signal, ctx) => {
+      const { file } = namedBook(params.book, ctx)
       const loaded = await loadBookText(app(), file)
       const out = [
         `${loaded.title}${loaded.author ? ` — ${loaded.author}` : ''}`,
@@ -196,8 +196,8 @@ export function createBookReadTool(): AgentTool {
       },
       required: ['book'],
     },
-    execute: async (_id, params) => {
-      const { file, place } = namedBook(params.book)
+    execute: async (_id, params, _signal, ctx) => {
+      const { file, place } = namedBook(params.book, ctx)
       const loaded = await loadBookText(app(), file)
       let index = typeof params.part === 'number' ? Math.round(params.part) - 1 : -1
       let start = typeof params.offset === 'number' ? Math.max(0, Math.round(params.offset)) : 0
@@ -303,8 +303,8 @@ export function createBookSearchTool(): AgentTool {
       },
       required: ['book', 'query'],
     },
-    execute: async (_id, params) => {
-      const { file } = namedBook(params.book)
+    execute: async (_id, params, _signal, ctx) => {
+      const { file } = namedBook(params.book, ctx)
       const query = typeof params.query === 'string' ? params.query.trim() : ''
       if (query.length < 2) throw new Error('Search for at least two letters.')
       const max = Math.min(
@@ -353,8 +353,8 @@ export function createBookOpenTool(): AgentTool {
       },
       required: ['link'],
     },
-    execute: async (_id, params) => {
-      const { file, place } = namedBook(params.link)
+    execute: async (_id, params, _signal, ctx) => {
+      const { file, place } = namedBook(params.link, ctx)
       const workspace = app().workspace
       const existing = workspace
         .getLeavesOfType(BOOK_VIEW_TYPE)
@@ -397,7 +397,7 @@ export function createBookListTool(): AgentTool {
         },
       },
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const words = (typeof params.query === 'string' ? params.query : '')
         .toLowerCase()
         .split(/\s+/)
@@ -406,7 +406,7 @@ export function createBookListTool(): AgentTool {
         .vault.getFiles()
         .filter((f) => READER_EXTENSIONS.includes(f.extension.toLowerCase()))
       const books = all.filter(
-        (f) => inScope(f.path) && words.every((w) => f.path.toLowerCase().includes(w))
+        (f) => inScope(f.path, ctx) && words.every((w) => f.path.toLowerCase().includes(w))
       )
       if (!books.length)
         return answer(

@@ -1,7 +1,8 @@
 import type { AgentTool, UserContentPart } from '../client'
 import type { WorkspaceLeaf } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import type { ScopeResolver } from '../ScopeResolver'
+import { scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import domtoimage from 'dom-to-image-more'
 import { findScriptView } from './scriptViewLookup'
@@ -95,9 +96,9 @@ function electronRemote(): RemoteLike | null {
  * the result is what the chat reads it back from. The model gets the same picture in the
  * conversation.
  */
-async function picture(label: string, nameHint: string, dataUrl: string) {
+async function picture(label: string, nameHint: string, dataUrl: string, scope: ScopeResolver) {
   const path = await saveImageToVault(dataUrl, nameHint)
-  ScopeResolver.getInstance().addFile(path)
+  scope.addFile(path)
   return {
     content: [{ type: 'text' as const, text: `Screenshot saved: ${path}` }],
     injectMessages: [
@@ -135,7 +136,7 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
       },
       required: [],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const viewName = params.view as string | undefined
       if (viewName) {
         // The leaf's content, not the teleport target: that is the box the person sees, with
@@ -160,13 +161,14 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
         return picture(
           `[Screenshot: view "${view.title}" — the visible part of the tab, ${rect.width}×${rect.height}]`,
           shotName(view.title),
-          dataUrl
+          dataUrl,
+          scopeOf(ctx)
         )
       }
 
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path or view')
-      if (!ScopeResolver.getInstance().isInScope(path)) {
+      if (!scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
 
@@ -194,7 +196,7 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
         },
       })
 
-      return picture(`[Screenshot: ${path}]`, shotName(file.basename), dataUrl)
+      return picture(`[Screenshot: ${path}]`, shotName(file.basename), dataUrl, scopeOf(ctx))
     },
   }
 }
