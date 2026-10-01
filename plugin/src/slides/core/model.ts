@@ -52,9 +52,20 @@ export interface BlockRenderer {
   render(block: MarkdownBlock, target: HTMLElement): Promise<() => void>
 }
 
+export interface CssSource {
+  css: string
+  /** Canonical identity/base for relative imports and cycle detection, supplied by the host. */
+  id: string
+  assetUrl?(this: void, reference: string): string
+}
+
+export type CssImportLoader = (reference: string, relativeTo?: string) => Promise<CssSource>
+
 export interface MediaResolver {
   resolve(reference: string): { url: string; video: boolean } | null
   readCss(reference: string): Promise<string>
+  /** Imported rules must be loaded as text and scoped, never emitted as browser @imports. */
+  cssImport?: CssImportLoader
 }
 
 export interface DeckSource {

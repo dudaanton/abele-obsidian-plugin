@@ -67,8 +67,11 @@ now for the presenter view planned for a later stage; this stage does not show a
 
 A fenced `css` block adds styling to the deck. Or set `theme: "[[sample-theme.css]]"` to use a
 CSS file in the vault. Both use the same CSS scoping as script views, limited to this deck's
-slides. This is selector scoping, not a CSS sandbox; global at-rules behave as in script views.
-A settings line's `class="sample-layout"` gives the slide your own class. Without your
+slides. Imported CSS files are loaded and scoped too, including nested imports; relative files
+and pictures are resolved from the importing stylesheet. An import that cannot load does not
+remove the rest of your styles. This is selector scoping, not a CSS sandbox; declaration
+at-rules behave as in script views. A settings line's `class="sample-layout"` gives the slide
+your own class: `.sample-layout` styles that slide, and `.sample-layout h1` its headings. Without your
 CSS the fonts, sizes and colors come from Obsidian's theme.
 
 ## View and present

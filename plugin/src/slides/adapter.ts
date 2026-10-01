@@ -1,6 +1,7 @@
 import { Component, MarkdownRenderer, TFile, type App } from 'obsidian'
 import { parseDeck } from './core/markdown'
 import type { BlockRenderer, DeckSource, MediaResolver } from './core/model'
+import { noteCssImporter } from './cssImportAdapter'
 
 export function noteRenderer(app: App, sourcePath: () => string): BlockRenderer {
   return {
@@ -34,6 +35,7 @@ export function noteMedia(app: App, sourcePath: () => string): MediaResolver {
     return app.metadataCache.getFirstLinkpathDest(path.split('#')[0], sourcePath())
   }
   return {
+    cssImport: noteCssImporter(app, sourcePath),
     resolve(reference) {
       if (!reference.trim()) return null
       const path = linkPath(reference)

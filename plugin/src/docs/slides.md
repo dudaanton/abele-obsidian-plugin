@@ -43,8 +43,13 @@ is never sent to the audience renderer. Presenter view is a later stage.
 
 A fenced `css` block anywhere in the deck adds deck CSS rather than a visible code sample.
 It and the optional theme file pass through the existing `scopeCss`, rooted at this deck's
-slide elements. This is selector scoping, not a CSS security sandbox: global at-rules behave
-as in script views. `class=` assigns classes to a slide. No separate settings file is stored;
+slide elements. `@import` sheets are loaded as text (vault-relative paths, HTTP(S), or CSS data
+URLs), recursively expanded, and then scoped too; no browser stylesheet import is emitted.
+Relative image/font URLs retain the imported sheet's base. Media, supports and layer qualifiers
+are retained. Cyclic or failed imports are omitted while other rules remain usable.
+This is selector scoping, not a CSS security sandbox: declaration at-rules behave as in script
+views. `class=` assigns classes to a slide, so `.sample-layout` and `.sample-layout h1` can style
+that slide root and its content. No separate settings file is stored;
 unknown marker attributes and frontmatter properties survive the codec for later stages.
 Do not rely on future `steps` or `transition` settings for viewing-stage behavior.
 

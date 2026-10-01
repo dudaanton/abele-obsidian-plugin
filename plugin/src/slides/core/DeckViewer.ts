@@ -1,5 +1,6 @@
 import { scopeCss } from '@/scripting/view/scopeCss'
-import type { BlockRenderer, Deck, FullscreenHost, MediaResolver, Slide } from './model'
+import type { BlockRenderer, CssSource, Deck, FullscreenHost, MediaResolver, Slide } from './model'
+import { expandCssImports } from './cssImports'
 import {
   fitSlide,
   navigate,
@@ -133,17 +134,26 @@ export class DeckViewer {
     this.stylesheet.textContent = ''
     const render = this.update()
     const styles = (async () => {
-      let theme = ''
+      const sources: CssSource[] = []
       if (deck.settings.theme && deck.settings.theme !== 'default') {
         try {
-          theme = await this.media.readCss(deck.settings.theme)
+          sources.push(
+            this.media.cssImport
+              ? await this.media.cssImport(deck.settings.theme)
+              : { css: await this.media.readCss(deck.settings.theme), id: deck.settings.theme }
+          )
         } catch (error) {
           console.warn('[Abele] presentation theme could not be read', error)
         }
       }
       if (this.closed || revision !== this.revision) return
+      sources.push({ css: deck.css, id: '' })
+      const resolved = await Promise.all(
+        sources.map((source) => expandCssImports(source, this.media.cssImport))
+      )
+      if (this.closed || revision !== this.revision) return
       this.stylesheet.textContent = scopeCss(
-        `${theme}\n${deck.css}`,
+        resolved.join('\n'),
         `[data-deck-id="${this.scopeId}"] .abele-slide`,
         { includeRoot: true }
       )

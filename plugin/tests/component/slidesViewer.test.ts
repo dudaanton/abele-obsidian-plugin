@@ -59,6 +59,38 @@ describe('bounded deck rendering', () => {
     expect(style).toContain('.abele-slide h1')
   })
 
+  it('loads imported styles before scoping instead of exposing raw global imports', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const loader = vi.fn(async (reference: string, from = '') => {
+      const id = new URL(reference, from || 'https://styles.example.test/').href
+      return {
+        id,
+        css: id.endsWith('sample-child.css')
+          ? 'body { --sample-import: 1 } .sample-accent h1 { opacity: .7 }'
+          : '@import "./sample-child.css"; .sample-workspace { display: none !important }',
+      }
+    })
+    const viewer = new DeckViewer(
+      host,
+      { render: async () => () => {} },
+      { ...media, cssImport: loader }
+    )
+    viewers.push(viewer)
+    await viewer.setDeck(
+      parseDeck(
+        '::slide{class=sample-accent}::\n# Sample\n\n```css\n@import url("https://styles.example.test/sample-parent.css") screen;\n```'
+      )
+    )
+    const css = host.querySelector('style')!.textContent!
+    expect(loader).toHaveBeenCalledTimes(2)
+    expect(css).not.toMatch(/@import/i)
+    expect(css).toContain('--sample-import: 1')
+    expect(css).toContain('@media screen')
+    expect(css).toContain('.abele-slide .sample-workspace')
+    expect(css).not.toMatch(/(^|\})\s*\.sample-workspace\s*\{/)
+  })
+
   it('pauses inactive videos, autoplays only on entry with muted inline playback, and offers manual playback on rejection', async () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
     const play = vi
