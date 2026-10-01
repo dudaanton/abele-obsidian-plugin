@@ -407,7 +407,12 @@ still use; unused shared keys can be revoked deliberately in the synced-key cata
 Repository trees, downloaded search indexes and pending builds use an opaque credential
 generation, not a host/repository-only key. These are session memory, never settings or note
 files. Token replacement, server edits, connection removal and key-store lock changes retire
-the previous generation; a retired request cannot publish a late result.
+the previous generation; a retired request cannot publish a late result. GitHub workspace tab
+state also holds `connectionId` and `connectionIntent` (automatic or manual) beside its URL.
+Account-only navigation adds a history entry. Successful repository routing lives in session
+memory; item refusals expire after roughly ten minutes. Manual owner preferences live only in
+connections' `owners` lists. An agent opening a tab may attach a runtime-only allowed-connection
+restriction; it is not persisted as permission granted by the person.
 
 ## GitHub links
 

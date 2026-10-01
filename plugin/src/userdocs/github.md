@@ -50,6 +50,20 @@ With **Open GitHub links in Obsidian** on, a click on a GitHub link in a note op
 
 Anything else, such as a release, still goes to the browser.
 
+## Choosing an account
+
+A link inside a GitHub tab keeps that tab's connection on the same server. Otherwise an open
+repository context wins, then the most specific owner preference, a successful choice remembered
+this session, and the server's default. Exact owner/repository rules outrank owner rules, which
+outrank owner globs. Different schemes and ports are different servers.
+
+If the primary item refuses access, other connections on that same server are tried; the tab
+says which account opened it. Rate limits, network errors and expired credentials do not cause
+an account switch. A manual **Open as…** choice never silently falls back. Click the account
+button or use the tab menu to switch, or choose **Always use … for this owner**. More-specific
+repository preferences still take precedence. Back/forward and restored tabs keep their account.
+A deleted saved connection is resolved again with an explanation.
+
 ## Opening by number or name
 
 **Open GitHub link or item** takes a pasted link, `#123`, `owner/repo#123`, a branch, a commit or
