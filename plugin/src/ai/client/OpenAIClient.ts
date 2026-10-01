@@ -554,9 +554,12 @@ export class OpenAIClient {
         return 'toolUse'
       case 'content_filter':
       case 'network_error':
+      case 'error':
         return 'error'
       default:
-        return 'error'
+        // Providers extend their completion vocabulary. An unknown end marker is not proof
+        // the answer failed: keep its content rather than discarding an otherwise valid turn.
+        return 'stop'
     }
   }
 

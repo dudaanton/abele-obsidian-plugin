@@ -35,6 +35,18 @@ it('does not send a request stopped during the iteration hook', async () => {
   expect(fetch).not.toHaveBeenCalled()
 })
 
+it('retains an answer with an unfamiliar provider completion reason', async () => {
+  const loop = new AgentLoop()
+  vi.spyOn(window, 'fetch').mockResolvedValue(
+    response({ content: 'A complete sample answer.' }, 'sample_provider_end')
+  )
+  const result = await loop.run({ model, systemPrompt: '', messages: [user], tools: [] })
+  expect(result.messages.at(-1)).toMatchObject({
+    role: 'assistant',
+    content: [{ type: 'text', text: 'A complete sample answer.' }],
+  })
+})
+
 describe('history after a completed tool', () => {
   it.each(['network', 'stop', 'hook'] as const)(
     'survives a %s failure before the next answer',
