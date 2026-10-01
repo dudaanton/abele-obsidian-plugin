@@ -8,6 +8,9 @@ import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
+import { migrateFromFirefly } from '@/commands/migrateFromFirefly'
+import { setRequestTransport } from '@/helpers/http'
+import type { RequestUrlResponse } from 'obsidian'
 
 let app: FakeApp
 const entities: Array<Account | Transaction> = []
@@ -65,6 +68,45 @@ afterEach(() => {
   VaultWatcherWrapper.destroy()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+})
+
+describe('finance import rate limiting', () => {
+  // BUG: the request rejects HTTP 429 before the import can reach its retry branch.
+  it('retries the same Firefly page after a rate limit response', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const urls: string[] = []
+    setRequestTransport(async (request) => {
+      urls.push(request.url)
+      return {
+        status: urls.length === 1 ? 429 : 200,
+        headers: {},
+        json: { data: [], meta: { pagination: { current_page: 1, total_pages: 1 } } },
+        text: '',
+        arrayBuffer: new ArrayBuffer(0),
+      } as RequestUrlResponse
+    })
+    try {
+      const pending = migrateFromFirefly({
+        baseUrl: 'https://finance.example.invalid',
+        token: 'sample-import-token',
+        accountsFolder: 'Wallets',
+        categoriesFolder: 'Categories',
+        transactionPathTemplate: 'Ledger/{{date}} {{title}}',
+        accountNameTemplate: '{{name}}',
+        dryRun: true,
+      })
+      await vi.advanceTimersByTimeAsync(2000)
+      const result = await pending
+      expect(result.errors).toEqual([])
+      expect(urls).toHaveLength(4)
+      expect(urls[1]).toBe(urls[0])
+      expect(urls[0]).toContain('accounts?type=all&page=1')
+    } finally {
+      setRequestTransport(undefined)
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('Transaction — note-backed public surface', () => {

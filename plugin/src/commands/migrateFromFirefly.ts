@@ -123,6 +123,7 @@ async function fetchAllPages<T>(
 
     const response = await requestUrl({
       url,
+      throw: false,
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
