@@ -128,9 +128,12 @@ describe('reply annotation persistence and owner decisions', () => {
     await CommentService.getInstance().acceptReplyProposal(proposal)
     expect(p.messages.value[0].content).toBe('A bright lamp glows.')
     expect((p as any).getMessagesForModel()[0].content[0].text).toBe('A bright lamp glows.')
-    expect((await disk()).internalMessages[0].content).toEqual([{ type: 'text', text: TEXT }])
+    // The original is versioned on the reply; old clients must read the current provider text.
+    expect((await disk()).messages[0].revisions?.[0].before).toBe(TEXT)
+    expect((await disk()).internalMessages[0].content).toEqual([{ type: 'text', text: 'A bright lamp glows.' }])
     await p.undoReplyRevision('reply')
     expect((p as any).getMessagesForModel()[0].content[0].text).toBe(TEXT)
+    expect((await disk()).internalMessages[0].content).toEqual([{ type: 'text', text: TEXT }])
   })
 
   it('accepts with a closed parent and keeps the original after reopen', async () => {
@@ -220,6 +223,11 @@ describe('reply annotation persistence and owner decisions', () => {
     await CommentService.getInstance().acceptReplyProposal(proposal)
     const history = (p as any).getMessagesForModel()
     expect(JSON.stringify(history)).toContain('A bright lamp glows.')
+    // Emulate the previous client's v2 reader: slice after its last compaction, no projection.
+    const persisted = (await disk()).internalMessages
+    const compact = persisted.findLastIndex(m => m.role === 'system' && m.content.startsWith('[Conversation compacted]'))
+    expect(persisted.slice(compact + 1).some(m => m.role === 'assistant' && JSON.stringify(m.content).includes('A bright lamp glows.'))).toBe(true)
+    expect(persisted.slice(compact + 1).some(m => m.role === 'system' && m.content.includes('A bright lamp glows.'))).toBe(false)
   })
 
   it('does not overwrite an externally changed internal record with an unchanged count', async () => {

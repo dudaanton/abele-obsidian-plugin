@@ -29,7 +29,7 @@ import type {
 } from './client'
 import { ChatStorage } from './ChatStorage'
 import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot } from './ChatLog'
-import { projectReplyHistory, undoRevision, type ReplyProposal } from './replyAnnotations'
+import { compatibleReplyHistory, projectReplyHistory, undoRevision, type ReplyProposal } from './replyAnnotations'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import { createReplyRevisionTool, REPLY_REVISION_TOOL } from './tools/ReplyRevisionTool'
 import { CommentService } from './CommentService'
@@ -2176,6 +2176,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       if (!before) throw new Error('The reply is no longer available.')
       const after = change(before)
       const snapshot = this.snapshot()
+      const messages = snapshot.messages.map((m) => (m.id === id ? after : m))
+      const internalMessages = before.content !== after.content && after.revisions?.length
+        ? compatibleReplyHistory(messages, snapshot.internalMessages)
+        : snapshot.internalMessages
       let written = ''
       const operation = GlobalStore.getInstance().app.vault.process(file, (content) => {
         const parsed = parseChat(content)
@@ -2183,7 +2187,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           throw new Error('This chat changed elsewhere. Reopen it before making changes.')
         written = serializeChat({
           ...snapshot,
-          messages: snapshot.messages.map((m) => (m.id === id ? after : m)),
+          messages,
+          internalMessages,
         })
         return written
       })
@@ -2194,6 +2199,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       try {
         await operation
         this.log.adopt(parseChat(written))
+        this.allInternalMessages = internalMessages
         this.updateChatMessage(
           (m) => m.id === id,
           () => after

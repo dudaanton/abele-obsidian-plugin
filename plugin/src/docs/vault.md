@@ -324,10 +324,12 @@ An accepted parent reply keeps its id and timestamp, replaces `content`, and app
 `revisions` entry: `proposal`, `before`, `after`, `author`, `at`, and the previous `highlights`.
 Rendered annotations are retained with the previous version, not guessed onto changed text.
 Undo restores that version and its highlights, marking the revision with `undoneAt`. The oldest
-`before` remains the original. These fields survive log compaction and file sync. Internal `int`
-records remain append-only: when building model history, the plugin substitutes the current
-reply's text, retaining tool and reasoning blocks. If compaction omitted that reply, its current
-wording is supplied as a correction to the summary. Do not edit these records by hand.
+`before` remains the original. These fields survive log compaction and file sync. Accepted revisions and undo also update linked assistant `int` text in the same parent-file
+write, retaining tool and reasoning blocks. If compaction omitted that reply, an assistant
+correction is stored after the summary, linked to the reply id. Corrections never elevate reply
+text into a system message. This keeps provider history consistent on older v2 clients too;
+the original remains in `revisions`, not the active provider transcript. Normal turns still
+append internal records. Do not edit these records by hand.
 
 ## Comments
 

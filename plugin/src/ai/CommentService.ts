@@ -14,7 +14,7 @@ import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChat, parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
-import { acceptRevision, type ReplyProposal } from './replyAnnotations'
+import { acceptRevision, compatibleReplyHistory, type ReplyProposal } from './replyAnnotations'
 import { firstQuestion } from './chatText'
 import { baseName, commentLineage, commentName, commentTrail, type TrailStep } from './commentTrail'
 import { type ChatMessage, type ChatMetadata, type CommentAnchor } from './types'
@@ -1084,10 +1084,12 @@ export class CommentService implements CommentInfoSource {
       const message = parsed.messages.find((m) => m.id === proposal.message)
       if (!message) throw new Error('The parent reply is unavailable.')
       const after = change(message)
+      const messages = parsed.messages.map((m) => (m.id === message.id ? after : m))
       return serializeChat({
         ...parsed,
         metadata: parsed.metadata,
-        messages: parsed.messages.map((m) => (m.id === message.id ? after : m)),
+        messages,
+        internalMessages: compatibleReplyHistory(messages, parsed.internalMessages),
       })
     })
   }
