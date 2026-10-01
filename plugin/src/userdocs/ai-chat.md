@@ -242,7 +242,12 @@ A **prompt** is a note with `type: abele-prompt`: text you insert into a chat wi
 ## Memory
 
 An agent can remember short facts you ask it to keep, and sees them in every later chat. Edit or
-remove them in the agent's settings, under **Memory**.
+remove them in the agent's settings, under **Memory**. New agents ask before saving or changing
+memory; choose **Auto** if you want automatic memory. Saved modes on existing agents stay as
+set, because older settings did not distinguish defaults from choices. Check **Remember** in
+the agent's **Access** tab if an older agent should ask too. The model sees remembered items
+as its own notes for context, not as your standing instructions. Custom memory templates stay
+as written; saved copies of the former default use the new wording.
 
 ## Interceptor
 

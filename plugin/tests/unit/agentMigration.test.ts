@@ -321,7 +321,7 @@ describe('the remember tool', () => {
     } as AiSettings
 
     expect(migrateAgents(ai)).toBe(true)
-    expect(ai.agents[0].toolModes.remember).toBe('auto')
+    expect(ai.agents[0].toolModes.remember).toBe('ask')
   })
 
   it('stays off where someone turned it off', () => {
@@ -341,7 +341,7 @@ describe('the remember tool', () => {
 
     migrateAgents(ai)
 
-    for (const agent of ai.agents) expect(agent.toolModes.remember).toBe('auto')
+    for (const agent of ai.agents) expect(agent.toolModes.remember).toBe('ask')
   })
 })
 
@@ -369,8 +369,8 @@ describe('the forget tool', () => {
 
     migrateAgents(ai)
 
-    expect(ai.agents[0].toolModes.remember).toBe('auto')
-    expect(ai.agents[0].toolModes.forget).toBe('auto')
+    expect(ai.agents[0].toolModes.remember).toBe('ask')
+    expect(ai.agents[0].toolModes.forget).toBe('ask')
   })
 
   it('stays off where memory was switched off', () => {
@@ -394,7 +394,7 @@ describe('the forget tool', () => {
 
     migrateAgents(ai)
 
-    for (const agent of ai.agents) expect(agent.toolModes.forget).toBe('auto')
+    for (const agent of ai.agents) expect(agent.toolModes.forget).toBe('ask')
   })
 })
 

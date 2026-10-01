@@ -119,13 +119,13 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     modelId: '',
     prompts: [],
     permissionMode: 'confirm-all',
-    // Memory is on for every agent unless someone turns it off — `enableMemoryTool` in the
-    // migration does the same for agents saved before it existed.
+    // Memory asks by default. A deliberate auto/off choice overrides this, including on
+    // existing agents where the saved file cannot distinguish old defaults from choices.
     // The GitHub tools only read, and only exist while the integration is on. The book tools read
     // on their own and ask before they mark a book.
     toolModes: {
-      remember: 'auto',
-      forget: 'auto',
+      remember: 'ask',
+      forget: 'ask',
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
       ...LINT_TOOL_MODES,

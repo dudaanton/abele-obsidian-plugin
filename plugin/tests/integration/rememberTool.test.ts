@@ -81,12 +81,14 @@ describe('remember', () => {
     expect(tools.map((t) => t.name)).not.toContain(REMEMBER_TOOL)
   })
 
-  it('runs without asking under its default mode', () => {
+  it('asks under its default mode and honours an explicit auto choice', () => {
     const registry = AgentRegistry.getInstance()
     const agent = registry.create({ name: 'Default' })
 
-    expect(agent.toolModes[REMEMBER_TOOL]).toBe('auto')
-    expect(sessionOn(agent.id).needsApproval(REMEMBER_TOOL, { text: 'x' })).toBe(false)
+    expect(agent.toolModes[REMEMBER_TOOL]).toBe('ask')
+    expect(sessionOn(agent.id).needsApproval(REMEMBER_TOOL, { text: 'x' })).toBe(true)
+    const automatic = registry.create({ toolModes: { remember: 'auto' } })
+    expect(sessionOn(automatic.id).needsApproval(REMEMBER_TOOL, { text: 'x' })).toBe(false)
   })
 
   it('writes to the agent a script bound it to', async () => {
@@ -164,12 +166,14 @@ describe('changing and forgetting', () => {
     expect(saved).toBe(0)
   })
 
-  it('is on and runs without asking under its default mode, like remember', () => {
+  it('is on and asks under its default mode, like remember', () => {
     const registry = AgentRegistry.getInstance()
     const agent = registry.create({ name: 'Default' })
 
     expect(agent.toolModes[FORGET_TOOL]).toBe(agent.toolModes[REMEMBER_TOOL])
-    expect(sessionOn(agent.id).needsApproval(FORGET_TOOL, { text: 'x' })).toBe(false)
+    expect(sessionOn(agent.id).needsApproval(FORGET_TOOL, { text: 'x' })).toBe(true)
+    const automatic = registry.create({ toolModes: { forget: 'auto' } })
+    expect(sessionOn(automatic.id).needsApproval(FORGET_TOOL, { text: 'x' })).toBe(false)
   })
 
   it('is not offered to an agent that has it switched off', () => {
@@ -185,7 +189,9 @@ describe('changing and forgetting', () => {
     const registry = AgentRegistry.getInstance()
     const target = registry.create({ name: 'Target' })
     const tools = createAgentTools({ agentId: target.id })
-    await tools.find((t) => t.name === REMEMBER_TOOL)!.execute('c1', { text: 'Reports go to Reports/' })
+    await tools
+      .find((t) => t.name === REMEMBER_TOOL)!
+      .execute('c1', { text: 'Reports go to Reports/' })
 
     await tools.find((t) => t.name === FORGET_TOOL)!.execute('c2', { text: 'Reports' })
 

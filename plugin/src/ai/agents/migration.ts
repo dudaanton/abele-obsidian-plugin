@@ -160,8 +160,8 @@ function enableMapTools(ai: AiSettings): boolean {
 }
 
 /**
- * Switches memory on for agents saved before it existed. Same rule as the map tools: only an
- * agent with no opinion is touched, and an `off` written by hand stays off.
+ * Switches memory on, asking, for agents saved before it existed. Stored modes stay intact:
+ * old settings did not record whether an `auto` was a default or a deliberate choice.
  *
  * `forget` came later and takes whatever `remember` has on that agent: someone who switched
  * memory off for an agent did not mean to hand it a way to change memory instead.
@@ -171,7 +171,7 @@ function enableMemoryTool(ai: AiSettings): boolean {
 
   for (const agent of ai.agents || []) {
     if (agent.toolModes[REMEMBER_TOOL] === undefined) {
-      agent.toolModes[REMEMBER_TOOL] = 'auto'
+      agent.toolModes[REMEMBER_TOOL] = 'ask'
       changed = true
     }
     if (agent.toolModes[FORGET_TOOL] === undefined) {

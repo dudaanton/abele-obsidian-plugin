@@ -134,7 +134,7 @@ describe('update: a partial patch', () => {
 
     const writer = AbeleConfig.getInstance().ai.agents[0]
     expect(writer.toolModes.write_settings).toBe('ask')
-    expect(writer.toolModes.remember).toBe('auto')
+    expect(writer.toolModes.remember).toBe('ask')
     expect(writer.prompts).toHaveLength(1)
   })
 
@@ -252,7 +252,7 @@ describe('add', () => {
     expect(planner.name).toBe('Planner')
     expect(planner.id).toBeTruthy()
     expect(planner.permissionMode).toBe('confirm-all')
-    expect(planner.toolModes.remember).toBe('auto')
+    expect(planner.toolModes.remember).toBe('ask')
   })
 
   it('makes a journal a journal, not a plain object', async () => {

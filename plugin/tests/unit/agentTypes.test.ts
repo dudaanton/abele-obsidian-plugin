@@ -23,8 +23,8 @@ describe('createAgent', () => {
     expect(agent.permissionMode).toBe('confirm-all')
     // Memory is on by default, so a new agent can be asked to remember something at once.
     expect(agent.toolModes).toEqual({
-      remember: 'auto',
-      forget: 'auto',
+      remember: 'ask',
+      forget: 'ask',
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
       ...LINT_TOOL_MODES,
