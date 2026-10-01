@@ -15,6 +15,7 @@ import { preferredConnection, type GithubConnection } from '@/github/connections
 import { endpoints, parseGithubUrl, type GithubTarget } from '@/github/urls'
 import { parseRepoInput } from '@/github/accessCheck'
 import { GithubClient } from '@/github/client'
+import { guardedGithubClient } from '@/github/guardedClient'
 import type { GithubViewModel } from '@/github/model'
 import type { GithubToolOperation } from './shared'
 
@@ -66,6 +67,8 @@ export async function toolOperation(
           }
         : { kind: 'repo', host: e.webHost, origin: e.origin, owner: short[1], repo: short[2] }
     else {
+      const url = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`)
+      if (url.username || url.password) throw new Error('GitHub URLs must not contain credentials.')
       target = parseGithubUrl(input, [
         ...new Set(['github.com', ...rows.map((c) => endpoints(c.server).webHost)]),
       ])
@@ -80,6 +83,10 @@ export async function toolOperation(
           }
       }
     }
+  }
+  if (target?.origin) {
+    const apiAlias = rows.find(c=>new URL(endpoints(c.server).api).origin === target!.origin)
+    if (apiAlias && endpoints(apiAlias.server).webHost === target.host) target.origin=endpoints(apiAlias.server).origin
   }
   if (!connection && name !== 'github_views') {
     if (target) {
@@ -129,15 +136,17 @@ export async function toolOperation(
           .map((c) => c.id),
       }).map((c) => c.id)
     : []
+  const client = connection ? connectionClient(connection.id) : anonymous
+  const generation = client.cacheNamespace
   let approved = ''
+  const asked = connection && connectionMode(access.agent(),connection.id)==='ask'
   if (connection) {
     await authorizeConnection(access.agent, connection, access.approve, signal)
-    approved = connection.id
+    if (connectionClient(connection.id).cacheNamespace !== generation) throw new Error('The GitHub connection changed while awaiting approval. Ask again for its current endpoint and token.')
+    approved = asked ? connection.id : ''
   }
   if (!connection && name !== 'github_views' && target && target.host !== 'github.com')
     throw new Error('No permitted connection is available for this server.')
-  const client = connection ? connectionClient(connection.id) : anonymous
-  const generation = client.cacheNamespace
   const assertAccess = () => {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
     if (originalAgent !== access.agent()?.id)
@@ -152,6 +161,7 @@ export async function toolOperation(
   }
   const canReadTab = (id: string | undefined) => {
     if (!id) return true
+    if (!(githubSettings().connections ?? []).some(c=>c.id===id)) return false
     if (selected && id !== connection?.id) return false
     return connectionMode(access.agent(), id) === 'auto' || id === approved
   }
@@ -162,23 +172,7 @@ export async function toolOperation(
         `- ${c.name} [${c.id}] — ${c.server || 'github.com'}${c.account ? ` · ${c.account.login}` : ''} — ${connectionMode(access.agent(), c.id) === 'auto' ? 'On' : connectionMode(access.agent(), c.id) === 'ask' ? 'Ask' : 'Off'}`
     ),
   ].join('\n')
-  const guardedClient = new Proxy(client, {
-    get(target, key, receiver) {
-      assertAccess()
-      const value = Reflect.get(target, key, receiver)
-      if (typeof value !== 'function') return value
-      return (...args: unknown[]) => {
-        assertAccess()
-        const result = value.apply(receiver, args)
-        return result && typeof result.then === 'function'
-          ? result.then((resolved: unknown) => {
-              assertAccess()
-              return resolved
-            })
-          : result
-      }
-    },
-  })
+  const guardedClient = guardedGithubClient(client,assertAccess)
   return {
     connectionId: connection?.id ?? '',
     agentId: originalAgent,

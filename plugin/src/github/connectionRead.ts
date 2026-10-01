@@ -3,6 +3,7 @@ import { primaryAccess } from './primaryAccess'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { connectionMode } from './agentAccess'
 import { GithubError } from './client'
+import { guardedGithubClient } from './guardedClient'
 import { loadItem, type ItemData } from './loadItem'
 import {
   connectionClient,
@@ -57,7 +58,10 @@ export async function readConnectionItem(
     read: async (id) => {
       if (!permitted(id))
         throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
-      const client = id ? connectionClient(id) : githubClient(target.host)
+      const rawClient = id ? connectionClient(id) : githubClient(target.host)
+      const client = model.allowedConnections ? guardedGithubClient(rawClient,()=> {
+        if (!permitted(id)) throw new GithubError('other','The agent no longer has access to this GitHub connection.')
+      }) : rawClient
       await primaryAccess(client, target)
       return client
     },

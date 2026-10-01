@@ -9,7 +9,7 @@ import { createGithubSearchTool } from './SearchTool'
 import { createGithubGrepTool } from './GrepTool'
 import { createGithubOpenTool, createGithubViewsTool } from './ViewTools'
 
-import { githubSettings } from '@/github/GithubService'
+import { githubSettings, routingMemory } from '@/github/GithubService'
 import { toolOperation, type GithubToolAccess } from './operation'
 import type { GithubToolOperation } from './shared'
 import { GithubError } from '@/github/client'
@@ -56,7 +56,10 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
         try {
           const result = await factory(operation).execute(id, params, signal)
           operation.assertAccess()
-          return result
+          if (operation.target && operation.connectionId) routingMemory.succeeded(`${operation.target.origin ?? `https://${operation.target.host}`}/${operation.target.owner}/${operation.target.repo}`,operation.connectionId,operation.client.cacheNamespace)
+          if (tool.name === 'github_views') return result
+          const connection = githubSettings().connections.find(c=>c.id===operation.connectionId)
+          return {...result,content:[{type:'text',text:`GitHub connection: ${connection?.name ?? 'Anonymous'}${connection?.account ? ` · ${connection.account.login}` : ''}`},...result.content]}
         } catch (error) {
           operation.assertAccess()
           if (
@@ -100,6 +103,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
             }
             const result = await factory(next).execute(id, params, signal)
             next.assertAccess()
+            if (next.target) routingMemory.succeeded(`${next.target.origin ?? `https://${next.target.host}`}/${next.target.owner}/${next.target.repo}`,next.connectionId,next.client.cacheNamespace)
             return {
               ...result,
               content: [

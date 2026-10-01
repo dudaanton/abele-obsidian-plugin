@@ -5,6 +5,9 @@ import { githubSettingsFrom } from '@/github/settings'
 import { useVault } from '../helpers/testEnv'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { emptyScreen } from '@/github/screen'
+import { connectionClient } from '@/github/GithubService'
+import { indexes } from '@/github/search/source'
+import { RepoIndex, indexKey } from '@/github/search/repoIndex'
 const request = vi.hoisted(() => vi.fn())
 vi.mock('@/github/transport', () => ({ singleHopRequest: request }))
 let actor = {
@@ -162,6 +165,17 @@ describe('GitHub tool connection contracts', () => {
       expect(output).not.toContain(text)
   })
 
+  it('refuses a warmed repository index after connection access is turned Off', async () => {
+    const client=connectionClient('public'), sha='a'.repeat(40)
+    const index=new RepoIndex()
+    index.add('private.ts','private cached content')
+    indexes.set(`${client.cacheNamespace}:${indexKey('github.com','sample','project',sha)}`,index)
+    actor.githubConnections.public='off'
+    await expect(run('github_grep',{repo:'sample/project',connection:'Personal',ref:sha,query:'private'})).rejects.toThrow(/access|disabled/i)
+    expect(request).not.toHaveBeenCalled()
+    indexes.clear()
+  })
+
   it('rechecks permission before a delayed response becomes tool output', async () => {
     let finish!: (value: unknown) => void
     request.mockImplementation(
@@ -181,6 +195,16 @@ describe('GitHub tool connection contracts', () => {
       arrayBuffer: new ArrayBuffer(0),
     })
     await expect(pending).rejects.toThrow(/revoked|access/i)
+  })
+
+  it('refuses an endpoint or token replacement while its connection approval is pending', async () => {
+    actor.githubConnections.public='ask'
+    const approve=vi.fn(async()=>{
+      AbeleConfig.getInstance().github.connections[0].server='https://changed.example.test'
+      return true
+    })
+    await expect(tools(approve).find(t=>t.name==='github_search')!.execute('change',{query:'sample',type:'issues'})).rejects.toThrow(/connection changed/i)
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('views lists safe account metadata even without tabs and never key slots or tokens', async () => {
