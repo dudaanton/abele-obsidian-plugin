@@ -1,13 +1,55 @@
 import { saveParts, xmlBytes, type WordPackage, type WordParagraph } from './package'
 import { escapeXml, patchXml, type Patch } from './xml'
+import { assertPlain, isEmptyNode, nodeWithContent, textRun } from './structure'
+import { WordMutation } from './mutation'
+import { paragraphOperation } from './paragraphOps'
+import { tableOperation } from './tableOps'
+import { imageOperation, type WordResources } from './imageOps'
+
+export const WORD_OPERATIONS = [
+  'replace',
+  'insert',
+  'format',
+  'style',
+  'list',
+  'paragraph_add',
+  'paragraph_split',
+  'paragraph_merge',
+  'paragraph_delete',
+  'link',
+  'row_add',
+  'row_delete',
+  'cells_merge',
+  'cells_split',
+  'image_insert',
+  'image_replace',
+  'image_delete',
+  'image_resize',
+] as const
 
 export interface WordEdit {
-  operation: 'replace' | 'insert'
+  operation: (typeof WORD_OPERATIONS)[number]
   paragraph: number
   old_text?: string
   new_text?: string
   offset?: number
   text?: string
+  from?: number
+  to?: number
+  format?: 'bold' | 'italic' | 'underline' | 'strike'
+  enabled?: boolean
+  style_id?: string
+  list?: 'bullet' | 'decimal' | 'none'
+  url?: string
+  table?: number
+  row?: number
+  column?: number
+  to_row?: number
+  to_column?: number
+  image?: number
+  image_path?: string
+  width?: number
+  height?: number
 }
 export function paragraphOf(doc: WordPackage, number: number): WordParagraph {
   if (!Number.isInteger(number)) throw new Error('Paragraph must be an integer from 1')
@@ -41,7 +83,6 @@ export function textPatches(
   end: number,
   replacement: string
 ): Patch[] {
-  validText(replacement)
   if (
     !Number.isInteger(start) ||
     !Number.isInteger(end) ||
@@ -58,6 +99,7 @@ export function textPatches(
       /[\udc00-\udfff]/.test(p.text[at])
     )
       throw new Error('Range splits a Unicode character')
+  validText(replacement)
   const touched = p.runs
     .filter((r) =>
       end > start
@@ -65,7 +107,23 @@ export function textPatches(
         : r.offset <= start && r.offset + r.text.length >= start
     )
     .slice(0, end === start ? 1 : undefined)
-  if (!touched.length) throw new Error('No editable text at this position')
+  if (!touched.length) {
+    if (start === 0 && end === 0 && !p.text) {
+      assertPlain(p)
+      if (!replacement) return []
+      const source = doc.xml.get(p.part)!
+      if (isEmptyNode(source, p.node))
+        return [
+          {
+            start: p.node.start,
+            end: p.node.end,
+            text: nodeWithContent(source, p.node, textRun(replacement)),
+          },
+        ]
+      return [{ start: p.node.closeStart, end: p.node.closeStart, text: textRun(replacement) }]
+    }
+    throw new Error('No editable text at this position')
+  }
   if (touched.some((r) => r.protected))
     throw new Error('Protected revisions and fields are read-only')
   if (
@@ -84,6 +142,17 @@ export function textPatches(
     const to = Math.max(from, Math.min(r.text.length, end - r.offset))
     const next = r.text.slice(0, from) + (i === 0 ? replacement : '') + r.text.slice(to)
     if (next === r.text) return
+    if (isEmptyNode(source, r.node)) {
+      let open = source.slice(r.node.start, r.node.openEnd).replace(/\/\s*>$/, '>')
+      if (/^\s|\s$/.test(next) && r.node.attrs['xml:space'] !== 'preserve')
+        open = open.replace(/>$/, ' xml:space="preserve">')
+      patches.push({
+        start: r.node.start,
+        end: r.node.end,
+        text: open + escapeXml(next) + `</${r.node.name}>`,
+      })
+      return
+    }
     patches.push({ start: r.node.openEnd, end: r.node.closeStart, text: escapeXml(next) })
     if (/^\s|\s$/.test(next) && r.node.attrs['xml:space'] !== 'preserve') {
       const open = source.slice(r.node.start, r.node.openEnd)
@@ -98,8 +167,22 @@ export function textPatches(
   })
   return patches
 }
-export async function applyWordEdit(doc: WordPackage, edit: WordEdit): Promise<Uint8Array> {
+export async function applyWordEdit(
+  doc: WordPackage,
+  edit: WordEdit,
+  resources?: WordResources
+): Promise<Uint8Array> {
   const p = paragraphOf(doc, edit.paragraph)
+  if (edit.operation !== 'replace' && edit.operation !== 'insert') {
+    const mutation = new WordMutation(doc)
+    const patches = edit.operation.startsWith('image_')
+      ? await imageOperation(mutation, p, edit, resources)
+      : ['row_add', 'row_delete', 'cells_merge', 'cells_split'].includes(edit.operation)
+        ? tableOperation(mutation, edit)
+        : await paragraphOperation(mutation, p, edit)
+    mutation.set(p.part, patchXml(doc.xml.get(p.part)!, patches))
+    return mutation.finish()
+  }
   let start: number
   let end: number
   let text: string

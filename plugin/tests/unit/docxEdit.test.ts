@@ -84,6 +84,24 @@ describe('lossless Word text writes', () => {
       })
     ).rejects.toThrow(/unique/)
   })
+  it('protects field results when a field spans several paragraphs', async () => {
+    const doc = await openDocx(
+      sampleDocx(
+        '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r></w:p>' +
+          paragraph('Field result') +
+          '<w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+      )
+    )
+    await expect(
+      applyWordEdit(doc, {
+        operation: 'replace',
+        paragraph: 2,
+        old_text: 'Field result',
+        new_text: 'edited',
+      })
+    ).rejects.toThrow(/protected|read-only/i)
+  })
+
   it('does not overwrite bytes that changed while an edit was prepared', async () => {
     const before = sampleDocx()
     let written = false

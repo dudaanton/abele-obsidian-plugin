@@ -1,7 +1,7 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
 import { applyWordEdit } from './edit'
-import { paragraphTextEdit } from './textEditor'
-import { loadWordBytes, writeWordChange } from './vaultAdapter'
+import { mountWordEditor } from './desktopEditor'
+import { loadWordBytes, vaultWordResources, writeWordChange } from './vaultAdapter'
 import type { WordParagraph } from './package'
 import { renderAsync } from 'docx-preview'
 import './word.css'
@@ -14,6 +14,7 @@ export class DocxView extends FileView {
   paragraph = 1
   private token = 0
   private editing = false
+  private textMode = false
   private frame: HTMLIFrameElement | null = null
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -50,8 +51,23 @@ export class DocxView extends FileView {
       status.remove()
       await this.showDocument(doc, token)
     } catch (error) {
-      if (token === this.token)
-        status.setText(`Could not open document: ${(error as Error).message}`)
+      if (token !== this.token) return
+      status.setText(
+        `${this.document ? 'Preview unavailable; showing text' : 'Could not open document'}: ${(error as Error).message}`
+      )
+      this.contentEl.appendChild(status)
+      if (this.document) {
+        this.frame?.remove()
+        this.frame = null
+        const text =
+          this.contentEl.querySelector<HTMLElement>('.abele-word-text') ??
+          this.contentEl.createDiv({
+            cls: 'abele-word-text',
+            text: this.document.read(this.paragraph, 50, 25_000),
+          })
+        text.hidden = false
+        this.textMode = true
+      }
     }
   }
   async onUnloadFile(): Promise<void> {
@@ -62,35 +78,25 @@ export class DocxView extends FileView {
     this.contentEl.empty()
   }
   private editParagraph(row: HTMLElement, doc: WordPackage, p: WordParagraph): void {
-    if (this.editing) return
+    if (this.editing || Platform.isMobile) return
     this.editing = true
-    const form = row.createDiv({ cls: 'abele-word-editor' })
-    const input = form.createEl('textarea', {
-      attr: { 'aria-label': `Edit paragraph ${p.number}` },
-    })
-    input.value = p.text
-    const save = form.createEl('button', { text: 'Save', cls: 'mod-cta' })
-    const cancel = form.createEl('button', { text: 'Cancel' })
-    const status = form.createDiv({ attr: { role: 'status' } })
-    cancel.onclick = () => {
-      this.editing = false
-      form.remove()
-      if (this.file) void this.onLoadFile(this.file)
-    }
-    save.onclick = async () => {
-      save.disabled = true
-      try {
-        if (!this.file) throw new Error('Document is no longer open')
-        const updated = await applyWordEdit(doc, paragraphTextEdit(p, input.value))
-        await writeWordChange(this.app, this.file, doc.original, updated)
+    mountWordEditor(row, doc, p, {
+      app: this.app,
+      cancel: () => {
         this.editing = false
-        await this.onLoadFile(this.file)
-      } catch (error) {
-        status.setText((error as Error).message)
-        save.disabled = false
-      }
-    }
-    input.focus()
+        if (this.file) void this.onLoadFile(this.file)
+      },
+      apply: async (edit) => {
+        const file = this.file
+        if (!file || this.document !== doc) throw new Error('Document is no longer open')
+        const updated = await applyWordEdit(doc, edit, vaultWordResources(this.app))
+        if (this.file !== file || this.document !== doc)
+          throw new Error('Document is no longer open')
+        await writeWordChange(this.app, file, doc.original, updated)
+        this.editing = false
+        await this.onLoadFile(file)
+      },
+    })
   }
   protected async showDocument(doc: WordPackage, token = this.token): Promise<void> {
     const bar = this.contentEl.createDiv({ cls: 'abele-word-toolbar' })
@@ -116,28 +122,41 @@ export class DocxView extends FileView {
         })
         row.createSpan({ text: `${p.number}. `, cls: 'abele-word-paragraph-number' })
         row.createSpan({ text: p.text || '(empty paragraph)' })
-        if (!Platform.isMobile && p.editable && p.runs.length) {
-          const edit = row.createEl('button', { text: 'Edit text', cls: 'abele-word-edit' })
+        if (
+          !Platform.isMobile &&
+          (p.editable ||
+            doc.images.some((i) => i.paragraph === p.number && i.inline && !i.protected))
+        ) {
+          const edit = row.createEl('button', {
+            text: p.editable ? 'Edit text' : 'Edit images',
+            cls: 'abele-word-edit',
+          })
           edit.onclick = () => this.editParagraph(row, doc, p)
         }
       }
     }
-    go.onclick = page
+    go.onclick = () => {
+      if (!this.editing) page()
+    }
     page()
     if (!doc.richPreview) {
       bar.createSpan({ text: 'Large document: paged text view keeps scrolling responsive.' })
       return
     }
     const toggle = bar.createEl('button', { text: 'Text paragraphs' })
-    textPage.hidden = true
+    textPage.hidden = !this.textMode
     toggle.onclick = () => {
-      textPage.hidden = !textPage.hidden
+      if (this.editing) return
+      this.textMode = !this.textMode
+      textPage.hidden = !this.textMode
+      if (this.frame) this.frame.hidden = this.textMode
     }
     const frame = this.contentEl.createEl('iframe', {
       cls: 'abele-word-preview',
       attr: { title: 'Word preview', sandbox: 'allow-same-origin' },
     })
     this.frame = frame
+    frame.hidden = this.textMode
     const loaded = new Promise<void>((resolve) => {
       frame.onload = () => resolve()
     })
@@ -175,7 +194,7 @@ export function registerWord(plugin: Plugin): void {
   try {
     plugin.registerExtensions(['docx'], DOCX_VIEW_TYPE)
   } catch {
-    console.warn('[Abele] .docx is already handled; use Open in Abele Word')
+    console.warn('[Abele] .docx is already handled; use Open in Abele document viewer')
   }
   plugin.registerEvent(
     plugin.app.workspace.on('file-menu', (menu, file) => {

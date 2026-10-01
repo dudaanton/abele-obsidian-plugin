@@ -1,7 +1,9 @@
 import { strToU8, zipSync } from 'fflate'
+import { samplePng } from './samplePng'
 
 export const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 export const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+export const SAMPLE_IMAGE = samplePng()
 export const wrap = (body: string) =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${body}<w:sectPr><w:headerReference w:type="default" r:id="rId2"/><w:footerReference w:type="default" r:id="rId3"/></w:sectPr></w:body></w:document>`
 export const paragraph = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`
@@ -12,7 +14,7 @@ export const sampleBody =
   '<w:p><w:commentRangeStart w:id="0"/><w:r><w:t>Annotated sample</w:t></w:r><w:commentRangeEnd w:id="0"/><w:r><w:commentReference w:id="0"/></w:r></w:p>' +
   '<w:p><w:ins w:id="1" w:author="Sample Reviewer"><w:r><w:t>Inserted words</w:t></w:r></w:ins><w:del w:id="2" w:author="Sample Reviewer"><w:r><w:delText>Deleted words</w:delText></w:r></w:del></w:p>' +
   '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>' +
-  '<w:p><w:r><w:drawing><fake:opaque xmlns:fake="urn:sample" r:embed="rId4"/></w:drawing></w:r></w:p>'
+  '<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><wp:extent cx="952500" cy="952500"/><wp:docPr id="1" name="Sample image"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="Sample image"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId4"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="952500"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>'
 
 export function sampleParts(body = sampleBody): Record<string, Uint8Array> {
   const xml: Record<string, string> = {
@@ -38,7 +40,7 @@ export function sampleParts(body = sampleBody): Record<string, Uint8Array> {
   }
   return {
     ...Object.fromEntries(Object.entries(xml).map(([k, v]) => [k, strToU8(v)])),
-    'word/media/sample.png': Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    'word/media/sample.png': SAMPLE_IMAGE,
   }
 }
 export const sampleDocx = (body?: string) => zipSync(sampleParts(body))

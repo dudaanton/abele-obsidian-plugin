@@ -1,24 +1,34 @@
 import type { App, TFile } from 'obsidian'
 import { openDocx } from './package'
 import { applyWordEdit, type WordEdit } from './edit'
+import { imageResource, type WordResources } from './imageOps'
+import { wordPreviewText } from './preview'
+import { TFile as VaultFile } from 'obsidian'
 import { commitWordWrite, wordRevision } from './write'
 
 export const loadWordBytes = (bytes: Uint8Array) =>
   openDocx(bytes, () => new Promise<void>((resolve) => window.setTimeout(resolve, 0)))
+export const vaultWordResources = (app: App): WordResources => ({
+  loadImage: async (path) => {
+    const image = app.vault.getAbstractFileByPath(path)
+    if (!(image instanceof VaultFile)) throw new Error('Vault image not found')
+    return imageResource(new Uint8Array(await app.vault.readBinary(image)))
+  },
+})
 const writes = new Map<string, Promise<unknown>>()
 export async function prepareWordChange(app: App, file: TFile, edit: WordEdit, revision?: string) {
   const original = new Uint8Array(await app.vault.readBinary(file))
   if (revision && wordRevision(original) !== revision)
     throw new Error('Document changed since it was read. Read it again.')
   const doc = await loadWordBytes(original)
-  const updated = await applyWordEdit(doc, edit)
+  const updated = await applyWordEdit(doc, edit, vaultWordResources(app))
   const after = await loadWordBytes(updated)
   return {
     original,
     updated,
     diff: {
-      old: doc.read(edit.paragraph, 1, 100_000),
-      new: after.read(edit.paragraph, 1, 100_000),
+      old: wordPreviewText(doc, edit),
+      new: wordPreviewText(after, edit),
     },
   }
 }

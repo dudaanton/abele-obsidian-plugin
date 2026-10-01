@@ -39,6 +39,14 @@ from the rendering only, not removed from the original document. Text edits patc
 uncompressed bytes. A no-op retains the exact original ZIP. Edited packages are re-compressed,
 so ZIP container bytes may differ; no Markdown intermediary is written. Conflicting external
 changes are refused rather than replaced by an older edit.
+Formatting and structure edits patch only their selected XML nodes. New lists may add
+`word/numbering.xml` plus its relationship and content-type entry; new links append relationships.
+Inline images imported from the vault are embedded under `word/media/abele-image-N.ext`, with
+relationships and content types. The source vault attachment is not moved or removed. Replacing
+or deleting an inline image removes/changes its drawing reference; original media and unused
+relationships remain in the package, since unsupported parts may still reference them.
+There is no new persistent editor setting or sidecar. Phone views do not offer hand editing.
+
 
 ## Imported images
 

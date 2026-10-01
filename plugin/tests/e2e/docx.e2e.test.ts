@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { sampleDocx } from '../fixtures/docx/sampleDocx'
+import { sampleDocx, paragraph } from '../fixtures/docx/sampleDocx'
 import { strFromU8, unzipSync } from 'fflate'
 import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
@@ -9,6 +9,12 @@ import { shotDir } from './helpers/shots'
 targets('desktop', 'phone')
 const PATH = 'sample-word-e2e.docx'
 const bytes = Buffer.from(sampleDocx()).toString('base64')
+const LARGE = 'sample-word-large-e2e.docx'
+const largeBytes = Buffer.from(
+  sampleDocx(
+    Array.from({ length: 5000 }, (_, i) => paragraph(`Large sample paragraph ${i}`)).join('')
+  )
+).toString('base64')
 const available = isObsidianRunning() && hasTestApi()
 const SHOTS = shotDir('abele-word')
 
@@ -41,6 +47,7 @@ describe.skipIf(!available)('Word document view', () => {
       const file = app.vault.getAbstractFileByPath(${JSON.stringify(PATH)})
       if (file) await app.vault.delete(file)
       ${onPhone() ? '' : `if (!${sidebars[0]}) app.workspace.leftSplit.expand(); if (!${sidebars[1]}) app.workspace.rightSplit.expand();`}
+      const large = app.vault.getAbstractFileByPath(${JSON.stringify(LARGE)});if(large) await app.vault.delete(large)
       return true
     })()`)
   }, 120000)
@@ -100,6 +107,84 @@ describe.skipIf(!available)('Word document view', () => {
     expect(strFromU8(after['word/document.xml'])).toContain('Updated item')
     for (const name of Object.keys(before))
       if (name !== 'word/document.xml') expect(after[name], name).toEqual(before[name])
+  })
+
+  it('desktop formatting fields fit and apply formatting to the selected run', () => {
+    if (onPhone()) return
+    const result = evalAsync<{
+      controls: string[]
+      clipped: string[]
+      formatted: boolean
+      shot: string
+    }>(`(async () => {
+      const view = app.workspace.getLeavesOfType('abele-word').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view
+      const root = view.contentEl;
+      if(root.querySelector('.abele-word-text').hidden) [...root.querySelectorAll('button')].find(b=>b.textContent==='Text paragraphs').click()
+      const row=root.querySelector('[data-paragraph="1"]');row.querySelector('.abele-word-edit').click()
+      const input=row.querySelector('textarea');input.setSelectionRange(0,6)
+      const controls=[...row.querySelectorAll('button')].map(b=>b.textContent)
+      const clipped=[]
+      for(const field of row.querySelectorAll('input,select,textarea')) {
+        field.focus();const r=field.getBoundingClientRect()
+        for(let el=field.parentElement;el&&el!==document.body;el=el.parentElement) {
+          const css=getComputedStyle(el);if(css.overflowX==='visible'&&css.overflowY==='visible') continue
+          const b=el.getBoundingClientRect()
+          if(r.left-2 < b.left || r.right+2 > b.right) clipped.push(field.getAttribute('aria-label'))
+        }
+      }
+      input.focus();input.setSelectionRange(0,6)
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+      const path=${JSON.stringify(SHOTS)}+'/word-desktop-editor.png'
+      const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
+      ;[...row.querySelectorAll('button')].find(b=>b.textContent==='Italic').click()
+      for(let i=0;i<150;i++) {if(view.document?.xml.get('word/document.xml').includes('<w:i')) break;await new Promise(r=>setTimeout(r,100))}
+      return {controls,clipped,formatted:!!view.document?.xml.get('word/document.xml').includes('<w:i'),shot:path}
+    })()`)
+    for (const label of [
+      'Bold',
+      'Italic',
+      'Underline',
+      'Strikethrough',
+      'Apply style',
+      'Apply list',
+      'Split at cursor',
+      'Merge with next',
+      'Apply link',
+      'Insert image',
+      'Resize image',
+    ])
+      expect(result.controls).toContain(label)
+    expect(result.clipped).toEqual([])
+    expect(result.formatted).toBe(true)
+    console.info(result.shot)
+  })
+
+  it('pages a large document without a long blocked animation frame', () => {
+    const result = evalAsync<{
+      paragraphs: number
+      rows: number
+      frames: number
+      maxGap: number
+      rich: boolean
+    }>(`(async () => {
+      const path=${JSON.stringify(LARGE)}
+      const prior=app.vault.getAbstractFileByPath(path);if(prior) await app.vault.delete(prior)
+      const data=Uint8Array.from(atob(${JSON.stringify(largeBytes)}),c=>c.charCodeAt(0));const file=await app.vault.createBinary(path,data.buffer)
+      const leaf=app.workspace.getLeaf('tab');let handle=0;let last=performance.now();let frames=0;let maxGap=0;let stopped=false
+      const tick = at => {if(stopped) return;frames++;maxGap=Math.max(maxGap,at-last);last=at;handle=requestAnimationFrame(tick)}
+      handle=requestAnimationFrame(tick)
+      try {
+        await leaf.setViewState({type:'abele-word',state:{file:path},active:true});await app.workspace.revealLeaf(leaf)
+        for(let i=0;i<150&&!leaf.view.document;i++) await new Promise(r=>setTimeout(r,100))
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+        return {paragraphs:leaf.view.document?.paragraphs.length ?? 0,rows:leaf.view.contentEl.querySelectorAll('.abele-word-paragraph').length,frames,maxGap,rich:!!leaf.view.contentEl.querySelector('iframe')}
+      } finally {stopped=true;cancelAnimationFrame(handle);leaf.detach();await app.vault.delete(file)}
+    })()`)
+    expect(result.paragraphs).toBe(5004)
+    expect(result.rows).toBe(50)
+    expect(result.rich).toBe(false)
+    expect(result.frames).toBeGreaterThan(1)
+    expect(result.maxGap).toBeLessThan(500)
   })
 
   it('fits a phone screen and offers no hand-editing controls', async () => {

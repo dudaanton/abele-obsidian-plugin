@@ -1202,8 +1202,14 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s === 'rewind'
   )
 
-  it('Word documents offer no hand editing on a phone', () => {
-    expect((report['word document'] as Screen & { handEditing?: boolean })?.handEditing).toBe(false)
+  it('Word documents fit the phone layout and offer no hand editing', () => {
+    const screen = report['word document'] as Screen & { handEditing?: boolean }
+    expect(screen?.error).toBe('')
+    expect(screen?.handEditing).toBe(false)
+    expect(screen?.over).toEqual([])
+    expect(screen?.clipped).toEqual([])
+    expect(screen?.capped).toEqual([])
+    expect(screen?.scrollers.length).toBeLessThanOrEqual(1)
   })
 
   it('reaches every screen', () => {

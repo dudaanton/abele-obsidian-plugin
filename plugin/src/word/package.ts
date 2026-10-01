@@ -5,13 +5,30 @@ import {
   ancestor,
   attr,
   child,
-  decodeXml,
+  decodeXmlContent,
   descendants,
   isW,
   parseXml,
+  R,
+  REL,
   W,
   type XmlNode,
 } from './xml'
+
+export const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+export const A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+export const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture'
+export interface WordImage {
+  number: number
+  paragraph: number
+  node: XmlNode
+  drawing: XmlNode
+  inline: boolean
+  relId: string
+  width: number
+  height: number
+  protected: boolean
+}
 
 export const MAX_XML = 8 * 1024 * 1024
 export const MAX_ARCHIVE = 32 * 1024 * 1024
@@ -34,6 +51,7 @@ export interface WordParagraph {
   row?: number
   cell?: number
   editable: boolean
+  protected: boolean
 }
 export interface WordTable {
   number: number
@@ -53,6 +71,8 @@ export interface WordPackage {
   paragraphs: WordParagraph[]
   tables: WordTable[]
   styles: WordStyle[]
+  images: WordImage[]
+  links: { paragraph: number; from: number; to: number; url: string }[]
   richPreview: boolean
   read(start: number, count: number, max: number): string
   search(
@@ -95,7 +115,7 @@ export async function openDocx(
   if (archive.entries.reduce((n, e) => n + e.size, 0) > MAX_EXPANDED)
     throw new Error('Document is too large unpacked')
   for (const e of archive.entries) {
-    if (e.filename.endsWith('.xml') && e.size > MAX_XML)
+    if (/\.(?:xml|rels)$/.test(e.filename) && e.size > MAX_XML)
       throw new Error('Document XML is too large')
     if (e.filename.startsWith('/') || e.filename.split('/').includes('..'))
       throw new Error('Invalid document part path')
@@ -105,6 +125,7 @@ export async function openDocx(
   const names = [
     'word/document.xml',
     'word/styles.xml',
+    'word/_rels/document.xml.rels',
     ...archive.entries
       .filter((e) =>
         /^word\/(?:header\d+|footer\d+|comments|footnotes|endnotes)\.xml$/.test(e.filename)
@@ -112,7 +133,7 @@ export async function openDocx(
       .map((e) => e.filename),
   ]
   for (const name of names) {
-    const source = archive.loadText(name)
+    const source = xmlPart(archive, name)
     if (source !== null) {
       xml.set(name, source)
       trees.set(name, await parseXml(source, yieldTask))
@@ -137,15 +158,33 @@ export async function openDocx(
     node,
     rows: node.children.filter((n) => isW(n, 'tr')),
   }))
+  const tableByNode = new Map(tables.map((table) => [table.node, table]))
   const paragraphs: WordParagraph[] = []
   for (const [part, tree] of trees) {
     if (part === 'word/styles.xml') continue
     const source = xml.get(part)!
+    let fieldDepth = 0
     for (const node of descendants(tree, W, 'p')) {
       const runs: TextRun[] = []
       let text = ''
-      let fieldDepth = 0
+      let unsupportedAncestor = false
+      for (let parent = node.parent; parent; parent = parent.parent)
+        if (parent.ns !== W || !['document', 'body', 'tc', 'tr', 'tbl'].includes(parent.local))
+          unsupportedAncestor = true
+      const nonPlainParagraph = /<!--|<!\[CDATA\[|<\?/.test(
+        source.slice(node.openEnd, node.closeStart)
+      )
+      let protectedParagraph =
+        nonPlainParagraph ||
+        unsupportedAncestor ||
+        !!fieldDepth ||
+        ['ins', 'del', 'moveFrom', 'moveTo', 'sdt', 'fldSimple'].some(
+          (name) => !!ancestor(node, name)
+        )
       let unsupported =
+        nonPlainParagraph ||
+        unsupportedAncestor ||
+        !!fieldDepth ||
         part !== 'word/document.xml' ||
         !!ancestor(node, 'sdt') ||
         !!ancestor(node, 'ins') ||
@@ -157,7 +196,10 @@ export async function openDocx(
           if (type === 'begin') fieldDepth++
           if (type === 'end') fieldDepth = Math.max(0, fieldDepth - 1)
           unsupported = true
+          protectedParagraph = true
         }
+        if (['ins', 'del', 'moveFrom', 'moveTo', 'sdt', 'fldSimple'].some((name) => isW(n, name)))
+          protectedParagraph = true
         if (
           [
             'ins',
@@ -179,8 +221,29 @@ export async function openDocx(
           unsupported = true
         if (ancestor(n, 'del') || ancestor(n, 'moveFrom')) continue
         if (isW(n, 't')) {
-          const value = decodeXml(source.slice(n.openEnd, n.closeStart))
+          const lexicalText = source.slice(n.openEnd, n.closeStart)
+          const nonPlainText = lexicalText.includes('<')
+          if (nonPlainText) {
+            unsupported = true
+            protectedParagraph = true
+          }
+          const value = decodeXmlContent(lexicalText)
+          let unknownTextContainer = unsupportedAncestor
+          for (let parent = n.parent; parent && parent !== node; parent = parent.parent)
+            if (
+              parent.ns !== W ||
+              !['r', 'hyperlink', 'ins', 'del', 'moveFrom', 'moveTo', 'sdt', 'fldSimple'].includes(
+                parent.local
+              )
+            )
+              unknownTextContainer = true
+          if (unknownTextContainer) {
+            unsupported = true
+            protectedParagraph = true
+          }
           const protectedRun =
+            nonPlainText ||
+            unknownTextContainer ||
             !!fieldDepth ||
             ['ins', 'del', 'moveFrom', 'moveTo', 'fldSimple', 'sdt'].some(
               (name) => !!ancestor(n, name)
@@ -197,7 +260,7 @@ export async function openDocx(
         else if (isW(n, 'br') || isW(n, 'cr')) text += '\n'
       }
       const tbl = ancestor(node, 'tbl')
-      const table = tables.find((t) => t.node === tbl)
+      const table = tbl ? tableByNode.get(tbl) : undefined
       const tr = ancestor(node, 'tr')
       const tc = ancestor(node, 'tc')
       paragraphs.push({
@@ -209,10 +272,67 @@ export async function openDocx(
         style: attr(child(child(node, 'pPr') ?? node, 'pStyle'), 'val'),
         table: table?.number,
         row: table && tr ? table.rows.indexOf(tr) + 1 : undefined,
-        cell: tr && tc ? tr.children.filter((c) => isW(c, 'tc')).indexOf(tc) + 1 : undefined,
+        cell:
+          tr && tc
+            ? tr.children
+                .filter((c) => isW(c, 'tc'))
+                .slice(0, tr.children.filter((c) => isW(c, 'tc')).indexOf(tc))
+                .reduce(
+                  (n, c) => n + Number(attr(child(child(c, 'tcPr') ?? c, 'gridSpan'), 'val') || 1),
+                  1
+                )
+            : undefined,
         editable: !unsupported,
+        protected: protectedParagraph,
       })
     }
+  }
+  const links: { paragraph: number; from: number; to: number; url: string }[] = []
+  const relTree = trees.get('word/_rels/document.xml.rels')
+  const targets = new Map(
+    relTree
+      ? descendants(relTree, REL, 'Relationship').map((n) => [n.attrs.Id, n.attrs.Target])
+      : []
+  )
+  for (const p of paragraphs)
+    for (const link of descendants(p.node, W, 'hyperlink')) {
+      const runs = p.runs.filter((r) => ancestor(r.node, 'hyperlink') === link)
+      if (runs.length)
+        links.push({
+          paragraph: p.number,
+          from: runs[0].offset,
+          to: runs.at(-1)!.offset + runs.at(-1)!.text.length,
+          url:
+            targets.get(attr(link, 'id', R) ?? '') ??
+            (attr(link, 'anchor') ? '#' + attr(link, 'anchor') : '(unresolved link)'),
+        })
+    }
+  const paragraphByNode = new Map(paragraphs.map((p) => [p.node, p]))
+  const images: WordImage[] = []
+  for (const drawing of descendants(root, W, 'drawing')) {
+    const layout = drawing.children.find(
+      (n) => n.ns === WP && ['inline', 'anchor'].includes(n.local)
+    )
+    const blip = descendants(drawing, A, 'blip')[0]
+    const parent = ancestor(drawing, 'p')
+    const p = parent ? paragraphByNode.get(parent) : undefined
+    if (!layout || !blip || !p) continue
+    const extent = layout.children.find((n) => n.ns === WP && n.local === 'extent')
+    images.push({
+      number: images.length + 1,
+      paragraph: p.number,
+      node: layout,
+      drawing,
+      inline: layout.local === 'inline',
+      relId: attr(blip, 'embed', R) ?? '',
+      width: Number(extent?.attrs.cx || 0) / 9525,
+      height: Number(extent?.attrs.cy || 0) / 9525,
+      protected:
+        p.protected ||
+        ['ins', 'del', 'moveFrom', 'moveTo', 'sdt', 'fldSimple'].some(
+          (name) => !!ancestor(drawing, name)
+        ),
+    })
   }
   const doc: WordPackage = {
     original,
@@ -222,7 +342,10 @@ export async function openDocx(
     paragraphs,
     tables,
     styles,
+    images,
+    links,
     richPreview:
+      archive.entries.reduce((n, e) => n + e.size, 0) <= 16 * 1024 * 1024 &&
       paragraphs.length <= 400 &&
       original.length <= 4 * 1024 * 1024 &&
       (xml.get('word/document.xml')?.length ?? 0) < 500_000,
@@ -259,3 +382,13 @@ export async function openDocx(
   return doc
 }
 export const xmlBytes = (source: string) => strToU8(source)
+/** Decode strictly and retain a UTF-8 BOM in the lexical source when present. */
+export function xmlPart(archive: ZipLoader, name: string): string | null {
+  const bytes = archive.loadBytes(name)
+  if (!bytes) return null
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
+  } catch {
+    throw new Error('Unsupported or invalid Word XML encoding')
+  }
+}

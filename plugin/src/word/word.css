@@ -56,3 +56,23 @@
 .abele-word-edit {
   margin-inline-start: var(--size-4-2);
 }
+.abele-word-editor-section {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  align-items: center;
+}
+.abele-word-editor-label {
+  width: 100%;
+}
+.abele-word-editor input[type='number'] {
+  width: 6em;
+}
+.abele-word-editor input[type='text'],
+.abele-word-editor select {
+  max-width: 100%;
+}
+.abele-word-preview[hidden] {
+  display: none;
+}

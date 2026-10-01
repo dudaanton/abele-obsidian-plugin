@@ -4,7 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { wordRevision } from '@/word/write'
 import { loadWordBytes as openDocx, prepareWordChange, writeWordChange } from '@/word/vaultAdapter'
-import type { WordEdit } from '@/word/edit'
+import { WORD_OPERATIONS, type WordEdit } from '@/word/edit'
 import { DOCX_VIEW_TYPE, type DocxView } from '@/word/DocxView'
 
 export function namedDocx(input: unknown): TFile {
@@ -14,6 +14,8 @@ export function namedDocx(input: unknown): TFile {
   const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile) || file.extension.toLowerCase() !== 'docx')
     throw new Error('Name a .docx file by its exact vault path')
+  if (!ScopeResolver.getInstance().isInScope(file.path))
+    throw new Error(`Access denied: ${file.path} is outside this chat's scope`)
   return file
 }
 const answer = (text: string) => ({ content: [{ type: 'text' as const, text }] })
@@ -27,18 +29,40 @@ export function createDocxTools(): AgentTool[] {
       label: 'Edit Word document',
       category: 'Word',
       description:
-        'Patch Word text in place without rebuilding other XML parts. Read with docx_read first and pass its revision token. replace requires one unique old_text in a numbered paragraph; insert uses a character offset. Fields/revisions and supplementary parts are read-only. Uses this tool’s own Off/Ask/On mode and the write confirmation preview.',
+        'Patch Word text, formatting and basic structure in place. Read docx_read first and pass its revision token; paragraph selects the body paragraph, including table cells/image paragraphs. replace requires unique old_text; insert uses offset. format uses from/to, format and enabled; style uses an existing style_id; list uses bullet/decimal/none. paragraph_add/split/merge/delete use text or offset. link uses selected from/to and url (empty removes a whole link). row_add/delete, cells_merge/split use table, row, column and to_row/to_column (logical grid coordinates). image_insert/replace/delete/resize use image number, image_path and pixel width/height; only inline images are editable, source images must be in scope. Revisions, fields, comments and unsupported structures are read-only and preserved. Own Off/Ask/On mode; defaults to write confirmation with text/structure preview.',
       parameters: {
         type: 'object',
         properties: {
           ...properties,
           revision: { type: 'string' },
-          operation: { type: 'string', enum: ['replace', 'insert'] },
+          operation: { type: 'string', enum: [...WORD_OPERATIONS] },
           paragraph: { type: 'number' },
           old_text: { type: 'string' },
           new_text: { type: 'string' },
           offset: { type: 'number' },
           text: { type: 'string' },
+          from: { type: 'number', description: 'Range start, UTF-16 offset, default 0' },
+          to: { type: 'number', description: 'Range end (exclusive), default paragraph end' },
+          format: { type: 'string', enum: ['bold', 'italic', 'underline', 'strike'] },
+          enabled: { type: 'boolean' },
+          style_id: { type: 'string' },
+          list: { type: 'string', enum: ['none', 'bullet', 'decimal'] },
+          url: {
+            type: 'string',
+            description: 'HTTP(S)/mail link; empty to remove the whole selected existing link',
+          },
+          table: { type: 'number' },
+          row: { type: 'number' },
+          column: {
+            type: 'number',
+            description: 'Logical grid column from 1, not physical cell index',
+          },
+          to_row: { type: 'number' },
+          to_column: { type: 'number' },
+          image: { type: 'number', description: 'Image number from docx_read' },
+          image_path: { type: 'string', description: 'In-scope vault PNG/JPEG/GIF/WebP path' },
+          width: { type: 'number', description: 'Pixels' },
+          height: { type: 'number', description: 'Pixels' },
         },
         required: ['path', 'revision', 'operation', 'paragraph'],
       },
@@ -46,6 +70,12 @@ export function createDocxTools(): AgentTool[] {
         const file = namedDocx(params.path)
         if (typeof params.revision !== 'string' || !params.revision)
           throw new Error('Read with docx_read first and pass its revision')
+        if (
+          ['image_insert', 'image_replace'].includes(String(params.operation)) &&
+          (typeof params.image_path !== 'string' ||
+            !ScopeResolver.getInstance().isInScope(params.image_path))
+        )
+          throw new Error('Access denied: image is outside this chat’s scope')
         const app = GlobalStore.getInstance().app
         const prepared = await prepareWordChange(
           app,
@@ -113,8 +143,13 @@ export function createDocxTools(): AgentTool[] {
         const offset = Math.max(0, Math.floor(Number(params.offset) || 0))
         const limit = integer(params.limit, 12000, 25000)
         const text = doc.read(start, count, Number.MAX_SAFE_INTEGER)
+        const metadata =
+          `Styles: ${doc.styles.map((s) => `${s.id} (${s.name}${s.heading ? ', heading' : ''})`).join('; ')}\nTables: ${doc.tables.map((t) => `${t.number}: ${t.rows.length} rows`).join('; ')}\nImages: ${doc.images.map((i) => `${i.number}: paragraph ${i.paragraph}, ${i.inline ? 'inline' : 'floating/read-only'}, ${i.width}×${i.height}px`).join('; ')}\nLinks: ${doc.links
+            .slice(0, 100)
+            .map((l) => `paragraph ${l.paragraph}, ${l.from}–${l.to}: ${l.url}`)
+            .join('; ')}`.slice(0, 5000)
         return answer(
-          `${file.path}: revision ${wordRevision(doc.original)}; ${doc.paragraphs.length} paragraphs; window from ${start}, characters ${offset}–${Math.min(text.length, offset + limit)} of ${text.length}.\n\n${text.slice(offset, offset + limit)}${offset + limit < text.length ? `\n[Continue with offset ${offset + limit}.]` : `\n[Next paragraph window: start ${start + count}.]`}`
+          `${file.path}: revision ${wordRevision(doc.original)}; ${doc.paragraphs.length} paragraphs.\n${metadata}\nWindow from ${start}, characters ${offset}–${Math.min(text.length, offset + limit)} of ${text.length}.\n\n${text.slice(offset, offset + limit)}${offset + limit < text.length ? `\n[Continue with offset ${offset + limit}.]` : `\n[Next paragraph window: start ${start + count}.]`}`
         )
       },
     },

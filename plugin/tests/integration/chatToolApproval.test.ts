@@ -106,6 +106,14 @@ beforeEach(() => {
   whileRunning = []
 })
 
+it('keeps Word write approval independent of general file write permissions', () => {
+  session.permissionMode.value = 'allow-all'
+  session.toolModes.value.docx_edit = 'ask'
+  expect(session.needsApproval('docx_edit',{path:'sample.docx'})).toBe(true)
+  session.toolModes.value.docx_edit = 'auto'
+  expect(session.needsApproval('docx_edit',{path:'sample.docx'})).toBe(false)
+})
+
 /** Gets the chat as far as the first call waiting to be approved. */
 const askedAbout = async (...ids: string[]) => {
   loopPausingWith(...ids)

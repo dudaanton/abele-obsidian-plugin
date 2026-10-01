@@ -32,3 +32,40 @@ parts are kept, not converted to Markdown and rebuilt. Text inside tracked revis
 results is read-only, as are headers, footers and notes. Unsupported structures are kept intact.
 If the file changes while you are editing, saving refuses the older edit; cancel and reopen it.
 
+## Formatting and structure on desktop
+
+Open **Edit text** to see the plain-text field and document controls. Select words in that field
+and choose **Bold**, **Italic**, **Underline** or **Strikethrough**; choosing the same active format
+removes it. Without a selection the whole paragraph is used. Save unsaved text before applying
+formatting or changing structure.
+
+Choose a style already in the document (including its heading styles) and **Apply style**. Choose
+**Bulleted list**, **Numbered list** or **No list**, then **Apply list**. There is no style designer.
+You can add a paragraph below, split at the cursor, merge with the next paragraph, or delete one.
+Merging retains the first paragraph's style. At least one paragraph stays in each container.
+
+For links, select the words, enter the address and choose **Apply link**. Select an existing link
+whole to change or remove it. HTTP, HTTPS and mail addresses are supported; the preview does not
+contact those addresses automatically.
+
+## Tables and pictures
+
+In an existing table cell, the editor offers row and cell controls. Rows and **Grid column**
+numbers start at 1; a merged cell spans several grid columns. Enter the first and last row/column
+of a rectangle and choose **Merge cells**, or choose its first column and **Split cells**. All
+selected text stays in the top-left cell when merging; after splitting it stays in the first cell.
+You can add a blank row below or delete a row. Split a vertical merge before editing its rows.
+Nested, irregular or protected tables are read-only rather than silently simplified.
+
+For an inline picture, select its image number to replace, resize or delete it. To insert one,
+choose a vault image path and its width and height in pixels. The path field suggests vault files.
+PNG, JPEG, GIF and WebP files up to 10 MB are supported. The image is embedded in the Word file;
+the source attachment stays in the vault. Floating pictures are kept untouched and read-only.
+Original media stays inside the package even after a picture is replaced/deleted, so other parts
+that reference it do not lose it.
+
+These operations are available to agents on desktop and phone, with confirmation by default.
+Hand editing remains desktop-only. There is no tracked-change/comment authoring, nested-table
+editor, page/section setup or footnote editor. Unsupported content is preserved, not reconstructed.
+
+

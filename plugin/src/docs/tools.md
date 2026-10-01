@@ -55,7 +55,7 @@ across run boundaries and returns paragraph numbers and offsets; `after` pages t
 `docx_views` lists open in-scope documents and their current text window. Do not use text-file
 writes on a binary Word package.
 
-`docx_edit` patches existing text runs. Read first with `docx_read` and pass its `revision`;
+`docx_edit` patches text, formatting and basic structure. Read first with `docx_read` and pass its `revision`;
 a stale token is refused. `replace` takes `paragraph`, a unique `old_text` and `new_text`.
 `insert` takes `paragraph`, `offset` (UTF-16 character index) and `text`. One operation per call;
 use the resulting revision for the next call. Fields and tracked revisions, and supplementary
@@ -63,6 +63,35 @@ parts, are read-only. It defaults to Ask with a diff/argument preview in the usu
 its own Off/Ask/On mode is independent of general file write permissions. Unknown XML and every
 unchanged package part survive byte-identically. Text replacements preserve run properties,
 including runs split inside a word; replacement text takes the first affected run's formatting.
+
+Further `operation` values (always with `path`, `revision`, and a body `paragraph`):
+- `format`: `from`/`to` UTF-16 offsets (end exclusive), `format` (`bold`, `italic`, `underline`,
+  `strike`) and `enabled`. Only selected run fragments change; no formatting editor for styles.
+- `style`: `style_id` from the document's existing paragraph styles, listed by `docx_read`.
+- `list`: `list` is `bullet`, `decimal` or `none`; existing level-zero definitions are reused,
+  or minimal numbering is added without rewriting old definitions.
+- `paragraph_add`: `text`, added below the selected paragraph; `paragraph_split`: `offset`;
+  `paragraph_merge`: merge with the next adjacent paragraph in the same container, retaining
+  the first paragraph's properties; `paragraph_delete`: delete it (keep one in the container).
+- `link`: selected `from`/`to`, `url` (HTTP(S) or mail). To edit/remove an existing link, select
+  it whole; empty `url` removes its wrapper. Unrelated relationships are not rewritten.
+- `row_add` / `row_delete`: `table`, `row` (from 1); add below or remove the row.
+- `cells_merge`: `table`, `row`, `column`, `to_row`, `to_column`, a rectangle of whole cells.
+  Columns are logical grid columns, not physical cell numbers. `cells_split`: `table`, `row`,
+  `column` at the merged cell's first grid column. Horizontal `gridSpan` and vertical `vMerge`
+  are supported. Merging moves all selected text into the top-left cell; splitting keeps text
+  in its first cell. Split existing merges before merging a different rectangle or editing
+  rows through a vertical merge. Nested/ragged/protected tables are read-only.
+- `image_insert`: `image_path` (in-scope vault PNG/JPEG/GIF/WebP), `width`, `height` in pixels,
+  optional text `offset`. `image_replace`: `image` number and `image_path`; `image_resize`:
+  `image`, `width`, `height`; `image_delete`: `image`. The paragraph must contain the selected
+  image. Only inline images are edited; anchored/floating images are kept read-only.
+
+Re-read after structure changes: paragraph/image numbers can move. `docx_read` lists existing
+styles, table row counts, link ranges/targets and image numbers/dimensions. The confirmation diff
+includes formatting/structure metadata as well as text. Unsupported structures are refused,
+not rebuilt. No tracked-change or comment authoring, nested-table editing or page/section setup.
+
 
 ## Files
 

@@ -23,6 +23,8 @@ export const escapeXml = (text: string) =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&apos;')
 export function decodeXml(text: string): string {
+  if (/&(?!(?:amp|lt|gt|quot|apos|#(?:x[0-9a-f]+|[0-9]+));)/i.test(text))
+    throw new Error('Invalid XML entities')
   return text.replace(/&([^;]+);/g, (_all, entity: string) => {
     const predefined: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
     if (entity in predefined) return predefined[entity]
@@ -34,6 +36,18 @@ export function decodeXml(text: string): string {
     throw new Error('Unsupported XML entities')
   })
 }
+export function decodeXmlContent(source: string): string {
+  const tokens = /<!\[CDATA\[([\s\S]*?)\]\]>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>/g
+  let at = 0
+  let text = ''
+  let match: RegExpExecArray | null
+  while ((match = tokens.exec(source))) {
+    text += decodeXml(source.slice(at, match.index)) + (match[1] ?? '')
+    at = tokens.lastIndex
+  }
+  return text + decodeXml(source.slice(at))
+}
+
 export async function parseXml(
   source: string,
   yieldTask: () => Promise<void> = () => Promise.resolve()
@@ -41,7 +55,8 @@ export async function parseXml(
   if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('DOCTYPE and entities are not supported')
   const stack: XmlNode[] = []
   let root: XmlNode | undefined
-  const tokens = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<\/?[A-Za-z_][^<>]*>/g
+  const tokens =
+    /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<\/?[A-Za-z_](?:[^<>'"]|"[^"]*"|'[^']*')*>/g
   let m: RegExpExecArray | null
   let previous = 0
   let count = 0
@@ -54,7 +69,8 @@ export async function parseXml(
     if (raw.startsWith('<?') || raw.startsWith('<!')) continue
     if (raw.startsWith('</')) {
       const node = stack.pop()
-      if (!node || raw !== `</${node.name}>`) throw new Error('Malformed XML closing tag')
+      if (!node || /^<\/([^\s>]+)\s*>$/.exec(raw)?.[1] !== node.name)
+        throw new Error('Malformed XML closing tag')
       node.closeStart = m.index
       node.end = tokens.lastIndex
     } else {

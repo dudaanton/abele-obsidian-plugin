@@ -260,6 +260,11 @@ watch(
       const path = String(params.value.path || '')
       if (!session.value?.scopeResolver.isInScope(path))
         throw new Error('Document is outside this chat’s scope')
+      if (
+        ['image_insert', 'image_replace'].includes(String(params.value.operation)) &&
+        !session.value.scopeResolver.isInScope(String(params.value.image_path || ''))
+      )
+        throw new Error('Image is outside this chat’s scope')
       const app = GlobalStore.getInstance().app
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error('Document not found')
