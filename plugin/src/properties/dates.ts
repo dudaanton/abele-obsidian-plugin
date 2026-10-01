@@ -47,7 +47,8 @@ export function parseDateValue(value: unknown): DateValue | null {
   const probe = new Date(Date.UTC(year, month - 1, day))
   if (probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null
   const hasTime = sep !== undefined
-  if (hasTime && (Number(h) > 23 || Number(mi) > 59)) return null
+  if (hasTime && (Number(h) > 23 || Number(mi) > 59 || (s !== undefined && Number(s) > 59)))
+    return null
   return {
     year,
     month,

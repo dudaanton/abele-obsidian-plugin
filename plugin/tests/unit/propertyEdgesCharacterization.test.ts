@@ -82,7 +82,7 @@ describe('date property calendar and clock edges', () => {
 
   // BUG: parseDateValue validates hours and minutes but not seconds or timezone offsets.
   // An impossible timestamp is accepted as a date and can produce an invalid relative label.
-  it.fails('rejects timestamps with seconds outside the clock range', () => {
+  it('rejects timestamps with seconds outside the clock range', () => {
     expect(parseDateValue('2028-03-01T12:00:99')).toBeNull()
   })
 })
