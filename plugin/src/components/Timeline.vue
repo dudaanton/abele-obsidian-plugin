@@ -132,7 +132,7 @@ import ObsidianSearch from './obsidian/Search.vue'
 import FoldHeading from './obsidian/FoldHeading.vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
-import { useElementVisibility } from '@vueuse/core'
+import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import { useTimelineDays } from '@/composables/useTimelineDays'
 import { useTimelineScroll } from '@/composables/useTimelineScroll'
@@ -161,7 +161,7 @@ const props = defineProps<{
 }>()
 
 const clockEl = ref<HTMLElement>()
-const clockVisible = useElementVisibility(clockEl)
+const clockVisible = useOwnerVisibility(clockEl)
 const { now } = useDate(clockVisible, () => clockEl.value?.ownerDocument ?? document)
 
 const fold = useFooterFold('calendar')

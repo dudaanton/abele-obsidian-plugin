@@ -23,7 +23,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { createTask } from '@/commands/createTask'
 import dayjs from 'dayjs'
 import { useCalendarDays } from '@/composables/useCalendarDays'
-import { useElementVisibility } from '@vueuse/core'
+import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import { DATE_FORMAT } from '@/constants/dates'
 
@@ -80,7 +80,7 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
 }
 
 const container = ref<HTMLElement>()
-const visible = useElementVisibility(container)
+const visible = useOwnerVisibility(container)
 const { now } = useDate(visible, () => container.value?.ownerDocument ?? document)
 // Past events are history, not something to do: the list of what is coming starts today.
 const upcomingEvents = useCalendarDays((day) => day >= now.value.format(DATE_FORMAT))

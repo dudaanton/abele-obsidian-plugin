@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { useElementVisibility } from '@vueuse/core'
+import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import dayjs from 'dayjs'
 import { computed, ref, unref, watch } from 'vue'
@@ -96,7 +96,7 @@ import { useCalendarDays } from '@/composables/useCalendarDays'
 import type { KitColor } from '@/constants/colors'
 
 const clockEl = ref<HTMLElement>()
-const visible = useElementVisibility(clockEl)
+const visible = useOwnerVisibility(clockEl)
 const { now: today } = useDate(visible, () => clockEl.value?.ownerDocument ?? document)
 const props = defineProps<{
   selectedDate?: dayjs.Dayjs

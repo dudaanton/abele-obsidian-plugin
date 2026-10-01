@@ -4,13 +4,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useElementVisibility } from '@vueuse/core'
+import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import dayjs from 'dayjs'
 import { useDisplayClock } from '@/composables/useDisplayClock'
 
 const props = defineProps<{ start: dayjs.Dayjs | null }>()
 const el = ref<HTMLElement>()
-const visible = useElementVisibility(el)
+const visible = useOwnerVisibility(el)
 const now = useDisplayClock(
   'second',
   () => visible.value && !!props.start,

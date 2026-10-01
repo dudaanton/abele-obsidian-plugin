@@ -81,7 +81,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { labelColor, type TaskPriority } from '@/helpers/taskMeta'
 import type { KitColor } from '@/constants/colors'
 import { openFile } from '@/helpers/vaultUtils'
-import { useIntersectionObserver } from '@vueuse/core'
+import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDisplayClock } from '@/composables/useDisplayClock'
 import { useDate } from '@/composables/useDate'
 import { Menu } from 'obsidian'
@@ -93,14 +93,9 @@ const props = defineProps<{
 }>()
 
 const taskEl = ref<HTMLElement | null>(null)
-const isVisible = ref(false)
 const clockVisible = ref(true)
-useIntersectionObserver(taskEl, (entries) => {
-  const latest = entries.reduce<IntersectionObserverEntry | undefined>(
-    (last, entry) => (!last || entry.time >= last.time ? entry : last),
-    undefined
-  )
-  if (latest) isVisible.value = clockVisible.value = latest.isIntersecting
+const isVisible = useOwnerVisibility(taskEl, (visible) => {
+  clockVisible.value = visible
 })
 const contentLoaded = ref(false)
 
