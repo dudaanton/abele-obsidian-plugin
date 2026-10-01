@@ -9,9 +9,25 @@ const read = (file) => JSON.parse(readFileSync(file, 'utf8'))
 export function verifySyncInputs(root = plugin) {
   root = realpathSync(root)
   const provenance = read(join(root, 'vendor/sync/provenance.json'))
+  const names = ['@abele/sync-core', '@abele/sync-protocol']
+  if (
+    !/^[a-f0-9]{40}$/.test(provenance.commit ?? '') ||
+    !/^[a-f0-9]{64}$/.test(provenance.lockSha256 ?? '') ||
+    !provenance.packages ||
+    Object.keys(provenance.packages).length !== names.length ||
+    names.some((name) => !provenance.packages[name])
+  )
+    throw new Error('Incomplete sync input provenance')
   const manifest = read(join(root, 'package.json'))
   const lock = read(join(root, 'package-lock.json'))
   for (const [name, input] of Object.entries(provenance.packages)) {
+    if (
+      !/^[a-f0-9]{40}$/.test(input.tree ?? '') ||
+      !input.files ||
+      ['package.json', 'dist/index.js', 'dist/index.d.ts'].some((path) => !input.files[path])
+    ) {
+      throw new Error(`Incomplete sync package inventory: ${name}`)
+    }
     const reference = `file:vendor/sync/${input.archive}`
     if (manifest.dependencies[name] !== reference)
       throw new Error(`Unpinned sync dependency: ${name}`)

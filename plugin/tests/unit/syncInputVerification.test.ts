@@ -11,7 +11,6 @@ import {
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { verifySyncInputs, verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
 
@@ -31,8 +30,11 @@ function sample() {
   writeFileSync(
     join(root, 'vendor/sync/provenance.json'),
     JSON.stringify({
+      commit: 'b'.repeat(40),
+      lockSha256: 'c'.repeat(64),
       packages: {
         [name]: {
+          tree: 'd'.repeat(40),
           archive,
           sha256: sha(payload),
           integrity: 'sample-integrity',
@@ -56,6 +58,28 @@ function sample() {
       },
     })
   )
+  // Both inputs and all exported entry files exist in a valid fixture. Individual tests
+  // corrupt one part without relaxing the provenance contract.
+  const protocol = '@abele/sync-protocol'
+  const protocolInstalled = join(root, 'node_modules', protocol)
+  mkdirSync(join(installed, 'dist'))
+  writeFileSync(join(installed, 'dist/index.js'), 'sample runtime')
+  writeFileSync(join(installed, 'dist/index.d.ts'), 'sample types')
+  cpSync(installed, protocolInstalled, { recursive: true })
+  const provenancePath = join(root, 'vendor/sync/provenance.json')
+  const provenance = JSON.parse(readFileSync(provenancePath, 'utf8'))
+  provenance.packages[name].files['dist/index.js'] = sha('sample runtime')
+  provenance.packages[name].files['dist/index.d.ts'] = sha('sample types')
+  provenance.packages[protocol] = provenance.packages[name]
+  writeFileSync(provenancePath, JSON.stringify(provenance))
+  const manifestPath = join(root, 'package.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  manifest.dependencies[protocol] = manifest.dependencies[name]
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+  const lockPath = join(root, 'package-lock.json')
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
+  lock.packages['node_modules/' + protocol] = lock.packages['node_modules/' + name]
+  writeFileSync(lockPath, JSON.stringify(lock))
   return { root, installed, archive }
 }
 afterEach(() => {
@@ -65,6 +89,22 @@ afterEach(() => {
 describe('sync input provenance preflight', () => {
   it('verifies the real committed payload and installed packages', () => {
     expect(verifySyncInputs().commit).toBe('68bb5bb893a98d2ec89b86cdc511805be6f7d229')
+  })
+  it('refuses provenance that omits one of the pinned inputs', () => {
+    const { root } = sample()
+    const path = join(root, 'vendor/sync/provenance.json')
+    const value = JSON.parse(readFileSync(path, 'utf8'))
+    delete value.packages['@abele/sync-protocol']
+    writeFileSync(path, JSON.stringify(value))
+    expect(() => verifySyncInputs(root)).toThrow(/incomplete/i)
+  })
+  it('refuses an empty exported-file checksum inventory', () => {
+    const { root } = sample()
+    const path = join(root, 'vendor/sync/provenance.json')
+    const value = JSON.parse(readFileSync(path, 'utf8'))
+    value.packages['@abele/sync-core'].files = {}
+    writeFileSync(path, JSON.stringify(value))
+    expect(() => verifySyncInputs(root)).toThrow(/incomplete/i)
   })
   it('refuses tampered archive bytes', () => {
     const { root, archive } = sample()
