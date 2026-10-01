@@ -271,7 +271,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await until(() => view.model.selection?.text === chosen.toString() && !view.model.selecting)
         const s2 = at(view)
         await click(s.right - 4)
-        await wait(300)
+        if (!(await until(() => Math.abs(at(view).start - s2.start - s2.size / 2) < 2)))
+          throw Error('The selected page did not move by a column')
         // Half a page on: of two columns, one — the words just selected still on screen.
         const step = at(view).start - s2.start
         const still = shown(view, chosen)
@@ -317,7 +318,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await mouse('mouseMoved', s.left + s.width * 0.7, s.top + s.height * 0.3); await wait(500)
         const step = at(view).start - s0.start
         await mouse('mouseReleased', s.left + s.width * 0.7, s.top + s.height * 0.3, 0)
-        await wait(500)
+        if (!(await until(() => view.model.selection && !view.model.selecting)))
+          throw Error('The dragged selection did not settle after release')
         const sel = docOf(view).getSelection()
         const range = sel.getRangeAt(0)
         const spans = visible.comparePoint(range.endContainer, range.endOffset) > 0
@@ -384,24 +386,27 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await cfg.saveSettings()
         try {
           const { leaf, view } = await open(${JSON.stringify(BOOK)})
-          if (view.model.panel) { view.model.panel = false; await wait(400) }
-          await until(() => R(view).scrolled, 3000)
+          if (view.model.panel) view.model.panel = false
+          if (!(await until(() => !view.contentEl.querySelector('.abele-book-reader__panel') && R(view).scrolled, 3000)))
+            throw Error('The scrolled chapter did not appear without its panel')
           // At the chapter's start, wherever the tests before left the book: at its end there is
           // no half screen further to go.
           await view.engine.goTo(view.model.toc[0].href)
-          await wait(500)
+          if (!(await until(() => docOf(view).querySelector('h1')?.textContent === 'Chapter 1' && Math.abs(R(view).start) < 2)))
+            throw Error('The chapter did not open at its start')
           const s = box(view)
           const list = words(view)
           const chosen = list[list.length - 2]
           select(view, chosen.range)
-          await until(() => view.model.selection, 3000)
-          await wait(700)
+          if (!(await until(() => view.model.selection?.text === chosen.range.toString() && !view.model.selecting, 3000)))
+            throw Error('The selected word did not settle')
           const s0 = at(view)
           // On the page's edge, not on the scrolled chapter's scrollbar beside it: a click on its
           // track is the platform's own page down, a screen less 40 px, and never reaches the page.
           const x = s.right - s.width * 0.08, y = s.top + s.height / 2
           await mouse('mouseMoved', x, y, 0); await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y, 0)
-          await wait(900)
+          if (!(await until(() => Math.abs(at(view).start - s0.start - s0.size / 2) < 2)))
+            throw Error('The selected chapter did not move half a screen')
           const step = at(view).start - s0.start
           const still = shown(view, chosen.range)
           view.reading.clearSelection()
@@ -421,10 +426,12 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       const r = run<{ error?: string; pages?: number[]; told?: string[] }>(`
         const { leaf, view } = await open(${JSON.stringify(PDF)})
         // The contents panel, which the desktop remembers open, would stand over the page.
-        if (view.model.panel) { view.model.panel = false; await wait(400) }
+        if (view.model.panel) view.model.panel = false
+        if (!(await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))))
+          throw Error('The PDF contents panel did not close')
         await view.engine.goTo(0)
-        await until(() => docOf(view)?.querySelector('.textLayer span'), 8000)
-        await wait(400)
+        if (!(await until(() => R(view).index === 0 && docOf(view)?.querySelector('.textLayer span')?.getBoundingClientRect().height > 0, 8000)))
+          throw Error('The first PDF page did not draw its text')
         const doc = docOf(view)
         const span = doc.querySelector('.textLayer span')
         const frame = doc.defaultView.frameElement.getBoundingClientRect()
@@ -491,7 +498,10 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const p0 = R(view).page
         await tap(s.right - 15, y, 800)
         await swipe(s.right - 60, s.left + 60, y, 700)
-        select(view, words(view)[4].range); await wait(400)
+        const chosen = words(view)[4].range
+        select(view, chosen)
+        if (!(await until(() => view.model.selection?.text === chosen.toString(), 3000)))
+          throw Error('The word was not selected before the swipe')
         await swipe(s.right - 60, s.left + 60, y + 60)
         const p1 = R(view).page
         view.reading.clearSelection()
@@ -553,7 +563,9 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         select(view, edgeWord.range)
         await until(() => view.model.selection, 3000)
         await view.reading.highlight('green')
-        await wait(800)
+        if (!(await until(() => view.model.highlights.some(h => h.color === 'green' && h.text === edgeWord.range.toString()) &&
+          R(view).getContents()[0].overlayer?.element?.querySelector('rect') && docOf(view).getSelection().isCollapsed)))
+          throw Error('The green highlight was not drawn after clearing its selection')
         const p0 = R(view).page
         await tap(edgeWord.x, edgeWord.y)
         const opened = !!(await until(() => view.model.active, 3000))
@@ -623,7 +635,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, further.range.endContainer, further.range.endOffset)
         await wait(100)
         await touch('touchEnd')
-        await wait(600)
+        if (!(await until(() => view.model.selection && !view.model.selecting)))
+          throw Error('The dragged selection did not settle after release')
         const range = sel.getRangeAt(0)
         const spans = visible.comparePoint(range.endContainer, range.endOffset) > 0
         await until(() => view.model.selection && !view.model.selecting, 3000)
@@ -633,7 +646,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         view.reading.clearSelection()
         // Let go: pages again, on the one where the selection ended.
         const settled = !!(await until(() => !R(view).scrolled, 3000))
-        await wait(300)
+        if (!(await until(() => view.engine.lastLocation.range.comparePoint(end[0], end[1]) === 0)))
+          throw Error('The page did not settle on the selection end')
         const endShown = view.engine.lastLocation.range.comparePoint(end[0], end[1]) === 0
         await shoot('phone-settled')
         leaf.detach()
@@ -693,21 +707,24 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const list = words(view)
         const chosen = list[list.length - 3]
         select(view, chosen.range)
-        await until(() => view.model.selection, 3000)
-        await wait(700)
+        if (!(await until(() => view.model.selection?.text === chosen.range.toString() && !view.model.selecting, 3000)))
+          throw Error('The selected word did not settle')
         await tap(s.right - 10, y)
-        await wait(400)
+        if (!(await until(() => R(view).scrolled && shown(view, chosen.range))))
+          throw Error('The edge tap did not scroll with the selected word visible')
         const a1 = at(view)
         const still = shown(view, chosen.range)
         const sel = docOf(view).getSelection()
-        await until(() => view.model.selection && !view.model.selecting, 3000)
-        await wait(300)
+        if (!(await until(() => view.model.selection && !view.model.selecting && view.contentEl.querySelector('.abele-book-selection'), 3000)))
+          throw Error('The selection bar did not return after the edge tap')
         await shoot('phone-edge-tap')
         await tap(s.right - 10, y)
-        await wait(400)
+        if (!(await until(() => Math.abs(at(view).start - a1.start - a1.size / 2) < 2)))
+          throw Error('The edge tap did not advance half a screen')
         const step = at(view).start - a1.start
         await tap(s.left + 10, y)
-        await wait(400)
+        if (!(await until(() => Math.abs(at(view).start - a1.start) < 2)))
+          throw Error('The opposite edge tap did not return to the selected place')
         const back = at(view).start - a1.start
         const kept = !sel.isCollapsed && sel.toString().startsWith(chosen.range.toString())
         view.reading.clearSelection()
@@ -738,7 +755,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const last = list[list.length - 1]
         const sel = docOf(view).getSelection()
         select(view, first.range)
-        await wait(300)
+        if (!(await until(() => view.model.selection?.text === first.range.toString(), 3000)))
+          throw Error('The initial word was not selected')
         // Dragged down to the foot of the page, and held there.
         const mid = list[Math.floor(list.length * 0.75)]
         sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, mid.range.endContainer, mid.range.endOffset)
@@ -820,13 +838,18 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
-        for (let i = 0; i < 40 && R(view).page < R(view).pages - 2; i++) { await R(view).next(); await wait(150) }
-        await wait(500)
+        for (let i = 0; i < 40 && R(view).page < R(view).pages - 2; i++) {
+          const page = R(view).page
+          await R(view).next()
+          if (!(await until(() => R(view).page > page && words(view).length > 0)))
+            throw Error('The next page did not draw its words')
+        }
         const s = box(view)
         const list = words(view)
         const w = list[Math.floor(list.length / 2)]
         select(view, w.range)
-        await wait(300)
+        if (!(await until(() => view.model.selection?.text === w.range.toString(), 3000)))
+          throw Error('The word at the chapter end was not selected')
         const before = [R(view).page, view.model.chapter]
         await touch('touchStart', w.right, w.y)
         await touch('touchMove', s.right - 20, w.y)
