@@ -26,6 +26,7 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
+import { until, WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader ink e2e'
@@ -34,7 +35,6 @@ const INK = `${DIR}/long ink/long page 1.svg`
 const NOTE = `${DIR}/long highlights.md`
 const SHOTS = shotDir('abele-phone')
 
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const windowSize = (): [number, number] =>
   evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
 const setWindowSize = async (width: number, height: number): Promise<void> => {
@@ -42,7 +42,18 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  // The OS clamps a tablet taller than the display. Wait for the native size to settle;
+  // the following reload makes the renderer adopt it even in a background window.
+  let previous = ''
+  expect(
+    await until(() => {
+      const current = JSON.stringify(windowSize())
+      const stable = current === previous
+      previous = current
+      return stable
+    }),
+    'settled window content size'
+  ).toBe(true)
 }
 const attachDebugger = (): void => void runCli(['dev:debug', 'on'], 30_000)
 const reload = async (how: string): Promise<void> => {
@@ -54,11 +65,33 @@ const reload = async (how: string): Promise<void> => {
 }
 
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms = 8000) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
-    return null
+  ${WAIT_PRELUDE}
+  const ready = async (fn, label) => {
+    const value = await until(fn)
+    if (!value) throw Error('Timed out: ' + label)
+    return value
+  }
+  // Decode and lay out the page before aiming a pen at it. An img element alone is not ready.
+  const pageReady = async (view, index) => {
+    let previous = ''
+    return ready(() => {
+      const doc = index === undefined
+        ? view.engine.renderer.getContents().find(c => c.doc?.querySelector('#canvas img'))?.doc
+        : page(view, index)
+      const img = doc?.querySelector('#canvas img')
+      if (!img?.complete || !img.naturalWidth) return false
+      const f = frame(doc)
+      if (!f.width || !f.height) return false
+      const bounds = JSON.stringify([f.left, f.top, f.width, f.height])
+      const stable = bounds === previous
+      previous = bounds
+      return stable && doc
+    }, 'PDF page image and layout')
+  }
+  const go = async (view, index) => {
+    await view.engine.goTo(index)
+    await ready(() => view.engine.lastLocation?.section?.current === index, 'PDF page location')
+    return pageReady(view, index)
   }
   const cdp = require('@electron/remote').getCurrentWebContents().debugger
   const input = (type, x, y, pointerType, force, buttons) =>
@@ -68,6 +101,7 @@ const PRELUDE = `
     await input('mousePressed', x0, y0, kind, p0, 1)
     for (let i = 1; i <= 12; i++) { await input('mouseMoved', x0 + (x1 - x0) * i / 12, y0 + (y1 - y0) * i / 12, kind, p0 + (p1 - p0) * i / 12, 1); await wait(8) }
     await input('mouseReleased', x1, y1, kind, 0, 0)
+    // Observe the completed input before checking the stroke and event isolation.
     await wait(150)
   }
   const touch = (type, x, y) =>
@@ -88,17 +122,15 @@ const PRELUDE = `
   }
   const open = async (path) => {
     // Just after a reload the workspace may still be putting itself back: a tab made then is lost.
-    await until(() => app.workspace.layoutReady, 15000)
-    await wait(1000)
+    await ready(() => app.workspace.layoutReady, 'workspace layout')
     let leaf
     try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
     await app.workspace.revealLeaf(leaf)
-    await until(() => leaf.view?.model?.status === 'ready' && leaf.view.ink, 15000)
+    await ready(() => leaf.view?.model?.status === 'ready' && leaf.view.ink, 'PDF ink view')
     const view = leaf.view
     if (view.model.panel) view.model.panel = false
-    await until(() => view.engine.renderer.getContents().some((c) => c.doc?.querySelector('#canvas img')), 8000)
-    await wait(600)
+    await pageReady(view)
     return { leaf, view }
   }
   const R = (view) => view.engine.renderer
@@ -125,7 +157,6 @@ const PRELUDE = `
     const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.querySelector('.menu-item-title')?.textContent.trim() === title), 3000)
     if (!item) { document.querySelector('.menu')?.remove(); return false }
     item.click()
-    await wait(150)
     return true
   }
   const read = async (path) => { const f = app.vault.getAbstractFileByPath(path); return f ? app.vault.read(f) : null }
@@ -145,7 +176,6 @@ const PRELUDE = `
     const cfg = window.__abeleTest.AbeleConfig.getInstance()
     cfg.reader = { ...cfg.reader, ...over }
     await cfg.saveSettings()
-    await wait(300)
   }
 `
 
@@ -185,11 +215,13 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
   afterAll(async () => {
     evalRaw(
       `(async () => {
+        const inks = app.workspace.getLeavesOfType('abele-book').map(leaf => leaf.view.ink)
         for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+        // Closing starts a flush; do not delete the fixture while that write is still in flight.
+        await Promise.all(inks.map(ink => ink?.writing))
         const cfg = window.__abeleTest.AbeleConfig.getInstance()
         cfg.reader = ${JSON.stringify(savedReader)}
         await cfg.saveSettings()
-        await new Promise((r) => setTimeout(r, 1500))
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
         return 'ok'
@@ -214,7 +246,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       note?: string | null
     }>(`
       const { leaf, view } = await open(${JSON.stringify(PDF)})
-      await view.engine.goTo(0); await wait(600)
+      await go(view, 0)
       click(view, '.abele-book-reader__draw')
       const overlay = !!(await until(() => q(view, '.abele-ink-overlay')))
       const bar = !!(await until(() => q(view, '.abele-book-ink')))
@@ -260,21 +292,26 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
       const doc = page(view, 0)
       const f = reach(view, doc)
-      click(view, '.abele-book-ink__undo'); await wait(100)
+      click(view, '.abele-book-ink__undo')
+      await ready(() => inked(doc) === 0, 'undo stroke')
       const afterUndo = inked(doc)
-      click(view, '.abele-book-ink__redo'); await wait(100)
+      click(view, '.abele-book-ink__redo')
+      await ready(() => inked(doc) === 1, 'redo stroke')
       const afterRedo = inked(doc)
-      q(view, '.abele-book-ink__tool:nth-child(3)').click(); await wait(100)
+      q(view, '.abele-book-ink__tool:nth-child(3)').click()
+      await ready(() => view.model.ink.tool === 'eraser', 'eraser tool')
       // Across the stroke's middle, top to bottom.
       const x = f.left + f.width * 0.45, y = f.top + f.height * 0.25
       await draw(x, y - 60, x, y + 60, 'pen')
       const afterErase = inked(doc)
       const fileGone = !!(await until(() => !app.vault.getAbstractFileByPath(${JSON.stringify(INK)}), 5000))
       const noteClean = !!(await until(async () => !(await read(${JSON.stringify(NOTE)}))?.includes('[!ink]'), 5000))
-      click(view, '.abele-book-ink__undo'); await wait(100)
+      click(view, '.abele-book-ink__undo')
+      await ready(() => inked(doc) === 1, 'undo eraser')
       const afterUndoErase = inked(doc)
       const fileBack = !!(await until(() => app.vault.getAbstractFileByPath(${JSON.stringify(INK)}), 5000))
-      q(view, '.abele-book-ink__tool:nth-child(1)').click(); await wait(100)
+      q(view, '.abele-book-ink__tool:nth-child(1)').click()
+      await ready(() => view.model.ink.tool === 'pen', 'pen tool')
       await draw(f.left + f.width * 0.2, f.top + f.height * 0.5, f.left + f.width * 0.6, f.top + f.height * 0.55, 'mouse')
       const withMouse = inked(doc)
       return { afterUndo, afterRedo, afterErase, fileGone, noteClean, afterUndoErase, fileBack, withMouse }
@@ -315,7 +352,6 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       document.addEventListener('pointermove', predicted, true)
       await input('mousePressed', x0, y, 'pen', 0.5, 1)
       for (let i = 1; i <= 12; i++) { await input('mouseMoved', x0 + (x1 - x0) * i / 12, y, 'pen', 0.5, 1); await wait(8) }
-      await wait(120)
       document.removeEventListener('pointermove', predicted, true)
       const canvas = q(view, '.abele-ink-overlay__canvas')
       const box = canvas.getBoundingClientRect()
@@ -343,10 +379,11 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       // Past both the pen and where it was predicted to go: ink there went where nothing led it.
       const past = alpha(Math.max(x1 + 40, ahead + 12))
       await input('mouseReleased', x1, y, 'pen', 0, 0)
-      await wait(150)
+      await ready(() => inked(doc) === before + 1, 'completed tip stroke')
       // Bold, from the menu of the button beside the colours.
       click(view, '.abele-book-ink__thickness')
       const button = await pickMenu('Bold')
+      await ready(() => view.model.ink.thickness === 'bold' && window.__abeleTest.AbeleConfig.getInstance().reader.pdfInkThickness === 'bold', 'bold thickness')
       const chosen = view.model.ink.thickness
       const saved = window.__abeleTest.AbeleConfig.getInstance().reader.pdfInkThickness
       // Above the bar under the page: in a window 800 high the page's lower part lies under it.
@@ -355,8 +392,10 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       await until(async () => (await read(${JSON.stringify(INK)}))?.includes('data-size="4"'), 5000)
       const sizes = [...((await read(${JSON.stringify(INK)})) ?? '').matchAll(/data-size="([^"]*)"/g)].map((m) => m[1])
       // Both taken back, and the thickness as it was: what comes next counts the strokes before.
-      click(view, '.abele-book-ink__undo'); await wait(100)
-      click(view, '.abele-book-ink__undo'); await wait(100)
+      click(view, '.abele-book-ink__undo')
+      await ready(() => inked(doc) === before + 1, 'undo bold stroke')
+      click(view, '.abele-book-ink__undo')
+      await ready(() => inked(doc) === before, 'undo tip stroke')
       view.ink.setThickness('medium')
       const after = inked(doc) - before
       return { tip, behind, past, button, chosen, saved, sizes, after }
@@ -396,12 +435,13 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const ears = listen()
       await drag(stage.left + stage.width / 2, stage.top + stage.height * 0.7, stage.left + stage.width / 2, stage.top + stage.height * 0.3)
       ears.stop()
-      await wait(800)
+      await ready(() => before - frame(doc).top > 100, 'finger scroll')
       const moved = before - frame(doc).top
       const paths = inked(doc)
       // The marker, drawn in yellow, on the first page brought back.
-      await view.engine.goTo(0); await wait(800)
-      q(view, '.abele-book-ink__tool:nth-child(2)').click(); await wait(100)
+      await go(view, 0)
+      q(view, '.abele-book-ink__tool:nth-child(2)').click()
+      await ready(() => view.model.ink.tool === 'marker', 'marker tool')
       const f = reach(view, doc)
       await draw(f.left + f.width * 0.2, f.top + f.height * 0.4, f.left + f.width * 0.7, f.top + f.height * 0.4, 'pen')
       const marker = doc.querySelectorAll(':scope > svg.abele-ink path[stroke]').length
@@ -422,10 +462,10 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
   it('shows the ink when the book is opened again, and ink another device wrote when it arrives', () => {
     const r = run<{ error?: string; reopened?: number; arrived?: number }>(`
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
-      await wait(1500)
       const { view } = await open(${JSON.stringify(PDF)})
-      await view.engine.goTo(0); await wait(800)
+      await go(view, 0)
       const doc = page(view, 0)
+      await ready(() => inked(doc) === 3, 'reopened ink')
       const reopened = inked(doc)
       // Another device's copy: one more stroke, arriving as a change to the file.
       const text = await read(${JSON.stringify(INK)})
@@ -452,7 +492,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       // window — as the window is after the files before this one — and the stroke with it.
       await settings({ pdfLayout: 'paginated', pdfZoom: 'fit-page' })
       const { view } = await open(${JSON.stringify(PDF)})
-      await view.engine.goTo(1); await wait(800)
+      await go(view, 1)
       click(view, '.abele-book-reader__draw')
       await until(() => q(view, '.abele-ink-overlay'))
       const doc = await until(() => R(view).getContents().map((c) => c.doc).find((d) => d?.querySelector('#canvas img') && frame(d).width > 0))
@@ -466,7 +506,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const before = view.engine.lastLocation?.section?.current
       const stage = q(view, '.abele-book-reader__stage').getBoundingClientRect()
       await swipe(stage.left + stage.width * 0.8, stage.top + stage.height / 2, stage.left + stage.width * 0.2, stage.top + stage.height / 2)
-      await wait(800)
+      await ready(() => view.engine.lastLocation?.section?.current === before + 1, 'swipe page turn')
       const after = view.engine.lastLocation?.section?.current
       click(view, '.abele-book-ink__done')
       await settings({ pdfLayout: 'scrolled', pdfZoom: 'fit-width' })
@@ -499,7 +539,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     }>(`
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
       const { view } = await open(${JSON.stringify(PDF)})
-      await view.engine.goTo(2); await wait(800)
+      await go(view, 2)
       // The line under the page before drawing: the pen at its start, the bookmark at its end, all inside it.
       const foot = q(view, '.abele-book-reader__footer').getBoundingClientRect()
       const pen = q(view, '.abele-book-reader__draw').getBoundingClientRect()
@@ -508,7 +548,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       await shoot('phone-line')
       click(view, '.abele-book-reader__draw')
       const barEl = await until(() => q(view, '.abele-book-ink'))
-      await wait(400)
+      await ready(() => barEl.clientWidth > 0 && barEl.getBoundingClientRect().height > 0, 'phone ink bar layout')
       const fits = barEl.scrollWidth <= barEl.clientWidth + 1
       const b = barEl.getBoundingClientRect()
       const finger = view.model.ink.finger
@@ -538,10 +578,9 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     const tablet = run<{ error?: string; finger?: boolean; paths?: number; moved?: number }>(`
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
       const { view } = await open(${JSON.stringify(PDF)})
-      await view.engine.goTo(2); await wait(800)
+      await go(view, 2)
       click(view, '.abele-book-reader__draw')
-      await until(() => q(view, '.abele-book-ink'))
-      await wait(400)
+      await ready(() => q(view, '.abele-book-ink')?.getBoundingClientRect().height > 0, 'tablet ink bar layout')
       const finger = view.model.ink.finger
       const doc = await until(() => page(view, 2)?.querySelector('#canvas img') && page(view, 2))
       if (!doc) return { error: 'no page 3: ' + JSON.stringify({ size: [innerWidth, innerHeight], contents: R(view).getContents().map((c) => [c.index, !!c.doc?.querySelector('#canvas img')]), status: view.model.status, stage: q(view, '.abele-book-reader__stage')?.getBoundingClientRect().toJSON(), shown: view.containerEl.isShown(), tablet: document.body.className, leaves: app.workspace.getLeavesOfType('abele-book').length, sized: R(view).sized }) }
@@ -549,10 +588,10 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const before = inked(doc)
       const stage = q(view, '.abele-book-reader__stage').getBoundingClientRect()
       await drag(stage.left + stage.width / 2, stage.top + stage.height * 0.6, stage.left + stage.width / 2, stage.top + stage.height * 0.4)
-      await wait(600)
+      await ready(() => top - frame(doc).top > 50, 'tablet finger scroll')
       const moved = top - frame(doc).top
       const after = inked(doc)
-      await view.engine.goTo(2); await wait(600)
+      await go(view, 2)
       await shoot('tablet')
       click(view, '.abele-book-ink__done')
       return { finger, paths: after - before, moved }
