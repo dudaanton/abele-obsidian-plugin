@@ -15,6 +15,7 @@ import {
 } from '@/helpers/notesUtils'
 import { templateHarness } from '../helpers/templateHarness'
 import { createNoteInGroup } from '@/commands/createNoteInGroup'
+import { AbeleConfig, DEFAULT_SETTINGS, type AbeleSettings } from '@/services/AbeleConfig'
 
 // Assert the object handed to the host serializer, not JSON masquerading as host YAML.
 // Actual host formatting/cache timestamp coercion remains an Obsidian integration concern.
@@ -251,6 +252,38 @@ describe('frontmatter read and write surfaces', () => {
       getNoteBody(await env.app.vault.read(env.app.vault.getFileByPath('Notes/sample.md')!))
     ).toBe('\n\n\nBody')
   })
+})
+
+describe('core note settings loaded from saved data', () => {
+  const supplied = {
+    refreshDelay: 0,
+    busyDayThreshold: 0,
+    tasksFolder: '',
+    accountsFolder: '',
+    financeCategoriesFolder: '',
+    transactionPathTemplate: '',
+    defaultCurrency: '',
+  }
+
+  // BUG: truthy fallbacks silently replace explicit zero and empty-string settings.
+  it('keeps explicitly configured zero thresholds and empty text values', () => {
+    const config = AbeleConfig.getInstance()
+    config.applySettings(supplied)
+    expect(config).toMatchObject(supplied)
+  })
+
+  it.each([undefined, null])(
+    'defaults missing settings %s without defaulting falsy values',
+    (value) => {
+      const config = AbeleConfig.getInstance()
+      config.applySettings(
+        Object.fromEntries(Object.keys(supplied).map((key) => [key, value])) as unknown as AbeleSettings
+      )
+      expect(config).toMatchObject(
+        Object.fromEntries(Object.keys(supplied).map((key) => [key, DEFAULT_SETTINGS[key]]))
+      )
+    }
+  )
 })
 
 describe('notes created in a group', () => {

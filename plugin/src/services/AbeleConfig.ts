@@ -567,8 +567,8 @@ export class AbeleConfig {
    * dropped with the shipped defaults. Without it only the shipped defaults are recognised.
    */
   applySettings(settings?: AbeleSettings, toolDefaults: Record<string, string> = {}): boolean {
-    this.refreshDelay = settings?.refreshDelay || DEFAULT_SETTINGS.refreshDelay
-    this.tasksFolder = settings?.tasksFolder || DEFAULT_SETTINGS.tasksFolder
+    this.refreshDelay = settings?.refreshDelay ?? DEFAULT_SETTINGS.refreshDelay
+    this.tasksFolder = settings?.tasksFolder ?? DEFAULT_SETTINGS.tasksFolder
     this.logsNotesTypes = settings?.logsNotesTypes || [...DEFAULT_SETTINGS.logsNotesTypes]
     this.tasksTimeChoices = settings?.tasksTimeChoices || [...DEFAULT_SETTINGS.tasksTimeChoices]
     this.tasksDateChoices = settings?.tasksDateChoices || [...DEFAULT_SETTINGS.tasksDateChoices]
@@ -590,7 +590,7 @@ export class AbeleConfig {
     this.journals = (settings?.journals || [...DEFAULT_SETTINGS.journals]).map(
       (j) => new Journal(j)
     )
-    this.busyDayThreshold = settings?.busyDayThreshold || DEFAULT_SETTINGS.busyDayThreshold
+    this.busyDayThreshold = settings?.busyDayThreshold ?? DEFAULT_SETTINGS.busyDayThreshold
     this.excludedPathsForDefaultTemplate = settings?.excludedPathsForDefaultTemplate || [
       ...DEFAULT_SETTINGS.excludedPathsForDefaultTemplate,
     ]
@@ -670,13 +670,13 @@ export class AbeleConfig {
       }
     }
     this.transactionPathTemplate =
-      settings?.transactionPathTemplate || DEFAULT_SETTINGS.transactionPathTemplate
+      settings?.transactionPathTemplate ?? DEFAULT_SETTINGS.transactionPathTemplate
     this.transactionTemplatePath =
       settings?.transactionTemplatePath ?? DEFAULT_SETTINGS.transactionTemplatePath
-    this.accountsFolder = settings?.accountsFolder || DEFAULT_SETTINGS.accountsFolder
+    this.accountsFolder = settings?.accountsFolder ?? DEFAULT_SETTINGS.accountsFolder
     this.financeCategoriesFolder =
-      settings?.financeCategoriesFolder || DEFAULT_SETTINGS.financeCategoriesFolder
-    this.defaultCurrency = settings?.defaultCurrency || DEFAULT_SETTINGS.defaultCurrency
+      settings?.financeCategoriesFolder ?? DEFAULT_SETTINGS.financeCategoriesFolder
+    this.defaultCurrency = settings?.defaultCurrency ?? DEFAULT_SETTINGS.defaultCurrency
     this.pinnedCurrencies = settings?.pinnedCurrencies ?? DEFAULT_SETTINGS.pinnedCurrencies
     this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
     this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken ?? ''
