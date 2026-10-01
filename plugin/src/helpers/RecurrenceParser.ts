@@ -177,12 +177,14 @@ export class RecurrenceParser {
     if (rule.interval && rule.specificDays?.type === 'weekdays') {
       const days = rule.specificDays.days
 
-      if (rule.interval.unit === 'week') {
-        // Find the nearest matching day this week or next week
-        for (let i = 1; i <= 7 * rule.interval.value; i++) {
+      if (rule.interval.unit === 'week' && rule.interval.value > 0) {
+        // Finish the current week, then skip to the next active week.
+        for (let i = 1; i <= 7; i++) {
           nextDate = startDate.add(i, 'day')
           if (days.includes(nextDate.day())) {
-            return nextDate
+            return nextDate.isSame(startDate, 'isoWeek')
+              ? nextDate
+              : nextDate.add(rule.interval.value - 1, 'week')
           }
         }
       }
@@ -192,8 +194,8 @@ export class RecurrenceParser {
     if (rule.interval && rule.specificDays?.type === 'monthdays') {
       const days = rule.specificDays.days.sort((a, b) => a - b)
 
-      // Find the nearest matching day in the current or next month
-      for (let monthOffset = 0; monthOffset <= rule.interval.value; monthOffset++) {
+      // Finish the current month, then jump by the interval, not through intervening months.
+      for (const monthOffset of [0, rule.interval.value]) {
         const targetMonth = startDate.add(monthOffset, 'month')
 
         for (const day of days) {
