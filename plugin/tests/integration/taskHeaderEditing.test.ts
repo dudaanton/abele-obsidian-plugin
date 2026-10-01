@@ -207,9 +207,17 @@ describe('editing dates in the task note header', () => {
     expect(header.loaded).toBe(false)
   })
 
+  it('can dispose a loaded header twice', async () => {
+    taskHarness()
+    const header = make()
+    await header.load()
+    header.cleanup()
+    expect(() => header.cleanup()).not.toThrow()
+  })
+
   // BUG: cleanup dereferences a null watcher before first load, and again after cleanup.
   // Disposing an unmounted/unloaded header or disposing twice throws instead of being safe.
-  it.fails('can dispose a header before its first load', () => {
+  it('can dispose a header before its first load', () => {
     taskHarness()
     expect(() => make().cleanup()).not.toThrow()
   })

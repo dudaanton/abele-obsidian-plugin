@@ -253,7 +253,7 @@ export class TaskHeader {
   cleanup() {
     this.cleanedUp = true
 
-    this.fileWatcher.cleanup()
+    this.fileWatcher?.cleanup()
     this.fileWatcher = null
     this.watcherInitialized = false
     this.cleanTaskData()
