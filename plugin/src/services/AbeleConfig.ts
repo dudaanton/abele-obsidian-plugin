@@ -485,7 +485,12 @@ export class AbeleConfig {
     this.unreadableTold = false
     if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
 
-    const migrated = this.applySettings(stored ?? undefined, await codeToolDescriptions())
+    // Fresh/current settings have no copied descriptions; historical shipped defaults are
+    // already recognised by the lightweight migration. Only possible custom/current copies
+    // need the executable catalog to distinguish an override from today's tool description.
+    const candidates = pruneToolDescriptions(stored?.ai?.prompts?.toolDescriptions).kept
+    const defaults = Object.keys(candidates).length ? await codeToolDescriptions() : {}
+    const migrated = this.applySettings(stored ?? undefined, defaults)
 
     // Migration only rewrites the settings held in memory. Persisting it here is what stops
     // the same migration running again on the next launch — and, for the Comment agent,
