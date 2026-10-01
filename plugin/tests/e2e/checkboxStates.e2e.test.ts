@@ -8,10 +8,16 @@ targets('desktop', 'phone')
 const NOTE = 'sample-checkbox-states.md'
 const BODY =
   'Sample checklist\n\n- [ ] Open\n- [/] In progress\n- [x] Done\n- [-] Cancelled\n- [>] Forwarded\n- [<] Scheduled\n- [?] Question\n- [!] Important\n\n```md\n- [ ] Code example\n```\n'
-const asyncEval = <T>(body: string): T =>
-  JSON.parse(
-    evalRaw(`(async () => { ${WAIT_PRELUDE} ${body} })().then(value => JSON.stringify(value))`)
-  ) as T
+const asyncEval = <T>(body: string): T => {
+  const raw = evalRaw(
+    `(async () => { ${WAIT_PRELUDE} ${body} })().then(value => JSON.stringify(value))`
+  )
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    throw new Error(`Checkbox eval failed: ${raw}`)
+  }
+}
 let layout: unknown
 
 beforeAll(() => {
@@ -28,7 +34,7 @@ afterAll(() => {
 
 function mode(value: 'source' | 'preview') {
   asyncEval(
-    `const leaf = app.workspace.getMostRecentLeaf(); await leaf.setViewState({type:'markdown', state:{file:${JSON.stringify(NOTE)}, mode:${JSON.stringify(value)}, source:false}}); await until(() => leaf.view.contentEl.querySelector(${JSON.stringify(value === 'source' ? '.cm-content input[data-task="/"]' : '.markdown-preview-view li[data-task="/"] input')})); return true;`
+    `const leaf = app.workspace.getMostRecentLeaf(); await leaf.setViewState({type:'markdown', state:{file:${JSON.stringify(NOTE)}, mode:${JSON.stringify(value)}, source:false}}); if (!await until(() => leaf.view.contentEl.querySelector(${JSON.stringify(value === 'source' ? '.cm-content input[data-task="/"]' : '.markdown-preview-view li[data-task="/"] input')}))) throw new Error('Checkbox surface did not render: ${value}'); return true;`
   )
 }
 
@@ -75,15 +81,29 @@ it('edits nested and quoted reading-view items at their actual source lines', ()
   )
   mode('preview')
   const result = asyncEval<string>(`
-    const root = app.workspace.getMostRecentLeaf().view.contentEl.querySelector('.markdown-preview-view');
     const f = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});
-    for (const text of ['Nested item', 'Quoted item']) {
-      const li = Array.from(root.querySelectorAll('li.task-list-item')).find(el => el.textContent.trim() === text);
-      const input = li.querySelector(':scope > input');
+    const names = ['Nested item', 'Quoted item'];
+    const findInput = (text) => {
+      const root = app.workspace.getMostRecentLeaf().view.contentEl.querySelector('.markdown-preview-view');
+      const li = Array.from(root?.querySelectorAll('li.task-list-item') ?? []).find(el => el.textContent.trim() === text);
+      const input = li?.querySelector(':scope > input');
+      return input?.isConnected ? input : null;
+    };
+    if (!await until(() => names.every(text => findInput(text)))) throw new Error('New nested and quoted rows did not render');
+    for (const text of names) {
+      const input = await until(() => findInput(text));
+      if (!input) throw new Error('Connected checkbox missing for ' + text);
+      const section = app.workspace.getMostRecentLeaf().view.previewMode.renderer.getSectionInfo(input);
+      const mapping = JSON.stringify({row:text, dataLine:input.dataset.line, lineStart:section?.lineStart, lineEnd:section?.lineEnd});
+      const previous = new Set(document.querySelectorAll('.menu'));
       input.dispatchEvent(new MouseEvent('contextmenu', {bubbles:true, cancelable:true, clientX:80, clientY:180}));
-      const menu = await until(() => document.querySelector('.menu'));
-      Array.from(menu.querySelectorAll('.menu-item')).find(el => el.textContent.includes('Scheduled')).click();
-      if (!await until(async () => (await app.vault.read(f)).includes('[<] ' + text))) throw new Error('wrong source line for ' + text);
+      const menu = await until(() => Array.from(document.querySelectorAll('.menu')).find(el => !previous.has(el)));
+      if (!menu) throw new Error('Fresh state menu did not open: ' + mapping);
+      const item = Array.from(menu.querySelectorAll('.menu-item')).find(el => el.textContent.includes('Scheduled'));
+      if (!item) throw new Error('Scheduled choice missing for ' + text);
+      item.click();
+      if (!await until(async () => (await app.vault.read(f)).includes('[<] ' + text))) throw new Error('wrong source line: ' + mapping + '; file=' + await app.vault.read(f));
+      if (!await until(() => findInput(text)?.parentElement.dataset.task === '<')) throw new Error('Updated row did not render for ' + text);
     }
     const text = await app.vault.read(f);
     await app.vault.modify(f, ${JSON.stringify(BODY)});
