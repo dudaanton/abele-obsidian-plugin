@@ -16,7 +16,7 @@ import { normalizePath, wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
 import updateLocale from 'dayjs/plugin/updateLocale'
-import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
+import { getAvailablePath } from '@/helpers/vaultUtils'
 import { syncTaskFileName } from '@/helpers/taskFileName'
 import { transactionFileTarget } from '@/helpers/transactionFileName'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
@@ -238,7 +238,7 @@ export class GlobalStore {
         const isTimeEntry = fm?.type === 'time-entry'
         if (isTimeEntry) {
           const config = AbeleConfig.getInstance()
-          const fileContent = await readFileContent(event.file)
+          const fileContent = await this.app.vault.read(event.file)
           const parsedContent = await parseNoteContent(event.file, fileContent)
           const groups = Array.isArray(parsedContent.groups)
             ? (parsedContent.groups as string[])

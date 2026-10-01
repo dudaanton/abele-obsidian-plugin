@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import dayjs from 'dayjs'
-import { TFile } from 'obsidian'
+import { TFile, type App } from 'obsidian'
+import { flushPromises } from '@vue/test-utils'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { TimeEntryList } from '@/entities/TimeEntryList'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { configureAbele, useVault } from '../helpers/testEnv'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 const PATH = 'Timers/Orchard.md'
 const START = '2024-02-29T23:59:30'
@@ -179,6 +181,36 @@ describe('TimeEntry public state and lifecycle', () => {
     await GlobalStore.getInstance().app.vault.delete(file)
     app.emit('vault', 'delete', file)
     expect(item.entryNotFound).toBe(true)
+  })
+})
+
+describe('time entry naming after a file edit', () => {
+  // BUG: naming reads an open editor, which may not have loaded its persisted text yet.
+  it('uses the saved start and groups when a background editor is empty', async () => {
+    const file = fileAt()
+    const saved = await app.vault.read(file)
+    Object.assign(app, {
+      workspace: {
+        getLeavesOfType: () => [{ view: { file, editor: { getValue: () => '' } } }],
+      },
+    })
+    const config = AbeleConfig.getInstance()
+    const oldTemplate = config.timeEntryPathTemplate
+    config.timeEntryPathTemplate = 'Timers/{{date}} {{groups}} {{start}}'
+    const store = GlobalStore.getInstance()
+    const wasInitialized = store.initialized.value
+    store.initialized.value = false
+    store.init(app as unknown as App)
+    try {
+      app.emit('vault', 'modify', file)
+      await flushPromises()
+      expect(file.path).toBe('Timers/2024-02-29 Orchard 23-59.md')
+      expect(await app.vault.read(file)).toBe(saved)
+    } finally {
+      store.vaultWatcher.cleanup()
+      store.initialized.value = wasInitialized
+      config.timeEntryPathTemplate = oldTemplate
+    }
   })
 })
 
