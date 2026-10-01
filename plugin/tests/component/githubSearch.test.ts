@@ -3,8 +3,8 @@
  * scopes — the change itself, the whole repository at the tab's commit, file names — whose
  * results open where they point, in a new tab on Mod-click.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { flushPromises } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { ISSUE, PULL, file, openTab } from '../helpers/githubTab'
@@ -15,18 +15,12 @@ import { indexes } from '@/github/search/source'
 
 import { useFakeClock } from '../helpers/fakeClock'
 const advance = useFakeClock()
+enableAutoUnmount(afterEach)
 
 const archive = new Uint8Array(
   readFileSync(resolve(__dirname, '../fixtures/github/widgets.tar.gz'))
 )
 const SHA = '9bafc7b0401748aa7ce64a89653af1a32c4c6143'
-
-const settle = async () => {
-  for (let i = 0; i < 5; i++) {
-    await flushPromises()
-    await advance()
-  }
-}
 
 beforeEach(() => {
   useVault([])
@@ -96,6 +90,19 @@ describe('find in the tab', () => {
 })
 
 describe('the code search panel', () => {
+  beforeEach(() => {
+    // File hashes run outside the fake clock. Keep them pending beyond a fixed number of
+    // promise flushes, even on a fast host, while still exercising the real digest.
+    const digest = crypto.subtle.digest.bind(crypto.subtle)
+    vi.spyOn(crypto.subtle, 'digest').mockImplementation(
+      async (...args: Parameters<SubtleCrypto['digest']>) => {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        return digest(...args)
+      }
+    )
+  })
+  afterEach(() => vi.restoreAllMocks())
+
   const pullRoutes = {
     '/repos/o/r/pulls/7': { json: { ...PULL, head: { label: 'ann:fix', sha: SHA } } },
     '/repos/o/r/issues/7/comments': { json: [] },
@@ -132,7 +139,9 @@ describe('the code search panel', () => {
     const input = wrapper.find<HTMLInputElement>('.abele-github-search__query')
     await input.setValue(q)
     key(input.element, 'Enter')
-    await settle()
+    // Submitting is not completing: hashes and archive decompression run on the host.
+    // Each caller waits for the result/error it needs (or deliberately keeps loading held).
+    await flushPromises()
   }
 
   it('offers the change, the whole repository at its head, and file names', async () => {
@@ -149,7 +158,7 @@ describe('the code search panel', () => {
     const { wrapper, onOpen } = await openPanel()
     await search(wrapper, 'formatName')
 
-    // The diffs are read before the answer shows; a loaded run takes more turns than settle() gives.
+    // The diffs and their hashes must finish before the answer can render.
     await vi.waitFor(() => expect(wrapper.findAll('.abele-github-search__line')).toHaveLength(2))
     const lines = wrapper.findAll('.abele-github-search__line')
     expect(lines.map((l) => l.find('.abele-github-search__number').text())).toEqual([
@@ -285,18 +294,21 @@ describe('the code search panel', () => {
   it('keeps its results when a result is followed, and searches the repository from the file', async () => {
     const { wrapper, model } = await openPanel()
     await search(wrapper, 'formatName')
+    // Follow only an actual result; navigating during hashing races the search's source.
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-search__line')).toHaveLength(2))
     const { parseGithubUrl } = await import('@/github/urls')
     const url = `https://github.com/o/r/blob/${SHA}/src/app.ts#L1`
     model.url = url
     model.target = parseGithubUrl(url, ['github.com'])
     model.nonce++
-    await settle()
-    const options = wrapper.findAll('.abele-github-search__scope option').map((o) => o.text())
-    expect(options[0]).toMatch(/^Whole repository at/)
-    expect(
-      wrapper.find<HTMLSelectElement>('.abele-github-search__scope select').element.value
-    ).toBe('repo')
-    expect(wrapper.findAll('.abele-github-search__line').length).toBeGreaterThan(0)
+    await vi.waitFor(() => {
+      const options = wrapper.findAll('.abele-github-search__scope option').map((o) => o.text())
+      expect(options[0]).toMatch(/^Whole repository at/)
+      expect(
+        wrapper.find<HTMLSelectElement>('.abele-github-search__scope select').element.value
+      ).toBe('repo')
+      expect(wrapper.findAll('.abele-github-search__line').length).toBeGreaterThan(0)
+    })
   })
 
   it('says a malformed regular expression is one, instead of searching', async () => {
@@ -306,8 +318,10 @@ describe('the code search panel', () => {
       .find((i) => i.attributes('aria-label')?.includes('regular expression'))!
     await regex.trigger('click')
     await search(wrapper, '(')
-    expect(wrapper.find('.abele-github-search__error').text()).toMatch(
-      /Not a valid regular expression/
+    await vi.waitFor(() =>
+      expect(wrapper.find('.abele-github-search__error').text()).toMatch(
+        /Not a valid regular expression/
+      )
     )
   })
 })
