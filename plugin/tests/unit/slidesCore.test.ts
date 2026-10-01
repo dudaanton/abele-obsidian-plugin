@@ -121,6 +121,30 @@ describe('presentation markdown codec', () => {
     expect(content(deck, 0)).not.toContain('Private heading')
   })
 
+  it('serializes edited settings rather than stale directive values', () => {
+    const deck = parseDeck(
+      '::slide{layout=image bg="[[sample-image.png]]" dim=0.5 fit=contain class=sample autoplay steps}::\n# Sample'
+    )
+    Object.assign(deck.slides[0].settings, {
+      layout: 'content',
+      bg: '',
+      dim: 0,
+      fit: 'cover',
+      className: '',
+      autoplay: false,
+    })
+    const restored = parseDeck(serializeDeck(deck))
+    expect(restored.slides[0].settings).toMatchObject({
+      layout: 'content',
+      bg: '',
+      dim: 0,
+      fit: 'cover',
+      className: '',
+      autoplay: false,
+    })
+    expect(restored.slides[0].settings.attributes.steps).toBe(true)
+  })
+
   it('does not promote a mid-slide marker into settings', () => {
     const deck = parseDeck('# Text\n\n::slide{layout=quote}::')
     expect(deck.slides[0].settings.layout).toBe('content')

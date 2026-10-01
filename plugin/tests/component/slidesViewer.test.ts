@@ -78,6 +78,58 @@ describe('bounded deck rendering', () => {
     expect(host.querySelectorAll('.abele-slide:not([hidden]) video')).toHaveLength(0)
   })
 
+  it('pauses a pending playback attempt that finishes after its slide leaves', async () => {
+    let finish!: () => void
+    let paused = true
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {
+      paused = true
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            paused = false
+            resolve()
+          }
+        })
+    )
+    const { viewer, load } = made(
+      '::slide{bg="[[sample-video.mp4]]" autoplay}::\n# Video\n---\n# Next'
+    )
+    await load()
+    await viewer.go('next')
+    finish()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(paused).toBe(true)
+  })
+
+  it('cancels fullscreen that finishes after the presentation was exited', async () => {
+    let finish!: () => void
+    const { viewer, load } = made('# Example')
+    await load()
+    const exit = vi.fn(async () => {})
+    Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exit })
+    Object.defineProperty(viewer.root, 'requestFullscreen', {
+      value: () =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            Object.defineProperty(document, 'fullscreenElement', {
+              configurable: true,
+              value: viewer.root,
+            })
+            resolve()
+          }
+        }),
+    })
+    const pending = viewer.present(true)
+    viewer.exitPresenting()
+    finish()
+    await pending
+    expect(exit).toHaveBeenCalledTimes(1)
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null })
+  })
+
   it('disposes late asynchronous renders even when the viewer has already closed', async () => {
     let finish!: (value: () => void) => void
     const disposed = vi.fn()

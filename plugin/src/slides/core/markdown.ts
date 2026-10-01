@@ -197,7 +197,14 @@ export function serializeDeck(deck: Deck): string {
   if (deck.settings.theme) properties.theme = deck.settings.theme
   const slides = deck.slides.map((slide) => {
     const s = slide.settings
-    const attributes: Record<string, Attribute> = { ...s.attributes, layout: s.layout }
+    const attributes: Record<string, Attribute> = {
+      ...Object.fromEntries(
+        Object.entries(s.attributes).filter(
+          ([key]) => !['layout', 'bg', 'dim', 'fit', 'autoplay', 'class'].includes(key)
+        )
+      ),
+      layout: s.layout,
+    }
     if (s.bg) attributes.bg = s.bg
     if (s.dim) attributes.dim = String(s.dim)
     if (s.fit !== 'cover') attributes.fit = s.fit

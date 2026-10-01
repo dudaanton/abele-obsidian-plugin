@@ -277,29 +277,37 @@ export class DeckViewer {
       entry.attempted.add(video)
       video.muted = true
       video.setAttribute('muted', '')
-      void video.play().catch(() => {
-        if (
-          entry.gone ||
-          entry.element.hidden ||
-          video.parentElement?.querySelector('.abele-slide-play')
-        )
-          return
-        const button = this.root.ownerDocument.createElement('button')
-        button.type = 'button'
-        button.className = 'abele-slide-play'
-        button.textContent = 'Play video'
-        button.addEventListener(
-          'click',
-          () => {
-            void video
-              .play()
-              .then(() => button.remove())
-              .catch(() => {})
-          },
-          { signal: this.abort.signal }
-        )
-        entry.element.append(button)
-      })
+      void video
+        .play()
+        .then(() => {
+          if (entry.gone || entry.element.hidden || this.closed) video.pause()
+        })
+        .catch(() => {
+          if (
+            entry.gone ||
+            entry.element.hidden ||
+            video.parentElement?.querySelector('.abele-slide-play')
+          )
+            return
+          const button = this.root.ownerDocument.createElement('button')
+          button.type = 'button'
+          button.className = 'abele-slide-play'
+          button.textContent = 'Play video'
+          button.addEventListener(
+            'click',
+            () => {
+              void video
+                .play()
+                .then(() => {
+                  if (entry.gone || entry.element.hidden || this.closed) video.pause()
+                  button.remove()
+                })
+                .catch(() => {})
+            },
+            { signal: this.abort.signal }
+          )
+          entry.element.append(button)
+        })
     }
   }
 
@@ -349,7 +357,9 @@ export class DeckViewer {
     if (fullscreen && this.root.requestFullscreen) {
       try {
         await this.root.requestFullscreen()
-        this.fullscreenOwned = true
+        if (this.closed || !this.placeholder) {
+          if (doc.fullscreenElement === this.root) await doc.exitFullscreen()
+        } else this.fullscreenOwned = true
       } catch {
         /* The full-window surface remains usable when element fullscreen is unavailable. */
       }
