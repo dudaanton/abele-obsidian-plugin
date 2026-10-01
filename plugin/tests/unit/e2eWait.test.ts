@@ -61,6 +61,15 @@ for (const [name, poll] of [
       expect(vi.getTimerCount()).toBe(0)
     })
 
+    it('preserves a custom sampling interval for measured operations', async () => {
+      vi.useFakeTimers()
+      const predicate = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce('ready')
+      const result = poll(predicate, 1000, 5)
+      await vi.advanceTimersByTimeAsync(5)
+      expect(predicate).toHaveBeenCalledTimes(2)
+      expect(await result).toBe('ready')
+    })
+
     it('uses the same fifteen-second default allowance', async () => {
       vi.useFakeTimers()
       const done = vi.fn()

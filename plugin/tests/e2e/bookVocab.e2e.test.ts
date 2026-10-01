@@ -24,6 +24,7 @@ import { evalAsync } from './helpers/githubLive'
 import { onPhone, targets } from './helpers/target'
 import { swipe, tap } from './helpers/phone'
 import { MADE_UP, VOCAB_COUNTS, buildVocabEpub } from '../fixtures/books/vocabBook'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 targets('desktop', 'phone')
 
@@ -55,15 +56,32 @@ return JSON.stringify({ first, again, same, added: added.forms, off: off.on, tex
 const RULES = 1000
 
 const SHOTS = process.env.ABELE_PHONE_SHOTS ?? '/tmp/abele-iphone'
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
 const PRELUDE = `
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  ${WAIT_PRELUDE}
   const frame = () => new Promise((r) => requestAnimationFrame(() => r()))
-  const until = async (fn, ms = 8000, every = 100) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(every) }
-    return null
+  const ready = async (fn, label, ms = 8000) => {
+    const value = await until(fn, ms)
+    if (!value) throw Error('Timed out: ' + label)
+    return value
+  }
+  const pageReady = async (view, index) => {
+    const doc = await ready(() => {
+      const c = view.engine.renderer.getContents()[0]
+      if (index !== undefined && c?.index !== index) return false
+      const bounds = c?.doc?.defaultView?.frameElement?.getBoundingClientRect()
+      return bounds?.width > 0 && bounds.height > 0 && section(view)?.done && c.doc
+    }, 'vocabulary page')
+    await doc.fonts.ready
+    return doc
+  }
+  const anchorReady = async (view, anchor, underlined = false) => {
+    await view.engine.renderer.scrollToAnchor(anchor)
+    await ready(() => {
+      const doc = docOf(view), rect = anchor.getClientRects()[0]
+      if (!rect || rect.width <= 0 || rect.right <= 0 || rect.left >= doc.defaultView.innerWidth ||
+        rect.bottom <= 0 || rect.top >= doc.defaultView.innerHeight) return false
+      return !underlined || drawn(view).some((d) => Math.abs(d.rect.left - rect.left) < 1 && Math.abs(d.rect.top - rect.top) < 1)
+    }, 'anchor visible with current vocabulary marks')
   }
   const bookLeaf = () => app.workspace.getLeavesOfType('abele-book')[0]
   const open = async (path) => {
@@ -75,9 +93,10 @@ const PRELUDE = `
     try { leaf = app.workspace.getLeaf('tab') } catch { leaf = main }
     await Promise.race([leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true }), wait(15000)])
     for (const l of old) if (l !== leaf) l.detach()
-    await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 15000)
+    await ready(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 'reader ready', 15000)
     if (leaf.view.model.panel) leaf.view.model.panel = false
-    await wait(600)
+    await ready(() => !leaf.view.contentEl.querySelector('.abele-book-reader__panel'), 'reader panel closed')
+    await pageReady(leaf.view)
     return leaf.view
   }
   const docOf = (view) => view.engine.renderer.getContents()[0].doc
@@ -204,8 +223,7 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       const opened = await until(() => activePath() === ${JSON.stringify(CARD)} && activePath(), 5000)
       closeNotes(); backToBook()
       // The book's own link, underlined too, is followed.
-      await view.engine.renderer.scrollToAnchor(link)
-      await wait(500)
+      await anchorReady(view, link)
       const rect = link.getClientRects()[0]
       tapAt(doc, rect)
       const followed = await until(() => view.engine.renderer.getContents()[0]?.index === 1 ? 1 : null, 5000)
@@ -232,8 +250,9 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
         `
       const view = bookLeaf().view
       closeNotes(); backToBook()
-      await view.engine.goTo(view.model.toc[0].href); await wait(800)
-      await until(() => drawn(view).length, 5000)
+      await view.engine.goTo(view.model.toc[0].href)
+      await pageReady(view, 0)
+      await ready(() => drawn(view).length, 'underlined words', 5000)
       const doc = docOf(view)
       const link = doc.getElementById('to-two')
       const d = drawn(view).find((d) => !link.contains(doc.elementFromPoint(d.rect.left + 1, d.rect.top + 1)))
@@ -245,7 +264,6 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       )
       expect(at.error).toBeUndefined()
       tap(at.x!, at.y!)
-      await pause(1500)
       const opened = await runLong<{
         error?: string
         opened?: string | null
@@ -254,8 +272,9 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       }>(
         `
       const opened = await until(() => activePath() === ${JSON.stringify(CARD)} && activePath(), 5000)
-      closeNotes(); backToBook(); await wait(800)
+      closeNotes(); backToBook()
       const view = bookLeaf().view
+      await pageReady(view)
       const r = view.contentEl.getBoundingClientRect()
       return { opened, from: view.engine.renderer.start, stage: [r.left, r.top, r.width, r.height] }
     `,
@@ -270,12 +289,10 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
         Math.round(left + width * 0.2),
         Math.round(top + height / 2)
       )
-      await pause(1500)
       const turned = await runLong<{ error?: string; to?: number; lines?: number }>(
         `
       const view = bookLeaf().view
-      await until(() => view.engine.renderer.start !== ${opened.from}, 5000)
-      await wait(500)
+      await ready(() => view.engine.renderer.start > ${opened.from} && drawn(view).length, 'swipe to underlined words', 5000)
       await window.__e2eHost?.shot(${JSON.stringify(`${SHOTS}/book-vocab-turned.png`)})
       return { to: view.engine.renderer.start, lines: drawn(view).length }
     `,
@@ -300,14 +317,14 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
     }>(`
       const view = bookLeaf().view
       backToBook()
-      await view.engine.goTo(view.model.toc[0].href); await wait(600)
-      const doc = docOf(view)
+      await view.engine.goTo(view.model.toc[0].href)
+      const doc = await pageReady(view, 0)
       // The first kaķis, highlighted.
       const p = [...doc.querySelectorAll('p')].find((x) => x.textContent.includes('kaķis'))
       const node = [...p.childNodes].reverse().find((n) => n.nodeType === 3 && n.data.includes('kaķis'))
       const at = node.data.indexOf('kaķis')
       const range = doc.createRange(); range.setStart(node, at); range.setEnd(node, at + 5)
-      await view.engine.renderer.scrollToAnchor(range); await wait(400)
+      await anchorReady(view, range)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
       await until(() => view.model.selection, 3000)
       await view.reading.highlight('green')
@@ -333,7 +350,7 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       const last = [...doc.querySelectorAll('p')].reverse().find((x) => x.textContent.includes('kaķis'))
       const lastNode = [...last.childNodes].reverse().find((n) => n.nodeType === 3 && n.data.includes('kaķis'))
       const other = doc.createRange(); other.setStart(lastNode, lastNode.data.lastIndexOf('kaķis')); other.setEnd(lastNode, lastNode.data.lastIndexOf('kaķis') + 5)
-      await view.engine.renderer.scrollToAnchor(other); await wait(600)
+      await anchorReady(view, other, true)
       const drawnHere = drawn(view).map((d) => d.text)
       view.model.active = null
       tapAt(doc, other.getClientRects()[0])
@@ -359,18 +376,19 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       const view = bookLeaf().view
       backToBook()
       await until(() => vocab(view).rules().some((r) => r.id === 'note:' + ${JSON.stringify(CAT)}), 5000)
-      await view.engine.goTo(view.model.toc[0].href); await wait(600)
-      const doc = docOf(view)
+      await view.engine.goTo(view.model.toc[0].href)
+      const doc = await pageReady(view, 0)
       const h = view.model.highlights.find((x) => x.text === 'kaķis')
       const anchor = view.engine.resolveNavigation(h.cfi).anchor(doc)
-      await view.engine.renderer.scrollToAnchor(anchor); await wait(600)
+      await anchorReady(view, anchor, true)
       tapAt(doc, anchor.getClientRects()[0])
       const onHighlight = await until(titles, 3000)
-      closeMenu(); view.model.active = null; await wait(200)
+      closeMenu(); view.model.active = null
+      await ready(() => !document.querySelector('.menu') && !view.contentEl.querySelector('.abele-book-selection'), 'highlight menu and bar closed')
       const last = [...doc.querySelectorAll('p')].reverse().find((x) => x.textContent.includes('kaķis'))
       const lastNode = [...last.childNodes].reverse().find((n) => n.nodeType === 3 && n.data.includes('kaķis'))
       const other = doc.createRange(); other.setStart(lastNode, lastNode.data.lastIndexOf('kaķis')); other.setEnd(lastNode, lastNode.data.lastIndexOf('kaķis') + 5)
-      await view.engine.renderer.scrollToAnchor(other); await wait(600)
+      await anchorReady(view, other, true)
       tapAt(doc, other.getClientRects()[0])
       const elsewhere = await until(titles, 3000)
       closeMenu()
@@ -391,7 +409,8 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
     }>(`
       const view = bookLeaf().view
       backToBook()
-      await view.engine.goTo(view.model.toc[0].href); await wait(800)
+      await view.engine.goTo(view.model.toc[0].href)
+      await pageReady(view, 0)
       const before = vocab(view).count()
       await setProps(${JSON.stringify(CARD)}, (fm) => { fm['word-underline'] = false })
       await setProps(${JSON.stringify(CAT)}, (fm) => { fm['word-underline'] = false })
@@ -401,8 +420,7 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       ;(await until(() => view.contentEl.querySelector('.abele-book-selection__forms'), 3000)).click()
       const stop = await until(() => [...document.querySelectorAll('.modal button')].find((b) => b.textContent.trim() === 'Stop underlining'), 3000)
       stop.click()
-      await until(() => vocab(view).count() === 0, 5000)
-      await wait(300)
+      await ready(() => vocab(view).count() === 0 && lines(view) === 0, 'vocabulary lines removed', 5000)
       const note = await app.vault.read(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))
       return { before, afterCard, afterAll: lines(view) + vocab(view).count(), note }
     `)
@@ -478,9 +496,10 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       // The bar under the page: on, on, back.
       const bar = () => bookLeaf().view.contentEl.querySelector('.abele-book-search-bar')
       const steps = []
-      for (const i of [1, 1, 0]) {
-        bar().querySelectorAll('.abele-obsidian-icon')[i].click()
-        await wait(700)
+      for (const [i, expected] of [[1, 0], [1, 1], [0, 0]]) {
+        const control = await ready(() => bar()?.querySelectorAll('.abele-obsidian-icon')[i], 'search step control')
+        control.click()
+        await ready(() => model.search.current === expected, 'search step ' + expected)
         steps.push(model.search.current)
       }
       // The same from a template's field, in the editor.
@@ -488,7 +507,6 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       await app.vault.create(${JSON.stringify(TEMPLATE)}, '{{#body}}\\n{{ quote }}\\n\\n**Forms:** {{ forms }}\\n{{/body}}\\n')
       config.reader = { ...config.reader, notesTemplate: ${JSON.stringify(TEMPLATE)} }
       await config.saveSettings()
-      await wait(500)
       const withField = '# Terms\\n\\n> [!quote|yellow] [[words.epub#cfi=' + place + '|Vārdi]]\\n> māja\\n\\n**Forms:** mājas\\n'
       await app.vault.create(${JSON.stringify(TERMS_FIELD)}, withField)
       closeNotes()
@@ -500,7 +518,7 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       const again = await until(() => { const s = bookLeaf().view.model.search; return s.words?.join() === 'mājas' && !s.running ? s.count : null }, 15000)
       closeNotes(); backToBook()
       bar().querySelectorAll('.abele-obsidian-icon')[3].click()
-      await wait(300)
+      await ready(() => !bar() && bookLeaf().view.model.search.count === 0, 'search bar closed')
       const closed = !bar() && bookLeaf().view.model.search.count === 0
       return { linked, words, count, panel, steps, field, again, closed }
     `)
@@ -534,13 +552,15 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       renderer.removeAttribute('animated')
       /** Turns ten pages from the start of the long chapter; how long each took, drawn. */
       const turns = async () => {
-        await view.engine.goTo(view.model.toc[1].href); await wait(800)
+        await view.engine.goTo(view.model.toc[1].href)
+        await pageReady(view, 1)
         const out = []
         for (let i = 0; i < 10; i++) {
           const t = performance.now()
           await view.engine.next()
           await frame(); await frame()
           out.push(performance.now() - t)
+          // Benchmark pacing between samples, not a readiness wait: keep both runs identical.
           await wait(150)
         }
         return out
@@ -563,7 +583,8 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       const rules = vocab(view).rules().length
       // The long chapter read afresh with the rules: how long until its words are known.
       vocab(view).kept.clear()
-      await view.engine.goTo(view.model.toc[0].href); await wait(500)
+      await view.engine.goTo(view.model.toc[0].href)
+      await pageReady(view, 0)
       const t = performance.now()
       await view.engine.goTo(view.model.toc[1].href)
       await until(() => vocab(view).count() > 0, 20000, 5)
