@@ -61,10 +61,14 @@ export class BookReading {
   private readonly pageUnloadHandler = (e: Event) => {
     const doc = (e as CustomEvent<{ doc: Document }>).detail.doc
     this.marks.unloadPdf(doc)
+    this.selectionWatches.get(doc)?.()
+    this.selectionWatches.delete(doc)
+    this.docIndex.delete(doc)
   }
   /** The words last selected, where reading aloud can start. */
   private selectedRange: Range | null = null
   private searchToken = 0
+  private selectionWatches = new Map<Document, () => void>()
   private loadGeneration = 0
   private disposed = false
   private repairing = false
@@ -117,6 +121,7 @@ export class BookReading {
   }
 
   destroy(): void {
+    this.dispose()
     this.pdf?.pageEvents.removeEventListener('drawn', this.pageDrawnHandler)
     if (this.pdf) this.engine.renderer.removeEventListener('unload', this.pageUnloadHandler)
     this.marks.destroy()
@@ -165,6 +170,8 @@ export class BookReading {
   /** A closing book cannot apply a pending confirmation or publish a late highlights read. */
   dispose(): void {
     this.disposed = true
+    for (const stop of this.selectionWatches?.values() ?? []) stop()
+    this.selectionWatches?.clear()
     this.loadGeneration++
     this.cancelRepair?.()
     this.cancelRepair = null
@@ -306,11 +313,21 @@ export class BookReading {
 
   /** Watches a page for words being selected. */
   watchSelection(doc: Document, index: number): void {
+    if (this.disposed) return
     this.docIndex.set(doc, index)
+    this.selectionWatches.get(doc)?.()
+    const win = doc.defaultView ?? window
     let timer = 0
-    doc.addEventListener('selectionchange', () => {
-      window.clearTimeout(timer)
-      timer = window.setTimeout(() => this.readSelection(doc), 250)
+    const changed = () => {
+      win.clearTimeout(timer)
+      timer = win.setTimeout(() => {
+        if (!this.disposed) this.readSelection(doc)
+      }, 250)
+    }
+    doc.addEventListener('selectionchange', changed)
+    this.selectionWatches.set(doc, () => {
+      win.clearTimeout(timer)
+      doc.removeEventListener('selectionchange', changed)
     })
   }
 
