@@ -104,10 +104,10 @@ export class PresenterView {
     })
     if (overlay)
       doc.addEventListener('keydown', this.handleKey, { signal: this.abort.signal, capture: true })
-    this.unwatch = show.watch(this.update)
-    this.unend = show.onEnd(() => this.destroy())
     this.interval = doc.defaultView!.setInterval(() => this.updateTimer(), 250)
     this.updateTimer()
+    this.unwatch = show.watch(this.update)
+    this.unend = show.onEnd(() => this.destroy())
     this.root.focus()
   }
 

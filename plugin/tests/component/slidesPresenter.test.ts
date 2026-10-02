@@ -43,6 +43,15 @@ describe('presenter surface', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('does not leave a timer behind if attached to an already ended show', () => {
+    vi.useFakeTimers()
+    const show = new Presentation(1)
+    show.end()
+    presenter = new PresenterView(document.body, show, { render: async () => () => {} }, media)
+    expect(document.querySelector('.abele-presenter')).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('disposes late notes rendering when the show ends', async () => {
     let finish!: (cleanup: () => void) => void
     const cleanup = vi.fn()

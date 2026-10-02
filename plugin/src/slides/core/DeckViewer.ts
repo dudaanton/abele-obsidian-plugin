@@ -77,13 +77,19 @@ export class DeckViewer {
     this.stylesheet = doc.createElement('style')
     this.toolbar = doc.createElement('div')
     this.toolbar.className = 'abele-deck-toolbar'
-    this.previous = this.button('Previous slide', () => void this.go('previous'))
+    this.previous = this.button('Previous slide', () => {
+      void this.go('previous')
+      this.root.focus()
+    })
     this.previous.textContent = '←'
     this.count = doc.createElement('span')
     this.count.className = 'abele-deck-count'
     this.count.setAttribute('aria-live', 'polite')
     this.toolbar.append(this.count)
-    this.next = this.button('Next slide', () => void this.go('next'))
+    this.next = this.button('Next slide', () => {
+      void this.go('next')
+      this.root.focus()
+    })
     this.next.textContent = '→'
     this.play = this.button('Play', () => {
       if (this.placeholder) this.exitPresenting()
@@ -451,17 +457,19 @@ export class DeckViewer {
   }
 
   async present(fullscreen: boolean): Promise<void> {
-    if (this.placeholder || this.closed) return
+    if (this.closed || (this.placeholder && (!fullscreen || this.fullscreenOwned))) return
     const doc = this.root.ownerDocument
-    this.focusBefore = doc.activeElement as HTMLElement | null
-    this.placeholder = doc.createComment('presentation tab')
-    this.root.before(this.placeholder)
-    doc.body.append(this.root)
-    this.root.classList.add('abele-deck-presenting')
-    this.play.textContent = 'Exit'
-    this.play.setAttribute('aria-label', 'Exit presentation')
+    if (!this.placeholder) {
+      this.focusBefore = doc.activeElement as HTMLElement | null
+      this.placeholder = doc.createComment('presentation tab')
+      this.root.before(this.placeholder)
+      doc.body.append(this.root)
+      this.root.classList.add('abele-deck-presenting')
+      this.play.textContent = 'Exit'
+      this.play.setAttribute('aria-label', 'Exit presentation')
+      this.scale()
+    }
     this.root.focus()
-    this.scale()
     const host = this.options.fullscreenHost
     if (fullscreen && (host || this.root.requestFullscreen)) {
       try {

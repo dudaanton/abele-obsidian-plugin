@@ -15,18 +15,25 @@ editor next to the slides. Changes refresh the preview on the slide you are look
 type: presentation
 aspect: '16:9'
 ---
+
 ::slide{layout=title}::
+
 # Sample deck
+
 A short introduction
 
 ---
+
 ::slide{layout=split}::
+
 ## Two sides
+
 ::left::
+
 - First point
 - Second point
-::right::
-![[sample-image.png]]
+  ::right::
+  ![[sample-image.png]]
 
 > [!notes]
 > A private reminder for the speaker.
@@ -62,8 +69,8 @@ a slide pauses its video and audio. Tap media or live controls without turning t
 
 ## Notes and your own CSS
 
-A notes callout (`> [!notes]`) is kept with the slide but hidden from the audience. It is stored
-now for the presenter view planned for a later stage; this stage does not show a notes panel.
+A notes callout (`> [!notes]`) is kept with the slide but hidden from the audience. The presenter
+view shows it in your notes panel, using the same formatting as a note.
 
 A fenced `css` block adds styling to the deck. Or set `theme: "[[sample-theme.css]]"` to use a
 CSS file in the vault. Both use the same CSS scoping as script views, limited to this deck's
@@ -88,5 +95,36 @@ and live map or chart controls keep their normal interaction.
 
 **Play** requests fullscreen on desktop and fills the Obsidian window on a phone. The exit
 button stays clear of the phone's safe area. **Exit** or Escape returns to the same deck tab.
-This is single-screen viewing: presenter windows, steps, transitions, scripts and export are
-later stages, not controls in this viewer yet.
+Use it when you want a single-screen show.
+
+## Present with notes
+
+Choose **Present** in the deck or the command **Present with speaker view**. On a computer,
+this opens a second Obsidian window for the audience. Move that window to your projector or
+second display, then click **Fullscreen** there. Your original tab keeps the current and next
+slides, your private speaker notes, a slide selector and a timer. Use **Pause timer** to pause
+or resume the clock, and **Reset timer** to start it again. Preview videos stay paused so they
+do not play twice; the audience slide keeps its usual playback controls.
+
+Arrows, Page Up/Down and Space from either window drive the same show. **End show**, **Exit**,
+Escape or closing either presentation view ends it and closes the audience window. Your deck
+returns to a normal tab, on the slide where you stopped. Editing the source beside the deck
+also updates both windows and the speaker notes.
+
+On a phone, **Present** shows these controls on the phone itself without a second window.
+During **Play**, you can also hold an empty slide area briefly and release to open your notes
+and previews. This is a local presenter, not a remote control for a computer on another device.
+The controls and notes stay clear of the screen's safe areas.
+
+## Reveal items and choose transitions
+
+Add `steps` to a slide's settings line, for example `::slide{steps}::`, to reveal its list items
+one by one. Nested items appear with their parent. Next or Space reveals an item before moving
+to the next slide. Previous hides an item, then returns to the previous slide with its items
+shown. Selecting a slide directly starts it unrevealed. The next-slide preview shows the full
+list so you can see what is coming.
+
+Set the deck property `transition: fade` or `transition: slide` for a simple slide-entry
+animation. `none` is the default. A slide can override it with `::slide{transition=none}::`.
+Animations last a quarter of a second and turn off when the system requests reduced motion.
+Scripts and export are still later stages.

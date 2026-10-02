@@ -72,6 +72,22 @@ export function registerSlides(plugin: Plugin): void {
       return true
     },
   })
+  plugin.addCommand({
+    id: 'present-presentation',
+    name: 'Present with speaker view',
+    icon: 'presentation',
+    checkCallback: (checking) => {
+      const file = available()
+      if (!file) return false
+      if (!checking)
+        void (async () => {
+          const view = await open(file, app.workspace.getLeaf(false))
+          await view?.viewer?.ready
+          await view?.startPresenter()
+        })()
+      return true
+    },
+  })
   plugin.registerEvent(
     app.workspace.on('file-menu', (menu, file, _source, leaf) => {
       if (

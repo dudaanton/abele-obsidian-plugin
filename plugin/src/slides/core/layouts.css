@@ -221,7 +221,8 @@
   overflow: hidden;
 }
 
-.abele-deck-presenting .abele-deck-editor-action {
+.abele-deck-presenting .abele-deck-editor-action,
+.abele-deck-audience .abele-deck-presenter-action {
   display: none;
 }
 

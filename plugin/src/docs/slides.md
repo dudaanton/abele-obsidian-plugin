@@ -1,7 +1,7 @@
 # Presentations
 
 Presentation notes are Markdown decks viewed on a fixed canvas. This section describes the
-viewing format and navigation; scripts, presenter windows and export are not implemented yet.
+viewing format, shared presenter mode and navigation; scripts and export are not implemented yet.
 
 ## Deck format
 
@@ -39,7 +39,7 @@ video playback on entry, muted with `playsinline` for mobile WebViews. A rejecte
 A `> [!notes]` callout belongs to that slide's speaker notes, including callouts nested in public
 quotes or list items. Code examples of this syntax remain ordinary code. Folded forms (`[!notes]-` and
 `[!notes]+`) work too. The callout is retained in the portable deck model and source note but
-is never sent to the audience renderer. Presenter view is a later stage.
+is never sent to the audience renderer. Only the presenter's notes panel renders these blocks.
 
 A fenced `css` block anywhere in the deck adds deck CSS rather than a visible code sample.
 It and the optional theme file pass through the existing `scopeCss`, rooted at this deck's
@@ -51,7 +51,15 @@ This is selector scoping, not a CSS security sandbox: declaration at-rules behav
 views. `class=` assigns classes to a slide, so `.sample-layout` and `.sample-layout h1` can style
 that slide root and its content. No separate settings file is stored;
 unknown marker attributes and frontmatter properties survive the codec for later stages.
-Do not rely on future `steps` or `transition` settings for viewing-stage behavior.
+Add `steps` to the slide marker to reveal top-level list items one at a time. Nested items reveal
+with their parent. Next/Space advances a step before paging; Previous reverses steps, then returns
+to the previous slide with its items revealed. Direct slide selection, Home and End start at step
+zero. The next-slide preview shows all its items. Steps apply in the normal viewer and in both
+windows of a show.
+
+Set frontmatter `transition: none | fade | slide` (default `none`), or override it with
+`transition=fade` on a slide marker. Transitions animate slide entry for 250 ms with CSS, without
+changing the canvas scaling transform. They are disabled under `prefers-reduced-motion`.
 
 ## Viewing and editing
 
@@ -68,6 +76,28 @@ full-window overlay with safe-area padding, not element fullscreen. **Exit** or 
 to the same tab. Arrow keys, Page Up/Down, Space, Home and End navigate while the deck is
 focused. On touch screens, tap the outer thirds or swipe horizontally to page. Links, media,
 editable fields and live map/chart/gallery controls keep their own gestures and keys.
+
+## Presenter mode
+
+**Present** or **Present with speaker view** starts a show at the current slide. Desktop opens
+an Obsidian audience popout; drag it to the display for the audience, then use its **Fullscreen**
+button. The original tab shows the current slide, next slide, rendered speaker notes, a slide
+selector and elapsed timer. Pause/resume and reset affect only the timer, not navigation.
+Preview media is paused; autoplay runs only in the audience view. Both windows share one
+in-memory navigation/step state, with no server or messaging transport. Source edits refresh
+both views and the notes panel without moving the current slide.
+
+Arrows, Page Up/Down and Space work from either window; Home/End jump within the shared show.
+Editable fields and live controls still keep their keys. **End show**, the audience's **Exit**,
+Escape, closing the audience window or closing/replacing the presenter tab end the whole show.
+The audience popout closes and the presenter returns to its ordinary deck tab. Native fullscreen
+is resolved after the view is adopted into the popout's document, so it targets the audience
+window, not the window in which the view was initially constructed.
+
+Mobile uses a local, safe-area-aware full-window presenter with the same notes, timer and
+previews. **Present** opens it directly; holding a noninteractive slide area for at least 600 ms
+and releasing also opens it from Play. It does not create a second screen or remotely control a
+desktop: a cross-device transport is outside this stage.
 
 ## Platform findings for later export
 

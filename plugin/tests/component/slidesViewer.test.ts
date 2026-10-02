@@ -61,6 +61,19 @@ describe('bounded deck rendering', () => {
     expect(show.step).toBe(1)
   })
 
+  it('returns keyboard focus to the deck after a navigation button is clicked', async () => {
+    const { viewer, host, load } = made('# One\n---\n# Two\n---\n# Three')
+    await load()
+    const next = host.querySelector<HTMLButtonElement>('button[aria-label="Next slide"]')!
+    next.focus()
+    next.click()
+    await viewer.ready
+    expect(document.activeElement).toBe(viewer.root)
+    viewer.root.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    await viewer.ready
+    expect(viewer.index).toBe(2)
+  })
+
   it('never starts media in a presenter preview', async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     const host = document.createElement('div')
@@ -204,6 +217,21 @@ describe('bounded deck rendering', () => {
     await pending
     expect(exit).toHaveBeenCalledTimes(1)
     Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null })
+  })
+
+  it('can enter fullscreen after opening a movable audience overlay', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const native = { enter: vi.fn(async () => {}), exit: vi.fn(async () => {}) }
+    const viewer = new DeckViewer(host, { render: async () => () => {} }, media, {
+      fullscreenHost: native,
+    })
+    viewers.push(viewer)
+    await viewer.setDeck(parseDeck('# Example'))
+    await viewer.present(false)
+    expect(native.enter).not.toHaveBeenCalled()
+    await viewer.present(true)
+    expect(native.enter).toHaveBeenCalledTimes(1)
   })
 
   it('uses a host fullscreen controller and releases it when the view closes', async () => {

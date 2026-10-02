@@ -7,7 +7,9 @@ otherwise; a note that breaks that is a note the plugin will read wrongly.
 ## Presentations
 
 `type: presentation` marks an ordinary Markdown note that opens as a deck. Deck frontmatter
-stores `aspect` (`16:9`, `4:3`, `9:16`) and optional `theme` (a vault CSS wikilink or `default`).
+stores `aspect` (`16:9`, `4:3`, `9:16`), optional `theme` (a vault CSS wikilink or `default`) and
+optional `transition` (`none`, `fade`, `slide`). Slide markers can enable `steps` for list reveals
+or override `transition`. Navigation steps and the presenter timer are ephemeral, not stored.
 Standalone `---` lines split slides outside properties and code; `***` is a horizontal rule
 within a slide. A slide may start with `::slide{layout=split bg="[[sample-image.png]]" dim=0.4}::`.
 Region markers are `::left::`, `::right::`, and `::cell::`. Speaker reminders are ordinary
