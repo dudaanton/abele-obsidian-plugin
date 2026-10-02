@@ -108,7 +108,7 @@ function lineKind(state: EditorState, number: number) {
         native ||= node.name
           .split('_')
           .some((name) =>
-            /^(?:keyword|def|atom|number|string(?:-2)?|comment|operator|variable(?:-[23])?|type|builtin|tag|attribute|property|qualifier|meta|error)$/.test(
+            /^(?:keyword|def|atom|number|string(?:-2)?|comment|operator|variable(?:-[23])?|type|builtin|tag|attribute|property|qualifier|meta|error|positive|negative)$/.test(
               name
             )
           )

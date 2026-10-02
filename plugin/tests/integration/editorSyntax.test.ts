@@ -16,7 +16,7 @@ import type { AbeleSettings } from '@/services/AbeleConfig'
 // A small HyperMD-shaped parser: the extension must use the editor's parsed fences, not
 // mistake fence-looking strings in prose for code. The real parser is exercised by e2e.
 const language = StreamLanguage.define({
-  startState: () => ({ fence: '', native: false, quoted: false }),
+  startState: () => ({ fence: '', native: false, quoted: false, diff: false }),
   token(stream, state) {
     if (stream.sol()) {
       state.quoted = false
@@ -32,12 +32,15 @@ const language = StreamLanguage.define({
       if (!open) return null
       state.fence = open[1]
       state.native = open[2] === 'native'
+      state.diff = open[2] === 'diff'
       return state.quoted ? 'inline-code_quote_quote-1' : 'hmd-codeblock-begin'
     }
     if (text === state.fence) {
       state.fence = ''
       return state.quoted ? 'inline-code_quote_quote-1' : 'hmd-codeblock-end'
     }
+    if (state.diff && /^[+-]/.test(text))
+      return text.startsWith('-') ? 'hmd-codeblock_negative' : 'hmd-codeblock_positive'
     return state.quoted
       ? 'inline-code_quote_quote-1'
       : state.native
@@ -51,6 +54,8 @@ const language = StreamLanguage.define({
       'hmd-codeblock-begin',
       'hmd-codeblock-end',
       'hmd-codeblock_keyword',
+      'hmd-codeblock_negative',
+      'hmd-codeblock_positive',
       'inline-code_quote_quote-1',
     ].map((name) => [name, Tag.define()])
   ),
@@ -168,6 +173,24 @@ describe('Prism tokens in a CM6 editor', () => {
     expect(tokenText(view)).toEqual([])
     expect(tokenize).not.toHaveBeenCalled()
   })
+
+  it.each(['-old\n+new', '-old', '+new'])(
+    'leaves native diff colours alone for %s',
+    async (source) => {
+      const diffTokenize = vi.fn((text: string) => [{ type: 'inserted', content: text }])
+      const view = await mount(
+        `\`\`\`diff\n${source}\n\`\`\``,
+        true,
+        () => true,
+        async () => ({
+          languages: { diff: grammar },
+          tokenize: diffTokenize,
+        })
+      )
+      expect(tokenText(view)).toEqual([])
+      expect(diffTokenize).not.toHaveBeenCalled()
+    }
+  )
 
   it('strips quote containers from the Prism input and maps tokens back to exact offsets', async () => {
     const view = await mount('> ```graphql\n> query { sample }\n> ```')
