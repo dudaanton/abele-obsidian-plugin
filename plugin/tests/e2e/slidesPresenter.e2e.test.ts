@@ -95,6 +95,14 @@ describe.skipIf(!available)('shared presenter show', () => {
         await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1})
         await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1})
         if(!await until(()=>native.isFullScreen() || native.isSimpleFullScreen()))throw Error('audience did not enter fullscreen')
+        const content=active().querySelector('.abele-slide-content')
+        const style=doc.defaultView.getComputedStyle(content)
+        result.animation=style.animationName
+        result.duration=style.animationDuration
+        try {
+          await cdp.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]})
+          result.reduced=doc.defaultView.getComputedStyle(content).animationName
+        } finally {await cdp.sendCommand('Emulation.setEmulatedMedia',{features:[]})}
         presenter.root.focus()
         await press(document,'ArrowRight','ArrowRight',39)
         result.first=show.index===0 && show.step===1 && active().querySelectorAll('.abele-slide-fragment-hidden').length===1
@@ -138,6 +146,9 @@ describe.skipIf(!available)('shared presenter show', () => {
       expect(r.reverse, JSON.stringify(r)).toBe(true)
       expect(r.edited, JSON.stringify(r)).toBe(true)
       expect(r.editPosition, JSON.stringify(r)).toBe(true)
+      expect(r.animation).toBe('abele-slide-fade')
+      expect(r.duration).toBe('0.25s')
+      expect(r.reduced).toBe('none')
       expect(r.movable, JSON.stringify(r)).toBe(true)
       expect(r.fullscreen, JSON.stringify(r)).toBe(true)
       expect(r.closed).toBe(true)
