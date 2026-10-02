@@ -55,16 +55,17 @@ describe.skipIf(!available)('Word editing through agent tools', () => {
       preview: boolean
     }>(`(async () => {
       const api = window.__abeleTest
-      const scope = new api.ScopeResolver(); scope.setFullVaultAccess(true)
-      api.ScopeResolver.setActiveInstance(scope)
+      const scope = new api.ScopeResolver()
+      scope.addFile(${JSON.stringify(DOC)}); scope.addFile(${JSON.stringify(IMAGE)})
+      const ctx = {scope, interactive:true}
       try {
         const tools = api.createAgentTools()
         const read = tools.find(t=>t.name==='docx_read'); const write=tools.find(t=>t.name==='docx_edit')
-        const initial = await read.execute('sample-read',{path:${JSON.stringify(DOC)}})
+        const initial = await read.execute('sample-read',{path:${JSON.stringify(DOC)}},undefined,ctx)
         let revision = initial.content[0].text.match(/revision ([0-9a-f-]+)/)[1]
         const originalRevision = revision; let count=0; let preview=false
         const edit = async args => {
-          const result = await write.execute('sample-edit-'+(++count),{path:${JSON.stringify(DOC)},revision,paragraph:1,...args})
+          const result = await write.execute('sample-edit-'+(++count),{path:${JSON.stringify(DOC)},revision,paragraph:1,...args},undefined,ctx)
           revision=result.content[0].text.match(/revision ([0-9a-f-]+)/)[1]
           if(args.operation==='format') preview=result.details.diff.old!==result.details.diff.new
         }
@@ -88,7 +89,7 @@ describe.skipIf(!available)('Word editing through agent tools', () => {
         await edit({operation:'image_delete',image:1})
         await edit({operation:'image_insert',image_path:${JSON.stringify(IMAGE)},width:120,height:80})
         let stale=false
-        try {await write.execute('sample-stale',{path:${JSON.stringify(DOC)},revision:originalRevision,paragraph:1,operation:'insert',text:'stale'})} catch(error) {stale=/changed/.test(error.message)}
+        try {await write.execute('sample-stale',{path:${JSON.stringify(DOC)},revision:originalRevision,paragraph:1,operation:'insert',text:'stale'},undefined,ctx)} catch(error) {stale=/changed/.test(error.message)}
         const leaf = app.workspace.getLeaf('tab')
         await leaf.setViewState({type:'abele-word',state:{file:${JSON.stringify(DOC)}},active:true}); await app.workspace.revealLeaf(leaf)
         let image=false
@@ -103,7 +104,7 @@ describe.skipIf(!available)('Word editing through agent tools', () => {
         if(window.__e2eHost) await window.__e2eHost.shot(path)
         else {const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())}
         return {bytes:btoa(raw),count,stale,image,shot:path,preview}
-      } finally {api.ScopeResolver.setActiveInstance(null)}
+      } finally {scope.clear()}
     })()`)
     expect(result.count).toBe(19)
     expect(result.stale).toBe(true)

@@ -1,20 +1,20 @@
 import { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { ScopeResolver } from '../ScopeResolver'
+import { scopeOf, type ToolContext } from '../toolContext'
 import { wordRevision } from '@/word/write'
 import { loadWordBytes as openDocx, prepareWordChange, writeWordChange } from '@/word/vaultAdapter'
 import { WORD_OPERATIONS, type WordEdit } from '@/word/edit'
 import { DOCX_VIEW_TYPE, type DocxView } from '@/word/DocxView'
 
-export function namedDocx(input: unknown): TFile {
+export function namedDocx(input: unknown, ctx?: ToolContext): TFile {
   const path = typeof input === 'string' ? input : ''
-  if (!ScopeResolver.getInstance().isInScope(path))
-    throw new Error(`Access denied: ${path} is outside this chat's scope`)
+  const scope = scopeOf(ctx)
+  if (!scope.isInScope(path)) throw new Error(`Access denied: ${path} is outside this chat's scope`)
   const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile) || file.extension.toLowerCase() !== 'docx')
     throw new Error('Name a .docx file by its exact vault path')
-  if (!ScopeResolver.getInstance().isInScope(file.path))
+  if (!scope.isInScope(file.path))
     throw new Error(`Access denied: ${file.path} is outside this chat's scope`)
   return file
 }
@@ -66,14 +66,13 @@ export function createDocxTools(): AgentTool[] {
         },
         required: ['path', 'revision', 'operation', 'paragraph'],
       },
-      execute: async (_id, params, signal) => {
-        const file = namedDocx(params.path)
+      execute: async (_id, params, signal, ctx) => {
+        const file = namedDocx(params.path, ctx)
         if (typeof params.revision !== 'string' || !params.revision)
           throw new Error('Read with docx_read first and pass its revision')
         if (
           ['image_insert', 'image_replace'].includes(String(params.operation)) &&
-          (typeof params.image_path !== 'string' ||
-            !ScopeResolver.getInstance().isInScope(params.image_path))
+          (typeof params.image_path !== 'string' || !scopeOf(ctx).isInScope(params.image_path))
         )
           throw new Error('Access denied: image is outside this chat’s scope')
         const app = GlobalStore.getInstance().app
@@ -100,13 +99,13 @@ export function createDocxTools(): AgentTool[] {
       description:
         'List open Word documents in this chat’s scope and the paragraph text window shown. Read-only.',
       parameters: { type: 'object', properties: {} },
-      execute: async () => {
+      execute: async (_id, _params, _signal, ctx) => {
         const app = GlobalStore.getInstance().app
         return answer(
           app.workspace
             .getLeavesOfType(DOCX_VIEW_TYPE)
             .map((leaf) => leaf.view as DocxView)
-            .filter((v) => v.file && ScopeResolver.getInstance().isInScope(v.file.path))
+            .filter((v) => v.file && scopeOf(ctx).isInScope(v.file.path))
             .map(
               (v) =>
                 `${v.file!.path} — paragraph ${v.paragraph}, ${v.document?.paragraphs.length ?? 0} paragraphs`
@@ -132,8 +131,8 @@ export function createDocxTools(): AgentTool[] {
         },
         required: ['path'],
       },
-      execute: async (_id, params, signal) => {
-        const file = namedDocx(params.path)
+      execute: async (_id, params, signal, ctx) => {
+        const file = namedDocx(params.path, ctx)
         const doc = await openDocx(
           new Uint8Array(await GlobalStore.getInstance().app.vault.readBinary(file))
         )
@@ -169,8 +168,8 @@ export function createDocxTools(): AgentTool[] {
         },
         required: ['path', 'query'],
       },
-      execute: async (_id, params, signal) => {
-        const file = namedDocx(params.path)
+      execute: async (_id, params, signal, ctx) => {
+        const file = namedDocx(params.path, ctx)
         const query = typeof params.query === 'string' ? params.query : ''
         if (!query || query.length > 1000) throw new Error('Search text must be 1–1000 characters')
         const doc = await openDocx(
