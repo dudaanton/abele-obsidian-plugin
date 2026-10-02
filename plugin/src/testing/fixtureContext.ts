@@ -204,7 +204,10 @@ export async function restoreFixtureContext(
       connection: { value: unknown }
     }
     service.keeper.read(app)
-    if (JSON.stringify(service.connection.value) !== JSON.stringify(readConnection(app)))
+    if (
+      JSON.stringify(service.connection.value) !==
+      JSON.stringify(readConnection(app, Platform.isMobile))
+    )
       throw new Error('Running connection mismatch')
   })
   for (const [path, bytes] of Object.entries(p.files))

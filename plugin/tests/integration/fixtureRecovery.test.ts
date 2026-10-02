@@ -12,7 +12,7 @@ import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
 import { readConnection, emptyConnection } from '@/sync/connection'
-import type { App } from 'obsidian'
+import { Platform, type App } from 'obsidian'
 let factory: IDBFactory
 beforeEach(() => {
   factory = new IDBFactory()
@@ -22,7 +22,10 @@ beforeEach(() => {
   mock.forget.mockReset()
   mock.keeper.read.mockReset()
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  Platform.isMobile = false
+})
 async function setup() {
   const app = buildFakeVault([
     { path: 'Scripts/sample.js', content: '// @name Sample\nreturn "unapproved"' },
@@ -50,6 +53,19 @@ async function fixture(app: ReturnType<typeof buildFakeVault>) {
   })
 }
 describe('retryable phone fixture recovery', () => {
+  it('rehydrates absent connection using actual mobile defaults with no queued revoke', async () => {
+    Platform.isMobile = true
+    const app = await setup()
+    await fixture(app)
+    mock.keeper.read.mockImplementation(() => {
+      mock.connection.value = readConnection(app, Platform.isMobile) as any
+    })
+    const result = await restoreFixtureContext(app as unknown as App)
+    expect(result).toEqual({ restored: true, errors: [] })
+    expect(app.loadLocalStorage('abele-sync-connection')).toBeNull()
+    expect(mock.connection.value).toEqual(emptyConnection(true))
+    expect(app.loadLocalStorage('task14-isolated-fixture')).toBeNull()
+  })
   it('does not forget/delete an original database on a second restore after layout failure', async () => {
     const app = await setup()
     await fixture(app)
