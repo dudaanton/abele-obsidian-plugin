@@ -109,17 +109,30 @@ beforeEach(() => {
 it('keeps Word write approval independent of general file write permissions', () => {
   session.permissionMode.value = 'allow-all'
   session.toolModes.value.docx_edit = 'ask'
-  expect(session.needsApproval('docx_edit',{path:'sample.docx'})).toBe(true)
+  expect(session.needsApproval('docx_edit', { path: 'sample.docx' })).toBe(true)
   session.toolModes.value.docx_edit = 'auto'
-  expect(session.needsApproval('docx_edit',{path:'sample.docx'})).toBe(false)
+  expect(session.needsApproval('docx_edit', { path: 'sample.docx' })).toBe(false)
 })
 
 it('keeps workbook write approval independent of general file write permissions', () => {
   session.permissionMode.value = 'allow-all'
   session.toolModes.value.xlsx_write = 'ask'
-  expect(session.needsApproval('xlsx_write', {path:'sample.xlsx'})).toBe(true)
+  expect(session.needsApproval('xlsx_write', { path: 'sample.xlsx' })).toBe(true)
   session.toolModes.value.xlsx_write = 'auto'
-  expect(session.needsApproval('xlsx_write', {path:'sample.xlsx'})).toBe(false)
+  expect(session.needsApproval('xlsx_write', { path: 'sample.xlsx' })).toBe(false)
+})
+
+it('keeps deck tool modes and write permissions as separate gates', () => {
+  for (const name of ['deck_create', 'deck_edit']) {
+    session.scopeResolver.setFullVaultAccess(true)
+    session.permissionMode.value = 'allow-all'
+    session.toolModes.value[name] = 'ask'
+    expect(session.needsApproval(name, { path: 'sample-deck.md' })).toBe(true)
+    session.toolModes.value[name] = 'auto'
+    expect(session.needsApproval(name, { path: 'sample-deck.md' })).toBe(false)
+    session.permissionMode.value = 'confirm-all'
+    expect(session.needsApproval(name, { path: 'sample-deck.md' })).toBe(true)
+  }
 })
 
 /** Gets the chat as far as the first call waiting to be approved. */

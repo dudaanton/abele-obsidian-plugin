@@ -65,6 +65,7 @@ import {
   TOUCHING_TOOLS,
   type TouchedNote,
   WRITE_TOOLS,
+  DECK_WRITE_TOOLS,
   migrateOldPermissions,
 } from './types'
 import type {
@@ -193,6 +194,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     'cp',
     'read_image',
     'look_at_drawing',
+    'deck_read',
+    'deck_edit',
+    'deck_check',
+    'present',
     'ls',
     'find',
   ]
@@ -1071,6 +1076,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (toolName === EDIT_SELECTION_TOOL) {
       if ((this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') === 'auto') return false
     }
+
+    // Feature writes need both their own mode and the ordinary write permission.
+    if (DECK_WRITE_TOOLS.includes(toolName) && this.getToolMode(toolName) !== 'auto') return true
 
     // Core edit tools: governed by permissionMode
     if (ChatSession.EDIT_TOOLS.includes(toolName)) {

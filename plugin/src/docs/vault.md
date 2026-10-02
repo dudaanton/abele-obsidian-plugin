@@ -19,7 +19,10 @@ blocks store deck styling. `slide-script` fences store named-script parameters a
 permission, not an approval itself. Vault-scoped device local storage keeps a boolean under
 `abele-slide-network:<deck path>`; allow, deny and dismissal are remembered, do not sync or travel
 in settings transfer, and a renamed deck needs a new decision. Pending decisions and activation
-lifetimes are ephemeral. Nothing is written to a side file. See `slides` for the full codec.
+lifetimes are ephemeral. Nothing is written to a side file. Agent deck edits keep this same
+Markdown format; fit reports are transient. A slide `screenshot` stores a PNG in the ordinary
+attachments folder and includes its path in the tool result, as other agent images do. It does
+not change slide source or device-local network consent. See `slides` for the full codec.
 
 ## Device-local key destinations
 

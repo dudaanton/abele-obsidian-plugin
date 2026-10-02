@@ -7,7 +7,10 @@ import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
-export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
+export function createWriteFileTool(opts?: {
+  skipScope?: boolean
+  expectedContent?: string
+}): AgentTool {
   return {
     name: 'write',
     label: 'Write File',
@@ -42,7 +45,14 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       signal?.throwIfAborted()
       await noteLocalScriptWrite(file.path, content)
       signal?.throwIfAborted()
-      await app.vault.modify(file, content)
+      if (opts?.expectedContent !== undefined) {
+        await app.vault.process(file, (current) => {
+          signal?.throwIfAborted()
+          if (current !== opts.expectedContent)
+            throw new Error('File has changed while preparing the edit; read it again')
+          return content
+        })
+      } else await app.vault.modify(file, content)
       return {
         content: [{ type: 'text', text: `Written: ${path}` }],
         details: { diff: { old, new: content }, path },

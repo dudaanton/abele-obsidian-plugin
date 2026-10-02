@@ -8,6 +8,9 @@ import domtoimage from 'dom-to-image-more'
 import { findScriptView } from './scriptViewLookup'
 import { saveImageToVault } from './imageUtils'
 import dayjs from 'dayjs'
+import { namedDeck, deckSlide } from './DeckTools'
+import { parseDeck } from '@/slides/core/markdown'
+import { inspectDeckSlide, slidePicture } from '@/slides/inspection'
 
 export function findLeafByFile(path: string): WorkspaceLeaf | null {
   const { app } = GlobalStore.getInstance()
@@ -123,11 +126,15 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
     name: 'screenshot',
     label: 'Screenshot',
     description:
-      'Take a screenshot of a file open in Obsidian, or of a script view. With path: if the file is already open, captures its current view without reloading; if not, opens it in a new tab first. With view (a tab title or script name): captures the part of that view that is on screen right now, as the person sees it — the visible area only, at their scroll position; a tab that is not showing cannot be captured. The picture is saved to the attachments folder and shown in the chat, so the person sees what you saw. Use this to visually inspect layout, content, or rendering.',
+      'Take a screenshot of a file open in Obsidian, or of a script view. With path: if the file is already open, captures its current view without reloading; if not, opens it in a new tab first. With view (a tab title or script name): captures the part of that view that is on screen right now, as the person sees it — the visible area only, at their scroll position; a tab that is not showing cannot be captured. The picture is saved to the attachments folder and shown in the chat, so the person sees what you saw. Use this to visually inspect layout, content, or rendering. With path and slide (one-based), renders that complete presentation slide at its logical canvas size without opening or moving a tab. Steps are fully revealed; scripts and HTML are nonexecuting placeholders and other plugins’ executable blocks are inert. Uses the current theme. Pair with deck_check to measure fit.',
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path relative to vault root' },
+        slide: {
+          type: 'integer',
+          description: 'One-based presentation slide; use with path, not view',
+        },
         view: {
           type: 'string',
           description:
@@ -136,7 +143,33 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
       },
       required: [],
     },
-    execute: async (_id, params, _signal, ctx) => {
+    execute: async (_id, params, signal, ctx) => {
+      if (params.slide !== undefined) {
+        if (params.view) throw new Error('Use slide with path, not view')
+        const file = namedDeck(params.path, ctx)
+        const app = GlobalStore.getInstance().app
+        const deck = parseDeck(await app.vault.read(file))
+        const index = deckSlide(params.slide, deck.slides.length)
+        return inspectDeckSlide(
+          app,
+          file.path,
+          deck,
+          index,
+          async (root, report) => {
+            const dataUrl = await slidePicture(root, deck.settings.aspect)
+            signal?.throwIfAborted()
+            const result = await picture(
+              `[Presentation: ${file.path}, slide ${index + 1}. ${report.unverified.join(' ')}]`,
+              shotName(`${file.basename} slide ${index + 1}`),
+              dataUrl,
+              scopeOf(ctx)
+            )
+            result.content[0].text += '\n' + JSON.stringify(report)
+            return result
+          },
+          signal
+        )
+      }
       const viewName = params.view as string | undefined
       if (viewName) {
         // The leaf's content, not the teleport target: that is the box the person sees, with

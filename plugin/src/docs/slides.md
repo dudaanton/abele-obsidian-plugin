@@ -1,7 +1,8 @@
 # Presentations
 
 Presentation notes are Markdown decks viewed on a fixed canvas. This section describes the
-viewing format, shared presenter mode, live blocks and navigation; export is not implemented yet.
+viewing format, shared presenter mode, live blocks, agent authoring and fit inspection;
+export is not implemented yet.
 
 ## Deck format
 
@@ -134,6 +135,83 @@ Mobile uses a local, safe-area-aware full-window presenter with the same notes, 
 previews. **Present** opens it directly; holding a noninteractive slide area for at least 600 ms
 and releasing also opens it from Play. It does not create a second screen or remotely control a
 desktop: a cross-device transport is outside this stage.
+
+## Make a deck from a note
+
+This is the presentation-authoring skill, available without a vault skill installation through
+`query_docs({section: "slides", topic: "make-a-deck-from-a-note"})`.
+
+1. Read the source note with `read`. Determine the purpose, audience and desired length from the
+   request. Preserve facts and cite source links; do not invent missing figures. Ask only when
+   the answer changes the deck. Keep the source note unchanged unless explicitly asked.
+2. Plan a short outline: title, context, one idea per slide, supporting evidence, conclusion.
+   Put detailed explanations in `> [!notes]`, not tiny text. Choose a built-in layout for each
+   idea; use the current Obsidian theme by default. Reuse in-scope pictures/drawings and their
+   existing embed syntax. A screenshot is not a substitute for checking the facts.
+3. Use `deck_create` for a new note, or `deck_read` before `deck_edit` on an existing deck.
+   The new deck uses `type: presentation` and `---` separators. A slide edit includes that
+   slide's full layout and speaker notes. Named script/HTML fences follow **Live blocks**;
+   never store or claim network consent. Ordinary write approval is still required.
+4. Run `deck_check` on every slide and inspect each slide with `screenshot({path, slide: N})`.
+   These render at the fixed logical size, with all steps revealed and no notes. Fix overflow,
+   missing/clipped media and unnecessary density; use `deck_edit` to shorten, change layout or
+   insert another slide. Repeat both the measurement and the visual check on changed slides.
+   A zero-issue check alone does not prove readable composition or factual correctness.
+5. State what you checked. Never call live scripts/HTML verified by a nonexecuting preview;
+   they are placeholders and must be seen in a user-started show. Other plugins' executable
+   blocks are inert in agent previews too. If a tool is Off, explain which check could not be
+   made rather than pretending to have seen the slide. Use `present` only when asked to show
+   the deck; it opens a normal tab, which may activate its trusted live content.
+
+## Deck template
+
+A title plus four content slides is a starting point, not a required length. Create it with
+`deck_create({path: "Decks/sample-deck.md", content: "…"})`, replacing the sample text:
+
+```markdown
+---
+type: presentation
+aspect: '16:9'
+---
+::slide{layout=title}::
+# Sample deck
+A short introduction
+
+---
+::slide{layout=content}::
+## Context
+- One useful point
+
+> [!notes]
+> Supporting detail for the speaker.
+
+---
+::slide{layout=split}::
+## Evidence
+::left::
+- Explain what the picture supports
+::right::
+![[sample-image.png]]
+
+---
+::slide{layout=content}::
+## Main idea
+- One idea, with evidence
+
+---
+::slide{layout=section}::
+## Conclusion
+One takeaway
+```
+
+Use a real existing media path or remove the placeholder embed. To keep a reusable vault
+**template**, replace frontmatter `type: presentation` with `type: template`,
+`template_for: presentation`, `template_for_type: presentation`, and `template_for_aspect: '16:9'`.
+The ordinary `list_templates`/`apply_template` flow then creates a presentation. To keep a vault
+**skill**, make a note with `type: abele-skill`, `name: Make a presentation`,
+`description: Build and visually check a deck from a note`; put the workflow above in its body
+and offer it to the agent through the usual skills folder/scope. No vault files are installed
+silently. Copyable examples are in the repository's `docs/examples/`.
 
 ## Platform findings for later export
 

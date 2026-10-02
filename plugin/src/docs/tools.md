@@ -43,6 +43,40 @@ accept it. Do not claim the parent was changed after proposing. Never edit a cha
 The parent must be idle and unchanged since the proposal; otherwise ask for a new selection and
 proposal. To revise again after acceptance, start a new comment on the revised words.
 
+## Presentations
+
+`deck_read(path)` returns deck settings, CSS, numbered structured slides (layouts, regions,
+Markdown/HTML/named-script blocks, speaker notes), and the complete original source. It records
+that version as read for the ordinary read-before-write guard. `deck_create(path, content)`
+creates a `.md` deck with `type: presentation` frontmatter. `deck_edit(path, slide, content?,
+operation?)` replaces one slide by default; `insert` inserts before the one-based number
+(count + 1 appends), and `remove` deletes it, but never the last slide. Content is exactly one
+slide, without frontmatter or separators; notes and layout markers are included. Untouched
+slides and deck properties keep their source spelling. Read the whole current deck before
+editing; stale versions and concurrent changes are refused. Both writes use the ordinary file
+diff/confirmation and link the changed note to the chat.
+
+`deck_check(path, slide?)` renders slides sequentially at the deck's logical canvas size in the
+current theme. It reports per-slide overflow, clipped/missing media, intentional cover crops,
+and a text-density warning. Notes are excluded and steps fully revealed. Pair it with
+`screenshot({path, slide: 1})`: a PNG of that whole slide, kept in attachments, shown under the
+call and sent to the model through the same image-message path as drawings and books. No open
+tab is needed or moved. Both previews use the untrusted Markdown policy: Abele's own blocks
+remain available, other plugins' executable blocks are inert, scripts and HTML are labelled
+nonexecuting placeholders. Live content is explicitly **unverified**, never a passed fit check.
+Slow/broken images are reported rather than waited on indefinitely.
+
+`present(path, slide?)` opens the normal deck tab at that slide (default 1), not a fullscreen or
+speaker show. Normal viewing may activate live blocks under the usual script trust and HTML
+network prompt. No agent tool approves trust or network consent. Writing `htmlNetwork: true`
+only requests the device-local user decision.
+
+All five deck tools have per-agent Off/Ask/On modes in **Presentations**, initially Off. Enable
+the reads/check/present tools as desired and enable `screenshot` separately. Deck writes require
+both their own On mode and an allowing write permission mode to run without confirmation;
+Ask still asks even under Allow all writes. The agent can also use existing Markdown file
+tools. See `slides` topics **Make a deck from a note** and **Deck template** for the workflow.
+
 ## Excel workbooks
 
 `xlsx_sheets`, `xlsx_read`, `xlsx_search` read in-scope `.xlsx` and read-only `.xlsm` files by

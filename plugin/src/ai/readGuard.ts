@@ -63,7 +63,7 @@ export function guardedTarget(
 ): GuardedTarget | null {
   const path = params?.path
   if (typeof path !== 'string' || !path) return null
-  if (toolName === 'write') return { path, need: 'whole' }
+  if (toolName === 'write' || toolName === 'deck_edit') return { path, need: 'whole' }
   if (toolName === 'edit') return { path, need: 'any' }
   if (toolName === 'replace') {
     // A replace that only moves the note is a rename, and a rename changes no text.
@@ -218,13 +218,13 @@ export class ReadGuard {
     const marks: ReadMark[] = []
     const seen = result.seen
     if (seen) {
-      const via = toolName === 'read' ? 'read' : 'write'
+      const via = toolName === 'read' || toolName === 'deck_read' ? 'read' : 'write'
       // An edit leaves the agent knowing as much of the file as it knew before; a write or a
       // new file it knows whole, since every word of it is the agent's.
       const partial =
         via === 'read'
           ? seen.lines
-          : toolName === 'write' || toolName === 'create'
+          : ['write', 'create', 'deck_create', 'deck_edit'].includes(toolName)
             ? undefined
             : this.view(seen.path)?.lines
       marks.push({

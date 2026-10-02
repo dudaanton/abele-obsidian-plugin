@@ -132,6 +132,36 @@ have their own network policy. This permission therefore allows network use, not
 fetches. The frame stays sandboxed and cannot read your vault, but it can send any data you put
 inside it to websites. Only enable it for HTML you trust.
 
+## Ask an agent to make a deck
+
+Ask an agent to turn a note into a presentation. In that agent's tools, enable the
+**Presentations** tools: **Read deck**, **Create deck**, **Edit slide**, **Check deck fit** and,
+if you want it to open the result, **Open presentation**. Enable **Screenshot** too so it can
+see the slides rather than only guessing from text. Each tool has its own Off/Ask/On choice;
+new deck tools start Off. Creating or changing slides uses the usual write preview and approval.
+Even with general writes allowed, a deck tool set to Ask still asks.
+
+The agent can read slide structure and speaker notes, build a deck in a new note, replace a
+slide, insert one or remove one. Its fit check measures text and media against the full slide
+canvas, not the phone-sized view. It flags overflow, clipped or missing pictures and unusually
+dense text. Its screenshot shows the complete slide in your current theme, with all list steps
+visible, but without speaker notes. Pictures are saved in your usual attachments folder and
+shown in the chat, so you can see what the agent saw.
+
+The recommended workflow is in the agent's presentation reference: read the source note,
+outline one idea per slide, create the deck, check every slide, look at its picture, then revise
+and check again. The source note stays unchanged unless you ask otherwise. A title-and-four-slide
+starting template and a reusable **Make a presentation** skill are provided as copyable examples
+in the repository's `docs/examples/`; they use the normal [Templates](templates) and skills
+system. The workflow is also available to any agent through its built-in reference without
+installing a skill note. Nothing is added to your vault automatically.
+
+**Live content is not checked by an agent preview.** Scripts and HTML are labelled placeholders;
+other plugins' executable blocks are inert. The agent can write named-script and HTML blocks,
+but cannot confirm a foreign script or allow HTML network access. Check those slides in a show
+you start yourself. Opening a normal deck with **Open presentation** can activate its trusted
+live content, but the tool cannot answer its network permission prompt for you.
+
 ## View and present
 
 The commands **Open presentation**, **Preview presentation beside editor**, and

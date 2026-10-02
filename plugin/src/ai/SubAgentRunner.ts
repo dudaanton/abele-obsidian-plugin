@@ -4,7 +4,7 @@ import type { AgentTool, ModelConfig, Message, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
 import type { AgentDefinition } from './agents/types'
 import type { ToolContext } from './toolContext'
-import { WRITE_TOOLS } from './types'
+import { WRITE_TOOLS, DECK_WRITE_TOOLS } from './types'
 import { skillNeedsApproval } from './tools/SkillTool'
 import { ReadGuard, withReadGuard } from './readGuard'
 import { ResultStore, withResultStore } from './resultStore'
@@ -28,6 +28,10 @@ const SCOPED = [
   'cp',
   'read_image',
   'look_at_drawing',
+  'deck_read',
+  'deck_edit',
+  'deck_check',
+  'present',
   'ls',
   'find',
 ]
@@ -68,6 +72,8 @@ export function subAgentRefusal(
   if (toolName === 'skill' && skillNeedsApproval(args.name, agent, scope))
     return 'This skill needs interactive approval'
   if (READ.includes(toolName)) return null
+  if (DECK_WRITE_TOOLS.includes(toolName) && agent.toolModes[toolName] !== 'auto')
+    return `${toolName} needs its own On mode; an unattended agent cannot ask for approval`
   if (WRITE_TOOLS.includes(toolName)) {
     return agent.permissionMode === 'allow-edit' || agent.permissionMode === 'allow-all'
       ? null

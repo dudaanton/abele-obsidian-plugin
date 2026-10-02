@@ -43,6 +43,7 @@ import { createRememberTool } from './RememberTool'
 import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
 import { createBookTools } from './BookTools'
+import { createDeckTools } from './DeckTools'
 import { createDocxTools } from './DocxTools'
 import { createXlsxTools } from './XlsxTools'
 import { createLintTool, createLintFixTool } from './LintTools'
@@ -78,6 +79,7 @@ export function getToolRegistry(): ToolInfo[] {
     'Network',
     'GitHub',
     'Books',
+    'Presentations',
     'Word',
     'AI',
     'Vault data',
@@ -317,6 +319,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   // Books and PDFs in the vault, as far as the chat's scope reaches: read, and marked — highlights
   // and bookmarks, written where the reader writes them. The book files are never changed.
   tools.push(...createBookTools())
+  tools.push(...createDeckTools())
   tools.push(...createDocxTools())
   tools.push(...createXlsxTools())
 

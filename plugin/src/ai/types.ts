@@ -279,7 +279,16 @@ export const EDIT_SELECTION_TOOL = 'edit_selection'
  * These are what `allow-edit` stops asking about, which is why the list is shared: the
  * approval prompt offers that mode only for a call the mode would actually cover.
  */
-export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write', EDIT_SELECTION_TOOL]
+/** Feature writes retain their own Off/Ask/On modes as well as the write permission gate. */
+export const DECK_WRITE_TOOLS = ['deck_create', 'deck_edit']
+export const WRITE_TOOLS = [
+  'edit',
+  'create',
+  'replace',
+  'write',
+  EDIT_SELECTION_TOOL,
+  ...DECK_WRITE_TOOLS,
+]
 
 /**
  * Tools whose success means a file in the vault changed — what links a chat to a note.
@@ -400,10 +409,20 @@ export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
 export const LINT_TOOL_MODES: Record<string, ToolMode> = { lint: 'auto', lint_fix: 'ask' }
 
 /** Word tools have independent Off/Ask/On modes, like book tools. */
-export const DOCX_TOOL_MODES: Record<string, ToolMode> = { docx_views: 'auto', docx_read: 'auto', docx_search: 'auto', docx_edit: 'ask' }
+export const DOCX_TOOL_MODES: Record<string, ToolMode> = {
+  docx_views: 'auto',
+  docx_read: 'auto',
+  docx_search: 'auto',
+  docx_edit: 'ask',
+}
 
 /** Workbook read tools have independent modes; writes are added separately. */
-export const XLSX_TOOL_MODES: Record<string, ToolMode> = { xlsx_sheets: 'auto', xlsx_read: 'auto', xlsx_search: 'auto', xlsx_write: 'ask' }
+export const XLSX_TOOL_MODES: Record<string, ToolMode> = {
+  xlsx_sheets: 'auto',
+  xlsx_read: 'auto',
+  xlsx_search: 'auto',
+  xlsx_write: 'ask',
+}
 
 /** Personal device data: ask before every request unless the person chooses another mode. */
 export const LOCATION_TOOL_MODES: Record<string, ToolMode> = { current_location: 'ask' }

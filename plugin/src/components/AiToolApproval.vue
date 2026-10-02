@@ -48,6 +48,17 @@
       ><code>{{ JSON.stringify(params, null, 2) }}</code></pre>
     </template>
 
+    <template v-else-if="message.toolName === 'deck_create' || message.toolName === 'deck_edit'">
+      <div class="abele-tool-approval__path">{{ params.path }}</div>
+      <Diff
+        v-if="deckPreview"
+        :text-left="deckPreview.old"
+        :text-right="deckPreview.new"
+        class="abele-tool-approval__diff"
+      />
+      <div v-else>{{ deckPreviewError || 'Preparing presentation edit preview…' }}</div>
+    </template>
+
     <!-- eval_js: show code -->
     <template v-else-if="message.toolName === 'eval_js'">
       <pre class="abele-tool-approval__code"><code>{{ params.code }}</code></pre>
@@ -146,12 +157,13 @@ import Diff from './Diff.vue'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
-import { WRITE_TOOLS } from '@/ai/types'
+import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
 import { prepareWordChange } from '@/word/vaultAdapter'
 import type { WordEdit } from '@/word/edit'
 import { prepareWorkbookChange } from '@/spreadsheet/vaultAdapter'
 import type { WorkbookEdit } from '@/spreadsheet/edit'
+import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/core/edit'
 
 const props = defineProps<{
   message: ChatMessage
@@ -294,6 +306,38 @@ watch(
   { immediate: true }
 )
 
+const deckPreview = ref<{ old: string; new: string } | null>(null)
+const deckPreviewError = ref('')
+let deckPreviewVersion = 0
+watch(
+  () => [props.message.toolName, JSON.stringify(effectiveParams.value)],
+  async () => {
+    const version = ++deckPreviewVersion
+    deckPreview.value = null
+    deckPreviewError.value = ''
+    const name = props.message.toolName
+    if (name !== 'deck_create' && name !== 'deck_edit') return
+    try {
+      const p = effectiveParams.value
+      let old = ''
+      if (name === 'deck_edit') {
+        if (!session.value?.scopeResolver.isInScope(String(p.path || '')))
+          throw new Error('Presentation is outside this chat’s scope')
+        const app = GlobalStore.getInstance().app
+        const file = app.vault.getAbstractFileByPath(String(p.path || ''))
+        if (!(file instanceof TFile)) throw new Error('Presentation not found')
+        old = await app.vault.read(file)
+      }
+      const next =
+        name === 'deck_create' ? prepareDeckCreate(p) : prepareSlideEdit(old, p as SlideEdit)
+      if (version === deckPreviewVersion) deckPreview.value = { old, new: next }
+    } catch (error) {
+      if (version === deckPreviewVersion) deckPreviewError.value = (error as Error).message
+    }
+  },
+  { immediate: true }
+)
+
 const parseError = ref('')
 
 const approve = () => {
@@ -322,6 +366,7 @@ const canApproveAllWrites = computed(() => {
   const s = session.value
   const name = props.message.toolName
   if (!s || !name || !WRITE_TOOLS.includes(name)) return false
+  if (DECK_WRITE_TOOLS.includes(name) && s.getToolMode(name) !== 'auto') return false
   return s.permissionMode.value === 'confirm-all'
 })
 

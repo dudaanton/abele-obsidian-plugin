@@ -10,6 +10,17 @@
   outline: none;
 }
 
+.abele-deck-inspection-host {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  pointer-events: none;
+}
+
+.abele-deck-inspection .abele-deck-toolbar {
+  display: none;
+}
+
 .abele-deck-toolbar {
   display: flex;
   flex-wrap: wrap;
