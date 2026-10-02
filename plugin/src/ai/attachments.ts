@@ -149,7 +149,7 @@ export async function importClipboardImage(): Promise<string | null> {
     if (!imageType) continue
 
     const blob = await item.getType(imageType)
-    const ext = imageType.split('/')[1].replace('jpeg', 'jpg')
+    const ext = imageType.split('/')[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg')
     const file = new File([blob], `clipboard-${Date.now()}.${ext}`, { type: imageType })
     const created = await importExternalFile(file)
     return created.path

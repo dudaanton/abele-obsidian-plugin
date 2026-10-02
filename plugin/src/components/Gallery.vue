@@ -451,7 +451,7 @@ async function addFromClipboard() {
 
       const blob = await item.getType(imageType)
       const buffer = await blob.arrayBuffer()
-      const ext = imageType.split('/')[1].replace('jpeg', 'jpg')
+      const ext = imageType.split('/')[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg')
       const timestamp = Date.now()
       const baseName = `clipboard-${timestamp}`
       const basePath = attachmentFolder
