@@ -158,7 +158,12 @@ metadata is discovered by the access check, not typed by an agent. Every connect
 names its keychain slot and is out of reach of these tools. `github.server` and `github.keyId`
 remain compatibility projections for old plugin versions, not a second list of connections.
 Each agent's `githubConnections` map stores `off`, `ask` or `auto` per stable connection ID.
-The UI calls these Off, Ask and On. Missing/new IDs are Off for all hosts. A chat's tool-mode
+The UI calls these Off, Ask and On. Missing/new IDs are Off for all hosts. On upgrade, a saved
+agent without this map retains access only to the migrated single-server `github-legacy`
+connection, matching its existing GitHub tool modes (Auto if any is Auto, otherwise Ask if any
+is Ask). An existing map, including an empty map or explicit Off, is never changed. New agents
+start with an empty map. This repair also applies if the credential was migrated earlier.
+A chat's tool-mode
 overrides cannot grant a connection the executing agent lacks; connection permission is separate
 from the tool's own Ask/Off/Auto mode.
 The token needs read access to Contents, Issues, Pull

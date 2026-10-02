@@ -584,7 +584,10 @@ memory; item refusals expire after roughly ten minutes. Manual owner preferences
 connections' `owners` lists. An agent opening a tab may attach a runtime-only allowed-connection
 restriction; it is not persisted as permission granted by the person. Each stored agent may
 hold `githubConnections`, a map from stable connection IDs to `off`, `ask` or `auto` (shown as
-Off, Ask, On). A missing ID means Off. It travels with the agent; unresolved IDs remain visible
+Off, Ask, On). A missing ID means Off. New agents store an empty map. Saved agents lacking
+the entire map migrate once: only the original `github-legacy` credential receives Auto if any
+GitHub tool is Auto, otherwise Ask if any is Ask; agents with all GitHub tools Off get an empty
+map. An existing map is never broadened. It travels with the agent; unresolved IDs remain visible
 in its Access settings until the connection arrives. One-operation approvals and executing-agent
 restrictions on a tab are runtime-only, never written as persistent grants. Each Ask grant
 also identifies the exact credential generation approved, not only the connection ID; token,

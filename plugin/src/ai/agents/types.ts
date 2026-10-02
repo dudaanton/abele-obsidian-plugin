@@ -136,6 +136,8 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
       ...LOCATION_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,
     },
+    // An explicit empty map distinguishes a new agent from saved pre-connection agents.
+    githubConnections: {},
     scope: [],
     fullVaultAccess: false,
     skillsMode: 'all',

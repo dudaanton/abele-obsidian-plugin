@@ -1,4 +1,5 @@
 import type { GithubConnection } from './connections'
+import { GITHUB_TOOLS } from '@/ai/types'
 
 export type ConnectionMode = 'off' | 'ask' | 'auto'
 export interface ConnectionAgent {
@@ -15,6 +16,27 @@ export function connectionMode(
   const mode = agent.githubConnections?.[id]
   return mode === 'auto' || mode === 'ask' ? mode : DEFAULT_CONNECTION_MODE
 }
+/** Preserve the pre-connection credential only for saved agents with no permission map.
+ * An explicit map (including an empty one) is already a permission decision. New agents
+ * start with an empty map, so this also repairs upgrades that already migrated the token
+ * without silently granting later agents or newly added connections access.
+ */
+export function migrateLegacyConnectionAccess(
+  agents: (ConnectionAgent & { toolModes: Record<string, ConnectionMode> })[],
+  connections: GithubConnection[]
+): boolean {
+  const legacy = connections.find((c) => c.id === 'github-legacy')
+  let changed = false
+  for (const agent of agents) {
+    if (agent.githubConnections !== undefined) continue
+    const modes = GITHUB_TOOLS.map((name) => agent.toolModes[name])
+    const mode = modes.includes('auto') ? 'auto' : modes.includes('ask') ? 'ask' : 'off'
+    agent.githubConnections = legacy && mode !== 'off' ? { [legacy.id]: mode } : {}
+    changed = true
+  }
+  return changed
+}
+
 export type ConnectionApproval = (
   connection: Pick<GithubConnection, 'id' | 'name' | 'server' | 'account'>,
   signal?: AbortSignal

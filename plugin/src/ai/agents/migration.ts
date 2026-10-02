@@ -39,6 +39,7 @@ function migrateLegacyAgents(ai: AiSettings): boolean {
       : [{ type: 'text', value: promptValue }],
     permissionMode: ai.permissionMode ?? 'confirm-all',
     toolModes: { ...(ai.toolModes || {}) },
+    githubConnections: undefined,
     scope: [...(ai.defaultScope || [])],
     fullVaultAccess: ai.defaultFullVaultAccess ?? false,
   })
@@ -55,6 +56,7 @@ function migrateLegacyAgents(ai: AiSettings): boolean {
         name: interceptor.name || 'Interceptor',
         description: 'Migrated from interceptors.',
         utility: true,
+        githubConnections: undefined,
         // Legacy interceptors stored a bare model id and resolved it by scanning every
         // provider. AgentRegistry.resolveModel does the same when providerId is empty.
         providerId: '',

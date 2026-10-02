@@ -18,6 +18,7 @@ import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
 import { projectLegacy } from '@/github/connections'
+import { migrateLegacyConnectionAccess } from '@/github/agentAccess'
 import {
   DEFAULT_CALENDAR_SETTINGS,
   calendarSettingsFrom,
@@ -752,6 +753,8 @@ export class AbeleConfig {
     this.groupProperties = names(settings?.groupProperties, DEFAULT_SETTINGS.groupProperties)
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
+    if (migrateLegacyConnectionAccess(this.ai.agents ?? [], this.github.connections))
+      migrated = true
     if (
       settings?.github &&
       (!Array.isArray(settings.github.connections) ||

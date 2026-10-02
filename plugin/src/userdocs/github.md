@@ -27,6 +27,10 @@ Each connection has a server (empty is github.com), an optional repository-owner
 **Default for this server** mark. Exactly one connection is default on each configured server.
 GitHub Enterprise addresses may include an explicit scheme and port. Existing token/server
 settings migrate to one connection with the same keychain slot, without re-entering a token.
+Existing agents that never had connection permissions keep access to that original connection,
+following their GitHub tools' On/Ask modes. An explicit permission list, including an empty list
+or Off, is left alone. New agents and new connections still need access enabled in the agent's
+**Access** settings.
 The list travels as individually selectable entries in settings transfer, with tokens only when
 keys are included. Synced keys include every connection. Delete asks for confirmation and
 forgets the local slot without revoking the shared token on other devices. A transfer cannot
