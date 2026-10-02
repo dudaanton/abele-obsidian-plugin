@@ -103,8 +103,9 @@ describe('local workbook recalculation', () => {
     expect(
       (await (await openXlsx(calc.bytes)).sheet('Sample')).cells.get('XFD1048576')?.value
     ).toBe(2)
-    const limited = await recalculateWorkbook(await openXlsx(sampleXlsx()), { maxCells: 1 })
-    expect(limited.bytes).toEqual(sampleXlsx())
+    const original = sampleXlsx()
+    const limited = await recalculateWorkbook(await openXlsx(original), { maxCells: 1 })
+    expect(limited.bytes).toBe(original)
     expect(limited.complete).toBe(false)
     expect(limited.note).toMatch(/limit/i)
   })

@@ -73,6 +73,12 @@ when truncated). Local evaluation is not a guarantee of Excel-identical formula 
 `fill` (`#RRGGBB`, or empty to clear) and `number_format` (an Excel format code). It appends
 font/fill/number-format/xf records without rewriting existing styles, and only changes the
 selected cells' style IDs. Its preview lists the formatting before and after.
+`operation: "row_add"` appends blank trailing rows; `"row_delete"` removes only the final rows.
+Both take `sheet` and optional `rows` (1–1000). No existing addresses shift. Deletion is limited
+to simple value-only workbooks: formulas, names, sheet relationships and structural features
+are refused instead of leaving dangling references. Write beyond the used range to append values.
+Unsupported shared formulas can still be viewed by their caches; edits requiring unsafe
+unsharing are refused. Search excerpts stay bounded even for a 1000-character query.
 
 ## Word documents
 

@@ -43,7 +43,13 @@ relationships and content-type overrides are removed together. Saves refuse conf
 changes and never create a Markdown intermediary. Array/data-table formulas and protected
 workbooks are not edited. Local recalculation patches `v` caches and cell type attributes on
 formula cells, including other sheets' dependents. Formula XML and unknown metadata survive.
-No calculation engine state is persisted; `calcPr` still requests the spreadsheet app's native
+Excel ST_Xstring escapes are decoded once and escaped when writing literal escape-looking
+text or carriage returns. Shared whole-row/whole-column references are translated too;
+unsupported shared references remain viewable but cannot be unshared. Row span hints and used
+range dimensions expand when needed. Trailing row changes never shift existing addresses;
+row deletion refuses formulas/structural references rather than attempting a lossy rewrite.
+The size cap is checked before reading a vault attachment and again before saving, so an edit
+cannot create a file too large to reopen. No calculation engine state is persisted; `calcPr` still requests the spreadsheet app's native
 recalculation. Engine-only cycle errors are stored as Excel-compatible `#REF!`, not nonstandard
 error tokens. Cell formatting appends styles to the existing stylesheet (fonts, fills, custom
 number formats and `cellXfs`); original records are retained verbatim. Cells are patched only
