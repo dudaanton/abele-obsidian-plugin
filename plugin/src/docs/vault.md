@@ -1455,3 +1455,8 @@ independent descriptor and recovery sentinel are behind host ports; there is no 
 call site while automatic publication is disabled. Unknown or lost evidence never creates
 an empty local baseline. Pending local-create novelty clears on settlement; immutable
 received baselines and bounded known-rename evidence are separate from publication authority.
+The disabled pure publication reducer also defines device-local pending/declined/approved
+exposure decisions, keyed by exact connection, target identity/version/SHA and audience
+admission/publication/withdrawal generations. Only revalidated confirmations may be approved.
+These records are metadata contracts, not activated upload/publication hooks; lost evidence
+continues to hold rather than reconstructing a permission from current note contents.
