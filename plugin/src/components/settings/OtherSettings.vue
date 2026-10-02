@@ -99,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { debounce } from 'obsidian'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
@@ -124,7 +124,10 @@ const keyboardDiagnostics = ref(config.keyboardDiagnostics)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 const mermaidViewer = ref(config.mermaidViewer)
-const editorSyntaxHighlight = ref(config.editorSyntaxHighlight)
+const editorSyntaxHighlight = computed(() => {
+  void config.version.value
+  return config.editorSyntaxHighlight
+})
 const propertyWidgets = ref(config.propertyWidgets)
 const rememberNotePlaces = ref(config.rememberNotePlaces)
 const counterProperties = ref((config.counterProperties ?? []).join(', '))
@@ -195,8 +198,7 @@ const toggleMermaidViewer = async () => {
 }
 
 const toggleEditorSyntaxHighlight = async () => {
-  editorSyntaxHighlight.value = !editorSyntaxHighlight.value
-  config.editorSyntaxHighlight = editorSyntaxHighlight.value
+  config.editorSyntaxHighlight = !config.editorSyntaxHighlight
   await config.saveSettings()
 }
 
