@@ -28,11 +28,16 @@ export function startCalendars(plugin: Plugin): CalendarService {
       read: () => config.calendarCompletion,
       write: async (marks) => {
         const before = config.calendarCompletion
-        config.calendarCompletion = marks
+        config.editSettings(() => {
+          config.calendarCompletion = marks
+        })
         try {
           await config.saveSettings()
         } catch (e) {
-          if (config.calendarCompletion === marks) config.calendarCompletion = before
+          if (config.calendarCompletion === marks)
+            config.editSettings(() => {
+              config.calendarCompletion = before
+            })
           throw e
         }
       },
