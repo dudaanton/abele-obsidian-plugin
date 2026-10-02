@@ -207,6 +207,31 @@ export async function reducePublication(input: PublicationInput): Promise<Public
   const newTarget =
     (target.id === null || !oldIds.has(target.id)) && !aliases.has(pathKey(target.path))
   if (!newSpelling || !newTarget) return stop('none', 'link or target already in baseline')
+  const oldLinkIds = new Set(
+    facts.flatMap((f) => (f.provenance?.linkId ? [f.provenance.linkId] : []))
+  )
+  // Note-wide owner-edit is not link authorship: a moved note can rewrite received unresolved
+  // spellings before an unrelated owner body edit. Only a fresh, individually proven addition
+  // may authorize this target. Missing/legacy link lineage is deliberately a hold.
+  const ownerLinks = links.filter((f) => {
+    const p = f.provenance
+    return (
+      !oldSpellings.has(normalizedSpelling(f.spelling)) &&
+      p?.origin === 'owner-added' &&
+      typeof p.linkId === 'string' &&
+      p.linkId.length > 0 &&
+      p.linkId.length <= 4096 &&
+      typeof p.proofId === 'string' &&
+      p.proofId.length > 0 &&
+      p.proofId.length <= 4096 &&
+      !oldLinkIds.has(p.linkId) &&
+      p.noteId === i.current.noteId &&
+      p.sourceSha === i.current.sha &&
+      p.cacheGeneration === i.current.evidence.generation
+    )
+  })
+  if (!ownerLinks.length)
+    return stop('hold', 'individual link introduction is not proven owner-added')
   if (
     !i.audiences.length ||
     i.audiences.some(
@@ -265,6 +290,13 @@ export async function reducePublication(input: PublicationInput): Promise<Public
     i.current.evidence.generation,
     i.current.evidence.cacheSha,
     target.path,
+    ownerLinks.map((f) => [
+      f.provenance!.linkId,
+      f.provenance!.proofId,
+      f.spelling,
+      f.start,
+      f.end,
+    ]),
     i.owner.baseVersionId,
     i.owner.baseCreateHandle ?? null,
     audiences.map((a) => [a.sponsorId, a.admissionGeneration]),

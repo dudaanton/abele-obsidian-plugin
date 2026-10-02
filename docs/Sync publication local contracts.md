@@ -32,7 +32,13 @@ origin from event timing, scan a vault, or publish anything.
 ## Publication decision reducer (40)
 
 The pure reducer compares a complete last-settled baseline against an independently attested
-current observation and a durable owner-edit/create proof. Both normalized spelling and target
+current observation and a durable owner-edit/create proof. In addition, each candidate link
+requires its **own** stable link-instance lineage and durable owner-introduction proof, bound to
+that exact note SHA/cache generation. A note-wide owner body edit never manufactures link
+origin. Incoming links and automatic relative-path rewrites retain non-owner lineage across
+note moves; missing/legacy lineage is a hold. Existing baseline link identities remain old
+even if spellings change. The dialog fingerprint includes the selected introduction proof.
+Both normalized spelling and target
 identity/path must be absent from the baseline. Recipient-planted unresolved spellings and
 known rename rewrites remain old; received/restore/merge/linter mutations are not owner additions.
 An empty new-note base requires a pending local-create identity with no ledger/incoming adoption.

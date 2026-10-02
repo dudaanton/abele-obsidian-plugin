@@ -8,6 +8,16 @@ export interface SnapshotBinding {
   facet: 'personal' | 'scoped'
   grantId: string | null
 }
+export interface LinkProvenance {
+  /** Stable link-instance identity; automatic rewrites retain it, never derive it from a path. */
+  linkId: string
+  origin: 'owner-added' | 'received' | 'automatic-rewrite' | 'preserved' | 'unknown'
+  noteId: string
+  sourceSha: string
+  cacheGeneration: string
+  /** Durable introduction/event proof supplied by the future integration, not a note edit. */
+  proofId: string
+}
 export interface LinkFact {
   kind: 'link' | 'embed'
   spelling: string
@@ -17,6 +27,7 @@ export interface LinkFact {
   resolvedPath: string | null
   targetId: string | null
   resolution: 'resolved' | 'unresolved' | 'ambiguous'
+  provenance?: LinkProvenance
 }
 export interface CacheEvidence {
   adapter: string

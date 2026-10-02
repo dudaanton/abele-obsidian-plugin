@@ -23,6 +23,14 @@ const link = (path = 'Assets/sample.png', id: string | null = 'sample-asset'): L
   resolvedPath: path,
   targetId: id,
   resolution: 'resolved',
+  provenance: {
+    linkId: 'sample-owner-link:' + path,
+    origin: 'owner-added',
+    noteId: 'sample-note',
+    sourceSha: 'b'.repeat(64),
+    cacheGeneration: 'current',
+    proofId: 'sample-owner-add-event',
+  },
 })
 const snapshot = (version: string, facts: LinkFact[]): CompleteSnapshot => ({
   kind: 'complete',
@@ -96,6 +104,44 @@ function pending(i: PublicationInput) {
   i.current.facts[0].targetId = null
 }
 describe('disabled owner publication decision contracts', () => {
+  it.each([false, true])(
+    'does not launder a foreign unresolved link through a note move and unrelated owner edit (pending=%s)',
+    async (isPending) => {
+      const i = input()
+      i.baseline = snapshot('base', [
+        { ...link('../Assets/private.png', null), resolvedPath: null, resolution: 'unresolved' },
+      ])
+      i.target.path = 'Assets/private.png'
+      i.current.facts = [{ ...link('Assets/private.png'), spelling: '../../Assets/private.png' }]
+      if (isPending) pending(i)
+      i.knownRenames.items = [
+        { fileId: 'sample-note', from: 'Notes/shared.md', to: 'Shared/deep/shared.md' },
+      ]
+      // The note edit is genuine, but this individual link is still recipient-introduced.
+      i.current.facts[0].provenance = {
+        linkId: 'incoming-link',
+        origin: 'automatic-rewrite',
+        noteId: 'sample-note',
+        sourceSha: i.current.sha,
+        cacheGeneration: 'current',
+        proofId: 'received-link-proof',
+      }
+      expect((await reducePublication(i)).kind).toBe('hold')
+    }
+  )
+  it('holds missing per-link lineage rather than inferring it from an owner body edit', async () => {
+    const i = input()
+    delete i.current.facts[0].provenance
+    expect((await reducePublication(i)).kind).toBe('hold')
+  })
+  it('invalidates a prompt when its individual owner-add event changes', async () => {
+    const i = input(),
+      proposal = await reducePublication(i)
+    if (proposal.kind !== 'confirm') throw new Error('Expected confirmation')
+    const changed = input()
+    changed.current.facts[0].provenance!.proofId = 'other-owner-add-event'
+    expect((await answerPublication(proposal, changed, true)).kind).toBe('hold')
+  })
   it('requires one exact existing-private exposure confirmation, never a password', async () => {
     const out = await reducePublication(input())
     expect(out.kind).toBe('confirm')
