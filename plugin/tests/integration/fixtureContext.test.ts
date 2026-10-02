@@ -33,6 +33,16 @@ describe('phone fixture context isolation', () => {
       const unchanged = await IndexedDbStateStore.open(factory, 'abele-sync-sample-original')
       expect(await unchanged.getCursor()).toBe(42)
       unchanged.close()
+      await app.vault.adapter.mkdir('SamplePhoneFixture')
+      await app.vault.adapter.writeBinary(
+        'SamplePhoneFixture/owned.md',
+        new TextEncoder().encode('owned').buffer
+      )
+      await app.vault.adapter.mkdir('SamplePhoneFixture-private')
+      await app.vault.adapter.writeBinary(
+        'SamplePhoneFixture-private/private.md',
+        new TextEncoder().encode('private').buffer
+      )
       app.saveLocalStorage('abele-sync-ledger', {
         stateId: 'sample-new',
         vaultId: 'sample-fixture',
@@ -44,6 +54,8 @@ describe('phone fixture context isolation', () => {
         errors: [],
       })
       expect(app.loadLocalStorage('abele-sync-ledger')).toEqual(descriptor)
+      expect(await app.vault.adapter.exists('SamplePhoneFixture')).toBe(false)
+      expect(await app.vault.adapter.exists('SamplePhoneFixture-private')).toBe(false)
       const restored = await IndexedDbStateStore.open(factory, 'abele-sync-sample-original')
       expect(await restored.getCursor()).toBe(42)
       expect(await restored.getMeta('sample-preserved')).toBe('original durable bytes')
