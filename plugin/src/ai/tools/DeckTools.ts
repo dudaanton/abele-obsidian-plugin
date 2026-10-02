@@ -3,6 +3,8 @@ import type { AgentTool } from '../client'
 import { scopeOf, type ToolContext } from '../toolContext'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { contentHash } from '../readGuard'
+import { STORE_OVER } from '../resultStore'
+import { deckReadPage } from './deckReadPage'
 import { parseDeck } from '@/slides/core/markdown'
 import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/core/edit'
 import { inspectDeckSlide } from '@/slides/inspection'
@@ -41,23 +43,47 @@ export function createDeckTools(): AgentTool[] {
       label: 'Read deck',
       category: 'Presentations',
       description:
-        'Read a presentation note as numbered slides: deck settings, layouts, regions, blocks and private speaker notes, plus original Markdown source. Read before deck_edit. Learn the format and the make-a-deck workflow with query_docs section slides.',
-      parameters: { type: 'object', properties: { path: pathProperty }, required: ['path'] },
+        'Read a presentation note as numbered slides with original Markdown source. Replies are bounded: small decks include full settings, layouts, regions, blocks and notes; large decks return a structural summary and an exact source character window. Continue with offset: nextOffset until null before deck_edit; the read guard marks only the source characters actually returned. limit optionally asks for a smaller source window (the total reply still stays within its budget). Learn the format and workflow with query_docs section slides.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: pathProperty,
+          offset: {
+            type: 'integer',
+            description: 'Zero-based source character offset; use nextOffset to continue',
+          },
+          limit: {
+            type: 'integer',
+            description:
+              'Optional maximum source characters; large requests are capped to the response budget',
+          },
+        },
+        required: ['path'],
+      },
       execute: async (_id, params, signal, ctx) => {
         signal?.throwIfAborted()
         const file = namedDeck(params.path, ctx)
         const source = await GlobalStore.getInstance().app.vault.read(file)
         signal?.throwIfAborted()
         const deck = parseDeck(source)
+        const page = deckReadPage(file.path, source, deck, params, STORE_OVER)
+        const whole = page.from === 0 && page.to === source.length
         return {
-          ...text({
-            path: file.path,
-            settings: deck.settings,
-            css: deck.css,
-            slides: deck.slides.map((slide, i) => ({ slide: i + 1, ...slide })),
-            source,
-          }),
-          seen: { path: file.path, hash: contentHash(source) },
+          content: [{ type: 'text', text: page.text }],
+          ...(whole || page.to > page.from
+            ? {
+                seen: {
+                  path: file.path,
+                  hash: contentHash(source),
+                  ...(!whole
+                    ? {
+                        chars: [page.from + 1, page.to] as [number, number],
+                        totalChars: source.length,
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         }
       },
     },

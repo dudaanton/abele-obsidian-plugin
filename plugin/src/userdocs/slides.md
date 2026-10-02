@@ -142,7 +142,9 @@ new deck tools start Off. Creating or changing slides uses the usual write previ
 Even with general writes allowed, a deck tool set to Ask still asks.
 
 The agent can read slide structure and speaker notes, build a deck in a new note, replace a
-slide, insert one or remove one. Its fit check measures text and media against the full slide
+slide, insert one or remove one. Long decks are read in small pages, so large speaker notes or
+inline images do not flood a model's context; the agent must finish reading the current deck
+before editing it. Its fit check measures text and media against the full slide
 canvas, not the phone-sized view. It flags overflow, clipped or missing pictures and unusually
 dense text. Its screenshot shows the complete slide in your current theme, with all list steps
 visible, but without speaker notes. Pictures are saved in your usual attachments folder and

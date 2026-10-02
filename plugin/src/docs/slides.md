@@ -149,6 +149,8 @@ This is the presentation-authoring skill, available without a vault skill instal
    idea; use the current Obsidian theme by default. Reuse in-scope pictures/drawings and their
    existing embed syntax. A screenshot is not a substitute for checking the facts.
 3. Use `deck_create` for a new note, or `deck_read` before `deck_edit` on an existing deck.
+   For a large deck follow each `nextOffset` with `deck_read.offset` until it is `null`;
+   structural summaries are not complete reads.
    The new deck uses `type: presentation` and `---` separators. A slide edit includes that
    slide's full layout and speaker notes. Named script/HTML fences follow **Live blocks**;
    never store or claim network consent. Ordinary write approval is still required.

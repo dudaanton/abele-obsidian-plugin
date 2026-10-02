@@ -87,7 +87,11 @@ export interface ReadMark {
   /** Milliseconds since the epoch. */
   at: number
   via: 'read' | 'attachment' | 'write'
-  /** Set when only these lines (1-based, inclusive) were seen; absent for the whole file. */
+  /** Source UTF-16 characters (1-based, inclusive) seen by a bounded deck read.
+   * Kept separately from file-line windows; absence of both ranges means the whole file. */
+  chars?: [number, number]
+  totalChars?: number
+  /** Set when only these lines (1-based, inclusive) were seen; absent for a whole/character read. */
   lines?: [number, number]
   /**
    * How many lines the file had, with `lines`: what lets two windows read one after the other
@@ -152,7 +156,14 @@ export interface AgentToolResult {
    * The text of a file this call read or left behind, as the tool saw it. Only the session's
    * read guard looks at it; it turns it into the `reads` of the tool's result message.
    */
-  seen?: { path: string; hash: string; lines?: [number, number]; total?: number }
+  seen?: {
+    path: string
+    hash: string
+    lines?: [number, number]
+    total?: number
+    chars?: [number, number]
+    totalChars?: number
+  }
   /** Filled by the session's read guard, carried onto the result message by whoever makes it. */
   reads?: ReadMark[]
   /** Filled by the session's result store when the answer was too big to send whole. */

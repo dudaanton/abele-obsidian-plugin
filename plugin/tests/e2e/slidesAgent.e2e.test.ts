@@ -98,6 +98,30 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
     })
   })
 
+  it('returns bounded source pages for a deck with a large inline HTML image', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{
+      ${PRELUDE}
+      const path='sample-paged-deck.md'
+      if(app.vault.getAbstractFileByPath(path))throw Error('paging fixture exists')
+      const source='# Sample\\n\\n> [!notes]\\n> '+ 'Sample detail. '.repeat(1000)+'\\n\\n\`\`\`slide-html\\n<img src="data:image/png;base64,'+'A'.repeat(60000)+'">\\n\`\`\`'
+      const file=await app.vault.create(path,source);s.ctx.scope.addFile(path)
+      try {
+        const first=await call('deck_read',{path}),a=JSON.parse(first.content[0].text)
+        const second=await call('deck_read',{path,offset:a.nextOffset}),b=JSON.parse(second.content[0].text)
+        return JSON.stringify({firstSize:first.content[0].text.length,secondSize:second.content[0].text.length,structure:a.structure,firstRange:first.seen.chars,secondRange:second.seen.chars,continued:b.offset===a.nextOffset,exact:source.startsWith(a.source+b.source)})
+      } finally { await app.vault.delete(file) }
+    })()`)
+    )
+    expect(result.firstSize).toBeLessThanOrEqual(6000)
+    expect(result.secondSize).toBeLessThanOrEqual(6000)
+    expect(result.structure).toBe('summary')
+    expect(result.firstRange[0]).toBe(1)
+    expect(result.secondRange[0]).toBe(result.firstRange[1] + 1)
+    expect(result.continued).toBe(true)
+    expect(result.exact).toBe(true)
+  })
+
   it('measures overflow and clipped media without executing live blocks or asking consent', async () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{

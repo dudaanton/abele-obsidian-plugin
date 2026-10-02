@@ -20,7 +20,8 @@ import { estimateTokens } from './tokens'
  *
  * Decisions, for whoever changes this:
  * - A result that carries a file's text for the read guard (`seen`) is left alone. `read` caps
- *   itself by lines, so what the guard records is what was shown — a window, not the whole —
+ *   itself by lines, and `deck_read` by exact source character windows with bounded JSON,
+ *   so what the guard records is what was shown — a window, not the whole —
  *   and the file itself is where the rest is read from.
  * - `read_result` is never stored again: it answers a page at a time, within the same budget.
  * - What a person sees under the tool call is what the agent was sent, as with screenshots.

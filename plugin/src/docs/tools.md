@@ -45,9 +45,17 @@ proposal. To revise again after acceptance, start a new comment on the revised w
 
 ## Presentations
 
-`deck_read(path)` returns deck settings, CSS, numbered structured slides (layouts, regions,
-Markdown/HTML/named-script blocks, speaker notes), and the complete original source. It records
-that version as read for the ordinary read-before-write guard. `deck_create(path, content)`
+`deck_read(path, offset?, limit?)` returns deck settings, CSS, numbered structured slides
+(layouts, regions, Markdown/HTML/named-script blocks, speaker notes) and the original source
+when the complete reply fits. Every reply is capped at 6000 characters, including JSON escaping.
+For a large deck it returns `structure: "summary"`, bounded slide/region/block-type and note-size
+summaries, and an exact `source` window. `offset` is zero-based over the source's UTF-16
+characters; `nextOffset` gives the next page, or `null` at the end. `limit` may request a smaller
+source window; oversized requests are capped. Summaries omit large metadata and block text;
+all original content remains available in the source pages. Follow `nextOffset` until `null`
+before editing. Only source characters actually returned count as read; a summary alone never
+marks the whole file. Contiguous windows of the same version accumulate in the ordinary
+read-before-write guard, separately from file-line reads. `deck_create(path, content)`
 creates a `.md` deck with `type: presentation` frontmatter. `deck_edit(path, slide, content?,
 operation?)` replaces one slide by default; `insert` inserts before the one-based number
 (count + 1 appends), and `remove` deletes it, but never the last slide. Content is exactly one

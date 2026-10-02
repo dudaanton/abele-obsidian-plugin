@@ -408,7 +408,10 @@ lines a script left on a message it rewrote or failed on.
 A tool result or message that showed the agent a file carries `reads`: the file's path, a hash
 of its text at that moment, the time, whether it was read, attached or written by the agent, and
 the lines when only a window was seen (with the file's length, so windows read one after another
-add up to the whole). That is what lets `edit`, `replace` and `write` tell whether the agent has
+add up to the whole). Bounded deck source reads instead carry `chars` (1-based inclusive UTF-16
+source character range) and `totalChars`; character and line ranges are never combined. Once
+contiguous reads cover the full current file the range is absent. That is what lets
+`edit`, `replace`, `write` and `deck_edit` tell whether the agent has
 seen a file as it is now (see the tools section). It travels with the message, so it is gone once
 that message is compacted away or left on another branch.
 

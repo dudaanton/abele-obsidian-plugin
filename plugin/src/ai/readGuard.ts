@@ -99,9 +99,29 @@ export function foldMarks(marks: Iterable<ReadMark>): Map<string, ReadMark> {
   for (const mark of marks) {
     const prior = views.get(mark.path)
     const same = prior && prior.hash === mark.hash
-    if (same && mark.lines && !prior.lines) {
-      views.set(mark.path, { ...mark, lines: undefined, total: undefined })
+    if (same && (mark.lines || mark.chars) && !prior.lines && !prior.chars) {
+      const whole = { ...mark }
+      delete whole.lines
+      delete whole.total
+      delete whole.chars
+      delete whole.totalChars
+      views.set(mark.path, whole)
       continue
+    }
+    if (same && mark.chars && prior.chars && mark.via === 'read' && prior.via === 'read') {
+      const [a, b] = prior.chars
+      const [c, d] = mark.chars
+      if (c <= b + 1 && a <= d + 1) {
+        const chars: [number, number] = [Math.min(a, c), Math.max(b, d)]
+        const totalChars = mark.totalChars ?? prior.totalChars
+        const next = { ...mark, chars, totalChars }
+        if (totalChars !== undefined && chars[0] === 1 && chars[1] >= totalChars) {
+          delete next.chars
+          delete next.totalChars
+        }
+        views.set(mark.path, next)
+        continue
+      }
     }
     if (same && mark.lines && prior.lines && mark.via === 'read' && prior.via === 'read') {
       const [a, b] = prior.lines
@@ -151,6 +171,10 @@ export function refusal(
           ? 'it was attached'
           : 'you read it'
     return `${READ_FIRST}: ${path} has changed since ${how} at ${when(view.at)}. Read it again, then make the change.`
+  }
+  if (target.need === 'whole' && view.chars) {
+    const [from, to] = view.chars
+    return `${READ_FIRST}: you have seen only source characters ${from}–${to} of ${path}. Read the remaining deck_read pages using offset: nextOffset before replacing the file or editing its slides.`
   }
   if (target.need === 'whole' && view.lines) {
     const [from, to] = view.lines
@@ -227,6 +251,12 @@ export class ReadGuard {
           : ['write', 'create', 'deck_create', 'deck_edit'].includes(toolName)
             ? undefined
             : this.view(seen.path)?.lines
+      const chars =
+        via === 'read'
+          ? seen.chars
+          : ['write', 'create', 'deck_create', 'deck_edit'].includes(toolName)
+            ? undefined
+            : this.view(seen.path)?.chars
       marks.push({
         path: seen.path,
         hash: seen.hash,
@@ -235,6 +265,8 @@ export class ReadGuard {
         ...(partial ? { lines: partial } : {}),
         // How long the file is, so a later window can complete this one. Only a read knows.
         ...(partial && via === 'read' && seen.total ? { total: seen.total } : {}),
+        ...(chars ? { chars } : {}),
+        ...(chars && via === 'read' && seen.totalChars ? { totalChars: seen.totalChars } : {}),
       })
     } else if (CARRIERS.includes(toolName)) {
       const carried = await this.carry(params, result)
