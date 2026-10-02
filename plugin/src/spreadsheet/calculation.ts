@@ -80,7 +80,7 @@ function boundedReferences(sheets: WorkbookSheet[], book: Workbook): boolean {
   const safe = (expression: string): boolean => {
     // Dynamic/array-producing functions can synthesize references or vast output at evaluation.
     const plain = expression.replace(/"(?:[^"]|"")*"|'(?:[^']|'')*'/g, '""')
-    if (/\b(?:INDIRECT|OFFSET|SEQUENCE|MAKEARRAY|REPT)\s*\(/i.test(plain) || /[\[\]]/.test(plain))
+    if (/\b(?:INDIRECT|OFFSET|SEQUENCE|MAKEARRAY|REPT)\s*\(/i.test(plain) || /[[\]]/.test(plain))
       return false
     references.lastIndex = 0
     for (const match of plain.matchAll(references)) {
