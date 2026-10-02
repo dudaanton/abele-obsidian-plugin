@@ -1445,3 +1445,13 @@ part, and a part changed there is kept in the callout.
 One drawing may be embedded several times in a note, each with its own part and size. Do not
 write a drawing's file yourself — the picture and the data must agree, and only the drawing tab
 keeps them so.
+
+
+## Disabled publication snapshot contract
+
+The concept branch defines a separate device-local IndexedDB link-snapshot store, bound to
+local vault, issuer, principal/facet/grant and exact settled note identity/version/SHA. Its
+independent descriptor and recovery sentinel are behind host ports; there is no production
+call site while automatic publication is disabled. Unknown or lost evidence never creates
+an empty local baseline. Pending local-create novelty clears on settlement; immutable
+received baselines and bounded known-rename evidence are separate from publication authority.
