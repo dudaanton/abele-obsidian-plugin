@@ -2066,6 +2066,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   abort(): void {
     this.cancelAutoRetry()
+    this.abortQuestions()
     this.turnAbortController?.abort()
     this.agentLoop?.abort()
     this.toolAbortController?.abort()

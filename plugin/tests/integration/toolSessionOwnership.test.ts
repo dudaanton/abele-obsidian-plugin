@@ -8,6 +8,7 @@ import type { AgentTool } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { DelegateRun } from '@/ai/DelegateRun'
 import { deferred } from '../helpers/deferred'
+import { createQuestionsTool } from '@/ai/tools/QuestionsTool'
 
 const sessions: ChatSession[] = []
 afterEach(() => {
@@ -15,6 +16,27 @@ afterEach(() => {
   sessions.length = 0
   ChatService.getInstance().destroy()
   vi.restoreAllMocks()
+})
+
+it('settles a questionnaire when its executing turn is stopped', async () => {
+  useVault([])
+  AbeleConfig.getInstance().applySettings(undefined)
+  const session = new ChatSession(ChatService.getInstance())
+  sessions.push(session)
+  const controller = new AbortController()
+  const pending = createQuestionsTool(session).execute(
+    'sample-question',
+    { questions: [{ question: 'Sample choice?', options: ['one', 'two'] }] },
+    controller.signal
+  )
+  try {
+    expect(session.pendingQuestions.value !== null).toBe(true)
+    controller.abort()
+    expect(session.pendingQuestions.value).toBeNull()
+  } finally {
+    session.abortQuestions()
+    await pending
+  }
 })
 
 it('asks in the executing chat even when another chat is in front', async () => {

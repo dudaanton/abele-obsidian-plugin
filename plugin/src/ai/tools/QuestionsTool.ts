@@ -29,7 +29,8 @@ export function createQuestionsTool(owner?: ChatSession): AgentTool {
       },
       required: ['questions'],
     },
-    execute: async (_id, params, _signal, ctx) => {
+    execute: async (_id, params, signal, ctx) => {
+      signal?.throwIfAborted()
       const questions = params.questions as { question: string; options: string[] }[]
       if (!questions?.length) throw new Error('No questions provided')
 
@@ -37,7 +38,14 @@ export function createQuestionsTool(owner?: ChatSession): AgentTool {
       const session = ctx?.session ?? owner
       if (!session) throw new Error('No active session')
 
-      const answers = await session.askQuestions(questions)
+      const abort = () => session.abortQuestions()
+      signal?.addEventListener('abort', abort, { once: true })
+      let answers: string[] | null
+      try {
+        answers = await session.askQuestions(questions)
+      } finally {
+        signal?.removeEventListener('abort', abort)
+      }
 
       if (!answers) {
         return { content: [{ type: 'text', text: 'User aborted the questionnaire.' }] }
