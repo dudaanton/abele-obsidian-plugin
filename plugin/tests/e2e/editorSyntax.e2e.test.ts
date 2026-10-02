@@ -186,6 +186,144 @@ describe.skipIf(!available)('editor syntax highlighting', () => {
     expect(result.on).toBeGreaterThan(0)
   })
 
+  it('leaves native diff additions and deletions untouched without patch headers', () => {
+    const content = '```diff\n-old\n+new\n```\n'
+    const result = evalAsync<{ removed: number; added: number; own: number }>(`(async () => {
+      ${PRELUDE}
+      const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
+      try {
+        await app.vault.modify(file, ${JSON.stringify(content)})
+        await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'source', source: true }, active: true })
+        const cm = leaf.view.editor.cm
+        const removed = await showLine(cm, '-old')
+        const added = await showLine(cm, '+new')
+        return { removed: removed?.querySelectorAll('.cm-negative').length ?? 0,
+          added: added?.querySelectorAll('.cm-positive').length ?? 0,
+          own: cm.dom.querySelectorAll('.abele-syntax-token').length }
+      } finally { await app.vault.modify(file, ${JSON.stringify(CONTENT)}) }
+    })()`)
+    expect(result.removed).toBeGreaterThan(0)
+    expect(result.added).toBeGreaterThan(0)
+    expect(result.own).toBe(0)
+  })
+
+  it.each(['quote', 'list'])(
+    'ends an unclosed %s before outside prose and a Rust fence',
+    (container) => {
+      const contained =
+        container === 'quote'
+          ? '> ```graphql\n> query { sample { id } }'
+          : '- ```graphql\n  query { sample { id } }'
+      const content = contained + '\nOutside prose\n```rust\nfn sample() {}\n```\n'
+      const result = evalAsync<{
+        graphql: number
+        prose: number
+        rust: number
+        text: string
+      }>(`(async () => {
+      ${PRELUDE}
+      const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
+      try {
+        await app.vault.modify(file, ${JSON.stringify(content)})
+        await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'source', source: true }, active: true })
+        const cm = leaf.view.editor.cm
+        let query = await showLine(cm, 'query { sample')
+        for (let i = 0; i < 50 && !query?.querySelector('.abele-syntax-token.keyword'); i++) {
+          await wait(100)
+          query = [...cm.contentDOM.querySelectorAll('.cm-line')].find((el) => el.textContent.includes('query { sample'))
+        }
+        const graphql = query?.querySelectorAll('.abele-syntax-token.keyword').length ?? 0
+        const prose = await showLine(cm, 'Outside prose')
+        const rust = await showLine(cm, 'fn sample()')
+        return { graphql, prose: prose?.querySelectorAll('.abele-syntax-token').length ?? -1,
+          rust: rust?.querySelectorAll('.abele-syntax-token').length ?? -1, text: cm.state.doc.toString() }
+      } finally { await app.vault.modify(file, ${JSON.stringify(CONTENT)}) }
+    })()`)
+      expect(result.graphql).toBeGreaterThan(0)
+      expect(result.prose).toBe(0)
+      expect(result.rust).toBe(0)
+      expect(result.text).toBe(content)
+    }
+  )
+
+  it('keeps a small unclosed quote highlighted before a long outside paragraph', () => {
+    const content =
+      '> ```graphql\n> query { sample { id } }\n' + 'Outside prose '.repeat(4000) + '\n'
+    const result = evalAsync<{ graphql: number; outside: number }>(`(async () => {
+      ${PRELUDE}
+      const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
+      try {
+        await app.vault.modify(file, ${JSON.stringify(content)})
+        await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'source', source: true }, active: true })
+        const cm = leaf.view.editor.cm
+        let query = await showLine(cm, 'query { sample')
+        for (let i = 0; i < 50 && !query?.querySelector('.abele-syntax-token.keyword'); i++) {
+          await wait(100)
+          query = [...cm.contentDOM.querySelectorAll('.cm-line')].find((el) => el.textContent.includes('query { sample'))
+        }
+        return { graphql: query?.querySelectorAll('.abele-syntax-token.keyword').length ?? 0,
+          outside: [...cm.contentDOM.querySelectorAll('.cm-line')].find((el) => el.textContent.includes('Outside prose'))?.querySelectorAll('.abele-syntax-token').length ?? 0 }
+      } finally { await app.vault.modify(file, ${JSON.stringify(CONTENT)}) }
+    })()`)
+    expect(result.graphql).toBeGreaterThan(0)
+    expect(result.outside).toBe(0)
+  })
+
+  it('refreshes an open Other switch after a settings update and enables on the first click', () => {
+    const result = evalAsync<{
+      initial: boolean
+      arrived: boolean
+      clicked: boolean
+      saved: boolean
+      fits: boolean
+      shot: string | null
+    }>(`(async () => {
+      ${PRELUDE}
+      await leaf.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: 'source', source: true }, active: true })
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      const previous = config.editorSyntaxHighlight
+      try {
+        config.editorSyntaxHighlight = true
+        await config.saveSettings()
+        app.setting.open()
+        app.setting.openTabById('abele')
+        for (let i = 0; i < 50 && !app.setting.activeTab?.containerEl?.querySelector('.abele-tabs__tab'); i++) await wait(100)
+        const doc = app.setting.activeTab.containerEl.ownerDocument
+        const other = [...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find((el) => el.textContent.trim() === 'Other')
+        if (!other) throw new Error('Other settings tab not found')
+        other.click()
+        for (let i = 0; i < 50 && !doc.querySelector('.abele-settings__other'); i++) await wait(100)
+        const row = [...doc.querySelectorAll('.abele-settings__other .setting-item')].find((el) => el.querySelector('.setting-item-name')?.textContent === 'Editor syntax highlighting')
+        if (!row) throw new Error('Syntax switch not found')
+        row.scrollIntoView({ block: 'center' })
+        const checkbox = row.querySelector('.checkbox-container')
+        const initial = checkbox.classList.contains('is-enabled')
+        config.editorSyntaxHighlight = false
+        config.version.value++
+        await wait(200)
+        const arrived = !checkbox.classList.contains('is-enabled')
+        const rect = checkbox.getBoundingClientRect()
+        const frame = row.getBoundingClientRect()
+        const fits = rect.width > 0 && rect.left >= frame.left && rect.right <= frame.right + 1
+        const shot = ${onPhone()} ? await shoot('syntax-setting') : null
+        checkbox.click()
+        await wait(300)
+        return { initial, arrived, clicked: checkbox.classList.contains('is-enabled'),
+          saved: (await app.plugins.plugins.abele.loadData()).editorSyntaxHighlight === true, fits, shot }
+      } finally {
+        app.setting.close()
+        config.editorSyntaxHighlight = previous
+        await config.saveSettings()
+      }
+    })()`)
+    expect(result.initial).toBe(true)
+    expect(result.arrived).toBe(true)
+    expect(result.clicked).toBe(true)
+    expect(result.saved).toBe(true)
+    expect(result.fits).toBe(true)
+    if (onPhone()) expect(result.shot).toMatch(/\.png$/)
+  })
+
   it('keeps native reading-view tokens', () => {
     const result = evalAsync<{ tokens: number }>(`(async () => {
       ${PRELUDE}
