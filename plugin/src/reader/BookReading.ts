@@ -326,7 +326,9 @@ export class BookReading {
     }
     this.docIndex.set(doc, index)
     this.selectionWatches.get(doc)?.()
-    const win = doc.defaultView ?? window
+    // A book frame disallows scripts: Chromium refuses even the app's timer callbacks
+    // there. Own the debounce in the trusted app window, and cancel it with the page.
+    const win = this.themeEl.ownerDocument.defaultView ?? window
     let timer = 0
     const changed = () => {
       win.clearTimeout(timer)
