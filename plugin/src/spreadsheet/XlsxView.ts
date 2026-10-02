@@ -2,7 +2,8 @@ import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsi
 import { createApp, type App as VueApp } from 'vue'
 import WorkbookGrid from './WorkbookGrid.vue'
 import type { Workbook } from './package'
-import { applyWorkbookEdit, type WorkbookEdit } from './edit'
+import type { WorkbookEdit } from './edit'
+import { applyCalculatedEdit } from './calculation'
 import { loadWorkbookBytes, writeWorkbookChange } from './vaultAdapter'
 import './workbook.css'
 export const XLSX_VIEW_TYPE = 'abele-workbook'
@@ -29,7 +30,7 @@ export class XlsxView extends FileView {
   getIcon() {
     return 'table'
   }
-  async onLoadFile(file: TFile): Promise<void> {
+  async onLoadFile(file: TFile, calculationNote?: string): Promise<void> {
     const token = ++this.token
     this.vue?.unmount()
     this.vue = null
@@ -44,6 +45,7 @@ export class XlsxView extends FileView {
       )
       if (token !== this.token) return
       this.workbook = book
+      book.calculationNote = calculationNote
       status.remove()
       this.vue = createApp(WorkbookGrid, {
         book,
@@ -53,7 +55,8 @@ export class XlsxView extends FileView {
             throw new Error('Hand editing is desktop-only for .xlsx files')
           if (this.file !== file || this.workbook !== book)
             throw new Error('Workbook is no longer open')
-          const updated = await applyWorkbookEdit(book, edit)
+          const calculated = await applyCalculatedEdit(book, edit)
+          const updated = calculated.bytes
           if (this.file !== file || this.workbook !== book)
             throw new Error('Workbook is no longer open')
           this.saving = true
@@ -62,7 +65,7 @@ export class XlsxView extends FileView {
           } finally {
             this.saving = false
           }
-          await this.onLoadFile(file)
+          await this.onLoadFile(file, calculated.note)
         },
       })
       this.vue.mount(this.contentEl)

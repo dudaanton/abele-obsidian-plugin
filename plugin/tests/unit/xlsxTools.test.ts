@@ -75,6 +75,8 @@ describe('workbook tools', () => {
     await expect(tool.execute('sample-stale', params)).rejects.toThrow(/changed/)
     const now = new Uint8Array(await app.vault.readBinary(namedWorkbook(params.path)))
     expect((await (await openXlsx(now)).sheet('Sample')).cells.get('B2')?.value).toBe(25)
+    expect((await (await openXlsx(now)).sheet('Sample')).cells.get('C1')?.value).toBe(35)
+    expect((await (await openXlsx(now)).sheet('Other')).cells.get('A1')?.value).toBe(70)
     expect(createAgent().toolModes.xlsx_write).toBe('ask')
   })
   it('defaults read tools to automatic, but keeps independent modes', () => {

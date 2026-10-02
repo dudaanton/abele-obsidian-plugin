@@ -62,7 +62,13 @@ Bare strings starting with `=` are formulas. It defaults to Ask with the usual b
 preview and has its own Off/Ask/On mode, independent of general file write permissions.
 Stale revisions/concurrent writes are refused. Shared groups are expanded before editing;
 array/data-table ranges, protected sheets and merged followers are read-only. `.xlsm` and
-macro-bearing packages cannot be written. Edits mark caches stale until recalculation.
+macro-bearing packages cannot be written. Writes locally recalculate dependent formula caches
+with HyperFormula (at most 20000 stored cells across all sheets). `operation: "recalculate"`
+only needs `path` and `revision`, and updates caches without changing values/formulas. Unknown
+functions show `#NAME?`; cyclic dependencies use Excel-compatible `#REF!` caches. Array/dynamic
+formula metadata or larger calculations are left pending, with a warning; the spreadsheet app
+still recalculates on open. The preview includes dependent formula caches (bounded, marked
+when truncated). Local evaluation is not a guarantee of Excel-identical formula semantics.
 
 ## Word documents
 

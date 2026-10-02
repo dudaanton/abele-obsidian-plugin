@@ -31,6 +31,7 @@ export interface WorkbookSheet extends SheetInfo {
   protected: boolean
 }
 export interface Workbook extends OfficePackage {
+  calculationNote?: string
   workbookPart: string
   workbookSource: string
   workbookTree: XmlNode

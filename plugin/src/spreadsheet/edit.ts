@@ -15,6 +15,7 @@ import { S, sc, type CellValue } from './styles'
 import { valueText, type Workbook, type WorkbookSheet } from './package'
 export type CellInput = CellValue | { formula: string } | { value: CellValue }
 export interface WorkbookEdit {
+  operation?: 'cells' | 'recalculate'
   sheet: string
   range: string
   values: CellInput[][]

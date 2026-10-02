@@ -43,17 +43,18 @@ export function createXlsxTools(): AgentTool[] {
       label: 'Write workbook cells',
       category: 'Excel',
       description:
-        'Patch a rectangular A1 range of values/formulas in an .xlsx workbook. Read xlsx_read first and pass revision. values is a rectangular matrix matching range: string, number, boolean, null (clear), {formula: "SUM(A1:A2)"}, or {value: "=literal text"}. Strings starting with = are formulas. Max 1000 cells. Uses the existing write preview/confirmation with its own Off/Ask/On mode, default Ask. Shared formulas are unshared before editing; array ranges, protected sheets, merged followers and .xlsm are read-only. Dependent caches may be stale until recalculation.',
+        'Patch a rectangular A1 range of values/formulas in an .xlsx workbook. Read xlsx_read first and pass revision. values is a rectangular matrix matching range: string, number, boolean, null (clear), {formula: "SUM(A1:A2)"}, or {value: "=literal text"}. Strings starting with = are formulas. Max 1000 cells. Uses the existing write preview/confirmation with its own Off/Ask/On mode, default Ask. Shared formulas are unshared before editing; array ranges, protected sheets, merged followers and .xlsm are read-only. Local HyperFormula recalculation updates dependent caches on edit (20000 stored-cell limit); unsupported functions show #NAME?. operation=recalculate refreshes caches without changing formulas/values and only needs path/revision. Array/dynamic formulas and larger calculations remain pending with an explicit warning.',
       parameters: {
         type: 'object',
         properties: {
           ...properties,
           revision: { type: 'string' },
+          operation: { type: 'string', enum: ['cells', 'recalculate'] },
           sheet: { type: 'string' },
           range: { type: 'string' },
           values: { type: 'array', items: { type: 'array', items: {} } },
         },
-        required: ['path', 'revision', 'sheet', 'range', 'values'],
+        required: ['path', 'revision'],
       },
       execute: async (_id, params, signal) => {
         const file = namedWorkbook(params.path)
@@ -64,7 +65,8 @@ export function createXlsxTools(): AgentTool[] {
           app,
           file,
           params as unknown as WorkbookEdit,
-          params.revision
+          params.revision,
+          signal
         )
         signal?.throwIfAborted()
         if (namedWorkbook(file.path) !== file)
@@ -72,7 +74,7 @@ export function createXlsxTools(): AgentTool[] {
         await writeWorkbookChange(app, file, prepared.original, prepared.updated, signal)
         return {
           ...answer(
-            `Edited ${file.path}; revision ${workbookRevision(prepared.updated)}. Values may be stale until recalculation.`
+            `Edited ${file.path}; revision ${workbookRevision(prepared.updated)}. ${prepared.calculation.note}`
           ),
           details: { path: file.path, diff: prepared.diff },
         }

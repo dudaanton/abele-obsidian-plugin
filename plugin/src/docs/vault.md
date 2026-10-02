@@ -41,7 +41,11 @@ Unknown cell metadata survives; unrelated XML and package parts retain their unc
 A no-op retains the exact ZIP. `calcPr` marks recalculation required, and calc-chain parts,
 relationships and content-type overrides are removed together. Saves refuse conflicting external
 changes and never create a Markdown intermediary. Array/data-table formulas and protected
-workbooks are not edited.
+workbooks are not edited. Local recalculation patches `v` caches and cell type attributes on
+formula cells, including other sheets' dependents. Formula XML and unknown metadata survive.
+No calculation engine state is persisted; `calcPr` still requests the spreadsheet app's native
+recalculation. Engine-only cycle errors are stored as Excel-compatible `#REF!`, not nonstandard
+error tokens.
 
 ## Word files
 

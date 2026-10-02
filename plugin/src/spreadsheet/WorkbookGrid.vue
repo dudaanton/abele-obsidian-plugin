@@ -14,6 +14,7 @@
       /></label>
       <button @click="go">Go</button>
       <button v-if="canEdit" class="abele-workbook-edit" @click="beginEdit">Edit cell</button>
+      <button v-if="canEdit" @click="recalculate" :disabled="busy">Recalculate</button>
       <span>{{
         book.readOnly
           ? 'Read-only workbook'
@@ -25,6 +26,7 @@
     <div class="abele-workbook-status" role="status">
       {{
         error ||
+        book.calculationNote ||
         (book.stale
           ? 'Values may be stale. Recalculation is required.'
           : 'Formula results are cached from the spreadsheet app.')
@@ -178,6 +180,23 @@ function beginEdit() {
           : 'text'
   editValue.value = cell?.formula ?? String(cell?.value ?? '')
   editing.value = true
+}
+async function recalculate() {
+  if (!canEdit.value || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await props.save!({
+      operation: 'recalculate',
+      sheet: sheetName.value,
+      range: selected.value,
+      values: [],
+    })
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busy.value = false
+  }
 }
 async function saveCell() {
   if (!canEdit.value || busy.value) return

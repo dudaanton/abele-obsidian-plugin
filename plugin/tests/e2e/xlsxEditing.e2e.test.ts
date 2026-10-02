@@ -52,6 +52,7 @@ describe.skipIf(!available)('workbook editing', () => {
     expect(result.preview).toBe(true)
     expect(result.read).toContain('B2: 25')
     expect(result.read).toContain('B2*2')
+    expect(result.read).toContain('C2: 50')
     expect(result.over).toBe(false)
     const before = unzipSync(original)
     const after = unzipSync(new Uint8Array(Buffer.from(result.bytes, 'base64')))
