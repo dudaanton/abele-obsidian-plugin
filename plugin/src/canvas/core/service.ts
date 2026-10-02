@@ -45,7 +45,14 @@ export const graphInputSchema = z
   .strict()
 export interface MermaidGraph {
   nodes: { id: string; label: string; shape?: string }[]
-  edges: { id: string; fromNode: string; toNode: string; label?: string }[]
+  edges: {
+    id: string
+    fromNode: string
+    toNode: string
+    label?: string
+    fromEnd?: 'none' | 'arrow'
+    toEnd?: 'none' | 'arrow'
+  }[]
   groups: { id: string; label: string; ids: string[] }[]
 }
 export interface MermaidPort {

@@ -198,7 +198,8 @@ must be in scope. New diagrams join scope after creation, like `create`.
   Graph input is `{nodes:[{id,kind,label?,file?,url?,shape?,parent?,near?,x?,y?,width?,height?}],
   edges:[{id,fromNode,toNode,label?,...}]}`. Kinds are `text`, `note`, `link`, `group`, `shape`;
   note requires `file`, link requires `url`. Mermaid input is a flowchart string, not another
-  diagram grammar. Creation fits text and applies layered dagre layout; it never overwrites a file.
+  diagram grammar. Undirected/bidirectional/directed links retain both endpoint kinds; unsupported
+  marker kinds are refused rather than silently converted to arrows. Creation fits text and applies layered dagre layout; it never overwrites a file.
 - `canvas_edit(path, {revision, ops})`: provide the revision returned by `canvas_read` or the
   last successful canvas write. A stale revision refuses the entire write with a reread message,
   including unsaved native changes and changes arriving at the final storage boundary. sequential, all-or-nothing batch. Ops are `add_node {node}`, `update

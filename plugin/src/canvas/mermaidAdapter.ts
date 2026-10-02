@@ -23,7 +23,8 @@ export const bundledMermaid: MermaidPort = {
       lean_right: 'parallelogram',
       lean_left: 'parallelogram',
     }
-    const edges: { start: string; end: string; text?: string }[] = diagram.db.getEdges()
+    const edges: { start: string; end: string; text?: string; type: string }[] =
+      diagram.db.getEdges()
     const groups: { id: string; title?: string; nodes: string[] }[] = diagram.db.getSubGraphs()
     const groupIds = new Set(groups.map((g) => g.id))
     return {
@@ -34,12 +35,26 @@ export const bundledMermaid: MermaidPort = {
           label: v.text ?? v.id,
           shape: shape[v.type ?? ''] ?? 'rectangle',
         })),
-      edges: edges.map((edge, i) => ({
-        id: `mermaid-edge-${i + 1}`,
-        fromNode: edge.start,
-        toNode: edge.end,
-        label: edge.text ?? '',
-      })),
+      edges: edges.map((edge, i) => {
+        const ends: Record<string, ['none' | 'arrow', 'none' | 'arrow']> = {
+          arrow_open: ['none', 'none'],
+          arrow_point: ['none', 'arrow'],
+          double_arrow_point: ['arrow', 'arrow'],
+        }
+        const pair = ends[edge.type]
+        if (!pair)
+          throw new Error(
+            `Unsupported Mermaid edge marker ${edge.type}; use explicit graph endpoints instead of a lossy import`
+          )
+        return {
+          id: `mermaid-edge-${i + 1}`,
+          fromNode: edge.start,
+          toNode: edge.end,
+          label: edge.text ?? '',
+          fromEnd: pair[0],
+          toEnd: pair[1],
+        }
+      }),
       groups: groups.map((g) => ({ id: g.id, label: g.title ?? g.id, ids: g.nodes })),
     }
   },
