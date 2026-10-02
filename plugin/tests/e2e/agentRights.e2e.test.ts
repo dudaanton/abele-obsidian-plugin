@@ -127,6 +127,12 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
       document.addEventListener('touchstart', touched, {once: true, capture: true})
       await window.__e2eHost.tap(x, y)
       await shoot('memory-after-tap')
+      if (session.pendingToolCalls.value[0]?.name === 'remember' && !(worker.memory || []).length && approve.isConnected) {
+        // A native tap outside the focused composer can dismiss the keyboard without
+        // clicking. After it settles, tap the still-pending approval at its new position.
+        const settled = approve.getBoundingClientRect()
+        await window.__e2eHost.tap(settled.left + settled.width / 2, settled.top + settled.height / 2)
+      }
       document.removeEventListener('touchstart', touched, true)
     } else approve.click()
     await until(() => (worker.memory || []).length === 1 && !session.isExecutingTool.value && !session.isStreaming.value)
