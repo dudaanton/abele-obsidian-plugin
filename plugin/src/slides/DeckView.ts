@@ -31,6 +31,7 @@ export class DeckView extends FileView {
   private readonly follower: DeckFollower
   private updateTimer = 0
   private lastSource: string | null = null
+  private positioning = 0
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -123,8 +124,20 @@ export class DeckView extends FileView {
     return { ...super.getState(), slide: this.viewer?.index ?? 0 }
   }
   async setState(state: Record<string, unknown>, result: ViewStateResult): Promise<void> {
-    await super.setState(state, result)
-    if (typeof state.slide === 'number') await this.viewer?.go(state.slide)
+    const position = typeof state.slide === 'number'
+    if (position) {
+      this.positioning++
+      this.viewer?.suspendMedia(true)
+    }
+    try {
+      // FileView loads the file before applying state. New viewers also inherit this pause
+      // so no earlier slide can run or ask consent while the requested position is pending.
+      await super.setState(state, result)
+      if (position) await this.viewer?.go(state.slide as number)
+    } finally {
+      if (position && --this.positioning === 0 && !audienceBootstraps.has(this.leaf) && !this.show)
+        this.viewer?.suspendMedia(false)
+    }
   }
 
   private ensureViewer(): void {
@@ -147,7 +160,7 @@ export class DeckView extends FileView {
         },
       }
     )
-    if (audienceBootstraps.has(this.leaf)) this.viewer.suspendMedia(true)
+    if (audienceBootstraps.has(this.leaf) || this.positioning > 0) this.viewer.suspendMedia(true)
     this.viewer
       .button('Present', () => void this.startPresenter())
       .classList.add('abele-deck-presenter-action')

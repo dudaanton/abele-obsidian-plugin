@@ -177,6 +177,37 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
     expect(result).toEqual({ diff: true, over: 0, approveVisible: true, unchanged: true })
   })
 
+  it('opens a later slide without activating the first slide network prompt', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{
+      ${PRELUDE}
+      const path='sample-positioned-deck.md',key='abele-slide-network:'+path
+      if(app.vault.getAbstractFileByPath(path))throw Error('position fixture exists')
+      const file=await app.vault.create(path,${JSON.stringify('---\ntype: presentation\nhtmlNetwork: true\n---\n```slide-html\n<button>Sample</button>\n```\n---\n# Second\n---\n# Requested')})
+      s.ctx.scope.addFile(path);app.saveLocalStorage(key,null)
+      let done=false,error=null
+      const opening=call('present',{path,slide:3}).then(()=>done=true,e=>{error=String(e);done=true})
+      try {
+        let asked=false
+        for(let i=0;i<40;i++) {
+          const button=[...document.querySelectorAll('.modal-container button')].find(b=>b.textContent.includes('Keep offline'))
+          if(button){asked=true;button.click();break}
+          if(done)break
+          await new Promise(r=>setTimeout(r,100))
+        }
+        await opening
+        if(error)throw Error(error)
+        const view=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===path).view
+        return JSON.stringify({asked,index:view.viewer.index+1,consent:app.loadLocalStorage(key)??null})
+      } finally {
+        for(const leaf of app.workspace.getLeavesOfType('abele-deck'))if(leaf.view.file?.path===path)leaf.detach()
+        await app.vault.delete(file);app.saveLocalStorage(key,null)
+      }
+    })()`)
+    )
+    expect(result).toEqual({ asked: false, index: 3, consent: null })
+  })
+
   it('opens the requested slide without starting a speaker show', async () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{
