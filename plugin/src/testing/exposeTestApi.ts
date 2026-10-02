@@ -87,6 +87,7 @@ import { openEpub } from '@/reader/openBook'
 import { readerFonts } from '@/reader/readerFonts'
 import type { Plugin } from 'obsidian'
 import * as analytics from '@/analytics'
+import { createCanvasProbe } from './canvasProbe'
 
 export interface GroupResolveMeasurement {
   /** Wall-clock milliseconds spent inside a single uncached resolve(). */
@@ -148,6 +149,7 @@ export interface NoteRenderSample {
 }
 
 interface AbeleTestApi {
+  canvasProbe: ReturnType<typeof createCanvasProbe>
   rendering: {
     Component: typeof Component
     MarkdownRenderer: typeof MarkdownRenderer
@@ -698,6 +700,7 @@ function chatHistoryPaths(): string[] {
 
 export function exposeTestApi(plugin: Plugin): void {
   window.__abeleTest = {
+    canvasProbe: createCanvasProbe(plugin),
     setKeyboardDiagnostics,
     ScopeResolver,
     ChatService,
