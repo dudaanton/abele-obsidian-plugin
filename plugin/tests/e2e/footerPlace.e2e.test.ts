@@ -85,6 +85,8 @@ const script = `(async () => {
   const otherPath = folder + '/Sample other note.md'
   const taskPath = (i) => folder + '/Tasks/Sample task ' + String(i).padStart(2, '0') + '.md'
   const report = { mobile: !!app.isMobile }
+  const config = window.__abeleTest.AbeleConfig.getInstance()
+  const remembered = config.rememberNotePlaces
   const leaf = app.workspace.getLeaf(false)
   const scroller = () => leaf.view.containerEl.querySelector('.cm-scroller')
   const rows = () => [...leaf.view.containerEl.querySelectorAll('.abele-todo-list .abele-task-view')]
@@ -96,7 +98,7 @@ const script = `(async () => {
       mode: leaf.view.getMode(),
       source: state.source,
       livePreview: cm && field ? cm.state.field(field, false) : null,
-      rememberNotePlaces: window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces,
+      rememberNotePlaces: config.rememberNotePlaces,
       footerWidgets: leaf.view.containerEl.querySelectorAll('.abele-footer-widget-container').length,
       rows: rows().length,
     }
@@ -108,6 +110,8 @@ const script = `(async () => {
   const topOf = (el) => Math.round(el.getBoundingClientRect().top - scroller().getBoundingClientRect().top)
 
   try {
+    // Restoring a saved place is opt-in: this fixture must not inherit a vault's disabled setting.
+    config.rememberNotePlaces = true
     const old = app.vault.getAbstractFileByPath(folder)
     if (old) await app.vault.delete(old, true)
     await app.vault.createFolder(folder)
@@ -183,6 +187,7 @@ const script = `(async () => {
   } catch (e) {
     report.error = String((e && e.stack) || e)
   } finally {
+    config.rememberNotePlaces = remembered
     const f = app.vault.getAbstractFileByPath(folder)
     for (const l of app.workspace.getLeavesOfType('markdown'))
       if (l.view.file?.path.startsWith(folder)) l.detach()
@@ -224,13 +229,19 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
   describe.skipIf(!available)(title, () => {
     let report: Report = {}
     let remembered: boolean | undefined
+    let rememberedAfter: boolean | undefined
 
     beforeAll(async () => {
       await prepare()
-      remembered = evalJson<boolean>('window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces')
+      remembered = evalJson<boolean>(
+        'window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces'
+      )
       // Run against a non-default setting, as another probe or the vault may leave it.
       evalRaw('window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces = false')
       report = JSON.parse(await evalLong(script, 240_000)) as Report
+      rememberedAfter = evalJson<boolean>(
+        'window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces'
+      )
       const b = report.back
       const moves = b?.tops.filter((t, i) => i === 0 || t !== b.tops[i - 1])
       console.info(
@@ -252,6 +263,17 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
     it('runs to the end', () => {
       expect(report.error ?? '').toBe('')
       expect(report.back).toBeDefined()
+      expect(rememberedAfter).toBe(false)
+    })
+
+    it('reopens in live preview with its footer mounted and restoration enabled', () => {
+      for (const state of [report.leaving, report.reopened]) {
+        expect(state?.mode).toBe('source')
+        expect(state?.source).toBe(false)
+        expect(state?.livePreview).toBe(true)
+        expect(state?.rememberNotePlaces).toBe(true)
+        expect(state?.footerWidgets).toBe(1)
+      }
     })
 
     it('the row looked at is back at the same spot', () => {
