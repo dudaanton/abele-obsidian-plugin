@@ -185,6 +185,7 @@
           @ask-here="onAskHere"
           @highlight="onHighlight"
           @remove-highlight="onRemoveHighlight"
+          @recolor-highlight="onRecolorHighlight"
           @review-revision="onReviewRevision"
           @undo-revision="onUndoRevision"
           @edit-message="onEditMessage"
@@ -593,6 +594,9 @@ const reportReplyError = (error: unknown) =>
   new Notice(error instanceof Error ? error.message : String(error))
 const onHighlight = (id: string, quote: string, start: number, color: HighlightColor) => {
   void session.value?.highlightReply(id, quote, start, color).catch(reportReplyError)
+}
+const onRecolorHighlight = (id: string, highlight: string, color: HighlightColor) => {
+  void session.value?.recolorReplyHighlight(id, highlight, color).catch(reportReplyError)
 }
 const onRemoveHighlight = (id: string, highlight: string) => {
   void session.value?.removeReplyHighlight(id, highlight).catch(reportReplyError)

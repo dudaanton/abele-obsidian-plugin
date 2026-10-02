@@ -14,7 +14,7 @@ import {
   selectionAnchor,
   type PaintedComment,
 } from '@/ai/messageComments'
-import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
+import type { HighlightColor } from '@/reader/highlights'
 import type { ReplyHighlight } from '@/ai/replyAnnotations'
 import type { MessageComment } from '@/ai/types'
 
@@ -123,13 +123,12 @@ export function useMessageComments(
         .onClick(() => ask(anchor.quote, anchor.start))
     )
     if (highlight) {
-      for (const color of HIGHLIGHT_COLORS)
-        menu.addItem((item) =>
-          item
-            .setTitle(`Highlight in ${color}`)
-            .setIcon('highlighter')
-            .onClick(() => highlight(anchor.quote, anchor.start, color))
-        )
+      menu.addItem((item) =>
+        item
+          .setTitle('Highlight')
+          .setIcon('highlighter')
+          .onClick(() => highlight(anchor.quote, anchor.start, 'yellow'))
+      )
     }
     const end = anchor.start + anchor.quote.length
     for (const mark of highlights() ?? []) {

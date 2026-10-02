@@ -401,7 +401,7 @@ import { Menu, Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import AiReplyOriginalDialog from './AiReplyOriginalDialog.vue'
-import type { HighlightColor } from '@/reader/highlights'
+import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
 import Markdown from './obsidian/Markdown.vue'
@@ -464,6 +464,7 @@ const emit = defineEmits<{
   (e: 'rewind', messageId: string, mode: 'since' | 'turn'): void
   (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void
   (e: 'remove-highlight', messageId: string, highlightId: string): void
+  (e: 'recolor-highlight', messageId: string, highlightId: string, color: HighlightColor): void
   (e: 'review-revision', messageId: string): void
   (e: 'undo-revision', messageId: string): void
 }>()
@@ -490,9 +491,18 @@ function onMessageClick(event: MouseEvent) {
   event.preventDefault()
   event.stopPropagation()
   const menu = new Menu()
+  for (const color of HIGHLIGHT_COLORS)
+    menu.addItem((item) =>
+      item
+        .setTitle(`Make it ${color}`)
+        .setIcon('highlighter')
+        .setChecked(mark.color === color)
+        .onClick(() => emit('recolor-highlight', props.message.id, mark.id, color))
+    )
+  menu.addSeparator()
   menu.addItem((item) =>
     item
-      .setTitle(`Remove ${mark.color} highlight`)
+      .setTitle('Remove highlight')
       .setIcon('eraser')
       .onClick(() => emit('remove-highlight', props.message.id, mark.id))
   )

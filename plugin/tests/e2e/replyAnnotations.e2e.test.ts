@@ -8,6 +8,9 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { onPhone, targets } from './helpers/target'
+
+targets('desktop', 'phone')
 
 const available = isObsidianRunning() && hasTestApi()
 const shots = shotDir('reply-annotations')
@@ -21,7 +24,17 @@ const script = `(async () => {
   let parent, child
   const report={}
   const PATH=${JSON.stringify(path)}
-  const shot=async name => { const image=await require('@electron/remote').getCurrentWindow().webContents.capturePage(); require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+name+'.png',image.toPNG()) }
+  const shot=async name => {
+    const path=${JSON.stringify(shots)}+'/'+name+'.png'
+    if(window.__e2eHost)return window.__e2eHost.shot(path)
+    const image=await require('@electron/remote').getCurrentWindow().webContents.capturePage();require('fs').writeFileSync(path,image.toPNG())
+  }
+  const tap=async el=>{
+    if(!window.__e2eHost){el.click();return}
+    const r=el.getBoundingClientRect();await window.__e2eHost.tap(r.left+r.width/2,r.top+r.height/2)
+  }
+  const saved=async file=>(await app.vault.read(file)).trim().split('\\n').map(line=>JSON.parse(line)).filter(r=>r.k==='msg'&&r.id==='sample-reply').at(-1)
+  const item=title=>[...document.querySelectorAll('.menu .menu-item')].find(el=>el.querySelector('.menu-item-title')?.textContent.trim()===title)
   const message=()=>document.querySelector('[data-ask-message="sample-reply"]')
   const select=words=>{
     const root=message(), walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT), nodes=[]
@@ -40,19 +53,39 @@ const script = `(async () => {
     await chats.openChatFile(file);await chats.revealSidebar();parent=chats.getSessionByFile(PATH)
     await until(message);await wait(500)
     report.selectable=getComputedStyle(message().querySelector('strong')).webkitUserSelect
+    parent.isStreaming.value=true
     select('small lantern')
     const bar=await until(()=>document.querySelector('.abele-chat-selection_placed'))
     const box=bar.getBoundingClientRect()
-    report.bar={left:box.left,right:box.right,width:innerWidth,colours:bar.querySelectorAll('[data-highlight-color]').length,swatches:[...bar.querySelectorAll('[data-highlight-color] .abele-highlight')].map(el=>getComputedStyle(el).backgroundColor)}
-    await shot('selection-colours')
-    bar.querySelector('[data-highlight-color="purple"]').click()
-    await until(()=>message().querySelector('.abele-highlight--purple'))
+    report.bar={left:box.left,right:box.right,width:innerWidth,colours:bar.querySelectorAll('[data-highlight-color]').length,actions:bar.querySelectorAll('[data-highlight-action]').length}
+    await shot('selection-highlight')
+    await tap(bar.querySelector('[data-highlight-action]'))
+    await until(()=>message().querySelector('.abele-highlight--yellow'))
+    report.created=parent.messages.value[0].highlights[0].color
     report.highlighted=[...message().querySelectorAll('[data-reply-highlight]')].map(el=>el.textContent).join('')
+    await tap(message().querySelector('[data-reply-highlight]'))
+    await until(()=>item('Make it purple'))
+    report.controls=[...document.querySelectorAll('.menu .menu-item-title')].map(el=>el.textContent.trim())
+    report.selectionMenu=!!document.querySelector('.abele-chat-selection_placed')
+    await shot('highlight-controls')
+    await tap(item('Make it purple'))
+    await until(()=>message().querySelector('.abele-highlight--purple'))
+    await parent.save()
+    report.recolored=(await saved(file)).highlights[0].color
+    await tap(message().querySelector('[data-reply-highlight]'))
+    await until(()=>item('Remove highlight'));await tap(item('Remove highlight'))
+    await until(()=>!message().querySelector('[data-reply-highlight]'))
+    await parent.save()
+    report.removed=(await saved(file)).highlights.length
+    await parent.highlightReply('sample-reply','small lantern',2,'purple')
     for(const [quote,color] of [['lights','yellow'],['garden','green'],['path','blue'],['stays','pink'],['nearby','orange']]) {
       const plain='A small lantern lights the garden path. A lantern stays nearby.'
       await parent.highlightReply('sample-reply',quote,plain.indexOf(quote),color)
     }
+    await parent.save()
     await wait(300);await shot('all-colours')
+    report.swatches=[...message().querySelectorAll('[data-reply-highlight]')].map(el=>getComputedStyle(el).backgroundColor)
+    parent.isStreaming.value=false
     await chats.closeTab(parent.id);await chats.openChatFile(file);parent=chats.getSessionByFile(PATH)
     report.reopened=parent.messages.value[0].highlights.length
     await until(message)
@@ -83,6 +116,7 @@ const script = `(async () => {
     await until(()=>parent.messages.value[0].content===source)
     report.undone=parent.messages.value[0].highlights.length
   } catch(error) {report.error=String(error.stack||error)} finally {
+    if(parent)parent.isStreaming.value=false
     document.getSelection().removeAllRanges()
     document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
     if(child?.commentId)await comments.remove(child.commentId)
@@ -99,26 +133,44 @@ describe.runIf(available)('reply annotations in phone layout', () => {
   let size: number[] = [],
     report: any
   beforeAll(async () => {
-    size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
-    await reloadApp('app.emulateMobile(true)')
-    evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
+    if (!onPhone()) {
+      size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+      await reloadApp('app.emulateMobile(true)')
+      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
+    }
     report = JSON.parse(await evalLong(script, 90_000))
   }, 180_000)
   afterAll(async () => {
-    if (size.length)
-      evalRaw(
-        `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
-      )
-    await reloadApp('app.emulateMobile(false)')
+    if (!onPhone()) {
+      if (size.length)
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
+        )
+      await reloadApp('app.emulateMobile(false)')
+    }
   }, 90_000)
   it('completes without an error', () => expect(report.error).toBeUndefined())
   it('allows native selection in formatted reply text, not only scripted ranges', () => {
     expect(report.selectable).toBe('text')
   })
-  it('keeps six colour choices inside the phone and persists all highlights', () => {
-    expect(report.bar.colours).toBe(6)
-    expect(new Set(report.bar.swatches).size).toBe(6)
-    expect(report.bar.swatches).not.toContain('rgba(0, 0, 0, 0)')
+  it('creates yellow with one action, then offers colours and removal on tap while running', () => {
+    expect(report.bar.colours).toBe(0)
+    expect(report.bar.actions).toBe(1)
+    expect(report.created).toBe('yellow')
+    expect(report.controls).toEqual([
+      'Make it yellow',
+      'Make it green',
+      'Make it blue',
+      'Make it pink',
+      'Make it purple',
+      'Make it orange',
+      'Remove highlight',
+    ])
+    expect(report.selectionMenu).toBe(false)
+    expect(report.recolored).toBe('purple')
+    expect(report.removed).toBe(0)
+    expect(new Set(report.swatches).size).toBe(6)
+    expect(report.swatches).not.toContain('rgba(0, 0, 0, 0)')
     expect(report.bar.left).toBeGreaterThanOrEqual(0)
     expect(report.bar.right).toBeLessThanOrEqual(report.bar.width)
     expect(report.highlighted).toBe('small lantern')

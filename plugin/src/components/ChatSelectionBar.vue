@@ -14,18 +14,14 @@
       tooltip="Start a comment on the selected words, kept with them in this chat"
       @click="ask"
     />
-    <div v-if="shown.highlight" class="abele-chat-selection__colors" aria-label="Highlight colour">
-      <Button
-        v-for="color in HIGHLIGHT_COLORS"
-        :key="color"
-        text="ab"
-        :data-highlight-color="color"
-        :aria-label="`Highlight in ${color}`"
-        :tooltip="`Highlight in ${color}`"
-        @click="highlight(color)"
-        ><span :class="`abele-highlight abele-highlight--${color}`">ab</span></Button
-      >
-    </div>
+    <Button
+      v-if="shown.highlight"
+      text="Highlight"
+      icon="highlighter"
+      data-highlight-action="true"
+      tooltip="Highlight the selected words in yellow"
+      @click="highlight"
+    />
   </div>
 </template>
 
@@ -33,7 +29,7 @@
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
 import { Platform } from 'obsidian'
 import Button from './obsidian/Button.vue'
-import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
+import type { HighlightColor } from '@/reader/highlights'
 import { selectionAnchor } from '@/ai/messageComments'
 import { SettledSelection } from '@/helpers/settledSelection'
 import { placeSelectionBar } from '@/helpers/selectionBarPlace'
@@ -132,11 +128,11 @@ function ask() {
   if (asked) emit('ask', asked.id, asked.quote, asked.start)
 }
 
-function highlight(color: HighlightColor) {
+function highlight() {
   const asked = shown.value
   pressing = false
   shown.value = null
-  if (asked?.highlight) emit('highlight', asked.id, asked.quote, asked.start, color)
+  if (asked?.highlight) emit('highlight', asked.id, asked.quote, asked.start, 'yellow')
   doc.getSelection()?.removeAllRanges()
 }
 
@@ -190,12 +186,6 @@ onBeforeUnmount(() => {
   visibility: hidden;
   user-select: none;
   -webkit-user-select: none;
-
-  &__colors {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--size-2-1);
-  }
 
   &_placed {
     visibility: visible;

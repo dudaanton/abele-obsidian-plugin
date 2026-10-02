@@ -4,7 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { paintReplyHighlights, paintMessageComments, selectionAnchor } from '@/ai/messageComments'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import ChatSelectionBar from '@/components/ChatSelectionBar.vue'
-import { Platform } from 'obsidian'
+import { Menu, Platform } from 'obsidian'
 import { useVault } from '../helpers/testEnv'
 import { SETTLE_MS } from '@/helpers/settledSelection'
 
@@ -49,6 +49,74 @@ describe('reply highlight rendering', () => {
     expect(root.querySelector('[data-reply-highlight]')).toBeNull()
   })
 
+  it('creates yellow from the desktop selection menu without offering a palette', async () => {
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const wrapper = mount(AiChatMessage, {
+      attachTo: document.body,
+      props: {
+        message: { id: 'reply', role: 'assistant', content: 'A small lantern.', timestamp: 1 },
+        canComment: true,
+      },
+    })
+    await flushPromises()
+    const root = wrapper.find('[data-ask-message]').element
+    const range = document.createRange()
+    range.selectNodeContents(root)
+    document.getSelection()!.removeAllRanges()
+    document.getSelection()!.addRange(range)
+    await wrapper.find('[data-ask-message]').trigger('contextmenu')
+    const menu = show.mock.instances.at(-1)!
+    expect(menu.items.map((item) => item.title)).toEqual(['Copy', 'Ask here', 'Highlight'])
+    menu.items.at(-1)!.handler!()
+    expect(wrapper.emitted('highlight')).toEqual([['reply', 'A small lantern.', 0, 'yellow']])
+    document.getSelection()!.removeAllRanges()
+    wrapper.unmount()
+    show.mockRestore()
+  })
+
+  it.each([false, true])(
+    'clicking a highlight offers recolour and removal on mobile=%s',
+    async (mobile) => {
+      Platform.isMobile = mobile
+      document.getSelection()!.removeAllRanges()
+      const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+      const wrapper = mount(AiChatMessage, {
+        attachTo: document.body,
+        props: {
+          message: {
+            id: 'reply',
+            role: 'assistant',
+            content: 'A small lantern.',
+            timestamp: 1,
+            highlights: [{ id: 'h', quote: 'small', start: 2, color: 'yellow' }],
+          },
+          canComment: true,
+        },
+      })
+      await flushPromises()
+      await wrapper.find('[data-reply-highlight]').trigger('click')
+      const menu = show.mock.instances.at(-1)!
+      expect(menu.items.map((item) => item.title)).toEqual([
+        'Make it yellow',
+        'Make it green',
+        'Make it blue',
+        'Make it pink',
+        'Make it purple',
+        'Make it orange',
+        'Remove highlight',
+      ])
+      expect(menu.items[0].checked).toBe(true)
+      menu.items[4].handler!()
+      menu.items[6].handler!()
+      expect(wrapper.emitted('recolor-highlight')).toEqual([['reply', 'h', 'purple']])
+      expect(wrapper.emitted('remove-highlight')).toEqual([['reply', 'h']])
+      expect(wrapper.emitted('ask-here')).toBeUndefined()
+      wrapper.unmount()
+      show.mockRestore()
+      Platform.isMobile = false
+    }
+  )
+
   it('offers a removable highlight even when its words no longer render', async () => {
     const wrapper = mount(AiChatMessage, {
       props: {
@@ -71,7 +139,7 @@ describe('reply highlight rendering', () => {
     wrapper.unmount()
   })
 
-  it('offers all book colours on a phone and preserves selection through tapping a colour', async () => {
+  it('creates yellow with one phone action and preserves selection through tapping it', async () => {
     Platform.isMobile = true
     vi.useFakeTimers()
     const frame = document.createElement('div'),
@@ -88,13 +156,13 @@ describe('reply highlight rendering', () => {
     document.getSelection()!.addRange(range)
     document.dispatchEvent(new Event('selectionchange'))
     await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)
-    expect(wrapper.findAll('[data-highlight-color]')).toHaveLength(6)
-    expect(wrapper.findAll('[data-highlight-color] .abele-highlight')).toHaveLength(6)
-    await wrapper.find('[data-highlight-color="purple"]').trigger('pointerdown')
+    expect(wrapper.findAll('[data-highlight-color]')).toHaveLength(0)
+    expect(wrapper.findAll('[data-highlight-action]')).toHaveLength(1)
+    await wrapper.find('[data-highlight-action]').trigger('pointerdown')
     document.getSelection()!.removeAllRanges()
     document.dispatchEvent(new Event('selectionchange'))
-    await wrapper.find('[data-highlight-color="purple"]').trigger('click')
-    expect(wrapper.emitted('highlight')).toEqual([['reply', 'small', 2, 'purple']])
+    await wrapper.find('[data-highlight-action]').trigger('click')
+    expect(wrapper.emitted('highlight')).toEqual([['reply', 'small', 2, 'yellow']])
     wrapper.unmount()
     frame.remove()
     vi.useRealTimers()
