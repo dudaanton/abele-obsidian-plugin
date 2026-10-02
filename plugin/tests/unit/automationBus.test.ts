@@ -97,8 +97,12 @@ describe('a task', () => {
     expect(seen[0].changed).toEqual(['due'])
   })
 
-  it('changed in its text only: task.changed with the body marked, no frontmatter keys', () => {
-    save('Tasks/Buy milk.md', { type: 'task', created: '2026-09-01' }, 'two litres')
+  it('changed in its text only: task.changed with the body marked, no frontmatter keys', async () => {
+    const task = file('Tasks/Buy milk.md')
+    const text = '---\ntype: task\ncreated: 2026-09-01\n---\ntwo litres'
+    await app.vault.modify(task, text)
+    app.emit('vault', 'modify', task)
+    app.emit('metadataCache', 'changed', task, text, {})
 
     expect(seen[0].kinds).toEqual(['task.changed', 'note.changed'])
     expect(seen[0].changed).toEqual([])
@@ -144,12 +148,15 @@ describe('a note', () => {
     expect(seen[0].type).toBe('movie')
   })
 
-  it('a re-index that changed nothing is not an event', () => {
-    save('Films/Heat.md', { type: 'movie', rating: 7 }, 'same')
-    seen = []
-    save('Films/Heat.md', { type: 'movie', rating: 7 }, 'same')
-
-    expect(seen).toHaveLength(0)
+  it('a re-index that changed nothing is not an event, including the first parse', async () => {
+    for (const path of ['Films/Heat.md', 'Tasks/Buy milk.md']) {
+      const note = file(path)
+      const text = await app.vault.cachedRead(note)
+      app.emit('metadataCache', 'changed', note, text, {})
+      expect(seen).toHaveLength(0)
+      app.emit('metadataCache', 'changed', note, text, {})
+      expect(seen).toHaveLength(0)
+    }
   })
 
   it('renamed: old and new path, frontmatter carried over', async () => {

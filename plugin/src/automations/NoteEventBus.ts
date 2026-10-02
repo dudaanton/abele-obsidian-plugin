@@ -46,6 +46,7 @@ const copy = (fm: unknown): Frontmatter =>
 export class NoteEventBus {
   private snapshots = new Map<string, Snapshot>()
   private pending = new Map<string, PendingCreate>()
+  private modified = new Set<string>()
   private listeners = new Set<Listener>()
   private refs: { source: 'vault' | 'metadataCache'; ref: EventRef }[] = []
   private running = false
@@ -84,6 +85,12 @@ export class NoteEventBus {
         ref: metadataCache.on('changed', (file: TFile, data: string) => this.onChanged(file, data)),
       },
       { source: 'vault', ref: vault.on('create', (file) => this.onCreate(file)) },
+      {
+        source: 'vault',
+        ref: vault.on('modify', (file) => {
+          if (isNote(file)) this.modified.add(file.path)
+        }),
+      },
       { source: 'vault', ref: vault.on('rename', (file, old) => this.onRename(file, old)) },
       { source: 'vault', ref: vault.on('delete', (file) => this.onDelete(file)) }
     )
@@ -96,6 +103,7 @@ export class NoteEventBus {
     this.refs = []
     for (const pending of this.pending.values()) window.clearTimeout(pending.timer)
     this.pending.clear()
+    this.modified.clear()
     this.snapshots.clear()
   }
 
@@ -115,6 +123,7 @@ export class NoteEventBus {
 
   private onChanged(file: TFile, data: string): void {
     if (!isNote(file)) return
+    const modified = this.modified.delete(file.path)
 
     // Still settling: the change is part of it being made, not a change to a made note.
     const pending = this.pending.get(file.path)
@@ -131,10 +140,12 @@ export class NoteEventBus {
     if (!previous) return
 
     const changed = changedKeys(previous.frontmatter, after)
-    // A body not seen before: `changed` fires on a write, so if the frontmatter is the same
-    // the text must be what moved.
+    // The metadata cache also announces indexing, not just edits. An unknown initial body
+    // becomes a baseline silently unless an actual vault modification preceded this parse.
     const bodyChanged =
-      previous.body !== null && body !== null ? previous.body !== body : changed.length === 0
+      previous.body !== null && body !== null
+        ? previous.body !== body
+        : modified && changed.length === 0
     if (!changed.length && !bodyChanged) return
 
     const { origin, chain } = this.originOf(file.path)
@@ -196,6 +207,7 @@ export class NoteEventBus {
 
   private onRename(file: TAbstractFile, oldPath: string): void {
     if (!isNote(file) && !oldPath.endsWith('.md')) return
+    if (this.modified.delete(oldPath) && isNote(file)) this.modified.add(file.path)
 
     const pending = this.pending.get(oldPath)
     if (pending) {
@@ -231,6 +243,7 @@ export class NoteEventBus {
 
   private onDelete(file: TAbstractFile): void {
     if (!isNote(file)) return
+    this.modified.delete(file.path)
 
     const pending = this.pending.get(file.path)
     if (pending) {
