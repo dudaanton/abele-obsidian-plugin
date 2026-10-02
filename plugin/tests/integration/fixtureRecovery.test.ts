@@ -12,6 +12,7 @@ import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
 import { readConnection, emptyConnection } from '@/sync/connection'
+import { ConnectionKeeper } from '@/sync/connectionKeeper'
 import { Platform, type App } from 'obsidian'
 let factory: IDBFactory
 beforeEach(() => {
@@ -106,8 +107,10 @@ describe('retryable phone fixture recovery', () => {
     Platform.isMobile = true
     const app = await setup()
     await fixture(app)
+    const keeper = new ConnectionKeeper(() => {})
     mock.keeper.read.mockImplementation(() => {
-      mock.connection.value = readConnection(app, Platform.isMobile) as any
+      keeper.read(app)
+      mock.connection.value = keeper.connection.value as any
     })
     const result = await restoreFixtureContext(app as unknown as App)
     expect(result).toEqual({ restored: true, errors: [] })
