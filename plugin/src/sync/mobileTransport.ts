@@ -49,7 +49,23 @@ export function mobileTransport(): typeof fetch {
     throw new Error(
       'Native sync transport is unsupported until its non-following runtime is verified'
     )
-  return fetchViaCapacitorHttp(http)
+  return fetchViaCapacitorHttp(exactNativeRequestBodies(http))
+}
+/** NSJSONSerialization can reorder dictionaries. Commit replay must send the same bytes. */
+export function exactNativeRequestBodies(native: NativeHttp): NativeHttp {
+  return {
+    request(options) {
+      if (options.data !== undefined && options.dataType !== 'file') {
+        const text = typeof options.data === 'string' ? options.data : JSON.stringify(options.data)
+        return native.request({
+          ...options,
+          data: base64(new TextEncoder().encode(text)),
+          dataType: 'file',
+        })
+      }
+      return native.request(options)
+    },
+  }
 }
 /** Exact native bytes and explicit pre-follow refusal, measured through the real iOS bridge. */
 export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {

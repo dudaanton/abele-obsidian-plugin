@@ -1,7 +1,29 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fetchViaCapacitorHttp } from '@/sync/mobileTransport'
+import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 
 describe('non-following native mobile fetch', () => {
+  it('prevents native JSON dictionary reordering from changing replay bytes', async () => {
+    const seen: string[] = []
+    const native = {
+      request: async (options: any) => {
+        // Model native JSON dictionary encoding: semantic equality is insufficient for receipts.
+        const raw =
+          options.dataType === 'file'
+            ? atob(options.data)
+            : JSON.stringify(options.data, Object.keys(options.data).sort())
+        seen.push(raw)
+        return { status: 200, headers: {}, data: btoa(raw), url: options.url }
+      },
+    }
+    const fetch = fetchViaCapacitorHttp(exactNativeRequestBodies(native))
+    for (let i = 0; i < 2; i++)
+      await fetch('https://sync.example/commit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"z":1,"a":2}',
+      })
+    expect(seen).toEqual(['{"z":1,"a":2}', '{"z":1,"a":2}'])
+  })
   it.each([301, 307, 308])(
     'requests pre-follow refusal for %s, never sends to the sink',
     async (status) => {
