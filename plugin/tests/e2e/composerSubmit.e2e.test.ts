@@ -11,6 +11,8 @@ import {
   setFocusEmulation,
 } from './helpers/obsidianCli'
 
+import { withNativeInput } from './helpers/nativeInput'
+
 const CHAT = 'sample-composer-submit.abchat'
 const NOTE = 'sample-composer-link.md'
 const DRAFT = 'See [[sample-composer-link]]'
@@ -81,26 +83,28 @@ const result = () =>
   text: window.__abeleTest.composer()?.get(),
 })`)
 
-const key = (shift = false) => {
-  const mod = process.platform === 'darwin' ? 4 : 2
-  const props = {
-    key: 'Enter',
-    code: 'Enter',
-    windowsVirtualKeyCode: 13,
-    nativeVirtualKeyCode: 13,
-    modifiers: shift ? 8 : mod,
-  }
-  runCli([
-    'dev:cdp',
-    'method=Input.dispatchKeyEvent',
-    `params=${JSON.stringify({ type: 'rawKeyDown', ...props })}`,
-  ])
-  runCli([
-    'dev:cdp',
-    'method=Input.dispatchKeyEvent',
-    `params=${JSON.stringify({ type: 'keyUp', ...props })}`,
-  ])
-}
+const key = async (shift = false) =>
+  withNativeInput(async () => {
+    const mod = process.platform === 'darwin' ? 4 : 2
+    const props = {
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      nativeVirtualKeyCode: 13,
+      modifiers: shift ? 8 : mod,
+    }
+    runCli([
+      'dev:cdp',
+      'method=Input.dispatchKeyEvent',
+      `params=${JSON.stringify({ type: 'rawKeyDown', ...props })}`,
+    ])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    runCli([
+      'dev:cdp',
+      'method=Input.dispatchKeyEvent',
+      `params=${JSON.stringify({ type: 'keyUp', ...props })}`,
+    ])
+  })
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 500))
 
@@ -118,7 +122,7 @@ describe.skipIf(!available)('composer submit on a wikilink', () => {
   }, 60_000)
 
   it('native Mod+Enter sends exactly once and never opens the link under the cursor', async () => {
-    key()
+    await key()
     await pause()
     expect(result()).toEqual({ sent: [DRAFT], opened: [], text: '' })
   })

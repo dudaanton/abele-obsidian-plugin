@@ -127,23 +127,23 @@ describe.skipIf(!available)('GitHub links in a note', () => {
     }
   }, 60_000)
 
-  it('Reading view: a plain click opens the pull request in a tab', () => {
+  it('Reading view: a plain click opens the pull request in a tab', async () => {
     expect(showNote('preview').ok).toBe(true)
     const at = centreOf(`${noteLeaf}.view.previewMode.containerEl.querySelector('a[href="${PR}"]')`)
     expect(at).not.toBeNull()
-    realClick(at!.x, at!.y)
+    await realClick(at!.x, at!.y)
 
     const { tabs, active } = tabsOnce('Rework the widget loader')
     expect(tabs).toEqual([{ url: PR, title: expect.stringContaining('Rework the widget loader') }])
     expect(active).toBe('abele-github')
   })
 
-  it('a second plain click follows the link in the same GitHub tab', () => {
+  it('a second plain click follows the link in the same GitHub tab', async () => {
     showNote('preview')
     const at = centreOf(
       `${noteLeaf}.view.previewMode.containerEl.querySelector('a[href="${ISSUE}"]')`
     )
-    realClick(at!.x, at!.y)
+    await realClick(at!.x, at!.y)
 
     const { tabs } = tabsOnce('Loader hangs on an empty list')
     expect(tabs.map((t) => t.url)).toEqual([ISSUE])
@@ -162,24 +162,24 @@ describe.skipIf(!available)('GitHub links in a note', () => {
     expect(tabs.map((t) => t.url)).toEqual([PR])
   })
 
-  it('a Mod-click opens a new tab, and the one already open stays as it was', () => {
+  it('a Mod-click opens a new tab, and the one already open stays as it was', async () => {
     showNote('preview')
     const at = centreOf(
       `${noteLeaf}.view.previewMode.containerEl.querySelector('a[href="${ISSUE}"]')`
     )
-    realClick(at!.x, at!.y, META)
+    await realClick(at!.x, at!.y, META)
 
     const { tabs } = tabsOnce('Loader hangs on an empty list')
     expect(tabs.map((t) => t.url).sort()).toEqual([ISSUE, PR].sort())
   })
 
-  it('Live Preview: a plain click on the link text opens it in the GitHub tab used last', () => {
+  it('Live Preview: a plain click on the link text opens it in the GitHub tab used last', async () => {
     expect(showNote('live').ok).toBe(true)
     const at = centreOf(
       `[...${noteLeaf}.view.containerEl.querySelectorAll('.cm-underline')].find((e) => e.textContent === 'the discussion')`
     )
     expect(at).not.toBeNull()
-    realClick(at!.x, at!.y)
+    await realClick(at!.x, at!.y)
 
     const { tabs } = tabsOnce('How should paging work?')
     // Two tabs still: the discussion replaced what the last used one showed.
@@ -187,13 +187,13 @@ describe.skipIf(!available)('GitHub links in a note', () => {
     expect(tabs.map((t) => t.url)).toContain(DISCUSSION)
   })
 
-  it('a compare link opens the comparison in the GitHub tab used last, not the browser', () => {
+  it('a compare link opens the comparison in the GitHub tab used last, not the browser', async () => {
     expect(showNote('preview').ok).toBe(true)
     const at = centreOf(
       `${noteLeaf}.view.previewMode.containerEl.querySelector('a[href="${COMPARE}"]')`
     )
     expect(at).not.toBeNull()
-    realClick(at!.x, at!.y)
+    await realClick(at!.x, at!.y)
 
     const { tabs } = tabsOnce(`${BASE_SHA.slice(0, 7)}...main`)
     expect(tabs).toHaveLength(2)
@@ -201,7 +201,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
   })
 
   describe('a link in the properties', () => {
-    it('opens from the Properties panel on a plain click', () => {
+    it('opens from the Properties panel on a plain click', async () => {
       const shown = evalAsync<{ ok: boolean }>(`(async () => {
         ${PRELUDE}
         for (const l of githubLeaves()) l.detach()
@@ -220,13 +220,13 @@ describe.skipIf(!available)('GitHub links in a note', () => {
       const at = centreOf(
         `app.workspace.getLeavesOfType('file-properties').find((l) => l.__abeleE2E).view.containerEl.querySelector('.metadata-link-inner')`
       )
-      realClick(at!.x, at!.y)
+      await realClick(at!.x, at!.y)
 
       const { tabs } = tabsOnce('Rework the widget loader')
       expect(tabs.map((t) => t.url)).toEqual([PR])
     })
 
-    it('opens a list property’s address in a new tab on a Mod-click', () => {
+    it('opens a list property’s address in a new tab on a Mod-click', async () => {
       evalAsync(`(async () => {
         ${PRELUDE}
         // The tab the first click opened went in front of the panel, in the panel's own group.
@@ -239,13 +239,13 @@ describe.skipIf(!available)('GitHub links in a note', () => {
       const at = centreOf(
         `app.workspace.getLeavesOfType('file-properties').find((l) => l.__abeleE2E).view.containerEl.querySelector('.multi-select-pill-content')`
       )
-      realClick(at!.x, at!.y, META)
+      await realClick(at!.x, at!.y, META)
 
       const { tabs } = tabsOnce('Loader hangs on an empty list')
       expect(tabs.map((t) => t.url).sort()).toEqual([ISSUE, PR].sort())
     })
 
-    it('opens from the properties shown in the note, and Alt leaves it to the browser', () => {
+    it('opens from the properties shown in the note, and Alt leaves it to the browser', async () => {
       const setup = evalAsync<{ ok: boolean; before: string }>(`(async () => {
         ${PRELUDE}
         for (const l of githubLeaves()) l.detach()
@@ -283,7 +283,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
           return {}
         })()`)
         const at = centreOf(link)
-        realClick(at!.x, at!.y, ALT)
+        await realClick(at!.x, at!.y, ALT)
         const alt = evalAsync<{ opened: string[]; tabs: number }>(`(async () => {
           ${PRELUDE}
           await until(() => window.__abeleGithubE2E.opened.length, 3000)
@@ -293,7 +293,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
         expect(alt).toEqual({ opened: [PR], tabs: 0 })
 
         const again = centreOf(link)
-        realClick(again!.x, again!.y)
+        await realClick(again!.x, again!.y)
         const { tabs } = tabsOnce('Rework the widget loader')
         expect(tabs.map((t) => t.url)).toEqual([PR])
       } finally {

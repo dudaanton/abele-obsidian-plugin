@@ -19,6 +19,7 @@ import { onPhone } from './target'
 import { exposeToPhone } from './phone'
 import { OWNER, REPO } from './fakeGithubRepo'
 import { WAIT_PRELUDE } from './wait'
+import { withNativeInput } from './nativeInput'
 
 export interface FakeGithub {
   /** `http://127.0.0.1:<port>`: the Server setting, and the start of every link. */
@@ -241,54 +242,64 @@ export const PRELUDE = `
  * so every handler Obsidian and the plugin have on the way sees it — capture listeners, CodeMirror,
  * Obsidian's own link opening. `modifiers` is CDP's bit mask: Alt 1, Ctrl 2, Meta 4, Shift 8.
  */
-export function realClick(x: number, y: number, modifiers = 0): void {
-  for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
-    const params = {
-      type,
-      x,
-      y,
-      modifiers,
-      button: type === 'mouseMoved' ? 'none' : 'left',
-      clickCount: 1,
+export async function realClick(x: number, y: number, modifiers = 0): Promise<void> {
+  await withNativeInput(async () => {
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+      await cdp('Input.dispatchMouseEvent', {
+        type,
+        x,
+        y,
+        modifiers,
+        button: type === 'mouseMoved' ? 'none' : 'left',
+        clickCount: 1,
+      })
     }
-    runCli(
-      ['dev:cdp', 'method=Input.dispatchMouseEvent', `params=${JSON.stringify(params)}`],
-      30_000
-    )
-  }
+  })
 }
 
 export const META = 4
 export const ALT = 1
 
-const cdp = (method: string, params: object): void => {
+const cdp = async (method: string, params: object): Promise<void> => {
   runCli(['dev:cdp', `method=${method}`, `params=${JSON.stringify(params)}`], 30_000)
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 /**
  * A mouse drag from one point to another, the way a hand selects text: pressed, moved in a few
  * steps with the button held, released.
  */
-export function realDrag(from: { x: number; y: number }, to: { x: number; y: number }): void {
-  cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', ...from, button: 'none' })
-  cdp('Input.dispatchMouseEvent', {
-    type: 'mousePressed',
-    ...from,
-    button: 'left',
-    buttons: 1,
-    clickCount: 1,
-  })
-  for (const t of [0.25, 0.5, 0.75, 1]) {
-    const x = Math.round(from.x + (to.x - from.x) * t)
-    const y = Math.round(from.y + (to.y - from.y) * t)
-    cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'left', buttons: 1 })
-  }
-  cdp('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    ...to,
-    button: 'left',
-    buttons: 0,
-    clickCount: 1,
+export async function realDrag(
+  from: { x: number; y: number },
+  to: { x: number; y: number }
+): Promise<void> {
+  await withNativeInput(async () => {
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', ...from, button: 'none' })
+    await cdp('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      ...from,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+    })
+    for (const t of [0.25, 0.5, 0.75, 1]) {
+      const x = Math.round(from.x + (to.x - from.x) * t)
+      const y = Math.round(from.y + (to.y - from.y) * t)
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x,
+        y,
+        button: 'left',
+        buttons: 1,
+      })
+    }
+    await cdp('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      ...to,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+    })
   })
 }
 
@@ -296,10 +307,12 @@ export function realDrag(from: { x: number; y: number }, to: { x: number; y: num
  * Mod+C as the app menu runs it: the key reaches the page's handlers, and the browser's own copy
  * command follows — the menu's accelerator is outside the page, so CDP names the command.
  */
-export function realCopy(): void {
-  const key = { key: 'c', code: 'KeyC', windowsVirtualKeyCode: 67, modifiers: META }
-  cdp('Input.dispatchKeyEvent', { type: 'keyDown', ...key, commands: ['copy'] })
-  cdp('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
+export async function realCopy(): Promise<void> {
+  await withNativeInput(async () => {
+    const key = { key: 'c', code: 'KeyC', windowsVirtualKeyCode: 67, modifiers: META }
+    await cdp('Input.dispatchKeyEvent', { type: 'keyDown', ...key, commands: ['copy'] })
+    await cdp('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
+  })
 }
 
 /** Where to click an element: its centre, or `selector`'s first match's, in the main window. */

@@ -1,6 +1,13 @@
 /** A device-local reader split reflows the page without moving marks off their words. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  evalRawIdempotent,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { evalAsync, centreOf, realDrag } from './helpers/githubLive'
 import { WAIT_PRELUDE } from './helpers/wait'
 import { buildJustifiedEpub } from '../fixtures/books/justifiedBook'
@@ -104,9 +111,11 @@ describe.skipIf(!available)('reader navigation split', () => {
     if (!onPhone()) {
       size = evalJson(`require('@electron/remote').getCurrentWindow().getContentSize()`)
       zoom = evalJson(`require('@electron/remote').getCurrentWebContents().getZoomFactor()`)
-      evalRaw(
-        `require('@electron/remote').getCurrentWebContents().setZoomFactor(1); require('@electron/remote').getCurrentWindow().setContentSize(1280, 800)`
-      )
+      expect(
+        evalRawIdempotent(
+          `(() => { require('@electron/remote').getCurrentWebContents().setZoomFactor(1); require('@electron/remote').getCurrentWindow().setContentSize(1280, 800); return 'ok' })()`
+        )
+      ).toBe('ok')
     }
     evalRaw(`(async () => {
       app.saveLocalStorage(${JSON.stringify(WIDTH_KEY)}, null)
@@ -139,7 +148,7 @@ describe.skipIf(!available)('reader navigation split', () => {
   })
 
   if (!onPhone()) {
-    it('drags, reflows both marks and remembers the width after reopening the panel and book', () => {
+    it('drags, reflows both marks and remembers the width after reopening the panel and book', async () => {
       const before = evalAsync<{ width: number; geometry: Geometry }>(`(async () => {
         ${PRELUDE}
         const v = await open()
@@ -159,7 +168,7 @@ describe.skipIf(!available)('reader navigation split', () => {
           `document.elementFromPoint(${handle!.x}, ${handle!.y}) === ${VIEW}.contentEl.querySelector('.abele-book-reader__resize')`
         )
       ).toBe(true)
-      realDrag(handle!, { x: handle!.x - 60, y: handle!.y })
+      await realDrag(handle!, { x: handle!.x - 60, y: handle!.y })
       const after = evalAsync<{
         width: number
         stored: number

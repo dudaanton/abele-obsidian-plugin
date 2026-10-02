@@ -484,7 +484,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.marked).toBe('  const widgets = loadWidgets(count)')
     })
 
-    it('opens from its path, a link: a markdown file rendered', () => {
+    it('opens from its path, a link: a markdown file rendered', async () => {
       const setup = evalAsync<{ error?: string }>(`(async () => {
         ${PRELUDE}
         ${opening(`${gh.web}/pull/42/files`, 'Rework the widget loader')}
@@ -495,7 +495,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
       const at = centreOf(
         `app.workspace.getLeavesOfType('abele-github')[0].view.containerEl.querySelector('.abele-github-file[data-path="README.md"] a.abele-github-file__path-link')`
       )
-      realClick(at!.x, at!.y)
+      await realClick(at!.x, at!.y)
       const r = evalAsync<{ url: string; rendered: boolean; tabs: number }>(`(async () => {
         ${PRELUDE}
         const leaf = githubLeaves()[0]
@@ -624,7 +624,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
      * should select — drags there with the mouse, presses Mod+C and reads what was selected and
      * what reached the clipboard. The clipboard is put back afterwards.
      */
-    const dragAndCopy = (url: string, title: string, points: string) => {
+    const dragAndCopy = async (url: string, title: string, points: string) => {
       const setup = evalAsync<{
         error?: string
         from?: { x: number; y: number }
@@ -672,8 +672,8 @@ describe.skipIf(!available)('a GitHub tab', () => {
         ${points}
       })()`)
       if (setup.error) return { error: setup.error }
-      realDrag(setup.from!, setup.to!)
-      realCopy()
+      await realDrag(setup.from!, setup.to!)
+      await realCopy()
       const read = evalAsync<{ selected: string; copied: string }>(`(async () => {
         ${PRELUDE}
         const clipboard = require('electron').clipboard
@@ -690,8 +690,8 @@ describe.skipIf(!available)('a GitHub tab', () => {
 
     const squash = (s: string) => s.replace(/\\s+/g, ' ').trim()
 
-    it('a paragraph of a comment, dragged over, is selected and copied', () => {
-      const r = dragAndCopy(
+    it('a paragraph of a comment, dragged over, is selected and copied', async () => {
+      const r = await dragAndCopy(
         `${gh.web}/pull/42`,
         'Rework the widget loader',
         `const p = await until(() => [...root.querySelectorAll('.abele-github-comment__body p')]
@@ -706,8 +706,8 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(squash(r.copied!)).toBe(squash(r.expected!))
     })
 
-    it('lines of a file’s code are selected and copied without their numbers', () => {
-      const r = dragAndCopy(
+    it('lines of a file’s code are selected and copied without their numbers', async () => {
+      const r = await dragAndCopy(
         `${gh.web}/blob/main/src/app.ts`,
         'src/app.ts',
         `const lines = await until(() => {
@@ -729,8 +729,8 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.copied).toBe(r.expected)
     })
 
-    it('lines of a diff are copied as their text: no line numbers, no plus or minus', () => {
-      const r = dragAndCopy(
+    it('lines of a diff are copied as their text: no line numbers, no plus or minus', async () => {
+      const r = await dragAndCopy(
         `${gh.web}/pull/42/files`,
         'Rework the widget loader',
         `const lines = await until(() => {

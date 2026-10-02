@@ -59,7 +59,7 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
     }
   }, 60_000)
 
-  it('"Ask here" on the bar opens a chat with the comment\'s link and the words quoted', () => {
+  it('"Ask here" on the bar opens a chat with the comment\'s link and the words quoted', async () => {
     const url = `${gh.web}/discussions/${DISCUSSION}`
     const setup = evalAsync<{
       error?: string
@@ -94,7 +94,7 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
     })()`)
     expect(setup.error).toBeUndefined()
 
-    realDrag(setup.from!, setup.to!)
+    await realDrag(setup.from!, setup.to!)
 
     const bar = evalAsync<{
       error?: string
@@ -120,7 +120,7 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
     expect(bar.selected).toBe('reads better')
     expect(bar.above).toBe(true)
 
-    realClick(bar.ask!.x, bar.ask!.y)
+    await realClick(bar.ask!.x, bar.ask!.y)
 
     const chat = evalAsync<{ error?: string; text?: string; focused?: boolean }>(`(async () => {
       ${PRELUDE}

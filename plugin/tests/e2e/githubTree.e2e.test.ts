@@ -235,7 +235,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
     expect(r.shot).toMatch(/\.png$/)
   })
 
-  it('drags the divider and remembers its width after closing and reopening the tab', () => {
+  it('drags the divider and remembers its width after closing and reopening the tab', async () => {
     const ready = evalAsync<{ error?: string; width?: number }>(`(async () => {
       ${PRELUDE}
       app.saveLocalStorage(${JSON.stringify(PANEL_KEY)}, true)
@@ -253,7 +253,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
       `app.workspace.getLeavesOfType('abele-github')[0]?.view.containerEl.querySelector('.abele-github-layout__resize')`
     )
     expect(handle, 'the file tree has a draggable divider').not.toBeNull()
-    realDrag(handle!, { x: handle!.x - 50, y: handle!.y })
+    await realDrag(handle!, { x: handle!.x - 50, y: handle!.y })
     const result = evalAsync<{ width: number; stored: number; reopened: number }>(`(async () => {
       ${PRELUDE}
       const leaf = githubLeaves()[0]
