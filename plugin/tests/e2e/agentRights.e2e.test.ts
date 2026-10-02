@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 
 targets('desktop', 'phone')
 const SHOTS = shotDir('abele-agent-rights')
@@ -104,6 +105,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
     report.pending = session.pendingToolCalls.value[0]?.name === 'remember'
     report.beforeMemory = (worker.memory || []).length
     const card = await until(() => document.querySelector('.abele-tool-approval'))
+    if (window.__e2eHost) await ${RESTORE_PHONE_SCRIPT}
     card.scrollIntoView({block: 'center'}); await wait(400)
     const approve = [...card.querySelectorAll('button')].find(el => el.textContent.trim() === 'Approve')
     if (!approve) throw new Error('Memory approval button absent')
@@ -120,8 +122,17 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
     if (window.__e2eHost) {
       // Capturing waits while the native keyboard and drawer can settle. Use the live
       // rectangle after capture, not the coordinates measured before that wait.
-      const current = approve.getBoundingClientRect()
-      const x = current.left + current.width / 2, y = current.top + current.height / 2
+      const aim = async () => {
+        approve.scrollIntoView({block: 'center'}); await wait(400)
+        const current = approve.getBoundingClientRect()
+        for (const fy of [0.5, 0.25, 0.75]) for (const fx of [0.5, 0.25, 0.75]) {
+          const x = Math.round(current.left + current.width * fx), y = Math.round(current.top + current.height * fy)
+          const hit = document.elementFromPoint(x, y)
+          if (x >= 0 && y >= 0 && x < innerWidth && y < innerHeight && hit && (hit === approve || approve.contains(hit))) return {x, y}
+        }
+        throw Error('Approve has no hittable point: ' + JSON.stringify({box:current.toJSON(),hit:document.elementFromPoint(current.left+current.width/2,current.top+current.height/2)?.outerHTML}))
+      }
+      const {x, y} = await aim()
       report.tap = {x, y, offsetTop: visualViewport?.offsetTop, offsetLeft: visualViewport?.offsetLeft, scale: visualViewport?.scale, hit: document.elementFromPoint(x, y)?.textContent, events: []}
       const touched = event => report.tap.events.push({x: event.touches[0]?.clientX, y: event.touches[0]?.clientY, target: event.target.className})
       document.addEventListener('touchstart', touched, {once: true, capture: true})
@@ -130,8 +141,8 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
       if (session.pendingToolCalls.value[0]?.name === 'remember' && !(worker.memory || []).length && approve.isConnected) {
         // A native tap outside the focused composer can dismiss the keyboard without
         // clicking. After it settles, tap the still-pending approval at its new position.
-        const settled = approve.getBoundingClientRect()
-        await window.__e2eHost.tap(settled.left + settled.width / 2, settled.top + settled.height / 2)
+        const settled = await aim()
+        await window.__e2eHost.tap(settled.x, settled.y)
       }
       document.removeEventListener('touchstart', touched, true)
     } else approve.click()

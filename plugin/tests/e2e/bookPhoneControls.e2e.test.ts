@@ -30,6 +30,7 @@ import {
 } from './helpers/obsidianCli'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildFigureEpub } from '../fixtures/books/figureBook'
+import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { evalAsync } from './helpers/githubLive'
@@ -520,6 +521,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const start = [before.startContainer, before.startOffset]
       const p0 = R(view).page
       const win = host ? null : require('@electron/remote').getCurrentWindow()
+      try {
       if (host) await host.orientation('landscape')
       else win.setContentSize(844, 390)
       await wait(2000)
@@ -531,11 +533,12 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const centred = Math.abs((own.left - column.left) - (column.right - own.right)) < 3
       await turnTo(view, scanEl)
       await shoot('figure-landscape')
-      if (host) await host.orientation('portrait')
-      else win.setContentSize(390, 844)
-      await wait(1500)
-      leaf.detach()
       return { kept, pages: [p0], centred }
+      } finally {
+        if (host) await ${RESTORE_PHONE_SCRIPT}
+        else { win.setContentSize(390, 844); await wait(1500) }
+        leaf.detach()
+      }
     `)
     expect(r.error).toBeUndefined()
     expect(r.kept).toBe(true)

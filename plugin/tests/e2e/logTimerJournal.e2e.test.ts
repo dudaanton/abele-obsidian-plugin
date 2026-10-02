@@ -136,7 +136,10 @@ const probe = (label: string) => String.raw`(async () => {
 })()`
 
 async function check(label: string) {
-  const result = JSON.parse(await evalLong(probe(label)))
+  const raw = await evalLong(probe(label))
+  // Keep the named readiness condition instead of burying it in a JSON parse error.
+  if (raw.startsWith('Error:')) throw new Error(`${label} timer/log probe: ${raw}`)
+  const result = JSON.parse(raw)
   expect(result.relatedText).toBe('Keep [[Sample log timer probe/Sample grove.md]].')
   expect(result.malformedText).toBe('About [[Sample log timer probe/Sample seed.md]].')
   expect(result.stopButton).toBe(true)

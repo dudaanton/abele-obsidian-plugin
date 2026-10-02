@@ -41,6 +41,8 @@ export default defineConfig({
     pool: 'forks',
     maxWorkers: 1,
     fileParallelism: false,
+    // Fixture teardown precedes the setup file's final phone-state boundary, even on failure.
+    sequence: { hooks: 'stack' },
     reporters: ['default', './tests/e2e/helpers/requireTests.ts'],
   },
 })

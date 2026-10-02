@@ -9,6 +9,7 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -205,7 +206,7 @@ describe.skipIf(!available)('shared presenter show', () => {
             const b=p.root.getBoundingClientRect()
             r.landscape=[p.notes,p.current.viewport,p.next.viewport].every(el=>{const x=el.getBoundingClientRect();return x.width>0 && x.height>0 && x.left>=b.left-1 && x.right<=b.right+1 && x.top>=b.top-1 && x.bottom<=b.bottom+1})
             r.landscapeShot=await picture('phone-presenter-landscape')
-          } finally {await window.__e2eHost.orientation('portrait')}
+          } finally {await ${RESTORE_PHONE_SCRIPT}}
         }
         await tap([...p.root.querySelectorAll('button')].find(b=>b.textContent==='End show'))
         r.restored=!view.presenter && !view.viewer.root.hidden && !document.querySelector('.abele-presenter')

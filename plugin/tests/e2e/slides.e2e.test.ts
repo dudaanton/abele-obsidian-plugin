@@ -11,6 +11,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { SAMPLE_IMAGE, SAMPLE_VIDEO } from '../fixtures/slides'
+import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 
 targets('desktop', 'phone')
 
@@ -201,7 +202,10 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
       const result={played, muted:video.muted, inline:video.playsInline, error:video.error?.message || '', time:video.currentTime,
         fallback:!!active().querySelector('.abele-slide-play')}
       const vb=video.getBoundingClientRect()
-      result.controlsReachable=document.elementFromPoint(vb.left+vb.width/2,vb.bottom-12)?.closest('video')===video
+      const controlX=vb.left+vb.width/2,controlY=vb.bottom-12
+      const controlHit=document.elementFromPoint(controlX,controlY)
+      result.controlsReachable=controlHit?.closest('video')===video
+      result.controlProbe={width:innerWidth,height:innerHeight,x:controlX,y:controlY,hit:controlHit?.outerHTML?.slice(0,300)}
       result.shot=await picture('video')
       await viewer.go(3);result.paused=video.paused
       return JSON.stringify(result)
@@ -344,10 +348,16 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
           for(let i=1;i<=5;i++) { await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x1+(x2-x1)*i/5,y:y1+(y2-y1)*i/5,id:0}]});await wait(30) }
           await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}) }
       }
-      await tap(root.right-25,vp.top+vp.height/2)
+      // The listener belongs to viewport, not the full-screen overlay's edge.
+      const gesture=viewer.viewport.getBoundingClientRect()
+      const tx=Math.min(innerWidth-1,gesture.right-25),ty=gesture.top+gesture.height/2
+      const hit=document.elementFromPoint(tx,ty)
+      result.tapTarget=hit?.className
+      if(!hit || !viewer.viewport.contains(hit))throw Error('tap misses slide gesture viewport: '+JSON.stringify({tx,ty,target:hit?.outerHTML}))
+      await tap(tx,ty)
       result.tap=await until(()=>viewer.index===1)
       await viewer.go(0)
-      await swipe(root.width*.8,vp.top+vp.height/2,root.width*.2,vp.top+vp.height/2)
+      await swipe(gesture.left+gesture.width*.8,ty,gesture.left+gesture.width*.2,ty)
       result.swipe=await until(()=>viewer.index===1)
       viewer.root.focus();viewer.root.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))
       await viewer.ready;result.keyboard=viewer.index===8
@@ -360,7 +370,7 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
           const box=active().getBoundingClientRect()
           result.landscape={ratio:box.width/box.height,fits:box.left>=0 && box.right<=window.innerWidth+1 && box.bottom<=window.innerHeight+1}
           result.landscapeShot=await picture('phone-landscape')
-        } finally { await window.__e2eHost.orientation('portrait') }
+        } finally { await ${RESTORE_PHONE_SCRIPT} }
       }
       viewer.root.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
       result.restored=viewer.root.parentElement===leaf.view.contentEl

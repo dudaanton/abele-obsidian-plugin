@@ -12,6 +12,7 @@ import { beforeAll, afterAll, beforeEach, onTestFailed } from 'vitest'
 import {
   assertWindowDrawn,
   closeStrayWindows,
+  evalLong,
   isObsidianRunning,
   notesInEditor,
   setBackgroundThrottling,
@@ -21,10 +22,18 @@ import {
 } from './obsidianCli'
 import { onPhone } from './target'
 import { installPhoneHost } from './phone'
+import { RESTORE_PHONE_SCRIPT } from './phoneState'
+
+const cleanPhone = async () => {
+  if (!onPhone()) return
+  const raw = await evalLong(RESTORE_PHONE_SCRIPT, 30_000)
+  if (raw.startsWith('Error:')) throw new Error(raw)
+  console.info('Phone boundary:', JSON.parse(raw))
+}
 
 const available = isObsidianRunning()
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!available) return
   // The page side of the phone harness: the file before may have reloaded it away.
   if (onPhone()) installPhoneHost()
@@ -32,6 +41,7 @@ beforeAll(() => {
   // and could block the worker past its reporting ceiling after a helper exhausted its budget.
   closeStrayWindows()
   notesInEditor()
+  await cleanPhone()
   setBackgroundThrottling(false)
   setFocusEmulation(true)
   // Menus a test can open and pick from: see `useDomMenus`.
@@ -42,11 +52,17 @@ beforeAll(() => {
   assertWindowDrawn()
 }, 150_000)
 
-afterAll(() => {
+// Stack hook ordering keeps this boundary outside every file's fixture teardown.
+// Finally restores state even when idempotent window cleanup itself fails.
+afterAll(async () => {
   if (!available) return
-  again(closeStrayWindows)
-  again(notesInEditor)
-})
+  try {
+    closeStrayWindows()
+    notesInEditor()
+  } finally {
+    await cleanPhone()
+  }
+}, 90_000)
 
 /**
  * A test that failed only because it asked for something a phone does not have (see
