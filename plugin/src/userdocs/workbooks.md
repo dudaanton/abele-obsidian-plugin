@@ -26,8 +26,10 @@ touched XML; unsupported workbook content stays intact. Concurrent external chan
 refused, so read/reopen before trying again. Values and formulas locally recalculate dependent
 caches, including other sheets, after editing. **Recalculate** refreshes the existing workbook's
 formula results. The agent can do this on a phone too. Unknown functions show **#NAME?**;
-cycles use **#REF!**. Local calculation is limited to 20,000 stored cells across all sheets;
-array/dynamic formulas and larger books stay pending with an explicit warning. Excel may use
+cycles use **#REF!**. Local calculation is limited to 20,000 stored cells and 20,000
+referenced cells across formulas and named ranges. Large or dynamically generated ranges stay
+pending with an explicit warning, even during the agent's write preview; formulas are still
+marked for native recalculation on open. Excel may use
 different formula semantics, so saved files also request native recalculation on open. Array/data-table ranges, protected sheets and merged followers must
 be edited in a spreadsheet app. A shared formula group is expanded automatically before an
 edit. The editor also offers **Bold**, **Italic**, **Fill** (`#RRGGBB` or empty to clear), and an Excel

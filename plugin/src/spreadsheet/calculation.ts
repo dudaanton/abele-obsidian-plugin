@@ -2,7 +2,7 @@
 import { AlwaysSparse, DetailedCellError, HyperFormula } from 'hyperformula'
 import { PackageMutation, nodeWithContent, setAttributes } from '@/ooxml/mutation'
 import { escapeXml, patchXml, rawNode, type Patch } from '@/ooxml/xml'
-import { MAX_COLUMNS, MAX_ROWS } from './address'
+import { MAX_COLUMNS, MAX_ROWS, parseCell, parseRange } from './address'
 import {
   applyWorkbookEdit,
   assertEditable,
@@ -71,6 +71,51 @@ export async function applyCalculatedEdit(
   const after = await openXlsx(updated, false, yieldTask)
   return recalculateWorkbook(after, { signal, yieldTask })
 }
+const MAX_DEPENDENCY_CELLS = 20000
+/** Count a conservative upper bound before HyperFormula can synchronously allocate vertices. */
+function boundedReferences(sheets: WorkbookSheet[], book: Workbook): boolean {
+  let remaining = MAX_DEPENDENCY_CELLS
+  const references =
+    /(?<![\p{L}\p{N}\p{M}\p{Pc}.])(?:\$?[A-Z]{1,3}\$?[1-9]\d{0,6}\s*:\s*\$?[A-Z]{1,3}\$?[1-9]\d{0,6}|\$?[A-Z]{1,3}\s*:\s*\$?[A-Z]{1,3}|\$?[1-9]\d{0,6}\s*:\s*\$?[1-9]\d{0,6}|\$?[A-Z]{1,3}\$?[1-9]\d{0,6})(?![\p{L}\p{N}\p{M}\p{Pc}.(])/giu
+  const safe = (expression: string): boolean => {
+    // Dynamic/array-producing functions can synthesize references or vast output at evaluation.
+    const plain = expression.replace(/"(?:[^"]|"")*"|'(?:[^']|'')*'/g, '""')
+    if (/\b(?:INDIRECT|OFFSET|SEQUENCE|MAKEARRAY|REPT)\s*\(/i.test(plain) || /[\[\]]/.test(plain))
+      return false
+    references.lastIndex = 0
+    for (const match of plain.matchAll(references)) {
+      const ref = match[0].replaceAll('$', '').replace(/\s+/g, '')
+      let size: number
+      try {
+        if (/^[A-Z]{1,3}:[A-Z]{1,3}$/i.test(ref)) {
+          const [from, to] = ref.split(':').map((c) => parseCell(c + '1').column)
+          size = (to - from + 1) * MAX_ROWS
+        } else if (/^\d+:\d+$/.test(ref)) {
+          const [from, to] = ref.split(':').map(Number)
+          size = (to - from + 1) * MAX_COLUMNS
+        } else if (ref.includes(':')) {
+          const range = parseRange(ref)
+          size = (range.to.row - range.from.row + 1) * (range.to.column - range.from.column + 1)
+        } else {
+          parseCell(ref)
+          size = 1
+        }
+      } catch {
+        return false
+      }
+      if (size <= 0 || size > remaining) return false
+      remaining -= size
+    }
+    return true
+  }
+  for (const sheet of sheets)
+    for (const cell of sheet.cells.values())
+      if (cell.formula !== undefined && !safe(cell.formula)) return false
+  for (const named of sc(book.workbookTree, 'definedNames')?.children ?? [])
+    if (!named.attrs.name?.startsWith('_xlnm.') && !safe(valueText(book.workbookSource, named)))
+      return false
+  return true
+}
 const excelErrors = new Set([
   '#DIV/0!',
   '#N/A',
@@ -116,6 +161,12 @@ export async function recalculateWorkbook(
       bytes: book.original,
       complete: false,
       note: 'Array/data-table, unsupported shared formulas or dynamic formula metadata is not locally calculated; values may be stale.',
+    }
+  if (!boundedReferences(sheets, book))
+    return {
+      bytes: book.original,
+      complete: false,
+      note: 'Local calculation dependency limit exceeded or dynamic references are not supported; values were not recalculated. Recalculate in a spreadsheet app.',
     }
   const hf = HyperFormula.buildEmpty({
     licenseKey: 'gpl-v3',

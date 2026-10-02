@@ -39,8 +39,12 @@ reference translator and dependency graph. The existing arithmetic `fparser` dep
 also not a spreadsheet engine. HyperFormula supplies the headless dependency graph without
 bringing another grid or reconstructing the archive. No server or external fetch is involved.
 
-Evaluation uses sparse address mapping, a 20,000-stored-cell workbook cap, cooperative yields
-while feeding cells and a fresh engine destroyed after every operation. Literal strings never
+Evaluation uses sparse address mapping, a 20,000-stored-cell workbook cap and a 20,000-cell
+aggregate formula-reference budget checked before engine construction, including defined names,
+whole-column/row ranges and preview computation. Dynamic/array-producing reference functions
+are not evaluated locally. A skipped calculation leaves the edited file marked for spreadsheet-app
+recalculation and says explicitly that its displayed caches remain stale. Cooperative yields
+occur while feeding cells and a fresh engine is destroyed after every operation. Literal strings never
 become formulas implicitly in the engine. Defined names and the 1900/1904 date systems are
 fed explicitly. Unsupported functions show `#NAME?`; cycles/other engine-only errors are
 stored using Excel-compatible errors. Array/data-table/dynamic formula metadata is left

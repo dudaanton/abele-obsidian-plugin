@@ -63,7 +63,10 @@ preview and has its own Off/Ask/On mode, independent of general file write permi
 Stale revisions/concurrent writes are refused. Shared groups are expanded before editing;
 array/data-table ranges, protected sheets and merged followers are read-only. `.xlsm` and
 macro-bearing packages cannot be written. Writes locally recalculate dependent formula caches
-with HyperFormula (at most 20000 stored cells across all sheets). `operation: "recalculate"`
+with HyperFormula (at most 20000 stored cells and 20000 aggregate referenced cells across all
+formulas and names). Excessive ranges and dynamic references are skipped before engine setup,
+including during the write preview; edited files retain the recalculate-on-open marker and report
+that their local caches were not recalculated. `operation: "recalculate"`
 only needs `path` and `revision`, and updates caches without changing values/formulas. Unknown
 functions show `#NAME?`; cyclic dependencies use Excel-compatible `#REF!` caches. Array/dynamic
 formula metadata or larger calculations are left pending, with a warning; the spreadsheet app

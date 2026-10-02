@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { HyperFormula } from 'hyperformula'
+import { prepareWorkbookChange } from '@/spreadsheet/vaultAdapter'
+import { wordRevision } from '@/ooxml/write'
+import { useVault } from '../helpers/testEnv'
 import { strToU8, strFromU8, unzipSync, zipSync } from 'fflate'
 import { openXlsx } from '@/spreadsheet/package'
 import { applyWorkbookEdit } from '@/spreadsheet/edit'
@@ -6,6 +10,73 @@ import { recalculateWorkbook } from '@/spreadsheet/calculation'
 import { sampleXlsx, sampleParts, sheetXml } from '../fixtures/xlsx/sampleXlsx'
 
 describe('local workbook recalculation', () => {
+  it('refuses huge sparse dependency ranges before constructing the engine, including during write preview', async () => {
+    const parts = sampleParts()
+    parts['xl/worksheets/sheet1.xml'] = strToU8(
+      sheetXml(
+        '<row r="1"><c r="A1"><f>SUM(B1:XFD1048576)</f><v>4</v></c><c r="B1"><v>1</v></c></row>'
+      )
+    )
+    const original = zipSync(parts)
+    const engine = vi.spyOn(HyperFormula, 'buildEmpty').mockImplementation(() => {
+      throw new Error('unbounded engine allocation')
+    })
+    try {
+      const calculated = await recalculateWorkbook(await openXlsx(original))
+      expect(calculated.bytes).toBe(original)
+      expect(calculated.complete).toBe(false)
+      expect(calculated.note).toMatch(/limit|not recalculated/i)
+      const app = useVault([])
+      const file = await app.vault.createBinary('sample.xlsx', original.buffer as ArrayBuffer)
+      const preview = await prepareWorkbookChange(
+        app,
+        file,
+        { sheet: 'Sample', range: 'B1', values: [[2]] },
+        wordRevision(original)
+      )
+      expect(preview.calculation.complete).toBe(false)
+      expect(preview.calculation.note).toMatch(/limit|not recalculated/i)
+      expect((await (await openXlsx(preview.updated)).sheet('Sample')).cells.get('B1')?.value).toBe(
+        2
+      )
+      expect(engine).not.toHaveBeenCalled()
+      expect(app.stats.modify).toBe(0)
+    } finally {
+      engine.mockRestore()
+    }
+  })
+  it('bounds whole-row, whole-column and named-expression ranges before engine initialization', async () => {
+    const engine = vi.spyOn(HyperFormula, 'buildEmpty').mockImplementation(() => {
+      throw new Error('unbounded engine allocation')
+    })
+    try {
+      for (const formula of [
+        'SUM(B:XFD)',
+        'SUM(1:1048576)',
+        'LargeRange+1',
+        'INDIRECT("A1:XFD1048576")',
+      ]) {
+        const parts = sampleParts()
+        parts['xl/workbook.xml'] = strToU8(
+          strFromU8(parts['xl/workbook.xml']).replace(
+            '<calcPr',
+            '<definedNames><definedName name="LargeRange">Sample!B1:XFD1048576</definedName></definedNames><calcPr'
+          )
+        )
+        parts['xl/worksheets/sheet1.xml'] = strToU8(
+          sheetXml(`<row r="1"><c r="A1"><f>${formula}</f><v>4</v></c></row>`)
+        )
+        const original = zipSync(parts)
+        const calculated = await recalculateWorkbook(await openXlsx(original))
+        expect(calculated.complete, formula).toBe(false)
+        expect(calculated.bytes, formula).toBe(original)
+        expect(calculated.note, formula).toMatch(/limit|not recalculated/i)
+      }
+      expect(engine).not.toHaveBeenCalled()
+    } finally {
+      engine.mockRestore()
+    }
+  })
   it('escapes XML-forbidden calculated characters as Excel ST_Xstring and reopens the saved value', async () => {
     const parts = sampleParts()
     parts['xl/worksheets/sheet1.xml'] = strToU8(
