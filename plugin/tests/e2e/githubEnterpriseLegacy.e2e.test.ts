@@ -138,8 +138,12 @@ for (const mode of ['legacy', 'no-raw'] as const) {
     it("the agent's github_file reads the file as text, a large one from its blob", async () => {
       const r = evalAsync<{ small?: string; long?: string; error?: string }>(`(async () => {
         const tool = window.__abeleTest.createAgentTools({ agentId: window.__legacyGithubAgent }).find((t) => t.name === 'github_file')
+        // Keep the real legacy-agent migration fixture, then explicitly select its
+        // isolated fake-server connection rather than an unrelated saved credential.
+        const connection = window.__abeleTest.AbeleConfig.getInstance().github.connections.find(c => c.server === ${JSON.stringify(gh.origin)})?.id
+        if (!connection) return { error: 'no migrated fixture connection' }
         if (!tool) return { error: 'no github_file tool' }
-        const text = async (repo) => (await tool.execute('e2e', { repo, connection: 'abele-e2e-github' })).content[0].text
+        const text = async (repo) => (await tool.execute('e2e', { repo, connection })).content[0].text
         return {
           small: await text(${JSON.stringify(`${gh.web}/blob/main/src/app.ts`)}),
           long: await text(${JSON.stringify(`${gh.web}/blob/main/src/long.ts#L200-L200`)}),
