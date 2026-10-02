@@ -79,6 +79,7 @@ import { registerDrawing } from './drawing/register'
 import { registerReader } from './reader/register'
 import { registerSlides } from './slides/register'
 import { registerWord } from './word/register'
+import { registerWorkbooks } from './spreadsheet/XlsxView'
 import { registerPropertyWidgets } from './properties/register'
 import { registerLinter } from './linter/register'
 import { ChatService } from './ai/ChatService'
@@ -275,6 +276,7 @@ export default class AbelePlugin extends Plugin {
       // Books from the vault — `.epub` — in a reader tab of their own.
       startupStep('books', () => registerReader(this))
       startupStep('word', () => registerWord(this))
+      startupStep('workbooks', () => registerWorkbooks(this))
 
       // Drawings: an SVG made by the plugin opens in a tab to draw on, pen, marker and eraser.
       startupStep('drawings', () => registerDrawing(this))

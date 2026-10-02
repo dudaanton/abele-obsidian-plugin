@@ -1,8 +1,8 @@
 /** OOXML package model over bytes, with no vault or Obsidian dependency. */
 import type { ZipLoader } from '@/reader/zipLoader'
-import { openWordZip } from './boundedZip'
 import { foldedWordText } from './search'
-import { strToU8, Zip, ZipDeflate, AsyncZipDeflate } from 'fflate'
+import { openOfficeArchive, xmlPart } from '@/ooxml/package'
+export { MAX_XML, MAX_ARCHIVE, MAX_EXPANDED, pack, saveParts, xmlBytes, xmlPart } from '@/ooxml/package'
 import {
   ancestor,
   attr,
@@ -32,9 +32,6 @@ export interface WordImage {
   protected: boolean
 }
 
-export const MAX_XML = 8 * 1024 * 1024
-export const MAX_ARCHIVE = 32 * 1024 * 1024
-export const MAX_EXPANDED = 96 * 1024 * 1024
 export interface TextRun {
   node: XmlNode
   run?: XmlNode
@@ -86,81 +83,11 @@ export interface WordPackage {
     finds: { paragraph: number; offset: number; length: number; excerpt: string }[]
   }
 }
-export const pack = (parts: Record<string, Uint8Array>): Promise<Uint8Array> =>
-  new Promise((resolve, reject) => {
-    // The streaming writer preserves arbitrary part names without a prototype-keyed flattening map.
-    const chunks: Uint8Array[] = []
-    let length = 0
-    let failed = false
-    const writer = new Zip((error, bytes, final) => {
-      if (failed) return
-      if (error || length + bytes.length > MAX_ARCHIVE) {
-        failed = true
-        writer.terminate()
-        reject(error ?? new Error('Document is too large compressed'))
-        return
-      }
-      chunks.push(bytes)
-      length += bytes.length
-      if (final) {
-        const result = new Uint8Array(length)
-        let at = 0
-        for (const chunk of chunks) {
-          result.set(chunk, at)
-          at += chunk.length
-        }
-        resolve(result)
-      }
-    })
-    try {
-      for (const [name, bytes] of Object.entries(parts)) {
-        if (failed) break
-        const entry =
-          bytes.length >= 160_000
-            ? new AsyncZipDeflate(name, { level: 6 })
-            : new ZipDeflate(name, { level: 6 })
-        writer.add(entry)
-        entry.push(bytes.slice(), true)
-      }
-      if (!failed) writer.end()
-    } catch (error) {
-      failed = true
-      writer.terminate()
-      reject(error instanceof Error ? error : new Error(String(error)))
-    }
-  })
-export async function saveParts(
-  doc: WordPackage,
-  changed: Map<string, Uint8Array | null>
-): Promise<Uint8Array> {
-  if (!changed.size) return doc.original
-  // Validate every edited XML part before any caller can replace the source archive.
-  for (const [name, bytes] of changed)
-    if (bytes && /\.(?:xml|rels)$/.test(name)) {
-      if (bytes.length > MAX_XML) throw new Error('Document XML is too large')
-      await parseXml(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes))
-    }
-  const parts: Record<string, Uint8Array> = Object.create(null)
-  for (const entry of doc.archive.entries) {
-    const bytes = changed.has(entry.filename)
-      ? changed.get(entry.filename)
-      : doc.archive.loadBytes(entry.filename)
-    if (bytes) parts[entry.filename] = bytes
-  }
-  for (const [name, bytes] of changed) if (bytes) parts[name] = bytes
-  return pack(parts)
-}
 export async function openDocx(
   original: Uint8Array,
   yieldTask?: () => Promise<void>
 ): Promise<WordPackage> {
-  if (original.length > MAX_ARCHIVE)
-    throw new Error('Document is too large (32 MB compressed limit)')
-  const archive = await openWordZip(
-    original,
-    { compressed: MAX_ARCHIVE, expanded: MAX_EXPANDED, xml: MAX_XML, entries: 4000 },
-    yieldTask
-  )
+  const archive = await openOfficeArchive(original, yieldTask)
   const xml = new Map<string, string>()
   const trees = new Map<string, XmlNode>()
   const names = [
@@ -426,15 +353,4 @@ export async function openDocx(
     },
   }
   return doc
-}
-export const xmlBytes = (source: string) => strToU8(source)
-/** Decode strictly and retain a UTF-8 BOM in the lexical source when present. */
-export function xmlPart(archive: ZipLoader, name: string): string | null {
-  const bytes = archive.loadBytes(name)
-  if (!bytes) return null
-  try {
-    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
-  } catch {
-    throw new Error('Unsupported or invalid Word XML encoding')
-  }
 }
