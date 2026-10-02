@@ -5,7 +5,7 @@
 export function staticHtml(source: string, doc: Document): string {
   const parsed = doc.createElement('template')
   // This template stays inert and is never mounted; only the rebuilt whitelist reaches a frame.
-  // eslint-disable-next-line no-unsanitized/property, @microsoft/sdl/no-inner-html
+  // eslint-disable-next-line no-unsanitized/property -- Inert parsing only; the whitelist below builds the actual rendered document.
   parsed.innerHTML = source
   const output = doc.createElement('template')
   const tags = new Set(
