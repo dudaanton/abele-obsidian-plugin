@@ -1,6 +1,7 @@
 <template>
   <div class="abele-sync-settings">
     <ConnectCard v-if="!connected" :server-url="device.serverUrl" />
+    <OwnerPublicationSettings />
 
     <template v-else>
       <!--
@@ -273,6 +274,7 @@ import SelectiveSync from './sync/SelectiveSync.vue'
 import VaultPolicy from './sync/VaultPolicy.vue'
 import DeviceList from './sync/DeviceList.vue'
 import UsageCard from './sync/UsageCard.vue'
+import OwnerPublicationSettings from './sync/OwnerPublicationSettings.vue'
 import JoinVaultModal from './sync/JoinVaultModal.vue'
 import HeldDeletesBlock from '../sync/HeldDeletesBlock.vue'
 import StagedSettingsBlock from '../sync/StagedSettingsBlock.vue'
