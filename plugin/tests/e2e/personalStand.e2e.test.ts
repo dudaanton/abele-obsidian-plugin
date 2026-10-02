@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { encodePayload, newTransferCode } from '../../src/transfer/payload'
 import { newTransferId, toText } from '../../src/transfer/frames'
 import { vaultCli } from './helpers/obsidianCli'
+import { assertFreshStandBaseline } from './helpers/standBaseline'
 
 /** Explicitly selected live stand supplement; never an offline/iPad substitute. */
 describe('personal stand supplement', () => {
@@ -14,6 +15,7 @@ describe('personal stand supplement', () => {
     if (stage === 'restore') {
       const result = cli.evalAwait<any>(`(async () => {
         const p = window.__personalStandProbe; if (!p) throw new Error('No owned restore state')
+        (${assertFreshStandBaseline.toString()})(p.local,p.marker,{vaultId:'',deviceTokenId:'',pendingRevoke:[]})
         const ledger = app.loadLocalStorage('abele-sync-ledger'), trust = app.loadLocalStorage('abele-script-provenance')
         const svc = window.__abeleTest.SyncService.getInstance(); await svc.forget()
         if (p.sibling) await svc.revokeTransferred(p.sibling, p.sibling.token)
@@ -28,10 +30,20 @@ describe('personal stand supplement', () => {
         for (const name of [!p.local['abele-sync-ledger'] && ledger?.stateId ? 'abele-sync-' + ledger.stateId : null, !p.local['abele-script-provenance'] && trust?.id ? 'abele-script-provenance-' + trust.id : null].filter(Boolean)) {
           await new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase(name);r.onsuccess=resolve;r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('Owned fixture database remained open'))})
         }
-        const out = { disconnected: !svc.connection.value.vaultId, folderGone: !await app.vault.adapter.exists(p.root) }
-        delete window.__personalStandProbe; return out
+        const localRestored=Object.entries(p.local).every(([key,value])=>JSON.stringify(app.loadLocalStorage(key))===JSON.stringify(value))
+        const ignoreRestored=p.ignore===null ? !await app.vault.adapter.exists('.abele-sync-ignore') : await app.vault.adapter.read('.abele-sync-ignore')===p.ignore
+        const markerRestored=p.marker===null ? !await app.vault.adapter.exists('.abele-script-managed') : JSON.stringify([...new Uint8Array(await app.vault.adapter.readBinary('.abele-script-managed'))])===JSON.stringify(p.marker)
+        const out = { disconnected: !svc.connection.value.vaultId, folderGone: !await app.vault.adapter.exists(p.root), localRestored,ignoreRestored,markerRestored }
+        if(localRestored && ignoreRestored && markerRestored)delete window.__personalStandProbe
+        return out
       })()`)
-      expect(result).toEqual({ disconnected: true, folderGone: true })
+      expect(result).toEqual({
+        disconnected: true,
+        folderGone: true,
+        localRestored: true,
+        ignoreRestored: true,
+        markerRestored: true,
+      })
       return
     }
     if (stage === 'approval') {
@@ -142,6 +154,7 @@ describe('personal stand supplement', () => {
       const p = { root: ${JSON.stringify(root)}, local: Object.fromEntries(keys.map(k=>[k,app.loadLocalStorage(k)])),
         ignore: await app.vault.adapter.exists('.abele-sync-ignore') ? await app.vault.adapter.read('.abele-sync-ignore') : null,
         marker: await app.vault.adapter.exists('.abele-script-managed') ? [...new Uint8Array(await app.vault.adapter.readBinary('.abele-script-managed'))] : null }
+      (${assertFreshStandBaseline.toString()})(p.local,p.marker,svc.connection.value)
       if(await app.vault.adapter.exists(p.root)) throw new Error('Owned namespace collision')
       window.__personalStandProbe = p
       await app.vault.createFolder(p.root)
