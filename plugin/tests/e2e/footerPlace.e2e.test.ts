@@ -43,8 +43,18 @@ interface Back {
   rowTops: (number | null)[]
 }
 
+interface EditorSnapshot {
+  mode: string
+  source: boolean
+  livePreview: boolean | null
+  footerWidgets: number
+  rows: number
+}
+
 interface Report {
   mobile?: boolean
+  leaving?: EditorSnapshot
+  reopened?: EditorSnapshot
   back?: Back
   error?: string
 }
@@ -69,6 +79,18 @@ const script = `(async () => {
   const leaf = app.workspace.getLeaf(false)
   const scroller = () => leaf.view.containerEl.querySelector('.cm-scroller')
   const rows = () => [...leaf.view.containerEl.querySelectorAll('.abele-todo-list .abele-task-view')]
+  const editorSnapshot = () => {
+    const state = leaf.view.getState()
+    const cm = leaf.view.editor?.cm
+    const field = window.require?.('obsidian').editorLivePreviewField
+    return {
+      mode: leaf.view.getMode(),
+      source: state.source,
+      livePreview: cm && field ? cm.state.field(field, false) : null,
+      footerWidgets: leaf.view.containerEl.querySelectorAll('.abele-footer-widget-container').length,
+      rows: rows().length,
+    }
+  }
   /** Rows by their task's name, which stays when the list is drawn again. */
   const nameOf = (row) => /Sample task \\d+/.exec(row?.textContent ?? '')?.[0] ?? null
   const names = {}
@@ -124,6 +146,7 @@ const script = `(async () => {
     await wait(2500)
     const before = topOf(rowNamed(${ROW}))
     const rowsBefore = rows().length
+    report.leaving = editorSnapshot()
 
     await leaf.openFile(app.vault.getAbstractFileByPath(otherPath), { active: true })
     await wait(800)
@@ -141,6 +164,7 @@ const script = `(async () => {
     const row = rowNamed(${ROW})
     const after = row ? topOf(row) : null
     const rowsAfter = rows().length
+    report.reopened = editorSnapshot()
     // A row draws its text once it is on screen: the opened one is brought into view to look.
     rowNamed(${OPENED})?.scrollIntoView({ block: 'center' })
     const opened = !!(await until(() => rowNamed(${OPENED})?.querySelector('.abele-task-view__description'), 3000))
@@ -195,7 +219,7 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
       const b = report.back
       const moves = b?.tops.filter((t, i) => i === 0 || t !== b.tops[i - 1])
       console.info(
-        `\n  ${JSON.stringify({ ...b, tops: moves, rowTops: undefined, error: report.error })}\n`
+        `\n  ${JSON.stringify({ ...b, tops: moves, rowTops: undefined, leaving: report.leaving, reopened: report.reopened, error: report.error })}\n`
       )
     }, 400_000)
 
