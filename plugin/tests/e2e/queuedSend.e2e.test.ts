@@ -43,6 +43,7 @@ const script = `(async () => {
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
     while (Date.now() < deadline) {
+      checkSession()
       if (fn()) return true
       await wait(50)
     }
@@ -50,7 +51,7 @@ const script = `(async () => {
   }
   const chats = window.__abeleTest.ChatService.getInstance()
   const CHAT = ${JSON.stringify(CHAT)}
-  const FAKE = 'http://abele-e2e-fake-provider.invalid/v1'
+  const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
   const report = { requests: [], queuedWhileAnswering: [], queuedAfter: [], bubbles: [], streamingAfter: true, error: '' }
   const createdDirs = []
   const realFetch = window.fetch
@@ -93,6 +94,7 @@ const script = `(async () => {
   }
 
   let session = null
+  const checkSession = () => { if (session?.error.value) throw new Error(session.error.value) }
   try {
     for (const dir of ['AI', 'AI/Chats']) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); createdDirs.unshift(dir) }
@@ -117,6 +119,7 @@ const script = `(async () => {
     }
 
     await session.sendMessage('list the root')
+    checkSession()
     if (!session.pendingToolCalls.value.length) throw new Error('the tool call was not held for approval')
 
     const refused = session.rejectToolCall()
@@ -136,6 +139,7 @@ const script = `(async () => {
     report.queuedWhileAnswering = session.queuedMessages.value.map((q) => q.content)
 
     await refused
+    checkSession()
     await until(() => report.requests.length >= 3 && !session.isStreaming.value, 8000)
     await wait(300)
     report.queuedAfter = session.queuedMessages.value.map((q) => q.content)

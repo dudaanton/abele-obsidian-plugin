@@ -39,6 +39,7 @@ const script = `(async () => {
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
     while (Date.now() < deadline) {
+      checkSession()
       if (fn()) return true
       await wait(50)
     }
@@ -50,7 +51,7 @@ const script = `(async () => {
   const cfg = T.AbeleConfig.getInstance().ai
   const CHAT = ${JSON.stringify(CHAT)}
   const NAME = ${JSON.stringify(SCRIPT_NAME)}
-  const FAKE = 'http://abele-e2e-fake-provider.invalid/v1'
+  const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
   const report = { requests: [], scriptRuns: 0, plainBubble: '', probeBubble: '', probeNote: '', toolStatus: '', pendingAfter: -1, error: '' }
   const createdDirs = []
   const realFetch = window.fetch
@@ -104,6 +105,7 @@ const script = `(async () => {
   }
 
   let session = null
+  const checkSession = () => { if (session?.error.value) throw new Error(session.error.value) }
   try {
     for (const dir of ['AI', 'AI/Chats', folder]) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); createdDirs.unshift(dir) }
@@ -142,10 +144,12 @@ const script = `(async () => {
     const runsBefore = runsOf()
 
     await session.sendMessage('hello plain')
+    checkSession()
     const users = () => session.allMessages.value.filter((m) => m.role === 'user')
     report.plainBubble = users()[0]?.content ?? ''
 
     await session.sendMessage('/probe list it')
+    checkSession()
     await until(() => report.requests.length >= 3 && !session.isStreaming.value, 8000)
     await wait(200)
     const probe = users()[1]

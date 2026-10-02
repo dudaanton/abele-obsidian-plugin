@@ -76,6 +76,7 @@ const script = (phone: boolean) => `(async () => {
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
     while (Date.now() < deadline) {
+      checkSession()
       const v = fn()
       if (v) return v
       await wait(30)
@@ -86,7 +87,7 @@ const script = (phone: boolean) => `(async () => {
   const CHAT = ${JSON.stringify(CHAT)}
   const REPLY = ${JSON.stringify(REPLY)}
   const READ_AT = ${READ_AT}
-  const FAKE = 'http://abele-e2e-fake-provider.invalid/v1'
+  const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
   const report = { driftWhileStreaming: 0, driftAfter: 0, atEndAfter: false, samples: 0, chartErrors: 0, placeholders: 0, chartsAfter: 0, placeholdersAfter: 0 }
   const createdDirs = []
   const realFetch = window.fetch
@@ -139,6 +140,8 @@ const script = (phone: boolean) => `(async () => {
   const offset = (el, p) => p.getBoundingClientRect().top - el.getBoundingClientRect().top
 
   let session = null
+  let watching = false
+  const checkSession = () => { if (session?.error.value) throw new Error(session.error.value) }
   try {
     for (const dir of ['AI', 'AI/Chats']) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); createdDirs.unshift(dir) }
@@ -163,7 +166,7 @@ const script = (phone: boolean) => `(async () => {
 
     const answered = session.sendMessage('plan the sample garden')
     // The chart is watched from the start: its block is written before the reader scrolls.
-    let watching = true
+    watching = true
     void (async () => {
       while (watching) {
         await new Promise((r) => { requestAnimationFrame(() => r()); setTimeout(r, 40) })
@@ -205,6 +208,7 @@ const script = (phone: boolean) => `(async () => {
       return Math.abs(offset(el, q) - start)
     }
     while (!finished || session.isStreaming.value) {
+      checkSession()
       await new Promise((r) => { requestAnimationFrame(() => r()); setTimeout(r, 40) })
       const d = sample()
       if (d !== null) report.driftWhileStreaming = Math.max(report.driftWhileStreaming, d)
@@ -212,6 +216,7 @@ const script = (phone: boolean) => `(async () => {
     }
     watching = false
     await answered
+    checkSession()
     const endAt = Date.now()
     while (Date.now() - endAt < 1500) {
       await new Promise((r) => { requestAnimationFrame(() => r()); setTimeout(r, 40) })
@@ -225,6 +230,7 @@ const script = (phone: boolean) => `(async () => {
   } catch (e) {
     report.error = String((e && e.message) || e)
   } finally {
+    watching = false
     window.fetch = realFetch
     try {
       if (session) {

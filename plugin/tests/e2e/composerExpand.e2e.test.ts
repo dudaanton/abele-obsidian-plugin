@@ -39,13 +39,14 @@ const probeLib = `(() => {
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
     while (Date.now() < deadline) {
+      if (state.session?.error.value) throw new Error(state.session.error.value)
       try { const v = fn(); if (v) return v } catch {}
       await wait(50)
     }
     return null
   }
   const CHAT = ${JSON.stringify(CHAT)}
-  const FAKE = 'http://abele-e2e-fake-provider.invalid/v1'
+  const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
   const chats = window.__abeleTest.ChatService.getInstance()
   const fs = require('fs')
   const win = require('@electron/remote').getCurrentWindow()
@@ -290,6 +291,7 @@ const probeLib = `(() => {
       c.focus()
       c.keyTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, shiftKey: true, bubbles: true, cancelable: true }))
       await until(() => state.requests.length > 0 && !state.session.isStreaming.value, 8000)
+      if (state.session.error.value) throw new Error(state.session.error.value)
       await wait(300)
       return { requests: state.requests }
     },

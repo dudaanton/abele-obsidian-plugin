@@ -128,7 +128,7 @@ const probe = (label: string) => `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
-    while (Date.now() < deadline) { if (fn()) return true; await wait(100) }
+    while (Date.now() < deadline) { checkSession(); if (fn()) return true; await wait(100) }
     return false
   }
   const fs = require('fs')
@@ -137,7 +137,7 @@ const probe = (label: string) => `(async () => {
   const get = (p) => app.vault.getAbstractFileByPath(p)
   const DIR = ${JSON.stringify(DIR)}
   const CHAT = ${JSON.stringify(CHAT)}
-  const FAKE = 'http://abele-e2e-fake-provider.invalid/v1'
+  const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
   const report = { error: '', chat: null, opened: '', leftAfterChat: -1, view: null, leftAfterView: -1, shots: [] }
   const createdDirs = []
   const realFetch = window.fetch
@@ -223,6 +223,7 @@ const probe = (label: string) => `(async () => {
   }
 
   let session = null
+  const checkSession = () => { if (session?.error.value) throw new Error(session.error.value) }
   try {
     app.saveLocalStorage('mermaid-vault-trust', true)
     if (get(DIR)) await app.vault.delete(get(DIR), true)
@@ -255,6 +256,7 @@ const probe = (label: string) => `(async () => {
     session.resolveModel = () => ({ id: 'fake', name: 'Fake', baseUrl: FAKE, apiKey: 'none', contextWindow: 100000, maxTokens: 1000, supportsReasoning: false })
     for (const k of ['generateTitle', 'generateSummary', 'generateRecap', 'autoCompactIfNeeded']) session.summarizer[k] = async () => undefined
     await session.sendMessage('show me what you have')
+    checkSession()
     await until(() => !session.isStreaming.value, 10000)
 
     const reply = () => [...document.querySelectorAll('.abele-chat-msg_assistant')].filter((e) => e.getClientRects().length).pop()
