@@ -78,8 +78,10 @@ export class ScopeResolver {
   addFile(path: string): void {
     if (!this.entries.value.some((e) => e.type === 'file' && e.path === path)) {
       this.entries.value = [...this.entries.value, { type: 'file', path }]
-      this._cache = null
     }
+    // A newly created file may already have an explicit entry. Refresh the inventory in
+    // every enclosing snapshot, but never add grants to that snapshot's fixed entries.
+    this.invalidate()
   }
 
   addFolder(path: string): void {
@@ -218,6 +220,7 @@ export class ScopeResolver {
   /** Invalidate cache (call after vault changes) */
   invalidate(): void {
     this._cache = null
+    this.ceiling?.invalidate()
   }
 
   // ── Internals ──

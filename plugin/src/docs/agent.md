@@ -161,7 +161,9 @@ sub-run has its own agent and conversation, but never more access than its paren
 is the intersection (an empty target scope inherits), permissions and tool modes take the
 stricter value captured at the start of the branch, and GitHub connection rights and skill
 selection are bounded too. Changing the executor's settings while a branch runs does not
-raise that branch's captured permission mode. Only its
+raise that branch's captured permission mode. Scope snapshots keep the granted entries fixed,
+but refresh their file inventory: a file the branch creates inside an allowed folder remains
+readable and editable; creating a file outside the parent grants no extra read access. Only its
 result comes back. `maxDelegateDepth` counts from the root; the narrowest chain limit wins,
 and 0 forbids delegation. Hard limits are 3 levels, 20 items per call and 50 branch runs per
 root conversation while it is open, shared across concurrent and nested calls.
