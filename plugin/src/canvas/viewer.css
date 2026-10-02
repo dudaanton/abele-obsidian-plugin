@@ -1,0 +1,115 @@
+/* Geometry only; every visual token comes from the host theme. */
+.abele-canvas-view.view-content {
+  padding: 0;
+  overflow: hidden;
+}
+/* Reserve Obsidian's own floating navigation and safe-area space for narration. */
+.is-mobile .abele-canvas-view.view-content {
+  padding-bottom: var(--view-bottom-spacing, 0px);
+}
+.abele-canvas-viewer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+.abele-canvas-controls,
+.abele-canvas-embed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+  flex-shrink: 0;
+}
+.abele-canvas-controls button,
+.abele-canvas-embed-actions button {
+  min-height: 36px;
+}
+.abele-canvas-counter {
+  color: var(--text-muted);
+}
+.abele-canvas-stage {
+  position: relative;
+  flex: 1;
+  min-height: 80px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+.abele-canvas-surface,
+.abele-canvas-cards {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.abele-canvas-cards {
+  pointer-events: none;
+  overflow: hidden;
+}
+.abele-canvas-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  overflow: hidden;
+  font-family: var(--font-text);
+  font-size: var(--font-text-size);
+  line-height: var(--line-height-normal);
+  color: var(--text-normal);
+}
+.abele-canvas-card > :first-child {
+  margin-top: 0;
+}
+.abele-canvas-card > :last-child {
+  margin-bottom: 0;
+}
+.abele-canvas-narration,
+.abele-canvas-status {
+  flex-shrink: 0;
+  padding: var(--size-4-2) var(--size-4-3);
+  max-height: 28%;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.abele-canvas-narration {
+  border-top: 1px solid var(--background-modifier-border);
+}
+.abele-canvas-narration:empty,
+.abele-canvas-status:empty,
+.abele-canvas-embed-narration:empty,
+.abele-canvas-embed-status:empty {
+  display: none;
+}
+/* Native children can arrive after our processor. A class, not the overridden hidden attribute. */
+.internal-embed.abele-canvas-embed-source > :not(.abele-canvas-embed) {
+  display: none !important;
+}
+.internal-embed.abele-canvas-embed-source {
+  display: block;
+}
+.abele-canvas-embed {
+  max-width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+.abele-canvas-embed-picture {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 65vh;
+  object-fit: contain;
+}
+.abele-canvas-embed-narration,
+.abele-canvas-embed-status {
+  padding: var(--size-4-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

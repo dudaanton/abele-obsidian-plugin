@@ -77,6 +77,7 @@ import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from './bases/Cal
 import { TIMELINE_VIEW_ID, TimelineView, timelineViewOptions } from './bases/TimelineView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { registerDrawing } from './drawing/register'
+import { registerCanvas } from './canvas/register'
 import { registerReader } from './reader/register'
 import { registerSlides } from './slides/register'
 import { registerWord } from './word/register'
@@ -281,6 +282,7 @@ export default class AbelePlugin extends Plugin {
 
       // Drawings: an SVG made by the plugin opens in a tab to draw on, pen, marker and eraser.
       startupStep('drawings', () => registerDrawing(this))
+      startupStep('canvas diagrams', () => registerCanvas(this))
       startupStep('presentations', () => registerSlides(this))
 
       // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.

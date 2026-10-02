@@ -56,10 +56,12 @@ describe.skipIf(!available)('native Canvas compatibility', () => {
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
       await reloadApp('app.emulateMobile(true)')
     }
+    evalRaw(`window.__canvasProbePreference = window.__abeleTest.AbeleConfig.getInstance().canvasViewer; window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false`)
     probe('setup')
   }, 120_000)
   afterAll(async () => {
     probe('cleanup')
+    evalRaw(`if (window.__canvasProbePreference !== undefined) window.__abeleTest.AbeleConfig.getInstance().canvasViewer = window.__canvasProbePreference; delete window.__canvasProbePreference`)
     if (size) {
       evalRaw(
         `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`

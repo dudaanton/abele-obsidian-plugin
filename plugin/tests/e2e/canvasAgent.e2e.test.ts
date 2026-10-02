@@ -40,6 +40,8 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
     run(`
       if (app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) throw new Error('Synthetic folder already exists')
       window.__canvasAgentLayout = app.workspace.getLayout()
+      window.__canvasAgentPreference = window.__abeleTest.AbeleConfig.getInstance().canvasViewer
+      window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false
       await app.vault.createFolder(${JSON.stringify(DIR)})
       window.__canvasAgentOwned = true
       await app.vault.create(${JSON.stringify(`${DIR}/sample-note.md`)}, '# Sample note\\nVisible note content.\\n![[sample-image.svg]]')
@@ -53,6 +55,8 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
       leaves.forEach(l => l.detach())
       const dir = window.__canvasAgentOwned ? app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}) : null; if (dir) await app.vault.delete(dir, true)
       delete window.__canvasAgentOwned
+      if (window.__canvasAgentPreference !== undefined) window.__abeleTest.AbeleConfig.getInstance().canvasViewer = window.__canvasAgentPreference
+      delete window.__canvasAgentPreference
       if (window.__canvasAgentLayout) await app.workspace.changeLayout(window.__canvasAgentLayout)
       delete window.__canvasAgentLayout
       delete window.__canvasAgentPicture

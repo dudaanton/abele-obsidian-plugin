@@ -29,6 +29,12 @@
       <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
     </Setting>
     <Setting
+      name="Open canvases in Abele"
+      desc="Open diagrams in the read-only viewer with walkthrough steps. Use Open in Obsidian Canvas in its header to edit a diagram in the native canvas."
+    >
+      <Checkbox :is-enabled="canvasViewer" @toggle="toggleCanvasViewer" />
+    </Setting>
+    <Setting
       name="Editor syntax highlighting"
       desc="Highlight more fenced-code languages in Source and Live Preview, using Obsidian's own theme. Native highlighting and rendered blocks stay unchanged. Extra highlighting is limited to blocks of 32,768 characters and 1,000 lines."
     >
@@ -124,6 +130,12 @@ const keyboardDiagnostics = ref(config.keyboardDiagnostics)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 const mermaidViewer = ref(config.mermaidViewer)
+const canvasViewer = ref(config.canvasViewer)
+const toggleCanvasViewer = async () => {
+  canvasViewer.value = !canvasViewer.value
+  config.canvasViewer = canvasViewer.value
+  await config.saveSettings()
+}
 const editorSyntaxHighlight = computed(() => {
   void config.version.value
   return config.editorSyntaxHighlight
