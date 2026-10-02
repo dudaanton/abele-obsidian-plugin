@@ -11,7 +11,7 @@ Each device needs only the passphrase, typed once.
 
 ## Setting it up
 
-1. On the device that already has the keys: **Set up**, type a passphrase twice (at least 8
+1. On the device that already has the keys: **Set up**, type a passphrase twice (at least 12
    characters), **Turn on**. Every key this device has moves into the store.
 2. On each other device, once the settings have synced: the status says **Locked on this
    device**. Type the passphrase, **Unlock**. Every key is now on that device too, and any key
@@ -28,7 +28,7 @@ settings.
 | Locked on this device | A store exists; this device has not been given the passphrase. |
 | Unlocked on this device | Keys read and write through the store here. |
 | Out of date | The passphrase was changed on another device. Keys already here keep working; enter the new passphrase to receive changes again. |
-| Damaged | The store in the settings file does not decrypt although the passphrase is right — the file was changed by something else. Keys already on this device keep working; **Start over** makes way for a new store. |
+| Damaged | The store is present but malformed, or its contents do not decrypt. Local keys and the saved device unlock key stay intact; restoring a valid copy opens it again. **Start over** deliberately makes way for a new store. |
 
 ## All keys
 
@@ -87,7 +87,8 @@ field for a new key.
 ## The other actions
 
 - **Change passphrase** re-encrypts the store. Other devices keep their keys and show *Out of
-  date* until given the new passphrase.
+  date* until given the new passphrase. New passphrases need at least 12 characters; existing
+  shorter passphrases still unlock.
 - **Remove from this device** takes the passphrase and every key in the store off this device's
   keychain. The store and other devices keep them; unlock again to get them back.
 - **Turn off** takes the store out of the settings. Every device that was unlocked keeps its

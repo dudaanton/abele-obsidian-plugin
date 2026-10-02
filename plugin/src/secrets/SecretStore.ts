@@ -133,11 +133,24 @@ export class SecretStore {
    */
   async load(): Promise<void> {
     const file = this.host.read()
-    if (!isStoreFile(file)) {
+    if (file === undefined || file === null) {
       // Turned off on another device (or never on): the keychain keeps what it has, and the
       // key to a store that is gone is of no use to anyone.
       if (this.storeId) this.forget(deviceKeyId(this.storeId))
       this.reset('off')
+      return
+    }
+
+    if (!isStoreFile(file)) {
+      // A present but unreadable store is not a request to forget this device's key.
+      // Restoring a valid synced copy must open it again without another unlock.
+      const id = typeof file === 'object' ? (file as { id?: unknown }).id : undefined
+      if (!this.storeId && typeof id === 'string' && /^[a-z0-9]{8,32}$/.test(id)) {
+        this.storeId = id
+      }
+      this.key = null
+      this.status.value = 'damaged'
+      this.version.value++
       return
     }
 

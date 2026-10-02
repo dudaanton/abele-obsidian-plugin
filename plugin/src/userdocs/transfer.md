@@ -41,14 +41,16 @@ by default every key has to be entered once on every device.
 **Settings → Abele → Transfer → Synced keys** keeps every key in one encrypted store inside the
 plugin's settings file, so the keys travel with your settings:
 
-1. On the device that has the keys: **Set up**, choose a passphrase of at least 8 characters,
+1. On the device that has the keys: **Set up**, choose a passphrase of at least 12 characters,
    **Turn on**.
 2. On each other device, once the settings have synced, the status says the store is locked.
    Type the passphrase and **Unlock**.
 
 From then on a key added or changed on one device reaches the others. Nothing in the store can be
 read without the passphrase. The same screen changes the passphrase, removes the keys from one
-device, and turns the store off.
+device, and turns the store off. A new or changed passphrase needs at least 12 characters;
+existing shorter passphrases still unlock. If a synced copy is damaged, this device keeps its
+keys and saved unlock key, so restoring the store opens it again without retyping the passphrase.
 
 ## All keys
 

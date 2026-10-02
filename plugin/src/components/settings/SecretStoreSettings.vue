@@ -20,7 +20,7 @@
       <template v-if="form === 'create'">
         <Setting
           name="Passphrase"
-          desc="At least 8 characters. Typed on every device that should have the keys; nothing can recover it."
+          desc="At least 12 characters. Typed on every device that should have the keys; nothing can recover it."
         >
           <Input v-model="passphrase" password placeholder="Passphrase" />
         </Setting>
@@ -182,8 +182,8 @@ import type { KitColor } from '@/constants/colors'
 import { secrets } from '@/secrets/SecretStore'
 import { pluginSecretIds } from '@/secrets/host'
 
-/** Short enough to type on a phone, long enough that a guess is not a matter of minutes. */
-const MIN_PASSPHRASE = 8
+/** Synced ciphertext can be guessed offline; new passphrases need at least twelve characters. */
+const MIN_PASSPHRASE = 12
 
 const store = secrets()
 const status = computed(() => store.status.value)

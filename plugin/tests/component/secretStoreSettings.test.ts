@@ -95,13 +95,29 @@ describe('synced keys, on the device that sets them up', () => {
     expect(button(view, 'Turn on')!.props('disabled')).toBe(true)
     expect(view.text()).toContain('The two do not match.')
 
-    await type(view, ['long enough', 'long enough'])
+    await type(view, ['elevenchars', 'elevenchars'])
+    expect(button(view, 'Turn on')!.props('disabled')).toBe(true)
+    await type(view, ['sample phrase', 'sample phrase'])
     expect(button(view, 'Turn on')!.props('disabled')).toBe(false)
     await press(view, 'Turn on')
 
     expect(badge(view)).toBe('Unlocked on this device')
     expect(view.text()).toContain('1 key in the store')
     expect(JSON.stringify(file)).not.toContain('sk-1')
+  })
+})
+
+describe('changing the passphrase', () => {
+  it('requires twelve characters only for the new passphrase, not legacy unlocks', async () => {
+    const local = device()
+    await local.store.enable('legacy', { iterations: 1000 })
+    setSecrets(local.store)
+    const view = mount(SecretStoreSettings, { global: { stubs: STUBS } })
+    await button(view, 'Change')!.trigger('click')
+    await type(view, ['elevenchars', 'elevenchars'])
+    expect(button(view, 'Change')!.props('disabled')).toBe(true)
+    await type(view, ['sample phrase', 'sample phrase'])
+    expect(button(view, 'Change')!.props('disabled')).toBe(false)
   })
 })
 

@@ -219,6 +219,9 @@ incoming settings, not the sender's list of slots. Status, unlocking,
 changing the passphrase, removing the keys from one device and turning it off are all on that
 screen and nowhere else. When a key the person expects is missing on a device, the answer may
 be that synced keys are locked there — say so rather than asking for the key again.
+New and changed store passphrases require at least 12 characters; existing shorter ones still
+unlock. A present but malformed store is damaged, not disabled: local keys and the device's
+saved unlock key stay in place until a valid copy is restored.
 
 The same screen has **All keys**, the person's own list of every key the plugin knows on the
 device — what each is for, where it is used, whether it is set and synced — where each can be

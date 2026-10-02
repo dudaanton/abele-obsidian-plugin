@@ -59,6 +59,47 @@ function device(on: Shared, ids: string[] = []): Device {
 
 afterEach(() => vi.restoreAllMocks())
 
+describe('a present but malformed synced store', () => {
+  it.each([{}, '', false, 1, { id: 'bad', v: 99 }])(
+    'is damaged rather than disabled: %j',
+    async (bad) => {
+      const on = shared()
+      const local = device(on, ['sample-key'])
+      local.keychain.setSecret('sample-key', 'invented-value')
+      await local.store.enable('sample-passphrase', FAST)
+      const valid = on.file
+      const slot = deviceKeyId((valid as SecretStoreFile).id)
+      const savedKey = local.keychain.getSecret(slot)
+      on.file = bad
+      await local.store.load()
+      expect(local.store.status.value).toBe('damaged')
+      expect(local.keychain.getSecret(slot)).toBe(savedKey)
+      expect(local.store.get('sample-key')).toBe('invented-value')
+      on.file = valid
+      await local.store.load()
+      expect(local.store.status.value).toBe('unlocked')
+    }
+  )
+
+  it('retains a saved device key across a cold load of truncated settings', async () => {
+    const on = shared()
+    const local = device(on)
+    await local.store.enable('sample-passphrase', FAST)
+    const valid = on.file as SecretStoreFile
+    const slot = deviceKeyId(valid.id)
+    const saved = local.keychain.getSecret(slot)!
+    const restarted = device(on)
+    restarted.keychain.setSecret(slot, saved)
+    on.file = { id: valid.id, v: 99 }
+    await restarted.store.load()
+    expect(restarted.store.status.value).toBe('damaged')
+    expect(restarted.keychain.getSecret(slot)).toBe(saved)
+    on.file = valid
+    await restarted.store.load()
+    expect(restarted.store.status.value).toBe('unlocked')
+  })
+})
+
 describe('turning the store on', () => {
   it('forgetting a deleted connection locally does not revoke a shared token on other devices', async () => {
     const on = shared()
