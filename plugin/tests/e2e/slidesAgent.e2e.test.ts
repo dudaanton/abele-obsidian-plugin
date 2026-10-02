@@ -157,6 +157,10 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
         const until=async fn=>{for(let i=0;i<40;i++){const value=fn();if(value)return value;await new Promise(r=>setTimeout(r,100))}throw Error('Approval did not settle')}
         const card=await until(()=>document.querySelector('.abele-tool-approval'))
         await until(()=>card.querySelector('.cm-editor'))
+        // No text entry is part of this preview probe. Dismiss a composer keyboard left
+        // by sidebar adoption before measuring the approval actions or photographing them.
+        document.activeElement?.blur()
+        await new Promise(r=>setTimeout(r,500))
         card.scrollIntoView({block:'center'});await new Promise(r=>setTimeout(r,300))
         const box=card.getBoundingClientRect(),buttons=[...card.querySelectorAll('button')]
         const approve=buttons.find(b=>b.textContent.trim()==='Approve'),r=approve.getBoundingClientRect()
@@ -177,10 +181,14 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{
       ${PRELUDE}
+      // A phone drawer overlays the editor by design; clear the preview probe's chat drawer
+      // and keyboard so the picture shows the newly selected deck tab, not that overlay.
+      document.activeElement?.blur()
+      if(window.__e2eHost){app.workspace.rightSplit?.collapse();app.workspace.leftSplit?.collapse();await new Promise(r=>setTimeout(r,500))}
       await call('present',{path:${JSON.stringify(PATH)},slide:3})
       const view=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view
       await view.viewer.ready
-      if(window.__e2eHost)await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/deck-open.png')})
+      if(window.__e2eHost){await new Promise(r=>setTimeout(r,500));await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/deck-open.png')})}
       return JSON.stringify({slide:view.viewer.index+1,show:!!view.show})
     })()`)
     )
