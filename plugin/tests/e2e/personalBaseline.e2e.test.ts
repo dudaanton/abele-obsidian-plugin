@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomBytes } from 'node:crypto'
@@ -160,6 +160,15 @@ describe('personal desktop/daemon baseline supplement', () => {
     )
     await cycle()
     expect(readFileSync(join(daemon, root, 'renamed.md'), 'utf8')).toBe('from daemon')
+    expect(existsSync(join(daemon, root, 'remote.md'))).toBe(false)
+    expect(
+      cli.evalAwait<boolean>(`app.vault.adapter.exists(${JSON.stringify(root + '/remote.md')})`)
+    ).toBe(false)
+    expect(
+      cli.evalAwait<string[]>(
+        `${service}.client().manifest(null).then(page => page.items.map(item => item.path))`
+      )
+    ).not.toContain(root + '/remote.md')
     cli.evalAwait(
       `app.vault.delete(app.vault.getAbstractFileByPath(${JSON.stringify(root + '/renamed.md')}), true).then(() => true)`
     )
@@ -167,6 +176,12 @@ describe('personal desktop/daemon baseline supplement', () => {
     expect(
       cli.evalAwait<boolean>(`app.vault.adapter.exists(${JSON.stringify(root + '/renamed.md')})`)
     ).toBe(false)
+    expect(existsSync(join(daemon, root, 'renamed.md'))).toBe(false)
+    expect(
+      cli.evalAwait<string[]>(
+        `${service}.client().manifest(null).then(page => page.items.map(item => item.path))`
+      )
+    ).not.toContain(root + '/renamed.md')
   })
   it('retains offline concurrent edits with the personal in-place merge', async () => {
     cli.evalAwait(
