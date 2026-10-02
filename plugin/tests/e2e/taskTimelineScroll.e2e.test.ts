@@ -101,6 +101,17 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       await Promise.all(writes)
       await wait(3000)
     }
+    yield 'waiting for every fixture task in the resolved metadata store'
+    const expectedTasks = ${short ? 51 : 318}
+    const metadataDeadline = Date.now() + 60000
+    let loadedTasks = 0
+    while (Date.now() < metadataDeadline) {
+      loadedTasks = [...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.values()]
+        .filter(task => task.taskPath.startsWith(folder + '/') && task.loaded && task.dates.length).length
+      if (loadedTasks === expectedTasks) break
+      await wait(100)
+    }
+    if (loadedTasks !== expectedTasks) throw Error('fixture metadata: ' + loadedTasks + '/' + expectedTasks + ' tasks ready')
     yield 'opening scroll owner and waiting for timeline'
     leaf = app.workspace.getLeaf('tab')
     if (${footer}) {
@@ -133,7 +144,14 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const expanded = el.getAttribute('aria-expanded')
       if (window.__e2eHost) {
         const r = el.getBoundingClientRect()
-        const x = r.left + r.width / 2, y = r.top + r.height / 2
+        let point
+        for (const fy of [0.5, 0.75, 0.25]) for (const fx of [0.5, 0.75, 0.25]) {
+          const x = Math.round(r.left + r.width * fx), y = Math.round(r.top + r.height * fy)
+          const hit = document.elementFromPoint(x, y)
+          if (y >= chromeBottom() && hit && el.contains(hit)) point ??= {x, y}
+        }
+        if (!point) throw Error('history banner has no hittable point: ' + JSON.stringify({box:r.toJSON(),chrome:chromeBottom()}))
+        const {x, y} = point
         const received = []
         const record = e => received.push({ type: e.type, target: e.target.className, prevented: e.defaultPrevented })
         for (const type of ['touchstart', 'touchend', 'click']) document.addEventListener(type, record, true)
@@ -251,18 +269,21 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.shots.push(path)
     }
     yield 'initial dates and unchanged appearance'
+    await until(() => dates().length === ${short ? 1 : 20} && strip()?.textContent.includes(${short ? "'2 unfinished'" : "'90 unfinished'"}))
     report.initial = dates()
     report.summary = strip()?.textContent.trim() ?? null
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
     if (!row(0)) {
       for (let i = 0; i < 6 && !row(0); i++) { scroller.scrollTop = scroller.scrollHeight; await wait(700) }
     }
-    await until(() => row(0))
+    await until(() => row(0)?.textContent.includes('Sample item 0 1'))
     const todayBlock = blocks().find(x => x.dataset.abeleAnchor === 'date:' + day(0))
     scroller.scrollTop += todayBlock.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 200
     await wait(800)
     await shot('unchanged')
     await shot('initial')
+    // Lazy markdown titles must be painted before the row's baseline is measured.
+    await until(() => row(0)?.textContent.includes('Sample item 0 1'))
     if (${short}) {
       yield 'short-list completion and history anchors'
       const before = row(0).getBoundingClientRect().top
