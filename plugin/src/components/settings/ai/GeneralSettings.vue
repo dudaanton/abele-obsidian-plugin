@@ -663,6 +663,7 @@ import SecretField from '../SecretField.vue'
 import { copyKey } from '@/secrets/copyKey'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { collectEntries } from '@/transfer/entries'
+import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
 import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
 import { DEFAULT_VOICE_SETTINGS, voiceKeyId, type VoiceSettings } from '@/ai/transcriptionSettings'
@@ -737,11 +738,8 @@ const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
 const imageProviders = ref(JSON.parse(JSON.stringify(config.ai.imageProviders || [])))
 const defaultImageModel = ref(config.ai.defaultImageModel || '')
 const imgSecretInputs = reactive<Record<string, string>>({})
-// Legacy records use their keychain id until they acquire their own persisted identity.
 const secretRows = (items: AiSecret[]) =>
-  (JSON.parse(JSON.stringify(items)) as AiSecret[]).map((secret) => ({
-    ...secret, id: secret.id || secret.keyId || nanoid(),
-  }))
+  savedKeysWithIds(JSON.parse(JSON.stringify(items)) as AiSecret[])
 const secrets = ref(secretRows(config.ai.secrets || []))
 const secretValueInputs = reactive<Record<string, string>>({})
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)

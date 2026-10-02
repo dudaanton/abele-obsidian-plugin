@@ -512,9 +512,12 @@ pressed. Do not invent these blocks — a `message` id that is in no chat opens 
 ## Saved key identity
 
 Named saved keys in `ai.secrets` carry a stable `id` independent of their editable `name` and
-keychain reference `keyId`. Older records without an `id` use their keychain reference as
-identity when opened in the settings editor. Unsaved new records acquire an identity before
-editing, so incoming settings cannot move an open key editor onto another record.
+keychain reference `keyId`. Older records acquire identities at settings load, persisted by
+migration without changing keychain references. A legacy keychain reference is sufficient
+when unique; labels distinguish older aliases of the same key, with a suffix for duplicate
+records. Unsaved new records acquire an identity before editing. Settings transfer carries
+each saved-key record separately by this identity, and `ai.autoRetry` travels in AI general
+settings. Incoming settings cannot move an open key editor onto another record.
 
 ## Background model settings
 

@@ -15,6 +15,7 @@ import { githubSettingsFrom } from '@/github/settings'
 import { projectLegacy, validConnectionServer, type GithubConnection } from '@/github/connections'
 import { endpoints } from '@/github/urls'
 import type { AiSettings } from '@/ai/types'
+import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
@@ -128,6 +129,7 @@ export const SECTIONS: Section[] = [
       'auxiliaryModelId',
       'wiseModelId',
       'sequentialAuxiliary',
+      'autoRetry',
       'permissionMode',
       'toolModes',
       'defaultScope',
@@ -177,9 +179,12 @@ export const SECTIONS: Section[] = [
     s.keyId ? [s.keyId] : []
   ),
   aiList('ai-interceptors', 'Interceptors', 'interceptors'),
-  aiList('ai-secrets', 'Stored keys', 'secrets', (s: Identified & { keyId?: string }) =>
-    s.keyId ? [s.keyId] : []
-  ),
+  {
+    ...aiList('ai-secrets', 'Stored keys', 'secrets', (s: Identified & { keyId?: string }) =>
+      s.keyId ? [s.keyId] : []
+    ),
+    read: (settings) => savedKeysWithIds(ai(settings).secrets ?? []),
+  },
   // Tool descriptions travel as overrides only: a default carried over would pin the other
   // device to this version's wording, the way saved defaults once pinned every vault.
   aiBlock('ai-prompts', 'Prompts', ['prompts'], {

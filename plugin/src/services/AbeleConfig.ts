@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { SettingsEdits, settingsSnapshot } from './settingsEdits'
+import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { nanoid } from 'nanoid'
 import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
@@ -625,6 +626,9 @@ export class AbeleConfig {
     // Runs before the legacy migrations below, so a settings file predating both is folded
     // into an agent using the values it actually had on disk.
     let migrated = migrateAgents(this.ai)
+    const savedKeys = savedKeysWithIds(this.ai.secrets ?? [])
+    if (savedKeys.some((key, index) => key.id !== this.ai.secrets[index].id)) migrated = true
+    this.ai.secrets = savedKeys
     // Settings used to save every default tool description, and a saved one replaces the
     // tool's own — so a vault stayed on the descriptions of the version that first saved it.
     // Only the ones the person changed are kept; the rest go, once, and the file is rewritten.
