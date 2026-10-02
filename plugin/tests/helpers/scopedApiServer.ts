@@ -4,12 +4,13 @@ import { join } from 'node:path'
 import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
 const COMMIT = '9b1136a0554287def69afb79b56eaaffcb09ca00'
 /** Separate server-only archive. Never aliases/pins this archive's unreviewed core push into plugin code. */
-export async function scopedApiServer() {
-  const root = process.env.ABELE_SCOPED_API_FIXTURE
+export async function scopedApiServer(options?: { root: string; commit: string; group?: boolean }) {
+  const root = options?.root ?? process.env.ABELE_SCOPED_API_FIXTURE
+  const expected = options?.commit ?? COMMIT
   if (!root) throw new Error('Explicit disposable scoped API archive is required')
-  verifySyncFixture(root, COMMIT)
+  verifySyncFixture(root, expected)
   const provenance = JSON.parse(readFileSync(join(root, '.abele-sync-fixture.json'), 'utf8'))
-  if (provenance.commit !== COMMIT)
+  if (provenance.commit !== expected)
     throw new Error('Disposable scoped API archive revision mismatch')
   // Paths below are literal module names inside the exact checksum-verified archive.
   // eslint-disable-next-line no-unsanitized/method -- Only literal modules from the checksum-verified archive are imported.
@@ -39,6 +40,18 @@ export async function scopedApiServer() {
     store: test.store,
     hub: test.hub,
   })
+  if (options?.group) {
+    const { registerGroupManagementRoutes } = await load(
+      'packages/server/dist/api/routes/groupManagement.js'
+    )
+    registerGroupManagementRoutes(management, {
+      config,
+      db: test.db,
+      dialect: 'sqlite',
+      store: test.store,
+      hub: test.hub,
+    })
+  }
   await management.ready()
   const fetchFor =
     (closed: boolean): typeof fetch =>
@@ -47,7 +60,12 @@ export async function scopedApiServer() {
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
       )
       const app =
-        !closed && /^\/v1\/vaults\/[^/]+\/grants(?:\/|$)/.test(url.pathname) ? management : test.app
+        !closed &&
+        (/^\/v1\/vaults\/[^/]+\/grants(?:\/|$)/.test(url.pathname) ||
+          (options?.group &&
+            /^\/v1\/(?:invitations\/|scoped\/discovery|scoped\/grants\/)/.test(url.pathname)))
+          ? management
+          : test.app
       const headers = Object.fromEntries(new Headers(init?.headers).entries())
       const answer = await app.inject({
         method: init?.method ?? 'GET',

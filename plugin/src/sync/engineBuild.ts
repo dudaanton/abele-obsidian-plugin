@@ -17,6 +17,7 @@ import { SCOPE_KEY, ignoreFor, settingsDeferred } from './scope'
 import type { StatusBoard } from './statusBoard'
 import { USER_AGENT } from './transport'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
+import { assertPersonalContext } from './scoped/scopedJoin'
 
 /**
  * The parts one engine runs on, made from the connection — the filesystem, the ledger, the
@@ -68,6 +69,7 @@ function ledgerFor(app: App, vaultId: string): LedgerId {
 /** Makes the engine's parts and the engine; nothing is left holding the ledger if it throws. */
 export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
   const { app, host, board, connection, token, ignoreText, join } = recipe
+  assertPersonalContext(app)
   const deps = host.deps()
   const pollMs = pollMsOf(deps)
   const fallbackMs = fallbackMsOf(deps)

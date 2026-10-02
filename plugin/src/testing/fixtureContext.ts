@@ -1,6 +1,7 @@
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { SyncService } from '@/sync/SyncService'
+import { assertPersonalContext } from '@/sync/scoped/scopedJoin'
 import { emptyConnection, readConnection, type PendingRevoke } from '@/sync/connection'
 import { Platform } from 'obsidian'
 import {
@@ -82,6 +83,7 @@ async function databaseDigest(name: string): Promise<string> {
 }
 /** Test-only profile isolation, not resetting the user's retained ledger: old DBs stay untouched. */
 export async function prepareFixtureContext(app: App, root: string): Promise<boolean> {
+  assertPersonalContext(app)
   const svc = SyncService.getInstance()
   if (
     svc.connection.value.vaultId ||

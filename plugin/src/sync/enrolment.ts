@@ -1,5 +1,6 @@
 import { Platform, type App } from 'obsidian'
 import { SyncClient } from '@abele/sync-core'
+import { assertPersonalContext } from './scoped/scopedJoin'
 import {
   normalizeServerUrl,
   serverUrlProblem,
@@ -104,6 +105,7 @@ export class Enrolment {
    * is ever written to the log, the connection or `data.json`.
    */
   async connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
+    assertPersonalContext(this.host.app())
     const typed = serverUrl.trim()
     if (typed === '') throw new Error('a server address is needed to connect')
     // Before the password goes anywhere: over plain http it would cross the network readable.
@@ -170,6 +172,7 @@ export class Enrolment {
     deviceName: string,
     prefer?: JoinPrefer | null
   ): Promise<void> {
+    assertPersonalContext(this.host.app())
     const account = this.account
     // Read with the account, not after the awaits: the tab closing mid-enrolment calls
     // `endConnect`, and the device the server enrols meanwhile must still be filed against it.
@@ -238,6 +241,7 @@ export class Enrolment {
     selective: SharedSelective
   ): Promise<void> {
     const app = this.host.app()
+    assertPersonalContext(app)
     if (app === null) throw new Error('the sync service has not been started yet')
     const problem = serverUrlProblem(arrived.serverUrl)
     const serverUrl = normalizeServerUrl(arrived.serverUrl)

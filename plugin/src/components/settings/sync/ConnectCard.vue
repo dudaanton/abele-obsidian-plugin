@@ -49,6 +49,17 @@
       />
     </Setting>
 
+    <Setting
+      name="Shared group invitation"
+      desc="Scoped installation join remains disabled; preview its single-connection and local-file protections."
+    >
+      <Button
+        text="Preview shared group join…"
+        tooltip="Inspect the disabled scoped invitation flow without signing in"
+        @click="scopedPreview = true"
+      />
+    </Setting>
+    <ScopedInvitationModal v-if="scopedPreview" @close="scopedPreview = false" />
     <template v-if="vaults !== null">
       <Section
         title="Choose a vault"
@@ -150,6 +161,8 @@
  * nothing: a vault made just now holds no file to decide about.
  */
 import { computed, ref } from 'vue'
+import ScopedInvitationModal from '../../sync/ScopedInvitationModal.vue'
+const scopedPreview = ref(false)
 import { Platform } from 'obsidian'
 import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import Section from '../../obsidian/Section.vue'
