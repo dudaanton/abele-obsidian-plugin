@@ -2,7 +2,10 @@
 
 Stages X1–X6 extend the shared Office core under `plugin/src/ooxml/`; Word keeps compatibility
 exports. The byte model has no Obsidian dependency. Storage adapters use the same serialized,
-optimistic binary write boundary. XML is lexically patched by offsets, never rebuilt with a
+optimistic binary write boundary, including preflight validation, a final byte check immediately
+before publication, read-back verification and prepared rewind retention. Agent tools use each
+call's explicit scope, including the final write check; direct script calls retain the default.
+XML is lexically patched by offsets, never rebuilt with a
 spreadsheet import/export library. Unchanged ZIP entries retain their uncompressed bytes;
 no-op saves retain the whole original archive.
 
@@ -29,9 +32,7 @@ parts and content-type overrides are invalidated together. Other graph parts rem
 ## Recalculation and licensing
 
 HyperFormula **3.4.0**, pinned exactly after the dependency gate, is GPL-3.0-only. The repository
-`LICENSE` is GPL-3.0 and the research explicitly approved this compatible combination.
-`plugin/package.json` still has historical MIT metadata; that inconsistency should be resolved
-by the maintainer before distributing a differently licensed artifact.
+`LICENSE` and `plugin/package.json` are both GPL-3.0-only, so this dependency is compatible.
 
 The MIT alternative `@formulajs/formulajs` supplies formula functions, not a workbook parser,
 reference translator and dependency graph. The existing arithmetic `fparser` dependency is
