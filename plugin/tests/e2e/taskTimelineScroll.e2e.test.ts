@@ -56,7 +56,7 @@ interface Probe {
   overflow?: number
   shots?: string[]
 }
-const script = (footer: boolean, short = false) => String.raw`(async () => {
+const script = (footer: boolean, short = false) => String.raw`(async function* () {
   ${PIXEL_PROBE}
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async fn => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready') }
@@ -72,22 +72,36 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
   const remembered = config.rememberNotePlaces
   config.rememberNotePlaces = false
   try {
+    yield 'fixture creation'
     if (!app.vault.getAbstractFileByPath(folder)) {
       await app.vault.createFolder(folder)
       await app.vault.create(folder + '/Sample group.md', 'Sample group\n')
-      const writes = []
+      let writes = []
       for (let d = ${short ? -1 : -45}; d <= ${short ? 0 : 45}; d++) {
         for (let n = 0; n < 3; n++) {
           const done = n === 0
           const title = 'Sample item ' + d + ' ' + n
           writes.push(app.vault.create(folder + '/' + title + '.md', '---\ntype: task\ndate: ' + day(d) + '\n' + (${short} && done ? 'dateTime: 08:00\n' : '') + (done ? 'completed: ' + day(d) + '\n' : '') + 'labels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\n' + title + '\n'))
         }
+        // Native vault writes are serialized by the device. Bound each phase instead of
+        // charging hundreds of writes to the interaction probe's one deadline.
+        if (writes.length >= 24) {
+          await Promise.all(writes); writes = []
+          yield 'fixture tasks through offset ' + d
+        }
       }
       // Much older completed-only days must never pull the reader to the start of history.
-      for (let d = -90; d < -45; d++) writes.push(app.vault.create(folder + '/Sample archive ' + d + '.md', '---\ntype: task\ndate: ' + day(d) + '\ncompleted: ' + day(d) + '\nlabels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\nSample archive ' + d + '\n'))
+      for (let d = -90; d < -45; d++) {
+        writes.push(app.vault.create(folder + '/Sample archive ' + d + '.md', '---\ntype: task\ndate: ' + day(d) + '\ncompleted: ' + day(d) + '\nlabels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\nSample archive ' + d + '\n'))
+        if (writes.length >= 24) {
+          await Promise.all(writes); writes = []
+          yield 'fixture archives through offset ' + d
+        }
+      }
       await Promise.all(writes)
       await wait(3000)
     }
+    yield 'opening scroll owner and waiting for timeline'
     leaf = app.workspace.getLeaf('tab')
     if (${footer}) {
       await leaf.setViewState({ type: 'markdown', state: { file: folder + '/Sample group.md', mode: 'source', source: false }, active: true })
@@ -236,6 +250,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       }
       report.shots.push(path)
     }
+    yield 'initial dates and unchanged appearance'
     report.initial = dates()
     report.summary = strip()?.textContent.trim() ?? null
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
@@ -249,6 +264,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     await shot('unchanged')
     await shot('initial')
     if (${short}) {
+      yield 'short-list completion and history anchors'
       const before = row(0).getBoundingClientRect().top
       root.querySelector('.abele-timeline__completed-toggle').click()
       await wait(1200)
@@ -278,6 +294,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       return JSON.stringify(report)
     }
 
+    yield 'sticky banner and native scroll'
     // The folded banner stays at the usable edge, without changing existing pane spacing.
     const stickyScroll = scroller.scrollTop
     scroller.scrollTop += 400
@@ -353,6 +370,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     scroller.removeEventListener('touchend', touchEnd)
     scroller.removeEventListener('wheel', wheel)
     report.scrollRevealed = dates()
+    yield 'revealing history and completion anchors'
     align(row(0)); await wait(500)
     const beforeReveal = row(0).getBoundingClientRect().top
     await revealClick()
@@ -374,6 +392,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     root.querySelector('.abele-timeline__completed-toggle').click()
     await wait(1200)
     report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
+    yield 'future rows and collapsing history'
     for (let i = 0; i < 4 && !row(25); i++) { scroller.scrollTop = scroller.scrollHeight; await wait(700) }
     await until(() => row(25))
     align(row(25)); await wait(1000)
@@ -400,6 +419,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
     await revealClick()
     await wait(1200)
     if (${footer}) {
+      yield 'reopening saved history and row anchor'
       // A past row's saved anchor is useful only if reopening actually recreates that day.
       root.querySelector('.abele-timeline__completed-toggle').click()
       await wait(1200)
@@ -429,6 +449,30 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
   return JSON.stringify(report)
 })()`
 
+async function runProbe(footer: boolean, short = false): Promise<Probe> {
+  const label = `${footer ? 'footer' : 'sidebar'} ${short ? 'short' : 'full'}`
+  let phase = 'starting'
+  evalRaw(`(() => { window.__timelineProbe = (${script(footer, short)}); return 'started' })()`)
+  try {
+    for (;;) {
+      console.info(`Timeline ${label}: ${phase}`)
+      const raw = await evalLong('window.__timelineProbe.next()', 100_000)
+      if (raw.startsWith('Error:')) throw new Error(raw)
+      const step = JSON.parse(raw) as { done: boolean; value: string }
+      if (step.done) return JSON.parse(step.value) as Probe
+      phase = step.value
+    }
+  } catch (error) {
+    throw new Error(`Timeline ${label}, phase ${phase}: ${String(error)}`)
+  } finally {
+    // A timed-out step still has a live generator; close it so its fixture finally runs.
+    await evalLong(
+      `(async () => { await window.__timelineProbe?.return(); delete window.__timelineProbe; return 'closed' })()`,
+      60_000
+    )
+  }
+}
+
 describe.skipIf(!available)('task timeline scrolling', () => {
   let desktop: Probe[] = [],
     mobile: Probe[] = []
@@ -445,8 +489,8 @@ describe.skipIf(!available)('task timeline scrolling', () => {
     if (!onPhone()) {
       runCli(['dev:debug', 'on'], 30000)
       for (const footer of [false, true]) {
-        desktop.push(JSON.parse(await evalLong(script(footer), 100000)))
-        shortDesktop.push(JSON.parse(await evalLong(script(footer, true), 100000)))
+        desktop.push(await runProbe(footer))
+        shortDesktop.push(await runProbe(footer, true))
       }
       await reloadApp('app.emulateMobile(true)')
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844); 'sized'`)
@@ -454,11 +498,11 @@ describe.skipIf(!available)('task timeline scrolling', () => {
       runCli(['dev:debug', 'on'], 30000)
     }
     for (const footer of [false, true]) {
-      mobile.push(JSON.parse(await evalLong(script(footer), 100000)))
-      shortMobile.push(JSON.parse(await evalLong(script(footer, true), 100000)))
+      mobile.push(await runProbe(footer))
+      shortMobile.push(await runProbe(footer, true))
     }
     console.info(JSON.stringify({ desktop, mobile, shortDesktop, shortMobile }))
-  }, 360000)
+  }, 600_000)
   afterAll(async () => {
     if (!available) return
     await evalLong(
