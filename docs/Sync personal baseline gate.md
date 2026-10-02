@@ -119,10 +119,27 @@ values and workspace matched, ignore/marker absence was restored, only the owned
 new databases were removed, the phone disconnected with zero pending revokes and the backup
 was removed after verification. Desktop state was independently restored and its lease released.
 
-Fleet settings/plugin-code confirmation checks and phone lost-response restart remain
+A later physical-iPhone offline/reconnect run used the authorized driver’s real airplane-mode
+control. The phone and leased desktop first shared `one/two/three` baseline bytes. The driver
+confirmed airplane **on**, Wi-Fi off and Abele Offline; it changed line one on the phone.
+A separate coordinator saw the phone's offline-ready signal and changed line three on the Mac
+while airplane mode was still on. The phone then turned airplane **off**, Wi-Fi on; its sync
+returned idle with zero pending items, and both the phone and desktop read exactly
+`phone/two/mac` in place. The existing daemon folder read matched those exact bytes. The
+phone-local note stayed intact and was absent from the server's authorized manifest. It had
+already existed at the start of that bounded probe, so this run does **not** claim it created
+that private note while offline. No Pause substitution was used.
+
+Airplane off/Wi-Fi on was verified before and after phone cleanup. The phone then revoked its
+own test connection and restored all five prior local values, original ignore/marker absence,
+workspace and original databases; owned local folders and new ledger database were removed,
+and the backup was removed only after verification. Desktop restoration and lease release
+passed independently. The server retained only the tidy owned test namespace.
+
+Fleet settings/plugin-code confirmation checks and **phone** lost-response restart remain
 **NOT RUN**. The unpaused burst and real-stand replay evidence above are desktop-only; the
-phone does not stand in for those checks. Physical offline/reconnect and the unavailable iPad
-remain explicit holds. A desktop/daemon or two-device supplement is not their substitute.
+phone does not stand in for those checks. The unavailable iPad remains an explicit hold.
+A two-device online/offline supplement is not a three-native-device sign-off.
 
 ## Ordered continuation
 
