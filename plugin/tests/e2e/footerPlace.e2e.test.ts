@@ -16,7 +16,14 @@
  * own folder of notes and removes it.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 
 targets('desktop', 'phone')
@@ -216,9 +223,13 @@ const turns = (tops: number[]): number => {
 const suite = (title: string, prepare: () => Promise<void>, restore: () => Promise<void>) =>
   describe.skipIf(!available)(title, () => {
     let report: Report = {}
+    let remembered: boolean | undefined
 
     beforeAll(async () => {
       await prepare()
+      remembered = evalJson<boolean>('window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces')
+      // Run against a non-default setting, as another probe or the vault may leave it.
+      evalRaw('window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces = false')
       report = JSON.parse(await evalLong(script, 240_000)) as Report
       const b = report.back
       const moves = b?.tops.filter((t, i) => i === 0 || t !== b.tops[i - 1])
@@ -227,7 +238,14 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
       )
     }, 400_000)
 
-    afterAll(restore, 180_000)
+    afterAll(async () => {
+      try {
+        if (remembered !== undefined)
+          evalRaw('window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces = ' + remembered)
+      } finally {
+        await restore()
+      }
+    }, 180_000)
 
     const trace = () => JSON.stringify({ ...report.back, tops: report.back?.tops.join(' ') })
 
