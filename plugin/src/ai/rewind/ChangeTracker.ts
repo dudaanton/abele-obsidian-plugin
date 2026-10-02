@@ -29,7 +29,7 @@ export interface Recording {
   record(op: string, changes: Change[], blobs: Map<string, ArrayBuffer>): void
 }
 
-/** Binaries larger than this are not copied; they come back only by being moved back. */
+/** Opportunistic binary snapshots above this are not copied; explicit prepared writes retain theirs. */
 export const MAX_BLOB_BYTES = 20 * 1024 * 1024
 
 interface Spec {
@@ -39,6 +39,13 @@ interface Spec {
   move?: { from: string; to: string }
   /** Removes whatever is at these paths: a folder's files are captured with it. */
   removes?: boolean
+}
+
+interface PreparedBinary {
+  path: string
+  before: Before
+  blobs: Map<string, ArrayBuffer>
+  didWrite: () => boolean
 }
 
 type AnyFn = (...args: unknown[]) => unknown
@@ -112,8 +119,27 @@ export class ChangeTracker {
     return tracker
   }
 
-  static get(): ChangeTracker | null {
-    return ChangeTracker.instance
+  static get(app?: App): ChangeTracker | null {
+    return app && ChangeTracker.instance?.app !== app ? null : ChangeTracker.instance
+  }
+
+  /** Keep an edit's original bytes before its final check, without another snapshot read later. */
+  prepareBinaryWrite(
+    path: string,
+    data: Uint8Array,
+    didWrite: () => boolean
+  ): <T>(run: () => Promise<T>) => Promise<T> {
+    if (this.muted > 0 || !this.recordings.size || this.excluded(path)) return (run) => run()
+    const copy = data.slice().buffer as ArrayBuffer
+    const hash = bytesHash(copy)
+    const prepared: PreparedBinary = {
+      path,
+      before: { t: 'binary', hash, size: copy.byteLength, blob: hash },
+      blobs: new Map([[hash, copy]]),
+      didWrite,
+    }
+    // Explicitly prepared edits retain their snapshot even above the generic opportunistic cap.
+    return (run) => this.around('vault.modifyBinary', { paths: [path] }, run, prepared)
   }
 
   /** Puts every wrapped method back as it was. */
@@ -177,7 +203,12 @@ export class ChangeTracker {
     )
   }
 
-  private async around<T>(op: string, spec: Spec, run: () => Promise<T>): Promise<T> {
+  private async around<T>(
+    op: string,
+    spec: Spec,
+    run: () => Promise<T>,
+    prepared?: PreparedBinary
+  ): Promise<T> {
     if (this.muted > 0 || this.recordings.size === 0) return run()
 
     const move = spec.move && !this.excluded(spec.move.from) ? spec.move : undefined
@@ -199,7 +230,10 @@ export class ChangeTracker {
         if (move && mine.includes(move.to)) befores.set(move.to, await this.capture(move.to, blobs))
         for (const path of direct) {
           if (!mine.includes(path)) continue
-          befores.set(path, await this.capture(path, blobs))
+          if (prepared?.path === path) {
+            befores.set(path, prepared.before)
+            for (const [hash, data] of prepared.blobs) blobs.set(hash, data)
+          } else befores.set(path, await this.capture(path, blobs))
           if (spec.removes && (await this.fs.kind(path)) === 'folder') {
             for (const inner of await this.fs.filesUnder(path)) {
               if (!this.excluded(inner) && !befores.has(inner)) {
@@ -214,17 +248,23 @@ export class ChangeTracker {
         return run()
       }
 
-      const result = await run()
-
-      const changes: Change[] = []
-      for (const [path, before] of befores) {
-        const after = await this.fingerprint(path).catch((): After => null)
-        if (after !== afterOf(before)) changes.push({ path, before, after })
+      let completed = false
+      try {
+        const result = await run()
+        completed = true
+        return result
+      } finally {
+        // A post-write conflict must still leave the original bytes available for rewind.
+        if (completed || prepared?.didWrite()) {
+          const changes: Change[] = []
+          for (const [path, before] of befores) {
+            const after = await this.fingerprint(path).catch((): After => null)
+            if (after !== afterOf(before)) changes.push({ path, before, after })
+          }
+          if (changes.length)
+            for (const recording of recordings) recording.record(op, changes, blobs)
+        }
       }
-      if (changes.length) {
-        for (const recording of recordings) recording.record(op, changes, blobs)
-      }
-      return result
     } finally {
       for (const p of mine) {
         const left = (this.inFlight.get(p) ?? 1) - 1

@@ -5,6 +5,7 @@ import { imageResource, type WordResources } from './imageOps'
 import { wordPreviewText } from './preview'
 import { TFile as VaultFile } from 'obsidian'
 import { commitWordWrite, wordRevision } from './write'
+import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 
 export const loadWordBytes = (bytes: Uint8Array) =>
   openDocx(bytes, () => new Promise<void>((resolve) => window.setTimeout(resolve, 0)))
@@ -43,33 +44,38 @@ export async function writeWordChange(
   // Both hand edits and agent writes must fail before storage changes when the result is broken.
   await loadWordBytes(updated)
   signal?.throwIfAborted()
-  const previous = writes.get(file.path) ?? Promise.resolve()
+  // Copy/validate and prepare rewind before the final read, not between that read and publication.
+  const payload = updated.buffer.slice(
+    updated.byteOffset,
+    updated.byteOffset + updated.byteLength
+  ) as ArrayBuffer
+  const path = file.path
+  const previous = writes.get(path) ?? Promise.resolve()
   const saving = previous
     .catch(() => {})
-    .then(() =>
-      commitWordWrite(
-        {
-          read: async () => new Uint8Array(await app.vault.readBinary(file)),
-          write: async (bytes) => {
-            signal?.throwIfAborted()
-            await app.vault.modifyBinary(
-              file,
-              bytes.buffer.slice(
-                bytes.byteOffset,
-                bytes.byteOffset + bytes.byteLength
-              ) as ArrayBuffer
-            )
+    .then(() => {
+      let didWrite = false
+      const record = ChangeTracker.get(app)?.prepareBinaryWrite(path, original, () => didWrite)
+      const commit = () =>
+        commitWordWrite(
+          {
+            read: async () => new Uint8Array(await app.vault.readBinary(file)),
+            write: async () => {
+              signal?.throwIfAborted()
+              didWrite = true
+              await app.vault.modifyBinary(file, payload)
+            },
           },
-        },
-        original,
-        updated,
-        signal
-      )
-    )
-  writes.set(file.path, saving)
+          original,
+          updated,
+          signal
+        )
+      return record ? record(commit) : commit()
+    })
+  writes.set(path, saving)
   try {
     await saving
   } finally {
-    if (writes.get(file.path) === saving) writes.delete(file.path)
+    if (writes.get(path) === saving) writes.delete(path)
   }
 }

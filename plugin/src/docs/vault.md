@@ -39,10 +39,13 @@ Large packages use a paged text view. External relationships and active HTML chu
 from the rendering only, not removed from the original document. Text edits patch only affected
 `w:t` lexical spans in `word/document.xml`; untouched XML/ZIP parts are retained as their original
 uncompressed bytes. A no-op retains the exact original ZIP. Edited packages are re-compressed,
-so ZIP container bytes may differ; no Markdown intermediary is written. Changes present at the final read are refused instead of replaced by an older edit. The
-Obsidian binary read/write API does not provide compare-and-swap: an uncoordinated external
-writer can still race between that check and publication. In-place saving is not an atomic
-transaction against external Word/sync writers.
+so ZIP container bytes may differ; no Markdown intermediary is written. Immediately before the
+binary write, the current bytes are compared with the edit's original bytes; a difference refuses
+the write. A read-back immediately after publication checks the prepared result. A different
+version reports a conflict and asks the person to reopen rather than claiming success.
+The tiny race between the final check and publication remains, as for other vault writes;
+in-place editing remains enabled. With agent rewind enabled, the prepared original is retained
+in that chat's existing rewind history, including Word archives above the generic 20MB blob cap.
 Formatting and structure edits patch only their selected XML nodes. New lists may add
 `word/numbering.xml` plus its relationship and content-type entry; new links append relationships.
 Inline images imported from the vault are embedded under `word/media/abele-image-N.ext`, with
@@ -378,7 +381,9 @@ folder, under `rewind/`, one folder per chat named by the id of its first messag
 lists every change with the user message whose turn made it, the text a file had before (or
 that it did not exist, or where it was moved to) and a fingerprint of what it held after; a
 picture or other binary it replaced sits beside the log as `<fingerprint>.bin`, unless it was
-larger than 20MB. This is on the device where the chat ran, nothing more. It is kept under the
+larger than 20MB. Explicitly prepared Word edits keep their original archive even above that
+opportunistic cap, under the same configured history budget. This is on the device where the
+chat ran, nothing more. It is kept under the
 size the **Rewind space** setting allows (100MB by default; 0 keeps nothing): the chats written
 to least recently lose theirs first, then the oldest changes of the chat being written. A change
 that has been put back leaves the log. Deleting this folder only takes away the way back.

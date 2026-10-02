@@ -32,11 +32,15 @@ Phone tabs are read-only by hand; an agent can edit on either device.
 Only touched text runs change. The document's styles, numbering, pictures and other package
 parts are kept, not converted to Markdown and rebuilt. Text inside tracked revisions or field
 results is read-only, as are headers, footers and notes. Unsupported structures are kept intact.
-If the file has changed when saving checks it, the older edit is refused; cancel and reopen it.
-In-place saving is not atomic against writes from another app: a change can still race between
-that check and the actual write. Do not save the same document from Word or another sync writer
-at the same time. This limitation needs a storage-level solution before conflict-safe replacement
-can be guaranteed.
+Immediately before saving, the file is checked against the version you edited. If it differs,
+the older edit is refused; cancel and reopen it. The saved bytes are read back too: if another
+version appeared while saving, you see a conflict message instead of success. Reopen to see
+what the file holds now. With agent rewind enabled, the original archive stays in that chat's
+history so the edit can be rolled back.
+
+As with other vault writes, a tiny window remains between the last check and the actual write.
+Avoid saving the same document from two apps at once. Editing still saves in place; it does not
+silently switch to making a copy.
 
 ## Formatting and structure on desktop
 

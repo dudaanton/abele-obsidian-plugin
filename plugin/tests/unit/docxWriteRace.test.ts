@@ -1,8 +1,9 @@
 import { expect, it } from 'vitest'
 import { commitWordWrite } from '@/word/write'
 
-// BUG: Read/write cannot provide compare-and-swap against an uncoordinated external writer.
-// The public Obsidian adapter has no conditional binary write; this remains a release blocker.
+// BUG: An external write landing between the final check and our publication can still be
+// overwritten in that tiny window, and a read-back cannot recover a version it never observed.
+// This residual race is accepted, matching other vault writes; it is not a release blocker.
 it.fails(
   'does not overwrite a competing version arriving between validation and publication',
   async () => {

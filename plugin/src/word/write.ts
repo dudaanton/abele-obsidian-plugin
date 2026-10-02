@@ -19,7 +19,12 @@ export async function commitWordWrite(
   if (!sameBytes(before, now))
     throw new Error('Document changed while editing. Read it again before saving.')
   signal?.throwIfAborted()
-  if (!sameBytes(before, after)) await storage.write(after)
+  if (!sameBytes(before, after)) {
+    await storage.write(after)
+    const saved = await storage.read().catch(() => null)
+    if (!saved || !sameBytes(saved, after))
+      throw new Error('The file changed while saving; reopen to see the latest version.')
+  }
 }
 /** Stable version token for agent calls, not a signature or authorization mechanism. */
 export function wordRevision(bytes: Uint8Array): string {
