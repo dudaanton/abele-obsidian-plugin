@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, readdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import * as cli from '../e2e/helpers/obsidianCli'
 
 const exec = vi.hoisted(() => vi.fn())
@@ -7,6 +9,10 @@ vi.mock('node:child_process', () => ({
   execFileSync: exec,
 }))
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
+vi.mock('node:os', () => ({
+  default: { tmpdir: () => join(process.cwd(), 'node_modules') },
+  tmpdir: () => join(process.cwd(), 'node_modules'),
+}))
 
 const noAnswer = () => Object.assign(new Error('timeout'), { code: 'ETIMEDOUT', signal: 'SIGKILL' })
 
@@ -14,7 +20,13 @@ beforeEach(() => {
   exec.mockReset()
   vi.spyOn(Atomics, 'wait').mockReturnValue('timed-out')
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  rmSync(join(process.cwd(), 'node_modules/abele-e2e-reload.lock'), {
+    recursive: true,
+    force: true,
+  })
+})
 
 describe('explicitly idempotent CLI calls', () => {
   it('repeats the exact read after a lost answer', () => {
@@ -61,6 +73,34 @@ describe('explicitly idempotent CLI calls', () => {
     exec.mockReset().mockReturnValue('Error: broken script')
     expect(cli.evalRawIdempotent('getSize()')).toBe('Error: broken script')
     expect(exec).toHaveBeenCalledOnce()
+  })
+
+  it('retries shared-key cleanup under the reload lock even when readiness fails', async () => {
+    vi.useFakeTimers()
+    let cleanup = 0
+    const lock = join(process.cwd(), 'node_modules/abele-e2e-reload.lock')
+    exec.mockImplementation((_bin, args) => {
+      const code = args.join(' ')
+      if (code.includes('typeof window.__abeleTest')) return 'Error: invalid API probe'
+      if (
+        code.includes("localStorage.removeItem('EmulateMobile')") &&
+        !code.includes('location.reload')
+      ) {
+        expect(readdirSync(lock)).toEqual([String(process.pid)])
+        if (++cleanup === 1) throw noAnswer()
+      }
+      return '=> ok'
+    })
+    try {
+      const result = cli.reloadApp().catch((error) => error)
+      await vi.runAllTimersAsync()
+      expect(await result).toBeInstanceOf(Error)
+      expect((await result).message).toContain('Could not parse')
+      expect(cleanup).toBe(2)
+      expect(existsSync(lock)).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not replay a process killed for a reason other than the call timeout', () => {

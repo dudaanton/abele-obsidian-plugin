@@ -668,13 +668,16 @@ async function reloadWindow(asked: string | undefined): Promise<void> {
       !evalJsonIdempotent<boolean>('app.workspace.layoutReady', 30_000)
     )
       await pauseAsync(500)
-    evalRawIdempotent(`(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`, 30_000)
   } finally {
     try {
+      // Even a failed readiness gate must not leave phone emulation shared with other windows.
+      evalRawIdempotent(
+        `(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`,
+        30_000
+      )
+    } finally {
       unlinkSync(join(RELOAD_LOCK, String(process.pid)))
       rmdirSync(RELOAD_LOCK)
-    } catch {
-      // Taken away as stale by another run: nothing left to release.
     }
   }
   setBackgroundThrottling(false)
