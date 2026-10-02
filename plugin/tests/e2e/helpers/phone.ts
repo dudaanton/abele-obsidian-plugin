@@ -159,12 +159,12 @@ export function installPhoneHost(): void {
       const ask = (what, body, ms) => within(ms, what, requestUrl({ url: 'http://127.0.0.1:${port}/' + what,
           method: 'POST', contentType: 'application/json', body: JSON.stringify(body), throw: false }))
       const call = async (what, body) => {
-        // A picture is asked for again when the first request was lost — dropped by the
-        // reversed port or never answered. Only a picture: a touch asked for twice would touch twice.
+        // Pictures and orientation setters are idempotent when the reversed-port reply
+        // is lost. Never retry a touch: a delivered gesture would happen twice.
         try {
           let r
           try { r = await ask(what, body, what === 'shot' ? 20000 : what === 'type' ? 45000 : 15000) } catch (error) {
-            if (what !== 'shot') throw error
+            if (what !== 'shot' && what !== 'orientation') throw error
             r = await ask(what, body, 20000)
           }
           if (r.status !== 200) throw new Error('status ' + r.status + ': ' + r.text)

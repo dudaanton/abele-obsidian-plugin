@@ -16,6 +16,10 @@ import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 targets('desktop', 'phone')
 
 const available = isObsidianRunning() && hasTestApi()
+const resultJson = (raw: string) => {
+  if (raw.startsWith('Error:')) throw new Error(raw)
+  return JSON.parse(raw)
+}
 const DIR = 'sample-slides-e2e'
 const PATH = `${DIR}/sample-deck.md`
 const SHOTS = shotDir('abele-slides')
@@ -326,7 +330,7 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
         "require('@electron/remote').getCurrentWindow().setMinimumSize(0,0); require('@electron/remote').getCurrentWindow().setContentSize(390,844)"
       )
     }
-    const r = JSON.parse(
+    const r = resultJson(
       await evalLong(`(async () => { ${PRELUDE}
       await viewer.go(0);await viewer.present(false)
       if(!await until(()=>Math.abs(viewer.root.getBoundingClientRect().width-window.innerWidth)<2))throw Error('overlay did not fill window')

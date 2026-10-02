@@ -82,7 +82,7 @@ describe.skipIf(!available)('shared presenter show', () => {
         const result={otherDocument:doc!==document,notes:presenter.notes.textContent.includes('Private cue'),privateAudience:viewer.root.textContent.includes('Private cue'),current:presenter.current.index,next:presenter.next.index,fragments:active().querySelectorAll('.abele-slide-fragment').length,transition:active().dataset.transition}
         const press=async(doc,key,code,n)=>{
           const cdp=doc.defaultView.require('@electron/remote').getCurrentWebContents().debugger
-          if(!cdp.isAttached()){cdp.attach('1.3');attached.push(cdp)}
+          if(!cdp.isAttached()){cdp.attach('1.3');attached.push(doc.defaultView.require('@electron/remote').getCurrentWindow().id)}
           await cdp.sendCommand('Input.dispatchKeyEvent',{type:'rawKeyDown',key,code,windowsVirtualKeyCode:n,nativeVirtualKeyCode:n})
           await cdp.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:n,nativeVirtualKeyCode:n})
           await wait(100)
@@ -91,7 +91,7 @@ describe.skipIf(!available)('shared presenter show', () => {
         result.movable=!native.isFullScreen() && !native.isSimpleFullScreen()
         const fullscreen=[...viewer.toolbar.querySelectorAll('button')].find(b=>b.textContent==='Fullscreen')
         const cdp=doc.defaultView.require('@electron/remote').getCurrentWebContents().debugger
-        if(!cdp.isAttached()){cdp.attach('1.3');attached.push(cdp)}
+        if(!cdp.isAttached()){cdp.attach('1.3');attached.push(doc.defaultView.require('@electron/remote').getCurrentWindow().id)}
         const box=fullscreen.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2
         await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1})
         await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1})
@@ -134,7 +134,18 @@ describe.skipIf(!available)('shared presenter show', () => {
         leaf.detach()
         result.presenterClosed=await until(()=>second.ended && !app.workspace.getLeavesOfType('abele-deck').some(l=>l.view.show===second))
         return JSON.stringify(result)
-      } finally { view.show?.end();for(const cdp of attached)if(cdp.isAttached())cdp.detach() }
+      } finally {
+        view.show?.end()
+        // Audience close intentionally releases its context. Do not invoke a debugger
+        // proxy owned by that dead document during cleanup; resolve live windows here.
+        for(const id of attached) {
+          const win=require('@electron/remote').BrowserWindow.fromId(id)
+          if(win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+            const cdp=win.webContents.debugger
+            if(cdp.isAttached())cdp.detach()
+          }
+        }
+      }
     })()`)
       )
       expect(r.otherDocument).toBe(true)
