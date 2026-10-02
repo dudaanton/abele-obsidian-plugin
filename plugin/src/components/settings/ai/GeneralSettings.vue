@@ -1154,7 +1154,11 @@ const removeSecret = (idx: number) => {
     }
   }
   secrets.value.splice(idx, 1)
-  delete secretValueInputs[idx]
+  // Row indices changed: neither an open editor nor a reveal choice belongs to its neighbour.
+  editingSecretIdx.value = -1
+  secretIsNew = false
+  for (const key of Object.keys(secretValueInputs)) delete secretValueInputs[Number(key)]
+  for (const key of Object.keys(revealedInputs)) delete revealedInputs[Number(key)]
   save()
 }
 
