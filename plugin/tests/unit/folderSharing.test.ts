@@ -88,6 +88,18 @@ describe('disabled owner folder sharing contract', () => {
     await expect(flow.confirm('invented-password')).rejects.toThrow(/scoped/)
     expect(flow.secret).toBeNull()
   })
+  it('rejects malformed freshness fields before any grant is created', async () => {
+    const { flow, port } = setup()
+    await flow.review('Agents/', 'editor', 'Sample')
+    port.authorize.mockResolvedValue({
+      facet: 'account',
+      ownerVaultId: 'sample-vault',
+      authenticatedAt: NaN,
+      expiresAt: 100000,
+    })
+    await expect(flow.confirm('invented-password')).rejects.toThrow(/owner/)
+    expect(port.create).not.toHaveBeenCalled()
+  })
   it('rejects unproven/stale owner authentication, dangerous prefix and incomplete preview', async () => {
     const { flow, port } = setup()
     await expect(flow.review('../Private/', 'editor', 'Sample')).rejects.toThrow()

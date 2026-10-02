@@ -94,6 +94,8 @@ export class FolderSharingFlow {
     const session = this.session,
       now = this.now()
     if (
+      !Number.isFinite(session.authenticatedAt) ||
+      !Number.isFinite(session.expiresAt) ||
       session.facet !== 'account' ||
       session.ownerVaultId !== this.vaultId ||
       session.authenticatedAt > now ||
