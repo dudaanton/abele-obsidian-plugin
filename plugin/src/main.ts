@@ -14,7 +14,7 @@ import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
 import { pasteFromClipboard } from './commands/pasteFromClipboard'
 import { registerFocusRelease } from './helpers/fieldFocus'
-import { createApp, App as VueApp } from 'vue'
+import { createApp, App as VueApp, watch } from 'vue'
 import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
 import { AgentRegistry } from './ai/agents/AgentRegistry'
@@ -37,6 +37,7 @@ import { galleryExtensions } from './editor/GalleryPlugin'
 import { galleryPostProcessor } from './editor/galleryPostProcessor'
 import { recordSignatures, SIGNATURE_PROCESSOR_ORDER } from '@/components/obsidian/markdownParts'
 import { mermaidExtensions, refreshMermaidEditors } from './editor/MermaidPlugin'
+import { editorSyntaxExtension, refreshSyntaxEditors } from './editor/EditorSyntax'
 import { mermaidPostProcessor, MERMAID_PROCESSOR_ORDER } from './mermaid/mermaidBlocks'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
@@ -455,6 +456,18 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(footnoteExtensions)
     this.registerEditorExtension(highlightStateField)
     this.registerEditorExtension(commentExtensions)
+    const config = AbeleConfig.getInstance()
+    this.registerEditorExtension(editorSyntaxExtension(() => config.editorSyntaxHighlight))
+    this.register(
+      watch(
+        () => {
+          // Saves, transfers and settings arriving from sync all increment the version.
+          void config.version.value
+          return config.editorSyntaxHighlight
+        },
+        () => refreshSyntaxEditors(this.app)
+      )
+    )
     // Reads each rendered block before anything draws into it, so a render replaced over and
     // over — a reply being streamed — keeps the blocks that came back the same.
     this.registerMarkdownPostProcessor(recordSignatures, SIGNATURE_PROCESSOR_ORDER)

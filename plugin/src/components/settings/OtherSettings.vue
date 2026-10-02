@@ -29,6 +29,12 @@
       <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
     </Setting>
     <Setting
+      name="Editor syntax highlighting"
+      desc="Highlight more fenced-code languages in Source and Live Preview, using Obsidian's own theme. Native highlighting and rendered blocks stay unchanged. Extra highlighting is limited to blocks of 32,768 characters and 1,000 lines."
+    >
+      <Checkbox :is-enabled="editorSyntaxHighlight" @toggle="toggleEditorSyntaxHighlight" />
+    </Setting>
+    <Setting
       name="Own drawing of properties"
       desc="In a note's properties: a wallet's balance beside a link to it, sums worked out in number fields, and cards for File and Files properties and for the cover. Off is Obsidian's own drawing."
     >
@@ -118,6 +124,7 @@ const keyboardDiagnostics = ref(config.keyboardDiagnostics)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 const mermaidViewer = ref(config.mermaidViewer)
+const editorSyntaxHighlight = ref(config.editorSyntaxHighlight)
 const propertyWidgets = ref(config.propertyWidgets)
 const rememberNotePlaces = ref(config.rememberNotePlaces)
 const counterProperties = ref((config.counterProperties ?? []).join(', '))
@@ -185,6 +192,12 @@ const toggleMermaidViewer = async () => {
   config.mermaidViewer = mermaidViewer.value
   await config.saveSettings()
   GlobalStore.getInstance().app.workspace.trigger('post-processor-change')
+}
+
+const toggleEditorSyntaxHighlight = async () => {
+  editorSyntaxHighlight.value = !editorSyntaxHighlight.value
+  config.editorSyntaxHighlight = editorSyntaxHighlight.value
+  await config.saveSettings()
 }
 
 // The properties on screen are redrawn by the plugin as the saved settings move.

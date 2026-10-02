@@ -125,6 +125,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 
 - Deep links (`abele://`) that open a note, run a command, or run a script with parameters
 - Footnote sidenotes, and colored highlights with `=={color} text==`
+- Fenced-code syntax highlighting in Source and Live Preview using Obsidian's Prism and theme, filling language gaps without overpainting native tokens
 - Comment chats anchored to a passage of a note, or of an agent's answer inside a chat
 - Mermaid diagrams drawn the way GitHub draws them — the width of the note, with zoom, drag, full screen and copy as source, SVG or picture ([how](docs/Mermaid.md))
 - CSS snippets loaded and hot-reloaded from a folder in the vault

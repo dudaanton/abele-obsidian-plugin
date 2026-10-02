@@ -140,6 +140,14 @@ fetched from the server, and it is what agents are told — fetching again is do
 settings, where the person sees the new list. The tools themselves are `mcp_<server>_<tool>` in
 `toolModes`, off for an agent until given; see the tools section.
 
+## Editor syntax highlighting
+
+`editorSyntaxHighlight` (on by default) fills fenced-code language gaps in Source and Live
+Preview with Obsidian's Prism and the current theme's token colours. Native editor tokens,
+rendered blocks and reading-view highlighting stay unchanged. The switch is in **Other**,
+travels with that settings section, and takes effect in already-open editors. See `display`
+for the visible-range cache and large-block limits. Inline code is not language-highlighted.
+
 ## Maps
 
 `mapCoordinatesProperty` is the note property a place is stored in — `coordinates` unless the

@@ -203,7 +203,7 @@ describe.skipIf(!available)('editor syntax highlighting', () => {
     }>(`(async () => {
       ${PRELUDE}
       const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
-      const large = '\x60\x60\x60graphql\n' + 'query { sample { id } }\n'.repeat(5000) + '\x60\x60\x60\n'
+      const large = ${JSON.stringify('```graphql\n')} + ${JSON.stringify('query { sample { id } }\n')}.repeat(5000) + ${JSON.stringify('```\n')}
       try {
         await app.vault.modify(file, large)
         await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'source', source: false }, active: true })

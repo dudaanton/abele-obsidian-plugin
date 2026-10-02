@@ -95,6 +95,8 @@ export interface AbeleSettings {
   halfWidthSidebarsOnTablet?: boolean
   /** ```mermaid blocks drawn by the plugin's viewer, with zoom and full screen, not Obsidian's. */
   mermaidViewer?: boolean
+  /** Fill fenced-code language gaps in Source and Live Preview using Obsidian's Prism. */
+  editorSyntaxHighlight?: boolean
   /**
    * The plugin's own drawing of some properties: a wallet's balance, arithmetic in numbers, file
    * cards for File and Files properties and for `cover`. Off is Obsidian's own drawing.
@@ -313,6 +315,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   fullWidthSidebars: false,
   halfWidthSidebarsOnTablet: false,
   mermaidViewer: true,
+  editorSyntaxHighlight: true,
   propertyWidgets: true,
   rememberNotePlaces: true,
   counterProperties: [],
@@ -370,6 +373,7 @@ export class AbeleConfig {
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean
+  public editorSyntaxHighlight: boolean
   public propertyWidgets: boolean
   public rememberNotePlaces: boolean
   public counterProperties: string[] = []
@@ -738,6 +742,8 @@ export class AbeleConfig {
     this.halfWidthSidebarsOnTablet =
       settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
     this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
+    this.editorSyntaxHighlight =
+      settings?.editorSyntaxHighlight ?? DEFAULT_SETTINGS.editorSyntaxHighlight ?? true
     this.propertyWidgets = settings?.propertyWidgets ?? DEFAULT_SETTINGS.propertyWidgets ?? true
     this.rememberNotePlaces =
       settings?.rememberNotePlaces ?? DEFAULT_SETTINGS.rememberNotePlaces ?? true
@@ -823,6 +829,7 @@ export class AbeleConfig {
       fullWidthSidebars: this.fullWidthSidebars,
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
       mermaidViewer: this.mermaidViewer,
+      editorSyntaxHighlight: this.editorSyntaxHighlight,
       propertyWidgets: this.propertyWidgets,
       rememberNotePlaces: this.rememberNotePlaces,
       counterProperties: [...this.counterProperties],

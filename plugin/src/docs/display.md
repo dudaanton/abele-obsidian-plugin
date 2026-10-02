@@ -31,6 +31,24 @@ quote whose first line names its kind:
 
 Math is LaTeX between dollars: `$e^{i\pi} + 1 = 0$` inline, `$$ ... $$` as a block.
 
+## Code syntax highlighting
+
+Fenced code names its language after the opening fence, for example `js`, `ts`, `py`, `sh`
+or `graphql`. Reading view uses Obsidian's own Prism. In Source and Live Preview, Abele
+uses that same registry (and its aliases) to fill gaps in the editor's language support.
+Blocks already containing native syntax tokens are left entirely to Obsidian. The current
+theme supplies all token colours; neither the source nor copying changes.
+
+**Other → Editor syntax highlighting** (`editorSyntaxHighlight`, on by default) switches
+this extra editor highlighting off, including in notes already open. It travels in the
+**Other** settings transfer section. Only visible blocks are tokenized; complete bounded
+blocks keep multiline context and are cached per editor. Extra highlighting is skipped for
+blocks over 32,768 UTF-16 code units or 1,000 body lines. Reading view and native editor
+highlighting are unaffected by this limit or switch. Rendered blocks such as Mermaid,
+Dataview and `abele-*` blocks are never highlighted by this extension.
+
+Inline code remains Obsidian's own plain code styling; `{js}` prefixes are not interpreted.
+
 ## Coloured highlights
 
 `=={red} text==` highlights in a colour: `red`, `orange`, `yellow`, `green`, `cyan`, `blue`,
