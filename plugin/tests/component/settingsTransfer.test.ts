@@ -23,6 +23,7 @@ import type { FakeApp } from '../helpers/fakeVault'
 import { encodePayload } from '@/transfer/payload'
 import { toFrames } from '@/transfer/frames'
 import type { TransferPayload } from '@/transfer/types'
+import { githubSettingsFrom } from '@/github/settings'
 
 let app: FakeApp
 /** The keychain as the fake vault implements it, for the test that makes it refuse one id. */
@@ -101,6 +102,123 @@ const waitFor = async (ready: () => boolean, timeout = 4000) => {
 }
 
 describe('receiving key references from settings, not sender metadata', () => {
+  it.each(['merge', 'replace'] as const)(
+    'does not write discarded legacy GitHub keys when connection entries win in %s mode',
+    async (mode) => {
+      const config = AbeleConfig.getInstance()
+      config.github = githubSettingsFrom({
+        connections: [
+          {
+            id: 'sample-local-connection',
+            name: 'Sample local connection',
+            server: '',
+            keyId: 'unrelated-key',
+            owners: [],
+            isDefault: true,
+          },
+        ],
+      })
+      app.secretStorage.setSecret('unrelated-key', 'invented-existing-value')
+      const payload: TransferPayload = {
+        v: 1,
+        at: '',
+        entries: [
+          {
+            section: 'github',
+            id: 'github',
+            label: 'GitHub',
+            data: {
+              github: {
+                enabled: true,
+                keyId: 'unrelated-key',
+                server: 'https://unused.example',
+                connections: [
+                  {
+                    id: 'sample-discarded-connection',
+                    name: 'Sample discarded',
+                    server: 'https://unused.example',
+                    keyId: 'unrelated-key',
+                    owners: [],
+                    isDefault: true,
+                  },
+                ],
+                notifications: { keyId: 'sample-notification-key', boundServer: '' },
+              },
+            },
+            secretIds: ['unrelated-key'],
+          },
+          {
+            section: 'github-connections',
+            id: 'sample-arriving-connection',
+            label: 'Sample arriving connection',
+            data: {
+              id: 'sample-arriving-connection',
+              name: 'Sample arriving connection',
+              server: '',
+              keyId: 'sample-connection-key',
+              owners: [],
+              isDefault: true,
+            },
+            secretIds: ['sample-connection-key'],
+          },
+        ],
+        secrets: {
+          'unrelated-key': 'invented-unwanted-replacement',
+          'sample-connection-key': 'invented-connection-value',
+          'sample-notification-key': 'invented-notification-value',
+        },
+      }
+      const wrapper = open(TransferScanModal)
+      await clickButton(wrapper, 'Paste the text')
+      const frames = toFrames(await encodePayload(payload), 'TEST')
+      await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+      await waitFor(() => wrapper.text().includes('to apply'))
+      const dropdown = wrapper.findComponent({ name: 'Dropdown' })
+      await dropdown.vm.$emit('update:model-value', mode)
+      await clickButton(wrapper, 'Apply')
+      expect(wrapper.emitted('applied')?.[0]?.[0]).toMatchObject({ items: 2, keysRefused: 0 })
+      expect(config.github.connections.some((c) => c.id === 'sample-arriving-connection')).toBe(
+        true
+      )
+      expect(config.github.connections.some((c) => c.id === 'sample-discarded-connection')).toBe(
+        false
+      )
+      expect(config.github.connections.some((c) => c.id === 'sample-local-connection')).toBe(
+        mode === 'merge'
+      )
+      expect(app.secretStorage.getSecret('unrelated-key')).toBe('invented-existing-value')
+      expect(app.secretStorage.getSecret('sample-connection-key')).toBe('invented-connection-value')
+      expect(app.secretStorage.getSecret('sample-notification-key')).toBe(
+        'invented-notification-value'
+      )
+    }
+  )
+
+  it('still imports the referenced key in a legacy-only GitHub transfer', async () => {
+    AbeleConfig.getInstance().github = githubSettingsFrom()
+    const payload: TransferPayload = {
+      v: 1,
+      at: '',
+      entries: [
+        {
+          section: 'github',
+          id: 'github',
+          label: 'GitHub',
+          data: { github: { keyId: 'sample-legacy-key', server: '' } },
+        },
+      ],
+      secrets: { 'sample-legacy-key': 'invented-legacy-value' },
+    }
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    const frames = toFrames(await encodePayload(payload), 'TEST')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await waitFor(() => wrapper.text().includes('to apply'))
+    await clickButton(wrapper, 'Apply')
+    expect(AbeleConfig.getInstance().github.connections[0].keyId).toBe('sample-legacy-key')
+    expect(app.secretStorage.getSecret('sample-legacy-key')).toBe('invented-legacy-value')
+  })
+
   it('stores only the keys referenced by accepted incoming settings', async () => {
     const payload: TransferPayload = {
       v: 1,

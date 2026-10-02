@@ -336,10 +336,11 @@ const apply = async () => {
 
   const chosen = acceptedEntries.value
   const config = AbeleConfig.getInstance()
+  let incomingKeyIds: string[]
   try {
     const next = applyEntries(chosen, config.exportSettings(), mode.value)
-    // Resolve references before committing settings, including legacy connection validation.
-    arrivingSecretIds(chosen)
+    // Resolve once from the same normalized settings that will actually be committed.
+    incomingKeyIds = arrivingSecretIds(chosen, next)
     config.applySettings(next)
   } catch (e) {
     // Connection/credential binding is validated before any keychain or settings write.
@@ -356,7 +357,7 @@ const apply = async () => {
 
   let keysRefused = 0
 
-  for (const secretId of arrivingSecretIds(chosen)) {
+  for (const secretId of incomingKeyIds) {
     const value = payload.value.secrets[secretId]
     // A key that did not travel leaves whatever this device already has alone.
     if (!value) continue

@@ -389,14 +389,20 @@ const itemId = (section: SectionId, item: Identified): string =>
 /** Only references in the accepted settings can authorize a keychain write.
  * The sender's secretIds are display/export metadata, never write authority.
  */
-export function arrivingSecretIds(entries: TransferEntry[]): string[] {
+export function arrivingSecretIds(
+  entries: TransferEntry[],
+  applied: AbeleSettings = applyEntries(entries, { ai: {} } as AbeleSettings)
+): string[] {
   const ids = new Set<string>()
-  for (const entry of settingsOnly(entries)) {
+  for (const entry of settingsToApply(entries)) {
     const section = sectionById.get(entry.section)
     if (!section?.secretsOf) continue
     let references: string[]
     if (section.kind === 'list') {
-      references = section.secretsOf(entry.data as Identified)
+      // Duplicated ids and connection normalization can replace or discard an earlier row.
+      const id = itemId(section.id, entry.data as Identified)
+      const item = section.read(applied).find((item) => itemId(section.id, item) === id)
+      references = item ? section.secretsOf(item) : []
     } else {
       // A sparse destination ensures an omitted field cannot select an existing local key.
       const incoming = { ai: {} } as AbeleSettings
@@ -405,11 +411,14 @@ export function arrivingSecretIds(entries: TransferEntry[]): string[] {
       // foreign fields which the section refused to write.
       if (!Object.keys(section.read(incoming)).length) continue
       references = section.secretsOf(incoming)
-      // Compatibility with transfers from before GitHub connections travelled separately.
+      const appliedReferences = section.secretsOf(applied)
+      // Legacy-only blocks may migrate connections. Both sides use the normalized rows,
+      // never a raw alias that a modern connection list or existing local list discarded.
       if (entry.section === 'github') {
-        const github = (entry.data as { github?: { keyId?: string } }).github
-        if (github?.keyId) references.push(github.keyId)
+        references.push(...(incoming.github?.connections ?? []).map((c) => c.keyId))
+        appliedReferences.push(...(applied.github?.connections ?? []).map((c) => c.keyId))
       }
+      references = references.filter((id) => appliedReferences.includes(id))
     }
     for (const id of references) {
       if (typeof id === 'string' && id && !id.startsWith('abele-store-')) ids.add(id)
@@ -548,6 +557,24 @@ export function removedByReplace(
   })
 }
 
+/** The same incoming field projection governs both settings and keychain writes. */
+function settingsToApply(entries: TransferEntry[]): TransferEntry[] {
+  const arriving = settingsOnly(entries)
+    .map(disabledOnArrival)
+    .sort(
+      (a, b) =>
+        Number(a.section === 'github-connections') - Number(b.section === 'github-connections')
+    )
+  if (!arriving.some((entry) => entry.section === 'github-connections')) return arriving
+  return arriving.map((entry) => {
+    if (entry.section !== 'github') return entry
+    const data = (entry.data as { github?: Record<string, unknown> }).github
+    if (!data) return entry
+    const { keyId: _keyId, server: _server, connections: _connections, ...general } = data
+    return { ...entry, data: { github: general } }
+  })
+}
+
 /** The settings as they would be with these entries in them. The original is left alone. */
 export function applyEntries(
   entries: TransferEntry[],
@@ -559,12 +586,7 @@ export function applyEntries(
   // settings are JSON on disk anyway, so nothing survives the trip that was not already there.
   const next = JSON.parse(JSON.stringify(settings)) as AbeleSettings
 
-  const arriving = settingsOnly(entries)
-    .map(disabledOnArrival)
-    .sort(
-      (a, b) =>
-        Number(a.section === 'github-connections') - Number(b.section === 'github-connections')
-    )
+  const arriving = settingsToApply(entries)
   for (const entry of arriving) {
     if (entry.section !== 'github-connections') continue
     const c = entry.data as Partial<GithubConnection> | null
@@ -599,15 +621,7 @@ export function applyEntries(
     if (!section) continue
 
     if (section.kind === 'block') {
-      if (entry.section === 'github' && arriving.some((e) => e.section === 'github-connections')) {
-        const data = (entry.data as { github?: Record<string, unknown> }).github
-        if (data) {
-          const { keyId: _keyId, server: _server, connections: _connections, ...general } = data
-          section.write(next, { github: general })
-        }
-      } else {
-        section.write(next, entry.data as Record<string, unknown>)
-      }
+      section.write(next, entry.data as Record<string, unknown>)
       continue
     }
 

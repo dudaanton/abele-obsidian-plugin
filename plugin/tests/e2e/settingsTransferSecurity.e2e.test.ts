@@ -47,6 +47,31 @@ const incoming: TransferPayload = {
       secretIds: ['abele-sample-unrelated-key'],
     },
     {
+      section: 'github',
+      id: 'github',
+      label: 'Sample GitHub preferences',
+      data: {
+        github: {
+          openLinks: false,
+          keyId: 'abele-sample-unrelated-key',
+          server: 'https://unused.example',
+        },
+      },
+    },
+    {
+      section: 'github-connections',
+      id: 'sample-transfer-connection',
+      label: 'Sample connection',
+      data: {
+        id: 'sample-transfer-connection',
+        name: 'Sample connection',
+        server: '',
+        keyId: 'abele-sample-transfer-key',
+        owners: [],
+        isDefault: true,
+      },
+    },
+    {
       section: 'automations',
       id: 'sample-transfer-rule',
       label: 'Sample automation',
@@ -140,6 +165,7 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
           button: c.headerButtons.find(x => x.id === 'sample-transfer-button')?.enabled,
           selectedKey: store.get('abele-sample-transfer-key') === 'invented-arriving-value',
           unrelatedKey: store.get('abele-sample-unrelated-key') === 'invented-existing-value',
+          connectionKey: c.github.connections.find(x => x.id === 'sample-transfer-connection')?.keyId,
           overflow: rect.right > innerWidth + 1 || rect.left < -1 };
         document.querySelector('.modal-close-button')?.click(); return JSON.stringify(out);
       })()`)
@@ -148,6 +174,7 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
       expect(result.button).toBe(false)
       expect(result.selectedKey).toBe(true)
       expect(result.unrelatedKey).toBe(true)
+      expect(result.connectionKey).toBe('abele-sample-transfer-key')
       expect(result.store).toEqual((original as any).secretStore)
       expect(result.permission).toBe((original as any).ai.permissionMode)
       expect(result.overflow).toBe(false)

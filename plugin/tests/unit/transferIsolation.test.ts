@@ -40,6 +40,29 @@ describe('references owned by arriving settings', () => {
     ).toEqual([])
   })
 
+  it('authorizes only references that survive the complete accepted batch', () => {
+    const arriving = [
+      entry('ai-providers', { id: 'sample-provider', apiKeyId: 'sample-discarded-key' }),
+      entry('ai-providers', { id: 'sample-provider', apiKeyId: 'sample-final-key' }),
+      entry('ai-general', { braveSearchApiKey: 'sample-discarded-search-key' }),
+      entry('ai-general', { braveSearchApiKey: 'sample-final-search-key' }),
+    ]
+    const applied = applyEntries(arriving, settings())
+    expect(arrivingSecretIds(arriving, applied)).toEqual([
+      'sample-final-key',
+      'sample-final-search-key',
+    ])
+  })
+
+  it('does not select an existing local reference omitted by an incoming block', () => {
+    const before = settings()
+    before.ai.braveSearchApiKey = 'sample-local-search-key'
+    const arriving = [entry('ai-general', { enabled: true })]
+    const applied = applyEntries(arriving, before)
+    expect(applied.ai.braveSearchApiKey).toBe('sample-local-search-key')
+    expect(arrivingSecretIds(arriving, applied)).toEqual([])
+  })
+
   it('keeps voice defaults and references introduced by newer sections', () => {
     expect(
       arrivingSecretIds([
