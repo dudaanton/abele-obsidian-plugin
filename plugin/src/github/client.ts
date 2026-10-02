@@ -111,7 +111,11 @@ export interface Probe<T = unknown> {
 interface Cached {
   etag: string
   body: unknown
+  bytes: number
 }
+
+const CACHE_ENTRIES = 256
+const CACHE_BYTES = 32 * 1024 * 1024
 
 export interface GetOptions {
   /** Media type. `raw` asks for a file's bytes as text rather than a JSON wrapper. */
@@ -158,6 +162,7 @@ export class GithubClient {
   retire(): void {
     this.current = false
     this.cache.clear()
+    this.cacheBytes = 0
   }
   assertCurrent(): void {
     if (!this.current)
@@ -167,6 +172,22 @@ export class GithubClient {
       )
   }
   private cache = new Map<string, Cached>()
+  private cacheBytes = 0
+
+  private remember(key: string, value: Cached): void {
+    const previous = this.cache.get(key)
+    if (previous) this.cacheBytes -= previous.bytes
+    this.cache.delete(key)
+    // Large replies still reach their caller; only their recomputable cache entry is skipped.
+    if (value.bytes > CACHE_BYTES) return
+    this.cache.set(key, value)
+    this.cacheBytes += value.bytes
+    while (this.cache.size > CACHE_ENTRIES || this.cacheBytes > CACHE_BYTES) {
+      const oldest = this.cache.keys().next().value as string
+      this.cacheBytes -= this.cache.get(oldest)!.bytes
+      this.cache.delete(oldest)
+    }
+  }
 
   private readonly token: string
 
@@ -345,6 +366,10 @@ export class GithubClient {
     const accept = options.accept ?? 'application/vnd.github+json'
     const key = `${accept} ${url}`
     const cached = this.cache.get(key)
+    if (cached) {
+      this.cache.delete(key)
+      this.cache.set(key, cached)
+    }
 
     const headers = this.headers(accept)
     if (cached) headers['If-None-Match'] = cached.etag
@@ -365,7 +390,12 @@ export class GithubClient {
 
     const body = (options.text ? response.text : response.json) as unknown
     const etag = header(response.headers, 'etag')
-    if (etag) this.cache.set(key, { etag, body })
+    if (etag)
+      this.remember(key, {
+        etag,
+        body,
+        bytes: 2 * (response.text || JSON.stringify(body) || '').length,
+      })
     return body as T
   }
 

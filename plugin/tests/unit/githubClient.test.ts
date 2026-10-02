@@ -17,6 +17,35 @@ import {
   loadCommit,
 } from '@/github/api'
 
+it('bounds cached API responses and evicts the least recently used first', async () => {
+  const request = vi.fn(async (req: RequestUrlParam) =>
+    respond({
+      status: req.headers?.['If-None-Match'] ? 304 : 200,
+      headers: { etag: 'sample-version' },
+      json: { sample: true },
+    })
+  )
+  const client = new GithubClient(endpoints(''), '', request)
+  for (let index = 0; index < 256; index++) await client.get(`/sample/${index}`)
+  await client.get('/sample/0')
+  await client.get('/sample/256')
+  await client.get('/sample/1')
+  expect(request.mock.calls.at(-1)![0].headers?.['If-None-Match']).toBeUndefined()
+  await client.get('/sample/0')
+  expect(request.mock.calls.at(-1)![0].headers?.['If-None-Match']).toBe('sample-version')
+})
+
+it('returns oversized API replies without retaining their bodies in the cache', async () => {
+  const text = 'x'.repeat(16 * 1024 * 1024 + 1)
+  const request = vi.fn(async () => respond({ text, headers: { etag: 'sample-large-version' } }))
+  const client = new GithubClient(endpoints(''), '', request)
+  expect((await client.get<string>('/sample-large', { text: true })).length).toBe(text.length)
+  await client.get('/sample-large', { text: true })
+  expect(
+    (request.mock.calls.at(-1) as unknown as [RequestUrlParam])[0].headers?.['If-None-Match']
+  ).toBeUndefined()
+})
+
 type Reply = { status?: number; json?: unknown; text?: string; headers?: Record<string, string> }
 
 function respond(r: Reply): RequestUrlResponse {
@@ -51,12 +80,38 @@ const client = (request: ReturnType<typeof fake>['request'], token = 'tkn') =>
 describe('requests', () => {
   it('keeps rate limits per client and observes even unchanged responses', async () => {
     let n = 0
-    const a = client(vi.fn(async () => respond({ status: n++ ? 304 : 200, json: {}, headers: { etag:'sample', 'X-RateLimit-Remaining':String(10-n),'X-RateLimit-Limit':'5000','X-RateLimit-Reset':'1800000000','X-RateLimit-Resource':'core' } })))
-    const b = client(vi.fn(async () => respond({ json: {}, headers:{'X-RateLimit-Remaining':'0','X-RateLimit-Limit':'60'} })), '')
-    await a.get('/user'); await a.get('/user'); await b.get('/rate_limit')
-    expect(a.rate.value).toMatchObject({ remaining:8, limit:5000, reset:1800000000000, resource:'core' })
-    expect(b.rate.value).toMatchObject({ remaining:0, limit:60 })
-    expect(anonymousGithubRate.value).toMatchObject({remaining:0,limit:60})
+    const a = client(
+      vi.fn(async () =>
+        respond({
+          status: n++ ? 304 : 200,
+          json: {},
+          headers: {
+            etag: 'sample',
+            'X-RateLimit-Remaining': String(10 - n),
+            'X-RateLimit-Limit': '5000',
+            'X-RateLimit-Reset': '1800000000',
+            'X-RateLimit-Resource': 'core',
+          },
+        })
+      )
+    )
+    const b = client(
+      vi.fn(async () =>
+        respond({ json: {}, headers: { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Limit': '60' } })
+      ),
+      ''
+    )
+    await a.get('/user')
+    await a.get('/user')
+    await b.get('/rate_limit')
+    expect(a.rate.value).toMatchObject({
+      remaining: 8,
+      limit: 5000,
+      reset: 1800000000000,
+      resource: 'core',
+    })
+    expect(b.rate.value).toMatchObject({ remaining: 0, limit: 60 })
+    expect(anonymousGithubRate.value).toMatchObject({ remaining: 0, limit: 60 })
   })
 
   it('sends the token as a bearer header and asks for the pinned API version', async () => {
@@ -182,7 +237,13 @@ describe('credential destination confinement', () => {
 
 describe('authentication material never becomes diagnostic output', () => {
   it('redacts a server echo of the bearer token in a refusal and its metadata', async () => {
-    const request = vi.fn(async () => respond({ status: 403, json: { message: 'Refused invented-private-token' }, headers: { 'x-accepted-github-permissions': 'invented-private-token' } }))
+    const request = vi.fn(async () =>
+      respond({
+        status: 403,
+        json: { message: 'Refused invented-private-token' },
+        headers: { 'x-accepted-github-permissions': 'invented-private-token' },
+      })
+    )
     const c = client(request, 'invented-private-token')
     const result = await c.probe('/user')
     expect(JSON.stringify(result.error)).not.toContain('invented-private-token')
@@ -190,8 +251,12 @@ describe('authentication material never becomes diagnostic output', () => {
   })
 
   it('redacts token echoes in GraphQL error messages', async () => {
-    const request = vi.fn(async () => respond({ json: { errors: [{ type: 'OTHER', message: 'invented-private-token' }] } }))
-    await expect(client(request, 'invented-private-token').graphql('query { viewer { login } }', {})).rejects.toMatchObject({ message: expect.not.stringContaining('invented-private-token') })
+    const request = vi.fn(async () =>
+      respond({ json: { errors: [{ type: 'OTHER', message: 'invented-private-token' }] } })
+    )
+    await expect(
+      client(request, 'invented-private-token').graphql('query { viewer { login } }', {})
+    ).rejects.toMatchObject({ message: expect.not.stringContaining('invented-private-token') })
   })
 })
 
