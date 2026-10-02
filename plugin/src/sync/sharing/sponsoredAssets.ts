@@ -154,7 +154,7 @@ export class SponsoredAssetService {
     intentId: string
   ): Promise<AssetView> {
     this.owner(owner)
-    if (!complete) throw new Error('Complete explicit admission transition is required')
+    if (!complete) throw new Error('A complete explicit admission transition is required')
     const view = await this.view(grantId)
     if (view.revision !== revision) throw new Error('Publication revision changed')
     this.owner(owner)
