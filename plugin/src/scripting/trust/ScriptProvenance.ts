@@ -21,6 +21,8 @@ const revisions = new WeakMap<ScriptMeta, ScriptRevision>()
 interface StoredScript extends ManagedScript {
   path?: string
   retiredIds?: string[]
+  /** Invalidation hint only: a pending hold must not erase which receipt can arrive late. */
+  lastFileId?: string
 }
 const key = (path: string) => `script-source:${caseKey(path)}`
 export const sameBinding = (a: ScriptBinding, b: ScriptBinding): boolean =>
@@ -83,6 +85,8 @@ export class ScriptProvenance {
     if (!value.binding || !sameBinding(value.binding, this.binding)) return null
     if (
       (value.fileId !== null && (typeof value.fileId !== 'string' || !value.fileId)) ||
+      (value.lastFileId !== undefined &&
+        (typeof value.lastFileId !== 'string' || !value.lastFileId)) ||
       (value.retiredIds !== undefined &&
         (!Array.isArray(value.retiredIds) ||
           value.retiredIds.some((id) => typeof id !== 'string' || !id)))
@@ -123,8 +127,9 @@ export class ScriptProvenance {
       // Persist the restrictive source hold first: a crash cannot leave the old name with
       // usable authority. Destination keeps identity only when the source was proven.
       const previous = await this.stored(from)
+      const lastFileId = source?.fileId ?? previous?.lastFileId ?? previous?.fileId
       const retired = [
-        ...new Set([...(previous?.retiredIds ?? []), ...(source?.fileId ? [source.fileId] : [])]),
+        ...new Set([...(previous?.retiredIds ?? []), ...(lastFileId ? [lastFileId] : [])]),
       ]
       await this.save(from, { binding: this.binding, fileId: null }, retired)
       const destination = await this.stored(to)
@@ -132,7 +137,12 @@ export class ScriptProvenance {
       const destinationRetired = (destination?.retiredIds ?? []).filter(
         (id) => id !== source?.fileId
       )
-      await this.save(to, source ?? { binding: this.binding, fileId: null }, destinationRetired)
+      await this.save(
+        to,
+        source ?? { binding: this.binding, fileId: null },
+        destinationRetired,
+        lastFileId ?? undefined
+      )
     })
   }
 
@@ -170,9 +180,21 @@ export class ScriptProvenance {
     return `script-approval:${JSON.stringify([record.binding, record.fileId, sha])}`
   }
 
-  private async save(path: string, record: ManagedScript, retired?: string[]): Promise<void> {
-    const retiredIds = retired ?? (await this.stored(path))?.retiredIds ?? []
-    const value = JSON.stringify({ ...record, path, ...(retiredIds.length ? { retiredIds } : {}) })
+  private async save(
+    path: string,
+    record: ManagedScript,
+    retired?: string[],
+    hint?: string
+  ): Promise<void> {
+    const previous = await this.stored(path)
+    const retiredIds = retired ?? previous?.retiredIds ?? []
+    const lastFileId = record.fileId ?? hint ?? previous?.lastFileId ?? previous?.fileId
+    const value = JSON.stringify({
+      ...record,
+      path,
+      ...(retiredIds.length ? { retiredIds } : {}),
+      ...(lastFileId ? { lastFileId } : {}),
+    })
     await this.meta.setMeta(key(path), value)
     if ((await this.meta.getMeta(key(path))) !== value)
       throw new Error('Script provenance was not persisted')

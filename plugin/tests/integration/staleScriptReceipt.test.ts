@@ -19,6 +19,27 @@ const a = 'Scripts/sample.js',
 afterEach(() => vi.unstubAllGlobals())
 
 describe('late ledger receipt after local rename', () => {
+  it('retires the last known identity even when a pending mutation already holds the source', async () => {
+    const app = buildFakeVault([{ path: a, content: h }]) as unknown as App
+    const factory = new IDBFactory()
+    vi.stubGlobal('indexedDB', factory)
+    setScriptConnection(app, binding)
+    const trust = await activateScriptProvenance(app, binding, factory)
+    try {
+      await trust.provenance.record(a, 'sample-identity')
+      await scriptForExecution(app, a, async () => true)
+      await trust.provenance.pending(a)
+      await trust.provenance.rename(a, b)
+      await trust.provenance.record(a, 'sample-identity')
+      expect(await trust.provenance.lookup(a)).toMatchObject({ fileId: null })
+      await expect(scriptForExecution(app, a)).rejects.toThrow(/unknown/)
+      expect(await trust.provenance.lookup(b)).toMatchObject({ fileId: null })
+      await trust.provenance.record(b, 'sample-identity')
+      expect(await trust.provenance.lookup(b)).toMatchObject({ fileId: 'sample-identity' })
+    } finally {
+      trust.store.close()
+    }
+  })
   it('never restores the moved identity to a recreated source, including after restart', async () => {
     const app = buildFakeVault([{ path: a, content: h }]) as unknown as App
     const factory = new IDBFactory()
