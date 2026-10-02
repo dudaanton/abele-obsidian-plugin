@@ -3,9 +3,9 @@ import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 
 /**
  * Translate native HTTP answers to the engine's `fetch` contract, without browser CORS.
- * Desktop uses the non-following adapter in desktopTransport.ts. Obsidian's requestUrl
- * remains the mobile native path until its separate pre-follow feasibility gate is solved.
- * This translator cannot prevent redirects followed by an underlying native implementation.
+ * Desktop and verified iOS production use their separate non-following adapters. This legacy
+ * translator remains available to injected tests/hosts, but is not the production iOS path:
+ * it cannot prevent redirects followed by an underlying requestUrl implementation.
  */
 
 /** What this plugin calls itself to a sync server. */

@@ -1,45 +1,53 @@
 # Native iOS transport gate
 
-Task 06 remains **BLOCKED**, not passed. The native production selector was confirmed to use
-Obsidian `requestUrl` on iOS. A two-listener synthetic LAN fixture could not establish native
-reachability: the initial credential-free request and subsequent redirect/cache/binary cases
-all returned the same native offline error, with no HTTP status. An iOS local-network
-permission prompt appeared in the first run and was left unanswered. On the authorized
-second run the prompt was **already absent** before the first request, so there was no
-specific alert for the driver to accept.
+Task 06 has **passed the cable HTTP redirect/cache/byte matrix** on native Obsidian 1.13.7
+with iOS. A valid-HTTPS-to-HTTP downgrade fixture and hostname-specific cases remain untested;
+this is not a full mobile-platform or automatic-publication activation pass.
 
-## Attempted matrix
+## Cause and production adapter
 
-- GET, HEAD, POST, PATCH and DELETE; 301/307/308; same-origin and cross-origin redirects.
-- Dummy authorization only; dummy password bytes in POST/PATCH bodies.
-- GET/HEAD at one cache URL with first, second, then first principal; expected 200/403/200.
-- Binary POST and exact response bytes.
-- Credential-free listener-evidence retrieval.
+The old mobile `requestUrl` path followed 301/307/308 redirects. It stripped the dummy bearer
+in the measured sink requests but forwarded POST/PATCH password bytes, including cross-origin
+requests. It also reused an authenticated GET 200 for the second principal: the server saw
+only the first GET. HEAD's existing no-cache header avoided that cache reuse.
 
-No case received a native HTTP response, so no redirect-policy refusal, secret non-delivery,
-cache isolation or binary round-trip pass is inferred. Host-side fixture evidence was empty;
-this is reachability/permission evidence, not a safe transport result.
+The verified iOS adapter now uses the actual `CapacitorHttp.request` bridge with
+`disableRedirects: true`, explicit `Cache-Control: no-cache, no-store` for every request and
+exact binary file-body/base64 response conversion. JSON bodies use the native JSON object path.
+Redirect responses are refused without a second request. There is no unsafe `requestUrl`
+fallback. Unsupported API versions, platforms or missing native bridge fail explicitly before
+credentials are sent. Native abort fences the returned result; the bridge cannot guarantee
+cancellation of bytes already in flight, so normal durable commit replay still applies.
 
-The second run repeated the unauthenticated LAN reachability check on the actual production
-mobile transport. It again returned a native offline error. Direct native `requestUrl` to
-the same fixture and its evidence endpoint returned that error; the WebView's `fetch` returned
-`Load failed`. The host fixture answered its own health/evidence requests, but neither phone
-API reached either listener. Airplane mode was off and Wi-Fi on. Because the **initial
-credential-free probe failed**, no credential-bearing redirects, cache-switch or binary
-requests were sent in this run. The precise cause of the phone-to-host reachability failure
-remains unknown; no successful native redirect or cache evidence was obtained.
+The legacy requestUrl translator remains for injected tests/hosts, not production iOS selection.
 
-The inspected mobile bridge forwards URL, method, content type, headers, body and binary
-options. No pre-follow redirect control was exposed in that inspected production interface.
-The existing final-3xx rejection occurs after `requestUrl` completes and cannot by itself
-prove that a native implementation did not follow a redirect. The opaque native HTTP wrapper
-was not independently attested.
+## Physical-device evidence
 
-Valid-HTTPS-source downgrade and cross-origin TLS checks require a reachable trusted fixture;
-plain HTTP does not replace that proof. Native transport activation remains gated until the
-actual pre-follow behavior and credential-switch caching have been verified. Desktop evidence
-is separate and does not satisfy this gate.
+Two listeners bound to host loopback, forwarded to the phone through the driver's USB reverse
+ports, supplied distinct origins by port. Only synthetic bearer/password data was used.
 
-No enrollment, credentials, network switch, connection edit or persistent fixture state was
-created. Temporary host listeners were stopped. Private endpoints and raw device evidence
-remain in the untracked report.
+On the fixed production selector:
+
+- GET/HEAD/POST/PATCH/DELETE × 301/307/308 × same/cross-origin: **30/30 refused**, all original
+  source requests observed, zero followed credential-bearing sink requests. POST/PATCH body
+  delivery to the original source was verified, so this is not a false pass from missing bodies.
+- GET and HEAD first/second/first principal at the same cache URL: **200/403/200**, all six
+  requests observed. No reused second-principal response.
+- Binary POST round trip: exact `[0,255,1,128]` bytes.
+- JSON POST: decoded result equals the exact synthetic object.
+- Direct native option feasibility had independently returned 307, original URL and no sink
+  when `disableRedirects: true` was supplied with a real nonempty text body.
+
+A prior cable fixture crashed when given an invalid redirect route. It was repaired to return
+404 and rerun; that crash is not evidence of a phone/network defect.
+
+## Remaining boundaries
+
+The earlier Wi-Fi LAN fixture was unreachable because phone and host were on different
+networks; the USB reverse path resolved that prerequisite. Distinct ports are distinct origins.
+A truly different hostname and a trusted HTTPS redirect-to-HTTP source need separate fixtures;
+plain HTTP or self-signed certificate refusal is not their substitute. Android/Boox and other
+native API versions remain unverified. Native cache/version publication gates remain separate.
+
+Temporary listeners and reverse tunnels were stopped by their owners. Private addresses,
+ports, native screenshots and raw evidence remain outside tracked documentation.
