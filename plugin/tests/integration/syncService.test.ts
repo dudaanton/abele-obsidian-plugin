@@ -9,6 +9,8 @@ import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
 import { PLAIN_HTTP_CONNECTION, SyncService, type SyncServiceDeps } from '@/sync/SyncService'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { scriptTrustFor } from '@/scripting/trust/scriptTrustStorage'
+import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import {
   CONNECTION_KEY,
   MOBILE_MAX_FILE_BYTES,
@@ -1456,6 +1458,74 @@ describe('SyncService — when it cannot start at all', () => {
  * transaction failing with IndexedDB's own words and the status stuck at a raw error.
  */
 describe('SyncService — a ledger closed under it', () => {
+  it('does not restore a renamed source through an actual late committed push receipt', async () => {
+    let release!: () => void, received!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const committed = new Promise<void>((resolve) => {
+      received = resolve
+    })
+    let delay = false
+    const { other } = await connect({
+      fetch: async (input, init) => {
+        const response = await transport(input, init)
+        if (delay && init?.method === 'POST' && String(input).includes('/commit')) {
+          delay = false
+          received()
+          await held
+        }
+        return response
+      },
+    })
+    await synced()
+    const from = 'sample-approved.js',
+      to = 'sample-moved.js'
+    const source = '// @name Sample\nreturn "sample-approved"'
+    await write(from, source)
+    await service.syncNow()
+    const original = (await other.manifest(null)).items.find((item) => item.path === from)!
+    expect(original).toBeDefined()
+    vi.stubGlobal('indexedDB', indexedDB)
+    const trust = await scriptTrustFor(app as unknown as App, indexedDB)
+    try {
+      await scriptForExecution(app as unknown as App, from, async () => true)
+      await write(from, source + '\n// submitted change')
+      delay = true
+      const pushing = service.syncNow()
+      await committed
+      await app.vault.adapter.rename(from, to)
+      app.emit('vault', 'rename', app.vault.getAbstractFileByPath(to), from)
+      await waitFor(
+        'rename provenance source hold',
+        async () => (await trust!.provenance.lookup(from))?.fileId === null
+      )
+      await write(from, source)
+      release()
+      await pushing
+      await waitFor('committed receipt settlement', async () => {
+        const store = await IndexedDbStateStore.open(
+          indexedDB,
+          stateDatabaseName(ledgerOf().stateId)
+        )
+        try {
+          const entry = await store.get(from)
+          return (
+            !!entry && entry.fileId === original.file_id && entry.versionId !== original.version_id
+          )
+        } finally {
+          store.close()
+        }
+      })
+      expect(await trust!.provenance.lookup(from)).toMatchObject({ fileId: null })
+      await expect(scriptForExecution(app as unknown as App, from)).rejects.toThrow(/unknown/)
+      expect(await read(from)).toBe(source)
+    } finally {
+      release()
+      trust?.store.close()
+      vi.unstubAllGlobals()
+    }
+  })
   it('keeps syncing a supported legacy record without enrolledUrl after restart', async () => {
     const { other } = await connect()
     await synced()
