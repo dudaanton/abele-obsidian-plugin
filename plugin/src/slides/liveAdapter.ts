@@ -111,9 +111,18 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
               if (fields.length === 1 && fields[0].type === 'markdown') {
                 const el = target.ownerDocument.win.createDiv()
                 target.append(el)
-                const release = await markdown.render({ type: 'markdown', source: fields[0].text ?? '' }, el)
-                if (signal.aborted) { release(); el.remove() }
-                else shown.push(() => { release(); el.remove() })
+                const release = await markdown.render(
+                  { type: 'markdown', source: fields[0].text ?? '' },
+                  el
+                )
+                if (signal.aborted) {
+                  release()
+                  el.remove()
+                } else
+                  shown.push(() => {
+                    release()
+                    el.remove()
+                  })
                 return null
               }
               return showFormModal(fields, runId, formSignal)
