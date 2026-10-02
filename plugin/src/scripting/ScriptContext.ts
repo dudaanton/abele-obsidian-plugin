@@ -455,7 +455,8 @@ export function buildScriptContext(opts: {
         s,
         track
       )
-      const contentType = response.headers['content-type'] || ''
+      const contentType = (Object.entries(response.headers)
+        .find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? '').toLowerCase()
       const text = redactSecrets(response.text, prepared.secretValues)
       let data: any = text
       if (contentType.includes('application/json')) {
