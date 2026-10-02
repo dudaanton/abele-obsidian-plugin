@@ -30,6 +30,20 @@ export function preserveXmlSpace(open: string): string {
   return open.replace(/(\s*\/?>)$/, (_, close: string) => ` xml:space="preserve"${close}`)
 }
 
+export const validXmlCharacter = (n: number): boolean =>
+  n === 9 ||
+  n === 10 ||
+  n === 13 ||
+  (n >= 32 && n <= 0xd7ff) ||
+  (n >= 0xe000 && n <= 0xfffd) ||
+  (n >= 0x10000 && n <= 0x10ffff)
+
+/** Lexical XML parsing must reject illegal characters even in comments, CDATA and attributes. */
+export function assertXmlCharacters(source: string): void {
+  for (const character of source)
+    if (!validXmlCharacter(character.codePointAt(0)!))
+      throw new Error('XML contains a forbidden character')
+}
 export function decodeXml(text: string): string {
   if (/&(?!(?:amp|lt|gt|quot|apos|#(?:x[0-9a-f]+|[0-9]+));)/i.test(text))
     throw new Error('Invalid XML entities')
@@ -39,7 +53,7 @@ export function decodeXml(text: string): string {
     if (/^#(?:x[0-9a-f]+|[0-9]+)$/i.test(entity)) {
       const n =
         entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1))
-      if (n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff)) return String.fromCodePoint(n)
+      if (validXmlCharacter(n)) return String.fromCodePoint(n)
     }
     throw new Error('Unsupported XML entities')
   })
@@ -60,6 +74,7 @@ export async function parseXml(
   source: string,
   yieldTask: () => Promise<void> = () => Promise.resolve()
 ): Promise<XmlNode> {
+  assertXmlCharacters(source)
   if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('DOCTYPE and entities are not supported')
   const stack: XmlNode[] = []
   let root: XmlNode | undefined

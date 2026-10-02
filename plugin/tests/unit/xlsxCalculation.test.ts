@@ -6,6 +6,21 @@ import { recalculateWorkbook } from '@/spreadsheet/calculation'
 import { sampleXlsx, sampleParts, sheetXml } from '../fixtures/xlsx/sampleXlsx'
 
 describe('local workbook recalculation', () => {
+  it('escapes XML-forbidden calculated characters as Excel ST_Xstring and reopens the saved value', async () => {
+    const parts = sampleParts()
+    parts['xl/worksheets/sheet1.xml'] = strToU8(
+      sheetXml('<row r="1"><c r="A1"><f>CHAR(1)</f></c><c r="B1"><f>CHAR(13)</f></c></row>')
+    )
+    const result = await recalculateWorkbook(await openXlsx(zipSync(parts)))
+    expect(result.complete).toBe(true)
+    const xml = strFromU8(unzipSync(result.bytes)['xl/worksheets/sheet1.xml'])
+    expect(xml).toContain('_x0001_')
+    expect(xml).toContain('_x000D_')
+    expect(xml).not.toContain('\u0001')
+    expect((await (await openXlsx(result.bytes)).sheet('Sample')).cells.get('A1')?.value).toBe(
+      '\u0001'
+    )
+  })
   it('does not rewrite equivalent explicit numeric types or escaped string caches when results are unchanged', async () => {
     const parts = sampleParts()
     parts['xl/worksheets/sheet1.xml'] = strToU8(

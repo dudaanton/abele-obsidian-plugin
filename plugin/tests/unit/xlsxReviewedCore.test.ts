@@ -43,6 +43,20 @@ describe('workbooks use the reviewed Office core', () => {
     expect(push.mock.calls.length).toBeGreaterThan(0)
     expect(Math.max(...push.mock.calls.map(([bytes]) => bytes.length))).toBeLessThanOrEqual(1024)
   })
+  it('rejects literal XML-forbidden characters in changed text, attributes, comments and numeric entities', async () => {
+    const book = await openXlsx(sampleXlsx())
+    for (const fragment of [
+      '<v>\u0001</v>',
+      '<v attr="\u0002"/>',
+      '<!--\u0003-->',
+      '<v>&#x1;</v>',
+    ]) {
+      const source = `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1">${fragment}</c></row></sheetData></worksheet>`
+      await expect(
+        saveParts(book, new Map([['xl/worksheets/sheet1.xml', strToU8(source)]]))
+      ).rejects.toThrow(/XML|character/i)
+    }
+  })
   it('validates edited XML with expanded attribute namespaces before returning an archive', async () => {
     const book = await openXlsx(sampleXlsx())
     const invalid = strToU8(
