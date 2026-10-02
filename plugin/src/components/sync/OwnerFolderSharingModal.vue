@@ -120,7 +120,8 @@ async function confirm() {
   busy.value = true
   error.value = ''
   try {
-    secret.value = await props.flow.confirm(password.value, email.value || undefined)
+    if (!preview.value) throw new Error('Review the displayed folder first')
+    secret.value = await props.flow.confirm(password.value, email.value || undefined, preview.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Folder sharing failed'
   } finally {

@@ -46,6 +46,68 @@ function setup(enabled = true) {
   }
 }
 describe('disabled owner folder sharing contract', () => {
+  it('rejects a closed late preview instead of replacing the newly displayed folder', async () => {
+    const { flow, port } = setup()
+    let finish!: (p: ReturnType<typeof preview>) => void
+    port.preview.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const old = flow.review('Private/', 'editor', 'Old').catch((e) => e)
+    flow.clear()
+    port.preview.mockImplementation(async (prefix) => ({ ...preview(), prefix, files: [] }))
+    const shown = await flow.review('Public/', 'editor', 'Visible')
+    finish({ ...preview(), prefix: 'Private/', files: [] })
+    expect(await old).toBeInstanceOf(Error)
+    expect(flow.preview?.prefix).toBe('Public/')
+    port.create.mockImplementation(async (_session, request) => ({
+      id: 'sample-grant',
+      prefix: request.prefix,
+      role: request.role,
+      revision: 0,
+    }))
+    await flow.confirm('invented-password', undefined, shown)
+    expect(port.create).toHaveBeenCalledWith(expect.anything(), {
+      prefix: 'Public/',
+      role: 'editor',
+      label: 'Visible',
+    })
+  })
+  it('binds confirmation to the exact preview shown, not another current draft', async () => {
+    const { flow, port } = setup()
+    const shown = await flow.review('Agents/', 'editor', 'Shown')
+    port.preview.mockImplementation(async (prefix) => ({ ...preview(), prefix, files: [] }))
+    await flow.review('Other/', 'editor', 'Other')
+    await expect(flow.confirm('invented-password', undefined, shown)).rejects.toThrow(
+      /preview|review/i
+    )
+    expect(port.authorize).not.toHaveBeenCalled()
+    expect(port.create).not.toHaveBeenCalled()
+  })
+  it('does not cross from a closed authentication into a new review', async () => {
+    const { flow, port } = setup()
+    await flow.review('Agents/', 'editor', 'Original')
+    let finish!: (s: Awaited<ReturnType<typeof port.authorize>>) => void
+    port.authorize.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const confirmation = flow.confirm('invented-password').catch((e) => e)
+    flow.clear()
+    await flow.review('Agents/', 'editor', 'Replacement')
+    finish({
+      facet: 'account',
+      ownerVaultId: 'sample-vault',
+      authenticatedAt: 1000,
+      expiresAt: 100000,
+    })
+    expect(await confirmation).toBeInstanceOf(Error)
+    expect(port.create).not.toHaveBeenCalled()
+  })
   it('refuses remote mutations behind the default disabled fence', async () => {
     const { port } = setup()
     const flow = new FolderSharingFlow('sample-vault', port)

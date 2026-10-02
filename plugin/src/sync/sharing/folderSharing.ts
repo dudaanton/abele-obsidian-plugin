@@ -46,7 +46,7 @@ export interface FolderSharingPort {
 }
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const fingerprint = (p: FolderPreview) => sha256(new TextEncoder().encode(JSON.stringify(p)))
-/** No network implementation/activation yet: owner/session and machine-secret ports are distinct. */
+/** Owner/session and machine-secret ports are distinct; activation remains disabled. */
 export class FolderSharingFlow {
   preview: FolderPreview | null = null
   secret: MachineCredential | null = null
@@ -57,6 +57,12 @@ export class FolderSharingFlow {
     fingerprint: string
     attempt: string
   } | null = null
+  private generation = 0
+  private confirming: object | null = null
+  private assertCurrent(generation: number) {
+    this.fence()
+    if (generation !== this.generation) throw new Error('Folder review was cancelled or superseded')
+  }
   private session: OwnerSession | null = null
   private grant: FolderGrant | null = null
   constructor(
@@ -72,6 +78,7 @@ export class FolderSharingFlow {
   async review(prefix: string, role: 'reader' | 'editor', label: string): Promise<FolderPreview> {
     this.fence()
     this.clear()
+    const generation = this.generation
     const request = CreateFolderGrantRequestSchema.parse({ prefix, role, label })
     const p = copy(await this.port.preview(request.prefix))
     if (
@@ -81,74 +88,102 @@ export class FolderSharingFlow {
       p.files.some((f) => !f.path.startsWith(request.prefix))
     )
       throw new Error('A complete current folder preview is required')
+    const proof = await fingerprint(p)
+    this.assertCurrent(generation)
     this.preview = p
-    this.draft = { ...request, fingerprint: await fingerprint(p), attempt: crypto.randomUUID() }
+    this.draft = { ...request, fingerprint: proof, attempt: crypto.randomUUID() }
     return copy(p)
   }
-  async confirm(password: string, email?: string): Promise<MachineCredential> {
+  async confirm(
+    password: string,
+    email?: string,
+    shown?: FolderPreview
+  ): Promise<MachineCredential> {
     this.fence()
-    if (!this.draft) throw new Error('Review a folder first')
-    this.secret = null
-    if (!this.session) {
-      if (!password) throw new Error('Current account password is required')
-      try {
-        this.session = email
-          ? await this.port.authorize(password, email)
-          : await this.port.authorize(password)
-      } catch {
-        throw new Error('Owner authentication failed')
+    const draft = this.draft,
+      generation = this.generation
+    if (!draft) throw new Error('Review a folder first')
+    if (this.confirming) throw new Error('Folder confirmation is already in progress')
+    const operation = {}
+    this.confirming = operation
+    try {
+      if (shown && (await fingerprint(copy(shown))) !== draft.fingerprint)
+        throw new Error('Displayed folder preview differs; review it again')
+      this.assertCurrent(generation)
+      this.secret = null
+      if (!this.session) {
+        if (!password) throw new Error('Current account password is required')
+        try {
+          const authorized = email
+            ? await this.port.authorize(password, email)
+            : await this.port.authorize(password)
+          this.assertCurrent(generation)
+          this.session = authorized
+        } catch {
+          throw new Error('Owner authentication failed')
+        }
       }
-    }
-    const session = this.session,
-      now = this.now()
-    if (
-      !Number.isFinite(session.authenticatedAt) ||
-      !Number.isFinite(session.expiresAt) ||
-      session.facet !== 'account' ||
-      session.ownerVaultId !== this.vaultId ||
-      session.authenticatedAt > now ||
-      now - session.authenticatedAt >= 300000 ||
-      session.expiresAt <= now
-    )
-      throw new Error('Fresh vault-owner password authentication is required')
-    const current = copy(await this.port.preview(this.draft.prefix))
-    if (!current.complete || (await fingerprint(current)) !== this.draft.fingerprint)
-      throw new Error('Folder preview changed; review it again')
-    this.fence()
-    if (!this.grant)
-      this.grant = await this.port.create(session, {
-        label: this.draft.label,
-        prefix: this.draft.prefix,
-        role: this.draft.role,
+      this.assertCurrent(generation)
+      const session = this.session,
+        now = this.now()
+      if (
+        !Number.isFinite(session.authenticatedAt) ||
+        !Number.isFinite(session.expiresAt) ||
+        session.facet !== 'account' ||
+        session.ownerVaultId !== this.vaultId ||
+        session.authenticatedAt > now ||
+        now - session.authenticatedAt >= 300000 ||
+        session.expiresAt <= now
+      )
+        throw new Error('Fresh vault-owner password authentication is required')
+      const current = copy(await this.port.preview(draft.prefix))
+      const proof = await fingerprint(current)
+      this.assertCurrent(generation)
+      if (!current.complete || proof !== draft.fingerprint)
+        throw new Error('Folder preview changed; review it again')
+      this.assertCurrent(generation)
+      if (!this.grant) {
+        const created = await this.port.create(session, {
+          label: draft.label,
+          prefix: draft.prefix,
+          role: draft.role,
+        })
+        this.assertCurrent(generation)
+        this.grant = created
+      }
+      const grant = this.grant
+      if (
+        grant.prefix !== draft.prefix ||
+        grant.role !== draft.role ||
+        !grant.id ||
+        grant.revision < 0
+      )
+        throw new Error('Folder grant does not match the reviewed scope')
+      this.assertCurrent(generation)
+      const request = IssueFolderKeyRequestSchema.parse({
+        attempt_id: draft.attempt,
+        name: 'Folder receiver',
+        role: draft.role,
+        expires_at: new Date(Math.min(session.expiresAt, now + 3600000)).toISOString(),
       })
-    const grant = this.grant
-    if (
-      grant.prefix !== this.draft.prefix ||
-      grant.role !== this.draft.role ||
-      !grant.id ||
-      grant.revision < 0
-    )
-      throw new Error('Folder grant does not match the reviewed scope')
-    this.fence()
-    const request = IssueFolderKeyRequestSchema.parse({
-      attempt_id: this.draft.attempt,
-      name: 'Folder receiver',
-      role: this.draft.role,
-      expires_at: new Date(Math.min(session.expiresAt, now + 3600000)).toISOString(),
-    })
-    const credential = await this.port.issue(session, grant, request)
-    if (
-      credential.facet !== 'scoped' ||
-      credential.grantId !== grant.id ||
-      credential.role !== this.draft.role ||
-      !/^absk_[A-Za-z0-9_-]{43}$/.test(credential.token)
-    )
-      throw new Error('Only the exact scoped machine credential may be displayed')
-    this.fence()
-    this.secret = copy(credential)
-    return copy(credential)
+      const credential = await this.port.issue(session, grant, request)
+      if (
+        credential.facet !== 'scoped' ||
+        credential.grantId !== grant.id ||
+        credential.role !== draft.role ||
+        !/^absk_[A-Za-z0-9_-]{43}$/.test(credential.token)
+      )
+        throw new Error('Only the exact scoped machine credential may be displayed')
+      this.assertCurrent(generation)
+      this.secret = copy(credential)
+      return copy(credential)
+    } finally {
+      if (this.confirming === operation) this.confirming = null
+    }
   }
   clear() {
+    this.generation++
+    this.confirming = null
     this.preview = null
     this.secret = null
     this.draft = null
