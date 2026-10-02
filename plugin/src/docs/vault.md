@@ -642,6 +642,8 @@ definitions, like other shared plugin settings. Sync the plugin settings to carr
 devices; **Calendars** in settings transfer also carries them. They are not in the device-local
 calendar cache, so deleting that cache does not clear them. Settings received from another
 device replace these marks like other settings; this is not a concurrent per-occurrence merge.
+Local mark edits made while an older settings read is still in flight are retained, without
+reverting unrelated incoming settings or marks.
 
 Each key is a JSON tuple `[feedId, uid, recurrenceId]`; a one-off has `null` as its last part.
 Recurring occurrences use their original start (or `RECURRENCE-ID` for a detached override),
@@ -657,7 +659,10 @@ once a day. Marks absent from the expanded window for **180 days** are removed, 
 occurrences that have fallen out of the window and marks of removed calendars. A failing feed
 does not prune its marks, and a disabled feed retains them until read again. Unticking removes
 the mark immediately. Legacy event-only caches are refreshed before ticking, so missing
-occurrence identity can never accidentally mark a whole series.
+occurrence identity can never accidentally mark a whole series. If a detached override's old
+ID changes during that refresh, its feed, UID and displayed start must identify exactly one
+refreshed occurrence. Ambiguous matches or an occurrence moved again since caching require a
+fresh tick on the updated row instead of guessing which occurrence to mark.
 
 ## Calendar cache
 

@@ -27,6 +27,30 @@ export interface CalendarEvent {
   attendees: string[]
 }
 
+/** Recover a legacy cache row only when a successful refresh identifies exactly its occurrence. */
+export function refreshedOccurrence(
+  legacy: CalendarEvent,
+  events: readonly CalendarEvent[]
+): CalendarEvent | undefined {
+  const sameEvent = events.filter(
+    (event) =>
+      event.feedId === legacy.feedId && event.uid === legacy.uid && event.recurrenceId !== undefined
+  )
+  const exact = sameEvent.filter((event) => event.id === legacy.id)
+  if (exact.length === 1) return exact[0]
+  // Detached overrides used to share the one-off ID, even when several belonged to one UID.
+  // Never infer a series-wide mark or choose the first UID match. The displayed start can
+  // recover a unique unchanged slot; if it moved again or is ambiguous, ask for a fresh tick.
+  if (legacy.id !== `${legacy.feedId}:${legacy.uid}:once`) return undefined
+  const slot = sameEvent.filter(
+    (event) =>
+      event.allDay === legacy.allDay &&
+      event.start === legacy.start &&
+      (!event.allDay || event.startDay === legacy.startDay)
+  )
+  return slot.length === 1 ? slot[0] : undefined
+}
+
 const pad = (n: number) => String(n).padStart(2, '0')
 
 /** `YYYY-MM-DD` of the day this instant falls on, on this device's clock. */

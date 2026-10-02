@@ -9,6 +9,9 @@ import {
   type CompletionMarks,
 } from '@/calendars/completion'
 import { newFeed } from '@/calendars/settings'
+import { parseIcs } from '@/calendars/ics'
+import { refreshedOccurrence } from '@/calendars/events'
+import { deferred } from '../helpers/deferred'
 
 const calendar = [
   'BEGIN:VCALENDAR',
@@ -110,6 +113,101 @@ describe('completion around feed reads and shared settings', () => {
       true,
       false,
     ])
+  })
+
+  it.each([false, true])(
+    'ticks a moved detached occurrence on the first click when its legacy cache ID changes (background read=%s)',
+    async (background) => {
+      const { service: initial, deps, request } = setup()
+      const detached = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'BEGIN:VEVENT',
+        'UID:sample-detached',
+        'RECURRENCE-ID:20260410T090000Z',
+        'DTSTART:20260410T120000Z',
+        'DTEND:20260410T130000Z',
+        'SUMMARY:Sample moved meeting',
+        'END:VEVENT',
+        'BEGIN:VEVENT',
+        'UID:sample-detached',
+        'RECURRENCE-ID:20260411T090000Z',
+        'DTSTART:20260411T150000Z',
+        'DTEND:20260411T160000Z',
+        'SUMMARY:Sample other meeting',
+        'END:VEVENT',
+        'END:VCALENDAR',
+      ].join('\r\n')
+      const events = parseIcs(detached, 'sample-feed', {
+        from: Date.UTC(2026, 3, 1),
+        to: Date.UTC(2026, 4, 1),
+      })
+      const legacy = { ...events[1], id: 'sample-feed:sample-detached:once' }
+      delete legacy.recurrenceId
+      request.mockResolvedValue({
+        status: 200,
+        text: detached,
+        headers: { etag: 'sample-detached-version' },
+      })
+      await initial.refresh()
+      const cache = JSON.parse((await deps.storage.read())!)
+      delete cache.feeds['sample-feed'].ics
+      cache.feeds['sample-feed'].events = [legacy]
+      await deps.storage.write(JSON.stringify(cache))
+      const service = new CalendarService(deps)
+      await service.load()
+      expect(service.state.events['sample-feed']).toEqual([legacy])
+
+      let reading: Promise<void> | undefined
+      if (background) {
+        const gate = deferred<Awaited<ReturnType<typeof request>>>()
+        const entered = deferred()
+        request.mockImplementationOnce(() => {
+          entered.resolve()
+          return gate.promise
+        })
+        reading = service.refresh()
+        await entered.promise
+        const ticking = service.setDone(legacy, true)
+        const checked = ticking.then(
+          () => null,
+          (error: unknown) => error
+        )
+        // Let the tick reach the already-reading feed before its source response arrives.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        gate.resolve({ status: 200, text: detached, headers: { etag: 'sample-detached-version' } })
+        expect(await checked).toBeNull()
+      } else {
+        await service.setDone(legacy, true)
+      }
+      await reading
+
+      const refreshed = service.state.events['sample-feed']
+      expect(request.mock.calls).toHaveLength(2)
+      expect(refreshed.map((e) => service.isDone(e))).toEqual([false, true])
+      expect(refreshed[1].id).not.toBe(legacy.id)
+      expect(refreshed[1].recurrenceId).toBe(events[1].recurrenceId)
+      await service.refresh()
+      expect(service.state.events['sample-feed'].map((e) => service.isDone(e))).toEqual([
+        false,
+        true,
+      ])
+    }
+  )
+
+  it('never migrates a legacy row to an ambiguous slot or another feed with the same UID', () => {
+    const events = parseIcs(calendar, 'sample-feed', {
+      from: Date.UTC(2026, 3, 1),
+      to: Date.UTC(2026, 4, 1),
+    })
+    const legacy = { ...events[0], id: 'sample-feed:sample-series:once' }
+    delete legacy.recurrenceId
+    const overlapping = { ...events[1], start: events[0].start, startDay: events[0].startDay }
+    expect(refreshedOccurrence(legacy, [events[0], overlapping])).toBeUndefined()
+    expect(refreshedOccurrence(legacy, [{ ...events[0], feedId: 'another-feed' }])).toBeUndefined()
+    expect(
+      refreshedOccurrence(legacy, [{ ...events[0], start: events[0].start + 86400000 }])
+    ).toBeUndefined()
   })
 
   it('does not prune unavailable or disabled feeds, but prunes a removed feed even at startup', async () => {

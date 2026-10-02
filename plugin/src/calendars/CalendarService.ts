@@ -14,7 +14,7 @@
 import { markRaw, reactive } from 'vue'
 import type { CalendarEvent } from './events'
 import { EventCompletionStore } from './completion'
-import { compareEvents, eventDays } from './events'
+import { compareEvents, eventDays, refreshedOccurrence } from './events'
 import { readFeed } from './fetch'
 import type { Requester } from './http'
 import { parseIcs, type TimeWindow } from './ics'
@@ -93,6 +93,7 @@ export class CalendarService {
   private cache: CacheFile = { version: 1, feeds: {} }
   private loaded: Promise<void> | null = null
   private lastRefresh = 0
+  private readonly inFlight = new Map<string, Promise<void>>()
   /** The source each calendar was last tried with, so a failing one is not retried on every save. */
   private readonly tried = new Map<string, string>()
   private readonly now: () => number
@@ -159,9 +160,16 @@ export class CalendarService {
     await this.save()
   }
 
-  private async refreshFeed(feed: CalendarFeed): Promise<void> {
+  private refreshFeed(feed: CalendarFeed): Promise<void> {
+    const pending = this.inFlight.get(feed.id)
+    if (pending) return pending
+    const reading = this.readFeedNow(feed).finally(() => this.inFlight.delete(feed.id))
+    this.inFlight.set(feed.id, reading)
+    return reading
+  }
+
+  private async readFeedNow(feed: CalendarFeed): Promise<void> {
     const status = this.statusOf(feed.id)
-    if (status.reading) return
     status.reading = true
     const fingerprint = this.fingerprint(feed)
     this.tried.set(feed.id, fingerprint)
@@ -286,7 +294,7 @@ export class CalendarService {
     // guess a series mark from those: a full source read supplies the original start.
     if (event.recurrenceId === undefined) {
       await this.refresh([event.feedId])
-      const refreshed = this.eventById(event.id)
+      const refreshed = refreshedOccurrence(event, this.state.events[event.feedId] ?? [])
       if (!refreshed || refreshed.recurrenceId === undefined)
         throw new Error('The calendar must be refreshed before this occurrence can be marked.')
       event = refreshed
