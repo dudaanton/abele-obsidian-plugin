@@ -31,17 +31,17 @@ describe.skipIf(!available)('workbook editing', () => {
       over: boolean
       shot: string
     }>(`(async()=>{
-      const api=window.__abeleTest;const scope=new api.ScopeResolver();scope.setFullVaultAccess(true);api.ScopeResolver.setActiveInstance(scope)
+      const api=window.__abeleTest;const scope=new api.ScopeResolver();scope.addFile(${JSON.stringify(PATH)});const ctx={scope,interactive:true}
       try{
         const tools=api.createAgentTools();const read=tools.find(t=>t.name==='xlsx_read');const write=tools.find(t=>t.name==='xlsx_write')
         const params={path:${JSON.stringify(PATH)},sheet:'Sample',range:'B2:C2'}
-        const first=await read.execute('sample-read',params);const revision=first.content[0].text.match(/revision ([0-9a-f-]+)/)[1]
-        const args={...params,revision,values:[[25,{formula:'B2*2'}]]};const edited=await write.execute('sample-write',args)
+        const first=await read.execute('sample-read',params,undefined,ctx);const revision=first.content[0].text.match(/revision ([0-9a-f-]+)/)[1]
+        const args={...params,revision,values:[[25,{formula:'B2*2'}]]};const edited=await write.execute('sample-write',args,undefined,ctx)
         const nextRevision=edited.content[0].text.match(/revision ([0-9a-f-]+)/)[1]
-        const formatted=await write.execute('sample-format',{...params,revision:nextRevision,operation:'format',format:{bold:true,italic:true,fill:'#33AA77',number_format:'0.00'}})
+        const formatted=await write.execute('sample-format',{...params,revision:nextRevision,operation:'format',format:{bold:true,italic:true,fill:'#33AA77',number_format:'0.00'}},undefined,ctx)
         if(!formatted.details.diff.new.includes('fill=#33AA77'))throw Error('Style preview did not include the changed fill')
-        let stale=false;try{await write.execute('sample-stale',args)}catch(e){stale=/changed/.test(e.message)}
-        const updated=await read.execute('sample-read-after',params)
+        let stale=false;try{await write.execute('sample-stale',args,undefined,ctx)}catch(e){stale=/changed/.test(e.message)}
+        const updated=await read.execute('sample-read-after',params,undefined,ctx)
         const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-workbook',state:{file:params.path},active:true});await app.workspace.revealLeaf(leaf)
         const root=leaf.view.contentEl;for(let i=0;i<150&&!root.querySelector('[data-cell="C2"]');i++)await new Promise(r=>setTimeout(r,100));if(!root.querySelector('[data-cell="C2"]'))throw Error('Saved workbook did not reopen')
         const edge=root.getBoundingClientRect();const over=[...root.querySelectorAll('.abele-workbook-bar input,.abele-workbook-bar select,.abele-workbook-bar button')].some(el=>el.getBoundingClientRect().right>edge.right+1)
@@ -49,7 +49,7 @@ describe.skipIf(!available)('workbook editing', () => {
         if(window.__e2eHost)await window.__e2eHost.shot(path);else{const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())}
         const data=new Uint8Array(await app.vault.readBinary(leaf.view.file));let raw='';for(const b of data)raw+=String.fromCharCode(b)
         return {bytes:btoa(raw),stale,preview:edited.details.diff.old!==edited.details.diff.new,read:updated.content[0].text,over,shot:path}
-      }finally{api.ScopeResolver.setActiveInstance(null)}
+      }finally{scope.clear()}
     })()`)
     expect(result.stale).toBe(true)
     expect(result.preview).toBe(true)
@@ -97,8 +97,8 @@ describe.skipIf(!available)('workbook editing', () => {
       const api=window.__abeleTest;const view=app.workspace.getLeavesOfType('abele-workbook').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view
       const root=view.contentEl;root.querySelector('[data-cell="B2"]').click();await new Promise(r=>setTimeout(r,50));root.querySelector('.abele-workbook-edit').click();await new Promise(r=>setTimeout(r,50))
       const input=root.querySelector('.abele-workbook-editor textarea');input.value='99';input.dispatchEvent(new Event('input',{bubbles:true}))
-      const scope=new api.ScopeResolver();scope.setFullVaultAccess(true);api.ScopeResolver.setActiveInstance(scope)
-      try{const tools=api.createAgentTools();const params={path:${JSON.stringify(PATH)},sheet:'Sample',range:'B2'};const first=await tools.find(t=>t.name==='xlsx_read').execute('sample-read',params);const revision=first.content[0].text.match(/revision ([0-9a-f-]+)/)[1];await tools.find(t=>t.name==='xlsx_write').execute('sample-concurrent',{...params,revision,values:[[45]]})}finally{api.ScopeResolver.setActiveInstance(null)}
+      const scope=new api.ScopeResolver();scope.addFile(${JSON.stringify(PATH)});const ctx={scope,interactive:true}
+      try{const tools=api.createAgentTools();const params={path:${JSON.stringify(PATH)},sheet:'Sample',range:'B2'};const first=await tools.find(t=>t.name==='xlsx_read').execute('sample-read',params,undefined,ctx);const revision=first.content[0].text.match(/revision ([0-9a-f-]+)/)[1];await tools.find(t=>t.name==='xlsx_write').execute('sample-concurrent',{...params,revision,values:[[45]]},undefined,ctx)}finally{scope.clear()}
       const retained=root.querySelector('.abele-workbook-editor textarea')?.value==='99'
       root.querySelector('.abele-workbook-editor').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));for(let i=0;i<150&&!root.querySelector('[role="status"]').textContent.includes('changed');i++)await new Promise(r=>setTimeout(r,100))
       const refused=root.querySelector('[role="status"]').textContent.includes('changed')

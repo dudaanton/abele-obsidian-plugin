@@ -15,6 +15,113 @@ beforeEach(() => {
   scope.addFolder('Documents')
 })
 describe('workbook tools', () => {
+  it.each([
+    ['xlsx_sheets', {}],
+    ['xlsx_read', { sheet: 'Sample', range: 'A1' }],
+    ['xlsx_search', { query: 'Sample' }],
+    ['xlsx_write', { sheet: 'Sample', range: 'B2', values: [[25]] }],
+  ])('uses the call scope rather than the permissive default for %s', async (name, args) => {
+    const app = useVault([])
+    const bytes = sampleXlsx()
+    await app.vault.createBinary('Documents/sample.xlsx', bytes.buffer as ArrayBuffer)
+    const scope = new ScopeResolver()
+    scope.addFolder('Private')
+    await expect(
+      createXlsxTools()
+        .find((t) => t.name === name)!
+        .execute(
+          'sample-scoped',
+          { path: 'Documents/sample.xlsx', revision: wordRevision(bytes), ...args },
+          undefined,
+          { scope, interactive: true }
+        )
+    ).rejects.toThrow(/Access denied/)
+    expect(app.stats.modify).toBe(0)
+  })
+  it('keeps simultaneous chats isolated across reads and final write checks', async () => {
+    const app = useVault([])
+    const bytes = sampleXlsx()
+    for (const path of ['Documents/sample.xlsx', 'Private/sample.xlsx'])
+      await app.vault.createBinary(path, bytes.buffer as ArrayBuffer)
+    const publicScope = new ScopeResolver()
+    publicScope.addFolder('Documents')
+    const privateScope = new ScopeResolver()
+    privateScope.addFolder('Private')
+    const tools = createXlsxTools()
+    const read = tools.find((t) => t.name === 'xlsx_read')!
+    const singleton = vi.spyOn(ScopeResolver, 'getInstance').mockImplementation(() => {
+      throw Error('Default scope must not be consulted')
+    })
+    try {
+      const results = await Promise.all([
+        read.execute(
+          'sample-public',
+          { path: 'Documents/sample.xlsx', sheet: 'Sample', range: 'B2' },
+          undefined,
+          { scope: publicScope, interactive: true }
+        ),
+        read.execute(
+          'sample-private',
+          { path: 'Private/sample.xlsx', sheet: 'Sample', range: 'B2' },
+          undefined,
+          { scope: privateScope, interactive: true }
+        ),
+      ])
+      expect(results.map((r) => r.content[0].text)).toEqual([
+        expect.stringContaining('Documents/sample.xlsx'),
+        expect.stringContaining('Private/sample.xlsx'),
+      ])
+      await tools
+        .find((t) => t.name === 'xlsx_write')!
+        .execute(
+          'sample-private-write',
+          {
+            path: 'Private/sample.xlsx',
+            sheet: 'Sample',
+            range: 'B2',
+            values: [[26]],
+            revision: wordRevision(bytes),
+          },
+          undefined,
+          { scope: privateScope, interactive: true }
+        )
+      expect(app.stats.modify).toBe(1)
+      expect(singleton).not.toHaveBeenCalled()
+    } finally {
+      singleton.mockRestore()
+    }
+  })
+  it('rechecks the same call scope after the final byte read, before publication', async () => {
+    const app = useVault([])
+    const bytes = sampleXlsx()
+    const file = await app.vault.createBinary('Documents/sample.xlsx', bytes.buffer as ArrayBuffer)
+    const scope = new ScopeResolver()
+    scope.addFile(file.path)
+    const originalRead = app.vault.readBinary.bind(app.vault)
+    let reads = 0
+    vi.spyOn(app.vault, 'readBinary').mockImplementation(async (f) => {
+      const data = await originalRead(f)
+      if (++reads === 2) scope.clear()
+      return data
+    })
+    await expect(
+      createXlsxTools()
+        .find((t) => t.name === 'xlsx_write')!
+        .execute(
+          'sample-revoked',
+          {
+            path: file.path,
+            sheet: 'Sample',
+            range: 'B2',
+            values: [[26]],
+            revision: wordRevision(bytes),
+          },
+          undefined,
+          { scope, interactive: true }
+        )
+    ).rejects.toThrow(/Access denied/)
+    expect(app.stats.modify).toBe(0)
+  })
   it('resolve only scoped workbook paths, including the canonical path', () => {
     const app = useVault([
       { path: 'Documents/sample.xlsx', content: '' },
