@@ -1,4 +1,7 @@
-/** Storage-independent optimistic write boundary. The adapter must serialize writes to one file. */
+/**
+ * Storage-independent best-effort optimistic check. The adapter serializes its own writes only.
+ * This read/write API is NOT compare-and-swap: an external writer can race between them.
+ */
 export interface WordStorage {
   read(): Promise<Uint8Array>
   write(bytes: Uint8Array): Promise<void>

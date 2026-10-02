@@ -32,7 +32,11 @@ Phone tabs are read-only by hand; an agent can edit on either device.
 Only touched text runs change. The document's styles, numbering, pictures and other package
 parts are kept, not converted to Markdown and rebuilt. Text inside tracked revisions or field
 results is read-only, as are headers, footers and notes. Unsupported structures are kept intact.
-If the file changes while you are editing, saving refuses the older edit; cancel and reopen it.
+If the file has changed when saving checks it, the older edit is refused; cancel and reopen it.
+In-place saving is not atomic against writes from another app: a change can still race between
+that check and the actual write. Do not save the same document from Word or another sync writer
+at the same time. This limitation needs a storage-level solution before conflict-safe replacement
+can be guaranteed.
 
 ## Formatting and structure on desktop
 

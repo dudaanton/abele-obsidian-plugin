@@ -39,8 +39,10 @@ Large packages use a paged text view. External relationships and active HTML chu
 from the rendering only, not removed from the original document. Text edits patch only affected
 `w:t` lexical spans in `word/document.xml`; untouched XML/ZIP parts are retained as their original
 uncompressed bytes. A no-op retains the exact original ZIP. Edited packages are re-compressed,
-so ZIP container bytes may differ; no Markdown intermediary is written. Conflicting external
-changes are refused rather than replaced by an older edit.
+so ZIP container bytes may differ; no Markdown intermediary is written. Changes present at the final read are refused instead of replaced by an older edit. The
+Obsidian binary read/write API does not provide compare-and-swap: an uncoordinated external
+writer can still race between that check and publication. In-place saving is not an atomic
+transaction against external Word/sync writers.
 Formatting and structure edits patch only their selected XML nodes. New lists may add
 `word/numbering.xml` plus its relationship and content-type entry; new links append relationships.
 Inline images imported from the vault are embedded under `word/media/abele-image-N.ext`, with
