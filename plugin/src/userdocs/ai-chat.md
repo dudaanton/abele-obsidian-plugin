@@ -110,12 +110,16 @@ prompts, permissions, model and tools.
 
 ## Highlighting and revising replies
 
-Select words in a finished model reply. On a computer, right-click and choose **Highlight in…**;
-on a phone, lift your finger and wait for the selection bar, then tap a colour. The six colours
-are the same as in books, using the note highlight styling. Tap a highlight to remove it, or
-press the message's icon to see its highlights and their **Remove** buttons. Selecting the same
-words again lets you change their colour. Highlights stay with the chat when it is reopened or
-synced. They are visual annotations; they do not alter what the model reads.
+Select words in a finished model reply. On a computer, right-click and choose **Highlight**;
+on a phone, lift your finger and wait for the selection bar, then tap **Highlight**. New
+highlights are yellow. Click or tap an existing highlight to change its colour or remove it.
+The six colours are the same as in books, using the note highlight styling. You can also press
+the message's icon to see its highlights and their **Remove** buttons.
+
+You can add, recolour and remove highlights on earlier replies while the agent is working.
+The answer still being streamed becomes available for highlighting once it finishes.
+Highlights stay with the chat when it is reopened or synced. They are visual annotations;
+they do not alter what the model reads.
 
 To ask for a revision, select the passage and choose **Ask here**. In that side discussion,
 explicitly ask the agent to rewrite or clarify those words. Its proposal has a **Review reply
