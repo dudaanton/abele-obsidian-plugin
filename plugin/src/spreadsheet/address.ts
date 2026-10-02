@@ -69,7 +69,7 @@ export function translateFormula(formula: string, rows: number, columns: number)
     return (absolute ? '$' : '') + (column ? columnName(next) : next)
   }
   return formula.replace(
-    /"(?:[^"]|"")*"|'(?:[^']|'')*'|(?<![\w.])(?:\$?[A-Z]{1,3}\s*:\s*\$?[A-Z]{1,3}|\$?[1-9]\d{0,6}\s*:\s*\$?[1-9]\d{0,6}|\$?[A-Z]{1,3}\$?[1-9]\d{0,6})(?![\w.(]|\s*!)/gi,
+    /"(?:[^"]|"")*"|'(?:[^']|'')*'|(?<![\p{L}\p{N}\p{M}\p{Pc}.])(?:\$?[A-Z]{1,3}\s*:\s*\$?[A-Z]{1,3}|\$?[1-9]\d{0,6}\s*:\s*\$?[1-9]\d{0,6}|\$?[A-Z]{1,3}\$?[1-9]\d{0,6})(?![\p{L}\p{N}\p{M}\p{Pc}.(]|\s*!)/giu,
     (token) => {
       if (token.startsWith('"') || token.startsWith("'")) return token
       if (token.includes(':'))

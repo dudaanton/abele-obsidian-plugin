@@ -11,6 +11,31 @@ import { MAX_XML } from '@/ooxml/package'
 import { sampleParts, sampleXlsx, sheetXml, R } from '../fixtures/xlsx/sampleXlsx'
 
 describe('workbook round-trip edge cases', () => {
+  it('preserves Unicode named ranges when expanding a touched shared formula group', async () => {
+    for (const name of ['ДоходA1', '売上A1', 'دخلA1', 'ÉA1', 'e\u0301A1']) {
+      const parts = sampleParts()
+      parts['xl/workbook.xml'] = strToU8(
+        strFromU8(parts['xl/workbook.xml']).replace(
+          '<calcPr',
+          `<definedNames><definedName name="${name}">Sample!$A$1</definedName></definedNames><calcPr`
+        )
+      )
+      parts['xl/worksheets/sheet1.xml'] = strToU8(
+        sheetXml(
+          `<row r="1"><c r="A1"><v>3</v></c><c r="B1"><f t="shared" si="1" ref="B1:B3">${name}+A1</f><v>6</v></c></row><row r="2"><c r="B2"><f t="shared" si="1"/><v>6</v></c></row><row r="3"><c r="B3"><f t="shared" si="1"/><v>6</v></c></row>`
+        )
+      )
+      const result = await applyWorkbookEdit(await openXlsx(zipSync(parts)), {
+        sheet: 'Sample',
+        range: 'B2',
+        values: [[25]],
+      })
+      const sheet = await (await openXlsx(result)).sheet('Sample')
+      expect(sheet.cells.get('B1')?.formula).toBe(`${name}+A1`)
+      expect(sheet.cells.get('B3')?.formula).toBe(`${name}+A3`)
+      expect(sheet.source).not.toContain('t="shared"')
+    }
+  })
   it('translates whole-column/whole-row shared references but not quoted strings, sheet names or functions', () => {
     expect(translateFormula('SUM(A:$B,1:$2)+LOG10(A1)+\'A1\'!B2+LEN("[A1]")', 1, 2)).toBe(
       'SUM(C:$B,2:$2)+LOG10(C2)+\'A1\'!D3+LEN("[A1]")'
