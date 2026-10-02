@@ -18,14 +18,8 @@ export const wTag = (name: string, content = '', attributes = '') =>
   `<w:${name} xmlns:w="${W}"${attributes ? ' ' + attributes : ''}>${content}</w:${name}>`
 export const textRun = (text: string) =>
   wTag('r', `<w:t xml:space="preserve">${escapeXml(text)}</w:t>`)
-export const isEmptyNode = (source: string, n: XmlNode) =>
-  /\/\s*>$/.test(source.slice(n.start, n.openEnd))
-export function nodeWithContent(source: string, n: XmlNode, content: string): string {
-  const open = source.slice(n.start, n.openEnd)
-  return isEmptyNode(source, n)
-    ? open.replace(/\/\s*>$/, '>') + content + `</${n.name}>`
-    : open + content + source.slice(n.closeStart, n.end)
-}
+import { isEmptyNode, nodeWithContent } from '@/ooxml/mutation'
+export { isEmptyNode, nodeWithContent } from '@/ooxml/mutation'
 const ORDERS: Record<string, string[]> = {
   pPr: [
     'pStyle',

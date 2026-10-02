@@ -13,6 +13,7 @@
         >Cell <input v-model="goAddress" aria-label="Cell address" @keydown.enter="go"
       /></label>
       <button @click="go">Go</button>
+      <button v-if="canEdit" class="abele-workbook-edit" @click="beginEdit">Edit cell</button>
       <span>{{
         book.readOnly
           ? 'Read-only workbook'
@@ -33,6 +34,29 @@
       {{ selected }}
       {{ selectedCell?.formula ? '= ' + selectedCell.formula : String(selectedCell?.value ?? '') }}
     </div>
+    <form v-if="editing && canEdit" class="abele-workbook-editor" @submit.prevent="saveCell">
+      <span>{{ sheetName }}!{{ editAddress }}</span>
+      <label
+        >Type
+        <select v-model="editType" aria-label="Cell type">
+          <option value="text">Text</option>
+          <option value="number">Number</option>
+          <option value="boolean">Boolean</option>
+          <option value="formula">Formula</option>
+          <option value="clear">Clear</option>
+        </select></label
+      >
+      <label
+        >Value
+        <textarea
+          v-model="editValue"
+          aria-label="Cell value"
+          :disabled="editType === 'clear' || busy"
+        />
+      </label>
+      <button type="submit" :disabled="busy">Save</button>
+      <button type="button" :disabled="busy" @click="editing = false">Cancel</button>
+    </form>
     <div ref="viewport" class="abele-workbook-viewport" @scroll="scroll">
       <div
         v-if="sheet"
@@ -86,7 +110,12 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { cellAddress, columnName, contains, parseCell } from './address'
 import { formatValue } from './styles'
 import type { Workbook, WorkbookSheet } from './package'
-const props = defineProps<{ book: Workbook; mobile: boolean }>()
+import type { CellInput, WorkbookEdit } from './edit'
+const props = defineProps<{
+  book: Workbook
+  mobile: boolean
+  save?: (edit: WorkbookEdit) => Promise<void>
+}>()
 const book = computed(() => props.book)
 const sheetName = ref(props.book.sheets[0].name)
 const sheet = shallowRef<WorkbookSheet | null>(null)
@@ -125,6 +154,56 @@ watch(
   { immediate: true }
 )
 const selectedCell = computed(() => sheet.value?.cells.get(selected.value))
+const canEdit = computed(
+  () => !props.mobile && !props.book.readOnly && !!props.save && !sheet.value?.protected
+)
+const editing = ref(false)
+const busy = ref(false)
+const editType = ref('text')
+const editAddress = ref('A1')
+const editValue = ref('')
+watch(sheetName, () => {
+  editing.value = false
+})
+function beginEdit() {
+  const cell = selectedCell.value
+  editAddress.value = selected.value
+  editType.value =
+    cell?.formula !== undefined
+      ? 'formula'
+      : typeof cell?.value === 'number'
+        ? 'number'
+        : typeof cell?.value === 'boolean'
+          ? 'boolean'
+          : 'text'
+  editValue.value = cell?.formula ?? String(cell?.value ?? '')
+  editing.value = true
+}
+async function saveCell() {
+  if (!canEdit.value || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    let value: CellInput = { value: editValue.value }
+    if (editType.value === 'formula') value = { formula: editValue.value }
+    if (editType.value === 'number') {
+      if (!editValue.value.trim() || !Number.isFinite(Number(editValue.value)))
+        throw new Error('Enter a finite number')
+      value = Number(editValue.value)
+    }
+    if (editType.value === 'boolean') {
+      if (!/^(true|false)$/i.test(editValue.value)) throw new Error('Enter TRUE or FALSE')
+      value = editValue.value.toLowerCase() === 'true'
+    }
+    if (editType.value === 'clear') value = null
+    await props.save!({ sheet: sheetName.value, range: editAddress.value, values: [[value]] })
+    editing.value = false
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busy.value = false
+  }
+}
 const columns = computed(() => {
   const result: { column: number; left: number; width: number }[] = []
   let left = 48

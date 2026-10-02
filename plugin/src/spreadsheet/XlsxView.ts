@@ -1,20 +1,22 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
 import { createApp, type App as VueApp } from 'vue'
 import WorkbookGrid from './WorkbookGrid.vue'
-import { openXlsx, type Workbook } from './package'
+import type { Workbook } from './package'
+import { applyWorkbookEdit, type WorkbookEdit } from './edit'
+import { loadWorkbookBytes, writeWorkbookChange } from './vaultAdapter'
 import './workbook.css'
 export const XLSX_VIEW_TYPE = 'abele-workbook'
-export const loadWorkbookBytes = (bytes: Uint8Array, readOnly = false) =>
-  openXlsx(bytes, readOnly, () => new Promise<void>((resolve) => window.setTimeout(resolve, 0)))
 export class XlsxView extends FileView {
   workbook: Workbook | null = null
   private vue: VueApp | null = null
   private token = 0
+  private saving = false
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && file.path === this.file?.path) void this.onLoadFile(file)
+        if (file instanceof TFile && file.path === this.file?.path && !this.saving)
+          void this.onLoadFile(file)
       })
     )
   }
@@ -43,7 +45,26 @@ export class XlsxView extends FileView {
       if (token !== this.token) return
       this.workbook = book
       status.remove()
-      this.vue = createApp(WorkbookGrid, { book, mobile: Platform.isMobile })
+      this.vue = createApp(WorkbookGrid, {
+        book,
+        mobile: Platform.isMobile,
+        save: async (edit: WorkbookEdit) => {
+          if (Platform.isMobile || book.readOnly)
+            throw new Error('Hand editing is desktop-only for .xlsx files')
+          if (this.file !== file || this.workbook !== book)
+            throw new Error('Workbook is no longer open')
+          const updated = await applyWorkbookEdit(book, edit)
+          if (this.file !== file || this.workbook !== book)
+            throw new Error('Workbook is no longer open')
+          this.saving = true
+          try {
+            await writeWorkbookChange(this.app, file, book.original, updated)
+          } finally {
+            this.saving = false
+          }
+          await this.onLoadFile(file)
+        },
+      })
       this.vue.mount(this.contentEl)
     } catch (e) {
       if (token === this.token) status.setText(`Could not open workbook: ${(e as Error).message}`)

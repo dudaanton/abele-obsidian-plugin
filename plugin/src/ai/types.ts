@@ -299,6 +299,7 @@ export const TOUCHING_TOOLS = [
   'book_highlight_edit',
   'book_highlight_remove',
   'docx_edit',
+  'xlsx_write',
 ]
 
 /**
@@ -402,7 +403,7 @@ export const LINT_TOOL_MODES: Record<string, ToolMode> = { lint: 'auto', lint_fi
 export const DOCX_TOOL_MODES: Record<string, ToolMode> = { docx_views: 'auto', docx_read: 'auto', docx_search: 'auto', docx_edit: 'ask' }
 
 /** Workbook read tools have independent modes; writes are added separately. */
-export const XLSX_TOOL_MODES: Record<string, ToolMode> = { xlsx_sheets: 'auto', xlsx_read: 'auto', xlsx_search: 'auto' }
+export const XLSX_TOOL_MODES: Record<string, ToolMode> = { xlsx_sheets: 'auto', xlsx_read: 'auto', xlsx_search: 'auto', xlsx_write: 'ask' }
 
 /** Personal device data: ask before every request unless the person chooses another mode. */
 export const LOCATION_TOOL_MODES: Record<string, ToolMode> = { current_location: 'ask' }

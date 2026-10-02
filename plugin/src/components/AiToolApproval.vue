@@ -34,7 +34,7 @@
       />
     </template>
 
-    <template v-else-if="message.toolName === 'docx_edit'">
+    <template v-else-if="message.toolName === 'docx_edit' || message.toolName === 'xlsx_write'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
       <Diff
         v-if="wordPreview"
@@ -42,7 +42,7 @@
         :text-right="wordPreview.new"
         class="abele-tool-approval__diff"
       />
-      <div v-else>{{ wordPreviewError || 'Preparing Word edit preview…' }}</div>
+      <div v-else>{{ wordPreviewError || 'Preparing Office edit preview…' }}</div>
       <pre
         class="abele-tool-approval__code"
       ><code>{{ JSON.stringify(params, null, 2) }}</code></pre>
@@ -150,6 +150,8 @@ import { WRITE_TOOLS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
 import { prepareWordChange } from '@/word/vaultAdapter'
 import type { WordEdit } from '@/word/edit'
+import { prepareWorkbookChange } from '@/spreadsheet/vaultAdapter'
+import type { WorkbookEdit } from '@/spreadsheet/edit'
 
 const props = defineProps<{
   message: ChatMessage
@@ -255,7 +257,7 @@ watch(
     const version = ++wordPreviewVersion
     wordPreview.value = null
     wordPreviewError.value = ''
-    if (props.message.toolName !== 'docx_edit') return
+    if (!['docx_edit', 'xlsx_write'].includes(props.message.toolName ?? '')) return
     try {
       const path = String(params.value.path || '')
       if (!session.value?.scopeResolver.isInScope(path))
@@ -268,12 +270,22 @@ watch(
       const app = GlobalStore.getInstance().app
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error('Document not found')
-      const prepared = await prepareWordChange(
-        app,
-        file,
-        params.value as unknown as WordEdit,
-        String(params.value.revision || '')
-      )
+      if (!session.value.scopeResolver.isInScope(file.path))
+        throw new Error('Document is outside this chat’s scope')
+      const prepared =
+        props.message.toolName === 'xlsx_write'
+          ? await prepareWorkbookChange(
+              app,
+              file,
+              params.value as unknown as WorkbookEdit,
+              String(params.value.revision || '')
+            )
+          : await prepareWordChange(
+              app,
+              file,
+              params.value as unknown as WordEdit,
+              String(params.value.revision || '')
+            )
       if (version === wordPreviewVersion) wordPreview.value = prepared.diff
     } catch (error) {
       if (version === wordPreviewVersion) wordPreviewError.value = (error as Error).message

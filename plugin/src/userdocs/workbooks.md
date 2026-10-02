@@ -16,5 +16,17 @@ Values initially come from the workbook's saved formula caches. Missing caches s
 files marked for recalculation show a stale-value warning. Macros, external links and other
 active workbook content never execute. `.xlsm` files are always read-only.
 
+On desktop, select a cell and choose **Edit cell**. Pick Text, Number, Boolean, Formula or
+Clear, then Save. Text input stays literal, even if it begins with `=`. Saving patches only
+touched XML; unsupported workbook content stays intact. Concurrent external changes are
+refused, so read/reopen before trying again. Formulas are marked for recalculation; the view
+warns about stale caches. Array/data-table ranges, protected sheets and merged followers must
+be edited in a spreadsheet app. A shared formula group is expanded automatically before an
+edit. There are no hand-editing controls on phones.
+
+Ask an agent to read/search the workbook or write values/formulas on desktop or phone. The
+agent reads a revision first; writes default to a preview and confirmation, with their own
+Off/Ask/On setting. `.xlsm` remains read-only for both hand and agent editing.
+
 Limits: 32 MB compressed, 96 MB expanded, 8 MB per XML part, 256 sheets, 200,000 stored cells
 per sheet. Only one sheet is indexed at a time to limit memory on phones.

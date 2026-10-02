@@ -35,6 +35,13 @@ vault paths. Opening/reading creates no Markdown conversion, cache note, sidecar
 setting. The grid indexes one sheet at a time and displays saved formula caches; it never
 executes macros, external links or embedded active content. Phone views offer no hand editing.
 ZIP limits and strict lexical XML parsing are shared with Word. `.xls` is not supported.
+Value/formula edits patch only affected cell spans (adding rows/cells in coordinate order).
+Shared groups touched by an edit become ordinary formulas with translated relative references.
+Unknown cell metadata survives; unrelated XML and package parts retain their uncompressed bytes.
+A no-op retains the exact ZIP. `calcPr` marks recalculation required, and calc-chain parts,
+relationships and content-type overrides are removed together. Saves refuse conflicting external
+changes and never create a Markdown intermediary. Array/data-table formulas and protected
+workbooks are not edited.
 
 ## Word files
 

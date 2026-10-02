@@ -87,3 +87,22 @@
 .abele-workbook-cell.is-frozen {
   z-index: 3;
 }
+.abele-workbook-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  align-items: center;
+  padding: var(--size-4-2);
+  flex-shrink: 0;
+}
+.abele-workbook-editor label {
+  display: flex;
+  gap: var(--size-4-1);
+  align-items: center;
+  max-width: 100%;
+}
+.abele-workbook-editor textarea {
+  width: 300px;
+  max-width: 100%;
+  min-height: 60px;
+}

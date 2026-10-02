@@ -4,6 +4,8 @@ import { ScopeResolver } from '@/ai/ScopeResolver'
 import { createAgent } from '@/ai/agents/types'
 import { useVault } from '../helpers/testEnv'
 import { sampleXlsx } from '../fixtures/xlsx/sampleXlsx'
+import { wordRevision } from '@/ooxml/write'
+import { openXlsx } from '@/spreadsheet/package'
 
 beforeEach(() => {
   useVault([])
@@ -51,6 +53,29 @@ describe('workbook tools', () => {
       /large/
     )
     expect(app.stats.modify).toBe(0)
+  })
+  it('writes against the read revision, refuses stale revisions, and serializes concurrent saves', async () => {
+    const app = useVault([])
+    const bytes = sampleXlsx()
+    await app.vault.createBinary('Documents/sample.xlsx', bytes.buffer as ArrayBuffer)
+    const tool = createXlsxTools().find((t) => t.name === 'xlsx_write')!
+    const params = {
+      path: 'Documents/sample.xlsx',
+      revision: wordRevision(bytes),
+      sheet: 'Sample',
+      range: 'B2',
+      values: [[25]],
+    }
+    const results = await Promise.allSettled([
+      tool.execute('sample-one', params),
+      tool.execute('sample-two', { ...params, values: [[30]] }),
+    ])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(app.stats.modify).toBe(1)
+    await expect(tool.execute('sample-stale', params)).rejects.toThrow(/changed/)
+    const now = new Uint8Array(await app.vault.readBinary(namedWorkbook(params.path)))
+    expect((await (await openXlsx(now)).sheet('Sample')).cells.get('B2')?.value).toBe(25)
+    expect(createAgent().toolModes.xlsx_write).toBe('ask')
   })
   it('defaults read tools to automatic, but keeps independent modes', () => {
     expect(createAgent().toolModes).toMatchObject({

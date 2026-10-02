@@ -3,7 +3,12 @@ import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { wordRevision as workbookRevision } from '@/ooxml/write'
-import { loadWorkbookBytes } from '@/spreadsheet/XlsxView'
+import {
+  loadWorkbookBytes,
+  prepareWorkbookChange,
+  writeWorkbookChange,
+} from '@/spreadsheet/vaultAdapter'
+import type { WorkbookEdit } from '@/spreadsheet/edit'
 import { readRange } from '@/spreadsheet/read'
 import { cellAddress } from '@/spreadsheet/address'
 export function namedWorkbook(input: unknown): TFile {
@@ -33,6 +38,46 @@ export const openVaultWorkbook = async (file: TFile) =>
   )
 export function createXlsxTools(): AgentTool[] {
   return [
+    {
+      name: 'xlsx_write',
+      label: 'Write workbook cells',
+      category: 'Excel',
+      description:
+        'Patch a rectangular A1 range of values/formulas in an .xlsx workbook. Read xlsx_read first and pass revision. values is a rectangular matrix matching range: string, number, boolean, null (clear), {formula: "SUM(A1:A2)"}, or {value: "=literal text"}. Strings starting with = are formulas. Max 1000 cells. Uses the existing write preview/confirmation with its own Off/Ask/On mode, default Ask. Shared formulas are unshared before editing; array ranges, protected sheets, merged followers and .xlsm are read-only. Dependent caches may be stale until recalculation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...properties,
+          revision: { type: 'string' },
+          sheet: { type: 'string' },
+          range: { type: 'string' },
+          values: { type: 'array', items: { type: 'array', items: {} } },
+        },
+        required: ['path', 'revision', 'sheet', 'range', 'values'],
+      },
+      execute: async (_id, params, signal) => {
+        const file = namedWorkbook(params.path)
+        if (typeof params.revision !== 'string' || !params.revision)
+          throw new Error('Read with xlsx_read first and pass its revision')
+        const app = GlobalStore.getInstance().app
+        const prepared = await prepareWorkbookChange(
+          app,
+          file,
+          params as unknown as WorkbookEdit,
+          params.revision
+        )
+        signal?.throwIfAborted()
+        if (namedWorkbook(file.path) !== file)
+          throw new Error('Workbook moved while editing; read again')
+        await writeWorkbookChange(app, file, prepared.original, prepared.updated, signal)
+        return {
+          ...answer(
+            `Edited ${file.path}; revision ${workbookRevision(prepared.updated)}. Values may be stale until recalculation.`
+          ),
+          details: { path: file.path, diff: prepared.diff },
+        }
+      },
+    },
     {
       name: 'xlsx_sheets',
       label: 'Workbook sheets',

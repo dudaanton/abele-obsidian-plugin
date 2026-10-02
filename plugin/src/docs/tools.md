@@ -55,6 +55,15 @@ workbooks warn that values may be stale. `xlsx_search` searches literal values/f
 optionally on one sheet, with `after` and `limit` (max 40 cells). Do not use text-file writes
 on a binary workbook. `.xls` is unsupported; macros and external content never execute.
 
+`xlsx_write` patches a `sheet` and rectangular A1 `range` with a `values` matrix of matching
+height/width (max 1000 cells). Read first and pass the `revision`. Inputs are strings, finite
+numbers, booleans, `null` (clear), `{formula: "SUM(A1:A2)"}` or `{value: "=literal text"}`.
+Bare strings starting with `=` are formulas. It defaults to Ask with the usual binary edit
+preview and has its own Off/Ask/On mode, independent of general file write permissions.
+Stale revisions/concurrent writes are refused. Shared groups are expanded before editing;
+array/data-table ranges, protected sheets and merged followers are read-only. `.xlsm` and
+macro-bearing packages cannot be written. Edits mark caches stale until recalculation.
+
 ## Word documents
 
 `docx_views`, `docx_read`, `docx_search` read `.docx` files by exact vault path, only inside
