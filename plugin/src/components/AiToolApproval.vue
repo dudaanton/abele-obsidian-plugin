@@ -69,8 +69,15 @@
 
     <div v-if="keyInfo?.names.length" class="abele-tool-approval__param">
       <span>Saved keys: {{ keyInfo.names.join(', ') }} → {{ keyInfo.origin }}</span>
-      <span>Allow this address remembers it for these keys on this device. Send once approves only this request; it does not change the allowed list or tool permissions.</span>
-      <Button v-if="keyInfo.missing.length" text="Allow this address for these keys" @click="allowKeyAddress" />
+      <span
+        >Allow this address remembers it for these keys on this device. Send once approves only this
+        request; it does not change the allowed list or tool permissions.</span
+      >
+      <Button
+        v-if="keyInfo.missing.length"
+        text="Allow this address for these keys"
+        @click="allowKeyAddress"
+      />
     </div>
 
     <!-- Edit JSON (toggle) -->
@@ -84,9 +91,14 @@
       <div v-if="parseError" class="abele-tool-approval__parse-error">{{ parseError }}</div>
     </div>
 
-    <div v-if="parseError && !isEditing" class="abele-tool-approval__parse-error">{{ parseError }}</div>
+    <div v-if="parseError && !isEditing" class="abele-tool-approval__parse-error">
+      {{ parseError }}
+    </div>
     <div class="abele-tool-approval__actions">
-      <Button :text="keyInfo && !keyInfo.missing.length ? 'Send once' : 'Approve'" @click="approve" />
+      <Button
+        :text="keyInfo && !keyInfo.missing.length ? 'Send once' : 'Approve'"
+        @click="approve"
+      />
       <Button
         v-if="canApproveAllWrites"
         text="Always allow writes"
@@ -107,7 +119,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { secretNames, secretRequestInfo, secretRequestForTool, allowSecretOrigin } from '@/ai/tools/secretUtils'
+import {
+  secretNames,
+  secretRequestInfo,
+  secretRequestForTool,
+  allowSecretOrigin,
+} from '@/ai/tools/secretUtils'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
@@ -128,19 +145,35 @@ const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
 const keyRevision = ref(0)
 const effectiveParams = computed(() => {
-  try { return isEditing.value ? JSON.parse(editedArgs.value) : params.value } catch { return {} }
+  try {
+    return isEditing.value ? JSON.parse(editedArgs.value) : params.value
+  } catch {
+    return {}
+  }
 })
-const keyRequest = computed(() => secretNames(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)).length > 0)
+const keyRequest = computed(
+  () =>
+    secretNames(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)).length >
+    0
+)
 const keyInfo = computed(() => {
   void keyRevision.value
   if (!keyRequest.value) return null
-  try { return secretRequestInfo(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)!) } catch { return null }
+  try {
+    return secretRequestInfo(
+      secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)!
+    )
+  } catch {
+    return null
+  }
 })
 const allowKeyAddress = () => {
   try {
     for (const name of keyInfo.value?.missing ?? []) allowSecretOrigin(name, keyInfo.value!.origin)
     keyRevision.value++
-  } catch (error) { parseError.value = (error as Error).message }
+  } catch (error) {
+    parseError.value = (error as Error).message
+  }
 }
 
 const headerText = computed(() => {
@@ -363,6 +396,7 @@ const toggleEdit = () => {
 
 .abele-tool-approval__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--size-4-2);
 }
 </style>

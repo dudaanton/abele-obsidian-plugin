@@ -166,6 +166,14 @@ Pins deterministic operation counts against the in-memory fixtures. These tests 
 selects the same files from that configuration. Wall times may be reported for diagnosis;
 complexity assertions do not depend on how busy the host is.
 
+## Agent permission live checks
+
+`agentRights.e2e.test.ts` checks the Skills folder setting in the desktop settings window,
+Remember waiting for approval before storing anything, and a real script-started agent refusing
+an Ask action. It also measures every approval button inside the card in a narrow sidebar,
+under mobile emulation, and on the phone tier. Screenshots are kept with the run; inspect them.
+Only a synthetic provider is used, and the settings, sample files and chat tab are restored.
+
 ## What the e2e tier covers
 
 The live suite covers groups, tasks, finance, chats, scripts, settings, media, drawing, GitHub
