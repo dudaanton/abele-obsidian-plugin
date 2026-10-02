@@ -85,8 +85,10 @@ not reconstructed as permission after a reload. New bytes need a new decision;
 rename preserves identity at the proven destination. The old path retains a restrictive
 managed hold, not the moved identity; recreating it with identical bytes cannot reuse approval.
 Recorded path spelling also protects case-only renames in the case-folded ledger namespace.
-A moved identity is durably retired at its old path: a late push receipt, journal replay or
-ordinary ledger update cannot remove that restriction. A genuinely different identity may
+A moved identity is durably retired at its exact old spelling, separately from the case-folded
+source ledger slot: even a case-only rename cannot let a late push receipt restore the old
+spelling on a case-sensitive device. Journal replay or an ordinary ledger update cannot
+remove that restriction. A genuinely different identity may
 settle there but needs its own approval; returning the moved identity requires a proven
 rename back, not an old-path ledger receipt. Shared/agent policy is **refuse**, with no approval bypass.
 Agents, automations, nested scripts and restored views never open approval dialogs: unapproved

@@ -19,6 +19,45 @@ const a = 'Scripts/sample.js',
 afterEach(() => vi.unstubAllGlobals())
 
 describe('late ledger receipt after local rename', () => {
+  it('holds an old spelling after a case-only rename and a late receipt on a case-sensitive vault', async () => {
+    const source = 'Scripts/sample.js',
+      destination = 'Scripts/SAMPLE.js'
+    const app = buildFakeVault([{ path: source, content: h }]) as unknown as App
+    const factory = new IDBFactory()
+    vi.stubGlobal('indexedDB', factory)
+    setScriptConnection(app, binding)
+    const trust = await activateScriptProvenance(app, binding, factory)
+    try {
+      await trust.provenance.record(source, 'sample-identity')
+      await scriptForExecution(app, source, async () => true)
+      await app.vault.adapter.rename(source, destination)
+      await trust.provenance.rename(source, destination)
+      // The underlying fixture normally folds paths. Simulate a case-sensitive device where
+      // the old spelling is a separate new file with the previously approved exact bytes.
+      const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
+      app.vault.adapter.readBinary = async (path) =>
+        path === source ? (new TextEncoder().encode(h).buffer as ArrayBuffer) : read(path)
+      await trust.provenance.record(source, 'sample-identity')
+      expect(await trust.provenance.lookup(source)).toMatchObject({ fileId: null })
+      expect(await trust.provenance.lookup(destination)).toMatchObject({
+        fileId: 'sample-identity',
+      })
+      await expect(scriptForExecution(app, source)).rejects.toThrow(/unknown/)
+    } finally {
+      trust.store.close()
+    }
+    const reopened = await scriptTrustFor(app, factory)
+    try {
+      await reopened!.provenance.record(source, 'sample-identity')
+      expect(await reopened!.provenance.lookup(source)).toMatchObject({ fileId: null })
+      await reopened!.provenance.rename(destination, source)
+      expect(await reopened!.provenance.lookup(source)).toMatchObject({ fileId: 'sample-identity' })
+      await reopened!.provenance.record(destination, 'sample-identity')
+      expect(await reopened!.provenance.lookup(destination)).toMatchObject({ fileId: null })
+    } finally {
+      reopened!.store.close()
+    }
+  })
   it('retires the last known identity even when a pending mutation already holds the source', async () => {
     const app = buildFakeVault([{ path: a, content: h }]) as unknown as App
     const factory = new IDBFactory()

@@ -25,6 +25,9 @@ interface StoredScript extends ManagedScript {
   lastFileId?: string
 }
 const key = (path: string) => `script-source:${caseKey(path)}`
+// Distinct from caseKey: a case-only rename must hold the OLD spelling even though its
+// destination uses the same case-folded provenance slot.
+const retiredKey = (path: string) => `script-retired-path:${encodeURIComponent(path)}`
 export const sameBinding = (a: ScriptBinding, b: ScriptBinding): boolean =>
   a.localVault === b.localVault &&
   a.endpoint === b.endpoint &&
@@ -95,9 +98,30 @@ export class ScriptProvenance {
     }
     return value
   }
+  private async retired(path: string): Promise<string[]> {
+    const raw = await this.meta.getMeta(retiredKey(path))
+    if (raw === null) return []
+    let value: unknown
+    try {
+      value = JSON.parse(String(raw))
+    } catch {
+      throw new Error('Script retirement is unreadable')
+    }
+    if (!Array.isArray(value) || value.some((id) => typeof id !== 'string' || !id))
+      throw new Error('Script retirement is unreadable')
+    return value as string[]
+  }
+  private async saveRetired(path: string, ids: string[]): Promise<void> {
+    const value = ids.length ? JSON.stringify(ids) : null
+    await this.meta.setMeta(retiredKey(path), value)
+    if ((await this.meta.getMeta(retiredKey(path))) !== value)
+      throw new Error('Script retirement was not persisted')
+  }
   async lookup(path: string): Promise<ManagedScript | null> {
     const value = await this.stored(path)
     if (!value) return null
+    if (value.fileId && (await this.retired(path)).includes(value.fileId))
+      return { binding: { ...value.binding }, fileId: null }
     // Case-folded keys cannot grant a renamed spelling's identity to a recreated old path.
     if (value.path !== undefined && value.path !== path)
       return { binding: { ...value.binding }, fileId: null }
@@ -110,7 +134,8 @@ export class ScriptProvenance {
       // A ledger receipt is not proof that a renamed identity returned to this physical path.
       // Late pushes/replays may still settle their old path; keep that identity retired here.
       const previous = await this.stored(path)
-      if (previous?.retiredIds?.includes(fileId)) return
+      if (previous?.retiredIds?.includes(fileId) || (await this.retired(path)).includes(fileId))
+        return
       await this.save(path, { binding: this.binding, fileId })
     })
   }
@@ -131,6 +156,8 @@ export class ScriptProvenance {
       const retired = [
         ...new Set([...(previous?.retiredIds ?? []), ...(lastFileId ? [lastFileId] : [])]),
       ]
+      if (lastFileId)
+        await this.saveRetired(from, [...new Set([...(await this.retired(from)), lastFileId])])
       await this.save(from, { binding: this.binding, fileId: null }, retired)
       const destination = await this.stored(to)
       // Only a proven rename into the path can deliberately return the same identity.
@@ -143,6 +170,16 @@ export class ScriptProvenance {
         destinationRetired,
         lastFileId ?? undefined
       )
+      // A verified rename back may explicitly restore this spelling. Never clear the old
+      // spelling's independent hold while writing a case-folded destination record.
+      if (source?.fileId) {
+        const destinationHold = await this.retired(to)
+        if (destinationHold.includes(source.fileId))
+          await this.saveRetired(
+            to,
+            destinationHold.filter((id) => id !== source.fileId)
+          )
+      }
     })
   }
 
