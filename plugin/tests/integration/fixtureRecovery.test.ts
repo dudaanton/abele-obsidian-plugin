@@ -53,6 +53,55 @@ async function fixture(app: ReturnType<typeof buildFakeVault>) {
   })
 }
 describe('retryable phone fixture recovery', () => {
+  it.each(['sentinel', 'bindings'])(
+    'recovers interrupted preparation at %s without forgetting originals',
+    async (boundary) => {
+      const app = await setup()
+      const saved = app.loadLocalStorage('abele-sync-ledger')
+      mock.keeper.read.mockImplementation(() => {
+        mock.connection.value = readConnection(app, Platform.isMobile) as any
+      })
+      if (boundary === 'sentinel') {
+        const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+        let failed = false
+        vi.spyOn(app.vault.adapter, 'writeBinary').mockImplementation(async (path, bytes) => {
+          if (path === '.abele-script-context-hold' && !failed) {
+            failed = true
+            throw new Error('Synthetic sentinel failure')
+          }
+          return write(path, bytes)
+        })
+      } else {
+        const save = app.saveLocalStorage.bind(app)
+        let failed = false
+        vi.spyOn(app, 'saveLocalStorage').mockImplementation((key, value) => {
+          if (key === 'abele-sync-ledger-proof' && value === null && !failed) {
+            failed = true
+            throw new Error('Synthetic detach interruption')
+          }
+          save(key, value)
+        })
+      }
+      await expect(prepareFixtureContext(app as unknown as App, 'FixtureRecovery')).rejects.toThrow(
+        /Synthetic/
+      )
+      expect(app.loadLocalStorage('abele-script-execution-context-hold')).toBe(true)
+      expect(await restoreFixtureContext(app as unknown as App)).toEqual({
+        restored: true,
+        errors: [],
+      })
+      expect(mock.forget).not.toHaveBeenCalled()
+      expect(app.loadLocalStorage('abele-sync-ledger')).toEqual(saved)
+      expect(app.loadLocalStorage('abele-script-execution-context-hold')).toBeNull()
+      expect(app.loadLocalStorage('task14-isolated-fixture')).toBeNull()
+      const db = await IndexedDbStateStore.open(factory, 'abele-sync-sample-original')
+      expect(await db.getMeta('preserved')).toBe('original ledger bytes')
+      db.close()
+      await expect(
+        prepareFixtureContext(app as unknown as App, 'FixtureRecoveryAgain')
+      ).resolves.toBe(true)
+    }
+  )
   it('rehydrates absent connection using actual mobile defaults with no queued revoke', async () => {
     Platform.isMobile = true
     const app = await setup()

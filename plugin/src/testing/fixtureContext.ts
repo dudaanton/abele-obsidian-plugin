@@ -23,6 +23,7 @@ interface Backup {
   workspace: unknown
   dbNames: string[]
   digests: Record<string, string>
+  preparePhase?: 'protecting' | 'detaching' | 'isolated'
   restorePhase?: 'leaving' | 'left'
   fixtureDatabases?: string[]
   fixtureRevokes?: PendingRevoke[]
@@ -118,6 +119,7 @@ export async function prepareFixtureContext(app: App, root: string): Promise<boo
     workspace: app.workspace.getLayout(),
     dbNames,
     digests,
+    preparePhase: 'protecting',
   }
   app.saveLocalStorage(BACKUP, backup)
   if (JSON.stringify(app.loadLocalStorage(BACKUP)) !== JSON.stringify(backup))
@@ -132,6 +134,10 @@ export async function prepareFixtureContext(app: App, root: string): Promise<boo
   )
   if (!(await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE)))
     throw new Error('Script context sentinel was not persisted')
+  backup.preparePhase = 'detaching'
+  app.saveLocalStorage(BACKUP, backup)
+  if (JSON.stringify(app.loadLocalStorage(BACKUP)) !== JSON.stringify(backup))
+    throw new Error('Detach phase was not persisted')
   // Clear only vault-local bindings, never touch old DBs. Adoption now allocates fresh UUIDs.
   for (const key of KEYS) app.saveLocalStorage(key, null)
   if (await app.vault.adapter.exists('.abele-script-managed'))
@@ -140,6 +146,10 @@ export async function prepareFixtureContext(app: App, root: string): Promise<boo
     '.abele-sync-ignore',
     new TextEncoder().encode('*\n!' + root + '/\n!' + root + '/**\n').buffer
   )
+  backup.preparePhase = 'isolated'
+  app.saveLocalStorage(BACKUP, backup)
+  if (JSON.stringify(app.loadLocalStorage(BACKUP)) !== JSON.stringify(backup))
+    throw new Error('Isolated phase was not persisted')
   return true
 }
 export async function restoreFixtureContext(
@@ -155,6 +165,26 @@ export async function restoreFixtureContext(
         errors.push(label)
       }
     }
+  if (
+    p.restorePhase !== 'left' &&
+    (p.preparePhase === 'protecting' || p.preparePhase === 'detaching')
+  ) {
+    // Preparation cannot have adopted a fixture yet. Accept only original or cleared bindings;
+    // any unexpected new binding needs explicit reconciliation, never an inferred Forget.
+    if (
+      KEYS.some((key) => {
+        const value = app.loadLocalStorage(key)
+        return value != null && JSON.stringify(value) !== JSON.stringify(p.local[key])
+      })
+    )
+      return { restored: false, errors: ['interrupted preparation bindings changed'] }
+    p.fixtureDatabases = []
+    p.fixtureRevokes = []
+    p.restorePhase = 'left'
+    app.saveLocalStorage(BACKUP, p)
+    if (JSON.stringify(app.loadLocalStorage(BACKUP)) !== JSON.stringify(p))
+      return { restored: false, errors: ['preparation recovery phase was not persisted'] }
+  }
   if (p.restorePhase !== 'left') {
     const ledger = app.loadLocalStorage('abele-sync-ledger') as { stateId?: string } | null,
       trust = app.loadLocalStorage('abele-script-provenance') as { id?: string } | null
