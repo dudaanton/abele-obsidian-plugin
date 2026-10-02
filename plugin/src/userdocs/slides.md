@@ -110,18 +110,27 @@ A `slide-html` block is a complete interactive HTML fragment:
 <button onclick="this.textContent = 'Clicked'">Click</button>
 ```
 
-It runs in a **sandboxed, opaque-origin iframe**, not in the note or Obsidian. It cannot read
-the vault, cookies, plugin state, or its parent window; it cannot open popups or submit forms.
-The frame is destroyed on exit and recreated on reentry, stopping its animation, timers and
-audio. Presenter previews never start it. A restrictive content policy blocks network fetches,
-remote images, scripts, styles and media by default; inline HTML, inline script/style, and
-`data:` images/media work. Vault paths in HTML are **not** resolved or inlined: use a regular
-Markdown embed outside the frame for those. To opt in, set `htmlNetwork: true` in the deck's
-frontmatter. The first time on each device and vault, the presentation asks whether to allow
-HTTPS network access; the answer (including a refusal) is remembered for that deck. Even then,
-HTTP and local vault resources remain blocked. The frame is still isolated, but an allowed page
-can send any data you put inside it to HTTPS servers. The browser may permit navigation **inside**
-the frame even with network access turned off; do not use the frame to display untrusted pages.
+It is shown in a **sandboxed, opaque-origin iframe**, not in the note or Obsidian. It cannot
+read the vault, plugin state, parent DOM or Obsidian's cookies; it cannot open popups or submit
+forms. The frame is destroyed on exit and recreated on reentry, stopping its animation, timers
+and audio. Presenter previews never start it.
+
+**Offline means static HTML only on desktop and phone.** The slide labels this mode explicitly.
+Scripts are disabled by the sandbox and CSP; script tags, event handlers, links, refresh redirects,
+forms, SVG, and nested documents are removed before the frame is created. Basic text, tables,
+inline CSS (including CSS animation), and base64 image/audio/video data remain. Remote resources
+are blocked by CSP. JavaScript interaction requires network permission, even if your script would
+not intentionally use the network: a script can navigate its own iframe, which CSP alone cannot
+reliably block. Vault paths are **not** resolved or inlined; use regular Markdown embeds outside
+the frame instead.
+
+To enable interactive HTML, set `htmlNetwork: true` in frontmatter. The first time on each device
+and vault, the presentation asks **Allow network**; the answer (including refusal or dismissal)
+is remembered for that deck. All HTML blocks share that decision. The initial document's CSP
+allows HTTPS resources, but an interactive frame can navigate to other web pages and those pages
+have their own network policy. This permission therefore allows network use, not just HTTPS
+fetches. The frame stays sandboxed and cannot read your vault, but it can send any data you put
+inside it to websites. Only enable it for HTML you trust.
 
 ## View and present
 

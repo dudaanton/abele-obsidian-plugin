@@ -1,4 +1,5 @@
-import { App, Modal, Setting } from 'obsidian'
+import type { App } from 'obsidian'
+import { ShellModal } from '@/modal/ShellModal'
 import { createApp, shallowReactive } from 'vue'
 import ScriptViewComponent from '@/components/ScriptView.vue'
 import { ScriptService } from '@/scripting/ScriptService'
@@ -11,7 +12,7 @@ import type { BlockRenderer, Deck, ScriptBlock } from './core/model'
 const pendingDecisions = new WeakMap<App, Map<string, Promise<boolean>>>()
 
 /** The decision is local to this device and vault, and bound to the deck path. */
-function networkDecision(app: App, path: string): Promise<boolean> {
+export function networkDecision(app: App, path: string): Promise<boolean> {
   const key = `abele-slide-network:${path}`
   const saved = app.loadLocalStorage(key)
   if (typeof saved === 'boolean') return Promise.resolve(saved)
@@ -23,12 +24,14 @@ function networkDecision(app: App, path: string): Promise<boolean> {
   const existing = pending.get(key)
   if (existing) return existing
   const decision = new Promise<boolean>((resolve) => {
-    class NetworkDialog extends Modal {
+    class NetworkDialog extends ShellModal {
       private answered = false
+      constructor(app: App) {
+        super(app, { title: 'Allow network for this presentation?', footer: true })
+      }
       onOpen(): void {
-        this.setTitle('Allow network for this presentation?')
-        this.contentEl.createEl('p', {
-          text: 'Live HTML frames may load HTTPS pages and send data to them. They still cannot read the vault or Obsidian.',
+        this.bodyEl.createEl('p', {
+          text: 'Interactive HTML can send data to websites, including by navigating inside its frame. Without permission only static HTML is shown, with scripts disabled. The frame cannot read the vault or Obsidian.',
         })
         const answer = (allowed: boolean) => {
           this.answered = true
@@ -36,14 +39,8 @@ function networkDecision(app: App, path: string): Promise<boolean> {
           resolve(allowed)
           this.close()
         }
-        new Setting(this.contentEl)
-          .addButton((button) => button.setButtonText('Keep offline').onClick(() => answer(false)))
-          .addButton((button) =>
-            button
-              .setButtonText('Allow HTTPS')
-              .setCta()
-              .onClick(() => answer(true))
-          )
+        this.addButton('Keep offline', () => answer(false))
+        this.addButton('Allow network', () => answer(true), { cta: true })
       }
       onClose(): void {
         if (!this.answered) {

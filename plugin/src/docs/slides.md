@@ -75,17 +75,27 @@ a static result after leaving, while an interactive view must be disposed and re
 receives an abort signal and the view is disposed on exit. Code using raw JavaScript global
 timers outside the script view API cannot be forcibly stopped; use `view.every` or `signal`.
 
-A top-level `slide-html` fence contains HTML for a sandboxed iframe with `allow-scripts` but
-**no `allow-same-origin`**. Its origin is opaque; it cannot access Obsidian, the vault, cookies,
-parent DOM, popups or forms. The iframe is removed on slide exit, which terminates its timers,
-animation and audio. Preview slides never start frames. The `srcdoc` CSP sets `default-src
-'none'`, allows inline script and style, `data:` images/media, and blocks connections and
-remote resources by default. HTML vault links are not resolved; use normal Markdown embeds
-outside the frame instead. Frontmatter `htmlNetwork: true` requests an HTTPS-only policy; the
-first use asks for a per-deck, per-device permission and remembers allow or deny in the app's
-local storage. HTTP and local vault URLs remain blocked even when HTTPS is allowed. Browser
-implementations may still allow navigation within the iframe when the network is denied;
-never treat the frame as a safe viewer for untrusted pages.
+A top-level `slide-html` fence contains HTML for an opaque-origin iframe with **no
+`allow-same-origin`**. It cannot access Obsidian, the vault, parent DOM, Obsidian cookies, popups
+or forms. The frame is removed on slide exit, terminating its timers, animation and audio;
+previews never start frames. Vault paths are not inlined; use Markdown embeds outside the frame.
+
+Offline frames on both desktop and mobile use an empty sandbox (no scripts), `script-src 'none'`,
+and `default-src 'none'`. Before rendering, an inert-template codec rebuilds a limited static
+HTML vocabulary, discarding scripts, handlers, refresh redirects, link destinations, forms, SVG,
+and nested documents. Basic text, tables, inline CSS/animation, and base64 raster images/media
+remain. CSP blocks external resources. The slide labels this mode "Offline HTML — static only;
+scripts disabled". This is deliberate: CSP cannot reliably block a scripted self-navigation,
+and a new document would lose the srcdoc CSP. No network consent means no script execution,
+not a best-effort network restriction.
+
+`htmlNetwork: true` requests a device-local per-deck permission. Parallel blocks and audience
+renderers share one pending decision. Allow, deny and dismissal are remembered. Once allowed,
+the iframe gets `allow-scripts`; the initial CSP allows inline code/style and HTTPS resources.
+Scripts can navigate within their own frame to other pages, which may use any web network
+scheme supported by the browser under their own policy. The permission is therefore labelled
+"Allow network", not an HTTPS-only guarantee. Network access never grants the vault or parent
+DOM. Only enable interactive HTML for trusted content.
 
 ## Viewing and editing
 

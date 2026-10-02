@@ -34,7 +34,12 @@ it('starts only the active slide, stops its scripts and destroys its frame on na
       return stop
     }
   )
-  const renderer: BlockRenderer = { render: async () => () => {}, script: run }
+  // Interactive frames require explicit network consent; the separate offline test pins refusal.
+  const renderer: BlockRenderer = {
+    render: async () => () => {},
+    script: run,
+    allowNetwork: async () => true,
+  }
   const viewer = new DeckViewer(host, renderer, media)
   viewers.push(viewer)
   await viewer.setDeck(
@@ -54,6 +59,29 @@ it('starts only the active slide, stops its scripts and destroys its frame on na
   expect(run).toHaveBeenCalledTimes(2)
   viewer.destroy()
   expect(stops[1]).toHaveBeenCalledTimes(1)
+})
+
+it('renders offline HTML as labelled static content with no script or navigation capability', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const viewer = new DeckViewer(host, { render: async () => () => {} }, media)
+  viewers.push(viewer)
+  await viewer.setDeck(
+    parseDeck(
+      '```slide-html\n<h2>Static sample</h2><script>location.replace("https://sample.example.test/leak")</script><meta http-equiv="refresh" content="0;url=https://sample.example.test/leak"><a href="https://sample.example.test/leak" ping="https://sample.example.test/ping">Link</a><svg><a href="https://sample.example.test/leak"><text>Go</text></a></svg><iframe src="https://sample.example.test/leak"></iframe><form action="https://sample.example.test/leak"><input type="submit"></form><img src="https://sample.example.test/image.png">\n```'
+    )
+  )
+  const frame = host.querySelector<HTMLIFrameElement>('iframe')!
+  expect(frame.getAttribute('sandbox')).toBe('')
+  expect(host.textContent).toContain('Offline HTML — static only; scripts disabled')
+  const source = new DOMParser().parseFromString(frame.srcdoc, 'text/html')
+  expect(source.querySelector('h2')?.textContent).toBe('Static sample')
+  expect(
+    source.querySelector(
+      'script, a[href], a[ping], svg, iframe, form, img[src], meta[http-equiv="refresh"]'
+    )
+  ).toBeNull()
+  expect(frame.srcdoc).toContain("script-src 'none'")
 })
 
 it('keeps a static once result but rebuilds an interactive once view after leaving', async () => {

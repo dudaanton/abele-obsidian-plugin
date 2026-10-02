@@ -10,6 +10,7 @@ import type {
   HtmlBlock,
 } from './model'
 import { expandCssImports } from './cssImports'
+import { staticHtml } from './staticHtml'
 import { Presentation } from './Presentation'
 import { fitSlide, slideForGesture, slideForKey, type Navigation, type Point } from './navigation'
 
@@ -456,6 +457,7 @@ export class DeckViewer {
     let cleanup: (() => void) | null = null
     let timer: number | null = null
     let frame: HTMLIFrameElement | null = null
+    let label: HTMLElement | null = null
     let started = false
     let once = false
     let activation = 0
@@ -471,6 +473,8 @@ export class DeckViewer {
       timer = null
       frame?.remove()
       frame = null
+      label?.remove()
+      label = null
       if (block.type === 'script' && (block.refresh !== 'once' || !once)) target.replaceChildren()
       started = false
     }
@@ -499,12 +503,18 @@ export class DeckViewer {
         const network = (await this.renderer.allowNetwork?.(this.deck!)) ?? false
         if (!current()) return
         frame = target.ownerDocument.createElement('iframe')
-        frame.setAttribute('sandbox', 'allow-scripts')
+        frame.setAttribute('sandbox', network ? 'allow-scripts' : '')
         frame.setAttribute('title', 'Slide HTML')
         const policy = network
           ? "default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: https:; media-src data: https:; connect-src https:; font-src data: https:; navigate-to https:; form-action 'none'; base-uri 'none'"
-          : "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data:; font-src data:; connect-src 'none'; navigate-to 'none'; form-action 'none'; base-uri 'none'"
-        frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="${policy}">${block.source}`
+          : "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; media-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'"
+        const html = network ? block.source : staticHtml(block.source, target.ownerDocument)
+        if (!network) {
+          label = target.ownerDocument.createElement('p')
+          label.textContent = 'Offline HTML — static only; scripts disabled'
+          target.append(label)
+        }
+        frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="${policy}">${html}`
         target.append(frame)
         return
       }

@@ -145,20 +145,23 @@ describe.skipIf(!available)('live slide lifecycle', () => {
       const key='abele-slide-network:'+file.path
       app.saveLocalStorage(key,null)
       await viewer.go(0)
-      await app.vault.modify(file,${JSON.stringify(SOURCE.replace('type: presentation', 'type: presentation\nhtmlNetwork: true'))})
+      await app.vault.modify(file,${JSON.stringify(SOURCE.replace('type: presentation', 'type: presentation\nhtmlNetwork: true').replace('---\n# End', '```slide-html\n<h2>Parallel frame</h2>\n```\n---\n# End'))})
       try {
         const until=async(fn)=>{for(let i=0;i<50;i++){const result=fn();if(result)return result;await new Promise(r=>setTimeout(r,100))}return null}
         await until(()=>viewer.model?.settings.properties.htmlNetwork===true)
         const pending=viewer.go(1)
-        const button=await until(()=>[...document.querySelectorAll('.modal-container button')].find(b=>b.textContent?.includes('Allow HTTPS')))
+        const button=await until(()=>[...document.querySelectorAll('.modal-container button')].find(b=>b.textContent?.includes('Allow network')))
         const asked=!!button
+        const dialogs=document.querySelectorAll('.modal-container').length
         button?.click()
         await pending
-        const allowed=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')?.srcdoc.includes('connect-src https:')
+        await until(()=>viewer.viewport.querySelectorAll('.abele-slide:not([hidden]) iframe').length===2)
+        const frames=[...viewer.viewport.querySelectorAll('.abele-slide:not([hidden]) iframe')]
+        const allowed=frames.length===2 && frames.every(f=>f.srcdoc.includes('connect-src https:') && f.getAttribute('sandbox')==='allow-scripts')
         await viewer.go(0)
         await viewer.go(1)
         const remembered=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')?.srcdoc.includes('connect-src https:') && !document.querySelector('.modal-container')
-        return JSON.stringify({asked,allowed,remembered})
+        return JSON.stringify({asked,dialogs,allowed,remembered})
       } finally {
         await viewer.go(0)
         await app.vault.modify(file,${JSON.stringify(SOURCE)})
@@ -166,8 +169,60 @@ describe.skipIf(!available)('live slide lifecycle', () => {
       }
     })()`)
     ) as Record<string, boolean>
-    expect(result).toEqual({ asked: true, allowed: true, remembered: true })
+    expect(result).toEqual({ asked: true, dialogs: 1, allowed: true, remembered: true })
   })
+
+  it('refuses offline script execution and declarative navigation on mobile and desktop', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{
+      const leaf=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===${JSON.stringify(PATH)})
+      const viewer=leaf.view.viewer,file=leaf.view.file
+      let executed=false
+      const onMessage=e=>{if(e.data==='sample-offline-script')executed=true}
+      window.addEventListener('message',onMessage)
+      const attack='---\\ntype: presentation\\n---\\n# Offline sample\\n'+String.fromCharCode(96).repeat(3)+'slide-html\\n<h2>Static table</h2><script>parent.postMessage("sample-offline-script","*");location.replace("https://sample.example.test/leak")</script><meta http-equiv="refresh" content="0;url=https://sample.example.test/leak"><a href="https://sample.example.test/leak">Link</a>\\n'+String.fromCharCode(96).repeat(3)
+      try {
+        await viewer.go(0);await app.vault.modify(file,attack)
+        for(let i=0;i<50 && viewer.model?.slides[0]?.title!=='Offline sample';i++)await new Promise(r=>setTimeout(r,100))
+        await viewer.ready;await new Promise(r=>setTimeout(r,1000))
+        const frame=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')
+        const parsed=new DOMParser().parseFromString(frame.srcdoc,'text/html')
+        return JSON.stringify({executed,static:frame.getAttribute('sandbox')==='',safe:!parsed.querySelector('script,a[href],meta[http-equiv="refresh"]'),content:parsed.querySelector('h2')?.textContent})
+      } finally {window.removeEventListener('message',onMessage);await app.vault.modify(file,${JSON.stringify(SOURCE)})}
+    })()`)
+    ) as Record<string, unknown>
+    expect(result).toEqual({ executed: false, static: true, safe: true, content: 'Static table' })
+  })
+
+  it.skipIf(onPhone())(
+    'blocks offline self-navigation before any request leaves the browser',
+    async () => {
+      const result = JSON.parse(
+        await evalLong(`(async()=>{
+      const leaf=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===${JSON.stringify(PATH)})
+      const viewer=leaf.view.viewer,file=leaf.view.file
+      let requests=0
+      const server=require('http').createServer((req,res)=>{requests++;res.end('<p>network reached</p>')})
+      await new Promise(r=>server.listen(0,'127.0.0.1',r))
+      const url='http://127.0.0.1:'+server.address().port+'/sample-offline-leak'
+      const attack='# Attack\\n\\n'+String.fromCharCode(96).repeat(3)+'slide-html\\n<h2>Offline sample</h2><script>location.replace('+JSON.stringify(url)+')</script><meta http-equiv="refresh" content="0;url='+url+'"><a href="'+url+'" ping="'+url+'">Link</a>\\n'+String.fromCharCode(96).repeat(3)
+      try {
+        await viewer.go(0)
+        await app.vault.modify(file,'---\\ntype: presentation\\n---\\n'+attack)
+        for(let i=0;i<50 && viewer.model?.slides[0]?.title!=='Attack';i++)await new Promise(r=>setTimeout(r,100))
+        await viewer.ready
+        await new Promise(r=>setTimeout(r,1500))
+        const frame=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')
+        return JSON.stringify({requests,static:frame?.getAttribute('sandbox')==='',label:viewer.viewport.textContent.includes('scripts disabled')})
+      } finally {
+        await app.vault.modify(file,${JSON.stringify(SOURCE)})
+        await new Promise(r=>server.close(r))
+      }
+    })()`)
+      ) as { requests: number; static: boolean; label: boolean }
+      expect(result).toEqual({ requests: 0, static: true, label: true })
+    }
+  )
 
   it('runs a closed frame only on entry and ends it on departure', async () => {
     const result = JSON.parse(
@@ -179,7 +234,8 @@ describe.skipIf(!available)('live slide lifecycle', () => {
       await viewer.go(1)
       const frame=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')
       const policy=frame?.srcdoc ?? ''
-      const isolated=frame?.getAttribute('sandbox')==='allow-scripts' && policy.includes("connect-src 'none'")
+      // Offline mode deliberately has no executable capability, a stronger guarantee than CSP alone.
+      const isolated=frame?.getAttribute('sandbox')==='' && policy.includes("connect-src 'none'") && policy.includes("script-src 'none'")
       await viewer.go(2)
       const removed=!frame.isConnected
       await viewer.go(1)

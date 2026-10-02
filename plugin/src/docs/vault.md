@@ -14,7 +14,12 @@ Standalone `---` lines split slides outside properties and code; `***` is a hori
 within a slide. A slide may start with `::slide{layout=split bg="[[sample-image.png]]" dim=0.4}::`.
 Region markers are `::left::`, `::right::`, and `::cell::`. Speaker reminders are ordinary
 `> [!notes]` callouts retained in the note but excluded from audience rendering. Fenced `css`
-blocks store deck styling. Nothing is written to a side file. See `slides` for the full codec.
+blocks store deck styling. `slide-script` fences store named-script parameters and refresh policy;
+`slide-html` fences store HTML. Optional `htmlNetwork: true` requests interactive HTML network
+permission, not an approval itself. Vault-scoped device local storage keeps a boolean under
+`abele-slide-network:<deck path>`; allow, deny and dismissal are remembered, do not sync or travel
+in settings transfer, and a renamed deck needs a new decision. Pending decisions and activation
+lifetimes are ephemeral. Nothing is written to a side file. See `slides` for the full codec.
 
 ## Device-local key destinations
 

@@ -9,6 +9,7 @@ import {
 } from 'vue'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { networkDecision } from '@/slides/liveAdapter'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
@@ -100,6 +101,14 @@ function mountAlone(component: Component, props: Record<string, unknown> = {}): 
  * own openers; the chat's two dialogs open from the chat.
  */
 const DIALOGS: Record<string, () => void> = {
+  'slide-network': () => {
+    const app = GlobalStore.getInstance().app
+    const path = 'sample-network-probe.md'
+    const key = `abele-slide-network:${path}`
+    const previous = app.loadLocalStorage(key)
+    app.saveLocalStorage(key, null)
+    void networkDecision(app, path).finally(() => app.saveLocalStorage(key, previous))
+  },
   'reply-revision': () =>
     mountAlone(AiReplyRevisionDialog, {
       proposal: {

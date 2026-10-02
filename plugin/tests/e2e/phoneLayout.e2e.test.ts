@@ -54,6 +54,7 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'slide-network',
   'reply-revision',
   'reply-original',
   'key-destinations',
