@@ -47,6 +47,42 @@ it('does not carry a removed secret editor or its revealed value onto the next r
   expect(card('Sample second').find('input[type="password"]').exists()).toBe(true)
 })
 
+it('keeps a key still used by voice input when its image provider is deleted', async () => {
+  const app = useVault([])
+  const config = AbeleConfig.getInstance()
+  config.destroy()
+  config.applySettings(undefined)
+  config.ai.enabled = true
+  config.ai.imageProviders = [
+    {
+      id: 'sample-image-provider',
+      name: 'Sample image provider',
+      apiType: 'openai',
+      endpoint: '',
+      apiKeyId: 'sample-shared-key',
+      models: [],
+    },
+  ]
+  config.ai.voice = {
+    modelId: 'sample-model',
+    endpoint: '',
+    apiKeyId: 'sample-shared-key',
+    language: '',
+  }
+  app.secretStorage.setSecret('sample-shared-key', 'sample-value')
+  vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
+  screen = mount(GeneralSettings, {
+    global: { stubs: { Input: true, Dropdown: true, Search: true } },
+  })
+  await screen
+    .findAllComponents(Icon)
+    .find((icon) => icon.props('tooltip') === 'Remove this provider and its models')!
+    .vm.$emit('click')
+  await screen.findComponent(ConfirmModal).vm.$emit('confirm')
+  expect(config.ai.imageProviders).toEqual([])
+  expect(app.secretStorage.getSecret('sample-shared-key')).toBe('sample-value')
+})
+
 it('removes the stored key when an image provider is deleted', async () => {
   const app = useVault([])
   const config = AbeleConfig.getInstance()

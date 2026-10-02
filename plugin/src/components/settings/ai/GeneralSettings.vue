@@ -662,6 +662,7 @@ import Icon from '../../obsidian/Icon.vue'
 import SecretField from '../SecretField.vue'
 import { copyKey } from '@/secrets/copyKey'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { collectEntries } from '@/transfer/entries'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
 import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
 import { DEFAULT_VOICE_SETTINGS, voiceKeyId, type VoiceSettings } from '@/ai/transcriptionSettings'
@@ -1005,9 +1006,14 @@ const addImageProvider = () => {
 
 const removeImageProvider = (idx: number) => {
   const provider = imageProviders.value[idx]
-  if (provider?.apiKeyId) secretStore().remove(provider.apiKeyId)
   imageProviders.value.splice(idx, 1)
   save()
+  // Imported configurations can deliberately share a key across services. Only a key
+  // with no remaining setting references belongs exclusively to the removed provider.
+  const keyId = provider?.apiKeyId
+  const used = keyId && (voiceKeyId(voice.value) === keyId ||
+    collectEntries(config.exportSettings()).some((entry) => entry.secretIds?.includes(keyId)))
+  if (keyId && !used) secretStore().remove(keyId)
 }
 
 const askRemoveImageProvider = (idx: number) => {
