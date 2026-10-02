@@ -89,6 +89,27 @@ merge, remote lost-response restart, native mobile crash interruption, fleet del
 settings/code/approval isolation, complete password gating, and stalled group-worker
 availability must still be supplied. No usable native iPad was exposed.
 
+## Online stand supplement and current phone blocker
+
+An explicitly selected `personalStand.e2e.test.ts` fixture exercised a leased native desktop
+against the existing HTTPS stand: synthetic note/binary creation and rename, an **unpaused**
+60-note folder deletion held exactly 60 identities, bounded restore returned all 60, and a
+successful committed response withheld before settlement survived plugin reload. The replay
+was observed explicitly and the server head did not gain another version. This is stand
+rather than disposable-server evidence, still not a native fleet pass.
+
+A sibling connection was minted and encrypted for the authorized phone transfer flow; no
+account password was passed to the driver. The phone was blocked before reading or importing
+that transfer by a native local-network permission dialog raised during task 06. Home/launch
+did not dismiss it. Permission was not silently changed. No phone enrollment or test data
+was created. The unused sibling and desktop enrollment were revoked; the encrypted transfer
+was removed, local fixture state restored, newly created local databases removed and the
+pool lease released. Only the owned tidy synthetic namespace remains on the stand.
+
+Phone fleet joins, settings/code/approval isolation and phone lost-response restart remain
+**NOT RUN** behind that native UI blocker. Airplane-mode recovery and the unavailable iPad
+remain separate explicit holds. A desktop/daemon or single-device model is not their substitute.
+
 ## Ordered continuation
 
 Task 15 requires v4 server/protocol feature fences and parser instrumentation in the server
@@ -101,3 +122,6 @@ plugin worker's fence, not work silently performed against a sibling. In the num
 plugin runs (owner sharing, synced-link snapshots/publication and scoped join/creation UI)
 require those reviewed contracts. They cannot be claimed implemented by reinterpreting
 server row 15 as a different plugin-only task or by activating an unreviewed sibling build.
+Pure plugin-local tasks 39 and 40 may be implemented/tested against the written contracts behind
+an explicitly disabled fence, independently of server API availability. That does not enable
+publication or satisfy any live fleet, cache or transport gate.
