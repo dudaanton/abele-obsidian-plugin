@@ -455,7 +455,7 @@
         <CardGrid>
           <Card
             v-for="(secret, sIdx) in secrets"
-            :key="sIdx"
+            :key="secret.id"
             :title="secret.name || '(unnamed)'"
             :subtitle="
               editingSecretIdx === sIdx ? undefined : getSecretDisplay(secret.keyId) || '(not set)'
@@ -477,17 +477,17 @@
               />
               <div class="abele-ai-secret__row">
                 <input
-                  :type="revealedInputs[sIdx] ? 'text' : 'password'"
+                  :type="revealedInputs[secret.id] ? 'text' : 'password'"
                   class="abele-obsidian-input"
-                  :value="secretValueInputs[sIdx] || ''"
+                  :value="secretValueInputs[secret.id] || ''"
                   placeholder="Value..."
-                  @input="secretValueInputs[sIdx] = ($event.target as HTMLInputElement).value"
+                  @input="secretValueInputs[secret.id] = ($event.target as HTMLInputElement).value"
                   @keydown.enter="applySecretValue(sIdx)"
                 />
                 <Icon
-                  :icon="revealedInputs[sIdx] ? 'eye-off' : 'eye'"
-                  :tooltip="revealedInputs[sIdx] ? 'Hide' : 'Reveal'"
-                  @click="revealedInputs[sIdx] = !revealedInputs[sIdx]"
+                  :icon="revealedInputs[secret.id] ? 'eye-off' : 'eye'"
+                  :tooltip="revealedInputs[secret.id] ? 'Hide' : 'Reveal'"
+                  @click="revealedInputs[secret.id] = !revealedInputs[secret.id]"
                 />
                 <Icon icon="copy" tooltip="Copy the key" @click="copySecret(secret.keyId)" />
               </div>
@@ -511,7 +511,7 @@
                 <Button
                   text="Save"
                   accent
-                  :disabled="!secretValueInputs[sIdx]"
+                  :disabled="!secretValueInputs[secret.id]"
                   tooltip="Store this value in the keychain"
                   @click="applySecretValue(sIdx)"
                 />
@@ -671,7 +671,7 @@ import { CommentService } from '@/ai/CommentService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { OpenAIClient } from '@/ai/client'
 import type { RemoteModel } from '@/ai/client'
-import type { AiProvider, AiModelConfig, AiPrompts } from '@/ai/types'
+import type { AiProvider, AiModelConfig, AiPrompts, AiSecret } from '@/ai/types'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 
 /** Written out in script: nested moustaches in the template confuse the Vue parser. */
@@ -737,8 +737,13 @@ const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
 const imageProviders = ref(JSON.parse(JSON.stringify(config.ai.imageProviders || [])))
 const defaultImageModel = ref(config.ai.defaultImageModel || '')
 const imgSecretInputs = reactive<Record<string, string>>({})
-const secrets = ref(JSON.parse(JSON.stringify(config.ai.secrets || [])))
-const secretValueInputs = reactive<Record<number, string>>({})
+// Legacy records use their keychain id until they acquire their own persisted identity.
+const secretRows = (items: AiSecret[]) =>
+  (JSON.parse(JSON.stringify(items)) as AiSecret[]).map((secret) => ({
+    ...secret, id: secret.id || secret.keyId || nanoid(),
+  }))
+const secrets = ref(secretRows(config.ai.secrets || []))
+const secretValueInputs = reactive<Record<string, string>>({})
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
 const sequentialAuxiliary = ref(config.ai.sequentialAuxiliary)
 const prompts = ref<Partial<AiPrompts>>(
@@ -851,7 +856,15 @@ watch(config.version, () => {
   braveSearchApiKey.value = config.ai.braveSearchApiKey
   imageProviders.value = JSON.parse(JSON.stringify(config.ai.imageProviders || []))
   defaultImageModel.value = config.ai.defaultImageModel || ''
-  secrets.value = JSON.parse(JSON.stringify(config.ai.secrets || []))
+  secrets.value = secretRows(config.ai.secrets || [])
+  const retained = new Set(secrets.value.map((secret) => secret.id))
+  for (const id of Object.keys(secretValueInputs)) if (!retained.has(id)) delete secretValueInputs[id]
+  for (const id of Object.keys(revealedInputs)) if (!retained.has(id)) delete revealedInputs[id]
+  if (editingSecretId.value && !retained.has(editingSecretId.value)) {
+    editingSecretId.value = null
+    secretIsNew = false
+  }
+  pendingRemoval.value = null
   prompts.value = JSON.parse(JSON.stringify(config.ai.prompts || {}))
   retry.value = { ...DEFAULT_RETRY, ...(config.ai.autoRetry ?? {}) }
   voice.value = { ...DEFAULT_VOICE_SETTINGS, ...(config.ai.voice ?? {}) }
@@ -1091,7 +1104,8 @@ const selectDefaultImageModel = (key: string) => {
 
 // ── User secrets ────────────────────────────────────────────
 
-const editingSecretIdx = ref(-1)
+const editingSecretId = ref<string | null>(null)
+const editingSecretIdx = computed(() => secrets.value.findIndex((secret) => secret.id === editingSecretId.value))
 
 /** The name the open card started with, so that cancelling puts it back. */
 let secretNameBefore = ''
@@ -1103,7 +1117,7 @@ const getSecretFullValue = (secretId: string): string => {
   return secretStore().get(secretId) || ''
 }
 
-const revealedInputs = reactive<Record<number, boolean>>({})
+const revealedInputs = reactive<Record<string, boolean>>({})
 
 const settingsRoot = ref<HTMLElement>()
 
@@ -1114,23 +1128,23 @@ const copySecret = (secretId: string) => {
 }
 
 const addSecret = () => {
-  secrets.value.push({ name: '', keyId: '' })
+  secrets.value.push({ id: nanoid(), name: '', keyId: '' })
   startEditSecret(secrets.value.length - 1)
   secretIsNew = true
 }
 
 const startEditSecret = (idx: number) => {
-  editingSecretIdx.value = idx
-  secretNameBefore = secrets.value[idx].name
+  const secret = secrets.value[idx]
+  editingSecretId.value = secret.id
+  secretNameBefore = secret.name
   secretIsNew = false
-  const keyId = secrets.value[idx].keyId
-  secretValueInputs[idx] = keyId ? getSecretFullValue(keyId) : ''
+  secretValueInputs[secret.id] = secret.keyId ? getSecretFullValue(secret.keyId) : ''
 }
 
 /** Closes the card and undoes the sitting, unsaved edit — the name included. */
 const cancelEditSecret = (idx: number) => {
-  editingSecretIdx.value = -1
-  secretValueInputs[idx] = ''
+  editingSecretId.value = null
+  secretValueInputs[secrets.value[idx].id] = ''
   if (secretIsNew) {
     secrets.value.splice(idx, 1)
   } else {
@@ -1146,7 +1160,10 @@ const askRemoveSecret = (idx: number) => {
     'Remove secret',
     `Remove ${secret.name || '(unnamed)'}? Any fetch call referring to it by name will stop ` +
       'working, and the stored value is gone from the keychain.',
-    () => removeSecret(idx)
+    () => {
+      const current = secrets.value.findIndex((entry) => entry.id === secret.id)
+      if (current !== -1) removeSecret(current)
+    }
   )
 }
 
@@ -1161,10 +1178,10 @@ const removeSecret = (idx: number) => {
   }
   secrets.value.splice(idx, 1)
   // Row indices changed: neither an open editor nor a reveal choice belongs to its neighbour.
-  editingSecretIdx.value = -1
+  editingSecretId.value = null
   secretIsNew = false
-  for (const key of Object.keys(secretValueInputs)) delete secretValueInputs[Number(key)]
-  for (const key of Object.keys(revealedInputs)) delete revealedInputs[Number(key)]
+  for (const key of Object.keys(secretValueInputs)) delete secretValueInputs[key]
+  for (const key of Object.keys(revealedInputs)) delete revealedInputs[key]
   save()
 }
 
@@ -1181,17 +1198,18 @@ const updateSecretName = (idx: number, name: string) => {
 }
 
 const applySecretValue = (idx: number) => {
-  const value = secretValueInputs[idx]
-  if (!value) return
   const secret = secrets.value[idx]
+  if (!secret || secret.id !== editingSecretId.value) return
+  const value = secretValueInputs[secret.id]
+  if (!value) return
   if (!secret.keyId || !/^[a-z0-9-]+$/.test(secret.keyId)) {
     secret.keyId = `abele-secret-${nanoid(8)
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '0')}`
   }
   secretStore().set(secret.keyId, value)
-  secretValueInputs[idx] = ''
-  editingSecretIdx.value = -1
+  secretValueInputs[secret.id] = ''
+  editingSecretId.value = null
   secretIsNew = false
   // Force re-render so getSecretDisplay() re-evaluates with the new keychain value
   secrets.value = [...secrets.value]

@@ -115,6 +115,8 @@ export interface AiChatHistoryEntry {
 }
 
 export interface AiSecret {
+  /** Stable record identity, independent of its label and keychain slot; absent in older data. */
+  id?: string
   name: string
   keyId: string // reference for Obsidian keychain
   /** HTTP(S) origins allowed for substitution; each device confirms new origins locally. */

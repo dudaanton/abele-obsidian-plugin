@@ -509,6 +509,13 @@ own. The text is a copy: editing it changes what the card shows, not the chat. A
 since is found again by the message id and the `chat` line is corrected when the card is next
 pressed. Do not invent these blocks — a `message` id that is in no chat opens nothing.
 
+## Saved key identity
+
+Named saved keys in `ai.secrets` carry a stable `id` independent of their editable `name` and
+keychain reference `keyId`. Older records without an `id` use their keychain reference as
+identity when opened in the settings editor. Unsaved new records acquire an identity before
+editing, so incoming settings cannot move an open key editor onto another record.
+
 ## Background model settings
 
 The shared `ai.auxiliaryModelId` setting stores `providerId::modelId` for new background-model
