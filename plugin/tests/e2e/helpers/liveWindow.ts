@@ -24,32 +24,18 @@ import { installPhoneHost } from './phone'
 
 const available = isObsidianRunning()
 
-/**
- * Runs one of the calls below again if the app never answered it. Once in a while a CLI call
- * gets no answer at all while the ones before and after it do (2026-09-27: a focus emulation and
- * a menu setting, each in a different file of one run), and the whole file failed on it before
- * a test had started. Every call here only sets something, so asking twice changes nothing.
- */
-function again(call: () => unknown): void {
-  try {
-    call()
-  } catch (error) {
-    if (!/gave no answer/.test(String(error))) throw error
-    call()
-  }
-}
-
 beforeAll(() => {
   if (!available) return
   // The page side of the phone harness: the file before may have reloaded it away.
   if (onPhone()) installPhoneHost()
-  again(closeStrayWindows)
-  again(notesInEditor)
-  // This setter retries a lost reply itself, including when called by reloadApp.
+  // Each helper owns its bounded idempotent retry. An outer retry would multiply attempts
+  // and could block the worker past its reporting ceiling after a helper exhausted its budget.
+  closeStrayWindows()
+  notesInEditor()
   setBackgroundThrottling(false)
-  again(() => setFocusEmulation(true))
+  setFocusEmulation(true)
   // Menus a test can open and pick from: see `useDomMenus`.
-  again(useDomMenus)
+  useDomMenus()
   // The file before may have ended with an app reload; its link index is still filling in.
   waitForLinkIndex()
   // Nothing measured in a window that is not drawn means anything.

@@ -385,7 +385,7 @@ export function setFocusEmulation(on: boolean): void {
  * setting is the vault's own, so only the driven window is touched; it is kept in the fixture.
  */
 export function useDomMenus(): void {
-  evalRaw(
+  evalRawIdempotent(
     `(() => { if (app.vault.getConfig('nativeMenus') !== false) app.vault.setConfig('nativeMenus', false); return 'ok' })()`,
     30_000
   )
@@ -437,8 +437,11 @@ export function assertWindowDrawn(): void {
 export function closeStrayWindows(): number {
   // A phone has one window; settings is a dialog in it.
   if (onPhone())
-    return evalJson<number>(`(() => { try { app.setting.close() } catch {} return 0 })()`, 30_000)
-  return evalJson<number>(
+    return evalJsonIdempotent<number>(
+      `(() => { try { app.setting.close() } catch {} return 0 })()`,
+      30_000
+    )
+  return evalJsonIdempotent<number>(
     `(() => {
       const remote = require('@electron/remote')
       const main = remote.getCurrentWindow()
@@ -469,7 +472,7 @@ export function closeStrayWindows(): number {
  * carry their mode in their saved state, which is where it is changed for them too.
  */
 export function notesInEditor(): number {
-  const out = evalRaw(
+  const out = evalRawIdempotent(
     `(async () => {
       let changed = 0
       for (const leaf of app.workspace.getLeavesOfType('markdown')) {
@@ -495,7 +498,7 @@ export function notesInEditor(): number {
 export function waitForLinkIndex(timeoutMs = 120_000): void {
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    const settled = evalJson<boolean>(
+    const settled = evalJsonIdempotent<boolean>(
       `(() => {
         const m = app.metadataCache
         const q = m.linkResolverQueue
