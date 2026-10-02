@@ -289,15 +289,15 @@ const hashBuffer = (buf: ArrayBuffer): string => {
 
 /** Build content hash index of existing attachment files */
 const attachmentHashIndex = new Map<string, string>() // hash → vault path
-let hashIndexBuilt = false
+const hashIndexSizes = new Set<number>()
 
-const buildHashIndex = async () => {
-  if (hashIndexBuilt) return
+const buildHashIndex = async (size: number) => {
+  if (hashIndexSizes.has(size)) return
   const folder = await ensureAttachmentFolder(app)
   const allFiles = app.vault.getFiles()
   for (const f of allFiles) {
     if (folder && !f.path.startsWith(folder + '/')) continue
-    if (f.extension === 'md') continue
+    if (f.extension === 'md' || f.stat.size !== size) continue
     try {
       const buf = await app.vault.readBinary(f)
       const h = hashBuffer(buf)
@@ -306,7 +306,7 @@ const buildHashIndex = async () => {
       // skip unreadable files
     }
   }
-  hashIndexBuilt = true
+  hashIndexSizes.add(size)
 }
 
 /** Generate a short hash from a string */
@@ -378,8 +378,6 @@ const downloadItem = async (item: MediaItem) => {
   items.value[idx] = { ...item, status: 'downloading' }
 
   try {
-    await buildHashIndex()
-
     // 1. URL already downloaded this session?
     let localPath = downloadedUrls.get(item.url)
 
@@ -390,6 +388,8 @@ const downloadItem = async (item: MediaItem) => {
         throw new Error(`HTTP ${response.status}`)
       }
 
+      // Content equality requires equal length; do not read unrelated attachment bodies.
+      await buildHashIndex(response.arrayBuffer.byteLength)
       const contentHash = hashBuffer(response.arrayBuffer)
 
       // 3. Content already exists in attachments?
