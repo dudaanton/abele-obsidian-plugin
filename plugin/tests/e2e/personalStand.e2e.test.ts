@@ -34,6 +34,22 @@ describe('personal stand supplement', () => {
       expect(result).toEqual({ disconnected: true, folderGone: true })
       return
     }
+    if (stage === 'approval') {
+      const result = cli.evalAwait<any>(`(async()=>{
+        const svc=window.__abeleTest.SyncService.getInstance(),path=window.__personalStandProbe.root + '/sample-script.js'
+        await svc.syncNow()
+        const source=await app.vault.adapter.read(path),entry=(await svc.client().manifest(null)).items.find(i=>i.path===path)
+        let refused=false,message=''
+        try { await window.__abeleTest.scriptTrust.load(app,path) } catch(e) {message=e.message;refused=/device-local approval/.test(message)}
+        return {refused,source,hasIdentity:!!entry?.file_id}
+      })()`)
+      expect(result).toEqual({
+        refused: true,
+        source: '// @name Stand sample\nreturn "stand-approved"',
+        hasIdentity: true,
+      })
+      return
+    }
     if (stage === 'verify') {
       const result = cli.evalAwait<any>(`(async () => {
         const p = window.__personalStandProbe, svc = window.__abeleTest.SyncService.getInstance()
@@ -108,7 +124,8 @@ describe('personal stand supplement', () => {
       ).toBe('Committed once on stand')
       return
     }
-    if (stage !== 'setup') throw new Error('Explicit setup/verify/restore stage is required')
+    if (stage !== 'setup')
+      throw new Error('Explicit setup/verify/approval/restore stage is required')
     const url = process.env.ABELE_STAND_URL,
       email = process.env.ABELE_STAND_EMAIL,
       password = process.env.ABELE_STAND_PASSWORD

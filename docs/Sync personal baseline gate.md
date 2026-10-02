@@ -106,9 +106,23 @@ was created. The unused sibling and desktop enrollment were revoked; the encrypt
 was removed, local fixture state restored, newly created local databases removed and the
 pool lease released. Only the owned tidy synthetic namespace remains on the stand.
 
-Phone fleet joins, settings/code/approval isolation and phone lost-response restart remain
-**NOT RUN** behind that native UI blocker. Airplane-mode recovery and the unavailable iPad
-remain separate explicit holds. A desktop/daemon or single-device model is not their substitute.
+That permission dialog was absent on a later fresh driver session; this run did not select
+either permission action and cannot establish what canceled it. The phone then completed the
+actual encrypted transfer, Merge-both join and HTTPS connection. Owned note/binary creation,
+rename and deletion reached the stand. A real phone-local approval returned a checked snapshot
+without executing code, while the desktop still refused the exact received script for lack of
+its own device-local approval. Both native approval and connected-status screens were inspected.
+
+The long phone driver hit its bounded deadline after online operations; a fresh bounded cleanup
+session verified the connected data and completed approval/cleanup. All five original local
+values and workspace matched, ignore/marker absence was restored, only the owned root and two
+new databases were removed, the phone disconnected with zero pending revokes and the backup
+was removed after verification. Desktop state was independently restored and its lease released.
+
+Fleet settings/plugin-code confirmation checks and phone lost-response restart remain
+**NOT RUN**. The unpaused burst and real-stand replay evidence above are desktop-only; the
+phone does not stand in for those checks. Physical offline/reconnect and the unavailable iPad
+remain explicit holds. A desktop/daemon or two-device supplement is not their substitute.
 
 ## Ordered continuation
 
