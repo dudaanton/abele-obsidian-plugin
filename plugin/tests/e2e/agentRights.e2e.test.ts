@@ -121,7 +121,13 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
       // Capturing waits while the native keyboard and drawer can settle. Use the live
       // rectangle after capture, not the coordinates measured before that wait.
       const current = approve.getBoundingClientRect()
-      await window.__e2eHost.tap(current.left + current.width / 2, current.top + current.height / 2)
+      const x = current.left + current.width / 2, y = current.top + current.height / 2
+      report.tap = {x, y, offsetTop: visualViewport?.offsetTop, offsetLeft: visualViewport?.offsetLeft, scale: visualViewport?.scale, hit: document.elementFromPoint(x, y)?.textContent, events: []}
+      const touched = event => report.tap.events.push({x: event.touches[0]?.clientX, y: event.touches[0]?.clientY, target: event.target.className})
+      document.addEventListener('touchstart', touched, {once: true, capture: true})
+      await window.__e2eHost.tap(x, y)
+      await shoot('memory-after-tap')
+      document.removeEventListener('touchstart', touched, true)
     } else approve.click()
     await until(() => (worker.memory || []).length === 1 && !session.isExecutingTool.value && !session.isStreaming.value)
     report.afterMemory = worker.memory.length
