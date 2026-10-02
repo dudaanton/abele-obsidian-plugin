@@ -808,8 +808,10 @@ const probeScript = `(async () => {
         if (page === 'AI Agent') {
           // The native title is stationary over the scrolling settings page. At the point where
           // the Secrets introduction moves behind it, the title needs an opaque surface.
-          const intro = [...document.querySelectorAll('.abele-settings__ai .abele-section__heading')]
+          const secretsIntro = () => [...document.querySelectorAll('.abele-settings__ai .abele-section__heading')]
             .find((heading) => heading.textContent.trim() === 'Secrets')?.nextElementSibling
+          await until(secretsIntro, 5000)
+          const intro = secretsIntro()
           const settingsModal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
           const header = settingsModal?.querySelector('.modal-header')
           const settingsScroll = settingsModal?.querySelector('.vertical-tab-content')
@@ -973,6 +975,25 @@ const probeScript = `(async () => {
       } finally {
         await closeDialog()
       }
+    }
+
+    // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
+    // native floating view header must be above its calendar, not painted over the first week.
+    const timelineLeaf = app.workspace.getLeaf('tab')
+    try {
+      await timelineLeaf.setViewState({ type: 'abele-timeline-sidebar-view', active: true })
+      app.workspace.setActiveLeaf(timelineLeaf, { focus: true })
+      const timeline = await until(() => timelineLeaf.view.containerEl.querySelector('.abele-timeline-sidebar'), 5000)
+      const root = timelineLeaf.view.containerEl.querySelector('.abele-timeline-sidebar')
+      const calendar = root?.querySelector('.abele-calendar')
+      const header = timelineLeaf.view.containerEl.querySelector('.view-header')
+      if (timeline && calendar && header) {
+        await screen('timeline main tab', root, root)
+        report['timeline main tab'].calendarGap = Math.round(calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom)
+        report['timeline main tab'].scrollHeight = root.clientHeight
+      } else report['timeline main tab'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no main-tab calendar or view header' }
+    } finally {
+      timelineLeaf.detach()
     }
 
     // A changelog is a tab, not a sheet; its Notice is transient, not a modal. The final
@@ -1209,6 +1230,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'docs contents',
     'docs search result',
     'script form picker',
+    'timeline main tab',
     'map location',
     'word document',
   ]
@@ -1416,6 +1438,14 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       'Files only',
       'Files and conversation',
     ])
+  })
+
+  it('the main-tab timeline keeps its calendar below native navigation', () => {
+    const screen = report['timeline main tab'] as Screen & { calendarGap?: number; scrollHeight?: number }
+    expect(screen?.error).toBe('')
+    expect(screen.calendarGap).toBeGreaterThanOrEqual(0)
+    expect(screen.scrollHeight).toBeGreaterThan(0)
+    expect(screen.scrollHeight).toBeLessThanOrEqual(PHONE.height)
   })
 
   it('Secrets introduction does not show through the native settings header', () => {

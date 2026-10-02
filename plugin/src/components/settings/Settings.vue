@@ -163,6 +163,12 @@ watch(
 </script>
 
 <style lang="scss">
+// Obsidian floats the phone settings title over .vertical-tab-content. That scroller starts
+// behind the title; without a painted header, paragraphs show through it while scrolling.
+body.is-phone .modal:has(.abele-settings) .modal-header {
+  background-color: var(--background-secondary);
+}
+
 .abele-settings {
   display: flex;
   flex-direction: column;

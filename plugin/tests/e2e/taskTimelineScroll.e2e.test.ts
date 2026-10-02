@@ -206,13 +206,14 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
         if (name === 'unchanged') {
           // Compare the ORIGINAL block in its real scroll owner, not a clone or a moved
           // camera. The frozen stylesheet is rendered on this very build/DOM/theme path.
-          // Only the intentional new banner rule is retained in both captures.
+          // Keep the intentionally changed sticky banner and phone main-tab inset in both
+          // captures; neither is part of the old date block's appearance.
           const sheet = [...document.querySelectorAll('style')].find(s => s.textContent.includes('.abele-timeline__date-block'))
           if (!sheet) throw Error('timeline stylesheet not found')
           const current = sheet.textContent
-          const banner = [...sheet.sheet.cssRules].filter(r => r.selectorText === '.abele-timeline__history').map(r => r.cssText).join('\n')
+          const retained = [...sheet.sheet.cssRules].filter(r => r.selectorText === '.abele-timeline__history' || r.selectorText === 'body.is-phone .workspace-split.mod-root .abele-timeline-sidebar').map(r => r.cssText).join('\n')
           try {
-            sheet.textContent = fs.readFileSync(${JSON.stringify(referenceCss)}, 'utf8') + '\n' + banner
+            sheet.textContent = fs.readFileSync(${JSON.stringify(referenceCss)}, 'utf8') + '\n' + retained
             const before = await capture('-before')
             sheet.textContent = current
             const after = await capture('-after')
