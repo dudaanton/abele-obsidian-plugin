@@ -6,7 +6,7 @@
  * offered at each step, that nothing is emitted until there are words, and that a failed
  * transcription leaves the recording where it is rather than throwing it away.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
@@ -147,7 +147,34 @@ describe('while recording', () => {
   })
 })
 
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
 describe('once there is a recording', () => {
+  it.each(['pause', 'close'] as const)(
+    'releases the playback URL on %s, before the audio ends',
+    async (action) => {
+      vi.stubGlobal(
+        'Audio',
+        class {
+          pause = vi.fn()
+          play = async () => {}
+        }
+      )
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sample-audio')
+      const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+      const wrapper = open()
+      await clickIcon(wrapper, 'Listen to it')
+      if (action === 'pause') await clickIcon(wrapper, 'Pause')
+      else wrapper.unmount()
+      expect(revoke).toHaveBeenCalledOnce()
+      expect(revoke).toHaveBeenCalledWith('blob:sample-audio')
+      if (action === 'pause') wrapper.unmount()
+    }
+  )
+
   beforeEach(() => {
     recorder.state.value = 'recorded'
     recorder.levels.value = [0.3, 0.7]

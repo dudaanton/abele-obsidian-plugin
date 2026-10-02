@@ -138,6 +138,7 @@ const playing = ref(false)
 const progress = ref<number | undefined>(undefined)
 
 let audio: HTMLAudioElement | null = null
+let playbackUrl: string | null = null
 
 const listening = computed(
   () => recorder.state.value === 'recording' || recorder.state.value === 'paused'
@@ -170,6 +171,8 @@ const discard = () => {
 const stopPlaying = () => {
   audio?.pause()
   audio = null
+  if (playbackUrl) URL.revokeObjectURL(playbackUrl)
+  playbackUrl = null
   playing.value = false
   progress.value = undefined
 }
@@ -180,16 +183,16 @@ const togglePlay = () => {
   const blob = recorder.recording.value
   if (!blob) return
 
-  const url = URL.createObjectURL(blob)
-  audio = new (win().Audio)(url)
+  playbackUrl = URL.createObjectURL(blob)
+  audio = new (win().Audio)(playbackUrl)
   audio.ontimeupdate = () => {
     if (audio?.duration) progress.value = audio.currentTime / audio.duration
   }
-  audio.onended = () => {
-    URL.revokeObjectURL(url)
-    stopPlaying()
-  }
-  void audio.play()
+  audio.onended = stopPlaying
+  const player = audio
+  void player.play().catch(() => {
+    if (audio === player) stopPlaying()
+  })
   playing.value = true
 }
 
