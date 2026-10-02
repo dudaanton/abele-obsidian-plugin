@@ -973,7 +973,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           agentId: this.agent.value?.id,
           skillCeiling: this.skillCeiling,
           interactive: this.kind !== 'run',
-          approved: callerCtx?.approved,
+          approved: callerCtx?.approved === true || (await this.turnPolicy.isApproved(id)),
         }
         // Everything the call changes in the vault is remembered, so the turn can be taken back.
         // A delegated run records nothing of its own: the chat's `delegate` call is open for as

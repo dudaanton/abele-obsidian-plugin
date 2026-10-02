@@ -29,6 +29,14 @@ export class TurnPolicy {
     return this.policy !== null
   }
 
+  /** Read a decision already made for this call; never invoke policy for an automatic call. */
+  async isApproved(id: string): Promise<boolean> {
+    const decisions = this.decided
+    const answer = await decisions.get(id)
+    // Stop/reset or a new turn invalidates approvals, including while this await settles.
+    return this.decided === decisions && this.active && answer?.kind === 'approve'
+  }
+
   decide(
     id: string,
     name: string,

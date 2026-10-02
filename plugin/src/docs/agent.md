@@ -50,7 +50,9 @@ message and the chat around it — the conversation so far, what was attached, t
 the editor, the agent's settings — and what it returns decides: send the message as written,
 send a rewritten one, answer it itself without asking the agent, or hold it back as a draft for
 the person. Beside a send it can answer for the person on the tool calls of the turn that
-message starts — approve or refuse them where the person would have been asked. A script that
+message starts — approve or refuse them where the person would have been asked. Such approval
+reaches the actual tool, including a foreign skill and calls behind a manually approved queue
+head; it applies only to that turn's decided calls, not other skills or later turns. A script that
 fails, runs out of time or waits to be confirmed on this device never stops the message: it is
 sent as written, and the reason is shown under it. The script API reference (`script_api_docs`)
 has the whole contract under `message` and `chat`.
