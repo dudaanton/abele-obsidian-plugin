@@ -100,7 +100,7 @@ describe('retryable phone fixture recovery', () => {
       deviceId: 'sample-device',
       deviceName: 'Sample',
       tokenId: 'abele-sync-device-revoke-sample',
-      since: '2026-01-01T00:00:00Z',
+      since: '2026-01-01T00:00:00.000Z',
       plainHttp: false,
     }
     mock.forget.mockImplementation(async () => {

@@ -1,7 +1,7 @@
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { SyncService } from '@/sync/SyncService'
-import { emptyConnection, type PendingRevoke } from '@/sync/connection'
+import { emptyConnection, readConnection, type PendingRevoke } from '@/sync/connection'
 import { Platform } from 'obsidian'
 import {
   SCRIPT_CONTEXT_HOLD_KEY,
@@ -197,6 +197,16 @@ export async function restoreFixtureContext(
       if (JSON.stringify(app.loadLocalStorage(key)) !== JSON.stringify(restored))
         throw new Error('Mismatch')
     })
+  await attempt('rehydrate running connection', async () => {
+    // Development-only access to the keeper's real storage read, not assigning its ref.
+    const service = SyncService.getInstance() as unknown as {
+      keeper: { read(storage: App): void }
+      connection: { value: unknown }
+    }
+    service.keeper.read(app)
+    if (JSON.stringify(service.connection.value) !== JSON.stringify(readConnection(app)))
+      throw new Error('Running connection mismatch')
+  })
   for (const [path, bytes] of Object.entries(p.files))
     await attempt('restore sentinel/ignore', async () => {
       if (bytes === null) {
@@ -235,6 +245,11 @@ export async function restoreFixtureContext(
       if (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
         await app.vault.adapter.remove(SCRIPT_CONTEXT_HOLD_FILE)
       app.saveLocalStorage(SCRIPT_CONTEXT_HOLD_KEY, null)
+      if (
+        app.loadLocalStorage(SCRIPT_CONTEXT_HOLD_KEY) != null ||
+        (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
+      )
+        throw new Error('Script hold was not released')
     })
   }
   if (!errors.length) app.saveLocalStorage(BACKUP, null)

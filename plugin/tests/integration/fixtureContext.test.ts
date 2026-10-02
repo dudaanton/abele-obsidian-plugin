@@ -4,11 +4,13 @@ import { IDBFactory } from 'fake-indexeddb'
 const service = vi.hoisted(() => ({
   connection: { value: { vaultId: '', deviceTokenId: '', pendingRevoke: [] } },
   forget: vi.fn(async () => {}),
+  keeper: { read: vi.fn() },
 }))
 vi.mock('@/sync/SyncService', () => ({ SyncService: { getInstance: () => service } }))
 import { prepareFixtureContext, restoreFixtureContext } from '@/testing/fixtureContext'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { readConnection } from '@/sync/connection'
 import type { App } from 'obsidian'
 describe('phone fixture context isolation', () => {
   it('keeps an inactive original ledger intact rather than restoring a dangling descriptor', async () => {
@@ -22,6 +24,9 @@ describe('phone fixture context isolation', () => {
       { path: '.abele-sync-ignore', content: 'original ignore' },
       { path: '.abele-script-managed', content: 'original sentinel' },
     ])
+    service.keeper.read.mockImplementation(() => {
+      service.connection.value = readConnection(app) as any
+    })
     const descriptor = { stateId: 'sample-original', vaultId: 'sample-vault' }
     app.saveLocalStorage('abele-sync-ledger', descriptor)
     const workspace = { sample: true }
