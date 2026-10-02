@@ -133,6 +133,7 @@ export class GlobalStore {
 
   private _vaultWatcher: VaultWatcher
   private fileMetadataRef: EventRef | null = null
+  private readonly pendingFileEdits = new Set<TFile>()
   public get vaultWatcher(): VaultWatcher {
     return this._vaultWatcher
   }
@@ -271,15 +272,22 @@ export class GlobalStore {
         }
       }
     }
-    // The saved file's type is only current after Obsidian has parsed its metadata.
+    // Indexing also reports changed metadata. Only a file actually modified here may be
+    // renamed, and only after Obsidian has parsed that edit's properties.
     this.fileMetadataRef = app.metadataCache.on?.('changed', (file: TFile) => {
-      if (this.initialized.value) return syncFileMetadata({ type: 'modify', file })
+      if (this.initialized.value && this.pendingFileEdits.delete(file))
+        return syncFileMetadata({ type: 'modify', file })
     })
-    // Hosts without metadata notifications retain the existing file-event adapter.
-    if (!this.fileMetadataRef)
-      this.vaultWatcher.registerCallback((event) => {
-        void syncFileMetadata(event)
-      })
+    this.vaultWatcher.registerCallback((event) => {
+      if (!this.initialized.value) return
+      if (event.type === 'modify') {
+        if (this.fileMetadataRef) this.pendingFileEdits.add(event.file)
+        else void syncFileMetadata(event)
+      } else if (event.type === 'delete') {
+        for (const file of this.pendingFileEdits)
+          if (file.path === event.oldPath) this.pendingFileEdits.delete(file)
+      }
+    })
   }
 
   public initTasksList(): void {
@@ -387,6 +395,7 @@ export class GlobalStore {
     this._vaultWatcher.cleanup()
     if (this.fileMetadataRef) this.app.metadataCache.offref(this.fileMetadataRef)
     this.fileMetadataRef = null
+    this.pendingFileEdits.clear()
 
     console.debug('GlobalStore destroyed')
   }

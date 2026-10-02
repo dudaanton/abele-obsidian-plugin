@@ -6,6 +6,8 @@ import { taskHarness, TASK_BODY, TASK_PATH } from '../helpers/taskHarness'
 import { getBacklinksByPath } from '@/helpers/vaultUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { flushPromises } from '@vue/test-utils'
+import { load } from 'js-yaml'
+import { templateHarness } from '../helpers/templateHarness'
 
 const models: Task[] = []
 const make = (wikilink = '[[Water seedlings|Alias]]', filePath?: string) => {
@@ -22,6 +24,123 @@ afterEach(() => {
   VaultWatcherWrapper.destroy()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+})
+
+describe('file edits distinguished from metadata indexing', () => {
+  it('indexes and re-indexes existing tasks, archived transactions and timers without changing them', async () => {
+    const env = templateHarness([
+      { path: 'Wallets/sample.md', raw: '---\ntype: account\ncurrency: EUR\n---\nSample wallet' },
+      ...Array.from({ length: 30 }, (_, index) => [
+        {
+          path: `Archive/tasks/Custom ${index}.md`,
+          raw: `---\ntype: task\n---\nSample task title ${index}`,
+        },
+        {
+          path: `Archive/ledger/Recorded ${index}.md`,
+          raw: `---\ntype: transaction\ndate: '2028-03-01'\ncurrency: USD\nfrom: '[[Wallets/sample]]'\n---\nSample purchase ${index}`,
+        },
+        {
+          path: `Archive/timers/Logged ${index}.md`,
+          raw: "---\ntype: time-entry\nstart: '2028-03-01T10:00:00'\n---\nSample recorded time",
+        },
+      ]).flat(),
+    ])
+    const files = env.app.vault.getMarkdownFiles()
+    const originals = new Map(
+      await Promise.all(
+        files.map(async (file) => [file.path, await env.app.vault.read(file)] as const)
+      )
+    )
+    const config = AbeleConfig.getInstance()
+    const oldFolder = config.tasksFolder
+    const oldTransactionTemplate = config.transactionPathTemplate
+    const oldTimeTemplate = config.timeEntryPathTemplate
+    config.tasksFolder = 'Tasks'
+    config.transactionPathTemplate = 'Ledger/{{date}} {{title}}'
+    config.timeEntryPathTemplate = 'Entries/{{date}} {{start}}'
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    store.initFinance()
+    const rename = vi.spyOn(env.app.fileManager, 'renameFile')
+    const writeProperties = vi.spyOn(env.app.fileManager, 'processFrontMatter')
+    const publishMetadata = (file: (typeof files)[number]) => {
+      const raw = originals.get(file.path)!
+      env.app.setFrontmatter(file.path, load(raw.split('---')[1]) as Record<string, unknown>)
+      env.app.emit('metadataCache', 'changed', file)
+    }
+    try {
+      // The cache starts empty. The account becomes available before the transactions are indexed.
+      expect(env.app.metadataCache.getFileCache(files[0])?.frontmatter).toBeUndefined()
+      publishMetadata(files[0])
+      env.app.emit('metadataCache', 'resolved')
+      expect(store.accountsList.value?.accounts.get(files[0].path)?.currency).toBe('EUR')
+      for (let pass = 0; pass < 2; pass++) {
+        for (const file of files) publishMetadata(file)
+        env.app.emit('metadataCache', 'resolved')
+        await flushPromises()
+        expect(rename).not.toHaveBeenCalled()
+        expect(writeProperties).not.toHaveBeenCalled()
+        expect(files.map((file) => file.path)).toEqual([...originals.keys()])
+        for (const file of files)
+          expect(await env.app.vault.read(file)).toBe(originals.get(file.path))
+      }
+    } finally {
+      store.destroy()
+      config.tasksFolder = oldFolder
+      config.transactionPathTemplate = oldTransactionTemplate
+      config.timeEntryPathTemplate = oldTimeTemplate
+    }
+  })
+
+  it('does not mistake another file being indexed for metadata of a pending edit', async () => {
+    const env = taskHarness({}, [
+      { path: 'Archive/other.md', raw: '---\ntype: task\n---\nSample unrelated title' },
+    ])
+    const other = env.app.vault.getFileByPath('Archive/other.md')!
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    try {
+      await env.app.vault.modify(env.file, '---\ntype: task\n---\nSample pending title')
+      env.app.emit('vault', 'modify', env.file)
+      env.app.setFrontmatter(other.path, { type: 'task' })
+      env.app.emit('metadataCache', 'changed', other)
+      await flushPromises()
+      expect(other.path).toBe('Archive/other.md')
+      expect(env.file.path).toBe(TASK_PATH)
+      env.app.setFrontmatter(env.file.path, { type: 'task' })
+      env.app.emit('metadataCache', 'changed', env.file)
+      await flushPromises()
+      expect(env.file.basename).toBe('Sample pending title')
+    } finally {
+      store.destroy()
+    }
+  })
+
+  it('consumes an edit once and ignores later re-index notifications for the same file', async () => {
+    const env = taskHarness()
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    try {
+      await env.app.vault.modify(env.file, '---\ntype: task\n---\nSample changed title')
+      env.app.emit('vault', 'modify', env.file)
+      await flushPromises()
+      expect(env.file.path).toBe(TASK_PATH)
+      env.app.setFrontmatter(env.file.path, { type: 'task' })
+      env.app.emit('metadataCache', 'changed', env.file)
+      await flushPromises()
+      expect(env.file.basename).toBe('Sample changed title')
+      const read = vi.spyOn(env.app.vault, 'read')
+      env.app.emit('metadataCache', 'changed', env.file)
+      env.app.emit('metadataCache', 'changed', env.file)
+      await flushPromises()
+      expect(read).not.toHaveBeenCalled()
+    } finally {
+      store.destroy()
+    }
+  })
 })
 
 describe('naming when a note first becomes a typed entity', () => {
