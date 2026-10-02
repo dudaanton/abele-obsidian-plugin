@@ -1461,7 +1461,20 @@ fence. Folder reviews keep exact paths, require fresh owner-password authenticat
 only scoped machine keys. Sponsored/native lists require identity/version, intrinsic sponsors,
 CAS/withdrawal generations and own-upload proof; no body parser or personal-token fallback.
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
-and operation ports are not an activated scoped engine or publication journal integration.
+and operation ports are not an activated scoped engine or owner publication pipeline.
+
+## Disabled publication intent integration
+
+The disabled intent ledger uses `publication-intents-v1:` metadata, exact connection binding
+and a checksum-verified bounded aggregate. It records immutable push units, approved decisions,
+local-create handles, exact verified receipts, per-audience CAS deltas and stable intent IDs.
+A lost successful response is reconciled by its exact receipt; withdrawal or version changes
+never trigger a stale re-add. Missing ledger evidence on reopen requires recovery rather than
+manufacturing a new intent. The separate `publication-scoped-unit-v1:` records connect the
+reviewed core's durable pre-upload and exact-version settlement hooks to immutable cache facts;
+completed unit metadata is removed only after core journal retirement. Neither class has a
+production call site while activation is disabled. Personal owner hooks, exact novel-create
+receipt proof, native cache/paste barriers and sponsored HTTP adapters remain required.
 
 ## Disabled publication snapshot contract
 

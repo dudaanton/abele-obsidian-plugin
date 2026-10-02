@@ -100,6 +100,9 @@ export class LinkSnapshotStore {
     this.binding = copy(binding)
     this.prefix = 'link-snapshot-v1:' + bindingKey(binding) + ':'
   }
+  getBinding(): SnapshotBinding {
+    return copy(this.binding)
+  }
   private serial<T>(work: () => Promise<T>): Promise<T> {
     const next = this.tail.then(work)
     this.tail = next.then(

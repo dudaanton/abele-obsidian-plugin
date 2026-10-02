@@ -1,7 +1,8 @@
 # Agent gate HTTP preparation
 
-The plugin dependency pin remains `eb4844854b0a240c074fdae509ebce083ae03727`. Core push is
-**not** re-pinned or integrated. A separate disposable **server-only** archive built from
+The initial HTTP preparation used plugin dependencies `eb4844854b0a240c074fdae509ebce083ae03727`.
+They are now re-pinned to reviewed `fc1e82dc36050ddc1b12f3005ff32899cca24c73`; disabled scoped
+push hooks and owner intent contracts are described in `Sync publication intent integration.md`. A separate disposable **server-only** archive built from
 `9b1136a0554287def69afb79b56eaaffcb09ca00` supplies the HTTP integration target.
 
 ## Concrete owner preview and management
@@ -66,6 +67,7 @@ suite separately requires `ABELE_SYNC_DIR=<fixture matching the pinned plugin in
 are explicit immutable artifacts, not paths to a live sibling build. Missing inputs fail
 preflight rather than silently selecting or rebuilding a worktree.
 
-No activation is enabled. Task 41 still waits for the core push high-findings fixes, reviewed
-receipts/hooks and exact sponsored CAS/upload contracts described in the disabled owner
-implementation document.
+No activation is enabled. The reviewed core push high fixes are pinned and its scoped hooks
+are integrated behind the fence. Personal owner hooks/novel-create receipts, native attestation
+and exact sponsored CAS/upload contracts remain required as described in the disabled intent
+integration document.

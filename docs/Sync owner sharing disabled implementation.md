@@ -1,9 +1,9 @@
 # Disabled owner sharing implementation
 
-The pinned core/protocol revision is `eb4844854b0a240c074fdae509ebce083ae03727`.
+The pinned core/protocol revision is `fc1e82dc36050ddc1b12f3005ff32899cca24c73`.
 Archives were produced from that exact committed source in an isolated build, with per-file,
 archive, lock and tree checksums. No live sibling build/hook is used or modified. The scoped
-pull API is available; server capabilities, owner management and publication remain fenced.
+pull and reviewed push APIs are available; server capabilities, owner management and publication remain fenced.
 
 ## Task 37 — folder wizard
 
@@ -15,7 +15,7 @@ credential. The password is never retained after confirmation; the secret exists
 its review is open. Lost key issuance retries reuse the same attempt/grant rather than creating
 a new whole exposure. UI components use Obsidian modal/control/theme primitives.
 
-The management/preview HTTP adapter is a port, not an enabled live backend. Default activation
+Concrete management/preview HTTP adapters are wired behind the fence, not an enabled live backend. Review identity/generation cancels late closed answers; changing prefix/name/role requires a new review. Default activation
 is false with no setting/environment override. No password, grant or machine credential is
 requested by the production settings pane while fenced.
 
@@ -49,10 +49,13 @@ revalidates immediately before the delta; stale confirmation cannot re-add autho
 independent intrinsic folder/group access, rename identity and replacement without inherited
 approval. Scoped contexts do not render private owner rows. All mutation controls remain fenced.
 
-## Task 41 waits for reviewed core push
+## Task 41 — disabled intent and scoped hook integration
 
-The current pin exposes scoped snapshot/feed pull, not an integrated scoped push producer.
-Before task 41 can wire publication it needs:
+The reviewed scoped push producer is integrated with durable before-upload and exact-version
+snapshot hooks; a portable bounded owner intent ledger provides verified receipt resolution,
+stable CAS deltas and lost-response reconciliation. See `Sync publication intent integration.md`
+for the implemented contracts and disposable SQLite evidence. They are not active call sites.
+Before personal owner publication can be activated it still needs:
 
 - a durable before-upload/pre-push hook able to HOLD only publication-sensitive work before
   ordinary scanning erases pending-create novelty; unrelated personal sync remains available;
@@ -67,4 +70,4 @@ Before task 41 can wire publication it needs:
 
 The native cache attestor must preserve per-link introduction/rewrite lineage and provide the
 actual paste pre-upload barrier. Pull-only data, a note-wide edit flag or a timer cannot replace
-these hooks. Nothing here enables task 41 or automatic publication.
+these hooks. Nothing here enables automatic publication.
