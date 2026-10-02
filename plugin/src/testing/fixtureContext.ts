@@ -1,6 +1,8 @@
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { SyncService } from '@/sync/SyncService'
+import { emptyConnection, type PendingRevoke } from '@/sync/connection'
+import { Platform } from 'obsidian'
 import {
   SCRIPT_CONTEXT_HOLD_KEY,
   SCRIPT_CONTEXT_HOLD_FILE,
@@ -23,6 +25,7 @@ interface Backup {
   digests: Record<string, string>
   restorePhase?: 'leaving' | 'left'
   fixtureDatabases?: string[]
+  fixtureRevokes?: PendingRevoke[]
 }
 /** Readonly fingerprint: opening an absent old database is forbidden, never bootstrap it. */
 async function databaseDigest(name: string): Promise<string> {
@@ -169,6 +172,10 @@ export async function restoreFixtureContext(
       return { restored: false, errors: ['restore phase was not persisted'] }
     await attempt('forget', () => SyncService.getInstance().forget())
     if (errors.length) return { restored: false, errors }
+    // Forget may queue a revoke rather than reach the server. Keep its keychain-linked record.
+    p.fixtureRevokes = JSON.parse(
+      JSON.stringify(SyncService.getInstance().connection.value.pendingRevoke)
+    ) as PendingRevoke[]
     // Durable before the first original-binding write. Later cleanup retries skip Forget.
     p.restorePhase = 'left'
     app.saveLocalStorage(BACKUP, p)
@@ -177,8 +184,17 @@ export async function restoreFixtureContext(
   }
   for (const [key, value] of Object.entries(p.local))
     await attempt('restore local binding', async () => {
-      app.saveLocalStorage(key, value)
-      if (JSON.stringify(app.loadLocalStorage(key)) !== JSON.stringify(value))
+      let restored = value
+      if (key === 'abele-sync-connection' && p.fixtureRevokes?.length) {
+        const original = (value ?? emptyConnection(Platform.isMobile)) as {
+          pendingRevoke?: PendingRevoke[]
+        }
+        const all = [...(original.pendingRevoke ?? []), ...p.fixtureRevokes]
+        const queue = [...new Map(all.map((r) => [r.serverUrl + '|' + r.tokenId, r])).values()]
+        restored = { ...original, pendingRevoke: queue }
+      }
+      app.saveLocalStorage(key, restored)
+      if (JSON.stringify(app.loadLocalStorage(key)) !== JSON.stringify(restored))
         throw new Error('Mismatch')
     })
   for (const [path, bytes] of Object.entries(p.files))
