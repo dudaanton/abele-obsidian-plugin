@@ -112,6 +112,38 @@ describe.skipIf(!available)('live slide lifecycle', () => {
     }
   )
 
+  it('asks once per deck before enabling HTTPS resources in a frame', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{
+      const leaf=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===${JSON.stringify(PATH)})
+      const viewer=leaf.view.viewer,file=leaf.view.file
+      const key='abele-slide-network:'+file.path
+      app.saveLocalStorage(key,null)
+      await viewer.go(0)
+      await app.vault.modify(file,${JSON.stringify(SOURCE.replace('type: presentation', 'type: presentation\nhtmlNetwork: true'))})
+      try {
+        const until=async(fn)=>{for(let i=0;i<50;i++){const result=fn();if(result)return result;await new Promise(r=>setTimeout(r,100))}return null}
+        await until(()=>viewer.model?.settings.properties.htmlNetwork===true)
+        const pending=viewer.go(1)
+        const button=await until(()=>[...document.querySelectorAll('.modal-container button')].find(b=>b.textContent?.includes('Allow HTTPS')))
+        const asked=!!button
+        button?.click()
+        await pending
+        const allowed=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')?.srcdoc.includes('connect-src https:')
+        await viewer.go(0)
+        await viewer.go(1)
+        const remembered=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')?.srcdoc.includes('connect-src https:') && !document.querySelector('.modal-container')
+        return JSON.stringify({asked,allowed,remembered})
+      } finally {
+        await viewer.go(0)
+        await app.vault.modify(file,${JSON.stringify(SOURCE)})
+        app.saveLocalStorage(key,null)
+      }
+    })()`)
+    ) as Record<string, boolean>
+    expect(result).toEqual({ asked: true, allowed: true, remembered: true })
+  })
+
   it('runs a closed frame only on entry and ends it on departure', async () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{
