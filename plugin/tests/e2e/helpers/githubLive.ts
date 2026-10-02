@@ -146,6 +146,13 @@ export function enableGithub(origin: string, foldSidebars = true): void {
         openLinks: true,
         server: ${JSON.stringify(origin)},
         keyId: ${JSON.stringify(KEY_ID)},
+        // A saved connection list wins over the legacy server/key fields. Use an isolated
+        // connection for the fixture rather than routing a loopback link through the device's
+        // existing connections (or refusing to open it altogether).
+        connections: [{
+          id: 'abele-e2e-github', name: 'Sample connection', server: ${JSON.stringify(origin)},
+          keyId: ${JSON.stringify(KEY_ID)}, owners: [], isDefault: true,
+        }],
         searchLimitMb: 100,
       }
       app.secretStorage.getSecret = function (id) {
