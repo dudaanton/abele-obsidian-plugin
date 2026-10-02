@@ -86,6 +86,17 @@ describe('disabled owner folder sharing contract', () => {
     expect(port.authorize).not.toHaveBeenCalled()
     expect(port.create).not.toHaveBeenCalled()
   })
+  it('refuses an earlier displayed review even when paths/cache are identical but rights changed', async () => {
+    const { flow, port } = setup()
+    const shown = await flow.review('Agents/', 'editor', 'Earlier')
+    flow.clear()
+    await flow.review('Agents/', 'reader', 'Current')
+    await expect(flow.confirm('invented-password', undefined, shown)).rejects.toThrow(
+      /review|preview/i
+    )
+    expect(port.authorize).not.toHaveBeenCalled()
+    expect(port.create).not.toHaveBeenCalled()
+  })
   it('does not cross from a closed authentication into a new review', async () => {
     const { flow, port } = setup()
     await flow.review('Agents/', 'editor', 'Original')

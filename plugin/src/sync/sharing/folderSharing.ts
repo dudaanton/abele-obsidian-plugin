@@ -2,6 +2,8 @@ import { CreateFolderGrantRequestSchema, IssueFolderKeyRequestSchema } from '@ab
 import { sha256 } from '@abele/sync-core'
 export const OWNER_SHARING_ENABLED = false
 export interface FolderPreview {
+  /** Opaque UI review identity; the HTTP preview endpoint cannot supply this authority. */
+  reviewId?: string
   prefix: string
   generation: string
   complete: boolean
@@ -56,6 +58,7 @@ export class FolderSharingFlow {
     role: 'reader' | 'editor'
     fingerprint: string
     attempt: string
+    reviewId: string
   } | null = null
   private generation = 0
   private confirming: object | null = null
@@ -88,11 +91,13 @@ export class FolderSharingFlow {
       p.files.some((f) => !f.path.startsWith(request.prefix))
     )
       throw new Error('A complete current folder preview is required')
-    const proof = await fingerprint(p)
+    delete p.reviewId
+    const proof = await fingerprint(p),
+      reviewId = crypto.randomUUID()
     this.assertCurrent(generation)
-    this.preview = p
-    this.draft = { ...request, fingerprint: proof, attempt: crypto.randomUUID() }
-    return copy(p)
+    this.preview = { ...p, reviewId }
+    this.draft = { ...request, fingerprint: proof, attempt: crypto.randomUUID(), reviewId }
+    return copy(this.preview)
   }
   async confirm(
     password: string,
@@ -107,8 +112,13 @@ export class FolderSharingFlow {
     const operation = {}
     this.confirming = operation
     try {
-      if (shown && (await fingerprint(copy(shown))) !== draft.fingerprint)
-        throw new Error('Displayed folder preview differs; review it again')
+      if (shown) {
+        const display = copy(shown)
+        if (display.reviewId !== draft.reviewId) throw new Error('Displayed folder review changed')
+        delete display.reviewId
+        if ((await fingerprint(display)) !== draft.fingerprint)
+          throw new Error('Displayed folder preview differs; review it again')
+      }
       this.assertCurrent(generation)
       this.secret = null
       if (!this.session) {
@@ -137,6 +147,7 @@ export class FolderSharingFlow {
       )
         throw new Error('Fresh vault-owner password authentication is required')
       const current = copy(await this.port.preview(draft.prefix))
+      delete current.reviewId
       const proof = await fingerprint(current)
       this.assertCurrent(generation)
       if (!current.complete || proof !== draft.fingerprint)
