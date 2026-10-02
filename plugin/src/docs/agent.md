@@ -159,7 +159,9 @@ skill with the `skill` tool when the task matches; do not paste its text into a 
 An agent can hand a self-contained piece of work to another agent with the `delegate` tool. The
 sub-run has its own agent and conversation, but never more access than its parent: its scope
 is the intersection (an empty target scope inherits), permissions and tool modes take the
-stricter value, and GitHub connection rights and skill selection are bounded too. Only its
+stricter value captured at the start of the branch, and GitHub connection rights and skill
+selection are bounded too. Changing the executor's settings while a branch runs does not
+raise that branch's captured permission mode. Only its
 result comes back. `maxDelegateDepth` counts from the root; the narrowest chain limit wins,
 and 0 forbids delegation. Hard limits are 3 levels, 20 items per call and 50 branch runs per
 root conversation while it is open, shared across concurrent and nested calls.

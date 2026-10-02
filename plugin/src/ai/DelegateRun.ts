@@ -207,8 +207,12 @@ export function boundRunToParent(run: ChatSession, parent: ChatSession): void {
     inherit ? parent.scopeResolver.fullVaultAccess.value : target.fullVaultAccess,
     parent.scopeResolver.snapshot()
   )
-  if (PERMISSION_RANK[parent.permissionMode.value] < PERMISSION_RANK[run.permissionMode.value])
-    run.permissionMode.value = parent.permissionMode.value
+  // Always capture the stricter mode, even when equal: otherwise the computed mode keeps
+  // following the executor and a later settings edit can lift it above the parent.
+  run.permissionMode.value =
+    PERMISSION_RANK[parent.permissionMode.value] < PERMISSION_RANK[run.permissionMode.value]
+      ? parent.permissionMode.value
+      : run.permissionMode.value
   run.toolModes.value = intersectModes(parent.toolModes.value, run.toolModes.value)
   run.depthLimit = Math.min(parent.depthLimit, parent.agent.value?.maxDelegateDepth ?? 0)
   run.skillCeiling = parent.offeredSkillNames()
