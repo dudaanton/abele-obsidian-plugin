@@ -49,6 +49,7 @@ import {
 } from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
+import { onReaderEvent } from './readerEvents'
 import { bookPlaces, followPlace } from './places'
 import { onLookedAgain, type PlaceFollow } from './placeFollow'
 import { bookmarksFor, type PageBookmarks } from './pageBookmarks'
@@ -551,19 +552,20 @@ export class BookView extends FileView {
         this.fail('Books open in the main window only.')
         return
       }
-      reader.addEventListener('load', (e) => this.onPage((e as CustomEvent).detail))
-      reader.addEventListener('external-link', (e) => onExternalLink(e as CustomEvent))
-      reader.addEventListener('link', (e) => this.onLink(e))
+      const current = () => token === this.loadToken && this.reader === reader
+      onReaderEvent(reader, 'load', current, (e) => this.onPage((e as CustomEvent).detail))
+      onReaderEvent(reader, 'external-link', current, (e) => onExternalLink(e as CustomEvent))
+      onReaderEvent(reader, 'link', current, (e) => this.onLink(e))
       // A PDF's zoom, as this book was left at on this device; a pinch over the gaps between
       // its pages, which no page frame hears.
       if (this.isPdf) {
         this.pdfZoom = zoomFor(this, reader, bookKey(opened.book.metadata?.identifier, file.path))
         this.pdfZoom.watch(reader.ownerDocument, reader)
       }
-      reader.addEventListener('relocate', (e) =>
+      onReaderEvent(reader, 'relocate', current, (e) =>
         this.onRelocate((e as CustomEvent<FoliateLocation>).detail)
       )
-      reader.history.addEventListener('index-change', () => {
+      onReaderEvent(reader.history, 'index-change', current, () => {
         this.model.canGoBack = !!this.reader?.history.canGoBack
       })
       this.reader = reader
