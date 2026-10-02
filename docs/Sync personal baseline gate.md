@@ -127,8 +127,9 @@ while airplane mode was still on. The phone then turned airplane **off**, Wi-Fi 
 returned idle with zero pending items, and both the phone and desktop read exactly
 `phone/two/mac` in place. The existing daemon folder read matched those exact bytes. The
 phone-local note stayed intact and was absent from the server's authorized manifest. It had
-already existed at the start of that bounded probe, so this run does **not** claim it created
-that private note while offline. No Pause substitution was used.
+already existed at the start of that bounded probe and was **not edited offline**, so the
+required simultaneous shared-and-private offline-edit matrix is still partial. This run does
+**not** claim it created or edited that private note while offline. No Pause substitution was used.
 
 Airplane off/Wi-Fi on was verified before and after phone cleanup. The phone then revoked its
 own test connection and restored all five prior local values, original ignore/marker absence,
