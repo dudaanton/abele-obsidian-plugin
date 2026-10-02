@@ -106,6 +106,12 @@ Every change is marked `ABELE PATCH` at its site.
     remote place with a newer timestamp. Forwarding the reason lets the host update geometry and
     measurements without advancing the reading clock or discarding a queued remote place.
 
+12. **Concurrent chapter loads share their pending URL** (`epub.js`, `Loader.loadItem`).
+    Two root requests for the same chapter await one load, retaining a reference for each
+    consumer instead of making a second URL the cache forgets. Recursive resource loads are
+    not made to await their parent, so circular book resources cannot deadlock. Destroying
+    a loader also invalidates pending URL creation and clears its reference bookkeeping.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

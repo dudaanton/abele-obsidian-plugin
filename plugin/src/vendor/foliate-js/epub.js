@@ -705,6 +705,9 @@ class Resources {
 
 class Loader {
     #cache = new Map()
+    // ABELE PATCH: concurrent root chapter loads share one URL; closed books create none.
+    #pendingRoots = new Map()
+    #destroyed = false
     #children = new Map()
     #refCount = new Map()
     eventTarget = new EventTarget()
@@ -724,6 +727,8 @@ class Loader {
         this.eventTarget.dispatchEvent(event)
         const newData = await event.detail.data
         const newType = await event.detail.type
+        // ABELE PATCH: an asynchronous resource conversion may finish after destroy().
+        if (this.#destroyed) return ''
         const url = URL.createObjectURL(new Blob([newData], { type: newType }))
         this.#cache.set(href, url)
         this.#refCount.set(href, 1)
@@ -769,19 +774,31 @@ class Loader {
         const event = new CustomEvent('load', { detail })
         this.eventTarget.dispatchEvent(event)
         const allow = await event.detail.allow
-        if (!allow) return null
+        if (!allow || this.#destroyed) return null
 
         const parent = parents.at(-1)
         if (this.#cache.has(href)) return this.ref(href, parent)
+        // ABELE PATCH: root chapter requests share their in-flight load. Recursive asset loads are left
+        // alone: waiting on a parent would deadlock a circular resource reference.
+        if (!parent && this.#pendingRoots.has(href)) {
+            const url = await this.#pendingRoots.get(href)
+            return this.#cache.has(href) ? this.ref(href, parent) : url
+        }
 
         const shouldReplace =
             (isScript || [MIME.XHTML, MIME.HTML, MIME.CSS, MIME.SVG].includes(mediaType))
             // prevent circular references
             && parents.every(p => p !== href)
-        if (shouldReplace) return this.loadReplaced(item, parents)
-        // NOTE: this can be replaced with `Promise.try()`
-        const tryLoadBlob = Promise.resolve().then(() => this.loadBlob(href))
-        return this.createURL(href, tryLoadBlob, mediaType, parent)
+        const loaded = shouldReplace
+            ? this.loadReplaced(item, parents)
+            : this.createURL(href, Promise.resolve().then(() => this.loadBlob(href)), mediaType, parent)
+        if (parent) return loaded
+        this.#pendingRoots.set(href, loaded)
+        try {
+            return await loaded
+        } finally {
+            if (this.#pendingRoots.get(href) === loaded) this.#pendingRoots.delete(href)
+        }
     }
     async loadHref(href, base, parents = []) {
         if (isExternal(href)) return href
@@ -904,7 +921,13 @@ class Loader {
         this.unref(item?.href)
     }
     destroy() {
+        // ABELE PATCH: invalidate pending URL creation and release the complete cache.
+        this.#destroyed = true
         for (const url of this.#cache.values()) URL.revokeObjectURL(url)
+        this.#cache.clear()
+        this.#pendingRoots.clear()
+        this.#children.clear()
+        this.#refCount.clear()
     }
 }
 
