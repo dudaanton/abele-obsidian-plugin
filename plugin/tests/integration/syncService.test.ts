@@ -1456,6 +1456,22 @@ describe('SyncService — when it cannot start at all', () => {
  * transaction failing with IndexedDB's own words and the status stuck at a raw error.
  */
 describe('SyncService — a ledger closed under it', () => {
+  it('keeps syncing a supported legacy record without enrolledUrl after restart', async () => {
+    const { other } = await connect()
+    await synced()
+    await service.destroy()
+    const stored = app.loadLocalStorage(CONNECTION_KEY) as Record<string, unknown>
+    const { enrolledUrl: _legacyAbsent, ...legacy } = stored
+    app.saveLocalStorage(CONNECTION_KEY, legacy)
+    service = SyncService.getInstance()
+    start()
+    await synced()
+    expect(service.status.value.state).toBe('idle')
+    await write('legacy-sample.md', 'Still synchronizes')
+    await service.syncNow()
+    await synced()
+    expect(await serverPaths(other)).toContain('legacy-sample.md')
+  })
   it('stops and says why when another window takes the ledger away', async () => {
     await connect()
     await synced()
