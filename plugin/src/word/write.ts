@@ -21,7 +21,7 @@ export async function commitWordWrite(
   signal?.throwIfAborted()
   if (!sameBytes(before, after)) {
     await storage.write(after)
-    const saved = await storage.read().catch(() => null)
+    const saved = await storage.read().catch((): null => null)
     if (!saved || !sameBytes(saved, after))
       throw new Error('The file changed while saving; reopen to see the latest version.')
   }
