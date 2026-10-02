@@ -217,6 +217,111 @@ describe('reply annotation persistence and owner decisions', () => {
     expect((await disk()).messages[0].highlights?.[0].quote).toBe('small')
   })
 
+  it.each(['streaming', 'tool', 'approval'] as const)(
+    'adds, recolours and removes highlights during %s without changing provider history',
+    async (state) => {
+      const p = await parent()
+      if (state === 'streaming') p.isStreaming.value = true
+      if (state === 'tool') p.isExecutingTool.value = true
+      if (state === 'approval')
+        p.pendingToolCalls.value = [{ id: 'sample-call', name: 'read', arguments: {} }]
+      const history = (await disk()).internalMessages
+      await p.highlightReply('reply', 'small', 2, 'yellow')
+      const mark = p.messages.value[0].highlights![0]
+      await p.save()
+      expect((await disk()).messages[0].highlights).toEqual([mark])
+      await p.recolorReplyHighlight('reply', mark.id, 'purple')
+      await p.save()
+      expect((await disk()).messages[0].highlights).toEqual([{ ...mark, color: 'purple' }])
+      await p.removeReplyHighlight('reply', mark.id)
+      await p.save()
+      expect((await disk()).messages[0].highlights).toEqual([])
+      expect((await disk()).internalMessages).toEqual(history)
+      p.isStreaming.value = p.isExecutingTool.value = false
+      p.pendingToolCalls.value = []
+      await ChatService.getInstance().closeTab(p.id)
+      expect((await parent()).messages.value[0].highlights).toEqual([])
+    }
+  )
+
+  it('serializes annotations with an in-flight save and keeps new turn events during the annotation write', async () => {
+    const p = await parent()
+    p.isStreaming.value = true
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const append = app.vault.append.bind(app.vault)
+    const appendSpy = vi.spyOn(app.vault, 'append').mockImplementationOnce(async (file, data) => {
+      await gate
+      return append(file, data)
+    })
+    p.chatTitle.value = 'Sample running turn'
+    const saving = p.save()
+    await vi.waitFor(() => expect(appendSpy).toHaveBeenCalled())
+    const adding = p.highlightReply('reply', 'small', 2, 'yellow')
+    release()
+    await Promise.all([saving, adding])
+    const mark = p.messages.value[0].highlights![0]
+    const process = app.vault.process.bind(app.vault)
+    let releaseWrite!: () => void
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve
+    })
+    const processSpy = vi.spyOn(app.vault, 'process').mockImplementationOnce(async (file, fn) => {
+      await writeGate
+      return process(file, fn)
+    })
+    const recoloring = p.recolorReplyHighlight('reply', mark.id, 'green')
+    await vi.waitFor(() => expect(processSpy).toHaveBeenCalled())
+    ;(p as any).handleAgentEvent({
+      type: 'tool_start',
+      toolCallId: 'sample-new-tool',
+      toolName: 'read',
+      args: { path: 'sample.md' },
+    })
+    const turnSaving = p.save()
+    const removing = p.removeReplyHighlight('reply', mark.id)
+    releaseWrite()
+    await Promise.all([recoloring, turnSaving, removing])
+    await p.save()
+    expect((await disk()).messages[0].highlights).toEqual([])
+    expect((await disk()).messages.some((m) => m.toolCallId === 'sample-new-tool')).toBe(true)
+    p.isStreaming.value = false
+    await ChatService.getInstance().closeTab(p.id)
+    expect((await parent()).messages.value.some((m) => m.toolCallId === 'sample-new-tool')).toBe(
+      true
+    )
+  })
+
+  it('keeps simultaneous highlights and rejects the still-streaming, unsaved answer', async () => {
+    const p = await parent()
+    p.isStreaming.value = true
+    p.streamingContent.value = 'A new answer in progress.'
+    await Promise.all([
+      p.highlightReply('reply', 'small', 2),
+      p.highlightReply('reply', 'lantern', 8),
+    ])
+    await expect(p.highlightReply('unsaved-reply', 'new answer', 2)).rejects.toThrow(/saved/)
+    await p.save()
+    expect((await disk()).messages[0].highlights?.map((h) => h.quote)).toEqual(['small', 'lantern'])
+    expect((await disk()).messages[0].highlights?.every((h) => h.color === 'yellow')).toBe(true)
+    p.isStreaming.value = false
+  })
+
+  it('does not publish or retry a highlight whose write failed during a turn', async () => {
+    const p = await parent()
+    p.isStreaming.value = true
+    vi.spyOn(app.vault, 'process').mockRejectedValueOnce(new Error('sample annotation failure'))
+    await expect(p.highlightReply('reply', 'small', 2, 'yellow')).rejects.toThrow(
+      'sample annotation failure'
+    )
+    expect(p.messages.value[0].highlights).toBeUndefined()
+    await p.save()
+    expect((await disk()).messages[0].highlights).toBeUndefined()
+    p.isStreaming.value = false
+  })
+
   it('persists colours and removals on the message through reopen', async () => {
     const p = await parent()
     await p.highlightReply('reply', 'small lantern', 2, 'blue')

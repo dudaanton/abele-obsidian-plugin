@@ -35,6 +35,7 @@ import {
   projectReplyHistory,
   undoRevision,
   type ReplyProposal,
+  type ReplyHighlight,
 } from './replyAnnotations'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import { createReplyRevisionTool, REPLY_REVISION_TOOL } from './tools/ReplyRevisionTool'
@@ -2247,27 +2248,80 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
   }
 
+  /**
+   * Highlights do not edit conversation or provider history. Reserve the normal writer for
+   * the entire read/check/write/publication, but let the agent keep producing events. Publish
+   * only the marks after success: replacing the captured message array would lose those events.
+   * The streaming answer is not a stored message until message_end; only stored replies count.
+   */
+  private async changeReplyHighlights(
+    id: string,
+    change: (marks: ReplyHighlight[]) => ReplyHighlight[]
+  ): Promise<void> {
+    while (this.writing) await this.writing
+    if (this.replyChanging || this.moving.value)
+      throw new Error('This reply is being changed. Try again when it finishes.')
+    const file = this.currentChatFile.value
+    if (!file) throw new Error('The reply is no longer available.')
+    const operation = Promise.resolve().then(async () => {
+      const before = this.allChatMessages.find((m) => m.id === id)
+      if (!before || before.role !== 'assistant' || before.draft)
+        throw new Error('Only saved model replies can be highlighted.')
+      const highlights = change(before.highlights ?? [])
+      const snapshot = this.snapshot()
+      // Internal records are appended in place by the running turn; freeze this write's cut.
+      const internalMessages = [...snapshot.internalMessages]
+      const messages = snapshot.messages.map((m) => (m.id === id ? { ...m, highlights } : m))
+      let written = ''
+      await GlobalStore.getInstance().app.vault.process(file, (content) => {
+        if (!this.log.matches(parseChat(content)))
+          throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+        written = serializeChat({ ...snapshot, messages, internalMessages })
+        return written
+      })
+      this.log.adopt(parseChat(written))
+      this.updateChatMessage(
+        (m) => m.id === id,
+        (m) => ({ ...m, highlights })
+      )
+    })
+    // Waiters must not inherit another operation's error. The caller still receives it.
+    this.writing = operation.then(
+      (): void => {},
+      (): void => {}
+    )
+    try {
+      await operation
+    } finally {
+      this.writing = null
+    }
+  }
+
   async highlightReply(
     id: string,
     quote: string,
     start: number,
-    color: HighlightColor
+    color: HighlightColor = 'yellow'
   ): Promise<void> {
     if (!quote.trim() || !Number.isInteger(start) || start < 0 || !HIGHLIGHT_COLORS.includes(color))
       throw new Error('Select some words in a model reply first.')
-    await this.changeReply(id, (message) => {
-      if (message.role !== 'assistant' || message.draft)
-        throw new Error('Only model replies can be highlighted.')
-      const kept = (message.highlights ?? []).filter((h) => h.quote !== quote || h.start !== start)
-      return { ...message, highlights: [...kept, { id: nanoid(), quote, start, color }] }
+    await this.changeReplyHighlights(id, (marks) => {
+      const kept = marks.filter((h) => h.quote !== quote || h.start !== start)
+      return [...kept, { id: nanoid(), quote, start, color }]
+    })
+  }
+
+  async recolorReplyHighlight(id: string, highlight: string, color: HighlightColor): Promise<void> {
+    if (!HIGHLIGHT_COLORS.includes(color)) throw new Error('Choose a highlight colour.')
+    await this.changeReplyHighlights(id, (marks) => {
+      if (!marks.some((h) => h.id === highlight))
+        throw new Error('The highlight is no longer available.')
+      return marks.map((h) => (h.id === highlight ? { ...h, color } : h))
     })
   }
 
   async removeReplyHighlight(id: string, highlight: string): Promise<void> {
-    await this.changeReply(id, (message) => ({
-      ...message,
-      highlights: (message.highlights ?? []).filter((h) => h.id !== highlight),
-    }))
+    await this.changeReplyHighlights(id, (marks) => marks.filter((h) => h.id !== highlight))
   }
 
   async undoReplyRevision(id: string): Promise<void> {
