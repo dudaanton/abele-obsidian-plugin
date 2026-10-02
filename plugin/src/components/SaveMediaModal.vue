@@ -288,7 +288,27 @@ const hashBuffer = (buf: ArrayBuffer): string => {
 }
 
 /** Build content hash index of existing attachment files */
-const attachmentHashIndex = new Map<string, string>() // hash → vault path
+const attachmentHashIndex = new Map<string, string[]>() // hash → candidate vault paths
+const indexAttachment = (hash: string, path: string) => {
+  const paths = attachmentHashIndex.get(hash) ?? []
+  if (!paths.includes(path)) paths.push(path)
+  attachmentHashIndex.set(hash, paths)
+}
+
+const equalAttachment = async (hash: string, data: ArrayBuffer): Promise<string | null> => {
+  const wanted = new Uint8Array(data)
+  for (const path of attachmentHashIndex.get(hash) ?? []) {
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) continue
+    try {
+      const candidate = new Uint8Array(await app.vault.readBinary(file))
+      if (candidate.length === wanted.length && candidate.every((byte, index) => byte === wanted[index])) return path
+    } catch {
+      // A missing or unreadable candidate cannot prove equality.
+    }
+  }
+  return null
+}
 const hashIndexSizes = new Set<number>()
 
 const buildHashIndex = async (size: number) => {
@@ -301,7 +321,7 @@ const buildHashIndex = async (size: number) => {
     try {
       const buf = await app.vault.readBinary(f)
       const h = hashBuffer(buf)
-      attachmentHashIndex.set(h, f.path)
+      indexAttachment(h, f.path)
     } catch {
       // skip unreadable files
     }
@@ -393,7 +413,7 @@ const downloadItem = async (item: MediaItem) => {
       const contentHash = hashBuffer(response.arrayBuffer)
 
       // 3. Content already exists in attachments?
-      const existingByHash = attachmentHashIndex.get(contentHash)
+      const existingByHash = await equalAttachment(contentHash, response.arrayBuffer)
       if (existingByHash) {
         localPath = existingByHash
       } else {
@@ -407,7 +427,7 @@ const downloadItem = async (item: MediaItem) => {
 
         const saved = await createImportedBinary(app, localPath, new Blob([response.arrayBuffer], { type: contentType }))
         localPath = saved.path
-        attachmentHashIndex.set(contentHash, localPath)
+        indexAttachment(contentHash, localPath)
       }
 
       downloadedUrls.set(item.url, localPath)

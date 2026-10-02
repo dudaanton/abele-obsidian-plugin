@@ -8,6 +8,39 @@ import { useVault } from '../helpers/testEnv'
 vi.mock('@/helpers/http', () => ({ request: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
 
+it('saves distinct bytes when an equal-sized existing image has the same FNV hash', async () => {
+  const app = useVault([
+    { path: 'sample-note.md', content: '![Sample](https://sample.invalid/image.png)' },
+  ])
+  const original = new Uint8Array([143, 82, 11, 131, 12, 88, 103, 239]).buffer
+  const downloaded = new Uint8Array([215, 216, 198, 248, 126, 230, 250, 146]).buffer
+  const existing = await app.vault.createBinary('Attachments/sample-existing.png', original)
+  existing.stat.size = original.byteLength
+  vi.mocked(request).mockResolvedValue({
+    status: 200,
+    headers: { 'content-type': 'image/png' },
+    arrayBuffer: downloaded,
+  } as never)
+  const screen = mount(SaveMediaModal, {
+    global: { stubs: { AiScopeEditor: true, ObsidianModal: { template: '<div><slot /></div>' } } },
+  })
+  try {
+    const button = (text: string) =>
+      screen.findAllComponents(Button).find((item) => item.props('text') === text)!
+    await button('Scan').trigger('click')
+    await flushPromises()
+    await button('Download').trigger('click')
+    await flushPromises()
+    const images = app.vault.getFiles().filter((file) => file.extension === 'png')
+    expect(images).toHaveLength(2)
+    const saved = images.find((file) => file.path !== existing.path)!
+    expect(new Uint8Array(await app.vault.readBinary(saved))).toEqual(new Uint8Array(downloaded))
+    expect(new Uint8Array(await app.vault.readBinary(existing))).toEqual(new Uint8Array(original))
+  } finally {
+    screen.unmount()
+  }
+})
+
 it('still reuses an equal-sized attachment with identical content', async () => {
   const app = useVault([
     { path: 'sample-note.md', content: '![Sample](https://sample.invalid/image.png)' },
