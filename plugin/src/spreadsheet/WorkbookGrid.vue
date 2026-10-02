@@ -1,9 +1,9 @@
 <template>
-  <div class="abele-workbook-grid">
+  <div class="abele-workbook-grid" :data-zoom="zoom">
     <div class="abele-workbook-bar">
       <label
         >Sheet
-        <select v-model="sheetName" aria-label="Sheet">
+        <select v-model="sheetName" aria-label="Sheet" :disabled="busy">
           <option v-for="s in book.sheets" :key="s.name" :value="s.name">
             {{ s.name }}{{ s.hidden ? ' (hidden)' : '' }}
           </option>
@@ -13,8 +13,15 @@
         >Cell <input v-model="goAddress" aria-label="Cell address" @keydown.enter="go"
       /></label>
       <button @click="go">Go</button>
+      <button aria-label="Zoom out" @click="setZoom(zoom / 1.2)">−</button>
+      <button aria-label="Reset zoom" @click="setZoom(1)">{{ Math.round(zoom * 100) }}%</button>
+      <button aria-label="Zoom in" @click="setZoom(zoom * 1.2)">+</button>
       <button v-if="canEdit" class="abele-workbook-edit" @click="beginEdit">Edit cell</button>
-      <button v-if="canEdit" @click="recalculate" :disabled="busy">Recalculate</button>
+      <button v-if="canEdit" :disabled="busy" @click="recalculate">Recalculate</button>
+      <button v-if="canEdit" :disabled="busy" @click="changeRow('row_add')">Append row</button>
+      <button v-if="canEdit" :disabled="busy" @click="changeRow('row_delete')">
+        Delete last row
+      </button>
       <span>{{
         book.readOnly
           ? 'Read-only workbook'
@@ -34,7 +41,13 @@
     </div>
     <div class="abele-workbook-formula">
       {{ selected }}
-      {{ selectedCell?.formula ? '= ' + selectedCell.formula : String(selectedCell?.value ?? '') }}
+      {{
+        selectedCell?.formulaProblem
+          ? '[Formula unavailable: ' + selectedCell.formulaProblem + ']'
+          : selectedCell?.formula
+            ? '= ' + selectedCell.formula
+            : String(selectedCell?.value ?? '')
+      }}
     </div>
     <form v-if="editing && canEdit" class="abele-workbook-editor" @submit.prevent="saveCell">
       <span>{{ sheetName }}!{{ editAddress }}</span>
@@ -70,18 +83,30 @@
       </fieldset>
       <button type="button" :disabled="busy" @click="editing = false">Cancel</button>
     </form>
-    <div ref="viewport" class="abele-workbook-viewport" @scroll="scroll">
+    <div
+      ref="viewport"
+      class="abele-workbook-viewport"
+      @scroll="scroll"
+      @touchstart="startPinch"
+      @touchmove="movePinch"
+      @touchend="endPinch"
+      @touchcancel="endPinch"
+    >
       <div
         v-if="sheet"
         class="abele-workbook-space"
-        :style="{ width: totalWidth + 'px', height: (sheet.maxRow + 1) * rowHeight + 'px' }"
+        :style="{
+          width: canvasWidth + 'px',
+          height: canvasHeight + 'px',
+          fontSize: `calc(var(--font-ui-small) * ${zoom})`,
+        }"
       >
         <div
           v-for="col in visibleColumns"
           :key="'h' + col.column"
           class="abele-workbook-cell abele-workbook-header"
           :style="{
-            left: col.left + 'px',
+            left: scrollLeft + col.left - logicalX + 'px',
             top: scrollTop + 'px',
             width: col.width + 'px',
             height: rowHeight + 'px',
@@ -95,7 +120,7 @@
             :style="{
               left: scrollLeft + 'px',
               top: rowTop(row) + 'px',
-              width: '48px',
+              width: rowNumberWidth + 'px',
               height: rowHeight + 'px',
             }"
           >
@@ -119,7 +144,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { cellAddress, columnName, contains, parseCell } from './address'
 import { formatValue } from './styles'
 import type { Workbook, WorkbookSheet } from './package'
@@ -128,19 +153,55 @@ const props = defineProps<{
   book: Workbook
   mobile: boolean
   save?: (edit: WorkbookEdit) => Promise<void>
+  initialSheet?: string
+  initialAddress?: string
+  initialZoom?: number
+  context?: (sheet: string, address: string, zoom: number) => void
+  editorState?: (open: boolean) => void
 }>()
 const book = computed(() => props.book)
-const sheetName = ref(props.book.sheets[0].name)
+const sheetName = ref(
+  props.book.sheets.find((s) => s.name === props.initialSheet)?.name ?? props.book.sheets[0].name
+)
 const sheet = shallowRef<WorkbookSheet | null>(null)
 const error = ref('')
-const selected = ref('A1')
-const goAddress = ref('A1')
+const selected = ref(props.initialAddress ?? 'A1')
+const goAddress = ref(selected.value)
+const zoom = ref(props.initialZoom ?? 1)
+watch(
+  [sheetName, selected, zoom],
+  ([name, address, scale]) => {
+    props.context?.(name, address, scale)
+    goAddress.value = address
+  },
+  { immediate: true }
+)
 const viewport = ref<HTMLElement>()
 const scrollTop = ref(0)
 const scrollLeft = ref(0)
 const height = ref(600)
 const width = ref(800)
-const rowHeight = 28
+const rowHeight = computed(() => 28 * zoom.value)
+const rowNumberWidth = computed(() => 48 * zoom.value)
+const logicalHeight = computed(() => ((sheet.value?.maxRow ?? 1) + 1) * rowHeight.value)
+// WebViews impose physical layout limits; scroll fractions map into the full logical sheet.
+const canvasHeight = computed(() => Math.min(8000000, logicalHeight.value))
+const canvasWidth = computed(() => Math.min(8000000, totalWidth.value))
+const logicalY = computed(() =>
+  unmap(scrollTop.value, logicalHeight.value, canvasHeight.value, height.value)
+)
+const logicalX = computed(() =>
+  unmap(scrollLeft.value, totalWidth.value, canvasWidth.value, width.value)
+)
+function unmap(value: number, logical: number, physical: number, viewportSize: number): number {
+  return (value * Math.max(0, logical - viewportSize)) / Math.max(1, physical - viewportSize)
+}
+function mapScroll(value: number, logical: number, physical: number, viewportSize: number): number {
+  const max = Math.max(0, logical - viewportSize)
+  return (
+    (Math.min(max, Math.max(0, value)) * Math.max(0, physical - viewportSize)) / Math.max(1, max)
+  )
+}
 const frozen = computed(() => Math.min(sheet.value?.frozenRows ?? 0, 1))
 let version = 0
 watch(
@@ -159,6 +220,7 @@ watch(
         }
         scrollTop.value = 0
         scrollLeft.value = 0
+        go()
       }
     } catch (e) {
       if (v === version) error.value = (e as Error).message
@@ -171,6 +233,7 @@ const canEdit = computed(
   () => !props.mobile && !props.book.readOnly && !!props.save && !sheet.value?.protected
 )
 const editing = ref(false)
+watch(editing, (open) => props.editorState?.(open), { flush: 'sync' })
 const busy = ref(false)
 const editType = ref('text')
 const editAddress = ref('A1')
@@ -182,6 +245,7 @@ const formatFill = ref('')
 const numberFormat = ref('General')
 watch(sheetName, () => {
   editing.value = false
+  selected.value = 'A1'
 })
 function beginEdit() {
   const cell = selectedCell.value
@@ -207,7 +271,7 @@ async function saveFormat() {
   busy.value = true
   error.value = ''
   try {
-    await props.save!({
+    await props.save({
       operation: 'format',
       sheet: sheetName.value,
       range: formatRange.value,
@@ -226,12 +290,30 @@ async function saveFormat() {
     busy.value = false
   }
 }
+async function changeRow(operation: 'row_add' | 'row_delete') {
+  if (!canEdit.value || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await props.save({
+      operation,
+      sheet: sheetName.value,
+      range: selected.value,
+      values: [],
+      rows: 1,
+    })
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busy.value = false
+  }
+}
 async function recalculate() {
   if (!canEdit.value || busy.value) return
   busy.value = true
   error.value = ''
   try {
-    await props.save!({
+    await props.save({
       operation: 'recalculate',
       sheet: sheetName.value,
       range: selected.value,
@@ -260,7 +342,7 @@ async function saveCell() {
       value = editValue.value.toLowerCase() === 'true'
     }
     if (editType.value === 'clear') value = null
-    await props.save!({ sheet: sheetName.value, range: editAddress.value, values: [[value]] })
+    await props.save({ sheet: sheetName.value, range: editAddress.value, values: [[value]] })
     editing.value = false
   } catch (e) {
     error.value = (e as Error).message
@@ -270,9 +352,9 @@ async function saveCell() {
 }
 const columns = computed(() => {
   const result: { column: number; left: number; width: number }[] = []
-  let left = 48
+  let left = rowNumberWidth.value
   for (let column = 1; column <= (sheet.value?.maxColumn ?? 1); column++) {
-    const w = sheet.value?.columnWidths.get(column) ?? 100
+    const w = (sheet.value?.columnWidths.get(column) ?? 100) * zoom.value
     result.push({ column, left, width: w })
     left += w
   }
@@ -286,14 +368,14 @@ const visibleColumns = computed(() =>
   columns.value.filter(
     (c) =>
       c.width > 0 &&
-      c.left + c.width >= scrollLeft.value &&
-      c.left <= scrollLeft.value + width.value + 100
+      c.left + c.width >= logicalX.value &&
+      c.left <= logicalX.value + width.value + 100
   )
 )
 const visibleRows = computed(() => {
   if (!sheet.value) return []
-  const from = Math.max(frozen.value + 1, Math.floor(scrollTop.value / rowHeight) - 2)
-  const to = Math.min(sheet.value.maxRow, from + Math.ceil(height.value / rowHeight) + 5)
+  const from = Math.max(frozen.value + 1, Math.floor(logicalY.value / rowHeight.value) - 2)
+  const to = Math.min(sheet.value.maxRow, from + Math.ceil(height.value / rowHeight.value) + 5)
   const rows = frozen.value ? [1] : []
   for (let row = from; row <= to; row++) rows.push(row)
   // Include merge anchors just outside the viewport so their spanning cell stays visible.
@@ -302,9 +384,11 @@ const visibleRows = computed(() => {
   return rows
 })
 const rowTop = (row: number) =>
-  row <= frozen.value ? scrollTop.value + rowHeight : row * rowHeight
+  row <= frozen.value
+    ? scrollTop.value + rowHeight.value
+    : scrollTop.value + row * rowHeight.value - logicalY.value
 function rowCells(row: number) {
-  const current = sheet.value!
+  const current = sheet.value
   const result = []
   const visibleMerges = current.merges.filter((m) => contains(m, { row, column: m.from.column }))
   const cols = [...visibleColumns.value]
@@ -314,8 +398,8 @@ function rowCells(row: number) {
     if (
       anchor &&
       end &&
-      anchor.left < scrollLeft.value &&
-      end.left + end.width >= scrollLeft.value &&
+      anchor.left < logicalX.value &&
+      end.left + end.width >= logicalX.value &&
       !cols.includes(anchor)
     )
       cols.push(anchor)
@@ -338,10 +422,10 @@ function rowCells(row: number) {
             props.book.date1904
           ),
       css: {
-        left: col.left + 'px',
+        left: scrollLeft.value + col.left - logicalX.value + 'px',
         top: rowTop(row) + 'px',
         width: end.left + end.width - col.left + 'px',
-        height: (merge ? merge.to.row - row + 1 : 1) * rowHeight + 'px',
+        height: (merge ? merge.to.row - row + 1 : 1) * rowHeight.value + 'px',
         fontWeight: cell?.style.bold ? 'bold' : undefined,
         fontStyle: cell?.style.italic ? 'italic' : undefined,
         backgroundColor: cell?.style.fill,
@@ -360,10 +444,18 @@ function go() {
     const pos = parseCell(goAddress.value)
     selected.value = cellAddress(pos.row, pos.column)
     if (viewport.value && sheet.value) {
-      viewport.value.scrollTop = Math.max(0, Math.min(pos.row, sheet.value.maxRow) - 2) * rowHeight
-      viewport.value.scrollLeft = Math.max(
-        0,
-        (columns.value[Math.min(pos.column, sheet.value.maxColumn) - 1]?.left ?? 48) - 48
+      viewport.value.scrollTop = mapScroll(
+        Math.max(0, Math.min(pos.row, sheet.value.maxRow) - 2) * rowHeight.value,
+        logicalHeight.value,
+        canvasHeight.value,
+        height.value
+      )
+      viewport.value.scrollLeft = mapScroll(
+        (columns.value[Math.min(pos.column, sheet.value.maxColumn) - 1]?.left ??
+          rowNumberWidth.value) - rowNumberWidth.value,
+        totalWidth.value,
+        canvasWidth.value,
+        width.value
       )
       scroll()
     }
@@ -372,12 +464,61 @@ function go() {
     error.value = (e as Error).message
   }
 }
+function setZoom(value: number) {
+  zoom.value = Math.round(Math.max(0.5, Math.min(2.5, value)) * 100) / 100
+}
+let pinch:
+  | { distance: number; zoom: number; x: number; y: number; offsetX: number; offsetY: number }
+  | undefined
+function startPinch(event: TouchEvent) {
+  if (event.touches.length !== 2 || !viewport.value) return
+  event.preventDefault()
+  const [a, b] = [event.touches[0], event.touches[1]]
+  const rect = viewport.value.getBoundingClientRect()
+  const offsetX = (a.clientX + b.clientX) / 2 - rect.left
+  const offsetY = (a.clientY + b.clientY) / 2 - rect.top
+  pinch = {
+    distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+    zoom: zoom.value,
+    x: logicalX.value + offsetX,
+    y: logicalY.value + offsetY,
+    offsetX,
+    offsetY,
+  }
+}
+function movePinch(event: TouchEvent) {
+  if (event.touches.length !== 2 || !pinch || !pinch.distance) return
+  event.preventDefault()
+  const state = pinch
+  const [a, b] = [event.touches[0], event.touches[1]]
+  setZoom((state.zoom * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)) / state.distance)
+  const ratio = zoom.value / state.zoom
+  void nextTick(() => {
+    if (!viewport.value) return
+    viewport.value.scrollLeft = mapScroll(
+      state.x * ratio - state.offsetX,
+      totalWidth.value,
+      canvasWidth.value,
+      width.value
+    )
+    viewport.value.scrollTop = mapScroll(
+      state.y * ratio - state.offsetY,
+      logicalHeight.value,
+      canvasHeight.value,
+      height.value
+    )
+    scroll()
+  })
+}
+function endPinch() {
+  pinch = undefined
+}
 let observer: ResizeObserver | undefined
 onMounted(() => {
   if (viewport.value && typeof ResizeObserver !== 'undefined') {
     observer = new ResizeObserver(() => {
-      height.value = viewport.value!.clientHeight || 600
-      width.value = viewport.value!.clientWidth || 800
+      height.value = viewport.value.clientHeight || 600
+      width.value = viewport.value.clientWidth || 800
     })
     observer.observe(viewport.value)
   }

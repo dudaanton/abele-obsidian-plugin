@@ -1,14 +1,21 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
 import { createApp, type App as VueApp } from 'vue'
+import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import WorkbookGrid from './WorkbookGrid.vue'
 import type { Workbook } from './package'
 import type { WorkbookEdit } from './edit'
 import { applyCalculatedEdit } from './calculation'
-import { loadWorkbookBytes, writeWorkbookChange } from './vaultAdapter'
+import { loadWorkbookBytes, writeWorkbookChange, yieldWorkbookTask } from './vaultAdapter'
 import './workbook.css'
 export const XLSX_VIEW_TYPE = 'abele-workbook'
 export class XlsxView extends FileView {
   workbook: Workbook | null = null
+  sheetName = ''
+  cell = 'A1'
+  zoom = 1
+  private editing = false
+  private externalChange = false
+  private loadedPath = ''
   private vue: VueApp | null = null
   private token = 0
   private saving = false
@@ -16,8 +23,9 @@ export class XlsxView extends FileView {
     super(leaf)
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && file.path === this.file?.path && !this.saving)
-          void this.onLoadFile(file)
+        if (!(file instanceof TFile) || file.path !== this.file?.path || this.saving) return
+        if (this.editing) this.externalChange = true
+        else void this.onLoadFile(file)
       })
     )
   }
@@ -32,6 +40,14 @@ export class XlsxView extends FileView {
   }
   async onLoadFile(file: TFile, calculationNote?: string): Promise<void> {
     const token = ++this.token
+    if (this.loadedPath && this.loadedPath !== file.path) {
+      this.sheetName = ''
+      this.cell = 'A1'
+      this.zoom = 1
+    }
+    this.loadedPath = file.path
+    this.editing = false
+    this.externalChange = false
     this.vue?.unmount()
     this.vue = null
     this.workbook = null
@@ -40,7 +56,7 @@ export class XlsxView extends FileView {
     const status = this.contentEl.createDiv({ text: 'Opening workbook…', attr: { role: 'status' } })
     try {
       const book = await loadWorkbookBytes(
-        new Uint8Array(await this.app.vault.readBinary(file)),
+        await readOfficeBytes(this.app, file),
         file.extension.toLowerCase() === 'xlsm'
       )
       if (token !== this.token) return
@@ -50,12 +66,24 @@ export class XlsxView extends FileView {
       this.vue = createApp(WorkbookGrid, {
         book,
         mobile: Platform.isMobile,
+        initialSheet: this.sheetName,
+        initialAddress: this.cell,
+        initialZoom: this.zoom,
+        context: (sheet: string, address: string, zoom: number) => {
+          this.sheetName = sheet
+          this.cell = address
+          this.zoom = zoom
+        },
+        editorState: (open: boolean) => {
+          this.editing = open
+          if (!open && this.externalChange && this.file === file) void this.onLoadFile(file)
+        },
         save: async (edit: WorkbookEdit) => {
           if (Platform.isMobile || book.readOnly)
             throw new Error('Hand editing is desktop-only for .xlsx files')
           if (this.file !== file || this.workbook !== book)
             throw new Error('Workbook is no longer open')
-          const calculated = await applyCalculatedEdit(book, edit)
+          const calculated = await applyCalculatedEdit(book, edit, undefined, yieldWorkbookTask)
           const updated = calculated.bytes
           if (this.file !== file || this.workbook !== book)
             throw new Error('Workbook is no longer open')

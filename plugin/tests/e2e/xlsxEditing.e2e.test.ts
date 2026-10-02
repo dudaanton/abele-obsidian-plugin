@@ -78,11 +78,37 @@ describe.skipIf(!available)('workbook editing', () => {
       const view=app.workspace.getLeavesOfType('abele-workbook').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view;const root=view.contentEl
       root.querySelector('[data-cell="B2"]').click();await new Promise(r=>setTimeout(r,50));root.querySelector('.abele-workbook-edit').click();await new Promise(r=>setTimeout(r,50))
       const clipped=[];for(const f of root.querySelectorAll('.abele-workbook-editor input,.abele-workbook-editor select,.abele-workbook-editor textarea')){f.focus();const r=f.getBoundingClientRect();for(let p=f.parentElement;p&&p!==document.body;p=p.parentElement){const s=getComputedStyle(p);if(s.overflowX==='visible'&&s.overflowY==='visible')continue;const b=p.getBoundingClientRect();if(r.left-2<b.left||r.right+2>b.right)clipped.push(f.getAttribute('aria-label'))}}
+      const shot=${JSON.stringify(SHOTS)}+'/workbook-desktop-editor.png';const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(shot,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
       const input=root.querySelector('.abele-workbook-editor textarea');input.value='35';input.dispatchEvent(new Event('input',{bubbles:true}));root.querySelector('.abele-workbook-editor').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))
       for(let i=0;i<150;i++){if(view.workbook&&(await view.workbook.sheet('Sample')).cells.get('B2')?.value===35)break;await new Promise(r=>setTimeout(r,100))}
       return {value:(await view.workbook.sheet('Sample')).cells.get('B2')?.value,clipped}
     })()`)
     expect(result.value).toBe(35)
     expect(result.clipped).toEqual([])
+  })
+  it('keeps unsaved desktop input when an agent changes the file, refuses the stale save, and reloads on cancel', () => {
+    if (onPhone()) return
+    const result = evalAsync<{
+      retained: boolean
+      refused: boolean
+      value: number
+      sheet: string
+    }>(`(async()=>{
+      const api=window.__abeleTest;const view=app.workspace.getLeavesOfType('abele-workbook').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view
+      const root=view.contentEl;root.querySelector('[data-cell="B2"]').click();await new Promise(r=>setTimeout(r,50));root.querySelector('.abele-workbook-edit').click();await new Promise(r=>setTimeout(r,50))
+      const input=root.querySelector('.abele-workbook-editor textarea');input.value='99';input.dispatchEvent(new Event('input',{bubbles:true}))
+      const scope=new api.ScopeResolver();scope.setFullVaultAccess(true);api.ScopeResolver.setActiveInstance(scope)
+      try{const tools=api.createAgentTools();const params={path:${JSON.stringify(PATH)},sheet:'Sample',range:'B2'};const first=await tools.find(t=>t.name==='xlsx_read').execute('sample-read',params);const revision=first.content[0].text.match(/revision ([0-9a-f-]+)/)[1];await tools.find(t=>t.name==='xlsx_write').execute('sample-concurrent',{...params,revision,values:[[45]]})}finally{api.ScopeResolver.setActiveInstance(null)}
+      const retained=root.querySelector('.abele-workbook-editor textarea')?.value==='99'
+      root.querySelector('.abele-workbook-editor').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));for(let i=0;i<150&&!root.querySelector('[role="status"]').textContent.includes('changed');i++)await new Promise(r=>setTimeout(r,100))
+      const refused=root.querySelector('[role="status"]').textContent.includes('changed')
+      ;[...root.querySelectorAll('.abele-workbook-editor button')].find(b=>b.textContent==='Cancel').click()
+      for(let i=0;i<150;i++){if(!root.querySelector('.abele-workbook-editor')&&view.workbook&&(await view.workbook.sheet('Sample')).cells.get('B2')?.value===45)break;await new Promise(r=>setTimeout(r,100))}
+      return {retained,refused,value:(await view.workbook.sheet('Sample')).cells.get('B2')?.value,sheet:root.querySelector('select').value}
+    })()`)
+    expect(result.retained).toBe(true)
+    expect(result.refused).toBe(true)
+    expect(result.value).toBe(45)
+    expect(result.sheet).toBe('Sample')
   })
 })

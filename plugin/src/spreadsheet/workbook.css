@@ -48,7 +48,7 @@
   flex: 1;
   min-height: 100px;
   position: relative;
-  touch-action: pan-x pan-y pinch-zoom;
+  touch-action: pan-x pan-y;
 }
 .abele-workbook-space {
   position: relative;
@@ -65,7 +65,7 @@
   background: var(--background-primary);
   color: var(--text-normal);
   font-family: var(--font-interface);
-  font-size: var(--font-ui-small);
+  font-size: inherit;
   box-shadow: none;
   min-height: 0;
   margin: 0;

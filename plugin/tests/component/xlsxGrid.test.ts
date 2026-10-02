@@ -5,6 +5,48 @@ import { openXlsx } from '@/spreadsheet/package'
 import { sampleXlsx } from '../fixtures/xlsx/sampleXlsx'
 
 describe('workbook grid', () => {
+  it('zooms the virtual grid with a two-finger pinch without offering phone editing', async () => {
+    const book = await openXlsx(sampleXlsx())
+    const wrapper = mount(WorkbookGrid, { props: { book, mobile: true } })
+    await flushPromises()
+    const cell = wrapper.find('[data-cell="A1"]')
+    const before = Number.parseFloat((cell.element as HTMLElement).style.width)
+    const viewport = wrapper.find('.abele-workbook-viewport')
+    await viewport.trigger('touchstart', {
+      touches: [
+        { clientX: 100, clientY: 200 },
+        { clientX: 200, clientY: 200 },
+      ],
+    })
+    await viewport.trigger('touchmove', {
+      touches: [
+        { clientX: 50, clientY: 200 },
+        { clientX: 250, clientY: 200 },
+      ],
+    })
+    await flushPromises()
+    expect(
+      Number.parseFloat((wrapper.find('[data-cell="A1"]').element as HTMLElement).style.width)
+    ).toBe(before * 2)
+    expect(wrapper.find('.abele-workbook-edit').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('uses a bounded physical canvas but can still reach the last logical row of a full sheet', async () => {
+    const book = await openXlsx(sampleXlsx())
+    const sheet = await book.sheet('Sample')
+    sheet.maxRow = 1048576
+    sheet.maxColumn = 16384
+    const wrapper = mount(WorkbookGrid, { props: { book, mobile: true } })
+    await flushPromises()
+    expect(
+      Number.parseFloat((wrapper.find('.abele-workbook-space').element as HTMLElement).style.height)
+    ).toBeLessThanOrEqual(8000000)
+    await wrapper.find('[aria-label="Cell address"]').setValue('A1048576')
+    await wrapper.find('[aria-label="Cell address"]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(wrapper.find('[data-cell="A1048576"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
   it('uses the same desktop save boundary for values and formatting, and hides it on phones', async () => {
     const book = await openXlsx(sampleXlsx())
     const save = vi.fn().mockResolvedValue(undefined)

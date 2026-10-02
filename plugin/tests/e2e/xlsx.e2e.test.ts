@@ -9,6 +9,15 @@ targets('desktop', 'phone')
 const PATH = 'sample-workbook-e2e.xlsx'
 const bytes = Buffer.from(sampleXlsx()).toString('base64')
 const SHOTS = shotDir('abele-workbook')
+const LARGE = 'sample-workbook-large-e2e.xlsx'
+const large = Buffer.from(
+  sampleXlsx(
+    Array.from(
+      { length: 10000 },
+      (_, i) => `<row r="${(i + 1) * 10}"><c r="A${(i + 1) * 10}"><v>${i + 1}</v></c></row>`
+    ).join('')
+  )
+).toString('base64')
 const available = isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('workbook view', () => {
   let size: [number, number] = [0, 0]
@@ -31,7 +40,7 @@ describe.skipIf(!available)('workbook view', () => {
       await reloadApp('app.emulateMobile(false)')
     }
     evalAsync(
-      `(async()=>{for(const l of app.workspace.getLeavesOfType('abele-workbook')) if(l.view.file?.path===${JSON.stringify(PATH)})l.detach();const f=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(f)await app.vault.delete(f);${onPhone() ? '' : `if(!${sidebars[0]})app.workspace.leftSplit.expand();if(!${sidebars[1]})app.workspace.rightSplit.expand();`}return true})()`
+      `(async()=>{for(const l of app.workspace.getLeavesOfType('abele-workbook')) if(l.view.file?.path===${JSON.stringify(PATH)})l.detach();const f=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(f)await app.vault.delete(f);const large=app.vault.getAbstractFileByPath(${JSON.stringify(LARGE)});if(large)await app.vault.delete(large);${onPhone() ? '' : `if(!${sidebars[0]})app.workspace.leftSplit.expand();if(!${sidebars[1]})app.workspace.rightSplit.expand();`}return true})()`
     )
   }, 120000)
   const probe = () =>
@@ -49,7 +58,7 @@ describe.skipIf(!available)('workbook view', () => {
     const edge=root.getBoundingClientRect();const over=[...root.querySelectorAll('.abele-workbook-bar input,.abele-workbook-bar select,.abele-workbook-bar button')].some(el=>el.getBoundingClientRect().right>edge.right+1)
     const path=${JSON.stringify(SHOTS)}+'/workbook-'+(app.isMobile?'phone':'desktop')+'.png'
     if(window.__e2eHost)await window.__e2eHost.shot(path);else{const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())}
-    return {text:root.textContent,over,cells:root.querySelectorAll('[data-cell]').length,formula:root.querySelector('.abele-workbook-formula').textContent,editing:!!root.querySelector('.abele-workbook-editor'),shot:path}
+    return {text:root.textContent,over,cells:root.querySelectorAll('[data-cell]').length,formula:root.querySelector('.abele-workbook-formula').textContent,editing:!!root.querySelector('.abele-workbook-edit,.abele-workbook-editor'),shot:path}
   })()`)
   it('opens cached values, merged cells, tabs and formulas', () => {
     const result = probe()
@@ -58,6 +67,46 @@ describe.skipIf(!available)('workbook view', () => {
     expect(result.over).toBe(false)
     expect(result.cells).toBeLessThan(100)
     console.info(result.shot)
+  })
+  it('virtualizes a large sparse sheet and scrolls to its last stored row without blocking frames', () => {
+    const result = evalAsync<{
+      stored: number
+      cells: number
+      last: boolean
+      frames: number
+      maxGap: number
+    }>(`(async()=>{
+      const path=${JSON.stringify(LARGE)};const prior=app.vault.getAbstractFileByPath(path);if(prior)await app.vault.delete(prior)
+      const file=await app.vault.createBinary(path,Uint8Array.from(atob(${JSON.stringify(large)}),c=>c.charCodeAt(0)).buffer)
+      const leaf=app.workspace.getLeaf('tab');let handle=0,last=performance.now(),frames=0,maxGap=0,stopped=false
+      const tick=at=>{if(stopped)return;frames++;maxGap=Math.max(maxGap,at-last);last=at;handle=requestAnimationFrame(tick)};handle=requestAnimationFrame(tick)
+      try{
+        await leaf.setViewState({type:'abele-workbook',state:{file:path},active:true});await app.workspace.revealLeaf(leaf)
+        const root=leaf.view.contentEl;for(let i=0;i<150&&!root.querySelector('[data-cell="A1"]');i++)await new Promise(r=>setTimeout(r,100))
+        const input=root.querySelector('[aria-label="Cell address"]');input.value='A100000';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))
+        await new Promise(r=>setTimeout(r,200));const sheet=await leaf.view.workbook.sheet('Sample')
+        return {stored:sheet.cells.size,cells:root.querySelectorAll('[data-cell]').length,last:root.querySelector('[data-cell="A100000"]')?.textContent==='10000',frames,maxGap}
+      }finally{stopped=true;cancelAnimationFrame(handle);leaf.detach();await app.vault.delete(file)}
+    })()`)
+    expect(result.stored).toBe(10000)
+    expect(result.cells).toBeLessThan(400)
+    expect(result.last).toBe(true)
+    expect(result.frames).toBeGreaterThan(1)
+    expect(result.maxGap).toBeLessThan(500)
+  })
+  it('supports real finger panning and local pinch zoom on the phone without editing the file', () => {
+    if (!onPhone()) return
+    const result = evalAsync<{ pan: number; zoom: number }>(`(async()=>{
+      const view=app.workspace.getLeavesOfType('abele-workbook').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view;const root=view.contentEl;const v=root.querySelector('.abele-workbook-viewport');const r=v.getBoundingClientRect()
+      const y=Math.min(r.bottom-80,r.top+80);await window.__e2eHost.swipe(r.right-30,y,r.left+70,y,{velocity:180});await new Promise(r=>setTimeout(r,500));const pan=v.scrollLeft
+      await window.__e2eHost.pinch(1.4);await new Promise(r=>setTimeout(r,500));const zoom=Number(root.querySelector('.abele-workbook-grid').dataset.zoom)
+      await window.__e2eHost.shot(${JSON.stringify(SHOTS)}+'/workbook-phone-zoomed.png')
+      root.querySelector('[aria-label="Reset zoom"]').click();v.scrollLeft=0
+      return {pan,zoom}
+    })()`)
+    expect(result.pan).toBeGreaterThan(0)
+    expect(result.zoom).toBeGreaterThan(1.05)
+    expect(result.zoom).toBeLessThanOrEqual(2.5)
   })
   it('fits the phone layout and offers no hand editing', async () => {
     if (!onPhone()) {
