@@ -90,6 +90,31 @@ describe.skipIf(!available)('live slide lifecycle', () => {
   })
 
   it.skipIf(onPhone())(
+    'does not run the first slide when a show starts on a later slide',
+    async () => {
+      const result = JSON.parse(
+        await evalLong(`(async()=>{
+      const leaf=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===${JSON.stringify(PATH)})
+      const view=leaf.view,viewer=view.viewer,file=view.file
+      await viewer.go(2)
+      const source=${JSON.stringify(SOURCE.replace('# Intro', '```slide-script\nscript: Sample slide counter\nrefresh: enter\n```'))}
+      await app.vault.modify(file,source)
+      const until=async(fn)=>{for(let i=0;i<50;i++){if(fn())return;await new Promise(r=>setTimeout(r,100))}throw Error('update timed out')}
+      await until(()=>viewer.model?.slides[0]?.regions[0]?.blocks[0]?.type==='script')
+      const runs=window.__abeleTest.ScriptRuns.getInstance()
+      const count=()=>runs.runs.value.filter(r=>r.path===${JSON.stringify(scriptPath)}).length
+      const before=count()
+      try {
+        await view.startPresenter()
+        return JSON.stringify({extra:count()-before,index:view.show.index})
+      } finally {view.show?.end();await app.vault.modify(file,${JSON.stringify(SOURCE)})}
+    })()`)
+      ) as { extra: number; index: number }
+      expect(result).toEqual({ extra: 0, index: 2 })
+    }
+  )
+
+  it.skipIf(onPhone())(
     'runs live blocks in the audience popout but never in presenter previews',
     async () => {
       const result = JSON.parse(

@@ -18,6 +18,9 @@ import { Presentation } from './core/Presentation'
 import { PresenterView } from './core/PresenterView'
 import type { Deck } from './core/model'
 
+// Runtime-only bootstraps: a new audience leaf must not activate slide zero during file loading.
+const audienceBootstraps = new WeakSet<WorkspaceLeaf>()
+
 /** Read-only file adapter: only the source editor writes, never the viewer's preview buffer. */
 export class DeckView extends FileView {
   viewer: DeckViewer | null = null
@@ -144,6 +147,7 @@ export class DeckView extends FileView {
         },
       }
     )
+    if (audienceBootstraps.has(this.leaf)) this.viewer.suspendMedia(true)
     this.viewer
       .button('Present', () => void this.startPresenter())
       .classList.add('abele-deck-presenter-action')
@@ -217,11 +221,16 @@ export class DeckView extends FileView {
       await this.presenter.setDeck(deck)
       if (show.ended || Platform.isMobile) return
       popout = this.app.workspace.openPopoutLeaf()
-      await popout.setViewState({
-        type: DECK_VIEW_TYPE,
-        state: { file: file.path },
-        active: true,
-      })
+      audienceBootstraps.add(popout)
+      try {
+        await popout.setViewState({
+          type: DECK_VIEW_TYPE,
+          state: { file: file.path },
+          active: true,
+        })
+      } finally {
+        audienceBootstraps.delete(popout)
+      }
       if (show.ended) {
         popout.detach()
         return
@@ -242,6 +251,8 @@ export class DeckView extends FileView {
         audience.viewer?.exitPresenting()
       })
       await audience.viewer.setDeck(deck)
+      if (show.ended) return
+      audience.viewer.suspendMedia(false)
       await audience.viewer.present(false)
       if (!show.ended) {
         this.app.workspace.setActiveLeaf(this.leaf, { focus: true })
