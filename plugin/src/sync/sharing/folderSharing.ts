@@ -5,7 +5,13 @@ export interface FolderPreview {
   prefix: string
   generation: string
   complete: boolean
-  files: { path: string; fileId: string | null; versionId: string | null; eligible: boolean }[]
+  files: {
+    path: string
+    fileId: string | null
+    versionId: string | null
+    eligible: boolean
+    eligibility?: 'eligible' | 'excluded' | 'unknown'
+  }[]
 }
 export interface OwnerSession {
   facet: 'account'
@@ -27,7 +33,7 @@ export interface MachineCredential {
 }
 export interface FolderSharingPort {
   preview(prefix: string): Promise<FolderPreview>
-  authorize(password: string): Promise<OwnerSession>
+  authorize(password: string, email?: string): Promise<OwnerSession>
   create(
     session: OwnerSession,
     request: { label: string; prefix: string; role: 'reader' | 'editor' }
@@ -79,14 +85,16 @@ export class FolderSharingFlow {
     this.draft = { ...request, fingerprint: await fingerprint(p), attempt: crypto.randomUUID() }
     return copy(p)
   }
-  async confirm(password: string): Promise<MachineCredential> {
+  async confirm(password: string, email?: string): Promise<MachineCredential> {
     this.fence()
     if (!this.draft) throw new Error('Review a folder first')
     this.secret = null
     if (!this.session) {
       if (!password) throw new Error('Current account password is required')
       try {
-        this.session = await this.port.authorize(password)
+        this.session = email
+          ? await this.port.authorize(password, email)
+          : await this.port.authorize(password)
       } catch {
         throw new Error('Owner authentication failed')
       }
@@ -118,7 +126,7 @@ export class FolderSharingFlow {
       grant.prefix !== this.draft.prefix ||
       grant.role !== this.draft.role ||
       !grant.id ||
-      grant.revision < 1
+      grant.revision < 0
     )
       throw new Error('Folder grant does not match the reviewed scope')
     this.fence()

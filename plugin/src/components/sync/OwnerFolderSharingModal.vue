@@ -35,9 +35,17 @@
         <ul>
           <li v-for="file in preview.files" :key="file.path">
             <code>{{ file.path }}</code> —
-            {{ file.eligible ? 'eligible' : 'excluded code or settings' }}
+            {{ file.eligibility ?? (file.eligible ? 'eligible' : 'excluded code or settings') }}
           </li>
         </ul>
+        <label
+          >Owner account email<input
+            v-model="email"
+            type="email"
+            autocomplete="username"
+            aria-label="Owner account email"
+            :disabled="busy || !enabled"
+        /></label>
         <label
           >Current account password<input
             v-model="password"
@@ -88,6 +96,7 @@ const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   prefix = ref('Sample folder/'),
   label = ref('Sample folder'),
   role = ref<'reader' | 'editor'>('editor'),
+  email = ref(''),
   password = ref(''),
   busy = ref(false),
   error = ref(''),
@@ -111,7 +120,7 @@ async function confirm() {
   busy.value = true
   error.value = ''
   try {
-    secret.value = await props.flow.confirm(password.value)
+    secret.value = await props.flow.confirm(password.value, email.value || undefined)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Folder sharing failed'
   } finally {

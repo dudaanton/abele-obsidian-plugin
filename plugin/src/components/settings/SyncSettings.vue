@@ -3,7 +3,7 @@
     <ConnectCard v-if="!connected" :server-url="device.serverUrl" />
 
     <template v-else>
-      <OwnerPublicationSettings />
+      <OwnerPublicationSettings :folder-flow="ownerFolderFlow" :model="ownerPublicationModel" />
       <!--
         A connection a transfer brought, onto a vault that may hold files, into one that may hold
         files too: nothing syncs until the join question is answered. The dialog opens by itself;
@@ -275,6 +275,14 @@ import VaultPolicy from './sync/VaultPolicy.vue'
 import DeviceList from './sync/DeviceList.vue'
 import UsageCard from './sync/UsageCard.vue'
 import OwnerPublicationSettings from './sync/OwnerPublicationSettings.vue'
+import { OwnerFolderHttpPort } from '@/sync/sharing/ownerHttp'
+import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
+import { PublicationSettingsModel } from '@/sync/sharing/publicationSettings'
+import { FolderSharingFlow } from '@/sync/sharing/folderSharing'
+import { transportOf } from '@/sync/environment'
+import { boundDeviceToken } from '@/secrets/deviceSecret'
+import { secrets } from '@/secrets/SecretStore'
+import { serverUrlProblem } from '@abele/sync-protocol'
 import JoinVaultModal from './sync/JoinVaultModal.vue'
 import HeldDeletesBlock from '../sync/HeldDeletesBlock.vue'
 import StagedSettingsBlock from '../sync/StagedSettingsBlock.vue'
@@ -303,6 +311,59 @@ const staged = sync.settingsPrompt.staged
 const stagedNames = sync.settingsPrompt.names
 const stagedWritten = computed(() => sync.settingsPrompt.appliedWaiting?.value ?? [])
 const connected = computed(() => status.value.state !== 'disconnected')
+const ownerFolderFlow = computed(() => {
+  const c = device.value
+  if (!connected.value || !c.vaultId || serverUrlProblem(c.serverUrl) !== null) return undefined
+  const binding = {
+    serverUrl: c.serverUrl,
+    vaultId: c.vaultId,
+    deviceId: c.deviceId,
+    tokenId: c.deviceTokenId,
+  }
+  const port = new OwnerFolderHttpPort({
+    baseUrl: binding.serverUrl,
+    vaultId: binding.vaultId,
+    fetch: (input, init) => transportOf({})(input, init),
+    deviceToken: () => {
+      const now = device.value
+      if (
+        now.serverUrl !== binding.serverUrl ||
+        now.vaultId !== binding.vaultId ||
+        now.deviceId !== binding.deviceId ||
+        now.deviceTokenId !== binding.tokenId
+      )
+        return null
+      return boundDeviceToken(secrets().device, binding.tokenId, binding.serverUrl)
+    },
+  })
+  return new FolderSharingFlow(binding.vaultId, port)
+})
+const ownerPublicationModel = computed(() => {
+  const c = device.value
+  if (!connected.value || !c.vaultId || serverUrlProblem(c.serverUrl) !== null) return undefined
+  const port = new SponsoredAssetsHttpPort({
+    baseUrl: c.serverUrl,
+    fetch: (input, init) => transportOf({})(input, init),
+  })
+  return new PublicationSettingsModel(
+    { facet: 'device', principalId: c.deviceId, localDeviceId: c.deviceId, owner: true },
+    {
+      load: (id) => port.read(id),
+      unshare: async (request) => {
+        await port.mutate(
+          request.grantId,
+          {
+            kind: 'withdraw',
+            fileId: request.fileId,
+            expectedGeneration: request.withdrawalGeneration,
+          },
+          request.revision,
+          request.intentId
+        )
+      },
+    }
+  )
+})
 const confirming = ref<'disconnect' | 'forget' | null>(null)
 /** The waiting revoke whose kept token the person asked to forget, while that is asked. */
 const forgetting = ref<PendingRevoke | null>(null)
