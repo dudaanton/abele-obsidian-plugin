@@ -50,7 +50,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
   const shoot = async name => {
     const path = ${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(label)} + '-' + name + '.png'
     await wait(600)
-    if (window.__e2eHost) return (await window.__e2eHost.shot(path)).path || path
+    if (window.__e2eHost) return await window.__e2eHost.shot(path)
     const remote = require('@electron/remote')
     const target = name === 'skills-folder'
       ? remote.BrowserWindow.getAllWindows().find(win => win.getTitle().startsWith('Settings') && win.getTitle().includes(' - ' + app.vault.getName() + ' - ')) || remote.getCurrentWindow()
@@ -117,8 +117,12 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
       }))
     report.text = card.textContent
     report.shot = await shoot('memory-approval')
-    if (window.__e2eHost) await window.__e2eHost.tap(rect.left + rect.width / 2, rect.top + rect.height / 2)
-    else approve.click()
+    if (window.__e2eHost) {
+      // Capturing waits while the native keyboard and drawer can settle. Use the live
+      // rectangle after capture, not the coordinates measured before that wait.
+      const current = approve.getBoundingClientRect()
+      await window.__e2eHost.tap(current.left + current.width / 2, current.top + current.height / 2)
+    } else approve.click()
     await until(() => (worker.memory || []).length === 1 && !session.isExecutingTool.value && !session.isStreaming.value)
     report.afterMemory = worker.memory.length
     if (${desktopChecks}) {
