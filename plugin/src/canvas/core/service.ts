@@ -4,6 +4,7 @@ import {
   cloneCanvas,
   descendants,
   parentsOf,
+  recordParents,
   edgeSchema,
   emptyCanvas,
   type CanvasGraph,
@@ -19,9 +20,10 @@ function fitForLayout(
 ): CanvasGraph {
   const parents = parentsOf(graph),
     prepared = cloneCanvas(graph)
-  for (const node of prepared.nodes)
-    node.abele = { ...node.abele, parent: parents.get(node.id) ?? null }
-  return fitText(prepared, metrics, selected)
+  recordParents(prepared, parents)
+  const fitted = fitText(prepared, metrics, selected)
+  recordParents(fitted, parents)
+  return fitted
 }
 
 export interface GraphStore {

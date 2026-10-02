@@ -144,17 +144,58 @@ export function bounds(rects: readonly Rect[], margin = 0): Rect {
     height: Math.max(...rects.map((r) => r.y + r.height)) - y + 2 * margin,
   }
 }
-/** Explicit Abele parents win. Native canvases express group membership by containment. */
+const rectValues = (node: Rect) => [node.x, node.y, node.width, node.height]
+function parentGeometry(node: CanvasNode, parent: string | null, groups: CanvasNode[]): unknown[] {
+  const frame = groups.find((group) => group.id === parent)
+  return [
+    rectValues(node),
+    parent,
+    frame ? rectValues(frame) : null,
+    groups
+      .filter((group) => group.id !== node.id && contains(group, node))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((group) => [group.id, ...rectValues(group)]),
+  ]
+}
+/** Anchor semantic intent to the geometry we wrote; native edits invalidate the hint. */
+export function recordParent(node: CanvasNode, parent: string | null, graph: CanvasGraph): void {
+  node.abele = {
+    ...node.abele,
+    parent,
+    parentGeometry: parentGeometry(
+      node,
+      parent,
+      graph.nodes.filter((n) => n.type === 'group')
+    ),
+  }
+}
+export function recordParents(graph: CanvasGraph, parents: ReadonlyMap<string, string>): void {
+  const groups = graph.nodes.filter((n) => n.type === 'group')
+  for (const node of graph.nodes) {
+    const parent = parents.get(node.id) ?? null
+    node.abele = { ...node.abele, parent, parentGeometry: parentGeometry(node, parent, groups) }
+  }
+}
+/** Trust unchanged anchored intent; otherwise use current native geometric containment. */
 export function parentsOf(graph: CanvasGraph): Map<string, string> {
   const result = new Map<string, string>(),
     groups = graph.nodes.filter((n) => n.type === 'group')
   for (const node of graph.nodes) {
     const parent = node.abele?.parent
-    if (parent !== undefined && parent !== null) {
-      if (typeof parent !== 'string' || !groups.some((g) => g.id === parent))
-        throw new Error(`${node.id}: unknown parent group ${String(parent)}`)
-      result.set(node.id, parent)
-    } else if (parent !== null) {
+    if (parent !== undefined && parent !== null && typeof parent !== 'string')
+      throw new Error(`${node.id}: parent must be a group id or null`)
+    if (parent === node.id) throw new Error(`Canvas containment cycle at ${node.id}`)
+    const frame = groups.find((group) => group.id === parent)
+    const anchor = node.abele?.parentGeometry
+    const valid =
+      (parent === null || !!frame) &&
+      (anchor !== undefined
+        ? JSON.stringify(anchor) ===
+          JSON.stringify(parentGeometry(node, parent as string | null, groups))
+        : !!frame && contains(frame, node))
+    if (valid) {
+      if (typeof parent === 'string') result.set(node.id, parent)
+    } else {
       const candidates = groups
         .filter(
           (g) =>

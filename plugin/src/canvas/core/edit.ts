@@ -6,6 +6,7 @@ import {
   edgeSchema,
   nodeSchema,
   parentsOf,
+  recordParent,
   SHAPES,
   type CanvasGraph,
   type CanvasNode,
@@ -125,7 +126,9 @@ export function editCanvas(
                 ? { url: n.url }
                 : { label: n.label }),
         }
-        graph.nodes.push(nodeSchema.parse(node))
+        const added = nodeSchema.parse(node)
+        graph.nodes.push(added)
+        recordParent(added, n.parent ?? null, graph)
         if (n.x === undefined && !near) needsLayout = true
       } else if (op.op === 'connect') {
         unique(graph, op.edge.id)
@@ -141,11 +144,21 @@ export function editCanvas(
           if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key]))
             merged[key] = { ...element[key], ...patch[key] }
         }
-        if (graph.nodes.some((node) => node.id === op.id))
-          graph.nodes[graph.nodes.findIndex((n) => n.id === op.id)] = nodeSchema.parse(merged)
-        else graph.edges[graph.edges.findIndex((e) => e.id === op.id)] = edgeSchema.parse(merged)
+        if (graph.nodes.some((node) => node.id === op.id)) {
+          const updated = nodeSchema.parse(merged)
+          graph.nodes[graph.nodes.findIndex((n) => n.id === op.id)] = updated
+          if (
+            op.op === 'update' &&
+            patch.abele &&
+            typeof patch.abele === 'object' &&
+            'parent' in patch.abele
+          )
+            recordParent(updated, updated.abele?.parent as string | null, graph)
+        } else graph.edges[graph.edges.findIndex((e) => e.id === op.id)] = edgeSchema.parse(merged)
       } else if (op.op === 'group') {
         unique(graph, op.id)
+        const previous = parentsOf(graph)
+        const hinted = graph.nodes.filter((node) => node.abele?.parent !== undefined)
         const members = [...new Set(op.ids)].map((id) => known(id, graph.nodes))
         const box = bounds(members, 40)
         graph.nodes.push({
@@ -155,7 +168,9 @@ export function editCanvas(
           ...box,
           abele: { parent: null },
         })
-        for (const member of members) member.abele = { ...member.abele, parent: op.id }
+        for (const node of hinted) recordParent(node, previous.get(node.id) ?? null, graph)
+        recordParent(graph.nodes[graph.nodes.length - 1], null, graph)
+        for (const member of members) recordParent(member, op.id, graph)
       } else if (op.op === 'collapse') {
         const node = known(op.id, graph.nodes)
         if (node.type !== 'group') throw new Error('Only groups can collapse')
@@ -169,8 +184,7 @@ export function editCanvas(
           throw new Error('Only groups can ungroup')
         const parents = parentsOf(graph)
         for (const node of graph.nodes)
-          if (parents.get(node.id) === op.id)
-            node.abele = { ...node.abele, parent: parents.get(op.id) ?? null }
+          if (parents.get(node.id) === op.id) recordParent(node, parents.get(op.id) ?? null, graph)
         graph.nodes = graph.nodes.filter((n) => n.id !== op.id)
         graph.edges = graph.edges.filter(
           (e) => e.id !== op.id && e.fromNode !== op.id && e.toNode !== op.id

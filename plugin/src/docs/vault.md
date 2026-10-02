@@ -37,9 +37,12 @@ retain `portal` and `subpath`. Standard `file` paths and text-card links follow 
 Each node/edge has a stable id; agents choose meaningful ids. Native Canvas reorders elements
 and keys on save, so all edits and references are by id. Unknown extension data survives Abele
 parse/edit/serialize; unknown node types are refused because native Canvas drops them on save.
-Abele hierarchy hints are stored as node `abele.parent` (group id, or null at the root). Native
-geometric group containment is inferred when no explicit parent is set. Group metadata is not
-stored in a second membership file. Creation stores its title in `metadata.frontmatter.title`.
+Abele hierarchy hints are stored as node `abele.parent` (group id, or null at the root), with
+`abele.parentGeometry` anchoring the intent to the node/frame geometry that Abele wrote. Native
+moves/resizes or deleted frames invalidate the hint: current containment is inferred instead,
+without refusing the file. Legacy unanchored hints are trusted only while their frame still
+contains the card. No read rewrites stale metadata; a later successful layout refreshes it.
+Group metadata is not stored in a second membership file. Creation stores its title in `metadata.frontmatter.title`.
 
 Other Abele-only data lives under `abele` at file/node/edge level. Existing `abele.steps`, ink and
 layout hints are preserved but stage one does not author or play steps, or edit ink. Lint reads

@@ -5,6 +5,7 @@ import {
   cloneCanvas,
   descendants,
   parentsOf,
+  recordParents,
   type CanvasGraph,
   type CanvasNode,
   type Rect,
@@ -82,7 +83,7 @@ export function layoutCanvas(
   if (options.scope && nodes.get(options.scope)?.type !== 'group')
     throw new Error(`Unknown scope group: ${options.scope}`)
   // Freeze inferred native membership in our portable extension before geometry changes.
-  for (const n of graph.nodes) n.abele = { ...n.abele, parent: parents.get(n.id) ?? null }
+  recordParents(graph, parents)
   const shift = (node: CanvasNode, dx: number, dy: number) => {
     const ids = [node.id, ...descendants(node.id, parents)]
     if (ids.some((id) => fixed.has(id))) return
@@ -150,5 +151,6 @@ export function layoutCanvas(
     }
   }
   arrange(options.scope)
+  recordParents(graph, parents)
   return graph
 }
