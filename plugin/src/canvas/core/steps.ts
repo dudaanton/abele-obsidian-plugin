@@ -65,8 +65,10 @@ export function expandedNodeIds(graph: CanvasGraph, refs: readonly string[]): Se
 }
 export function editCanvasSteps(input: CanvasGraph, ops: unknown): CanvasGraph {
   const graph = cloneCanvas(input)
-  let steps = stepsOf(graph)
   const operations = z.array(z.unknown()).min(1).parse(ops)
+  // A full replacement is also the recovery path for malformed hand-written step data.
+  const first = operations[0] as { op?: unknown } | null
+  let steps = first?.op === 'replace' ? [] : stepsOf(graph)
   operations.forEach((raw, index) => {
     try {
       const op = stepOperationSchema.parse(raw)
@@ -87,10 +89,11 @@ export function editCanvasSteps(input: CanvasGraph, ops: unknown): CanvasGraph {
       } else {
         const at = steps.findIndex((s) => s.id === op.step.id)
         if (op.before === op.step.id) throw new Error('A step cannot be placed before itself')
-        if (at >= 0 && op.before === undefined) steps[at] = { ...steps[at], ...op.step }
+        const merged = at >= 0 ? { ...steps[at], ...op.step } : op.step
+        if (at >= 0 && op.before === undefined) steps[at] = merged
         else {
           if (at >= 0) steps.splice(at, 1)
-          insert(op.step, op.before ?? null)
+          insert(merged, op.before ?? null)
         }
       }
       graph.abele = { ...graph.abele, steps }

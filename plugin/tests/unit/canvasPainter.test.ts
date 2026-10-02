@@ -80,6 +80,24 @@ describe('the shared canvas picture plan', () => {
       paintCanvas(ctx, graph, { x: -500, y: -500, width: 5, height: 5 }, theme).visible
     ).toEqual([])
   })
+  it('omits edge captions cut by a camera crop and reports the omitted caption', () => {
+    const graph = editCanvas(emptyCanvas(), [
+      { op: 'add_node', node: { id: 'alpha', kind: 'text', label: 'Alpha', x: 0, y: 0 } },
+      { op: 'add_node', node: { id: 'beta', kind: 'text', label: 'Beta', x: 400, y: 0 } },
+      {
+        op: 'connect',
+        edge: { id: 'flow', fromNode: 'alpha', toNode: 'beta', label: 'Sample connection' },
+      },
+    ]).graph
+    const { ctx, calls } = context()
+    const result = paintCanvas(ctx, graph, { x: 300, y: -10, width: 400, height: 300 }, theme)
+    expect(calls.filter((c) => c.name === 'fillText').map((c) => c.args[0])).not.toContain(
+      'Sample connection'
+    )
+    expect(
+      result.warnings.some((w) => w.code === 'cropped-edge-label' && w.ids.includes('flow'))
+    ).toBe(true)
+  })
   it('paints bound dashed connectors, labels, arrowheads and local images', () => {
     const graph = editCanvas(emptyCanvas(), [
       { op: 'add_node', node: { id: 'a', kind: 'text', label: 'A', x: 0, y: 0 } },

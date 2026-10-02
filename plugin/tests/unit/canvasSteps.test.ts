@@ -94,6 +94,23 @@ describe('portable canvas walkthroughs', () => {
     ).toThrow(/op 1/i)
     expect(serializeCanvas(graph)).toBe(bytes)
   })
+  it('preserves step extensions during repositioning and can replace a malformed legacy list', () => {
+    const graph = walk()
+    ;(graph.abele!.steps as Record<string, unknown>[])[1].sample = 'keep'
+    const moved = editCanvasSteps(graph, [
+      {
+        op: 'upsert',
+        step: { id: 'level-step', reveal: ['level'], say: 'Refined' },
+        before: 'start',
+      },
+    ])
+    expect(stepsOf(moved)[0].sample).toBe('keep')
+    graph.abele!.steps = 'broken'
+    const repaired = editCanvasSteps(graph, [
+      { op: 'replace', steps: [{ id: 'fixed', reveal: ['alpha'], say: 'Repaired' }] },
+    ])
+    expect(stepsOf(repaired)[0].id).toBe('fixed')
+  })
   it('validates duplicate steps, missing ids, camera boxes, and id-valued focus before publishing', () => {
     for (const step of [
       { id: 'bad', reveal: ['missing'], say: '' },

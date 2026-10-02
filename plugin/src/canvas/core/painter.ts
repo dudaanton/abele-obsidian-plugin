@@ -3,6 +3,7 @@ import { arrowHead } from '../../drawing/items'
 import { stepScene } from './steps'
 import {
   bounds,
+  contains,
   canvasPaintOrder,
   descendants,
   labelOf,
@@ -260,8 +261,23 @@ export function paintCanvas(
         points.length === 5 ? points[2] : { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(edge.label).width
+      const caption = {
+        x: middle.x - width / 2 - 4,
+        y: middle.y - theme.size,
+        width: width + 8,
+        height: theme.size * 1.4,
+      }
+      if (!contains(region, caption)) {
+        if (assets.lint !== false && overlaps(region, caption))
+          warnings.push({
+            code: 'cropped-edge-label',
+            ids: [edge.id],
+            message: `${edge.id}: caption omitted at the camera boundary; widen the step focus or region to include it`,
+          })
+        continue
+      }
       ctx.fillStyle = theme.paper
-      ctx.fillRect(middle.x - width / 2 - 4, middle.y - theme.size, width + 8, theme.size * 1.4)
+      ctx.fillRect(caption.x, caption.y, caption.width, caption.height)
       ctx.fillStyle = theme.text
       ctx.fillText(edge.label, middle.x - width / 2, middle.y)
     }
