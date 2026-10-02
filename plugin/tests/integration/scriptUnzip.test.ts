@@ -1,14 +1,46 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { strToU8, zipSync } from 'fflate'
+import * as fflate from 'fflate'
+
+vi.mock('fflate', async (original) => {
+  const real = await original<typeof import('fflate')>()
+  return { ...real, unzipSync: vi.fn(real.unzipSync) }
+})
 import { buildScriptContext } from '@/scripting/ScriptContext'
 import { useVault } from '../helpers/testEnv'
 
 const zip = (files: Record<string, string>) =>
   zipSync(Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])))
+/** Central records deliberately share one STORE payload; no large fixture is allocated. */
+function sharedStoredArchive(count: number, payloadSize: number, declaredSize: number): Uint8Array {
+  const payload = new Uint8Array(payloadSize).fill(42)
+  const base = zipSync({ 'sample-0000.bin': payload }, { level: 0 })
+  const view = new DataView(base.buffer)
+  const end = base.length - 22
+  const central = view.getUint32(end + 16, true)
+  const record = base.slice(central, end)
+  const result = new Uint8Array(central + record.length * count + 22)
+  result.set(base.subarray(0, central))
+  for (let index = 0; index < count; index++) {
+    const offset = central + index * record.length
+    result.set(record, offset)
+    result.set(strToU8(`sample-${String(index).padStart(4, '0')}.bin`), offset + 46)
+    new DataView(result.buffer).setUint32(offset + 24, declaredSize, true)
+  }
+  const endOffset = central + record.length * count
+  result.set(base.subarray(end), endOffset)
+  const output = new DataView(result.buffer)
+  output.setUint16(endOffset + 8, count, true)
+  output.setUint16(endOffset + 10, count, true)
+  output.setUint32(endOffset + 12, record.length * count, true)
+  return result
+}
+
 let app: ReturnType<typeof useVault>
 beforeEach(() => {
   app = useVault([])
 })
+afterEach(() => vi.restoreAllMocks())
 const extract = async (bytes: Uint8Array, folder = 'Output') => {
   await app.vault.createBinary(
     'sample.zip',
@@ -64,6 +96,38 @@ describe('script archive extraction', () => {
     await expect(extract(bytes)).rejects.toThrow(/size|MB|bytes/)
     expect(app.vault.getAbstractFileByPath('Output')).toBeNull()
   })
+  it('counts actual STORE bytes when the declared unpacked size is understated', async () => {
+    const bytes = sharedStoredArchive(1, 32, 0)
+    const paths = await extract(bytes)
+    expect(paths).toEqual(['Output/sample-0000.bin'])
+    const file = app.vault.getAbstractFileByPath(paths[0])!
+    expect((await app.vault.readBinary(file as never)).byteLength).toBe(32)
+  })
+  it.each([0, 1])(
+    'refuses shared STORE payloads declaring %s bytes before any payload allocation',
+    async (declared) => {
+      const bytes = sharedStoredArchive(513, 1024 * 1024, declared)
+      const real = (await vi.importActual<typeof import('fflate')>('fflate')).unzipSync
+      let admitted = 0
+      vi.mocked(fflate.unzipSync).mockImplementation((data, options) =>
+        real(data, {
+          ...options,
+          filter: (entry) => {
+            const allowed = options?.filter?.(entry) ?? true
+            if (allowed) {
+              admitted++
+              // Fail safely on the old implementation, before hundreds of MB are copied.
+              throw new Error('Payload allocation admitted before checking the whole archive')
+            }
+            return false
+          },
+        })
+      )
+      await expect(extract(bytes)).rejects.toThrow(/Unpacked archive size/)
+      expect(admitted).toBe(0)
+      expect(app.vault.getAbstractFileByPath('Output')).toBeNull()
+    }
+  )
   it('checks compressed file size before reading the archive', async () => {
     const file = await app.vault.createBinary(
       'sample.zip',

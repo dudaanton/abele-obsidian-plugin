@@ -34,7 +34,9 @@ when an automation starts the script; direct script operations keep their existi
 
 `unzip()` validates every entry before writing any of them. Entries cannot escape the target
 folder or use absolute paths. Limits are 64 MB compressed, 512 MB total unpacked, and 5000
-entries; declared sizes are checked before inflation. Ordinary nested and hidden files inside
+entries; a metadata-only pass checks allocation bounds before any payload is copied or
+inflated. STORE entries count their stored byte sizes even when unpacked sizes are understated
+or multiple entries share one payload. Ordinary nested and hidden files inside
 the target still extract. The path/size validation is storage-independent.
 
 ## The header
