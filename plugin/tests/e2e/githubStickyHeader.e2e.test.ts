@@ -85,7 +85,10 @@ for (const mobile of [false, true]) {
             const main = root.querySelector('.abele-github-layout__main')
             const selector = ${JSON.stringify(kind === 'blob' ? '.abele-github-header__title' : '.abele-github-file[data-path="src/long.ts"] .abele-github-file__head')}
             const head = await until(() => root.querySelector(selector) && root.querySelector('.abele-github-code__line_target') && root.querySelector(selector), 20000)
-            if (!head) throw Error('File header and anchor did not load')
+            if (!head) throw Error('File header and anchor did not load: ' + JSON.stringify({
+              error: root.querySelector('.abele-github__error')?.textContent?.trim(),
+              text: root.textContent?.trim().slice(0, 1000), url: leaf.view.model.url,
+            }))
             let previous = '', since = Date.now()
             const target = () => root.querySelector('.abele-github-code__line_target')
             if (!(await until(() => {
@@ -172,7 +175,10 @@ for (const mobile of [false, true]) {
               const root = leaf.view.containerEl
               const main = root.querySelector('.abele-github-layout__main')
               const prose = await until(() => root.querySelector(${JSON.stringify(kind === 'blob' ? '.abele-github-md' : '.abele-github-folder__readme .abele-github-text')})?.querySelector('h2'))
-              if (!prose) throw Error('Wide README did not render')
+              if (!prose) throw Error('Wide README did not render: ' + JSON.stringify({
+                error: root.querySelector('.abele-github__error')?.textContent?.trim(),
+                text: root.textContent?.trim().slice(0, 1000), url: leaf.view.model.url,
+              }))
               const documentEl = prose.closest('.markdown-rendered')
               // The loopback fixture's image may be held by the remote-image consent button.
               documentEl.querySelector('.abele-remote-image')?.click()

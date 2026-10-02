@@ -143,6 +143,25 @@ describe('explicitly idempotent CLI calls', () => {
     }
   })
 
+  it.each(['Wide fixture did not render', 'Phone host transport (swipe): connection lost'])(
+    'reports a rejected long probe before any feature JSON parser: %s',
+    async (message) => {
+      vi.useFakeTimers()
+      try {
+        exec
+          .mockReturnValueOnce('=> sample-job')
+          .mockReturnValueOnce('=> ' + JSON.stringify({ done: true, out: 'Error: ' + message }))
+          .mockReturnValueOnce('=> ok')
+        const result = cli.evalLong('probe()').catch((error) => error)
+        await vi.runAllTimersAsync()
+        expect(await result).toBeInstanceOf(Error)
+        expect((await result).message).toContain(message)
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
+
   it('waits for a settled test API instead of classifying one false probe as a missing build', async () => {
     vi.useFakeTimers()
     try {

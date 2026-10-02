@@ -242,6 +242,7 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
         10_000
       )
       assertPhoneTransport(out)
+      if (out.startsWith('Error: ')) throw new Error(out.slice(7))
       return out.startsWith('=> ') ? out.slice(3) : out
     }
     if (Date.now() > deadline) throw new Error(`the script did not finish in ${timeoutMs} ms`)

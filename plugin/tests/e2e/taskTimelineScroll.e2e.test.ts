@@ -183,7 +183,11 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
           const captured = await stableCapture(async () => {
             const r = el.getBoundingClientRect()
             const rect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
-            const image = await capturePage(rect)
+            let image
+            try { image = await capturePage(rect) } catch (error) {
+              throw Error('Timeline Page.captureScreenshot failed: ' + JSON.stringify({ rect,
+                viewport: [innerWidth, innerHeight], devicePixelRatio, suffix }) + ': ' + String(error))
+            }
             const pixels = image.toBitmap()
             const scale = Math.sqrt(pixels.length / 4 / (rect.width * rect.height))
             return { image, pixels, pixelWidth: Math.round(rect.width * scale),
