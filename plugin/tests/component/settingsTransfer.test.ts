@@ -20,6 +20,9 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
+import { encodePayload } from '@/transfer/payload'
+import { toFrames } from '@/transfer/frames'
+import type { TransferPayload } from '@/transfer/types'
 
 let app: FakeApp
 /** The keychain as the fake vault implements it, for the test that makes it refuse one id. */
@@ -96,6 +99,49 @@ const waitFor = async (ready: () => boolean, timeout = 4000) => {
   await vi.waitFor(() => expect(ready()).toBe(true), { timeout, interval: 10 })
   await flushPromises()
 }
+
+describe('receiving key references from settings, not sender metadata', () => {
+  it('stores only the keys referenced by accepted incoming settings', async () => {
+    const payload: TransferPayload = {
+      v: 1,
+      at: '',
+      entries: [
+        {
+          section: 'ai-providers',
+          id: 'sample-provider',
+          label: 'Sample provider',
+          data: { ...providerNamed('sample-provider', 'sample'), apiKeyId: 'sample-key' },
+          secretIds: ['unrelated-key', 'abele-store-key-sample'],
+        },
+        {
+          section: 'maps',
+          id: 'maps',
+          label: 'Maps',
+          data: { mapStyleUrl: 'https://maps.example/style.json' },
+          secretIds: ['unrelated-key'],
+        },
+      ],
+      secrets: {
+        'sample-key': 'invented-new-value',
+        'unrelated-key': 'invented-replacement',
+        'abele-store-key-sample': 'invented-store-replacement',
+      },
+    }
+    app.secretStorage.setSecret('unrelated-key', 'invented-existing-value')
+    app.secretStorage.setSecret('abele-store-key-sample', 'invented-existing-store-key')
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    const frames = toFrames(await encodePayload(payload), 'TEST')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await waitFor(() => wrapper.text().includes('to apply'))
+    await clickButton(wrapper, 'Apply')
+    expect(app.secretStorage.getSecret('sample-key')).toBe('invented-new-value')
+    expect(app.secretStorage.getSecret('unrelated-key')).toBe('invented-existing-value')
+    expect(app.secretStorage.getSecret('abele-store-key-sample')).toBe(
+      'invented-existing-store-key'
+    )
+  })
+})
 
 describe('choosing what to send', () => {
   it('offers what the settings actually hold', () => {

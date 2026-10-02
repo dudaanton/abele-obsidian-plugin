@@ -123,6 +123,7 @@ import { createReceiver } from '@/transfer/frames'
 import { decodePayload, isEncrypted } from '@/transfer/payload'
 import {
   applyEntries,
+  arrivingSecretIds,
   removedByReplace,
   filesOnly,
   planEntries,
@@ -336,7 +337,10 @@ const apply = async () => {
   const chosen = acceptedEntries.value
   const config = AbeleConfig.getInstance()
   try {
-    config.applySettings(applyEntries(chosen, config.exportSettings(), mode.value))
+    const next = applyEntries(chosen, config.exportSettings(), mode.value)
+    // Resolve references before committing settings, including legacy connection validation.
+    arrivingSecretIds(chosen)
+    config.applySettings(next)
   } catch (e) {
     // Connection/credential binding is validated before any keychain or settings write.
     error.value = e instanceof Error ? e.message : 'These settings could not be applied.'
@@ -352,20 +356,18 @@ const apply = async () => {
 
   let keysRefused = 0
 
-  for (const entry of chosen) {
-    for (const secretId of entry.secretIds ?? []) {
-      const value = payload.value.secrets[secretId]
-      // A key that did not travel leaves whatever this device already has alone.
-      if (!value) continue
+  for (const secretId of arrivingSecretIds(chosen)) {
+    const value = payload.value.secrets[secretId]
+    // A key that did not travel leaves whatever this device already has alone.
+    if (!value) continue
 
-      try {
-        secrets().set(secretId, value)
-      } catch {
-        // Obsidian takes only lowercase letters, digits and dashes for a key's name, and a
-        // transfer can carry any name at all — one it refuses must not abandon the rest of
-        // the settings half written.
-        keysRefused++
-      }
+    try {
+      secrets().set(secretId, value)
+    } catch {
+      // Obsidian takes only lowercase letters, digits and dashes for a key's name, and a
+      // transfer can carry any name at all — one it refuses must not abandon the rest of
+      // the settings half written.
+      keysRefused++
     }
   }
 

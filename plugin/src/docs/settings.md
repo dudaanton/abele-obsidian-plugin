@@ -213,7 +213,9 @@ every key, and a key added or changed on any device reaches the rest. Keys are s
 each unlocked device's keychain, so turning the store off leaves them where they are.
 
 `secretStore` is not a setting: it is neither readable nor writable here, it is not carried by
-a settings transfer, and nothing in it can be read without the passphrase. Status, unlocking,
+a settings transfer, and nothing in it can be read without the passphrase. Each transfer section
+writes only its own fields; keychain writes are limited to the references in the accepted
+incoming settings, not the sender's list of slots. Status, unlocking,
 changing the passphrase, removing the keys from one device and turning it off are all on that
 screen and nowhere else. When a key the person expects is missing on a device, the answer may
 be that synced keys are locked there — say so rather than asking for the key again.

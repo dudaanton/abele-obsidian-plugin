@@ -21,6 +21,10 @@ On the other device, **Receive from another device → Scan** reads the transfer
 from a photo of the codes, from a file, or from the pasted text. You see what arrived before
 anything is written.
 
+Each section changes only its own settings. Keys are stored only in the slots referenced by
+settings you accept, never in extra slots named by the sender. The encrypted synced-key store
+itself never arrives by transfer.
+
 A transfer saved as a file lands in the vault root as `Abele transfer <date> <time>.txt`. Delete
 it once the transfer is done.
 

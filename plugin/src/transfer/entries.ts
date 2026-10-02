@@ -27,8 +27,9 @@ import {
 } from './types'
 
 interface Identified {
-  id: string
+  id?: string
   name?: string
+  keyId?: string
 }
 
 interface ListSection {
@@ -75,7 +76,9 @@ const aiList = <T extends Identified>(
 
 const pick = (source: Record<string, unknown>, keys: string[]): Record<string, unknown> =>
   Object.fromEntries(
-    keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]])
+    keys
+      .filter((key) => Object.hasOwn(source, key) && source[key] !== undefined)
+      .map((key) => [key, source[key]])
   )
 
 const aiBlock = (
@@ -89,7 +92,7 @@ const aiBlock = (
   label,
   read: (settings) => pick(ai(settings) as unknown as Record<string, unknown>, keys),
   write: (settings, data) => {
-    settings.ai = { ...ai(settings), ...data }
+    settings.ai = { ...ai(settings), ...pick(data, keys) }
   },
   ...extra,
 })
@@ -104,7 +107,7 @@ const rootBlock = (
   id,
   label,
   read: (settings) => pick(settings as unknown as Record<string, unknown>, keys),
-  write: (settings, data) => Object.assign(settings, data),
+  write: (settings, data) => Object.assign(settings, pick(data, keys)),
   ...extra,
 })
 
@@ -379,6 +382,39 @@ export const SECTIONS: Section[] = [
 
 const sectionById = new Map(SECTIONS.map((section) => [section.id, section]))
 
+// Named keys have no separate item id: their slot is their identity across devices.
+const itemId = (section: SectionId, item: Identified): string =>
+  (section === 'ai-secrets' ? item.keyId : item.id) ?? ''
+
+/** Only references in the accepted settings can authorize a keychain write.
+ * The sender's secretIds are display/export metadata, never write authority.
+ */
+export function arrivingSecretIds(entries: TransferEntry[]): string[] {
+  const ids = new Set<string>()
+  for (const entry of settingsOnly(entries)) {
+    const section = sectionById.get(entry.section)
+    if (!section?.secretsOf) continue
+    let references: string[]
+    if (section.kind === 'list') {
+      references = section.secretsOf(entry.data as Identified)
+    } else {
+      // A sparse destination ensures an omitted field cannot select an existing local key.
+      const incoming = { ai: {} } as AbeleSettings
+      section.write(incoming, entry.data as Record<string, unknown>)
+      references = section.secretsOf(incoming)
+      // Compatibility with transfers from before GitHub connections travelled separately.
+      if (entry.section === 'github') {
+        const github = (entry.data as { github?: { keyId?: string } }).github
+        if (github?.keyId) references.push(github.keyId)
+      }
+    }
+    for (const id of references) {
+      if (typeof id === 'string' && id && !id.startsWith('abele-store-')) ids.add(id)
+    }
+  }
+  return [...ids]
+}
+
 export const sectionLabel = (id: SectionId): string =>
   sectionById.get(id)?.label ?? FILE_SECTION_LABELS[id as keyof typeof FILE_SECTION_LABELS] ?? id
 
@@ -395,8 +431,8 @@ export function collectEntries(settings: AbeleSettings): TransferEntry[] {
     if (section.kind === 'list') {
       return section.read(settings).map((item) => ({
         section: section.id,
-        id: item.id,
-        label: item.name || item.id,
+        id: itemId(section.id, item),
+        label: item.name || itemId(section.id, item),
         data: item,
         secretIds: section.secretsOf?.(item) ?? [],
       }))
@@ -460,7 +496,7 @@ export function planEntries(entries: TransferEntry[], settings: AbeleSettings): 
 
     const current =
       section.kind === 'list'
-        ? section.read(settings).find((item) => item.id === entry.id)
+        ? section.read(settings).find((item) => itemId(section.id, item) === entry.id)
         : section.read(settings)
 
     if (!current || (section.kind === 'block' && Object.keys(current).length === 0)) {
@@ -496,8 +532,8 @@ export function removedByReplace(
     const keeping = new Set(arriving.filter((e) => e.section === id).map((e) => e.id))
     return section
       .read(settings)
-      .filter((item) => !keeping.has(item.id))
-      .map((item) => ({ section: id, id: item.id, label: item.name || item.id }))
+      .filter((item) => !keeping.has(itemId(id, item)))
+      .map((item) => ({ section: id, id: itemId(id, item), label: item.name || itemId(id, item) }))
   })
 }
 
@@ -564,7 +600,9 @@ export function applyEntries(
 
     const items = [...section.read(next)]
     const item = entry.data as Identified
-    const at = items.findIndex((existing) => existing.id === item.id)
+    const at = items.findIndex(
+      (existing) => itemId(section.id, existing) === itemId(section.id, item)
+    )
     if (at === -1) items.push(item)
     else items[at] = item
     section.write(next, items)
