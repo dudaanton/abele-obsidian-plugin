@@ -142,6 +142,14 @@ describe('fenced sponsored extras and native creation', () => {
     await expect(service.createNative(scoped, r)).rejects.toThrow(/upload/)
     expect(port.nativeCreate).toHaveBeenCalledTimes(1)
   })
+  it('rejects a registered alternative configuration root without assuming its name', async () => {
+    const { port } = setup()
+    const service = new SponsoredAssetService(port, () => true, ['ConfigRoot'])
+    const r = request()
+    r.target.path = 'ConfigRoot/sample.png'
+    await expect(service.add(owner, r)).rejects.toThrow(/code\/settings/)
+    expect(port.mutate).not.toHaveBeenCalled()
+  })
   it('never exposes a hidden occupant or adopts bytes after a native collision', async () => {
     const { service, port } = setup()
     port.nativeCreate.mockRejectedValue(new Error('occupied hidden private title'))

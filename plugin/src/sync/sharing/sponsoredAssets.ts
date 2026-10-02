@@ -88,7 +88,7 @@ export class SponsoredAssetService {
   constructor(
     private readonly port: SponsoredAssetPort,
     private readonly enabled: () => boolean = () => OWNER_SHARING_ENABLED,
-    private readonly configurationRoots: string[] = ['.obsidian']
+    private readonly configurationRoots: string[] = []
   ) {}
   private fence() {
     if (!this.enabled())
