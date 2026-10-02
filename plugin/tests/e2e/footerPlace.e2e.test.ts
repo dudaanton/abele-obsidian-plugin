@@ -47,6 +47,7 @@ interface EditorSnapshot {
   mode: string
   source: boolean
   livePreview: boolean | null
+  rememberNotePlaces: boolean
   footerWidgets: number
   rows: number
 }
@@ -77,10 +78,6 @@ const script = `(async () => {
   const otherPath = folder + '/Sample other note.md'
   const taskPath = (i) => folder + '/Tasks/Sample task ' + String(i).padStart(2, '0') + '.md'
   const report = { mobile: !!app.isMobile }
-  const defaults = {
-    mode: app.vault.getConfig('defaultViewMode'),
-    livePreview: app.vault.getConfig('livePreview'),
-  }
   const leaf = app.workspace.getLeaf(false)
   const scroller = () => leaf.view.containerEl.querySelector('.cm-scroller')
   const rows = () => [...leaf.view.containerEl.querySelectorAll('.abele-todo-list .abele-task-view')]
@@ -92,6 +89,7 @@ const script = `(async () => {
       mode: leaf.view.getMode(),
       source: state.source,
       livePreview: cm && field ? cm.state.field(field, false) : null,
+      rememberNotePlaces: window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces,
       footerWidgets: leaf.view.containerEl.querySelectorAll('.abele-footer-widget-container').length,
       rows: rows().length,
     }
@@ -103,9 +101,6 @@ const script = `(async () => {
   const topOf = (el) => Math.round(el.getBoundingClientRect().top - scroller().getBoundingClientRect().top)
 
   try {
-    // Exercise navigation even when newly opened notes default to reading view.
-    app.vault.setConfig('defaultViewMode', 'preview')
-    app.vault.setConfig('livePreview', false)
     const old = app.vault.getAbstractFileByPath(folder)
     if (old) await app.vault.delete(old, true)
     await app.vault.createFolder(folder)
@@ -181,8 +176,6 @@ const script = `(async () => {
   } catch (e) {
     report.error = String((e && e.stack) || e)
   } finally {
-    app.vault.setConfig('defaultViewMode', defaults.mode)
-    app.vault.setConfig('livePreview', defaults.livePreview)
     const f = app.vault.getAbstractFileByPath(folder)
     for (const l of app.workspace.getLeavesOfType('markdown'))
       if (l.view.file?.path.startsWith(folder)) l.detach()
