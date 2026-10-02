@@ -41,7 +41,7 @@ export class DelegateRun {
   private readonly branches: RunBranch[] = []
   private readonly sessions: ChatSession[] = []
   private persistTimer: number | null = null
-  private persisting = false
+  private persisting: Promise<void> | null = null
   private status: RunStatus = 'running'
 
   constructor(private readonly options: DelegateRunOptions) {}
@@ -84,7 +84,7 @@ export class DelegateRun {
         ? 'aborted'
         : 'done'
 
-    await this.persistNow()
+    await this.persistNow(true)
     this.destroy()
 
     return { runId: this.runId, branches: this.branches }
@@ -137,13 +137,19 @@ export class DelegateRun {
     }, PERSIST_INTERVAL_MS)
   }
 
-  private async persistNow(): Promise<void> {
-    if (this.persisting) return
-    this.persisting = true
+  private async persistNow(finish = false): Promise<void> {
+    // Streaming writes coalesce; the final transcript must wait, then save its own snapshot.
+    if (this.persisting !== null && !finish) return
+    while (this.persisting !== null) await this.persisting
+    const operation = RunStorage.getInstance().save(this.snapshot())
+    this.persisting = operation.then(
+      (): void => {},
+      (): void => {}
+    )
     try {
-      await RunStorage.getInstance().save(this.snapshot())
+      await operation
     } finally {
-      this.persisting = false
+      this.persisting = null
     }
   }
 

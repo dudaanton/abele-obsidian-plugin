@@ -18,6 +18,7 @@ import type { Message, ModelConfig } from '@/ai/client'
 
 /** What the fake model replies with, keyed by the user message it receives. */
 let replies: (userMessage: string) => string = () => 'done'
+let modelGate: Promise<void> | undefined
 const seen: Array<{ system: string; messages: Message[] }> = []
 
 vi.mock('@/ai/client/OpenAIClient', () => {
@@ -30,6 +31,7 @@ vi.mock('@/ai/client/OpenAIClient', () => {
       const reply = replies(text)
 
       yield { type: 'text_delta' as const, delta: reply }
+      if (modelGate) await modelGate
       // The agent loop builds its turn from `done`, not from the deltas, so a mock that emits
       // only deltas produces an empty assistant message and reads as a failed request.
       yield {
@@ -63,6 +65,7 @@ beforeEach(() => {
   seen.length = 0
   written = []
   replies = () => 'done'
+  modelGate = undefined
 
   useVault([])
   AgentRegistry.destroy()
@@ -154,6 +157,43 @@ describe('a delegated run', () => {
     expect(result.branches).toHaveLength(3)
     const runIds = new Set(written.map((w) => w.runId))
     expect(runIds.size).toBe(1)
+  })
+
+  it('waits for an in-flight transcript write before saving the completed run', async () => {
+    vi.useFakeTimers()
+    let releaseModel!: () => void, releaseSave!: () => void
+    modelGate = new Promise<void>((resolve) => {
+      releaseModel = resolve
+    })
+    const saveGate = new Promise<void>((resolve) => {
+      releaseSave = resolve
+    })
+    vi.spyOn(RunStorage.getInstance(), 'save').mockImplementationOnce(async (run) => {
+      written.push(JSON.parse(JSON.stringify(run)))
+      await saveGate
+      return null
+    })
+    const operation = runDelegate()
+    let settled = false
+    void operation.then(() => {
+      settled = true
+    })
+    try {
+      await vi.advanceTimersByTimeAsync(400)
+      expect(written[0].status).toBe('running')
+      releaseModel()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(settled).toBe(false)
+      releaseSave()
+      await operation
+      expect(written.at(-1)!.status).toBe('done')
+      expect(written.at(-1)!.branches[0].messages.map((m) => m.role)).toContain('assistant')
+    } finally {
+      releaseModel()
+      releaseSave()
+      await operation
+      vi.useRealTimers()
+    }
   })
 
   it('records no internal messages, since a finished run is never resumed', async () => {
