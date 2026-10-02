@@ -94,6 +94,27 @@ describe('bounded deck rendering', () => {
       )
     ).toBe(true)
   })
+  it('keeps model indexes independent of display numbering when revealing all steps', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const viewer = new DeckViewer(
+      host,
+      {
+        render: async (_block, target) => {
+          target.innerHTML = '<ul><li>One</li><li>Two</li></ul>'
+          return () => {}
+        },
+      },
+      media,
+      { preview: true, revealAll: true, slideOffset: 2 }
+    )
+    viewers.push(viewer)
+    await viewer.setDeck(parseDeck('::slide{steps}::\n- One\n- Two'))
+    expect(viewer.viewport.querySelector<HTMLElement>('.abele-slide')!.dataset.slide).toBe('3')
+    const items = Array.from(viewer.viewport.querySelectorAll('.abele-slide-fragment'))
+    expect(items).toHaveLength(2)
+    expect(items.every((item) => item.getAttribute('aria-hidden') === 'false')).toBe(true)
+  })
   it('never starts media in a presenter preview', async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     const host = document.createElement('div')

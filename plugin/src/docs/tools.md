@@ -60,7 +60,7 @@ editing; stale versions and concurrent changes are refused. Both writes use the 
 diff/confirmation and link the changed note to the chat.
 
 `deck_check(path, slide?)` renders slides sequentially at the deck's logical canvas size in the
-current theme. It reports per-slide overflow, clipped/missing media, intentional cover crops,
+current theme, retaining each slide's original `data-slide` number for deck CSS. It reports per-slide overflow, clipped/missing media, intentional cover crops,
 and a text-density warning. Notes are excluded and steps fully revealed. Pair it with
 `screenshot({path, slide: 1})`: a PNG of that whole slide, kept in attachments, shown under the
 call and sent to the model through the same image-message path as drawings and books. No open

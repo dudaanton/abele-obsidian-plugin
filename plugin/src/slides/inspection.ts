@@ -70,7 +70,7 @@ export async function inspectDeckSlide<T>(
       },
     },
     noteMedia(app, () => path),
-    { preview: true, revealAll: true }
+    { preview: true, revealAll: true, slideOffset: index }
   )
   try {
     viewer.toolbar.hidden = true

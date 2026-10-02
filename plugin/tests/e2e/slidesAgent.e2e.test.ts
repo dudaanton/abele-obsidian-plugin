@@ -140,6 +140,29 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
     )
   })
 
+  it('checks and photographs a third slide with its numbered CSS rules', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{
+      ${PRELUDE}
+      const path='sample-numbered-deck.md'
+      if(app.vault.getAbstractFileByPath(path))throw Error('number fixture exists')
+      const file=await app.vault.create(path,${JSON.stringify('---\ntype: presentation\n---\n# First\n---\n# Second\n---\n# Third\n```css\n[data-slide="1"] h1 { font-size: 16px }\n[data-slide="3"] h1 { font-size: 900px }\n```')})
+      s.ctx.scope.addFile(path)
+      try {
+        const checked=JSON.parse((await call('deck_check',{path,slide:3})).content[0].text)
+        const picture=await call('screenshot',{path,slide:3})
+        const saved=picture.content[0].text.split('\\n')[0].replace('Screenshot saved: ','');s.pictures.push(saved)
+        const photographed=JSON.parse(picture.content[0].text.split('\\n').slice(1).join('\\n'))
+        return JSON.stringify({check:checked.slides[0],picture:photographed})
+      } finally { await app.vault.delete(file) }
+    })()`)
+    )
+    expect(result.check.slide).toBe(3)
+    expect(result.check.issues.some((i: { kind: string }) => i.kind === 'overflow')).toBe(true)
+    expect(result.picture.slide).toBe(3)
+    expect(result.picture.issues.some((i: { kind: string }) => i.kind === 'overflow')).toBe(true)
+  })
+
   it('sends a full-size slide picture to the model and saves the same PNG for the chat', async () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{

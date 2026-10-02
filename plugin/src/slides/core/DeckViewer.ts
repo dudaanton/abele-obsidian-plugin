@@ -15,6 +15,8 @@ import { Presentation } from './Presentation'
 import { fitSlide, slideForGesture, slideForKey, type Navigation, type Point } from './navigation'
 
 interface RenderedSlide {
+  /** Model/cache index; the public slide number may be offset in a single-slide export. */
+  index: number
   element: HTMLElement
   cleanups: (() => void)[]
   gone: boolean
@@ -74,6 +76,8 @@ export class DeckViewer {
       fullscreenHost?: FullscreenHost
       preview?: boolean
       revealAll?: boolean
+      /** Original numbering when rendering a subset, used by deck CSS selectors. */
+      slideOffset?: number
       onExit?: () => void
       onNotes?: () => void
     } = {}
@@ -238,7 +242,7 @@ export class DeckViewer {
   }
 
   private fragments(entry: RenderedSlide): HTMLElement[] {
-    const slide = this.deck?.slides[Number(entry.element.dataset.slide) - 1]
+    const slide = this.deck?.slides[entry.index]
     const steps = slide?.settings.attributes.steps
     if (steps !== true && steps !== 'true') return []
     return Array.from(
@@ -305,7 +309,7 @@ export class DeckViewer {
     element.className = `abele-slide abele-slide-${slide.settings.layout}`
     for (const name of slide.settings.className.split(/\s+/).filter(Boolean))
       element.classList.add(name)
-    element.dataset.slide = String(index + 1)
+    element.dataset.slide = String(index + 1 + (this.options.slideOffset ?? 0))
     const transition =
       slide.settings.attributes.transition ?? this.deck?.settings.properties.transition
     if (transition === 'fade' || transition === 'slide') element.dataset.transition = transition
@@ -349,6 +353,7 @@ export class DeckViewer {
       else this.pause(entry)
     })
     const entry: RenderedSlide = {
+      index,
       element,
       cleanups: [],
       gone: false,
@@ -400,7 +405,7 @@ export class DeckViewer {
     }
     await Promise.all(entry.live.map((live) => live.start()))
     if (entry.gone || entry.element.hidden || this.closed || this.mediaSuspended) return
-    const index = Number(entry.element.dataset.slide) - 1
+    const index = entry.index
     const autoplay = this.deck?.slides[index]?.settings.autoplay
     for (const video of Array.from(entry.element.querySelectorAll('video'))) {
       video.autoplay = false
