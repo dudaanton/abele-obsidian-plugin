@@ -401,6 +401,9 @@ export function arrivingSecretIds(entries: TransferEntry[]): string[] {
       // A sparse destination ensures an omitted field cannot select an existing local key.
       const incoming = { ai: {} } as AbeleSettings
       section.write(incoming, entry.data as Record<string, unknown>)
+      // Fixed/default slots belong to an actual incoming block, not an empty entry or
+      // foreign fields which the section refused to write.
+      if (!Object.keys(section.read(incoming)).length) continue
       references = section.secretsOf(incoming)
       // Compatibility with transfers from before GitHub connections travelled separately.
       if (entry.section === 'github') {

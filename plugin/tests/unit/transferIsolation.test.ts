@@ -21,20 +21,33 @@ const entry = (section: TransferEntry['section'], data: unknown): TransferEntry 
 
 describe('references owned by arriving settings', () => {
   it('ignores sender metadata and unrelated fields in blocks', () => {
-    expect(arrivingSecretIds([
-      { ...entry('maps', { braveSearchApiKey: 'unrelated-key' }), secretIds: ['unrelated-key'] },
-      entry('ai-general', { braveSearchApiKey: 'sample-search-key' }),
-      entry('ai-providers', { id: 'sample', apiKeyId: 'sample-provider-key' }),
-      entry('ai-providers', { id: 'other', apiKeyId: 'abele-store-key-sample' }),
-    ])).toEqual(['sample-search-key', 'sample-provider-key'])
+    expect(
+      arrivingSecretIds([
+        { ...entry('maps', { braveSearchApiKey: 'unrelated-key' }), secretIds: ['unrelated-key'] },
+        entry('ai-general', { braveSearchApiKey: 'sample-search-key' }),
+        entry('ai-providers', { id: 'sample', apiKeyId: 'sample-provider-key' }),
+        entry('ai-providers', { id: 'other', apiKeyId: 'abele-store-key-sample' }),
+      ])
+    ).toEqual(['sample-search-key', 'sample-provider-key'])
+  })
+
+  it('does not grant fixed key slots to empty blocks or fields owned by another section', () => {
+    expect(
+      arrivingSecretIds([
+        entry('ai-voice', {}),
+        entry('finance', { braveSearchApiKey: 'unrelated-key' }),
+      ])
+    ).toEqual([])
   })
 
   it('keeps voice defaults and references introduced by newer sections', () => {
-    expect(arrivingSecretIds([
-      entry('ai-voice', { voice: { apiKeyId: '' } }),
-      entry('ai-mcp-servers', { id: 'sample', keyId: 'sample-mcp-key' }),
-      entry('calendars', { calendars: { feeds: [{ keyId: 'sample-calendar-key' }] } }),
-    ])).toEqual(['abele-openrouter', 'sample-mcp-key', 'sample-calendar-key'])
+    expect(
+      arrivingSecretIds([
+        entry('ai-voice', { voice: { apiKeyId: '' } }),
+        entry('ai-mcp-servers', { id: 'sample', keyId: 'sample-mcp-key' }),
+        entry('calendars', { calendars: { feeds: [{ keyId: 'sample-calendar-key' }] } }),
+      ])
+    ).toEqual(['abele-openrouter', 'sample-mcp-key', 'sample-calendar-key'])
   })
 })
 
