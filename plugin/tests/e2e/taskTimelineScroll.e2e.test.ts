@@ -151,16 +151,38 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       if (window.__e2eHost) await window.__e2eHost.shot(path)
       else {
         const fs = require('fs'); fs.mkdirSync(shots, { recursive: true })
-        const wc = require('@electron/remote').getCurrentWebContents()
+        const remote = require('@electron/remote')
+        const wc = remote.getCurrentWebContents()
+        // Capture the painted page, then crop it. Electron's capturePage(rect) asks the
+        // window compositor for a copy surface: after a phone resize it can fail with
+        // UnknownVizError. DevTools captures the viewport without resizing or moving content.
+        const capturePage = async rect => {
+          const { data } = await wc.debugger.sendCommand('Page.captureScreenshot', {
+            format: 'png', fromSurface: true, captureBeyondViewport: false,
+          })
+          const image = remote.nativeImage.createFromBuffer(Buffer.from(data, 'base64'), {
+            scaleFactor: window.devicePixelRatio,
+          })
+          return rect ? image.crop(rect) : image
+        }
         const el = blocks().find(x => x.dataset.abeleAnchor === 'date:' + day(0))
         const capture = async suffix => {
+          // A stylesheet swap can reuse some old paint chunks while repainting others;
+          // the rounded date-line cap then differs by one AA pixel despite identical rects
+          // and computed styles. Repaint the whole page for EVERY capture, including the
+          // canary, so all chunks share the same raster origin. Hiding only the block or
+          // its scroll owner leaves cached ancestor chunks. No layout change or tolerance.
+          const visibility = document.body.style.visibility
+          try {
+            document.body.style.visibility = 'hidden'
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+          } finally { document.body.style.visibility = visibility }
           // Let stylesheet replacement and the editor's deferred measuring/raster work settle.
-          // No tolerance: even a one-pixel appearance difference remains a test failure.
           await wait(200)
           await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
           const r = el.getBoundingClientRect()
           const rect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
-          const image = await wc.capturePage(rect)
+          const image = await capturePage(rect)
           fs.writeFileSync(path.replace('.png', suffix + '.png'), image.toPNG())
           return { pixels: image.toBitmap(), rect: [r.left, r.top, r.width, r.height] }
         }
@@ -192,7 +214,7 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
             report.appearanceCanary = difference(after.pixels, canary.pixels)
           } finally { sheet.textContent = current }
           await capture('')
-        } else fs.writeFileSync(path, (await wc.capturePage()).toPNG())
+        } else fs.writeFileSync(path, (await capturePage()).toPNG())
       }
       report.shots.push(path)
     }
