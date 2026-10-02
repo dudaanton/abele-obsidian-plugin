@@ -22,6 +22,27 @@ describe('least privilege release and checks', () => {
     }
   })
 
+  it('fetches full history and tags in every job that builds the changelog', () => {
+    for (const name of ['release', 'test']) {
+      const file = workflow(name)
+      for (const [id, job] of Object.entries(file.jobs) as [string, any][]) {
+        const steps = job.steps ?? []
+        if (
+          !steps.some((step: any) =>
+            /npm run (?:build(?::[\w-]+)?|test:size)\b/.test(step.run ?? '')
+          )
+        )
+          continue
+        const checkouts = steps.filter((step: any) => step.uses?.startsWith('actions/checkout@'))
+        expect(checkouts.length, `${name}/${id} needs a checkout`).toBeGreaterThan(0)
+        for (const checkout of checkouts) {
+          expect(checkout.with?.['fetch-depth'], `${name}/${id} must not be shallow`).toBe(0)
+          expect(checkout.with?.['fetch-tags'], `${name}/${id} needs changelog tags`).toBe(true)
+        }
+      }
+    }
+  })
+
   it('gates publishing on a tested production build, verifies versions and publishes checksums and provenance', () => {
     const file = workflow('release')
     expect(file.jobs.build.needs).toBe('test')
