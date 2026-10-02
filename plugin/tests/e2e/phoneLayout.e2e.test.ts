@@ -798,13 +798,13 @@ const probeScript = `(async () => {
       aiTab?.click()
       const intro = [...document.querySelectorAll('.abele-settings__ai .abele-section__heading')]
         .find((heading) => heading.textContent.trim() === 'Secrets')?.nextElementSibling
-      const header = document.querySelector('.modal.mod-settings .modal-header')
-      const settingsScroll = document.querySelector('.modal.mod-settings .vertical-tab-content')
+      const settingsModal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
+      const header = settingsModal?.querySelector('.modal-header')
+      const settingsScroll = settingsModal?.querySelector('.vertical-tab-content')
       if (intro && header && settingsScroll) {
         settingsScroll.scrollTop += intro.getBoundingClientRect().top - header.getBoundingClientRect().bottom + 12
         await wait(400)
-        const modal = document.querySelector('.modal.mod-settings')
-        await screen('settings ai secrets scroll', modal, settingsScroll)
+        await screen('settings ai secrets scroll', settingsModal, settingsScroll)
         const cover = getComputedStyle(header).backgroundColor
         report['settings ai secrets scroll'].headerCover = cover
         report['settings ai secrets scroll'].introTop = intro.getBoundingClientRect().top
