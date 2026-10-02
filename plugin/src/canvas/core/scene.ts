@@ -137,10 +137,98 @@ export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
     b = endpoint(to, bSide)
   if (edge.pathfindingMethod === 'direct') return [a, b]
   const horizontal = aSide === 'right' || aSide === 'left'
-  // A square route is also the polyline used to check bezier's corridor conservatively.
+  // These are either cubic control points or square-route corners; consumers use paintedRoute.
   return horizontal
     ? [a, { x: (a.x + b.x) / 2, y: a.y }, { x: (a.x + b.x) / 2, y: b.y }, b]
     : [a, { x: a.x, y: (a.y + b.y) / 2 }, { x: b.x, y: (a.y + b.y) / 2 }, b]
+}
+export interface PaintedRoute {
+  kind: 'cubic' | 'polyline'
+  points: Point[]
+}
+export function paintedRoute(edge: CanvasEdge, graph: CanvasGraph): PaintedRoute {
+  const points = routeEdge(edge, graph)
+  return {
+    kind:
+      points.length === 4 && (!edge.pathfindingMethod || edge.pathfindingMethod === 'bezier')
+        ? 'cubic'
+        : 'polyline',
+    points,
+  }
+}
+const cubicAt = (v: number[], t: number) =>
+  (1 - t) ** 3 * v[0] + 3 * (1 - t) ** 2 * t * v[1] + 3 * (1 - t) * t ** 2 * v[2] + t ** 3 * v[3]
+function cubicCuts(values: number[], boundary: number): number[] {
+  const [a, b, c, d] = values
+  const aa = -a + 3 * b - 3 * c + d,
+    bb = 2 * (a - 2 * b + c),
+    cc = b - a
+  const critical: number[] = [0, 1]
+  if (Math.abs(aa) < 1e-12) {
+    if (Math.abs(bb) > 1e-12) critical.push(-cc / bb)
+  } else {
+    const disc = bb * bb - 4 * aa * cc
+    if (disc >= 0)
+      critical.push((-bb - Math.sqrt(disc)) / (2 * aa), (-bb + Math.sqrt(disc)) / (2 * aa))
+  }
+  const intervals = critical.filter((t) => t >= 0 && t <= 1).sort((x, y) => x - y),
+    roots: number[] = []
+  for (let i = 1; i < intervals.length; i++) {
+    let lo = intervals[i - 1],
+      hi = intervals[i],
+      left = cubicAt(values, lo) - boundary,
+      right = cubicAt(values, hi) - boundary
+    if (Math.abs(left) < 1e-9) roots.push(lo)
+    if (Math.abs(right) < 1e-9) roots.push(hi)
+    if (left * right >= 0) continue
+    for (let step = 0; step < 52; step++) {
+      const mid = (lo + hi) / 2,
+        value = cubicAt(values, mid) - boundary
+      if (left * value <= 0) {
+        hi = mid
+        right = value
+      } else {
+        lo = mid
+        left = value
+      }
+    }
+    roots.push((lo + hi) / 2)
+  }
+  return roots
+}
+/** Exact parameter-interval test for a cubic centreline against a rectangle's interior. */
+export function paintedRouteHits(route: PaintedRoute, rect: Rect): boolean {
+  const points = route.points
+  if (route.kind !== 'cubic')
+    return points.slice(1).some((point, i) => segmentHits(points[i], point, rect))
+  const xs = points.map((point) => point.x),
+    ys = points.map((point) => point.y)
+  if (
+    Math.max(...xs) <= rect.x ||
+    Math.min(...xs) >= rect.x + rect.width ||
+    Math.max(...ys) <= rect.y ||
+    Math.min(...ys) >= rect.y + rect.height
+  )
+    return false
+  const cuts = [
+    0,
+    1,
+    ...cubicCuts(xs, rect.x + 0.01),
+    ...cubicCuts(xs, rect.x + rect.width - 0.01),
+    ...cubicCuts(ys, rect.y + 0.01),
+    ...cubicCuts(ys, rect.y + rect.height - 0.01),
+  ].sort((a, b) => a - b)
+  return cuts.slice(1).some((end, i) => {
+    const t = (cuts[i] + end) / 2,
+      x = cubicAt(xs, t),
+      y = cubicAt(ys, t)
+    return (
+      x > rect.x + 0.01 &&
+      x < rect.x + rect.width - 0.01 &&
+      y > rect.y + 0.01 &&
+      y < rect.y + rect.height - 0.01
+    )
+  })
 }
 export function segmentHits(a: Point, b: Point, r: Rect): boolean {
   // Liang-Barsky clipping, excluding contact at the border.

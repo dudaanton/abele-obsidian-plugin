@@ -12,7 +12,14 @@ import {
   type Rect,
 } from './model'
 import { lintCanvas, type CanvasWarning } from './lint'
-import { contentBox, routeEdge, textLines, type Point, type TextMetricsPort } from './scene'
+import {
+  contentBox,
+  paintedRoute,
+  routeEdge,
+  textLines,
+  type Point,
+  type TextMetricsPort,
+} from './scene'
 export interface CanvasTheme {
   paper: string
   card: string
@@ -198,7 +205,7 @@ export function paintCanvas(
     const fromNode = representative(edge.fromNode),
       toNode = representative(edge.toNode)
     if (fromNode === toNode && (fromNode !== edge.fromNode || toNode !== edge.toNode)) continue
-    const points = routeEdge(
+    const route = paintedRoute(
       {
         ...edge,
         fromNode,
@@ -208,6 +215,7 @@ export function paintCanvas(
       },
       graph
     )
+    const points = route.points
     if (!points.length) continue
     const path = edge.styleAttributes?.path
     ctx.setLineDash(path === 'dashed' ? [8, 5] : path === 'dotted' ? [2, 5] : [])
@@ -216,7 +224,7 @@ export function paintCanvas(
     ctx.fillStyle = ctx.strokeStyle
     ctx.beginPath()
     ctx.moveTo(points[0].x, points[0].y)
-    if ((edge.pathfindingMethod === 'bezier' || !edge.pathfindingMethod) && points.length === 4)
+    if (route.kind === 'cubic')
       ctx.bezierCurveTo(
         points[1].x,
         points[1].y,

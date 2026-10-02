@@ -2,8 +2,8 @@ import { contains, descendants, labelOf, overlaps, parentsOf, type CanvasGraph }
 import {
   contentBox,
   defaultMetrics,
-  routeEdge,
-  segmentHits,
+  paintedRoute,
+  paintedRouteHits,
   textHeight,
   textLines,
   type TextMetricsPort,
@@ -47,14 +47,14 @@ export function lintCanvas(
   for (const edge of [...graph.edges].sort((a, b) => a.id.localeCompare(b.id))) {
     connected.add(edge.fromNode)
     connected.add(edge.toNode)
-    const points = routeEdge(edge, graph)
-    if (!points.length) {
+    const route = paintedRoute(edge, graph)
+    if (!route.points.length) {
       add('missing-edge-node', [edge.id], `${edge.id}: missing endpoint`)
       continue
     }
     for (const node of nodes) {
       if (node.type === 'group' || node.id === edge.fromNode || node.id === edge.toNode) continue
-      if (points.slice(1).some((b, i) => segmentHits(points[i], b, node)))
+      if (paintedRouteHits(route, node))
         add('edge-crossing', [edge.id, node.id], `${edge.id} crosses ${node.id}`)
     }
   }
