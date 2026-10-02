@@ -24,6 +24,8 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Open presentation — view the current `type: presentation` note as a deck
 - Preview presentation beside editor — retain the source editor and open a live deck beside it
 - Play presentation — show on one screen, desktop fullscreen or a full-window mobile overlay
+- Present with speaker view — open an audience popout on desktop and show current/next slides,
+  notes and timer in the original tab; mobile uses a local full-window presenter
 
 ## Finance and time
 
