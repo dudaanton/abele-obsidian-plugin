@@ -15,7 +15,11 @@
         name="Folder receiver"
         desc="Review one current folder prefix. The receiver gets a scoped machine key, never this device's personal credential."
       >
-        <Button text="Review folder sharing" @click="folderOpen = true" />
+        <Button
+          text="Review folder sharing"
+          tooltip="Open the current folder scope preview; creation remains disabled until activation gates pass"
+          @click="folderOpen = true"
+        />
       </Setting>
       <p>
         State: {{ stateLabel }}.
@@ -38,6 +42,7 @@
             <p>{{ reference(entry.target.fileId) }}</p>
             <Button
               text="Unshare…"
+              tooltip="Review the exact published file identity and audiences before withdrawing extra authority"
               :disabled="!enabled || busy"
               @click="review(entry.target.fileId)"
             />
@@ -54,6 +59,7 @@
             <p>Sponsors: {{ entry.sponsors.map((s) => s.fileId).join(', ') }}</p>
             <Button
               text="Remove extra authority…"
+              tooltip="Withdraw this native asset's extra sponsorship without changing independent folder or group access"
               :disabled="!enabled || busy"
               @click="review(entry.target.fileId)"
             />

@@ -21,7 +21,12 @@
           <option value="editor">Editor</option>
         </select></label
       >
-      <Button text="Review current folder" :disabled="busy || !enabled" @click="review" />
+      <Button
+        text="Review current folder"
+        tooltip="Refresh the exact folder paths and eligibility before any grant is created"
+        :disabled="busy || !enabled"
+        @click="review"
+      />
       <template v-if="preview">
         <p>
           Exact prefix: <code>{{ preview.prefix }}</code
@@ -43,6 +48,7 @@
         /></label>
         <Button
           text="Create scoped receiver key"
+          tooltip="Recheck the preview and authenticate the owner before issuing only a scoped machine key"
           :disabled="busy || !enabled || !password"
           accent
           @click="confirm"
@@ -57,7 +63,13 @@
         <code class="abele-folder-sharing__secret">{{ secret.token }}</code></template
       >
     </div>
-    <div class="abele-modal__buttons"><Button text="Close" @click="emit('close')" /></div>
+    <div class="abele-modal__buttons">
+      <Button
+        text="Close"
+        tooltip="Close this review and discard its password and displayed machine secret"
+        @click="emit('close')"
+      />
+    </div>
   </ObsidianModal>
 </template>
 <script setup lang="ts">

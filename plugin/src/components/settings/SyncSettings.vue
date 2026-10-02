@@ -1,9 +1,9 @@
 <template>
   <div class="abele-sync-settings">
     <ConnectCard v-if="!connected" :server-url="device.serverUrl" />
-    <OwnerPublicationSettings />
 
     <template v-else>
+      <OwnerPublicationSettings />
       <!--
         A connection a transfer brought, onto a vault that may hold files, into one that may hold
         files too: nothing syncs until the join question is answered. The dialog opens by itself;
