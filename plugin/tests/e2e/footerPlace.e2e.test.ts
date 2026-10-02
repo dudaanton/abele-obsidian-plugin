@@ -76,13 +76,17 @@ const script = `(async () => {
   const otherPath = folder + '/Sample other note.md'
   const taskPath = (i) => folder + '/Tasks/Sample task ' + String(i).padStart(2, '0') + '.md'
   const report = { mobile: !!app.isMobile }
+  const defaults = {
+    mode: app.vault.getConfig('defaultViewMode'),
+    livePreview: app.vault.getConfig('livePreview'),
+  }
   const leaf = app.workspace.getLeaf(false)
   const scroller = () => leaf.view.containerEl.querySelector('.cm-scroller')
   const rows = () => [...leaf.view.containerEl.querySelectorAll('.abele-todo-list .abele-task-view')]
   const editorSnapshot = () => {
     const state = leaf.view.getState()
     const cm = leaf.view.editor?.cm
-    const field = window.require?.('obsidian').editorLivePreviewField
+    const field = window.__abeleTest.editorLivePreviewField
     return {
       mode: leaf.view.getMode(),
       source: state.source,
@@ -98,6 +102,9 @@ const script = `(async () => {
   const topOf = (el) => Math.round(el.getBoundingClientRect().top - scroller().getBoundingClientRect().top)
 
   try {
+    // A footer probe must work even when newly opened notes default to source-only mode.
+    app.vault.setConfig('defaultViewMode', 'source')
+    app.vault.setConfig('livePreview', false)
     const old = app.vault.getAbstractFileByPath(folder)
     if (old) await app.vault.delete(old, true)
     await app.vault.createFolder(folder)
@@ -172,6 +179,8 @@ const script = `(async () => {
   } catch (e) {
     report.error = String((e && e.stack) || e)
   } finally {
+    app.vault.setConfig('defaultViewMode', defaults.mode)
+    app.vault.setConfig('livePreview', defaults.livePreview)
     const f = app.vault.getAbstractFileByPath(folder)
     for (const l of app.workspace.getLeavesOfType('markdown'))
       if (l.view.file?.path.startsWith(folder)) l.detach()

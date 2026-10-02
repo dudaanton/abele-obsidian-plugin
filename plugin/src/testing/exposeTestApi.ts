@@ -64,7 +64,14 @@ import { ChatRewind } from '@/ai/rewind/ChatRewind'
 import { memoryStore } from '@/ai/rewind/RewindStore'
 import { showFormModal } from '@/scripting/formModal'
 import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
-import { TFile, Component, MarkdownRenderer, MarkdownPreviewRenderer, requestUrl } from 'obsidian'
+import {
+  TFile,
+  Component,
+  MarkdownRenderer,
+  MarkdownPreviewRenderer,
+  requestUrl,
+  editorLivePreviewField,
+} from 'obsidian'
 import { renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
 import { renderGithubMarkdown } from '@/github/safeMarkdown'
 import { tablePage } from '@/reader/figures'
@@ -279,6 +286,8 @@ interface AbeleTestApi {
   openDialog(name: string): void
   /** Every name `openDialog` knows. */
   dialogNames(): string[]
+  /** The live-preview state field, read by editor-mode probes on desktop and mobile alike. */
+  editorLivePreviewField: typeof editorLivePreviewField
   /** Whether Obsidian's note editor can still be borrowed for the note fields. */
   embeddedEditorAvailable(): boolean
   /** The note editor's view inside a note field, found by the field's element. */
@@ -794,6 +803,7 @@ export function exposeTestApi(plugin: Plugin): void {
     openDialog,
     dialogNames,
     showChangelogOffer: showOffer,
+    editorLivePreviewField,
     embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
     noteFieldView: (el: HTMLElement) => embeddedViews.get(el) ?? null,
     composer: composerProbe,
