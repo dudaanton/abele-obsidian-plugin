@@ -228,6 +228,9 @@ must be in scope. New diagrams join scope after creation, like `create`.
 - `look_at_canvas(path, {step?,node?,region?,maxSide?})`: a PNG plus warnings, all of it or one crop.
   `step` uses one-based cumulative reveal, highlights and camera focus, and returns `say`.
   An explicit node/region crop overrides the step camera, but never exposes hidden content.
+  Diagnostics refer to the complete source graph, not a reduced reveal scene. Captions cut by
+  a camera boundary are omitted and reported as `cropped-edge-label`; widen the focus/region
+  if that connection label belongs in the explanation.
   Choose `node` or `region: {x,y,width,height}`, not both. maxSide is 64–4096, default 2048.
   Pictures use the host theme, Advanced Canvas shapes, bound connectors, safe painted headings,
   lists, bold, link labels, scoped note text/heading/block content, and scoped local images.

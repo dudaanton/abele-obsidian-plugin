@@ -43,6 +43,8 @@ export interface CanvasAssets {
   contents?: ReadonlyMap<string, string>
   images?: ReadonlyMap<string, ImageAsset[]>
   highlight?: ReadonlySet<string>
+  /** Playback crops hide cards, but graph diagnostics still refer to the complete source. */
+  diagnosticGraph?: CanvasGraph
   /** Interactive frames do not recompute the quadratic diagnostic pass. */
   lint?: boolean
 }
@@ -178,7 +180,10 @@ export function paintCanvas(
   assets: CanvasAssets = {}
 ) {
   const metrics = canvasMetrics(ctx, theme),
-    warnings = assets.lint === false ? [] : lintCanvas(graph, metrics, assets.contents),
+    warnings =
+      assets.lint === false
+        ? []
+        : lintCanvas(assets.diagnosticGraph ?? graph, metrics, assets.contents),
     parents = parentsOf(graph)
   const hidden = new Set(
     graph.nodes

@@ -1,6 +1,5 @@
 import { TFile, type App } from 'obsidian'
 import { stepScene } from './core/steps'
-import { lintCanvas } from './core/lint'
 import { rasterScale } from '../drawing/rasterize'
 import { vaultUrl } from '../helpers/vaultUrl'
 import {
@@ -222,6 +221,7 @@ export async function canvasPicture(
   const result = paintCanvas(ctx, graph, region, theme, {
     ...assets,
     highlight: playback?.highlight,
+    diagnosticGraph: source,
   })
   return {
     canvas,
@@ -229,11 +229,6 @@ export async function canvasPicture(
     warnings: [
       ...result.warnings,
       ...assets.warnings,
-      ...(playback
-        ? lintCanvas(source).filter((w) =>
-            ['invalid-step', 'missing-step-id', 'dense-step'].includes(w.code)
-          )
-        : []),
       ...textResolutionWarnings(scale, theme.size),
     ],
     visible: result.visible,

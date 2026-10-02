@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseCanvas, serializeCanvas } from '@/canvas/core/model'
 import { editCanvasSteps, stepScene, stepsOf } from '@/canvas/core/steps'
-import { pictureRegion } from '@/canvas/core/painter'
+import { pictureRegion, paintCanvas } from '@/canvas/core/painter'
 import { lintCanvas } from '@/canvas/core/lint'
 
 const sample = () =>
@@ -61,6 +61,34 @@ describe('portable canvas walkthroughs', () => {
     expect(stepScene(graph, 3).graph.nodes).toHaveLength(4)
     expect(stepScene(graph, 1).graph.nodes).toHaveLength(2)
     expect(stepScene(graph, 1).say).toBe('Start with the input.')
+  })
+  it('diagnoses step pictures against the source rather than inventing missing ids for hidden cards', () => {
+    const source = walk(),
+      scene = stepScene(source, 1)
+    const ctx = new Proxy(
+      {},
+      {
+        get: (_, key) =>
+          key === 'measureText' ? (text: string) => ({ width: text.length * 8 }) : () => {},
+      }
+    ) as CanvasRenderingContext2D
+    const theme = {
+      paper: 'white',
+      card: 'white',
+      text: 'black',
+      border: 'gray',
+      accent: 'blue',
+      muted: 'gray',
+      font: 'sans-serif',
+      size: 16,
+      lineHeight: 1.4,
+      presets: [],
+    }
+    const result = paintCanvas(ctx, scene.graph, scene.region, theme, { diagnosticGraph: source })
+    expect(result.warnings.filter((w) => w.code === 'missing-step-id')).toEqual([])
+    expect(result.warnings.some((w) => w.code === 'isolated' && w.ids.includes('alpha'))).toBe(
+      false
+    )
   })
   it('uses one-based pictures with the same camera region as the viewer, and explicit crops win', () => {
     const graph = walk()
