@@ -81,7 +81,9 @@ from (`labels` unless changed), and `taskLabelColors` gives a label a colour —
 
 `accountsFolder`, `financeCategoriesFolder`, `transactionPathTemplate` and
 `transactionTemplatePath` decide where a new transaction and its account land and what they are
-made from. `defaultCurrency` and `pinnedCurrencies` are what the finance sidebar shows first.
+made from. An empty `transactionPathTemplate` keeps existing transaction paths unchanged;
+new and imported transactions use their titles in the vault root. `defaultCurrency` and
+`pinnedCurrencies` are what the finance sidebar shows first.
 `accountsList` is what the accounts sidebar lists: `sort` (`size` — the balance's magnitude —,
 `balance` or `name`), `groupByType`, `types` (account types shown), `hideZero`, `showExcluded`
 (accounts marked `excludeFromTotal`) and `currency` (one currency, or every one when empty).

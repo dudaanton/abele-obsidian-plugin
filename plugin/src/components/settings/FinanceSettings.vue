@@ -3,7 +3,7 @@
     <h3>Transactions</h3>
     <Setting
       name="Transaction path template"
-      desc="Template for new transaction file paths. Variables: {{title}}, {{date:FORMAT}}, {{from}}, {{to}}, {{amount}}, {{currency}}."
+      desc="Template for new transaction file paths. Leave empty to keep existing paths; new transactions use their titles in the vault root. Variables: {{title}}, {{date:FORMAT}}, {{from}}, {{to}}, {{amount}}, {{currency}}."
     >
       <Input
         :model-value="transactionPathTemplate"

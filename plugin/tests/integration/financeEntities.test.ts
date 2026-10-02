@@ -11,6 +11,9 @@ import type { FakeApp } from '../helpers/fakeVault'
 import { migrateFromFirefly } from '@/commands/migrateFromFirefly'
 import { setRequestTransport } from '@/helpers/http'
 import type { RequestUrlResponse } from 'obsidian'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { templateHarness } from '../helpers/templateHarness'
+import { createTransaction } from '@/commands/createTransaction'
 
 let app: FakeApp
 const entities: Array<Account | Transaction> = []
@@ -68,6 +71,112 @@ afterEach(() => {
   VaultWatcherWrapper.destroy()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+})
+
+describe('empty transaction path templates', () => {
+  it.each(['', '   '])('keeps an edited transaction in place for template %j', async (template) => {
+    const env = templateHarness([
+      {
+        path: 'Archive/sample-receipt.md',
+        frontmatter: { type: 'transaction', date: '2028-03-01', currency: 'USD' },
+        content: 'Sample original title',
+      },
+    ])
+    const config = AbeleConfig.getInstance()
+    const oldTemplate = config.transactionPathTemplate
+    config.applySettings({ refreshDelay: 300, transactionPathTemplate: template })
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    const file = env.app.vault.getFileByPath('Archive/sample-receipt.md')!
+    const rename = vi.spyOn(env.app.fileManager, 'renameFile')
+    try {
+      const saved =
+        "---\ntype: transaction\ndate: '2028-03-02'\ncurrency: USD\n---\nSample changed receipt"
+      await env.app.vault.modify(file, saved)
+      env.app.emit('vault', 'modify', file)
+      await flushPromises()
+      expect(rename).not.toHaveBeenCalled()
+      env.app.setFrontmatter(file.path, {
+        type: 'transaction',
+        date: '2028-03-02',
+        currency: 'USD',
+      })
+      env.app.emit('metadataCache', 'changed', file)
+      await flushPromises()
+      expect(rename).not.toHaveBeenCalled()
+      expect(file.path).toBe('Archive/sample-receipt.md')
+      expect(await env.app.vault.read(file)).toBe(saved)
+    } finally {
+      store.destroy()
+      config.transactionPathTemplate = oldTemplate
+    }
+  })
+
+  it('creates new transactions with their title in the root when the template is empty', async () => {
+    const env = templateHarness()
+    const config = AbeleConfig.getInstance()
+    const oldTemplate = config.transactionPathTemplate
+    config.transactionPathTemplate = ''
+    config.transactionTemplatePath = ''
+    try {
+      const result = await createTransaction(
+        { title: 'Sample purchase', content: 'Sample purchase\nReceipt', currency: 'USD' },
+        false
+      )
+      if (result) entities.push(result.transaction)
+      expect(result?.transaction.transactionPath).toBe('Sample purchase.md')
+      expect(env.app.vault.getFileByPath('.md')).toBeNull()
+      expect(
+        await env.app.vault.read(env.app.vault.getFileByPath('Sample purchase.md')!)
+      ).toContain('Sample purchase\nReceipt')
+    } finally {
+      config.transactionPathTemplate = oldTemplate
+    }
+  })
+
+  it('imports transactions with their title in the root when the template is empty', async () => {
+    const env = templateHarness()
+    const split = {
+      transaction_journal_id: '1',
+      date: '2028-03-01',
+      description: 'Sample imported purchase',
+      amount: '12.50',
+      currency_code: 'USD',
+      source_name: 'Sample source',
+      destination_name: 'Sample destination',
+      tags: [],
+    }
+    setRequestTransport(async (request) => ({
+      status: 200,
+      headers: {},
+      text: '',
+      arrayBuffer: new ArrayBuffer(0),
+      json: {
+        data: request.url.includes('/transactions?')
+          ? [{ id: '1', attributes: { transactions: [split] } }]
+          : [],
+        meta: { pagination: { current_page: 1, total_pages: 1 } },
+      },
+    }))
+    try {
+      const result = await migrateFromFirefly({
+        baseUrl: 'https://finance.example.invalid',
+        token: 'sample-import-token',
+        accountsFolder: 'Wallets',
+        categoriesFolder: 'Categories',
+        transactionPathTemplate: '',
+        accountNameTemplate: '{{name}}',
+        dryRun: false,
+      })
+      expect(result.errors).toEqual([])
+      expect(result.transactionsCreated).toBe(1)
+      expect(env.app.vault.getFileByPath('.md')).toBeNull()
+      expect(env.app.vault.getFileByPath('Sample imported purchase.md')).not.toBeNull()
+    } finally {
+      setRequestTransport(undefined)
+    }
+  })
 })
 
 describe('finance import rate limiting', () => {

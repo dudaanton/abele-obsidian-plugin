@@ -415,7 +415,8 @@ export async function migrateFromFirefly(
           amount: String(parseFloat(split.amount)),
           currency: split.currency_code,
         }
-        const renderedPath = renderTemplate(config.transactionPathTemplate, templateData)
+        let renderedPath = renderTemplate(config.transactionPathTemplate, templateData)
+        if (!renderedPath.trim()) renderedPath = title
         const path = renderedPath.endsWith('.md') ? renderedPath : `${renderedPath}.md`
 
         // Ensure unique path

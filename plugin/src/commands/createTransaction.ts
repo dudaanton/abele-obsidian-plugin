@@ -38,6 +38,7 @@ function getNewTransactionPath(params?: {
   }
 
   let rendered = renderTemplate(template, data)
+  if (!rendered.trim()) rendered = data.title
   if (!rendered.endsWith('.md')) {
     rendered += '.md'
   }

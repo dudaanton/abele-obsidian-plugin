@@ -47,6 +47,8 @@ export async function transactionFileTarget(app: App, file: TFile): Promise<stri
   }
 
   let rendered = renderTemplate(config.transactionPathTemplate, data)
+  // An empty path template disables automatic relocation of an existing transaction.
+  if (!rendered.trim()) return null
   if (!rendered.endsWith('.md')) rendered += '.md'
   // The name already is this, as the file system keeps it: some drop the dots at the end.
   if (samePath(rendered, file.path)) return null
