@@ -30,6 +30,19 @@ The repository guard runs first, both on commit and in CI: it refuses stray tool
 build results, big files, credentials and real home paths — see
 [Repository guard](Repository%20guard.md), which also says how to allow something on purpose.
 
+## Release integrity
+
+CI uses read-only repository permissions and installs the exact locked dependencies without
+install scripts. `npm audit --omit=dev --audit-level=moderate` checks shipped dependencies.
+
+A tag created by `release.sh` must match both `manifest.json` and `plugin/package.json`.
+The release builds with a read-only token; `plugin/scripts/check-release.mjs` rejects missing
+assets, extra chunks, the development test API and sourcemaps. A separate publishing job,
+which runs no npm commands, verifies SHA-256 checksums and attests build provenance.
+`SHA256SUMS` accompanies the three plugin assets. After downloading them, verify with
+`sha256sum -c SHA256SUMS` and `gh attestation verify main.js --repo <owner>/<repository>`.
+These checks require no change to the existing raw-version tag convention in `release.sh`.
+
 ## Policy
 
 New functionality is always covered by tests in the same change. Existing code gets covered

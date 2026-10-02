@@ -5,64 +5,93 @@ on:
     tags:
       - "*"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-  release:
-    # Nothing is published unless the tagged code type-checks and passes its tests.
+  build:
     needs: test
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22.x"
 
-      - name: Build plugin
+      - name: Build and verify production assets
         working-directory: plugin
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npm run build
+          node scripts/check-release.mjs
 
-      # The release publishes three files. A build that emits anything else has split a
-      # dynamic import into a chunk that would never reach a vault, leaving whatever sits
-      # behind that import broken for every user.
-      - name: Check the build is one file
-        working-directory: plugin
+      - name: Collect assets and checksums
         run: |
-          unexpected=$(ls build | grep -vE '^(main\.js|main\.css|styles\.css)$' || true)
-          if [ -n "$unexpected" ]; then
-            echo "Unexpected build output, which the release would not publish:"
-            echo "$unexpected"
-            exit 1
-          fi
+          mkdir release
+          cp plugin/build/main.js manifest.json release/
+          cp plugin/build/main.css release/styles.css
+          (cd release && sha256sum main.js manifest.json styles.css > SHA256SUMS)
 
-      - name: Create release with changelog
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
+
+  # No package installation or project code runs with repository-write permissions.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release
+          path: release
+
+      - name: Verify the downloaded assets
+        run: (cd release && sha256sum -c SHA256SUMS)
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/main.js
+            release/manifest.json
+            release/styles.css
+
+      - name: Publish release with checksums
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-
-          prev_tag=$(git tag --sort=-v:refname | grep -v "^${tag}$" | head -n 1)
-
+          prev_tag=$(git tag --sort=-v:refname | grep -Fxv "$TAG" | head -n 1 || true)
           if [ -n "$prev_tag" ]; then
-            changelog=$(git log "${prev_tag}..${tag}" --pretty=format:"- %h %s" --no-merges)
+            changelog=$(git log "${prev_tag}..${TAG}" --pretty=format:"- %h %s" --no-merges)
           else
             changelog=$(git log --pretty=format:"- %h %s" --no-merges)
           fi
-
-          cp plugin/build/main.css plugin/build/styles.css
-
-          gh release create "$tag" \
-            --title="$tag" \
-            --notes="$changelog" \
-            plugin/build/main.js \
-            manifest.json \
-            plugin/build/styles.css
+          fence='```'
+          notes=$(printf '%s\n\n### SHA-256\n\n%s\n%s\n%s\n\nVerify build provenance: gh attestation verify main.js --repo %s\n' \
+            "$changelog" "$fence" "$(cat release/SHA256SUMS)" "$fence" "$REPO")
+          gh release create "$TAG" \
+            --title="$TAG" \
+            --notes="$notes" \
+            release/main.js \
+            release/manifest.json \
+            release/styles.css \
+            release/SHA256SUMS
