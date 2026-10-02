@@ -314,6 +314,16 @@ export class BookReading {
   /** Watches a page for words being selected. */
   watchSelection(doc: Document, index: number): void {
     if (this.disposed) return
+    // Reflowing renderers do not emit page-unload events. Keep cleanup handles only for
+    // documents they still show, plus the new page whose load event may precede publication.
+    const live = new Set(this.engine.renderer.getContents().map((content) => content.doc))
+    live.add(doc)
+    for (const [previous, stop] of this.selectionWatches) {
+      if (live.has(previous)) continue
+      stop()
+      this.selectionWatches.delete(previous)
+      this.docIndex.delete(previous)
+    }
     this.docIndex.set(doc, index)
     this.selectionWatches.get(doc)?.()
     const win = doc.defaultView ?? window
