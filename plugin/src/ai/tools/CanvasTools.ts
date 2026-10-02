@@ -13,6 +13,7 @@ import {
 import { CanvasEditError, operationSchema } from '@/canvas/core/edit'
 import { layoutOptionsSchema } from '@/canvas/core/layout'
 import { canvasOutline } from '@/canvas/core/read'
+import { editCanvasSteps, stepOperationSchema } from '@/canvas/core/steps'
 import { serializeCanvas } from '@/canvas/core/model'
 import { lintCanvas } from '@/canvas/core/lint'
 import { bundledMermaid } from '@/canvas/mermaidAdapter'
@@ -78,11 +79,12 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_read',
       'Read canvas',
-      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline. Works without an open tab; read-only. Array/key order is never identity.',
+      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline; step (one-based) shows cumulative revealed content and camera/narration. Works without an open tab; read-only. Array/key order is never identity.',
       z
         .object({
           path,
           detail: z.enum(['outline', 'full']).default('outline'),
+          step: z.number().int().positive().optional(),
           region: region.optional(),
         })
         .strict(),
@@ -183,14 +185,43 @@ export function createCanvasTools(): AgentTool[] {
       }
     ),
     definition(
+      'canvas_steps',
+      'Define canvas walkthrough',
+      'Define an ordered explanation under abele.steps, by stable step and diagram ids. Pass the revision from canvas_read. Atomic ops: replace {steps}, upsert {step,before?:stepId|null}, remove {id}, move {id,before:stepId|null}. Each step has {id,reveal:ids[],say:string,highlight?:ids[],focus?:nodeOrEdgeId|{x,y,width,height}}. Reveal is cumulative; a group reveals its descendants, connections appear when both endpoints are visible. Highlight never reveals hidden nodes. before=null appends; upsert without before updates in place. Native Canvas undo is one batch. Own Ask mode; scope and write guards apply. Aim for at most seven new cards per step; inspect with look_at_canvas(step=1-based number).',
+      z.object({ path, revision, ops: z.array(stepOperationSchema).min(1) }).strict(),
+      async (params, signal, ctx) => {
+        const key = scoped(params.path, ctx)
+        guardChatWrite(key)
+        const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
+          key,
+          params.revision,
+          (graph) => editCanvasSteps(graph, params.ops),
+          signal
+        )
+        return {
+          ...answer({
+            path: key,
+            revision: result.revision,
+            steps: result.after.abele?.steps,
+            warnings: lintCanvas(result.after),
+          }),
+          details: {
+            path: key,
+            diff: { old: serializeCanvas(result.before), new: serializeCanvas(result.after) },
+          },
+        }
+      }
+    ),
+    definition(
       'look_at_canvas',
       'Look at canvas',
-      'See a diagram as a PNG, all of it or a crop by node id or region {x,y,width,height}. maxSide defaults 2048 (64–4096). Comes with deterministic overlap, edge-crossing, text/image clipping, isolation, missing-step-id and crowded-step warnings. Paints local note text and images only when in scope, using the host theme. Remote images are not fetched. A large diagram is unreadable as one picture: inspect node/region crops and fix lint first. Read-only, own On mode.',
+      'See a diagram as a PNG, all of it, a one-based step with its camera/highlights/narration, or a crop by node id or region {x,y,width,height}. maxSide defaults 2048 (64–4096). Comes with deterministic overlap, edge-crossing, text/image clipping, isolation, missing-step-id and crowded-step warnings. Paints local note text and images only when in scope, using the host theme. Remote images are not fetched. A large diagram is unreadable as one picture: inspect node/region crops and fix lint first. Read-only, own On mode.',
       z
         .object({
           path,
           region: region.optional(),
           node: z.string().optional(),
+          step: z.number().int().positive().optional(),
           maxSide: z.number().min(64).max(4096).default(2048),
         })
         .strict(),
@@ -213,6 +244,7 @@ export function createCanvasTools(): AgentTool[] {
             width: picture.canvas.width,
             height: picture.canvas.height,
             visible: picture.visible,
+            say: picture.say,
             warnings: picture.warnings,
           }),
           injectMessages: [

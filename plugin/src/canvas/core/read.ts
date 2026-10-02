@@ -1,12 +1,15 @@
 import { labelOf, overlaps, parentsOf, type CanvasGraph, type Rect } from './model'
 import { lintCanvas } from './lint'
+import { stepScene } from './steps'
 import { defaultMetrics, type TextMetricsPort } from './scene'
 /** Coordinates appear only in full detail. All outline ordering is deterministic by id. */
 export function canvasOutline(
   graph: CanvasGraph,
-  options: { detail?: 'outline' | 'full'; region?: Rect } = {},
+  options: { detail?: 'outline' | 'full'; region?: Rect; step?: number } = {},
   metrics: TextMetricsPort = defaultMetrics
 ) {
+  const source = graph
+  if (options.step !== undefined) graph = stepScene(graph, options.step).graph
   const parents = parentsOf(graph),
     selected = options.region ? graph.nodes.filter((n) => overlaps(n, options.region)) : graph.nodes
   const ids = new Set(selected.map((n) => n.id))
@@ -42,8 +45,17 @@ export function canvasOutline(
           ? e
           : { id: e.id, from: e.fromNode, to: e.toNode, label: e.label ?? '' }
       ),
-    steps: graph.abele?.steps ?? [],
-    warnings: lintCanvas(graph, metrics),
+    steps: source.abele?.steps ?? [],
+    ...(options.step !== undefined
+      ? {
+          playback: {
+            number: options.step,
+            say: stepScene(source, options.step).say,
+            region: stepScene(source, options.step).region,
+          },
+        }
+      : {}),
+    warnings: lintCanvas(source, metrics),
     ...(options.detail === 'full'
       ? {
           extensions: Object.fromEntries(

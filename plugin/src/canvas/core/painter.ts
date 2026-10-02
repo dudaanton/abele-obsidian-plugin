@@ -1,5 +1,6 @@
 /** Canvas 2D graph painter. The host supplies its theme, note text, and local image assets. */
 import { arrowHead } from '../../drawing/items'
+import { stepScene } from './steps'
 import {
   bounds,
   canvasPaintOrder,
@@ -40,13 +41,20 @@ export interface ImageAsset {
 export interface CanvasAssets {
   contents?: ReadonlyMap<string, string>
   images?: ReadonlyMap<string, ImageAsset[]>
+  highlight?: ReadonlySet<string>
+  /** Interactive frames do not recompute the quadratic diagnostic pass. */
+  lint?: boolean
 }
 export function pictureRegion(
   graph: CanvasGraph,
   options: { region?: Rect; node?: string; step?: number } = {}
 ): Rect {
-  if (options.step !== undefined)
-    throw new Error('Step playback requires the later canvas viewer; use node or region for now')
+  if (options.step !== undefined) {
+    const scene = stepScene(graph, options.step)
+    return options.region || options.node
+      ? pictureRegion(scene.graph, { region: options.region, node: options.node })
+      : scene.region
+  }
   if (options.region && options.node) throw new Error('Choose node or region, not both')
   const region =
     options.region ??
@@ -169,7 +177,7 @@ export function paintCanvas(
   assets: CanvasAssets = {}
 ) {
   const metrics = canvasMetrics(ctx, theme),
-    warnings = lintCanvas(graph, metrics, assets.contents),
+    warnings = assets.lint === false ? [] : lintCanvas(graph, metrics, assets.contents),
     parents = parentsOf(graph)
   const hidden = new Set(
     graph.nodes
@@ -184,9 +192,11 @@ export function paintCanvas(
   ctx.fillStyle = theme.paper
   ctx.fillRect(region.x, region.y, region.width, region.height)
   for (const node of visible.filter((n) => n.type === 'group')) {
-    ctx.strokeStyle = colorOf(node.color, theme.border, theme)
+    ctx.strokeStyle = assets.highlight?.has(node.id)
+      ? theme.accent
+      : colorOf(node.color, theme.border, theme)
     ctx.fillStyle = theme.muted
-    ctx.lineWidth = 1
+    ctx.lineWidth = assets.highlight?.has(node.id) ? 3 : 1
     ctx.setLineDash([])
     shapePath(ctx, node)
     ctx.stroke()
@@ -219,8 +229,10 @@ export function paintCanvas(
     if (!points.length) continue
     const path = edge.styleAttributes?.path
     ctx.setLineDash(path === 'dashed' ? [8, 5] : path === 'dotted' ? [2, 5] : [])
-    ctx.lineWidth = 1.5
-    ctx.strokeStyle = colorOf(edge.color, theme.border, theme)
+    ctx.lineWidth = assets.highlight?.has(edge.id) ? 3 : 1.5
+    ctx.strokeStyle = assets.highlight?.has(edge.id)
+      ? theme.accent
+      : colorOf(edge.color, theme.border, theme)
     ctx.fillStyle = ctx.strokeStyle
     ctx.beginPath()
     ctx.moveTo(points[0].x, points[0].y)
@@ -256,8 +268,10 @@ export function paintCanvas(
   }
   for (const node of visible.filter((n) => n.type !== 'group')) {
     ctx.save()
-    ctx.lineWidth = 1.5
-    ctx.strokeStyle = colorOf(node.color, theme.border, theme)
+    ctx.lineWidth = assets.highlight?.has(node.id) ? 3 : 1.5
+    ctx.strokeStyle = assets.highlight?.has(node.id)
+      ? theme.accent
+      : colorOf(node.color, theme.border, theme)
     ctx.fillStyle = theme.card
     ctx.setLineDash(
       node.styleAttributes?.border === 'dashed'

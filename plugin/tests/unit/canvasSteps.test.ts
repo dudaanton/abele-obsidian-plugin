@@ -1,0 +1,137 @@
+import { describe, expect, it } from 'vitest'
+import { parseCanvas, serializeCanvas } from '@/canvas/core/model'
+import { editCanvasSteps, stepScene, stepsOf } from '@/canvas/core/steps'
+import { pictureRegion } from '@/canvas/core/painter'
+import { lintCanvas } from '@/canvas/core/lint'
+
+const sample = () =>
+  parseCanvas({
+    sampleExtension: true,
+    abele: { sample: 'keep', steps: [] },
+    nodes: [
+      { id: 'level', type: 'group', label: 'Level', x: 0, y: 0, width: 640, height: 240 },
+      { id: 'alpha', type: 'text', text: 'Alpha', x: 30, y: 40, width: 200, height: 100 },
+      { id: 'beta', type: 'text', text: 'Beta', x: 360, y: 40, width: 200, height: 100 },
+      { id: 'gamma', type: 'text', text: 'Gamma', x: 900, y: 40, width: 200, height: 100 },
+    ],
+    edges: [
+      { id: 'flow', fromNode: 'alpha', toNode: 'beta' },
+      { id: 'later', fromNode: 'beta', toNode: 'gamma' },
+    ],
+  })
+const walk = () =>
+  editCanvasSteps(sample(), [
+    {
+      op: 'replace',
+      steps: [
+        { id: 'start', reveal: ['alpha'], say: 'Start with the input.', focus: 'alpha' },
+        {
+          id: 'level-step',
+          reveal: ['level'],
+          highlight: ['flow', 'beta'],
+          say: 'Then the level.',
+          focus: 'level',
+        },
+        {
+          id: 'end',
+          reveal: ['gamma'],
+          say: 'The result.',
+          focus: { x: 850, y: 0, width: 300, height: 200 },
+        },
+      ],
+    },
+  ])
+
+describe('portable canvas walkthroughs', () => {
+  it('reveals cumulatively by id, expands groups, never leaks an unrevealed endpoint, and rewinds', () => {
+    const graph = walk()
+    expect(
+      stepScene(graph, 1)
+        .graph.nodes.map((n) => n.id)
+        .sort()
+    ).toEqual(['alpha', 'level'])
+    expect(stepScene(graph, 1).graph.edges).toEqual([])
+    expect(
+      stepScene(graph, 2)
+        .graph.nodes.map((n) => n.id)
+        .sort()
+    ).toEqual(['alpha', 'beta', 'level'])
+    expect(stepScene(graph, 2).graph.edges.map((e) => e.id)).toEqual(['flow'])
+    expect([...stepScene(graph, 2).highlight].sort()).toEqual(['beta', 'flow'])
+    expect(stepScene(graph, 3).graph.nodes).toHaveLength(4)
+    expect(stepScene(graph, 1).graph.nodes).toHaveLength(2)
+    expect(stepScene(graph, 1).say).toBe('Start with the input.')
+  })
+  it('uses one-based pictures with the same camera region as the viewer, and explicit crops win', () => {
+    const graph = walk()
+    expect(pictureRegion(graph, { step: 1 })).toEqual(stepScene(graph, 1).region)
+    expect(pictureRegion(graph, { step: 3 })).toEqual({ x: 850, y: 0, width: 300, height: 200 })
+    expect(pictureRegion(graph, { step: 2, node: 'beta' }).width).toBe(248)
+    expect(() => stepScene(graph, 0)).toThrow(/step/i)
+    expect(() => stepScene(graph, 4)).toThrow(/step/i)
+  })
+  it('edits, orders and removes steps by stable id in an atomic batch without losing extensions', () => {
+    const graph = walk(),
+      bytes = serializeCanvas(graph)
+    const edited = editCanvasSteps(graph, [
+      {
+        op: 'upsert',
+        step: { id: 'extra', reveal: [], say: 'Pause', sample: true },
+        before: 'end',
+      },
+      { op: 'move', id: 'end', before: 'start' },
+      { op: 'remove', id: 'level-step' },
+    ])
+    expect(stepsOf(edited).map((s) => s.id)).toEqual(['end', 'start', 'extra'])
+    expect(edited.abele?.sample).toBe('keep')
+    expect(stepsOf(edited)[2].sample).toBe(true)
+    expect(serializeCanvas(graph)).toBe(bytes)
+    expect(() =>
+      editCanvasSteps(graph, [
+        { op: 'remove', id: 'start' },
+        { op: 'move', id: 'missing', before: null },
+      ])
+    ).toThrow(/op 1/i)
+    expect(serializeCanvas(graph)).toBe(bytes)
+  })
+  it('validates duplicate steps, missing ids, camera boxes, and id-valued focus before publishing', () => {
+    for (const step of [
+      { id: 'bad', reveal: ['missing'], say: '' },
+      { id: 'bad', reveal: [], say: '', focus: 'missing' },
+      { id: 'bad', reveal: [], say: '', focus: { x: 0, y: 0, width: 0, height: 10 } },
+    ])
+      expect(() => editCanvasSteps(sample(), [{ op: 'upsert', step }])).toThrow()
+    expect(() =>
+      editCanvasSteps(sample(), [
+        {
+          op: 'replace',
+          steps: [
+            { id: 'same', reveal: [], say: '' },
+            { id: 'same', reveal: [], say: '' },
+          ],
+        },
+      ])
+    ).toThrow(/duplicate/i)
+  })
+  it('keeps broken legacy data readable and diagnoses missing ids and group-sized reveals', () => {
+    const graph = walk()
+    graph.abele!.steps = [{ reveal: ['missing'], highlight: ['gone'], say: 'Legacy' }]
+    expect(parseCanvas(serializeCanvas(graph)).abele?.steps).toEqual(graph.abele.steps)
+    expect(lintCanvas(graph).filter((w) => w.code === 'missing-step-id')).toHaveLength(2)
+    expect(stepsOf(graph)[0].id).toBe('step-1')
+    const large = sample()
+    large.nodes.push(
+      ...Array.from({ length: 8 }, (_, i) => ({
+        id: `sample-${i}`,
+        type: 'text' as const,
+        text: 'Sample',
+        x: i * 40,
+        y: 180,
+        width: 30,
+        height: 30,
+      }))
+    )
+    large.abele!.steps = [{ id: 'many', reveal: ['level'], say: '' }]
+    expect(lintCanvas(large).some((w) => w.code === 'dense-step')).toBe(true)
+  })
+})

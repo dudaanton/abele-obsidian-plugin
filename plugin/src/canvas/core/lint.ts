@@ -1,4 +1,5 @@
 import { contains, descendants, labelOf, overlaps, parentsOf, type CanvasGraph } from './model'
+import { expandedNodeIds, stepsOf } from './steps'
 import {
   contentBox,
   defaultMetrics,
@@ -63,6 +64,12 @@ export function lintCanvas(
       add('isolated', [node.id], `${node.id} has no connection`)
   const ids = new Set([...graph.nodes, ...graph.edges].map((n) => n.id))
   const steps = graph.abele?.steps
+  try {
+    stepsOf(graph)
+  } catch (error) {
+    add('invalid-step', [], error instanceof Error ? error.message : String(error))
+  }
+  const previously = new Set<string>()
   if (Array.isArray(steps))
     steps.forEach((step: unknown, i) => {
       if (!step || typeof step !== 'object') {
@@ -79,11 +86,20 @@ export function lintCanvas(
       for (const id of refs)
         if (typeof id !== 'string' || !ids.has(id))
           add('missing-step-id', [String(id)], `Step ${i}: missing id ${String(id)}`)
-      if (reveal.length > 7)
+      const newNodes = [
+        ...expandedNodeIds(
+          graph,
+          reveal.filter((id): id is string => typeof id === 'string')
+        ),
+      ].filter(
+        (id) => !previously.has(id) && graph.nodes.find((n) => n.id === id)?.type !== 'group'
+      )
+      newNodes.forEach((id) => previously.add(id))
+      if (reveal.length > 7 || newNodes.length > 7)
         add(
           'dense-step',
           reveal.map(String),
-          `Step ${i} reveals ${reveal.length} elements; aim for at most seven`
+          `Step ${i + 1} reveals ${Math.max(reveal.length, newNodes.length)} elements; aim for at most seven`
         )
     })
   return warnings

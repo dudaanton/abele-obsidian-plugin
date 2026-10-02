@@ -183,12 +183,14 @@ not rebuilt. No tracked-change or comment authoring, nested-table editing or pag
 
 ## Canvas diagrams
 
-`canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, and `look_at_canvas` have their own
+`canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, `canvas_steps`, and `look_at_canvas` have their own
 per-agent Off/Ask/On modes. Reading and pictures default to On; creation, semantic editing and
-layout default to Ask, independently of general file-write permissions. Existing-diagram calls
+layout and walkthrough authoring default to Ask, independently of general file-write permissions. Existing-diagram calls
 must be in scope. New diagrams join scope after creation, like `create`.
 
-- `canvas_read(path, {detail?, region?})`: `detail` is `outline` (default) or `full`. The outline
+- `canvas_read(path, {detail?, region?, step?})`: `step` is a one-based playback number, filtering
+  the outline to cumulatively revealed content and returning camera framing and narration.
+   `detail` is `outline` (default) or `full`. The outline
   gives ids, one-line labels, group hierarchy, edges and lint; full adds geometry and all extension
   data. It includes an open native Canvas's pending data and returns an opaque `revision` covering
   both file bytes and pending native state. Read before refining; every successful write returns
@@ -214,7 +216,18 @@ must be in scope. New diagrams join scope after creation, like `create`.
   id. Keep pins ids, including a kept group's descendants. Groups are laid out level by level;
   cross-group connections are represented at each group's outer level. Fixed positions can still
   need lint fixes. The layout-engine interface leaves room for an opt-in engine later; no ELK ships.
-- `look_at_canvas(path, {node?,region?,maxSide?})`: a PNG plus warnings, all of it or one crop.
+- `canvas_steps(path, {revision, ops})`: an atomic batch, guarded by the same revision/scope as
+  edits. Ops: `replace {steps}`, `upsert {step,before?}`, `remove {id}`, `move {id,before}`.
+  A step is `{id,reveal:ids[],say:string,highlight?:ids[],focus?:id|{x,y,width,height}}`.
+  `id` is the step's stable name; diagram references use node/group/edge ids. `before` is a step
+  id, or null to append. Upsert without before updates an existing step in place, preserving its
+  unknown fields; replace deliberately replaces the list. Groups reveal all their descendants;
+  reveals accumulate, backwards navigation recomputes them. Connections appear when both
+  endpoints are visible. Highlights never reveal hidden content. An id focus frames that node
+  or edge; a region gives exact framing; otherwise frame revealed content. `say` is plain text.
+- `look_at_canvas(path, {step?,node?,region?,maxSide?})`: a PNG plus warnings, all of it or one crop.
+  `step` uses one-based cumulative reveal, highlights and camera focus, and returns `say`.
+  An explicit node/region crop overrides the step camera, but never exposes hidden content.
   Choose `node` or `region: {x,y,width,height}`, not both. maxSide is 64–4096, default 2048.
   Pictures use the host theme, Advanced Canvas shapes, bound connectors, safe painted headings,
   lists, bold, link labels, scoped note text/heading/block content, and scoped local images.
@@ -233,8 +246,10 @@ look again. Native save can reorder keys and elements; never use array position 
 order still defines stacking and is part of the expected revision; a raise/lower action is a change.
 Unknown node types are refused instead of silently erased. The batch is one native undo item
 when a single native Canvas editor is open; close duplicate editor tabs before writing. Native
-Canvas is still the stage-one viewer. Step authoring/playback and Abele's viewer are not present
-in these tools yet; existing `abele.steps` are retained and linted.
+Canvas remains available via the viewer's native action. Abele's read-only viewer plays the
+walkthrough with arrows/Space, Previous/Next buttons, blank-area taps and horizontal swipes;
+Escape/All shows the whole diagram. Use `![[sample.canvas#step=2]]` inside a note for a static
+step picture with Open/Play actions. The viewer never writes camera or playback into the diagram.
 
 ## Files
 

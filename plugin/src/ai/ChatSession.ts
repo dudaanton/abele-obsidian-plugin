@@ -201,6 +201,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     'canvas_read',
     'canvas_edit',
     'canvas_layout',
+    'canvas_steps',
     'look_at_canvas',
     'ls',
     'find',

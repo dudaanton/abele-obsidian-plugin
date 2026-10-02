@@ -312,6 +312,7 @@ export const TOUCHING_TOOLS = [
   'canvas_create',
   'canvas_edit',
   'canvas_layout',
+  'canvas_steps',
 ]
 
 /**
@@ -434,6 +435,7 @@ export const CANVAS_TOOL_MODES: Record<string, ToolMode> = {
   canvas_create: 'ask',
   canvas_edit: 'ask',
   canvas_layout: 'ask',
+  canvas_steps: 'ask',
 }
 
 /** Personal device data: ask before every request unless the person chooses another mode. */

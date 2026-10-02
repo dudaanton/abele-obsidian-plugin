@@ -1,4 +1,6 @@
 import { TFile, type App } from 'obsidian'
+import { stepScene } from './core/steps'
+import { lintCanvas } from './core/lint'
 import { rasterScale } from '../drawing/rasterize'
 import { vaultUrl } from '../helpers/vaultUrl'
 import {
@@ -43,7 +45,7 @@ export function hostMetrics(): TextMetricsPort {
     ctx = canvas.getContext('2d')
   return ctx ? canvasMetrics(ctx, canvasTheme(doc)) : defaultMetrics
 }
-function notePart(text: string, subpath?: string): string {
+export function notePart(text: string, subpath?: string): string {
   const clean = text.replace(/\r\n?/g, '\n').replace(/^---\n[\s\S]*?\n---(?:\n|$)/, '')
   if (!subpath) return clean
   const heading = subpath.replace(/^#/, '')
@@ -192,12 +194,15 @@ export async function canvasPicture(
   app: App,
   graph: CanvasGraph,
   path: string,
-  options: { region?: Rect; node?: string; maxSide?: number },
+  options: { region?: Rect; node?: string; step?: number; maxSide?: number },
   inScope: (path: string) => boolean,
   signal?: AbortSignal
 ) {
   const doc = typeof activeDocument === 'undefined' ? document : activeDocument,
     region = pictureRegion(graph, options)
+  const source = graph
+  const playback = options.step === undefined ? null : stepScene(graph, options.step)
+  if (playback) graph = playback.graph
   const canvas = doc.win.createEl('canvas'),
     ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 2D is unavailable')
@@ -214,15 +219,24 @@ export async function canvasPicture(
   const assets = await canvasRegionAssets(app, graph, path, inScope, doc, region, signal)
   signal?.throwIfAborted()
   const theme = canvasTheme(doc)
-  const result = paintCanvas(ctx, graph, region, theme, assets)
+  const result = paintCanvas(ctx, graph, region, theme, {
+    ...assets,
+    highlight: playback?.highlight,
+  })
   return {
     canvas,
     region,
     warnings: [
       ...result.warnings,
       ...assets.warnings,
+      ...(playback
+        ? lintCanvas(source).filter((w) =>
+            ['invalid-step', 'missing-step-id', 'dense-step'].includes(w.code)
+          )
+        : []),
       ...textResolutionWarnings(scale, theme.size),
     ],
     visible: result.visible,
+    say: playback?.say,
   }
 }

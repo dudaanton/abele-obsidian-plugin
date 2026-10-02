@@ -44,16 +44,24 @@ without refusing the file. Legacy unanchored hints are trusted only while their 
 contains the card. No read rewrites stale metadata; a later successful layout refreshes it.
 Group metadata is not stored in a second membership file. Creation stores its title in `metadata.frontmatter.title`.
 
-Other Abele-only data lives under `abele` at file/node/edge level. Existing `abele.steps`, ink and
-layout hints are preserved but stage one does not author or play steps, or edit ink. Lint reads
-step `reveal`, `highlight`, and id-valued `focus` references to report missing ids and overly dense
-reveals. Do not invent new `type` values for these features. Agent changes use an atomic vault
+Other Abele-only data lives under `abele` at file/node/edge level. `abele.steps` is an ordered
+list of `{id,reveal:ids[],say:string,highlight?:ids[],focus?:id|{x,y,width,height}}`. Step ids are
+stable author-chosen names; referenced ids name diagram nodes/groups/edges. Reveals accumulate,
+a group reveals descendants, and connections appear once both endpoints are visible. Older
+steps without ids receive temporary `step-N` names, persisted on the next step-authoring write.
+Unknown step extension fields are retained. Lint reports invalid steps, missing ids and overly
+dense reveals (including group descendants). Ink and layout hints are retained, not authored. Do not invent new `type` values for these features. Agent changes use an atomic vault
 transaction with an expected revision of the file bytes and pending native state. `canvas_read`
 and successful writes return that revision; edit/layout refuse versions changed since the read,
 checking again at publication. The token is not a stored canvas field or sidecar. An open native
-editor receives one undo item per batch. No persistent viewer setting,
-image export file, cache note or diagram attachment is created by `look_at_canvas`: its PNG is
-an agent-message image. Source notes and local images are read only within scope.
+editor receives one undo item per batch. `canvasViewer` is a transferable plugin setting,
+on by default, choosing Abele for newly opened canvas leaves; the per-leaf native action keeps
+that tab native until reopened in Abele. Camera and selected step live only in the workspace
+leaf state, not the `.canvas` file. `![[sample.canvas#step=N]]` and `#node=id` embeds store only
+that link in the note; their pictures are transient. User PNG/SVG exports go to the ordinary
+attachments folder, never beside the canvas as a sidecar. SVG exports contain a self-contained
+PNG picture, not editable vector paths. `look_at_canvas` creates no export file, cache note or
+diagram attachment: its PNG is an agent-message image. Source notes and local images are read only within scope.
 
 ## Device-local key destinations
 
