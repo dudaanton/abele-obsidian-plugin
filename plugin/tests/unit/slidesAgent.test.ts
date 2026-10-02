@@ -150,8 +150,14 @@ describe('deck tools and read-before-write', () => {
 describe('logical canvas fit inspection', () => {
   it('reports region overflow and crowded content without counting speaker notes', () => {
     const el = document.createElement('section')
-    el.innerHTML = '<div class="abele-slide-region">' + '<p>Sample text</p>'.repeat(16) + '</div>'
-    const region = el.firstElementChild!
+    const region = document.createElement('div')
+    region.className = 'abele-slide-region'
+    for (let i = 0; i < 16; i++) {
+      const paragraph = document.createElement('p')
+      paragraph.textContent = 'Sample text'
+      region.append(paragraph)
+    }
+    el.append(region)
     for (const [key, value] of Object.entries({
       clientWidth: 500,
       scrollWidth: 500,
