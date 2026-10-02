@@ -1,5 +1,5 @@
 {
-  "commit": "eb4844854b0a240c074fdae509ebce083ae03727",
+  "commit": "fc1e82dc36050ddc1b12f3005ff32899cca24c73",
   "lockSha256": "5596c59c6bc090c6bf8492db4000d81194dc303201d2da96beb69b939c9238b1",
   "node": "v22.23.2",
   "npm": "10.9.8",
@@ -7,17 +7,17 @@
   "sourceMap": false,
   "packages": {
     "@abele/sync-protocol": {
-      "archive": "abele-sync-protocol-0.0.0-eb4844854b0a.tgz",
-      "sha256": "e300190a0643f4dbe4bb16f9bd8f618bd9340bd91ec821d16b4bd58cc9acd8db",
-      "integrity": "sha512-WIpq+5C/fPjQKScWLp45Cq8f9r+0k5ywF5mReUWO+YEYXriLgk/PZLjdM0rs3O4ZaDhcbM6/vl7ifUtfu/0jtQ==",
-      "tree": "c7626377456827e257ee1387bdae707c1411f810",
+      "archive": "abele-sync-protocol-0.0.0-fc1e82dc3605.tgz",
+      "sha256": "d017cb11626c870191513ea4334be49dd130415aaf3b731eb0517863610c7f2a",
+      "integrity": "sha512-AomqFl3NMTmjblzh1HGY7gRQwAAWht7biBCTFOVwxv9sSlrJA9KUatDQAxShwrYWCLz9KDUCK9fLCWzVJJhy2A==",
+      "tree": "e31ebf868cb537a0367a77b1ba2c67866a9eeb67",
       "files": {
         "dist/capabilities.d.ts": "eb75091b4222db8a851d7a96c547a25fc88dc56b1c5d5c2939b7927e331977b6",
         "dist/capabilities.js": "e902513a39564036fa9bcf1292ef92f726bddb33e615d72745d638c4aa841253",
         "dist/errors.d.ts": "33addea2043c2d7a93b324fd139972c813b92774c51a37464cc92c21ba994f12",
         "dist/errors.js": "ff470d7c10e805da15d630fb99d7bf446a6c4d1ce50edee4f63ec6c911bd2ccf",
-        "dist/index.d.ts": "91f0266d75374e934964eb1925476c138fb9fcbc78d0fbb4906eacb3249d746a",
-        "dist/index.js": "7c2c2860dbb87f14fe8aa8a8216e7cf5ee1dc6cd2fcbbf8c572d24a844727250",
+        "dist/index.d.ts": "456aa7d2d611ff2b6a298952c03a67481b0e5b561dc4844d52aa3b6f9cdf2077",
+        "dist/index.js": "13dc97865b4ba73089aa09097f22a6b4af95f3832a92d0267ac228844fa947b3",
         "dist/paths.d.ts": "7f0c226e85c7ecf6bedb95ff84798b2b3197de0e574c58810ce4c536495dedeb",
         "dist/paths.js": "f3858bf18f55a960a356ce9abbeaaff5d39836a10d01e163d30d5af85fc82e14",
         "dist/principals.d.ts": "8e1268139abf02d70788a0e2dbbfe153a666fc942070132639ec0359b1c73bfd",
@@ -28,6 +28,8 @@
         "dist/scopedCommits.js": "f9364d872426b6c0b1a367ce1ae5ec585d4033c7a301f2b89a0c716b781a5f25",
         "dist/scopedFeed.d.ts": "24e790c3a703dec23d52d851ede2f4ede044e7a382007add89a8d7f8b9b2c8e9",
         "dist/scopedFeed.js": "bf39f0ea84135f966e5b4a2a8601b3e24cf363a660983dccbeda3c4ced743e66",
+        "dist/scopedHistory.d.ts": "8c93ef85738e12aa61e2693e9fa351ce1978c411ebc8af0fd9a45610a9b90e51",
+        "dist/scopedHistory.js": "860290f639ebf88e249f5be972f6cbfc5a12eca1506a7a8daf06c328eaa25ac3",
         "dist/scopedManagement.d.ts": "927069e3ac08d8592daa68bab412e3b60c6019925b8b250e497d8febd6ed6a90",
         "dist/scopedManagement.js": "ece594984dcfc9df00fa9b3b90eef4930a4e840c86b89cca38e5792dcd48ca66",
         "dist/scopedSnapshots.d.ts": "50194b9962da6bc5862ce789144156870cbfbe5b20cb59bcd15963ec4d121df5",
@@ -38,14 +40,14 @@
         "dist/scopedV4.js": "9898c2d503f9c57b5dbdca29b4540e798e3b94a8a7a1edabb224d50c2d80f67c",
         "dist/serverUrl.d.ts": "8022a27bc107e9234e4882b967dcb405fb54402b4af7ad0cb2954a9a171dc4dc",
         "dist/serverUrl.js": "eac8848ce2b989b4180ef6d0cc9c5afc662a9523d61b48b770b5ce8376f91951",
-        "package.json": "ca4a345c1bc08e51d3e171926dbd619f972eab36928342ef68b6c83902a074d9"
+        "package.json": "153222a4d7d21fc8dd6b28a9d14a98926028822aef8bb897648a20ca61ca7a3b"
       }
     },
     "@abele/sync-core": {
-      "archive": "abele-sync-core-0.0.0-eb4844854b0a.tgz",
-      "sha256": "fedfda032decfbfaa38908cb1ef5bfcbe57e91899c7a646e3b257e05599774ad",
-      "integrity": "sha512-54VhYNfk5oIu7XuL5Lzlnp63vlsSypVCwBJhTVfiDvyg55skJ4uY8IC6Sal312o93fDRKMfeHKSrV9oN3LMtAg==",
-      "tree": "3ac704e8df10acb731f68611c3811fe6d3d261b8",
+      "archive": "abele-sync-core-0.0.0-fc1e82dc3605.tgz",
+      "sha256": "6b015d50fd67cfecdbf4d7c70558ea5d6a348bbe6aebc67b65f1488195f36c33",
+      "integrity": "sha512-KS8fiYaKsGhAvOZi8QrtlpFb5uCUJjC9z2K9JP6m4V7nAYoc6lAQDqPL7Mz3XmKgeH9MI059DipXmRnD28MLlw==",
+      "tree": "760b1774e964c35e3221ee944042f1b0bbddbbd4",
       "files": {
         "dist/apply.d.ts": "75ef304d3ff8b41bce6e7a8e6096bc87a9ab6060220a2e845dbc77178740b85d",
         "dist/apply.js": "d5d11884493a9ce1db80556e02d113406e2551d1057024bf0ffffcf0a70df211",
@@ -77,8 +79,8 @@
         "dist/http.js": "ecd5c20a04b945b44968cf2242ee4b9f49dfa68928e986729cb025db0c8f8851",
         "dist/ignore.d.ts": "2a0949eea8c4376e2b5c0ebe39b3262459e84c6c12dcaed14f19c06a8cee5213",
         "dist/ignore.js": "dd49e7dd9a618ab616817914720d953e674af691f0affb47afbabfbde39f0bc4",
-        "dist/index.d.ts": "ff9fa281e115c88ec29164c0c666fa1688ec8ef1aa0ad6c48aa45349c18045bc",
-        "dist/index.js": "8659e098b53c2752b68bda1b649be4f68a3be1cbc060778bb0abf3500207977b",
+        "dist/index.d.ts": "581cef15d7af19b7b9662f5cc479286fb7a7333dfcfc677c31fe77bcf550c0c4",
+        "dist/index.js": "830d76b0f7244be556055ae1bec07263c438aca15fa891149636d25d031a636e",
         "dist/likeness.d.ts": "79294b1e2dfb5d4f9267ec297eb75a9f4ec0e347706a706bed94d87cdbf90ba2",
         "dist/likeness.js": "b59869b18737fa58758911092d6262a371429adb9825ea0a2a505da53bcc1f78",
         "dist/puller.d.ts": "90315becd3c3490224c143d025f3b0802d1161262c00a7e41fd497f641de9787",
@@ -107,16 +109,22 @@
         "dist/scanner.js": "1609180104ca029f566d9f9728da605500075288e4f869fcd6f8392040c61df8",
         "dist/scope.d.ts": "da01000cb8e047bc33236e0e5949f2a3f77914adf014cfbe756d0075f11e536f",
         "dist/scope.js": "4af61fb36b471822c8b5063501157eb47523ee6bcde7144ed4abf45ec1309326",
-        "dist/scopedClient.d.ts": "df4cfeafce2ebefcafa463dbb866eafe4eb2c31f48a025f32f04ebf4c1695c2b",
-        "dist/scopedClient.js": "eec6de1f7b5d16b991b3f51f0cdc14489d3533da153b2c005b7139e137091217",
+        "dist/scopedClient.d.ts": "a5ed08886de32e6afe3c9e920c7943bcd888f724a780d4df298ff211df2e5aa6",
+        "dist/scopedClient.js": "a1cfe7298be6edfd2b9687dcde2c45af8b0f1cc40470a8ddf3d3f34f02dfea4f",
         "dist/scopedConnection.d.ts": "bff7aa7c456df60b795dc9f81a967ce8e52bd593ae5a1ecd0fc4a0b537b145ed",
         "dist/scopedConnection.js": "bff7aa7c456df60b795dc9f81a967ce8e52bd593ae5a1ecd0fc4a0b537b145ed",
         "dist/scopedIdentity.d.ts": "45347497997fd08ad41a3f2d3c908dddc0db370e96a2896683713df238327a59",
         "dist/scopedIdentity.js": "1bd2461a73115acc76cc8e9120fb623703d5e733977b0a6ad1807bb13fd8ef66",
         "dist/scopedPull.d.ts": "d932bfee5a68fd7efd7e2586f0f9962d8b8d74703b9ed33a9f22bbc3053af2eb",
-        "dist/scopedPull.js": "0ce7aa7d39f9f5e6fdac75c13de03a55250967948588f0ccb2b8c37f07c945eb",
-        "dist/scopedState.d.ts": "22d52d1fc3a647d1fc96c76615ad2945e13869ae94b3d201f5eae0b2d84b0e8c",
-        "dist/scopedState.js": "5cfbac50f16aaf441aa3ddbc57215d819151542d191f962d283288eb866dd9a2",
+        "dist/scopedPull.js": "e797f02c8a4dba5e6e43e86b1aca57ad7e405da9b5100520c5d5c1c809f55b0d",
+        "dist/scopedPush.d.ts": "6fa490ae64f5f9dabdd361d2a373e98aac6576e165ab0f456acf2ddd08da48ef",
+        "dist/scopedPush.js": "e3e56bc47de5007d44d2522dbb05237e7ebc0bf7c167fc81a8b283b07e849edb",
+        "dist/scopedSafety.d.ts": "05807cc5feffc2bee32cc6e9e0cb964825ca0feb4df05f29f75b4283880680cd",
+        "dist/scopedSafety.js": "88ed85831cc6ab001294005580ec4bda82c7d491e9432df67d6110a28cd30821",
+        "dist/scopedScan.d.ts": "445c7e82105c062271f8182f7efc2a018f75c06875892c49964b5c543ba5f2b7",
+        "dist/scopedScan.js": "45e7d82284ae501dbc749b1b2f510ae9907e6961b7ec35a4d125e46cc0d02e43",
+        "dist/scopedState.d.ts": "15d7293e17c2c7969f75989b40075d94857fb885ab0e375be31e3c45c897ae57",
+        "dist/scopedState.js": "7635b9ed234975f21f1cc0bc01421749a6b95f6aad00d8ee179b48f057d77cce",
         "dist/selective.d.ts": "10942089c81b94beeaa4b21243b6f4d27b057a2d0e8c1ed477fcd929bc1efc39",
         "dist/selective.js": "3d9fca5d99b36e0447346af0c4849f3b92f8846ff0f8a954b64a16e747dafb64",
         "dist/staging.d.ts": "bd61946f7d3ce0b349a5806f7da16689287594a85534d3cd2a54723137ef9701",
@@ -127,7 +135,7 @@
         "dist/wake.js": "e68b5b45c2c0f950a7f93e9c61760f7b2be7ca67f5ea0f6ffac30b43767c9423",
         "dist/watchReports.d.ts": "da31039a76e466f7f08677d2b9c584734ce6addd6a66b03ef93cfebc8ba69d48",
         "dist/watchReports.js": "bb575feac69ffb45956fb06b390ece752b327b2cae9d65d62299e1a4b8f511ec",
-        "package.json": "a837af9e713eb53e093ba0afcf5c5243502f5ab0e8ff33d5f2b8bdfd61084e08"
+        "package.json": "c8fa7f064304a7e85254b6a1a358745b7d063c38934286d5e05b752d58780957"
       }
     }
   }

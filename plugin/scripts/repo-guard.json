@@ -61,7 +61,9 @@
       "plugin/vendor/sync/abele-sync-core-0.0.0-68bb5bb893a9.tgz",
       "plugin/vendor/sync/abele-sync-protocol-0.0.0-68bb5bb893a9.tgz",
       "plugin/vendor/sync/abele-sync-core-0.0.0-eb4844854b0a.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-eb4844854b0a.tgz"
+      "plugin/vendor/sync/abele-sync-protocol-0.0.0-eb4844854b0a.tgz",
+      "plugin/vendor/sync/abele-sync-core-0.0.0-fc1e82dc3605.tgz",
+      "plugin/vendor/sync/abele-sync-protocol-0.0.0-fc1e82dc3605.tgz"
     ],
     "homePaths": []
   }
