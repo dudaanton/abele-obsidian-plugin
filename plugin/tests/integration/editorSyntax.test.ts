@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EditorState } from '@codemirror/state'
+import { EditorState, type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { StreamLanguage } from '@codemirror/language'
 import { Tag } from '@lezer/highlight'
@@ -61,6 +61,76 @@ const language = StreamLanguage.define({
   ),
 })
 
+// A container-aware HyperMD-shaped parser. Leaving the quote/list ends its fence even
+// without an explicit closing marker; following prose and blocks have their own scope.
+const containerLanguage = (nativeRust = false) =>
+  StreamLanguage.define({
+    startState: () => ({ fence: '', container: '', current: '', native: false }),
+    blankLine(state) {
+      if (state.container === 'quote') {
+        state.fence = ''
+        state.container = ''
+      }
+    },
+    token(stream, state) {
+      if (stream.sol()) {
+        state.current = ''
+        if (stream.match(/^> ?/)) {
+          state.current = 'quote'
+          return 'quote_quote-1'
+        }
+        if (
+          stream.match(/^- (?=`{3,}|~{3,})/) ||
+          (state.container === 'list' && stream.match(/^ {2}/))
+        ) {
+          state.current = 'list'
+          return 'list_list-1'
+        }
+        if (state.container) {
+          state.fence = ''
+          state.container = ''
+        }
+      }
+      const text = stream.string.slice(stream.pos)
+      stream.skipToEnd()
+      const suffix = state.current === 'list' ? '_list-1' : ''
+      if (!state.fence) {
+        const open = /^(`{3,}|~{3,})(\S*)/.exec(text)
+        if (!open) return null
+        state.fence = open[1]
+        state.container = state.current
+        state.native = nativeRust && open[2] === 'rust'
+        return state.current === 'quote'
+          ? 'inline-code_quote_quote-1'
+          : 'hmd-codeblock-begin' + suffix
+      }
+      if (text === state.fence) {
+        state.fence = ''
+        return state.current === 'quote'
+          ? 'inline-code_quote_quote-1'
+          : 'hmd-codeblock-end' + suffix
+      }
+      return state.current === 'quote'
+        ? 'inline-code_quote_quote-1'
+        : (state.native ? 'hmd-codeblock_keyword' : 'hmd-codeblock') + suffix
+    },
+    tokenTable: Object.fromEntries(
+      [
+        'quote_quote-1',
+        'list_list-1',
+        'inline-code_quote_quote-1',
+        'hmd-codeblock',
+        'hmd-codeblock_keyword',
+        'hmd-codeblock-begin',
+        'hmd-codeblock-end',
+        'hmd-codeblock_list-1',
+        'hmd-codeblock_keyword_list-1',
+        'hmd-codeblock-begin_list-1',
+        'hmd-codeblock-end_list-1',
+      ].map((name) => [name, Tag.define()])
+    ),
+  })
+
 const grammar = {}
 const tokenize = vi.fn((source: string) => {
   const match = /\b(query|fn|const|let)\b/.exec(source)
@@ -89,7 +159,8 @@ const mount = async (
   doc: string,
   live = true,
   enabled = () => true,
-  loader = async () => prism
+  loader = async () => prism,
+  parser: Extension = language
 ) => {
   const host = document.createElement('div')
   document.body.append(host)
@@ -98,7 +169,7 @@ const mount = async (
     state: EditorState.create({
       doc,
       extensions: [
-        language,
+        parser,
         editorLivePreviewField.init(() => live),
         editorSyntaxExtension(enabled, loader),
       ],
@@ -197,6 +268,124 @@ describe('Prism tokens in a CM6 editor', () => {
     expect(tokenize.mock.calls[0][0]).toBe('query { sample }\n')
     expect(tokenText(view)).toEqual(['query'])
     expect(view.state.doc.toString()).toContain('> query')
+  })
+
+  it.each(['quote', 'list'])(
+    'ends an unclosed %s fence at its container, before another grammar',
+    async (container) => {
+      const contained =
+        container === 'quote'
+          ? '> ```graphql\n> query { sample }'
+          : '- ```graphql\n  query { sample }'
+      const doc = contained + '\nPlain text\n```rust\nfn sample() {}\n```'
+      const rustGrammar = {}
+      const separate = vi.fn((source: string, grammar: unknown) => [
+        {
+          type: 'keyword',
+          content: grammar === rustGrammar ? 'fn' : 'query',
+        },
+        source.slice(grammar === rustGrammar ? 2 : 5),
+      ])
+      const view = await mount(
+        doc,
+        true,
+        () => true,
+        async () => ({
+          languages: { graphql: grammar, rust: rustGrammar },
+          tokenize: separate,
+        }),
+        containerLanguage()
+      )
+      expect(separate.mock.calls).toEqual([
+        ['query { sample }\n', grammar],
+        ['fn sample() {}\n', rustGrammar],
+      ])
+      expect(tokenText(view)).toEqual(['query', 'fn'])
+      expect(view.state.doc.toString()).toBe(doc)
+    }
+  )
+
+  it.each(['quote', 'list'])(
+    'does not let native Rust after an unclosed %s suppress GraphQL',
+    async (container) => {
+      const contained =
+        container === 'quote'
+          ? '> ```graphql\n> query { sample }'
+          : '- ```graphql\n  query { sample }'
+      const view = await mount(
+        contained + '\nPlain text\n```rust\nfn sample() {}\n```',
+        true,
+        () => true,
+        async () => prism,
+        containerLanguage(true)
+      )
+      expect(tokenize.mock.calls.map(([source]) => source)).toEqual(['query { sample }\n'])
+      expect(tokenText(view)).toEqual(['query'])
+    }
+  )
+
+  it.each(['quote', 'list'])(
+    'does not count long prose after an unclosed %s toward its size limit',
+    async (container) => {
+      const contained =
+        container === 'quote'
+          ? '> ```graphql\n> query { sample }'
+          : '- ```graphql\n  query { sample }'
+      const doc = contained + '\n' + 'Prose '.repeat(MAX_BLOCK_CHARACTERS) + '\nEnd'
+      const view = await mount(
+        doc,
+        true,
+        () => true,
+        async () => prism,
+        containerLanguage()
+      )
+      expect(tokenize.mock.calls.map(([source]) => source)).toEqual(['query { sample }\n'])
+      expect(tokenText(view)).toEqual(['query'])
+      expect(view.state.doc.toString()).toBe(doc)
+    }
+  )
+
+  it('starts a sibling fence independently when it immediately follows a quote', async () => {
+    const view = await mount(
+      '> ```graphql\n> query { sample }\n```rust\nfn sample() {}\n```',
+      true,
+      () => true,
+      async () => prism,
+      containerLanguage()
+    )
+    expect(tokenize.mock.calls.map(([source]) => source)).toEqual([
+      'query { sample }\n',
+      'fn sample() {}\n',
+    ])
+    expect(tokenText(view)).toEqual(['query', 'fn'])
+  })
+
+  it('ends an unclosed quote at a bare blank line, without consuming outside prose', async () => {
+    const view = await mount(
+      '> ```graphql\n> query { sample }\n\nPlain text',
+      true,
+      () => true,
+      async () => prism,
+      containerLanguage()
+    )
+    expect(tokenize.mock.calls.map(([source]) => source)).toEqual(['query { sample }\n'])
+    expect(tokenText(view)).toEqual(['query'])
+  })
+
+  it('keeps a quoted blank code line and shorter fence-looking source inside its block', async () => {
+    const doc = '> ````graphql\n> query { sample }\n> \n> ```rust\n> literal\n> ````'
+    const view = await mount(
+      doc,
+      true,
+      () => true,
+      async () => prism,
+      containerLanguage()
+    )
+    expect(tokenize.mock.calls.map(([source]) => source)).toEqual([
+      'query { sample }\n\n```rust\nliteral\n',
+    ])
+    expect(tokenText(view)).toEqual(['query'])
+    expect(view.state.doc.toString()).toBe(doc)
   })
 
   it('preserves multiline context, nested tokens and UTF-16 offsets', async () => {

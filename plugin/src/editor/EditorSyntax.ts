@@ -85,6 +85,8 @@ function lineKind(state: EditorState, number: number) {
   let contentFrom = line.to
   let native = false
   let quoted = false
+  let code = false
+  let quoteContext = false
   syntaxTree(state).iterate({
     from: line.from,
     to: line.to,
@@ -92,8 +94,16 @@ function lineKind(state: EditorState, number: number) {
       if (node.from > line.to || node.to < line.from) return false
       if (node.name.includes('codeblock-begin')) begin = true
       if (node.name.includes('codeblock-end')) end = true
+      if (/(?:^|_)quote(?:_|-|$)/.test(node.name)) quoteContext = true
+      if (
+        node.name.includes('HyperMD-codeblock') &&
+        !node.name.includes('codeblock-begin') &&
+        !node.name.includes('codeblock-end')
+      )
+        code = true
       if (quotedCode(node.name)) {
         quoted = true
+        code = true
         contentFrom = Math.min(contentFrom, node.from)
       }
       if (
@@ -104,6 +114,7 @@ function lineKind(state: EditorState, number: number) {
         !node.name.includes('codeblock-end')
       ) {
         contentFrom = Math.min(contentFrom, node.from)
+        code = true
         // Only syntax classes count: quote/list container classes are not native tokens.
         native ||= node.name
           .split('_')
@@ -120,7 +131,7 @@ function lineKind(state: EditorState, number: number) {
     begin ||= !!fence[2].trim()
     end ||= !fence[2].trim()
   }
-  return { begin, end, contentFrom, native, quoted }
+  return { begin, end, contentFrom, native, quoted, code, quoteContext }
 }
 
 /** Locate only a visible block, with a hard bound in both directions for enormous fences. */
@@ -143,6 +154,7 @@ function blockAt(state: EditorState, position: number): Block | null {
     opening--
   }
   const first = doc.line(opening)
+  const openingKind = lineKind(state, opening)
   // The parser already established that this is an opening fence, including containers.
   const fence = /(`{3,}|~{3,})\s*([^\s`~]*)/.exec(first.text)
   const language = fence?.[2]?.toLowerCase()
@@ -155,8 +167,18 @@ function blockAt(state: EditorState, position: number): Block | null {
   const lines: SourceLine[] = []
   for (let number = opening + 1; number <= doc.lines; number++) {
     const line = doc.line(number)
-    if (line.from - from > MAX_BLOCK_CHARACTERS) return null
     const kind = lineKind(state, number)
+    // A container can close a fence implicitly. Do not swallow outside prose, a sibling
+    // fence or its native tokens, and do not charge that outside text to this block's limit.
+    const blank = !(
+      openingKind.quoted ? line.text.replace(/^[ \t]*(?:>[ \t]?)+/, '') : line.text
+    ).trim()
+    const sibling = kind.begin && !(openingKind.quoted && kind.quoted)
+    if (sibling || (!kind.code && !blank) || (openingKind.quoted && !kind.quoteContext)) {
+      to = line.from
+      break
+    }
+    if (line.from - from > MAX_BLOCK_CHARACTERS) return null
     const quotedEnd = kind.quoted ? quoteFence.exec(line.text) : null
     const closes =
       kind.end &&
