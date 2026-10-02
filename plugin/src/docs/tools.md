@@ -229,7 +229,8 @@ nodes is not readable. Warnings cover overlaps, edges crossing cards, clipped te
 unconnected nodes, group-boundary clipping, unreadably small picture text, and invalid/too-dense
 stored step references. An `unreadable-scale` warning asks for a smaller region crop, not another
 whole-diagram thumbnail. Fix size/placement by id and
-look again. Native save can reorder keys and elements; never use array position as identity.
+look again. Native save can reorder keys and elements; never use array position as identity. Card array
+order still defines stacking and is part of the expected revision; a raise/lower action is a change.
 Unknown node types are refused instead of silently erased. The batch is one native undo item
 when a single native Canvas editor is open; close duplicate editor tabs before writing. Native
 Canvas is still the stage-one viewer. Step authoring/playback and Abele's viewer are not present

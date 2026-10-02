@@ -230,7 +230,21 @@ export function descendants(id: string, parents: Map<string, string>): string[] 
   }
   return out
 }
-/** Native stacking/key order is not a content change; step/ink arrays still are. */
+/** Native group backgrounds precede cards; card file order is stacking order. */
+export function canvasPaintOrder(graph: CanvasGraph): CanvasNode[] {
+  return graph.nodes
+    .map((node, index) => ({ node, index }))
+    .sort(
+      (a, b) =>
+        Number(b.node.type === 'group') - Number(a.node.type === 'group') ||
+        (a.node.type === 'group' && b.node.type === 'group'
+          ? b.node.width * b.node.height - a.node.width * a.node.height
+          : 0) ||
+        a.index - b.index
+    )
+    .map((entry) => entry.node)
+}
+/** Key order/default edge values normalize; node and edge stacking arrays remain semantic. */
 export function canvasFingerprint(graph: CanvasGraph): string {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(canonical)
@@ -245,17 +259,18 @@ export function canvasFingerprint(graph: CanvasGraph): string {
   return JSON.stringify(
     canonical({
       ...graph,
-      nodes: [...graph.nodes].sort((a, b) => a.id.localeCompare(b.id)),
-      edges: graph.edges
-        .map((edge) => ({
-          ...edge,
-          label: edge.label ?? '',
-          fromEnd: edge.fromEnd ?? 'none',
-          toEnd: edge.toEnd ?? 'arrow',
-        }))
-        .sort((a, b) => a.id.localeCompare(b.id)),
+      nodes: graph.nodes,
+      edges: graph.edges.map((edge) => ({
+        ...edge,
+        label: edge.label ?? '',
+        fromEnd: edge.fromEnd ?? 'none',
+        toEnd: edge.toEnd ?? 'arrow',
+      })),
     })
   )
 }
+/** Normalize only native group-background serialization, never lexical card order. */
+export const nativeCanvasFingerprint = (graph: CanvasGraph): string =>
+  canvasFingerprint({ ...graph, nodes: canvasPaintOrder(graph) })
 export const labelOf = (node: CanvasNode): string =>
   node.text ?? node.label ?? node.file ?? node.url ?? node.id

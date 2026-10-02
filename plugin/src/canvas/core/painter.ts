@@ -2,6 +2,7 @@
 import { arrowHead } from '../../drawing/items'
 import {
   bounds,
+  canvasPaintOrder,
   descendants,
   labelOf,
   overlaps,
@@ -168,15 +169,7 @@ export function paintCanvas(
       .filter((n) => n.type === 'group' && n.collapsed)
       .flatMap((n) => descendants(n.id, parents))
   )
-  const visible = graph.nodes
-    .filter((n) => !hidden.has(n.id) && overlaps(n, region))
-    .sort(
-      (a, b) =>
-        Number(b.type === 'group') - Number(a.type === 'group') ||
-        (a.type === 'group' && b.type === 'group'
-          ? b.width * b.height - a.width * a.height
-          : a.id.localeCompare(b.id))
-    )
+  const visible = canvasPaintOrder(graph).filter((n) => !hidden.has(n.id) && overlaps(n, region))
   ctx.save()
   ctx.beginPath()
   ctx.rect(region.x, region.y, region.width, region.height)

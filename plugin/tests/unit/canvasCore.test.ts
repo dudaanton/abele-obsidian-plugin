@@ -21,14 +21,25 @@ const sample = () =>
   ]).graph
 
 describe('portable canvas model and atomic edits', () => {
-  it('compares native snapshots by ids and keys but preserves semantic extension-array order', () => {
+  // BUG: this older expectation ignores changed card stacking. Identical ids do not imply identical diagram state.
+  it.fails(
+    'compares native snapshots by ids and keys but preserves semantic extension-array order',
+    () => {
+      const graph = sample(),
+        reordered = parseCanvas(serializeCanvas(graph))
+      reordered.nodes.reverse()
+      reordered.edges.reverse()
+      expect(canvasFingerprint(reordered)).toBe(canvasFingerprint(graph))
+      reordered.abele = { steps: [{ say: 'Second' }, { say: 'First' }] }
+      graph.abele = { steps: [{ say: 'First' }, { say: 'Second' }] }
+      expect(canvasFingerprint(reordered)).not.toBe(canvasFingerprint(graph))
+    }
+  )
+  it('treats reordered cards as a real revision while normalizing object keys', () => {
     const graph = sample(),
       reordered = parseCanvas(serializeCanvas(graph))
-    reordered.nodes.reverse()
-    reordered.edges.reverse()
     expect(canvasFingerprint(reordered)).toBe(canvasFingerprint(graph))
-    reordered.abele = { steps: [{ say: 'Second' }, { say: 'First' }] }
-    graph.abele = { steps: [{ say: 'First' }, { say: 'Second' }] }
+    reordered.nodes.reverse()
     expect(canvasFingerprint(reordered)).not.toBe(canvasFingerprint(graph))
   })
   it('does not treat native empty-label/default-end normalization as a pending user edit', () => {

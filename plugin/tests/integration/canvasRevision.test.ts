@@ -114,6 +114,42 @@ describe('canvas optimistic writes', () => {
       (results.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason.message
     ).toMatch(/changed.*read|reread/i)
   })
+  it('refuses a change based on an unsaved card stacking order from before a raise action', async () => {
+    const file = app.vault.getAbstractFileByPath(path) as TFile
+    const data = structuredClone(initial)
+    data.nodes.push({ ...data.nodes[0], id: 'second-card', text: 'Second sample' })
+    await app.vault.modify(file, JSON.stringify(data))
+    const save = vi.fn(async () => {})
+    Object.assign(app, {
+      workspace: {
+        getLeavesOfType: () => [
+          {
+            view: {
+              file,
+              save,
+              canvas: {
+                getData: () => data,
+                pushHistory: vi.fn(),
+                history: { data: [structuredClone(data)], current: 0 },
+                requestSave: vi.fn(),
+                requestPushHistory: { cancel: vi.fn() },
+              },
+            },
+          },
+        ],
+      },
+    })
+    const snapshot = await read(),
+      process = vi.spyOn(app.vault, 'process'),
+      bytes = await app.vault.read(file)
+    data.nodes.reverse()
+    await expect(call('canvas_edit', { path, revision: snapshot.revision, ops })).rejects.toThrow(
+      /changed.*read|reread/i
+    )
+    expect(process).not.toHaveBeenCalled()
+    expect(await app.vault.read(file)).toBe(bytes)
+    expect(save).not.toHaveBeenCalled()
+  })
   it('requires a revision and returns the new revision for a successful write', async () => {
     await expect(call('canvas_edit', { path, ops })).rejects.toThrow(/revision/i)
     const snapshot = await read()

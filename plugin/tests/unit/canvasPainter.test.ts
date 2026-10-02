@@ -209,6 +209,37 @@ describe('the shared canvas picture plan', () => {
     expect(calls.find((c) => c.name === 'fillText' && c.args[0] === 'next')?.args[2]).toBe(180)
     expect(pictureRegion(graph).y).toBeLessThanOrEqual(-40)
   })
+  it('paints overlapping cards in file stacking order, not lexical id order', () => {
+    const graph = {
+      nodes: [
+        {
+          id: 'z-card',
+          type: 'text' as const,
+          text: 'Back sample',
+          x: 0,
+          y: 0,
+          width: 260,
+          height: 160,
+        },
+        {
+          id: 'a-card',
+          type: 'text' as const,
+          text: 'Top sample',
+          x: 0,
+          y: 0,
+          width: 260,
+          height: 160,
+        },
+      ],
+      edges: [],
+    }
+    const { ctx, calls } = context()
+    paintCanvas(ctx, graph, pictureRegion(graph), theme)
+    expect(calls.filter((c) => c.name === 'fillText').map((c) => c.args[0])).toEqual([
+      'Back sample',
+      'Top sample',
+    ])
+  })
   it('warns when a whole-node crop reduces its text below readable pixels', () => {
     expect(textResolutionWarnings(0.04, 16).map((w) => w.code)).toEqual(['unreadable-scale'])
     expect(textResolutionWarnings(1, 16)).toEqual([])

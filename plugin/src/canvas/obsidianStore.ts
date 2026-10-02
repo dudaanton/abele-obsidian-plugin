@@ -2,6 +2,7 @@
 import { TFile, type App, type TextFileView } from 'obsidian'
 import {
   canvasFingerprint,
+  nativeCanvasFingerprint,
   cloneCanvas,
   parseCanvas,
   serializeCanvas,
@@ -129,7 +130,10 @@ export class ObsidianCanvasStore implements GraphStore {
         if (view) {
           view.canvas.requestPushHistory.cancel?.()
           const previous = view.canvas.history.data[view.canvas.history.current]
-          if (!previous || canvasFingerprint(parseCanvas(previous)) !== canvasFingerprint(data))
+          if (
+            !previous ||
+            nativeCanvasFingerprint(parseCanvas(previous)) !== nativeCanvasFingerprint(data)
+          )
             view.canvas.pushHistory(data)
           // Cancel an already queued native save; the modify listener imports the committed version.
           const pendingSave = view.requestSave as (() => void) & { cancel?: () => void }
@@ -139,9 +143,9 @@ export class ObsidianCanvasStore implements GraphStore {
       })
       if (!before || !after) throw new Error('Canvas storage did not run the transaction')
       if (view) {
-        const expected = canvasFingerprint(after)
+        const expected = nativeCanvasFingerprint(after)
         const deadline = Date.now() + 3000
-        while (canvasFingerprint(parseCanvas(view.canvas.getData())) !== expected) {
+        while (nativeCanvasFingerprint(parseCanvas(view.canvas.getData())) !== expected) {
           if (Date.now() > deadline)
             throw new Error(
               'Native Canvas changed while applying the batch; reread before editing again'
