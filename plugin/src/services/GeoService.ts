@@ -116,6 +116,9 @@ async function ask<T>(url: string, label: string): Promise<T> {
   if (cached !== undefined) return cached as T
 
   const task: Promise<T> = queue.then(async (): Promise<T> => {
+    // An identical earlier request may have filled the cache while this one was queued.
+    const ready = cache.get(url)
+    if (ready !== undefined) return ready as T
     let last = ''
 
     // Twice, because these hosts are busy rather than broken: Overpass hands out a 504 under

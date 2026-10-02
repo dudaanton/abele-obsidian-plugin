@@ -9,7 +9,13 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
-import { parseLatLon, formatLatLon, resetGeoCache, setGeoPacing } from '@/services/GeoService'
+import {
+  parseLatLon,
+  formatLatLon,
+  resetGeoCache,
+  setGeoPacing,
+  reverseGeocode,
+} from '@/services/GeoService'
 
 const { requestUrl } = vi.hoisted(() => ({ requestUrl: vi.fn() }))
 
@@ -61,6 +67,14 @@ beforeEach(() => {
   // The services ask for about a request a second, and the tools hold to it. A test that
   // waited for real would spend its time asleep.
   setGeoPacing(0)
+})
+
+it('uses the reverse-geocode cache for identical requests already waiting in the queue', async () => {
+  requestUrl.mockResolvedValue(photonAnswer([]))
+  const point = { lat: 12.34, lon: 56.78 }
+  await Promise.all([reverseGeocode(point), reverseGeocode(point)])
+  await reverseGeocode(point)
+  expect(requestUrl).toHaveBeenCalledOnce()
 })
 
 describe('reading coordinates', () => {
