@@ -11,6 +11,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { timelineStyleReference } from './helpers/timelineStyleReference'
+import { PIXEL_PROBE } from './helpers/stablePixels'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -41,6 +42,8 @@ interface Probe {
   nativeSettled?: number
   pastCompleted?: boolean
   appearancePixels?: number
+  appearanceCoordinates?: { x: number; y: number; before: number[]; after: number[] }[]
+  appearanceRaster?: { pixelWidth: number; crop: number[]; devicePixelRatio: number }[]
   appearanceCanary?: number
   appearanceRects?: number[][]
   emptySpace?: number
@@ -53,6 +56,7 @@ interface Probe {
   shots?: string[]
 }
 const script = (footer: boolean, short = false) => String.raw`(async () => {
+  ${PIXEL_PROBE}
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async fn => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready') }
   const folder = ${JSON.stringify(FOLDER)} + (${short} ? ' short' : '')
@@ -167,24 +171,26 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
         }
         const el = blocks().find(x => x.dataset.abeleAnchor === 'date:' + day(0))
         const capture = async suffix => {
-          // A stylesheet swap can reuse some old paint chunks while repainting others;
-          // the rounded date-line cap then differs by one AA pixel despite identical rects
-          // and computed styles. Repaint the whole page for EVERY capture, including the
-          // canary, so all chunks share the same raster origin. Hiding only the block or
-          // its scroll owner leaves cached ancestor chunks. No layout change or tolerance.
+          // Repaint the whole page after each stylesheet change (including the canary), then
+          // wait for a stable raster. Cached ancestor paint chunks otherwise leave AA pixels
+          // at a different origin even though layout and computed styles are identical.
           const visibility = document.body.style.visibility
           try {
             document.body.style.visibility = 'hidden'
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
           } finally { document.body.style.visibility = visibility }
-          // Let stylesheet replacement and the editor's deferred measuring/raster work settle.
           await wait(200)
-          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-          const r = el.getBoundingClientRect()
-          const rect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
-          const image = await capturePage(rect)
-          fs.writeFileSync(path.replace('.png', suffix + '.png'), image.toPNG())
-          return { pixels: image.toBitmap(), rect: [r.left, r.top, r.width, r.height] }
+          const captured = await stableCapture(async () => {
+            const r = el.getBoundingClientRect()
+            const rect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
+            const image = await capturePage(rect)
+            const pixels = image.toBitmap()
+            const scale = Math.sqrt(pixels.length / 4 / (rect.width * rect.height))
+            return { image, pixels, pixelWidth: Math.round(rect.width * scale),
+              rect: [r.left, r.top, r.width, r.height], crop: [rect.x, rect.y, rect.width, rect.height], devicePixelRatio }
+          }, () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))
+          fs.writeFileSync(path.replace('.png', suffix + '.png'), captured.image.toPNG())
+          return captured
         }
         if (name === 'unchanged') {
           // Compare the ORIGINAL block in its real scroll owner, not a clone or a moved
@@ -194,24 +200,24 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
           if (!sheet) throw Error('timeline stylesheet not found')
           const current = sheet.textContent
           const banner = [...sheet.sheet.cssRules].filter(r => r.selectorText === '.abele-timeline__history').map(r => r.cssText).join('\n')
-          const difference = (a, b) => {
-            if (a.length !== b.length) return -1
-            let changed = 0
-            for (let i = 0; i < a.length; i += 4) if (!a.subarray(i, i + 4).equals(b.subarray(i, i + 4))) changed++
-            return changed
-          }
           try {
             sheet.textContent = fs.readFileSync(${JSON.stringify(referenceCss)}, 'utf8') + '\n' + banner
             const before = await capture('-before')
             sheet.textContent = current
             const after = await capture('-after')
             report.appearanceRects = [before.rect, after.rect]
-            report.appearancePixels = difference(before.pixels, after.pixels)
+            const difference = pixelDifference(before, after)
+            report.appearancePixels = difference.count
+            report.appearanceCoordinates = difference.coordinates
+            report.appearanceRaster = [before, after].map(({ pixelWidth, crop, devicePixelRatio }) => ({ pixelWidth, crop, devicePixelRatio }))
+            if (difference.count !== 0) console.warn('timeline pixel difference', JSON.stringify({
+              rects: report.appearanceRects, raster: report.appearanceRaster, ...difference,
+            }))
             // Positive sensitivity control: a one-pixel change of an existing row must be
             // detected. It changes neither the test expectation nor the reference.
             sheet.textContent += '\n.abele-timeline__tasks { transform: translateX(1px) !important; }'
             const canary = await capture('-canary')
-            report.appearanceCanary = difference(after.pixels, canary.pixels)
+            report.appearanceCanary = pixelDifference(after, canary).count
           } finally { sheet.textContent = current }
           await capture('')
         } else fs.writeFileSync(path, (await capturePage()).toPNG())
