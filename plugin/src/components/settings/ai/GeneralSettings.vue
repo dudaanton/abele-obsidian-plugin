@@ -774,9 +774,11 @@ const filteredRemoteModels = (providerId: string): RemoteModel[] => {
 
 const auxModelKey = computed(() => {
   if (!auxiliaryModelId.value) return ''
+  const choice = auxiliaryModelId.value
+  const [providerId, modelId] = choice.includes('::') ? choice.split('::') : ['', choice]
   for (const p of providers.value) {
-    if (p.models.some((m) => m.id === auxiliaryModelId.value)) {
-      return `${p.id}::${auxiliaryModelId.value}`
+    if ((!providerId || p.id === providerId) && p.models.some((m) => m.id === modelId)) {
+      return `${p.id}::${modelId}`
     }
   }
   return ''
@@ -1326,12 +1328,7 @@ const formatTokens = (n: number): string => {
 }
 
 const selectAuxModel = (key: string) => {
-  if (!key) {
-    auxiliaryModelId.value = ''
-  } else {
-    const [, mId] = key.split('::')
-    auxiliaryModelId.value = mId || ''
-  }
+  auxiliaryModelId.value = key
   save()
 }
 

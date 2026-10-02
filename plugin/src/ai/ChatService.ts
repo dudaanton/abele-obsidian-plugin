@@ -775,8 +775,11 @@ export class ChatService {
       if (ownChoice) return ownChoice
     }
 
-    for (const provider of config.auxiliaryModelId ? config.providers : []) {
-      const model = provider.models.find((m) => m.id === config.auxiliaryModelId)
+    const choice = config.auxiliaryModelId ?? ''
+    const [providerId, modelId] = choice.includes('::') ? choice.split('::') : ['', choice]
+    for (const provider of choice ? config.providers : []) {
+      if (providerId && provider.id !== providerId) continue
+      const model = provider.models.find((m) => m.id === modelId)
       if (model) {
         return {
           id: model.id,

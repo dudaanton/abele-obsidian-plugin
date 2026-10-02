@@ -509,6 +509,13 @@ own. The text is a copy: editing it changes what the card shows, not the chat. A
 since is found again by the message id and the `chat` line is corrected when the card is next
 pressed. Do not invent these blocks — a `message` id that is in no chat opens nothing.
 
+## Background model settings
+
+The shared `ai.auxiliaryModelId` setting stores `providerId::modelId` for new background-model
+selections, so providers offering the same model name remain distinct. Older bare model IDs
+are still read by searching providers in their configured order. An agent's own background
+provider/model pair takes precedence, and an empty global selection follows the chat's model.
+
 ## GitHub connection settings
 
 The plugin's `github.connections` list in settings holds stable connection IDs, names, server

@@ -70,6 +70,24 @@ describe('with nothing chosen anywhere', () => {
 })
 
 describe('with the plugin-wide setting', () => {
+  it('keeps the selected provider when two providers have the same model id', () => {
+    seedAgent({ modelId: 'big' })
+    const config = AbeleConfig.getInstance()
+    config.ai.providers.push({
+      ...provider,
+      id: 'sample-second',
+      baseUrl: 'https://sample.invalid/v1',
+    })
+    config.ai.auxiliaryModelId = 'sample-second::cheap'
+    const session = chat()
+    try {
+      expect(session.auxiliaryModel().baseUrl).toBe('https://sample.invalid/v1')
+      expect(session.auxiliaryModel().id).toBe('cheap')
+    } finally {
+      session.destroy()
+    }
+  })
+
   it('uses it over the chat’s own model', () => {
     seedAgent({ modelId: 'big' })
     AbeleConfig.getInstance().ai.auxiliaryModelId = 'cheap'
