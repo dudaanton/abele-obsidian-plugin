@@ -44,8 +44,8 @@ beforeAll(() => {
 
 afterAll(() => {
   if (!available) return
-  closeStrayWindows()
-  notesInEditor()
+  again(closeStrayWindows)
+  again(notesInEditor)
 })
 
 /**

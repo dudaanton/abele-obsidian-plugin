@@ -30,6 +30,13 @@ const OTHER = `${DIR}/other-sample.md`
 const GROWING = `${DIR}/growing-sample.md`
 const EMBEDDED = `${DIR}/embedded-sample.md`
 const BOOK = `${DIR}/rich.epub`
+let remembered: boolean | undefined
+
+const enableRememberedPlaces = () => {
+  evalRaw(
+    `(() => { window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces = true; return 'enabled' })()`
+  )
+}
 
 /** 200 sections, four lines each: "## Section n", a blank, a paragraph, a blank. */
 /**
@@ -453,6 +460,10 @@ describe.skipIf(!available)('notes come back where they were left', () => {
   })
 
   beforeAll(() => {
+    remembered = evalJson<boolean>(
+      'window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces'
+    )
+    enableRememberedPlaces()
     expect(
       evalJson<boolean>('window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces')
     ).toBe(true)
@@ -460,7 +471,15 @@ describe.skipIf(!available)('notes come back where they were left', () => {
   }, 60_000)
 
   afterAll(() => {
-    if (available) removeFixtures()
+    if (!available) return
+    try {
+      removeFixtures()
+    } finally {
+      if (remembered !== undefined)
+        evalRaw(
+          `(() => { window.__abeleTest.AbeleConfig.getInstance().rememberNotePlaces = ${remembered}; return 'restored' })()`
+        )
+    }
   }, 60_000)
 
   it('a long note left far down comes back there', () => {
@@ -519,6 +538,8 @@ describe.skipIf(!available)('notes come back where they were left', () => {
       await reload('app.emulateMobile(true)')
       await setWindowSize(390, 844)
       await reload('window.location.reload()')
+      // In-memory settings do not survive emulation's reloads.
+      enableRememberedPlaces()
       // Afresh: the book's words are highlighted already, and a highlight is not made twice.
       createFixtures()
     }, 240_000)

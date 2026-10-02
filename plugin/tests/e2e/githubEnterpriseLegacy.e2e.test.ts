@@ -139,7 +139,7 @@ for (const mode of ['legacy', 'no-raw'] as const) {
       const r = evalAsync<{ small?: string; long?: string; error?: string }>(`(async () => {
         const tool = window.__abeleTest.createAgentTools({ agentId: window.__legacyGithubAgent }).find((t) => t.name === 'github_file')
         if (!tool) return { error: 'no github_file tool' }
-        const text = async (repo) => (await tool.execute('e2e', { repo })).content[0].text
+        const text = async (repo) => (await tool.execute('e2e', { repo, connection: 'abele-e2e-github' })).content[0].text
         return {
           small: await text(${JSON.stringify(`${gh.web}/blob/main/src/app.ts`)}),
           long: await text(${JSON.stringify(`${gh.web}/blob/main/src/long.ts#L200-L200`)}),
