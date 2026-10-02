@@ -125,7 +125,7 @@ const script = `(async () => {
     await until(()=>parent.messages.value[0].content===source)
     report.undone=parent.messages.value[0].highlights.length
   } catch(error) {
-    report.error=phase+': '+String(error.message||error)+'\n'+String(error.stack||'')
+    report.error=phase+': '+String(error.message||error)+'\\n'+String(error.stack||'')
     const messageBox=message()?.getBoundingClientRect()
     const pane=message()?.closest('.abele-ai-chat__messages')?.getBoundingClientRect()
     report.viewport={width:innerWidth,height:innerHeight,keyboard:parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,message:messageBox?.toJSON(),pane:pane?.toJSON()}

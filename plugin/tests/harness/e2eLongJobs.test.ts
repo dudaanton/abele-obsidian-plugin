@@ -53,6 +53,19 @@ function fixture(lost: 'launch' | 'result') {
 }
 
 describe('long eval jobs with a lost CLI reply', () => {
+  it('preserves a page launch error instead of claiming the page reloaded', async () => {
+    const run = new Function(
+      'evalRawIdempotent',
+      'evalJsonIdempotent',
+      'pauseAsync',
+      compiled + '; return evalLong'
+    )(
+      () => 'Error: invalid sample script',
+      () => null,
+      async () => {}
+    ) as (code: string) => Promise<string>
+    await expect(run('sample')).rejects.toThrow('invalid sample script')
+  })
   for (const lost of ['launch', 'result'] as const) {
     it(`recovers a lost ${lost} reply without running the page action twice`, async () => {
       const f = fixture(lost)

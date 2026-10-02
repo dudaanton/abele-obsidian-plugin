@@ -213,7 +213,7 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
   // never the action it contains (a tap, a write, or an async generator's next step).
   const id = 'job' + Date.now() + Math.random().toString(36).slice(2)
   // The transport owns the one bounded retry budget for this idempotent launch.
-  evalRawIdempotent(
+  const launched = evalRawIdempotent(
     `(() => {
       const id = ${JSON.stringify(id)}
       const jobs = (window.__e2eJobs = window.__e2eJobs || {})
@@ -231,6 +231,7 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
     })()`,
     30_000
   )
+  if (launched.startsWith('Error:')) throw new Error(`Could not launch eval job: ${launched}`)
   const deadline = Date.now() + timeoutMs
   for (;;) {
     await pauseAsync(1000)
