@@ -205,6 +205,28 @@ it('rejects late HTML consent continuations after leave and return', async () =>
   viewer.destroy()
 })
 
+it('keeps viewer readiness pending until the active frame decision has completed', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  let decide: (allowed: boolean) => void = () => {}
+  const allowNetwork = () =>
+    new Promise<boolean>((resolve) => {
+      decide = resolve
+    })
+  const viewer = new DeckViewer(host, { render: async () => () => {}, allowNetwork }, media)
+  viewers.push(viewer)
+  await viewer.setDeck(parseDeck('# Intro\n---\n```slide-html\n<p>Sample</p>\n```'))
+  let ready = false
+  const navigation = viewer.go(1).then(() => {
+    ready = true
+  })
+  for (let i = 0; i < 20; i++) await Promise.resolve()
+  expect(ready).toBe(false)
+  decide(true)
+  await navigation
+  expect(host.querySelector('.abele-slide:not([hidden]) iframe')).not.toBeNull()
+})
+
 it('does not run live blocks in presenter previews', async () => {
   const host = document.createElement('div')
   document.body.append(host)

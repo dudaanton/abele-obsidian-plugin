@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const PATH = 'sample-live-deck.md'
+const SHOTS = shotDir('abele-slides-live')
 const SOURCE = `---
 type: presentation
 ---
@@ -153,6 +155,7 @@ describe.skipIf(!available)('live slide lifecycle', () => {
         const button=await until(()=>[...document.querySelectorAll('.modal-container button')].find(b=>b.textContent?.includes('Allow network')))
         const asked=!!button
         const dialogs=document.querySelectorAll('.modal-container').length
+        if(window.__e2eHost)await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/network-consent.png')})
         button?.click()
         await pending
         await until(()=>viewer.viewport.querySelectorAll('.abele-slide:not([hidden]) iframe').length===2)
@@ -160,7 +163,8 @@ describe.skipIf(!available)('live slide lifecycle', () => {
         const allowed=frames.length===2 && frames.every(f=>f.srcdoc.includes('connect-src https:') && f.getAttribute('sandbox')==='allow-scripts')
         await viewer.go(0)
         await viewer.go(1)
-        const remembered=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')?.srcdoc.includes('connect-src https:') && !document.querySelector('.modal-container')
+        // Native phone dialogs close with an animation; test the settled state, not its first frame.
+        const remembered=!!await until(()=>viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')?.srcdoc.includes('connect-src https:') && !document.querySelector('.modal-container'))
         return JSON.stringify({asked,dialogs,allowed,remembered})
       } finally {
         await viewer.go(0)
@@ -186,6 +190,7 @@ describe.skipIf(!available)('live slide lifecycle', () => {
         for(let i=0;i<50 && viewer.model?.slides[0]?.title!=='Offline sample';i++)await new Promise(r=>setTimeout(r,100))
         await viewer.ready;await new Promise(r=>setTimeout(r,1000))
         const frame=viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')
+        if(window.__e2eHost)await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/offline-html.png')})
         const parsed=new DOMParser().parseFromString(frame.srcdoc,'text/html')
         return JSON.stringify({executed,static:frame.getAttribute('sandbox')==='',safe:!parsed.querySelector('script,a[href],meta[http-equiv="refresh"]'),content:parsed.querySelector('h2')?.textContent})
       } finally {window.removeEventListener('message',onMessage);await app.vault.modify(file,${JSON.stringify(SOURCE)})}
