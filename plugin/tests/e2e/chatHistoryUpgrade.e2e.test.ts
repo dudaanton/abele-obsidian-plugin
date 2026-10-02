@@ -45,7 +45,8 @@ const script = `(async () => {
   const int = (a, b) => a + Math.floor(rnd() * (b - a + 1))
   const WORDS = 'the garden bed path water row seed compost shade sun fence pond herb bean tomato pepper leaf root soil mulch spring summer harvest weed rake hose shed gravel border plan week order sample note list task budget trip train map route book chapter draft review code build test release query index cache file folder'.split(' ')
   const text = (n) => { const out = []; let len = 0; while (len < n) { const w = WORDS[int(0, WORDS.length - 1)]; out.push(w); len += w.length + 1 } return out.join(' ') }
-  const strip = () => { for (const e of cfg.chatHistory) { delete e.firstMessageAt; delete e.lastMessageAt } }
+  const ownHistory = () => cfg.chatHistory.filter((e) => e.path.startsWith(DIR + '/'))
+  const strip = () => { for (const e of ownHistory()) { delete e.firstMessageAt; delete e.lastMessageAt } }
   // The longest stretch between two timers that asked for 16 ms: how long the page stopped answering.
   const watch = () => {
     let worst = 0, prev = performance.now(), on = true
@@ -101,7 +102,7 @@ const script = `(async () => {
     const open = await openAndTime()
     report.openMs = open.ms
     report.openWorstFreezeMs = open.freeze
-    report.filled = cfg.chatHistory.filter((e) => e.lastMessageAt !== undefined).length
+    report.filled = ownHistory().filter((e) => e.lastMessageAt !== undefined).length
     await closeHistory()
 
     const again = await openAndTime()
