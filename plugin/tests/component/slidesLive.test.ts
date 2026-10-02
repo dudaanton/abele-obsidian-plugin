@@ -116,6 +116,67 @@ it('refreshes on a timer only while active and restarts the frame on reentry', a
   }
 })
 
+it('rejects late script activations after leave and return without leaking refresh timers', async () => {
+  vi.useFakeTimers()
+  try {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const pending: (() => void)[] = []
+    const stops: ReturnType<typeof vi.fn>[] = []
+    const script = vi.fn(
+      () =>
+        new Promise<() => void>((resolve) => {
+          const stop = vi.fn()
+          stops.push(stop)
+          pending.push(() => resolve(stop))
+        })
+    )
+    const viewer = new DeckViewer(host, { render: async () => () => {}, script }, media)
+    viewers.push(viewer)
+    const load = viewer.setDeck(
+      parseDeck('```slide-script\nscript: Sample report\nrefresh: 2s\n```\n---\n# Other')
+    )
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    await viewer.go(1)
+    const returned = viewer.go(0)
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    expect(script).toHaveBeenCalledTimes(2)
+    pending.splice(0).forEach((resolve) => resolve())
+    await Promise.all([load, returned])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(stops[0]).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(1)
+    viewer.destroy()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(script).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('rejects late HTML consent continuations after leave and return', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const pending: ((allowed: boolean) => void)[] = []
+  const allowNetwork = vi.fn(() => new Promise<boolean>((resolve) => pending.push(resolve)))
+  const viewer = new DeckViewer(host, { render: async () => () => {}, allowNetwork }, media)
+  viewers.push(viewer)
+  const load = viewer.setDeck(parseDeck('```slide-html\n<script>1</script>\n```\n---\n# Other'))
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  await viewer.go(1)
+  const returned = viewer.go(0)
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  expect(allowNetwork).toHaveBeenCalledTimes(2)
+  pending.splice(0).forEach((resolve) => resolve(true))
+  await Promise.all([load, returned])
+  await Promise.resolve()
+  expect(host.querySelectorAll('iframe')).toHaveLength(1)
+  await viewer.go(1)
+  expect(host.querySelectorAll('iframe')).toHaveLength(0)
+  viewer.destroy()
+})
+
 it('does not run live blocks in presenter previews', async () => {
   const host = document.createElement('div')
   document.body.append(host)

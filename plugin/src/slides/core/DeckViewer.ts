@@ -397,6 +397,7 @@ export class DeckViewer {
       return
     }
     await Promise.all(entry.live.map((live) => live.start()))
+    if (entry.gone || entry.element.hidden || this.closed || this.mediaSuspended) return
     const index = Number(entry.element.dataset.slide) - 1
     const autoplay = this.deck?.slides[index]?.settings.autoplay
     for (const video of Array.from(entry.element.querySelectorAll('video'))) {
@@ -457,7 +458,9 @@ export class DeckViewer {
     let frame: HTMLIFrameElement | null = null
     let started = false
     let once = false
+    let activation = 0
     const stop = () => {
+      ++activation
       // Static results remain a snapshot. A disposed view must be rebuilt to work again.
       if ((cleanup as ((() => void) & { interactive?: boolean }) | null)?.interactive) once = false
       controller?.abort()
@@ -483,10 +486,18 @@ export class DeckViewer {
         return
       if (block.type === 'script' && block.refresh === 'once' && once) return
       started = true
+      const token = ++activation
+      const current = () =>
+        token === activation &&
+        started &&
+        !entry.gone &&
+        !entry.element.hidden &&
+        !this.closed &&
+        !this.mediaSuspended
       if (block.type === 'html') {
         // The opaque-origin frame is recreated on every entry; removing it kills its timers and audio.
         const network = (await this.renderer.allowNetwork?.(this.deck!)) ?? false
-        if (!started || entry.gone || entry.element.hidden) return
+        if (!current()) return
         frame = target.ownerDocument.createElement('iframe')
         frame.setAttribute('sandbox', 'allow-scripts')
         frame.setAttribute('title', 'Slide HTML')
@@ -498,6 +509,7 @@ export class DeckViewer {
         return
       }
       const run = async () => {
+        if (!current()) return
         cleanup?.()
         cleanup = null
         controller?.abort()
@@ -506,15 +518,15 @@ export class DeckViewer {
         target.replaceChildren()
         try {
           const dispose = await this.renderer.script?.(block, target, signal)
-          if (signal.aborted || entry.gone) dispose?.()
+          if (signal.aborted || !current()) dispose?.()
           else cleanup = dispose ?? null
         } catch (error) {
-          if (!signal.aborted)
+          if (!signal.aborted && current())
             target.textContent = `Script could not be run: ${error instanceof Error ? error.message : error}`
         }
       }
       await run()
-      if (!started || entry.gone) return
+      if (!current()) return
       once = true
       if (typeof block.refresh === 'number')
         timer =
