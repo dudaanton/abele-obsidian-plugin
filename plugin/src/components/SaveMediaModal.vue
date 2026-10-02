@@ -95,6 +95,7 @@ import Icon from './obsidian/Icon.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createImportedBinary } from '@/media/importImageFile'
+import { ensureAttachmentFolder } from '@/media/attachmentFolder'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -275,15 +276,6 @@ const scan = async () => {
 
 // ── Downloading ──
 
-const getAttachmentFolder = async (): Promise<string> => {
-  let folder = (app.vault as any).getConfig?.('attachmentFolderPath') || 'Attachments'
-  if (folder === '/' || folder === '.') folder = ''
-  if (folder && !app.vault.getAbstractFileByPath(folder)) {
-    await app.vault.createFolder(folder)
-  }
-  return folder
-}
-
 /** Hash an ArrayBuffer for content dedup (simple FNV-1a 32-bit) */
 const hashBuffer = (buf: ArrayBuffer): string => {
   const bytes = new Uint8Array(buf)
@@ -301,7 +293,7 @@ let hashIndexBuilt = false
 
 const buildHashIndex = async () => {
   if (hashIndexBuilt) return
-  const folder = await getAttachmentFolder()
+  const folder = await ensureAttachmentFolder(app)
   const allFiles = app.vault.getFiles()
   for (const f of allFiles) {
     if (folder && !f.path.startsWith(folder + '/')) continue
@@ -407,7 +399,7 @@ const downloadItem = async (item: MediaItem) => {
       } else {
         // 4. Save new file
         const contentType = response.headers['content-type'] || ''
-        const folder = await getAttachmentFolder()
+        const folder = await ensureAttachmentFolder(app)
         const filename = urlToFilename(item.url)
         const finalName = ensureExtension(filename, contentType.split(';')[0].trim())
         const basePath = folder ? `${folder}/${finalName}` : finalName

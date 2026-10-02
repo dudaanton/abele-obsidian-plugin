@@ -88,6 +88,24 @@ describe('dropping files from the system onto an editable gallery', () => {
   })
 })
 
+describe('a gallery using the same-folder attachment setting', () => {
+  it('puts dropped images beside the note, without trying to create ./', async () => {
+    const item = gallery(false)
+    const { app } = GlobalStore.getInstance()
+    ;(app.vault as unknown as { getConfig: () => string }).getConfig = () => './'
+    const createFolder = vi.spyOn(app.vault, 'createFolder').mockRejectedValue(new Error('Folder already exists.'))
+    const addImages = vi.spyOn(item, 'addImages').mockImplementation(() => {})
+    const photo = new File(['sample'], 'sample-photo.jpg', { type: 'image/jpeg' })
+    Object.defineProperty(photo, 'arrayBuffer', { value: async () => new TextEncoder().encode('sample').buffer })
+    const w = mount(GalleryView, { props: { gallery: item } })
+    await w.trigger('drop', { dataTransfer: { types: ['Files'], files: [photo] } })
+    await flushPromises()
+    expect(createFolder).not.toHaveBeenCalled()
+    expect(addImages).toHaveBeenCalledWith(['Notes/sample-photo.jpg'])
+    expect(app.vault.getAbstractFileByPath('Notes/sample-photo.jpg')).not.toBeNull()
+  })
+})
+
 describe('a picture that is not in the vault yet', () => {
   it('shows up as soon as it arrives, without the note being opened again', async () => {
     // On a phone the note often arrives from sync before its attachment does.

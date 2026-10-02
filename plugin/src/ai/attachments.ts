@@ -5,6 +5,7 @@ import { isImagePath, VAULT_IMAGE_PREFIX } from './tools/ReadImageTool'
 import { chatForAgent, isChatLog } from './chatText'
 import { contentHash } from './readGuard'
 import { createImportedBinary } from '@/media/importImageFile'
+import { ensureAttachmentFolder } from '@/media/attachmentFolder'
 import { isHeicImport } from '@/media/imageImport'
 
 const MAX_TEXT_FILE_SIZE = 100 * 1024 // 100 KB
@@ -130,16 +131,7 @@ export async function resolveAttachmentsForApi(
 export async function importExternalFile(file: File): Promise<TFile> {
   const { app } = GlobalStore.getInstance()
 
-  // Use Obsidian's configured attachment folder, fallback to "Attachments"
-  let folder = (app.vault as any).getConfig?.('attachmentFolderPath') || 'Attachments'
-  // Obsidian writes the "same folder" setting as `./`. With no note destination,
-  // the chat imports into the vault root, just as for `.` and `/`.
-  if (folder === '/' || folder === '.' || folder === './') folder = ''
-
-  // Ensure folder exists
-  if (folder && !app.vault.getAbstractFileByPath(folder)) {
-    await app.vault.createFolder(folder)
-  }
+  const folder = await ensureAttachmentFolder(app)
 
   const basePath = folder ? `${folder}/${file.name}` : file.name
   return createImportedBinary(app, basePath, file)

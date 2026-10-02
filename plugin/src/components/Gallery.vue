@@ -199,6 +199,7 @@ import { Notice, TFile } from 'obsidian'
 import { Gallery } from '@/entities/Gallery'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createImportedBinary } from '@/media/importImageFile'
+import { ensureAttachmentFolder } from '@/media/attachmentFolder'
 import ObsidianIcon from './obsidian/Icon.vue'
 import GalleryViewer, { type ViewerImage } from './GalleryViewer.vue'
 import { pickImageFile } from '@/helpers/suggesters/ImagePicker'
@@ -441,11 +442,7 @@ async function addFromClipboard() {
   try {
     const items = await navigator.clipboard.read()
     const { app } = GlobalStore.getInstance()
-    const attachmentFolder = getAttachmentFolder(app, props.gallery.filePath)
-
-    if (attachmentFolder && !(await app.vault.adapter.exists(attachmentFolder))) {
-      await app.vault.createFolder(attachmentFolder)
-    }
+    const attachmentFolder = await ensureAttachmentFolder(app, props.gallery.filePath)
 
     const paths: string[] = []
     for (const item of items) {
@@ -538,11 +535,7 @@ async function addExternalFiles(files: File[]) {
   }
 
   const { app } = GlobalStore.getInstance()
-  const attachmentFolder = getAttachmentFolder(app, props.gallery.filePath)
-
-  if (attachmentFolder && !(await app.vault.adapter.exists(attachmentFolder))) {
-    await app.vault.createFolder(attachmentFolder)
-  }
+  const attachmentFolder = await ensureAttachmentFolder(app, props.gallery.filePath)
 
   const paths: string[] = []
   for (const file of media) {
@@ -567,20 +560,6 @@ async function addExternalFiles(files: File[]) {
   const noun = paths.length === 1 ? 'file' : 'files'
   const skippedText = skipped > 0 ? `; skipped ${skipped} unsupported` : ''
   new Notice(`Added ${paths.length} ${noun} to gallery${skippedText}`)
-}
-
-function getAttachmentFolder(app: any, noteFilePath: string): string {
-  const config = app.vault.getConfig('attachmentFolderPath') || ''
-  if (!config || config === '/') return ''
-  if (config.startsWith('./')) {
-    const noteFolder = noteFilePath.includes('/')
-      ? noteFilePath.substring(0, noteFilePath.lastIndexOf('/'))
-      : ''
-    const sub = config.slice(2)
-    if (!sub) return noteFolder
-    return noteFolder ? `${noteFolder}/${sub}` : sub
-  }
-  return config
 }
 
 // --- Edit mode actions ---

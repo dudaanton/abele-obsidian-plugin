@@ -3,21 +3,13 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { arrayBufferToBase64, getMime } from '@/ai/imagePrep'
 import { createImportedBinary } from '@/media/importImageFile'
+import { ensureAttachmentFolder } from '@/media/attachmentFolder'
 
 /**
  * Get the vault's configured attachment folder path, ensuring it exists.
  */
 export async function getAttachmentFolder(signal?: AbortSignal): Promise<string> {
-  signal?.throwIfAborted()
-  const { app } = GlobalStore.getInstance()
-  let folder = (app.vault as any).getConfig?.('attachmentFolderPath') || 'Attachments'
-  if (folder === '/' || folder === '.') folder = ''
-
-  if (folder && !app.vault.getAbstractFileByPath(folder)) {
-    await app.vault.createFolder(folder)
-  }
-
-  return folder
+  return ensureAttachmentFolder(GlobalStore.getInstance().app, undefined, signal)
 }
 
 /**
