@@ -225,6 +225,9 @@ export class LinkSnapshotStore {
     })
   }
   async localCreate(noteId: string): Promise<{ handle: string; pending: true } | null> {
+    // Snapshot persistence precedes clearing the handle. A crash/failing clear cannot revive
+    // novelty for a note whose settlement (even unknown cache evidence) already survived.
+    if ((await this.read('note:' + noteId)) !== null) return null
     const value = await this.read<{ handle: string; pending: true }>('create:' + noteId)
     if (value && (!text(value.handle) || value.pending !== true))
       throw new Error('Local creation evidence is unreadable; recovery required')

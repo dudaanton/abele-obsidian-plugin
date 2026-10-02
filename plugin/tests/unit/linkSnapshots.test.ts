@@ -130,6 +130,17 @@ describe('durable exact-version link snapshots', () => {
       ).toBe('unknown')
     }
   })
+  it('never exposes pending novelty after a settled snapshot survives a failed handle clear', async () => {
+    const p = meta(),
+      original = p.setMeta
+    p.setMeta = async (key, value) => {
+      if (value !== null) await original(key, value)
+    }
+    const store = new LinkSnapshotStore(p, binding, () => true)
+    await store.seedLocalCreate('sample-note', 'sample-create', 'local-create')
+    await expect(store.settle(await candidate())).rejects.toThrow(/settlement was not persisted/)
+    expect(await store.localCreate('sample-note')).toBeNull()
+  })
   it('cannot relabel an unknown received baseline as a fresh local note', async () => {
     const store = new LinkSnapshotStore(meta(), binding, () => true),
       input = await candidate()

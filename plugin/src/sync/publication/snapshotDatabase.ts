@@ -25,8 +25,9 @@ export async function openLinkSnapshots(
   attest: SnapshotAttestor
 ): Promise<{ snapshots: LinkSnapshotStore; databaseName: string; close: () => void }> {
   const old = resources.loadDescriptor()
-  if (!old && (await resources.hasSentinel()))
-    throw new Error('Link snapshot descriptor lost; recovery required')
+  const sentinel = await resources.hasSentinel()
+  if (!old && sentinel) throw new Error('Link snapshot descriptor lost; recovery required')
+  if (old && !sentinel) throw new Error('Link snapshot recovery sentinel lost; recovery required')
   if (old && (!old.id || !old.binding || bindingKey(old.binding) !== bindingKey(binding)))
     throw new Error('Link snapshot binding changed; recovery required')
   const fresh = !old

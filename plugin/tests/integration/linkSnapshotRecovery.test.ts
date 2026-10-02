@@ -24,6 +24,9 @@ function resources() {
     eraseDescriptor: () => {
       descriptor = null
     },
+    eraseSentinel: () => {
+      sentinel = false
+    },
   }
 }
 describe('snapshot database recovery sentinel', () => {
@@ -38,6 +41,16 @@ describe('snapshot database recovery sentinel', () => {
       r.onsuccess = () => resolve()
       r.onerror = () => reject(r.error)
     })
+    await expect(openLinkSnapshots(factory, port, binding, () => true)).rejects.toThrow(
+      /recovery required/
+    )
+  })
+  it('refuses a lost external sentinel even when descriptor and database survive', async () => {
+    const port = resources(),
+      factory = new IDBFactory(),
+      first = await openLinkSnapshots(factory, port, binding, () => true)
+    first.close()
+    port.eraseSentinel()
     await expect(openLinkSnapshots(factory, port, binding, () => true)).rejects.toThrow(
       /recovery required/
     )
