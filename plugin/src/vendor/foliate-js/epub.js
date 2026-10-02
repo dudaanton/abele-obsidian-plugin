@@ -740,6 +740,12 @@ class Loader {
         return url
     }
     ref(href, parent) {
+        // ABELE PATCH: each root load is an independent consumer, not a child of undefined.
+        // Only references within one parent resource are deduplicated by its child list.
+        if (!parent) {
+            this.#refCount.set(href, this.#refCount.get(href) + 1)
+            return this.#cache.get(href)
+        }
         const childList = this.#children.get(parent)
         if (!childList?.includes(href)) {
             this.#refCount.set(href, this.#refCount.get(href) + 1)

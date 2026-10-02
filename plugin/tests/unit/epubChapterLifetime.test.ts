@@ -22,7 +22,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('shares concurrent chapter loads and releases their single URL after both consumers unload', async () => {
+async function openedSample() {
   const Parser = DOMParser
   vi.stubGlobal(
     'DOMParser',
@@ -48,6 +48,34 @@ it('shares concurrent chapter loads and releases their single URL after both con
     .mockImplementation(() => `blob:sample-${++serial}`)
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   const opened = await openEpub(sampleBook())
+  return { opened, created, revoke }
+}
+
+it.each([2, 3])(
+  'retains one chapter URL until every one of %s consumers unloads across repeated cycles',
+  async (count) => {
+    const { opened, revoke } = await openedSample()
+    const chapter = opened.book.sections[0]
+    try {
+      for (let cycle = 0; cycle < 3; cycle++) {
+        const urls = await Promise.all(Array.from({ length: count }, () => chapter.load()))
+        expect(new Set(urls).size).toBe(1)
+        const before = revoke.mock.calls.length
+        for (let consumer = 0; consumer < count - 1; consumer++) {
+          chapter.unload?.()
+          expect(revoke).toHaveBeenCalledTimes(before)
+        }
+        chapter.unload?.()
+        expect(revoke).toHaveBeenCalledTimes(before + 1)
+      }
+    } finally {
+      opened.destroy()
+    }
+  }
+)
+
+it('shares concurrent chapter loads and releases their single URL after both consumers unload', async () => {
+  const { opened, created, revoke } = await openedSample()
   const chapter = opened.book.sections[0]
   try {
     const [first, second] = await Promise.all([chapter.load(), chapter.load()])
