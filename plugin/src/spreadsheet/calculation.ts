@@ -19,6 +19,8 @@ import {
 } from './package'
 import { sc } from './styles'
 import { applyWorkbookFormat } from './format'
+import { escapeSpreadsheetText } from './text'
+import { applyWorkbookRows } from './rows'
 export interface CalculationResult {
   bytes: Uint8Array
   complete: boolean
@@ -27,17 +29,30 @@ export interface CalculationResult {
 export async function applyCalculatedEdit(
   book: Workbook,
   edit: WorkbookEdit,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  yieldTask: () => Promise<void> = () => Promise.resolve()
 ): Promise<CalculationResult> {
-  if (edit.operation && !['cells', 'recalculate', 'format'].includes(edit.operation))
+  if (
+    edit.operation &&
+    !['cells', 'recalculate', 'format', 'row_add', 'row_delete'].includes(edit.operation)
+  )
     throw new Error('Unknown workbook operation')
-  const yieldTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+  if (edit.operation === 'row_add' || edit.operation === 'row_delete')
+    return {
+      bytes: await applyWorkbookRows(book, {
+        sheet: edit.sheet,
+        operation: edit.operation,
+        rows: edit.rows,
+      }),
+      complete: !book.stale,
+      note: 'Trailing rows updated; existing cell addresses did not shift.',
+    }
   if (edit.operation === 'format')
     return {
       bytes: await applyWorkbookFormat(book, {
         sheet: edit.sheet,
         range: edit.range,
-        format: edit.format!,
+        format: edit.format,
       }),
       complete: !book.stale,
       note: 'Cell formatting updated; formula caches unchanged.',
@@ -89,7 +104,10 @@ export async function recalculateWorkbook(
       [...s.cells.values()].some((c) => {
         const f = sc(c.node, 'f')
         return (
-          (f?.attrs.t && !['shared', 'normal'].includes(f.attrs.t)) || c.node.attrs.cm !== undefined
+          (f?.attrs.t && !['shared', 'normal'].includes(f.attrs.t)) ||
+          c.node.attrs.cm !== undefined ||
+          c.node.attrs.vm !== undefined ||
+          !!c.formulaProblem
         )
       })
     )
@@ -97,7 +115,7 @@ export async function recalculateWorkbook(
     return {
       bytes: book.original,
       complete: false,
-      note: 'Array/data-table or dynamic formula metadata is not locally calculated; values may be stale.',
+      note: 'Array/data-table, unsupported shared formulas or dynamic formula metadata is not locally calculated; values may be stale.',
     }
   const hf = HyperFormula.buildEmpty({
     licenseKey: 'gpl-v3',
@@ -116,7 +134,7 @@ export async function recalculateWorkbook(
     const ids = new Map<string, number>()
     for (const sheet of sheets) {
       hf.addSheet(sheet.name)
-      ids.set(sheet.name, hf.getSheetId(sheet.name)!)
+      ids.set(sheet.name, hf.getSheetId(sheet.name))
     }
     let fed = 0
     for (const sheet of sheets)
@@ -129,7 +147,7 @@ export async function recalculateWorkbook(
               ? "'" + cell.value
               : cell.value
         hf.setCellContents(
-          { sheet: ids.get(sheet.name)!, row: cell.row - 1, col: cell.column - 1 },
+          { sheet: ids.get(sheet.name), row: cell.row - 1, col: cell.column - 1 },
           [[input]]
         )
         if (++fed % 500 === 0 && options.yieldTask) await options.yieldTask()
@@ -153,7 +171,7 @@ export async function recalculateWorkbook(
       for (const cell of sheet.cells.values()) {
         if (cell.formula === undefined) continue
         const value = hf.getCellValue({
-          sheet: ids.get(sheet.name)!,
+          sheet: ids.get(sheet.name),
           row: cell.row - 1,
           col: cell.column - 1,
         })
@@ -177,11 +195,11 @@ export async function recalculateWorkbook(
               ? 'b'
               : null
         const rawValue = typeof value === 'boolean' ? (value ? '1' : '0') : text
-        if (
-          cell.node.attrs.t === (type ?? undefined) &&
-          valueText(sheet.source, sc(cell.node, 'v')) === rawValue
-        )
-          continue
+        const sameType =
+          type === null
+            ? !cell.node.attrs.t || cell.node.attrs.t === 'n'
+            : cell.node.attrs.t === type
+        if (sameType && sc(cell.node, 'v') && cell.value === (error ? text : value)) continue
         patches.push({
           start: cell.node.start,
           end: cell.node.end,
@@ -217,7 +235,7 @@ function cachedCell(
 ): string {
   const node = cell.node
   const oldValue = sc(node, 'v')
-  const fragment = sTag('v', escapeXml(value))
+  const fragment = sTag('v', type === 'str' ? escapeSpreadsheetText(value) : escapeXml(value))
   let raw = rawNode(sheet.source, node)
   if (oldValue)
     raw = patchXml(raw, [

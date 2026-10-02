@@ -20,7 +20,7 @@ export function readRange(
       const cell = sheet.cells.get(address)
       values.push(
         escape(
-          `${address}: ${formatValue(cell?.value ?? null, cell?.style.numberFormat ?? 'General', book.date1904)}${cell?.formula !== undefined ? ` [=${cell.formula}${cell.value === null ? '; pending' : ''}]` : ''}`
+          `${address}: ${formatValue(cell?.value ?? null, cell?.style.numberFormat ?? 'General', book.date1904)}${cell?.formula !== undefined ? ` [=${cell.formula}${cell.value === null ? '; pending' : ''}]` : ''}${cell?.formulaProblem ? ` [formula unavailable: ${cell.formulaProblem}]` : ''}`
         )
       )
     }

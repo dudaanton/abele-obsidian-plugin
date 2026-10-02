@@ -54,13 +54,29 @@ export async function saveParts(doc: OfficePackage, changed: Map<string,Uint8Arr
     if (bytes.length > MAX_XML) throw new Error('Document XML is too large')
     await parseXml(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes))
   }
+  const names = new Set(doc.archive.entries.map((e) => e.filename))
+  for (const [name, bytes] of changed) {
+    if (bytes) names.add(name)
+    else names.delete(name)
+  }
+  if (names.size > 4000) throw new Error('Too many saved document parts')
   const parts: Record<string, Uint8Array> = Object.create(null)
   for (const entry of doc.archive.entries) {
     const bytes = changed.has(entry.filename) ? changed.get(entry.filename) : doc.archive.loadBytes(entry.filename)
     if (bytes) parts[entry.filename] = bytes
   }
-  for (const [name,bytes] of changed) if (bytes) parts[name] = bytes
-  return pack(parts)
+  for (const [name, bytes] of changed) if (bytes) parts[name] = bytes
+  let expanded = 0
+  for (const [name, bytes] of Object.entries(parts)) {
+    if (/\.(?:xml|rels)$/.test(name) && bytes.length > MAX_XML)
+      throw new Error('Saved document XML is too large')
+    expanded += bytes.length
+  }
+  if (expanded > MAX_EXPANDED) throw new Error('Saved document is too large unpacked')
+  const bytes = await pack(parts)
+  if (bytes.length > MAX_ARCHIVE)
+    throw new Error('Saved document is too large (32 MB compressed limit)')
+  return bytes
 }
 export const xmlBytes = (source:string) => strToU8(source)
 /** Strict UTF-8 decoding, retaining a BOM for lossless offset patches. */

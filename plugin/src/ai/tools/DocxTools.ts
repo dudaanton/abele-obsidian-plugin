@@ -3,6 +3,7 @@ import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { scopeOf, type ToolContext } from '../toolContext'
 import { wordRevision } from '@/word/write'
+import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import { loadWordBytes as openDocx, prepareWordChange, writeWordChange } from '@/word/vaultAdapter'
 import { WORD_OPERATIONS, type WordEdit } from '@/word/edit'
 import { DOCX_VIEW_TYPE, type DocxView } from '@/word/DocxView'
@@ -133,9 +134,7 @@ export function createDocxTools(): AgentTool[] {
       },
       execute: async (_id, params, signal, ctx) => {
         const file = namedDocx(params.path, ctx)
-        const doc = await openDocx(
-          new Uint8Array(await GlobalStore.getInstance().app.vault.readBinary(file))
-        )
+        const doc = await openDocx(await readOfficeBytes(GlobalStore.getInstance().app, file))
         signal?.throwIfAborted()
         const start = integer(params.start, 1, doc.paragraphs.length)
         const count = integer(params.count, 50, 200)
@@ -172,9 +171,7 @@ export function createDocxTools(): AgentTool[] {
         const file = namedDocx(params.path, ctx)
         const query = typeof params.query === 'string' ? params.query : ''
         if (!query || query.length > 1000) throw new Error('Search text must be 1–1000 characters')
-        const doc = await openDocx(
-          new Uint8Array(await GlobalStore.getInstance().app.vault.readBinary(file))
-        )
+        const doc = await openDocx(await readOfficeBytes(GlobalStore.getInstance().app, file))
         signal?.throwIfAborted()
         const after = Math.max(0, Math.floor(Number(params.after) || 0))
         const result = doc.search(query, after, integer(params.limit, 20, 40))

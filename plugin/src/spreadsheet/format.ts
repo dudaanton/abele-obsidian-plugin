@@ -1,7 +1,7 @@
 import { PackageMutation, nodeWithContent, setAttributes } from '@/ooxml/mutation'
-import { escapeXml, parseXml, patchXml, rawNode, R, REL, type XmlNode } from '@/ooxml/xml'
+import { escapeXml, parseXml, patchXml, R, REL } from '@/ooxml/xml'
 import { cellAddress, parseRange } from './address'
-import { assertEditable, patchCells, sTag, validText } from './edit'
+import { assertEditable, expandDimension, patchCells, sTag, validText } from './edit'
 import { type Workbook } from './package'
 import { builtinFormats, S, sc } from './styles'
 export interface CellFormat {
@@ -48,7 +48,12 @@ async function appendRecord(
     )
     const updated = setAttributes(
       next,
-      { ...group, start: 0, openEnd: group.openEnd - group.start, end: next.length },
+      {
+        ...group,
+        start: 0,
+        openEnd: source.slice(group.start, group.openEnd).replace(/\/\s*>$/, '>').length,
+        end: next.length,
+      },
       { count: String(count + 1) }
     )
     mutation.set(part, patchXml(source, [{ start: group.start, end: group.end, text: updated }]))
@@ -207,7 +212,16 @@ export async function applyWorkbookFormat(book: Workbook, edit: FormatEdit): Pro
     )
   }
   if (!changes.size) return book.original
-  mutation.set(sheet.part, patchCells(sheet, changes))
+  mutation.set(
+    sheet.part,
+    await expandDimension(
+      patchCells(sheet, changes),
+      Math.max(sheet.maxRow, range.to.row),
+      Math.max(sheet.maxColumn, range.to.column),
+      range.from.row,
+      range.from.column
+    )
+  )
   if (!book.stylesPart) {
     const relSource = mutation.source(book.relsPart)
     const rels = await parseXml(relSource)

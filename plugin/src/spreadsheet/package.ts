@@ -3,6 +3,8 @@ import { openOfficeArchive, resolvePart, xmlPart, type OfficePackage } from '@/o
 import { attr, decodeXmlContent, descendants, parseXml, R, REL, type XmlNode } from '@/ooxml/xml'
 import { cellAddress, parseCell, parseRange, translateFormula, type CellRange } from './address'
 import { defaultStyle, readStyles, S, sc, type CellStyle, type CellValue } from './styles'
+import { decodeSpreadsheetText } from './text'
+import { contains } from './address'
 export interface SheetInfo {
   name: string
   part: string
@@ -15,6 +17,7 @@ export interface WorkbookCell {
   column: number
   value: CellValue
   formula?: string
+  formulaProblem?: string
   style: CellStyle
   styleId: number
   node: XmlNode
@@ -53,7 +56,7 @@ export const valueText = (source: string, node?: XmlNode) =>
 const richText = (source: string, node: XmlNode) =>
   descendants(node, S, 't')
     .filter((n) => n.parent?.local !== 'rPh')
-    .map((n) => valueText(source, n))
+    .map((n) => decodeSpreadsheetText(valueText(source, n)))
     .join('')
 export async function openXlsx(
   original: Uint8Array,
@@ -77,7 +80,7 @@ export async function openXlsx(
   if (main.root.ns !== S || main.root.local !== 'workbook')
     throw new Error('Not a supported Excel workbook')
   const segments = workbookPart.split('/')
-  const filename = segments.pop()!
+  const filename = segments.pop()
   const relsPart = [...segments, '_rels', filename + '.rels'].join('/')
   const rels = await tree(relsPart)
   const relations = new Map(
@@ -149,11 +152,28 @@ export async function openXlsx(
       let maxColumn = 1
       const nodes = descendants(sc(data.root, 'sheetData') ?? data.root, S, 'c')
       if (nodes.length > 200000) throw new Error('Sheet is too large (200000 stored cells limit)')
-      const shared = new Map<string, { formula: string; row: number; column: number }>()
+      const shared = new Map<
+        string,
+        { formula: string; row: number; column: number; ref?: CellRange; problem?: string }
+      >()
       for (const n of nodes) {
         const f = sc(n, 'f')
-        if (f?.attrs.t === 'shared' && valueText(data.source, f))
-          shared.set(f.attrs.si, { formula: valueText(data.source, f), ...parseCell(n.attrs.r) })
+        if (f?.attrs.t !== 'shared' || !valueText(data.source, f)) continue
+        const base = {
+          formula: valueText(data.source, f),
+          ...parseCell(n.attrs.r),
+          ref: undefined as CellRange | undefined,
+          problem: undefined as string | undefined,
+        }
+        try {
+          if (shared.has(f.attrs.si) || !f.attrs.ref || !/^\d+$/.test(f.attrs.si))
+            throw new Error('Invalid shared formula group')
+          base.ref = parseRange(f.attrs.ref)
+          translateFormula(base.formula, 0, 0)
+        } catch (e) {
+          base.problem = (e as Error).message
+        }
+        shared.set(f.attrs.si, base)
       }
       for (const n of nodes) {
         const pos = parseCell(n.attrs.r)
@@ -164,16 +184,25 @@ export async function openXlsx(
         maxColumn = Math.max(maxColumn, pos.column)
         const f = sc(n, 'f')
         let formula = f ? valueText(data.source, f) : undefined
-        if (f?.attrs.t === 'shared' && !formula) {
+        let formulaProblem: string | undefined
+        if (f?.attrs.t === 'shared') {
           const base = shared.get(f.attrs.si)
-          if (!base) throw new Error('Missing shared formula anchor')
-          formula = translateFormula(base.formula, pos.row - base.row, pos.column - base.column)
+          formulaProblem = !base ? 'Missing shared formula anchor' : base.problem
+          if (base?.ref && !contains(base.ref, pos))
+            formulaProblem = 'Cell outside shared formula range'
+          if (!formula && base && !formulaProblem) {
+            try {
+              formula = translateFormula(base.formula, pos.row - base.row, pos.column - base.column)
+            } catch (e) {
+              formulaProblem = (e as Error).message
+            }
+          }
+          if (!formula) formula = undefined
         }
         const v = sc(n, 'v')
         const raw = valueText(data.source, v)
-        let value: CellValue = !v ? null : raw
-        if (n.attrs.t === 'inlineStr')
-          value = sc(n, 'is') ? richText(data.source, sc(n, 'is')!) : ''
+        let value: CellValue = !v ? null : n.attrs.t === 'str' ? decodeSpreadsheetText(raw) : raw
+        if (n.attrs.t === 'inlineStr') value = sc(n, 'is') ? richText(data.source, sc(n, 'is')) : ''
         else if (n.attrs.t === 's') {
           if (!/^\d+$/.test(raw) || strings[Number(raw)] === undefined)
             throw new Error('Invalid shared string')
@@ -187,10 +216,19 @@ export async function openXlsx(
           ...pos,
           value,
           formula,
+          formulaProblem,
           styleId,
           style: book.styles[styleId] ?? defaultStyle,
           node: n,
         })
+      }
+      for (const cell of cells.values()) {
+        const ref = sc(cell.node, 'f')?.attrs.ref
+        if (ref) {
+          const range = parseRange(ref)
+          maxRow = Math.max(maxRow, range.to.row)
+          maxColumn = Math.max(maxColumn, range.to.column)
+        }
       }
       const dimension = sc(data.root, 'dimension')?.attrs.ref
       if (dimension) {

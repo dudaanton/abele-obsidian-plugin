@@ -1,21 +1,14 @@
 import { PackageMutation, nodeWithContent, setAttributes } from '@/ooxml/mutation'
 import { resolvePart } from '@/ooxml/package'
-import {
-  escapeXml,
-  parseXml,
-  patchXml,
-  rawNode,
-  R,
-  REL,
-  type Patch,
-  type XmlNode,
-} from '@/ooxml/xml'
+import { escapeXml, parseXml, patchXml, rawNode, R, REL, type Patch } from '@/ooxml/xml'
 import { cellAddress, contains, parseCell, parseRange } from './address'
 import { S, sc, type CellValue } from './styles'
-import { valueText, type Workbook, type WorkbookSheet } from './package'
+import { escapeSpreadsheetText } from './text'
+import { type Workbook, type WorkbookSheet } from './package'
 export type CellInput = CellValue | { formula: string } | { value: CellValue }
 export interface WorkbookEdit {
-  operation?: 'cells' | 'recalculate' | 'format'
+  operation?: 'cells' | 'recalculate' | 'format' | 'row_add' | 'row_delete'
+  rows?: number
   format?: import('./format').CellFormat
   sheet: string
   range: string
@@ -24,12 +17,16 @@ export interface WorkbookEdit {
 export const sTag = (name: string, content = '', attrs = '') =>
   `<${name} xmlns="${S}"${attrs ? ' ' + attrs : ''}>${content}</${name}>`
 export function validText(text: string): void {
-  if (
-    text.length > 32767 ||
-    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(
-      text
+  const invalid = [...text].some((character) => {
+    const n = character.codePointAt(0)
+    return (
+      (n < 32 && ![9, 10, 13].includes(n)) ||
+      (n >= 0xd800 && n <= 0xdfff) ||
+      n === 0xfffe ||
+      n === 0xffff
     )
-  )
+  })
+  if (text.length > 32767 || invalid)
     throw new Error('Unsupported XML characters or cell text length (32767 limit)')
 }
 interface NormalCell {
@@ -79,7 +76,7 @@ export function cellXml(
     input.formula !== undefined
       ? sTag('f', escapeXml(input.formula))
       : typeof input.value === 'string'
-        ? sTag('is', `<t xml:space="preserve">${escapeXml(input.value)}</t>`)
+        ? sTag('is', `<t xml:space="preserve">${escapeSpreadsheetText(input.value)}</t>`)
         : input.value === null
           ? ''
           : sTag(
@@ -109,6 +106,44 @@ export function cellXml(
   } else raw = raw.replace(/\/\s*>$/, '>') + content + `</${node.name}>`
   return raw
 }
+export async function expandDimension(
+  source: string,
+  row: number,
+  column: number,
+  fromRow = 1,
+  fromColumn = 1
+): Promise<string> {
+  const tree = await parseXml(source)
+  const dimension = sc(tree, 'dimension')
+  const old = dimension ? parseRange(dimension.attrs.ref) : undefined
+  const from = cellAddress(
+    Math.min(old?.from.row ?? fromRow, fromRow),
+    Math.min(old?.from.column ?? fromColumn, fromColumn)
+  )
+  const to = cellAddress(
+    Math.max(old?.to.row ?? row, row),
+    Math.max(old?.to.column ?? column, column)
+  )
+  if (
+    old &&
+    from === cellAddress(old.from.row, old.from.column) &&
+    to === cellAddress(old.to.row, old.to.column)
+  )
+    return source
+  if (dimension)
+    return patchXml(source, [
+      {
+        start: dimension.start,
+        end: dimension.end,
+        text: setAttributes(source, dimension, { ref: `${from}:${to}` }),
+      },
+    ])
+  const next = tree.children.find((n) => n.local !== 'sheetPr')
+  const at = next?.start ?? tree.closeStart
+  return patchXml(source, [
+    { start: at, end: at, text: sTag('dimension', '', `ref="${from}:${to}"`) },
+  ])
+}
 /** Cell-level patches and sorted insertion without serializing any unrelated XML. */
 export function patchCells(sheet: WorkbookSheet, changes: Map<string, string>): string {
   const data = sc(sheet.tree, 'sheetData')
@@ -135,16 +170,36 @@ export function patchCells(sheet: WorkbookSheet, changes: Map<string, string>): 
   for (const [r, cells] of [...missing].sort((a, b) => a[0] - b[0])) {
     const row = rows.find((n) => Number(n.attrs.r) === r)
     const ordered = [...cells].sort((a, b) => a[0] - b[0])
+    const oldSpan = /^(\d+):(\d+)$/.exec(row?.attrs.spans ?? '')
+    const span = oldSpan
+      ? `${Math.min(Number(oldSpan[1]), ordered[0][0])}:${Math.max(Number(oldSpan[2]), ordered.at(-1)[0])}`
+      : undefined
+    if (row && span && row.attrs.spans !== span && row.openEnd !== row.end) {
+      const updated = setAttributes(sheet.source, row, { spans: span })
+      patches.push({
+        start: row.start,
+        end: row.openEnd,
+        text: updated.slice(0, updated.length - (row.end - row.openEnd)),
+      })
+    }
     if (!row) {
       const fragment = sTag('row', ordered.map(([, s]) => s).join(''), `r="${r}"`)
       const next = rows.find((n) => Number(n.attrs.r) > r)
       add(next?.start ?? data.closeStart, fragment)
     } else if (row.openEnd === row.end) {
-      patches.push({
-        start: row.start,
-        end: row.end,
-        text: nodeWithContent(sheet.source, row, ordered.map(([, s]) => s).join('')),
-      })
+      let text = nodeWithContent(sheet.source, row, ordered.map(([, s]) => s).join(''))
+      if (span)
+        text = setAttributes(
+          text,
+          {
+            ...row,
+            start: 0,
+            openEnd: sheet.source.slice(row.start, row.openEnd).replace(/\/\s*>$/, '>').length,
+            end: text.length,
+          },
+          { spans: span }
+        )
+      patches.push({ start: row.start, end: row.end, text })
     } else
       for (const [c, text] of ordered) {
         const next = row.children.find(
@@ -177,7 +232,19 @@ export function assertEditable(
       if (contains(merge, pos) && (pos.row !== merge.from.row || pos.column !== merge.from.column))
         throw new Error('Edit the merged cell anchor, not a merged follower')
   if (!formulas) return
+  for (const address of addresses) {
+    const cell = sheet.cells.get(address)
+    if (cell?.node.attrs.cm !== undefined || cell?.node.attrs.vm !== undefined)
+      throw new Error('Dynamic cell metadata is read-only')
+    if (cell?.formulaProblem) throw new Error(`Cannot edit shared formula: ${cell.formulaProblem}`)
+  }
   for (const cell of sheet.cells.values()) {
+    if (
+      cell.formulaProblem &&
+      sc(cell.node, 'f')?.attrs.ref &&
+      positions.some((pos) => contains(parseRange(sc(cell.node, 'f').attrs.ref), pos))
+    )
+      throw new Error(`Cannot edit shared formula: ${cell.formulaProblem}`)
     const f = sc(cell.node, 'f')
     if (f && f.attrs.t && !['normal', 'shared'].includes(f.attrs.t)) {
       const range = parseRange(f.attrs.ref ?? cell.address)
@@ -319,19 +386,13 @@ export async function applyWorkbookEdit(book: Workbook, edit: WorkbookEdit): Pro
       ])
     )
   }
-  let source = patchCells(sheet, changes)
-  const updated = await parseXml(source)
-  const dimension = sc(updated, 'dimension')
-  const maxRow = Math.max(sheet.maxRow, range.to.row)
-  const maxCol = Math.max(sheet.maxColumn, range.to.column)
-  if (dimension)
-    source = patchXml(source, [
-      {
-        start: dimension.start,
-        end: dimension.end,
-        text: setAttributes(source, dimension, { ref: `A1:${cellAddress(maxRow, maxCol)}` }),
-      },
-    ])
+  const source = await expandDimension(
+    patchCells(sheet, changes),
+    Math.max(sheet.maxRow, range.to.row),
+    Math.max(sheet.maxColumn, range.to.column),
+    range.from.row,
+    range.from.column
+  )
   const mutation = new PackageMutation(book)
   mutation.set(sheet.part, source)
   await invalidateCalculation(book, mutation)

@@ -55,18 +55,32 @@ export const contains = (range: CellRange, pos: CellPosition) =>
   pos.column <= range.to.column
 /** Shared-formula translation. Quoted literals/sheet names are never mistaken for references. */
 export function translateFormula(formula: string, rows: number, columns: number): string {
-  if (/\[|\]|(?:'[^']*'|\w+):(?:'[^']*'|\w+)!/.test(formula))
-    throw new Error('Unsupported shared formula references')
+  const masked = formula.replace(/"(?:[^"]|"")*"|'(?:[^']|'')*'/g, (token) => {
+    if (token.startsWith("'") && /[[\]]/.test(token))
+      throw new Error('Unsupported shared formula references')
+    return token.startsWith('"') ? '""' : 'sheet'
+  })
+  if (/[[\]]|\w+:\w+!/.test(masked)) throw new Error('Unsupported shared formula references')
+  const shift = (token: string, column: boolean) => {
+    const absolute = token.startsWith('$')
+    const value = column ? parseCell(token + '1').column : Number(token.replace('$', ''))
+    const next = value + (absolute ? 0 : column ? columns : rows)
+    if (next < 1 || next > (column ? MAX_COLUMNS : MAX_ROWS)) return '#REF!'
+    return (absolute ? '$' : '') + (column ? columnName(next) : next)
+  }
   return formula.replace(
-    /"(?:[^"]|"")*"|'(?:[^']|'')*'|(?<![\w.])\$?[A-Z]{1,3}\$?[1-9]\d{0,6}(?![\w.(]|\s*!)/gi,
+    /"(?:[^"]|"")*"|'(?:[^']|'')*'|(?<![\w.])(?:\$?[A-Z]{1,3}\s*:\s*\$?[A-Z]{1,3}|\$?[1-9]\d{0,6}\s*:\s*\$?[1-9]\d{0,6}|\$?[A-Z]{1,3}\$?[1-9]\d{0,6})(?![\w.(]|\s*!)/gi,
     (token) => {
       if (token.startsWith('"') || token.startsWith("'")) return token
-      const m = /^(\$?)([A-Z]+)(\$?)(\d+)$/i.exec(token)!
-      const pos = parseCell(token)
-      const row = pos.row + (m[3] ? 0 : rows)
-      const column = pos.column + (m[1] ? 0 : columns)
-      if (row < 1 || column < 1 || row > MAX_ROWS || column > MAX_COLUMNS) return '#REF!'
-      return m[1] + columnName(column) + m[3] + row
+      if (token.includes(':'))
+        return token
+          .split(':')
+          .map((part) => shift(part.trim(), /[a-z]/i.test(part)))
+          .join(':')
+      const m = /^(\$?)([A-Z]+)(\$?)(\d+)$/i.exec(token)
+      const col = shift(m[1] + m[2], true)
+      const row = shift(m[3] + m[4], false)
+      return col === '#REF!' || row === '#REF!' ? '#REF!' : col + row
     }
   )
 }

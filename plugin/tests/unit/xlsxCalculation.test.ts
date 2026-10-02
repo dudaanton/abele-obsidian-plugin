@@ -6,6 +6,40 @@ import { recalculateWorkbook } from '@/spreadsheet/calculation'
 import { sampleXlsx, sampleParts, sheetXml } from '../fixtures/xlsx/sampleXlsx'
 
 describe('local workbook recalculation', () => {
+  it('does not rewrite equivalent explicit numeric types or escaped string caches when results are unchanged', async () => {
+    const parts = sampleParts()
+    parts['xl/worksheets/sheet1.xml'] = strToU8(
+      sheetXml(
+        '<row r="1"><c r="A1" t="str"><f>"A"</f><v>_x0041_</v></c><c r="C1" t="n"><f>1+1</f><v>2.00</v></c></row>'
+      )
+    )
+    parts['xl/worksheets/sheet2.xml'] = strToU8(sheetXml(''))
+    const bytes = zipSync(parts)
+    const result = await recalculateWorkbook(await openXlsx(bytes))
+    expect(result.bytes).toBe(bytes)
+  })
+  it('uses the workbook date epoch rather than changing DATE results by a day or four years', async () => {
+    for (const [date1904, expected] of [
+      [false, 45292],
+      [true, 43830],
+    ] as const) {
+      const parts = sampleParts()
+      parts['xl/worksheets/sheet1.xml'] = strToU8(
+        sheetXml('<row r="1"><c r="A1"><f>DATE(2024,1,1)</f></c></row>')
+      )
+      if (date1904)
+        parts['xl/workbook.xml'] = strToU8(
+          strFromU8(parts['xl/workbook.xml']).replace(
+            '<bookViews>',
+            '<workbookPr date1904="1"/><bookViews>'
+          )
+        )
+      const calc = await recalculateWorkbook(await openXlsx(zipSync(parts)))
+      expect((await (await openXlsx(calc.bytes)).sheet('Sample')).cells.get('A1')?.value).toBe(
+        expected
+      )
+    }
+  })
   it('recomputes dependent formulas across sheets and saves caches while preserving formula XML', async () => {
     const changed = await applyWorkbookEdit(await openXlsx(sampleXlsx()), {
       sheet: 'Sample',

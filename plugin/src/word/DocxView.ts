@@ -1,5 +1,6 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
 import { applyWordEdit } from './edit'
+import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import { mountWordEditor } from './desktopEditor'
 import { loadWordBytes, vaultWordResources, writeWordChange } from './vaultAdapter'
 import type { WordParagraph } from './package'
@@ -45,7 +46,7 @@ export class DocxView extends FileView {
       cls: 'abele-word-status',
     })
     try {
-      const doc = await loadWordBytes(new Uint8Array(await this.app.vault.readBinary(file)))
+      const doc = await loadWordBytes(await readOfficeBytes(this.app, file))
       if (token !== this.token) return
       this.document = doc
       status.remove()

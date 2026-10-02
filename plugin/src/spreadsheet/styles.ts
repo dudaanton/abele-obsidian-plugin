@@ -45,7 +45,7 @@ export function readStyles(root?: XmlNode): CellStyle[] {
       italic: enabled(sc(font, 'i')),
       fill:
         fill?.attrs.patternType === 'solid' && /^[0-9a-f]{8}$/i.test(rgb ?? '')
-          ? '#' + rgb!.slice(2)
+          ? '#' + rgb.slice(2)
           : undefined,
       numberFormat:
         formats.get(Number(xf.attrs.numFmtId)) ??

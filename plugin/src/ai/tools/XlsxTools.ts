@@ -3,6 +3,7 @@ import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { wordRevision as workbookRevision } from '@/ooxml/write'
+import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import {
   loadWorkbookBytes,
   prepareWorkbookChange,
@@ -27,13 +28,21 @@ const integer = (value: unknown, fallback: number, max: number) =>
   Number.isFinite(Number(value))
     ? Math.min(max, Math.max(1, Math.floor(Number(value) || fallback)))
     : fallback
-const offset = (v: unknown) => Math.max(0, Math.floor(Number(v) || 0))
+const offset = (v: unknown) =>
+  Number.isFinite(Number(v))
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(Number(v) || 0)))
+    : 0
+const textParameter = (value: unknown, fallback = '') => {
+  if (value === undefined) return fallback
+  if (typeof value !== 'string') throw new Error('Expected a text parameter')
+  return value
+}
 const properties = {
   path: { type: 'string', description: 'Exact vault path of an .xlsx or read-only .xlsm workbook' },
 }
 export const openVaultWorkbook = async (file: TFile) =>
   loadWorkbookBytes(
-    new Uint8Array(await GlobalStore.getInstance().app.vault.readBinary(file)),
+    await readOfficeBytes(GlobalStore.getInstance().app, file),
     file.extension.toLowerCase() === 'xlsm'
   )
 export function createXlsxTools(): AgentTool[] {
@@ -43,14 +52,18 @@ export function createXlsxTools(): AgentTool[] {
       label: 'Write workbook cells',
       category: 'Excel',
       description:
-        'Patch a rectangular A1 range of values/formulas in an .xlsx workbook. Read xlsx_read first and pass revision. values is a rectangular matrix matching range: string, number, boolean, null (clear), {formula: "SUM(A1:A2)"}, or {value: "=literal text"}. Strings starting with = are formulas. Max 1000 cells. Uses the existing write preview/confirmation with its own Off/Ask/On mode, default Ask. Shared formulas are unshared before editing; array ranges, protected sheets, merged followers and .xlsm are read-only. Local HyperFormula recalculation updates dependent caches on edit (20000 stored-cell limit); unsupported functions show #NAME?. operation=recalculate refreshes caches without changing formulas/values and only needs path/revision. Array/dynamic formulas and larger calculations remain pending with an explicit warning. operation=format takes sheet, range, and format {bold,italic,fill:"#RRGGBB" (empty clears),number_format:"0.00"}; it appends styles without modifying existing records or formulas.',
+        'Patch a rectangular A1 range of values/formulas in an .xlsx workbook. Read xlsx_read first and pass revision. values is a rectangular matrix matching range: string, number, boolean, null (clear), {formula: "SUM(A1:A2)"}, or {value: "=literal text"}. Strings starting with = are formulas. Max 1000 cells. Uses the existing write preview/confirmation with its own Off/Ask/On mode, default Ask. Shared formulas are unshared before editing; array ranges, protected sheets, merged followers and .xlsm are read-only. Local HyperFormula recalculation updates dependent caches on edit (20000 stored-cell limit); unsupported functions show #NAME?. operation=recalculate refreshes caches without changing formulas/values and only needs path/revision. Array/dynamic formulas and larger calculations remain pending with an explicit warning. operation=format takes sheet, range, and format {bold,italic,fill:"#RRGGBB" (empty clears),number_format:"0.00"}; it appends styles without modifying existing records or formulas. row_add/row_delete take sheet and rows (default 1, max 1000) and operate only at the end. Deletion is refused for workbooks with formulas/names/structural references; use a spreadsheet app for reference rewriting. To append values, write an A1 range after the used rows.',
       parameters: {
         type: 'object',
         properties: {
           ...properties,
           revision: { type: 'string' },
-          operation: { type: 'string', enum: ['cells', 'recalculate', 'format'] },
+          operation: {
+            type: 'string',
+            enum: ['cells', 'recalculate', 'format', 'row_add', 'row_delete'],
+          },
           sheet: { type: 'string' },
+          rows: { type: 'number', description: 'Trailing row count, default 1, max 1000' },
           range: { type: 'string' },
           values: { type: 'array', items: { type: 'array', items: {} } },
           format: {
@@ -80,7 +93,10 @@ export function createXlsxTools(): AgentTool[] {
         signal?.throwIfAborted()
         if (namedWorkbook(file.path) !== file)
           throw new Error('Workbook moved while editing; read again')
-        await writeWorkbookChange(app, file, prepared.original, prepared.updated, signal)
+        await writeWorkbookChange(app, file, prepared.original, prepared.updated, signal, () => {
+          if (namedWorkbook(file.path) !== file)
+            throw new Error('Workbook moved while editing; read again')
+        })
         return {
           ...answer(
             `Edited ${file.path}; revision ${workbookRevision(prepared.updated)}. ${prepared.calculation.note}`
@@ -134,9 +150,9 @@ export function createXlsxTools(): AgentTool[] {
         const file = namedWorkbook(params.path)
         const book = await openVaultWorkbook(file)
         signal?.throwIfAborted()
-        const sheet = await book.sheet(String(params.sheet || ''))
-        const range = String(params.range || 'A1:J20')
-        const text = readRange(book, sheet, range, String(params.format || 'markdown'))
+        const sheet = await book.sheet(textParameter(params.sheet))
+        const range = textParameter(params.range, 'A1:J20')
+        const text = readRange(book, sheet, range, textParameter(params.format, 'markdown'))
         const start = offset(params.offset)
         const limit = integer(params.limit, 12000, 25000)
         return answer(
@@ -171,7 +187,7 @@ export function createXlsxTools(): AgentTool[] {
         let total = 0
         const finds = []
         const q = query.toLowerCase()
-        const sheets = params.sheet ? [String(params.sheet)] : book.sheets.map((s) => s.name)
+        const sheets = params.sheet ? [textParameter(params.sheet)] : book.sheets.map((s) => s.name)
         for (const name of sheets) {
           signal?.throwIfAborted()
           const sheet = await book.sheet(name)
@@ -182,7 +198,7 @@ export function createXlsxTools(): AgentTool[] {
             if (at < 0) continue
             if (total >= after && finds.length < limit)
               finds.push(
-                `${name}!${cell.address}: ${text.slice(Math.max(0, at - 80), at + q.length + 80)}`
+                `${name}!${cell.address}: ${text.slice(Math.max(0, at - 80), at + Math.min(q.length, 80) + 80)}`
               )
             total++
           }

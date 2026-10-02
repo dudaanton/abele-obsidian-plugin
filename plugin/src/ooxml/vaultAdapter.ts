@@ -1,7 +1,13 @@
 import type { App, TFile } from 'obsidian'
 import { commitWordWrite } from './write'
-import { openOfficeArchive } from './package'
+import { openOfficeArchive, MAX_ARCHIVE } from './package'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
+export async function readOfficeBytes(app: App, file: TFile): Promise<Uint8Array> {
+  if (file.stat.size > MAX_ARCHIVE) throw new Error('Document is too large (32 MB compressed limit)')
+  const bytes = new Uint8Array(await app.vault.readBinary(file))
+  if (bytes.length > MAX_ARCHIVE) throw new Error('Document is too large (32 MB compressed limit)')
+  return bytes
+}
 const writes = new Map<string, Promise<unknown>>()
 /** Reviewed, best-effort optimistic publication. Preparation and rewind precede the final read. */
 export async function writeOfficeChange(
@@ -18,7 +24,7 @@ export async function writeOfficeChange(
     let didWrite = false
     const record = ChangeTracker.get(app)?.prepareBinaryWrite(path,original,()=>didWrite)
     const commit = () => commitWordWrite({
-      read: async () => new Uint8Array(await app.vault.readBinary(file)),
+      read: () => readOfficeBytes(app,file),
       write: async () => {
         signal?.throwIfAborted()
         validate?.()

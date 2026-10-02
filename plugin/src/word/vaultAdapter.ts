@@ -5,7 +5,7 @@ import { imageResource, type WordResources } from './imageOps'
 import { wordPreviewText } from './preview'
 import { TFile as VaultFile } from 'obsidian'
 import { wordRevision } from './write'
-import { writeOfficeChange } from '@/ooxml/vaultAdapter'
+import { readOfficeBytes, writeOfficeChange } from '@/ooxml/vaultAdapter'
 export const loadWordBytes = (bytes: Uint8Array) => openDocx(bytes, () => new Promise<void>(resolve => window.setTimeout(resolve, 0)))
 export const vaultWordResources = (app: App): WordResources => ({
   loadImage: async path => {
@@ -15,7 +15,7 @@ export const vaultWordResources = (app: App): WordResources => ({
   },
 })
 export async function prepareWordChange(app: App, file: TFile, edit: WordEdit, revision?: string) {
-  const original = new Uint8Array(await app.vault.readBinary(file))
+  const original = await readOfficeBytes(app,file)
   if (revision && wordRevision(original) !== revision) throw new Error('Document changed since it was read. Read it again.')
   const doc = await loadWordBytes(original)
   const updated = await applyWordEdit(doc, edit, vaultWordResources(app))
