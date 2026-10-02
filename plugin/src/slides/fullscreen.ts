@@ -46,16 +46,39 @@ export function nativeFullscreen(win: NativeWindow, preferSimple = false): Fulls
   }
 }
 
-/** Resolve in the tab's own renderer realm, so a desktop popout controls only its own window. */
+/** Views may be constructed in the main document then adopted into a popout. Resolve at entry,
+ * not construction, and keep that native target until exit so only its window is restored. */
 export function desktopFullscreen(host: HTMLElement): FullscreenHost | undefined {
   if (Platform.isMobile) return undefined
-  const win = host.ownerDocument.defaultView as unknown as {
-    require?: (name: string) => { getCurrentWindow(): NativeWindow }
-  }
-  try {
-    const native = win.require?.('@electron/remote').getCurrentWindow()
-    return native ? nativeFullscreen(native, Platform.isMacOS) : undefined
-  } catch {
-    return undefined
+  let active: FullscreenHost | undefined
+  let unwatch: (() => void) | undefined
+  let exited: (() => void) | undefined
+  return {
+    async enter() {
+      if (active) return
+      const win = host.ownerDocument.defaultView as unknown as {
+        require?: (name: string) => { getCurrentWindow(): NativeWindow }
+      }
+      const native = win.require?.('@electron/remote').getCurrentWindow()
+      if (!native) throw new Error('Native fullscreen unavailable')
+      active = nativeFullscreen(native, Platform.isMacOS)
+      if (exited) unwatch = active.watchExited?.(exited)
+      await active.enter()
+    },
+    async exit() {
+      const previous = active
+      active = undefined
+      unwatch?.()
+      unwatch = undefined
+      await previous?.exit()
+    },
+    watchExited(callback) {
+      exited = callback
+      return () => {
+        exited = undefined
+        unwatch?.()
+        unwatch = undefined
+      }
+    },
   }
 }

@@ -1,7 +1,35 @@
 import { describe, expect, it, vi } from 'vitest'
-import { nativeFullscreen } from '@/slides/fullscreen'
+import { desktopFullscreen, nativeFullscreen } from '@/slides/fullscreen'
 
 describe('native presentation fullscreen adapter', () => {
+  it('resolves the native window after an app-created view is adopted into a popout', async () => {
+    const initial = {
+      isFullScreen: () => false,
+      setFullScreen: vi.fn(),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    }
+    const destination = { ...initial, setFullScreen: vi.fn(), on: vi.fn(), removeListener: vi.fn() }
+    let doc = { defaultView: { require: () => ({ getCurrentWindow: () => initial }) } }
+    const element = {
+      get ownerDocument() {
+        return doc
+      },
+    } as unknown as HTMLElement
+    const host = desktopFullscreen(element)!
+    const exited = vi.fn()
+    const stop = host.watchExited!(exited)
+    doc = { defaultView: { require: () => ({ getCurrentWindow: () => destination }) } }
+    await host.enter()
+    expect(initial.setFullScreen).not.toHaveBeenCalled()
+    expect(destination.setFullScreen).toHaveBeenCalledWith(true)
+    expect(destination.on).toHaveBeenCalledWith('leave-full-screen', exited)
+    await host.exit()
+    expect(destination.setFullScreen).toHaveBeenLastCalledWith(false)
+    stop()
+    expect(destination.removeListener).toHaveBeenCalledWith('leave-full-screen', exited)
+  })
+
   it('enters the native window, restores its previous mode, and releases exit listeners', async () => {
     let fullscreen = false
     const win = {
