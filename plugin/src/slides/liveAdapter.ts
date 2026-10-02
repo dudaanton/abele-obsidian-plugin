@@ -27,7 +27,7 @@ export function networkDecision(app: App, path: string): Promise<boolean> {
     class NetworkDialog extends ShellModal {
       private answered = false
       constructor(app: App) {
-        super(app, { title: 'Allow network for this presentation?', footer: true })
+        super(app, { title: 'Allow network access?', footer: true })
       }
       onOpen(): void {
         this.bodyEl.createEl('p', {

@@ -35,6 +35,7 @@ it('shares one pending network decision for parallel blocks and audience rendere
   const b = first.allowNetwork!(deck)
   const c = audience.allowNetwork!(deck)
   expect(dialogs).toHaveLength(1)
+  expect((dialogs[0] as unknown as { titleText: string }).titleText).toBe('Allow network access?')
   dialogs[0].close()
   expect(await Promise.all([a, b, c])).toEqual([false, false, false])
   expect(await audience.allowNetwork!(deck)).toBe(false)
