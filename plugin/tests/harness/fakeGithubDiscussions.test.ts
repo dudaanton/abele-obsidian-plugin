@@ -13,7 +13,7 @@ describe('fake GitHub discussion access probe', () => {
     // The primary-access query is distinct from both search(type:DISCUSSION) and categories.
     const query =
       'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){discussions(first:1){totalCount}}}'
-    const response = await fetch(`${gh.origin}/api/graphql`, {
+    const response = await globalThis.fetch(`${gh.origin}/api/graphql`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables: { owner: 'acme', name: 'widgets' } }),

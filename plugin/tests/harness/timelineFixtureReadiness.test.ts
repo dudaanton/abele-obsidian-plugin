@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // Execute the fixture's actual page-local helpers, without loading its e2e suite.
 const source = readFileSync(resolve(__dirname, '../e2e/taskTimelineScroll.e2e.test.ts'), 'utf8')
-const prelude = source.match(/  const wait = ms[\s\S]*?(?=  const folder =)/)![0]
+const prelude = source.match(/ {2}const wait = ms[\s\S]*?(?= {2}const folder =)/)![0]
 
 function fixture() {
   const tasks = new Map<string, { dates: string[] }>()
