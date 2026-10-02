@@ -114,7 +114,17 @@ function extractSpeakerNotes(lines: string[]): { audience: string[]; notes: Mark
   return { audience, notes }
 }
 
-function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
+/** Optional codec locations for source-preserving edits; never stored as deck content. */
+export interface DeckLocations {
+  css: { start: number; end: number }[]
+}
+
+function parseSlide(
+  lines: string[],
+  sourceLine: number,
+  css: string[],
+  locations?: DeckLocations
+): Slide {
   const { audience, notes } = extractSpeakerNotes(lines)
   const blocks = markdownBlocks(lines)
   const live = syntaxLines(lines, blocks)
@@ -140,11 +150,13 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
     if (attributes && i === first) continue
     const style = /^ {0,3}(`{3,}|~{3,})css\s*$/.exec(line)
     if (style && blocks.some((b) => b.kind === 'code' && b.start === i)) {
+      const fenceStart = i
       const styles: string[] = []
       const close = new RegExp(`^ {0,3}${style[1][0]}{${style[1].length},}\\s*$`)
       while (i + 1 < lines.length && !close.test(lines[i + 1])) styles.push(lines[++i])
       if (i + 1 < lines.length) i++
       css.push(styles.join('\n').trim())
+      locations?.css.push({ start: sourceLine + fenceStart, end: sourceLine + i })
       continue
     }
     const fenced = /^ {0,3}(`{3,}|~{3,})(slide-script|slide-html)\s*$/.exec(line)
@@ -196,7 +208,8 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
   return slide
 }
 
-export function parseDeck(source: string): Deck {
+export function parseDeck(source: string, locations?: DeckLocations): Deck {
+  if (locations) locations.css = []
   const lines = source
     .replace(/^\uFEFF/, '')
     .replace(/\r\n?/g, '\n')
@@ -234,11 +247,11 @@ export function parseDeck(source: string): Deck {
   let from = start
   for (let i = start; i < lines.length; i++) {
     if (live[i - start] && SEPARATOR.test(lines[i])) {
-      deck.slides.push(parseSlide(lines.slice(from, i), from, css))
+      deck.slides.push(parseSlide(lines.slice(from, i), from, css, locations))
       from = i + 1
     }
   }
-  deck.slides.push(parseSlide(lines.slice(from), from, css))
+  deck.slides.push(parseSlide(lines.slice(from), from, css, locations))
   deck.css = css.filter(Boolean).join('\n\n')
   return deck
 }

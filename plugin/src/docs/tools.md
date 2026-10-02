@@ -52,7 +52,9 @@ creates a `.md` deck with `type: presentation` frontmatter. `deck_edit(path, sli
 operation?)` replaces one slide by default; `insert` inserts before the one-based number
 (count + 1 appends), and `remove` deletes it, but never the last slide. Content is exactly one
 slide, without frontmatter or separators; notes and layout markers are included. Untouched
-slides and deck properties keep their source spelling. Read the whole current deck before
+slides and deck properties keep their source spelling. Shared `css` fences survive a slide's
+replacement or removal, in their original cascade order; use ordinary source editing to change
+the deck-wide stylesheet intentionally. Read the whole current deck before
 editing; stale versions and concurrent changes are refused. Both writes use the ordinary file
 diff/confirmation and link the changed note to the chat.
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { prepareDeckCreate, prepareSlideEdit } from '@/slides/core/edit'
 import { checkSlideFit } from '@/slides/core/fit'
-import { parseDeck } from '@/slides/core/markdown'
+import { parseDeck, serializeDeck } from '@/slides/core/markdown'
 import { createDeckTools } from '@/ai/tools/DeckTools'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ReadGuard, contentHash, guardedTarget } from '@/ai/readGuard'
@@ -25,6 +25,30 @@ describe('portable slide changes', () => {
       SOURCE.slice(0, SOURCE.indexOf('::slide')) + '# Replacement\n> [!notes]\n> New cue\n'
     )
     expect(parseDeck(result).slides[1].notes[0].source).toBe('New cue')
+  })
+  it.each(['replace', 'remove'] as const)(
+    'keeps shared CSS when the serialized last slide is %s',
+    (operation) => {
+      const deck = parseDeck(SOURCE)
+      deck.css = 'h1 { font-size: 32px }\n.sample { padding: 12px }'
+      const source = serializeDeck(deck)
+      const result = prepareSlideEdit(source, {
+        slide: 2,
+        operation,
+        content: '# New conclusion\n> [!notes]\n> New cue',
+      })
+      expect(parseDeck(result).css).toBe(deck.css)
+      expect(parseDeck(result).slides[0].title).toBe('First')
+      expect(parseDeck(result).slides).toHaveLength(operation === 'remove' ? 1 : 2)
+    }
+  )
+  it('retains shared CSS order and the next slide marker when removing the first slide', () => {
+    const source =
+      '---\ntype: presentation\n---\n# Intro\n~~~css\nh1 { font-size: 30px }\n~~~\n---\n::slide{layout=title}::\n# Ending\n```css\nh1 { font-size: 40px }\n```\n'
+    const result = prepareSlideEdit(source, { slide: 1, operation: 'remove' })
+    expect(parseDeck(result).css).toBe(parseDeck(source).css)
+    expect(parseDeck(result).slides[0].settings.layout).toBe('title')
+    expect(parseDeck(result).slides[0].title).toBe('Ending')
   })
   it('inserts before a numbered slide and appends at count + 1', () => {
     const inserted = prepareSlideEdit(SOURCE, {
