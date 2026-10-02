@@ -15,7 +15,7 @@ describe.skipIf(!process.env.ABELE_STAND_STAGE)('personal stand supplement', () 
     if (stage === 'restore') {
       const result = cli.evalAwait<any>(`(async () => {
         const p = window.__personalStandProbe; if (!p) throw new Error('No owned restore state')
-        (${assertFreshStandBaseline.toString()})(p.local,p.marker,{vaultId:'',deviceTokenId:'',pendingRevoke:[]})
+        ;(${assertFreshStandBaseline.toString()})(p.local,p.marker,{vaultId:'',deviceTokenId:'',pendingRevoke:[]})
         const ledger = app.loadLocalStorage('abele-sync-ledger'), trust = app.loadLocalStorage('abele-script-provenance')
         const svc = window.__abeleTest.SyncService.getInstance(); await svc.forget()
         if (p.sibling) await svc.revokeTransferred(p.sibling, p.sibling.token)
@@ -85,14 +85,26 @@ describe.skipIf(!process.env.ABELE_STAND_STAGE)('personal stand supplement', () 
         if(held.length!==60) throw new Error('Expected exact owned 60-file delete hold, got ' + held.length)
         await svc.decideDeletes('restore',held.map(f=>f.fileId)); await svc.syncNow()
         const restored = (await svc.client().manifest(null)).items.filter(i=>i.path.startsWith(root + '/DeleteBurst/')).length
+        let localRestored=0
+        for(let i=0;i<60;i++){
+          const path=root + '/DeleteBurst/sample-' + i + '.md'
+          if(await app.vault.adapter.exists(path) && await app.vault.adapter.read(path)==='sample ' + i)localRestored++
+        }
+        const remainingHeld=(await svc.heldDeletes()).filter(f=>f.path.startsWith(root + '/DeleteBurst/')).length
         svc.pause()
         const client = svc.client(), commit = client.commitRaw.bind(client)
         client.commitRaw = async(ops,key)=>{ await commit(ops,key); throw new Error('Synthetic successful response lost') }
         await app.vault.create(root + '/lost-response.md','Committed once on stand')
         svc.resume()
-        return { renamed: !!renamed, held: held.length, restored }
+        return { renamed: !!renamed, held: held.length, restored,localRestored,remainingHeld }
       })()`)
-      expect(result).toEqual({ renamed: true, held: 60, restored: 60 })
+      expect(result).toEqual({
+        renamed: true,
+        held: 60,
+        restored: 60,
+        localRestored: 60,
+        remainingHeld: 0,
+      })
       // Wait on actual error/journal progress, never count a sleep as replay evidence.
       for (let i = 0; i < 80; i++) {
         if (
@@ -154,7 +166,7 @@ describe.skipIf(!process.env.ABELE_STAND_STAGE)('personal stand supplement', () 
       const p = { root: ${JSON.stringify(root)}, local: Object.fromEntries(keys.map(k=>[k,app.loadLocalStorage(k)])),
         ignore: await app.vault.adapter.exists('.abele-sync-ignore') ? await app.vault.adapter.read('.abele-sync-ignore') : null,
         marker: await app.vault.adapter.exists('.abele-script-managed') ? [...new Uint8Array(await app.vault.adapter.readBinary('.abele-script-managed'))] : null }
-      (${assertFreshStandBaseline.toString()})(p.local,p.marker,svc.connection.value)
+      ;(${assertFreshStandBaseline.toString()})(p.local,p.marker,svc.connection.value)
       if(await app.vault.adapter.exists(p.root)) throw new Error('Owned namespace collision')
       window.__personalStandProbe = p
       await app.vault.createFolder(p.root)
