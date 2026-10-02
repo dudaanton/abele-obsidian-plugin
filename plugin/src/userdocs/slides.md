@@ -81,6 +81,48 @@ at-rules behave as in script views. A settings line's `class="sample-layout"` gi
 your own class: `.sample-layout` styles that slide, and `.sample-layout h1` its headings. Without your
 CSS the fonts, sizes and colors come from Obsidian's theme.
 
+## Live scripts and HTML
+
+A `slide-script` block names an existing script from your configured scripts folder; it cannot
+contain JavaScript of its own. Example:
+
+```slide-script
+script: Sample report
+params: { region: west }
+refresh: enter
+```
+
+The script's declared parameter defaults apply. It runs through the same script service and
+foreign-script confirmation as a note button. Its returned text appears on the slide, and
+`show(markdown)` renders formatted content there instead of opening a dialog. For
+interactive cards, tables and buttons it may build a `view()` and call `open()` — the component
+kit renders inside the slide instead of opening a tab. `refresh: once` (default) runs once per
+entry without a timer, `enter` rebuilds it on each entry, and `refresh: 60s` reruns it while
+visible. Live script views are rebuilt when you return because leaving disposes their buttons,
+timers and handlers. Scripts are not started in presenter previews; only the audience slide
+runs them. Closing or leaving aborts the run and disposes its view. As with any script, JavaScript
+it writes outside the script API (such as a raw global timer) cannot be forcibly cancelled; use
+`view.every()` and `signal` for work that must stop.
+
+A `slide-html` block is a complete interactive HTML fragment:
+
+```slide-html
+<button onclick="this.textContent = 'Clicked'">Click</button>
+```
+
+It runs in a **sandboxed, opaque-origin iframe**, not in the note or Obsidian. It cannot read
+the vault, cookies, plugin state, or its parent window; it cannot open popups or submit forms.
+The frame is destroyed on exit and recreated on reentry, stopping its animation, timers and
+audio. Presenter previews never start it. A restrictive content policy blocks network fetches,
+remote images, scripts, styles and media by default; inline HTML, inline script/style, and
+`data:` images/media work. Vault paths in HTML are **not** resolved or inlined: use a regular
+Markdown embed outside the frame for those. To opt in, set `htmlNetwork: true` in the deck's
+frontmatter. The first time on each device and vault, the presentation asks whether to allow
+HTTPS network access; the answer (including a refusal) is remembered for that deck. Even then,
+HTTP and local vault resources remain blocked. The frame is still isolated, but an allowed page
+can send any data you put inside it to HTTPS servers. The browser may permit navigation **inside**
+the frame even with network access turned off; do not use the frame to display untrusted pages.
+
 ## View and present
 
 The commands **Open presentation**, **Preview presentation beside editor**, and
@@ -127,4 +169,4 @@ list so you can see what is coming.
 Set the deck property `transition: fade` or `transition: slide` for a simple slide-entry
 animation. `none` is the default. A slide can override it with `::slide{transition=none}::`.
 Animations last a quarter of a second and turn off when the system requests reduced motion.
-Scripts and export are still later stages.
+Export is a later stage.

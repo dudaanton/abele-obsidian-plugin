@@ -1,7 +1,7 @@
 # Presentations
 
 Presentation notes are Markdown decks viewed on a fixed canvas. This section describes the
-viewing format, shared presenter mode and navigation; scripts and export are not implemented yet.
+viewing format, shared presenter mode, live blocks and navigation; export is not implemented yet.
 
 ## Deck format
 
@@ -60,6 +60,32 @@ windows of a show.
 Set frontmatter `transition: none | fade | slide` (default `none`), or override it with
 `transition=fade` on a slide marker. Transitions animate slide entry for 250 ms with CSS, without
 changing the canvas scaling transform. They are disabled under `prefers-reduced-motion`.
+
+## Live blocks
+
+A top-level `slide-script` fence takes YAML with `script: Sample report`, optional
+`params: { region: west }`, and `refresh: once | enter | 60s`. It resolves a named script in
+the configured scripts folder, passes through ScriptService's foreign-script trust admission,
+and uses the same declared parameter defaults. Returned text appears inline; `show(markdown)`
+renders Markdown in the slide instead of opening a modal. A script may also
+open one `view()` whose component-kit body is mounted in the slide. Only the active audience or
+single-screen slide starts a run; adjacent slides and presenter previews never do. `once` keeps
+a static result after leaving, while an interactive view must be disposed and rebuilt on return.
+`enter` runs on every entry; an interval refresh runs only while the slide is active. The run
+receives an abort signal and the view is disposed on exit. Code using raw JavaScript global
+timers outside the script view API cannot be forcibly stopped; use `view.every` or `signal`.
+
+A top-level `slide-html` fence contains HTML for a sandboxed iframe with `allow-scripts` but
+**no `allow-same-origin`**. Its origin is opaque; it cannot access Obsidian, the vault, cookies,
+parent DOM, popups or forms. The iframe is removed on slide exit, which terminates its timers,
+animation and audio. Preview slides never start frames. The `srcdoc` CSP sets `default-src
+'none'`, allows inline script and style, `data:` images/media, and blocks connections and
+remote resources by default. HTML vault links are not resolved; use normal Markdown embeds
+outside the frame instead. Frontmatter `htmlNetwork: true` requests an HTTPS-only policy; the
+first use asks for a per-deck, per-device permission and remembers allow or deny in the app's
+local storage. HTTP and local vault URLs remain blocked even when HTTPS is allowed. Browser
+implementations may still allow navigation within the iframe when the network is denied;
+never treat the frame as a safe viewer for untrusted pages.
 
 ## Viewing and editing
 
