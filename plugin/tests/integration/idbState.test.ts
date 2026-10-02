@@ -357,7 +357,8 @@ describe('IndexedDbStateStore', () => {
       } finally {
         lose.restore()
       }
-      expect(await store.getCursor()).toBe(0)
+      // Failure to verify the reopened database is terminal, not a new empty first run.
+      await expect(store.getCursor()).rejects.toThrow('Sync recovery required')
     })
   })
 

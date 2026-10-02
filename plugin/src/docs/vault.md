@@ -1145,6 +1145,12 @@ initializing script provenance. A durable `ledger-identity-v1` header and device
 `abele-sync-ledger-proof` sentinel distinguish a legitimate empty vault from loss. Explicit
 enrolment alone writes a one-use `abele-sync-ledger-bootstrap` authorization, consumed before
 sync starts. Positive legacy state can acquire the header; an unprovable empty ledger cannot.
+Every automatic IndexedDB reopen after a WebKit lost-transaction/server-loss error verifies
+the actual fresh database's instance identity and expected ledger header before retrying.
+It never initializes missing identity, accepts overlay values, or performs legacy/bootstrap
+repair on that path. Missing/mismatched/unreadable identity is terminal for that runtime:
+**Sync recovery required**, stopped triggers and a false engine-effect fence before further
+writes/commits. Independent script-provenance stores have the same strict reopen protection.
 Restore this device's ledger backup, or use **Forget** and explicitly review a new join. Do not
 edit metadata to bypass the hold. No link baseline or script trust is inferred from current
 files during recovery. Independent script-provenance holds/approvals are not cleared by

@@ -31,6 +31,8 @@ vi.mock('@/sync/IndexedDbStateStore', () => ({
   IndexedDbStateStore: {
     open: async () => ({
       onClosedElsewhere: () => undefined,
+      onRecoveryRequired: () => undefined,
+      permitsEngineEffects: true,
       close: () => undefined,
       async *all() {},
       observeEntries: () => undefined,
@@ -39,10 +41,18 @@ vi.mock('@/sync/IndexedDbStateStore', () => ({
 }))
 vi.mock('@/sync/ledgerRecovery', () => ({
   requireLedger: async () => undefined,
+  LEDGER_IDENTITY_KEY: 'ledger-identity-v1',
   LedgerRecoveryRequired: class extends Error {},
 }))
 vi.mock('@/scripting/trust/scriptTrustStorage', () => ({
-  activateScriptProvenance: async () => ({ store: { close: () => undefined }, provenance: {} }),
+  activateScriptProvenance: async () => ({
+    store: {
+      close: () => undefined,
+      onRecoveryRequired: () => undefined,
+      permitsEngineEffects: true,
+    },
+    provenance: {},
+  }),
 }))
 vi.mock('@/sync/ObsidianFileSystem', () => ({ ObsidianFileSystem: class {} }))
 vi.mock('@/sync/ledgerId', () => ({

@@ -526,6 +526,7 @@ export class EngineRunner {
         }
       },
       closedElsewhere: (closed) => this.closedUnderEngine(closed),
+      recoveryRequired: (closed, error) => this.stopForRecovery(closed, error),
     })
 
     this.store = store
@@ -554,6 +555,19 @@ export class EngineRunner {
    * the running engine. Every transaction after this would fail with IndexedDB's own message,
    * so the engine is stopped and the status says what happened and what to do.
    */
+  private stopForRecovery(store: IndexedDbStateStore, error: Error): void {
+    if (this.store !== store) return
+    // Synchronous hold first: a handled per-file failure cannot continue committing/writing.
+    this.engine?.pause()
+    this.board.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: error.message })
+    void this.host.serialise(async () => {
+      if (this.store !== store) return
+      await this.teardown()
+      this.board.note(error.message)
+      this.board.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: error.message })
+    })
+  }
+
   private closedUnderEngine(store: IndexedDbStateStore): void {
     void this.host.serialise(async () => {
       if (this.store !== store) return

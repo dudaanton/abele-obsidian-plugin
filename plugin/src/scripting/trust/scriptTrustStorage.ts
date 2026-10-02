@@ -40,7 +40,9 @@ function descriptor(raw: unknown): Descriptor {
 }
 
 async function open(value: Descriptor, factory: IDBFactory, fresh: boolean) {
-  const store = await IndexedDbStateStore.open(factory, database(value.id))
+  const store = await IndexedDbStateStore.open(factory, database(value.id), {
+    identity: { key: 'script-local-vault', value: value.id },
+  })
   try {
     let revision = revisions.get(value.id)
     if (!revision) {

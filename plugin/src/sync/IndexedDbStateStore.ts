@@ -1,12 +1,11 @@
 import { EngineError, type Journal, type StateEntry, type StateStore } from '@abele/sync-core'
+import { asEngineError, completion, connectTo, deleteDatabase, wait } from './idbRequests'
 import {
-  asEngineError,
-  completion,
-  connectTo,
-  deleteDatabase,
-  lostTransaction,
-  wait,
-} from './idbRequests'
+  initializeDatabaseIdentity,
+  StateRecoveryRequired,
+  type StateOpenOptions,
+} from './idbIdentity'
+import { IndexedDbConnection } from './idbConnection'
 import {
   copyEntry,
   copyJournal,
@@ -129,15 +128,26 @@ export class IndexedDbStateStore implements StateStore {
   /** Told when another window made this connection close: see `onClosedElsewhere`. */
   private closedElsewhere: (() => void) | null = null
 
-  /** Set by `close`: a connection closed on purpose is not reopened behind the caller's back. */
-  private closed = false
-  /** A reopen under way, which every request that lost its transaction meanwhile waits for. */
-  private reopening: Promise<void> | null = null
+  private recoveryRequired: ((error: StateRecoveryRequired) => void) | null = null
+  onRecoveryRequired(callback: (error: StateRecoveryRequired) => void): void {
+    this.recoveryRequired = callback
+  }
+  get permitsEngineEffects(): boolean {
+    return this.connection.permitsEffects
+  }
+  private assertRecovery(): void {
+    this.connection.assertRecovery()
+  }
+  private get db(): IDBDatabase {
+    return this.connection.db
+  }
 
-  private constructor(
-    private db: IDBDatabase,
-    private readonly connect: () => Promise<IDBDatabase>
-  ) {}
+  private constructor(private readonly connection: IndexedDbConnection) {
+    connection.onRecoveryRequired = (error) => {
+      this.overlay?.discard(error)
+      this.recoveryRequired?.(error)
+    }
+  }
 
   /**
    * Called once if another window deletes or upgrades this database and the connection closes
@@ -153,7 +163,11 @@ export class IndexedDbStateStore implements StateStore {
    * Opens (and creates) the database and its stores. The factory is passed in rather than
    * taken from the window so a test can hand over its own and two tests never share one.
    */
-  static async open(indexedDB: IDBFactory, name: string): Promise<IndexedDbStateStore> {
+  static async open(
+    indexedDB: IDBFactory,
+    name: string,
+    options: StateOpenOptions = {}
+  ): Promise<IndexedDbStateStore> {
     let store: IndexedDbStateStore | null = null
     const connect = (): Promise<IDBDatabase> =>
       connectTo(
@@ -168,8 +182,21 @@ export class IndexedDbStateStore implements StateStore {
         },
         DB_VERSION
       )
-    store = new IndexedDbStateStore(await connect(), connect)
-    return store
+    const db = await connect()
+    try {
+      const identity = await initializeDatabaseIdentity(db)
+      const checks = [
+        identity,
+        ...(options.identity
+          ? [{ key: own(options.identity.key), value: options.identity.value }]
+          : []),
+      ]
+      store = new IndexedDbStateStore(new IndexedDbConnection(db, connect, checks))
+      return store
+    } catch (error) {
+      db.close()
+      throw error
+    }
   }
 
   /**
@@ -187,11 +214,11 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   close(): void {
-    this.closed = true
-    this.db.close()
+    this.connection.close()
   }
 
   async get(path: string): Promise<StateEntry | null> {
+    this.assertRecovery()
     const overlaid = this.overlay?.entries.get(path)
     if (overlaid !== undefined) return copyEntry(overlaid)
     return this.read(`cannot read the state of ${path}`, [ENTRIES], async (tx) =>
@@ -200,6 +227,7 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   async byFileId(fileId: string): Promise<StateEntry | null> {
+    this.assertRecovery()
     const overlay = this.overlay
     if (overlay) {
       const path = overlay.byFileId.get(fileId)
@@ -214,6 +242,7 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   async *all(): AsyncIterable<StateEntry> {
+    this.assertRecovery()
     // Every row up front: the caller may await between steps, and an IDB cursor held across an
     // await sees its transaction commit out from under the walk.
     const rows = await this.read('cannot read the state', [ENTRIES], async (tx) =>
@@ -234,6 +263,7 @@ export class IndexedDbStateStore implements StateStore {
    * `fileId` or its `wirePath` is removed in the same step, so the two can never both be there.
    */
   async put(entry: StateEntry): Promise<void> {
+    this.assertRecovery()
     await this.entryObserver?.({ ...entry })
     const copy = { ...entry }
     const what = `cannot record ${copy.path}`
@@ -269,6 +299,7 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   async delete(path: string): Promise<void> {
+    this.assertRecovery()
     if (this.overlay) {
       overlayDelete(this.overlay, path)
       return
@@ -279,6 +310,7 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   async getCursor(): Promise<number> {
+    this.assertRecovery()
     const value = await this.metaValue(CURSOR_KEY)
     if (value === null) return 0
     if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -288,10 +320,12 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   async setCursor(seq: number): Promise<void> {
+    this.assertRecovery()
     await this.setMetaValue('cannot record the cursor', CURSOR_KEY, seq)
   }
 
   async getJournal(): Promise<Journal | null> {
+    this.assertRecovery()
     const value = await this.metaValue(JOURNAL_KEY)
     if (value === null) return null
     if (typeof value !== 'object')
@@ -302,6 +336,7 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   async setJournal(j: Journal | null): Promise<void> {
+    this.assertRecovery()
     await this.setMetaValue('cannot record the journal', JOURNAL_KEY, copyJournal(j))
   }
 
@@ -313,6 +348,7 @@ export class IndexedDbStateStore implements StateStore {
    * Asynchronous where the daemon's is not: IndexedDB has no synchronous read.
    */
   async getMeta(key: string): Promise<string | null> {
+    this.assertRecovery()
     const value = await this.metaValue(own(key))
     if (value === null) return null
     if (typeof value !== 'string') throw new EngineError('io', `the stored ${key} is not a string`)
@@ -320,6 +356,7 @@ export class IndexedDbStateStore implements StateStore {
   }
 
   async setMeta(key: string, value: string | null): Promise<void> {
+    this.assertRecovery()
     await this.setMetaValue(`cannot record ${key}`, own(key), value)
   }
 
@@ -329,6 +366,7 @@ export class IndexedDbStateStore implements StateStore {
    * and for what joins an open transaction rather than starting one of its own.
    */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    this.assertRecovery()
     const outer = this.overlay
     if (outer) {
       // Part of the transaction that is already open: no overlay, no commit of its own. The
@@ -480,58 +518,11 @@ export class IndexedDbStateStore implements StateStore {
     })
   }
 
-  /**
-   * `attempt`, and once more on a connection opened afresh when WebKit dropped its transaction
-   * (`lostTransaction`) — what iOS does to the first request after the app comes back to the
-   * front. A lost transaction wrote nothing, so a write is made again whole. Any other failure,
-   * or the same one twice, is the caller's.
-   */
-  private async once<T>(what: string, attempt: () => Promise<T>): Promise<T> {
-    const failedOn = this.db
-    try {
-      return await attempt()
-    } catch (error) {
-      if (this.closed || !lostTransaction(error)) throw error
-      console.debug(
-        `[abele-sync] ${what}: the state database lost its transaction; reopening`,
-        error
-      )
-      try {
-        if (this.db === failedOn) {
-          this.reopening ??= this.reopen().finally(() => (this.reopening = null))
-        }
-        await this.reopening
-      } catch (cause) {
-        console.debug('[abele-sync] the state database would not reopen', cause)
-        throw error
-      }
-      return attempt()
-    }
+  private once<T>(what: string, attempt: () => Promise<T>): Promise<T> {
+    return this.connection.once(what, attempt)
   }
-
-  /** A fresh connection in place of the one that lost its transaction, which is closed. */
-  private async reopen(): Promise<void> {
-    const fresh = await this.connect()
-    const stale = this.db
-    if (this.closed) {
-      fresh.close()
-      return
-    }
-    this.db = fresh
-    stale.onversionchange = null
-    try {
-      stale.close()
-    } catch {
-      /* already closed */
-    }
-  }
-
   private begin(what: string, stores: string[], mode: IDBTransactionMode): IDBTransaction {
-    try {
-      return this.db.transaction(stores, mode)
-    } catch (cause) {
-      throw asEngineError(what, cause)
-    }
+    return this.connection.begin(what, stores, mode)
   }
 }
 

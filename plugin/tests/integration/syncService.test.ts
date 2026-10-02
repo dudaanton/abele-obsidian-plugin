@@ -1489,6 +1489,40 @@ describe('SyncService — a ledger closed under it', () => {
     expect((await other.state()).head_seq).toBe(before.head_seq)
   })
 
+  it('stops a running engine if WebKit reconnects to empty ledger storage', async () => {
+    const { other } = await connect()
+    await synced()
+    const before = await other.state()
+    const name = stateDatabaseName(ledgerOf().stateId)
+    const replacement = new IDBFactory()
+    const open = indexedDB.open.bind(indexedDB)
+    const opened = vi
+      .spyOn(indexedDB, 'open')
+      .mockImplementation((database, version) =>
+        database === name ? replacement.open(database, version) : open(database, version)
+      )
+    const store = (service as unknown as { runner: { store: IndexedDbStateStore } }).runner.store
+    const db = (store as unknown as { db: IDBDatabase }).db
+    const failed = vi.spyOn(db, 'transaction').mockImplementationOnce(() => {
+      throw new DOMException('Connection to Indexed Database server lost', 'UnknownError')
+    })
+    try {
+      await expect(service.entryFor('Existing.md')).rejects.toThrow('Sync recovery required')
+      await waitFor(
+        'fatal recovery to stop the engine',
+        () => !service.isConnected() && service.status.value.state === 'error'
+      )
+      expect(service.status.value.lastError).toContain('Sync recovery required')
+      await service.syncNow()
+      expect(service.isConnected()).toBe(false)
+      expect(await other.state()).toEqual(before)
+      expect(await read('Existing.md')).toBe('already here')
+    } finally {
+      failed.mockRestore()
+      opened.mockRestore()
+    }
+  })
+
   it('keeps Sync now held for explicit recovery once the ledger is gone', async () => {
     const { other } = await connect()
     await synced()

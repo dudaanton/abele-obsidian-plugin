@@ -9,7 +9,7 @@ import { selectiveFrom, type DeviceConnection, type JoinState } from './connecti
 import type { EngineHost } from './engineRunner'
 import { factoryOf, fallbackMsOf, pollMsOf, socketOf, transportOf } from './environment'
 import { readLedgerId, type LedgerId } from './ledgerId'
-import { requireLedger, LedgerRecoveryRequired } from './ledgerRecovery'
+import { requireLedger, LedgerRecoveryRequired, LEDGER_IDENTITY_KEY } from './ledgerRecovery'
 import { summarise } from './messages'
 import { OwnSettingsWatch, ownSettingsPath } from './ownSettings'
 import { noop } from './queue'
@@ -48,6 +48,7 @@ export interface EngineRecipe {
   committed?(vault: VaultClient, ops: CommitOp[], results: CommitOpResult[]): void
   /** The ledger's connection was closed by another window (`closedUnderEngine`). */
   closedElsewhere(store: IndexedDbStateStore): void
+  recoveryRequired?(store: IndexedDbStateStore, error: Error): void
 }
 
 /** An engine, and the ledger and client it was built on. */
@@ -79,7 +80,13 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     () => host.settingsMeaning()
   )
   const ledger = ledgerFor(app, connection.vaultId)
-  const store = await IndexedDbStateStore.open(factoryOf(deps), stateDatabaseName(ledger.stateId))
+  const store = await IndexedDbStateStore.open(factoryOf(deps), stateDatabaseName(ledger.stateId), {
+    identity: {
+      key: LEDGER_IDENTITY_KEY,
+      value: JSON.stringify({ stateId: ledger.stateId, vaultId: ledger.vaultId }),
+    },
+  })
+  store.onRecoveryRequired((error) => recipe.recoveryRequired?.(store, error))
   store.onClosedElsewhere(() => recipe.closedElsewhere(store))
   settings.useLedger(store)
   try {
@@ -95,6 +102,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       },
       factoryOf(deps)
     )
+    trust.store.onRecoveryRequired((error) => recipe.recoveryRequired?.(store, error))
     const renameRef = app.vault.on('rename', (file, from) => {
       void trust.provenance
         .rename(from, file.path)
@@ -145,6 +153,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       client: vault,
       fs,
       state: store,
+      stillHeld: () => store.permitsEngineEffects && trust.store.permitsEngineEffects,
       // A plain copy, never the ref's own: the engine files it in the state database with the
       // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
       selective: selectiveFrom(toRaw(connection.selective), Platform.isMobile),
