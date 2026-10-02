@@ -51,6 +51,18 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+it('seeds an existing note silently when its metadata arrives after the bus starts', () => {
+  bus.stop()
+  const cache = vi.spyOn(app.metadataCache, 'getFileCache').mockReturnValueOnce(null)
+  bus.start()
+  cache.mockRestore()
+  app.emit('metadataCache', 'changed', file('Tasks/Buy milk.md'), 'text', {})
+  expect(seen).toEqual([])
+  save('Tasks/Buy milk.md', { type: 'task', created: '2026-09-01', completed: '2026-09-24' })
+  expect(seen).toHaveLength(1)
+  expect(seen[0].kinds).toContain('task.completed')
+})
+
 describe('a task', () => {
   it('completed: completed filled in, with before and after', () => {
     save('Tasks/Buy milk.md', { type: 'task', created: '2026-09-01', completed: '2026-09-24' })

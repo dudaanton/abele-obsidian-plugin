@@ -70,8 +70,11 @@ export class NoteEventBus {
     this.running = true
 
     for (const file of this.app.vault.getMarkdownFiles()) {
-      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter
-      this.snapshots.set(file.path, { frontmatter: copy(fm), body: null })
+      const cache = this.app.metadataCache.getFileCache(file)
+      // Missing metadata is not an empty note. Its first parse seeds the baseline silently,
+      // rather than announcing an existing task as newly created during plugin startup.
+      if (!cache) continue
+      this.snapshots.set(file.path, { frontmatter: copy(cache.frontmatter), body: null })
     }
 
     const { vault, metadataCache } = this.app
