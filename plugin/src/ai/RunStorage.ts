@@ -2,6 +2,7 @@ import { TFile, TFolder } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { ChatMessage } from './types'
+import { readChatText, rewriteChat } from './chatCopy'
 
 export type RunStatus = 'running' | 'done' | 'error' | 'aborted'
 
@@ -34,10 +35,8 @@ export interface RunFile {
 /**
  * Reads and writes the sidecar file a delegated run lives in.
  *
- * Runs are kept out of the parent chat on purpose. `ChatSession.save()` rewrites a whole chat
- * file on every tool call, approval and branch switch, and the largest chat in a working vault
- * runs to 273 KB; folding run transcripts into it would multiply that cost by however many
- * sub-agents were dispatched.
+ * Runs are kept out of the parent chat on purpose: their branch transcripts can be updated
+ * independently, without copying all of them into the parent's conversation log.
  *
  * Run files also carry no `internalMessages`. Those exist to resume a conversation, and a
  * finished run is never resumed — dropping them roughly halves the file.
@@ -82,7 +81,11 @@ export class RunStorage {
 
       const existing = app.vault.getAbstractFileByPath(path)
       if (existing instanceof TFile) {
-        await app.vault.modify(existing, content)
+        const previous = await this.readContent(existing)
+        await rewriteChat(app, existing, content, (current) => {
+          if (current !== previous)
+            throw new Error('This run changed elsewhere. Reopen it before making changes.')
+        })
         return existing
       }
       return await app.vault.create(path, content)
@@ -98,12 +101,27 @@ export class RunStorage {
     if (!(file instanceof TFile)) return null
 
     try {
-      const run = JSON.parse(await app.vault.read(file)) as RunFile
+      const run = JSON.parse(await this.readContent(file)) as RunFile
       return this.markInterrupted(run)
     } catch (err) {
       console.error('[Abele] Failed to read run', runId, err)
       return null
     }
+  }
+
+  private async readContent(file: TFile): Promise<string> {
+    const { app } = GlobalStore.getInstance()
+    const whole = (content: string): boolean => {
+      try {
+        const run = JSON.parse(content) as RunFile
+        return (
+          run?.type === 'abele-run' && run.runId === file.basename && Array.isArray(run.branches)
+        )
+      } catch {
+        return false
+      }
+    }
+    return readChatText(app, file, (current, backup) => !whole(current) && whole(backup))
   }
 
   /**
