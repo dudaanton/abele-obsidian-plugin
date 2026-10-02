@@ -16,6 +16,16 @@
     @mouseover="emit('hover', placed, $event)"
     @pointerdown="drag?.press(placed, $event)"
   >
+    <input
+      v-if="placed.item.kind === 'event'"
+      class="task-list-item-checkbox"
+      type="checkbox"
+      :checked="placed.item.completed"
+      :aria-label="`${placed.item.completed ? 'Mark undone' : 'Mark done'}: ${placed.item.title}`"
+      @pointerdown.stop
+      @keydown.stop
+      @click.stop.prevent="toggleDone"
+    />
     <span v-if="time" class="abele-calendar-chip__time">{{ time }}</span>
     <span class="abele-calendar-chip__title">{{ placed.item.title }}</span>
   </div>
@@ -30,6 +40,8 @@
 import { computed } from 'vue'
 import { clock, type PlacedItem } from '@/bases/calendarLayout'
 import { useCalendarDrag } from './calendarDrag'
+import { calendars } from '@/calendars/CalendarService'
+import { toggleEventDone } from '@/calendars/eventMenu'
 
 const props = defineProps<{
   placed: PlacedItem
@@ -44,6 +56,11 @@ const emit = defineEmits<{
 
 /** The view's drag, which every chip starts from; none where the chip is drawn on its own. */
 const drag = useCalendarDrag()
+
+const toggleDone = () => {
+  const found = calendars().eventById(props.placed.item.id)
+  if (found) void toggleEventDone(found)
+}
 
 const time = computed(() => {
   const { item, fromBefore } = props.placed

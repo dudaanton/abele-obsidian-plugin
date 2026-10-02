@@ -288,12 +288,12 @@ describe.skipIf(!available)('calendars on a phone', () => {
     expect(Number(screens.read?.status?.split(' ')[1])).toBeGreaterThanOrEqual(7)
   })
 
-  it('lists the events in the timeline, with no checkbox, and marks their days', () => {
+  it('lists the events in the timeline, with owner checkboxes, and marks their days', () => {
     expect(screens.timeline?.error).toBeUndefined()
     expect(screens.timeline?.phone).toBe(true)
     // The weekly one four times, the night train on two days, the trip on three, the dentist.
     expect(screens.timeline?.events).toBeGreaterThanOrEqual(8)
-    expect(screens.timeline?.checkboxes).toBe(0)
+    expect(screens.timeline?.checkboxes).toBe(screens.timeline?.events)
     expect(screens.timeline?.marks).toBeGreaterThan(0)
   })
 

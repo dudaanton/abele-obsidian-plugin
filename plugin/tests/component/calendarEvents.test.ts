@@ -1,5 +1,5 @@
 /**
- * Events of external calendars among the tasks: shown apart from them — no checkbox, the
+ * Events of external calendars among the tasks: with an owner checkbox and the
  * calendar's colour and name — in the order of the day, and offering a meeting note. And the
  * settings screen that connects a calendar, whose link never reaches the settings file.
  */
@@ -37,6 +37,7 @@ const event = (over: Partial<CalendarEvent> = {}): CalendarEvent => ({
   id: 'f:e1:once',
   feedId: 'f',
   uid: 'e1',
+  recurrenceId: null,
   title: 'Dentist',
   allDay: false,
   start: at('2026-04-10T09:00:00+02:00'),
@@ -155,9 +156,10 @@ describe('an event in a list', () => {
     return wrapper
   }
 
-  it('cannot be ticked, and says when, where and from which calendar', () => {
+  it('has an owner checkbox, and says when, where and from which calendar', () => {
     const view = render(event())
-    expect(view.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(view.find('input[type="checkbox"]').exists()).toBe(true)
+    expect(view.find('input[type="checkbox"]').classes()).toContain('task-list-item-checkbox')
     expect(view.classes()).toContain('abele-calendar-event_color-green')
     expect(view.text()).toContain('09:00–09:30')
     expect(view.text()).toContain('Main street 4')
@@ -185,6 +187,7 @@ describe('an event in a list', () => {
     await view.trigger('click')
     const menu = shown.mock.contexts[0] as unknown as Menu
     expect(menu.items.map((i: MenuItem) => i.title)).toEqual([
+      'Mark done',
       'Create meeting note',
       'Open the event link',
     ])

@@ -15,6 +15,11 @@
           @click="goToday"
         />
         <Icon icon="chevron-right" :tooltip="`Next ${stepName}`" @click="step(1)" />
+        <Button
+          class="abele-calendar-base__completed-toggle"
+          :text="showCompleted ? 'Hide completed' : 'Show completed'"
+          @click="showCompleted = !showCompleted"
+        />
       </div>
       <Tabs
         class="abele-calendar-base__modes"
@@ -214,18 +219,19 @@ const eventsById = computed(() => {
   for (const shown of calendars().byDay().values()) {
     for (const { event, feed } of shown) {
       if (out.has(event.id)) continue
-      const item = eventToItem(event, feed.color)
+      const item = eventToItem(event, feed.color, calendars().isDone(event))
       if (item) out.set(event.id, { event, item: Object.freeze(item) })
     }
   }
   return out
 })
 
+const showCompleted = ref(true)
 const allItems = computed<readonly CalendarItem[]>(() => {
   const events = eventsById.value
   const notes = props.instance.items.value
-  if (!events.size) return notes
-  return [...notes, ...[...events.values()].map((e) => e.item)]
+  const items = [...notes, ...[...events.values()].map((e) => e.item)]
+  return showCompleted.value ? items : items.filter((item) => !item.completed)
 })
 
 // ---- where the view is ---------------------------------------------------------------------

@@ -124,7 +124,7 @@
 import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
 import CalendarEventView from './CalendarEvent.vue'
-import type { ShownEvent } from '@/calendars/CalendarService'
+import { calendars, type ShownEvent } from '@/calendars/CalendarService'
 import { matchesTerms } from '@/helpers/listSearch'
 import { computed, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
@@ -234,6 +234,7 @@ const dates = computed(() => {
     for (const [date, shown] of props.events) {
       for (const item of shown) {
         const { event } = item
+        if (hideCompleted.value && calendars().isDone(event)) continue
         if (words.length && !matchesTerms(`${event.title} ${event.location}`.toLowerCase(), words))
           continue
         // A day-long event heads its day; a timed one that began earlier is there from its start.
@@ -295,7 +296,12 @@ const visible = computed(() => {
 const pastUnfinished = computed(() => {
   const keys = new Set<string>()
   for (const [, items] of past.value)
-    for (const item of items) if (item.task && !item.task.completedAt) keys.add(item.key)
+    for (const item of items)
+      if (
+        (item.task && !item.task.completedAt) ||
+        (item.shown && !calendars().isDone(item.shown.event))
+      )
+        keys.add(item.key)
   return keys.size
 })
 const historyEl = ref<HTMLElement | null>(null)

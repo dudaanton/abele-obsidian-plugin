@@ -480,7 +480,11 @@ const minuteOf = (ms: number): number => {
  * device's clock, a day-long one on its own dates. Its id is the occurrence's, so the view
  * finds the event again when it is pressed.
  */
-export function eventToItem(event: CalendarEvent, color: KitColor): CalendarItem | null {
+export function eventToItem(
+  event: CalendarEvent,
+  color: KitColor,
+  completed = false
+): CalendarItem | null {
   const days = eventDays(event)
   if (!days.length) return null
   const timed = !event.allDay
@@ -496,6 +500,6 @@ export function eventToItem(event: CalendarEvent, color: KitColor): CalendarItem
     // Until midnight is the end of the day it is on, not the start of the next.
     endMinute: endMinute === 0 ? MINUTES_IN_DAY : endMinute,
     color,
-    completed: false,
+    completed,
   }
 }

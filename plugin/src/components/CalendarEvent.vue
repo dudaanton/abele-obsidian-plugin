@@ -1,7 +1,8 @@
 <template>
   <div
     class="abele-calendar-event"
-    :class="`abele-calendar-event_color-${feed.color}`"
+    :class="[`abele-calendar-event_color-${feed.color}`, { 'is-checked': done }]"
+    :data-task="done ? 'x' : ' '"
     role="button"
     tabindex="0"
     :aria-label="`${event.title}, ${timeText}, from ${calendarName}`"
@@ -9,6 +10,16 @@
     @contextmenu.prevent="openMenu"
     @keydown.enter="openMenu"
   >
+    <label class="task-list-label" contenteditable="false">
+      <input
+        class="task-list-item-checkbox"
+        type="checkbox"
+        :checked="done"
+        :aria-label="`${done ? 'Mark undone' : 'Mark done'}: ${event.title}`"
+        @click.stop.prevent="toggleEventDone(event)"
+        @keydown.stop
+      />
+    </label>
     <div class="abele-calendar-event__bar" />
     <div class="abele-calendar-event__content">
       <div class="abele-calendar-event__title">{{ event.title }}</div>
@@ -34,9 +45,8 @@
 
 <script setup lang="ts">
 /**
- * One event from an external calendar in a list of tasks. Read only, and made to look it: no
- * checkbox, a bar in the calendar's colour where a task has none, and the calendar's name.
- * A click offers what can be done with it — a note about it, its link.
+ * One external occurrence beside tasks. The checkbox is the owner's local mark, not a
+ * calendar edit. Pressing the card offers that mark, a meeting note and its link.
  */
 import { computed, ref } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
@@ -45,7 +55,8 @@ import type { CalendarEvent } from '@/calendars/events'
 import { eventDays, localDay } from '@/calendars/events'
 import { feedLabel, type CalendarFeed } from '@/calendars/settings'
 import { clockTime, eventTimeText } from '@/calendars/meetingNote'
-import { openEventMenu } from '@/calendars/eventMenu'
+import { openEventMenu, toggleEventDone } from '@/calendars/eventMenu'
+import { calendars } from '@/calendars/CalendarService'
 
 const props = defineProps<{
   event: CalendarEvent
@@ -55,6 +66,7 @@ const props = defineProps<{
 }>()
 
 const showDescription = ref(false)
+const done = computed(() => calendars().isDone(props.event))
 
 const calendarName = computed(() => feedLabel(props.feed))
 
@@ -90,7 +102,12 @@ const openMenu = (e: MouseEvent | KeyboardEvent) => openEventMenu(props.event, p
   }
 }
 
-// Where a task has its checkbox: a mark that cannot be ticked, in the calendar's colour.
+.abele-calendar-event.is-checked .abele-calendar-event__title {
+  text-decoration: var(--checklist-done-decoration);
+  color: var(--checklist-done-color);
+}
+
+// A calendar's colour remains visible beside the owner's checkbox.
 .abele-calendar-event__bar {
   flex: 0 0 auto;
   align-self: stretch;
