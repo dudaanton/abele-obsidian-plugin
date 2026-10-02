@@ -152,7 +152,7 @@ describe.skipIf(!available)("a repository's lists", () => {
     expect(r.url).toBe(`${gh.web}/issues/7`)
   })
 
-  it('discussions come with their categories', () => {
+  it('discussions come with their categories', async () => {
     const r = evalAsync<{ error?: string; rows?: string[]; categories?: string[] }>(`(async () => {
       ${PRELUDE}
       ${LISTS}
@@ -165,6 +165,10 @@ describe.skipIf(!available)("a repository's lists", () => {
       const real = select.querySelector('select:not(.is-measuring)')
       return { rows: rowsOf(root), categories: [...real.querySelectorAll('option')].map((o) => o.textContent) }
     })()`)
+    console.info(
+      'Discussion GraphQL requests:',
+      (await gh.drainRequests()).filter((line) => line.includes('/api/graphql'))
+    )
     expect(r.error).toBeUndefined()
     expect(r.rows).toEqual(['How should paging work?'])
     expect(r.categories).toEqual(['Any category', 'Ideas', 'Q&A'])

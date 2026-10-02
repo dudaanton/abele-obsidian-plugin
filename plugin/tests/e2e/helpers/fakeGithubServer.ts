@@ -422,6 +422,7 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
     query?: string
     variables?: Record<string, unknown>
   }
+  console.log(`POST /api/graphql body=${JSON.stringify({ query, variables })}`)
   const profiles = query?.includes('user(login:')
   console.log(
     `POST /api/graphql operation=${profiles ? 'profiles' : 'other'}${profiles ? ` logins=${Object.values(variables ?? {}).join(',')}` : ''}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`
