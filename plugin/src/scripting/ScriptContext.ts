@@ -701,13 +701,15 @@ export function buildScriptContext(opts: {
      */
     view(viewOpts: ViewOptions): View {
       const restore = views.length === 0 ? opts.restore : undefined
+      const host = opts.viewHost ?? defaultViewHost()
       const v = new View(
         viewOpts,
-        opts.viewHost ?? defaultViewHost(),
+        host,
         { script: opts.scriptName ?? '', params: opts.params },
         restore
       )
       views.push(v)
+      host.created?.(v)
       return v
     },
 

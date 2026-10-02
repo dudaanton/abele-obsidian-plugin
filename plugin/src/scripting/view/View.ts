@@ -47,6 +47,8 @@ export interface OpenOptions {
 const MAX_ERRORS = 20
 
 export interface ViewHost {
+  /** Embedded hosts own the lifetime from creation, including timers before open(). */
+  created?(view: View): void
   open(view: View, opts: Required<OpenOptions>): Promise<void>
   close(view: View): void
 }

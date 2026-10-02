@@ -59,6 +59,7 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
       if (!script || script.meta.lint || script.meta.interceptor)
         throw new Error(`Script not found: ${block.name}`)
       let view: View | null = null
+      const created = new Set<View>()
       const shown: (() => void)[] = []
       let mounted: ReturnType<typeof createApp> | null = null
       let mountEl: HTMLElement | null = null
@@ -71,6 +72,10 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
         runAgain: () => {},
       })
       const host: ViewHost = {
+        created(view) {
+          if (signal.aborted) void view.dispose()
+          else created.add(view)
+        },
         async open(opened) {
           signal.throwIfAborted()
           if (view) throw new Error('Only one view can open on a slide')
@@ -93,10 +98,9 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
         mounted = null
         mountEl?.remove()
         mountEl = null
-        if (view) {
-          void view.dispose()
-          view = null
-        }
+        for (const view of created) void view.dispose()
+        created.clear()
+        view = null
       }
       signal.addEventListener('abort', dispose, { once: true })
       try {
