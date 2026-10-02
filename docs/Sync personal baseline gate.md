@@ -136,6 +136,12 @@ workspace and original databases; owned local folders and new ledger database we
 and the backup was removed only after verification. Desktop restoration and lease release
 passed independently. The server retained only the tidy owned test namespace.
 
+A later bounded attempt to prepare a fresh phone sibling for lost-response and mobile-delete
+checks did not complete its join. The temporary phone backup, local files/databases and Mac
+fixture were restored, the pending sibling was revoked and the encrypted transfer removed.
+Neither test is counted as run. The original physical-offline run and its verified cleanup
+remain separate evidence.
+
 Fleet settings/plugin-code confirmation checks and **phone** lost-response restart remain
 **NOT RUN**. The unpaused burst and real-stand replay evidence above are desktop-only; the
 phone does not stand in for those checks. The unavailable iPad remains an explicit hold.
