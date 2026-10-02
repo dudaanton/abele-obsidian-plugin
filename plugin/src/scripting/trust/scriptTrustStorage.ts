@@ -7,6 +7,7 @@ import { LEDGER_KEY } from '@/sync/ledgerId'
 import { ScriptProvenance, type ScriptBinding } from './ScriptProvenance'
 import { assertCurrentScriptConnection } from './scriptConnection'
 import { ScriptRevision } from './ScriptRevision'
+import { assertNoScriptContextHold, SCRIPT_CONTEXT_HOLD_FILE } from './scriptContextHold'
 
 export const SCRIPT_SENTINEL = '.abele-script-managed'
 export const SCRIPT_TRUST_KEY = 'abele-script-provenance'
@@ -84,6 +85,9 @@ export async function activateScriptProvenance(
 /** Absence is local trust ONLY when there is no descriptor, connection, ledger or recovery marker. */
 export async function scriptTrustFor(app: App, factory: IDBFactory = window.indexedDB) {
   const storage = storageOf(app)
+  assertNoScriptContextHold(storage)
+  if (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
+    throw new Error('Script execution blocked while a protected context is isolated')
   const raw = storage?.loadLocalStorage(SCRIPT_TRUST_KEY) ?? null
   if (raw === null) {
     const connection = storage?.loadLocalStorage(CONNECTION_KEY) as { vaultId?: string } | null

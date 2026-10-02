@@ -3,6 +3,7 @@ import { sha256 } from '@abele/sync-core'
 import { parseScriptHeader, extractScriptBody } from '../ScriptParser'
 import { scriptTrustFor, SCRIPT_TRUST_KEY } from './scriptTrustStorage'
 import { storageOf } from '@/sync/vaultWrites'
+import { assertNoScriptContextHold } from './scriptContextHold'
 import { assertCurrentScriptConnection, hasScriptConnection } from './scriptConnection'
 import {
   sameBinding,
@@ -29,6 +30,7 @@ const permissions = new WeakMap<ParsedScript, CheckedPermission | null>()
 
 /** Synchronous final fence: no awaited read separates policy validation from compilation. */
 export function assertScriptContext(app: App, script: ParsedScript): void {
+  assertNoScriptContextHold(storageOf(app))
   if (!permissions.has(script)) throw new Error('Script has no checked execution snapshot')
   const permission = permissions.get(script)
   if (permission) permission.provenance.assertRevision(script.path, permission.generation)

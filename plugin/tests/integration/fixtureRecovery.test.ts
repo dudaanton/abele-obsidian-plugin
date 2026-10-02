@@ -10,7 +10,7 @@ vi.mock('@/sync/SyncService', () => ({ SyncService: { getInstance: () => mock } 
 import { prepareFixtureContext, restoreFixtureContext } from '@/testing/fixtureContext'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { buildFakeVault } from '../helpers/fakeVault'
-import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
+import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
 import { readConnection, emptyConnection } from '@/sync/connection'
 import type { App } from 'obsidian'
 let factory: IDBFactory
@@ -71,6 +71,16 @@ describe('retryable phone fixture recovery', () => {
     await expect(scriptForExecution(app as unknown as App, 'Scripts/sample.js')).rejects.toThrow(
       /fixture|context|blocked|recovery/i
     )
+  })
+  it('fences a previously captured local snapshot synchronously before compilation', async () => {
+    const app = buildFakeVault([
+      { path: 'Scripts/local.js', content: '// @name Local sample\nreturn "local"' },
+    ])
+    ;(app.workspace as any).getLayout = () => ({})
+    ;(app.workspace as any).changeLayout = vi.fn(async () => {})
+    const snapshot = await scriptForExecution(app as unknown as App, 'Scripts/local.js')
+    await prepareFixtureContext(app as unknown as App, 'FixtureRecovery')
+    expect(() => assertScriptContext(app as unknown as App, snapshot)).toThrow(/context|blocked/)
   })
   it('preserves the pending revoke queue when forget cannot reach the server', async () => {
     const app = await setup()

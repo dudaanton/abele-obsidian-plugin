@@ -1,6 +1,10 @@
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { SyncService } from '@/sync/SyncService'
+import {
+  SCRIPT_CONTEXT_HOLD_KEY,
+  SCRIPT_CONTEXT_HOLD_FILE,
+} from '@/scripting/trust/scriptContextHold'
 const BACKUP = 'task14-isolated-fixture'
 const KEYS = [
   'abele-sync-connection',
@@ -82,6 +86,11 @@ export async function prepareFixtureContext(app: App, root: string): Promise<boo
   )
     throw new Error('Active fixture connection left untouched')
   if (app.loadLocalStorage(BACKUP)) throw new Error('Fixture backup already exists')
+  if (
+    app.loadLocalStorage(SCRIPT_CONTEXT_HOLD_KEY) != null ||
+    (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
+  )
+    throw new Error('Existing script execution hold left untouched')
   if ((await app.vault.adapter.exists(root)) || (await app.vault.adapter.exists(root + '-private')))
     throw new Error('Fixture namespace already exists')
   const local = Object.fromEntries(KEYS.map((k) => [k, app.loadLocalStorage(k)])),
@@ -110,6 +119,16 @@ export async function prepareFixtureContext(app: App, root: string): Promise<boo
   app.saveLocalStorage(BACKUP, backup)
   if (JSON.stringify(app.loadLocalStorage(BACKUP)) !== JSON.stringify(backup))
     throw new Error('Fixture backup was not persisted')
+  // Fence stored scripts BEFORE removing any original trust/connection evidence.
+  app.saveLocalStorage(SCRIPT_CONTEXT_HOLD_KEY, true)
+  if (app.loadLocalStorage(SCRIPT_CONTEXT_HOLD_KEY) !== true)
+    throw new Error('Script context hold was not persisted')
+  await app.vault.adapter.writeBinary(
+    SCRIPT_CONTEXT_HOLD_FILE,
+    new TextEncoder().encode('Execution blocked until original context is restored\n').buffer
+  )
+  if (!(await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE)))
+    throw new Error('Script context sentinel was not persisted')
   // Clear only vault-local bindings, never touch old DBs. Adoption now allocates fresh UUIDs.
   for (const key of KEYS) app.saveLocalStorage(key, null)
   if (await app.vault.adapter.exists('.abele-script-managed'))
@@ -195,6 +214,13 @@ export async function restoreFixtureContext(
       if ((await databaseDigest(name)) !== digest) throw new Error('Original database changed')
     })
   await attempt('restore workspace', () => app.workspace.changeLayout(p.workspace as any))
+  if (!errors.length) {
+    await attempt('release script context hold', async () => {
+      if (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
+        await app.vault.adapter.remove(SCRIPT_CONTEXT_HOLD_FILE)
+      app.saveLocalStorage(SCRIPT_CONTEXT_HOLD_KEY, null)
+    })
+  }
   if (!errors.length) app.saveLocalStorage(BACKUP, null)
   return { restored: !errors.length, errors }
 }
