@@ -129,7 +129,7 @@ export function registerDrawing(plugin: Plugin): void {
       if (file instanceof TFolder) {
         menu.addItem((item) =>
           item
-            .setTitle('New drawing')
+            .setTitle('New Abele drawing')
             .setIcon('pen-line')
             .setSection('action-primary')
             .onClick(() => void newDrawing(app, file))

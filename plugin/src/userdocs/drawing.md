@@ -5,10 +5,11 @@ SVG picture in your vault, so a note shows it with or without the plugin, on any
 
 ## A new drawing
 
-**New drawing** in the command palette makes one where new notes go, and a folder's menu in the
-file explorer makes one in that folder. It opens ready to draw on. Clicking a drawing anywhere —
-the file explorer, a link, the quick switcher — opens it in its own tab again; every other SVG
-opens in Obsidian's picture view as before.
+**New drawing** in the command palette makes one where new notes go, and **New Abele drawing**
+in a folder's menu in the file explorer makes one in that folder. The folder action names Abele
+so it stays distinct from other drawing plugins' actions. It opens ready to draw on. Clicking a
+drawing anywhere — the file explorer, a link, the quick switcher — opens it in its own tab again;
+every other SVG opens in Obsidian's picture view as before.
 
 ## Drawing
 
