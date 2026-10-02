@@ -7,6 +7,7 @@ import { strToU8, zipSync } from 'fflate'
 import { openXlsx } from '@/spreadsheet/package'
 import { applyWorkbookEdit } from '@/spreadsheet/edit'
 import { applyWorkbookFormat } from '@/spreadsheet/format'
+import { recalculateWorkbook } from '@/spreadsheet/calculation'
 import { featureWorkbook } from '../fixtures/xlsx/featureWorkbook'
 import { sampleParts, sheetXml } from '../fixtures/xlsx/sampleXlsx'
 const executable = [
@@ -60,6 +61,23 @@ it.skipIf(!executable)(
     const sheet = await reopened.sheet('Sample')
     expect(sheet.cells.get('B2')?.value).toBe(25)
     expect(sheet.cells.get('B2')?.style.bold).toBe(true)
+  },
+  150000
+)
+
+it.skipIf(!executable)(
+  'independently reopens escaped calculated XML control characters',
+  async () => {
+    const parts = sampleParts()
+    parts['xl/worksheets/sheet1.xml'] = strToU8(
+      sheetXml('<row r="1"><c r="A1"><f>CHAR(1)</f></c></row>')
+    )
+    const calculated = await recalculateWorkbook(await openXlsx(zipSync(parts)))
+    expect(calculated.complete).toBe(true)
+    const reopened = await reopenThroughLibreOffice(calculated.bytes)
+    const cell = (await reopened.sheet('Sample')).cells.get('A1')
+    expect(cell?.formula).toBe('CHAR(1)')
+    expect(cell?.value).toBe('\u0001')
   },
   150000
 )
