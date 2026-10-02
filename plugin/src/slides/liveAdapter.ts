@@ -8,12 +8,21 @@ import type { View, ViewHost } from '@/scripting/view/View'
 import type { ScriptViewModel } from '@/views/ScriptView'
 import type { BlockRenderer, Deck, ScriptBlock } from './core/model'
 
+const pendingDecisions = new WeakMap<App, Map<string, Promise<boolean>>>()
+
 /** The decision is local to this device and vault, and bound to the deck path. */
 function networkDecision(app: App, path: string): Promise<boolean> {
   const key = `abele-slide-network:${path}`
   const saved = app.loadLocalStorage(key)
   if (typeof saved === 'boolean') return Promise.resolve(saved)
-  return new Promise((resolve) => {
+  let pending = pendingDecisions.get(app)
+  if (!pending) {
+    pending = new Map()
+    pendingDecisions.set(app, pending)
+  }
+  const existing = pending.get(key)
+  if (existing) return existing
+  const decision = new Promise<boolean>((resolve) => {
     class NetworkDialog extends Modal {
       private answered = false
       onOpen(): void {
@@ -37,11 +46,16 @@ function networkDecision(app: App, path: string): Promise<boolean> {
           )
       }
       onClose(): void {
-        if (!this.answered) resolve(false)
+        if (!this.answered) {
+          app.saveLocalStorage(key, false)
+          resolve(false)
+        }
       }
     }
     new NetworkDialog(app).open()
-  })
+  }).finally(() => pending!.delete(key))
+  pending.set(key, decision)
+  return decision
 }
 
 /** Adapter for the script view kit: mount it into the slide, not a new workspace tab. */

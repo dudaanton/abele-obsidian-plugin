@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { Modal } from 'obsidian'
+import { parseDeck } from '@/slides/core/markdown'
 import { liveRenderer } from '@/slides/liveAdapter'
 import { ScriptService } from '@/scripting/ScriptService'
 import { buildScriptContext } from '@/scripting/ScriptContext'
@@ -13,6 +15,30 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   ScriptService.destroy()
+})
+
+it('shares one pending network decision for parallel blocks and audience renderers', async () => {
+  const dialogs: Modal[] = []
+  vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
+    dialogs.push(this)
+  })
+  const storage = new Map<string, unknown>()
+  const app = {
+    loadLocalStorage: (key: string) => storage.get(key),
+    saveLocalStorage: (key: string, value: unknown) => storage.set(key, value),
+  }
+  const markdown = { render: async () => () => {} }
+  const first = liveRenderer(app as never, () => 'sample-deck.md', markdown)
+  const audience = liveRenderer(app as never, () => 'sample-deck.md', markdown)
+  const deck = parseDeck('---\nhtmlNetwork: true\n---\n# Sample')
+  const a = first.allowNetwork!(deck)
+  const b = first.allowNetwork!(deck)
+  const c = audience.allowNetwork!(deck)
+  expect(dialogs).toHaveLength(1)
+  dialogs[0].close()
+  expect(await Promise.all([a, b, c])).toEqual([false, false, false])
+  expect(await audience.allowNetwork!(deck)).toBe(false)
+  expect(dialogs).toHaveLength(1)
 })
 
 it('disposes every view at cancellation even before it opens', async () => {
