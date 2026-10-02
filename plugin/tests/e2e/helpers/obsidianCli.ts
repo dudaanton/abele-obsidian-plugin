@@ -209,10 +209,15 @@ export function answerOf(output: string): string {
  * plugin, took longer than that on the desktop too.
  */
 export async function evalLong(code: string, timeoutMs = 180_000): Promise<string> {
-  const id = evalRaw(
+  // Choose the ID before sending the launch. A lost reply can then retry the same job,
+  // never the action it contains (a tap, a write, or an async generator's next step).
+  const id = 'job' + Date.now() + Math.random().toString(36).slice(2)
+  // The transport owns the one bounded retry budget for this idempotent launch.
+  evalRawIdempotent(
     `(() => {
-      const id = 'job' + Date.now() + Math.random().toString(36).slice(2)
+      const id = ${JSON.stringify(id)}
       const jobs = (window.__e2eJobs = window.__e2eJobs || {})
+      if (jobs[id]) return id
       jobs[id] = { done: false }
       // Started from a timer, after this call has answered: begun in a microtask it could run
       // on before the answer went out, and the call waited for the script it was only to start.
@@ -229,6 +234,7 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
   const deadline = Date.now() + timeoutMs
   for (;;) {
     await pauseAsync(1000)
+    // Reading must not delete the result: the reply itself may be lost.
     const job = evalJsonIdempotent<{ done: boolean; out?: string } | null>(
       `(window.__e2eJobs || {})[${JSON.stringify(id)}] ?? null`,
       30_000
@@ -236,11 +242,17 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
     // Gone with the page: something in the script reloaded it.
     if (!job) throw new Error('the script was lost: the page reloaded while it ran')
     if (job.done) {
+      // Acknowledge only after the worker has the answer. Cleanup is idempotent, and a
+      // lost cleanup reply is not a failed probe; the page already has its result.
+      try {
+        evalRawIdempotent(
+          `(() => { delete (window.__e2eJobs || {})[${JSON.stringify(id)}]; return 'removed' })()`,
+          5_000
+        )
+      } catch (error) {
+        if (!/gave no answer/.test(String(error))) throw error
+      }
       const out = job.out ?? ''
-      evalRawIdempotent(
-        `(() => { delete (window.__e2eJobs || {})[${JSON.stringify(id)}]; return 'ok' })()`,
-        10_000
-      )
       assertPhoneTransport(out)
       if (out.startsWith('Error: ')) throw new Error(out.slice(7))
       return out.startsWith('=> ') ? out.slice(3) : out
