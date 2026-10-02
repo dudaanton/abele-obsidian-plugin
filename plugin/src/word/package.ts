@@ -126,7 +126,7 @@ export const pack = (parts: Record<string, Uint8Array>): Promise<Uint8Array> =>
     } catch (error) {
       failed = true
       writer.terminate()
-      reject(error)
+      reject(error instanceof Error ? error : new Error(String(error)))
     }
   })
 export async function saveParts(
