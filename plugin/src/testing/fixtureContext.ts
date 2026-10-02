@@ -17,6 +17,8 @@ interface Backup {
   workspace: unknown
   dbNames: string[]
   digests: Record<string, string>
+  restorePhase?: 'leaving' | 'left'
+  fixtureDatabases?: string[]
 }
 /** Readonly fingerprint: opening an absent old database is forbidden, never bootstrap it. */
 async function databaseDigest(name: string): Promise<string> {
@@ -131,9 +133,29 @@ export async function restoreFixtureContext(
         errors.push(label)
       }
     }
-  const ledger = app.loadLocalStorage('abele-sync-ledger') as { stateId?: string } | null,
-    trust = app.loadLocalStorage('abele-script-provenance') as { id?: string } | null
-  await attempt('forget', () => SyncService.getInstance().forget())
+  if (p.restorePhase !== 'left') {
+    const ledger = app.loadLocalStorage('abele-sync-ledger') as { stateId?: string } | null,
+      trust = app.loadLocalStorage('abele-script-provenance') as { id?: string } | null
+    const currentLedger = ledger?.stateId ? 'abele-sync-' + ledger.stateId : null
+    // Never call Forget after original bindings have been restored, even after a crash/retry.
+    if (currentLedger && p.dbNames.includes(currentLedger))
+      return { restored: false, errors: ['refusing to forget an original ledger'] }
+    p.fixtureDatabases ??= [
+      currentLedger,
+      trust?.id ? 'abele-script-provenance-' + trust.id : null,
+    ].filter((v): v is string => !!v && !p.dbNames.includes(v))
+    p.restorePhase = 'leaving'
+    app.saveLocalStorage(BACKUP, p)
+    if (JSON.stringify(app.loadLocalStorage(BACKUP)) !== JSON.stringify(p))
+      return { restored: false, errors: ['restore phase was not persisted'] }
+    await attempt('forget', () => SyncService.getInstance().forget())
+    if (errors.length) return { restored: false, errors }
+    // Durable before the first original-binding write. Later cleanup retries skip Forget.
+    p.restorePhase = 'left'
+    app.saveLocalStorage(BACKUP, p)
+    if (JSON.stringify(app.loadLocalStorage(BACKUP)) !== JSON.stringify(p))
+      return { restored: false, errors: ['left phase was not persisted'] }
+  }
   for (const [key, value] of Object.entries(p.local))
     await attempt('restore local binding', async () => {
       app.saveLocalStorage(key, value)
@@ -157,10 +179,7 @@ export async function restoreFixtureContext(
       if (await app.vault.adapter.exists(root)) await app.vault.adapter.rmdir(root, true)
       if (await app.vault.adapter.exists(root)) throw new Error('Owned folder remains')
     })
-  for (const name of [
-    ledger?.stateId ? 'abele-sync-' + ledger.stateId : null,
-    trust?.id ? 'abele-script-provenance-' + trust.id : null,
-  ].filter((v): v is string => !!v && !p.dbNames.includes(v)))
+  for (const name of (p.fixtureDatabases ?? []).filter((v) => !p.dbNames.includes(v)))
     await attempt(
       'remove new fixture database',
       () =>
