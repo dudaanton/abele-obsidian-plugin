@@ -13,7 +13,10 @@ only the first GET. HEAD's existing no-cache header avoided that cache reuse.
 
 The verified iOS adapter now uses the actual `CapacitorHttp.request` bridge with
 `disableRedirects: true`, explicit `Cache-Control: no-cache, no-store` for every request and
-exact binary file-body/base64 response conversion. JSON bodies use the native JSON object path.
+exact file-body/base64 response conversion. All bodies, including JSON, are delivered through
+that byte path: native dictionary JSON encoding was physically observed to reorder keys,
+which can invalidate a receipt's replay request hash. Repeated file-body JSON echo preserved
+exact bytes; strict phone commit history replay was then verified.
 Redirect responses are refused without a second request. There is no unsafe `requestUrl`
 fallback. Unsupported API versions, platforms or missing native bridge fail explicitly before
 credentials are sent. Native abort fences the returned result; the bridge cannot guarantee

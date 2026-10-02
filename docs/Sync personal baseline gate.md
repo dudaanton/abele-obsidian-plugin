@@ -28,12 +28,12 @@ untracked developer report, not this document.
 | --- | --- |
 | Three independent native personal installations: desktop, iPhone, iPad | **BLOCKED** — no usable iPad; phone inventory only |
 | Full create/edit/rename/delete and joins across all three | **NOT RUN** across native three-device fleet |
-| Physical iPhone offline concurrent shared/private edits and reconnect merge | **NOT RUN** |
-| Lost committed response plus restart, no duplicate history/content | Native desktop/disposable-server supplement passes; native fleet/remote stand case **NOT RUN** |
+| Physical iPhone offline concurrent shared/private edits and reconnect merge | Physical shared-note/Mac merge passes; private offline edit passes in a separate interval; combined same-interval fleet matrix **NOT RUN** |
+| Lost committed response plus restart, no duplicate history/content | Native desktop and physical phone on real stand pass, phone before/after history 1 and version unchanged; full native fleet **NOT RUN** |
 | Interrupted native mobile replacement retains target/backup and resumes | Deterministic adapter regression evidence only; physical case **NOT RUN** |
-| Unpaused native file/folder-delete burst, no loss or resurrection | Existing automated guards; native three-device case **NOT RUN** |
-| Settings/plugin code separate confirmation on personal fleet and daemon | Existing automated guards; current native fleet/daemon command gate **NOT RUN** |
-| Device-local script approvals never authorize another native installation | Model/gate, native desktop IDB and single physical-phone approval evidence; cross-installation/native fleet case **NOT RUN** |
+| Unpaused native file/folder-delete burst, no loss or resurrection | Native desktop and phone 60-note holds/restores pass with exact local bytes and zero remaining holds; native three-device case **NOT RUN** |
+| Settings/plugin code separate confirmation on personal fleet and daemon | Desktop-to-phone synthetic settings-only reload and separate exact code approval pass; full fleet/daemon command gate **NOT RUN** |
+| Device-local script approvals never authorize another native installation | Native phone approval does not authorize the same synced script on desktop; full three-native fleet **NOT RUN** |
 | Every retention/quota mutation password-gated | **BLOCKED** — hardening integration task 07 is a prerequisite; known baseline only gates a narrower subset |
 | Quiet convergence and continued personal sync with group worker stalled | Desktop/daemon quiet cycles below; native fleet/active-group-worker case **NOT RUN** |
 
@@ -84,7 +84,7 @@ merge, cross-device approval isolation or three-device stand gate. The real-serv
 engine late-receipt regression is separate integration evidence. Device screen sleep was
 requested successfully, but the post-sleep capture did not conclusively verify screen-off.
 
-The remaining task-14 matrix is unchanged: native fleet operations/joins, physical offline
+At that earlier single-phone checkpoint, the remaining task-14 matrix was: native fleet operations/joins, physical offline
 merge, remote lost-response restart, native mobile crash interruption, fleet delete bursts,
 settings/code/approval isolation, complete password gating, and stalled group-worker
 availability must still be supplied. No usable native iPad was exposed.
@@ -143,10 +143,58 @@ fixture were restored, the pending sibling was revoked and the encrypted transfe
 Neither test is counted as run. The original physical-offline run and its verified cleanup
 remain separate evidence.
 
-Fleet settings/plugin-code confirmation checks and **phone** lost-response restart remain
-**NOT RUN**. The unpaused burst and real-stand replay evidence above are desktop-only; the
+At that checkpoint, fleet settings/plugin-code checks and **phone** lost-response restart
+were **NOT RUN**; the later strict phone completion below supersedes those individual holds. The unpaused burst and real-stand replay evidence above are desktop-only; the
 phone does not stand in for those checks. The unavailable iPad remains an explicit hold.
 A two-device online/offline supplement is not a three-native-device sign-off.
+
+## Strict phone-side completion and fixture preservation
+
+The stand fixture is opt-in: it is skipped without `ABELE_STAND_STAGE`; explicit stages retain
+all assertions. Credential-bearing setup uses a failure-sanitized CLI path. Desktop setup now
+refuses disconnected retained ledger/proof/trust/sentinel state **before** mutation instead of
+pretending descriptors can restore a dropped database. Restore verifies the original local
+values and files. A no-op restore mutant demonstrated that the old server-only count still
+said 60 while local restoration was zero and all 60 remained held. The strengthened check
+requires every local file's exact bytes and zero remaining holds.
+
+The previous bounded phone joins had multiple harness causes: slow UI navigation exhausted
+the lease, a checkpoint searched plugin instance properties instead of the actual singleton,
+and the correct Merge-both service preference is `null`, not a string token. The phone also
+retained disconnected ledger/proof state. A test-only isolated context now preserves those
+original databases unchanged, fingerprints their readonly schema/rows, temporarily clears
+only local bindings, and allocates fresh fixture IDs. Cleanup restores bindings/files/layout,
+deletes only new databases/owned folders and verifies original database hashes. This is a
+programmatic production-service encrypted handoff, not a keyboard/UI-join claim.
+
+Current physical-phone evidence against the HTTPS stand:
+
+- Unpaused deletion of 60 owned notes held exactly 60 identities. Bounded restore returned all
+  60 local files with exact content and released all held entries.
+- A successful committed response was withheld after recording its real `body.results` and
+  **pre-reload history count 1**. Native page reload replayed the same durable request. The
+  final history remained **1**, with unchanged version identity, exact local bytes, replay log,
+  idle state and zero pending. No `idempotency_mismatch` remained.
+- The first native dictionary-body implementation exposed an ordering/replay mismatch. The
+  final adapter sends JSON through an exact-byte native file-body path. Physical echo tests
+  demonstrated that native dictionary JSON reordered keys while the byte path preserved them.
+- A newly created, scope-excluded private note was edited while real airplane mode was on.
+  After returning online its exact edited bytes remained local; complete server manifests
+  before and after excluded that path. This closes the private-only case; it was not the same
+  interval as the earlier shared-note/Mac concurrency test.
+- Four originally absent synthetic plugin paths were staged. Ordinary settings apply/reload
+  wrote only `data.json`; all three code files remained absent and staged. Only separate,
+  explicit code approval installed the exact three code versions. The synthetic plugin was
+  never enabled or executed. Real native settings/code prompts were inspected.
+
+Phone cleanup verified the original retained database hashes and restored the isolated profile.
+The synthetic plugin directory was removed only after disconnect. Desktop archived the four
+remote config artifacts under the owned test namespace, verified the active config paths were
+gone, restored its own fixture and released the lease. No original plugin/config was changed.
+
+Full iPad/three-native-device, all join modes, physical mobile replacement interruption,
+complete retention/quota-password and stalled group-worker gates remain outside this evidence.
+No automatic publication is activated by these supplements.
 
 ## Ordered continuation
 

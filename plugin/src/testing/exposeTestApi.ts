@@ -87,6 +87,7 @@ import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
 import { joinFixtureTransfer } from './joinFixtureTransfer'
 import { prepareFixtureContext, restoreFixtureContext } from './fixtureContext'
+import { startPhoneReplay, verifyPhoneReplay, clearPhoneReplayEvidence } from './phoneReplay'
 import { desktopTransport } from '@/sync/desktopTransport'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
@@ -185,6 +186,9 @@ interface AbeleTestApi {
   joinFixtureTransfer: typeof joinFixtureTransfer
   prepareFixtureContext: typeof prepareFixtureContext
   restoreFixtureContext: typeof restoreFixtureContext
+  startPhoneReplay: typeof startPhoneReplay
+  verifyPhoneReplay: typeof verifyPhoneReplay
+  clearPhoneReplayEvidence: typeof clearPhoneReplayEvidence
   desktopTransport: typeof desktopTransport
   ObsidianFileSystem: typeof ObsidianFileSystem
   scriptTrust: {
@@ -744,6 +748,9 @@ export function exposeTestApi(plugin: Plugin): void {
     joinFixtureTransfer,
     prepareFixtureContext,
     restoreFixtureContext,
+    startPhoneReplay,
+    verifyPhoneReplay,
+    clearPhoneReplayEvidence,
     desktopTransport,
     ObsidianFileSystem,
     scriptTrust: {
