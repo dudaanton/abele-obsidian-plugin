@@ -16,7 +16,9 @@ let confirm: (result: boolean) => void = () => {}
 const ask = vi.fn(() => ({ answer: new Promise<boolean>((resolve) => { confirm = resolve }), cancel: () => confirm(false) }))
 vi.mock('@/reader/companion', () => ({ notesOf: () => [], readHighlights: (...args: unknown[]) => load(...args), prepareHighlightRepairs: (...args: unknown[]) => prepare(...args), repairHighlightLinks: (...args: unknown[]) => repair(...args) }))
 vi.mock('@/reader/highlightRepairDialog', () => ({ askToRepairLinks: (...args: unknown[]) => ask(...args) }))
-const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve() }
+// Wait for the controller's lazy module imports, rather than assuming a runner-specific
+// number of microtasks. Confirmation promises stay pending until the test answers them.
+const flush = async () => { await vi.dynamicImportSettled() }
 
 const start = () => {
   const model = emptyBookModel()

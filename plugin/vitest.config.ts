@@ -22,6 +22,8 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Vitest 4 keeps a re-used spy's call history. Each case still starts with fresh calls.
+    clearMocks: true,
     environment: 'happy-dom',
     // Includes the complexity tier: those assertions describe how much work an algorithm may
     // do, they run against the in-memory fake vault in milliseconds, and they are the guard

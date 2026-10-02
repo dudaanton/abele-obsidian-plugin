@@ -90,10 +90,12 @@ describe('find in the tab', () => {
 })
 
 describe('the code search panel', () => {
+  // Capture the host function once: re-spying in Vitest 4 reuses the same mock, so binding
+  // an already delayed spy and then replacing it would recursively call its new body.
+  const digest = crypto.subtle.digest.bind(crypto.subtle)
   beforeEach(() => {
     // File hashes run outside the fake clock. Keep them pending beyond a fixed number of
     // promise flushes, even on a fast host, while still exercising the real digest.
-    const digest = crypto.subtle.digest.bind(crypto.subtle)
     vi.spyOn(crypto.subtle, 'digest').mockImplementation(
       async (...args: Parameters<SubtleCrypto['digest']>) => {
         await new Promise((resolve) => setTimeout(resolve, 100))
@@ -235,7 +237,6 @@ describe('the code search panel', () => {
   it('runs a search asked for while the comparison is still loading, once it has loaded', async () => {
     // The comparison's files are named by a hash that is worked out off the main thread; hold it
     // back, so the tab is still loading when Enter is pressed.
-    const digest = crypto.subtle.digest.bind(crypto.subtle)
     let release = () => {}
     const held = new Promise<void>((r) => (release = r))
     const spy = vi

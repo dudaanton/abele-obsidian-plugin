@@ -39,7 +39,7 @@ export default defineConfig({
     testTimeout: 180_000,
     hookTimeout: 180_000,
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
     fileParallelism: false,
     reporters: ['default', './tests/e2e/helpers/requireTests.ts'],
   },
