@@ -195,6 +195,8 @@ export class DrawingEmbed extends MarkdownRenderChild {
   /** A touch that shows the buttons, and so is nobody else's, until its click. */
   private revealing = false
   private hideTimer = 0
+  private unloaded = false
+  private refreshToken = 0
 
   constructor(
     private readonly app: App,
@@ -236,6 +238,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
   }
 
   onload(): void {
+    this.unloaded = false
     this.observer = new ResizeObserver(() => this.layout())
     this.observer.observe(this.embed)
     // Obsidian fills its embed when the picture loads: the box goes back in if it was taken out.
@@ -330,6 +333,8 @@ export class DrawingEmbed extends MarkdownRenderChild {
   }
 
   onunload(): void {
+    this.unloaded = true
+    this.refreshToken++
     ;(this.box.ownerDocument.defaultView ?? window).clearTimeout(this.hideTimer)
     this.observer?.disconnect()
     this.children?.disconnect()
@@ -340,14 +345,20 @@ export class DrawingEmbed extends MarkdownRenderChild {
   }
 
   private async refresh(): Promise<void> {
-    this.drawing = await isDrawingFile(this.app, this.file)
+    if (this.unloaded) return
+    const token = ++this.refreshToken
+    const drawing = await isDrawingFile(this.app, this.file)
+    if (this.unloaded || token !== this.refreshToken) return
+    this.drawing = drawing
     if (!this.drawing) {
       // Any other SVG: shown as Obsidian shows it.
       this.embed.removeClass(HOST)
       this.box.remove()
       return
     }
-    this.paper = paperOfSvg(await this.app.vault.cachedRead(this.file))
+    const text = await this.app.vault.cachedRead(this.file)
+    if (this.unloaded || token !== this.refreshToken) return
+    this.paper = paperOfSvg(text)
     this.img.src = vaultUrl(this.app, this.file)
     this.embed.addClass(HOST)
     if (this.box.parentElement !== this.embed) this.embed.append(this.box)
