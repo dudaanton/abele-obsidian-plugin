@@ -150,7 +150,22 @@ export async function openXlsx(
       const cells = new Map<string, WorkbookCell>()
       let maxRow = 1
       let maxColumn = 1
-      const nodes = descendants(sc(data.root, 'sheetData') ?? data.root, S, 'c')
+      const sheetData = sc(data.root, 'sheetData')
+      let previousRow = 0
+      for (const row of sheetData?.children ?? []) {
+        if (row.ns !== S || row.local !== 'row') continue
+        const number = Number(row.attrs.r)
+        if (
+          !/^[1-9]\d{0,6}$/.test(row.attrs.r ?? '') ||
+          !Number.isInteger(number) ||
+          number <= previousRow
+        )
+          throw new Error('Invalid, duplicate or out-of-order worksheet row')
+        cellAddress(number, 1)
+        maxRow = Math.max(maxRow, number)
+        previousRow = number
+      }
+      const nodes = descendants(sheetData ?? data.root, S, 'c')
       if (nodes.length > 200000) throw new Error('Sheet is too large (200000 stored cells limit)')
       const shared = new Map<
         string,
