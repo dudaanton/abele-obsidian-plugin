@@ -389,14 +389,23 @@ const apply = async () => {
 
 let stream: MediaStream | null = null
 let timer: number | null = null
+let cameraGeneration = 0
 
 const startCamera = async () => {
+  stopCamera()
+  const request = cameraGeneration
   error.value = ''
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    const granted = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment' },
     })
+    if (request !== cameraGeneration) {
+      granted.getTracks().forEach((track) => track.stop())
+      return
+    }
+    stream = granted
   } catch {
+    if (request !== cameraGeneration) return
     error.value = 'No camera here. Take a photo of the code, or paste the transfer as text.'
     return
   }
@@ -407,16 +416,19 @@ const startCamera = async () => {
     await video.value.play()
   }
 
+  if (request !== cameraGeneration) return
   // Four looks a second: the sending side holds each code for the best part of one, and
   // decoding a frame costs more than the interval saves.
   timer = win().setInterval(() => void grab(), 250)
 }
 
 const stopCamera = () => {
+  cameraGeneration++
   if (timer !== null) win().clearInterval(timer)
   timer = null
   stream?.getTracks().forEach((track) => track.stop())
   stream = null
+  if (video.value) video.value.srcObject = null
   cameraOn.value = false
 }
 
