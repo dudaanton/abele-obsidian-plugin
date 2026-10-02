@@ -422,10 +422,9 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
     query?: string
     variables?: Record<string, unknown>
   }
-  console.log(`POST /api/graphql body=${JSON.stringify({ query, variables })}`)
   const profiles = query?.includes('user(login:')
   console.log(
-    `POST /api/graphql operation=${profiles ? 'profiles' : 'other'}${profiles ? ` logins=${Object.values(variables ?? {}).join(',')}` : ''}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`
+    `POST /api/graphql operation=${profiles ? 'profiles' : 'other'}${profiles ? ` logins=${Object.values(variables ?? {}).join(',')}` : ''}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''} body=${JSON.stringify({ query, variables })}`
   )
   if (query?.includes('blame(path:')) {
     const text = fixtureFilesAt(String(variables?.ref ?? 'main'), web)?.[String(variables?.path)]
@@ -443,6 +442,10 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
     }))
     return send(res, 200, { data: { repository: { object: { blame: { ranges } } } } })
   }
+  // Opening the list first probes repository access. This is not a search or the
+  // category query; refusing it prevents the app from issuing either list request.
+  if (query?.includes('discussions(first:') && query.includes('totalCount'))
+    return send(res, 200, { data: { repository: { discussions: { totalCount: 1 } } } })
   if (query?.includes('type:DISCUSSION')) {
     const d = fixtures(web).discussion
     const q = String(variables?.q ?? '')
