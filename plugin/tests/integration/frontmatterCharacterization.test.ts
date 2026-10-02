@@ -241,6 +241,47 @@ describe('frontmatter read and write surfaces', () => {
     ).toBe('2028-03-01T10:45:12')
   })
 
+  it.each([
+    ['Europe/Moscow', '2028-02-29T21:00:00Z'],
+    ['America/Los_Angeles', '2028-03-01T08:00:00Z'],
+    ['UTC', '2028-03-01T00:00:00Z'],
+  ])('preserves the source date/time distinction at local midnight in %s', async (zone, start) => {
+    vi.stubEnv('TZ', zone)
+    const env = templateHarness([
+      {
+        path: 'Notes/sample.md',
+        raw: `---\n"due": &calendar 2028-03-01 # a calendar day\ncopy: *calendar\nstart: ${start}\n---\nBody`,
+      },
+    ])
+    await updateNoteFrontmatter('Notes/sample.md', { extra: true })
+    const file = env.app.vault.getFileByPath('Notes/sample.md')!
+    const written = load(getNoteRawFrontmatter(await env.app.vault.read(file))!)
+    expect(written).toMatchObject({
+      due: '2028-03-01',
+      copy: '2028-03-01',
+      start: '2028-03-01T00:00:00',
+      extra: true,
+    })
+  })
+
+  it('retains explicitly tagged calendar dates and timestamps as distinct source values', async () => {
+    vi.stubEnv('TZ', 'Europe/Moscow')
+    const env = templateHarness([
+      {
+        path: 'Notes/sample.md',
+        raw: '---\ndue: !!timestamp 2028-03-01\nstart: !!timestamp 2028-02-29T21:00:00Z\n---\nBody',
+      },
+    ])
+    await updateNoteFrontmatter('Notes/sample.md', { extra: true })
+    expect(vi.mocked(stringifyYaml).mock.lastCall?.[0]).toMatchObject({
+      due: '2028-03-01',
+      start: '2028-03-01T00:00:00',
+    })
+    expect(
+      getNoteBody(await env.app.vault.read(env.app.vault.getFileByPath('Notes/sample.md')!))
+    ).toBe('Body')
+  })
+
   // BUG: this writer uses front-matter.body directly and inserts one blank line; changing
   // a property destroys additional leading body blank lines despite the parser's spacing fix.
   it('preserves body spacing when updating frontmatter', async () => {

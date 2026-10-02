@@ -4,6 +4,18 @@ import { normalizePath, stringifyYaml, TAbstractFile, TFile, TFolder, Vault } fr
 import fm from 'front-matter'
 import { getFileByPath, getFileByPathOrName, readFileContent } from './vaultUtils'
 import dayjs from 'dayjs'
+import { DEFAULT_SCHEMA, load as loadYaml, Type } from 'js-yaml'
+
+// Retain timestamp scalar spelling, including anchors and explicitly tagged values.
+const timestampTextSchema = DEFAULT_SCHEMA.extend({
+  implicit: [
+    new Type('tag:yaml.org,2002:timestamp', {
+      kind: 'scalar',
+      resolve: (text: string) => /^\d{4}-\d{1,2}-\d{1,2}(?:$|[Tt \t])/.test(text),
+      construct: (text: string) => text,
+    }),
+  ],
+})
 
 const frontMatterRegex = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/
 
@@ -101,14 +113,21 @@ export const updateNoteFrontmatter = async (
 
   // Parse the frontmatter and content
   const parsed = fm<Record<string, any>>(content)
+  // Only needed while the reader returns Dates. String-valued host dates pass through unchanged.
+  const sourceAttributes = Object.values(parsed.attributes).some((value) => value instanceof Date)
+    ? ((loadYaml(parsed.frontmatter, { schema: timestampTextSchema }) as Record<string, unknown>) ??
+      {})
+    : {}
 
   const parsedAttributes = Object.keys(parsed.attributes).reduce(
     (obj, key) => {
       let value = parsed.attributes[key]
       if (value instanceof Date) {
-        const d = dayjs(value)
-        const hasTime = d.hour() !== 0 || d.minute() !== 0 || d.second() !== 0
-        value = hasTime ? d.format('YYYY-MM-DDTHH:mm:ss') : d.format(DATE_FORMAT)
+        const source = sourceAttributes[key]
+        value =
+          typeof source === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(source)
+            ? source
+            : dayjs(value).format('YYYY-MM-DDTHH:mm:ss')
       }
 
       obj[key] = value
