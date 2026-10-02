@@ -18,6 +18,9 @@
         <Button
           class="abele-calendar-base__completed-toggle"
           :text="showCompleted ? 'Hide completed' : 'Show completed'"
+          :tooltip="
+            showCompleted ? 'Hide completed notes and events' : 'Show completed notes and events'
+          "
           @click="showCompleted = !showCompleted"
         />
       </div>
