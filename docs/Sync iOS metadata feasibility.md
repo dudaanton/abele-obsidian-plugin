@@ -27,8 +27,14 @@ produced the exact remote and local events. Copied older evidence stayed unchang
 merge and rename; the latest cache was not substituted for it.
 
 A private hash was visible before its parsed cache existed. **Hash presence alone does not
-attest correspondence.** The paused current cache was null, so unknown evidence while a
-populated stale cache exists was not demonstrated by this native run.
+attest correspondence.** The first paused current cache was null, so unknown evidence while a populated stale cache
+exists was not demonstrated by that native run. A follow-up began with a populated baseline
+cache (`old-only`) and paused the exact remote worker input. During the pause the file had
+already advanced to `local-only`, remote callback evidence was absent, but `getFileCache`
+contained **no links**, not the stale baseline link. In a second attempt the worker hook was
+not entered before the bounded timeout. Thus the specifically populated stale-link cache
+race remains **unproven**, not a pass or an inferred capability. The first attempt's remote
+and local callback token offsets (0–15, 0–14) matched their own respective event bytes.
 
 ## Paste and lifecycle boundary
 
@@ -41,7 +47,8 @@ This proves an immediate asset-create callback is not itself a pre-upload barrie
 uploader/barrier was activated, and the publication-sensitive preflight remains unknown.
 
 Home/return commands did not establish suspension: the screenshot still showed the app and
-visibility stayed visible. A cold-launch request, followed by a successful normal launch,
+visibility stayed visible. The follow-up likewise recorded zero `visibilitychange` and
+`pagehide` events while Home/return screenshots still showed the app. A cold-launch request, followed by a successful normal launch,
 created a fresh page context and preserved exact saved bytes and backup evidence. Raw full
 cache equality did not survive restart: a version field was added and object keys reordered.
 Canonical content fields and all current token offsets matched, but raw cache hashes must not
