@@ -44,6 +44,7 @@ import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
 import { createBookTools } from './BookTools'
 import { createDocxTools } from './DocxTools'
+import { createXlsxTools } from './XlsxTools'
 import { createLintTool, createLintFixTool } from './LintTools'
 import { githubSettings } from '@/github/GithubService'
 import { createMcpTools } from '../mcp/tools'
@@ -317,6 +318,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   // and bookmarks, written where the reader writes them. The book files are never changed.
   tools.push(...createBookTools())
   tools.push(...createDocxTools())
+  tools.push(...createXlsxTools())
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)

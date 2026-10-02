@@ -3,6 +3,7 @@ import { REMEMBER_TOOL, FORGET_TOOL } from './memory'
 import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
+  XLSX_TOOL_MODES,
   LINT_TOOL_MODES,
   LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
@@ -212,7 +213,7 @@ function enableBookTools(ai: AiSettings): boolean {
   let changed = false
 
   for (const agent of ai.agents || []) {
-    for (const [tool, mode] of Object.entries({ ...BOOK_TOOL_MODES, ...DOCX_TOOL_MODES })) {
+    for (const [tool, mode] of Object.entries({ ...BOOK_TOOL_MODES, ...DOCX_TOOL_MODES, ...XLSX_TOOL_MODES })) {
       if (agent.toolModes[tool] !== undefined) continue
       agent.toolModes[tool] = mode
       changed = true

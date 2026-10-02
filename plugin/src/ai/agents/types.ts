@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid'
 import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
+  XLSX_TOOL_MODES,
   GITHUB_TOOL_MODES,
   LINT_TOOL_MODES,
   LOCATION_TOOL_MODES,
@@ -130,6 +131,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
       ...DOCX_TOOL_MODES,
+      ...XLSX_TOOL_MODES,
       ...LINT_TOOL_MODES,
       ...LOCATION_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,

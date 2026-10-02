@@ -28,6 +28,14 @@ section; local destination and HTTP approvals do not.
 `abele-key-http-origins-v1` holds explicitly allowed home-network HTTP origins on this device;
 it contains no secrets and does not travel either.
 
+## Excel files
+
+Workbooks remain ordinary binary `.xlsx` or read-only `.xlsm` attachments at their original
+vault paths. Opening/reading creates no Markdown conversion, cache note, sidecar or persistent
+setting. The grid indexes one sheet at a time and displays saved formula caches; it never
+executes macros, external links or embedded active content. Phone views offer no hand editing.
+ZIP limits and strict lexical XML parsing are shared with Word. `.xls` is not supported.
+
 ## Word files
 
 Word documents remain ordinary binary `.docx` attachments at their original vault paths.

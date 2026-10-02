@@ -43,6 +43,18 @@ accept it. Do not claim the parent was changed after proposing. Never edit a cha
 The parent must be idle and unchanged since the proposal; otherwise ask for a new selection and
 proposal. To revise again after acceptance, start a new comment on the revised words.
 
+## Excel workbooks
+
+`xlsx_sheets`, `xlsx_read`, `xlsx_search` read in-scope `.xlsx` and read-only `.xlsm` files by
+exact vault path, without requiring an open tab. Each has its own Off/Ask/On mode; read tools
+default to On. `xlsx_sheets` lists exact sheet names, hidden state and used ranges. `xlsx_read`
+takes `sheet`, an A1 `range` (default A1:J20, max 1000 cells), optional `format` (markdown/CSV),
+`offset` and `limit` (max 25000 characters). Values are saved caches; formulas appear beside
+them. Both return the file's `revision` token. Missing formula caches are pending; marked
+workbooks warn that values may be stale. `xlsx_search` searches literal values/formulas,
+optionally on one sheet, with `after` and `limit` (max 40 cells). Do not use text-file writes
+on a binary workbook. `.xls` is unsupported; macros and external content never execute.
+
 ## Word documents
 
 `docx_views`, `docx_read`, `docx_search` read `.docx` files by exact vault path, only inside
