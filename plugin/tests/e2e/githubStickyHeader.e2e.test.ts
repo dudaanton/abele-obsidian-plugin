@@ -1,6 +1,13 @@
 /** File paths stay at the tab scroller's top; links and native line jumps stay below them. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJsonIdempotent,
+  evalLong,
+  evalRawIdempotent,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import {
   PRELUDE,
   enableGithub,
@@ -12,6 +19,7 @@ import {
 import { diffHash } from './helpers/fakeGithubRepo'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { BLAME_PROBE } from './helpers/githubBlameProbe'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -25,8 +33,12 @@ for (const mobile of [false, true]) {
       let size: [number, number]
       beforeAll(async () => {
         if (mobile && !onPhone()) {
-          size = evalJson(`[...require('@electron/remote').getCurrentWindow().getContentSize()]`)
-          evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
+          size = evalJsonIdempotent(
+            `[...require('@electron/remote').getCurrentWindow().getContentSize()]`
+          )
+          evalRawIdempotent(
+            `(() => { require('@electron/remote').getCurrentWindow().setContentSize(390, 844); return 'ok' })()`
+          )
           await reloadApp('app.emulateMobile(true)')
         }
         gh = await startFakeGithub({ mode: 'wide-readme' })
@@ -38,8 +50,8 @@ for (const mobile of [false, true]) {
         } finally {
           gh?.stop()
           if (size) {
-            evalRaw(
-              `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
+            evalRawIdempotent(
+              `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]}); return 'ok' })()`
             )
             await reloadApp('app.emulateMobile(false)')
           }
@@ -131,9 +143,9 @@ for (const mobile of [false, true]) {
       )
       it.each(['blob', 'tree'])(
         '%s: only the path stays pinned and wide README content stays inside its boxes',
-        (kind) => {
+        async (kind) => {
           const url = `${gh.web}/${kind}/main/src${kind === 'blob' ? '/README.md' : ''}`
-          const report = evalAsync<{
+          type Report = {
             width: number
             sideways: number
             pathTops: number[]
@@ -142,12 +154,18 @@ for (const mobile of [false, true]) {
             controlsGone: boolean
             controlsBack: boolean
             blameReachable: boolean
+            blameHit: boolean
+            blameReady: boolean
+            blameState: unknown
             tableScrolls: boolean
             codeScrolls: boolean
             imageFits: boolean
-          }>(
-            `(async () => {
+          }
+          const report = JSON.parse(
+            await evalLong(
+              `(async () => {
             ${PRELUDE}
+            ${BLAME_PROBE}
             const leaf = await openTab(${JSON.stringify(url)}, false)
             await app.workspace.revealLeaf(leaf)
             try {
@@ -210,21 +228,15 @@ for (const mobile of [false, true]) {
               main.scrollTop = 0
               await frame()
               const controlsBack = controls.every(el => el.getBoundingClientRect().top >= top)
-              const toggle = header.querySelector('button[aria-label="Toggle line blame"]')
-              let blameReachable = ${kind !== 'blob'}
-              if (toggle) {
-                const box = toggle.getBoundingClientRect()
-                const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
-                toggle.click()
-                blameReachable = (toggle === hit || toggle.contains(hit)) && !!(await until(() => root.querySelector('.abele-github-blame')))
-                toggle.click()
-              }
-              return { width: innerWidth, sideways, pathTops, pinnedHeight, pathHeight: path.getBoundingClientRect().height,
-                controlsGone, controlsBack, blameReachable, tableScrolls, codeScrolls, imageFits }
+              const blame = ${kind === 'blob'} ? await probeBlame(root, header) :
+                { blameHit: true, blameReady: true, blameReachable: true, blameState: null }
+              return JSON.stringify({ width: innerWidth, sideways, pathTops, pinnedHeight, pathHeight: path.getBoundingClientRect().height,
+                controlsGone, controlsBack, ...blame, tableScrolls, codeScrolls, imageFits })
             } finally { leaf.detach() }
           })()`,
-            90_000
-          )
+              120_000
+            )
+          ) as Report
           console.info(JSON.stringify({ kind, mobile, ...report }))
           if (mobile && !onPhone()) expect(report.width).toBe(390)
           expect.soft(report.sideways).toBe(0)
@@ -232,6 +244,8 @@ for (const mobile of [false, true]) {
           expect.soft(report.pinnedHeight).toBeCloseTo(report.pathHeight, 0)
           expect.soft(report.controlsGone).toBe(true)
           expect(report.controlsBack).toBe(true)
+          expect(report.blameHit, JSON.stringify(report.blameState)).toBe(true)
+          expect(report.blameReady, JSON.stringify(report.blameState)).toBe(true)
           expect(report.blameReachable).toBe(true)
           expect(report.tableScrolls).toBe(true)
           expect(report.codeScrolls).toBe(true)
