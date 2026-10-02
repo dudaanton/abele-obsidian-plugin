@@ -1,6 +1,7 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
 import { createApp, type App as VueApp } from 'vue'
 import { readOfficeBytes } from '@/ooxml/vaultAdapter'
+import { sameBytes } from '@/ooxml/write'
 import WorkbookGrid from './WorkbookGrid.vue'
 import type { Workbook } from './package'
 import type { WorkbookEdit } from './edit'
@@ -23,11 +24,36 @@ export class XlsxView extends FileView {
     super(leaf)
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (!(file instanceof TFile) || file.path !== this.file?.path || this.saving) return
-        if (this.editing) this.externalChange = true
-        else void this.onLoadFile(file)
+        if (file instanceof TFile) void this.onWorkbookModified(file)
       })
     )
+  }
+  async onWorkbookModified(file: TFile): Promise<void> {
+    if (file.path !== this.file?.path || this.saving) return
+    if (this.editing) {
+      this.externalChange = true
+      return
+    }
+    const token = this.token
+    try {
+      const bytes = await readOfficeBytes(this.app, file)
+      if (token !== this.token || this.file !== file || this.saving) return
+      if (this.editing) {
+        this.externalChange = true
+        return
+      }
+      const book = this.workbook
+      if (
+        book &&
+        this.loadedPath === file.path &&
+        !(file.extension.toLowerCase() === 'xlsm' && !book.readOnly) &&
+        sameBytes(book.original, bytes)
+      )
+        return
+      await this.onLoadFile(file)
+    } catch {
+      if (token === this.token && this.file === file && !this.editing) await this.onLoadFile(file)
+    }
   }
   getViewType() {
     return XLSX_VIEW_TYPE
