@@ -482,6 +482,12 @@ export function needsCode(payload: TransferPayload): boolean {
   return Object.keys(payload.secrets).length > 0 || payload.entries.some((entry) => entry.sensitive)
 }
 
+/** Imported executable controls require a deliberate local enable, even when unchanged. */
+function disabledOnArrival(entry: TransferEntry): TransferEntry {
+  if (entry.section !== 'automations' && entry.section !== 'header-buttons') return entry
+  return { ...entry, data: { ...(entry.data as Record<string, unknown>), enabled: false } }
+}
+
 export type EntryStatus = 'new' | 'replace' | 'same'
 
 export interface PlannedEntry {
@@ -490,22 +496,24 @@ export interface PlannedEntry {
 }
 
 export function planEntries(entries: TransferEntry[], settings: AbeleSettings): PlannedEntry[] {
-  return settingsOnly(entries).map((entry) => {
-    const section = sectionById.get(entry.section)
-    if (!section) return { entry, status: 'new' as const }
+  return settingsOnly(entries)
+    .map(disabledOnArrival)
+    .map((entry) => {
+      const section = sectionById.get(entry.section)
+      if (!section) return { entry, status: 'new' as const }
 
-    const current =
-      section.kind === 'list'
-        ? section.read(settings).find((item) => itemId(section.id, item) === entry.id)
-        : section.read(settings)
+      const current =
+        section.kind === 'list'
+          ? section.read(settings).find((item) => itemId(section.id, item) === entry.id)
+          : section.read(settings)
 
-    if (!current || (section.kind === 'block' && Object.keys(current).length === 0)) {
-      return { entry, status: 'new' as const }
-    }
+      if (!current || (section.kind === 'block' && Object.keys(current).length === 0)) {
+        return { entry, status: 'new' as const }
+      }
 
-    const same = JSON.stringify(current) === JSON.stringify(entry.data)
-    return { entry, status: same ? ('same' as const) : ('replace' as const) }
-  })
+      const same = JSON.stringify(current) === JSON.stringify(entry.data)
+      return { entry, status: same ? ('same' as const) : ('replace' as const) }
+    })
 }
 
 /**
@@ -548,10 +556,12 @@ export function applyEntries(
   // settings are JSON on disk anyway, so nothing survives the trip that was not already there.
   const next = JSON.parse(JSON.stringify(settings)) as AbeleSettings
 
-  const arriving = settingsOnly(entries).sort(
-    (a, b) =>
-      Number(a.section === 'github-connections') - Number(b.section === 'github-connections')
-  )
+  const arriving = settingsOnly(entries)
+    .map(disabledOnArrival)
+    .sort(
+      (a, b) =>
+        Number(a.section === 'github-connections') - Number(b.section === 'github-connections')
+    )
   for (const entry of arriving) {
     if (entry.section !== 'github-connections') continue
     const c = entry.data as Partial<GithubConnection> | null

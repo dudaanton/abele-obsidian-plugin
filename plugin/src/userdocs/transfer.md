@@ -25,6 +25,9 @@ Each section changes only its own settings. Keys are stored only in the slots re
 settings you accept, never in extra slots named by the sender. The encrypted synced-key store
 itself never arrives by transfer.
 
+Automations and header buttons arrive switched off, including replacements. Enable them by
+hand in their settings after the transfer; the review compares this switched-off state.
+
 A transfer saved as a file lands in the vault root as `Abele transfer <date> <time>.txt`. Delete
 it once the transfer is done.
 

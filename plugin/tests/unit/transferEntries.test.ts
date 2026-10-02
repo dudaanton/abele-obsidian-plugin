@@ -695,7 +695,9 @@ describe('header buttons', () => {
       (e) => e.section === 'header-buttons'
     )
 
-    expect(applyEntries(arriving, settings()).headerButtons).toEqual([button])
+    expect(applyEntries(arriving, settings()).headerButtons).toEqual([
+      { ...button, enabled: false },
+    ])
   })
 })
 
@@ -720,7 +722,7 @@ describe('automations', () => {
     )
 
     expect(arriving.map((e) => e.label)).toEqual(['Log completed tasks'])
-    expect(applyEntries(arriving, settings()).automations).toEqual([rule])
+    expect(applyEntries(arriving, settings()).automations).toEqual([{ ...rule, enabled: false }])
   })
 })
 

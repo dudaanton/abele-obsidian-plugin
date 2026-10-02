@@ -261,7 +261,8 @@ from the plugin's header inside the note. Where it shows: every note with `allNo
 note of one of `noteTypes`, with one of `tags` (nested ones count, `#` optional), or under one of
 `folders` (`*` is one folder, `**` any depth); then `conditions` on properties, `all` or `any`
 by `conditionMode`. `otherFiles` puts a command button on PDFs, canvases, books and other
-non-note files too, by folders and tags alone. They travel in a transfer.
+non-note files too, by folders and tags alone. They travel in a transfer, but header buttons
+and automations always arrive with `enabled: false`; the person enables them locally afterwards.
 
 `quickButton` is the floating button on a phone: `enabled` (off by default, it is a concept),
 `tablet` (a tablet too), `side` (`right` or `left`), `lift` (pixels above where it rests,
