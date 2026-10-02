@@ -1,14 +1,18 @@
 import { pathToFileURL } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
 const COMMIT = '9b1136a0554287def69afb79b56eaaffcb09ca00'
 /** Separate server-only archive. Never aliases/pins this archive's unreviewed core push into plugin code. */
 export async function scopedApiServer() {
   const root = process.env.ABELE_SCOPED_API_FIXTURE
   if (!root) throw new Error('Explicit disposable scoped API archive is required')
+  verifySyncFixture(root, COMMIT)
   const provenance = JSON.parse(readFileSync(join(root, '.abele-sync-fixture.json'), 'utf8'))
   if (provenance.commit !== COMMIT)
     throw new Error('Disposable scoped API archive revision mismatch')
+  // Paths below are literal module names inside the exact checksum-verified archive.
+  // eslint-disable-next-line no-unsanitized/method -- Only literal modules from the checksum-verified archive are imported.
   const load = (file: string) => import(/* @vite-ignore */ pathToFileURL(join(root, file)).href)
   const { buildTestApp } = await load('packages/server/tests/helpers/testApp.ts')
   const test = await buildTestApp()

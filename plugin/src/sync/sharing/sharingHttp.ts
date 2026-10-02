@@ -50,7 +50,9 @@ export class SharingHttp {
         const value = (await response.json()) as { error?: { code?: unknown } }
         if (typeof value.error?.code === 'string' && /^[a-z_]+$/.test(value.error.code))
           code = value.error.code
-      } catch {}
+      } catch {
+        // Retain only the constant diagnostic, never raw response bytes/credentials.
+      }
       throw new SharingHttpError(code, response.status)
     }
     return response.json()
