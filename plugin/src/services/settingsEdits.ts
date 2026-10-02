@@ -11,6 +11,28 @@ const object = (value: unknown): value is Record<string, unknown> =>
 
 export class SettingsEdits {
   private edits = new Map<string, Edit>()
+  private readers = 0
+  private acknowledged = new Map<string, Edit>()
+
+  /** A read already in flight may return an older copy than a save finishing meanwhile. */
+  beginRead(): () => void {
+    this.readers++
+    let active = true
+    return () => {
+      if (!active) return
+      active = false
+      this.readers--
+      this.clearAcknowledged()
+    }
+  }
+
+  private clearAcknowledged(): void {
+    if (this.readers) return
+    for (const [key, edit] of this.acknowledged) {
+      if (this.edits.get(key) === edit) this.edits.delete(key)
+    }
+    this.acknowledged.clear()
+  }
 
   record(before: unknown, after: unknown, path: string[] = []): void {
     if (object(before) && object(after)) {
@@ -47,9 +69,9 @@ export class SettingsEdits {
   written(): () => void {
     const written = new Map(this.edits)
     return () => {
-      for (const [key, edit] of written) {
-        if (this.edits.get(key) === edit) this.edits.delete(key)
-      }
+      for (const [key, edit] of written) this.acknowledged.set(key, edit)
+      // Keep successful writes protected until all older reads have merged their patches.
+      this.clearAcknowledged()
     }
   }
 }

@@ -496,27 +496,33 @@ export class AbeleConfig {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
 
-    // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
-    // parse, and that is still somebody's settings.
-    const stored = await this.plugin.loadData()
-    this.freshInstall = stored === null
-    this.unreadable = stored === undefined
-    this.unreadableTold = false
-    if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
+    const edits = this.pendingEdits
+    const finishRead = edits.beginRead()
+    try {
+      // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
+      // parse, and that is still somebody's settings.
+      const stored = await this.plugin.loadData()
+      this.freshInstall = stored === null
+      this.unreadable = stored === undefined
+      this.unreadableTold = false
+      if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
 
-    // Fresh/current settings have no copied descriptions; historical shipped defaults are
-    // already recognised by the lightweight migration. Only possible custom/current copies
-    // need the executable catalog to distinguish an override from today's tool description.
-    const candidates = pruneToolDescriptions(stored?.ai?.prompts?.toolDescriptions).kept
-    const defaults = Object.keys(candidates).length ? await codeToolDescriptions() : {}
-    const migrated = this.applySettings(stored ?? undefined, defaults)
-    // Include edits made before or during the read, without reverting unrelated incoming fields.
-    this.applySettings(this.pendingEdits.apply(this.exportSettings()), defaults)
+      // Fresh/current settings have no copied descriptions; historical shipped defaults are
+      // already recognised by the lightweight migration. Only possible custom/current copies
+      // need the executable catalog to distinguish an override from today's tool description.
+      const candidates = pruneToolDescriptions(stored?.ai?.prompts?.toolDescriptions).kept
+      const defaults = Object.keys(candidates).length ? await codeToolDescriptions() : {}
+      const migrated = this.applySettings(stored ?? undefined, defaults)
+      // Include edits made before or during the read, without reverting unrelated incoming fields.
+      this.applySettings(edits.apply(this.exportSettings()), defaults)
 
-    // Migration only rewrites the settings held in memory. Persisting it here is what stops
-    // the same migration running again on the next launch — and, for the Comment agent,
-    // what stops a fresh one being minted every time the vault is opened.
-    if (migrated) await this.writeSettings()
+      // Migration only rewrites the settings held in memory. Persisting it here is what stops
+      // the same migration running again on the next launch — and, for the Comment agent,
+      // what stops a fresh one being minted every time the vault is opened.
+      if (migrated) await this.writeSettings()
+    } finally {
+      finishRead()
+    }
   }
 
   /**
