@@ -19,6 +19,12 @@ import { bundledMermaid } from '@/canvas/mermaidAdapter'
 import { canvasPicture, hostMetrics } from '@/canvas/pictureAdapter'
 
 const path = z.string().describe('Exact vault-relative .canvas path')
+const revision = z
+  .string()
+  .min(1)
+  .describe(
+    'Revision from canvas_read or the last successful canvas write; stale revisions are refused'
+  )
 const region = z
   .object({
     x: z.number(),
@@ -72,7 +78,7 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_read',
       'Read canvas',
-      'Read a JSON Canvas diagram by stable ids, as a compact outline with group hierarchy, edges, stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline. Works without an open tab; read-only. Array/key order is never identity.',
+      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline. Works without an open tab; read-only. Array/key order is never identity.',
       z
         .object({
           path,
@@ -83,7 +89,11 @@ export function createCanvasTools(): AgentTool[] {
       async (params, _signal, ctx) => {
         const key = scoped(params.path, ctx),
           store = new ObsidianCanvasStore(GlobalStore.getInstance().app)
-        return answer(canvasOutline(await store.read(key), params, hostMetrics()))
+        const snapshot = await store.snapshot(key)
+        return answer({
+          ...canvasOutline(snapshot.graph, params, hostMetrics()),
+          revision: snapshot.revision,
+        })
       }
     ),
     definition(
@@ -115,6 +125,8 @@ export function createCanvasTools(): AgentTool[] {
         return {
           ...answer({
             path: key,
+            revision: (await new ObsidianCanvasStore(GlobalStore.getInstance().app).snapshot(key))
+              .revision,
             nodes: graph.nodes.length,
             edges: graph.edges.length,
             warnings: lintCanvas(graph),
@@ -126,18 +138,19 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_edit',
       'Edit canvas',
-      'Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, remove {id}, connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Removing a group promotes its children; removing a node removes incident edges. One native Canvas undo item when open. Own Ask mode.',
-      z.object({ path, ops: z.array(operationSchema).min(1) }).strict(),
+      'Pass revision from canvas_read or the last successful write; stale file/native state is refused before any agent change. Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, remove {id}, connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Removing a group promotes its children; removing a node removes incident edges. One native Canvas undo item when open. Own Ask mode.',
+      z.object({ path, revision, ops: z.array(operationSchema).min(1) }).strict(),
       async (params, signal, ctx) => {
         const key = scoped(params.path, ctx)
         guardChatWrite(key)
         const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
           key,
+          params.revision,
           (graph) => planCanvasEdit(graph, params.ops, hostMetrics()),
           signal
         )
         return {
-          ...answer({ path: key, warnings: lintCanvas(result.after) }),
+          ...answer({ path: key, revision: result.revision, warnings: lintCanvas(result.after) }),
           details: {
             path: key,
             diff: { old: serializeCanvas(result.before), new: serializeCanvas(result.after) },
@@ -148,19 +161,20 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_layout',
       'Lay out canvas',
-      'Lay out the diagram automatically: layered (dagre), tree, radial, or grid; direction LR/RL/TB/BT. scope is a group id; keep pins ids (a kept group pins its whole subtree). Nested groups are laid out one level at a time. Other extension data survives. Own Ask mode, one native undo item. Review warnings then inspect a region or node with look_at_canvas.',
-      layoutOptionsSchema.extend({ path }),
+      'Pass revision from canvas_read or the last successful write; a changed version is refused and must be reread. Lay out the diagram automatically: layered (dagre), tree, radial, or grid; direction LR/RL/TB/BT. scope is a group id; keep pins ids (a kept group pins its whole subtree). Nested groups are laid out one level at a time. Other extension data survives. Own Ask mode, one native undo item. Review warnings then inspect a region or node with look_at_canvas.',
+      layoutOptionsSchema.extend({ path, revision }),
       async (params, signal, ctx) => {
         const key = scoped(params.path, ctx)
         guardChatWrite(key)
-        const { path: _path, ...options } = params
+        const { path: _path, revision: _revision, ...options } = params
         const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
           key,
+          params.revision,
           (graph) => planCanvasLayout(graph, options, hostMetrics()),
           signal
         )
         return {
-          ...answer({ path: key, warnings: lintCanvas(result.after) }),
+          ...answer({ path: key, revision: result.revision, warnings: lintCanvas(result.after) }),
           details: {
             path: key,
             diff: { old: serializeCanvas(result.before), new: serializeCanvas(result.after) },

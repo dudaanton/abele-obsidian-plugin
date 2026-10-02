@@ -8,6 +8,7 @@ import {
   type CanvasGraph,
 } from './core/model'
 import type { GraphStore } from './core/service'
+import { canvasRevision, CANVAS_CONFLICT } from './core/revision'
 
 interface NativeCanvasView extends TextFileView {
   save(): Promise<void>
@@ -64,13 +65,19 @@ export class ObsidianCanvasStore implements GraphStore {
       if (queue.get(path) === current) queue.delete(path)
     }
   }
-  async read(key: string): Promise<CanvasGraph> {
+  async snapshot(key: string): Promise<{ graph: CanvasGraph; revision: string; bytes: string }> {
     const file = this.file(key),
+      bytes = await this.app.vault.read(file),
       views = this.views(key)
-    // Reading an open diagram includes the native editor's not-yet-autosaved geometry/text.
-    return views[0]
-      ? parseCanvas(views[0].canvas.getData())
-      : parseCanvas(await this.app.vault.read(file))
+    if (views.length > 1)
+      throw new Error(
+        'This diagram is open in multiple native editors; close duplicate tabs before reading a write revision'
+      )
+    const graph = views[0] ? parseCanvas(views[0].canvas.getData()) : parseCanvas(bytes)
+    return { graph, bytes, revision: await canvasRevision(bytes, graph) }
+  }
+  async read(key: string): Promise<CanvasGraph> {
+    return (await this.snapshot(key)).graph
   }
   async create(key: string, graph: CanvasGraph, signal?: AbortSignal): Promise<void> {
     const path = canvasPath(key),
@@ -92,9 +99,10 @@ export class ObsidianCanvasStore implements GraphStore {
   }
   async change(
     key: string,
+    revision: string,
     transform: (graph: CanvasGraph) => CanvasGraph,
     signal?: AbortSignal
-  ): Promise<{ before: CanvasGraph; after: CanvasGraph }> {
+  ): Promise<{ before: CanvasGraph; after: CanvasGraph; revision: string }> {
     return this.serial(canvasPath(key), async () => {
       signal?.throwIfAborted()
       const file = this.file(key),
@@ -103,30 +111,30 @@ export class ObsidianCanvasStore implements GraphStore {
         throw new Error(
           'This diagram is open in multiple native editors; close duplicate tabs before changing it'
         )
-      const view = views[0]
-      if (view) {
-        // Flush the person's pending edit into its own undo item before the agent's batch.
-        const data = view.canvas.getData()
-        // Reject an invalid batch before flushing/reordering even unchanged native file bytes.
-        // Transforms are pure; the final callback still recomputes against current storage data.
-        parseCanvas(transform(cloneCanvas(parseCanvas(data))))
-        view.canvas.requestPushHistory.cancel?.()
-        const previous = view.canvas.history.data[view.canvas.history.current]
-        if (
-          !previous ||
-          canvasFingerprint(parseCanvas(previous)) !== canvasFingerprint(parseCanvas(data))
-        )
-          view.canvas.pushHistory(data)
-        view.canvas.requestSave(false)
-        await view.save()
-      }
+      const view = views[0],
+        snapshot = await this.snapshot(key)
+      if (!revision || snapshot.revision !== revision) throw new Error(CANVAS_CONFLICT)
+      signal?.throwIfAborted()
       let before: CanvasGraph | undefined, after: CanvasGraph | undefined
       await this.app.vault.process(file, (current) => {
         signal?.throwIfAborted()
-        before = parseCanvas(current)
+        // This comparison is byte-exact at publication, after checking the caller's SHA revision.
+        // Never save a native snapshot over a storage version the caller did not see.
+        if (current !== snapshot.bytes) throw new Error(CANVAS_CONFLICT)
+        const data = view ? parseCanvas(view.canvas.getData()) : parseCanvas(current)
+        if (canvasFingerprint(data) !== canvasFingerprint(snapshot.graph))
+          throw new Error(CANVAS_CONFLICT)
+        before = data
         after = parseCanvas(transform(cloneCanvas(before)))
-        // The host's modify listener calls setData and pushes one native undo item.
-        // Calling setViewData ourselves would push a second identical item.
+        if (view) {
+          view.canvas.requestPushHistory.cancel?.()
+          const previous = view.canvas.history.data[view.canvas.history.current]
+          if (!previous || canvasFingerprint(parseCanvas(previous)) !== canvasFingerprint(data))
+            view.canvas.pushHistory(data)
+          // Cancel an already queued native save; the modify listener imports the committed version.
+          const pendingSave = view.requestSave as (() => void) & { cancel?: () => void }
+          pendingSave?.cancel?.()
+        }
         return serializeCanvas(after)
       })
       if (!before || !after) throw new Error('Canvas storage did not run the transaction')
@@ -141,7 +149,7 @@ export class ObsidianCanvasStore implements GraphStore {
           await new Promise<void>((resolve) => window.setTimeout(resolve, 20))
         }
       }
-      return { before, after }
+      return { before, after, revision: (await this.snapshot(key)).revision }
     })
   }
 }

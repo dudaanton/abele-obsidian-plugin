@@ -29,9 +29,10 @@ export interface GraphStore {
   create(key: string, graph: CanvasGraph, signal?: AbortSignal): Promise<void>
   change(
     key: string,
+    revision: string,
     transform: (graph: CanvasGraph) => CanvasGraph,
     signal?: AbortSignal
-  ): Promise<{ before: CanvasGraph; after: CanvasGraph }>
+  ): Promise<{ before: CanvasGraph; after: CanvasGraph; revision: string }>
 }
 export const graphInputSchema = z
   .object({

@@ -45,7 +45,10 @@ Other Abele-only data lives under `abele` at file/node/edge level. Existing `abe
 layout hints are preserved but stage one does not author or play steps, or edit ink. Lint reads
 step `reveal`, `highlight`, and id-valued `focus` references to report missing ids and overly dense
 reveals. Do not invent new `type` values for these features. Agent changes use an atomic vault
-transaction; an open native editor receives one undo item per batch. No persistent viewer setting,
+transaction with an expected revision of the file bytes and pending native state. `canvas_read`
+and successful writes return that revision; edit/layout refuse versions changed since the read,
+checking again at publication. The token is not a stored canvas field or sidecar. An open native
+editor receives one undo item per batch. No persistent viewer setting,
 image export file, cache note or diagram attachment is created by `look_at_canvas`: its PNG is
 an agent-message image. Source notes and local images are read only within scope.
 

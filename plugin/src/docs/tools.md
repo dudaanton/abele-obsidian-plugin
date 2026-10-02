@@ -190,19 +190,25 @@ must be in scope. New diagrams join scope after creation, like `create`.
 
 - `canvas_read(path, {detail?, region?})`: `detail` is `outline` (default) or `full`. The outline
   gives ids, one-line labels, group hierarchy, edges and lint; full adds geometry and all extension
-  data. It includes an open native Canvas's pending data. Read before refining.
+  data. It includes an open native Canvas's pending data and returns an opaque `revision` covering
+  both file bytes and pending native state. Read before refining; every successful write returns
+  its new revision for the next operation. If a write refuses a stale revision, read again and
+  reconsider the patch, rather than reusing it blindly.
 - `canvas_create(path, {title?, from})`: choose exactly one of `from.graph` or `from.mermaid`.
   Graph input is `{nodes:[{id,kind,label?,file?,url?,shape?,parent?,near?,x?,y?,width?,height?}],
   edges:[{id,fromNode,toNode,label?,...}]}`. Kinds are `text`, `note`, `link`, `group`, `shape`;
   note requires `file`, link requires `url`. Mermaid input is a flowchart string, not another
   diagram grammar. Creation fits text and applies layered dagre layout; it never overwrites a file.
-- `canvas_edit(path, {ops})`: sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
+- `canvas_edit(path, {revision, ops})`: provide the revision returned by `canvas_read` or the
+  last successful canvas write. A stale revision refuses the entire write with a reread message,
+  including unsaved native changes and changes arriving at the final storage boundary. sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
   {id,patch}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
   {id,collapsed}`, and `style {id,styleAttributes}`. Add group/node ids before connecting to them.
   New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`
   instead of erasing their other fields. An error names the failing op index (from zero), and may
   suggest a similar id. Removing a group promotes children; removing a node removes incident edges.
-- `canvas_layout(path, {algorithm?,direction?,scope?,keep?,gap?})`: algorithms `layered` (dagre,
+- `canvas_layout(path, {revision,algorithm?,direction?,scope?,keep?,gap?})`: the same expected
+  revision is required before changing geometry. algorithms `layered` (dagre,
   default), `tree`, `radial`, `grid`; directions `LR` (default), `RL`, `TB`, `BT`. Scope is a group
   id. Keep pins ids, including a kept group's descendants. Groups are laid out level by level;
   cross-group connections are represented at each group's outer level. Fixed positions can still

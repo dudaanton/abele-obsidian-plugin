@@ -15,7 +15,13 @@ const PRELUDE = `
   scope.setFullVaultAccess(true)
   const ctx = { scope, interactive: true }
   const tools = Object.fromEntries(window.__abeleTest.createAgentTools().map(t => [t.name, t]))
-  const call = (name, params) => tools[name].execute('sample-call', params, undefined, ctx)
+  const call = async (name, params) => {
+    if (['canvas_edit', 'canvas_layout'].includes(name) && !params.revision) {
+      const read = await tools.canvas_read.execute('sample-read', { path: params.path }, undefined, ctx)
+      params = { ...params, revision: JSON.parse(read.content[0].text).revision }
+    }
+    return tools[name].execute('sample-call', params, undefined, ctx)
+  }
   const parsed = result => JSON.parse(result.content[0].text)
   const path = ${JSON.stringify(`${DIR}/sample.canvas`)}
   const read = async () => parsed(await call('canvas_read', { path, detail: 'full' }))
@@ -118,6 +124,20 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
       twice: 'Changed sample concept',
       redo: 'Agent after pending',
     })
+  }, 120_000)
+
+  it('refuses a stale native edit without replacing the owner text', () => {
+    const r = run<{ refused: boolean; owner: string }>(`
+      const snapshot = await read()
+      const view = app.workspace.getLeavesOfType('canvas').find(l => l.view.file?.path === path).view
+      view.canvas.nodes.get('alpha').setText('Owner revised sample')
+      view.canvas.requestSave()
+      let refused = false
+      try { await tools.canvas_edit.execute('stale-sample', { path, revision: snapshot.revision, ops: [{ op: 'update', id: 'alpha', patch: { text: 'Stale agent sample' } }] }, undefined, ctx) }
+      catch (error) { refused = /changed since|reread/i.test(error.message) }
+      return { refused, owner: view.canvas.nodes.get('alpha').text }
+    `)
+    expect(r).toEqual({ refused: true, owner: 'Owner revised sample' })
   }, 120_000)
 
   it('imports a nested Mermaid flowchart using the bundled parser', () => {
