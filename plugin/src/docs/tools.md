@@ -67,7 +67,8 @@ call and sent to the model through the same image-message path as drawings and b
 tab is needed or moved. Both previews use the untrusted Markdown policy: Abele's own blocks
 remain available, other plugins' executable blocks are inert, scripts and HTML are labelled
 nonexecuting placeholders. Live content is explicitly **unverified**, never a passed fit check.
-Slow/broken images are reported rather than waited on indefinitely.
+Unresolved backgrounds and slow/broken images or video metadata are reported rather than
+waited on indefinitely. Video metadata inspection never starts playback.
 
 `present(path, slide?)` opens the normal deck tab at that slide (default 1), not a fullscreen or
 speaker show. Normal viewing may activate live blocks under the usual script trust and HTML

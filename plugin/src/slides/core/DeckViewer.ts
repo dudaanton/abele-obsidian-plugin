@@ -319,6 +319,7 @@ export class DeckViewer {
     }
     element.hidden = index !== this.index
     const background = this.media.resolve(slide.settings.bg)
+    if (slide.settings.bg && !background) element.dataset.missingBackground = slide.settings.bg
     if (background) {
       const el = background.video ? doc.createElement('video') : doc.createElement('img')
       el.className = 'abele-slide-background'

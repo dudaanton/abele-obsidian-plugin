@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DeckViewer } from '@/slides/core/DeckViewer'
 import { parseDeck } from '@/slides/core/markdown'
 import { Presentation } from '@/slides/core/Presentation'
+import { checkSlideFit } from '@/slides/core/fit'
 import type { BlockRenderer, MediaResolver } from '@/slides/core/model'
 
 const viewers: DeckViewer[] = []
@@ -74,6 +75,25 @@ describe('bounded deck rendering', () => {
     expect(viewer.index).toBe(2)
   })
 
+  it('reports an unresolved background even when no image element can be mounted', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const viewer = new DeckViewer(
+      host,
+      { render: async () => () => {} },
+      { resolve: () => null, readCss: async () => '' },
+      { preview: true }
+    )
+    viewers.push(viewer)
+    await viewer.setDeck(parseDeck('::slide{bg="[[sample-deleted.png]]"}::\n# Sample'))
+    const slide = viewer.viewport.querySelector<HTMLElement>('.abele-slide')!
+    expect(slide.querySelector('img')).toBeNull()
+    expect(
+      checkSlideFit(slide).issues.some(
+        (i) => i.kind === 'missing-media' && i.message.includes('sample-deleted.png')
+      )
+    ).toBe(true)
+  })
   it('never starts media in a presenter preview', async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     const host = document.createElement('div')

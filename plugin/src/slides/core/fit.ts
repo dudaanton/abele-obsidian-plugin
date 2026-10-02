@@ -16,6 +16,11 @@ export interface SlideFit {
  * Speaker notes never enter this DOM. Live frames/scripts need separate inspection. */
 export function checkSlideFit(slide: HTMLElement): SlideFit {
   const issues: FitIssue[] = []
+  if (slide.dataset.missingBackground)
+    issues.push({
+      kind: 'missing-media',
+      message: `Background could not be resolved: ${slide.dataset.missingBackground}`,
+    })
   const regions = Array.from(slide.querySelectorAll<HTMLElement>('.abele-slide-region'))
   const win = slide.ownerDocument.defaultView!
   const scale =
@@ -84,6 +89,11 @@ export function checkSlideFit(slide: HTMLElement): SlideFit {
       issues.push({
         kind: 'missing-media',
         message: `Image has not loaded: ${media.getAttribute('src') ?? '(no source)'}`,
+      })
+    if (!('naturalWidth' in media) && (media.error || media.readyState < 1 || !naturalWidth))
+      issues.push({
+        kind: 'missing-media',
+        message: `Video ${media.error ? 'could not be loaded' : 'metadata has not loaded'}: ${media.getAttribute('src') ?? media.querySelector('source')?.getAttribute('src') ?? '(no source)'}`,
       })
     if (
       naturalWidth &&

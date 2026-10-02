@@ -241,6 +241,27 @@ describe('logical canvas fit inspection', () => {
       ({ left: 48, top: -100, right: 1200, bottom: 820, width: 1152, height: 920 }) as DOMRect
     expect(checkSlideFit(el).issues.some((i) => i.kind === 'overflow')).toBe(true)
   })
+  it('reports a video that failed to load, not just images with zero dimensions', () => {
+    const el = document.createElement('section')
+    const video = document.createElement('video')
+    video.src = 'sample-missing.mp4'
+    Object.defineProperty(video, 'error', { value: { code: 4 } })
+    el.append(video)
+    expect(
+      checkSlideFit(el).issues.some(
+        (i) => i.kind === 'missing-media' && i.message.includes('sample-missing.mp4')
+      )
+    ).toBe(true)
+  })
+  it('does not classify a loaded paused video as missing', () => {
+    const el = document.createElement('section')
+    const video = document.createElement('video')
+    Object.defineProperty(video, 'readyState', { value: 1 })
+    Object.defineProperty(video, 'videoWidth', { value: 160 })
+    Object.defineProperty(video, 'videoHeight', { value: 90 })
+    el.append(video)
+    expect(checkSlideFit(el).issues).toEqual([])
+  })
   it('detects a media box outside its clipping region in a scaled canvas', () => {
     const el = document.createElement('section')
     el.innerHTML = '<div class="abele-slide-region"><img src="sample.png"></div>'

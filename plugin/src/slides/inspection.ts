@@ -79,23 +79,28 @@ export async function inspectDeckSlide<T>(
     signal?.throwIfAborted()
     await doc.fonts?.ready
     const canvas = viewer.viewport.querySelector<HTMLElement>('.abele-slide')!
-    // Decode images already requested by Markdown; a broken/slow image becomes a fit finding,
-    // never an indefinite wait. Charts and other async blocks get a short settling window.
+    // Await images and video metadata, never playback. A broken/slow resource becomes a fit
+    // finding after a bounded wait; charts and other async blocks get a short settling window.
     await Promise.all(
-      Array.from(canvas.querySelectorAll('img')).map((image) => {
-        if (image.complete) return Promise.resolve()
-        return new Promise<void>((resolve) => {
-          const finish = () => {
-            doc.win.clearTimeout(timer)
-            image.removeEventListener('load', finish)
-            image.removeEventListener('error', finish)
-            resolve()
-          }
-          const timer = doc.win.setTimeout(finish, 1500)
-          image.addEventListener('load', finish, { once: true })
-          image.addEventListener('error', finish, { once: true })
-        })
-      })
+      Array.from(canvas.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img, video')).map(
+        (image) => {
+          const event = 'complete' in image ? 'load' : 'loadedmetadata'
+          if ('complete' in image ? image.complete : image.readyState >= 1 || image.error)
+            return Promise.resolve()
+          if ('preload' in image) image.preload = 'metadata'
+          return new Promise<void>((resolve) => {
+            const finish = () => {
+              doc.win.clearTimeout(timer)
+              image.removeEventListener(event, finish)
+              image.removeEventListener('error', finish)
+              resolve()
+            }
+            const timer = doc.win.setTimeout(finish, 1500)
+            image.addEventListener(event, finish, { once: true })
+            image.addEventListener('error', finish, { once: true })
+          })
+        }
+      )
     )
     await new Promise((resolve) => doc.win.setTimeout(resolve, 250))
     signal?.throwIfAborted()

@@ -120,6 +120,26 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
     expect(result.hosts).toBe(0)
   })
 
+  it('reports unresolved backgrounds and failed video metadata as missing media', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{
+      ${PRELUDE}
+      const path='sample-unavailable-deck.md'
+      if(app.vault.getAbstractFileByPath(path))throw Error('media fixture exists')
+      const file=await app.vault.create(path,${JSON.stringify('---\ntype: presentation\n---\n::slide{bg="[[sample-deleted.png]]"}::\n# Missing background\n---\n# Missing video\n<video src="data:video/mp4;base64,AAAA" controls></video>')})
+      s.ctx.scope.addFile(path)
+      try { return (await call('deck_check',{path})).content[0].text }
+      finally { await app.vault.delete(file) }
+    })()`)
+    )
+    expect(result.slides[0].issues.some((i: { kind: string }) => i.kind === 'missing-media')).toBe(
+      true
+    )
+    expect(result.slides[1].issues.some((i: { kind: string }) => i.kind === 'missing-media')).toBe(
+      true
+    )
+  })
+
   it('sends a full-size slide picture to the model and saves the same PNG for the chat', async () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{
