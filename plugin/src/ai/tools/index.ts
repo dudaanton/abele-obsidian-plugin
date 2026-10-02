@@ -49,6 +49,7 @@ import { githubSettings } from '@/github/GithubService'
 import { createMcpTools } from '../mcp/tools'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import type { ToolContext } from '../toolContext'
+import type { ChatSession } from '../ChatSession'
 import type { ScopeResolver } from '../ScopeResolver'
 import {
   createReadLogsTool,

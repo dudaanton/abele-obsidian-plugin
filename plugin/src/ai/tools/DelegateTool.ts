@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import type { ChatSession } from '../ChatSession'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import {
   DelegateRun,

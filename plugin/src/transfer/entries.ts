@@ -183,7 +183,19 @@ export const SECTIONS: Section[] = [
     ...aiList('ai-secrets', 'Stored keys', 'secrets', (s: Identified & { keyId?: string }) =>
       s.keyId ? [s.keyId] : []
     ),
-    read: (settings) => savedKeysWithIds(ai(settings).secrets ?? []),
+    // A legacy row with a unique keychain slot keeps its original shape on a plain transfer.
+    // Duplicate slots need a distinct record id to survive merging on the receiving side.
+    read: (settings) => {
+      const keys = ai(settings).secrets ?? []
+      const slots = new Set<string>()
+      const duplicate = keys.some((key) => {
+        if (!key.keyId) return false
+        if (slots.has(key.keyId)) return true
+        slots.add(key.keyId)
+        return false
+      })
+      return duplicate ? savedKeysWithIds(keys) : keys
+    },
   },
   // Tool descriptions travel as overrides only: a default carried over would pin the other
   // device to this version's wording, the way saved defaults once pinned every vault.
@@ -387,9 +399,9 @@ export const SECTIONS: Section[] = [
 
 const sectionById = new Map(SECTIONS.map((section) => [section.id, section]))
 
-// Named keys have no separate item id: their slot is their identity across devices.
+// Current named keys have record ids; legacy rows match by their keychain slot.
 const itemId = (section: SectionId, item: Identified): string =>
-  (section === 'ai-secrets' ? item.keyId : item.id) ?? ''
+  (section === 'ai-secrets' ? item.id || item.keyId : item.id) ?? ''
 
 /** Only references in the accepted settings can authorize a keychain write.
  * The sender's secretIds are display/export metadata, never write authority.

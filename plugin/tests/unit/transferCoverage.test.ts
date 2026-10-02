@@ -75,7 +75,15 @@ it('accounts for every declared root and AI setting in transfer sections or expl
   const root = new Set<string>()
   const ai = new Set<string>()
   const agentSettings = new Proxy(
-    { ...DEFAULT_AI_SETTINGS },
+    {
+      ...DEFAULT_AI_SETTINGS,
+      ...Object.fromEntries(
+        fields('src/ai/types.ts', 'AiSettings').map((key) => [
+          key,
+          (DEFAULT_AI_SETTINGS as unknown as Record<string, unknown>)[key],
+        ])
+      ),
+    },
     {
       get(target, key) {
         if (typeof key === 'string') ai.add(key)
@@ -84,7 +92,16 @@ it('accounts for every declared root and AI setting in transfer sections or expl
     }
   )
   const settings = new Proxy(
-    { ...DEFAULT_SETTINGS, ai: agentSettings },
+    {
+      ...DEFAULT_SETTINGS,
+      ...Object.fromEntries(
+        fields('src/services/AbeleConfig.ts', 'AbeleSettings').map((key) => [
+          key,
+          (DEFAULT_SETTINGS as unknown as Record<string, unknown>)[key],
+        ])
+      ),
+      ai: agentSettings,
+    },
     {
       get(target, key) {
         if (typeof key === 'string') root.add(key)
