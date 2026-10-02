@@ -59,7 +59,16 @@ interface Probe {
 const script = (footer: boolean, short = false) => String.raw`(async function* () {
   ${PIXEL_PROBE}
   const wait = ms => new Promise(r => setTimeout(r, ms))
-  const until = async fn => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready') }
+  const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready: ' + condition) }
+  const createTask = async (path, text) => {
+    const file = await app.vault.create(path, text)
+    // The native adapter resolves a write before metadata and the task store see it.
+    // Feed it one complete task at a time, not hundreds of overlapping native writes.
+    await until(() => app.metadataCache.getFileCache(file)?.frontmatter?.type === 'task' &&
+      window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.get(path)?.dates.length,
+      'created task metadata ' + path)
+  }
+  const writeBatch = async writes => { for (const write of writes) await write() }
   const folder = ${JSON.stringify(FOLDER)} + (${short} ? ' short' : '')
   const label = 'sample-timeline-probe' + (${short} ? '-short' : '')
   const shots = ${JSON.stringify(SHOTS)}
@@ -81,24 +90,24 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         for (let n = 0; n < 3; n++) {
           const done = n === 0
           const title = 'Sample item ' + d + ' ' + n
-          writes.push(app.vault.create(folder + '/' + title + '.md', '---\ntype: task\ndate: ' + day(d) + '\n' + (${short} && done ? 'dateTime: 08:00\n' : '') + (done ? 'completed: ' + day(d) + '\n' : '') + 'labels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\n' + title + '\n'))
+          writes.push(() => createTask(folder + '/' + title + '.md', '---\ntype: task\ndate: ' + day(d) + '\n' + (${short} && done ? 'dateTime: 08:00\n' : '') + (done ? 'completed: ' + day(d) + '\n' : '') + 'labels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\n' + title + '\n'))
         }
         // Native vault writes are serialized by the device. Bound each phase instead of
         // charging hundreds of writes to the interaction probe's one deadline.
         if (writes.length >= 24) {
-          await Promise.all(writes); writes = []
+          await writeBatch(writes); writes = []
           yield 'fixture tasks through offset ' + d
         }
       }
       // Much older completed-only days must never pull the reader to the start of history.
       for (let d = -90; d < -45; d++) {
-        writes.push(app.vault.create(folder + '/Sample archive ' + d + '.md', '---\ntype: task\ndate: ' + day(d) + '\ncompleted: ' + day(d) + '\nlabels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\nSample archive ' + d + '\n'))
+        writes.push(() => createTask(folder + '/Sample archive ' + d + '.md', '---\ntype: task\ndate: ' + day(d) + '\ncompleted: ' + day(d) + '\nlabels:\n  - ' + label + '\ngroups:\n  - "[[' + folder + '/Sample group]]"\n---\nSample archive ' + d + '\n'))
         if (writes.length >= 24) {
-          await Promise.all(writes); writes = []
+          await writeBatch(writes); writes = []
           yield 'fixture archives through offset ' + d
         }
       }
-      await Promise.all(writes)
+      await writeBatch(writes)
       await wait(3000)
     }
     yield 'waiting for every fixture task in the resolved metadata store'
@@ -111,7 +120,13 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       if (loadedTasks === expectedTasks) break
       await wait(100)
     }
-    if (loadedTasks !== expectedTasks) throw Error('fixture metadata: ' + loadedTasks + '/' + expectedTasks + ' tasks ready')
+    if (loadedTasks !== expectedTasks) {
+      const tasks = window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks
+      const missing = app.vault.getMarkdownFiles().filter(file => file.path.startsWith(folder + '/') &&
+        app.metadataCache.getFileCache(file)?.frontmatter?.type === 'task' && !tasks.get(file.path)?.dates.length)
+        .map(file => ({path:file.path,cache:app.metadataCache.getFileCache(file)?.frontmatter,stored:tasks.has(file.path)}))
+      throw Error('fixture metadata: ' + loadedTasks + '/' + expectedTasks + ' tasks ready; missing: ' + JSON.stringify(missing))
+    }
     yield 'opening scroll owner and waiting for timeline'
     leaf = app.workspace.getLeaf('tab')
     if (${footer}) {
