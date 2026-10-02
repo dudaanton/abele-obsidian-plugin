@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 const fake = vi.hoisted(() => ({
   svc: {
     status: { value: { state: 'idle', pending: 0 } },
+    connection: { value: { paused: false } },
     log: { value: [] as string[] },
     client: vi.fn(),
     pause: vi.fn(),

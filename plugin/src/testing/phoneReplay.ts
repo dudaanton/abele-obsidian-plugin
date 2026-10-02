@@ -1,6 +1,7 @@
 import type { App } from 'obsidian'
 import { SyncService } from '@/sync/SyncService'
 const KEY = 'task14-phone-replay-evidence'
+const cancellations = new WeakMap<App, () => void>()
 interface Evidence {
   path: string
   content: string
@@ -21,24 +22,36 @@ export async function startPhoneReplay(
   const path = backup.root + '/phone-replay-' + crypto.randomUUID() + '.md',
     content = 'Native phone replay exact bytes'
   const client = svc.client(),
-    commit = client.commitRaw.bind(client)
+    original = client.commitRaw,
+    commit = original.bind(client),
+    wasPaused = svc.connection.value.paused
+  let active = true
+  const cancel = () => {
+    active = false
+    if (client.commitRaw === intercept) client.commitRaw = original
+    cancellations.delete(app)
+    if (wasPaused) svc.pause()
+    else svc.resume()
+  }
   let captured!: (e: Evidence) => void
   const completed = new Promise<Evidence>((resolve) => {
     captured = resolve
   })
   svc.pause()
-  client.commitRaw = async (ops, key) => {
+  const intercept: typeof client.commitRaw = async (ops, key) => {
     const outcome = await commit(ops, key)
+    if (!active) return outcome
     // CommitOutcome owns body.results, not results at its top level.
     const applied = outcome.body.results.find(
       (r: { status: string; path?: string; file_id?: string; version_id?: string }) =>
         r.status === 'applied' && r.path === path
     )
     if (!applied || applied.status !== 'applied' || !applied.file_id || !applied.version_id)
-      throw new Error('Owned successful commit result absent')
+      return outcome
     const versions = await client.versions(applied.file_id)
     if (versions.length !== 1 || versions[0].version_id !== applied.version_id)
       throw new Error('Unexpected pre-reload history')
+    if (!active) return outcome
     const evidence: Evidence = {
       path,
       content,
@@ -53,10 +66,12 @@ export async function startPhoneReplay(
     captured(evidence)
     throw new Error('Synthetic successful response lost')
   }
-  await app.vault.create(path, content)
-  svc.resume()
+  client.commitRaw = intercept
+  cancellations.set(app, cancel)
   let timer: number | undefined
   try {
+    await app.vault.create(path, content)
+    svc.resume()
     const e = await Promise.race([
       completed,
       new Promise<never>((_, reject) => {
@@ -67,6 +82,10 @@ export async function startPhoneReplay(
       }),
     ])
     return { beforeCount: e.beforeCount, captured: true }
+  } catch (error) {
+    cancel()
+    app.saveLocalStorage(KEY, null)
+    throw error
   } finally {
     if (timer) window.clearTimeout(timer)
   }
@@ -102,5 +121,6 @@ export async function verifyPhoneReplay(app: App): Promise<{
   return result
 }
 export function clearPhoneReplayEvidence(app: App): void {
+  cancellations.get(app)?.()
   app.saveLocalStorage(KEY, null)
 }
