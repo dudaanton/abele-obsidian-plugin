@@ -109,7 +109,20 @@ it.each(['scroll', 'pages'] as const)(
         )
         expect(revoke.mock.calls.some(([url]) => url === frameUrl)).toBe(false)
       }
+      const decoding = deferred<void>()
+      const beforeZoom = vi.mocked(URL.createObjectURL).mock.results.length
+      vi.mocked(HTMLImageElement.prototype.decode).mockReturnValue(decoding.promise)
+      renderer.setAttribute('zoom', '1.25')
+      await vi.waitFor(() =>
+        expect(vi.mocked(URL.createObjectURL).mock.results.length).toBeGreaterThan(beforeZoom)
+      )
+      const provisional = vi
+        .mocked(URL.createObjectURL)
+        .mock.results.slice(beforeZoom)
+        .map((result) => result.value as string)
       await renderer.goTo({ index: 6 })
+      for (const url of provisional) expect(revoke).toHaveBeenCalledWith(url)
+      decoding.resolve()
       expect(renderer.getContents().some((content) => content.doc === first)).toBe(false)
       expect(revoke).toHaveBeenCalledWith(picture)
       expect(revoke).toHaveBeenCalledWith(frameUrl)

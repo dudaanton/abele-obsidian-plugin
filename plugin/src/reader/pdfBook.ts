@@ -133,7 +133,8 @@ async function drawPage(
   page: PdfPage,
   doc: Document,
   zoom: number,
-  current: () => boolean
+  current: () => boolean,
+  images: { keep(url: string): void; release(url: string): void }
 ): Promise<void> {
   const size = page.getViewport({ scale: 1 })
   const ratio = renderRatio(zoom, doc.defaultView?.devicePixelRatio ?? 1, size.width, size.height)
@@ -170,11 +171,13 @@ async function drawPage(
   img.alt = ''
   img.width = viewport.width
   img.height = viewport.height
-  img.src = URL.createObjectURL(blob)
+  const imageUrl = URL.createObjectURL(blob)
+  images.keep(imageUrl)
+  img.src = imageUrl
   // Decoded before it is shown, so the page is never blank for a frame in between.
   await img.decode().catch(() => {})
   if (!current()) {
-    URL.revokeObjectURL(img.src)
+    images.release(imageUrl)
     return
   }
   const holder = doc.querySelector('#canvas')
@@ -183,7 +186,7 @@ async function drawPage(
   root.setProperty('transform', `scale(${1 / ratio})`)
   holder?.replaceChildren(img)
   renderedAt.set(doc, scale)
-  if (previous) URL.revokeObjectURL(previous)
+  if (previous) images.release(previous)
 
   const container = doc.querySelector('.textLayer')
   if (container) {
@@ -252,12 +255,12 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
   const drawing = new WeakMap<Document, number>()
   /** The size each page frame was last drawn at. */
   const drawnAt = new WeakMap<Document, number>()
-  const releaseDocument = (doc: Document) => {
+  const releaseDocument = (doc: Document, release: (url: string) => void) => {
     drawing.set(doc, (drawing.get(doc) ?? 0) + 1)
     drawnAt.delete(doc)
     renderedAt.delete(doc)
     for (const img of Array.from(doc.querySelectorAll('#canvas img'))) {
-      URL.revokeObjectURL((img as HTMLImageElement).src)
+      release((img as HTMLImageElement).src)
       img.remove()
     }
     doc.querySelector('.textLayer')?.replaceChildren()
@@ -284,11 +287,19 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
       let live = true
       // The cache must not strongly retain a detached frame document.
       let document: WeakRef<Document> | null = null
+      const imageUrls = new Set<string>()
+      const releaseImage = (url: string) => {
+        if (!imageUrls.delete(url)) return
+        URL.revokeObjectURL(url)
+      }
       const onUnload = () => {
         if (!live) return
         live = false
+        // A frame can disappear while decode() is still awaiting: own that provisional URL
+        // independently of the image element and of whether its document can still be reached.
+        for (const url of [...imageUrls]) releaseImage(url)
         const doc = document?.deref()
-        if (doc) releaseDocument(doc)
+        if (doc) releaseDocument(doc, releaseImage)
         document = null
         consumers.delete(onUnload)
         if (active && consumers.size === 0) unload()
@@ -300,14 +311,17 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
         onZoom: ({ doc, scale }) => {
           if (!active || !live) return
           const previous = document?.deref()
-          if (previous && previous !== doc) releaseDocument(previous)
+          if (previous && previous !== doc) releaseDocument(previous, releaseImage)
           document = new WeakRef(doc)
           if (drawnAt.get(doc) === scale) return
           drawnAt.set(doc, scale)
           const turn = (drawing.get(doc) ?? 0) + 1
           drawing.set(doc, turn)
           const current = () => active && live && drawing.get(doc) === turn
-          void drawPage(lib, page, doc, scale, current)
+          void drawPage(lib, page, doc, scale, current, {
+            keep: (url) => imageUrls.add(url),
+            release: releaseImage,
+          })
             .then(() => {
               if (current())
                 pageEvents.dispatchEvent(
