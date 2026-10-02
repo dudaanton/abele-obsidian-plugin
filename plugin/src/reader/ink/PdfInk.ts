@@ -50,6 +50,7 @@ export class PdfInk {
   private dirty = new Set<number>()
   private timer = 0
   private writing: Promise<void> = Promise.resolve()
+  private disposed = false
   private penDown = false
   private penSeen = false
   /** What the eraser has taken in the touch under way, page by page. */
@@ -73,6 +74,7 @@ export class PdfInk {
   /** Reads the book's ink and draws it on the pages already showing. */
   async load(): Promise<void> {
     const all = await this.store.readAll()
+    if (this.disposed) return
     for (const [index, page] of all) {
       this.pages.set(index, page)
       this.redraw(index)
@@ -87,7 +89,7 @@ export class PdfInk {
 
   start(): void {
     const stage = this.h.stage()
-    if (this.on || !stage) return
+    if (this.disposed || this.on || !stage) return
     const ink = this.h.model.ink
     ink.touch = Platform.isMobile
     // As chosen last, on this device or another: it travels with the reader's settings.
@@ -171,6 +173,8 @@ export class PdfInk {
   }
 
   destroy(): void {
+    if (this.disposed) return
+    this.disposed = true
     this.stop()
     this.h.pdf.pageEvents.removeEventListener('drawn', this.onDrawn)
     for (const ref of this.refs) this.h.app.vault.offref(ref)
@@ -324,6 +328,7 @@ export class PdfInk {
   }
 
   private changed(index: number): void {
+    if (this.disposed) return
     this.redraw(index)
     this.dirty.add(index)
     window.clearTimeout(this.timer)
@@ -342,10 +347,11 @@ export class PdfInk {
 
   /** A file in the vault changed: another device's ink for a page arrives. */
   private async fileChanged(path: string): Promise<void> {
+    if (this.disposed) return
     const index = this.store.pageOf(path)
     if (index === null || this.dirty.has(index)) return
     const page = await this.store.changed(path)
-    if (page === undefined) return
+    if (this.disposed || page === undefined) return
     if (page) this.pages.set(index, page)
     else this.pages.delete(index)
     // What undo holds names strokes that are no longer there.
