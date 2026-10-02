@@ -8,6 +8,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { parseChat, serializeChat } from '@/ai/ChatLog'
+import { chatCopyPath } from '@/ai/chatCopy'
 import { EMPTY_USAGE } from '@/ai/client'
 import { createReplyRevisionTool, REPLY_REVISION_TOOL } from '@/ai/tools/ReplyRevisionTool'
 import type { ReplyProposal } from '@/ai/replyAnnotations'
@@ -307,6 +308,145 @@ describe('reply annotation persistence and owner decisions', () => {
     expect((await disk()).messages[0].highlights?.map((h) => h.quote)).toEqual(['small', 'lantern'])
     expect((await disk()).messages[0].highlights?.every((h) => h.color === 'yellow')).toBe(true)
     p.isStreaming.value = false
+  })
+
+  it.each([0, 0.4, 0.7])(
+    'restores messages and provider history after a highlight rewrite is truncated at %s',
+    async (share) => {
+      const p = await parent()
+      p.isStreaming.value = true
+      const before = await disk()
+      const modify = app.vault.modify.bind(app.vault)
+      vi.spyOn(app.vault, 'process').mockImplementationOnce(async (file, fn) => {
+        const content = fn(await app.vault.read(file))
+        await modify(file, content.slice(0, Math.floor(content.length * share)))
+        throw new Error('sample interrupted highlight write')
+      })
+      await expect(p.highlightReply('reply', 'small', 2)).rejects.toThrow(
+        'sample interrupted highlight write'
+      )
+      expect((await disk()).messages).toEqual(before.messages)
+      expect((await disk()).internalMessages).toEqual(before.internalMessages)
+      expect((p as any).log.matches(await disk())).toBe(true)
+      expect(p.messages.value[0].highlights).toBeUndefined()
+      p.chatTitle.value = 'Sample continued conversation'
+      await p.save()
+      expect((await disk()).messages).toEqual(before.messages)
+      expect((await disk()).internalMessages).toEqual(before.internalMessages)
+      p.isStreaming.value = false
+      await ChatService.getInstance().closeTab(p.id)
+      expect((await parent()).messages.value).toEqual(before.messages)
+    }
+  )
+
+  it('restores a legacy chat after a truncated highlight migration', async () => {
+    const before = await disk()
+    await app.vault.modify(
+      file(),
+      JSON.stringify({
+        metadata: before.metadata,
+        messages: before.messages,
+        internalMessages: before.internalMessages,
+      })
+    )
+    const p = await parent()
+    const modify = app.vault.modify.bind(app.vault)
+    let copy: ReturnType<typeof parseChat> | undefined
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (file, fn) => {
+      const content = fn(await app.vault.read(file))
+      const saved = await app.vault.adapter.read(chatCopyPath(app, PATH))
+      copy = parseChat(saved.slice(saved.indexOf('\n') + 1))
+      await modify(file, content.slice(0, Math.floor(content.length / 2)))
+      throw new Error('sample interrupted migration')
+    })
+    await expect(p.highlightReply('reply', 'small', 2)).rejects.toThrow(
+      'sample interrupted migration'
+    )
+    expect(copy?.version).toBe(2)
+    expect(copy?.damaged).toBe(0)
+    expect(copy?.messages).toEqual(before.messages)
+    expect(copy?.internalMessages).toEqual(before.internalMessages)
+    expect((await disk()).messages).toEqual(before.messages)
+    expect((await disk()).internalMessages).toEqual(before.internalMessages)
+    expect((p as any).log.matches(await disk())).toBe(true)
+    await p.highlightReply('reply', 'small', 2)
+    expect((await disk()).messages[0].highlights?.[0].color).toBe('yellow')
+  })
+
+  it('keeps a whole safety copy before a highlight write touches the chat file', async () => {
+    const p = await parent()
+    const before = await disk()
+    const copyPath = chatCopyPath(app, PATH)
+    const modify = app.vault.modify.bind(app.vault)
+    let copy: ReturnType<typeof parseChat> | undefined
+    let recovered: ReturnType<typeof parseChat> | undefined
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (file, fn) => {
+      const content = fn(await app.vault.read(file))
+      if (await app.vault.adapter.exists(copyPath)) {
+        const saved = await app.vault.adapter.read(copyPath)
+        copy = parseChat(saved.slice(saved.indexOf('\n') + 1))
+      }
+      await modify(file, content.slice(0, Math.floor(content.length / 2)))
+      // Exercise reopen recovery before the live session can catch the failed write.
+      recovered = await ChatStorage.getInstance().loadChat(file)
+      throw new Error('sample interrupted highlight write')
+    })
+    await expect(p.highlightReply('reply', 'small', 2)).rejects.toThrow(
+      'sample interrupted highlight write'
+    )
+    expect(recovered?.messages).toEqual(before.messages)
+    expect(recovered?.internalMessages).toEqual(before.internalMessages)
+    expect(copy?.internalMessages).toEqual(before.internalMessages)
+    expect(copy?.messages).toEqual(before.messages)
+    expect(copy?.torn).toBe(false)
+    expect(copy?.damaged).toBe(0)
+    expect(await app.vault.adapter.exists(copyPath)).toBe(false)
+  })
+
+  it('forces a whole save when both a truncated highlight write and immediate recovery fail', async () => {
+    const p = await parent()
+    const before = await disk()
+    const modify = app.vault.modify.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (file, fn) => {
+      const content = fn(await app.vault.read(file))
+      await modify(file, content.slice(0, Math.floor(content.length / 2)))
+      throw new Error('sample interrupted highlight write')
+    })
+    const restoring = vi
+      .spyOn(app.vault, 'modify')
+      .mockRejectedValue(new Error('sample recovery unavailable'))
+    await expect(p.highlightReply('reply', 'small', 2)).rejects.toThrow(
+      'sample interrupted highlight write'
+    )
+    expect((p as any).log.plan((p as any).snapshot()).kind).toBe('rewrite')
+    expect(p.messages.value[0].highlights).toBeUndefined()
+    expect(await app.vault.adapter.exists(chatCopyPath(app, PATH))).toBe(true)
+    restoring.mockRestore()
+    await p.save()
+    expect((await disk()).messages).toEqual(before.messages)
+    expect((await disk()).internalMessages).toEqual(before.internalMessages)
+    expect((p as any).log.matches(await disk())).toBe(true)
+  })
+
+  it('refuses a highlight without a safety copy and keeps an external edit made during copying', async () => {
+    const p = await parent()
+    const before = await disk()
+    const write = app.vault.adapter.write.bind(app.vault.adapter)
+    const spy = vi
+      .spyOn(app.vault.adapter, 'write')
+      .mockRejectedValueOnce(new Error('sample copy unavailable'))
+    await expect(p.highlightReply('reply', 'small', 2)).rejects.toThrow('sample copy unavailable')
+    expect((await disk()).messages).toEqual(before.messages)
+    expect((await disk()).internalMessages).toEqual(before.internalMessages)
+    spy.mockImplementationOnce(async (path, content) => {
+      await write(path, content)
+      const changed = await disk()
+      changed.messages[0].content = 'A separately revised conversation.'
+      await app.vault.modify(file(), serializeChat({ ...changed, metadata: changed.metadata! }))
+    })
+    await expect(p.highlightReply('reply', 'small', 2)).rejects.toThrow(/changed/)
+    expect((await disk()).messages[0].content).toBe('A separately revised conversation.')
+    expect(await app.vault.adapter.exists(chatCopyPath(app, PATH))).toBe(false)
   })
 
   it('does not publish or retry a highlight whose write failed during a turn', async () => {

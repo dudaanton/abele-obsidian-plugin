@@ -30,6 +30,7 @@ import type {
 } from './client'
 import { ChatStorage } from './ChatStorage'
 import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot } from './ChatLog'
+import { readChat, rewriteChat } from './chatCopy'
 import {
   compatibleReplyHistory,
   projectReplyHistory,
@@ -2272,13 +2273,29 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // Internal records are appended in place by the running turn; freeze this write's cut.
       const internalMessages = [...snapshot.internalMessages]
       const messages = snapshot.messages.map((m) => (m.id === id ? { ...m, highlights } : m))
-      let written = ''
-      await GlobalStore.getInstance().app.vault.process(file, (content) => {
-        if (!this.log.matches(parseChat(content)))
-          throw new Error('This chat changed elsewhere. Reopen it before making changes.')
-        written = serializeChat({ ...snapshot, messages, internalMessages })
-        return written
-      })
+      const written = serializeChat({ ...snapshot, messages, internalMessages })
+      const { app } = GlobalStore.getInstance()
+      let attempted = false
+      try {
+        await rewriteChat(app, file, written, (content) => {
+          if (!this.log.matches(parseChat(content)))
+            throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+          attempted = true
+        })
+      } catch (err) {
+        if (attempted) {
+          // A failed write may have changed the file. Recover its copy and seed the writer
+          // from what is actually durable, never the old cached records. If recovery itself
+          // is unavailable, force a protected full rewrite from live memory on the next save.
+          this.dirty = true
+          try {
+            this.log.adopt(await readChat(app, file))
+          } catch {
+            this.log.forget()
+          }
+        }
+        throw err
+      }
       this.log.adopt(parseChat(written))
       this.updateChatMessage(
         (m) => m.id === id,

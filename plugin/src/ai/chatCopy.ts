@@ -6,12 +6,13 @@
  * between two of them and is killed leaves the file empty or cut short — measured: a 6MB write
  * killed while the thread was busy left 0 bytes, or exactly 5MB. So the new content goes to a
  * copy in the plugin's folder first, the file second, and the copy is dropped only once the
- * file is whole. Reading the chat puts the copy back when it finds the file torn.
+ * file is whole. Reading the chat puts the copy back when it finds the file torn. Checked
+ * owner changes instead keep the prior committed conversation until their write succeeds.
  *
  * The copy is this device's alone: it covers a write this device was making, nothing more.
  */
 import type { App, TFile } from 'obsidian'
-import { parseChat, type ParsedChat } from './ChatLog'
+import { parseChat, serializeChat, type ParsedChat } from './ChatLog'
 
 /** Where a chat's copy sits while it is rewritten: named for its path, out of the vault's sight. */
 export function chatCopyPath(app: App, chatPath: string): string {
@@ -23,22 +24,79 @@ export function chatCopyPath(app: App, chatPath: string): string {
   return `${app.vault.configDir}/plugins/abele/chat-backups/${name}.abchat`
 }
 
-/** Replaces the file's content, by way of a copy. The copy's first line names the chat. */
-export async function rewriteChat(app: App, file: TFile, content: string): Promise<void> {
+/**
+ * Replaces the file's content, by way of a copy. The copy's first line names the chat.
+ * An optional check runs inside vault.process, retaining its external-change guard. Checked
+ * writes require a copy of the previously committed chat and roll back a returned I/O failure;
+ * a crash leaves that same committed conversation for readChat to recover on reopen.
+ */
+export async function rewriteChat(
+  app: App,
+  file: TFile,
+  content: string,
+  check?: (previous: string) => void
+): Promise<void> {
   const adapter = app.vault.adapter
   const copy = chatCopyPath(app, file.path)
+  // A checked owner change is not committed until process succeeds. Its recovery copy must
+  // not apply an unchecked or failed annotation, including a crash before its guard runs.
+  const prior = check ? await app.vault.read(file) : undefined
+  const parsedPrior = prior === undefined ? null : parseChat(prior)
+  const copyContent =
+    parsedPrior?.metadata && parsedPrior.version === 1
+      ? serializeChat({ ...parsedPrior, metadata: parsedPrior.metadata })
+      : (prior ?? content)
   let copied = false
   try {
     const folder = copy.slice(0, copy.lastIndexOf('/'))
     if (!(await adapter.exists(folder))) await adapter.mkdir(folder)
-    await adapter.write(copy, `${file.path}\n${content}`)
+    await adapter.write(copy, `${file.path}\n${copyContent}`)
     copied = true
   } catch (err) {
-    // The chat is still written, only without the safety net: refusing the write over its
-    // copy would leave every later save of this chat failing on the same rewrite.
+    // An explicit owner change must not risk the conversation if its copy cannot be kept.
+    if (check) throw err
+    // The ordinary writer retains its existing best-effort behavior.
     console.warn('[Abele] Could not keep a copy of a chat being rewritten', err)
   }
-  await app.vault.modify(file, content)
+  let previous: string | undefined
+  try {
+    if (check)
+      await app.vault.process(file, (current) => {
+        check(current)
+        previous = current
+        return content
+      })
+    else await app.vault.modify(file, content)
+  } catch (err) {
+    if (previous !== undefined) {
+      // The write may have emptied or truncated the chat. Restore the committed conversation
+      // while its already-durable copy stays untouched, even if restoration also fails.
+      // Encode a legacy snapshot as v2, matching its recoverable rollback copy.
+      const parsed = parseChat(previous)
+      const restore = parsed.metadata
+        ? serializeChat({ ...parsed, metadata: parsed.metadata })
+        : previous
+      try {
+        await app.vault.modify(file, restore)
+        try {
+          await adapter.remove(copy)
+        } catch {
+          // A whole file wins over its leftover copy on the next read.
+        }
+      } catch (recoveryError) {
+        console.error('[Abele] Could not restore a failed checked chat rewrite', recoveryError)
+        // The restoration copy remains for readChat; the session must reconcile its writer.
+      }
+    } else if (check && copied) {
+      // A rejected guard (or a failure before process ran) did not touch the chat.
+      try {
+        await adapter.remove(copy)
+      } catch {
+        // The unchanged whole chat remains authoritative on the next read.
+      }
+    }
+    throw err
+  }
   if (!copied) return
   try {
     await adapter.remove(copy)
