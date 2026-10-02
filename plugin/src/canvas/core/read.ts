@@ -1,0 +1,53 @@
+import { labelOf, overlaps, parentsOf, type CanvasGraph, type Rect } from './model'
+import { lintCanvas } from './lint'
+/** Coordinates appear only in full detail. All outline ordering is deterministic by id. */
+export function canvasOutline(
+  graph: CanvasGraph,
+  options: { detail?: 'outline' | 'full'; region?: Rect } = {}
+) {
+  const parents = parentsOf(graph),
+    selected = options.region ? graph.nodes.filter((n) => overlaps(n, options.region)) : graph.nodes
+  const ids = new Set(selected.map((n) => n.id))
+  const nodes = [...selected]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((n) => ({
+      id: n.id,
+      type: n.type,
+      shape: n.styleAttributes?.shape ?? 'rectangle',
+      label: labelOf(n).replace(/\s+/g, ' ').slice(0, 160),
+      ...(n.file ? { file: n.file, subpath: n.subpath } : {}),
+      parent: parents.get(n.id) ?? null,
+      collapsed: n.collapsed ?? false,
+      ...(options.detail === 'full' ? { data: n } : {}),
+    }))
+  const groups = (parent: string | null): unknown[] =>
+    nodes
+      .filter((n) => n.type === 'group' && n.parent === parent)
+      .map((n) => ({
+        id: n.id,
+        label: n.label,
+        children: nodes.filter((c) => c.parent === n.id && c.type !== 'group').map((c) => c.id),
+        groups: groups(n.id),
+      }))
+  return {
+    groups: groups(null),
+    nodes,
+    edges: graph.edges
+      .filter((e) => ids.has(e.fromNode) || ids.has(e.toNode))
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((e) =>
+        options.detail === 'full'
+          ? e
+          : { id: e.id, from: e.fromNode, to: e.toNode, label: e.label ?? '' }
+      ),
+    steps: graph.abele?.steps ?? [],
+    warnings: lintCanvas(graph),
+    ...(options.detail === 'full'
+      ? {
+          extensions: Object.fromEntries(
+            Object.entries(graph).filter(([key]) => key !== 'nodes' && key !== 'edges')
+          ),
+        }
+      : {}),
+  }
+}
