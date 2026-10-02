@@ -54,6 +54,7 @@ interface EditorSnapshot {
 interface Report {
   mobile?: boolean
   leaving?: EditorSnapshot
+  other?: EditorSnapshot
   reopened?: EditorSnapshot
   back?: Back
   error?: string
@@ -102,8 +103,8 @@ const script = `(async () => {
   const topOf = (el) => Math.round(el.getBoundingClientRect().top - scroller().getBoundingClientRect().top)
 
   try {
-    // A footer probe must work even when newly opened notes default to source-only mode.
-    app.vault.setConfig('defaultViewMode', 'source')
+    // Exercise navigation even when newly opened notes default to reading view.
+    app.vault.setConfig('defaultViewMode', 'preview')
     app.vault.setConfig('livePreview', false)
     const old = app.vault.getAbstractFileByPath(folder)
     if (old) await app.vault.delete(old, true)
@@ -157,6 +158,7 @@ const script = `(async () => {
 
     await leaf.openFile(app.vault.getAbstractFileByPath(otherPath), { active: true })
     await wait(800)
+    report.other = editorSnapshot()
     await leaf.openFile(app.vault.getAbstractFileByPath(groupPath), { active: true })
     const tops = []
     const rowTops = []
@@ -228,7 +230,7 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
       const b = report.back
       const moves = b?.tops.filter((t, i) => i === 0 || t !== b.tops[i - 1])
       console.info(
-        `\n  ${JSON.stringify({ ...b, tops: moves, rowTops: undefined, leaving: report.leaving, reopened: report.reopened, error: report.error })}\n`
+        `\n  ${JSON.stringify({ ...b, tops: moves, rowTops: undefined, leaving: report.leaving, other: report.other, reopened: report.reopened, error: report.error })}\n`
       )
     }, 400_000)
 
