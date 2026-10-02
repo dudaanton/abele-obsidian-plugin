@@ -20,9 +20,10 @@ import type { GithubViewModel } from '@/github/model'
 import type { GithubToolOperation } from './shared'
 import { commitRequest } from '@/github/commitRequest'
 import type { GithubPrimaryTarget } from '@/github/primaryAccess'
+import type { ToolContext } from '@/ai/toolContext'
 
 export interface GithubToolAccess {
-  agent: () => ConnectionAgent | null | undefined
+  agent: (ctx?: ToolContext) => ConnectionAgent | null | undefined
   approve?: ConnectionApproval
 }
 const anonymous = new GithubClient(endpoints(''), '')

@@ -1,5 +1,5 @@
 /**
- * A GitHub tab and the agent's `github_file` against an older Enterprise Server, in the app.
+ * GitHub tabs and an existing agent's tools against an older Enterprise Server, in the app.
  *
  * Such a server knows only the long-standing media types: asked for `raw+json` it answers with
  * the contents API's JSON object, the file in base64 — and past a megabyte with no content at
@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { targets } from './helpers/target'
 import {
   PRELUDE,
   enableGithub,
@@ -19,6 +20,7 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 
+targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 
 /** The server's log is read only while the worker is free, which it is not during an eval. */
@@ -31,11 +33,34 @@ for (const mode of ['legacy', 'no-raw'] as const) {
     beforeAll(async () => {
       gh = await startFakeGithub({ mode })
       enableGithub(gh.origin)
+      evalAsync(`(() => {
+        const api = window.__abeleTest
+        const config = api.AbeleConfig.getInstance()
+        window.__legacyGithubAi = JSON.stringify(config.ai)
+        const agent = api.AgentRegistry.getInstance().create({ name: 'Sample existing helper' })
+        delete agent.githubConnections
+        window.__legacyGithubAgent = agent.id
+        const github = { ...config.github }
+        delete github.connections
+        // Load a saved single-server credential and agent, not a test-only anonymous facade.
+        config.applySettings({ ...config.exportSettings(), github })
+        api.AgentRegistry.getInstance().notifyConfigReloaded()
+        config.version.value++
+        return true
+      })()`)
     }, 60_000)
 
     afterAll(() => {
       if (!available) return
       try {
+        evalAsync(`(() => {
+          const config = window.__abeleTest.AbeleConfig.getInstance()
+          config.ai = JSON.parse(window.__legacyGithubAi)
+          window.__abeleTest.AgentRegistry.getInstance().notifyConfigReloaded()
+          delete window.__legacyGithubAi
+          delete window.__legacyGithubAgent
+          return true
+        })()`)
         restoreGithub()
       } finally {
         gh?.stop()
@@ -80,9 +105,39 @@ for (const mode of ['legacy', 'no-raw'] as const) {
       expect(blobs).toBe(mode === 'no-raw')
     })
 
+    it.each(['github_read', 'github_pr_files'])(
+      'the existing agent routes an Enterprise pull URL through %s',
+      async (name) => {
+        const r = evalAsync<{ text: string }>(`(async () => {
+        const tool = window.__abeleTest.createAgentTools({ agentId: window.__legacyGithubAgent }).find(t => t.name === ${JSON.stringify(name)})
+        return { text: JSON.stringify(await tool.execute('sample-pull', { item: ${JSON.stringify(gh.web + '/pull/42')}, page: 1 })) }
+      })()`)
+        expect(r.text).toContain(name === 'github_read' ? 'Rework the widget loader' : 'src/app.ts')
+      }
+    )
+
+    it('an explicit denial still refuses the same Enterprise URL before a request', async () => {
+      await gh.drainRequests()
+      const before = gh.requests().length
+      const r = evalAsync<{ error: string }>(`(async () => {
+        const registry = window.__abeleTest.AgentRegistry.getInstance()
+        const agent = registry.get(window.__legacyGithubAgent)
+        const previous = agent.githubConnections
+        try {
+          agent.githubConnections = { 'github-legacy': 'off' }
+          const tool = window.__abeleTest.createAgentTools({ agentId: agent.id }).find(t => t.name === 'github_read')
+          await tool.execute('sample-denied', { item: ${JSON.stringify(gh.web + '/pull/42')}, page: 1 })
+          return { error: '' }
+        } catch (e) { return { error: e.message } }
+        finally { agent.githubConnections = previous }
+      })()`)
+      expect(r.error).toMatch(/permitted|disabled/i)
+      expect(await gh.drainRequests()).toHaveLength(before)
+    })
+
     it("the agent's github_file reads the file as text, a large one from its blob", async () => {
       const r = evalAsync<{ small?: string; long?: string; error?: string }>(`(async () => {
-        const tool = window.__abeleTest.createGithubTools().find((t) => t.name === 'github_file')
+        const tool = window.__abeleTest.createAgentTools({ agentId: window.__legacyGithubAgent }).find((t) => t.name === 'github_file')
         if (!tool) return { error: 'no github_file tool' }
         const text = async (repo) => (await tool.execute('e2e', { repo })).content[0].text
         return {

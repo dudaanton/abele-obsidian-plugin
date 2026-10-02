@@ -54,7 +54,13 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           },
         },
       },
-      execute: async (id, params, signal) => {
+      execute: async (id, params, signal, ctx) => {
+        // Bind identity per invocation; never share it between concurrent calls or use
+        // whichever chat happens to be visible. The getter still observes live revocation.
+        const callAccess: GithubToolAccess = {
+          agent: () => access?.agent(ctx),
+          approve: access?.approve,
+        }
         // Unmigrated test/compatibility callers have only the old single-server context.
         // Runtime settings load always migrates an existing credential into a connection.
         if (!access && !(githubSettings().connections ?? []).length && !params.connection)
@@ -62,7 +68,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
         const operation: GithubToolOperation = await toolOperation(
           tool.name,
           params,
-          access ?? { agent: () => null },
+          callAccess,
           signal
         )
         const primary = operation.primaryTarget ?? operation.target
@@ -137,7 +143,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
             const next = await toolOperation(
               tool.name,
               { ...params, connection: candidate },
-              access ?? { agent: () => null },
+              callAccess,
               signal
             )
             if (next.client.endpoints.api !== operation.client.endpoints.api)
