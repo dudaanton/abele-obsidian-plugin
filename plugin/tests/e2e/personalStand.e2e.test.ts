@@ -6,7 +6,7 @@ import { vaultCli } from './helpers/obsidianCli'
 import { assertFreshStandBaseline } from './helpers/standBaseline'
 
 /** Explicitly selected live stand supplement; never an offline/iPad substitute. */
-describe('personal stand supplement', () => {
+describe.skipIf(!process.env.ABELE_STAND_STAGE)('personal stand supplement', () => {
   it('sets up or restores only the owned personal fixture', async () => {
     const name = process.env.OBSIDIAN_TEST_VAULT
     if (!name) throw new Error('Stand supplement requires an exclusively leased pool vault')
