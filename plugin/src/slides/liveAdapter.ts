@@ -78,7 +78,7 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
           opened.leafId = model.id
           model.view = opened
           mounted = createApp(ScriptViewComponent, { model })
-          mountEl = target.ownerDocument.createElement('div')
+          mountEl = target.ownerDocument.win.createDiv()
           target.append(mountEl)
           mounted.mount(mountEl)
           await opened.emit('focus')
@@ -109,7 +109,7 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
             viewHost: host,
             formHandler: async (fields, runId, formSignal) => {
               if (fields.length === 1 && fields[0].type === 'markdown') {
-                const el = target.ownerDocument.createElement('div')
+                const el = target.ownerDocument.win.createDiv()
                 target.append(el)
                 const release = await markdown.render({ type: 'markdown', source: fields[0].text ?? '' }, el)
                 if (signal.aborted) { release(); el.remove() }
