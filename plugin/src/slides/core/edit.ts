@@ -1,4 +1,8 @@
 import { parseDeck, type DeckLocations } from './markdown'
+import type { Slide } from './model'
+
+const slideContent = ({ settings, title, regions, notes }: Slide) =>
+  JSON.stringify({ settings, title, regions, notes })
 
 /** Retain the marker as the first nonblank line while moving shared CSS before new content. */
 function prependStyles(lines: string[], styles: string[]): string[] {
@@ -42,6 +46,26 @@ export function prepareSlideEdit(source: string, edit: SlideEdit): string {
   const lines = source.split(/\r\n?|\n/)
   const starts = deck.slides.map((s) => s.sourceLine!)
   const index = edit.slide - 1
+  const validate = (result: string): string => {
+    const after = parseDeck(result)
+    const expected = count + (operation === 'insert' ? 1 : operation === 'remove' ? -1 : 0)
+    if (after.slides.length !== expected)
+      throw new Error(
+        'Edit changes neighbouring slide boundaries; close code fences and HTML blocks'
+      )
+    deck.slides.forEach((slide, before) => {
+      if (before === index && operation !== 'insert') return
+      const next =
+        before < index
+          ? before
+          : before + (operation === 'insert' ? 1 : operation === 'remove' ? -1 : 0)
+      if (slideContent(slide) !== slideContent(after.slides[next]))
+        throw new Error(
+          'Edit changes neighbouring slide boundaries or content; close code fences and HTML blocks'
+        )
+    })
+    return result
+  }
   const start = starts[index] ?? lines.length
   const end = index + 1 < count ? starts[index + 1] - 1 : lines.length
   const styles = locations.css
@@ -65,10 +89,10 @@ export function prepareSlideEdit(source: string, edit: SlideEdit): string {
     if (operation === 'replace') {
       lines.splice(start, end - start, ...content, ...(index === count - 1 ? [''] : ['', '']))
     } else if (index === count) {
-      return (
+      return validate(
         source.replace(/(?:\r?\n)+$/, '') + eol + eol + '---' + eol + eol + content.join(eol) + eol
       )
     } else lines.splice(start, 0, ...content, '', '---', '')
   }
-  return lines.join(eol)
+  return validate(lines.join(eol))
 }

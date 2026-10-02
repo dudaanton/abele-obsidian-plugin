@@ -80,6 +80,16 @@ describe('portable slide changes', () => {
       expect(() => prepareSlideEdit(SOURCE, { slide, content: '# X' })).toThrow(/slide number/i)
     expect(() => prepareDeckCreate({ content: '# Not a deck' })).toThrow(/type: presentation/)
   })
+  it.each(['replace', 'insert'] as const)(
+    'refuses %s content whose unclosed fence swallows neighbouring slides',
+    (operation) => {
+      const source = '---\ntype: presentation\n---\n# First\n---\n# Second\n---\n# Third\n'
+      expect(() =>
+        prepareSlideEdit(source, { slide: 1, operation, content: '# Example\n```text\nsample' })
+      ).toThrow(/boundaries/)
+      expect(parseDeck(source).slides.map((s) => s.title)).toEqual(['First', 'Second', 'Third'])
+    }
+  )
   it('keeps HTML and named script blocks as source without granting consent', () => {
     const content =
       '---\ntype: presentation\nhtmlNetwork: true\n---\n```slide-html\n<button>Sample</button>\n```\n```slide-script\nscript: Sample summary\n```'
@@ -144,6 +154,21 @@ describe('deck tools and read-before-write', () => {
     expect(await guard.check('deck_edit', { path: 'Decks/sample.md' })).toContain(
       'has changed since'
     )
+  })
+  it('refuses to write an edit that absorbs the next slide', async () => {
+    const app = useVault([{ path: 'Decks/sample.md', content: SOURCE }])
+    await expect(
+      createDeckTools()
+        .find((t) => t.name === 'deck_edit')!
+        .execute(
+          'bad-fence',
+          { path: 'Decks/sample.md', slide: 1, content: '# Example\n```text\nsample' },
+          undefined,
+          ctx()
+        )
+    ).rejects.toThrow(/boundaries/)
+    expect(app.stats.modify).toBe(0)
+    expect(await app.vault.read(app.vault.getFileByPath('Decks/sample.md')!)).toBe(SOURCE)
   })
   it('does not overwrite a concurrent change while preparing a slide edit', async () => {
     const app = useVault([{ path: 'Decks/sample.md', content: SOURCE }])

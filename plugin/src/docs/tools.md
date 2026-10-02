@@ -54,7 +54,8 @@ operation?)` replaces one slide by default; `insert` inserts before the one-base
 slide, without frontmatter or separators; notes and layout markers are included. Untouched
 slides and deck properties keep their source spelling. Shared `css` fences survive a slide's
 replacement or removal, in their original cascade order; use ordinary source editing to change
-the deck-wide stylesheet intentionally. Read the whole current deck before
+the deck-wide stylesheet intentionally. Edits whose unclosed fences/HTML change neighbouring
+slide boundaries or content are refused before writing. Read the whole current deck before
 editing; stale versions and concurrent changes are refused. Both writes use the ordinary file
 diff/confirmation and link the changed note to the chat.
 
