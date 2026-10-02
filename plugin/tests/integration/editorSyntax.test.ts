@@ -63,7 +63,7 @@ const language = StreamLanguage.define({
 
 // A container-aware HyperMD-shaped parser. Leaving the quote/list ends its fence even
 // without an explicit closing marker; following prose and blocks have their own scope.
-const containerLanguage = (nativeRust = false) =>
+const containerLanguage = (nativeRust = false, retainScope = false) =>
   StreamLanguage.define({
     startState: () => ({ fence: '', container: '', current: '', native: false }),
     blankLine(state) {
@@ -86,7 +86,13 @@ const containerLanguage = (nativeRust = false) =>
           state.current = 'list'
           return 'list_list-1'
         }
-        if (state.container) {
+        if (
+          state.container &&
+          retainScope &&
+          (state.container === 'list' || !/^(`{3,}|~{3,})/.test(stream.string))
+        ) {
+          state.current = state.container + '-lazy'
+        } else if (state.container) {
           state.fence = ''
           state.container = ''
         }
@@ -110,6 +116,7 @@ const containerLanguage = (nativeRust = false) =>
           ? 'inline-code_quote_quote-1'
           : 'hmd-codeblock-end' + suffix
       }
+      if (state.current === 'quote-lazy') return 'inline-code_quote_quote-1_HyperMD-quote-lazy'
       return state.current === 'quote'
         ? 'inline-code_quote_quote-1'
         : (state.native ? 'hmd-codeblock_keyword' : 'hmd-codeblock') + suffix
@@ -117,6 +124,7 @@ const containerLanguage = (nativeRust = false) =>
     tokenTable: Object.fromEntries(
       [
         'quote_quote-1',
+        'inline-code_quote_quote-1_HyperMD-quote-lazy',
         'list_list-1',
         'inline-code_quote_quote-1',
         'hmd-codeblock',
@@ -359,6 +367,50 @@ describe('Prism tokens in a CM6 editor', () => {
     ])
     expect(tokenText(view)).toEqual(['query', 'fn'])
   })
+
+  it.each(['quote', 'list'])(
+    'ends an unclosed %s even if the parser retains stale code scope outside it',
+    async (container) => {
+      const contained =
+        container === 'quote'
+          ? '> ```graphql\n> query { sample }'
+          : '- ```graphql\n  query { sample }'
+      const doc = contained + '\nOutside prose\n```rust\nfn sample() {}\n```'
+      const view = await mount(
+        doc,
+        true,
+        () => true,
+        async () => prism,
+        containerLanguage(true, true)
+      )
+      expect(tokenize.mock.calls[0][0]).toBe('query { sample }\n')
+      expect(
+        [...view.contentDOM.querySelectorAll('.cm-line')]
+          .find((line) => line.textContent === 'Outside prose')
+          ?.querySelector('.abele-syntax-token')
+      ).toBeNull()
+      expect(view.state.doc.toString()).toBe(doc)
+    }
+  )
+
+  it.each(['quote', 'list'])(
+    'keeps a small %s block highlighted before long prose with stale code scope',
+    async (container) => {
+      const contained =
+        container === 'quote'
+          ? '> ```graphql\n> query { sample }'
+          : '- ```graphql\n  query { sample }'
+      const view = await mount(
+        contained + '\n' + 'Prose '.repeat(MAX_BLOCK_CHARACTERS) + '\nEnd',
+        true,
+        () => true,
+        async () => prism,
+        containerLanguage(false, true)
+      )
+      expect(tokenize.mock.calls.map(([source]) => source)).toEqual(['query { sample }\n'])
+      expect(tokenText(view)).toEqual(['query'])
+    }
+  )
 
   it('ends an unclosed quote at a bare blank line, without consuming outside prose', async () => {
     const view = await mount(

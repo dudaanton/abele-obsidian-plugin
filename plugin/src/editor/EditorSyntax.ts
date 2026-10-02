@@ -87,6 +87,8 @@ function lineKind(state: EditorState, number: number) {
   let quoted = false
   let code = false
   let quoteContext = false
+  let lazyQuote = false
+  let listContext = false
   syntaxTree(state).iterate({
     from: line.from,
     to: line.to,
@@ -95,6 +97,9 @@ function lineKind(state: EditorState, number: number) {
       if (node.name.includes('codeblock-begin')) begin = true
       if (node.name.includes('codeblock-end')) end = true
       if (/(?:^|_)quote(?:_|-|$)/.test(node.name)) quoteContext = true
+      if (node.name.includes('HyperMD-quote-lazy')) lazyQuote = true
+      if (node.name.includes('HyperMD-list-line') || /(?:^|_)list-\d+(?:_|$)/.test(node.name))
+        listContext = true
       if (
         node.name.includes('HyperMD-codeblock') &&
         !node.name.includes('codeblock-begin') &&
@@ -131,7 +136,14 @@ function lineKind(state: EditorState, number: number) {
     begin ||= !!fence[2].trim()
     end ||= !fence[2].trim()
   }
-  return { begin, end, contentFrom, native, quoted, code, quoteContext }
+  return { begin, end, contentFrom, native, quoted, code, quoteContext, lazyQuote, listContext }
+}
+
+/** Markdown container columns, including a tab advancing to the next four-column stop. */
+function columns(text: string): number {
+  let width = 0
+  for (const char of text) width += char === '\t' ? 4 - (width % 4) : 1
+  return width
 }
 
 /** Locate only a visible block, with a hard bound in both directions for enormous fences. */
@@ -159,6 +171,11 @@ function blockAt(state: EditorState, position: number): Block | null {
   const fence = /(`{3,}|~{3,})\s*([^\s`~]*)/.exec(first.text)
   const language = fence?.[2]?.toLowerCase()
   if (!fence || !language) return null
+  const prefix = first.text.slice(0, fence.index)
+  const listIndent =
+    openingKind.listContext && /^(?:[ \t]*(?:[-+*]|\d+[.)])[ \t]+|[ \t]+)$/.test(prefix)
+      ? columns(prefix)
+      : 0
   const from = first.to + 1
   if (from > doc.length) return null
   let to = doc.length
@@ -174,7 +191,16 @@ function blockAt(state: EditorState, position: number): Block | null {
       openingKind.quoted ? line.text.replace(/^[ \t]*(?:>[ \t]?)+/, '') : line.text
     ).trim()
     const sibling = kind.begin && !(openingKind.quoted && kind.quoted)
-    if (sibling || (!kind.code && !blank) || (openingKind.quoted && !kind.quoteContext)) {
+    // HyperMD can retain lazy quote/list code scope after Markdown has left the container.
+    // Fenced code cannot continue lazily: quote markers/list indentation must still exist.
+    const outdented =
+      listIndent > 0 && !!line.text.trim() && columns(/^[ \t]*/.exec(line.text)![0]) < listIndent
+    if (
+      sibling ||
+      (!kind.code && !blank) ||
+      outdented ||
+      (openingKind.quoted && (!kind.quoteContext || kind.lazyQuote))
+    ) {
       to = line.from
       break
     }
@@ -221,7 +247,7 @@ function visibleBlocks(view: EditorView): Block[] {
         if (ignored || kind.end) return false
         const block = blockAt(view.state, node.from)
         if (block && !blocks.some((found) => found.from === block.from)) blocks.push(block)
-        if (!block) ignored = true
+        if (!block || node.from >= block.to) ignored = true
         return false
       },
     })
