@@ -4,6 +4,10 @@ import { Header } from '@/entities/Header'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { configureAbele, dailyJournal } from '../helpers/testEnv'
 import { templateHarness } from '../helpers/templateHarness'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { getNoteRawFrontmatter } from '@/helpers/notesUtils'
+import { load } from 'js-yaml'
+import { flushPromises } from '@vue/test-utils'
 
 const headers: Header[] = []
 const make = (path = 'Notes/sample.md') => {
@@ -22,6 +26,72 @@ afterEach(() => {
   VaultWatcherWrapper.destroy()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+})
+
+describe('header metadata arriving after the file modification', () => {
+  it.each([
+    ['---\ntype: changed\ncreated: "2028-03-02"\n---\nBody', 'changed', '2028-03-02'],
+    ['Body without frontmatter', null, null],
+  ])('refreshes type and created after metadata parses %j', async (saved, type, created) => {
+    const env = templateHarness([
+      { path: 'Notes/sample.md', frontmatter: { type: 'sample', created: '2028-03-01' } },
+    ])
+    const config = AbeleConfig.getInstance()
+    const oldDelay = config.refreshDelay
+    config.refreshDelay = 0
+    const file = env.app.vault.getFileByPath('Notes/sample.md')!
+    const header = make()
+    try {
+      await header.load()
+      await env.app.vault.modify(file, saved!)
+      env.app.emit('vault', 'modify', file)
+      await flushPromises()
+      // The cache still holds the pre-edit properties when the modify watcher runs.
+      expect(header.type).toBe('sample')
+      expect(header.createdAt?.format('YYYY-MM-DD')).toBe('2028-03-01')
+      const raw = getNoteRawFrontmatter(await env.app.vault.read(file))
+      const cache = env.app.metadataCache.getFileCache(file)!
+      if (raw === null) delete cache.frontmatter
+      else cache.frontmatter = load(raw) as Record<string, unknown>
+      env.app.emit('metadataCache', 'changed', file)
+      await flushPromises()
+      expect(header.type).toBe(type)
+      expect(header.createdAt?.format('YYYY-MM-DD') ?? null).toBe(created)
+    } finally {
+      config.refreshDelay = oldDelay
+    }
+  })
+})
+
+describe('queued header metadata refresh', () => {
+  it('coalesces a metadata burst and ignores a queued reload after cleanup', async () => {
+    configureAbele({ journals: [] })
+    const env = templateHarness([{ path: 'Notes/sample.md', frontmatter: { type: 'sample' } }])
+    const file = env.app.vault.getFileByPath('Notes/sample.md')!
+    const header = make()
+    await header.load()
+    await env.app.vault.modify(file, '---\ntype: changed\n---\nBody')
+    env.app.emit('vault', 'modify', file)
+    await flushPromises()
+    env.app.setFrontmatter(file.path, { type: 'changed' })
+    const read = vi.spyOn(env.app.metadataCache, 'getFileCache')
+    for (let index = 0; index < 100; index++) env.app.emit('metadataCache', 'changed', file)
+    await flushPromises()
+    expect(header.type).toBe('changed')
+    expect(read).toHaveBeenCalledTimes(1)
+
+    await env.app.vault.modify(file, 'Body without frontmatter')
+    env.app.emit('vault', 'modify', file)
+    await flushPromises()
+    delete env.app.metadataCache.getFileCache(file)!.frontmatter
+    read.mockClear()
+    env.app.emit('metadataCache', 'changed', file)
+    header.cleanup()
+    await flushPromises()
+    expect(read).not.toHaveBeenCalled()
+    expect(header.loaded).toBe(false)
+    expect(header.type).toBeNull()
+  })
 })
 
 describe('Header cache lifecycle', () => {

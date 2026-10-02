@@ -25,6 +25,7 @@ export class Header {
 
   // to avoid debounced calls after cleanup
   private cleanedUp = false
+  private metadataRefreshQueued = false
 
   constructor(data: { id: string; filePath: string }) {
     this.id = data.id
@@ -70,7 +71,16 @@ export class Header {
   private watchMetadata() {
     const { metadataCache } = GlobalStore.getInstance().app
     const retell = () => {
-      if (!this.cleanedUp) this.tellJournal()
+      if (this.cleanedUp) return
+      this.tellJournal()
+      if (this.metadataRefreshQueued) return
+      this.metadataRefreshQueued = true
+      // A modify can precede its parsed metadata. Refresh all properties after this
+      // notification completes, coalescing metadata bursts into one cache read.
+      queueMicrotask(() => {
+        this.metadataRefreshQueued = false
+        void this.load(true)
+      })
     }
     this.metadataRefs.push(
       metadataCache.on('changed', (file: TFile) => {
