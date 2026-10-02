@@ -66,11 +66,16 @@ export function swipeDriverArgs(
   y1: number,
   x2: number,
   y2: number,
-  velocity?: number
+  velocity?: number,
+  hold?: number
 ): string[] {
-  return velocity === undefined
+  return velocity === undefined && hold === undefined
     ? ['swipe', String(x1), String(y1), String(x2), String(y2)]
-    : ['call', '/swipe', JSON.stringify({ x1, y1, x2, y2, velocity })]
+    : [
+        'call',
+        '/swipe',
+        JSON.stringify({ x1, y1, x2, y2, velocity, ...(hold === undefined ? {} : { hold }) }),
+      ]
 }
 
 /** Real touches, in CSS pixels of the page (which fills the phone's screen). */
@@ -156,7 +161,7 @@ export function installPhoneHost(): void {
         // be taken does not stop what is being measured: it answers why, in place of a path.
         shot: (path) => call('shot', { path }).then((r) => r.path, (e) => 'no picture: ' + String(e && e.message)),
         tap: (x, y) => call('tap', { x, y }),
-        swipe: (x1, y1, x2, y2, options = {}) => call('swipe', { x1, y1, x2, y2, velocity: options.velocity }),
+        swipe: (x1, y1, x2, y2, options = {}) => call('swipe', { x1, y1, x2, y2, velocity: options.velocity, hold: options.hold }),
         longPress: (x, y) => call('longpress', { x, y }),
         type: (text) => call('type', { text }),
         pinch: (scale) => call('pinch', { scale }),

@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { swipeDriverArgs } from '../e2e/helpers/phone'
 
 describe('physical swipe driver requests', () => {
+  it('can hold before a measured drag without changing ordinary swipe defaults', () => {
+    expect(swipeDriverArgs(10, 20, 10, 100, 100, 0.65)).toEqual([
+      'call',
+      '/swipe',
+      JSON.stringify({ x1: 10, y1: 20, x2: 10, y2: 100, velocity: 100, hold: 0.65 }),
+    ])
+  })
   it('keeps the default swipe command unchanged', () => {
     expect(swipeDriverArgs(10, 20, 10, 100)).toEqual(['swipe', '10', '20', '10', '100'])
   })

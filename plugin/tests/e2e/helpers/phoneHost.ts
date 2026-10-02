@@ -189,7 +189,8 @@ export async function startHost(): Promise<void> {
           Number(n('y1')),
           Number(n('x2')),
           Number(n('y2')),
-          b.velocity === undefined ? undefined : Number(b.velocity)
+          b.velocity === undefined ? undefined : Number(b.velocity),
+          b.hold === undefined ? undefined : Number(b.hold)
         )
       else if (what === 'type') args = ['type', String(b.text)]
       else if (what === 'pinch') args = ['pinch', String(Number(b.scale))]
