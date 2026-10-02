@@ -101,9 +101,10 @@ export class ScriptProvenance {
   private async retired(path: string): Promise<string[]> {
     const raw = await this.meta.getMeta(retiredKey(path))
     if (raw === null) return []
+    if (typeof raw !== 'string') throw new Error('Script retirement is unreadable')
     let value: unknown
     try {
-      value = JSON.parse(String(raw))
+      value = JSON.parse(raw)
     } catch {
       throw new Error('Script retirement is unreadable')
     }
