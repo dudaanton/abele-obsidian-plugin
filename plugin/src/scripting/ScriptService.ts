@@ -25,7 +25,7 @@ import { ScriptTrust, ScriptWaitingError, sha256, noteLocalScriptWrite } from '.
 import type { TrustedFile, TrustVerdict } from './trustState'
 import { announceWaiting, reviewOne, reviewWaiting } from './scriptReview'
 import type { BookScriptContext } from './bookContext'
-import type { RestoreInfo } from './view/View'
+import type { RestoreInfo, ViewHost } from './view/View'
 import type { AutomationEvent } from '@/automations/types'
 import { ref } from 'vue'
 
@@ -53,6 +53,8 @@ export interface ExecuteOptions {
   source?: RunSource
   /** A saved tab being rebuilt: the leaf waiting for the view and the state it kept. */
   restore?: RestoreInfo
+  /** An embedded view uses the same component kit without opening a workspace leaf. */
+  viewHost?: ViewHost
   /** What set the run off, when an automation did — the script's `event`. */
   event?: AutomationEvent
   /** Told each path the script is about to write; see `buildScriptContext`. */
@@ -938,6 +940,7 @@ export class ScriptService {
         },
         scriptName: script.meta.name,
         restore: opts.restore,
+        viewHost: opts.viewHost,
         event: opts.event,
         book: opts.book,
         onWrite: opts.onWrite,

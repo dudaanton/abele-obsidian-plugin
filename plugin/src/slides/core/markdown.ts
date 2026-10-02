@@ -5,6 +5,7 @@ import {
   type Attribute,
   type Deck,
   type MarkdownBlock,
+  type SlideBlock,
   type Slide,
   type SlideSettings,
 } from './model'
@@ -146,6 +147,38 @@ function parseSlide(lines: string[], sourceLine: number, css: string[]): Slide {
       css.push(styles.join('\n').trim())
       continue
     }
+    const fenced = /^ {0,3}(`{3,}|~{3,})(slide-script|slide-html)\s*$/.exec(line)
+    if (fenced && blocks.some((b) => b.kind === 'code' && b.start === i)) {
+      flush()
+      const body: string[] = []
+      const close = new RegExp(`^ {0,3}${fenced[1][0]}{${fenced[1].length},}\\s*$`)
+      while (i + 1 < lines.length && !close.test(lines[i + 1])) body.push(lines[++i])
+      if (i + 1 < lines.length) i++
+      let liveBlock: SlideBlock
+      if (fenced[2] === 'slide-html') liveBlock = { type: 'html', source: body.join('\n') }
+      else {
+        try {
+          const data = load(body.join('\n')) as Record<string, unknown>
+          if (!data || typeof data.script !== 'string' || !data.script.trim())
+            throw new Error('Missing script name')
+          const params =
+            data.params && typeof data.params === 'object' && !Array.isArray(data.params)
+              ? (data.params as Record<string, unknown>)
+              : {}
+          const refresh =
+            data.refresh === 'enter'
+              ? 'enter'
+              : typeof data.refresh === 'string' && /^([1-9]\d*)s$/.test(data.refresh)
+                ? Number(data.refresh.slice(0, -1)) * 1000
+                : 'once'
+          liveBlock = { type: 'script', name: data.script, params, refresh }
+        } catch {
+          liveBlock = block([line, ...body, lines[i] ?? ''].join('\n'))
+        }
+      }
+      region.blocks.push(liveBlock)
+      continue
+    }
     const named = live[i] ? REGION.exec(line.trim()) : null
     if (named) {
       flush()
@@ -244,7 +277,15 @@ export function serializeDeck(deck: Deck): string {
     ]
     for (const region of slide.regions) {
       if (region.name !== 'body') out.push(`::${region.name}::`)
-      out.push(...region.blocks.map((b) => b.source))
+      out.push(
+        ...region.blocks.map((b) =>
+          b.type === 'markdown'
+            ? b.source
+            : b.type === 'html'
+              ? `\`\`\`slide-html\n${b.source}\n\`\`\``
+              : `\`\`\`slide-script\n${dump({ script: b.name, params: b.params, refresh: b.refresh === 'once' || b.refresh === 'enter' ? b.refresh : `${b.refresh / 1000}s` }, { lineWidth: -1 })}\`\`\``
+        )
+      )
     }
     for (const note of slide.notes)
       out.push(

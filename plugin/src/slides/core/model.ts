@@ -9,6 +9,20 @@ export interface MarkdownBlock {
   source: string
 }
 
+export interface ScriptBlock {
+  type: 'script'
+  name: string
+  params: Record<string, unknown>
+  refresh: 'once' | 'enter' | number
+}
+
+export interface HtmlBlock {
+  type: 'html'
+  source: string
+}
+
+export type SlideBlock = MarkdownBlock | ScriptBlock | HtmlBlock
+
 export interface SlideSettings {
   layout: Layout
   bg: string
@@ -23,7 +37,7 @@ export interface SlideSettings {
 export interface Slide {
   settings: SlideSettings
   title: string
-  regions: { name: 'body' | 'left' | 'right' | 'cell'; blocks: MarkdownBlock[] }[]
+  regions: { name: 'body' | 'left' | 'right' | 'cell'; blocks: SlideBlock[] }[]
   notes: MarkdownBlock[]
   /** Codec locations for reading-mode dividers. Not part of the stored slide's identity. */
   sourceLine?: number
@@ -50,6 +64,10 @@ export interface FullscreenHost {
 /** The adapter owns rendering lifetimes, including live markdown processors. */
 export interface BlockRenderer {
   render(block: MarkdownBlock, target: HTMLElement): Promise<() => void>
+  /** A named script, admitted by the host's script service; signal revokes the run on exit. */
+  script?(block: ScriptBlock, target: HTMLElement, signal: AbortSignal): Promise<() => void>
+  /** A remembered, per-deck network decision. Absent means no network. */
+  allowNetwork?(deck: Deck): Promise<boolean>
 }
 
 export interface CssSource {

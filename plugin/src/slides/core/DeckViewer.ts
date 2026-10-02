@@ -1,5 +1,14 @@
 import { scopeCss } from '@/scripting/view/scopeCss'
-import type { BlockRenderer, CssSource, Deck, FullscreenHost, MediaResolver, Slide } from './model'
+import type {
+  BlockRenderer,
+  CssSource,
+  Deck,
+  FullscreenHost,
+  MediaResolver,
+  Slide,
+  ScriptBlock,
+  HtmlBlock,
+} from './model'
 import { expandCssImports } from './cssImports'
 import { Presentation } from './Presentation'
 import { fitSlide, slideForGesture, slideForKey, type Navigation, type Point } from './navigation'
@@ -11,6 +20,7 @@ interface RenderedSlide {
   ready: Promise<void>
   observer: MutationObserver
   attempted: WeakSet<HTMLVideoElement>
+  live: { start: () => Promise<void>; stop: () => void }[]
 }
 
 export const interactive = (target: EventTarget | null): boolean => {
@@ -203,7 +213,7 @@ export class DeckViewer {
     this.mediaSuspended = suspended
     for (const entry of this.slides.values()) {
       if (suspended) this.pause(entry)
-      else if (!entry.element.hidden) this.activate(entry)
+      else if (!entry.element.hidden) void this.activate(entry)
     }
   }
 
@@ -284,7 +294,7 @@ export class DeckViewer {
     return Promise.all(wanted.map((i) => this.slides.get(i)!.ready)).then(() => {
       if (this.closed) return
       const active = this.slides.get(this.index)
-      if (active) this.activate(active)
+      if (active) return this.activate(active)
     })
   }
 
@@ -333,7 +343,7 @@ export class DeckViewer {
       if (entry.gone) return
       this.publishSteps()
       this.applySteps()
-      if (!element.hidden) this.activate(entry)
+      if (!element.hidden) void this.activate(entry)
       else this.pause(entry)
     })
     const entry: RenderedSlide = {
@@ -343,6 +353,7 @@ export class DeckViewer {
       ready: Promise.resolve(),
       observer,
       attempted: new WeakSet(),
+      live: [],
     }
     observer.observe(element, { childList: true, subtree: true })
     this.viewport.append(element)
@@ -356,6 +367,10 @@ export class DeckViewer {
           const el = doc.createElement('div')
           target.append(el)
           try {
+            if (block.type !== 'markdown') {
+              entry.live.push(this.liveBlock(block, el, entry))
+              continue
+            }
             const cleanup = await this.renderer.render(block, el)
             if (entry.gone) cleanup()
             else entry.cleanups.push(cleanup)
@@ -369,18 +384,19 @@ export class DeckViewer {
       if (!entry.gone) {
         this.publishSteps()
         this.applySteps()
-        if (!element.hidden) this.activate(entry)
+        if (!element.hidden) void this.activate(entry)
         else this.pause(entry)
       }
     })
     return entry
   }
 
-  private activate(entry: RenderedSlide): void {
+  private async activate(entry: RenderedSlide): Promise<void> {
     if (this.options.preview || this.mediaSuspended) {
       this.pause(entry)
       return
     }
+    await Promise.all(entry.live.map((live) => live.start()))
     const index = Number(entry.element.dataset.slide) - 1
     const autoplay = this.deck?.slides[index]?.settings.autoplay
     for (const video of Array.from(entry.element.querySelectorAll('video'))) {
@@ -426,11 +442,87 @@ export class DeckViewer {
   }
 
   private pause(entry: RenderedSlide): void {
+    entry.live.forEach((live) => live.stop())
     for (const video of Array.from(entry.element.querySelectorAll('video'))) {
       video.autoplay = false
       video.pause()
     }
     for (const audio of Array.from(entry.element.querySelectorAll('audio'))) audio.pause()
+  }
+
+  private liveBlock(block: ScriptBlock | HtmlBlock, target: HTMLElement, entry: RenderedSlide) {
+    let controller: AbortController | null = null
+    let cleanup: (() => void) | null = null
+    let timer: number | null = null
+    let frame: HTMLIFrameElement | null = null
+    let started = false
+    let once = false
+    const stop = () => {
+      // Static results remain a snapshot. A disposed view must be rebuilt to work again.
+      if ((cleanup as ((() => void) & { interactive?: boolean }) | null)?.interactive) once = false
+      controller?.abort()
+      controller = null
+      cleanup?.()
+      cleanup = null
+      if (timer !== null) target.ownerDocument.defaultView?.clearInterval(timer)
+      timer = null
+      frame?.remove()
+      frame = null
+      if (block.type === 'script' && (block.refresh !== 'once' || !once)) target.replaceChildren()
+      started = false
+    }
+    const start = async () => {
+      if (
+        started ||
+        entry.gone ||
+        entry.element.hidden ||
+        this.closed ||
+        this.mediaSuspended ||
+        this.options.preview
+      )
+        return
+      if (block.type === 'script' && block.refresh === 'once' && once) return
+      started = true
+      if (block.type === 'html') {
+        // The opaque-origin frame is recreated on every entry; removing it kills its timers and audio.
+        const network = (await this.renderer.allowNetwork?.(this.deck!)) ?? false
+        if (!started || entry.gone || entry.element.hidden) return
+        frame = target.ownerDocument.createElement('iframe')
+        frame.setAttribute('sandbox', 'allow-scripts')
+        frame.setAttribute('title', 'Slide HTML')
+        const policy = network
+          ? "default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: https:; media-src data: https:; connect-src https:; font-src data: https:; navigate-to https:; form-action 'none'; base-uri 'none'"
+          : "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data:; font-src data:; connect-src 'none'; navigate-to 'none'; form-action 'none'; base-uri 'none'"
+        frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="${policy}">${block.source}`
+        target.append(frame)
+        return
+      }
+      const run = async () => {
+        cleanup?.()
+        cleanup = null
+        controller?.abort()
+        controller = new AbortController()
+        const signal = controller.signal
+        target.replaceChildren()
+        try {
+          const dispose = await this.renderer.script?.(block, target, signal)
+          if (signal.aborted || entry.gone) dispose?.()
+          else cleanup = dispose ?? null
+        } catch (error) {
+          if (!signal.aborted)
+            target.textContent = `Script could not be run: ${error instanceof Error ? error.message : error}`
+        }
+      }
+      await run()
+      if (!started || entry.gone) return
+      once = true
+      if (typeof block.refresh === 'number')
+        timer =
+          target.ownerDocument.defaultView?.setInterval(() => {
+            void run()
+          }, block.refresh) ?? null
+    }
+    return { start, stop }
   }
 
   private release(entry: RenderedSlide): void {

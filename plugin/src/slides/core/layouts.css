@@ -126,6 +126,14 @@
   overflow: hidden;
 }
 
+.abele-slide-region iframe[title='Slide HTML'] {
+  display: block;
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+
 .abele-slide-region > div > :first-child {
   margin-top: 0;
 }

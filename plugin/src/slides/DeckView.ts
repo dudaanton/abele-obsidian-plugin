@@ -11,6 +11,7 @@ import { DeckViewer } from './core/DeckViewer'
 import { DeckFollower } from './core/DeckFollower'
 import { parseDeck } from './core/markdown'
 import { noteDeckSource, noteMedia, noteRenderer } from './adapter'
+import { liveRenderer } from './liveAdapter'
 import { DECK_VIEW_TYPE, sourceLeaves } from './opening'
 import { desktopFullscreen } from './fullscreen'
 import { Presentation } from './core/Presentation'
@@ -128,7 +129,11 @@ export class DeckView extends FileView {
     this.contentEl.classList.add('abele-deck-tab')
     this.viewer = new DeckViewer(
       this.contentEl,
-      noteRenderer(this.app, () => this.file?.path ?? ''),
+      liveRenderer(
+        this.app,
+        () => this.file?.path ?? '',
+        noteRenderer(this.app, () => this.file?.path ?? '')
+      ),
       noteMedia(this.app, () => this.file?.path ?? ''),
       {
         fullscreen: !Platform.isMobile,
@@ -184,7 +189,11 @@ export class DeckView extends FileView {
     this.presenter = new PresenterView(
       this.contentEl,
       show,
-      noteRenderer(this.app, () => this.file?.path ?? ''),
+      liveRenderer(
+        this.app,
+        () => this.file?.path ?? '',
+        noteRenderer(this.app, () => this.file?.path ?? '')
+      ),
       noteMedia(this.app, () => this.file?.path ?? ''),
       Platform.isMobile
     )
