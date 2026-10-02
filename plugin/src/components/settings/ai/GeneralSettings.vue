@@ -1004,6 +1004,8 @@ const addImageProvider = () => {
 }
 
 const removeImageProvider = (idx: number) => {
+  const provider = imageProviders.value[idx]
+  if (provider?.apiKeyId) secretStore().remove(provider.apiKeyId)
   imageProviders.value.splice(idx, 1)
   save()
 }
