@@ -19,6 +19,7 @@ export const PDF_SCROLL_TAG = tagName('abele-pdf-scroll')
 interface PageSource {
   src: string
   onZoom?: (z: { doc: Document; scale: number }) => void
+  onUnload?: () => void
 }
 
 interface Section {
@@ -330,7 +331,10 @@ export class PdfScroll extends HTMLElement {
     slot.loading = true
     try {
       const source = (await section.load()) as PageSource
-      if (slot.frame || !slot.loading) return
+      if (slot.frame || !slot.loading) {
+        source.onUnload?.()
+        return
+      }
       const frame = this.ownerDocument.win.createEl('iframe')
       frame.setAttribute('sandbox', frameOptions.sandbox)
       frame.setAttribute('scrolling', 'no')
@@ -362,6 +366,7 @@ export class PdfScroll extends HTMLElement {
   #unload(i: number): void {
     const slot = this.#slots[i]
     if (slot.doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc: slot.doc } }))
+    ;(slot.frame as (HTMLIFrameElement & { __source?: PageSource }) | null)?.__source?.onUnload?.()
     slot.frame?.remove()
     slot.frame = null
     slot.doc = null

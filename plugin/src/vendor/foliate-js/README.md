@@ -112,6 +112,11 @@ Every change is marked `ABELE PATCH` at its site.
     not made to await their parent, so circular book resources cannot deadlock. Destroying
     a loader also invalidates pending URL creation and clears its reference bookkeeping.
 
+13. **Fixed-layout frames release host-owned resources** (`fixed-layout.js`, `#releaseFrames`).
+    A page source's optional `onUnload` callback is called when its frame leaves a spread or
+    the renderer closes, including PDF images and their frame URLs. Independent consumers
+    retain their own leases while a replacement spread is being loaded.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

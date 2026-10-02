@@ -75,6 +75,8 @@ export class FixedLayout extends HTMLElement {
         const srcOptionIsString = typeof srcOption === 'string'
         const src = srcOptionIsString ? srcOption : srcOption?.src
         const onZoom = srcOptionIsString ? null : srcOption?.onZoom
+        // ABELE PATCH: the host releases the picture and frame URL with this consumer.
+        const onUnload = srcOptionIsString ? null : srcOption?.onUnload
         const element = document.createElement('div')
         element.setAttribute('dir', 'ltr')
         const iframe = document.createElement('iframe')
@@ -100,7 +102,7 @@ export class FixedLayout extends HTMLElement {
                     element, iframe,
                     width: parseFloat(width),
                     height: parseFloat(height),
-                    onZoom,
+                    onZoom, onUnload,
                 })
             }, { once: true })
             iframe.src = src
@@ -170,10 +172,14 @@ export class FixedLayout extends HTMLElement {
             transform(right)
         }
     }
-    async #showSpread({ left, right, center, side }) {
-        // ABELE PATCH: let page-local marks release old frame documents before replacement.
+    #releaseFrames() {
+        // ABELE PATCH: both page-local marks and host-owned PDF resources leave with a frame.
         for (const { doc } of this.getContents())
             if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
+        for (const frame of [this.#left, this.#right, this.#center]) frame?.onUnload?.()
+    }
+    async #showSpread({ left, right, center, side }) {
+        this.#releaseFrames()
         this.#root.replaceChildren()
         this.#left = null
         this.#right = null
@@ -322,9 +328,7 @@ export class FixedLayout extends HTMLElement {
         }))
     }
     destroy() {
-        // ABELE PATCH: release the documents retained by page-local marks on close.
-        for (const { doc } of this.getContents())
-            if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
+        this.#releaseFrames()
         this.#observer.unobserve(this)
     }
 }

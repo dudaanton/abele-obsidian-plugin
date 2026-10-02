@@ -236,67 +236,109 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
 
   const pageEvents = new EventTarget()
   const urls = new Map<number, string>()
-  const pages = new Map<
-    number,
-    { src: string; onZoom: (z: { doc: Document; scale: number }) => void; unload: () => void }
-  >()
+  interface PageSource {
+    src: string
+    onZoom?: (z: { doc: Document; scale: number }) => void
+    onUnload?: () => void
+  }
+  interface PageEntry {
+    acquire(): PageSource
+    unload(): void
+  }
+  const pages = new Map<number, PageEntry>()
+  const loading = new Map<number, Promise<PageEntry>>()
+  let closed = false
   /** The drawing a page frame last asked for; an older one still finishing is dropped. */
   const drawing = new WeakMap<Document, number>()
   /** The size each page frame was last drawn at. */
   const drawnAt = new WeakMap<Document, number>()
+  const releaseDocument = (doc: Document) => {
+    drawing.set(doc, (drawing.get(doc) ?? 0) + 1)
+    drawnAt.delete(doc)
+    renderedAt.delete(doc)
+    for (const img of Array.from(doc.querySelectorAll('#canvas img'))) {
+      URL.revokeObjectURL((img as HTMLImageElement).src)
+      img.remove()
+    }
+    doc.querySelector('.textLayer')?.replaceChildren()
+    doc.querySelector('.annotationLayer')?.replaceChildren()
+  }
+  const createPage = async (i: number): Promise<PageEntry> => {
+    const page: PdfPage = await pdf.getPage(i + 1)
+    if (closed) return { acquire: () => ({ src: '' }), unload: () => {} }
+    const { width, height } = page.getViewport({ scale: 1 })
+    const url = URL.createObjectURL(new Blob([pdfPageHtml(width, height)], { type: 'text/html' }))
+    urls.set(i, url)
+    let active = true
+    const consumers = new Set<() => void>()
+    const unload = () => {
+      if (!active) return
+      active = false
+      for (const release of [...consumers]) release()
+      URL.revokeObjectURL(url)
+      urls.delete(i)
+      pages.delete(i)
+      page.cleanup?.()
+    }
+    const acquire = (): PageSource => {
+      let live = true
+      // The cache must not strongly retain a detached frame document.
+      let document: WeakRef<Document> | null = null
+      const onUnload = () => {
+        if (!live) return
+        live = false
+        const doc = document?.deref()
+        if (doc) releaseDocument(doc)
+        document = null
+        consumers.delete(onUnload)
+        if (active && consumers.size === 0) unload()
+      }
+      consumers.add(onUnload)
+      return {
+        src: url,
+        onUnload,
+        onZoom: ({ doc, scale }) => {
+          if (!active || !live) return
+          const previous = document?.deref()
+          if (previous && previous !== doc) releaseDocument(previous)
+          document = new WeakRef(doc)
+          if (drawnAt.get(doc) === scale) return
+          drawnAt.set(doc, scale)
+          const turn = (drawing.get(doc) ?? 0) + 1
+          drawing.set(doc, turn)
+          const current = () => active && live && drawing.get(doc) === turn
+          void drawPage(lib, page, doc, scale, current)
+            .then(() => {
+              if (current())
+                pageEvents.dispatchEvent(
+                  new CustomEvent<PdfPageDrawn>('drawn', { detail: { doc, index: i } })
+                )
+            })
+            .catch((e) => console.warn('[Abele] a PDF page could not be drawn', e))
+            .finally(() => {
+              if (!active) page.cleanup?.()
+            })
+        },
+      }
+    }
+    const entry = { acquire, unload }
+    pages.set(i, entry)
+    return entry
+  }
   const sections: FoliateSection[] = Array.from({ length: pdf.numPages as number }, (_, i) => ({
     id: i,
     size: 1000,
     load: async () => {
+      if (closed) return { src: '' } as unknown as string
       const cached = pages.get(i)
-      if (cached) return cached as unknown as string
-      const page: PdfPage = await pdf.getPage(i + 1)
-      const { width, height } = page.getViewport({ scale: 1 })
-      const url = URL.createObjectURL(new Blob([pdfPageHtml(width, height)], { type: 'text/html' }))
-      urls.set(i, url)
-      let active = true
-      const documents = new Set<Document>()
-      const unload = () => {
-        if (!active) return
-        active = false
-        for (const doc of documents) {
-          drawing.set(doc, (drawing.get(doc) ?? 0) + 1)
-          drawnAt.delete(doc)
-          renderedAt.delete(doc)
-          for (const img of Array.from(doc.querySelectorAll('#canvas img'))) {
-            URL.revokeObjectURL((img as HTMLImageElement).src)
-            img.remove()
-          }
-          doc.querySelector('.textLayer')?.replaceChildren()
-          doc.querySelector('.annotationLayer')?.replaceChildren()
-        }
-        documents.clear()
-        URL.revokeObjectURL(url)
-        urls.delete(i)
-        pages.delete(i)
-        page.cleanup?.()
+      if (cached) return cached.acquire() as unknown as string
+      const pending = loading.get(i) ?? createPage(i)
+      loading.set(i, pending)
+      try {
+        return (await pending).acquire() as unknown as string
+      } finally {
+        if (loading.get(i) === pending) loading.delete(i)
       }
-      const onZoom = ({ doc, scale }: { doc: Document; scale: number }): void => {
-        if (!active) return
-        documents.add(doc)
-        // Asked again at the size it already has — the engine lays out more often than sizes
-        // change — it is left alone: drawing it again would replace its text, and lose a selection.
-        if (drawnAt.get(doc) === scale) return
-        drawnAt.set(doc, scale)
-        const turn = (drawing.get(doc) ?? 0) + 1
-        drawing.set(doc, turn)
-        void drawPage(lib, page, doc, scale, () => active && drawing.get(doc) === turn)
-          .then(() => {
-            if (active && drawing.get(doc) === turn)
-              pageEvents.dispatchEvent(
-                new CustomEvent<PdfPageDrawn>('drawn', { detail: { doc, index: i } })
-              )
-          })
-          .catch((e) => console.warn('[Abele] a PDF page could not be drawn', e))
-      }
-      const entry = { src: url, onZoom, unload }
-      pages.set(i, entry)
-      return entry as unknown as string
     },
     unload: () => pages.get(i)?.unload(),
   }))
@@ -395,6 +437,7 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
   return {
     book,
     destroy: () => {
+      closed = true
       for (const page of [...pages.values()]) page.unload()
       for (const url of urls.values()) URL.revokeObjectURL(url)
       urls.clear()
