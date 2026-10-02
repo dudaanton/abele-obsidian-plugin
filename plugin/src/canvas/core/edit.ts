@@ -158,7 +158,8 @@ export function editCanvas(
       } else if (op.op === 'group') {
         unique(graph, op.id)
         const previous = parentsOf(graph)
-        const hinted = graph.nodes.filter((node) => node.abele?.parent !== undefined)
+        // Freeze ALL pre-existing memberships, including cards without Abele metadata.
+        const existing = [...graph.nodes]
         const members = [...new Set(op.ids)].map((id) => known(id, graph.nodes))
         const box = bounds(members, 40)
         graph.nodes.push({
@@ -168,7 +169,7 @@ export function editCanvas(
           ...box,
           abele: { parent: null },
         })
-        for (const node of hinted) recordParent(node, previous.get(node.id) ?? null, graph)
+        for (const node of existing) recordParent(node, previous.get(node.id) ?? null, graph)
         recordParent(graph.nodes[graph.nodes.length - 1], null, graph)
         for (const member of members) recordParent(member, op.id, graph)
       } else if (op.op === 'collapse') {
