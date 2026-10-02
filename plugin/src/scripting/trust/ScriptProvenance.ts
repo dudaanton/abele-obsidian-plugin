@@ -18,6 +18,10 @@ export interface ScriptMeta {
   setMeta(key: string, value: string | null): void | Promise<void>
 }
 const revisions = new WeakMap<ScriptMeta, ScriptRevision>()
+interface StoredScript extends ManagedScript {
+  path?: string
+  retiredIds?: string[]
+}
 const key = (path: string) => `script-source:${caseKey(path)}`
 export const sameBinding = (a: ScriptBinding, b: ScriptBinding): boolean =>
   a.localVault === b.localVault &&
@@ -72,14 +76,24 @@ export class ScriptProvenance {
     return new ScriptProvenance(meta, { ...binding }, shared)
   }
 
-  async lookup(path: string): Promise<ManagedScript | null> {
+  private async stored(path: string): Promise<StoredScript | null> {
     const raw = await this.meta.getMeta(key(path))
     if (raw === null) return null
-    const value: ManagedScript & { path?: string } = JSON.parse(String(raw))
+    const value: StoredScript = JSON.parse(String(raw))
     if (!value.binding || !sameBinding(value.binding, this.binding)) return null
-    if (value.fileId !== null && (typeof value.fileId !== 'string' || !value.fileId)) {
+    if (
+      (value.fileId !== null && (typeof value.fileId !== 'string' || !value.fileId)) ||
+      (value.retiredIds !== undefined &&
+        (!Array.isArray(value.retiredIds) ||
+          value.retiredIds.some((id) => typeof id !== 'string' || !id)))
+    ) {
       throw new Error('Script provenance is unreadable')
     }
+    return value
+  }
+  async lookup(path: string): Promise<ManagedScript | null> {
+    const value = await this.stored(path)
+    if (!value) return null
     // Case-folded keys cannot grant a renamed spelling's identity to a recreated old path.
     if (value.path !== undefined && value.path !== path)
       return { binding: { ...value.binding }, fileId: null }
@@ -88,7 +102,13 @@ export class ScriptProvenance {
 
   async record(path: string, fileId: string): Promise<void> {
     if (!fileId) throw new Error('Managed file identity is required')
-    await this.mutation([path], () => this.save(path, { binding: this.binding, fileId }))
+    await this.mutation([path], async () => {
+      // A ledger receipt is not proof that a renamed identity returned to this physical path.
+      // Late pushes/replays may still settle their old path; keep that identity retired here.
+      const previous = await this.stored(path)
+      if (previous?.retiredIds?.includes(fileId)) return
+      await this.save(path, { binding: this.binding, fileId })
+    })
   }
 
   /** Write this durable hold BEFORE any sync filesystem mutation, including crash recovery. */
@@ -102,8 +122,17 @@ export class ScriptProvenance {
       const source = await this.lookup(from)
       // Persist the restrictive source hold first: a crash cannot leave the old name with
       // usable authority. Destination keeps identity only when the source was proven.
-      await this.save(from, { binding: this.binding, fileId: null })
-      await this.save(to, source ?? { binding: this.binding, fileId: null })
+      const previous = await this.stored(from)
+      const retired = [
+        ...new Set([...(previous?.retiredIds ?? []), ...(source?.fileId ? [source.fileId] : [])]),
+      ]
+      await this.save(from, { binding: this.binding, fileId: null }, retired)
+      const destination = await this.stored(to)
+      // Only a proven rename into the path can deliberately return the same identity.
+      const destinationRetired = (destination?.retiredIds ?? []).filter(
+        (id) => id !== source?.fileId
+      )
+      await this.save(to, source ?? { binding: this.binding, fileId: null }, destinationRetired)
     })
   }
 
@@ -141,8 +170,9 @@ export class ScriptProvenance {
     return `script-approval:${JSON.stringify([record.binding, record.fileId, sha])}`
   }
 
-  private async save(path: string, record: ManagedScript): Promise<void> {
-    const value = JSON.stringify({ ...record, path })
+  private async save(path: string, record: ManagedScript, retired?: string[]): Promise<void> {
+    const retiredIds = retired ?? (await this.stored(path))?.retiredIds ?? []
+    const value = JSON.stringify({ ...record, path, ...(retiredIds.length ? { retiredIds } : {}) })
     await this.meta.setMeta(key(path), value)
     if ((await this.meta.getMeta(key(path))) !== value)
       throw new Error('Script provenance was not persisted')

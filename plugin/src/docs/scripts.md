@@ -84,7 +84,11 @@ do not invalidate one another. The fence is shared across this runtime's IDB con
 not reconstructed as permission after a reload. New bytes need a new decision;
 rename preserves identity at the proven destination. The old path retains a restrictive
 managed hold, not the moved identity; recreating it with identical bytes cannot reuse approval.
-Recorded path spelling also protects case-only renames in the case-folded ledger namespace. Shared/agent policy is **refuse**, with no approval bypass.
+Recorded path spelling also protects case-only renames in the case-folded ledger namespace.
+A moved identity is durably retired at its old path: a late push receipt, journal replay or
+ordinary ledger update cannot remove that restriction. A genuinely different identity may
+settle there but needs its own approval; returning the moved identity requires a proven
+rename back, not an old-path ledger receipt. Shared/agent policy is **refuse**, with no approval bypass.
 Agents, automations, nested scripts and restored views never open approval dialogs: unapproved
 runs return a hold/error. Approving on one device does not authorize another, and nothing in
 settings transfer carries these permissions. This execution policy does not disable note-event
