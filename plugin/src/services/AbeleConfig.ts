@@ -803,7 +803,10 @@ export class AbeleConfig {
       },
       // Through JSON: every rule's parameters are plain data, and nested lists stay unshared.
       linter: JSON.parse(JSON.stringify(this.linter)) as LinterSettings,
-      ...(this.secretStore ? { secretStore: this.secretStore } : {}),
+      // Falsy but present values are damaged stores, not a request to forget device keys.
+      ...(this.secretStore !== undefined && this.secretStore !== null
+        ? { secretStore: this.secretStore }
+        : {}),
     }
   }
 }
