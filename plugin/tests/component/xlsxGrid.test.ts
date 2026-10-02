@@ -2,9 +2,65 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import WorkbookGrid from '@/spreadsheet/WorkbookGrid.vue'
 import { openXlsx } from '@/spreadsheet/package'
-import { sampleXlsx } from '../fixtures/xlsx/sampleXlsx'
+import { sampleXlsx, sampleParts } from '../fixtures/xlsx/sampleXlsx'
+import { zipSync, strToU8, strFromU8, unzipSync } from 'fflate'
+import { applyWorkbookFormat } from '@/spreadsheet/format'
+import { parseXml } from '@/ooxml/xml'
 
 describe('workbook grid', () => {
+  it('sends only changed formatting properties, retaining theme fill and unknown built-in number format', async () => {
+    const parts = sampleParts()
+    const styles = strFromU8(parts['xl/styles.xml'])
+      .replace('<fills count="3">', '<fills count="4">')
+      .replace(
+        '</fills>',
+        '<fill><patternFill patternType="solid"><fgColor theme="4"/></patternFill></fill></fills>'
+      )
+      .replace('<cellXfs count="3">', '<cellXfs count="4">')
+      .replace(
+        '</cellXfs>',
+        '<xf numFmtId="44" fontId="0" fillId="3" borderId="0" xfId="0"/></cellXfs>'
+      )
+    parts['xl/styles.xml'] = strToU8(styles)
+    parts['xl/worksheets/sheet1.xml'] = strToU8(
+      strFromU8(parts['xl/worksheets/sheet1.xml']).replace(
+        '<c r="B2"><v>20</v></c>',
+        '<c r="B2" s="3"><v>20</v></c>'
+      )
+    )
+    const book = await openXlsx(zipSync(parts))
+    const save = vi.fn(
+      async (
+        edit: Parameters<typeof applyWorkbookFormat>[1] & { operation: string; values: unknown[] }
+      ) => {
+        const updated = await applyWorkbookFormat(book, edit)
+        const reopened = await openXlsx(updated)
+        const cell = (await reopened.sheet('Sample')).cells.get('B2')!
+        const xml = strFromU8(unzipSync(updated)['xl/styles.xml'])
+        const root = await parseXml(xml)
+        const xfs = root.children.find((n) => n.local === 'cellXfs')!.children
+        expect(cell.style.bold).toBe(true)
+        expect(xfs[cell.styleId].attrs).toMatchObject({ fillId: '3', numFmtId: '44' })
+        expect(xml).toContain('<fgColor theme="4"/>')
+      }
+    )
+    const wrapper = mount(WorkbookGrid, { props: { book, mobile: false, save } })
+    await flushPromises()
+    await wrapper.find('[data-cell="B2"]').trigger('click')
+    await wrapper.find('.abele-workbook-edit').trigger('click')
+    expect((wrapper.find('[aria-label="Fill colour"]').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.find('[aria-label="Number format"]').element as HTMLInputElement).value).toBe(
+      'General'
+    )
+    await wrapper.find('[aria-label="Bold"]').setValue(true)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Apply formatting')!
+      .trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ format: { bold: true } }))
+    wrapper.unmount()
+  })
   it('zooms the virtual grid with a two-finger pinch without offering phone editing', async () => {
     const book = await openXlsx(sampleXlsx())
     const wrapper = mount(WorkbookGrid, { props: { book, mobile: true } })

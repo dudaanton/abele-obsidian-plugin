@@ -73,12 +73,37 @@
       <fieldset class="abele-workbook-format">
         <legend>Cell formatting</legend>
         <label>Range <input v-model="formatRange" aria-label="Formatting range" /></label>
-        <label><input v-model="formatBold" type="checkbox" aria-label="Bold" />Bold</label>
-        <label><input v-model="formatItalic" type="checkbox" aria-label="Italic" />Italic</label>
         <label
-          >Fill <input v-model="formatFill" aria-label="Fill colour" placeholder="#RRGGBB or empty"
+          ><input
+            v-model="formatBold"
+            type="checkbox"
+            aria-label="Bold"
+            @change="markFormat('bold')"
+          />Bold</label
+        >
+        <label
+          ><input
+            v-model="formatItalic"
+            type="checkbox"
+            aria-label="Italic"
+            @change="markFormat('italic')"
+          />Italic</label
+        >
+        <label
+          >Fill
+          <input
+            v-model="formatFill"
+            aria-label="Fill colour"
+            placeholder="#RRGGBB or empty"
+            @input="markFormat('fill')"
         /></label>
-        <label>Number format <input v-model="numberFormat" aria-label="Number format" /></label>
+        <label
+          >Number format
+          <input
+            v-model="numberFormat"
+            aria-label="Number format"
+            @input="markFormat('number_format')"
+        /></label>
         <button type="button" :disabled="busy" @click="saveFormat">Apply formatting</button>
       </fieldset>
       <button type="button" :disabled="busy" @click="editing = false">Cancel</button>
@@ -149,6 +174,7 @@ import { cellAddress, columnName, contains, parseCell } from './address'
 import { formatValue } from './styles'
 import type { Workbook, WorkbookSheet } from './package'
 import type { CellInput, WorkbookEdit } from './edit'
+import type { CellFormat } from './format'
 const props = defineProps<{
   book: Workbook
   mobile: boolean
@@ -243,6 +269,10 @@ const formatBold = ref(false)
 const formatItalic = ref(false)
 const formatFill = ref('')
 const numberFormat = ref('General')
+const formatChanged = new Set<keyof CellFormat>()
+function markFormat(property: keyof CellFormat) {
+  formatChanged.add(property)
+}
 watch(sheetName, () => {
   editing.value = false
   selected.value = 'A1'
@@ -260,6 +290,7 @@ function beginEdit() {
           : 'text'
   editValue.value = cell?.formula ?? String(cell?.value ?? '')
   formatRange.value = selected.value
+  formatChanged.clear()
   formatBold.value = cell?.style.bold ?? false
   formatItalic.value = cell?.style.italic ?? false
   formatFill.value = cell?.style.fill ?? ''
@@ -271,17 +302,18 @@ async function saveFormat() {
   busy.value = true
   error.value = ''
   try {
+    const format: CellFormat = {}
+    if (formatChanged.has('bold')) format.bold = formatBold.value
+    if (formatChanged.has('italic')) format.italic = formatItalic.value
+    if (formatChanged.has('fill')) format.fill = formatFill.value
+    if (formatChanged.has('number_format')) format.number_format = numberFormat.value
+    if (!formatChanged.size) throw new Error('Choose a formatting change first')
     await props.save({
       operation: 'format',
       sheet: sheetName.value,
       range: formatRange.value,
       values: [],
-      format: {
-        bold: formatBold.value,
-        italic: formatItalic.value,
-        fill: formatFill.value,
-        number_format: numberFormat.value,
-      },
+      format,
     })
     editing.value = false
   } catch (e) {

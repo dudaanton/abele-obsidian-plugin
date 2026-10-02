@@ -34,7 +34,9 @@ different formula semantics, so saved files also request native recalculation on
 be edited in a spreadsheet app. A shared formula group is expanded automatically before an
 edit. The editor also offers **Bold**, **Italic**, **Fill** (`#RRGGBB` or empty to clear), and an Excel
 **Number format** code. Enter a cell/range and choose **Apply formatting**. Existing styles
-and unselected cells are preserved. Agents can apply these same formats on a phone with the
+and unselected cells are preserved. Only the fields you change are sent when you apply formatting;
+unsupported theme fills and number formats remain intact when you change Bold alone.
+Agents can apply these same formats on a phone with the
 usual preview. **Append row** adds a blank row at the end. **Delete last row** is available for simple
 value-only workbooks; formulas, named ranges and structural references require a spreadsheet
 app. Existing addresses never shift. To append populated rows, ask the agent to write beyond
