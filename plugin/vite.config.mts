@@ -54,6 +54,11 @@ export default defineConfig(async ({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
+        // JSZip's browser distribution embeds legacy polyfills, bypassing package aliases.
+        // Use its modular entry so both schedulers can be replaced without editing dependencies.
+        jszip: path.resolve(__dirname, 'node_modules/jszip/lib/index.js'),
+        immediate: path.resolve(__dirname, 'src/shims/immediate.ts'),
+        setimmediate: path.resolve(__dirname, 'src/shims/setimmediate.ts'),
       },
     },
     plugins: [
@@ -91,6 +96,9 @@ export default defineConfig(async ({ mode }) => {
       },
       sourcemap: prod ? false : 'inline',
       cssCodeSplit: false,
+      // JSZip probes Node streams inside try/catch. Hoisting that optional require makes
+      // the modular entry crash on mobile before the probe can handle its absence.
+      commonjsOptions: { ignore: ['stream'] },
       emptyOutDir: true,
       outDir: 'build',
       rollupOptions: {

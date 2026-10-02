@@ -164,6 +164,19 @@ The run also says where the bytes go — the heaviest packages in the console, a
 the test. The split counts each module as Rollup rendered it, before minification, scaled to
 the minified total: right about which package is heavy, not to the kilobyte.
 
+The same build also checks the store's text scan for script-element creation, including
+unreachable polyfill branches and namespace-aware element creation. JSZip uses its modular
+entry with local `immediate` and `setimmediate` aliases; its prebundled browser entry embeds
+legacy DOM-based schedulers that package aliases cannot replace. The fast tier exercises the
+production aliases with async ZIP streams (including Lie's Promise fallback), optional desktop
+Node streams and the real Word parser.
+
+Runtime style-element creation has existing exceptions for document previews, the reader,
+slides, snippets, script views and dependencies. The bundle check caps their existing literal
+call sites at 12; it does not claim the plugin has no runtime styles. MapLibre's static stylesheet
+has its own source guard. The size build reuses release validation for extra chunks, sourcemaps
+and development markers rather than maintaining a second list of those checks.
+
 The build runs in a process of its own. Built inside Vitest, whose environment leaks into Vite
 and the Vue plugin, the same bundle came out 10–130 KB larger than the one `npm run build`
 ships.

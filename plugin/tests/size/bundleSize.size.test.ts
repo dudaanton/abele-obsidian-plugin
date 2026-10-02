@@ -22,6 +22,7 @@ interface Report {
   mainJsBytes: number
   stylesBytes: number
   files: string[]
+  runtimeElements: { script: number; style: number }
   byPackage: Array<{ name: string; bytes: number; share: number }>
 }
 
@@ -64,6 +65,18 @@ describe('bundle size', () => {
   it('keeps the stylesheet inside its budget', () => {
     expect(report.stylesBytes).toBeGreaterThan(0)
     expect(report.stylesBytes).toBeLessThanOrEqual(budget.stylesBytes)
+  })
+
+  it('does not create script elements, even in unreachable dependency polyfills', () => {
+    expect(report.runtimeElements.script).toBe(0)
+  })
+
+  it('does not add runtime style creation beyond the existing feature exceptions', () => {
+    // Existing calls: dom-to-image-more (2), foliate (3), style-mod fallback (1),
+    // script views (1), snippets (1), slides (1), isolated reader/Word documents (3).
+    // These are existing feature exceptions, not a claim that runtime styles are absent.
+    // MapLibre's static CSS is already guarded by tests/harness/mapStylesheet.test.ts.
+    expect(report.runtimeElements.style).toBeLessThanOrEqual(12)
   })
 
   it('attributes the bundle to packages, so a jump can be traced to what caused it', () => {

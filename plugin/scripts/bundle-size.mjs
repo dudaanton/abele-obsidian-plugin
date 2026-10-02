@@ -17,6 +17,7 @@
 import { build } from 'vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { checkBuild } from './check-release.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -35,6 +36,20 @@ export function packageOf(id) {
     return rest.length > 2 ? `${rest[0]}/${rest[1]}` : rest.join('/')
   }
   return clean
+}
+
+/** Text patterns checked by the store, including unreachable dependency branches. */
+export function runtimeElements(code) {
+  const count = (tag) =>
+    [
+      ...code.matchAll(
+        new RegExp(
+          `\\b(?:(?:createElement|createEl)\\(\\s*|createElementNS\\(\\s*[^,]+,\\s*)['"]${tag}['"]\\s*[,)]`,
+          'g'
+        )
+      ),
+    ].length
+  return { script: count('script'), style: count('style') }
 }
 
 export async function measureBundle() {
@@ -64,6 +79,11 @@ export async function measureBundle() {
   const js = outputs.find((o) => o.type === 'chunk' && o.fileName === 'main.js')
   const css = outputs.find((o) => o.type === 'asset' && o.fileName.endsWith('.css'))
   if (!js) throw new Error('The build produced no main.js')
+  // Reuse release validation rather than duplicating its marker and extra-chunk checks.
+  checkBuild(
+    outputs.map((o) => o.fileName),
+    js.code
+  )
 
   const mainJsBytes = Buffer.byteLength(js.code)
   const stylesBytes = css ? Buffer.byteLength(css.source) : 0
@@ -75,7 +95,13 @@ export async function measureBundle() {
       share: bytes / total,
     }))
     .sort((a, b) => b.bytes - a.bytes)
-  return { mainJsBytes, stylesBytes, files: outputs.map((o) => o.fileName), byPackage }
+  return {
+    mainJsBytes,
+    stylesBytes,
+    files: outputs.map((o) => o.fileName),
+    byPackage,
+    runtimeElements: runtimeElements(js.code),
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
