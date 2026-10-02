@@ -52,6 +52,7 @@ interface Probe {
   allHistory?: boolean
   sticky?: number
   chromeGap?: number
+  calendarGap?: number
   overflow?: number
   shots?: string[]
 }
@@ -103,6 +104,12 @@ const script = (footer: boolean, short = false) => String.raw`(async () => {
       option.click()
     }
     await wait(1200)
+    if (!${footer} && document.body.classList.contains('is-phone')) {
+      const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
+      const header = leaf.view.containerEl.querySelector('.view-header')
+      if (!calendar || !header) throw Error('calendar or native view header missing')
+      report.calendarGap = calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom
+    }
     const scroller = ${footer} ? leaf.view.containerEl.querySelector('.cm-scroller') : root.closest('.abele-timeline-sidebar')
     const blocks = () => [...root.querySelectorAll('.abele-timeline__date-block')]
     const dates = () => blocks().map(x => x.dataset.abeleAnchor)
@@ -506,6 +513,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.revealed).toHaveLength(65)
           expect(p.countAfter).toContain('90 unfinished · Hide all')
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
+          if (index === 0 && kind === 'phone' && onPhone()) expect(p.calendarGap).toBeGreaterThanOrEqual(0)
           expect(p.sticky).toBeLessThanOrEqual(2)
           expect(p.overflow).toBeLessThanOrEqual(1)
           expect(p.revealAnchor).toHaveLength(2)

@@ -790,6 +790,32 @@ const probeScript = `(async () => {
         report['secrets list'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the list of keys did not open' }
       }
 
+      // Scroll the Secrets introduction behind Obsidian's floating settings title. Its header
+      // must paint an opaque surface so the scrolling prose cannot show through the title.
+      const aiTab = [...document.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(
+        (t) => t.textContent.trim() === 'AI Agent'
+      )
+      aiTab?.click()
+      const intro = [...document.querySelectorAll('.abele-settings__ai .abele-section__heading')]
+        .find((heading) => heading.textContent.trim() === 'Secrets')?.nextElementSibling
+      const header = document.querySelector('.modal.mod-settings .modal-header')
+      const settingsScroll = document.querySelector('.modal.mod-settings .vertical-tab-content')
+      if (intro && header && settingsScroll) {
+        settingsScroll.scrollTop += intro.getBoundingClientRect().top - header.getBoundingClientRect().bottom + 12
+        await wait(400)
+        const modal = document.querySelector('.modal.mod-settings')
+        await screen('settings ai secrets scroll', modal, settingsScroll)
+        const cover = getComputedStyle(header).backgroundColor
+        report['settings ai secrets scroll'].headerCover = cover
+        report['settings ai secrets scroll'].introTop = intro.getBoundingClientRect().top
+        report['settings ai secrets scroll'].headerBottom = header.getBoundingClientRect().bottom
+      } else {
+        report['settings ai secrets scroll'] = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: 'no Secrets introduction or native settings header' }
+      }
+      const backToPages = document.querySelector('.modal-setting-back-button')
+      if (backToPages) backToPages.click()
+      await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 3000)
+
       // The settings pages whose fields hold keys, as a phone shows them: each stored key
       // masked with its show and copy icons beside it, the first one shown in full.
       app.setting.open()
@@ -1180,6 +1206,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'link write',
     'secrets list',
     'settings ai keys',
+    'settings ai secrets scroll',
     'settings finance keys',
     'settings mcp',
     'mcp server',
@@ -1396,6 +1423,17 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       'Files only',
       'Files and conversation',
     ])
+  })
+
+  it('Secrets introduction does not show through the native settings header', () => {
+    const screen = report['settings ai secrets scroll'] as Screen & {
+      headerCover?: string
+      introTop?: number
+      headerBottom?: number
+    }
+    expect(screen?.error).toBe('')
+    expect(screen.introTop).toBeLessThan(screen.headerBottom!)
+    expect(screen.headerCover).toMatch(/^rgba?\([^)]*, 1\)|^rgb\(/)
   })
 
   it('secrets list: every key keeps its show and copy icons on the row of its name', () => {
