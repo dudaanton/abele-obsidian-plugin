@@ -7,6 +7,7 @@ import { activateScriptProvenance, scriptTrustFor } from '@/scripting/trust/scri
 import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
 import { CONNECTION_KEY } from '@/sync/connection'
 import { ScriptProvenance } from '@/scripting/trust/ScriptProvenance'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 
 const path = 'Scripts/sample.js'
 const bytes = '// @name Sample\nreturn "approved"'
@@ -240,6 +241,58 @@ describe('exact-byte local script approval', () => {
     expect((await scriptForExecution(app as unknown as App, moved)).code).toContain(
       'return "approved"'
     )
+  })
+
+  it('keeps the initial generation when a complete same-identity mutation finishes during final IDB open', async () => {
+    await managed()
+    await scriptForExecution(app as unknown as App, path, async () => true)
+    const writer = await scriptTrustFor(app as unknown as App, factory)
+    const open = IndexedDbStateStore.open
+    let calls = 0
+    vi.spyOn(IndexedDbStateStore, 'open').mockImplementation(async (...args) => {
+      const result = await open(...args)
+      if (++calls === 2) {
+        await writer!.provenance.pending(path)
+        await app.vault.adapter.writeBinary(
+          path,
+          new TextEncoder().encode(bytes + '\n// new content').buffer as ArrayBuffer
+        )
+        await writer!.provenance.record(path, 'sample-file')
+      }
+      return result
+    })
+    try {
+      await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/changed/)
+    } finally {
+      writer!.store.close()
+    }
+  })
+
+  it('also refuses stale bytes if mutation completes during the initial store open', async () => {
+    await managed()
+    await scriptForExecution(app as unknown as App, path, async () => true)
+    const writer = await scriptTrustFor(app as unknown as App, factory)
+    const open = IndexedDbStateStore.open
+    let first = true
+    vi.spyOn(IndexedDbStateStore, 'open').mockImplementation(async (...args) => {
+      const result = await open(...args)
+      if (first) {
+        first = false
+        await writer!.provenance.pending(path)
+        await app.vault.adapter.writeBinary(
+          path,
+          new TextEncoder().encode(bytes + '\n// advanced during initial open')
+            .buffer as ArrayBuffer
+        )
+        await writer!.provenance.record(path, 'sample-file')
+      }
+      return result
+    })
+    try {
+      await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/changed/)
+    } finally {
+      writer!.store.close()
+    }
   })
 
   it('does not store permission on decline', async () => {

@@ -106,7 +106,10 @@ export async function scriptForExecution(
         if (!live || !sameBinding(live.provenance.binding, trust.provenance.binding)) {
           throw new Error('Script connection changed during the execution check')
         }
-        const generation = live.provenance.capture(path)
+        // Keep the original observation across every await; a completed mutation is not a
+        // new permission baseline merely because it restored the same identity/approval.
+        const generation = initialGeneration
+        live.provenance.assertRevision(path, generation)
         const current = await live.provenance.lookup(path)
         if (
           !current ||
