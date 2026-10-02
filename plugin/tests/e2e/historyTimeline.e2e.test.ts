@@ -299,8 +299,9 @@ describe.skipIf(!available)('the history timeline of a base', () => {
       })()`)
 
       // Two thousand more people, over three thousand years.
-      perf = evalAsync<Perf>(
-        `(async () => {
+      perf = JSON.parse(
+        await evalLong(
+          `(async () => {
         ${PRELUDE}
         const report = {}
         try {
@@ -333,8 +334,9 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         }
         return JSON.stringify(report)
       })()`,
-        300_000
-      )
+          300_000
+        )
+      ) as Perf
 
       size = JSON.parse(
         evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)

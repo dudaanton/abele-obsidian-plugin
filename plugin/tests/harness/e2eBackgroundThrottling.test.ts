@@ -1,42 +1,37 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { setBackgroundThrottling } from '../e2e/helpers/obsidianCli'
 
-const source = readFileSync(resolve(__dirname, '../e2e/helpers/obsidianCli.ts'), 'utf8')
-const setter = source.match(
-  /export function setBackgroundThrottling\(on: boolean\): void \{([\s\S]*?)\n\}/
-)![1]
-const probe = (evalRaw: ReturnType<typeof vi.fn>) =>
-  new Function('onPhone', 'evalRaw', `return (on) => { ${setter} }`)(() => false, evalRaw) as (
-    on: boolean
-  ) => void
+const exec = vi.hoisted(() => vi.fn())
+vi.mock('node:child_process', () => ({ default: { execFileSync: exec }, execFileSync: exec }))
+vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
+beforeEach(() => exec.mockReset())
+afterEach(() => exec.mockReset())
 
-it('retries a lost reply once when setting background throttling after a reload', () => {
-  const evalRaw = vi
-    .fn()
+it('retries a lost reply when setting background throttling after a reload', () => {
+  exec
     .mockImplementationOnce(() => {
-      throw new Error('obsidian eval gave no answer in 30000 ms and was killed')
+      throw { code: 'ETIMEDOUT', signal: 'SIGKILL' }
     })
-    .mockReturnValueOnce('ok')
-  expect(() => probe(evalRaw)(false)).not.toThrow()
-  expect(evalRaw).toHaveBeenCalledTimes(2)
-  const [first, retry] = evalRaw.mock.calls
-  expect(first[0]).toEqual(retry[0])
-  expect(first[1] + retry[1]).toBeLessThan(45_000)
+    .mockReturnValue('=> ok')
+  expect(() => setBackgroundThrottling(false)).not.toThrow()
+  expect(exec).toHaveBeenCalledTimes(2)
+  const [first, retry] = exec.mock.calls
+  expect(first[1]).toEqual(retry[1])
+  expect(first[2].timeout + retry[2].timeout).toBeLessThan(45_000)
 })
 
 it('does not retry an actual command error', () => {
-  const evalRaw = vi.fn(() => {
+  exec.mockImplementation(() => {
     throw new Error('remote unavailable')
   })
-  expect(() => probe(evalRaw)(false)).toThrow('remote unavailable')
-  expect(evalRaw).toHaveBeenCalledOnce()
+  expect(() => setBackgroundThrottling(false)).toThrow('remote unavailable')
+  expect(exec).toHaveBeenCalledOnce()
 })
 
-it('still fails if the retried throttling call also gets no reply', () => {
-  const evalRaw = vi.fn(() => {
-    throw new Error('obsidian eval gave no answer in 30000 ms and was killed')
+it('still fails if the retried throttling calls also get no reply', () => {
+  exec.mockImplementation(() => {
+    throw { code: 'ETIMEDOUT', signal: 'SIGKILL' }
   })
-  expect(() => probe(evalRaw)(false)).toThrow('gave no answer')
-  expect(evalRaw).toHaveBeenCalledTimes(2)
+  expect(() => setBackgroundThrottling(false)).toThrow(/gave no answer.*3 attempts/)
+  expect(exec).toHaveBeenCalledTimes(3)
 })

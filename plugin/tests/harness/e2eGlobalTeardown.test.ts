@@ -19,7 +19,10 @@ vi.mock('../e2e/helpers/phoneHost', () => ({
 }))
 vi.mock('../e2e/helpers/obsidianCli', () => ({
   isObsidianRunning: () => (calls.push('isObsidianRunning'), true),
-  hasTestApi: () => (calls.push('hasTestApi'), false),
+  waitForTestApi: async () => {
+    calls.push('waitForTestApi')
+    throw new Error('The e2e vault needs a development build with the test API.')
+  },
   closeStrayWindows: () => calls.push('closeStrayWindows'),
   evalJson: () => (calls.push('evalJson'), {}),
   evalRaw: () => (calls.push('evalRaw'), 'ok'),
@@ -36,7 +39,7 @@ describe('the e2e global teardown on a phone', () => {
   it('does not probe the phone again after releasing a failed setup', async () => {
     const { setup } = await import('../e2e/helpers/globalSetup')
     await expect(setup()).rejects.toThrow('development build')
-    expect(calls).toContain('hasTestApi')
+    expect(calls).toContain('waitForTestApi')
     expect(calls[calls.length - 1]).toBe('dropPhone')
   })
 

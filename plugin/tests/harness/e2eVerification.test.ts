@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 vi.mock('../e2e/helpers/obsidianCli', () => ({
   isObsidianRunning: vi.fn(() => false),
-  hasTestApi: vi.fn(() => false),
+  waitForTestApi: vi.fn(async () => {
+    throw new Error('The e2e vault needs a development build with the test API.')
+  }),
   restoreDesktopWindow: vi.fn(),
   evalJson: vi.fn(() => ({})),
 }))
@@ -27,14 +29,15 @@ describe('explicit e2e verification', () => {
   })
   it('rejects an empty or entirely skipped run, including nested suites', () => {
     expect(() => assertTestsRan([])).toThrow('No e2e tests ran')
-    expect(() => assertTestsRan([{ type: 'suite', tasks: [
-      { type: 'test', result: { state: 'skip' } },
-      { type: 'test' },
-    ] }])).toThrow('No e2e tests ran')
+    expect(() =>
+      assertTestsRan([
+        { type: 'suite', tasks: [{ type: 'test', result: { state: 'skip' } }, { type: 'test' }] },
+      ])
+    ).toThrow('No e2e tests ran')
   })
   it.each(['pass', 'fail'])('counts an executed %s test, not just collected files', (state) => {
-    expect(() => assertTestsRan([{ type: 'suite', tasks: [
-      { type: 'test', result: { state } },
-    ] }])).not.toThrow()
+    expect(() =>
+      assertTestsRan([{ type: 'suite', tasks: [{ type: 'test', result: { state } }] }])
+    ).not.toThrow()
   })
 })

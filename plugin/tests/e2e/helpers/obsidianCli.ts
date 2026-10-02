@@ -10,6 +10,8 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
+  unlinkSync,
   rmSync,
   rmdirSync,
   statSync,
@@ -18,7 +20,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { onPhone, desktopOnly } from './target'
-import { phoneEval, installPhoneHost } from './phone'
+import { phoneEval, installPhoneHost, assertPhoneTransport } from './phone'
 
 const CLI = process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian'
 
@@ -53,9 +55,30 @@ const sleepSync = (ms: number): void => {
  */
 const CALL_CEILING_MS = 45_000
 
-function run(args: string[], timeoutMs = CALL_CEILING_MS): string {
+class CliNoAnswerError extends Error {}
+
+/** Opt-in only: arbitrary evals, reloads and native input must never be replayed. */
+function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false): string {
   timeoutMs = Math.min(timeoutMs, CALL_CEILING_MS)
   if (onPhone()) return runOnPhone(args, timeoutMs)
+  const attempts = idempotent ? 3 : 1
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    // Even all three lost answers must leave the synchronous worker below its 60 s ceiling.
+    const allowance = idempotent ? Math.min(timeoutMs, attempt === 1 ? 30_000 : 10_000) : timeoutMs
+    try {
+      return runReady(args, allowance)
+    } catch (error) {
+      if (!(error instanceof CliNoAnswerError)) throw error
+      if (attempt === attempts)
+        throw new CliNoAnswerError(
+          `${error.message} (${attempt} attempt${attempt === 1 ? '' : 's'}; ${idempotent ? 'idempotent retry exhausted' : 'not retried'})`
+        )
+    }
+  }
+  throw new Error('unreachable CLI attempt')
+}
+
+function runReady(args: string[], timeoutMs: number): string {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     // What is left of the one allowance: waiting for the app to get ready counts against it.
@@ -90,8 +113,10 @@ function runOnce(args: string[], timeoutMs: number): string {
     if (err.code === 'ENOENT') {
       throw new ObsidianUnavailableError(`Obsidian CLI not found at ${CLI}`)
     }
-    if (err.signal === 'SIGKILL') {
-      throw new Error(`obsidian ${args[0]} gave no answer in ${timeoutMs} ms and was killed`)
+    if (err.code === 'ETIMEDOUT' && err.signal === 'SIGKILL') {
+      throw new CliNoAnswerError(
+        `obsidian ${args[0]} gave no answer in ${timeoutMs} ms and was killed`
+      )
     }
     const detail = (err.stderr || err.stdout || err.message || '').toString().trim()
     throw new Error(`obsidian ${fullArgs.join(' ')} failed: ${detail}`)
@@ -131,7 +156,7 @@ export const runCli = (args: string[], timeoutMs?: number): string => run(args, 
 /** True when the CLI exists and a vault is currently open. */
 export function isObsidianRunning(): boolean {
   try {
-    run(['vault'], 15_000)
+    run(['vault'], 15_000, true)
     return true
   } catch {
     return false
@@ -140,7 +165,7 @@ export function isObsidianRunning(): boolean {
 
 /** Name of the vault Obsidian currently has open. */
 export function activeVaultName(): string {
-  const output = run(['vault'], 15_000)
+  const output = run(['vault'], 15_000, true)
   const line = output.split('\n').find((l) => l.startsWith('name'))
   return line ? line.split('\t').slice(1).join('\t').trim() : ''
 }
@@ -158,6 +183,11 @@ export function activeVaultFileCount(): number {
  */
 export function evalRaw(code: string, timeoutMs?: number): string {
   return answerOf(run(['eval', `code=${code}`], timeoutMs))
+}
+
+/** Only reads and absolute setters/cleanup that remain safe if the first call ran. */
+export function evalRawIdempotent(code: string, timeoutMs?: number): string {
+  return answerOf(run(['eval', `code=${code}`], timeoutMs, true))
 }
 
 /**
@@ -199,14 +229,19 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
   const deadline = Date.now() + timeoutMs
   for (;;) {
     await pauseAsync(1000)
-    const job = evalJson<{ done: boolean; out?: string } | null>(
-      `(() => { const j = (window.__e2eJobs || {})[${JSON.stringify(id)}]; if (j && j.done) delete window.__e2eJobs[${JSON.stringify(id)}]; return j ?? null })()`,
+    const job = evalJsonIdempotent<{ done: boolean; out?: string } | null>(
+      `(window.__e2eJobs || {})[${JSON.stringify(id)}] ?? null`,
       30_000
     )
     // Gone with the page: something in the script reloaded it.
     if (!job) throw new Error('the script was lost: the page reloaded while it ran')
     if (job.done) {
       const out = job.out ?? ''
+      evalRawIdempotent(
+        `(() => { delete (window.__e2eJobs || {})[${JSON.stringify(id)}]; return 'ok' })()`,
+        10_000
+      )
+      assertPhoneTransport(out)
       return out.startsWith('=> ') ? out.slice(3) : out
     }
     if (Date.now() > deadline) throw new Error(`the script did not finish in ${timeoutMs} ms`)
@@ -222,7 +257,15 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
  */
 export function evalJson<T>(expression: string, timeoutMs?: number): T {
   const wrapped = `JSON.stringify((() => { return (${expression}) })())`
-  const raw = evalRaw(wrapped, timeoutMs)
+  return parseEvalJson<T>(evalRaw(wrapped, timeoutMs))
+}
+
+export function evalJsonIdempotent<T>(expression: string, timeoutMs?: number): T {
+  const wrapped = `JSON.stringify((() => { return (${expression}) })())`
+  return parseEvalJson<T>(evalRawIdempotent(wrapped, timeoutMs))
+}
+
+function parseEvalJson<T>(raw: string): T {
   const unquoted = raw.replace(/^'(.*)'$/s, '$1').replace(/^"(.*)"$/s, '$1')
   try {
     return JSON.parse(unquoted) as T
@@ -234,10 +277,31 @@ export function evalJson<T>(expression: string, timeoutMs?: number): T {
 /** True when the development build's test API is present in the running app. */
 export function hasTestApi(): boolean {
   try {
-    return evalJson<boolean>('typeof window.__abeleTest !== "undefined"', 30_000)
+    return evalJsonIdempotent<boolean>('typeof window.__abeleTest !== "undefined"', 30_000)
   } catch {
     return false
   }
+}
+
+/** Readiness is bounded, and a lost answer is not diagnosed as a missing development build. */
+export async function waitForTestApi(timeoutMs = 60_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let last = 'API absent'
+  do {
+    try {
+      if (evalJsonIdempotent<boolean>('typeof window.__abeleTest !== "undefined"', 10_000)) return
+      last = 'API absent'
+    } catch (error) {
+      if (!(error instanceof CliNoAnswerError)) throw error
+      last = error.message
+    }
+    if (Date.now() >= deadline) break
+    await pauseAsync(500)
+  } while (Date.now() < deadline)
+  throw new Error(
+    `The e2e test API did not settle in ${timeoutMs} ms: ${last}. ` +
+      (last === 'API absent' ? 'The e2e vault needs a development build with the test API.' : '')
+  )
 }
 
 export function reloadPlugin(id = 'abele'): void {
@@ -266,14 +330,7 @@ export function setBackgroundThrottling(on: boolean): void {
   // A phone's app is in front, on a screen that stays awake: nothing to throttle.
   if (onPhone()) return
   const code = `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(${on}); return 'ok' })()`
-  try {
-    evalRaw(code, 30_000)
-  } catch (error) {
-    // Idempotent, including after a reload: a lost CLI reply is not evidence that the remote
-    // setter failed. Retry only that transport failure, with the pair below the worker ceiling.
-    if (!/gave no answer/.test(String(error))) throw error
-    evalRaw(code, 10_000)
-  }
+  evalRawIdempotent(code, 30_000)
 }
 
 /**
@@ -312,7 +369,11 @@ export function framesPerSecond(): number {
 export function setFocusEmulation(on: boolean): void {
   // The phone's app is the one in front and has the focus for real.
   if (onPhone()) return
-  run(['dev:cdp', 'method=Emulation.setFocusEmulationEnabled', `params={"enabled":${on}}`], 30_000)
+  run(
+    ['dev:cdp', 'method=Emulation.setFocusEmulationEnabled', `params={"enabled":${on}}`],
+    30_000,
+    true
+  )
 }
 
 /**
@@ -462,7 +523,7 @@ const MOBILE_KEY = 'EmulateMobile'
 const MOBILE_WISH = 'abele-e2e-mobile'
 /** Held from writing the shared key until the reloaded window has read it: one reload at a time. */
 const RELOAD_LOCK = join(tmpdir(), 'abele-e2e-reload.lock')
-/** A lock older than this was left by a run that died half way, not held by a live one. */
+/** Only for an abandoned acquisition that died before recording its live owner. */
 const RELOAD_LOCK_STALE_MS = 120_000
 
 const pauseAsync = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -472,10 +533,25 @@ async function takeReloadLock(): Promise<void> {
   for (;;) {
     try {
       mkdirSync(RELOAD_LOCK)
+      writeFileSync(join(RELOAD_LOCK, String(process.pid)), '')
       return
     } catch {
       try {
-        if (Date.now() - statSync(RELOAD_LOCK).mtimeMs > RELOAD_LOCK_STALE_MS)
+        // A slow CLI retry must not let another window steal the shared-key lock.
+        const owners = readdirSync(RELOAD_LOCK)
+        if (owners.length === 1 && /^\d+$/.test(owners[0])) {
+          try {
+            process.kill(Number(owners[0]), 0)
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+              unlinkSync(join(RELOAD_LOCK, owners[0]))
+              rmdirSync(RELOAD_LOCK)
+            }
+          }
+        } else if (
+          !owners.length &&
+          Date.now() - statSync(RELOAD_LOCK).mtimeMs > RELOAD_LOCK_STALE_MS
+        )
           rmdirSync(RELOAD_LOCK)
       } catch {
         // Gone in between: the next attempt takes it.
@@ -519,10 +595,12 @@ const desktopRecord = () =>
   join(tmpdir(), `abele-e2e-desktop-${(TARGET_VAULT || 'front').replace(/[^\w.-]/g, '_')}.json`)
 
 const contentSize = (): [number, number] =>
-  evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+  evalJsonIdempotent<[number, number]>(
+    `require('@electron/remote').getCurrentWindow().getContentSize()`
+  )
 
 const setContentSize = (width: number, height: number): void => {
-  evalRaw(
+  evalRawIdempotent(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
@@ -538,7 +616,9 @@ function rememberDesktop(): void {
   if (existsSync(desktopRecord())) return
   const [width, height] = contentSize()
   const size =
-    evalJson<boolean>('app.isMobile') || width < PHONE_SIZED ? DEFAULT_DESKTOP : [width, height]
+    evalJsonIdempotent<boolean>('app.isMobile') || width < PHONE_SIZED
+      ? DEFAULT_DESKTOP
+      : [width, height]
   writeFileSync(desktopRecord(), JSON.stringify(size))
 }
 
@@ -555,7 +635,7 @@ function putDesktopBack(): void {
  */
 export async function restoreDesktopWindow(): Promise<void> {
   if (onPhone()) return
-  if (evalJson<boolean>('app.isMobile')) {
+  if (evalJsonIdempotent<boolean>('app.isMobile')) {
     rememberDesktop()
     await reloadWindow('false')
   }
@@ -580,14 +660,18 @@ async function reloadWindow(asked: string | undefined): Promise<void> {
       30_000
     )
     await pauseAsync(4000)
+    await waitForTestApi()
     const deadline = Date.now() + 60_000
-    while (!hasTestApi() && Date.now() < deadline) await pauseAsync(1000)
     // The plugin is back before the layout is; a tab opened in between finds no tab group.
-    while (Date.now() < deadline && !evalJson<boolean>('app.workspace.layoutReady', 30_000))
+    while (
+      Date.now() < deadline &&
+      !evalJsonIdempotent<boolean>('app.workspace.layoutReady', 30_000)
+    )
       await pauseAsync(500)
-    evalRaw(`(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`, 30_000)
+    evalRawIdempotent(`(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`, 30_000)
   } finally {
     try {
+      unlinkSync(join(RELOAD_LOCK, String(process.pid)))
       rmdirSync(RELOAD_LOCK)
     } catch {
       // Taken away as stale by another run: nothing left to release.

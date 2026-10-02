@@ -53,11 +53,24 @@ export function phoneEval(code: string, timeoutMs: number): string {
       throw new Error(`the phone gave no answer in ${timeoutMs} ms`)
     else throw new Error(`the phone driver failed: ${(err.stderr || err.stdout || '').trim()}`)
   }
-  const r = JSON.parse(out) as { type?: string; value?: unknown; thrown?: string }
-  if (r.thrown !== undefined) return `Error: ${r.thrown.replace(/^\w*Error: /, '')}`
+  let r: { type?: string; value?: unknown; thrown?: string }
+  try {
+    r = JSON.parse(out)
+  } catch {
+    throw new Error(`phone driver transport: invalid eval envelope: ${out.slice(0, 400)}`)
+  }
+  if (r.thrown !== undefined) {
+    assertPhoneTransport(r.thrown)
+    return `Error: ${r.thrown.replace(/^\w*Error: /, '')}`
+  }
   if (r.type === 'undefined') return '(no output)'
   if (typeof r.value === 'string') return `=> ${r.value}`
   return `=> ${JSON.stringify(r.value, null, 2)}`
+}
+
+/** Check a raw probe error before a feature's JSON parser, including polled job results. */
+export function assertPhoneTransport(raw: string): void {
+  if (/^(?:Error: )?Phone host transport \(/.test(raw)) throw new Error(raw.replace(/^Error: /, ''))
 }
 
 /** Default gestures stay unchanged; an explicit speed avoids inertia in displacement probes. */
@@ -148,13 +161,17 @@ export function installPhoneHost(): void {
       const call = async (what, body) => {
         // A picture is asked for again when the first request was lost — dropped by the
         // reversed port or never answered. Only a picture: a touch asked for twice would touch twice.
-        let r
-        try { r = await ask(what, body, what === 'shot' ? 20000 : what === 'type' ? 45000 : 15000) } catch (error) {
-          if (what !== 'shot') throw error
-          r = await ask(what, body, 20000)
+        try {
+          let r
+          try { r = await ask(what, body, what === 'shot' ? 20000 : what === 'type' ? 45000 : 15000) } catch (error) {
+            if (what !== 'shot') throw error
+            r = await ask(what, body, 20000)
+          }
+          if (r.status !== 200) throw new Error('status ' + r.status + ': ' + r.text)
+          return r.json
+        } catch (error) {
+          throw new Error('Phone host transport (' + what + '): ' + String(error && error.message || error))
         }
-        if (r.status !== 200) throw new Error('host ' + what + ': ' + r.text)
-        return r.json
       }
       window.__e2eHost = {
         // Answers where the picture went: see SHOTS in phoneHost.ts. A picture that could not
