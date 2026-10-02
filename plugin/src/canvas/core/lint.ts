@@ -1,4 +1,4 @@
-import { descendants, labelOf, overlaps, parentsOf, type CanvasGraph } from './model'
+import { contains, descendants, labelOf, overlaps, parentsOf, type CanvasGraph } from './model'
 import {
   contentBox,
   defaultMetrics,
@@ -24,11 +24,14 @@ export function lintCanvas(
   const add = (code: string, ids: string[], message: string) =>
     warnings.push({ code, ids, message })
   const nodes = [...graph.nodes].sort((a, b) => a.id.localeCompare(b.id))
+  const below = new Map(nodes.map((node) => [node.id, new Set(descendants(node.id, parents))]))
   for (let i = 0; i < nodes.length; i++) {
     const a = nodes[i]
+    const parent = nodes.find((n) => n.id === parents.get(a.id))
+    if (parent && !contains(parent, a))
+      add('group-clipping', [a.id, parent.id], `${a.id} extends outside ${parent.id}`)
     for (const b of nodes.slice(i + 1)) {
-      if (descendants(a.id, parents).includes(b.id) || descendants(b.id, parents).includes(a.id))
-        continue
+      if (below.get(a.id)!.has(b.id) || below.get(b.id)!.has(a.id)) continue
       if (overlaps(a, b)) add('overlap', [a.id, b.id], `${a.id} overlaps ${b.id}`)
     }
     const box = contentBox(a),

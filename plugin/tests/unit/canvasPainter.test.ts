@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { paintCanvas, pictureRegion } from '@/canvas/core/painter'
+import { paintCanvas, pictureRegion, textResolutionWarnings } from '@/canvas/core/painter'
 import { editCanvas } from '@/canvas/core/edit'
 import { emptyCanvas, SHAPES } from '@/canvas/core/model'
-import { textLines, defaultMetrics } from '@/canvas/core/scene'
+import { textLines, defaultMetrics, fitText } from '@/canvas/core/scene'
+import { lintCanvas } from '@/canvas/core/lint'
+import { planCanvasLayout } from '@/canvas/core/service'
+import { serializeCanvas } from '@/canvas/core/model'
 
 const theme = {
   paper: 'sample-paper',
@@ -108,6 +111,78 @@ describe('the shared canvas picture plan', () => {
     expect(calls.some((c) => c.name === 'setLineDash' && (c.args[0] as number[]).length > 0)).toBe(
       true
     )
+  })
+  it.each(['diamond', 'circle'] as const)(
+    'fits long %s labels into the actual inner content box',
+    (shape) => {
+      const graph = editCanvas(emptyCanvas(), [
+        {
+          op: 'add_node',
+          node: { id: 'sample', kind: 'shape', shape, label: 'Sample explanation '.repeat(40) },
+        },
+      ]).graph
+      expect(lintCanvas(fitText(graph)).filter((w) => w.code === 'clipped-text')).toEqual([])
+    }
+  )
+  it('fits labels during layout without mutating or resizing a kept node', () => {
+    const graph = editCanvas(emptyCanvas(), [
+      {
+        op: 'add_node',
+        node: {
+          id: 'sample',
+          kind: 'shape',
+          shape: 'diamond',
+          label: 'Sample explanation '.repeat(40),
+        },
+      },
+    ]).graph
+    const before = serializeCanvas(graph)
+    expect(
+      lintCanvas(planCanvasLayout(graph, {})).filter((w) => w.code === 'clipped-text')
+    ).toEqual([])
+    expect(planCanvasLayout(graph, { keep: ['sample'] }).nodes[0].height).toBe(
+      graph.nodes[0].height
+    )
+    fitText(graph)
+    expect(serializeCanvas(graph)).toBe(before)
+  })
+  it('retains native geometric group membership when text fitting grows a child', () => {
+    const graph = {
+      nodes: [
+        { id: 'group', type: 'group' as const, x: -10, y: -10, width: 400, height: 200 },
+        {
+          id: 'child',
+          type: 'text' as const,
+          text: 'Sample '.repeat(150),
+          x: 0,
+          y: 0,
+          width: 260,
+          height: 160,
+        },
+      ],
+      edges: [],
+    }
+    const laid = planCanvasLayout(graph, {})
+    expect(laid.nodes.find((n) => n.id === 'child')?.abele?.parent).toBe('group')
+  })
+  it('keeps external connections visible when a group is collapsed', () => {
+    const graph = editCanvas(emptyCanvas(), [
+      { op: 'add_node', node: { id: 'a', kind: 'text', label: 'Hidden sample', x: 0, y: 0 } },
+      { op: 'add_node', node: { id: 'b', kind: 'text', label: 'Visible sample', x: 500, y: 0 } },
+      { op: 'connect', edge: { id: 'flow', fromNode: 'a', toNode: 'b', label: 'next' } },
+      { op: 'group', id: 'level', ids: ['a'] },
+      { op: 'collapse', id: 'level', collapsed: true },
+    ]).graph
+    const { ctx, calls } = context()
+    const result = paintCanvas(ctx, graph, { x: -100, y: -100, width: 1000, height: 500 }, theme)
+    expect(result.visible).toEqual(['level', 'b'])
+    const labels = calls.filter((c) => c.name === 'fillText').map((c) => c.args[0])
+    expect(labels).toContain('next')
+    expect(labels).not.toContain('Hidden sample')
+  })
+  it('warns when a whole-node crop reduces its text below readable pixels', () => {
+    expect(textResolutionWarnings(0.04, 16).map((w) => w.code)).toEqual(['unreadable-scale'])
+    expect(textResolutionWarnings(1, 16)).toEqual([])
   })
   it('wraps long words without losing unicode and rejects unsupported step playback', () => {
     const text = 'Sample😀Sample😀'

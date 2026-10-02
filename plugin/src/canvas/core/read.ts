@@ -1,9 +1,11 @@
 import { labelOf, overlaps, parentsOf, type CanvasGraph, type Rect } from './model'
 import { lintCanvas } from './lint'
+import { defaultMetrics, type TextMetricsPort } from './scene'
 /** Coordinates appear only in full detail. All outline ordering is deterministic by id. */
 export function canvasOutline(
   graph: CanvasGraph,
-  options: { detail?: 'outline' | 'full'; region?: Rect } = {}
+  options: { detail?: 'outline' | 'full'; region?: Rect } = {},
+  metrics: TextMetricsPort = defaultMetrics
 ) {
   const parents = parentsOf(graph),
     selected = options.region ? graph.nodes.filter((n) => overlaps(n, options.region)) : graph.nodes
@@ -41,7 +43,7 @@ export function canvasOutline(
           : { id: e.id, from: e.fromNode, to: e.toNode, label: e.label ?? '' }
       ),
     steps: graph.abele?.steps ?? [],
-    warnings: lintCanvas(graph),
+    warnings: lintCanvas(graph, metrics),
     ...(options.detail === 'full'
       ? {
           extensions: Object.fromEntries(

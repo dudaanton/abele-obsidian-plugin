@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { parseCanvas, serializeCanvas, emptyCanvas, parentsOf } from '@/canvas/core/model'
+import {
+  parseCanvas,
+  serializeCanvas,
+  emptyCanvas,
+  parentsOf,
+  canvasFingerprint,
+} from '@/canvas/core/model'
 import { editCanvas } from '@/canvas/core/edit'
 import { layoutCanvas } from '@/canvas/core/layout'
 import { lintCanvas } from '@/canvas/core/lint'
 import { canvasOutline } from '@/canvas/core/read'
+import { routeEdge, segmentHits } from '@/canvas/core/scene'
 
 const sample = () =>
   editCanvas(emptyCanvas(), [
@@ -13,6 +20,27 @@ const sample = () =>
   ]).graph
 
 describe('portable canvas model and atomic edits', () => {
+  it('compares native snapshots by ids and keys but preserves semantic extension-array order', () => {
+    const graph = sample(),
+      reordered = parseCanvas(serializeCanvas(graph))
+    reordered.nodes.reverse()
+    reordered.edges.reverse()
+    expect(canvasFingerprint(reordered)).toBe(canvasFingerprint(graph))
+    reordered.abele = { steps: [{ say: 'Second' }, { say: 'First' }] }
+    graph.abele = { steps: [{ say: 'First' }, { say: 'Second' }] }
+    expect(canvasFingerprint(reordered)).not.toBe(canvasFingerprint(graph))
+  })
+  it('does not treat native empty-label/default-end normalization as a pending user edit', () => {
+    const graph = sample(),
+      native = parseCanvas(serializeCanvas(graph))
+    graph.edges[0].label = ''
+    delete native.edges[0].label
+    graph.edges[0].fromEnd = 'none'
+    graph.edges[0].toEnd = 'arrow'
+    expect(canvasFingerprint(native)).toBe(canvasFingerprint(graph))
+    native.edges[0].toEnd = 'none'
+    expect(canvasFingerprint(native)).not.toBe(canvasFingerprint(graph))
+  })
   it('uses only standard types and preserves extension fields at every level', () => {
     const graph = sample()
     graph.abele = { sample: { future: [1, false] } }
@@ -81,6 +109,15 @@ describe('portable canvas model and atomic edits', () => {
     expect(parentsOf(graph).get('alpha')).toBeUndefined()
     expect(graph.nodes).toHaveLength(2)
   })
+  it('groups only the requested ids, not an unrelated root card at the same coordinates', () => {
+    const graph = editCanvas(sample(), [
+      { op: 'add_node', node: { id: 'gamma', kind: 'text', label: 'Gamma' } },
+      { op: 'group', id: 'detail', ids: ['alpha', 'beta'] },
+      { op: 'group', id: 'overview', ids: ['detail'] },
+    ]).graph
+    expect(parentsOf(graph).get('gamma')).toBeUndefined()
+    expect(parentsOf(graph).get('detail')).toBe('overview')
+  })
   it('removes incident edges and promotes children of a removed group', () => {
     const grouped = editCanvas(sample(), [
       { op: 'group', id: 'level', ids: ['alpha', 'beta'] },
@@ -92,7 +129,14 @@ describe('portable canvas model and atomic edits', () => {
     expect(removed.edges).toHaveLength(0)
   })
   it('infers native geometric grouping and reports hierarchy without depending on array order', () => {
-    const graph = sample()
+    // A native fixture has no Abele parent hint; explicit null means an agent-chosen root.
+    const graph = parseCanvas({
+      nodes: [
+        { id: 'alpha', type: 'text', text: 'Alpha', x: 0, y: 0, width: 260, height: 160 },
+        { id: 'beta', type: 'text', text: 'Beta', x: 400, y: 0, width: 260, height: 160 },
+      ],
+      edges: [{ id: 'flow', fromNode: 'alpha', toNode: 'beta' }],
+    })
     graph.nodes.push({
       id: 'level',
       type: 'group',
@@ -166,6 +210,18 @@ describe('layout and deterministic self-check', () => {
   it('pins a kept group and all of its children, not just its outline', () => {
     const graph = editCanvas(sample(), [{ op: 'group', id: 'level', ids: ['alpha', 'beta'] }]).graph
     expect(layoutCanvas(graph, { keep: ['level'] }).nodes).toEqual(graph.nodes)
+  })
+  it('reports a child clipped by its explicit group boundary', () => {
+    const graph = sample()
+    graph.nodes.push({ id: 'level', type: 'group', x: 0, y: 0, width: 10, height: 10 })
+    graph.nodes[0].abele = { parent: 'level' }
+    expect(lintCanvas(graph).map((w) => w.code)).toContain('group-clipping')
+  })
+  it('routes a self-loop outside its card rather than through its text', () => {
+    const graph = sample(),
+      node = graph.nodes[0]
+    const points = routeEdge({ id: 'loop', fromNode: node.id, toNode: node.id }, graph)
+    expect(points.slice(1).some((point, i) => segmentHits(points[i], point, node))).toBe(false)
   })
   it('reports overlap, node-crossing edges, clipped text, isolation and invalid step ids', () => {
     const graph = sample()

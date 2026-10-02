@@ -10,7 +10,7 @@ import {
   type CanvasNode,
   type Rect,
 } from './model'
-import { lintCanvas } from './lint'
+import { lintCanvas, type CanvasWarning } from './lint'
 import { contentBox, routeEdge, textLines, type Point, type TextMetricsPort } from './scene'
 export interface CanvasTheme {
   paper: string
@@ -53,6 +53,18 @@ export function pictureRegion(
   return options.node
     ? bounds([region], 24)
     : { x: region.x, y: region.y, width: region.width, height: region.height }
+}
+export function textResolutionWarnings(scale: number, fontSize: number): CanvasWarning[] {
+  return scale * fontSize < 8
+    ? [
+        {
+          code: 'unreadable-scale',
+          ids: [],
+          message:
+            'Text is below 8 pixels in this picture; inspect a smaller region rather than the whole node or diagram',
+        },
+      ]
+    : []
 }
 export function canvasMetrics(ctx: CanvasRenderingContext2D, theme: CanvasTheme): TextMetricsPort {
   return {
@@ -171,9 +183,28 @@ export function paintCanvas(
     ctx.font = `600 ${theme.size}px ${theme.font}`
     ctx.fillText(node.label ?? node.id, node.x + 12, node.y + theme.size + 8)
   }
+  const representative = (id: string): string => {
+    while (hidden.has(id)) {
+      const parent = parents.get(id)
+      if (!parent) break
+      id = parent
+    }
+    return id
+  }
   for (const edge of graph.edges) {
-    if (hidden.has(edge.fromNode) || hidden.has(edge.toNode)) continue
-    const points = routeEdge(edge, graph)
+    const fromNode = representative(edge.fromNode),
+      toNode = representative(edge.toNode)
+    if (fromNode === toNode && (fromNode !== edge.fromNode || toNode !== edge.toNode)) continue
+    const points = routeEdge(
+      {
+        ...edge,
+        fromNode,
+        toNode,
+        fromSide: fromNode === edge.fromNode ? edge.fromSide : undefined,
+        toSide: toNode === edge.toNode ? edge.toSide : undefined,
+      },
+      graph
+    )
     if (!points.length) continue
     const path = edge.styleAttributes?.path
     ctx.setLineDash(path === 'dashed' ? [8, 5] : path === 'dotted' ? [2, 5] : [])

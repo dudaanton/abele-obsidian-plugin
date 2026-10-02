@@ -1,5 +1,6 @@
 /** One geometry/text plan shared by the painter and deterministic lint. */
 import {
+  cloneCanvas,
   labelOf,
   type CanvasEdge,
   type CanvasGraph,
@@ -31,11 +32,17 @@ export function contentBox(node: CanvasNode): Rect {
   const shape = node.styleAttributes?.shape
   const inset =
     shape === 'diamond' || shape === 'circle' ? 0.22 : shape === 'parallelogram' ? 0.16 : 0
+  const verticalInset = shape === 'diamond' || shape === 'circle' ? 0.22 : 0
   return {
     x: node.x + 16 + node.width * inset,
-    y: node.y + 16 + (shape === 'database' ? 20 : node.height * inset),
+    y: node.y + 16 + (shape === 'database' ? 20 : node.height * verticalInset),
     width: Math.max(1, node.width * (1 - 2 * inset) - 32),
-    height: Math.max(1, node.height * (1 - 2 * inset) - 32 - (shape === 'database' ? 20 : 0)),
+    height: Math.max(
+      1,
+      node.height * (1 - 2 * verticalInset) -
+        32 -
+        (shape === 'database' || shape === 'document' ? 20 : 0)
+    ),
   }
 }
 export function plainMarkdown(text: string): string {
@@ -104,6 +111,17 @@ export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
   const from = graph.nodes.find((n) => n.id === edge.fromNode),
     to = graph.nodes.find((n) => n.id === edge.toNode)
   if (!from || !to) return []
+  if (from.id === to.id) {
+    const right = endpoint(from, 'right'),
+      top = endpoint(from, 'top')
+    return [
+      right,
+      { x: right.x + 40, y: right.y },
+      { x: right.x + 40, y: top.y - 40 },
+      { x: top.x, y: top.y - 40 },
+      top,
+    ]
+  }
   const dx = to.x + to.width / 2 - from.x - from.width / 2,
     dy = to.y + to.height / 2 - from.y - from.height / 2
   const aSide =
@@ -146,14 +164,19 @@ export function segmentHits(a: Point, b: Point, r: Rect): boolean {
   return true
 }
 export function fitText(
-  graph: CanvasGraph,
-  metrics: TextMetricsPort = defaultMetrics
+  input: CanvasGraph,
+  metrics: TextMetricsPort = defaultMetrics,
+  selected: (node: CanvasNode) => boolean = () => true
 ): CanvasGraph {
+  const graph = cloneCanvas(input)
   for (const node of graph.nodes) {
-    if (node.type !== 'text') continue
+    if (node.type !== 'text' || !selected(node)) continue
     const box = contentBox(node),
       lines = textLines(labelOf(node), box.width, metrics)
-    const needed = textHeight(lines, metrics) + (node.height - box.height)
+    const shape = node.styleAttributes?.shape
+    const ratio = shape === 'diamond' || shape === 'circle' ? 0.56 : 1
+    const padding = shape === 'database' || shape === 'document' ? 52 : 32
+    const needed = (textHeight(lines, metrics) + padding) / ratio
     node.height = Math.max(node.height, needed)
   }
   return graph

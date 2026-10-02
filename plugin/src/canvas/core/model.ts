@@ -154,7 +154,7 @@ export function parentsOf(graph: CanvasGraph): Map<string, string> {
       if (typeof parent !== 'string' || !groups.some((g) => g.id === parent))
         throw new Error(`${node.id}: unknown parent group ${String(parent)}`)
       result.set(node.id, parent)
-    } else {
+    } else if (parent !== null) {
       const candidates = groups
         .filter(
           (g) =>
@@ -188,6 +188,33 @@ export function descendants(id: string, parents: Map<string, string>): string[] 
     }
   }
   return out
+}
+/** Native stacking/key order is not a content change; step/ink arrays still are. */
+export function canvasFingerprint(graph: CanvasGraph): string {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical)
+    if (value && typeof value === 'object')
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, child]) => [key, canonical(child)])
+      )
+    return value
+  }
+  return JSON.stringify(
+    canonical({
+      ...graph,
+      nodes: [...graph.nodes].sort((a, b) => a.id.localeCompare(b.id)),
+      edges: graph.edges
+        .map((edge) => ({
+          ...edge,
+          label: edge.label ?? '',
+          fromEnd: edge.fromEnd ?? 'none',
+          toEnd: edge.toEnd ?? 'arrow',
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    })
+  )
 }
 export const labelOf = (node: CanvasNode): string =>
   node.text ?? node.label ?? node.file ?? node.url ?? node.id
