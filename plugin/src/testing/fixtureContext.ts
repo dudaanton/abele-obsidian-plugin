@@ -153,6 +153,8 @@ export async function restoreFixtureContext(
   for (const root of [p.root, p.root + '-private'])
     await attempt('remove owned folder', async () => {
       const f = app.vault.getAbstractFileByPath(root)
+      // Owned synthetic fixture data must not accumulate in the test vault's trash.
+      // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file
       if (f) await app.vault.delete(f, true)
       if (await app.vault.adapter.exists(root)) throw new Error('Owned folder remains')
     })
