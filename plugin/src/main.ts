@@ -105,6 +105,8 @@ import { migrateFromDataview } from './commands/migrateFromDataview'
 // migrateFromFirefly is triggered via modal
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi } from '@/testing/exposeTestApi'
+import { observePhoneReplayTransport } from '@/testing/phoneReplay'
+import { transportOf, type SyncServiceDeps } from '@/sync/environment'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
 import { handleProtocolAction } from './helpers/protocolHandler'
@@ -201,7 +203,12 @@ export default class AbelePlugin extends Plugin {
    */
   private initSync(): void {
     const sync = SyncService.getInstance()
-    sync.init(this.app, this)
+    const deps: SyncServiceDeps = {}
+    if (process.env.NODE_ENV !== 'production')
+      deps.fetch = observePhoneReplayTransport(this.app, (input, init) =>
+        transportOf({})(input, init)
+      )
+    sync.init(this.app, this, deps)
 
     const statusEl = this.addStatusBarItem()
     statusEl.addClass('mod-clickable')

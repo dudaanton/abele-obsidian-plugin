@@ -11,7 +11,11 @@ const fake = vi.hoisted(() => ({
   },
 }))
 vi.mock('@/sync/SyncService', () => ({ SyncService: { getInstance: () => fake.svc } }))
-import { startPhoneReplay, verifyPhoneReplay } from '@/testing/phoneReplay'
+import {
+  startPhoneReplay,
+  verifyPhoneReplay,
+  observePhoneReplayTransport,
+} from '@/testing/phoneReplay'
 import type { App } from 'obsidian'
 beforeEach(() => vi.stubGlobal('window', globalThis))
 afterEach(() => vi.unstubAllGlobals())
@@ -47,7 +51,23 @@ describe('phone replay evidence at the actual response boundary', () => {
       void client.commitRaw([], 'sample-key').catch(() => {})
     })
     expect(await startPhoneReplay(app)).toEqual({ beforeCount: 1, captured: true })
-    fake.svc.log.value = ['push: replaying 1 ops']
+    fake.svc.log.value = ['push: replaying 1 ops under sample-key']
+    const response = new Response(
+      JSON.stringify({
+        results: [
+          { status: 'applied', path, file_id: 'sample-file', version_id: 'sample-version' },
+        ],
+      }),
+      { status: 200, headers: { 'idempotent-replayed': 'true' } }
+    )
+    await observePhoneReplayTransport(app, async () => response)(
+      'https://sync.example/v1/vaults/sample/commit',
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': 'sample-key' },
+        body: JSON.stringify({ ops: [] }),
+      }
+    )
     expect(await verifyPhoneReplay(app)).toEqual({
       beforeCount: 1,
       afterCount: 1,

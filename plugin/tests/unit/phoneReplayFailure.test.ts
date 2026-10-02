@@ -13,6 +13,7 @@ import {
   startPhoneReplay,
   verifyPhoneReplay,
   clearPhoneReplayEvidence,
+  observePhoneReplayTransport,
 } from '@/testing/phoneReplay'
 import type { App } from 'obsidian'
 beforeEach(() => {
@@ -96,6 +97,49 @@ describe('phone replay failure cleanup and strict confirmation', () => {
     expect(local.get('task14-phone-replay-evidence')).toBeNull()
     await expect(intercepted).resolves.toMatchObject({ replayed: false })
   })
+  it.each(['false-header', 'wrong-key', 'changed-body'])(
+    'requires a matching successful server replay confirmation (%s)',
+    async (mode) => {
+      const { app, local } = fixture()
+      const { sha256 } = await import('@abele/sync-core')
+      const body = JSON.stringify({ ops: [] })
+      local.set('task14-phone-replay-evidence', {
+        path: 'SampleReplay/sample.md',
+        content: 'Native phone replay exact bytes',
+        fileId: 'sample-file',
+        versionId: 'sample-version',
+        beforeCount: 1,
+        key: 'wanted-key',
+        requestSha: await sha256(new TextEncoder().encode(body)),
+      })
+      fake.client.mockReturnValue({
+        versions: vi.fn(async () => [{ version_id: 'sample-version' }]),
+      })
+      fake.log.value = ['push: replaying 1 ops under wanted-key']
+      const response = new Response(
+        JSON.stringify({
+          results: [
+            {
+              status: 'applied',
+              path: 'SampleReplay/sample.md',
+              file_id: 'sample-file',
+              version_id: 'sample-version',
+            },
+          ],
+        }),
+        { headers: { 'idempotent-replayed': mode === 'false-header' ? 'false' : 'true' } }
+      )
+      await observePhoneReplayTransport(app, async () => response)(
+        'https://sync.example/v1/vaults/sample/commit',
+        {
+          method: 'POST',
+          headers: { 'idempotency-key': mode === 'wrong-key' ? 'unrelated-key' : 'wanted-key' },
+          body: mode === 'changed-body' ? JSON.stringify({ ops: ['other'] }) : body,
+        }
+      )
+      await expect(verifyPhoneReplay(app)).rejects.toThrow(/evidence failed/)
+    }
+  )
   it('refuses generic unrelated replay logs even when original history/version/bytes all match', async () => {
     const { app, local } = fixture()
     local.set('task14-phone-replay-evidence', {

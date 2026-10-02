@@ -1,5 +1,6 @@
 import type { App } from 'obsidian'
 import { SyncService } from '@/sync/SyncService'
+import { sha256 } from '@abele/sync-core'
 const KEY = 'task14-phone-replay-evidence'
 const cancellations = new WeakMap<App, () => void>()
 interface Evidence {
@@ -9,6 +10,14 @@ interface Evidence {
   versionId: string
   beforeCount: number
   key: string
+  requestSha: string
+  serverReplay?: {
+    key: string
+    requestSha: string
+    fileId: string
+    versionId: string
+    replayed: true
+  }
 }
 /** Bounded exact evidence from the actual successful response BEFORE losing it. */
 export async function startPhoneReplay(
@@ -59,6 +68,7 @@ export async function startPhoneReplay(
       versionId: applied.version_id,
       beforeCount: versions.length,
       key,
+      requestSha: await sha256(new TextEncoder().encode(JSON.stringify({ ops }))),
     }
     app.saveLocalStorage(KEY, evidence)
     if (JSON.stringify(app.loadLocalStorage(KEY)) !== JSON.stringify(evidence))
@@ -107,7 +117,13 @@ export async function verifyPhoneReplay(app: App): Promise<{
     afterCount: versions.length,
     versionUnchanged: versions[0]?.version_id === e.versionId,
     localExact: (await app.vault.adapter.read(e.path)) === e.content,
-    replayed: svc.log.value.some((line) => line.includes('push: replaying')),
+    replayed:
+      e.serverReplay?.replayed === true &&
+      e.serverReplay.key === e.key &&
+      e.serverReplay.requestSha === e.requestSha &&
+      e.serverReplay.fileId === e.fileId &&
+      e.serverReplay.versionId === e.versionId &&
+      svc.log.value.some((line) => line.includes('push: replaying') && line.includes(e.key)),
   }
   if (
     result.beforeCount !== 1 ||
@@ -117,8 +133,61 @@ export async function verifyPhoneReplay(app: App): Promise<{
     !result.replayed
   )
     throw new Error('Phone replay evidence failed')
-  app.saveLocalStorage(KEY, null)
+  clearPhoneReplayEvidence(app)
   return result
+}
+/** Installed before SyncService.init in development, so reload recovery is observed, not inferred. */
+export function observePhoneReplayTransport(app: App, transport: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const response = await transport(input, init)
+    const e = app.loadLocalStorage(KEY) as Evidence | null
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const headers = new Headers(init?.headers)
+    if (
+      e &&
+      init?.method?.toUpperCase() === 'POST' &&
+      new URL(url).pathname.endsWith('/commit') &&
+      headers.get('idempotency-key') === e.key &&
+      response.status === 200 &&
+      response.headers.get('idempotent-replayed') === 'true' &&
+      typeof init.body === 'string'
+    ) {
+      const requestSha = await sha256(new TextEncoder().encode(init.body))
+      const body = (await response.clone().json()) as {
+        results?: { status: string; file_id?: string; version_id?: string; path?: string }[]
+      }
+      const applied = body.results?.find(
+        (r) =>
+          r.status === 'applied' &&
+          r.file_id === e.fileId &&
+          r.version_id === e.versionId &&
+          r.path === e.path
+      )
+      const current = app.loadLocalStorage(KEY) as Evidence | null
+      if (
+        applied &&
+        requestSha === e.requestSha &&
+        current?.key === e.key &&
+        current.fileId === e.fileId &&
+        current.requestSha === e.requestSha
+      ) {
+        const proof = {
+          ...current,
+          serverReplay: {
+            key: e.key,
+            requestSha,
+            fileId: e.fileId,
+            versionId: e.versionId,
+            replayed: true as const,
+          },
+        }
+        app.saveLocalStorage(KEY, proof)
+        if (JSON.stringify(app.loadLocalStorage(KEY)) !== JSON.stringify(proof))
+          throw new Error('Server replay confirmation was not persisted')
+      }
+    }
+    return response
+  }
 }
 export function clearPhoneReplayEvidence(app: App): void {
   cancellations.get(app)?.()
