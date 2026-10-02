@@ -347,6 +347,7 @@ describe.skipIf(!available)('typing into a long form on a phone, keyboard up', (
     // Real key input on the desktop goes through the DevTools protocol.
     if (!onPhone()) runCli(['dev:debug', 'on'], 30_000)
     report = await runProbe()
+    console.info('Form keyboard probe:', JSON.stringify(report))
     const lines = Object.entries(report).map(
       ([label, s]) => `  ${label.padEnd(12)} ${s.shot || s.error} (settled in ${s.settledIn} ms)`
     )

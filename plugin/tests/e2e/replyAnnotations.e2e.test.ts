@@ -22,7 +22,8 @@ const script = `(async () => {
   const layout=app.workspace.getLayout(), active=chats.activeTabId.value
   const made=[]
   let parent, child
-  const report={}
+  const report={taps:[]}
+  let phase='opening reply'
   const PATH=${JSON.stringify(path)}
   const shot=async name => {
     const path=${JSON.stringify(shots)}+'/'+name+'.png'
@@ -31,7 +32,11 @@ const script = `(async () => {
   }
   const tap=async el=>{
     if(!window.__e2eHost){el.click();return}
-    const r=el.getBoundingClientRect();await window.__e2eHost.tap(r.left+r.width/2,r.top+r.height/2)
+    const r=el.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2)
+    const hit=document.elementFromPoint(x,y)
+    report.taps.push({phase,x,y,hit:hit?.outerHTML?.slice(0,300),target:el.outerHTML.slice(0,300)})
+    if(!hit || !(hit===el || el.contains(hit)))throw Error('native tap misses '+phase+': '+JSON.stringify(report.taps.at(-1)))
+    await window.__e2eHost.tap(x,y)
   }
   const saved=async file=>(await app.vault.read(file)).trim().split('\\n').map(line=>JSON.parse(line)).filter(r=>r.k==='msg'&&r.id==='sample-reply').at(-1)
   const item=title=>[...document.querySelectorAll('.menu .menu-item')].find(el=>el.querySelector('.menu-item-title')?.textContent.trim()===title)
@@ -54,11 +59,13 @@ const script = `(async () => {
     await until(message);await wait(500)
     report.selectable=getComputedStyle(message().querySelector('strong')).webkitUserSelect
     parent.isStreaming.value=true
+    phase='selection bar'
     select('small lantern')
     const bar=await until(()=>document.querySelector('.abele-chat-selection_placed'))
     const box=bar.getBoundingClientRect()
     report.bar={left:box.left,right:box.right,width:innerWidth,colours:bar.querySelectorAll('[data-highlight-color]').length,actions:bar.querySelectorAll('[data-highlight-action]').length}
     await shot('selection-highlight')
+    phase='create yellow highlight'
     await tap(bar.querySelector('[data-highlight-action]'))
     await until(()=>message().querySelector('.abele-highlight--yellow'))
     report.created=parent.messages.value[0].highlights[0].color
@@ -68,6 +75,7 @@ const script = `(async () => {
     report.controls=[...document.querySelectorAll('.menu .menu-item-title')].map(el=>el.textContent.trim())
     report.selectionMenu=!!document.querySelector('.abele-chat-selection_placed')
     await shot('highlight-controls')
+    phase='recolor highlight'
     await tap(item('Make it purple'))
     await until(()=>message().querySelector('.abele-highlight--purple'))
     await parent.save()
@@ -89,6 +97,7 @@ const script = `(async () => {
     await chats.closeTab(parent.id);await chats.openChatFile(file);parent=chats.getSessionByFile(PATH)
     report.reopened=parent.messages.value[0].highlights.length
     await until(message)
+    phase='propose reply revision'
     child=await comments.createOnMessage(parent,'sample-reply','small lantern',2)
     await child.addUserNote('Please clarify the selected description.')
     const tool=child.getTools().find(t=>t.name==='propose_reply_revision')
@@ -115,7 +124,12 @@ const script = `(async () => {
     ;[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Undo last revision').click()
     await until(()=>parent.messages.value[0].content===source)
     report.undone=parent.messages.value[0].highlights.length
-  } catch(error) {report.error=String(error.stack||error)} finally {
+  } catch(error) {
+    report.error=phase+': '+String(error.message||error)+'\n'+String(error.stack||'')
+    const messageBox=message()?.getBoundingClientRect()
+    const pane=message()?.closest('.abele-ai-chat__messages')?.getBoundingClientRect()
+    report.viewport={width:innerWidth,height:innerHeight,keyboard:parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,message:messageBox?.toJSON(),pane:pane?.toJSON()}
+  } finally {
     if(parent)parent.isStreaming.value=false
     document.getSelection().removeAllRanges()
     document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
@@ -138,7 +152,10 @@ describe.runIf(available)('reply annotations in phone layout', () => {
       await reloadApp('app.emulateMobile(true)')
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
     }
-    report = JSON.parse(await evalLong(script, 90_000))
+    const raw = await evalLong(script, 90_000)
+    if (raw.startsWith('Error:')) throw new Error(raw)
+    report = JSON.parse(raw)
+    console.info('Reply annotation probe:', report)
   }, 180_000)
   afterAll(async () => {
     if (!onPhone()) {
