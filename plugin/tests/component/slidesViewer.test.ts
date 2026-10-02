@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DeckViewer } from '@/slides/core/DeckViewer'
 import { parseDeck } from '@/slides/core/markdown'
+import { Presentation } from '@/slides/core/Presentation'
 import type { BlockRenderer, MediaResolver } from '@/slides/core/model'
 
 const viewers: DeckViewer[] = []
@@ -28,6 +29,48 @@ const made = (source: string, renderer?: BlockRenderer) => {
 }
 
 describe('bounded deck rendering', () => {
+  it('shares fragments across viewers, preserves nested items and reverses before paging', async () => {
+    const renderer: BlockRenderer = {
+      render: async (_block, target) => {
+        target.innerHTML = '<ul><li>First<ul><li>Nested</li></ul></li><li>Second</li></ul>'
+        return () => {}
+      },
+    }
+    const source = '::slide{steps}::\n# List\n---\n# Next'
+    const a = made(source, renderer)
+    const b = made(source, renderer)
+    await Promise.all([a.load(), b.load()])
+    const show = new Presentation(2)
+    a.viewer.follow(show)
+    b.viewer.follow(show)
+    const items = (host: HTMLElement) => [
+      ...host.querySelectorAll('.abele-slide:not([hidden]) .abele-slide-fragment'),
+    ]
+    expect(items(a.host)).toHaveLength(2)
+    expect(items(a.host).every((li) => li.getAttribute('aria-hidden') === 'true')).toBe(true)
+    await a.viewer.go('next')
+    expect(show.step).toBe(1)
+    expect(items(b.host).map((li) => li.getAttribute('aria-hidden'))).toEqual(['false', 'true'])
+    expect(a.host.querySelectorAll('.abele-slide-fragment .abele-slide-fragment')).toHaveLength(0)
+    await b.viewer.go('next')
+    await b.viewer.go('next')
+    expect([a.viewer.index, b.viewer.index]).toEqual([1, 1])
+    await a.viewer.go('previous')
+    expect(show.step).toBe(2)
+    await a.viewer.go('previous')
+    expect(show.step).toBe(1)
+  })
+
+  it('never starts media in a presenter preview', async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    const host = document.createElement('div')
+    document.body.append(host)
+    const viewer = new DeckViewer(host, { render: async () => () => {} }, media, { preview: true })
+    viewers.push(viewer)
+    await viewer.setDeck(parseDeck('::slide{bg="[[sample-video.mp4]]" autoplay}::\n# Preview'))
+    expect(play).not.toHaveBeenCalled()
+  })
+
   it('renders only current slide and neighbours and releases their processors when paging or closing', async () => {
     const { viewer, host, render, dispose, load } = made(
       Array.from({ length: 60 }, (_, i) => `# Slide ${i + 1}`).join('\n---\n')

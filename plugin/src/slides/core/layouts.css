@@ -52,8 +52,49 @@
   line-height: var(--line-height-normal);
 }
 
-.abele-slide[hidden] {
+.abele-slide[hidden],
+.abele-deck[hidden] {
   display: none;
+}
+
+.abele-slide-fragment-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Animate an inner surface: the slide's transform is reserved for canvas scaling. */
+.abele-slide[data-transition='fade']:not([hidden]) .abele-slide-content {
+  animation: abele-slide-fade 250ms ease-out;
+}
+
+.abele-slide[data-transition='slide']:not([hidden]) .abele-slide-content {
+  animation: abele-slide-enter 250ms ease-out;
+}
+
+@keyframes abele-slide-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes abele-slide-enter {
+  from {
+    transform: translateX(5%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .abele-slide[data-transition] .abele-slide-content {
+    animation: none !important;
+  }
 }
 
 .abele-slide-background,
@@ -182,4 +223,86 @@
 
 .abele-deck-presenting .abele-deck-editor-action {
   display: none;
+}
+
+.abele-presenter {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.abele-presenter-previews {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 1;
+  min-height: 0;
+  gap: var(--size-4-2);
+  padding-inline: var(--size-4-2);
+}
+
+.abele-presenter-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.abele-presenter-label {
+  color: var(--text-muted);
+  padding-block: var(--size-4-2);
+}
+
+.abele-presenter-canvas {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.abele-presenter-preview .abele-deck-toolbar {
+  display: none;
+}
+
+.abele-presenter-preview .abele-deck-viewport {
+  pointer-events: none;
+}
+
+.abele-presenter-notes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: var(--size-4-4);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.abele-presenter-timer {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.abele-presenter-list {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 600px) {
+  .abele-presenter-previews {
+    flex: 1;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .abele-presenter-notes {
+    flex: 1;
+  }
+
+  .abele-presenter-list {
+    flex: 1 1 100%;
+    width: 100%;
+  }
 }
