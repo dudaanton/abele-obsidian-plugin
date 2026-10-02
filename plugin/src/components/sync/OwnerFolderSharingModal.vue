@@ -81,7 +81,7 @@
   </ObsidianModal>
 </template>
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, watch } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import {
@@ -102,6 +102,13 @@ const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   error = ref(''),
   preview = ref<FolderPreview | null>(null),
   secret = ref<MachineCredential | null>(null)
+watch([prefix, label, role], () => {
+  preview.value = null
+  password.value = ''
+  secret.value = null
+  error.value = ''
+  props.flow?.clear()
+})
 async function review() {
   if (!props.flow || !enabled) return
   busy.value = true

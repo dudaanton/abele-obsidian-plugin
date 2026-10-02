@@ -14,6 +14,36 @@ describe('owner folder sharing UI', () => {
     expect(flow.review).not.toHaveBeenCalled()
     w.unmount()
   })
+  it.each(['Role', 'Folder prefix', 'Share name'])(
+    'requires another preview after changing %s',
+    async (field) => {
+      const flow = {
+        review: vi.fn(async () => ({
+          prefix: 'Sample folder/',
+          generation: '1',
+          complete: true,
+          files: [],
+        })),
+        confirm: vi.fn(),
+        clear: vi.fn(),
+      }
+      const w = mount(OwnerFolderSharingModal, {
+        props: { flow: flow as any, enabled: true },
+        global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
+      })
+      await w.findAll('button')[0].trigger('click')
+      await new Promise((r) => setTimeout(r, 0))
+      await w.find('input[type=password]').setValue('invented-password')
+      await w
+        .find('[aria-label="' + field + '"]')
+        .setValue(field === 'Role' ? 'reader' : field === 'Folder prefix' ? 'Other/' : 'Other name')
+      expect(w.text()).not.toContain('Create scoped receiver key')
+      expect(w.find('input[type=password]').exists()).toBe(false)
+      expect(flow.clear).toHaveBeenCalled()
+      expect(flow.confirm).not.toHaveBeenCalled()
+      w.unmount()
+    }
+  )
   it('displays exact original paths and clears password after a failed confirmation', async () => {
     const flow = {
       review: vi.fn(async () => ({
