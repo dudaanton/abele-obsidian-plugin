@@ -3,10 +3,10 @@ import { join } from 'node:path'
 import { transformSync } from 'esbuild'
 import { expect, it, vi } from 'vitest'
 
-it('does not wrap an exhausted helper retry in another retry at the file boundary', () => {
+it('does not wrap an exhausted helper retry in another retry at the file boundary', async () => {
   const source = readFileSync(join(__dirname, '../e2e/helpers/liveWindow.ts'), 'utf8')
   const code = transformSync(source, { loader: 'ts', format: 'cjs' }).code
-  let setup!: () => void
+  let setup!: () => Promise<void>
   const focus = vi.fn(() => {
     throw new Error('obsidian dev:cdp gave no answer (3 attempts; idempotent retry exhausted)')
   })
@@ -22,7 +22,7 @@ it('does not wrap an exhausted helper retry in another retry at the file boundar
   )
   const imports: Record<string, unknown> = {
     vitest: {
-      beforeAll: (fn: () => void) => {
+      beforeAll: (fn: () => Promise<void>) => {
         setup = fn
       },
       afterAll: () => {},
@@ -33,6 +33,6 @@ it('does not wrap an exhausted helper retry in another retry at the file boundar
     './phone': {},
   }
   new Function('require', 'exports', code)((name: string) => imports[name], {})
-  expect(setup).toThrow('3 attempts')
+  await expect(setup()).rejects.toThrow('3 attempts')
   expect(focus).toHaveBeenCalledOnce()
 })
