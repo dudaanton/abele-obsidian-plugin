@@ -15,6 +15,7 @@ import { useVault } from '../helpers/testEnv'
 import { OperationDelays } from '../helpers/deferred'
 import { VaultWatcherWrapper, type FileChangeEvent } from '@/helpers/VaultWatcherWrapper'
 import { ScriptToolbar } from '@/scripting/toolbarButtons'
+import { createAgent } from '@/ai/agents/types'
 
 const SCRIPT = (name: string) => `// @name ${name}\nreturn '${name}'\n`
 
@@ -155,15 +156,56 @@ describe('service lifetime', () => {
 })
 
 describe('settings preserved before scripts arrive', () => {
+  it.each(['Scripts/Helpers', 'Archive/Helpers'])(
+    'updates the index and keeps modes only for an internal folder move to %s',
+    async (destination) => {
+      const app = GlobalStore.getInstance().app
+      await app.vault.create('Scripts/Utilities/sample.js', SCRIPT('Sample'))
+      await service.discover()
+      const config = AbeleConfig.getInstance()
+      config.ai.toolModes = { script_sample: 'auto' } as never
+      config.ai.agents = [createAgent({ id: 'sample-agent', toolModes: { script_sample: 'ask' } })]
+      VaultWatcherWrapper.destroy()
+      vi.spyOn(ScriptToolbar.prototype, 'start').mockImplementation(() => {})
+      service.init()
+      await vi.waitFor(() =>
+        expect((service as unknown as { discovering: unknown }).discovering).toBeNull()
+      )
+      const folder = app.vault.getAbstractFileByPath('Scripts/Utilities')!
+      await app.vault.rename(folder, destination)
+      ;(app as unknown as { emit(scope: string, event: string, ...args: unknown[]): void }).emit(
+        'vault',
+        'rename',
+        folder,
+        'Scripts/Utilities'
+      )
+      const internal = destination.startsWith('Scripts/')
+      expect(config.ai.toolModes.script_sample).toBe(internal ? 'auto' : undefined)
+      expect(config.ai.agents[0].toolModes.script_sample).toBe(internal ? 'ask' : undefined)
+      await vi.waitFor(() => {
+        expect(service.getAll().some((script) => script.path === `${destination}/sample.js`)).toBe(
+          internal
+        )
+        expect(
+          service.getAll().some((script) => script.path === 'Scripts/Utilities/sample.js')
+        ).toBe(false)
+      })
+      ScriptService.destroy()
+      VaultWatcherWrapper.destroy()
+    }
+  )
+
   it('drops only a known removed script mode, including its agents', async () => {
     const config = AbeleConfig.getInstance()
     config.ai.toolModes = { script_one: 'auto', script_two: 'ask', script_later: 'ask' } as never
     let event!: (event: FileChangeEvent) => void
     vi.spyOn(ScriptToolbar.prototype, 'start').mockImplementation(() => {})
-    vi.spyOn(VaultWatcherWrapper.getInstance(), 'registerCallback').mockImplementation((callback) => {
-      event = callback
-      return Symbol()
-    })
+    vi.spyOn(VaultWatcherWrapper.getInstance(), 'registerCallback').mockImplementation(
+      (callback) => {
+        event = callback
+        return Symbol()
+      }
+    )
     service.init()
     await service.discover()
     event({ type: 'delete', oldPath: 'Scripts/one.js' })

@@ -20,7 +20,7 @@ import { waitForScript } from './abort'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import { ScriptToolbar } from './toolbarButtons'
 import type { ParsedScript, FormField } from './types'
-import { isScriptPath } from './scriptPath'
+import { isScriptPath, isInScriptsFolder } from './scriptPath'
 import { ScriptTrust, ScriptWaitingError, sha256, noteLocalScriptWrite } from './ScriptTrust'
 import type { TrustedFile, TrustVerdict } from './trustState'
 import { announceWaiting, reviewOne, reviewWaiting } from './scriptReview'
@@ -414,12 +414,17 @@ export class ScriptService {
     this.watcherCallbackId = VaultWatcherWrapper.getInstance().registerCallback((event) => {
       if (
         event.oldPath &&
-        (event.type === 'delete' || (event.type === 'rename' && !isScriptPath(event.newPath ?? '')))
+        (event.type === 'delete' ||
+          (event.type === 'rename' && !isInScriptsFolder(event.newPath ?? '')))
       ) {
         this.removeScriptModes(event.oldPath)
       }
       // Both ends of a move: a script moved out of the folder has to leave the index too.
-      if ([event.newPath, event.oldPath].some((p) => !!p && isScriptPath(p))) {
+      if (
+        [event.newPath, event.oldPath].some(
+          (p) => !!p && (isScriptPath(p) || (event.type !== 'modify' && isInScriptsFolder(p)))
+        )
+      ) {
         debouncedDiscover()
       }
     })
