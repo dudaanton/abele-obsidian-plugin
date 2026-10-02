@@ -45,9 +45,16 @@ const PRELUDE = `
   if (leaf.view.file?.path !== ${JSON.stringify(NOTE)}) await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))
   const showLine = async (cm, text) => {
     const position = cm.state.doc.toString().indexOf(text)
+    // On mobile, Live Preview keeps rendered blocks closed while the editor is unfocused.
+    // A real edit focuses it first; a selection-only probe does not establish that condition.
+    cm.focus()
     cm.dispatch({ selection: { anchor: position }, scrollIntoView: true })
-    await wait(200)
-    return [...cm.contentDOM.querySelectorAll('.cm-line')].find((el) => el.textContent.includes(text))
+    for (let i = 0; i < 50; i++) {
+      const line = [...cm.contentDOM.querySelectorAll('.cm-line')].find((el) => el.textContent.includes(text))
+      if (line) { await wait(100); return line }
+      await wait(100)
+    }
+    return undefined
   }
   const shoot = async (name) => {
     const path = ${JSON.stringify(SHOTS)} + '/' + name + '.png'
