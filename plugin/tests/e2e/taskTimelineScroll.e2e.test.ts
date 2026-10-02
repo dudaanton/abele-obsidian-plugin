@@ -513,7 +513,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.revealed).toHaveLength(65)
           expect(p.countAfter).toContain('90 unfinished · Hide all')
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
-          if (index === 0 && kind === 'phone' && onPhone()) expect(p.calendarGap).toBeGreaterThanOrEqual(0)
+          if (index === 0 && kind === 'phone width') expect(p.calendarGap).toBeGreaterThanOrEqual(0)
           expect(p.sticky).toBeLessThanOrEqual(2)
           expect(p.overflow).toBeLessThanOrEqual(1)
           expect(p.revealAnchor).toHaveLength(2)
