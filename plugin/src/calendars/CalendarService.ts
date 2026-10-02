@@ -13,6 +13,7 @@
  */
 import { markRaw, reactive } from 'vue'
 import type { CalendarEvent } from './events'
+import { EventCompletionStore } from './completion'
 import { compareEvents, eventDays } from './events'
 import { readFeed } from './fetch'
 import type { Requester } from './http'
@@ -65,6 +66,9 @@ export interface CalendarDeps {
   settings: () => CalendarSettings
   secret: (keyId: string) => string
   now?: () => number
+  completion?: EventCompletionStore
+  /** Removed-feed marks also age out; supplied by the synced storage adapter. */
+  markedFeeds?: () => string[]
 }
 
 /** An event with the calendar it came from, for its colour and name. */
@@ -131,6 +135,7 @@ export class CalendarService {
         )
         this.statusOf(feed.id).at = kept.at
       }
+      await this.pruneRemovedMarks()
       this.state.version++
     })()
     return this.loaded
@@ -150,6 +155,7 @@ export class CalendarService {
       .feeds.filter((f) => f.enabled && (!feedIds || feedIds.includes(f.id)))
     await Promise.all(feeds.map((feed) => this.refreshFeed(feed)))
     this.forgetRemoved()
+    await this.pruneRemovedMarks()
     await this.save()
   }
 
@@ -187,6 +193,11 @@ export class CalendarService {
       this.state.events[feed.id] = markRaw(events)
       status.at = at
       status.error = null
+      try {
+        await this.deps.completion?.reconcile(feed.id, events, at)
+      } catch (e) {
+        console.debug('[Abele] calendars: completion marks could not be kept', e)
+      }
     } catch (e) {
       status.error = (e as Error)?.message ?? String(e)
       // A different link that fails shows nothing, not the old calendar's events.
@@ -224,6 +235,18 @@ export class CalendarService {
     }
   }
 
+  /** Removed calendars age out even when there is no enabled calendar left to refresh. */
+  async pruneRemovedMarks(): Promise<void> {
+    const configured = new Set(this.deps.settings().feeds.map((f) => f.id))
+    try {
+      for (const id of this.deps.markedFeeds?.() ?? []) {
+        if (!configured.has(id)) await this.deps.completion?.reconcile(id, [], this.now())
+      }
+    } catch (e) {
+      console.debug('[Abele] calendars: removed completion marks could not be pruned', e)
+    }
+  }
+
   /** Whether `refreshMinutes` have passed since the last read; asked by the plugin's timer. */
   due(): boolean {
     const minutes = this.deps.settings().refreshMinutes
@@ -239,9 +262,37 @@ export class CalendarService {
       return this.cache.feeds[f.id]?.fingerprint !== now && this.tried.get(f.id) !== now
     })
     const removed = this.forgetRemoved()
+    await this.pruneRemovedMarks()
     this.state.version++
     if (changed.length) await this.refresh(changed.map((f) => f.id))
     else if (removed) await this.save()
+  }
+
+  eventById(id: string): CalendarEvent | undefined {
+    for (const events of Object.values(this.state.events)) {
+      const found = events.find((e) => e.id === id)
+      if (found) return found
+    }
+  }
+
+  isDone(event: CalendarEvent): boolean {
+    void this.state.version
+    return this.deps.completion?.isDone(event) ?? false
+  }
+
+  async setDone(event: CalendarEvent, done: boolean): Promise<void> {
+    if (!this.deps.completion) throw new Error('Calendar completion is not started.')
+    // Older caches hold expanded events but not their source occurrence identity. Never
+    // guess a series mark from those: a full source read supplies the original start.
+    if (event.recurrenceId === undefined) {
+      await this.refresh([event.feedId])
+      const refreshed = this.eventById(event.id)
+      if (!refreshed || refreshed.recurrenceId === undefined)
+        throw new Error('The calendar must be refreshed before this occurrence can be marked.')
+      event = refreshed
+    }
+    await this.deps.completion.setDone(event, done, this.now())
+    this.state.version++
   }
 
   /** Every shown event, filed under each day it is on, in the order a day lists them. */

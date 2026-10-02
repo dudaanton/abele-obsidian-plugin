@@ -24,6 +24,7 @@ import {
   calendarSettingsFrom,
   type CalendarSettings,
 } from '@/calendars/settings'
+import { completionMarksFrom, type CompletionMarks } from '@/calendars/completion'
 import { DEFAULT_READER_SETTINGS, readerSettingsFrom, type ReaderSettings } from '@/reader/settings'
 import {
   DEFAULT_QUICK_BUTTON,
@@ -125,6 +126,8 @@ export interface AbeleSettings {
   reader?: ReaderSettings
   /** External calendars shown beside the tasks, read only. Their links and passwords are keys. */
   calendars?: CalendarSettings
+  /** Owner completion of single external event occurrences; travels with calendars. */
+  calendarCompletion?: CompletionMarks
   /** The floating button on a phone and the menu it opens. */
   quickButton?: QuickButtonSettings
   /** The linter: folders it never looks in, and how each rule is set up. */
@@ -321,6 +324,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   github: { ...DEFAULT_GITHUB_SETTINGS },
   reader: { ...DEFAULT_READER_SETTINGS },
   calendars: { ...DEFAULT_CALENDAR_SETTINGS, feeds: [] },
+  calendarCompletion: {},
   quickButton: { ...DEFAULT_QUICK_BUTTON },
   linter: { ...DEFAULT_LINTER_SETTINGS, rules: {} },
 }
@@ -377,6 +381,7 @@ export class AbeleConfig {
   public github: GithubSettings
   public reader: ReaderSettings
   public calendars: CalendarSettings = calendarSettingsFrom()
+  public calendarCompletion: CompletionMarks = {}
   public quickButton: QuickButtonSettings
   public linter: LinterSettings = linterSettingsFrom()
   /** Carried through untouched; `SecretStore` is the only thing that reads or writes it. */
@@ -767,6 +772,7 @@ export class AbeleConfig {
       migrated = true
     this.reader = readerSettingsFrom(settings?.reader)
     this.calendars = calendarSettingsFrom(settings?.calendars)
+    this.calendarCompletion = completionMarksFrom(settings?.calendarCompletion)
     this.quickButton = quickButtonSettingsFrom(settings?.quickButton)
     this.linter = linterSettingsFrom(settings?.linter)
     this.secretStore = settings?.secretStore
@@ -831,6 +837,7 @@ export class AbeleConfig {
         ...this.calendars,
         feeds: this.calendars.feeds.map((feed) => ({ ...feed })),
       },
+      calendarCompletion: completionMarksFrom(this.calendarCompletion),
       quickButton: {
         ...this.quickButton,
         actions: this.quickButton.actions.map((action) => ({ ...action })),

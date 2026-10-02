@@ -369,7 +369,7 @@ export const SECTIONS: Section[] = [
     secretsOf: (item) =>
       (item as GithubConnection).keyId ? [(item as GithubConnection).keyId] : [],
   },
-  rootBlock('calendars', 'Calendars', ['calendars'], {
+  rootBlock('calendars', 'Calendars', ['calendars', 'calendarCompletion'], {
     // Each calendar's link or password is in the keychain; the settings hold only where.
     secretsOf: (settings) =>
       (settings.calendars?.feeds ?? []).map((feed) => feed.keyId).filter(Boolean),

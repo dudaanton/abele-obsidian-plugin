@@ -97,12 +97,24 @@ const newEvent = (component: IcalComponent): IcalEvent =>
 const cancelled = (component: IcalComponent) =>
   text(component, 'status').toUpperCase() === 'CANCELLED'
 
+/** Zoned times identify an instant; floating times and dates keep their source wall value. */
+function recurrenceIdentity(time: IcalTime, tzid: string | null): string {
+  if (time.isDate) return `date:${dayOf(time)}`
+  if (!time.zone || time.zone.tzid === 'floating') {
+    if (!tzid) return `floating:${time.toString()}`
+    // An unknown source zone must not silently use this device's offset for identity.
+    if (!resolveZone(tzid)) return `wall:${JSON.stringify([tzid, time.toString()])}`
+  }
+  return `instant:${instantOf(time, tzid)}`
+}
+
 interface Occurrence {
   item: IcalEvent
   start: IcalTime
   end: IcalTime
   /** Which occurrence of the series, for the id; the start itself for a single event. */
   key: string
+  recurrenceId?: string
 }
 
 function toEvent(feedId: string, occurrence: Occurrence): CalendarEvent {
@@ -112,6 +124,7 @@ function toEvent(feedId: string, occurrence: Occurrence): CalendarEvent {
     id: `${feedId}:${item.uid}:${occurrence.key}`,
     feedId,
     uid: item.uid ?? '',
+    recurrenceId: occurrence.recurrenceId ?? null,
     title: text(component, 'summary') || '(No title)',
     location: text(component, 'location'),
     description: text(component, 'description'),
@@ -143,7 +156,20 @@ function overlaps(event: CalendarEvent, window: TimeWindow): boolean {
 
 function occurrencesOf(master: IcalEvent, window: TimeWindow): Occurrence[] {
   if (!master.isRecurring()) {
-    return [{ item: master, start: master.startDate, end: master.endDate, key: 'once' }]
+    const original = master.component.getFirstPropertyValue('recurrence-id') as IcalTime | null
+    return [
+      {
+        item: master,
+        start: master.startDate,
+        end: master.endDate,
+        key: original?.toString() ?? 'once',
+        ...(original
+          ? {
+              recurrenceId: recurrenceIdentity(original, tzidOf(master.component, 'recurrence-id')),
+            }
+          : {}),
+      },
+    ]
   }
   const tzid = tzidOf(master.component, 'dtstart')
   const out: Occurrence[] = []
@@ -165,6 +191,7 @@ function occurrencesOf(master: IcalEvent, window: TimeWindow): Occurrence[] {
       start: details.startDate,
       end: details.endDate,
       key,
+      recurrenceId: recurrenceIdentity(next, tzid),
     })
   }
   return out

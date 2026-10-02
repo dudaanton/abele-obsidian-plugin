@@ -630,6 +630,35 @@ again after a week. Nothing in a note depends on it — links and snippets name 
 so the file can be deleted at any time; **Settings → GitHub → Kept names and pictures → Clear**
 does the same.
 
+## External event completion
+
+An external calendar's checkbox marks **one occurrence**, not the recurring series. It is an
+owner annotation only: Abele never writes it back to ICS or CalDAV. Calendar chips, the event
+menu and timeline rows can mark it done or undone; completed events follow the same completed
+visibility control as tasks. The calendar view's control hides completed notes and events together.
+
+Marks are stored in `calendarCompletion` in the plugin's `data.json`, alongside the calendar
+definitions, like other shared plugin settings. Sync the plugin settings to carry them to other
+devices; **Calendars** in settings transfer also carries them. They are not in the device-local
+calendar cache, so deleting that cache does not clear them. Settings received from another
+device replace these marks like other settings; this is not a concurrent per-occurrence merge.
+
+Each key is a JSON tuple `[feedId, uid, recurrenceId]`; a one-off has `null` as its last part.
+Recurring occurrences use their original start (or `RECURRENCE-ID` for a detached override),
+never their rescheduled start: `date:YYYY-MM-DD` for all-day events, `floating:` followed by the
+source wall time for floating events, or `instant:` followed by epoch milliseconds for zoned
+times. An unresolved source zone keeps `wall:` with a JSON tuple of its zone name and source
+wall time instead of using a device offset. Moving an occurrence or changing the device timezone does not change the mark. A value
+holds `feedId` and `seenAt`, the last successful observation or tick time in epoch milliseconds.
+No event title, description, link or calendar credential is stored in a mark.
+
+On successful calendar reads, marked occurrences still present renew that observation at most
+once a day. Marks absent from the expanded window for **180 days** are removed, including old
+occurrences that have fallen out of the window and marks of removed calendars. A failing feed
+does not prune its marks, and a disabled feed retains them until read again. Unticking removes
+the mark immediately. Legacy event-only caches are refreshed before ticking, so missing
+occurrence identity can never accidentally mark a whole series.
+
 ## Calendar cache
 
 The events last read from each external calendar (**Settings → Calendars**) are kept in

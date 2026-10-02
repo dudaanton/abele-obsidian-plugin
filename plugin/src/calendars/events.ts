@@ -9,6 +9,8 @@ export interface CalendarEvent {
   id: string
   feedId: string
   uid: string
+  /** Original occurrence; null for a one-off, absent only in a legacy event-only cache. */
+  recurrenceId?: string | null
   title: string
   /** A day-long event: `startDay` and `endDay` say which days, `start` and `end` only order it. */
   allDay: boolean

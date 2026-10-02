@@ -8,6 +8,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { CalendarService, setCalendars } from './CalendarService'
 import { obsidianRequester } from './http'
+import { EventCompletionStore } from './completion'
 
 /** How often the plugin asks whether the refresh interval has passed. */
 const TICK_MS = 60 * 1000
@@ -23,6 +24,20 @@ export function startCalendars(plugin: Plugin): CalendarService {
       read: async () => ((await adapter.exists(path)) ? adapter.read(path) : null),
       write: (text) => adapter.write(path, text),
     },
+    completion: new EventCompletionStore({
+      read: () => config.calendarCompletion,
+      write: async (marks) => {
+        const before = config.calendarCompletion
+        config.calendarCompletion = marks
+        try {
+          await config.saveSettings()
+        } catch (e) {
+          if (config.calendarCompletion === marks) config.calendarCompletion = before
+          throw e
+        }
+      },
+    }),
+    markedFeeds: () => [...new Set(Object.values(config.calendarCompletion).map((m) => m.feedId))],
     request: obsidianRequester,
     settings: () => config.calendars,
     secret: (id) => secrets().get(id),
@@ -38,13 +53,18 @@ export function startCalendars(plugin: Plugin): CalendarService {
 
   plugin.registerInterval(
     window.setInterval(() => {
+      void service.pruneRemovedMarks()
       if (config.calendars.feeds.some((f) => f.enabled) && service.due()) void service.refresh()
     }, TICK_MS)
   )
 
   // A calendar added, its link or password changed, or one removed: read what changed only.
   const changed = debounce((): void => void service.refreshChanged(), 1500, true)
-  const stop = watch([config.version, () => secrets().version.value], () => changed())
+  const stop = watch([config.version, () => secrets().version.value], () => {
+    // A settings file received from another device changes marks as well as feed settings.
+    service.state.version++
+    changed()
+  })
   plugin.register(() => {
     stop()
     setCalendars(null)
