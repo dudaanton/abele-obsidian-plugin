@@ -3,6 +3,7 @@ import type { OwnerDevice, AssetView, PublishedAsset } from './sponsoredAssets'
 export interface UnshareReview {
   grantId: string
   fileId: string
+  path: string
   versionId: string
   sha: string
   revision: number
@@ -59,6 +60,7 @@ export class PublicationSettingsModel {
     return {
       grantId: view.grantId,
       fileId,
+      path: entry.target.path,
       versionId: entry.target.versionId,
       sha: entry.target.sha,
       revision: view.revision,

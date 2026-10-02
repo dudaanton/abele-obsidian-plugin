@@ -47,6 +47,17 @@ describe('publication settings UI', () => {
     expect(model.reviewUnshare).not.toHaveBeenCalled()
     w.unmount()
   })
+  it('refuses an unshare action when the model belongs to another displayed audience', async () => {
+    const model = { view: { ...view, grantId: 'other-audience' }, reviewUnshare: vi.fn() }
+    const w = mount(OwnerPublicationSettings, {
+      props: { view, model: model as any, enabled: true },
+      global,
+    })
+    await w.findAll('button')[1].trigger('click')
+    expect(model.reviewUnshare).not.toHaveBeenCalled()
+    expect(w.text()).toContain('audience changed')
+    w.unmount()
+  })
   it('never renders private asset paths on a scoped connection', () => {
     const w = mount(OwnerPublicationSettings, {
       props: { view, facet: 'scoped', owner: false },

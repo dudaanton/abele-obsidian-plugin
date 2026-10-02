@@ -82,7 +82,11 @@
       v-if="unshare"
       title="Unshare this exact file?"
       :message="
-        'Identity ' +
+        'File ' +
+        unshare.path +
+        '. Audience ' +
+        unshare.grantId +
+        '. Identity ' +
         unshare.fileId +
         ' at version ' +
         unshare.versionId +
@@ -146,6 +150,8 @@ function reference(id: string) {
 function review(id: string) {
   if (!enabled || !props.model) return
   try {
+    if (props.model.view?.grantId !== props.view?.grantId)
+      throw new Error('Publication audience changed; refresh the displayed view')
     unshare.value = props.model.reviewUnshare(id)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Cannot review unshare'
