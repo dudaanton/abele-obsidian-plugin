@@ -133,7 +133,8 @@ export class GlobalStore {
 
   private _vaultWatcher: VaultWatcher
   private fileMetadataRef: EventRef | null = null
-  private readonly pendingFileEdits = new Set<TFile>()
+  private readonly pendingFileEdits = new Map<TFile, symbol>()
+  private readonly fileEditJobs = new Map<TFile, Promise<void>>()
   public get vaultWatcher(): VaultWatcher {
     return this._vaultWatcher
   }
@@ -175,9 +176,8 @@ export class GlobalStore {
     this.initialized.value = true
 
     // TODO: move tasks logic to the more appropriate place
-    const syncFileMetadata = async (event: FileChangeEvent) => {
+    const syncFileMetadata = async (event: FileChangeEvent, fm?: Record<string, any>) => {
       if (event.type === 'modify') {
-        const fm = this.app.metadataCache.getFileCache(event.file)?.frontmatter
         const isTask = fm?.type === 'task'
         const isRecurringTask = fm?.recurrence != null
         const taskDate = fm?.due ?? fm?.date
@@ -272,19 +272,39 @@ export class GlobalStore {
         }
       }
     }
-    // Indexing also reports changed metadata. Only a file actually modified here may be
-    // renamed, and only after Obsidian has parsed that edit's properties.
-    this.fileMetadataRef = app.metadataCache.on?.('changed', (file: TFile) => {
-      if (this.initialized.value && this.pendingFileEdits.delete(file))
-        return syncFileMetadata({ type: 'modify', file })
+    // Indexing also reports changed metadata. Only an edited file may be renamed, and
+    // only when the indexed text matches its latest saved version. Serializing each file
+    // keeps a newer notification from being swallowed by an in-flight rename.
+    this.fileMetadataRef = app.metadataCache.on?.('changed', (file: TFile, data, cache) => {
+      if (!this.initialized.value || !this.pendingFileEdits.has(file)) return
+      const parsed = (cache ?? app.metadataCache.getFileCache(file))?.frontmatter
+      const frontmatter = parsed ? { ...parsed } : undefined
+      const job = (this.fileEditJobs.get(file) ?? Promise.resolve())
+        .then(async () => {
+          const revision = this.pendingFileEdits.get(file)
+          if (!this.initialized.value || !revision) return
+          // Host notifications carry the indexed text; older adapters may omit it.
+          if (typeof data === 'string' && data !== (await app.vault.read(file))) return
+          if (!this.initialized.value || this.pendingFileEdits.get(file) !== revision) return
+          await syncFileMetadata({ type: 'modify', file }, frontmatter)
+          if (this.pendingFileEdits.get(file) === revision) this.pendingFileEdits.delete(file)
+        })
+        .catch((error) => {
+          console.error('[Abele] file metadata sync failed', error)
+        })
+        .finally(() => {
+          if (this.fileEditJobs.get(file) === job) this.fileEditJobs.delete(file)
+        })
+      this.fileEditJobs.set(file, job)
+      return job
     })
     this.vaultWatcher.registerCallback((event) => {
       if (!this.initialized.value) return
       if (event.type === 'modify') {
-        if (this.fileMetadataRef) this.pendingFileEdits.add(event.file)
-        else void syncFileMetadata(event)
+        if (this.fileMetadataRef) this.pendingFileEdits.set(event.file, Symbol())
+        else void syncFileMetadata(event, app.metadataCache.getFileCache(event.file)?.frontmatter)
       } else if (event.type === 'delete') {
-        for (const file of this.pendingFileEdits)
+        for (const file of this.pendingFileEdits.keys())
           if (file.path === event.oldPath) this.pendingFileEdits.delete(file)
       }
     })
@@ -396,6 +416,7 @@ export class GlobalStore {
     if (this.fileMetadataRef) this.app.metadataCache.offref(this.fileMetadataRef)
     this.fileMetadataRef = null
     this.pendingFileEdits.clear()
+    this.fileEditJobs.clear()
 
     console.debug('GlobalStore destroyed')
   }

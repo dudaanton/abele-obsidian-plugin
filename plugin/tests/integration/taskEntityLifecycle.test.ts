@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Task } from '@/entities/Task'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
-import { taskHarness, TASK_BODY, TASK_PATH } from '../helpers/taskHarness'
+import { gate, taskHarness, TASK_BODY, TASK_PATH } from '../helpers/taskHarness'
 import { getBacklinksByPath } from '@/helpers/vaultUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { flushPromises } from '@vue/test-utils'
@@ -138,6 +138,142 @@ describe('file edits distinguished from metadata indexing', () => {
       await flushPromises()
       expect(read).not.toHaveBeenCalled()
     } finally {
+      store.destroy()
+    }
+  })
+})
+
+describe('metadata from overlapping saves of the same task', () => {
+  it.each(
+    ['editor', 'background', 'sync'].flatMap((source) =>
+      [false, true].map((recurring) => [source, recurring] as const)
+    )
+  )('handles A/B saves from %s (recurring %s)', async (source, recurring) => {
+    const env = taskHarness({ type: recurring ? 'task' : 'note' })
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    if (source === 'background') env.editor.setValue('')
+    if (source === 'sync') env.close()
+    const content = (type: string, due: string, title: string) =>
+      `---\ntype: ${type}\n${recurring ? `recurrence: every day\ndue: '${due}'\n` : ''}---\n${title}`
+    const first = content(recurring ? 'task' : 'note', '2028-03-02', 'Sample intermediate title')
+    const final = content('task', '2028-03-09', 'Sample final title')
+    const rename = vi.spyOn(env.app.fileManager, 'renameFile')
+    const publish = (text: string) => {
+      const frontmatter = load(text.split('---')[1]) as Record<string, unknown>
+      env.app.setFrontmatter(env.file.path, frontmatter)
+      env.app.emit('metadataCache', 'changed', env.file, text, { frontmatter })
+    }
+    try {
+      for (const text of [first, final]) {
+        if (source === 'editor') env.editor.setValue(text)
+        await env.app.vault.modify(env.file, text)
+        // Sync and editor writes both reach the plugin as vault modifications.
+        env.app.emit('vault', 'modify', env.file)
+      }
+      publish(first)
+      await flushPromises()
+      expect(rename).not.toHaveBeenCalled()
+      expect(env.file.path).toBe(TASK_PATH)
+      publish(final)
+      await flushPromises()
+      expect(env.file.basename).toBe(`Sample final title${recurring ? ' 2028-03-09' : ''}`)
+      expect(await env.app.vault.read(env.file)).toBe(final)
+    } finally {
+      store.destroy()
+    }
+  })
+
+  it('handles coalesced metadata for the latest save without leaving an edit pending', async () => {
+    const env = taskHarness({ type: 'note' })
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    const final = '---\ntype: task\n---\nSample coalesced title'
+    try {
+      for (const text of ['---\ntype: note\n---\nSample intermediate title', final]) {
+        await env.app.vault.modify(env.file, text)
+        env.app.emit('vault', 'modify', env.file)
+      }
+      env.app.setFrontmatter(env.file.path, { type: 'task' })
+      env.app.emit('metadataCache', 'changed', env.file, final, { frontmatter: { type: 'task' } })
+      await flushPromises()
+      expect(env.file.basename).toBe('Sample coalesced title')
+      const read = vi.spyOn(env.app.vault, 'read')
+      env.app.emit('metadataCache', 'changed', env.file, final, { frontmatter: { type: 'task' } })
+      await flushPromises()
+      expect(read).not.toHaveBeenCalled()
+    } finally {
+      store.destroy()
+    }
+  })
+
+  it('serializes a later notification while an earlier task rename is still in flight', async () => {
+    const env = taskHarness()
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    const first = '---\ntype: task\n---\nSample intermediate title'
+    const final = '---\ntype: task\n---\nSample final in-flight title'
+    const renaming = gate()
+    const resume = gate()
+    const rename = env.app.fileManager.renameFile.bind(env.app.fileManager)
+    vi.spyOn(env.app.fileManager, 'renameFile').mockImplementationOnce(async (file, path) => {
+      renaming.release()
+      await resume.promise
+      return rename(file, path)
+    })
+    try {
+      await env.app.vault.modify(env.file, first)
+      env.app.emit('vault', 'modify', env.file)
+      env.app.setFrontmatter(env.file.path, { type: 'task' })
+      env.app.emit('metadataCache', 'changed', env.file, first, { frontmatter: { type: 'task' } })
+      await renaming.promise
+      await env.app.vault.modify(env.file, final)
+      env.app.emit('vault', 'modify', env.file)
+      env.app.emit('metadataCache', 'changed', env.file, final, { frontmatter: { type: 'task' } })
+      resume.release()
+      await flushPromises()
+      expect(env.file.basename).toBe('Sample final in-flight title')
+      expect(await env.app.vault.read(env.file)).toBe(final)
+    } finally {
+      resume.release()
+      store.destroy()
+    }
+  })
+
+  it('keeps a newer save pending when it arrives during the preceding metadata read', async () => {
+    const env = taskHarness({ type: 'note' })
+    const store = GlobalStore.getInstance()
+    store.initialized.value = false
+    store.init(env.app)
+    const first = '---\ntype: note\n---\nSample intermediate title'
+    const final = '---\ntype: task\n---\nSample delayed-read title'
+    const reading = gate()
+    const resume = gate()
+    try {
+      await env.app.vault.modify(env.file, first)
+      env.app.emit('vault', 'modify', env.file)
+      env.app.setFrontmatter(env.file.path, { type: 'note' })
+      const read = env.app.vault.read.bind(env.app.vault)
+      vi.spyOn(env.app.vault, 'read').mockImplementationOnce(async (file) => {
+        const snapshot = await read(file)
+        reading.release()
+        await resume.promise
+        return snapshot
+      })
+      env.app.emit('metadataCache', 'changed', env.file, first, { frontmatter: { type: 'note' } })
+      await reading.promise
+      await env.app.vault.modify(env.file, final)
+      env.app.emit('vault', 'modify', env.file)
+      env.app.setFrontmatter(env.file.path, { type: 'task' })
+      env.app.emit('metadataCache', 'changed', env.file, final, { frontmatter: { type: 'task' } })
+      resume.release()
+      await flushPromises()
+      expect(env.file.basename).toBe('Sample delayed-read title')
+    } finally {
+      resume.release()
       store.destroy()
     }
   })
