@@ -1447,6 +1447,22 @@ write a drawing's file yourself — the picture and the data must agree, and onl
 keeps them so.
 
 
+## Temporary execution context hold
+
+A durable local `abele-script-execution-context-hold` plus `.abele-script-context-hold`
+sentinel blocks script snapshots and their final compilation checks during isolated maintenance.
+It is written before any managed provenance is temporarily detached and released only after
+original state restoration succeeds. A missing original trust record is never local-code trust.
+
+## Disabled owner sharing UI
+
+Owner folder-sharing and publication views remain behind an immutable disabled activation
+fence. Folder reviews keep exact paths, require fresh owner-password authentication and expose
+only scoped machine keys. Sponsored/native lists require identity/version, intrinsic sponsors,
+CAS/withdrawal generations and own-upload proof; no body parser or personal-token fallback.
+The UI retains no password after confirmation and no long-lived secret setting. Current rows
+and operation ports are not an activated scoped engine or publication journal integration.
+
 ## Disabled publication snapshot contract
 
 The concept branch defines a separate device-local IndexedDB link-snapshot store, bound to
