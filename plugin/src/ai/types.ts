@@ -309,6 +309,9 @@ export const TOUCHING_TOOLS = [
   'book_highlight_remove',
   'docx_edit',
   'xlsx_write',
+  'canvas_create',
+  'canvas_edit',
+  'canvas_layout',
 ]
 
 /**
@@ -424,6 +427,15 @@ export const XLSX_TOOL_MODES: Record<string, ToolMode> = {
   xlsx_write: 'ask',
 }
 
+/** Canvas tools are independently Off/Ask/On, not bypassed by the core file-write mode. */
+export const CANVAS_TOOL_MODES: Record<string, ToolMode> = {
+  canvas_read: 'auto',
+  look_at_canvas: 'auto',
+  canvas_create: 'ask',
+  canvas_edit: 'ask',
+  canvas_layout: 'ask',
+}
+
 /** Personal device data: ask before every request unless the person chooses another mode. */
 export const LOCATION_TOOL_MODES: Record<string, ToolMode> = { current_location: 'ask' }
 
@@ -456,6 +468,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     ...BOOK_TOOL_MODES,
     ...DOCX_TOOL_MODES,
     ...XLSX_TOOL_MODES,
+    ...CANVAS_TOOL_MODES,
   },
   scriptsEnabled: false,
   scriptsFolder: '',

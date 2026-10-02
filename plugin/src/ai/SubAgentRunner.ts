@@ -32,6 +32,10 @@ const SCOPED = [
   'deck_edit',
   'deck_check',
   'present',
+  'canvas_read',
+  'canvas_edit',
+  'canvas_layout',
+  'look_at_canvas',
   'ls',
   'find',
 ]

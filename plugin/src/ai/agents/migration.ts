@@ -4,6 +4,7 @@ import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
+  CANVAS_TOOL_MODES,
   LINT_TOOL_MODES,
   LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
@@ -206,11 +207,20 @@ function enableGithubTools(ai: AiSettings): boolean {
   return changed
 }
 
-/**
- * Hands the book tools to agents saved before they had their modes: reading on its own, marking
- * a book after asking. Only a tool an agent has no opinion on is touched — one switched on or off
- * by hand stays as it is.
- */
+/** Add canvas modes to older agents, retaining every explicit Off/Ask/On choice. */
+function enableCanvasTools(ai: AiSettings): boolean {
+  let changed = false
+  for (const agent of ai.agents || []) {
+    for (const [tool, mode] of Object.entries(CANVAS_TOOL_MODES)) {
+      if (agent.toolModes[tool] !== undefined) continue
+      agent.toolModes[tool] = mode
+      changed = true
+    }
+  }
+  return changed
+}
+
+/** Add book/Word modes only when an older agent has no explicit choice. */
 function enableBookTools(ai: AiSettings): boolean {
   let changed = false
 
@@ -342,6 +352,7 @@ export function migrateAgents(ai: AiSettings): boolean {
   const memory = enableMemoryTool(ai)
   const github = enableGithubTools(ai)
   const books = enableBookTools(ai)
+  const canvas = enableCanvasTools(ai)
   const lint = enableLintTools(ai)
   const analytics = enableAnalyticsTools(ai)
   const location = enableLocationTool(ai)
@@ -354,6 +365,7 @@ export function migrateAgents(ai: AiSettings): boolean {
     memory ||
     github ||
     books ||
+    canvas ||
     lint ||
     analytics ||
     location ||

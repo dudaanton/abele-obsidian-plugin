@@ -84,6 +84,16 @@ describe('portable canvas model and atomic edits', () => {
     }
     expect(serializeCanvas(graph)).toBe(before)
   })
+  it('uses the containing collection to distinguish edges from nodes with unknown type-like fields', () => {
+    const graph = sample()
+    graph.edges[0].type = 'group'
+    const next = editCanvas(graph, [
+      { op: 'update', id: 'flow', patch: { label: 'Changed flow' } },
+    ]).graph
+    expect(next.edges[0]).toMatchObject({ type: 'group', label: 'Changed flow' })
+    expect(next.nodes).toHaveLength(2)
+    expect(() => editCanvas(graph, [{ op: 'ungroup', id: 'flow' }])).toThrow(/Only groups/)
+  })
   it('merges styles and local data, preserving unknown nested fields', () => {
     const graph = sample()
     graph.nodes[0].abele = { sample: 'keep' }

@@ -181,6 +181,53 @@ includes formatting/structure metadata as well as text. Unsupported structures a
 not rebuilt. No tracked-change or comment authoring, nested-table editing or page/section setup.
 
 
+## Canvas diagrams
+
+`canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, and `look_at_canvas` have their own
+per-agent Off/Ask/On modes. Reading and pictures default to On; creation, semantic editing and
+layout default to Ask, independently of general file-write permissions. Existing-diagram calls
+must be in scope. New diagrams join scope after creation, like `create`.
+
+- `canvas_read(path, {detail?, region?})`: `detail` is `outline` (default) or `full`. The outline
+  gives ids, one-line labels, group hierarchy, edges and lint; full adds geometry and all extension
+  data. It includes an open native Canvas's pending data. Read before refining.
+- `canvas_create(path, {title?, from})`: choose exactly one of `from.graph` or `from.mermaid`.
+  Graph input is `{nodes:[{id,kind,label?,file?,url?,shape?,parent?,near?,x?,y?,width?,height?}],
+  edges:[{id,fromNode,toNode,label?,...}]}`. Kinds are `text`, `note`, `link`, `group`, `shape`;
+  note requires `file`, link requires `url`. Mermaid input is a flowchart string, not another
+  diagram grammar. Creation fits text and applies layered dagre layout; it never overwrites a file.
+- `canvas_edit(path, {ops})`: sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
+  {id,patch}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
+  {id,collapsed}`, and `style {id,styleAttributes}`. Add group/node ids before connecting to them.
+  New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`
+  instead of erasing their other fields. An error names the failing op index (from zero), and may
+  suggest a similar id. Removing a group promotes children; removing a node removes incident edges.
+- `canvas_layout(path, {algorithm?,direction?,scope?,keep?,gap?})`: algorithms `layered` (dagre,
+  default), `tree`, `radial`, `grid`; directions `LR` (default), `RL`, `TB`, `BT`. Scope is a group
+  id. Keep pins ids, including a kept group's descendants. Groups are laid out level by level;
+  cross-group connections are represented at each group's outer level. Fixed positions can still
+  need lint fixes. The layout-engine interface leaves room for an opt-in engine later; no ELK ships.
+- `look_at_canvas(path, {node?,region?,maxSide?})`: a PNG plus warnings, all of it or one crop.
+  Choose `node` or `region: {x,y,width,height}`, not both. maxSide is 64–4096, default 2048.
+  Pictures use the host theme, Advanced Canvas shapes, bound connectors, safe painted headings,
+  lists, bold, link labels, scoped note text/heading/block content, and scoped local images.
+  Complex HTML/markdown and interactive embeds are not rendered as browser widgets. Remote
+  images are not fetched; missing/out-of-scope assets are reported, not read. It never executes note
+  code blocks. Native Canvas may show rectangles where the painter shows an extension shape.
+
+Write meaning, not a giant coordinate dump: stable, descriptive ids, groups and note/sub-canvas
+file nodes for levels. Start with an overview, at most about seven new elements per explanatory
+step. Run lint before showing a diagram, then inspect small node/region crops: a picture of 200
+nodes is not readable. Warnings cover overlaps, edges crossing cards, clipped text/images,
+unconnected nodes, group-boundary clipping, unreadably small picture text, and invalid/too-dense
+stored step references. An `unreadable-scale` warning asks for a smaller region crop, not another
+whole-diagram thumbnail. Fix size/placement by id and
+look again. Native save can reorder keys and elements; never use array position as identity.
+Unknown node types are refused instead of silently erased. The batch is one native undo item
+when a single native Canvas editor is open; close duplicate editor tabs before writing. Native
+Canvas is still the stage-one viewer. Step authoring/playback and Abele's viewer are not present
+in these tools yet; existing `abele.steps` are retained and linted.
+
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,

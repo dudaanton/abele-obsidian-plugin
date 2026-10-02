@@ -1,0 +1,295 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TFile } from 'obsidian'
+import { createCanvasTools } from '@/ai/tools/CanvasTools'
+import { createAgentTools, getToolRegistry } from '@/ai/tools'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { canvasAssets, canvasRegionAssets } from '@/canvas/pictureAdapter'
+import { ObsidianCanvasStore } from '@/canvas/obsidianStore'
+import { subAgentRefusal } from '@/ai/SubAgentRunner'
+import { ScopeResolver } from '@/ai/ScopeResolver'
+import { createAgent } from '@/ai/agents/types'
+import { migrateAgents } from '@/ai/agents/migration'
+import { CANVAS_TOOL_MODES, DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { buildFakeVault } from '../helpers/fakeVault'
+import type { App } from 'obsidian'
+import type { ToolContext } from '@/ai/toolContext'
+
+let app: ReturnType<typeof buildFakeVault>, ctx: ToolContext
+const tool = (name: string) => createCanvasTools().find((t) => t.name === name)!
+const call = (name: string, params: Record<string, unknown>) =>
+  tool(name).execute('sample-call', params, undefined, ctx)
+const graph = {
+  nodes: [
+    { id: 'alpha', kind: 'shape', label: 'Alpha', shape: 'diamond' },
+    { id: 'beta', kind: 'note', file: 'sample-note.md' },
+  ],
+  edges: [{ id: 'flow', fromNode: 'alpha', toNode: 'beta', label: 'next' }],
+}
+beforeEach(() => {
+  AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
+  app = buildFakeVault([{ path: 'sample-note.md', content: '## Sample\nBody' }])
+  ;(GlobalStore.getInstance() as unknown as { _app: App })._app = app as unknown as App
+  const scope = new ScopeResolver()
+  scope.setFullVaultAccess(true)
+  ctx = { scope, interactive: true }
+})
+
+describe('agent canvas tools and permissions', () => {
+  it('registers all five independent modes and preserves explicit choices on migration', () => {
+    expect(
+      createAgentTools()
+        .filter((t) => t.name.startsWith('canvas_') || t.name === 'look_at_canvas')
+        .map((t) => t.name)
+        .sort()
+    ).toEqual(Object.keys(CANVAS_TOOL_MODES).sort())
+    expect(Object.keys(CANVAS_TOOL_MODES)).toHaveLength(5)
+    const agent = createAgent({ toolModes: { canvas_edit: 'off', look_at_canvas: 'ask' } })
+    const ai = JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS))
+    ai.agents = [agent]
+    migrateAgents(ai)
+    expect(ai.agents[0].toolModes).toMatchObject({
+      canvas_edit: 'off',
+      look_at_canvas: 'ask',
+      canvas_create: 'ask',
+      canvas_layout: 'ask',
+      canvas_read: 'auto',
+    })
+    expect(getToolRegistry().find((t) => t.name === 'canvas_layout')?.category).toBe('Canvas')
+  })
+  it('does not bypass per-tool Off or Ask with allow-all file permissions', () => {
+    const agent = createAgent({
+      permissionMode: 'allow-all',
+      toolModes: { canvas_edit: 'off', canvas_layout: 'ask', canvas_read: 'auto' },
+    })
+    expect(subAgentRefusal('canvas_edit', { path: 'sample.canvas' }, agent, ctx.scope)).toMatch(
+      /not enabled/
+    )
+    expect(subAgentRefusal('canvas_layout', { path: 'sample.canvas' }, agent, ctx.scope)).toMatch(
+      /approval/
+    )
+    expect(subAgentRefusal('canvas_read', { path: 'sample.canvas' }, agent, ctx.scope)).toBeNull()
+  })
+  it('redacts out-of-scope note bodies before the picture adapter can read them', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const data = await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')
+    app.resetStats()
+    const assets = await canvasAssets(
+      app as unknown as App,
+      data,
+      'sample.canvas',
+      (path) => path === 'sample.canvas',
+      document
+    )
+    expect(assets.contents.get('beta')).toMatch(/outside scope/)
+    expect(app.stats.read).toBe(0)
+    expect(assets.images.size).toBe(0)
+  })
+  it('resolves exact note block ids without matching prefixes or painting CRLF frontmatter', async () => {
+    const file = app.vault.getAbstractFileByPath('sample-note.md') as TFile
+    await app.vault.modify(
+      file,
+      '---\r\ntopic: sample-metadata\r\n---\r\nFirst paragraph ^sample-long\r\n\r\nTarget paragraph ^sample\r\n'
+    )
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const data = await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')
+    data.nodes.find((n) => n.id === 'beta')!.subpath = '#^sample'
+    const part = await canvasAssets(
+      app as unknown as App,
+      data,
+      'sample.canvas',
+      () => true,
+      document
+    )
+    expect(part.contents.get('beta')).toContain('Target paragraph')
+    expect(part.contents.get('beta')).not.toContain('First paragraph')
+    expect(part.contents.get('beta')).not.toContain('^sample')
+    delete data.nodes.find((n) => n.id === 'beta')!.subpath
+    const whole = await canvasAssets(
+      app as unknown as App,
+      data,
+      'sample.canvas',
+      () => true,
+      document
+    )
+    expect(whole.contents.get('beta')).not.toContain('sample-metadata')
+  })
+  it('reports a missing image with malformed percent encoding instead of failing the picture', async () => {
+    const file = app.vault.getAbstractFileByPath('sample-note.md') as TFile
+    await app.vault.modify(file, '![Sample](sample-%broken.png)')
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const data = await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')
+    const assets = await canvasAssets(
+      app as unknown as App,
+      data,
+      'sample.canvas',
+      () => true,
+      document
+    )
+    expect(assets.warnings.map((w) => w.code)).toContain('unavailable-image')
+  })
+  it('does not load unrelated note bodies or images when inspecting a crop', async () => {
+    await app.vault.create('sample-outside.md', 'Outside sample body')
+    const data = {
+      nodes: [
+        {
+          id: 'inside',
+          type: 'file' as const,
+          file: 'sample-note.md',
+          x: 0,
+          y: 0,
+          width: 260,
+          height: 160,
+        },
+        {
+          id: 'outside',
+          type: 'file' as const,
+          file: 'sample-outside.md',
+          x: 2000,
+          y: 0,
+          width: 260,
+          height: 160,
+        },
+      ],
+      edges: [],
+    }
+    app.resetStats()
+    const assets = await canvasRegionAssets(
+      app as unknown as App,
+      data,
+      'sample.canvas',
+      () => true,
+      document,
+      { x: -10, y: -10, width: 300, height: 200 }
+    )
+    expect([...assets.contents.keys()]).toEqual(['inside'])
+    expect(app.stats.read).toBe(1)
+  })
+  it('creates, reads by id, edits atomically, lays out and preserves extensions', async () => {
+    await call('canvas_create', { path: 'sample.canvas', title: 'Sample diagram', from: { graph } })
+    let read = await call('canvas_read', { path: 'sample.canvas', detail: 'full' })
+    let data = JSON.parse(read.content[0].text)
+    expect(data.nodes.map((n: { id: string }) => n.id)).toEqual(['alpha', 'beta'])
+    await call('canvas_edit', {
+      path: 'sample.canvas',
+      ops: [
+        { op: 'update', id: 'alpha', patch: { abele: { sample: true } } },
+        { op: 'style', id: 'alpha', styleAttributes: { border: 'dashed' } },
+      ],
+    })
+    await call('canvas_layout', { path: 'sample.canvas', algorithm: 'tree', direction: 'TB' })
+    read = await call('canvas_read', { path: 'sample.canvas', detail: 'full' })
+    data = JSON.parse(read.content[0].text)
+    expect(data.nodes[0].data.abele.sample).toBe(true)
+    expect(data.nodes[0].data.styleAttributes).toMatchObject({ shape: 'diamond', border: 'dashed' })
+    const file = app.vault.getAbstractFileByPath('sample.canvas') as TFile
+    const before = await app.vault.read(file)
+    await expect(
+      call('canvas_edit', {
+        path: 'sample.canvas',
+        ops: [
+          { op: 'remove', id: 'alpha' },
+          { op: 'update', id: 'missing', patch: { text: 'Changed' } },
+        ],
+      })
+    ).rejects.toThrow(/op 1/)
+    expect(await app.vault.read(file)).toBe(before)
+    await expect(call('canvas_create', { path: 'sample.canvas', from: { graph } })).rejects.toThrow(
+      /exists/i
+    )
+  })
+  it('reads and paints only scope-authorized note assets; refuses out-of-scope diagram changes', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const scope = new ScopeResolver()
+    scope.entries.value = [{ type: 'file', path: 'sample-note.md' }]
+    scope.setFullVaultAccess(false)
+    ctx = { scope, interactive: true }
+    await expect(call('canvas_read', { path: 'sample.canvas' })).rejects.toThrow(/scope/i)
+    await expect(call('canvas_layout', { path: 'sample.canvas' })).rejects.toThrow(/scope/i)
+    await expect(
+      call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'remove', id: 'alpha' }] })
+    ).rejects.toThrow(/scope/i)
+    await expect(call('look_at_canvas', { path: 'sample.canvas' })).rejects.toThrow(/scope/i)
+  })
+  it('reports the failed op index for schema errors as well as semantic errors', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const file = app.vault.getAbstractFileByPath('sample.canvas') as TFile
+    const before = await app.vault.read(file)
+    await expect(
+      call('canvas_edit', {
+        path: 'sample.canvas',
+        ops: [
+          { op: 'remove', id: 'alpha' },
+          { op: 'add_node', node: { id: 'sample-new', kind: 'shape', shape: 'unsupported' } },
+        ],
+      })
+    ).rejects.toThrow(/op 1/i)
+    expect(await app.vault.read(file)).toBe(before)
+  })
+  it('does not flush or reserialize an open native view for an invalid semantic batch', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const file = app.vault.getAbstractFileByPath('sample.canvas') as TFile
+    const current = JSON.parse(await app.vault.read(file))
+    const save = vi.fn(async () => {})
+    const view = {
+      file,
+      save,
+      canvas: {
+        getData: () => current,
+        history: { data: [current], current: 0 },
+        requestPushHistory: { cancel: vi.fn() },
+        pushHistory: vi.fn(),
+        requestSave: vi.fn(),
+      },
+    }
+    Object.assign(app, { workspace: { getLeavesOfType: () => [{ view }] } })
+    await expect(
+      call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'remove', id: 'missing' }] })
+    ).rejects.toThrow(/missing/)
+    expect(save).not.toHaveBeenCalled()
+    expect(view.canvas.requestSave).not.toHaveBeenCalled()
+  })
+  it('serializes concurrent id edits through the final storage boundary', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    await Promise.all([
+      call('canvas_edit', {
+        path: 'sample.canvas',
+        ops: [{ op: 'update', id: 'alpha', patch: { text: 'Updated' } }],
+      }),
+      call('canvas_edit', {
+        path: 'sample.canvas',
+        ops: [{ op: 'style', id: 'alpha', styleAttributes: { border: 'dotted' } }],
+      }),
+    ])
+    const data = JSON.parse(
+      await app.vault.read(app.vault.getAbstractFileByPath('sample.canvas') as TFile)
+    )
+    expect(data.nodes.find((n: { id: string }) => n.id === 'alpha')).toMatchObject({
+      text: 'Updated',
+      styleAttributes: { border: 'dotted' },
+    })
+  })
+  it('uses vault.process rather than stale read-modify-write; cancels before writing', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const process = vi.spyOn(app.vault, 'process')
+    const abort = new AbortController()
+    abort.abort()
+    await expect(
+      tool('canvas_edit').execute(
+        'sample',
+        { path: 'sample.canvas', ops: [{ op: 'remove', id: 'alpha' }] },
+        abort.signal,
+        ctx
+      )
+    ).rejects.toThrow()
+    expect(process).not.toHaveBeenCalled()
+    await call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'remove', id: 'alpha' }] })
+    expect(process).toHaveBeenCalledOnce()
+  })
+  it.each(['../sample.canvas', '/sample.canvas', 'sample.abchat', '.obsidian/sample.canvas'])(
+    'rejects unsafe diagram destinations %s',
+    async (path) => {
+      await expect(call('canvas_create', { path, from: { graph } })).rejects.toThrow()
+    }
+  )
+})

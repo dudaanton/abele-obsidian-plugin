@@ -31,8 +31,12 @@ export const defaultMetrics: TextMetricsPort = {
 export function contentBox(node: CanvasNode): Rect {
   const shape = node.styleAttributes?.shape
   const inset =
-    shape === 'diamond' || shape === 'circle' ? 0.22 : shape === 'parallelogram' ? 0.16 : 0
-  const verticalInset = shape === 'diamond' || shape === 'circle' ? 0.22 : 0
+    shape === 'diamond' || shape === 'circle' || shape === 'pill'
+      ? 0.22
+      : shape === 'parallelogram'
+        ? 0.16
+        : 0
+  const verticalInset = shape === 'diamond' || shape === 'circle' || shape === 'pill' ? 0.22 : 0
   return {
     x: node.x + 16 + node.width * inset,
     y: node.y + 16 + (shape === 'database' ? 20 : node.height * verticalInset),
@@ -174,7 +178,7 @@ export function fitText(
     const box = contentBox(node),
       lines = textLines(labelOf(node), box.width, metrics)
     const shape = node.styleAttributes?.shape
-    const ratio = shape === 'diamond' || shape === 'circle' ? 0.56 : 1
+    const ratio = shape === 'diamond' || shape === 'circle' || shape === 'pill' ? 0.56 : 1
     const padding = shape === 'database' || shape === 'document' ? 52 : 32
     const needed = (textHeight(lines, metrics) + padding) / ratio
     node.height = Math.max(node.height, needed)

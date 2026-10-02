@@ -12,6 +12,7 @@ import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
+  CANVAS_TOOL_MODES,
   LINT_TOOL_MODES,
   LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
@@ -142,7 +143,7 @@ describe('loading settings that still need migrating', () => {
 
 describe('loading settings with nothing to migrate', () => {
   it('writes nothing', async () => {
-    // Including the map tools: an agent without them is an agent the migration has something
+    // Including all current default tools: an agent without them gives the migration something
     // to say about, which would make this a test of that instead.
     const toolModes = {
       ...MAP_TOOL_MODES,
@@ -150,6 +151,7 @@ describe('loading settings with nothing to migrate', () => {
       ...BOOK_TOOL_MODES,
       ...DOCX_TOOL_MODES,
       ...XLSX_TOOL_MODES,
+      ...CANVAS_TOOL_MODES,
       ...LINT_TOOL_MODES,
       ...LOCATION_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,

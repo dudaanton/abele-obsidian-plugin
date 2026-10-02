@@ -42,7 +42,17 @@ export function pictureRegion(
   if (options.region && options.node) throw new Error('Choose node or region, not both')
   const region =
     options.region ??
-    (options.node ? graph.nodes.find((n) => n.id === options.node) : bounds(graph.nodes, 24))
+    (options.node
+      ? graph.nodes.find((n) => n.id === options.node)
+      : bounds(
+          [
+            ...graph.nodes,
+            ...graph.edges
+              .flatMap((edge) => routeEdge(edge, graph))
+              .map((point) => ({ ...point, width: 1, height: 1 })),
+          ],
+          24
+        ))
   if (!region) throw new Error(`Unknown canvas node ${options.node}`)
   if (
     ![region.x, region.y, region.width, region.height].every(Number.isFinite) ||
@@ -231,7 +241,10 @@ export function paintCanvas(
     if (edge.toEnd !== 'none') arrow(ctx, before, end, edge.styleAttributes?.arrow)
     if (edge.fromEnd === 'arrow') arrow(ctx, points[1], points[0], edge.styleAttributes?.arrow)
     if (edge.label) {
-      const middle = points[Math.floor(points.length / 2)]
+      const first = points[0],
+        last = points[points.length - 1]
+      const middle =
+        points.length === 5 ? points[2] : { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(edge.label).width
       ctx.fillStyle = theme.paper

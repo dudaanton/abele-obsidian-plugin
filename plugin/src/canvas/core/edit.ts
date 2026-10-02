@@ -141,7 +141,7 @@ export function editCanvas(
           if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key]))
             merged[key] = { ...element[key], ...patch[key] }
         }
-        if ('type' in element)
+        if (graph.nodes.some((node) => node.id === op.id))
           graph.nodes[graph.nodes.findIndex((n) => n.id === op.id)] = nodeSchema.parse(merged)
         else graph.edges[graph.edges.findIndex((e) => e.id === op.id)] = edgeSchema.parse(merged)
       } else if (op.op === 'group') {
@@ -161,8 +161,11 @@ export function editCanvas(
         if (node.type !== 'group') throw new Error('Only groups can collapse')
         node.collapsed = op.collapsed
       } else {
-        const element = known(op.id, [...graph.nodes, ...graph.edges])
-        if (op.op === 'ungroup' && (!('type' in element) || element.type !== 'group'))
+        known(op.id, [...graph.nodes, ...graph.edges])
+        if (
+          op.op === 'ungroup' &&
+          !graph.nodes.some((node) => node.id === op.id && node.type === 'group')
+        )
           throw new Error('Only groups can ungroup')
         const parents = parentsOf(graph)
         for (const node of graph.nodes)

@@ -35,10 +35,12 @@ export function lintCanvas(
       if (overlaps(a, b)) add('overlap', [a.id, b.id], `${a.id} overlaps ${b.id}`)
     }
     const box = contentBox(a),
-      text = contents.get(a.id) ?? labelOf(a)
+      text = contents.get(a.id) ?? labelOf(a),
+      lines = textLines(text, box.width, metrics)
     if (
       a.type !== 'group' &&
-      textHeight(textLines(text, box.width, metrics), metrics) > box.height + 0.5
+      (textHeight(lines, metrics) > box.height + 0.5 ||
+        lines.some((line) => line.width > box.width + 0.5))
     )
       add('clipped-text', [a.id], `${a.id}: text exceeds its content box`)
   }

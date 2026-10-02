@@ -24,6 +24,31 @@ Markdown format; fit reports are transient. A slide `screenshot` stores a PNG in
 attachments folder and includes its path in the tool result, as other agent images do. It does
 not change slide source or device-local network consent. See `slides` for the full codec.
 
+## Canvas diagrams
+
+Diagrams stay ordinary JSON Canvas `.canvas` files, with `nodes` and `edges`. There is no sidecar.
+Only standard node `type` values are written: `text`, `file`, `link`, `group`. A semantic shape is
+still a text node. Shapes use Advanced Canvas `styleAttributes.shape`: `rectangle`, `pill`,
+`diamond`, `parallelogram`, `circle`, `predefined-process`, `document`, `database`. Borders use
+`styleAttributes.border`; edge path/arrow styles use `styleAttributes.path` / `styleAttributes.arrow`,
+with `pathfindingMethod` and floating-end fields retained. Groups retain `collapsed`; file nodes
+retain `portal` and `subpath`. Standard `file` paths and text-card links follow Obsidian renames.
+
+Each node/edge has a stable id; agents choose meaningful ids. Native Canvas reorders elements
+and keys on save, so all edits and references are by id. Unknown extension data survives Abele
+parse/edit/serialize; unknown node types are refused because native Canvas drops them on save.
+Abele hierarchy hints are stored as node `abele.parent` (group id, or null at the root). Native
+geometric group containment is inferred when no explicit parent is set. Group metadata is not
+stored in a second membership file. Creation stores its title in `metadata.frontmatter.title`.
+
+Other Abele-only data lives under `abele` at file/node/edge level. Existing `abele.steps`, ink and
+layout hints are preserved but stage one does not author or play steps, or edit ink. Lint reads
+step `reveal`, `highlight`, and id-valued `focus` references to report missing ids and overly dense
+reveals. Do not invent new `type` values for these features. Agent changes use an atomic vault
+transaction; an open native editor receives one undo item per batch. No persistent viewer setting,
+image export file, cache note or diagram attachment is created by `look_at_canvas`: its PNG is
+an agent-message image. Source notes and local images are read only within scope.
+
 ## Device-local key destinations
 
 Obsidian's vault-scoped local storage holds `abele-key-destinations-v1`: key identifiers and

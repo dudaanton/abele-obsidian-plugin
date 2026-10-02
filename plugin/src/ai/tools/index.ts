@@ -17,6 +17,7 @@ import { createListWorkspaceTool } from './ListWorkspaceTool'
 import { createWebSearchTool } from './WebSearchTool'
 import { createReadImageTool } from './ReadImageTool'
 import { createLookAtDrawingTool } from './DrawingTool'
+import { createCanvasTools } from './CanvasTools'
 import { createFetchTool } from './FetchTool'
 import { createSkillTool } from './SkillTool'
 import { createGenerateImageTool } from './GenerateImageTool'
@@ -76,6 +77,7 @@ export function getToolRegistry(): ToolInfo[] {
 
   const CATEGORY_ORDER = [
     'Files',
+    'Canvas',
     'Network',
     'GitHub',
     'Books',
@@ -322,6 +324,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   tools.push(...createDeckTools())
   tools.push(...createDocxTools())
   tools.push(...createXlsxTools())
+  tools.push(...createCanvasTools())
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)

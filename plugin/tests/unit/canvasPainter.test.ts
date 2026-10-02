@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { paintCanvas, pictureRegion, textResolutionWarnings } from '@/canvas/core/painter'
 import { editCanvas } from '@/canvas/core/edit'
 import { emptyCanvas, SHAPES } from '@/canvas/core/model'
-import { textLines, defaultMetrics, fitText } from '@/canvas/core/scene'
+import { contentBox, textLines, defaultMetrics, fitText } from '@/canvas/core/scene'
 import { lintCanvas } from '@/canvas/core/lint'
 import { planCanvasLayout } from '@/canvas/core/service'
 import { serializeCanvas } from '@/canvas/core/model'
@@ -112,18 +112,15 @@ describe('the shared canvas picture plan', () => {
       true
     )
   })
-  it.each(['diamond', 'circle'] as const)(
-    'fits long %s labels into the actual inner content box',
-    (shape) => {
-      const graph = editCanvas(emptyCanvas(), [
-        {
-          op: 'add_node',
-          node: { id: 'sample', kind: 'shape', shape, label: 'Sample explanation '.repeat(40) },
-        },
-      ]).graph
-      expect(lintCanvas(fitText(graph)).filter((w) => w.code === 'clipped-text')).toEqual([])
-    }
-  )
+  it.each(SHAPES)('fits long %s labels into the actual inner content box', (shape) => {
+    const graph = editCanvas(emptyCanvas(), [
+      {
+        op: 'add_node',
+        node: { id: 'sample', kind: 'shape', shape, label: 'Sample explanation '.repeat(40) },
+      },
+    ]).graph
+    expect(lintCanvas(fitText(graph)).filter((w) => w.code === 'clipped-text')).toEqual([])
+  })
   it('fits labels during layout without mutating or resizing a kept node', () => {
     const graph = editCanvas(emptyCanvas(), [
       {
@@ -179,6 +176,38 @@ describe('the shared canvas picture plan', () => {
     const labels = calls.filter((c) => c.name === 'fillText').map((c) => c.args[0])
     expect(labels).toContain('next')
     expect(labels).not.toContain('Hidden sample')
+  })
+  it('keeps a pill label box inside the rounded silhouette and reports horizontal clipping', () => {
+    const graph = editCanvas(emptyCanvas(), [
+      { op: 'add_node', node: { id: 'sample', kind: 'shape', shape: 'pill', label: 'Sample' } },
+    ]).graph
+    const box = contentBox(graph.nodes[0]),
+      radius = 80
+    expect((box.x - radius) ** 2 + (box.y - radius) ** 2).toBeLessThanOrEqual(radius ** 2)
+    graph.nodes[0].width = 20
+    graph.nodes[0].text = '😀' // One line fits vertically, but its glyph is wider than the content box.
+    expect(lintCanvas(graph).some((w) => w.code === 'clipped-text')).toBe(true)
+  })
+  it('places a direct-edge caption between cards and includes loop routes in the whole-picture bounds', () => {
+    const graph = editCanvas(emptyCanvas(), [
+      { op: 'add_node', node: { id: 'a', kind: 'text', label: 'A', x: 0, y: 0 } },
+      { op: 'add_node', node: { id: 'b', kind: 'text', label: 'B', x: 500, y: 200 } },
+      {
+        op: 'connect',
+        edge: {
+          id: 'flow',
+          fromNode: 'a',
+          toNode: 'b',
+          label: 'next',
+          pathfindingMethod: 'direct',
+        },
+      },
+      { op: 'connect', edge: { id: 'loop', fromNode: 'a', toNode: 'a' } },
+    ]).graph
+    const { ctx, calls } = context()
+    paintCanvas(ctx, graph, pictureRegion(graph), theme)
+    expect(calls.find((c) => c.name === 'fillText' && c.args[0] === 'next')?.args[2]).toBe(180)
+    expect(pictureRegion(graph).y).toBeLessThanOrEqual(-40)
   })
   it('warns when a whole-node crop reduces its text below readable pixels', () => {
     expect(textResolutionWarnings(0.04, 16).map((w) => w.code)).toEqual(['unreadable-scale'])

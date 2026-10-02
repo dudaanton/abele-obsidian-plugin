@@ -8,6 +8,7 @@ import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
+  CANVAS_TOOL_MODES,
   LINT_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
   GITHUB_TOOL_MODES,
@@ -209,7 +210,7 @@ describe('the Comment agent', () => {
   })
 
   it('leaves settings that already name a comment agent alone', () => {
-    // Both carry the map tools already, so the only thing that could report a change here
+    // Both carry every current default tool mode, so the only thing that could report a change here
     // is the comment agent being seeded again — which is what the test is about.
     const modes = {
       ...MAP_TOOL_MODES,
@@ -217,6 +218,7 @@ describe('the Comment agent', () => {
       ...BOOK_TOOL_MODES,
       ...DOCX_TOOL_MODES,
       ...XLSX_TOOL_MODES,
+      ...CANVAS_TOOL_MODES,
       ...LINT_TOOL_MODES,
       ...ANALYTICS_TOOL_MODES,
       ...LOCATION_TOOL_MODES,
