@@ -8,6 +8,7 @@ import replace from '@rollup/plugin-replace'
 import { build as esbuild } from 'esbuild'
 import { createRequire } from 'node:module'
 import { EVAL_START_INTRO } from './src/helpers/loadMarks'
+import { assertNoTestingModules } from './scripts/production-test-guard.mjs'
 
 /**
  * Carry MapLibre's three ESM assets in the single plugin file. The main and worker assets
@@ -108,6 +109,16 @@ export default defineConfig(async ({ mode }) => {
           return `export const runningVersion = ${JSON.stringify(version)}; export default ${JSON.stringify(releases)}`
         },
       },
+      ...(prod
+        ? [
+            {
+              name: 'abele-no-production-testing',
+              generateBundle(_options: unknown, bundle: unknown) {
+                assertNoTestingModules(bundle)
+              },
+            },
+          ]
+        : []),
     ],
     build: {
       minify: prod ? 'esbuild' : false,
