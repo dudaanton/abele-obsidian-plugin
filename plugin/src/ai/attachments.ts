@@ -132,7 +132,9 @@ export async function importExternalFile(file: File): Promise<TFile> {
 
   // Use Obsidian's configured attachment folder, fallback to "Attachments"
   let folder = (app.vault as any).getConfig?.('attachmentFolderPath') || 'Attachments'
-  if (folder === '/' || folder === '.') folder = ''
+  // Obsidian writes the "same folder" setting as `./`. With no note destination,
+  // the chat imports into the vault root, just as for `.` and `/`.
+  if (folder === '/' || folder === '.' || folder === './') folder = ''
 
   // Ensure folder exists
   if (folder && !app.vault.getAbstractFileByPath(folder)) {

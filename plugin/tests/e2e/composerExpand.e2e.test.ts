@@ -23,6 +23,7 @@ import {
   hasTestApi,
   isObsidianRunning,
   reloadApp,
+  runCli,
   setBackgroundThrottling,
   setFocusEmulation,
 } from './helpers/obsidianCli'
@@ -81,6 +82,9 @@ const probeLib = `(() => {
   window.__composerProbe = {
     async open() {
       state.requests = []
+      state.attachmentFolder = app.vault.getConfig('attachmentFolderPath')
+      // Obsidian's "same folder" spelling must work even without a note behind the field.
+      app.vault.setConfig('attachmentFolderPath', './')
       state.realFetch = state.realFetch || window.fetch
       const realFetch = state.realFetch
       window.fetch = async (url, init) => {
@@ -270,6 +274,29 @@ const probeLib = `(() => {
       return result
     },
 
+    async prepareNativePaste() {
+      const clipboard = require('@electron/remote').clipboard
+      state.clipboard = clipboard.availableFormats().map((format) => [format, clipboard.readBuffer(format)])
+      state.beforePaste = new Set(app.vault.getFiles().map((f) => f.path))
+      state.beforePasteText = composer().get()
+      const canvas = document.createElement('canvas')
+      canvas.width = 8; canvas.height = 8
+      canvas.getContext('2d').fillRect(0, 0, 8, 8)
+      clipboard.writeImage(require('@electron/remote').nativeImage.createFromDataURL(canvas.toDataURL()))
+      composer().focus()
+      return 'ready'
+    },
+
+    async finishNativePaste() {
+      const chips = () => chatEl().querySelectorAll('.abele-chat-input__attachment').length
+      await until(() => chips() >= 1, 3000)
+      const made = app.vault.getFiles().filter((f) => !state.beforePaste.has(f.path))
+      const result = { files: made.length, chips: chips(), textUnchanged: composer().get() === state.beforePasteText }
+      for (const x of [...chatEl().querySelectorAll('.abele-chat-input__attachment-remove')].reverse()) x.click()
+      for (const f of made) await app.vault.delete(f)
+      return result
+    },
+
     async keyboard(up) {
       if (up) {
         composer().focus()
@@ -298,6 +325,13 @@ const probeLib = `(() => {
 
     async close() {
       window.fetch = state.realFetch || window.fetch
+      app.vault.setConfig('attachmentFolderPath', state.attachmentFolder)
+      if (state.clipboard) {
+        const clipboard = require('@electron/remote').clipboard
+        clipboard.clear()
+        for (const [format, bytes] of state.clipboard) clipboard.writeBuffer(format, bytes)
+        state.clipboard = null
+      }
       document.documentElement.style.removeProperty('--keyboard-height')
       const input = chatEl()?.querySelector('.abele-chat-input--expanded .abele-chat-input__expand')
       if (input) input.click()
@@ -352,6 +386,7 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
   let expanded: Measure
   let suggest: { open: boolean; activeIsComposer: boolean }
   let attached: { chips: number; textUnchanged: boolean; files: number }
+  let nativePaste: { chips: number; textUnchanged: boolean; files: number }
   let slash: { core: boolean; open: boolean; noteOpen: boolean }
   let closedAgain: Measure
   let sent: { requests: string[] }
@@ -368,6 +403,25 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
       expanded = await step('measure("desktop-expanded")')
       suggest = await step('suggest()')
       attached = await step('attach()')
+      await step('prepareNativePaste()')
+      for (const type of ['keyDown', 'keyUp']) {
+        runCli(
+          [
+            'dev:cdp',
+            'method=Input.dispatchKeyEvent',
+            `params=${JSON.stringify({
+              type,
+              key: 'v',
+              code: 'KeyV',
+              modifiers: 4,
+              windowsVirtualKeyCode: 86,
+              ...(type === 'keyDown' ? { commands: ['Paste'] } : {}),
+            })}`,
+          ],
+          30_000
+        )
+      }
+      nativePaste = await step('finishNativePaste()')
       slash = await step('slash()')
       await step('toggle()')
       closedAgain = await step('measure("")')
@@ -415,6 +469,12 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
     expect(attached.files).toBe(2)
     expect(attached.chips).toBe(2)
     expect(attached.textUnchanged).toBe(true)
+  })
+
+  it('takes a native clipboard image pasted through CDP as an attachment', () => {
+    expect(nativePaste.files).toBe(1)
+    expect(nativePaste.chips).toBe(1)
+    expect(nativePaste.textUnchanged).toBe(true)
   })
 
   it('keeps the draft through opening and closing', () => {
