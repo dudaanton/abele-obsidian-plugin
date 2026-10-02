@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { scopeOf } from '@/ai/toolContext'
 import { useVault } from '../helpers/testEnv'
@@ -33,13 +33,17 @@ describe('ScopeResolver — group boundaries and invalidation', () => {
     expect(scope.resolveGroupPaths('Missing.md')).toEqual([])
   })
 
-  it('refuses ambiguous group names even when one is beside the member, and accepts explicit paths', () => {
+  it('refuses names resolved to a different group and accepts explicit paths', () => {
     const app = useVault([
       { path: 'East/Trees.md' },
       { path: 'West/Trees.md' },
       { path: 'East/Apple.md', frontmatter: { groups: ['[[Trees]]'] } },
       { path: 'West/Pear.md', frontmatter: { groups: ['[[Trees]]'] } },
     ])
+    // Pin the link destinations independently of the fake vault's basename heuristics.
+    vi.spyOn(app.metadataCache, 'getFirstLinkpathDest').mockImplementation((linkpath) =>
+      app.vault.getFileByPath(linkpath === 'Trees' ? 'West/Trees.md' : 'East/Trees.md')
+    )
     // Scope derives the group index from the property, not this intentionally empty index.
     for (const key of Object.keys(app.metadataCache.resolvedLinks))
       delete app.metadataCache.resolvedLinks[key]

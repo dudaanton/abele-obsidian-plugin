@@ -104,8 +104,10 @@ kinds: a **file**, a **folder**, a **pattern**, or a **group**.
 
 A group entry is the powerful one: it grants everything linked to that group through `groups`,
 and everything under those, at any depth. In a flat vault this is how a person grants "this
-project and all its notes" without a folder for it. A bare or partial `groups` link with
-multiple matching notes grants no membership; use an explicit vault path to disambiguate.
+project and all its notes" without a folder for it. Membership follows the link destination
+Obsidian resolves from the note containing `groups`: a short or partial link works even with
+namesakes elsewhere when it resolves to this group. A link resolved elsewhere or nowhere grants
+no membership in this group. Only links in `groups` count, not body mentions or other properties.
 The same rule applies to the scope editor's group preview.
 
 `fullVaultAccess` turns the scope off entirely. If a path is outside the scope, the tools will

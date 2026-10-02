@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile, TFolder } from 'obsidian'
-import { isWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
+import { isWikilink } from '@/helpers/pathsHelpers'
 import { isChatLog } from './chatText'
 
 export interface ScopeEntry {
@@ -256,37 +256,24 @@ export class ScopeResolver {
   private buildGroupIndex(): Map<string, string[]> {
     const { app } = GlobalStore.getInstance()
     const index = new Map<string, string[]>()
-    const files = app.vault.getFiles()
-    // Count each link suffix once, rather than scanning all same-name notes per link.
-    const key = (path: string) =>
-      path.split('#')[0].replace(/\.md$/i, '').normalize('NFC').toLowerCase()
-    const suffixCounts = new Map<string, number>()
-    const exact = new Set<string>()
-    for (const file of files) {
-      const path = key(file.path)
-      exact.add(path)
-      const segments = path.split('/')
-      for (let n = 0; n < segments.length; n++) {
-        const suffix = segments.slice(n).join('/')
-        suffixCounts.set(suffix, (suffixCounts.get(suffix) ?? 0) + 1)
-      }
-    }
-
-    for (const file of files) {
+    for (const file of app.vault.getFiles()) {
       const groups = app.metadataCache.getFileCache(file)?.frontmatter?.groups
       if (!Array.isArray(groups)) continue
 
       for (const group of groups) {
         if (!isWikilink(group)) continue
 
-        const linkpath = wikilinkToPath(group)
+        // Keep the link's actual path, without an alias or subpath. The generic note-path
+        // helper appends .md, which changes extensionless links and heading fragments.
+        const linkpath = group
+          .match(/\[\[([^\]]+)\]\]/)![1]
+          .split(/[|#]/)[0]
+          .trim()
         if (!linkpath) continue
 
-        const target = key(linkpath)
-        // An explicit vault path is unambiguous. Bare names and partial paths must have
-        // only one candidate even if Obsidian happens to prefer one of their namesakes.
-        if (!(target.includes('/') && exact.has(target)) && (suffixCounts.get(target) ?? 0) > 1)
-          continue
+        // Membership follows the link as Obsidian resolves it from the member note.
+        // A namesake elsewhere neither grants membership here nor invalidates a link
+        // that actually points here; unresolved links grant no membership at all.
         const dest = app.metadataCache.getFirstLinkpathDest(linkpath, file.path)
         if (!dest) continue
 
