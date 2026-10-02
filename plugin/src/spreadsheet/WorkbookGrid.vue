@@ -57,6 +57,17 @@
         />
       </label>
       <button type="submit" :disabled="busy">Save</button>
+      <fieldset class="abele-workbook-format">
+        <legend>Cell formatting</legend>
+        <label>Range <input v-model="formatRange" aria-label="Formatting range" /></label>
+        <label><input v-model="formatBold" type="checkbox" aria-label="Bold" />Bold</label>
+        <label><input v-model="formatItalic" type="checkbox" aria-label="Italic" />Italic</label>
+        <label
+          >Fill <input v-model="formatFill" aria-label="Fill colour" placeholder="#RRGGBB or empty"
+        /></label>
+        <label>Number format <input v-model="numberFormat" aria-label="Number format" /></label>
+        <button type="button" :disabled="busy" @click="saveFormat">Apply formatting</button>
+      </fieldset>
       <button type="button" :disabled="busy" @click="editing = false">Cancel</button>
     </form>
     <div ref="viewport" class="abele-workbook-viewport" @scroll="scroll">
@@ -164,6 +175,11 @@ const busy = ref(false)
 const editType = ref('text')
 const editAddress = ref('A1')
 const editValue = ref('')
+const formatRange = ref('A1')
+const formatBold = ref(false)
+const formatItalic = ref(false)
+const formatFill = ref('')
+const numberFormat = ref('General')
 watch(sheetName, () => {
   editing.value = false
 })
@@ -179,7 +195,36 @@ function beginEdit() {
           ? 'boolean'
           : 'text'
   editValue.value = cell?.formula ?? String(cell?.value ?? '')
+  formatRange.value = selected.value
+  formatBold.value = cell?.style.bold ?? false
+  formatItalic.value = cell?.style.italic ?? false
+  formatFill.value = cell?.style.fill ?? ''
+  numberFormat.value = cell?.style.numberFormat ?? 'General'
   editing.value = true
+}
+async function saveFormat() {
+  if (!canEdit.value || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await props.save!({
+      operation: 'format',
+      sheet: sheetName.value,
+      range: formatRange.value,
+      values: [],
+      format: {
+        bold: formatBold.value,
+        italic: formatItalic.value,
+        fill: formatFill.value,
+        number_format: numberFormat.value,
+      },
+    })
+    editing.value = false
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busy.value = false
+  }
 }
 async function recalculate() {
   if (!canEdit.value || busy.value) return

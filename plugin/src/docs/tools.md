@@ -69,6 +69,10 @@ functions show `#NAME?`; cyclic dependencies use Excel-compatible `#REF!` caches
 formula metadata or larger calculations are left pending, with a warning; the spreadsheet app
 still recalculates on open. The preview includes dependent formula caches (bounded, marked
 when truncated). Local evaluation is not a guarantee of Excel-identical formula semantics.
+`operation: "format"` takes `sheet`, `range` and `format` with any of `bold`, `italic` (booleans),
+`fill` (`#RRGGBB`, or empty to clear) and `number_format` (an Excel format code). It appends
+font/fill/number-format/xf records without rewriting existing styles, and only changes the
+selected cells' style IDs. Its preview lists the formatting before and after.
 
 ## Word documents
 

@@ -43,16 +43,25 @@ export function createXlsxTools(): AgentTool[] {
       label: 'Write workbook cells',
       category: 'Excel',
       description:
-        'Patch a rectangular A1 range of values/formulas in an .xlsx workbook. Read xlsx_read first and pass revision. values is a rectangular matrix matching range: string, number, boolean, null (clear), {formula: "SUM(A1:A2)"}, or {value: "=literal text"}. Strings starting with = are formulas. Max 1000 cells. Uses the existing write preview/confirmation with its own Off/Ask/On mode, default Ask. Shared formulas are unshared before editing; array ranges, protected sheets, merged followers and .xlsm are read-only. Local HyperFormula recalculation updates dependent caches on edit (20000 stored-cell limit); unsupported functions show #NAME?. operation=recalculate refreshes caches without changing formulas/values and only needs path/revision. Array/dynamic formulas and larger calculations remain pending with an explicit warning.',
+        'Patch a rectangular A1 range of values/formulas in an .xlsx workbook. Read xlsx_read first and pass revision. values is a rectangular matrix matching range: string, number, boolean, null (clear), {formula: "SUM(A1:A2)"}, or {value: "=literal text"}. Strings starting with = are formulas. Max 1000 cells. Uses the existing write preview/confirmation with its own Off/Ask/On mode, default Ask. Shared formulas are unshared before editing; array ranges, protected sheets, merged followers and .xlsm are read-only. Local HyperFormula recalculation updates dependent caches on edit (20000 stored-cell limit); unsupported functions show #NAME?. operation=recalculate refreshes caches without changing formulas/values and only needs path/revision. Array/dynamic formulas and larger calculations remain pending with an explicit warning. operation=format takes sheet, range, and format {bold,italic,fill:"#RRGGBB" (empty clears),number_format:"0.00"}; it appends styles without modifying existing records or formulas.',
       parameters: {
         type: 'object',
         properties: {
           ...properties,
           revision: { type: 'string' },
-          operation: { type: 'string', enum: ['cells', 'recalculate'] },
+          operation: { type: 'string', enum: ['cells', 'recalculate', 'format'] },
           sheet: { type: 'string' },
           range: { type: 'string' },
           values: { type: 'array', items: { type: 'array', items: {} } },
+          format: {
+            type: 'object',
+            properties: {
+              bold: { type: 'boolean' },
+              italic: { type: 'boolean' },
+              fill: { type: 'string', description: '#RRGGBB or empty to clear' },
+              number_format: { type: 'string', description: 'Excel number format code' },
+            },
+          },
         },
         required: ['path', 'revision'],
       },

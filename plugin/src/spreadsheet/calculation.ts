@@ -18,6 +18,7 @@ import {
   valueText,
 } from './package'
 import { sc } from './styles'
+import { applyWorkbookFormat } from './format'
 export interface CalculationResult {
   bytes: Uint8Array
   complete: boolean
@@ -28,9 +29,19 @@ export async function applyCalculatedEdit(
   edit: WorkbookEdit,
   signal?: AbortSignal
 ): Promise<CalculationResult> {
-  if (edit.operation && !['cells', 'recalculate'].includes(edit.operation))
+  if (edit.operation && !['cells', 'recalculate', 'format'].includes(edit.operation))
     throw new Error('Unknown workbook operation')
   const yieldTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+  if (edit.operation === 'format')
+    return {
+      bytes: await applyWorkbookFormat(book, {
+        sheet: edit.sheet,
+        range: edit.range,
+        format: edit.format!,
+      }),
+      complete: !book.stale,
+      note: 'Cell formatting updated; formula caches unchanged.',
+    }
   if (edit.operation === 'recalculate') {
     for (const info of book.sheets) assertEditable(book, await book.sheet(info.name), [])
     return recalculateWorkbook(book, { signal, yieldTask })

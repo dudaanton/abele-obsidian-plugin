@@ -12,11 +12,24 @@ export async function validateWorkbookBytes(bytes: Uint8Array): Promise<void> {
 }
 export const writeWorkbookChange = (app: App, file: TFile, original: Uint8Array, updated: Uint8Array, signal?: AbortSignal) =>
   writeOfficeChange(app,file,original,updated,signal,undefined,validateWorkbookBytes)
+import { cellAddress, parseRange } from './address'
+import { defaultStyle } from './styles'
 async function workbookPreview(book: Workbook, edit: WorkbookEdit): Promise<string> {
   let text =
     edit.operation === 'recalculate'
       ? 'Formula caches\n'
       : readRange(book, await book.sheet(edit.sheet), edit.range) + '\n\nDependent formula caches\n'
+  if (edit.operation === 'format') {
+    const sheet = await book.sheet(edit.sheet)
+    const { from, to } = parseRange(edit.range, 1000)
+    for (let r = from.row; r <= to.row; r++)
+      for (let c = from.column; c <= to.column; c++) {
+        const address = cellAddress(r, c)
+        const style = sheet.cells.get(address)?.style ?? defaultStyle
+        text += `${address}: bold=${style.bold}, italic=${style.italic}, fill=${style.fill ?? 'none'}, number format=${style.numberFormat}\n`
+      }
+    return text.slice(0, 24000) + (text.length > 24000 ? '\n[Style preview truncated.]' : '')
+  }
   for (const info of book.sheets) {
     const sheet = await book.sheet(info.name)
     for (const cell of sheet.cells.values()) {

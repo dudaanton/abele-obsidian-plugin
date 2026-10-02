@@ -28,7 +28,10 @@ cycles use **#REF!**. Local calculation is limited to 20,000 stored cells across
 array/dynamic formulas and larger books stay pending with an explicit warning. Excel may use
 different formula semantics, so saved files also request native recalculation on open. Array/data-table ranges, protected sheets and merged followers must
 be edited in a spreadsheet app. A shared formula group is expanded automatically before an
-edit. There are no hand-editing controls on phones.
+edit. The editor also offers **Bold**, **Italic**, **Fill** (`#RRGGBB` or empty to clear), and an Excel
+**Number format** code. Enter a cell/range and choose **Apply formatting**. Existing styles
+and unselected cells are preserved. Agents can apply these same formats on a phone with the
+usual preview. There are no hand-editing controls on phones.
 
 Ask an agent to read/search the workbook or write values/formulas on desktop or phone. The
 agent reads a revision first; writes default to a preview and confirmation, with their own

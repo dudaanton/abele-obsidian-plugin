@@ -37,6 +37,9 @@ describe.skipIf(!available)('workbook editing', () => {
         const params={path:${JSON.stringify(PATH)},sheet:'Sample',range:'B2:C2'}
         const first=await read.execute('sample-read',params);const revision=first.content[0].text.match(/revision ([0-9a-f-]+)/)[1]
         const args={...params,revision,values:[[25,{formula:'B2*2'}]]};const edited=await write.execute('sample-write',args)
+        const nextRevision=edited.content[0].text.match(/revision ([0-9a-f-]+)/)[1]
+        const formatted=await write.execute('sample-format',{...params,revision:nextRevision,operation:'format',format:{bold:true,italic:true,fill:'#33AA77',number_format:'0.00'}})
+        if(!formatted.details.diff.new.includes('fill=#33AA77'))throw Error('Style preview did not include the changed fill')
         let stale=false;try{await write.execute('sample-stale',args)}catch(e){stale=/changed/.test(e.message)}
         const updated=await read.execute('sample-read-after',params)
         const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-workbook',state:{file:params.path},active:true});await app.workspace.revealLeaf(leaf)
@@ -58,7 +61,12 @@ describe.skipIf(!available)('workbook editing', () => {
     const after = unzipSync(new Uint8Array(Buffer.from(result.bytes, 'base64')))
     for (const name of Object.keys(before))
       if (
-        !['xl/worksheets/sheet1.xml', 'xl/workbook.xml', 'xl/worksheets/sheet2.xml'].includes(name)
+        ![
+          'xl/worksheets/sheet1.xml',
+          'xl/workbook.xml',
+          'xl/worksheets/sheet2.xml',
+          'xl/styles.xml',
+        ].includes(name)
       )
         expect(after[name], name).toEqual(before[name])
     expect(strFromU8(after['xl/worksheets/sheet1.xml'])).toContain('B2*2')

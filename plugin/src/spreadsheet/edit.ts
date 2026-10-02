@@ -15,7 +15,8 @@ import { S, sc, type CellValue } from './styles'
 import { valueText, type Workbook, type WorkbookSheet } from './package'
 export type CellInput = CellValue | { formula: string } | { value: CellValue }
 export interface WorkbookEdit {
-  operation?: 'cells' | 'recalculate'
+  operation?: 'cells' | 'recalculate' | 'format'
+  format?: import('./format').CellFormat
   sheet: string
   range: string
   values: CellInput[][]
@@ -161,7 +162,12 @@ export function patchCells(sheet: WorkbookSheet, changes: Map<string, string>): 
   } else for (const [at, list] of inserts) patches.push({ start: at, end: at, text: list.join('') })
   return patchXml(sheet.source, patches)
 }
-export function assertEditable(book: Workbook, sheet: WorkbookSheet, addresses: string[]): void {
+export function assertEditable(
+  book: Workbook,
+  sheet: WorkbookSheet,
+  addresses: string[],
+  formulas = true
+): void {
   if (book.readOnly) throw new Error('This workbook is read-only (.xlsm/macros)')
   if (sheet.protected || sc(book.workbookTree, 'workbookProtection'))
     throw new Error('Protected workbook/sheet is read-only')
@@ -170,6 +176,7 @@ export function assertEditable(book: Workbook, sheet: WorkbookSheet, addresses: 
     for (const pos of positions)
       if (contains(merge, pos) && (pos.row !== merge.from.row || pos.column !== merge.from.column))
         throw new Error('Edit the merged cell anchor, not a merged follower')
+  if (!formulas) return
   for (const cell of sheet.cells.values()) {
     const f = sc(cell.node, 'f')
     if (f && f.attrs.t && !['normal', 'shared'].includes(f.attrs.t)) {

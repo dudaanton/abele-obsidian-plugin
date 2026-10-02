@@ -45,7 +45,10 @@ workbooks are not edited. Local recalculation patches `v` caches and cell type a
 formula cells, including other sheets' dependents. Formula XML and unknown metadata survive.
 No calculation engine state is persisted; `calcPr` still requests the spreadsheet app's native
 recalculation. Engine-only cycle errors are stored as Excel-compatible `#REF!`, not nonstandard
-error tokens.
+error tokens. Cell formatting appends styles to the existing stylesheet (fonts, fills, custom
+number formats and `cellXfs`); original records are retained verbatim. Cells are patched only
+at `s` attributes. If a workbook has no stylesheet, a new part, workbook relationship and
+content-type override are created together. Formatting does not touch formula caches.
 
 ## Word files
 

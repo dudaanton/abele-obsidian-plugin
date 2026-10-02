@@ -101,6 +101,20 @@
   align-items: center;
   max-width: 100%;
 }
+.abele-workbook-format {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-2);
+}
+.abele-workbook-format input:not([type='checkbox']) {
+  width: 130px;
+}
 .abele-workbook-editor textarea {
   width: 300px;
   max-width: 100%;

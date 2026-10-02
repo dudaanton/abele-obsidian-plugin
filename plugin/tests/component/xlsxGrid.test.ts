@@ -1,10 +1,35 @@
 import { mount, flushPromises } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import WorkbookGrid from '@/spreadsheet/WorkbookGrid.vue'
 import { openXlsx } from '@/spreadsheet/package'
 import { sampleXlsx } from '../fixtures/xlsx/sampleXlsx'
 
 describe('workbook grid', () => {
+  it('uses the same desktop save boundary for values and formatting, and hides it on phones', async () => {
+    const book = await openXlsx(sampleXlsx())
+    const save = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mount(WorkbookGrid, { props: { book, mobile: false, save } })
+    await flushPromises()
+    await wrapper.find('.abele-workbook-edit').trigger('click')
+    expect(wrapper.find('.abele-workbook-format').exists()).toBe(true)
+    await wrapper.find('[aria-label="Formatting range"]').setValue('B1:B2')
+    await wrapper.find('[aria-label="Fill colour"]').setValue('#33AA77')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Apply formatting')!
+      .trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'format',
+        range: 'B1:B2',
+        format: expect.objectContaining({ fill: '#33AA77' }),
+      })
+    )
+    await wrapper.setProps({ mobile: true })
+    expect(wrapper.find('.abele-workbook-edit').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('renders cached values and a formula bar without treating strings as HTML', async () => {
     const book = await openXlsx(sampleXlsx())
     const wrapper = mount(WorkbookGrid, { props: { book, mobile: false } })
