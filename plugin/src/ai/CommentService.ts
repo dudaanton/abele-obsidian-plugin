@@ -14,6 +14,7 @@ import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChat, parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
+import { transformChat } from './chatCopy'
 import { acceptRevision, compatibleReplyHistory, type ReplyProposal } from './replyAnnotations'
 import { firstQuestion } from './chatText'
 import { baseName, commentLineage, commentName, commentTrail, type TrailStep } from './commentTrail'
@@ -852,33 +853,43 @@ export class CommentService implements CommentInfoSource {
         continue
       }
 
-      await app.vault.process(child, (content) => {
-        const parsed = parseChat(content)
-        const metadata = parsed.metadata
-        if (!metadata) return content
-        const anchored = metadata.anchor?.note === oldPath
-        const wrote = metadata.touched?.some((note) => note.path === oldPath) ?? false
-        const proposed = parsed.messages.some(
-          (message) => message.replyProposal?.parent === oldPath
-        )
-        if (!anchored && !wrote && !proposed) return content
-        return serializeChat({
-          ...parsed,
-          metadata: {
-            ...metadata,
-            anchor:
-              anchored && metadata.anchor ? { ...metadata.anchor, note: newPath } : metadata.anchor,
-            touched: metadata.touched
-              ? ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
-              : undefined,
-          },
-          messages: parsed.messages.map((message) =>
-            message.replyProposal?.parent === oldPath
-              ? { ...message, replyProposal: { ...message.replyProposal, parent: newPath } }
-              : message
-          ),
-        })
-      })
+      await transformChat(
+        app,
+        child,
+        (content) => {
+          const parsed = parseChat(content)
+          const metadata = parsed.metadata
+          if (!metadata) return content
+          const anchored = metadata.anchor?.note === oldPath
+          const wrote = metadata.touched?.some((note) => note.path === oldPath) ?? false
+          const proposed = parsed.messages.some(
+            (message) => message.replyProposal?.parent === oldPath
+          )
+          if (!anchored && !wrote && !proposed) return content
+          return serializeChat({
+            ...parsed,
+            metadata: {
+              ...metadata,
+              anchor:
+                anchored && metadata.anchor
+                  ? { ...metadata.anchor, note: newPath }
+                  : metadata.anchor,
+              touched: metadata.touched
+                ? ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
+                : undefined,
+            },
+            messages: parsed.messages.map((message) =>
+              message.replyProposal?.parent === oldPath
+                ? { ...message, replyProposal: { ...message.replyProposal, parent: newPath } }
+                : message
+            ),
+          })
+        },
+        () => {
+          if (this.sessionFor(child.basename))
+            throw new Error('The comment was opened. Retry the rename.')
+        }
+      )
     }
 
     dispatchCommentsChanged(newPath)
@@ -1087,23 +1098,31 @@ export class CommentService implements CommentInfoSource {
     const file = app.vault.getAbstractFileByPath(proposal.parent)
     if (!(file instanceof TFile) || file.extension !== 'abchat')
       throw new Error('The parent chat is unavailable.')
-    await app.vault.process(file, (content) => {
+    const checkOwner = () => {
       // A tab opened during the read: it owns this file now. Retrying goes through that owner.
       if (this.sessionOnFile(proposal.parent))
         throw new Error('The parent chat was opened. Review the proposal again.')
-      const parsed = parseChat(content)
-      if (parsed.metadata?.type !== 'abele-chat') throw new Error('The parent chat is unavailable.')
-      const message = parsed.messages.find((m) => m.id === proposal.message)
-      if (!message) throw new Error('The parent reply is unavailable.')
-      const after = change(message)
-      const messages = parsed.messages.map((m) => (m.id === message.id ? after : m))
-      return serializeChat({
-        ...parsed,
-        metadata: parsed.metadata,
-        messages,
-        internalMessages: compatibleReplyHistory(messages, parsed.internalMessages),
-      })
-    })
+    }
+    await transformChat(
+      app,
+      file,
+      (content) => {
+        const parsed = parseChat(content)
+        if (parsed.metadata?.type !== 'abele-chat')
+          throw new Error('The parent chat is unavailable.')
+        const message = parsed.messages.find((m) => m.id === proposal.message)
+        if (!message) throw new Error('The parent reply is unavailable.')
+        const after = change(message)
+        const messages = parsed.messages.map((m) => (m.id === message.id ? after : m))
+        return serializeChat({
+          ...parsed,
+          metadata: parsed.metadata,
+          messages,
+          internalMessages: compatibleReplyHistory(messages, parsed.internalMessages),
+        })
+      },
+      checkOwner
+    )
   }
 
   // ── The trail ─────────────────────────────────────────────────

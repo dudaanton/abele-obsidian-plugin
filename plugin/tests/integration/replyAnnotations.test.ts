@@ -139,6 +139,144 @@ describe('reply annotation persistence and owner decisions', () => {
     expect((await disk()).messages[0].content).toBe(TEXT)
   })
 
+  it.each(['accept', 'undo'] as const)(
+    'restores the committed conversation when %s of a revision truncates its write',
+    async (action) => {
+      const { p, proposal } = await propose()
+      await p.highlightReply('reply', 'small', 2)
+      if (action === 'undo') await CommentService.getInstance().acceptReplyProposal(proposal)
+      const before = await disk()
+      const modify = app.vault.modify.bind(app.vault)
+      let copied = false
+      vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, fn) => {
+        const content = fn(await app.vault.read(target))
+        copied = await app.vault.adapter.exists(chatCopyPath(app, target.path))
+        await modify(target, content.slice(0, Math.floor(content.length / 2)))
+        throw new Error('sample interrupted revision write')
+      })
+      const operation =
+        action === 'accept'
+          ? CommentService.getInstance().acceptReplyProposal(proposal)
+          : p.undoReplyRevision('reply')
+      await expect(operation).rejects.toThrow('sample interrupted revision write')
+      expect((await disk()).messages).toEqual(before.messages)
+      expect((await disk()).internalMessages).toEqual(before.internalMessages)
+      expect(p.messages.value).toEqual(before.messages)
+      expect((p as any).log.matches(await disk())).toBe(true)
+      expect(copied).toBe(true)
+      await p.save()
+      expect((await disk()).messages).toEqual(before.messages)
+      expect((await disk()).internalMessages).toEqual(before.internalMessages)
+      await ChatService.getInstance().closeTab(p.id)
+      expect((await parent()).messages.value).toEqual(before.messages)
+      if (action === 'accept') await CommentService.getInstance().acceptReplyProposal(proposal)
+      else await (await parent()).undoReplyRevision('reply')
+      expect((await disk()).messages[0].content).toBe(
+        action === 'accept' ? 'A bright lamp glows.' : TEXT
+      )
+    }
+  )
+
+  it('recovers a truncated revision decision on the child before changing the parent', async () => {
+    const { child, id } = await stagedProposal()
+    const own = child.currentChatFile.value!
+    const before = parseChat(await app.vault.read(own))
+    const modify = app.vault.modify.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, fn) => {
+      expect(target.path).toBe(own.path)
+      const content = fn(await app.vault.read(target))
+      await modify(target, content.slice(0, Math.floor(content.length / 2)))
+      throw new Error('sample interrupted child decision')
+    })
+    await expect(child.decideReplyProposal(id, true)).rejects.toThrow(
+      'sample interrupted child decision'
+    )
+    const recovered = parseChat(await app.vault.read(own))
+    expect(recovered.messages).toEqual(before.messages)
+    expect(recovered.internalMessages).toEqual(before.internalMessages)
+    expect((child as any).log.matches(recovered)).toBe(true)
+    expect((await disk()).messages[0].content).toBe(TEXT)
+    await child.decideReplyProposal(id, true)
+    expect((await disk()).messages[0].content).toBe('A bright lamp glows.')
+  })
+
+  it('restores a closed parent after accepting a revision is cut short', async () => {
+    const { p, proposal } = await propose()
+    await ChatService.getInstance().closeTab(p.id)
+    const before = await disk()
+    const modify = app.vault.modify.bind(app.vault)
+    let copied = false
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, fn) => {
+      const content = fn(await app.vault.read(target))
+      copied = await app.vault.adapter.exists(chatCopyPath(app, target.path))
+      await modify(target, content.slice(0, Math.floor(content.length / 2)))
+      throw new Error('sample interrupted closed revision')
+    })
+    await expect(CommentService.getInstance().acceptReplyProposal(proposal)).rejects.toThrow(
+      'sample interrupted closed revision'
+    )
+    expect((await disk()).messages).toEqual(before.messages)
+    expect((await disk()).internalMessages).toEqual(before.internalMessages)
+    expect(copied).toBe(true)
+    expect((await parent()).messages.value).toEqual(before.messages)
+    await CommentService.getInstance().acceptReplyProposal(proposal)
+    expect((await disk()).messages[0].content).toBe('A bright lamp glows.')
+  })
+
+  it.each(['external edit', 'opened tab'] as const)(
+    'preserves a closed parent when an %s arrives during copying',
+    async (race) => {
+      const { p, proposal } = await propose()
+      await ChatService.getInstance().closeTab(p.id)
+      const write = app.vault.adapter.write.bind(app.vault.adapter)
+      vi.spyOn(app.vault.adapter, 'write').mockImplementationOnce(async (path, content) => {
+        await write(path, content)
+        if (race === 'external edit') {
+          const changed = await disk()
+          changed.messages[0].content = 'A separately updated lantern description.'
+          await app.vault.modify(file(), serializeChat({ ...changed, metadata: changed.metadata! }))
+        } else await parent()
+      })
+      await expect(CommentService.getInstance().acceptReplyProposal(proposal)).rejects.toThrow(
+        /changed|opened/
+      )
+      expect((await disk()).messages[0].content).toBe(
+        race === 'external edit' ? 'A separately updated lantern description.' : TEXT
+      )
+      expect((await disk()).messages[0].revisions).toBeUndefined()
+      expect(await app.vault.adapter.exists(chatCopyPath(app, PATH))).toBe(false)
+    }
+  )
+
+  it('restores an unloaded comment after following a rename is cut short', async () => {
+    const { child } = await stagedProposal()
+    const own = child.currentChatFile.value!
+    const before = parseChat(await app.vault.read(own))
+    CommentService.getInstance().destroy()
+    ChatService.getInstance().destroy()
+    const modify = app.vault.modify.bind(app.vault)
+    let copied = false
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, fn) => {
+      expect(target.path).toBe(own.path)
+      const content = fn(await app.vault.read(target))
+      copied = await app.vault.adapter.exists(chatCopyPath(app, target.path))
+      await modify(target, content.slice(0, Math.floor(content.length / 2)))
+      throw new Error('sample interrupted rename')
+    })
+    await expect(
+      CommentService.getInstance().handleRename(PATH, 'AI/Chats/sample-renamed.abchat')
+    ).rejects.toThrow('sample interrupted rename')
+    const recovered = parseChat(await app.vault.read(own))
+    expect(recovered.metadata).toEqual(before.metadata)
+    expect(recovered.messages).toEqual(before.messages)
+    expect(recovered.internalMessages).toEqual(before.internalMessages)
+    expect(copied).toBe(true)
+    await CommentService.getInstance().handleRename(PATH, 'AI/Chats/sample-renamed.abchat')
+    expect(parseChat(await app.vault.read(own)).metadata?.anchor?.note).toBe(
+      'AI/Chats/sample-renamed.abchat'
+    )
+  })
+
   it('persists acceptance before application, refuses a later Reject and resumes after a parent write failure', async () => {
     const { child, id } = await stagedProposal()
     const process = app.vault.process.bind(app.vault)

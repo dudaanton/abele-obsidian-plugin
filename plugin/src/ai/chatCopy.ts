@@ -107,6 +107,29 @@ export async function rewriteChat(
 }
 
 /**
+ * A transform of a chat without an owning session. Read through recovery, then compare exact
+ * bytes inside the protected rewrite so an external edit cannot be lost during computation.
+ * The extra check keeps ownership races (a tab opening during I/O) out of the same write.
+ */
+export async function transformChat(
+  app: App,
+  file: TFile,
+  change: (content: string) => string,
+  check?: () => void
+): Promise<void> {
+  check?.()
+  await readChat(app, file)
+  const previous = await app.vault.read(file)
+  const content = change(previous)
+  if (content === previous) return
+  await rewriteChat(app, file, content, (current) => {
+    check?.()
+    if (current !== previous)
+      throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+  })
+}
+
+/**
  * The chat, from its file or from the copy a rewrite left behind — whichever holds it whole.
  *
  * A copy exists only while a rewrite is under way, so finding one means the app stopped in the
@@ -115,27 +138,46 @@ export async function rewriteChat(
  * not touched yet — or one that outlived a rewrite that did finish.
  */
 export async function readChat(app: App, file: TFile): Promise<ParsedChat> {
+  let result: ParsedChat | undefined
+  const text = await readChatText(app, file, (text, content) => {
+    const parsed = parseChat(text)
+    const copy = parseChat(content)
+    // Emptied and killed before the first piece landed reads as no chat at all: torn too.
+    const fileTorn =
+      parsed.torn ||
+      parsed.damaged > 0 ||
+      !text.trim() ||
+      (parsed.version === 1 && !parsed.metadata)
+    const copyWhole = copy.version === 2 && !copy.torn && copy.damaged === 0
+    const recover = copyWhole && fileTorn && copy.records >= parsed.records
+    result = recover ? copy : parsed
+    return recover
+  })
+  return result ?? parseChat(text)
+}
+
+/**
+ * Raw transcript recovery shared by chat logs and delegated-run JSON. The caller supplies
+ * its format's whole-file test; a copy is never taken over another path or a valid newer file.
+ */
+export async function readChatText(
+  app: App,
+  file: TFile,
+  recover: (current: string, backup: string) => boolean
+): Promise<string> {
   const text = await app.vault.read(file)
-  const parsed = parseChat(text)
   const adapter = app.vault.adapter
   const copyPath = chatCopyPath(app, file.path)
-  if (!(await adapter.exists(copyPath))) return parsed
-
+  if (!(await adapter.exists(copyPath))) return text
   const raw = await adapter.read(copyPath)
   const cut = raw.indexOf('\n')
   const content = raw.slice(cut + 1)
-  const copy = cut === -1 || raw.slice(0, cut) !== file.path ? null : parseChat(content)
-  // Emptied and killed before the first piece landed reads as no chat at all: torn too.
-  const fileTorn =
-    parsed.torn || parsed.damaged > 0 || !text.trim() || (parsed.version === 1 && !parsed.metadata)
-  const copyWhole = !!copy && copy.version === 2 && !copy.torn && copy.damaged === 0
-  if (!copy || !copyWhole || !fileTorn || copy.records < parsed.records) {
+  if (cut === -1 || raw.slice(0, cut) !== file.path || !recover(text, content)) {
     await adapter.remove(copyPath)
-    return parsed
+    return text
   }
-
   console.warn(`[Abele] ${file.path}: a rewrite was cut short, restored from its copy`)
   await app.vault.modify(file, content)
   await adapter.remove(copyPath)
-  return copy
+  return content
 }

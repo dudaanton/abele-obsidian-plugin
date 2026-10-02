@@ -2216,17 +2216,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         before.content !== after.content && after.revisions?.length
           ? compatibleReplyHistory(messages, snapshot.internalMessages)
           : snapshot.internalMessages
-      let written = ''
-      const operation = GlobalStore.getInstance().app.vault.process(file, (content) => {
-        const parsed = parseChat(content)
-        if (!this.log.matches(parsed))
-          throw new Error('This chat changed elsewhere. Reopen it before making changes.')
-        written = serializeChat({
-          ...snapshot,
-          messages,
-          internalMessages,
-        })
-        return written
+      const operation = this.rewriteReply(file, {
+        ...snapshot,
+        messages,
+        internalMessages,
       })
       this.writing = operation.then(
         (): void => {},
@@ -2234,7 +2227,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       )
       try {
         await operation
-        this.log.adopt(parseChat(written))
         this.allInternalMessages = internalMessages
         this.updateChatMessage(
           (m) => m.id === id,
@@ -2273,30 +2265,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // Internal records are appended in place by the running turn; freeze this write's cut.
       const internalMessages = [...snapshot.internalMessages]
       const messages = snapshot.messages.map((m) => (m.id === id ? { ...m, highlights } : m))
-      const written = serializeChat({ ...snapshot, messages, internalMessages })
-      const { app } = GlobalStore.getInstance()
-      let attempted = false
-      try {
-        await rewriteChat(app, file, written, (content) => {
-          if (!this.log.matches(parseChat(content)))
-            throw new Error('This chat changed elsewhere. Reopen it before making changes.')
-          attempted = true
-        })
-      } catch (err) {
-        if (attempted) {
-          // A failed write may have changed the file. Recover its copy and seed the writer
-          // from what is actually durable, never the old cached records. If recovery itself
-          // is unavailable, force a protected full rewrite from live memory on the next save.
-          this.dirty = true
-          try {
-            this.log.adopt(await readChat(app, file))
-          } catch {
-            this.log.forget()
-          }
-        }
-        throw err
-      }
-      this.log.adopt(parseChat(written))
+      await this.rewriteReply(file, { ...snapshot, messages, internalMessages })
       this.updateChatMessage(
         (m) => m.id === id,
         (m) => ({ ...m, highlights })
@@ -2312,6 +2281,33 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     } finally {
       this.writing = null
     }
+  }
+
+  /** Protected owner edits share one external-change guard and persistence recovery path. */
+  private async rewriteReply(file: TFile, snapshot: ChatSnapshot): Promise<void> {
+    const written = serializeChat(snapshot)
+    const { app } = GlobalStore.getInstance()
+    let attempted = false
+    try {
+      await rewriteChat(app, file, written, (content) => {
+        if (!this.log.matches(parseChat(content)))
+          throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+        attempted = true
+      })
+    } catch (err) {
+      if (attempted) {
+        // Recover what actually reached the file, not the old cached records. If recovery
+        // itself is unavailable, the next save must rewrite the whole live conversation.
+        this.dirty = true
+        try {
+          this.log.adopt(await readChat(app, file))
+        } catch {
+          this.log.forget()
+        }
+      }
+      throw err
+    }
+    this.log.adopt(parseChat(written))
   }
 
   async highlightReply(
