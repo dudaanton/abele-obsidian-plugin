@@ -9,6 +9,7 @@ import {
   recordParent,
   SHAPES,
   type CanvasGraph,
+  type CanvasEdge,
   type CanvasNode,
 } from './model'
 
@@ -66,24 +67,23 @@ function distance(a: string, b: string): number {
   }
   return row[b.length]
 }
-function known<T extends { id: string }>(id: string, list: T[]): T {
-  const found = list.find((n) => n.id === id)
+function known<T extends { id: string }>(id: string, index: ReadonlyMap<string, T>): T {
+  const found = index.get(id)
   if (found) return found
-  const suggested = list
+  const suggested = Array.from(index.values())
     .map((n) => ({ id: n.id, score: distance(id, n.id) }))
     .sort((a, b) => a.score - b.score || a.id.localeCompare(b.id))[0]
   throw new Error(
     `Unknown id ${id}${suggested && suggested.score <= Math.max(2, id.length / 3) ? `; did you mean ${suggested.id}?` : ''}`
   )
 }
-function unique(graph: CanvasGraph, id: string): void {
-  if ([...graph.nodes, ...graph.edges].some((n) => n.id === id))
-    throw new Error(`Duplicate id ${id}`)
+function unique(elements: ReadonlyMap<string, { id: string }>, id: string): void {
+  if (elements.has(id)) throw new Error(`Duplicate id ${id}`)
 }
-function checkEdges(graph: CanvasGraph): void {
+function checkEdges(graph: CanvasGraph, nodes: ReadonlyMap<string, CanvasNode>): void {
   for (const edge of graph.edges) {
-    known(edge.fromNode, graph.nodes)
-    known(edge.toNode, graph.nodes)
+    known(edge.fromNode, nodes)
+    known(edge.toNode, nodes)
   }
   parentsOf(graph)
 }
@@ -94,19 +94,36 @@ export function editCanvas(
   if (!Array.isArray(ops) || !ops.length) throw new Error('ops must be a nonempty array')
   let graph = cloneCanvas(input),
     needsLayout = false
+  const nodes = new Map<string, CanvasNode>(),
+    edges = new Map<string, CanvasEdge>(),
+    elements = new Map<string, CanvasNode | CanvasEdge>()
+  const rebuild = () => {
+    nodes.clear()
+    edges.clear()
+    elements.clear()
+    for (const node of graph.nodes) {
+      nodes.set(node.id, node)
+      elements.set(node.id, node)
+    }
+    for (const edge of graph.edges) {
+      edges.set(edge.id, edge)
+      elements.set(edge.id, edge)
+    }
+  }
+  rebuild()
   for (let index = 0; index < ops.length; index++) {
     try {
       const op = operationSchema.parse(ops[index])
       if (op.op === 'add_node') {
         const n = op.node
-        unique(graph, n.id)
+        unique(elements, n.id)
         if ((n.x === undefined) !== (n.y === undefined))
           throw new Error('Provide both x and y, or neither')
         if (n.parent) {
-          const parent = known(n.parent, graph.nodes)
+          const parent = known(n.parent, nodes)
           if (parent.type !== 'group') throw new Error('Parent must be a group')
         }
-        const near = n.near ? known(n.near, graph.nodes) : undefined
+        const near = n.near ? known(n.near, nodes) : undefined
         const type = n.kind === 'shape' ? 'text' : n.kind === 'note' ? 'file' : n.kind
         const node: CanvasNode = {
           id: n.id,
@@ -128,15 +145,20 @@ export function editCanvas(
         }
         const added = nodeSchema.parse(node)
         graph.nodes.push(added)
+        nodes.set(added.id, added)
+        elements.set(added.id, added)
         recordParent(added, n.parent ?? null, graph)
         if (n.x === undefined && !near) needsLayout = true
+        if (n.parent || type === 'group') parentsOf(graph)
       } else if (op.op === 'connect') {
-        unique(graph, op.edge.id)
-        known(op.edge.fromNode, graph.nodes)
-        known(op.edge.toNode, graph.nodes)
+        unique(elements, op.edge.id)
+        known(op.edge.fromNode, nodes)
+        known(op.edge.toNode, nodes)
         graph.edges.push(op.edge)
+        edges.set(op.edge.id, op.edge)
+        elements.set(op.edge.id, op.edge)
       } else if (op.op === 'update' || op.op === 'style') {
-        const element = known(op.id, [...graph.nodes, ...graph.edges])
+        const element = known(op.id, elements)
         const patch = op.op === 'style' ? { styleAttributes: op.styleAttributes } : op.patch
         if ('id' in patch && patch.id !== op.id) throw new Error('An id cannot be changed')
         const merged = { ...element, ...patch }
@@ -144,9 +166,11 @@ export function editCanvas(
           if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key]))
             merged[key] = { ...element[key], ...patch[key] }
         }
-        if (graph.nodes.some((node) => node.id === op.id)) {
+        if (nodes.has(op.id)) {
           const updated = nodeSchema.parse(merged)
           graph.nodes[graph.nodes.findIndex((n) => n.id === op.id)] = updated
+          nodes.set(updated.id, updated)
+          elements.set(updated.id, updated)
           if (
             op.op === 'update' &&
             patch.abele &&
@@ -154,13 +178,21 @@ export function editCanvas(
             'parent' in patch.abele
           )
             recordParent(updated, updated.abele?.parent as string | null, graph)
-        } else graph.edges[graph.edges.findIndex((e) => e.id === op.id)] = edgeSchema.parse(merged)
+          if (op.op === 'update') parentsOf(graph)
+        } else {
+          const updated = edgeSchema.parse(merged)
+          known(updated.fromNode, nodes)
+          known(updated.toNode, nodes)
+          graph.edges[graph.edges.findIndex((e) => e.id === op.id)] = updated
+          edges.set(updated.id, updated)
+          elements.set(updated.id, updated)
+        }
       } else if (op.op === 'group') {
-        unique(graph, op.id)
+        unique(elements, op.id)
         const previous = parentsOf(graph)
         // Freeze ALL pre-existing memberships, including cards without Abele metadata.
         const existing = [...graph.nodes]
-        const members = [...new Set(op.ids)].map((id) => known(id, graph.nodes))
+        const members = [...new Set(op.ids)].map((id) => known(id, nodes))
         const box = bounds(members, 40)
         graph.nodes.push({
           id: op.id,
@@ -172,12 +204,14 @@ export function editCanvas(
         for (const node of existing) recordParent(node, previous.get(node.id) ?? null, graph)
         recordParent(graph.nodes[graph.nodes.length - 1], null, graph)
         for (const member of members) recordParent(member, op.id, graph)
+        rebuild()
+        parentsOf(graph)
       } else if (op.op === 'collapse') {
-        const node = known(op.id, graph.nodes)
+        const node = known(op.id, nodes)
         if (node.type !== 'group') throw new Error('Only groups can collapse')
         node.collapsed = op.collapsed
       } else {
-        known(op.id, [...graph.nodes, ...graph.edges])
+        known(op.id, elements)
         if (
           op.op === 'ungroup' &&
           !graph.nodes.some((node) => node.id === op.id && node.type === 'group')
@@ -190,12 +224,15 @@ export function editCanvas(
         graph.edges = graph.edges.filter(
           (e) => e.id !== op.id && e.fromNode !== op.id && e.toNode !== op.id
         )
+        rebuild()
+        parentsOf(graph)
       }
-      checkEdges(graph)
     } catch (error) {
       throw new CanvasEditError(index, error)
     }
   }
+  // One full topology validation, with indexed endpoints, not one for every accumulated prefix.
+  checkEdges(graph, nodes)
   // Re-parse extensions and geometry after every operation succeeds.
   graph = cloneCanvas(graph)
   return { graph, needsLayout }
