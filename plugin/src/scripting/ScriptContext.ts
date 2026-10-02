@@ -261,7 +261,28 @@ export function buildScriptContext(opts: {
 
     log(...args: unknown[]) {
       const line = args
-        .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
+        .map((a) => {
+          if (typeof a !== 'object') return String(a)
+          try {
+            return JSON.stringify(a)
+          } catch {
+            // Keep ordinary JSON output unchanged; only a failed serialization needs a
+            // diagnostic fallback that replaces cycles instead of aborting the script.
+            const seen = new WeakSet<object>()
+            try {
+              return JSON.stringify(a, (_key, value: unknown) => {
+                if (typeof value === 'bigint') return String(value)
+                if (value && typeof value === 'object') {
+                  if (seen.has(value)) return '[Circular]'
+                  seen.add(value)
+                }
+                return value
+              })
+            } catch {
+              return '[Unserializable object]'
+            }
+          }
+        })
         .join(' ')
       opts.logs.push(line)
       opts.onLog?.(line)
