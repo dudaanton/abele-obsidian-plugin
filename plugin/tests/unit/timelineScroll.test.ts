@@ -8,10 +8,17 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function pane(rowTop: number, survives?: (key: string, day: string | null) => boolean) {
+async function pane(
+  rowTop: number,
+  survives?: (key: string, day: string | null) => boolean,
+  dragging = false,
+  requestedTop?: number
+) {
   const owner = document.createElement('div')
   owner.style.overflowY = 'auto'
   const root = document.createElement('div')
+  root.classList.add('abele-timeline__date-block')
+  root.dataset.abeleAnchor = 'date:2030-06-15'
   const row = document.createElement('div')
   row.dataset.timelineItem = 'sample-task'
   const space = document.createElement('div')
@@ -21,7 +28,13 @@ async function pane(rowTop: number, survives?: (key: string, day: string | null)
   let top = rowTop
   vi.spyOn(owner, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 400))
   vi.spyOn(row, 'getBoundingClientRect').mockImplementation(
-    () => new DOMRect(0, top - (owner.scrollTop - 100), 300, 40)
+    () =>
+      new DOMRect(
+        0,
+        top + (parseFloat(root.style.paddingTop) || 0) - (owner.scrollTop - 100),
+        300,
+        40
+      )
   )
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1)
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
@@ -31,7 +44,20 @@ async function pane(rowTop: number, survives?: (key: string, day: string | null)
   const anchorSpace = ref<HTMLElement | null>(null)
   const source = ref(0)
   const scope = effectScope()
-  scope.run(() => useTimelineScroll(items, history, anchorSpace, () => source.value, survives))
+  scope.run(() =>
+    useTimelineScroll(
+      items,
+      history,
+      anchorSpace,
+      () => source.value,
+      survives,
+      () =>
+        requestedTop === undefined
+          ? null
+          : { key: 'sample-task', day: '2030-06-15', top: requestedTop },
+      () => dragging
+    )
+  )
   items.value = root
   anchorSpace.value = space
   await nextTick()
@@ -62,6 +88,56 @@ async function pane(rowTop: number, survives?: (key: string, day: string | null)
 }
 
 describe('timeline scroll ownership', () => {
+  it('corrects deferred native viewport restoration after a drop, but gives way to fresh reader input', async () => {
+    const p = await pane(100, undefined, false, 100)
+    await p.patch(() => {})
+    p.owner.scrollTop = 140
+    p.owner.dispatchEvent(new Event('scroll'))
+    expect(p.owner.scrollTop).toBe(100)
+    p.root.dispatchEvent(new Event('wheel', { bubbles: true }))
+    p.owner.scrollTop = 140
+    p.owner.dispatchEvent(new Event('scroll'))
+    expect(p.owner.scrollTop).toBe(140)
+  })
+  it('keeps leading drop room across deferred native scroll events until fresh reader input', async () => {
+    const p = await pane(100, undefined, false, 100)
+    await p.patch(() => p.shift(-250))
+    expect(p.root.style.paddingTop).toBe('150px')
+    p.owner.scrollTop = 160
+    p.owner.dispatchEvent(new Event('scroll'))
+    expect(p.root.style.paddingTop).toBe('150px')
+    expect(p.owner.scrollTop).toBe(0)
+    p.root.dispatchEvent(new Event('wheel', { bubbles: true }))
+    p.owner.scrollTop = 160
+    p.owner.dispatchEvent(new Event('scroll'))
+    expect(p.root.style.paddingTop).toBe('')
+    expect(p.owner.scrollTop).toBe(10)
+  })
+  it('holds an explicit drag anchor in screen coordinates when native navigation moves the pane', async () => {
+    const p = await pane(100, undefined, true, 100)
+    await p.patch(() => {
+      vi.spyOn(p.owner, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 48, 300, 400))
+      p.shift(48)
+    })
+    expect(p.owner.scrollTop).toBe(148)
+  })
+  it('keeps a drag expansion anchor across owned touchmove events before late layout', async () => {
+    const p = await pane(100, undefined, true)
+    const stop = watch(
+      p.source,
+      () => {
+        p.root.dispatchEvent(new Event('touchmove', { bubbles: true }))
+        p.shift(60)
+      },
+      { flush: 'post' }
+    )
+    try {
+      await p.patch(() => {})
+      expect(p.owner.scrollTop).toBe(160)
+    } finally {
+      stop()
+    }
+  })
   const lateResize = () => {
     const callbacks: ResizeObserverCallback[] = []
     vi.stubGlobal(

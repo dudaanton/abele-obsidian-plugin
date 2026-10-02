@@ -1,7 +1,7 @@
 import { nextTick, onScopeDispose, watch, type Ref } from 'vue'
 
 /** The sidebar owns its scroll; under a note the very same list belongs to the editor's scroll. */
-function scrollOwner(el: HTMLElement): HTMLElement {
+export function timelineScrollOwner(el: HTMLElement): HTMLElement {
   for (let parent = el.parentElement; parent; parent = parent.parentElement) {
     if (/auto|scroll/.test(getComputedStyle(parent).overflowY)) return parent
   }
@@ -9,7 +9,7 @@ function scrollOwner(el: HTMLElement): HTMLElement {
 }
 
 /** The usable top of a phone pane is below its status bar and floating navigation. */
-function pinnedTop(owner: HTMLElement): number {
+export function timelinePinnedTop(owner: HTMLElement): number {
   const viewport = owner.getBoundingClientRect()
   const top = viewport.top
   const body = owner.ownerDocument.body
@@ -39,20 +39,38 @@ function pinnedTop(owner: HTMLElement): number {
   return Math.max(top, safe + nativeHeader, chromeBottom)
 }
 
+export interface TimelineAnchor {
+  key: string
+  day: string
+  top: number
+}
+
 /** Holds a surviving row through layout patches. All scrolling stays native. */
 export function useTimelineScroll(
   items: Ref<HTMLElement | null>,
   history: Ref<HTMLElement | null>,
   anchorSpace: Ref<HTMLElement | null>,
   windowSource: () => unknown,
-  survives?: (key: string, day: string | null) => boolean
+  survives?: (key: string, day: string | null) => boolean,
+  requestedAnchor?: () => TimelineAnchor | null,
+  dragging: () => boolean = () => false
 ) {
   let stopHolding = () => {}
+  let realignDrop: (() => void) | null = null
   let disposeInput = () => {}
   let alignedScroll: { owner: HTMLElement; top: number } | null = null
 
+  let leadingSpace = 0
+  let releaseLeadingOnScroll = false
   const releaseSpace = () => anchorSpace.value?.style.removeProperty('height')
   const releaseUnusedSpace = (owner: HTMLElement) => {
+    if (releaseLeadingOnScroll && !dragging() && leadingSpace && owner.scrollTop >= leadingSpace) {
+      const top = owner.scrollTop - leadingSpace
+      items.value?.style.removeProperty('padding-top')
+      leadingSpace = 0
+      owner.scrollTop = top
+      alignedScroll = { owner, top: owner.scrollTop }
+    }
     const space = anchorSpace.value
     if (!space?.style.height) return
     const naturalEnd = Math.max(0, owner.scrollHeight - owner.clientHeight - space.offsetHeight)
@@ -61,11 +79,19 @@ export function useTimelineScroll(
     if (owner.scrollTop <= naturalEnd + 0.5) releaseSpace()
   }
 
-  const placeScroll = (owner: HTMLElement, to: number) => {
+  const placeScroll = (owner: HTMLElement, to: number, allowLeading = false) => {
     const before = owner.scrollTop
     const space = anchorSpace.value
     if (space) space.style.removeProperty('height')
     const clamped = owner.scrollTop
+    if (allowLeading && to < 0 && items.value) {
+      // A moved row can become the first row. Native scroll cannot go negative: retain
+      // just enough leading room to keep that row at the finger's release position.
+      leadingSpace += -to
+      releaseLeadingOnScroll = false
+      items.value.style.paddingTop = `${leadingSpace}px`
+      to = 0
+    }
     owner.scrollTop = Math.max(0, to)
     if (space && owner.scrollTop < to - 0.5) {
       // A short list otherwise has no scroll range with which to compensate for an insertion.
@@ -87,9 +113,10 @@ export function useTimelineScroll(
     stopHolding()
     const root = items.value
     if (!root) return () => {}
-    const owner = scrollOwner(root)
+    const owner = timelineScrollOwner(root)
     const viewport = owner.getBoundingClientRect()
-    const top = pinnedTop(owner) + (history.value?.getBoundingClientRect().height ?? 0)
+    const top = timelinePinnedTop(owner) + (history.value?.getBoundingClientRect().height ?? 0)
+    const requested = requestedAnchor?.()
     // Prefer an unfinished row: it survives both directions of the completed toggle.
     const candidates = Array.from(root.querySelectorAll<HTMLElement>('[data-timeline-item]'))
     const dayOf = (el: HTMLElement) =>
@@ -128,10 +155,12 @@ export function useTimelineScroll(
               : nearest,
           undefined
         ))
-    if (!row) return () => (read ? releaseSpace() : releaseUnusedSpace(owner))
-    const key = row.dataset.timelineItem
-    const day = dayOf(row)
-    const offset = (visibleRetained ? row.getBoundingClientRect().top : readTop!) - viewport.top
+    if (!row && !requested) return () => (read ? releaseSpace() : releaseUnusedSpace(owner))
+    const key = requested?.key ?? row.dataset.timelineItem
+    const day = requested ? 'date:' + requested.day : dayOf(row)
+    const offset = requested
+      ? requested.top - viewport.top
+      : (visibleRetained ? row.getBoundingClientRect().top : readTop!) - viewport.top
     // Let this hold be the only layout anchor. Otherwise browser anchoring can write its
     // own scrollTop during late title rendering and look like external input to our guard.
     const browserAnchor = owner.style.getPropertyValue('overflow-anchor')
@@ -161,7 +190,7 @@ export function useTimelineScroll(
       if (!live || !items.value) return
       // Native scrolling can move before its scroll event is delivered. A resize callback
       // or queued nextTick must not mistake that movement for a layout insertion.
-      if (Math.abs(owner.scrollTop - heldTop) > 0.5) {
+      if (Math.abs(owner.scrollTop - heldTop) > 0.5 && (!requested || dragging())) {
         stopHolding()
         return
       }
@@ -171,10 +200,11 @@ export function useTimelineScroll(
       ).find((el) => el.dataset.timelineItem === key && dayOf(el) === day)
       if (target) {
         const shift =
-          target.getBoundingClientRect().top - owner.getBoundingClientRect().top - offset
+          target.getBoundingClientRect().top -
+          (requested ? requested.top : owner.getBoundingClientRect().top + offset)
         if (patchSpace || Math.abs(shift) > 0.5) {
           patchSpace = false
-          placeScroll(owner, owner.scrollTop + shift)
+          placeScroll(owner, owner.scrollTop + shift, !!requested)
           heldTop = owner.scrollTop
         }
       } else {
@@ -186,11 +216,13 @@ export function useTimelineScroll(
     // Markdown titles load after the Vue patch. Correct their layout before it is painted too.
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(align)
     observer?.observe(root)
+    if (requested) observer?.observe(owner)
     const frame = window.requestAnimationFrame(align)
     extend()
     stopHolding = () => {
       if (!live) return
       live = false
+      if (realignDrop === align) realignDrop = null
       if (patchSpace && space) {
         if (previousSpace) space.style.height = previousSpace
         else space.style.removeProperty('height')
@@ -204,6 +236,7 @@ export function useTimelineScroll(
       window.cancelAnimationFrame(frame)
       window.clearTimeout(timeout)
     }
+    realignDrop = requested ? align : null
     return align
   }
 
@@ -225,12 +258,12 @@ export function useTimelineScroll(
         releaseSpace()
         return
       }
-      const owner = scrollOwner(root)
+      const owner = timelineScrollOwner(root)
       // Sticky positioning starts at the padding edge. Place only this new strip at the
       // usable viewport edge, leaving the sidebar/editor spacing and phone chrome untouched.
       const positionStrip = () => {
         if (!strip) return
-        const usable = pinnedTop(owner)
+        const usable = timelinePinnedTop(owner)
         let inset =
           usable -
           owner.getBoundingClientRect().top -
@@ -274,13 +307,23 @@ export function useTimelineScroll(
         const own =
           alignedScroll?.owner === owner && Math.abs(owner.scrollTop - alignedScroll.top) < 0.5
         alignedScroll = null
-        if (!own) stopHolding()
+        if (!own) {
+          // WebKit can restore its pre-collapse scroll asynchronously after touchend.
+          // An explicit drop anchor wins until new reader input releases the short hold.
+          // During dragging, real scrolling (including edge scrolling) still wins.
+          if (realignDrop && !dragging()) realignDrop()
+          else stopHolding()
+        }
         followChrome()
         releaseUnusedSpace(owner)
       }
       // Input only releases a pending layout hold. No gesture ownership, prevention,
       // history reveal, synthetic displacement or extra scroll room on any input path.
       const releaseHold = () => {
+        // Owned drag movement is not a native pan. Keep the expansion's layout hold;
+        // actual scroll events (including edge auto-scroll) still release it normally.
+        if (dragging()) return
+        releaseLeadingOnScroll = true
         alignedScroll = null
         stopHolding()
       }
@@ -308,5 +351,6 @@ export function useTimelineScroll(
     disposeInput()
     stopHolding()
     releaseSpace()
+    items.value?.style.removeProperty('padding-top')
   })
 }

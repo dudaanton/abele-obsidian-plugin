@@ -73,6 +73,7 @@
           v-for="[date, dateItems] in visible"
           :key="date"
           class="abele-timeline__date-block"
+          :class="{ 'abele-timeline__drop-target': drag.targetDay.value === date }"
           :data-abele-anchor="'date:' + date"
         >
           <div
@@ -136,6 +137,7 @@ import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import { useTimelineDays } from '@/composables/useTimelineDays'
 import { useTimelineScroll } from '@/composables/useTimelineScroll'
+import { useTimelineDrag } from '@/composables/useTimelineDrag'
 import { useFooterTimeline } from '@/composables/useFooterView'
 import { createTask } from '@/commands/createTask'
 import { useLabelFilter } from '@/composables/useLabelFilter'
@@ -167,11 +169,21 @@ const { now } = useDate(clockVisible, () => clockEl.value?.ownerDocument ?? docu
 const fold = useFooterFold('calendar')
 
 const hideCompleted = ref(true)
+const itemsEl = ref<HTMLElement | null>(null)
+const drag = useTimelineDrag(itemsEl, () => props.tasks)
 
 const shownTasks = computed(() =>
-  hideCompleted.value
-    ? props.tasks.filter((t) => !t.completedAt && !t.taskNotFound)
-    : props.tasks.filter((t) => !t.taskNotFound)
+  props.tasks.filter((task) => {
+    if (task.taskNotFound) return false
+    if (!hideCompleted.value || !task.completedAt) return true
+    const range = drag.range.value
+    return (
+      !!range &&
+      task.dates.some(
+        (day) => day >= range.first && day <= range.last && day < now.value.format(DATE_FORMAT)
+      )
+    )
+  })
 )
 
 const {
@@ -184,7 +196,6 @@ const {
 
 const search = useListSearch(() => filtered.value, taskSearch)
 
-const itemsEl = ref<HTMLElement | null>(null)
 useSearchHighlight(itemsEl, search.terms)
 
 /** One row of a day: a task, or an event of an external calendar. */
@@ -206,6 +217,13 @@ const dates = computed(() => {
 
   for (const task of search.results.value) {
     for (const date of task.dates) {
+      const range = drag.range.value
+      if (
+        task.completedAt &&
+        hideCompleted.value &&
+        (!range || date < range.first || date > range.last || date >= now.value.format(DATE_FORMAT))
+      )
+        continue
       // A task with no time sorts to the end of its day, as it always has.
       itemsOf(date).push({ key: `task:${task.id}`, at: task.getSortTimestamp() * 1000, task })
     }
@@ -230,7 +248,15 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
-const { visible, past, pastRevealed, hasMore, sentinel, reset, togglePast } = useTimelineDays(
+const {
+  visible: pagedVisible,
+  past,
+  pastRevealed,
+  hasMore,
+  sentinel,
+  reset,
+  togglePast,
+} = useTimelineDays(
   () => dates.value,
   () => now.value.format(DATE_FORMAT),
   () => search.terms.value,
@@ -238,6 +264,34 @@ const { visible, past, pastRevealed, hasMore, sentinel, reset, togglePast } = us
   useFooterTimeline(),
   () => !fold.collapsed.value
 )
+// Gesture dates never change pagination/history memory. Only this rendered window expands.
+const visible = computed(() => {
+  const range = drag.range.value
+  const landed = drag.landing.value
+  if (!range && !landed) return pagedVisible.value
+  const window = new Map(pagedVisible.value)
+  if (range) {
+    const all = new Map(dates.value)
+    for (
+      let day = dayjs(range.first);
+      day.format(DATE_FORMAT) <= range.last;
+      day = day.add(1, 'day')
+    ) {
+      const date = day.format(DATE_FORMAT)
+      window.set(date, all.get(date) ?? [])
+    }
+  } else if (landed && !window.get(landed.day)?.some((item) => item.key === landed.key)) {
+    // A drop into hidden history or beyond the current page must still leave its card
+    // visible. Retain that one row, not the temporary month or other hidden tasks.
+    const task = props.tasks.find((task) => `task:${task.id}` === landed.key && !task.taskNotFound)
+    if (task && task.dates.includes(landed.day))
+      window.set(landed.day, [
+        ...(window.get(landed.day) ?? []),
+        { key: landed.key, at: task.getSortTimestamp() * 1000, task },
+      ])
+  }
+  return [...window].sort(([a], [b]) => a.localeCompare(b))
+})
 const pastUnfinished = computed(() => {
   const keys = new Set<string>()
   for (const [, items] of past.value)
@@ -257,9 +311,14 @@ useTimelineScroll(
   historyEl,
   anchorSpaceEl,
   () => visible.value,
-  (key, day) => retainedRows.value.has(day + ':' + key)
+  (key, day) => retainedRows.value.has(day + ':' + key),
+  () => drag.anchor.value,
+  () => !!drag.range.value
 )
 watch(labelSelection, reset)
+watch([labelSelection, hideCompleted, search.terms, pastRevealed], () => {
+  drag.landing.value = null
+})
 
 const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
@@ -279,6 +338,30 @@ const getDateWikilink = (dateStr: string) => {
 </script>
 
 <style lang="scss">
+.abele-timeline__drag-card {
+  position: fixed;
+  z-index: var(--layer-popover);
+  pointer-events: none;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+}
+
+.abele-timeline__drag-source {
+  opacity: 0;
+}
+
+.abele-timeline__dragging {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.abele-timeline__drop-target {
+  border-radius: var(--radius-s);
+  outline: 1px solid var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
 // Only while a layout patch is anchored; native input removes this class immediately.
 .abele-timeline__scroll-hold {
   overflow-anchor: none !important;
