@@ -245,6 +245,8 @@ export interface VaultCli {
    * asynchronous, and a promise stringifies to `{}`.
    */
   evalAwait<T>(expression: string, timeoutMs?: number): T
+  /** For credential-bearing setup: failures never retain expression, raw output or cause. */
+  evalAwaitPrivate<T>(expression: string, timeoutMs?: number): T
 }
 
 /**
@@ -266,6 +268,13 @@ export function vaultCli(name: string): VaultCli {
       const output = run(['eval', `code=${wrapped}`], timeoutMs, false, name, id)
       const reply = evalReply<string>(output, id)
       return reply.hasValue ? reply.value : reply.logs || '(no output)'
+    },
+    evalAwaitPrivate: <T>(expression: string, timeoutMs?: number): T => {
+      try {
+        return cli.evalAwait<T>(expression, timeoutMs)
+      } catch {
+        throw new Error('Sensitive Obsidian setup evaluation failed; diagnostic payload suppressed')
+      }
     },
     evalAwait: <T>(expression: string, timeoutMs?: number): T => {
       const id = randomBytes(16).toString('hex')

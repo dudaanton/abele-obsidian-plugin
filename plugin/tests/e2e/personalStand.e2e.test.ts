@@ -135,7 +135,7 @@ describe('personal stand supplement', () => {
     if (!url || !email || !password || !vaultId || !root || !transfer)
       throw new Error('Missing authorized stand inputs')
     // Account password never appears in a report/file; only the encrypted sibling transfer travels.
-    const sibling = cli.evalAwait<any>(`(async () => {
+    const sibling = cli.evalAwaitPrivate<any>(`(async () => {
       const svc = window.__abeleTest.SyncService.getInstance()
       if(svc.connection.value.vaultId) throw new Error('Existing fixture connection left untouched')
       const keys = ['abele-sync-connection','abele-sync-ledger','abele-sync-ledger-proof','abele-sync-ledger-bootstrap','abele-script-provenance']
