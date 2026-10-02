@@ -1,6 +1,7 @@
 /** Folded history and viewport anchoring in the task timeline's real scroll owners. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
+  evalJson,
   evalLong,
   evalRaw,
   hasTestApi,
@@ -541,23 +542,40 @@ describe.skipIf(!available)('task timeline scrolling', () => {
   }, 600_000)
   afterAll(async () => {
     if (!available) return
-    await evalLong(
-      `(async () => { for (const dir of ${JSON.stringify([FOLDER, FOLDER + ' short'])}) { const f = app.vault.getAbstractFileByPath(dir); if (f) await app.vault.delete(f, true); } return 'removed' })()`,
-      60000
-    )
-    if (state) {
-      if (!onPhone()) {
-        evalRaw(
-          `require('@electron/remote').getCurrentWindow().setContentSize(${state.size.join(',')}); 'restored'`
+    try {
+      for (const dir of [FOLDER, FOLDER + ' short']) {
+        const paths = evalJson<string[]>(
+          `app.vault.getFiles().filter(file => file.path.startsWith(${JSON.stringify(dir + '/')})).map(file => file.path)`
         )
-        await reloadApp('app.emulateMobile(false)')
+        for (let i = 0; i < paths.length; i += 24) {
+          console.info(`Timeline cleanup ${dir}: ${i}/${paths.length} files`)
+          const raw = await evalLong(
+            `(async () => { for (const path of ${JSON.stringify(paths.slice(i, i + 24))}) { const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file, true) } return 'removed' })()`,
+            60_000
+          )
+          if (raw.startsWith('Error:')) throw new Error(raw)
+        }
+        const raw = await evalLong(
+          `(async () => { const dir = app.vault.getAbstractFileByPath(${JSON.stringify(dir)}); if (dir) await app.vault.delete(dir, true); return 'removed folder' })()`,
+          60_000
+        )
+        if (raw.startsWith('Error:')) throw new Error(raw)
       }
-      await evalLong(
-        `(async () => { await app.workspace.changeLayout(${JSON.stringify(state.layout)}); return 'restored' })()`,
-        60000
-      )
+    } finally {
+      if (state) {
+        if (!onPhone()) {
+          evalRaw(
+            `require('@electron/remote').getCurrentWindow().setContentSize(${state.size.join(',')}); 'restored'`
+          )
+          await reloadApp('app.emulateMobile(false)')
+        }
+        await evalLong(
+          `(async () => { await app.workspace.changeLayout(${JSON.stringify(state.layout)}); return 'restored' })()`,
+          60000
+        )
+      }
     }
-  }, 120000)
+  }, 300_000)
   for (const kind of ['desktop', 'phone width']) {
     for (const [index, owner] of ['sidebar', 'note footer'].entries()) {
       const probe = () => (kind === 'desktop' ? desktop : mobile)[index]
