@@ -9,6 +9,8 @@ export interface JournalEntry {
   backup?: string
   replacementSha?: string
   installed?: boolean
+  /** Unfenced old inode must survive even if target contains exact replacement bytes. */
+  preserveBackup?: boolean
 }
 export interface RecoveredWrite {
   target: string
@@ -41,7 +43,8 @@ export class WriteJournal {
       return (
         typeof entry.target === 'string' &&
         (entry.temp === undefined || typeof entry.temp === 'string') &&
-        (entry.backup === undefined || typeof entry.backup === 'string')
+        (entry.backup === undefined || typeof entry.backup === 'string') &&
+        (entry.preserveBackup === undefined || typeof entry.preserveBackup === 'boolean')
       )
     })
     if (entries.length !== raw.length)

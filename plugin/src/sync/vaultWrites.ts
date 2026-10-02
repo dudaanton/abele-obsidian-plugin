@@ -109,6 +109,7 @@ export class VaultWriter {
           temp,
           backup,
           replacementSha: entry.replacementSha,
+          ...(this.deps.native !== null ? { preserveBackup: true } : {}),
         }
         this.deps.journal.replace(entry, swapping)
         entry = swapping
@@ -303,7 +304,8 @@ export class VaultWriter {
               entry.replacementSha !== undefined &&
               (await signature(await this.adapter.readBinary(entry.target))) ===
                 entry.replacementSha
-            if (matchesReplacement) await this.adapter.remove(entry.backup)
+            if (matchesReplacement && entry.preserveBackup !== true)
+              await this.adapter.remove(entry.backup)
             else {
               // Do not overwrite the independent target or discard the old copy. Keep the
               // backup hidden (not a new uploadable identity), and persist its locator first.

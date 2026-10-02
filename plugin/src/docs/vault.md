@@ -1183,7 +1183,10 @@ the preservation decision. On desktop, the final comparison and replacement use 
 adapter write queue as ordinary local saves: earlier edits hold replacement, later saves run
 after it. A native adapter without that queue uses a journalled backup and atomic exclusive
 link installation; it refuses to overwrite a recreated target and keeps the old inode's bytes
-recoverable. Adapters with neither safe capability hold replacement. This is not an OS-wide
+recoverable. The mandatory-preservation flag is written in the active intent before installation,
+so a crash during awaited reconciliation cannot discard that inode merely because the target
+matches the remote replacement hash. A flagged backup still restores the original target when
+installation never happened and the target is absent. Adapters with neither safe capability hold replacement. This is not an OS-wide
 compare-and-swap guarantee against unrelated processes bypassing the adapter queue.
 Keep these backup bytes/locators until the person has reviewed and
 copied out what is needed; recovery never overwrites the edited target automatically.
