@@ -30,6 +30,15 @@ This is not a new blanket architecture sign-off by the implementation worker. Pr
 sharing flags remain false. The desktop disposable acceptance below does not substitute for
 physical iOS/Android/Boox/iPad or production-host installation.
 
+## Follow-up boundary
+
+A later static follow-up found that byte-read observations alone still do not prove push
+settlement overwrite authorization (68.1, assigned to the core writer), and upload admission can
+reduce an owner candidate again after its hook (68.2). Earlier focused/native results below do
+not close those follow-up seams. The plugin-only admitted-body fix and offline regression
+boundary are documented in [owner admitted receipt binding](Sync%20owner%20admitted%20receipt%20binding.md).
+Final integration, exact repin and later native/collaboration/Books gates belong to the manager.
+
 ## Findings and fixes
 
 ### 1 — high: a local save became replacement authority

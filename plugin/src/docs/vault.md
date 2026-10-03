@@ -1512,8 +1512,12 @@ completed unit metadata is removed only after core journal retirement. Neither c
 production call site while activation is disabled. The trusted disabled owner host port uses
 reviewed personal hooks, including exact received-note delivery, and `native-owner-v1:` metadata
 in an independently owned store. Rows bind note/cache observations, paste range, stable handles,
-exact sending subsets and wire receipts to the connection with checksums. Ready-image intents
-are durable before a partial hold can release any upload. Only trusted exact native paste-range
+prepared sending candidates, exact admitted submitted bodies and wire receipts to the connection
+with checksums. Ready-image intents are durable before a partial hold can release any upload.
+Blob refusals can further reduce a candidate: before transport, the exact durable core submitted
+journal binds an ordered subset without changing fields or stable handles, retaining the original
+plan. Once bound, body/key/handles are immutable on replay; receipts must match exactly, and
+omitted targets/sponsors stay held. A final-binding persistence failure prevents transport. Only trusted exact native paste-range
 introduction plus verified novel creation and authorized intrinsic sponsor proof may publish;
 received snapshots are baselines, never owner introduction or script consent. Lost evidence
 holds. Production host installation and unverified native cache/paste barriers remain separate
