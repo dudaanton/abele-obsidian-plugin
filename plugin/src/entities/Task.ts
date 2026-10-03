@@ -28,7 +28,7 @@ import { genid } from '@/helpers/vueUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TaskNoteTemplate } from '@/templates/TaskNoteTemplate'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { debounce } from 'obsidian'
 
 export interface TaskCreateDTO {

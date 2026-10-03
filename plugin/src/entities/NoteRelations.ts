@@ -13,7 +13,7 @@ import { Journal } from './Journal'
 import { acquireVaultNoteIndex } from './vaultNoteIndex'
 import { acquireVaultRelationBatches } from './vaultRelationBatches'
 import type { RelationChange } from './RelationBatchRouter'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { DATE_FORMAT } from '@/constants/dates'
 
 export class NoteRelations {

@@ -13,7 +13,7 @@ import { genid } from '@/helpers/vueUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TransactionNoteTemplate } from '@/templates/TransactionNoteTemplate'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { debounce } from 'obsidian'
 
 export interface TransactionCreateDTO {

@@ -5,7 +5,7 @@ import { getNameFromPath, isWikilink, normalizePath, wikilinkToPath } from '@/he
 import { getOutgoingLinksByPath } from '@/helpers/vaultUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { debounce, TFile } from 'obsidian'
 
 export class Log {

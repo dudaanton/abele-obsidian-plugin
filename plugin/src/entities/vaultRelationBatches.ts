@@ -1,5 +1,5 @@
 import { App, TFile, type EventRef, normalizePath } from 'obsidian'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { DATE_FORMAT } from '@/constants/dates'
 import { isWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 import { RelationBatchRouter, type RelationChange } from './RelationBatchRouter'

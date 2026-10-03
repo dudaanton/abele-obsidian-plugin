@@ -1,5 +1,5 @@
 import { DATE_FORMAT, DATE_REGEX, DISPLAY_DATE_FORMAT } from '@/constants/dates'
-import dayjs from 'dayjs'
+import dayjs from './dateLibrary'
 
 export const today = () => {
   const day = dayjs()

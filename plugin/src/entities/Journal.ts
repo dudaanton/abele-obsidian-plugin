@@ -3,7 +3,7 @@ import { extractDateFromFilename } from '@/helpers/datesHelper'
 import { createNoteFromTemplate, renderTemplate } from '@/helpers/notesUtils'
 import { normalizePath } from '@/helpers/pathsHelpers'
 import { GlobalStore } from '@/stores/GlobalStore'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { nanoid } from 'nanoid'
 import { TFile } from 'obsidian'
 

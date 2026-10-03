@@ -1,5 +1,5 @@
 import { App, TFile, type EventRef, normalizePath } from 'obsidian'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { DATE_FORMAT } from '@/constants/dates'
 import { NoteTypeIndex, type IndexedNote } from './NoteTypeIndex'
 

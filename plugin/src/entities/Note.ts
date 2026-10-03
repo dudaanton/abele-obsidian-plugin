@@ -5,7 +5,7 @@ import { getNameFromPath, normalizePath } from '@/helpers/pathsHelpers'
 import { coverLink } from '@/helpers/resourceUrl'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { debounce, TFile } from 'obsidian'
 
 export class Note {

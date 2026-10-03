@@ -10,7 +10,7 @@ import { getFileByPath, getFileByPathOrName } from '@/helpers/vaultUtils'
 import { genid } from '@/helpers/vueUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
-import dayjs from 'dayjs'
+import dayjs from '@/helpers/dateLibrary'
 import { debounce } from 'obsidian'
 
 export const DATETIME_FORMAT = 'YYYY-MM-DDTHH:mm:ss'
