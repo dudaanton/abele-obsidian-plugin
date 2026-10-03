@@ -221,7 +221,7 @@ const books = computed<BooksStatus>(() => ({
         ? 'preparing'
         : props.state === 'cache-unknown'
           ? 'recovery'
-          : (props.state as BooksStatus['status']),
+          : props.state,
   role: 'editor',
   known: 64,
   materialized: 17,
