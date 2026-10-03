@@ -11,6 +11,7 @@
  * Calendars are read when the layout is ready, every `refreshMinutes` after that, when their
  * settings change, and when asked to from the settings screen.
  */
+import { sourceHash } from './credentialGenerations'
 import { markRaw, reactive } from 'vue'
 import type { CalendarEvent } from './events'
 import { EventCompletionStore } from './completion'
@@ -56,7 +57,7 @@ interface CachedFeed {
 }
 
 interface CacheFile {
-  version: 1
+  version: 2
   feeds: Record<string, CachedFeed>
 }
 
@@ -65,6 +66,8 @@ export interface CalendarDeps {
   request: Requester
   settings: () => CalendarSettings
   secret: (keyId: string) => string
+  /** Persistent per-credential counter supplied by the keychain adapter. */
+  credentialGeneration?: (keyId: string) => number
   now?: () => number
   completion?: EventCompletionStore
   /** Removed-feed marks also age out; supplied by the synced storage adapter. */
@@ -77,20 +80,18 @@ export interface ShownEvent {
   feed: CalendarFeed
 }
 
-/** FNV-1a: enough to notice a changed link without keeping the link. */
-function hash(text: string): string {
-  let h = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(36)
-}
+// In-memory storage adapters can share a credential clock across service recreation. The
+// running plugin supplies its persistent keychain clock instead; no credential goes to disk.
+const memoryCredentials = new WeakMap<
+  CalendarStorage,
+  Map<string, { value: string; generation: number }>
+>()
 
 export class CalendarService {
   readonly state = reactive<CalendarState>({ events: {}, status: {}, version: 0 })
 
-  private cache: CacheFile = { version: 1, feeds: {} }
+  private cache: CacheFile = { version: 2, feeds: {} }
+  private readonly credentials: Map<string, { value: string; generation: number }>
   private loaded: Promise<void> | null = null
   private lastRefresh = 0
   private readonly inFlight = new Map<string, Promise<void>>()
@@ -100,6 +101,8 @@ export class CalendarService {
 
   constructor(private readonly deps: CalendarDeps) {
     this.now = deps.now ?? (() => Date.now())
+    this.credentials = (deps.storage && memoryCredentials.get(deps.storage)) ?? new Map()
+    if (deps.storage) memoryCredentials.set(deps.storage, this.credentials)
   }
 
   window(): TimeWindow {
@@ -112,8 +115,17 @@ export class CalendarService {
   }
 
   private fingerprint(feed: CalendarFeed): string {
-    const secret = feed.keyId ? this.deps.secret(feed.keyId) : ''
-    return hash([feed.source, feed.server, feed.username, feed.calendarUrl, secret].join('\n'))
+    const id = feed.keyId
+    let generation = this.deps.credentialGeneration?.(id)
+    if (generation === undefined) {
+      const value = id ? this.deps.secret(id) : ''
+      const previous = this.credentials.get(id)
+      generation = previous?.value === value ? previous.generation : (previous?.generation ?? 0) + 1
+      this.credentials.set(id, { value, generation })
+    }
+    return sourceHash(
+      JSON.stringify([feed.source, feed.server, feed.username, feed.calendarUrl, id, generation])
+    )
   }
 
   /** The events kept on the device, shown before anything is read. */
@@ -122,8 +134,11 @@ export class CalendarService {
       try {
         const text = await this.deps.storage?.read()
         const parsed = text ? (JSON.parse(text) as CacheFile) : null
-        if (parsed?.version === 1 && parsed.feeds && typeof parsed.feeds === 'object') {
+        if (parsed?.version === 2 && parsed.feeds && typeof parsed.feeds === 'object') {
           this.cache = parsed
+        } else if (parsed) {
+          // Discard and overwrite password-derived legacy fingerprints even for disabled feeds.
+          await this.save()
         }
       } catch (e) {
         console.debug('[Abele] calendars: the kept events could not be read', e)
@@ -162,7 +177,10 @@ export class CalendarService {
 
   private refreshFeed(feed: CalendarFeed): Promise<void> {
     const pending = this.inFlight.get(feed.id)
-    if (pending) return pending
+    if (pending)
+      return pending.then(() => {
+        if (this.tried.get(feed.id) !== this.fingerprint(feed)) return this.refreshFeed(feed)
+      })
     const reading = this.readFeedNow(feed).finally(() => this.inFlight.delete(feed.id))
     this.inFlight.set(feed.id, reading)
     return reading
@@ -175,6 +193,10 @@ export class CalendarService {
     this.tried.set(feed.id, fingerprint)
     const kept = this.cache.feeds[feed.id]
     const sameSource = kept?.fingerprint === fingerprint
+    if (!sameSource) {
+      delete this.state.events[feed.id]
+      status.at = null
+    }
     try {
       if (sameSource && kept.ics) {
         this.state.events[feed.id] = markRaw(parseIcs(kept.ics, feed.id, this.window()))
@@ -188,6 +210,7 @@ export class CalendarService {
         // Old event-only caches need one full read before an unchanged response is useful.
         sameSource && kept.ics ? kept.etag : undefined
       )
+      if (this.fingerprint(feed) !== fingerprint) return
       const at = this.now()
       const ics = read.unchanged ? kept?.ics : read.ics
       const events = read.unchanged && ics ? parseIcs(ics, feed.id, this.window()) : read.events

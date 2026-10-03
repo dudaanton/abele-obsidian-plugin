@@ -738,7 +738,10 @@ read, the version tag its server gave, and every occurrence from a month back to
 ahead — title, start and end, place, description, link and the people invited. It is what the
 lists show before the network answers and when it does not. Nothing in a note depends on it, so
 it can be deleted at any time; the next read writes it again. The links and passwords are not in
-it — they are keys, in the keychain.
+it — they are keys, in the keychain. Cache version 2 identifies credentials only by a
+per-key generation number, not a password or secret-link checksum. The generation and its
+change detector stay in the device keychain. Version 1 caches are discarded once and refreshed;
+changing a credential invalidates its cached source, including a response already in flight.
 
 ## GitHub snippets
 
