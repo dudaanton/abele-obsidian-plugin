@@ -40,7 +40,7 @@ export class DestinationPolicy {
   accept(destinations: Destination[]): void {
     const accepted = this.accepted() ?? {}
     for (const { keyId, origin } of destinations) {
-      if (!httpOrigin(origin)) continue
+      if (keyId.startsWith('abele-store-key') || !httpOrigin(origin)) continue
       const previous = Object.hasOwn(accepted, keyId) ? accepted[keyId] : []
       Object.defineProperty(accepted, keyId, {
         value: [...new Set([...previous, origin])],
@@ -48,6 +48,13 @@ export class DestinationPolicy {
         configurable: true,
         writable: true,
       })
+    }
+    this.storage.save(accepted)
+  }
+  forget({ keyId, origin }: Destination): void {
+    const accepted = this.accepted() ?? {}
+    if (Object.hasOwn(accepted, keyId)) {
+      accepted[keyId] = accepted[keyId].filter((entry) => entry !== origin)
     }
     this.storage.save(accepted)
   }

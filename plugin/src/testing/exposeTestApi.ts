@@ -44,7 +44,8 @@ import { normalizeMapBlock } from '@/helpers/mapConfig'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import { desktopTransport, getDesktopNet } from '@/helpers/netTransport'
-import { request as networkRequest } from '@/helpers/http'
+import { request as networkRequest, setRequestTransport } from '@/helpers/http'
+import { buildScriptContext } from '@/scripting/ScriptContext'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import { importExternalFile, resolveAttachmentsForApi } from '@/ai/attachments'
 import { normalizeImageImport } from '@/media/imageImport'
@@ -212,6 +213,8 @@ interface AbeleTestApi {
     reviewKeyDestinations: typeof reviewKeyDestinations
     approveScriptKeyRequest: typeof approveScriptKeyRequest
     networkRequest: typeof networkRequest
+    setRequestTransport: typeof setRequestTransport
+    buildScriptContext: typeof buildScriptContext
     desktopTransport: typeof desktopTransport
     getDesktopNet: typeof getDesktopNet
   }
@@ -743,6 +746,8 @@ export function exposeTestApi(plugin: Plugin): void {
       reviewKeyDestinations,
       approveScriptKeyRequest,
       networkRequest,
+      setRequestTransport,
+      buildScriptContext,
       desktopTransport,
       getDesktopNet,
     },

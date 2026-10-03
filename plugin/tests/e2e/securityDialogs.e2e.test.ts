@@ -19,7 +19,11 @@ interface DialogReport {
 
 describe.skipIf(!available)('security dialogs on a real screen', () => {
   it.each([
-    ['key-destinations', ['Allow on this device', 'Allow unencrypted HTTP']],
+    [
+      'key-destinations',
+      ['Allow on this device', 'Allow unencrypted HTTP', 'Allow key and address'],
+    ],
+    ['key-destinations-new', ['Allow key and address']],
     ['saved-key-request', ['Cancel', 'Allow address and send']],
   ])(
     '%s keeps its actions visible while the body scrolls',

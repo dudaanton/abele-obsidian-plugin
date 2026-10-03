@@ -153,6 +153,21 @@ const DIALOGS: Record<string, () => void> = {
     const modal = reviewKeyDestinations()
     modal.onClose = () => { config.ai = previous }
   },
+  'key-destinations-new': () => {
+    const config = AbeleConfig.getInstance()
+    const previous = config.ai
+    config.ai = { ...previous, providers: [], imageProviders: [], secrets: [], mcpServers: [] }
+    const modal = reviewKeyDestinations()
+    const select = modal.bodyEl.querySelector('select')!
+    select.value = 'new'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    for (const [label, value] of [['Recipient address', 'http://192.168.42.12:8123/status'], ['New key name', 'Sample local key']]) {
+      const input = modal.bodyEl.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
+      input.value = value
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    modal.onClose = () => { config.ai = previous }
+  },
   'saved-key-request': () => {
     const config = AbeleConfig.getInstance()
     const previous = config.ai

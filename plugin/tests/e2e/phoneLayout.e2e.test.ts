@@ -58,6 +58,7 @@ const DIALOGS = [
   'reply-revision',
   'reply-original',
   'key-destinations',
+  'key-destinations-new',
   'saved-key-request',
   'confirm',
   'date',

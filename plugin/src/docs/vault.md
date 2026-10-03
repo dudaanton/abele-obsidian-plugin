@@ -75,7 +75,14 @@ Named keys in `ai.secrets` store `allowedOrigins`, a list of recipient HTTP(S) o
 the keychain identifier, not the secret value. This list travels in the stored-keys transfer
 section; local destination and HTTP approvals do not.
 `abele-key-http-origins-v1` holds explicitly allowed home-network HTTP origins on this device;
-it contains no secrets and does not travel either.
+it contains no secrets and does not travel either. Review key destinations can manually bind a
+selected saved key to a canonical scheme/host/port, even with no pending destinations. Explicitly
+saving a new named key there writes its exact value through SecretStore, never ordinary settings
+or local trust storage. Only its name, stable ID, keychain ID and `allowedOrigins` enter
+`ai.secrets`; the existing stored-keys transfer carries that metadata and protected key.
+Home-network HTTP transport exceptions are separate from per-key recipient approval: an exception
+does not approve other credentials. Removing the exception blocks credential-bearing HTTP again.
+Manual approval never queues or replays a script.
 
 ## Excel files
 

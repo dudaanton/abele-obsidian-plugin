@@ -13,7 +13,13 @@ A permitted origin does not remove the per-request question.
 
 Keys use HTTPS, except loopback HTTP and explicitly allowed home-network HTTP origins (port
 included). **Review key destinations** shows the unencrypted warning and lets the person allow
-or remove those exceptions. Public HTTP is not eligible. Keyless local services are unchanged.
+or remove those exceptions. The dialog also accepts an address when its pending list is empty:
+choose the concrete saved key or explicitly save a new named key in protected storage, then
+**Allow key and address** records that key-recipient pair and the local HTTP exception when
+needed. The canonical scheme, host and port and the unencrypted warning are shown beside the
+action. A name collision never overwrites an existing key. Retry the original literal-header
+script afterwards; no script is replayed automatically. Other keys do not gain permission from
+the HTTP exception. Public HTTP is not eligible. Keyless local services are unchanged.
 
 
 What the plugin's own settings are and what each group of them decides, for `read_settings` and

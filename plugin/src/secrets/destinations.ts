@@ -1,7 +1,7 @@
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { RequestUrlParam } from 'obsidian'
 import { basicAuth } from '@/calendars/http'
-import { checkKeyTransport } from './keyTransport'
+import { canAllowHttp, checkKeyTransport } from './keyTransport'
 import { IMAGE_API_DEFAULTS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -54,6 +54,12 @@ export function initializeDestinations(settings: AbeleSettings): void {
 export function acceptDestinations(destinations: Destination[]): void {
   policy().accept(destinations)
 }
+export function destinationAccepted(destination: Destination): boolean {
+  return policy().pending([destination]).length === 0
+}
+export function forgetDestination(destination: Destination): void {
+  policy().forget(destination)
+}
 export function pendingDestinations(settings: AbeleSettings): Destination[] {
   const destinations = keyDestinations(settings)
   const pending = policy().pending(destinations)
@@ -82,17 +88,22 @@ export function checkRequestDestinations(
 ): string[] {
   const carried: string[] = []
   const headers = Object.values(request.headers ?? {})
-  if (
-    Object.entries(request.headers ?? {}).some(
+  const credentialHeaders = Object.entries(request.headers ?? {})
+    .filter(
       ([name, value]) =>
         value.replace(/^Bearer\s*/i, '').trim() &&
         /^(authorization|proxy-authorization|cookie|x-api-key|api-key|x-auth-token|x-subscription-token)$/i.test(
           name
         )
     )
-  )
-    checkKeyTransport(request.url)
-  for (const keyId of new Set(keyDestinations(settings).map((d) => d.keyId))) {
+    .map(([, value]) => value)
+  if (credentialHeaders.length) checkKeyTransport(request.url)
+  const recognised = new Set<string>()
+  const keyIds = new Set([
+    ...keyDestinations(settings).map((d) => d.keyId),
+    ...(settings.ai?.secrets ?? []).map((s) => s.keyId),
+  ])
+  for (const keyId of keyIds) {
     const value = secrets().get(keyId)
     if (!value) continue
     const basics = (settings.calendars?.feeds ?? [])
@@ -101,8 +112,21 @@ export function checkRequestDestinations(
     if (headers.some((h) => h.includes(value) || basics.includes(h))) {
       checkKeyDestination(keyId, request.url, settings)
       carried.push(value, ...basics)
+      // Home-network transport consent is not consent for arbitrary other credentials.
+      for (const header of credentialHeaders) {
+        if (
+          header === value ||
+          header.replace(/^Bearer\s+/i, '') === value ||
+          basics.includes(header)
+        )
+          recognised.add(header)
+      }
     }
   }
+  if (canAllowHttp(request.url) && credentialHeaders.some((header) => !recognised.has(header)))
+    throw new Error(
+      'Choose or explicitly save this key and address in Review key destinations, then retry'
+    )
   return carried
 }
 

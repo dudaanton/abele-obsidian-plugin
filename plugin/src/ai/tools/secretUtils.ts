@@ -4,6 +4,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   acceptDestinations,
   checkKeyDestination,
+  checkRequestDestinations,
   initializeDestinations,
 } from '@/secrets/destinations'
 import { httpOrigin } from '@/secrets/DestinationPolicy'
@@ -20,7 +21,9 @@ export function secretNames(value: unknown): string[] {
 export function secretRequestForTool(tool: string, args: unknown): SecretRequest | null {
   if (KEY_TOOLS.has(tool)) return args as SecretRequest
   if (tool.startsWith('mcp_')) {
-    const server = AbeleConfig.getInstance().ai?.mcpServers?.find((s) => s.tools.some((t) => mcpToolName(s.name, t.name) === tool))
+    const server = AbeleConfig.getInstance().ai?.mcpServers?.find((s) =>
+      s.tools.some((t) => mcpToolName(s.name, t.name) === tool)
+    )
     if (server) return { url: server.url, headers: server.headers }
   }
   return null
@@ -92,7 +95,12 @@ export function prepareSecretRequest(
   request: SecretRequest
 ): SecretRequest & { headers: Record<string, string>; secretValues: string[] } {
   const info = secretRequestInfo(request)
-  if (!info.names.length) return { ...request, headers: request.headers ?? {}, secretValues: [] }
+  if (!info.names.length)
+    return {
+      ...request,
+      headers: request.headers ?? {},
+      secretValues: checkRequestDestinations(request, AbeleConfig.getInstance()),
+    }
   const config = AbeleConfig.getInstance()
   initializeDestinations(config)
   const values = new Map<string, string>()

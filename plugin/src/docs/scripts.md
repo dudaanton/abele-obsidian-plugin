@@ -14,6 +14,13 @@ the same origin, but another host, scheme or port needs its own approval. Cancel
 nothing; Stop dismisses the question. A saved key cannot be used in the URL's authority.
 A script-started agent cannot make requests requiring this interactive approval.
 
+For a literal Authorization or API-key header sent over home-network HTTP, open **Review key
+destinations**, enter the address and choose the concrete saved key (or explicitly save a new
+named key with exactly that header's key material). **Allow key and address** approves only this
+key and canonical recipient and the device-local unencrypted transport. Retry the unchanged
+script yourself; approval never replays it. Different keys, hosts or ports remain unapproved.
+Key values are never written to the destination list or ordinary settings.
+
 ## Network limits
 
 `ctx.fetch` waits at most five minutes, including redirects, and accepts at most 20 MB.
