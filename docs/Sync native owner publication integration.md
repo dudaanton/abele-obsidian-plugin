@@ -56,9 +56,26 @@ and retained local data. The two former pending image assertions now execute rea
   path can accidentally pass by using a fresh-fixture generation-one constant.
 
 The native clipboard operation takes the app-wide lock, waits for other pool leases to drain,
-preserves/restores clipboard formats, and drives only the owned source editor. A busy shared
+preserves/restores every native pasteboard item/type with exact comparison (not an overwriting
+Electron `writeBuffer` loop), and drives only the owned source editor. The archive implementation
+also has a real AppKit round-trip test in an isolated named pasteboard, never the global clipboard.
+A pool lease does not imply that its window is open: the runner verifies a nonce-framed owned-vault
+reply, opens a closed owned window under the short app gate, and requests its original closed
+state afterward. Unroutable CLI/close requests are errors, not successful process-exit proof. A busy shared
 resource is a failed/blocked run, never a skip or acceptance pass. Builds, styles, original local
 bindings, layout and all owned server/daemon/database resources are restored by the harness.
+
+### Verification checkpoint
+
+The initial reviewed-input scenario ran **3/3 green**, including Cyrillic paths and both real
+image cases. Subsequent strengthening added exact paste-range/remote invalidation, current
+eligibility, admission-generation out/re-entry and exact all-format clipboard restoration.
+Scoped native-create/private-collision assertions also passed after out/re-entry. Final-source
+owner reruns were first blocked by another pool lease, then by an unresponsive/non-routable
+Obsidian CLI before the suite started. Thus the strengthened **final native gate is not yet
+signed off green**. No additional missing sponsor-proof server contract was identified. The
+manager must rerun the explicit gate on a healthy native CLI; no mandatory assertion was
+removed, relaxed or skipped. See the worker's batch16 report for chronological logs.
 
 This is the desktop owner plus real CLI scenario, not Android/Boox/iPad/physical-phone acceptance
 or production activation. The narrow paste-range adapter deliberately does not authorize other

@@ -87,6 +87,11 @@ import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
 import { joinFixtureTransfer } from './joinFixtureTransfer'
 import { prepareFixtureContext, restoreFixtureContext } from './fixtureContext'
+import {
+  enableOwnerPublicationFixture,
+  disableOwnerPublicationFixture,
+  ownerPublicationDiagnostics,
+} from './ownerPublicationFixture'
 import { openFencedScreen, closeFencedScreen, FENCED_SCREENS } from './fencedScreens'
 import { startPhoneReplay, verifyPhoneReplay, clearPhoneReplayEvidence } from './phoneReplay'
 import { desktopTransport } from '@/sync/desktopTransport'
@@ -188,6 +193,9 @@ interface AbeleTestApi {
   openFencedScreen: typeof openFencedScreen
   closeFencedScreen: typeof closeFencedScreen
   fencedScreens: typeof FENCED_SCREENS
+  enableOwnerPublicationFixture: typeof enableOwnerPublicationFixture
+  disableOwnerPublicationFixture: typeof disableOwnerPublicationFixture
+  ownerPublicationDiagnostics: typeof ownerPublicationDiagnostics
   prepareFixtureContext: typeof prepareFixtureContext
   restoreFixtureContext: typeof restoreFixtureContext
   startPhoneReplay: typeof startPhoneReplay
@@ -753,6 +761,9 @@ export function exposeTestApi(plugin: Plugin): void {
     openFencedScreen,
     closeFencedScreen,
     fencedScreens: FENCED_SCREENS,
+    enableOwnerPublicationFixture,
+    disableOwnerPublicationFixture,
+    ownerPublicationDiagnostics,
     prepareFixtureContext,
     restoreFixtureContext,
     startPhoneReplay,

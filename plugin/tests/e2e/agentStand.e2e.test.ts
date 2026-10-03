@@ -12,7 +12,9 @@ import {
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { SyncClient } from '@abele/sync-core'
+import { SyncClient, createScopedClient, sha256 } from '@abele/sync-core'
+import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
+import { pasteNativeImage } from './helpers/nativePaste'
 import { OwnerFolderHttpPort } from '@/sync/sharing/ownerHttp'
 import { FolderSharingFlow } from '@/sync/sharing/folderSharing'
 import { vaultCli, type VaultCli } from './helpers/obsidianCli'
@@ -22,7 +24,6 @@ import {
   assertAgentCredential,
   spawnAgentStandServer,
   agentCommand,
-  requireAgentImageGate,
 } from './helpers/agentStandHarness'
 let cli: VaultCli | undefined,
   server: Awaited<ReturnType<typeof spawnAgentStandServer>> | undefined,
@@ -31,10 +32,35 @@ let cli: VaultCli | undefined,
   fixture = ''
 const nodeFetch = globalThis.fetch
 const svc = 'window.__abeleTest.SyncService.getInstance()'
+const attachmentRoot = 'Вложения примера',
+  sponsorPath = 'Agents/Пример заметки.md'
+let images:
+  | {
+      agent: string
+      grantId: string
+      keyId: string
+      keyToken: string
+      vaultId: string
+      owner: () => Promise<void>
+      run: () => string
+      personal: ReturnType<SyncClient['forVault']>
+    }
+  | undefined
+let attachmentOwned = false
+let nativeConfig: unknown = null
 afterAll(async () => {
   const errors: unknown[] = []
   if (isolated && cli) {
     try {
+      await cli.evalAwait('window.__abeleTest.disableOwnerPublicationFixture(app)')
+      if (nativeConfig !== null)
+        cli.evalAwait(
+          `(()=>{const config=${JSON.stringify(nativeConfig)};for(const [key,value] of Object.entries(config))app.vault.setConfig(key,value);return true})()`
+        )
+      if (attachmentOwned)
+        cli.evalAwait(
+          `(async()=>{if(await app.vault.adapter.exists(${JSON.stringify(attachmentRoot)}))await app.vault.adapter.rmdir(${JSON.stringify(attachmentRoot)},true);return true})()`
+        )
       const backup = cli.evalAwait<{ root?: string } | null>(
         "app.loadLocalStorage('task14-isolated-fixture')"
       )
@@ -235,9 +261,231 @@ describe.skipIf(!process.env.ABELE_AGENT_STAND_STAGE)('agent disposable stand ga
     expect(existsSync(join(agent, '.abele-sync/agent.sqlite'))).toBe(true)
     flow.clear()
     ownerPort.close()
+    // Keep every original revoked-key assertion. Images use an independent scoped principal.
+    const next = await nodeFetch(
+      server.url + '/v1/vaults/' + connection.vaultId + '/grants/' + key.grantId + '/keys',
+      {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + account, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          attempt_id: crypto.randomUUID(),
+          name: 'Sample image agent',
+          role: 'editor',
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+        }),
+      }
+    )
+    expect(next.status).toBe(201)
+    const imageKey = await next.json()
+    assertAgentCredential(imageKey.key_token)
+    const imageAgent = join(work, 'image-agent')
+    mkdirSync(imageAgent)
+    agentCommand(
+      fixture,
+      imageAgent,
+      [
+        'setup',
+        '--server',
+        server.url,
+        '--vault',
+        connection.vaultId,
+        '--grant',
+        key.grantId,
+        '--principal',
+        imageKey.key_id,
+      ],
+      imageKey.key_token
+    )
+    images = {
+      agent: imageAgent,
+      grantId: key.grantId,
+      keyId: imageKey.key_id,
+      keyToken: imageKey.key_token,
+      vaultId: connection.vaultId,
+      owner,
+      personal,
+      run: () => agentCommand(fixture, imageAgent, ['run', '--once']),
+    }
   })
-  it('owner extras and automatic root-folder paste publication are mandatory pending holds', () =>
-    requireAgentImageGate('owner-extras'))
-  it('agent native root-folder image create/private-collision checks are mandatory pending holds', () =>
-    requireAgentImageGate('native-image'))
+  it('owner extras and automatic root-folder paste publication are mandatory pending holds', async () => {
+    if (!images || !cli || !server) throw new Error('Owned folder lifecycle prerequisite missing')
+    expect(cli.evalAwait(`app.vault.adapter.exists(${JSON.stringify(attachmentRoot)})`)).toBe(false)
+    nativeConfig = cli.evalAwait(
+      `Object.fromEntries(['attachmentFolderPath','newLinkFormat','useMarkdownLinks'].map(k=>[k,app.vault.getConfig(k)]))`
+    )
+    attachmentOwned = true
+    cli.evalAwait(
+      `(async()=>{await app.vault.createFolder(${JSON.stringify(attachmentRoot)});await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify('*\n!Agents/\n!Agents/**\n!Agents-private/\n!Agents-private/**\n!' + attachmentRoot + '/\n!' + attachmentRoot + '/**\n')});app.vault.setConfig('attachmentFolderPath',${JSON.stringify(attachmentRoot)});app.vault.setConfig('newLinkFormat','shortest');app.vault.setConfig('useMarkdownLinks',false);return true})()`
+    )
+    await images.owner()
+    await cli.evalAwait(
+      `window.__abeleTest.enableOwnerPublicationFixture(app,${JSON.stringify([images.grantId])})`
+    )
+    cli.evalAwait(
+      `(async()=>{const file=await app.vault.create(${JSON.stringify(sponsorPath)},${JSON.stringify('Пример исходной заметки\n')});await ${svc}.syncNow();const leaf=app.workspace.getLeaf(false);await leaf.openFile(file,{state:{mode:'source'}});return true})()`
+    )
+    await images.owner()
+    // Exit/re-entry invalidates generation-one guesses. Both owner add and native create must
+    // consume the authorized current intrinsic-note proof, including Unicode path keys.
+    const outside = 'Agents-private/Пример заметки.md'
+    cli.evalAwait(
+      `(async()=>{if(!await app.vault.adapter.exists('Agents-private'))await app.vault.createFolder('Agents-private');await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(sponsorPath)}),${JSON.stringify(outside)});return true})()`
+    )
+    await images.owner()
+    cli.evalAwait(
+      `app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(outside)}),${JSON.stringify(sponsorPath)}).then(()=>true)`
+    )
+    await images.owner()
+    cli.evalAwait(
+      `app.vault.modify(app.vault.getAbstractFileByPath(${JSON.stringify(sponsorPath)}),${JSON.stringify('Пример исходной заметки\nВернулась в область\n')}).then(()=>true)`
+    )
+    await images.owner()
+    const proofReader = new SponsoredAssetsHttpPort({
+      baseUrl: server.url,
+      fetch: nodeFetch,
+      enabled: () => true,
+      context: {
+        facet: 'scoped',
+        vaultId: images.vaultId,
+        principalId: images.keyId,
+        token: () => images!.keyToken,
+      },
+    })
+    const noteIdentity = (await images.personal.manifest(null)).items.find(
+      (i) => i.path === sponsorPath
+    )!
+    expect(
+      (await proofReader.sponsorProof(images.grantId, noteIdentity.file_id)).admissionGeneration
+    ).toBeGreaterThan(1)
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+      'base64'
+    )
+    expect((await pasteNativeImage(cli, process.env.OBSIDIAN_TEST_VAULT!, [...png])).trusted).toBe(
+      true
+    )
+    let publishedPath = ''
+    await waitFor(
+      () =>
+        'native automatic paste publication: ' +
+        JSON.stringify(cli!.evalAwait('window.__abeleTest.ownerPublicationDiagnostics(app)')),
+      async () => {
+        await images!.owner()
+        images!.run()
+        const paths = cli!.evalAwait<string[]>(
+          `app.vault.getFiles().filter(f=>f.path.startsWith(${JSON.stringify(attachmentRoot + '/')})).map(f=>f.path)`
+        )
+        if (paths.length !== 1) return false
+        publishedPath = paths[0]
+        return existsSync(join(images!.agent, publishedPath))
+      },
+      30000
+    )
+    expect(publishedPath.split('/')).toHaveLength(2)
+    const nativeBytes = cli.evalAwait<number[]>(
+      `app.vault.adapter.readBinary(${JSON.stringify(publishedPath)}).then(b=>[...new Uint8Array(b)])`
+    )
+    expect([...readFileSync(join(images.agent, publishedPath))]).toEqual(nativeBytes)
+    expect(cli.evalAwait(`app.vault.adapter.read(${JSON.stringify(sponsorPath)})`)).toContain('![[')
+    expect(
+      cli
+        .evalAwait<any>('window.__abeleTest.ownerPublicationDiagnostics(app)')
+        .pastes.some((p: any) => p.done)
+    ).toBe(true)
+    const reader = new SponsoredAssetsHttpPort({
+      baseUrl: server.url,
+      fetch: nodeFetch,
+      enabled: () => true,
+      context: {
+        facet: 'scoped',
+        vaultId: images.vaultId,
+        principalId: images.keyId,
+        token: () => images!.keyToken,
+      },
+    })
+    expect(
+      (await reader.read(images.grantId)).entries.some(
+        (e) => e.kind === 'owner-extra' && e.target.path === publishedPath
+      )
+    ).toBe(true)
+  })
+  it('agent native root-folder image create/private-collision checks are mandatory pending holds', async () => {
+    if (!images || !cli || !server) throw new Error('Owned image prerequisite missing')
+    const note = (await images.personal.manifest(null)).items.find((i) => i.path === sponsorPath)
+    expect(note).toBeDefined()
+    const scopeClient = await createScopedClient({
+      baseUrl: server.url,
+      fetch: nodeFetch,
+      token: images.keyToken,
+      vaultId: images.vaultId,
+      grantId: images.grantId,
+      principalId: images.keyId,
+      principalKind: 'key',
+    })
+    const api = new SponsoredAssetsHttpPort({
+        baseUrl: server.url,
+        fetch: nodeFetch,
+        enabled: () => true,
+        context: {
+          facet: 'scoped',
+          vaultId: images.vaultId,
+          principalId: images.keyId,
+          token: () => images!.keyToken,
+        },
+      }),
+      bytes = new Uint8Array([0, 255, 128, 4]),
+      sha = await sha256(bytes)
+    const sponsor = await api.sponsorProof(images.grantId, note!.file_id)
+    expect(sponsor.versionId).toBe(note!.version_id)
+    await scopeClient.putBlob(sha, bytes)
+    const upload = await api.proof(images.grantId, sha),
+      path = attachmentRoot + '/Картинка агента.png',
+      request = {
+        grantId: images.grantId,
+        path,
+        localCreateHandle: 'sample-native-' + crypto.randomUUID(),
+        sha,
+        eligible: true,
+        sponsor,
+        upload,
+      }
+    const created = await api.nativeCreate(images.grantId, request)
+    expect(await api.nativeCreate(images.grantId, request)).toEqual(created)
+    images.run()
+    await images.owner()
+    expect([...readFileSync(join(images.agent, path))]).toEqual([...bytes])
+    expect(
+      cli.evalAwait<number[]>(
+        `app.vault.adapter.readBinary(${JSON.stringify(path)}).then(b=>[...new Uint8Array(b)])`
+      )
+    ).toEqual([...bytes])
+    const privatePath = attachmentRoot + '/Частная картинка.png'
+    cli.evalAwait(
+      `app.vault.createBinary(${JSON.stringify(privatePath)},new Uint8Array([9,8,7]).buffer).then(()=>true)`
+    )
+    await images.owner()
+    images.run()
+    expect(existsSync(join(images.agent, privatePath))).toBe(false)
+    const old = (await images.personal.manifest(null)).items.find((i) => i.path === privatePath)!
+    await scopeClient.putBlob(sha, bytes)
+    const fresh = await api.proof(images.grantId, sha)
+    await expect(
+      api.nativeCreate(images.grantId, {
+        ...request,
+        path: privatePath,
+        localCreateHandle: 'sample-private-collision-' + crypto.randomUUID(),
+        upload: fresh,
+      })
+    ).rejects.toMatchObject({ status: 404, code: 'not_found' })
+    expect(
+      (await images.personal.manifest(null)).items.find((i) => i.path === privatePath)!.file_id
+    ).toBe(old.file_id)
+    expect(
+      cli.evalAwait<number[]>(
+        `app.vault.adapter.readBinary(${JSON.stringify(privatePath)}).then(b=>[...new Uint8Array(b)])`
+      )
+    ).toEqual([9, 8, 7])
+    images.run()
+    expect(existsSync(join(images.agent, privatePath))).toBe(false)
+  })
 })
