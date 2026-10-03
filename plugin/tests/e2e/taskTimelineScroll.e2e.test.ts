@@ -13,6 +13,7 @@ import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { timelineStyleReference } from './helpers/timelineStyleReference'
 import { PIXEL_PROBE } from './helpers/stablePixels'
+import { TIMELINE_POSITION_PROBE } from './helpers/timelinePosition'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -59,6 +60,7 @@ interface Probe {
 }
 const script = (footer: boolean, short = false) => String.raw`(async function* () {
   ${PIXEL_PROBE}
+  ${TIMELINE_POSITION_PROBE}
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready: ' + condition) }
   const createTask = async (path, text) => {
@@ -200,10 +202,18 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       if (!document.body.classList.contains('is-phone')) return viewport
       return Math.max(viewport, chromeBottom())
     }
-    const align = el => {
-      // Model a reader's input before positioning, so a prior patch's temporary hold ends.
-      scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 1 }))
-      scroller.scrollTop += el.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0) - 8
+    const align = async el => {
+      // Entering a paged region paints lazy titles after its first scroll frame. Position
+      // the intended first read row through that settling, not a lower row that drifted
+      // below newly painted predecessors before the completed toggle even began.
+      const displacement = () => {
+        if (!el.isConnected) throw Error('timeline fixture row was replaced while positioning')
+        return el.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0) - 8
+      }
+      await settleTimelinePosition(displacement, () => {
+        scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 1 }))
+        scroller.scrollTop += displacement()
+      }, () => wait(100))
     }
     const shot = async name => {
       const path = shots + '/' + phase + '-' + (${short} ? 'short-' : '') + (${footer} ? 'footer' : 'sidebar') + '-' + (app.isMobile ? 'phone' : 'desktop') + '-' + name + '.png'
@@ -407,7 +417,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     scroller.removeEventListener('wheel', wheel)
     report.scrollRevealed = dates()
     yield 'revealing history and completion anchors'
-    align(row(0)); await wait(500)
+    await align(row(0)); await wait(500)
     const beforeReveal = row(0).getBoundingClientRect().top
     await revealClick()
     await wait(1200)
@@ -415,7 +425,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     report.revealed = dates()
     report.countAfter = strip()?.textContent.trim() ?? null
     // Keep the first incomplete row under the eye while completed rows appear above it.
-    align(row(0)); await wait(500)
+    await align(row(0)); await wait(500)
     const before = row(0).getBoundingClientRect().top
     root.querySelector('.abele-timeline__completed-toggle').click()
     await wait(1200)
@@ -431,7 +441,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     yield 'future rows and collapsing history'
     for (let i = 0; i < 4 && !row(25); i++) { scroller.scrollTop = scroller.scrollHeight; await wait(700) }
     await until(() => row(25))
-    align(row(25)); await wait(1000)
+    await align(row(25)); await wait(1000)
     const futureBefore = row(25).getBoundingClientRect().top
     root.querySelector('.abele-timeline__completed-toggle').click()
     await wait(1200)
@@ -446,7 +456,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await revealClick()
     await wait(1200)
     report.rerevealAnchor = [beforeRereveal, row(25).getBoundingClientRect().top]
-    align(row(-40)); await wait(1000)
+    await align(row(-40)); await wait(1000)
     const removedBefore = row(-40).getBoundingClientRect().top
     await revealClick()
     await wait(1200)
@@ -460,7 +470,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       root.querySelector('.abele-timeline__completed-toggle').click()
       await wait(1200)
       config.rememberNotePlaces = true
-      align(row(-1)); await wait(1500)
+      await align(row(-1)); await wait(1500)
       const beforeReturn = row(-1).getBoundingClientRect().top - scroller.getBoundingClientRect().top
       await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample item 0 1.md'))
       await wait(500)
