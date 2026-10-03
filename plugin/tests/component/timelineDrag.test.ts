@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import dayjs from 'dayjs'
+import 'dayjs/locale/ru'
+import { GlobalStore } from '@/stores/GlobalStore'
 import Timeline from '@/components/Timeline.vue'
 import { Task } from '@/entities/Task'
 import { configureAbele, useVault } from '../helpers/testEnv'
@@ -63,10 +65,42 @@ beforeEach(() => {
 afterEach(() => {
   view?.unmount()
   owner.remove()
+  dayjs.locale('en')
   vi.restoreAllMocks()
 })
 
 describe('timeline task dragging', () => {
+  it.each([
+    ['en', true, 'Saturday', 'Sunday', 'Monday'],
+    ['en', false, 'Saturday', 'Sunday', 'Monday'],
+    ['ru', true, 'суббота', 'воскресенье', 'понедельник'],
+    ['ru', false, 'суббота', 'воскресенье', 'понедельник'],
+  ] as const)(
+    'labels drag dates in locale %s with Monday-first=%s without changing normal date links',
+    async (locale, monday, saturday, sunday, mondayName) => {
+      configureAbele().weekStartsOnMonday = monday
+      GlobalStore.getInstance().applySettings()
+      dayjs.locale(locale)
+      await render([sample('sample-current', '2030-06-15')])
+      const label = (day: string) =>
+        view.find(`[data-abele-anchor="date:${day}"] .timeline__date`).attributes('text')
+      const normal = label('2030-06-15')
+      await pointer('pointerdown', 80, 190, row().element)
+      await pointer('pointermove', 80, 205)
+      for (const [day, weekday] of [
+        ['2030-06-15', saturday],
+        ['2030-06-16', sunday],
+        ['2030-06-17', mondayName],
+      ]) {
+        expect(label(day)).toContain(weekday)
+        expect(label(day)).toContain(`[[${day}|`)
+      }
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await flushPromises()
+      expect(label('2030-06-15')).toBe(normal)
+    }
+  )
+
   it('leaves a click alone and expands every calendar date only after movement exceeds the threshold', async () => {
     await render([sample('sample-current', '2030-06-15')])
     await pointer('pointerdown', 80, 190, row().element)
@@ -89,6 +123,16 @@ describe('timeline task dragging', () => {
 
   it('temporarily shows hidden past and completed rows within the month and restores both on Escape', async () => {
     const current = sample('sample-current', '2030-06-15')
+    current.dateTime = dayjs('2030-06-15T09:30')
+    current.due = dayjs('2030-06-15')
+    current.dueTime = dayjs('2030-06-15T17:00')
+    const before = {
+      date: current.date,
+      due: current.due,
+      dateTime: current.dateTime,
+      dueTime: current.dueTime,
+      content: current.content,
+    }
     const write = vi.spyOn(current, 'writeTaskToFile').mockResolvedValue(undefined)
     await render([
       sample('sample-past', '2030-06-14'),
@@ -106,6 +150,19 @@ describe('timeline task dragging', () => {
     expect(view.findAll('[data-timeline-item]')).toHaveLength(1)
     expect(write).not.toHaveBeenCalled()
     expect(document.querySelector('.abele-timeline__drag-card')).toBeNull()
+    expect(view.find('.abele-timeline__drag-source').exists()).toBe(false)
+    expect(view.find('.abele-timeline__dragging').exists()).toBe(false)
+    expect(view.find('.abele-timeline__drop-target').exists()).toBe(false)
+    for (const field of ['date', 'due', 'dateTime', 'dueTime', 'content'] as const)
+      expect(current[field]).toBe(before[field])
+    await pointer('pointerup', 80, 205)
+    expect(write).not.toHaveBeenCalled()
+    await pointer('pointerdown', 80, 190, row().element)
+    await pointer('pointermove', 80, 205)
+    expect(days()).toHaveLength(62)
+    await pointer('pointercancel', 80, 205)
+    expect(days()).toEqual(['date:2030-06-15'])
+    expect(write).not.toHaveBeenCalled()
   })
 
   it('uses the task persistence API on drop and keeps the landing day when history is hidden', async () => {

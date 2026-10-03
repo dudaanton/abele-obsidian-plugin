@@ -62,6 +62,38 @@ export function useTimelineScroll(
 
   let leadingSpace = 0
   let releaseLeadingOnScroll = false
+  let restoringDrag = false
+  // Cancellation is a rollback, not a drop anchor. Snapshot only this scroll owner's
+  // layout so a temporary month cannot leave leading/trailing compensation behind.
+  const captureDragLayout = () => {
+    stopHolding()
+    const root = items.value
+    if (!root) return async () => {}
+    const owner = timelineScrollOwner(root)
+    const space = anchorSpace.value
+    const before = {
+      top: owner.scrollTop,
+      padding: root.style.paddingTop,
+      height: space?.style.height ?? '',
+      leading: leadingSpace,
+      releaseLeading: releaseLeadingOnScroll,
+    }
+    return async () => {
+      restoringDrag = true
+      stopHolding()
+      try {
+        await nextTick()
+        root.style.paddingTop = before.padding
+        if (space) space.style.height = before.height
+        leadingSpace = before.leading
+        releaseLeadingOnScroll = before.releaseLeading
+        owner.scrollTop = before.top
+        alignedScroll = { owner, top: owner.scrollTop }
+      } finally {
+        restoringDrag = false
+      }
+    }
+  }
   const releaseSpace = () => anchorSpace.value?.style.removeProperty('height')
   const releaseUnusedSpace = (owner: HTMLElement) => {
     if (releaseLeadingOnScroll && !dragging() && leadingSpace && owner.scrollTop >= leadingSpace) {
@@ -243,6 +275,7 @@ export function useTimelineScroll(
   watch(
     () => (items.value ? windowSource() : null),
     () => {
+      if (restoringDrag) return
       const align = hold()
       void nextTick(align)
     },
@@ -353,4 +386,5 @@ export function useTimelineScroll(
     releaseSpace()
     items.value?.style.removeProperty('padding-top')
   })
+  return { captureDragLayout }
 }

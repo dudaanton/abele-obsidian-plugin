@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it } from 'vitest'
-import { evalLong, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
-import { targets } from './helpers/target'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
@@ -12,7 +12,16 @@ const probe = (footer: boolean) => String.raw`(async () => {
   const folder = 'Sample drag probe'
   const day = offset => { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+offset); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
   const report = {}
+  const picture = async name => {
+    const path = ${JSON.stringify(shots)}+'/'+(${footer}?'footer':'sidebar')+'-'+(document.body.classList.contains('is-mobile')?'mobile':'desktop')+'-'+name+'.png'
+    if (window.__e2eHost) await window.__e2eHost.shot(path)
+    else {
+      const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+      require('fs').writeFileSync(path,image.toPNG())
+    }
+  }
   let leaf
+  const previousLeaf=app.workspace.activeLeaf
   const cleanups=[]
   try {
     if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
@@ -38,7 +47,17 @@ const probe = (footer: boolean) => String.raw`(async () => {
     await until(row)
     const align=()=> { scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:1})); scroller.scrollTop+=row().getBoundingClientRect().top-scroller.getBoundingClientRect().top-240 }
     align(); await wait(800)
+    // Start cancellation from natural scroll range, not compensation left by mounting
+    // a short list. Then test that this gesture contributes no spacer of its own.
+    scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-1}))
+    scroller.scrollTop=0
+    scroller.dispatchEvent(new Event('scroll'))
+    await wait(900)
+    report.initialState={padding:root.querySelector('.abele-timeline__blocks').style.paddingTop,space:root.querySelector('.abele-timeline__anchor-space').style.height}
     const initial=dates()
+    const initialScroll=scroller.scrollTop
+    const initialSource=await app.vault.read(app.vault.getAbstractFileByPath(folder+'/Sample moving.md'))
+    await picture('before')
     const r=row().getBoundingClientRect(), x=r.left+r.width/2, y=r.top+10
     const pointer=(type,px,py,target=document)=>target.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:1,pointerType:'mouse',isPrimary:true,button:0,clientX:px,clientY:py}))
     pointer('pointerdown',x,y,row()); pointer('pointermove',x+2,y+2); await wait(100)
@@ -50,6 +69,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
     report.range=dates()
     report.startAnchor=[before,row().getBoundingClientRect().top]
     if (report.range.length < 20) return JSON.stringify(report)
+    report.weekdays=[...root.querySelectorAll('.timeline__date')].every(el => /Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday/.test(el.textContent))
+    await picture('drag')
     report.hiddenVisible=!!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample completed.md"]') && !!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample past.md"]')
     const usableBottom=()=>Math.min(scroller.getBoundingClientRect().bottom,...[...document.querySelectorAll('.mobile-navbar,.mobile-toolbar')].flatMap(el=>{const r=el.getBoundingClientRect();return r.height && r.top>scroller.getBoundingClientRect().top && r.top<scroller.getBoundingClientRect().bottom?[r.top]:[]}))
     const edge=usableBottom()-8
@@ -60,7 +81,11 @@ const probe = (footer: boolean) => String.raw`(async () => {
     await wait(300); report.edgeStopped=scroller.scrollTop-stopped
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
     await wait(1000)
-    report.cancelled=JSON.stringify(dates())===JSON.stringify(initial) && (await app.vault.read(app.vault.getAbstractFileByPath(folder+'/Sample moving.md'))).includes('date: '+day(0))
+    report.cancelled=JSON.stringify(dates())===JSON.stringify(initial) && (await app.vault.read(app.vault.getAbstractFileByPath(folder+'/Sample moving.md')))===initialSource
+    report.cancelState={ padding:root.querySelector('.abele-timeline__blocks').style.paddingTop, space:root.querySelector('.abele-timeline__anchor-space').style.height, ghost:!!document.querySelector('.abele-timeline__drag-card'), source:!!root.querySelector('.abele-timeline__drag-source'), dragging:!!root.querySelector('.abele-timeline__dragging'), target:!!root.querySelector('.abele-timeline__drop-target'), scroll:[initialScroll,scroller.scrollTop] }
+    app.workspace.setActiveLeaf(leaf,{focus:true})
+    await wait(200)
+    await picture('cancel')
     align(); await wait(800)
     const a=row().getBoundingClientRect(), ax=a.left+a.width/2, ay=a.top+10
     pointer('pointerdown',ax,ay,row()); pointer('pointermove',ax,ay+12); await wait(900)
@@ -125,20 +150,58 @@ const probe = (footer: boolean) => String.raw`(async () => {
     for(const cleanup of cleanups) cleanup()
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
     leaf?.detach()
+    if(previousLeaf) app.workspace.setActiveLeaf(previousLeaf,{focus:true})
     const dir=app.vault.getAbstractFileByPath(folder)
     if(dir) await app.vault.delete(dir,true)
   }
 })()`
 
 describe.skipIf(!available)('timeline drag in native scroll panes', () => {
-  beforeAll(() => reloadApp('app.emulateMobile(false)'))
-  it.each([false, true])(
-    'anchors expansion and drop, scrolls only near an edge and restores filters (footer=%s)',
-    async (footer) => {
+  let originalSize: number[] = []
+  let originalMobile = false
+  beforeAll(async () => {
+    if (!onPhone()) {
+      originalSize = JSON.parse(
+        evalRaw("require('@electron/remote').getCurrentWindow().getContentSize()")
+      )
+      originalMobile = evalRaw("document.body.classList.contains('is-mobile')") === 'true'
+    }
+    await reloadApp('app.emulateMobile(false)')
+  })
+  afterAll(async () => {
+    if (!onPhone()) {
+      evalRaw(
+        `require('@electron/remote').getCurrentWindow().setContentSize(${originalSize[0]},${originalSize[1]})`
+      )
+      await reloadApp(`app.emulateMobile(${originalMobile})`)
+    }
+  })
+  it.each(
+    onPhone()
+      ? [
+          [false, false],
+          [true, false],
+        ]
+      : [
+          [false, false],
+          [true, false],
+          [false, true],
+          [true, true],
+        ]
+  )(
+    'anchors expansion and drop, scrolls only near an edge and restores filters (footer=%s, mobile=%s)',
+    async (footer, mobile) => {
+      if (!onPhone()) {
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '390,844' : originalSize.join(',')})`
+        )
+        await reloadApp(`app.emulateMobile(${mobile})`)
+      }
       const raw = await evalLong(probe(footer), 120_000)
       if (raw.startsWith('Error:')) throw new Error(raw)
       const result = JSON.parse(raw)
       console.log(JSON.stringify(result))
+      expect(result.initialState).toEqual({ padding: '', space: '' })
       expect(result.threshold).toBe(true)
       expect(result.range.length).toBeGreaterThanOrEqual(59)
       expect(result.range.length).toBeLessThanOrEqual(63)
@@ -148,6 +211,18 @@ describe.skipIf(!available)('timeline drag in native scroll panes', () => {
       expect(result.edgeScroll).toBeGreaterThan(0)
       expect(result.edgeStopped).toBe(0)
       expect(result.cancelled).toBe(true)
+      expect(result.cancelState).toMatchObject({
+        padding: '',
+        space: '',
+        ghost: false,
+        source: false,
+        dragging: false,
+        target: false,
+      })
+      expect(
+        Math.abs(result.cancelState.scroll[1] - result.cancelState.scroll[0])
+      ).toBeLessThanOrEqual(1)
+      expect(result.weekdays).toBe(true)
       expect(result.written).toBe(true)
       expect(Math.abs(result.dropAnchor[1] - result.dropAnchor[0])).toBeLessThanOrEqual(1)
       expect(result.extraGone).toBe(true)

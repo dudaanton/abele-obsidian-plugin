@@ -44,8 +44,9 @@ async function pane(
   const anchorSpace = ref<HTMLElement | null>(null)
   const source = ref(0)
   const scope = effectScope()
-  scope.run(() =>
-    useTimelineScroll(
+  let scroll: ReturnType<typeof useTimelineScroll>
+  scope.run(() => {
+    scroll = useTimelineScroll(
       items,
       history,
       anchorSpace,
@@ -57,7 +58,7 @@ async function pane(
           : { key: 'sample-task', day: '2030-06-15', top: requestedTop },
       () => dragging
     )
-  )
+  })
   items.value = root
   anchorSpace.value = space
   await nextTick()
@@ -84,10 +85,48 @@ async function pane(
     source,
     patch,
     shift: (amount: number) => (top += amount),
+    captureDragLayout: () => scroll.captureDragLayout(),
   }
 }
 
 describe('timeline scroll ownership', () => {
+  it('rolls temporary drag compensation and scroll back without retaining a cancellation anchor', async () => {
+    const p = await pane(100, undefined, true, 100)
+    const restore = p.captureDragLayout()
+    await p.patch(() => p.shift(-250))
+    expect(p.root.style.paddingTop).toBe('150px')
+    p.space.style.height = '400px'
+    p.owner.scrollTop = 60
+    const collapse = p.patch(() => p.shift(250))
+    await restore()
+    await collapse
+    expect(p.root.style.paddingTop).toBe('')
+    expect(p.space.style.height).toBe('')
+    expect(p.owner.scrollTop).toBe(100)
+    expect(p.owner.classList.contains('abele-timeline__scroll-hold')).toBe(false)
+    p.owner.dispatchEvent(new Event('scroll'))
+    expect(p.owner.scrollTop).toBe(100)
+    // A subsequent drag still acquires and aligns its own anchor.
+    await p.patch(() => p.shift(30))
+    expect(p.owner.scrollTop).toBe(130)
+  })
+
+  it('preserves compensation that already belonged to an earlier successful drop', async () => {
+    const p = await pane(100, undefined, true, 100)
+    await p.patch(() => p.shift(-250))
+    expect(p.root.style.paddingTop).toBe('150px')
+    p.space.style.height = '80px'
+    const restore = p.captureDragLayout()
+    await p.patch(() => p.shift(-90))
+    p.space.style.height = '300px'
+    const collapse = p.patch(() => p.shift(90))
+    await restore()
+    await collapse
+    expect(p.root.style.paddingTop).toBe('150px')
+    expect(p.space.style.height).toBe('80px')
+    expect(p.owner.scrollTop).toBe(0)
+  })
+
   it('corrects deferred native viewport restoration after a drop, but gives way to fresh reader input', async () => {
     const p = await pane(100, undefined, false, 100)
     await p.patch(() => {})

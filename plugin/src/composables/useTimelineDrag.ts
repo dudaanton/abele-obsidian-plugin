@@ -23,7 +23,11 @@ interface Landing {
 }
 
 /** Gesture ownership starts only after intent, never on a click or an ordinary touch pan. */
-export function useTimelineDrag(root: Ref<HTMLElement | null>, tasks: () => readonly Task[]) {
+export function useTimelineDrag(
+  root: Ref<HTMLElement | null>,
+  tasks: () => readonly Task[],
+  captureLayout?: () => () => Promise<void>
+) {
   const range = shallowRef<DragRange | null>(null)
   const landing = shallowRef<Landing | null>(null)
   const anchor = shallowRef<TimelineAnchor | null>(null)
@@ -53,6 +57,7 @@ export function useTimelineDrag(root: Ref<HTMLElement | null>, tasks: () => read
       let original: HTMLElement | null = null
       let origin: DOMRect | null = null
       let previousLanding: Landing | null = null
+      let restoreLayout: (() => Promise<void>) | null = null
       let x = 0,
         y = 0
       let pressTimer = 0
@@ -146,7 +151,8 @@ export function useTimelineDrag(root: Ref<HTMLElement | null>, tasks: () => read
         const top = day
           ? ghost.getBoundingClientRect().top
           : current.row.getBoundingClientRect().top
-        anchor.value = { key, day: day ?? current.day, top }
+        anchor.value = day ? { key, day, top } : null
+        let rollback = !day
         blockClickUntil = Date.now() + 700
         candidate = null
         busy = true
@@ -171,16 +177,15 @@ export function useTimelineDrag(root: Ref<HTMLElement | null>, tasks: () => read
         } catch {
           Object.assign(current.task, previous)
           landing.value = previousLanding
-          anchor.value = {
-            key,
-            day: current.day,
-            top: current.row.getBoundingClientRect().top,
-          }
+          anchor.value = null
+          rollback = true
           new Notice('Could not move the task. Its date has not changed.')
         } finally {
           range.value = null
           clearVisual()
-          await nextTick()
+          if (rollback && restoreLayout) await restoreLayout()
+          else await nextTick()
+          restoreLayout = null
           // The scroll composable has captured this one-shot anchor before the layout patch.
           anchor.value = null
           busy = false
@@ -189,6 +194,7 @@ export function useTimelineDrag(root: Ref<HTMLElement | null>, tasks: () => read
       const start = () => {
         if (!candidate) return
         const { task, row, day } = candidate
+        restoreLayout = captureLayout?.() ?? null
         origin = row.getBoundingClientRect()
         original = row
         ghost = row.cloneNode(true) as HTMLElement
@@ -345,6 +351,8 @@ export function useTimelineDrag(root: Ref<HTMLElement | null>, tasks: () => read
         clearVisual()
         candidate = null
         range.value = anchor.value = null
+        void restoreLayout?.()
+        restoreLayout = null
         el.removeEventListener('pointerdown', pointerDown)
         doc.removeEventListener('pointermove', pointerMove)
         doc.removeEventListener('pointerup', pointerEnd)

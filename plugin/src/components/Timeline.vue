@@ -170,7 +170,11 @@ const fold = useFooterFold('calendar')
 
 const hideCompleted = ref(true)
 const itemsEl = ref<HTMLElement | null>(null)
-const drag = useTimelineDrag(itemsEl, () => props.tasks)
+const drag = useTimelineDrag(
+  itemsEl,
+  () => props.tasks,
+  () => scroll.captureDragLayout()
+)
 
 const shownTasks = computed(() =>
   props.tasks.filter((task) => {
@@ -312,7 +316,7 @@ const retainedRows = computed(
       visible.value.flatMap(([date, items]) => items.map((item) => 'date:' + date + ':' + item.key))
     )
 )
-useTimelineScroll(
+const scroll = useTimelineScroll(
   itemsEl,
   historyEl,
   anchorSpaceEl,
@@ -338,8 +342,9 @@ const getDateWikilink = (dateStr: string) => {
   if (diff < -1) suffix = `(${Math.abs(diff)} days ago)`
 
   const dateToShow = date.format(DISPLAY_DATE_FORMAT)
+  const weekday = drag.range.value ? ` · ${date.format('dddd')}` : ''
   // TODO: handle user defined daily note format and location
-  return `[[${dateStr}|${dateToShow} ${suffix}]]`
+  return `[[${dateStr}|${dateToShow}${weekday} ${suffix}]]`
 }
 </script>
 
