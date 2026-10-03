@@ -47,6 +47,22 @@ export interface CanvasAssets {
   diagnosticGraph?: CanvasGraph
   /** Interactive frames do not recompute the quadratic diagnostic pass. */
   lint?: boolean
+  /** The interactive backdrop paints connections/groups; ordered card layers paint bodies. */
+  skipCards?: boolean
+  /** Individual card layers must remain transparent outside their shape. */
+  transparent?: boolean
+}
+export function withoutLiveCardAssets(
+  assets: CanvasAssets,
+  live: ReadonlySet<string>
+): CanvasAssets {
+  const contents = new Map(assets.contents),
+    images = new Map(assets.images)
+  for (const id of live) {
+    contents.set(id, '')
+    images.delete(id)
+  }
+  return { ...assets, contents, images }
 }
 export function pictureRegion(
   graph: CanvasGraph,
@@ -195,8 +211,10 @@ export function paintCanvas(
   ctx.beginPath()
   ctx.rect(region.x, region.y, region.width, region.height)
   ctx.clip()
-  ctx.fillStyle = theme.paper
-  ctx.fillRect(region.x, region.y, region.width, region.height)
+  if (!assets.transparent) {
+    ctx.fillStyle = theme.paper
+    ctx.fillRect(region.x, region.y, region.width, region.height)
+  }
   for (const node of visible.filter((n) => n.type === 'group')) {
     ctx.strokeStyle = assets.highlight?.has(node.id)
       ? theme.accent
@@ -287,7 +305,7 @@ export function paintCanvas(
       ctx.fillText(edge.label, middle.x - width / 2, middle.y)
     }
   }
-  for (const node of visible.filter((n) => n.type !== 'group')) {
+  for (const node of visible.filter((n) => n.type !== 'group' && !assets.skipCards)) {
     ctx.save()
     ctx.lineWidth = assets.highlight?.has(node.id) ? 3 : 1.5
     ctx.strokeStyle = assets.highlight?.has(node.id)

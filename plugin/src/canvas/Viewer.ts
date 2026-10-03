@@ -9,7 +9,13 @@ import {
   type CanvasNode,
   type Rect,
 } from './core/model'
-import { paintCanvas, pictureRegion, type CanvasAssets, type CanvasTheme } from './core/painter'
+import {
+  paintCanvas,
+  pictureRegion,
+  withoutLiveCardAssets,
+  type CanvasAssets,
+  type CanvasTheme,
+} from './core/painter'
 import { stepScene, stepsOf, type CanvasStep } from './core/steps'
 
 export interface ViewerCards {
@@ -18,7 +24,9 @@ export interface ViewerCards {
     camera: Camera,
     width: number,
     height: number,
-    highlight: ReadonlySet<string>
+    highlight: ReadonlySet<string>,
+    assets: CanvasAssets,
+    theme: CanvasTheme
   ): ReadonlySet<string>
   destroy(): void
 }
@@ -269,19 +277,21 @@ export class CanvasViewer {
       -this.camera.x * ratio * this.camera.zoom,
       -this.camera.y * ratio * this.camera.zoom
     )
-    const live = this.ports.cards.sync(scene.graph, this.camera, width, height, scene.highlight)
-    const contents = new Map(this.assets.contents),
-      images = new Map(this.assets.images)
-    for (const id of live) {
-      contents.set(id, '')
-      images.delete(id)
-    }
-    paintCanvas(ctx, scene.graph, region, this.ports.theme(), {
-      ...this.assets,
-      contents,
-      images,
+    const theme = this.ports.theme()
+    const live = this.ports.cards.sync(
+      scene.graph,
+      this.camera,
+      width,
+      height,
+      scene.highlight,
+      this.assets,
+      theme
+    )
+    paintCanvas(ctx, scene.graph, region, theme, {
+      ...withoutLiveCardAssets(this.assets, live),
       highlight: scene.highlight,
       lint: false,
+      skipCards: true,
     })
     const key = scene.graph.nodes
       .filter((n) => overlaps(n, region))
