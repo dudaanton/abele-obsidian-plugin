@@ -26,7 +26,8 @@ export interface ContentsObject {
   content: string
 }
 
-const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
+/** Encode path segments separately; slashes (including empty segments) keep their meaning. */
+export const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
 
 export const repoApiPath = (r: RepoOf) =>
   `/repos/${encodeURIComponent(r.owner)}/${encodeURIComponent(r.repo)}`

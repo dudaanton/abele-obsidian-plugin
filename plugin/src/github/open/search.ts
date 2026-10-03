@@ -12,6 +12,7 @@
 import { GithubError, type GithubClient } from '../client'
 import { repoApiPath } from '../contents'
 import { repoWeb } from '../origin'
+import { discussionState, issueState, pullState } from '../itemState'
 import { shortName, type GithubTarget } from '../urls'
 import { compareUrl } from '../compare'
 import { SHA, repoKey, repoName, type OpenQuery, type RepoRef } from './query'
@@ -124,6 +125,7 @@ function problem(e: unknown, search: boolean): string {
 const isGone = (e: unknown) => e instanceof GithubError && (e.status === 404 || e.status === 410)
 
 interface RawIssue {
+  state_reason?: string
   number: number
   title: string
   state: string
@@ -149,11 +151,9 @@ export class OpenSearch {
         what: `${where}`,
       })
       const kind = issue.pull_request ? 'pull' : 'issue'
-      const state = issue.pull_request?.merged_at
-        ? 'merged'
-        : issue.draft && issue.state === 'open'
-          ? 'draft'
-          : issue.state
+      const state = issue.pull_request
+        ? pullState({ ...issue, merged_at: issue.pull_request.merged_at })
+        : issueState(issue)
       return [
         {
           kind,
@@ -193,7 +193,7 @@ export class OpenSearch {
       {
         kind: 'discussion',
         title: d.title,
-        note: `${where} · Discussion · ${d.isAnswered ? 'answered' : d.closed ? 'closed' : 'open'}`,
+        note: `${where} · Discussion · ${discussionState(d)}`,
         url: itemUrl(repo, 'discussion', n),
         repo,
       },

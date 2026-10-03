@@ -7,6 +7,7 @@
  * from either reuses the index the other built.
  */
 import { repoWeb } from '../origin'
+import { encodePath } from '../contents'
 import { Notice } from 'obsidian'
 import type { DiffFile } from '../api'
 import type { GithubClient } from '../client'
@@ -84,8 +85,6 @@ export interface TabCodeSource {
   pick(hits: DefinitionHit[], sha: string, name: string): void
 }
 
-const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
-
 export const webBase = (r: RepoRef) => repoWeb(r)
 
 /**
@@ -108,7 +107,10 @@ export class TabCode implements CodeNav {
   /** The tab's hashes to paths, for naming the file a diff viewer shows. */
   private hashes = new Map<string, string>()
 
-  constructor(private readonly src: TabCodeSource, private readonly captured = false) {}
+  constructor(
+    private readonly src: TabCodeSource,
+    private readonly captured = false
+  ) {}
 
   private identity(): string {
     return JSON.stringify([this.src.client().cacheNamespace, this.src.repo(), this.src.refLabel()])
@@ -116,15 +118,35 @@ export class TabCode implements CodeNav {
 
   /** Capture every input before the first await. A late picker cannot navigate a changed tab. */
   private snapshot(): { code: TabCode; current: () => boolean } {
-    const key = this.identity(), src = this.src, client = src.client(), repo = {...src.repo()}, label = src.refLabel()
-    const sha = src.sha(), blob = src.blob(), limit = src.limitBytes()
-    const current = () => this.src.alive?.() !== false && this.identity() === key && client.isCurrent !== false
-    const code = new TabCode({ ...src, client: () => client, repo: () => repo, refLabel: () => label,
-      sha: () => sha, blob: () => blob, limitBytes: () => limit,
-      open: (url, pane) => { if (current()) src.open(url,pane) },
-      pick: (hits, at, name) => { if (current()) src.pick(hits,at,name) },
-    }, true)
-    return {code,current}
+    const key = this.identity(),
+      src = this.src,
+      client = src.client(),
+      repo = { ...src.repo() },
+      label = src.refLabel()
+    const sha = src.sha(),
+      blob = src.blob(),
+      limit = src.limitBytes()
+    const current = () =>
+      this.src.alive?.() !== false && this.identity() === key && client.isCurrent !== false
+    const code = new TabCode(
+      {
+        ...src,
+        client: () => client,
+        repo: () => repo,
+        refLabel: () => label,
+        sha: () => sha,
+        blob: () => blob,
+        limitBytes: () => limit,
+        open: (url, pane) => {
+          if (current()) src.open(url, pane)
+        },
+        pick: (hits, at, name) => {
+          if (current()) src.pick(hits, at, name)
+        },
+      },
+      true
+    )
+    return { code, current }
   }
 
   refLabel(): string {
@@ -143,7 +165,9 @@ export class TabCode implements CodeNav {
 
   /** The whole repository at the tab's commit, downloading it the first time. */
   async index(onStage?: (s: Stage) => void, signal?: AbortSignal): Promise<RepoIndex> {
-    const client = this.src.client(), repo = {...this.src.repo()}, limit = this.src.limitBytes()
+    const client = this.src.client(),
+      repo = { ...this.src.repo() },
+      limit = this.src.limitBytes()
     const sha = await this.src.sha()
     return repoIndex(client, repo, sha, {
       limitBytes: limit,
@@ -161,7 +185,7 @@ export class TabCode implements CodeNav {
   ): Promise<CodeResults> {
     if (!this.captured) {
       const snapshot = this.snapshot()
-      const result = await snapshot.code.search(scope,query,glob,onStage,signal)
+      const result = await snapshot.code.search(scope, query, glob, onStage, signal)
       if (!snapshot.current()) throw new DOMException('The GitHub tab changed.', 'AbortError')
       return result
     }
@@ -282,7 +306,7 @@ export class TabCode implements CodeNav {
 
   /** Go to definition: one candidate opens, several are offered, none is said. */
   async goToDefinition(name: string, fromPath: string): Promise<void> {
-    if (!this.captured) return this.snapshot().code.goToDefinition(name,fromPath)
+    if (!this.captured) return this.snapshot().code.goToDefinition(name, fromPath)
     const repo = this.src.repo()
     let notice: Notice | null = null
     try {

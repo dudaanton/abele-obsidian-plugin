@@ -8,6 +8,7 @@ import type { DiffLine } from './patch'
 import { isMarkdownPath } from './markdownPreview'
 import { repoWeb } from './origin'
 import { compareUrl } from './compare'
+import { encodePath } from './contents'
 
 export interface RepoRef {
   host: string
@@ -42,8 +43,6 @@ export interface LineSpan {
 }
 
 const web = repoWeb
-
-const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
 
 /** The item's own address: an issue, a pull request, a discussion, a commit, a comparison. */
 export function itemUrl(item: LinkItem): string {

@@ -5,6 +5,7 @@
  * records instead, which also makes them easy to build from fixtures in tests.
  */
 import { repoWeb } from './origin'
+import { discussionState, issueState, pullState } from './itemState'
 import { GithubClient, GithubError } from './client'
 import { blobCandidates, diffAnchorHash, type GithubTarget } from './urls'
 import {
@@ -272,7 +273,7 @@ export async function loadIssue(client: GithubClient, t: Of<'issue'>): Promise<I
     author: login(issue.user),
     authorAvatar: avatarOf(issue.user),
     createdAt: issue.created_at,
-    state: issue.state_reason === 'not_planned' ? 'not planned' : issue.state,
+    state: issueState(issue),
     labels: labels(issue.labels),
     body: issue.body ?? '',
     comments: conversation.comments,
@@ -296,7 +297,7 @@ export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<Pul
     author: login(pull.user),
     authorAvatar: avatarOf(pull.user),
     createdAt: pull.created_at,
-    state: pull.merged_at ? 'merged' : pull.draft && pull.state === 'open' ? 'draft' : pull.state,
+    state: pullState(pull),
     labels: labels(pull.labels),
     body: pull.body ?? '',
     comments: conversation.comments,
@@ -485,7 +486,7 @@ export async function loadDiscussion(
     author: login(d.author),
     authorAvatar: avatarOf(d.author),
     createdAt: d.createdAt,
-    state: d.isAnswered ? 'answered' : d.closed ? 'closed' : 'open',
+    state: discussionState(d),
     labels: labels(d.labels?.nodes),
     body: d.body ?? '',
     category: d.category?.name ?? '',

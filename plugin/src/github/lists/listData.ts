@@ -10,6 +10,7 @@
 import { GithubError, type GithubClient } from '../client'
 import { repoApiPath } from '../contents'
 import { repoWeb } from '../origin'
+import { discussionState, issueState, pullState } from '../itemState'
 import type { GithubTarget } from '../urls'
 import type { Label } from '../api'
 import { searchQuery, sortOf, withState, type ListKind } from './listQuery'
@@ -67,6 +68,7 @@ interface RawIssue {
   number: number
   title: string
   state: string
+  state_reason?: string
   draft?: boolean
   user?: { login?: string; avatar_url?: string } | null
   created_at?: string
@@ -87,11 +89,7 @@ const labelsOf = (raw: RawIssue['labels']): Label[] =>
 
 export function issueItem(t: ListTarget, i: RawIssue): ListItem {
   const pull = !!i.pull_request
-  const state = i.pull_request?.merged_at
-    ? 'merged'
-    : pull && i.draft && i.state === 'open'
-      ? 'draft'
-      : i.state
+  const state = pull ? pullState({ ...i, merged_at: i.pull_request?.merged_at }) : issueState(i)
   return {
     kind: pull ? 'pull' : 'issue',
     number: i.number,
@@ -148,7 +146,7 @@ function discussionItem(t: ListTarget, d: RawDiscussion): ListItem {
     kind: 'discussion',
     number: d.number ?? 0,
     title: d.title ?? '',
-    state: d.closed ? 'closed' : d.isAnswered ? 'answered' : 'open',
+    state: discussionState(d),
     author: d.author?.login ?? 'ghost',
     avatar: d.author?.avatarUrl,
     createdAt: d.createdAt ?? '',
