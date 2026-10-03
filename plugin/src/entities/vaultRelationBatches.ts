@@ -1,4 +1,4 @@
-import { App, TFile, type EventRef, normalizePath } from 'obsidian'
+import { App, TFile, TFolder, type EventRef, normalizePath } from 'obsidian'
 import dayjs from '@/helpers/dateLibrary'
 import { DATE_FORMAT } from '@/constants/dates'
 import { isWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
@@ -12,7 +12,22 @@ class VaultRelationBatches {
   private closed = false
   constructor(private readonly app: App) {
     const queue = (kind: RelationChange['kind'], file: unknown, oldPath?: string) => {
-      if (this.closed || !(file instanceof TFile)) return
+      if (this.closed) return
+      if (file instanceof TFolder && kind !== 'changed') {
+        const prefix = normalizePath(oldPath ?? file.path) + '/'
+        for (const path of this.router.watchedPaths()) {
+          if (!path.startsWith(prefix) || app.vault.getAbstractFileByPath(path)) continue
+          const next =
+            kind === 'rename' ? normalizePath(file.path) + '/' + path.slice(prefix.length) : path
+          if (kind === 'rename' && !(app.vault.getAbstractFileByPath(next) instanceof TFile))
+            continue
+          const change: RelationChange =
+            kind === 'rename' ? { kind, path: next, oldPath: path } : { kind, path }
+          this.pending.set(`${kind}:${path}`, change)
+        }
+        return
+      }
+      if (!(file instanceof TFile)) return
       const change = {
         kind,
         path: normalizePath(file.path),

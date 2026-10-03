@@ -9,6 +9,28 @@ afterEach(() => {
   VaultWatcherWrapper.destroy()
   vi.restoreAllMocks()
 })
+it('moves a tracked group and its members on a folder-only rename and cleans them on folder deletion', async () => {
+  const app = useVault([
+    { path: 'Samples/root.md' },
+    { path: 'Samples/child.md', frontmatter: { groups: ['[[root]]'] }, content: 'Sample child' },
+  ])
+  configureAbele()
+  const summary = new NoteRelations('Samples/root.md')
+  relations.push(summary)
+  app.emit('metadataCache', 'resolved')
+  expect([...summary.notes.keys()]).toEqual(['Samples/child.md'])
+  const folder = app.vault.getAbstractFileByPath('Samples')!
+  await app.vault.rename(folder, 'Renamed samples')
+  app.emit('vault', 'rename', folder, 'Samples')
+  app.emit('metadataCache', 'resolved')
+  expect(summary.filePath).toBe('Renamed samples/root.md')
+  expect([...summary.notes.keys()]).toEqual(['Renamed samples/child.md'])
+  await app.vault.delete(folder)
+  app.emit('vault', 'delete', folder)
+  app.emit('metadataCache', 'resolved')
+  expect(summary.notes.size).toBe(0)
+})
+
 it('coalesces one note and routes only summaries reached by its links', () => {
   const app = useVault([
     { path: 'Samples/one.md' },

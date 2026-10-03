@@ -31,6 +31,10 @@ export class RelationBatchRouter {
     for (const path of sub.paths) this.remove(this.paths, path, sub)
     if (sub.day) this.remove(this.days, sub.day, sub)
   }
+  watchedPaths(): Iterable<string> {
+    return this.paths.keys()
+  }
+
   subscribe(apply: Subscription['apply']) {
     const sub: Subscription = { root: '', day: null, paths: new Set(), apply }
     this.subscriptions.add(sub)

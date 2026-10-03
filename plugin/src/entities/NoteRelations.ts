@@ -554,6 +554,19 @@ export class NoteRelations {
       this.findRelations(this.filePath)
       this.resolved = true
     }
+    // A folder notification can enumerate children before this summary's own note. Apply
+    // its complete rename chain first, so children are judged against the final root path.
+    const ownMoves = new Set<RelationChange>()
+    for (;;) {
+      const move = changes.find(
+        (change) =>
+          change.kind === 'rename' && change.oldPath === this.filePath && !ownMoves.has(change)
+      )
+      if (!move) break
+      this.filePath = move.path
+      ownMoves.add(move)
+    }
+    if (ownMoves.size) this.retellJournal()
     let reconcile = false
     for (const change of changes) {
       if (this.cleanedUp) return
@@ -569,13 +582,9 @@ export class NoteRelations {
             reconcile = true
           }
         } else if (change.kind === 'rename') {
-          if (oldPath === this.filePath) {
-            this.filePath = path
-            this.retellJournal()
-          } else {
-            reconcile ||= this.hasPath(oldPath)
-            this.relationRenameCallback(oldPath, path)
-          }
+          if (ownMoves.has(change)) continue
+          reconcile ||= this.hasPath(oldPath)
+          this.relationRenameCallback(oldPath, path)
         } else {
           if (path === this.filePath) this.retellJournal()
           const wasRelated = this.hasPath(path)
