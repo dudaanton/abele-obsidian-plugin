@@ -1,4 +1,10 @@
-import { sha256, type OwnerPushHooks, type VaultClient, type StateStore } from '@abele/sync-core'
+import {
+  sha256,
+  type OwnerPushHooks,
+  type PersonalNoteHook,
+  type VaultClient,
+  type StateStore,
+} from '@abele/sync-core'
 import { CommitResponseSchema, type CommitOp } from '@abele/sync-protocol'
 import { MarkdownView, type App, type CachedMetadata } from 'obsidian'
 import { PublicationIntents, type PushReceipt, type PublicationDelta } from './publicationIntents'
@@ -543,7 +549,50 @@ export class NativeOwnerPublication {
       throw e
     }
   }
-  readonly hooks: OwnerPushHooks = {
+  readonly hooks: OwnerPushHooks & { onPersonalNoteApplied: PersonalNoteHook } = {
+    onPersonalNoteApplied: async (event, bytes) => {
+      this.check()
+      if (
+        event.source !== 'personal' ||
+        event.automatic !== 'enabled' ||
+        event.deliveryId !== `${event.fileId}:${event.versionId}` ||
+        bytes.length !== event.size ||
+        (await sha256(bytes)) !== event.sha
+      )
+        throw new Error('Personal note delivery integrity differs')
+      const current = await this.options.state.byFileId(event.fileId)
+      if (
+        !current ||
+        current.versionId !== event.versionId ||
+        current.wirePath !== event.path ||
+        current.sha !== event.sha
+      )
+        throw new Error('Delivery is not the current recorded personal version')
+      const observation = await this.exactCache(current.path, event.sha)
+      if (!observation) {
+        await this.snapshots.invalidate(event.fileId, 'No exact received native callback cache')
+        return
+      }
+      // Arrival supplies a last-synced base, never owner introduction/execution consent.
+      await this.snapshots.settle({
+        noteId: event.fileId,
+        versionId: event.versionId,
+        source: new TextDecoder().decode(bytes),
+        origin: 'pull',
+        facts: copy(observation.facts),
+        evidence: {
+          adapter: 'obsidian-changed',
+          runtime: 'desktop',
+          generation: observation.generation,
+          noteId: event.fileId,
+          versionId: event.versionId,
+          sourceSha: event.sha,
+          cacheSha: observation.cacheSha,
+          cacheJson: observation.cacheJson,
+          complete: true,
+        },
+      })
+    },
     beforeUpload: async (unit) => {
       this.check()
       await this.work

@@ -1,5 +1,5 @@
 import { Platform, type App } from 'obsidian'
-import type { OwnerPushHooks, VaultClient, StateStore } from '@abele/sync-core'
+import type { OwnerPushHooks, PersonalNoteHook, VaultClient, StateStore } from '@abele/sync-core'
 import type { DeviceConnection } from './connection'
 import { PHONE_POLL_MS, phoneSocket } from './phone'
 import { wsFor } from './transport'
@@ -26,7 +26,7 @@ export interface SyncServiceDeps {
     fetch: typeof fetch
     held: () => boolean
   }) => Promise<{
-    hooks: OwnerPushHooks
+    hooks: OwnerPushHooks & { onPersonalNoteApplied?: PersonalNoteHook }
     beforeRemote?(paths: string[]): void | Promise<void>
     close(): void
   }>

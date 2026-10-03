@@ -357,6 +357,12 @@ describe.skipIf(!process.env.ABELE_AGENT_STAND_STAGE)('agent disposable stand ga
     expect(
       (await proofReader.sponsorProof(images.grantId, noteIdentity.file_id)).admissionGeneration
     ).toBeGreaterThan(1)
+    // A real scoped participant changes the note; the owner pulls that exact version and
+    // immediately pastes. Received cache is a baseline, never owner-introduction consent.
+    images.run()
+    writeFileSync(join(images.agent, sponsorPath), 'Пример полученной заметки\n')
+    images.run()
+    await images.owner()
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
       'base64'
