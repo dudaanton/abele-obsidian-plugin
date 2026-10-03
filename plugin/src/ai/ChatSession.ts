@@ -1072,6 +1072,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // permission mode, tool call or automatic approval.
     if (toolName === REPLY_REVISION_TOOL || toolName === ENABLE_TOOLS) return false
 
+    // Listing is filtered by the tool itself, including ancestors of scoped files. It never
+    // grants access to the directory or needs approval to extend the scope.
+    if (toolName === 'ls') return false
+
     // Out-of-scope file access always requires approval, whatever the mode says about writes.
     if (this.outOfScopePath(toolName, args)) return true
 

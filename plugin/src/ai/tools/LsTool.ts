@@ -18,7 +18,7 @@ export function createLsTool(opts?: { skipScope?: boolean }): AgentTool {
     execute: async (_id, params, _signal, ctx) => {
       const scope = scopeOf(ctx)
       const { app } = GlobalStore.getInstance()
-      const folderPath = (params.path as string) || ''
+      const folderPath = ((params.path as string) || '').replace(/\/+$/, '')
 
       if (!opts?.skipScope && folderPath && !scope.isFolderInScope(folderPath)) {
         throw new Error(`Access denied: ${folderPath} is not in workspace scope`)
