@@ -23,6 +23,18 @@ beforeEach(() => {
 afterEach(() => document.body.replaceChildren())
 
 describe('remembering a saved-key address from the request dialog', () => {
+  it('reports a failed settings write as an Error without sending the request', async () => {
+    vi.mocked(AbeleConfig.getInstance().saveSettings).mockRejectedValue('Synthetic save failure')
+    const approval = approveScriptKeyRequest(request)
+    const result = expect(approval).rejects.toEqual(new Error('Synthetic save failure'))
+    const button = [...document.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Allow address and send'
+    )!
+    button.click()
+    await result
+    expect(needsSecretApproval('fetch', request)).toBe(true)
+    expect(document.querySelector('.modal')).toBeNull()
+  })
   it('persists the approval and does not ask again for another path on the same origin', async () => {
     const approval = approveScriptKeyRequest(request)
     const button = [...document.querySelectorAll('button')].find(

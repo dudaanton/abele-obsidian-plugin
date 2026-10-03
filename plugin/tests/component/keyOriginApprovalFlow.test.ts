@@ -214,17 +214,18 @@ describe('trusting the current saved-key origin', () => {
     expect(executed).toEqual([`${session.id}:first`])
   })
 
-  it('keeps the call unexecuted and displays failed trust persistence', async () => {
-    vi.mocked(AbeleConfig.getInstance().saveSettings).mockRejectedValue(
-      new Error('Synthetic save failure')
-    )
-    await start(call('first'))
-    await button('Allow this address for these keys').trigger('click')
-    await flushPromises()
-    expect(executed).toEqual([])
-    expect(view.text()).toContain('Synthetic save failure')
-    expect(needsSecretApproval('fetch', request)).toBe(true)
-  })
+  it.each([new Error('Synthetic save failure'), 'Synthetic save failure'])(
+    'keeps the call unexecuted and displays failed trust persistence: %s',
+    async (error) => {
+      vi.mocked(AbeleConfig.getInstance().saveSettings).mockRejectedValue(error)
+      await start(call('first'))
+      await button('Allow this address for these keys').trigger('click')
+      await flushPromises()
+      expect(executed).toEqual([])
+      expect(view.text()).toContain('Synthetic save failure')
+      expect(needsSecretApproval('fetch', request)).toBe(true)
+    }
+  )
 
   it('keeps Send once local to its call, leaving another key request and chat pending', async () => {
     const other = makeSession()
