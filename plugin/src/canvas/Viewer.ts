@@ -52,6 +52,7 @@ export class CanvasViewer {
   private assetsKey = ''
   private abort: AbortController | null = null
   private fitted = false
+  private pendingFocus: Rect | null = null
   private pointers = new Map<number, { x: number; y: number }>()
   private gesture: {
     x: number
@@ -110,7 +111,9 @@ export class CanvasViewer {
     this.listen(this.stage, 'pointercancel', (e) => this.up(e as PointerEvent, true))
     this.listen(this.stage, 'wheel', (e) => this.wheel(e as WheelEvent), { passive: false })
     this.resize = new ResizeObserver(() => {
-      if (!this.fitted && this.stage.clientWidth && this.stage.clientHeight) this.fit(false)
+      if (this.stage.clientWidth && this.stage.clientHeight && this.pendingFocus)
+        this.focusRegion(this.pendingFocus, false)
+      else if (!this.fitted && this.stage.clientWidth && this.stage.clientHeight) this.fit(false)
       else this.draw()
     })
     this.resize.observe(this.stage)
@@ -126,7 +129,10 @@ export class CanvasViewer {
   }
   load(graph: CanvasGraph, reset = false): void {
     const id = reset || this.step === null ? null : this.steps[this.step - 1]?.id
-    if (reset) this.fitted = false
+    if (reset) {
+      this.fitted = false
+      this.pendingFocus = null
+    }
     this.graph = graph
     this.error = ''
     try {
@@ -194,12 +200,14 @@ export class CanvasViewer {
     this.focusRegion(region, animate)
   }
   focusRegion(region: Rect, animate = false): void {
+    this.pendingFocus = { ...region }
     const width = this.stage.clientWidth,
       height = this.stage.clientHeight
     if (!width || !height) {
       this.fitted = false
       return
     }
+    this.pendingFocus = null
     this.fitted = true
     const target = fitRect(
       { x: region.x, y: region.y, w: region.width, h: region.height },
@@ -231,6 +239,7 @@ export class CanvasViewer {
     this.animation = win.requestAnimationFrame(frame)
   }
   setCamera(camera: Camera): void {
+    this.pendingFocus = null
     this.stopAnimation()
     this.camera = { ...camera }
     this.fitted = true

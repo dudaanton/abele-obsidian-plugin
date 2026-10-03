@@ -182,6 +182,34 @@ describe('canvas viewer controls and lifetime', () => {
     viewer.destroy()
     el.remove()
   })
+  it('retains an explicit node focus while the viewer is hidden until it has a size', () => {
+    let resized: ResizeObserverCallback = () => {}
+    const Original = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class {
+      constructor(callback: ResizeObserverCallback) {
+        resized = callback
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+    const { viewer, el } = make()
+    try {
+      viewer.load(graph())
+      viewer.focusRegion(viewer.graph.nodes[0])
+      Object.defineProperties(viewer.stage, {
+        clientWidth: { value: 600 },
+        clientHeight: { value: 400 },
+      })
+      resized([], {} as ResizeObserver)
+      expect(viewer.camera.x + 300 / viewer.camera.zoom).toBe(100)
+      expect(viewer.camera.y + 200 / viewer.camera.zoom).toBe(50)
+    } finally {
+      viewer.destroy()
+      el.remove()
+      globalThis.ResizeObserver = Original
+    }
+  })
   it('does not carry playback from a previous file when the adapter resets the view', () => {
     const { viewer, el } = make()
     viewer.load(graph())

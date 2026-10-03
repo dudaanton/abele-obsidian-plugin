@@ -195,7 +195,7 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
     shoot('embed-play')
   }, 120_000)
   it('plays the walkthrough from a node embed without cancelling it with the node crop', () => {
-    const result = run<{ playing: number; say: string; opened: number | null }>(`
+    const result = run<{ playing: number; say: string; opened: number | null; focused: boolean }>(`
       const file=app.vault.getAbstractFileByPath(${JSON.stringify('Sample walkthrough/sample-embed.md')})
       const leaf=app.workspace.getLeaf('tab'); await leaf.openFile(file); await app.workspace.revealLeaf(leaf)
       await leaf.view.setState({mode:'source',source:false},{}); leaf.view.editor.setCursor({line:7,ch:0}); await wait(900)
@@ -204,9 +204,16 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
       const playing=view().viewer.step, say=view().viewer.narration.textContent
       await app.workspace.revealLeaf(leaf); await wait(200)
       embed.querySelector('[aria-label="Open diagram"]').click(); await wait(300)
-      return {playing,say,opened:view().viewer.step}
+      const viewer=view().viewer, alpha=viewer.graph.nodes.find(n=>n.id==='alpha')
+      const cx=viewer.camera.x+viewer.stage.clientWidth/(2*viewer.camera.zoom), cy=viewer.camera.y+viewer.stage.clientHeight/(2*viewer.camera.zoom)
+      return {playing,say,opened:viewer.step,focused:Math.abs(cx-alpha.x-alpha.width/2)<1&&Math.abs(cy-alpha.y-alpha.height/2)<1}
     `)
-    expect(result).toEqual({ playing: 1, say: 'Refined transform explanation.', opened: null })
+    expect(result).toEqual({
+      playing: 1,
+      say: 'Refined transform explanation.',
+      opened: null,
+      focused: true,
+    })
   }, 120_000)
   it('provides a native per-leaf way back without readopting it and adopts another leaf', () => {
     const result = run<{ native: string; next: string }>(`
