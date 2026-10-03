@@ -26,7 +26,13 @@ function fitForLayout(
   return fitted
 }
 
+/** Portable effective graph and write revision; persisted bytes stay in the host adapter. */
+export interface GraphSnapshot {
+  graph: CanvasGraph
+  revision: string
+}
 export interface GraphStore {
+  snapshot(key: string): Promise<GraphSnapshot>
   read(key: string): Promise<CanvasGraph>
   create(key: string, graph: CanvasGraph, signal?: AbortSignal): Promise<void>
   change(
