@@ -11,4 +11,7 @@ it('an unresponsive owned-vault CLI cannot trigger any automatic app or URI laun
   expect(source).not.toContain("spawnSync('open'")
   expect(source).not.toContain('obsidian://open')
   expect(source).toContain('requireRoutableOwnedPool')
+  expect(source).toContain('cli-probe-failure.json')
+  expect(source).toContain('stdout: r.stdout')
+  expect(source).toContain('stderr: r.stderr')
 })

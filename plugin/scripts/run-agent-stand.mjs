@@ -63,7 +63,27 @@ const evaluateOwnedBoolean = (expression) => {
     } catch {
       /* owned proxy/CLI already reaped */
     }
-  if (r.status !== 0) return false
+  const traceFailure = () =>
+    writeFileSync(
+      join(scratch, 'cli-probe-failure.json'),
+      JSON.stringify(
+        {
+          vault,
+          command: { executable: cli, args: ['vault=' + vault, 'eval', 'code=' + code] },
+          status: r.status,
+          signal: r.signal,
+          error: r.error?.message ?? null,
+          stdout: r.stdout,
+          stderr: r.stderr,
+        },
+        null,
+        2
+      ) + '\n'
+    )
+  if (r.status !== 0) {
+    traceFailure()
+    return false
+  }
   for (const line of r.stdout.split('\n')) {
     if (!line.startsWith('=> ')) continue
     try {
@@ -73,6 +93,7 @@ const evaluateOwnedBoolean = (expression) => {
       /* unrelated/nonreply diagnostic */
     }
   }
+  traceFailure()
   return false
 }
 const probe = () => evaluateOwnedBoolean('app.vault.getName()===' + JSON.stringify(vault))
