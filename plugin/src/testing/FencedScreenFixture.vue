@@ -95,6 +95,7 @@
 </template>
 <script setup lang="ts">
 import { computed } from 'vue'
+import { GlobalStore } from '@/stores/GlobalStore'
 import type { FencedScreen, FencedState } from './fencedScreens'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -246,12 +247,13 @@ const script: ScriptApprovalDialog = {
   },
   answer: () => emit('close'),
 }
+const configDir = GlobalStore.getInstance().app.vault.configDir
 const codeChanges: ChangeItem[] = Array.from({ length: 5 }, (_, i) => ({
   seq: i + 1,
   op: 'modify',
   file_id: 'sample-code-' + i,
   version_id: 'sample-code-version-' + i,
-  path: '.obsidian/plugins/sample-plugin-' + i + '/main.js',
+  path: configDir + '/plugins/sample-plugin-' + i + '/main.js',
   prev_path: null,
   sha: 'e'.repeat(64),
   size: 10,

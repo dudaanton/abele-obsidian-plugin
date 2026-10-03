@@ -37,7 +37,7 @@ export function openFencedScreen(screen: FencedScreen, state: FencedState = 'pen
   if (!FENCED_SCREENS.includes(screen) || !FENCED_STATES.includes(state))
     throw new Error('Unknown fenced inspection screen/state')
   closeFencedScreen()
-  host = document.createElement('div')
+  host = createDiv()
   host.id = 'abele-fenced-inspection-host'
   document.body.appendChild(host)
   mounted = createApp({
