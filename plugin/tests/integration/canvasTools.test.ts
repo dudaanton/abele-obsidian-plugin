@@ -47,14 +47,16 @@ beforeEach(() => {
 
 describe('agent canvas tools and permissions', () => {
   // BUG: the stage-one fixed count is obsolete once the independent walkthrough tool is added.
-  it.fails('registers all five independent modes and preserves explicit choices on migration', () => {
+  it.fails('retains the obsolete count of five independent canvas modes', () => {
+    expect(Object.keys(CANVAS_TOOL_MODES)).toHaveLength(5)
+  })
+  it('registers all independent canvas modes and preserves explicit choices on migration', () => {
     expect(
       createAgentTools()
         .filter((t) => t.name.startsWith('canvas_') || t.name === 'look_at_canvas')
         .map((t) => t.name)
         .sort()
     ).toEqual(Object.keys(CANVAS_TOOL_MODES).sort())
-    expect(Object.keys(CANVAS_TOOL_MODES)).toHaveLength(5)
     const agent = createAgent({ toolModes: { canvas_edit: 'off', look_at_canvas: 'ask' } })
     const ai = JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS))
     ai.agents = [agent]
