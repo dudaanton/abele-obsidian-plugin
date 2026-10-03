@@ -131,6 +131,22 @@ export async function scopedApiServer(options?: {
         grantId
       )
     },
+    async prepareGroup(token: string, vaultId: string) {
+      const { prepareGroupBootstrap } = await load(
+          'packages/server/dist/scoped/groups/bootstrap.js'
+        ),
+        { processGroupDirtyPage } = await load('packages/server/dist/scoped/groups/worker.js'),
+        deps = {
+          db: test.db,
+          dialect: 'sqlite',
+          store: test.store,
+          pepper: config.tokenPepper,
+          accountTokenTtlMs: config.accountTokenTtlMs,
+          configurationDirectories: config.configurationDirectories,
+        }
+      await prepareGroupBootstrap(deps, token, vaultId)
+      await processGroupDirtyPage(deps, vaultId)
+    },
     async intrinsicGeneration(grantId: string, fileId: string) {
       const row = await test.db
         .selectFrom('scope_current_members as member')

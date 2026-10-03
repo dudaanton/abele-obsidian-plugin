@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { GroupSharingFlow, InitialAssetBatch, type GroupPreview } from '@/sync/sharing/groupSharing'
+import {
+  GroupSharingFlow,
+  InitialAssetBatch,
+  type GroupPreview,
+  type GroupGrant,
+} from '@/sync/sharing/groupSharing'
 const preview: GroupPreview = {
   root: {
     fileId: 'sample-root',
@@ -58,7 +63,18 @@ function setup() {
       revision: 0,
       state: 'preparing',
     })),
-    approve: vi.fn(async () => {}),
+    approve: vi.fn(
+      async (
+        _session: unknown,
+        grant: GroupGrant,
+        _relation: GroupPreview['relations'][number]
+      ) => ({
+        approvalId: 'sample-approval',
+        grantId: grant.id,
+        expectedRevision: grant.revision,
+        revision: grant.revision + 1,
+      })
+    ),
     certified: vi.fn(async () => true),
   }
   return {
@@ -93,6 +109,45 @@ describe('disabled owner group wizard exact previews', () => {
     expect(s.port.approve).not.toHaveBeenCalled()
     await s.flow.approveRelations(shown)
     expect(s.port.approve).toHaveBeenCalledWith(expect.anything(), grant, preview.relations[0])
+  })
+  it('multiple certified relations advance known CAS and a failed later relation does not repeat prior acknowledgements', async () => {
+    const s = setup(),
+      second = {
+        ...preview.relations[0],
+        sourceId: 'sample-anchor',
+        sourceVersion: 'anchor-v1',
+        tokenKey: '[[Another/root]]',
+      },
+      multiple = { ...preview, relations: [preview.relations[0], second] }
+    s.port.preview.mockResolvedValue(multiple)
+    const shown = await s.flow.review('sample-root', 'editor', 'Sample')
+    await s.flow.confirm(shown, 'invented-password')
+    let revision = 0,
+      fail = true
+    s.port.approve.mockImplementation(async (_session: any, grant: any, relation: any) => {
+      if (grant.revision !== revision) throw new Error('Backend revision conflict')
+      if (relation.tokenKey === second.tokenKey && fail) {
+        fail = false
+        throw new Error('Synthetic second relation pre-send failure')
+      }
+      const old = revision++
+      return {
+        approvalId: 'sample-approval-' + revision,
+        grantId: grant.id,
+        expectedRevision: old,
+        revision,
+      } as any
+    })
+    await expect(s.flow.approveRelations(shown)).rejects.toThrow(/second relation/)
+    await s.flow.approveRelations(shown)
+    expect(
+      s.port.approve.mock.calls.map(([, g, r]) => [(g as any).revision, (r as any).tokenKey])
+    ).toEqual([
+      [0, preview.relations[0].tokenKey],
+      [1, second.tokenKey],
+      [1, second.tokenKey],
+    ])
+    expect(revision).toBe(2)
   })
   it('stale root/version, uncertified scope, uncertain anchor or closed review never creates authority', async () => {
     const s = setup(),

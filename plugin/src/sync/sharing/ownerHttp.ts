@@ -8,7 +8,7 @@ import {
 import { sha256 } from '@abele/sync-core'
 import { SharingHttp, type SharingHttpOptions } from './sharingHttp'
 import { z } from 'zod'
-import type { GroupGrant, GroupRelation } from './groupSharing'
+import type { GroupGrant, GroupRelation, GroupApprovalReceipt } from './groupSharing'
 import type {
   FolderSharingPort,
   FolderPreview,
@@ -232,7 +232,7 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
     session: OwnerSession,
     grant: GroupGrant,
     relation: GroupRelation
-  ): Promise<void> {
+  ): Promise<GroupApprovalReceipt> {
     const token = this.ownerToken(session),
       device = this.options.deviceToken(),
       id = z.string().min(1).max(200)
@@ -260,16 +260,29 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
         token_key: relation.tokenKey,
         anchor: relation.anchor,
       })
-    await this.http.json(
-      'POST',
-      '/v1/vaults/' +
-        segment(this.options.vaultId) +
-        '/grants/groups/' +
-        segment(grant.id) +
-        '/approve',
-      token,
-      body
-    )
+    const receipt = z
+      .object({ approval_id: id })
+      .strict()
+      .parse(
+        await this.http.json(
+          'POST',
+          '/v1/vaults/' +
+            segment(this.options.vaultId) +
+            '/grants/groups/' +
+            segment(grant.id) +
+            '/approve',
+          token,
+          body
+        )
+      )
+    // Reviewed approval transaction CAS-checks N then advances ACL exactly once to N+1.
+    // Its strict successful approval_id acknowledges that transition, not a mutable read.
+    return {
+      approvalId: receipt.approval_id,
+      grantId: grant.id,
+      expectedRevision: body.expected_revision,
+      revision: body.expected_revision + 1,
+    }
   }
   close() {
     this.sessions = new WeakMap()

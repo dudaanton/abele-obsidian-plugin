@@ -62,5 +62,42 @@ describe('strict owner group management HTTP', () => {
       })
     ).rejects.toMatchObject({ code: 'conflict' })
     expect(await s.db.selectFrom('scope_grants').select('id').execute()).toHaveLength(1)
+    const memberBytes = new TextEncoder().encode(
+        '---\ngroups: ["[[Scattered/sample]]"]\n---\nsample member'
+      ),
+      memberSha = await sha256(memberBytes)
+    await client.putBlob(memberSha, memberBytes)
+    const members = await client.commit([
+      {
+        op: 'create',
+        path: 'Elsewhere/first.md',
+        sha: memberSha,
+        size: memberBytes.length,
+        mtime: 2,
+      },
+      { op: 'create', path: 'Other/second.md', sha: memberSha, size: memberBytes.length, mtime: 2 },
+    ])
+    await s.prepareGroup(owner.accountToken, vaultId)
+    const relation = (index: number) => ({
+      sourceId: (members.results[index] as any).file_id,
+      sourceVersion: (members.results[index] as any).version_id,
+      targetId: item.file_id,
+      targetVersion: item.version_id,
+      tokenKey: 'scattered/sample.md',
+      anchor: false,
+    })
+    const one = await port.approveGroup(session, grant, relation(0))
+    expect(one).toMatchObject({ grantId: grant.id, expectedRevision: 0, revision: 1 })
+    const two = await port.approveGroup(session, { ...grant, revision: one.revision }, relation(1))
+    expect(two).toMatchObject({ grantId: grant.id, expectedRevision: 1, revision: 2 })
+    expect(
+      (
+        await s.db
+          .selectFrom('scope_grants')
+          .select('acl_revision')
+          .where('id', '=', grant.id)
+          .executeTakeFirstOrThrow()
+      ).acl_revision
+    ).toBe(2)
   })
 })

@@ -42,6 +42,12 @@ export interface GroupGrant {
   revision: number
   state: string
 }
+export interface GroupApprovalReceipt {
+  approvalId: string
+  grantId: string
+  expectedRevision: number
+  revision: number
+}
 export interface GroupSharingPort {
   preview(rootId: string): Promise<GroupPreview>
   authorize(password: string, email?: string): Promise<OwnerSession>
@@ -50,7 +56,11 @@ export interface GroupSharingPort {
     input: { label: string; rootId: string; rootVersion: string; role: 'reader' | 'editor' }
   ): Promise<GroupGrant>
   certified(grant: GroupGrant): Promise<boolean>
-  approve(session: OwnerSession, grant: GroupGrant, relation: GroupRelation): Promise<void>
+  approve(
+    session: OwnerSession,
+    grant: GroupGrant,
+    relation: GroupRelation
+  ): Promise<GroupApprovalReceipt>
 }
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const hash = (v: unknown) => sha256(new TextEncoder().encode(JSON.stringify(v)))
@@ -63,6 +73,7 @@ export class GroupSharingFlow {
   private shown: GroupReview | null = null
   private session: OwnerSession | null = null
   private grant: GroupGrant | null = null
+  private approvedRelations = new Set<string>()
   private busy = false
   constructor(
     readonly vaultId: string,
@@ -180,16 +191,36 @@ export class GroupSharingFlow {
     this.fence()
     this.exact(shown)
     if (!this.session || !this.grant) throw new Error('Create the reviewed group first')
+    if (this.busy) throw new Error('Group approval already running')
+    this.busy = true
     const generation = this.generation
-    if (!(await this.port.certified(copy(this.grant))))
-      throw new Error('Group scope preparing; approval held')
-    const current = await this.port.preview(shown.preview.root.fileId)
-    this.fence(generation)
-    if ((await hash(current)) !== shown.fingerprint) throw new Error('Approval preview changed')
-    for (const relation of shown.preview.relations) {
+    try {
+      if (!(await this.port.certified(copy(this.grant))))
+        throw new Error('Group scope preparing; approval held')
       this.fence(generation)
-      await this.port.approve(this.session, copy(this.grant), copy(relation))
+      const current = await this.port.preview(shown.preview.root.fileId)
       this.fence(generation)
+      if ((await hash(current)) !== shown.fingerprint) throw new Error('Approval preview changed')
+      this.fence(generation)
+      for (const relation of shown.preview.relations) {
+        const key = JSON.stringify(relation)
+        if (this.approvedRelations.has(key)) continue
+        this.fence(generation)
+        const before = copy(this.grant),
+          receipt = await this.port.approve(this.session, before, copy(relation))
+        this.fence(generation)
+        if (
+          !receipt?.approvalId ||
+          receipt.grantId !== before.id ||
+          receipt.expectedRevision !== before.revision ||
+          receipt.revision !== before.revision + 1
+        )
+          throw new Error('Group approval receipt uncertain; recovery required')
+        this.grant = { ...before, revision: receipt.revision }
+        this.approvedRelations.add(key)
+      }
+    } finally {
+      this.busy = false
     }
   }
   close() {
@@ -197,6 +228,7 @@ export class GroupSharingFlow {
     this.shown = null
     this.session = null
     this.grant = null
+    this.approvedRelations.clear()
   }
 }
 export interface BatchEntry {
