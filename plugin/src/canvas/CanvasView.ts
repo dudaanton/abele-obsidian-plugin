@@ -116,9 +116,10 @@ export class CanvasView extends FileView {
     const steps = stepsOf(viewer.graph)
     const byId =
       typeof state.stepId === 'string' ? steps.findIndex((s) => s.id === state.stepId) + 1 : 0
-    if (byId || typeof state.step === 'number' || state.play === true)
-      viewer.go(byId || (typeof state.step === 'number' ? state.step : 1), false)
-    if (typeof state.node === 'string') {
+    const playback = byId || typeof state.step === 'number' || state.play === true
+    if (playback) viewer.go(byId || (typeof state.step === 'number' ? state.step : 1), false)
+    // A node subpath frames Open; it must not cancel the explicitly requested walkthrough.
+    if (typeof state.node === 'string' && !playback) {
       const node = viewer.graph.nodes.find((n) => n.id === state.node)
       if (node) {
         viewer.go(null, false)

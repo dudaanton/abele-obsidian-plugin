@@ -194,6 +194,20 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
     expect(result).toEqual({ reading: 2, live: 2, nativeHidden: true, opened: 2, says: true })
     shoot('embed-play')
   }, 120_000)
+  it('plays the walkthrough from a node embed without cancelling it with the node crop', () => {
+    const result = run<{ playing: number; say: string; opened: number | null }>(`
+      const file=app.vault.getAbstractFileByPath(${JSON.stringify('Sample walkthrough/sample-embed.md')})
+      const leaf=app.workspace.getLeaf('tab'); await leaf.openFile(file); await app.workspace.revealLeaf(leaf)
+      await leaf.view.setState({mode:'source',source:false},{}); leaf.view.editor.setCursor({line:7,ch:0}); await wait(900)
+      const embed=leaf.view.editor.cm.contentDOM.querySelector('.internal-embed[src*="#node=alpha"]')
+      embed.querySelector('[aria-label="Play diagram"]').click(); await wait(400)
+      const playing=view().viewer.step, say=view().viewer.narration.textContent
+      await app.workspace.revealLeaf(leaf); await wait(200)
+      embed.querySelector('[aria-label="Open diagram"]').click(); await wait(300)
+      return {playing,say,opened:view().viewer.step}
+    `)
+    expect(result).toEqual({ playing: 1, say: 'Refined transform explanation.', opened: null })
+  }, 120_000)
   it('provides a native per-leaf way back without readopting it and adopts another leaf', () => {
     const result = run<{ native: string; next: string }>(`
       const v = view(), file = app.vault.getAbstractFileByPath(path)
