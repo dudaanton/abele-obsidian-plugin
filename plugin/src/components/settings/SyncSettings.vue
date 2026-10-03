@@ -341,9 +341,31 @@ const ownerFolderFlow = computed(() => {
 const ownerPublicationModel = computed(() => {
   const c = device.value
   if (!connected.value || !c.vaultId || serverUrlProblem(c.serverUrl) !== null) return undefined
+  const binding = {
+    serverUrl: c.serverUrl,
+    vaultId: c.vaultId,
+    deviceId: c.deviceId,
+    tokenId: c.deviceTokenId,
+  }
   const port = new SponsoredAssetsHttpPort({
-    baseUrl: c.serverUrl,
+    baseUrl: binding.serverUrl,
     fetch: (input, init) => transportOf({})(input, init),
+    context: {
+      facet: 'personal',
+      vaultId: binding.vaultId,
+      principalId: binding.deviceId,
+      token: () => {
+        const current = device.value
+        if (
+          current.serverUrl !== binding.serverUrl ||
+          current.vaultId !== binding.vaultId ||
+          current.deviceId !== binding.deviceId ||
+          current.deviceTokenId !== binding.tokenId
+        )
+          return null
+        return boundDeviceToken(secrets().device, binding.tokenId, binding.serverUrl)
+      },
+    },
   })
   return new PublicationSettingsModel(
     { facet: 'device', principalId: c.deviceId, localDeviceId: c.deviceId, owner: true },

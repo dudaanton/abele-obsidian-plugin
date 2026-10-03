@@ -4,7 +4,12 @@ import { join } from 'node:path'
 import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
 const COMMIT = '9b1136a0554287def69afb79b56eaaffcb09ca00'
 /** Separate server-only archive. Never aliases/pins this archive's unreviewed core push into plugin code. */
-export async function scopedApiServer(options?: { root: string; commit: string; group?: boolean }) {
+export async function scopedApiServer(options?: {
+  root: string
+  commit: string
+  group?: boolean
+  assets?: boolean
+}) {
   const root = options?.root ?? process.env.ABELE_SCOPED_API_FIXTURE
   const expected = options?.commit ?? COMMIT
   if (!root) throw new Error('Explicit disposable scoped API archive is required')
@@ -29,6 +34,7 @@ export async function scopedApiServer(options?: { root: string; commit: string; 
     ABELE_TOKEN_PEPPER: 'test',
     ABELE_BLOB_DIR: join(test.dir, 'blobs'),
   })
+  if (options?.assets) config.publicUrl = 'http://127.0.0.1'
   management.setErrorHandler(errorHandler)
   management.setNotFoundHandler(notFoundHandler)
   // ONLY this injected disposable app omits the early activation hook. Real route/services/auth
@@ -52,6 +58,25 @@ export async function scopedApiServer(options?: { root: string; commit: string; 
       hub: test.hub,
     })
   }
+  if (options?.assets) {
+    management.addContentTypeParser(
+      'application/octet-stream',
+      { parseAs: 'buffer' },
+      (_request: any, body: any, done: any) => done(null, body)
+    )
+    const deps = { config, db: test.db, dialect: 'sqlite', store: test.store, hub: test.hub }
+    for (const [file, registration] of [
+      ['sponsoredAssets', 'registerSponsoredAssetRoutes'],
+      ['scopedUploads', 'registerScopedUploadRoutes'],
+      ['scopedContent', 'registerScopedContentRoutes'],
+      ['scopedState', 'registerScopedStateRoutes'],
+      ['scopedViews', 'registerScopedViewRoutes'],
+      ['scopedHistory', 'registerScopedHistoryRoutes'],
+    ]) {
+      const routes = await load('packages/server/dist/api/routes/' + file + '.js')
+      routes[registration](management, deps)
+    }
+  }
   await management.ready()
   const fetchFor =
     (closed: boolean): typeof fetch =>
@@ -62,6 +87,7 @@ export async function scopedApiServer(options?: { root: string; commit: string; 
       const app =
         !closed &&
         (/^\/v1\/vaults\/[^/]+\/grants(?:\/|$)/.test(url.pathname) ||
+          (options?.assets && /^\/v1\/scoped\/vaults\//.test(url.pathname)) ||
           (options?.group &&
             /^\/v1\/(?:invitations\/|scoped\/discovery|scoped\/grants\/)/.test(url.pathname)))
           ? management
@@ -87,6 +113,34 @@ export async function scopedApiServer(options?: { root: string; commit: string; 
     ...test,
     fetch: fetchFor(false),
     closedFetch: fetchFor(true),
+    async prepareFolder(token: string, vaultId: string, grantId: string) {
+      const { prepareFolderAdmissions } = await load(
+        'packages/server/dist/scoped/folderPreparation.js'
+      )
+      return prepareFolderAdmissions(
+        {
+          db: test.db,
+          dialect: 'sqlite',
+          store: test.store,
+          pepper: config.tokenPepper,
+          accountTokenTtlMs: config.accountTokenTtlMs,
+          configurationDirectories: config.configurationDirectories,
+        },
+        token,
+        vaultId,
+        grantId
+      )
+    },
+    async intrinsicGeneration(grantId: string, fileId: string) {
+      const row = await test.db
+        .selectFrom('scope_current_members as member')
+        .innerJoin('scope_admission_intervals as interval', 'interval.id', 'member.interval_id')
+        .select('interval.generation')
+        .where('member.grant_id', '=', grantId)
+        .where('member.file_id', '=', fileId)
+        .executeTakeFirst()
+      return row?.generation
+    },
     async close() {
       await management.close()
       await test.close()
