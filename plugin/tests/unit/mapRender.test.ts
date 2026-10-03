@@ -109,6 +109,9 @@ vi.mock('maplibre-gl', () => ({
   setWorkerUrl: vi.fn(),
 }))
 
+// Preserve the same MapLibre test doubles while the production loader owns Blob imports.
+vi.mock('@/helpers/loadMaplibre', () => ({ loadMaplibre: () => import('maplibre-gl') }))
+
 import { mapFeatureInfo, renderMap } from '@/helpers/mapRender'
 import { MapLocationControl } from '@/helpers/mapLocationControl'
 

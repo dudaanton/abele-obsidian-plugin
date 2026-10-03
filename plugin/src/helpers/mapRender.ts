@@ -3,6 +3,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { formatLatLon, reverseGeocode } from '@/services/GeoService'
 import { mapBounds, type MapConfig, type MapPoint } from './mapConfig'
 import { MapLocationControl } from './mapLocationControl'
+import { loadMaplibre } from './loadMaplibre'
 
 /**
  * The map itself: MapLibre, on tiles that cost the person nothing.
@@ -12,8 +13,8 @@ import { MapLocationControl } from './mapLocationControl'
  * install with nothing configured. A style URL in the settings replaces it for anyone who
  * would rather pay their own provider.
  *
- * Map construction waits for the first map, but the single-file build still includes
- * MapLibre's JavaScript. Its CSS is part of the stylesheet loaded by Obsidian.
+ * MapLibre's ESM assets are embedded once and evaluated on first use. Main and worker
+ * share the same source Blob; its CSS remains part of Obsidian's plugin stylesheet.
  */
 
 const LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/bright'
@@ -124,23 +125,11 @@ function markerElement(el: HTMLElement, colour: string): HTMLElement {
 /**
  * Draws the map and hands back the way to take it down again.
  *
- * Asynchronous because of the dynamic imports; callers that are torn down before it resolves
- * get a handle that has already disposed of everything. These imports are inlined into the
- * one-file release: they defer map/worker construction, not bundled module evaluation.
+ * Asynchronous because the embedded ESM assets load on first use. Callers torn down before
+ * it resolves dispose their handle; plugin unload also invalidates an import still pending.
  */
 export async function renderMap(el: HTMLElement, config: MapConfig): Promise<MapHandle> {
-  const [maplibre, worker] = await Promise.all([
-    import('maplibre-gl'),
-    import('virtual:maplibre-worker'),
-  ])
-
-  // MapLibre fetches its worker as a file next to itself, which a plugin bundled into one
-  // `main.js` does not have. The worker is bundled at build time and handed over as a blob
-  // instead — without this the map comes up blank and the console says the worker URL is "".
-  if (!maplibre.getWorkerUrl()) {
-    const blob = new Blob([worker.default], { type: 'text/javascript' })
-    maplibre.setWorkerUrl(URL.createObjectURL(blob))
-  }
+  const maplibre = await loadMaplibre()
 
   let disposed = false
   const map = new maplibre.Map({

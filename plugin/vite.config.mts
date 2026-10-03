@@ -10,38 +10,51 @@ import { createRequire } from 'node:module'
 import { EVAL_START_INTRO } from './src/helpers/loadMarks'
 
 /**
- * MapLibre's worker, bundled into a string the plugin can carry.
- *
- * MapLibre loads its worker as a second file, resolved relative to its own URL. A plugin is
- * one `main.js` with nothing beside it, so that resolution yields an empty string and every
- * map comes up blank. The worker and the chunk it imports are bundled here at build time and
- * handed to MapLibre as a blob at runtime (`helpers/mapRender.ts`).
+ * Carry MapLibre's three ESM assets in the single plugin file. The main and worker assets
+ * import one embedded shared asset, rewritten to the same Blob URL on first use. Bundling
+ * the shared code into both realms instead would store roughly half a megabyte twice.
  */
-function maplibreWorkerPlugin(prod: boolean) {
-  const virtualId = 'virtual:maplibre-worker'
+function maplibreAssetsPlugin(prod: boolean) {
+  const virtualId = 'virtual:maplibre-assets'
   const resolvedId = '\0' + virtualId
-
   return {
-    name: 'abele-maplibre-worker',
+    name: 'abele-maplibre-assets',
     resolveId(id: string) {
       return id === virtualId ? resolvedId : null
     },
     async load(id: string) {
       if (id !== resolvedId) return null
-
       const require = createRequire(import.meta.url)
-      const entry = require.resolve('maplibre-gl/dist/maplibre-gl-worker.mjs')
-      const bundled = await esbuild({
-        entryPoints: [entry],
-        bundle: true,
-        write: false,
-        format: 'esm',
-        platform: 'browser',
-        minify: prod,
-        target: 'es2020',
-      })
-
-      return `export default ${JSON.stringify(bundled.outputFiles[0].text)}`
+      const assets: Record<string, string> = {}
+      for (const [name, file] of Object.entries({
+        shared: 'maplibre-gl-shared.mjs',
+        main: 'maplibre-gl.mjs',
+        worker: 'maplibre-gl-worker.mjs',
+      })) {
+        const bundled = await esbuild({
+          entryPoints: [require.resolve(`maplibre-gl/dist/${file}`)],
+          bundle: true,
+          write: false,
+          format: 'esm',
+          platform: 'browser',
+          minify: prod,
+          target: 'es2020',
+          plugins: [
+            {
+              name: 'abele-maplibre-shared-external',
+              setup(build) {
+                build.onResolve({ filter: /maplibre-gl-shared\.mjs$/ }, (args) =>
+                  args.kind === 'entry-point'
+                    ? undefined
+                    : { path: 'abele-maplibre-shared', external: true }
+                )
+              },
+            },
+          ],
+        })
+        assets[name] = bundled.outputFiles[0].text
+      }
+      return `export default ${JSON.stringify(assets)}`
     },
   }
 }
@@ -63,7 +76,7 @@ export default defineConfig(async ({ mode }) => {
     },
     plugins: [
       vue(),
-      maplibreWorkerPlugin(prod),
+      maplibreAssetsPlugin(prod),
       {
         name: 'abele-changelog',
         resolveId(id: string) {
