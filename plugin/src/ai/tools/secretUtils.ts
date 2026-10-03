@@ -2,12 +2,13 @@ import { secrets } from '@/secrets/SecretStore'
 import { mcpToolName } from '@/ai/mcp/names'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
-  acceptDestinations,
   checkKeyDestination,
   checkRequestDestinations,
   initializeDestinations,
 } from '@/secrets/destinations'
 import { httpOrigin } from '@/secrets/DestinationPolicy'
+import { encodeBasicCredentials } from '@/secrets/basicAuth'
+import { allowKeyRecipient } from '@/secrets/manualConsent'
 import { checkKeyTransport } from '@/secrets/keyTransport'
 
 const PLACEHOLDER = /\$\{abele_key:([^}]+)\}/g
@@ -19,12 +20,13 @@ export function secretNames(value: unknown): string[] {
   return []
 }
 export function secretRequestForTool(tool: string, args: unknown): SecretRequest | null {
-  if (KEY_TOOLS.has(tool)) return args as SecretRequest
+  if (KEY_TOOLS.has(tool))
+    return args && typeof args === 'object' ? snapshotSecretRequest(args as SecretRequest) : null
   if (tool.startsWith('mcp_')) {
     const server = AbeleConfig.getInstance().ai?.mcpServers?.find((s) =>
       s.tools.some((t) => mcpToolName(s.name, t.name) === tool)
     )
-    if (server) return { url: server.url, headers: server.headers }
+    if (server) return snapshotSecretRequest({ url: server.url, headers: server.headers })
   }
   return null
 }
@@ -42,6 +44,16 @@ export interface SecretRequest {
   url: string
   headers?: Record<string, string>
   body?: string
+  basicAuth?: { username: string; password: string }
+}
+/** Keep the recipient and unresolved credentials fixed while a human question is pending. */
+export function snapshotSecretRequest(request: SecretRequest): SecretRequest {
+  return {
+    url: request.url,
+    headers: { ...request.headers },
+    body: request.body,
+    ...(request.basicAuth ? { basicAuth: { ...request.basicAuth } } : {}),
+  }
 }
 function named(name: string) {
   const secret = AbeleConfig.getInstance().ai?.secrets?.find((s) => s.name === name)
@@ -50,6 +62,20 @@ function named(name: string) {
 }
 /** No values are read when preparing an approval. Placeholders cannot choose the recipient. */
 export function secretRequestInfo(request: SecretRequest) {
+  if (request.basicAuth) {
+    const { username, password } = request.basicAuth
+    if (
+      typeof username !== 'string' ||
+      typeof password !== 'string' ||
+      secretNames(username).length
+    )
+      throw new Error(
+        'Basic authentication requires a plain username and a password or saved-password placeholder'
+      )
+    if (Object.keys(request.headers ?? {}).some((name) => /^authorization$/i.test(name)))
+      throw new Error('Choose Basic authentication or an Authorization header, not both')
+    encodeBasicCredentials(username, password)
+  }
   const names = [...new Set(secretNames(request))]
   const origin = httpOrigin(request.url)
   if (!origin && names.length)
@@ -57,6 +83,7 @@ export function secretRequestInfo(request: SecretRequest) {
   return {
     origin: origin ?? '',
     names,
+    bindings: names.map((name) => ({ name, keyId: named(name).keyId })),
     missing: names.filter((name) => {
       const secret = named(name)
       try {
@@ -70,39 +97,19 @@ export function secretRequestInfo(request: SecretRequest) {
   }
 }
 /** Only a direct UI action calls this; remember both the configured origin and local trust. */
-export function allowSecretOrigin(name: string, url: string): void {
-  const origin = httpOrigin(url)
-  if (!origin) throw new Error('A saved key requires a valid HTTP(S) origin')
-  checkKeyTransport(origin)
-  const config = AbeleConfig.getInstance()
-  const secret = named(name)
-  if (secret.keyId.startsWith('abele-store-key')) throw new Error('The store key cannot be sent')
-  config.ai = {
-    ...config.ai,
-    secrets: config.ai.secrets.map((s) =>
-      s.name === name
-        ? { ...s, allowedOrigins: [...new Set([...(s.allowedOrigins ?? []), origin])] }
-        : s
-    ),
-  }
-  acceptDestinations([{ keyId: secret.keyId, name, origin }])
-  void config
-    .saveSettings()
-    .catch((error) => console.error('[Abele] Could not save key destinations', error))
+export function allowSecretOrigin(name: string, url: string, signal?: AbortSignal): Promise<void> {
+  // Unencrypted transport still requires the warning and explicit action in destination review.
+  checkKeyTransport(url)
+  return allowKeyRecipient({ keyId: named(name).keyId, address: url }, signal)
 }
 
 export function prepareSecretRequest(
   request: SecretRequest
 ): SecretRequest & { headers: Record<string, string>; secretValues: string[] } {
+  request = snapshotSecretRequest(request)
   const info = secretRequestInfo(request)
-  if (!info.names.length)
-    return {
-      ...request,
-      headers: request.headers ?? {},
-      secretValues: checkRequestDestinations(request, AbeleConfig.getInstance()),
-    }
   const config = AbeleConfig.getInstance()
-  initializeDestinations(config)
+  if (info.names.length) initializeDestinations(config)
   const values = new Map<string, string>()
   for (const name of info.names) {
     const secret = named(name)
@@ -116,14 +123,24 @@ export function prepareSecretRequest(
   const fill = (text: string) =>
     text.replace(PLACEHOLDER, (_, name: string) => values.get(name) ?? '')
   const url = fill(request.url)
-  if (httpOrigin(url) !== info.origin) throw new Error('A saved key cannot change the recipient')
-  return {
+  if (info.names.length && httpOrigin(url) !== info.origin)
+    throw new Error('A saved key cannot change the recipient')
+  const headers = Object.fromEntries(
+    Object.entries(request.headers ?? {}).map(([k, v]) => [k, fill(v)])
+  )
+  if (request.basicAuth)
+    headers.Authorization = encodeBasicCredentials(
+      request.basicAuth.username,
+      fill(request.basicAuth.password)
+    )
+  const prepared = {
     url,
-    headers: Object.fromEntries(
-      Object.entries(request.headers ?? {}).map(([k, v]) => [k, fill(v)])
-    ),
+    headers,
     body: request.body === undefined ? undefined : fill(request.body),
-    secretValues: [...values.values()],
+  }
+  return {
+    ...prepared,
+    secretValues: [...new Set([...values.values(), ...checkRequestDestinations(prepared, config)])],
   }
 }
 
@@ -134,6 +151,7 @@ export function substituteSecrets(text: string, destination?: string): string {
   return prepareSecretRequest({ url: destination, headers: { value: text } }).headers.value
 }
 export function redactSecrets(text: string, values: string[]): string {
-  for (const value of values) if (value) text = text.split(value).join('[saved key]')
+  for (const value of [...values].sort((a, b) => b.length - a.length))
+    if (value) text = text.split(value).join('[saved key]')
   return text
 }

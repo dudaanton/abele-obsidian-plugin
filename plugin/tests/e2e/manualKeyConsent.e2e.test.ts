@@ -56,7 +56,7 @@ describe.skipIf(!available)('native manual key consent with mock transport', () 
         try { await fetchLiteral(); out.blockedBefore = false } catch { out.blockedBefore = true }
         out.callsBefore = calls
         modal = t.networkSecurity.reviewKeyDestinations()
-        out.empty = modal.bodyEl.textContent.includes('No destinations need confirmation.')
+        out.empty = !modal.bodyEl.querySelector('[data-key-destination]')
         field('Recipient address', origin + '/status')
         const picker = modal.bodyEl.querySelector('select')
         picker.value = 'new'
@@ -100,7 +100,7 @@ describe.skipIf(!available)('native manual key consent with mock transport', () 
         out.retry = result.status === 200 && result.text === '[saved key]'
         out.callsAfterRetry = calls
         out.allowedShot = await shot('recipient-allowed')
-        ;[...modal.footerEl.querySelectorAll('button')].find(b => b.textContent === 'Remove').click()
+        ;[...modal.bodyEl.querySelectorAll('button')].find(b => b.textContent === 'Remove HTTP exception').click()
         try { await fetchLiteral(); out.blockedAfterRemoval = false } catch { out.blockedAfterRemoval = true }
         out.callsAfterRemoval = calls
       } finally {

@@ -119,14 +119,28 @@ export async function request(options: NetworkRequest): Promise<RequestUrlRespon
     Number.isFinite(options.timeoutMs) && options.timeoutMs! > 0
       ? options.timeoutMs!
       : DEFAULT_TIMEOUT_MS
-  return withDeadline(
-    sendRequest(
-      { ...options, secretValues: [...(options.secretValues ?? []), ...carried] },
-      controller.signal
-    ),
-    ms,
-    () => controller.abort()
-  )
+  const values = [...(options.secretValues ?? []), ...carried]
+  for (const [name, value] of Object.entries(options.headers ?? {}))
+    if (credentialHeader.test(name)) values.push(value, value.replace(/^(Bearer|Basic)\s+/i, ''))
+  try {
+    return await withDeadline(
+      sendRequest({ ...options, secretValues: values }, controller.signal),
+      ms,
+      () => controller.abort()
+    )
+  } catch (error) {
+    if (!values.some(Boolean)) throw error
+    const redact = (text: string) => {
+      for (const value of [...values].sort((a, b) => b.length - a.length))
+        if (value) text = text.split(value).join('[saved key]')
+      return text
+    }
+    const safe = new Error(
+      redact(error instanceof Error ? error.message : 'Network request failed')
+    )
+    if (error instanceof Error) safe.name = redact(error.name)
+    throw safe
+  }
 }
 
 async function sendRequest(

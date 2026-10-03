@@ -3,11 +3,13 @@ import { request as requestUrl } from '@/helpers/http'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { prepareSecretRequest, redactSecrets } from './secretUtils'
 import { describedLazily } from './lazyDescription'
+import { BASIC_AUTH_PARAMETER } from '@/secrets/basicAuth'
+import type { SecretRequest } from './secretUtils'
 
 const MAX_RESPONSE_SIZE = 100 * 1024 // 100 KB
 
 const FETCH_DESCRIPTION =
-  'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. You can pass custom headers (e.g. Authorization, Content-Type) as key-value pairs. Use this to interact with APIs, fetch web pages, or download data.'
+  'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. You can pass custom headers (e.g. Authorization, Content-Type) as key-value pairs. Use this to interact with APIs, fetch web pages, or download data. For HTTP Basic authentication use basicAuth with a plain username and password: ${abele_key:name}; the saved password is resolved and encoded internally after consent.'
 
 /** The description, with the secrets the person named listed for the agent. */
 function describe(): string {
@@ -24,6 +26,7 @@ export function createFetchTool(): AgentTool {
     parameters: {
       type: 'object',
       properties: {
+        basicAuth: BASIC_AUTH_PARAMETER,
         url: { type: 'string', description: 'Full URL to request' },
         method: {
           type: 'string',
@@ -46,7 +49,12 @@ export function createFetchTool(): AgentTool {
       const rawUrl = params.url as string
       if (!rawUrl) throw new Error('Missing required parameter: url')
 
-      const prepared = prepareSecretRequest({ url: rawUrl, headers: (params.headers as Record<string, string>) || {}, body: params.body as string | undefined })
+      const prepared = prepareSecretRequest({
+        url: rawUrl,
+        headers: (params.headers as Record<string, string>) || {},
+        body: params.body as string | undefined,
+        basicAuth: params.basicAuth as SecretRequest['basicAuth'],
+      })
       const method = ((params.method as string) || 'GET').toUpperCase()
       const response = await requestUrl({ ...prepared, method, throw: false })
 
@@ -67,7 +75,10 @@ export function createFetchTool(): AgentTool {
         responseBody = responseBody.slice(0, MAX_RESPONSE_SIZE) + '\n\n[... truncated]'
       }
 
-      const result = redactSecrets([`HTTP ${response.status}`, responseBody].join('\n\n'), prepared.secretValues)
+      const result = redactSecrets(
+        [`HTTP ${response.status}`, responseBody].join('\n\n'),
+        prepared.secretValues
+      )
 
       return { content: [{ type: 'text', text: result }] }
     },

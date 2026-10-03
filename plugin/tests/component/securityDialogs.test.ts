@@ -17,10 +17,11 @@ vi.mock('@/stores/GlobalStore', () => ({
   GlobalStore: { getInstance: () => ({ app: {} }) },
 }))
 vi.mock('@/services/AbeleConfig', () => ({
-  AbeleConfig: { getInstance: () => ({}) },
+  AbeleConfig: { getInstance: () => ({ ai: { secrets: [] } }) },
 }))
 vi.mock('@/secrets/destinations', () => ({
   pendingDestinations: () => state.pending,
+  destinationAccepted: () => true,
   acceptDestinations: (destinations: typeof state.pending) => {
     state.accept(destinations)
     state.pending = state.pending.filter((d) => !destinations.includes(d))
@@ -49,8 +50,11 @@ vi.mock('@/secrets/manualConsent', () => ({
     return new URL(address).origin
   },
   allowKeyRecipient: async () => {},
+  removeKeyRecipient: async () => {},
+  keyConsentError: () => 'Could not save key permission',
 }))
 vi.mock('@/ai/tools/secretUtils', () => ({
+  snapshotSecretRequest: (request: unknown) => request,
   secretRequestInfo: () => ({
     names: ['Sample key'],
     origin: 'https://api.sample.example',
@@ -64,7 +68,10 @@ vi.mock('obsidian', async (original) => {
   return {
     ...api,
     Setting: class {
-      constructor(private el: HTMLElement) {}
+      private el: HTMLElement
+      constructor(parent: HTMLElement) {
+        this.el = parent.createDiv({ cls: 'setting-item' })
+      }
       setName(text: string) {
         this.el.createEl('div', { cls: 'setting-item-name', text })
         return this
@@ -96,7 +103,7 @@ const request = {
 const buttons = (root: ParentNode) => [...root.querySelectorAll<HTMLButtonElement>('button')]
 const footer = () => document.querySelector<HTMLElement>('.abele-modal__footer')!
 const click = (text: string) =>
-  buttons(footer())
+  buttons(document.querySelector('.modal')!)
     .find((button) => button.textContent === text)!
     .click()
 
@@ -131,31 +138,37 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
       expect(body.textContent).toContain(
         'Public HTTP cannot receive keys. Change this address to HTTPS.'
       )
-      expect(buttons(body)).toEqual([])
-      expect(
-        [...pinned.querySelectorAll('.setting-item-name')].map((el) => el.textContent)
-      ).toEqual(['Sample secure provider', 'Sample home provider'])
-      expect(buttons(pinned).map((b) => b.textContent)).toEqual([
+      expect(buttons(body).map((b) => b.textContent)).toEqual([
         'Allow on this device',
         'Allow unencrypted HTTP',
-        'Allow key and address',
       ])
+      expect(buttons(pinned).map((b) => b.textContent)).toEqual(['Allow key and address'])
+      for (const label of ['Sample secure provider', 'Sample home provider']) {
+        const row = [...body.querySelectorAll('.setting-item')].find((row) =>
+          row.textContent?.includes(label)
+        )!
+        expect(row.querySelector('button')).not.toBeNull()
+        expect(row.textContent).toContain(
+          label === 'Sample secure provider'
+            ? 'https://api.sample.example'
+            : 'http://192.168.8.20:1234'
+        )
+      }
       const secure = state.pending[0]
       click('Allow on this device')
       expect(state.accept).toHaveBeenCalledWith([secure])
       expect(modal.modalEl.querySelector('.abele-modal__body')).toBe(body)
       expect(footer()).toBe(pinned)
-      expect(buttons(pinned).map((b) => b.textContent)).toEqual([
-        'Allow unencrypted HTTP',
-        'Allow key and address',
-      ])
+      expect(buttons(pinned).map((b) => b.textContent)).toEqual(['Allow key and address'])
+      expect(buttons(body).map((b) => b.textContent)).toEqual(['Allow unencrypted HTTP'])
       const home = state.pending[0]
       click('Allow unencrypted HTTP')
       expect(state.allowHttp).toHaveBeenCalledWith(home.origin)
       expect(state.accept).toHaveBeenLastCalledWith([home])
-      expect(body.textContent).toContain('HTTP exception')
-      expect(buttons(pinned).map((b) => b.textContent)).toEqual(['Allow key and address', 'Remove'])
-      click('Remove')
+      expect(body.textContent).toContain('HTTP transport on this device')
+      expect(buttons(pinned).map((b) => b.textContent)).toEqual(['Allow key and address'])
+      expect(buttons(body).map((b) => b.textContent)).toEqual(['Remove HTTP exception'])
+      click('Remove HTTP exception')
       expect(state.forgetHttp).toHaveBeenCalledWith(home.origin)
       expect(buttons(pinned).map((b) => b.textContent)).toEqual(['Allow key and address'])
     } finally {
@@ -186,7 +199,9 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
       expect(footer().querySelector('.mod-cta')).not.toBeNull()
       click(missing ? 'Allow address and send' : 'Send once')
       await approval
-      expect(state.allowSecret.mock.calls).toEqual(missing ? [['Sample key', request.url]] : [])
+      expect(state.allowSecret.mock.calls).toEqual(
+        missing ? [['Sample key', 'https://api.sample.example', undefined]] : []
+      )
       expect(document.querySelector('.modal')).toBeNull()
     }
   )

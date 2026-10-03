@@ -1,6 +1,11 @@
 import { ShellModal } from '@/modal/ShellModal'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { allowSecretOrigin, secretRequestInfo, type SecretRequest } from '@/ai/tools/secretUtils'
+import {
+  allowSecretOrigin,
+  secretRequestInfo,
+  snapshotSecretRequest,
+  type SecretRequest,
+} from '@/ai/tools/secretUtils'
 import { checkKeyTransport } from './keyTransport'
 
 /** Ask only for recipients not yet allowed for every named key on this device. */
@@ -8,6 +13,7 @@ export async function approveScriptKeyRequest(
   request: SecretRequest,
   signal?: AbortSignal
 ): Promise<void> {
+  request = snapshotSecretRequest(request)
   const info = secretRequestInfo(request)
   if (!info.names.length) return
   signal?.throwIfAborted()
@@ -33,9 +39,26 @@ export async function approveScriptKeyRequest(
       'Allow address and send',
       () => {
         if (signal?.aborted) return
-        for (const name of info.missing) allowSecretOrigin(name, request.url)
-        sent = true
-        modal.close()
+        void (async () => {
+          try {
+            if (
+              JSON.stringify(secretRequestInfo(request).bindings) !== JSON.stringify(info.bindings)
+            )
+              throw new Error('The saved key changed; review the request again')
+            for (const name of info.missing) await allowSecretOrigin(name, info.origin, signal)
+            signal?.throwIfAborted()
+            if (
+              JSON.stringify(secretRequestInfo(request).bindings) !== JSON.stringify(info.bindings)
+            )
+              throw new Error('The saved key changed; review the request again')
+            sent = true
+            modal.close()
+          } catch {
+            modal.bodyEl.createEl('p', {
+              text: 'Could not save this key permission. Review key destinations and retry; nothing was sent.',
+            })
+          }
+        })()
       },
       { cta: true }
     )

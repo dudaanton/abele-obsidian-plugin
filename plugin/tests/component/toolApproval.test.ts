@@ -60,12 +60,33 @@ async function settled(wrapper: ReturnType<typeof approval>) {
 }
 
 describe('saved-key approval choices', () => {
+  it('shows the named password and recipient for the registered Basic input without exposing or pre-encoding it', async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai = {
+      ...DEFAULT_AI_SETTINGS,
+      secrets: [{ name: 'Sample password', keyId: 'sample-password' }],
+    }
+    initializeDestinations(config)
+    const wrapper = approval('fetch', {
+      url: 'https://console.sample.example/stats',
+      basicAuth: { username: 'sample-user', password: '${abele_key:Sample password}' },
+    })
+    try {
+      await nextTick()
+      expect(wrapper.text()).toContain('Sample password')
+      expect(wrapper.text()).toContain('https://console.sample.example')
+      expect(buttonSaying(wrapper, 'Allow this address for these keys')).toBeDefined()
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('keeps Send once separate from remembered addresses and tool permissions', async () => {
     const config = AbeleConfig.getInstance()
     config.ai = { ...DEFAULT_AI_SETTINGS, secrets: [{ name: 'sample', keyId: 'sample-key' }] }
     vi.spyOn(config, 'saveSettings').mockResolvedValue()
     initializeDestinations(config)
-    allowSecretOrigin('sample', 'https://api.sample.example')
+    app.secretStorage.setSecret('sample-key', 'fake-approval-password')
+    await allowSecretOrigin('sample', 'https://api.sample.example')
     const { approvals, toolModes } = sessionIn('confirm-all', 'ask')
     const wrapper = approval('fetch', {
       url: 'https://api.sample.example/data',

@@ -18,6 +18,29 @@ import {
   forgetHttpOrigin,
 } from './keyTransport'
 
+const CONSENT_ERRORS = {
+  address: 'Enter an HTTP(S) address without URL credentials.',
+  publicHttp: 'Public HTTP cannot receive keys. Use HTTPS.',
+  key: 'Choose a saved key available on this device.',
+  name: 'Enter a name and value for the new key.',
+  collision:
+    'A key already has that name. Choose another name; existing keys are never overwritten.',
+  changed: 'The selected key changed. Choose it again.',
+  unreadable:
+    'Could not save key permission. Settings cannot be read; restore the settings file and reload before saving permissions.',
+  persistence:
+    'Could not save key permission. No new permission was confirmed; check storage and retry.',
+}
+class ConsentError extends Error {
+  constructor(code: keyof typeof CONSENT_ERRORS) {
+    super(CONSENT_ERRORS[code])
+  }
+}
+/** Only controlled validation messages may reach the dialog; native storage errors can contain keys. */
+export function keyConsentError(error: unknown): string {
+  return error instanceof ConsentError ? error.message : CONSENT_ERRORS.persistence
+}
+
 export interface KeyRecipientConsent {
   address: string
   keyId?: string
@@ -36,8 +59,14 @@ export function recipientKeys() {
 
 export function recipientOrigin(address: string): string {
   const origin = httpOrigin(address)
-  if (!origin) throw new Error('Enter an HTTP(S) address without URL credentials')
-  if (!canAllowHttp(origin)) checkKeyTransport(origin)
+  if (!origin) throw new ConsentError('address')
+  if (!canAllowHttp(origin)) {
+    try {
+      checkKeyTransport(origin)
+    } catch {
+      throw new ConsentError('publicHttp')
+    }
+  }
   return origin
 }
 
@@ -52,9 +81,59 @@ export function allowKeyRecipient(
   return work
 }
 
+export function removeKeyRecipient(
+  keyId: string,
+  address: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const work = saving.then(async () => {
+    signal?.throwIfAborted()
+    const config = AbeleConfig.getInstance()
+    requireReadableSettings(config)
+    const origin = httpOrigin(address)
+    if (!origin || keyId.startsWith('abele-store-key')) throw new ConsentError('key')
+    const owned = config.ai.secrets.filter(
+      (s) => s.keyId === keyId && s.allowedOrigins?.includes(origin)
+    )
+    if (!owned.length) throw new ConsentError('key')
+    const destination = { keyId, name: owned[0].name || 'Saved key', origin }
+    const accepted = destinationAccepted(destination)
+    const changed = new Map(
+      owned.map((s) => [s, { ...s, allowedOrigins: s.allowedOrigins!.filter((o) => o !== origin) }])
+    )
+    config.ai = { ...config.ai, secrets: config.ai.secrets.map((s) => changed.get(s) ?? s) }
+    try {
+      await config.saveSettings()
+      signal?.throwIfAborted()
+      requireReadableSettings(config)
+      forgetDestination(destination)
+    } catch {
+      config.ai = {
+        ...config.ai,
+        secrets: config.ai.secrets.map((s) => {
+          const previous = [...changed].find(([, replacement]) => replacement === s)?.[0]
+          return previous
+            ? { ...s, allowedOrigins: [...new Set([...(s.allowedOrigins ?? []), origin])] }
+            : s
+        }),
+      }
+      if (accepted) {
+        try {
+          acceptDestinations([destination])
+        } catch {
+          /* Keep reporting failure. */
+        }
+      }
+      await config.saveSettings().catch(() => {})
+      throw new ConsentError('persistence')
+    }
+  })
+  saving = work.catch(() => {})
+  return work
+}
+
 function requireReadableSettings(config: AbeleConfig): void {
-  if (config.settingsUnreadable)
-    throw new Error('Settings cannot be read; key permission was not saved')
+  if (config.settingsUnreadable) throw new ConsentError('unreadable')
 }
 
 async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal): Promise<void> {
@@ -63,15 +142,14 @@ async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal
   const config = AbeleConfig.getInstance()
   requireReadableSettings(config)
   const store = secrets()
-  if (!!request.keyId === !!request.newKey) throw new Error('Choose one key')
+  if (!!request.keyId === !!request.newKey) throw new ConsentError('key')
   const selected = request.keyId ? recipientKeys().find((row) => row.id === request.keyId) : null
-  if (request.keyId && !selected) throw new Error('Choose a saved key available on this device')
+  if (request.keyId && !selected) throw new ConsentError('key')
   const previous = selected ? config.ai.secrets.find((s) => s.keyId === selected.id) : undefined
   const name = request.newKey?.name.trim() || previous?.name || selected?.name || ''
-  if (!name || (request.newKey && !request.newKey.value))
-    throw new Error('Enter a key name and value')
+  if (!name || (request.newKey && !request.newKey.value)) throw new ConsentError('name')
   if (!previous && config.ai.secrets.some((s) => s.name === name))
-    throw new Error('A saved key already has that name')
+    throw new ConsentError('collision')
   let keyId = selected?.id ?? ''
   if (!keyId) {
     do {
@@ -104,9 +182,8 @@ async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal
     }
     // An independent editor may have changed the catalog while protected storage was saving.
     if (!previous && config.ai.secrets.some((s) => s.name === name))
-      throw new Error('A saved key already has that name')
-    if (previous && !config.ai.secrets.includes(previous))
-      throw new Error('The selected key changed; choose it again')
+      throw new ConsentError('collision')
+    if (previous && !config.ai.secrets.includes(previous)) throw new ConsentError('changed')
     config.ai = {
       ...config.ai,
       secrets: previous
@@ -124,7 +201,7 @@ async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal
       allowingHttp = true
       allowHttpOrigin(origin)
     }
-  } catch {
+  } catch (error) {
     // Revoke only grants this transaction introduced. No await separates the two local writes.
     // One failing storage rollback must not prevent the other revocation or catalog cleanup.
     try {
@@ -173,8 +250,6 @@ async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal
     }
     if (introduced) await config.saveSettings().catch(() => {})
     // Persistence/keychain errors can carry submitted values; never display or log them.
-    throw new Error(
-      'Could not save key permission. No new permission was confirmed; review the key and try again.'
-    )
+    throw error instanceof ConsentError ? error : new ConsentError('persistence')
   }
 }

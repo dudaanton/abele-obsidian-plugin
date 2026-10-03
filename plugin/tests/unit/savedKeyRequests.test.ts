@@ -31,9 +31,9 @@ const req = {
 }
 
 describe('saved-key request destinations', () => {
-  it('holds a named key until its allowed-address list includes the recipient', () => {
+  it('holds a named key until its allowed-address list includes the recipient', async () => {
     expect(() => prepareSecretRequest(req)).toThrow(/allowed|configured/i)
-    allowSecretOrigin('sample', req.url)
+    await allowSecretOrigin('sample', req.url)
     const prepared = prepareSecretRequest(req)
     expect(prepared.headers['X-Custom']).toBe('sample-secret-value')
     expect(prepared.secretValues).toEqual(['sample-secret-value'])
@@ -52,8 +52,8 @@ describe('saved-key request destinations', () => {
   })
   it.each(['fetch', 'download_image', 'download_file'])(
     'remembers an allowed origin for %s across paths, query strings and equivalent URLs',
-    (tool) => {
-      allowSecretOrigin('sample', 'https://API.SAMPLE.EXAMPLE:443/first')
+    async (tool) => {
+      await allowSecretOrigin('sample', 'https://API.SAMPLE.EXAMPLE:443/first')
       expect(
         needsSecretApproval(tool, { ...req, url: 'https://api.sample.example/next?q=2' })
       ).toBe(false)
@@ -73,7 +73,7 @@ describe('saved-key request destinations', () => {
     ).toBe(true)
     expect(needsSecretApproval('fetch', { url: 'http://localhost/api' })).toBe(false)
   })
-  it('also asks when an MCP server substitutes a named key in its configured headers', () => {
+  it('also asks when an MCP server substitutes a named key in its configured headers', async () => {
     AbeleConfig.getInstance().ai.mcpServers = [
       createMcpServer({
         name: 'Sample',
@@ -83,7 +83,7 @@ describe('saved-key request destinations', () => {
       }),
     ]
     expect(needsSecretApproval('mcp_sample_read', {})).toBe(true)
-    allowSecretOrigin('sample', req.url)
+    await allowSecretOrigin('sample', req.url)
     expect(needsSecretApproval('mcp_sample_read', {})).toBe(false)
   })
   it('does not bypass approval for invalid recipients or unknown keys', () => {
@@ -105,7 +105,7 @@ describe('saved-key request destinations', () => {
     }
     vi.spyOn(internal.turnPolicy, 'decide').mockResolvedValue({ kind: 'approve' })
     expect(await internal.policyFor('sample-call', 'fetch', req)).toEqual({ kind: 'ask' })
-    allowSecretOrigin('sample', req.url)
+    await allowSecretOrigin('sample', req.url)
     expect(session.needsApproval('fetch', req)).toBe(false)
     expect(await internal.policyFor('sample-next', 'fetch', req)).toEqual({ kind: 'approve' })
     session.toolModes.value = { fetch: 'ask' }

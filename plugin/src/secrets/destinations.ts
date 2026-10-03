@@ -1,6 +1,6 @@
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { RequestUrlParam } from 'obsidian'
-import { basicAuth } from '@/calendars/http'
+import { basicCredentials } from './basicAuth'
 import { canAllowHttp, checkKeyTransport } from './keyTransport'
 import { IMAGE_API_DEFAULTS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
@@ -87,7 +87,15 @@ export function checkRequestDestinations(
   settings: AbeleSettings
 ): string[] {
   const carried: string[] = []
-  const headers = Object.values(request.headers ?? {})
+  const entries = Object.entries(request.headers ?? {})
+  const basics = entries
+    .filter(
+      ([name, header]) =>
+        /^(authorization|proxy-authorization)$/i.test(name) && /^Basic(?:\s|$)/i.test(header)
+    )
+    .map(([, header]) => ({ header, credentials: basicCredentials(header) }))
+  const basicHeaders = new Set(basics.map(({ header }) => header))
+  const headers = Object.values(request.headers ?? {}).filter((header) => !basicHeaders.has(header))
   const credentialHeaders = Object.entries(request.headers ?? {})
     .filter(
       ([name, value]) =>
@@ -106,20 +114,21 @@ export function checkRequestDestinations(
   for (const keyId of keyIds) {
     const value = secrets().get(keyId)
     if (!value) continue
-    const basics = (settings.calendars?.feeds ?? [])
-      .filter((f) => f.source === 'caldav' && f.keyId === keyId)
-      .map((f) => basicAuth(f.username, value))
-    if (headers.some((h) => h.includes(value) || basics.includes(h))) {
+    const matchedBasic = basics.filter(({ credentials }) => credentials?.password === value)
+    if (headers.some((h) => h.includes(value)) || matchedBasic.length) {
       checkKeyDestination(keyId, request.url, settings)
-      carried.push(value, ...basics)
+      carried.push(value)
+      for (const { header, credentials } of matchedBasic) {
+        recognised.add(header)
+        carried.push(
+          header,
+          header.replace(/^Basic[ \t]+/i, ''),
+          `${credentials!.username}:${value}`
+        )
+      }
       // Home-network transport consent is not consent for arbitrary other credentials.
       for (const header of credentialHeaders) {
-        if (
-          header === value ||
-          header.replace(/^Bearer\s+/i, '') === value ||
-          basics.includes(header)
-        )
-          recognised.add(header)
+        if (header === value || header.replace(/^Bearer\s+/i, '') === value) recognised.add(header)
       }
     }
   }

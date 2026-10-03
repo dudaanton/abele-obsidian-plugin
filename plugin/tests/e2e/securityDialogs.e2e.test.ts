@@ -9,7 +9,7 @@ const available = isObsidianRunning() && hasTestApi()
 
 interface DialogReport {
   shell: boolean
-  bodyActions: number
+  bodyActions: string[]
   actions: string[]
   outside: string[]
   scrolled: boolean
@@ -21,13 +21,14 @@ describe.skipIf(!available)('security dialogs on a real screen', () => {
   it.each([
     [
       'key-destinations',
-      ['Allow on this device', 'Allow unencrypted HTTP', 'Allow key and address'],
+      ['Allow key and address'],
+      ['Allow on this device', 'Allow unencrypted HTTP'],
     ],
-    ['key-destinations-new', ['Allow key and address']],
-    ['saved-key-request', ['Cancel', 'Allow address and send']],
+    ['key-destinations-new', ['Allow key and address'], []],
+    ['saved-key-request', ['Cancel', 'Allow address and send'], []],
   ])(
     '%s keeps its actions visible while the body scrolls',
-    async (name, actions) => {
+    async (name, actions, rowActions) => {
       const raw = await evalLong(
         `(async () => {
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -65,7 +66,7 @@ describe.skipIf(!available)('security dialogs on a real screen', () => {
         if (r.top < 0 || r.bottom > innerHeight) outside.push('dialog')
         return {
           shell: modal.matches('.modal.abele-modal'),
-          bodyActions: body.querySelectorAll('button').length,
+          bodyActions: [...body.querySelectorAll('button')].map(button => button.textContent.trim()),
           actions: [...footer.querySelectorAll('button')].map(button => button.textContent.trim()),
           outside, scrolled: body.scrollTop > 0,
           footerMoved: Math.abs(footer.getBoundingClientRect().top - before), shot: saved,
@@ -83,7 +84,7 @@ describe.skipIf(!available)('security dialogs on a real screen', () => {
       if (raw.startsWith('Error:')) throw new Error(raw)
       const result = JSON.parse(raw) as DialogReport
       expect(result.shell).toBe(true)
-      expect(result.bodyActions).toBe(0)
+      expect(result.bodyActions).toEqual(rowActions)
       expect(result.actions).toEqual(actions)
       expect(result.outside).toEqual([])
       expect(result.scrolled).toBe(true)

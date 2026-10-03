@@ -197,12 +197,18 @@ const keyInfo = computed(() => {
     return null
   }
 })
-const allowKeyAddress = () => {
+const allowKeyAddress = async () => {
+  const request = secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
+  if (!request) return
+  const binding = JSON.stringify(request)
   try {
-    for (const name of keyInfo.value?.missing ?? []) allowSecretOrigin(name, keyInfo.value!.origin)
+    const info = secretRequestInfo(request)
+    for (const name of info.missing) await allowSecretOrigin(name, info.origin)
+    if (JSON.stringify(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)) !== binding)
+      throw new Error('The request changed')
     keyRevision.value++
-  } catch (error) {
-    parseError.value = (error as Error).message
+  } catch {
+    parseError.value = 'Could not save key permission. Review the current request and key destinations, then retry.'
   }
 }
 

@@ -12,7 +12,7 @@ vi.mock('obsidian', async () => ({
   ...(await vi.importActual('../mocks/obsidian')),
   requestUrl: mocks.request,
 }))
-beforeEach(() => {
+beforeEach(async () => {
   const app = useVault([])
   app.secretStorage.setSecret('sample-key', 'sample-value')
   AbeleConfig.getInstance().ai = {
@@ -21,16 +21,14 @@ beforeEach(() => {
   }
   vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue()
   initializeDestinations(AbeleConfig.getInstance())
-  allowSecretOrigin('sample', 'https://api.sample.example')
+  await allowSecretOrigin('sample', 'https://api.sample.example')
   mocks.approve.mockReset().mockResolvedValue(undefined)
-  mocks.request
-    .mockReset()
-    .mockResolvedValue({
-      status: 200,
-      headers: { 'content-type': 'text/plain' },
-      text: 'sample-value',
-      arrayBuffer: new ArrayBuffer(0),
-    })
+  mocks.request.mockReset().mockResolvedValue({
+    status: 200,
+    headers: { 'content-type': 'text/plain' },
+    text: 'sample-value',
+    arrayBuffer: new ArrayBuffer(0),
+  })
 })
 describe('script saved-key confirmation boundary', () => {
   it('checks approval on every fetch and redacts an echo', async () => {

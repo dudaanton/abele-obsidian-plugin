@@ -20,7 +20,12 @@ import { createDownloadImageTool, createDownloadFileTool } from '@/ai/tools/Down
 import { runSubAgent, runScopeFor } from '@/ai/SubAgentRunner'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { createAgentTools } from '@/ai/tools'
-import { prepareSecretRequest, redactSecrets } from '@/ai/tools/secretUtils'
+import {
+  prepareSecretRequest,
+  redactSecrets,
+  snapshotSecretRequest,
+  type SecretRequest,
+} from '@/ai/tools/secretUtils'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import type { FormAnswers, FormField } from './types'
 import { answerPickers } from './formPickers'
@@ -450,11 +455,18 @@ export function buildScriptContext(opts: {
         method?: string
         headers?: Record<string, string>
         body?: string
+        basicAuth?: SecretRequest['basicAuth']
         /** Milliseconds to wait, capped at five minutes; default five minutes. */
         timeout?: number
       }
     ): Promise<{ status: number; headers: Record<string, string>; data: any; text: string }> {
-      const raw = { url, headers: fetchOpts?.headers, body: fetchOpts?.body }
+      const raw = snapshotSecretRequest({
+        url,
+        headers: fetchOpts?.headers,
+        body: fetchOpts?.body,
+        basicAuth: fetchOpts?.basicAuth,
+      })
+      const method = fetchOpts?.method || 'GET'
       await approveScriptKeyRequest(raw, s)
       const prepared = prepareSecretRequest(raw)
       const response = await withTimeout(
@@ -463,7 +475,7 @@ export function buildScriptContext(opts: {
             () =>
               requestUrl({
                 ...prepared,
-                method: fetchOpts?.method || 'GET',
+                method,
                 throw: false,
                 timeoutMs: 300_000,
               }),
@@ -476,8 +488,11 @@ export function buildScriptContext(opts: {
         s,
         track
       )
-      const contentType = (Object.entries(response.headers)
-        .find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? '').toLowerCase()
+      const contentType = (
+        Object.entries(response.headers).find(
+          ([name]) => name.toLowerCase() === 'content-type'
+        )?.[1] ?? ''
+      ).toLowerCase()
       const text = redactSecrets(response.text, prepared.secretValues)
       let data: any = text
       if (contentType.includes('application/json')) {
@@ -500,15 +515,21 @@ export function buildScriptContext(opts: {
       url: string,
       filenameOrOpts?:
         | string
-        | { filename?: string; headers?: Record<string, string>; timeout?: number }
+        | {
+            filename?: string
+            headers?: Record<string, string>
+            basicAuth?: SecretRequest['basicAuth']
+            timeout?: number
+          }
     ): Promise<string> {
       const opts =
         typeof filenameOrOpts === 'string' ? { filename: filenameOrOpts } : filenameOrOpts
       const { timeout, ...rest } = opts ?? {}
-      await approveScriptKeyRequest({ url, headers: rest.headers }, s)
+      const raw = snapshotSecretRequest({ url, headers: rest.headers, basicAuth: rest.basicAuth })
+      await approveScriptKeyRequest(raw, s)
       return stripPrefix(
         await withTimeout(
-          (signal) => call(downloadImageTool, { url, ...rest }, signal),
+          (signal) => call(downloadImageTool, { ...rest, ...raw }, signal),
           timeout,
           url,
           s,
@@ -525,15 +546,22 @@ export function buildScriptContext(opts: {
         method?: string
         headers?: Record<string, string>
         body?: string
+        basicAuth?: SecretRequest['basicAuth']
         /** Milliseconds to wait. Any value; without one, as long as the platform waits. */
         timeout?: number
       }
     ): Promise<string> {
       const { timeout, ...rest } = opts ?? {}
-      await approveScriptKeyRequest({ url, headers: rest.headers, body: rest.body }, s)
+      const raw = snapshotSecretRequest({
+        url,
+        headers: rest.headers,
+        body: rest.body,
+        basicAuth: rest.basicAuth,
+      })
+      await approveScriptKeyRequest(raw, s)
       return stripPrefix(
         await withTimeout(
-          (signal) => call(downloadFileTool, { url, ...rest }, signal),
+          (signal) => call(downloadFileTool, { ...rest, ...raw }, signal),
           timeout,
           url,
           s,

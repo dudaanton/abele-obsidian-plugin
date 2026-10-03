@@ -3,7 +3,8 @@ import { request as requestUrl } from '@/helpers/http'
 import { getAttachmentFolder } from './imageUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
-import { prepareSecretRequest, redactSecrets } from './secretUtils'
+import { prepareSecretRequest, redactSecrets, type SecretRequest } from './secretUtils'
+import { BASIC_AUTH_PARAMETER } from '@/secrets/basicAuth'
 import { createImportedBinary } from '@/media/importImageFile'
 
 function extFromContentType(contentType: string): string | null {
@@ -57,10 +58,11 @@ async function downloadToVault(
   method?: string,
   rawHeaders?: Record<string, string>,
   body?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  basicAuth?: SecretRequest['basicAuth']
 ): Promise<string> {
   signal?.throwIfAborted()
-  const prepared = prepareSecretRequest({ url: rawUrl, headers: rawHeaders, body })
+  const prepared = prepareSecretRequest({ url: rawUrl, headers: rawHeaders, body, basicAuth })
   const { url, headers } = prepared
 
   const reqOpts: {
@@ -109,7 +111,12 @@ async function downloadToVault(
     counter++
   }
 
-  const saved = await createImportedBinary(app, targetPath, new Blob([response.arrayBuffer], { type: contentType }), signal)
+  const saved = await createImportedBinary(
+    app,
+    targetPath,
+    new Blob([response.arrayBuffer], { type: contentType }),
+    signal
+  )
   return saved.path
 }
 
@@ -122,6 +129,7 @@ export function createDownloadImageTool(): AgentTool {
     parameters: {
       type: 'object',
       properties: {
+        basicAuth: BASIC_AUTH_PARAMETER,
         url: { type: 'string', description: 'Image URL to download' },
         filename: {
           type: 'string',
@@ -147,7 +155,8 @@ export function createDownloadImageTool(): AgentTool {
         undefined,
         params.headers as Record<string, string> | undefined,
         undefined,
-        signal
+        signal,
+        params.basicAuth as SecretRequest['basicAuth']
       )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },
@@ -163,6 +172,7 @@ export function createDownloadFileTool(): AgentTool {
     parameters: {
       type: 'object',
       properties: {
+        basicAuth: BASIC_AUTH_PARAMETER,
         url: { type: 'string', description: 'File URL to download' },
         filename: {
           type: 'string',
@@ -201,7 +211,8 @@ export function createDownloadFileTool(): AgentTool {
         params.method as string | undefined,
         params.headers as Record<string, string> | undefined,
         params.body as string | undefined,
-        signal
+        signal,
+        params.basicAuth as SecretRequest['basicAuth']
       )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },

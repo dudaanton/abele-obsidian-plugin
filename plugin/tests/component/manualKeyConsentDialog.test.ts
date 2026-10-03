@@ -78,7 +78,7 @@ describe('manual recipient form in an empty review', () => {
   it('offers native address and explicit protected-key creation with no pending destinations', async () => {
     const modal = reviewKeyDestinations()
     try {
-      expect(modal.bodyEl.textContent).toContain('No destinations need confirmation.')
+      expect(modal.bodyEl.querySelector('input[aria-label="Recipient address"]')).not.toBeNull()
       expect(modal.bodyEl.querySelector('select')).not.toBeNull()
       input(modal.bodyEl, 'Recipient address', 'http://192.168.42.12:8123/status')
       selectNew(modal.bodyEl)
@@ -96,6 +96,10 @@ describe('manual recipient form in an empty review', () => {
       const key = config().ai.secrets[0]
       expect(secrets().get(key.keyId)).toBe('fake-created-key')
       expect(modal.bodyEl.textContent).toMatch(/Retry/)
+      const pair = modal.bodyEl.querySelector('[data-key-destination]')!
+      expect(pair.textContent).toContain('Sample created')
+      expect(pair.textContent).toContain('http://192.168.42.12:8123')
+      expect(modal.bodyEl.querySelector<HTMLSelectElement>('select')!.value).toBe(key.keyId)
     } finally {
       modal.close()
     }
