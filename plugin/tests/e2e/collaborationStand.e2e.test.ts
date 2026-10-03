@@ -544,7 +544,7 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
         }
       }
     })
-    it('a collaborator creates attributed note/image while owner is offline and another collaborator continues', async () => {
+    it('a collaborator creates native note/image while owner is offline and another collaborator continues', async () => {
       const client = await createScopedClient({
           baseUrl: server!.url,
           fetch: fetcher,
@@ -695,9 +695,10 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       )
     })
     it('native owner paste is automatic after group collaboration and preserves exact root asset paths', async () => {
-      await cli!.evalAwait(
-        `window.__abeleTest.enableOwnerPublicationFixture(app,${JSON.stringify([grant.id])})`
-      )
+      if (cli!.evalAwait('window.__abeleTest.ownerPublicationDiagnostics(app)===null'))
+        await cli!.evalAwait(
+          `window.__abeleTest.enableOwnerPublicationFixture(app,${JSON.stringify([grant.id])})`
+        )
       await cli!.evalAwait(
         `app.vault.modify(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}),${JSON.stringify('---\ngroups: ["[[Agents/Проект примера]]"]\n---\nready native paste\n')}).then(()=>true)`
       )
