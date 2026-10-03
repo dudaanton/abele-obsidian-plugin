@@ -116,6 +116,14 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
+.abele-scoped-join {
+  overflow-y: auto;
+  padding: 0 var(--size-4-1) var(--size-4-3);
+}
+.abele-modal__buttons {
+  flex: 0 0 auto;
+  padding-top: var(--size-4-3);
+}
 .abele-scoped-join label {
   display: flex;
   flex-direction: column;
