@@ -297,12 +297,12 @@ export async function openTestVault(): Promise<TestVault> {
  */
 export async function waitFor(
   what: string | (() => string),
-  done: () => boolean,
+  done: () => boolean | Promise<boolean>,
   timeoutMs = OPEN_MS
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    if (done()) return
+    if (await done()) return
     if (Date.now() > deadline) {
       const said = typeof what === 'string' ? what : what()
       throw new Error(`timed out after ${timeoutMs}ms waiting for ${said}`)
