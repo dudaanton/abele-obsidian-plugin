@@ -49,8 +49,13 @@ interface Preparation {
 
 function equal(a: unknown, b: unknown): boolean {
   if (a === b) return true
-  if (Array.isArray(a) && Array.isArray(b))
-    return a.length === b.length && a.every((value, i) => equal(value, b[i]))
+  if (Array.isArray(a) || Array.isArray(b))
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((value, i) => equal(value, b[i]))
+    )
   if (a && b && typeof a === 'object' && typeof b === 'object') {
     const left = Object.keys(a),
       right = Object.keys(b)
@@ -200,7 +205,7 @@ export class CanvasSession {
   updateDraft(transform: GraphTransform): void {
     if (this.publishing) throw new CanvasSessionError('busy')
     if (!this.preview?.active) throw new CanvasSessionError('no-draft')
-    const graph = cloneCanvas(transform(cloneCanvas(this.preview.graph)))
+    const graph = this.transform(this.preview.graph, transform)
     this.preview = { ...this.preview, graph }
     this.version++
   }
@@ -220,7 +225,7 @@ export class CanvasSession {
   reapplyDraft(transform: GraphTransform): void {
     if (this.busy) throw new CanvasSessionError('busy')
     if (!this.preview) throw new CanvasSessionError('no-draft')
-    const graph = cloneCanvas(transform(cloneCanvas(this.baseline.graph)))
+    const graph = this.transform(this.baseline.graph, transform)
     this.preview = { graph, baseRevision: this.baseline.revision, active: false }
     this.conflicted = false
     this.version++
@@ -248,10 +253,16 @@ export class CanvasSession {
     this.prepared = { token, before, after: graph, patch: patch ?? graphPatch(before, graph), kind }
     return token
   }
+  private transform(input: CanvasGraph, transform: GraphTransform): CanvasGraph {
+    const generation = this.version
+    const graph = cloneCanvas(transform(cloneCanvas(input)))
+    if (generation !== this.version) throw new CanvasSessionError('stale')
+    return graph
+  }
   /** Existing edit/layout/steps planners can be composed into one command on a detached clone. */
   prepare(transform: GraphTransform): PreparedCanvasTransaction {
     this.writable()
-    return this.stage(transform(cloneCanvas(this.baseline.graph)), 'command')
+    return this.stage(this.transform(this.baseline.graph, transform), 'command')
   }
   prepareDraft(): PreparedCanvasTransaction {
     this.writable(true)
@@ -301,10 +312,19 @@ export class CanvasSession {
   }
   /** Only a confirmed storage result may advance the committed baseline or history. */
   acknowledge(token: PreparedCanvasTransaction, confirmed: GraphSnapshot): void {
-    const prepared = this.matching(token)
-    if (!this.publishing || !confirmed.revision || !equal(confirmed.graph, prepared.after))
+    const prepared = this.prepared
+    if (
+      !prepared ||
+      prepared.token !== token ||
+      !this.publishing ||
+      !confirmed.revision ||
+      !equal(confirmed.graph, prepared.after)
+    )
       throw new CanvasSessionError('stale')
     const snapshot = copySnapshot(confirmed)
+    // Once publication began, a modify callback may have observed this write or a later one.
+    // Confirmation still records this transaction, but must never restore an older baseline.
+    const observedExternal = this.baseline.revision !== token.revision
     if (prepared.kind === 'command') {
       if (this.journalRevision !== token.revision) this.undoJournal = []
       this.redoJournal = []
@@ -317,7 +337,7 @@ export class CanvasSession {
       this.redoJournal.pop()
       this.undoJournal.push(prepared.patch)
     }
-    this.baseline = snapshot
+    if (!observedExternal) this.baseline = snapshot
     this.journalRevision = confirmed.revision
     this.preview = null
     this.conflicted = false
@@ -342,7 +362,7 @@ export class CanvasSession {
     this.prepared = null
     this.version++
   }
-  /** Hosts route confirmed own writes to acknowledge first; this is for external revisions. */
+  /** Observation never confirms publication by itself; only acknowledge advances history. */
   externalChanged(snapshot: GraphSnapshot): void {
     const next = copySnapshot(snapshot)
     if (next.revision === this.baseline.revision) {

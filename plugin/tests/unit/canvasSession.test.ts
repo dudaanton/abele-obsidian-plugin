@@ -326,6 +326,84 @@ describe('portable canvas document session', () => {
     expect(session.draft?.graph.nodes[1].text).toBe('Draft')
   })
 
+  it('acknowledges a confirmed write after its modify notification without prematurely recording history', () => {
+    const session = new CanvasSession(initial())
+    session.beginDraft()
+    session.updateDraft(edit('Published draft'))
+    session.finishDraft()
+    const prepared = session.prepareDraft()
+    const confirmed = { graph: session.apply(prepared, initial()), revision: 'revision-1' }
+    session.externalChanged(confirmed)
+    expect(session.history.undo).toBe(0)
+    expect(session.draft?.graph).toEqual(confirmed.graph)
+    session.acknowledge(prepared, confirmed)
+    expect(session.history.undo).toBe(1)
+    expect(session.committed).toEqual(confirmed)
+    expect(session.busy).toBe(false)
+    expect(session.dirty).toBe(false)
+    commit(session, session.prepareUndo(), 'revision-2')
+    expect(session.committed.graph).toEqual(sample())
+  })
+
+  it('never restores a confirmed older publication over a newer observed external revision', () => {
+    const session = new CanvasSession(initial())
+    const prepared = session.prepare(edit('Published'))
+    const confirmed = { graph: session.apply(prepared, initial()), revision: 'revision-1' }
+    const external = { graph: edit('Newer external')(confirmed.graph), revision: 'revision-2' }
+    session.externalChanged(external)
+    session.acknowledge(prepared, confirmed)
+    expect(session.committed).toEqual(external)
+    expect(session.history.undo).toBe(1)
+    expect(session.busy).toBe(false)
+    expect(session.draft).toBeNull()
+    expectCode(() => session.prepareUndo(), 'conflict')
+  })
+
+  it('retains a failed in-flight draft when an external revision arrives before rejection', () => {
+    const session = new CanvasSession(initial())
+    const prepared = session.prepare(edit('Failed proposal'))
+    session.apply(prepared, initial())
+    const external = { graph: edit('External')(sample()), revision: 'revision-external' }
+    session.externalChanged(external)
+    session.reject(prepared)
+    expect(session.committed).toEqual(external)
+    expect(session.draft?.graph.nodes[1].text).toBe('Failed proposal')
+    expect(session.conflict).toBe(true)
+    expect(session.busy).toBe(false)
+    expect(session.history.undo).toBe(0)
+  })
+
+  it('distinguishes extension arrays from objects with numeric keys in reversible patches', () => {
+    const graph = sample()
+    graph.future = ['opaque']
+    const session = new CanvasSession({ graph, revision: 'revision-0' })
+    const after = commit(
+      session,
+      session.prepare((input) => ({ ...input, future: { 0: 'opaque' } })),
+      'revision-1'
+    )
+    expect(after.future).toEqual({ 0: 'opaque' })
+    commit(session, session.prepareUndo(), 'revision-2')
+    expect(session.committed.graph.future).toEqual(['opaque'])
+    commit(session, session.prepareRedo(), 'revision-3')
+    expect(session.committed.graph.future).toEqual({ 0: 'opaque' })
+  })
+
+  it('refuses a planner made stale by a reentrant draft rather than staging over human work', () => {
+    const session = new CanvasSession(initial())
+    expectCode(
+      () =>
+        session.prepare((graph) => {
+          session.beginDraft()
+          session.updateDraft(edit('Human'))
+          return edit('Agent')(graph)
+        }),
+      'stale'
+    )
+    expect(session.draft?.graph.nodes[1].text).toBe('Human')
+    expect(session.committed).toEqual(initial())
+  })
+
   it('discards a conflicted draft explicitly and starts new history on the current external baseline', () => {
     const session = new CanvasSession(initial())
     commit(session, session.prepare(edit('Old local')), 'revision-1')
