@@ -46,7 +46,7 @@ Every script must start with a comment block declaring its metadata:
 - \`@toolbar\`: the script is on the toolbar — an icon on the left ribbon on a computer, run on the note in front and its selection, and a place on the phone's toolbar above the keyboard (so can any script pinned from the script library)
 - \`@startup\`: the script runs each time the plugin starts, after the vault is open, with its parameter defaults and no forms (\`form()\` answers \`null\`); \`@startup desktop\` or \`@startup mobile\` runs it on those devices only. A script that needs a parameter without a default is skipped. The startup list in Settings → Scripts → Startup does the same and sets the order
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
-- \`@lint\` (or \`@lint warning\`): the script is a rule of the linter, not something to run — no command, no agent tool. Declare \`function check(note)\` returning what is wrong: a list of messages or of \`{ message, line, fixable }\` (line 1-based over the whole file). Optionally \`function fix(note)\` returning the note's whole new text, or \`null\`. (Or \`return { check, fix }\`.) \`note\` has \`path\`, \`name\`, \`folder\`, \`content\`, \`lines\`, \`frontmatter\` (parsed, or \`null\`), \`frontmatterError\`, \`frontmatterEnd\`, \`body\`, \`bodyStart\`, \`ctime\`, \`mtime\`. Only read: \`read\`, \`ls\`, \`find\`, \`noteInfo\`, \`listTemplates\`, \`log\`, \`dayjs\` work; anything that writes, asks, opens or fetches throws. Keep \`check\` fast and pure: it runs once per note over the whole vault. The rule is set up in Settings → Linter, with the built-in ones
+- \`@lint\` (or \`@lint warning\`): the script is a rule of the linter, not something to run — no command, no agent tool. Declare \`function check(note)\` returning what is wrong: a list of messages or of \`{ message, line, fixable }\` (line 1-based over the whole file). Optionally \`function fix(note)\` returning the note's whole new text, or \`null\`. (Or \`return { check, fix }\`.) \`note\` has \`path\`, \`name\`, \`folder\`, \`content\`, \`lines\`, \`frontmatter\` (parsed, or \`null\`), \`frontmatterError\`, \`frontmatterEnd\`, \`body\`, \`bodyStart\`, \`ctime\`, \`mtime\`. Only read: \`read\`, \`ls\`, \`find\`, \`noteInfo\`, \`listTemplates\`, \`activeNotePath\`, \`log\`, \`dayjs\` work; anything that writes, asks, opens or fetches throws. Keep \`check\` fast and pure: it runs once per note over the whole vault. The rule is set up in Settings → Linter, with the built-in ones
 - \`@interceptor\` (or \`@interceptor 60\`): the script is a chat interceptor, not something to run — no command, no agent tool. Chosen as an agent's or a chat's interceptor, it runs on each message the person sends there (only those matching the interceptor's pattern, when one is set) before the agent sees it (or alongside the agent with **Reply only**), and what it returns decides what becomes of the message; see \`message\` and \`chat\` below. The number is how many seconds it may take, 30 unless it says (at most 600)
 
 ---
@@ -72,16 +72,16 @@ All async. Full vault access — no scope restrictions.
 | \`remove(path)\` | — | Move file to trash |
 | \`move(from, to)\` | \`string\` | Move or rename a file. Returns where it ended up |
 | \`copy(from, to)\` | \`string\` | Copy a file. Returns where the copy ended up |
-
-A name cannot carry \`* " \\ / < > : | ?\`, nor \`#\`, \`^\`, \`[\` or \`]\` — a wikilink cannot point
-past those. They are taken out rather than refused, which is why these three return the path:
-use what comes back, not the string you passed.
 | \`ls(path?)\` | \`string[]\` | List folder contents (file/folder paths). Omit path for vault root |
 | \`find(opts)\` | \`string[]\` | Search files (see below) |
 | \`replace(path, actions)\` | \`string\` | Apply replacement actions to a file (see below) |
 | \`open(path)\` | — | Open a file in the Obsidian editor |
 | \`setCover(notePath, mediaPath?)\` | — | Set cover image for a note. If mediaPath omitted, uses first media embed in note. Handles video thumbnails automatically |
 | \`noteInfo(path)\` | \`object\` | What a note is, ready for a card (see below) |
+
+A name cannot carry \`* " \\ / < > : | ?\`, nor \`#\`, \`^\`, \`[\` or \`]\` — a wikilink cannot point
+past those. They are taken out rather than refused, which is why create, move and copy return the path:
+use what comes back, not the string you passed.
 
 ### noteInfo(path)
 
@@ -548,9 +548,36 @@ return { reply: 'Added: ' + task }
 
 \`message\` and \`chat\` are not reserved names: a script with its own \`const message\` has its own.
 
-Every function and global in this reference, and \`view\` with the component classes of the
-view reference, is already declared in a script's scope: a script that declares one of those
-names itself (\`const open = …\`, \`function find() {}\`) fails to start with a message naming it.
+### Reserved names
+
+The compiler declares these names inside the script function:
+
+\`dayjs\`, \`read\`, \`edit\`, \`write\`, \`create\`, \`remove\`, \`move\`, \`copy\`,
+\`ls\`, \`find\`, \`replace\`, \`open\`, \`setCover\`, \`noteInfo\`, \`agent\`, \`agents\`,
+\`form\`, \`log\`, \`params\`, \`signal\`, \`fetch\`, \`applyTemplate\`, \`listTemplates\`,
+\`createFromTemplate\`, \`generateImage\`, \`downloadImage\`, \`downloadFile\`, \`notice\`,
+\`show\`, \`runScript\`, \`setStatus\`, \`activeNotePath\`, \`unzip\`, \`view\`.
+
+The component classes listed in the view reference are reserved too. Declaring one of these
+names inside the script fails to start it, with a message naming the conflict.
+
+### Shadowable globals
+
+\`event\`, \`book\`, \`books\`, \`analytics\`, \`vocabulary\`, \`message\` and \`chat\` are
+supplied by the surrounding scope, not reserved inside the script. A script can declare its
+own variable with one of those names without a compiler error.
+
+### Lint-rule globals
+
+The read-only context keeps exactly these names:
+
+\`params\`, \`signal\`, \`dayjs\`, \`event\`, \`book\`, \`log\`, \`activeNotePath\`,
+\`read\`, \`ls\`, \`find\`, \`noteInfo\`, \`listTemplates\`.
+
+Other functions throw when called; other objects are unavailable. A lint rule changes a note
+only by returning its fixed text, not through write APIs.
+
+### Run lifecycle
 
 Every run is listed while Obsidian is open — its status, how long it took, each \`log()\` line
 with the time it was printed, and what it returned — under **Show script runs**, where it can
