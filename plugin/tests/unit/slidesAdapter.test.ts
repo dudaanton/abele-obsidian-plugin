@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { presentationFileOpening } from '@/slides/opening'
+import { DeckView } from '@/slides/DeckView'
+import type { TFile, WorkspaceLeaf } from 'obsidian'
 import { slideDividers } from '@/slides/dividers'
 import { parseDeck } from '@/slides/core/markdown'
 
@@ -10,6 +12,46 @@ const leaf = () => ({
 })
 
 describe('presentation file opening', () => {
+  it('leaves the deck renderer for ordinary notes and explicitly requested Markdown source', async () => {
+    // Obsidian reuses a FileView when it accepts the new extension. Exercise that contract
+    // with the actual DeckView method, not a fake that always switches to Markdown.
+    const target = {
+      view: Object.create(DeckView.prototype) as DeckView,
+      setViewState: vi.fn(async () => {}),
+    }
+    const nativeOpen = vi.fn(async function (this: typeof target, file: TFile) {
+      if (!this.view.canAcceptExtension(file.extension))
+        this.view = { getViewType: () => 'markdown' } as DeckView
+    })
+    const proto = { openFile: nativeOpen }
+    const stop = presentationFileOpening(
+      async (file) => file.path === 'sample-deck.md',
+      proto as never
+    )
+    try {
+      await proto.openFile.call(target, { path: 'sample-note.md', extension: 'md' } as TFile)
+      expect(target.view.getViewType()).toBe('markdown')
+      target.view = Object.create(DeckView.prototype) as DeckView
+      await proto.openFile.call(target, { path: 'sample-deck.md', extension: 'md' } as TFile)
+      expect(target.setViewState).toHaveBeenCalledWith({
+        type: 'abele-deck',
+        state: { file: 'sample-deck.md' },
+        active: true,
+      })
+      expect(nativeOpen).toHaveBeenCalledTimes(1)
+      await (proto.openFile as WorkspaceLeaf['openFile']).call(
+        target as unknown as WorkspaceLeaf,
+        { path: 'sample-deck.md', extension: 'md' } as TFile,
+        { state: { abeleDeckSource: true, mode: 'source' } }
+      )
+      expect(target.view.getViewType()).toBe('markdown')
+      expect(nativeOpen).toHaveBeenCalledTimes(2)
+      expect(Object.create(DeckView.prototype).canAcceptExtension('png')).toBe(false)
+    } finally {
+      stop()
+    }
+  })
+
   it('opens only presentation notes as decks, permits source editing, and undoes the wrapper', async () => {
     const proto = { openFile: vi.fn(async function () {}) }
     const original = proto.openFile

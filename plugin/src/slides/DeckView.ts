@@ -83,8 +83,11 @@ export class DeckView extends FileView {
   getIcon(): string {
     return 'presentation'
   }
-  canAcceptExtension(extension: string): boolean {
-    return extension === 'md'
+  canAcceptExtension(_extension: string): boolean {
+    // A deck is selected by presentationFileOpening per file, never by extension alone.
+    // Otherwise Obsidian reuses this renderer for ordinary notes linked from the chat,
+    // explorer or another note, and even for explicitly requested Markdown source editing.
+    return false
   }
 
   private clear(): void {
