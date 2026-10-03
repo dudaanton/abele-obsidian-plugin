@@ -100,6 +100,20 @@ function seedAgents() {
   return { main, helper }
 }
 
+it('offers tool discovery on the agent Access tab and saves the selection', async () => {
+  const { main } = seedAgents()
+  const view = mountEditor(main.id)
+  const access = view.findAll('.abele-tabs__tab').find((tab) => tab.text() === 'Access')!
+  await access.trigger('click')
+  const discovery = view
+    .findAllComponents(Dropdown)
+    .find((d) => d.props('options').some((o: { value: string }) => o.value === 'by-group'))!
+  expect(discovery.props('modelValue')).toBe('all')
+  await discovery.vm.$emit('update:modelValue', 'by-group')
+  expect(AgentRegistry.getInstance().get(main.id)?.toolDiscovery).toBe('by-group')
+  view.unmount()
+})
+
 describe('the agents list', () => {
   it('shows every agent, utility ones included', () => {
     seedAgents()

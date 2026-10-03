@@ -2,6 +2,7 @@ import { createAnalyticsTools } from './AnalyticsTools'
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { EDIT_SELECTION_TOOL } from '../types'
+import { ENABLE_TOOLS, ENABLE_TOOLS_DESCRIPTION } from '../ToolDiscovery'
 import { createReadFileTool } from './ReadFileTool'
 import { READ_BUDGET, READ_RESULT, READ_RESULT_DESCRIPTION } from '../resultStore'
 import { isDefaultDescription } from './toolDescriptionOverrides'
@@ -70,8 +71,7 @@ export interface ToolInfo {
 }
 
 /** Get metadata for all registered tools (for UI display) */
-export function getToolRegistry(): ToolInfo[] {
-  const tools = buildAgentTools()
+export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInfo[] {
   const labels: Record<string, string> = {}
   for (const t of tools) labels[t.name] = t.label
 
@@ -196,6 +196,14 @@ export function getToolRegistry(): ToolInfo[] {
     description: READ_RESULT_DESCRIPTION,
   })
 
+  // Discovery belongs to a conversation, and is offered only in its by-group mode.
+  result.push({
+    name: ENABLE_TOOLS,
+    label: 'Enable tool group',
+    category: 'AI',
+    description: ENABLE_TOOLS_DESCRIPTION,
+  })
+
   result.sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.category)
     const bi = CATEGORY_ORDER.indexOf(b.category)
@@ -252,6 +260,7 @@ export function codeToolDescriptions(): Record<string, string> {
   const out: Record<string, string> = {
     [EDIT_SELECTION_TOOL]: EDIT_SELECTION_DESCRIPTION,
     [READ_RESULT]: READ_RESULT_DESCRIPTION,
+    [ENABLE_TOOLS]: ENABLE_TOOLS_DESCRIPTION,
   }
   for (const tool of tools) out[tool.name] = tool.description
   return out

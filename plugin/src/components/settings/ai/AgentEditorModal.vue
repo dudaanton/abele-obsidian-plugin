@@ -256,6 +256,19 @@
             desc="Off = unavailable. Ask = needs approval. Auto = runs on its own. File tools are
               always available and governed by the permission mode above."
           >
+            <Setting
+              name="Tool discovery"
+              desc="Offer every enabled tool at once, or let the agent reveal groups as needed. Revealed groups stay with the chat."
+            >
+              <Dropdown
+                :model-value="agent.toolDiscovery ?? 'all'"
+                :options="[
+                  { value: 'all', display: 'All at once' },
+                  { value: 'by-group', display: 'By group' },
+                ]"
+                @update:model-value="patch({ toolDiscovery: $event as 'all' | 'by-group' })"
+              />
+            </Setting>
             <ToolModesEditor
               :tool-modes="agent.toolModes"
               hide-show-all

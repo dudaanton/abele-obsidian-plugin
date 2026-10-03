@@ -397,6 +397,13 @@ another asks first. The folder choice is saved with AI general settings and trav
 
 ## Chats
 
+Agent definitions keep `toolDiscovery`: `all` (the default, also when absent) or `by-group`.
+This setting travels with the whole agent definition in settings transfer. Chat metadata
+keeps `revealedToolGroups`, the group names in the order revealed with `enable_tools`.
+These are discovery state, not permissions; every request still filters tools by the current
+agent's and chat's settings. Reopening keeps this order; starting a new chat clears it.
+Do not edit these records by hand.
+
 Chats are `.abchat` files under the chat folder, one JSON record per line. While one is being
 rewritten whole, a copy of the new content sits in the plugin's folder under `chat-backups/`, on
 this device only, and goes once the file is written; a file found cut short by a crash is put

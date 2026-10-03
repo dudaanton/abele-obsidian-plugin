@@ -21,6 +21,8 @@ export interface AgentLoopOptions {
   model: ModelConfig
   systemPrompt: string
   tools: AgentTool[]
+  /** Re-resolved for each request and call when a conversation reveals optional groups. */
+  getTools?: () => AgentTool[]
   messages: Message[]
   streamOptions?: StreamOptions
   /** Called before tool execution. Return { block, pause, modifiedArgs } to control. */
@@ -126,7 +128,7 @@ export class AgentLoop {
           opts.model,
           opts.systemPrompt,
           messages,
-          opts.tools,
+          opts.getTools?.() ?? opts.tools,
           { ...opts.streamOptions, signal }
         )
 
@@ -159,7 +161,7 @@ export class AgentLoop {
           if (signal.aborted) break
 
           const tc = toolCalls[ti]
-          const tool = opts.tools.find((t) => t.name === tc.name)
+          const tool = (opts.getTools?.() ?? opts.tools).find((t) => t.name === tc.name)
           const resultMsg = await this.executeTool(tool, tc, opts.beforeToolCall, signal)
 
           if (!resultMsg) {

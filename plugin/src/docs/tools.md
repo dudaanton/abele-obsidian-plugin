@@ -3,6 +3,16 @@
 The tool catalogue, grouped as the settings screen groups it, with the distinctions that are
 easy to get wrong. Which of these an agent actually has depends on its own tool settings.
 
+## Tool discovery
+
+In **By group** mode, `enable_tools(group)` reveals the group's enabled tools for the rest of
+this chat. Its description lists exact group names and a short line of enabled capabilities.
+Call it first, then use the tools returned by name in the next request. Core file, skill,
+template and reference tools remain available immediately, as do tools tied to a comment's
+selected passage. Off tools are never revealed; Ask still requires approval. Revealed groups
+stay in reveal order when the chat is reopened. In **All at once** mode, all enabled tools
+are offered immediately and `enable_tools` is absent.
+
 ## Rendered output
 
 Chat replies, thinking, run output, script markdown and GitHub text show other plugins' code

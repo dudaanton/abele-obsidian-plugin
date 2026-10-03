@@ -75,6 +75,8 @@ export interface AgentDefinition {
   permissionMode: PermissionMode
   /** Feature tools only — CORE_TOOLS are always available and governed by permissionMode. */
   toolModes: Record<string, ToolMode>
+  /** Absent in older settings means all enabled tools are offered immediately. */
+  toolDiscovery?: 'all' | 'by-group'
   /** Per-connection GitHub access. Absent IDs are Off, including newly added connections. */
   githubConnections?: Record<string, ToolMode>
   scope: ScopeEntry[]
@@ -122,6 +124,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     modelId: '',
     prompts: [],
     permissionMode: 'confirm-all',
+    toolDiscovery: 'all',
     // Memory asks by default. A deliberate auto/off choice overrides this, including on
     // existing agents where the saved file cannot distinguish old defaults from choices.
     // The GitHub tools only read, and only exist while the integration is on. The book tools read

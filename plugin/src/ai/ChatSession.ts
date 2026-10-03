@@ -30,6 +30,7 @@ import type {
 } from './client'
 import { ChatStorage } from './ChatStorage'
 import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot } from './ChatLog'
+import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
 import { readChat, rewriteChat } from './chatCopy'
 import {
   compatibleReplyHistory,
@@ -80,7 +81,7 @@ import type {
 } from './types'
 import type { CommentState } from '@/editor/CommentPlugin'
 import type { UserContentPart } from './client'
-import { createAgentTools } from './tools'
+import { createAgentTools, getToolRegistry } from './tools'
 import { isScriptPath } from '@/scripting/scriptPath'
 import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent, skillNeedsApproval, offeredSkills } from './tools/SkillTool'
@@ -901,6 +902,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   // ── Tools with session scope ────────────────────────────────────
 
+  private toolDiscovery = new ToolDiscovery()
+
   private getTools(): AgentTool[] {
     const agent = this.agent.value
     // Bound to this chat's agent, so `remember` writes where this chat's prompt reads from.
@@ -961,7 +964,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       : withSelection
 
     // Every agent can read on in a result it was sent only the start of.
-    return this.wrapToolsForSession([...withBook, createReadResultTool(this.results)])
+    const allowed = [...withBook, createReadResultTool(this.results)]
+    const core = new Set(CORE_TOOLS)
+    // Context tools belong to the passage, not an optional feature permission.
+    if (offered) core.add(EDIT_SELECTION_TOOL)
+    core.add(REPLY_REVISION_TOOL)
+    if (this.bookAnchored()) for (const name of BOOK_READ_TOOLS) core.add(name)
+    const discovered =
+      agent?.toolDiscovery === 'by-group'
+        ? this.toolDiscovery.offer(allowed, getToolRegistry(allTools), core, () => this.save())
+        : allowed
+    return this.wrapToolsForSession(discovered)
   }
 
   /** Whether this is a discussion about words in a book: its anchor names a place in one. */
@@ -1057,7 +1070,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     // This tool only records a proposal. Accepting it is a separate owner action, never a
     // permission mode, tool call or automatic approval.
-    if (toolName === REPLY_REVISION_TOOL) return false
+    if (toolName === REPLY_REVISION_TOOL || toolName === ENABLE_TOOLS) return false
 
     // Out-of-scope file access always requires approval, whatever the mode says about writes.
     if (this.outOfScopePath(toolName, args)) return true
@@ -1415,6 +1428,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         model,
         systemPrompt: await this.chatService.getSystemPrompt(this),
         tools,
+        getTools: () => this.getTools(),
         messages: toSend,
         streamOptions: {
           ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
@@ -2111,6 +2125,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (this.root === this) this.delegatedRuns = 0
     this.allInternalMessages = []
     this.allChatMessages = []
+    this.toolDiscovery = new ToolDiscovery()
     this.activeLeafId = null
     this.messages.value = []
     this.allMessages.value = []
@@ -2490,6 +2505,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const metadata: ChatMetadata = {
       type: 'abele-chat',
       agentId: this.agentId.value || undefined,
+      revealedToolGroups: this.toolDiscovery.revealed.length
+        ? this.toolDiscovery.revealed
+        : undefined,
       // Written whenever there is an anchor, expanded comments included: the marker in the
       // note has to keep finding this file, and `kind` is how a reopened one knows what it is.
       kind: this.anchor.value ? (this.kind === 'comment' ? 'comment' : 'chat') : undefined,
@@ -2680,6 +2698,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
     this.restoreAgentBinding(result.metadata)
+    this.toolDiscovery = new ToolDiscovery(result.metadata?.revealedToolGroups)
 
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''

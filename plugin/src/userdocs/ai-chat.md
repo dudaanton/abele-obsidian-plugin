@@ -11,6 +11,21 @@ Chats with AI models that can read and change your notes, inside limits you set.
 4. On the **Agents** tab, open the `Default` agent and give it that model.
 5. Open the chat with **Show AI chat sidebar**, or the robot in the ribbon.
 
+## Offering tools by group
+
+Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.
+Under **Tools**, **Tool discovery** chooses between **All at once** (the default) and
+**By group**. All at once gives the agent every enabled tool immediately. By group starts
+with the usual core file, skill, template and reference tools, plus a short list of the groups
+it can ask to reveal, such as Maps, Books or Canvas. Tools tied to a selected comment passage
+also stay available immediately.
+
+A group is listed only if at least one of its tools is enabled. Revealing it never turns on
+an Off tool, and Ask tools still ask for approval. Revealed groups stay available for the rest
+of the conversation, including after closing and reopening the chat. A new chat starts fresh.
+The choice travels with the agent when you transfer settings. You can switch it back to
+compare the two modes; neither mode changes your permissions.
+
 ## Saved keys in requests
 
 When the agent substitutes a saved key into a request, it always asks first, including in

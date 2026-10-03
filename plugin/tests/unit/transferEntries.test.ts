@@ -74,6 +74,20 @@ describe('location access travelling with agents', () => {
   })
 })
 
+describe('tool discovery travelling with agents', () => {
+  it('round-trips both modes in the whole agent definition', () => {
+    for (const toolDiscovery of ['all', 'by-group'] as const) {
+      const source = settings()
+      source.ai.agents = [createAgent({ id: 'sample-discovery-agent', toolDiscovery })]
+      const entry = find(collectEntries(source), 'ai-agents', 'sample-discovery-agent')!
+      const received = applyEntries([entry], settings())
+      expect(received.ai.agents.find((a) => a.id === 'sample-discovery-agent')?.toolDiscovery).toBe(
+        toolDiscovery
+      )
+    }
+  })
+})
+
 describe('the skills folder travelling', () => {
   it('round-trips with AI general settings', () => {
     const source = settings()
