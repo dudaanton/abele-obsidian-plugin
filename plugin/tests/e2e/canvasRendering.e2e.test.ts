@@ -28,7 +28,7 @@ describe.skipIf(!available)('mixed live/painted card compositing', () => {
     await app.vault.createFolder(${JSON.stringify(DIR)}); window.__canvasLayersOwned = true
     await app.vault.create(${JSON.stringify(`${DIR}/sample-image.svg`)}, '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="160"><rect width="400" height="160" fill="#44bb66"/></svg>')
     await app.vault.create(path, JSON.stringify({ nodes: [
-      { id: 'alpha', type: 'text', text: '# LOWER SAMPLE TEXT', x: 0, y: 0, width: 400, height: 160 },
+      { id: 'alpha', type: 'text', text: ${JSON.stringify('# LOWER SAMPLE TEXT\n\nLOWER SAMPLE TEXT')}, x: 0, y: 0, width: 400, height: 160 },
       { id: 'beta', type: 'text', text: '', x: 0, y: 0, width: 400, height: 160 },
     ], edges: [] }))
     const leaf = app.workspace.getLeaf('tab'); await leaf.openFile(app.vault.getAbstractFileByPath(path)); await app.workspace.revealLeaf(leaf); await wait(700)
@@ -55,7 +55,7 @@ describe.skipIf(!available)('mixed live/painted card compositing', () => {
       const sample = async name => {
         view.viewer.setCamera({x:-30,y:-30,zoom:1}); await wait(500)
         const frame = view.contentEl.querySelector('[data-card-id="alpha"]').getBoundingClientRect()
-        const image = await require('@electron/remote').getCurrentWebContents().capturePage({ x:Math.round(frame.x+14),y:Math.round(frame.y+14),width:300,height:40 })
+        const image = await require('@electron/remote').getCurrentWebContents().capturePage({ x:Math.round(frame.x+20),y:Math.round(frame.y+58),width:300,height:40 })
         require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())
         const pixels=image.getBitmap(), colors=new Set()
         for(let i=0;i<pixels.length;i+=4) colors.add(pixels[i]+','+pixels[i+1]+','+pixels[i+2]+','+pixels[i+3])
