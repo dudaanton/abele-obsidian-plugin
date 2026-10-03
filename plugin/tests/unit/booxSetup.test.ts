@@ -129,6 +129,62 @@ describe('fenced untrusted Books scoped-only setup', () => {
     expect(s.secret.size).toBe(0)
     expect(s.port.ledger).not.toHaveBeenCalled()
   })
+  it('personal ownership arriving during the FINAL local-path await prevents secret/ledger allocation', async () => {
+    const s = setup()
+    s.port.localPaths.mockResolvedValueOnce([]).mockImplementationOnce(async () => {
+      s.local.set('abele-sync-connection', { vaultId: 'sample-other-personal' })
+      return []
+    })
+    await expect(s.flow.setup(input)).rejects.toThrow(/personal/)
+    expect(s.secret.size).toBe(0)
+    expect(s.port.ledger).not.toHaveBeenCalled()
+    expect(s.local.get(SCOPED_CONNECTION_KEY)).toBeUndefined()
+  })
+  it('two independently awaited Books instances cannot overwrite the first durable descriptor', async () => {
+    const s = setup(),
+      otherInput = { ...input, grantId: 'sample-other-books', rootFileId: 'sample-other-root' },
+      otherPort = {
+        ...s.port,
+        localPaths: vi.fn(async () => [] as string[]),
+        negotiate: vi.fn(async () => ({
+          ...s.state,
+          grantId: otherInput.grantId,
+          rootFileId: otherInput.rootFileId,
+        })),
+        ledger: vi.fn(async () => true),
+        pullManifest: vi.fn(async () => ({ known: 0, materialized: 0, omitted: 0 })),
+      },
+      other = new BooxBooksSetup(s.storage, s.secrets, otherPort, () => true)
+    let resolveA!: (v: string[]) => void, resolveB!: (v: string[]) => void
+    s.port.localPaths.mockResolvedValueOnce([]).mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveA = r
+        })
+    )
+    otherPort.localPaths.mockResolvedValueOnce([]).mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveB = r
+        })
+    )
+    const a = s.flow.setup(input),
+      b = other.setup(otherInput).then(
+        (v) => v,
+        (e) => e
+      )
+    await vi.waitFor(() => {
+      expect(resolveA).toBeTypeOf('function')
+      expect(resolveB).toBeTypeOf('function')
+    })
+    resolveA([])
+    await a
+    const first = s.local.get(SCOPED_CONNECTION_KEY)
+    resolveB([])
+    expect(await b).toBeInstanceOf(Error)
+    expect(s.local.get(SCOPED_CONNECTION_KEY)).toEqual(first)
+    expect(otherPort.ledger).not.toHaveBeenCalled()
+  })
   it('revocation makes all network writes unavailable while preserving downloaded bytes/descriptor', () => {
     expect(booxPermission('editor', 'revoked', 'edit-note')).toBe(false)
     expect(booxPermission('editor', 'revoked', 'read-local')).toBe(true)

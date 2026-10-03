@@ -193,6 +193,14 @@ export class BooxBooksSetup {
       if ((await this.port.localPaths()).length)
         throw new Error('Books local vault is no longer empty')
       this.fence(generation)
+      // The final local inventory also awaited: another setup/personal flow may have
+      // claimed this physical vault. Check cold ownership with no await before claim.
+      this.personal()
+      if (
+        this.storage.loadLocalStorage(SCOPED_CONNECTION_KEY) != null ||
+        this.storage.loadLocalStorage(SCOPED_JOIN_KEY) != null
+      )
+        throw new Error('Books ownership changed during final local check')
       const d: BooksDescriptor = {
         version: 4,
         facet: 'scoped',
