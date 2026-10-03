@@ -13,13 +13,30 @@ describe('calendar cache credential generations', () => {
         values.set(id, v)
       },
     }
-    const first = new CredentialGenerations(keychain)
+    const first = new CredentialGenerations(keychain, () => 0)
     expect(first.get('sample-key', 'sample-secret')).toBe(1)
     expect(first.get('sample-key', 'sample-secret')).toBe(1)
     expect(first.get('other-key', 'other-secret')).toBe(1)
-    expect(new CredentialGenerations(keychain).get('sample-key', 'sample-secret')).toBe(1)
+    expect(new CredentialGenerations(keychain, () => 0).get('sample-key', 'sample-secret')).toBe(1)
     expect(first.get('sample-key', 'changed-secret')).toBe(2)
     expect(first.get('sample-key', '')).toBe(3)
+  })
+
+  it('does not reuse a copied cache clock when generation metadata is absent on another device', () => {
+    const keychain = () => {
+      const values = new Map<string, string>()
+      return {
+        getSecret: (id: string) => values.get(id) ?? null,
+        setSecret: (id: string, value: string) => {
+          values.set(id, value)
+        },
+      }
+    }
+    const original = new CredentialGenerations(keychain(), () => 100)
+    const replacement = new CredentialGenerations(keychain(), () => 200)
+    expect(original.get('sample-key', 'sample-secret')).toBe(101)
+    expect(replacement.get('sample-key', 'different-secret')).toBe(201)
+    expect(replacement.get('sample-key', 'different-secret')).toBe(201)
   })
 
   it('discards an old in-flight response and retries with the changed generation', async () => {

@@ -13,7 +13,10 @@ export function sourceHash(text: string): string {
 
 /** Only the counter leaves the keychain. Detects edits made while the plugin was not running. */
 export class CredentialGenerations {
-  constructor(private readonly keychain: Keychain) {}
+  constructor(
+    private readonly keychain: Keychain,
+    private readonly seed = () => Math.floor(Math.random() * 2 ** 48)
+  ) {}
 
   get(id: string, value: string): number {
     if (!id) return 0
@@ -27,7 +30,9 @@ export class CredentialGenerations {
     // The verifier lives beside the credential, behind the same keychain access boundary.
     const checksum = sourceHash(value)
     const generation =
-      Number.isSafeInteger(previous.generation) && previous.generation > 0 ? previous.generation : 0
+      Number.isSafeInteger(previous.generation) && previous.generation > 0
+        ? previous.generation
+        : this.seed()
     if (previous.checksum === checksum && generation) return generation
     const next = generation + 1
     this.keychain.setSecret(key, JSON.stringify({ checksum, generation: next }))
