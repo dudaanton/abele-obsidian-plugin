@@ -22,6 +22,7 @@ export class CanvasView extends FileView {
   viewer: CanvasViewer | null = null
   private refreshToken = 0
   private loaded = false
+  private renderedGeneration: number | null = null
   private documentLease: CanvasDocumentLease | null = null
   private pending: Record<string, unknown> | null = null
   constructor(leaf: WorkspaceLeaf) {
@@ -114,8 +115,11 @@ export class CanvasView extends FileView {
   }
   private renderDocument(document: CanvasDocument): void {
     if (!this.viewer || document.file !== this.file) return
-    this.viewer.load(document.session.graph, !this.loaded)
-    this.loaded = true
+    if (!this.loaded || this.renderedGeneration !== document.session.generation) {
+      this.viewer.load(document.session.graph, !this.loaded)
+      this.loaded = true
+      this.renderedGeneration = document.session.generation
+    }
     this.place()
     const state = document.state
     if (state.error) this.viewer.status.setText(`Diagram could not be read: ${state.error}`)

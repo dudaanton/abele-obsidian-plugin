@@ -90,6 +90,24 @@ describe('shared canvas document storage', () => {
     expect(app.stats.modify).toBe(0)
   })
 
+  it('does not let a superseded lease for the same leaf unsubscribe its newer registration', async () => {
+    const owner = {},
+      firstListener = vi.fn(),
+      secondListener = vi.fn()
+    const first = await store.open(file, owner, firstListener)
+    const second = await store.open(file, owner, secondListener)
+    firstListener.mockClear()
+    secondListener.mockClear()
+    first.release()
+    expect(second.document.owners.size).toBe(1)
+    second.document.beginDraft()
+    second.document.updateDraft(edit('Latest registration'))
+    expect(secondListener).toHaveBeenCalled()
+    expect(firstListener).not.toHaveBeenCalled()
+    second.release()
+    expect(canvasDocuments(host).find(file)).toBe(second.document)
+  })
+
   it('blocks agent writes during active and finished human drafts, without implicitly committing text', async () => {
     const lease = await open()
     const before = await store.snapshot(path)
@@ -295,6 +313,23 @@ describe('shared canvas document storage', () => {
     expect(await bytes()).toBe(serializeCanvas(initial))
   })
 
+  it('reports a committed result when native reconciliation fails after storage success', async () => {
+    const nativeView = native(),
+      snapshot = await store.snapshot(path)
+    const original = app.vault.process.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementation(async (target, transform) => {
+      const result = await original(target, transform)
+      vi.spyOn(nativeView.view.canvas, 'getData').mockImplementation(() => {
+        throw new Error('Sample native reconciliation failure')
+      })
+      return result
+    })
+    const result = await store.change(path, snapshot.revision, edit('Confirmed native batch'))
+    expect(result.after.nodes[0].text).toBe('Confirmed native batch')
+    expect(result.warning).toMatch(/committed|reread/i)
+    expect(parseCanvas(await bytes())).toEqual(result.after)
+  })
+
   it('keeps native-only tools available while Abele leaves observe, but refuses dirty writer overlap', async () => {
     const nativeView = native(),
       lease = await open()
@@ -377,10 +412,17 @@ describe('shared canvas document storage', () => {
     } catch (caught) {
       error = caught
     }
+    let roleError: unknown
+    try {
+      lease.document.acquireWriter()
+    } catch (caught) {
+      roleError = caught
+    }
     const writer = lease.document.writer
     finish.resolve()
     await writing
     expect(String(error)).toMatch(/busy/i)
+    expect(String(roleError)).toMatch(/busy/i)
     expect(writer).toBe(false)
     expect(lease.document.session.history.undo).toBe(1)
   })
@@ -416,12 +458,50 @@ describe('shared canvas document storage', () => {
     expect(canvasDocuments(host).find(file)).toBeUndefined()
   })
 
-  it.each(['', '{}', '  \n'])(
-    'keeps unsupported empty-file bytes untouched until the file parser dependency lands (%j)',
+  it.each(['{malformed', JSON.stringify(JSON.stringify(initial))])(
+    'does not hide invalid persisted bytes behind a valid native snapshot %#',
     async (raw) => {
-      // BUG: The shared empty-file parser has not landed; do not duplicate its normalization here.
       await app.vault.modify(file, raw)
+      const nativeView = native()
       await expect(open()).rejects.toThrow()
+      await expect(store.snapshot(path)).rejects.toThrow()
+      expect(await bytes()).toBe(raw)
+      expect(nativeView.cancel).not.toHaveBeenCalled()
+      expect(nativeView.pushHistory).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['', '{}'])(
+    'publishes the first explicit edit of native empty file bytes %j',
+    async (raw) => {
+      await app.vault.modify(file, raw)
+      const lease = await open(),
+        snapshot = await store.snapshot(path)
+      expect(await bytes()).toBe(raw)
+      const result = await store.change(path, snapshot.revision, (graph) =>
+        planCanvasEdit(graph, [
+          {
+            op: 'add_node',
+            node: { id: 'sample-first', kind: 'text', label: 'First explicit edit', x: 0, y: 0 },
+          },
+        ])
+      )
+      expect(result.after.nodes).toHaveLength(1)
+      expect(parseCanvas(await bytes())).toEqual(result.after)
+      expect(lease.document.session.history.undo).toBe(1)
+    }
+  )
+
+  it.each(['', '{}', '  \n'])(
+    'uses shared empty-file semantics without relaxing graph validation or rewriting bytes (%j)',
+    async (raw) => {
+      await app.vault.modify(file, raw)
+      expect(() => parseCanvas(raw)).toThrow()
+      if (raw === '' || raw === '{}') {
+        const lease = await open()
+        expect(lease.document.session.graph).toEqual({ nodes: [], edges: [] })
+        expect((await store.snapshot(path)).graph).toEqual({ nodes: [], edges: [] })
+      } else await expect(open()).rejects.toThrow()
       expect(await bytes()).toBe(raw)
     }
   )

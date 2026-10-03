@@ -11,6 +11,7 @@ import {
 import type { GraphStore, GraphSnapshot } from './core/service'
 import type { PreparedCanvasTransaction, GraphTransform } from './core/session'
 import { canvasRevision, CANVAS_CONFLICT } from './core/revision'
+import { parseCanvasFile } from './fileData'
 import {
   canvasDocuments,
   type CanvasDocument,
@@ -75,8 +76,10 @@ export class ObsidianCanvasStore implements GraphStore {
       throw new Error(
         'This diagram is open in multiple native editors; close duplicate tabs before reading a write revision'
       )
+    // Validate stored bytes even when a native view still holds an older valid graph.
     // Empty-file normalization belongs to the shared file parser, not the graph validator.
-    const graph = views[0] ? parseCanvas(views[0].canvas.getData()) : parseCanvas(bytes)
+    const persisted = parseCanvasFile(bytes)
+    const graph = views[0] ? parseCanvas(views[0].canvas.getData()) : persisted
     return { graph, bytes, views, revision: await canvasRevision(bytes, graph) }
   }
   open(
@@ -205,7 +208,7 @@ export class ObsidianCanvasStore implements GraphStore {
               'Native Canvas writer changed at publication; pending work was not saved or discarded'
             )
           if (document && registry.find(file) !== document) throw new Error(CANVAS_CONFLICT)
-          const data = view ? parseCanvas(view.canvas.getData()) : parseCanvas(current)
+          const data = view ? parseCanvas(view.canvas.getData()) : parseCanvasFile(current)
           if (canvasFingerprint(data) !== canvasFingerprint(snapshot.graph))
             throw new Error(CANVAS_CONFLICT)
           before = data
@@ -234,15 +237,20 @@ export class ObsidianCanvasStore implements GraphStore {
         document?.notify()
         let warning: string | undefined
         if (view) {
-          const expected = nativeCanvasFingerprint(after),
-            deadline = Date.now() + 3000
-          while (nativeCanvasFingerprint(parseCanvas(view.canvas.getData())) !== expected) {
-            if (Date.now() > deadline) {
-              warning =
-                'Canvas batch was committed, but native display has not caught up; reread before editing again'
-              break
+          try {
+            const expected = nativeCanvasFingerprint(after),
+              deadline = Date.now() + 3000
+            while (nativeCanvasFingerprint(parseCanvas(view.canvas.getData())) !== expected) {
+              if (Date.now() > deadline) {
+                warning =
+                  'Canvas batch was committed, but native display has not caught up; reread before editing again'
+                break
+              }
+              await new Promise<void>((resolve) => window.setTimeout(resolve, 20))
             }
-            await new Promise<void>((resolve) => window.setTimeout(resolve, 20))
+          } catch {
+            warning =
+              'Canvas batch was committed, but native reconciliation failed; reread before editing again'
           }
         }
         return {

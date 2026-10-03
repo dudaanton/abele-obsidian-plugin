@@ -1,7 +1,9 @@
 import { expect, it, vi } from 'vitest'
 import { CanvasView } from '@/canvas/CanvasView'
 import { CanvasViewer } from '@/canvas/Viewer'
-import { TFile } from 'obsidian'
+import { TFile, type App } from 'obsidian'
+import { buildFakeVault } from '../helpers/fakeVault'
+import { canvasDocuments } from '@/canvas/documentRegistry'
 
 it.each(['', '{}'])(
   'loads the untouched native empty state %j without hiding nonempty malformed data',
@@ -10,17 +12,17 @@ it.each(['', '{}'])(
     const load = vi.fn(),
       setText = vi.fn()
     view.viewer = { load, status: { setText } } as unknown as CanvasViewer
-    const file = Object.assign(new TFile(), { path: 'sample-empty.canvas' })
+    const app = buildFakeVault([{ path: 'sample-empty.canvas', raw: initialBytes }])
+    const file = app.vault.getAbstractFileByPath('sample-empty.canvas') as TFile
     let bytes = initialBytes
-    ;(view as unknown as { app: unknown; refreshToken: number }).app = {
-      vault: { read: async () => bytes },
-    }
+    vi.spyOn(app.vault, 'read').mockImplementation(async () => bytes)
+    ;(view as unknown as { app: unknown; refreshToken: number }).app = app
     ;(view as unknown as { refreshToken: number }).refreshToken = 0
     await view.onLoadFile(file)
     expect(load).toHaveBeenCalledWith({ nodes: [], edges: [] }, true)
     expect(setText).not.toHaveBeenCalled()
     bytes = '{"nodes":[]'
-    await (view as unknown as { refresh(): Promise<void> }).refresh()
+    await canvasDocuments(app as unknown as App).reload(file)
     expect(load).toHaveBeenCalledOnce()
     expect(setText).toHaveBeenCalledWith(expect.stringMatching(/could not be read/i))
     expect(bytes).toBe('{"nodes":[]')
@@ -40,16 +42,15 @@ it.each([
   const load = vi.fn(),
     setText = vi.fn()
   view.viewer = { load, status: { setText } } as unknown as CanvasViewer
-  const file = Object.assign(new TFile(), { path: 'sample-invalid.canvas' })
   const bytes = JSON.stringify(JSON.stringify(graph))
-  ;(view as unknown as { app: unknown; refreshToken: number }).app = {
-    vault: { read: async () => bytes },
-  }
+  const app = buildFakeVault([{ path: 'sample-invalid.canvas', raw: bytes }])
+  const file = app.vault.getAbstractFileByPath('sample-invalid.canvas') as TFile
+  ;(view as unknown as { app: unknown; refreshToken: number }).app = app
   ;(view as unknown as { refreshToken: number }).refreshToken = 0
   await view.onLoadFile(file)
   expect(load).not.toHaveBeenCalled()
   expect(setText).toHaveBeenCalledWith(expect.stringMatching(/could not be read/i))
-  expect((view as unknown as { bytes: string | null }).bytes).toBeNull()
+  expect((view as unknown as { loaded: boolean }).loaded).toBe(false)
 })
 
 it('keeps a readable static view and a steps-specific error when legacy walkthrough data is malformed', async () => {

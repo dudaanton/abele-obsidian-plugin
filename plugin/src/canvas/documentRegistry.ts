@@ -45,6 +45,8 @@ export class CanvasDocument {
     }
   }
   acquireWriter(): void {
+    if (this.session.busy)
+      throw new Error('Canvas session is busy; retry writer acquisition after publication settles')
     if (this.native())
       throw new Error(
         'Native Canvas is active; settle its pending work before acquiring the Abele writer'
@@ -168,7 +170,8 @@ export class CanvasDocumentRegistry {
           )
           this.documents.set(file, document)
         }
-        document.owners.set(owner, listener)
+        const subscribed: Listener = (current) => listener(current)
+        document.owners.set(owner, subscribed)
         document.notify()
         let released = false
         return {
@@ -176,7 +179,7 @@ export class CanvasDocumentRegistry {
           release: () => {
             if (released) return
             released = true
-            document.owners.delete(owner)
+            if (document.owners.get(owner) === subscribed) document.owners.delete(owner)
             this.prune(file)
           },
         }
