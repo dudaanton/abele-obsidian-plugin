@@ -11,9 +11,11 @@ import {
   rmSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
+import { randomUUID } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { verifySyncFixture } from './verify-sync-inputs.mjs'
+import { ensureOwnedPoolWindow } from './agent-stand-window.mjs'
 const plugin = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 if (!process.env.ABELE_AGENT_STAND_STAGE) {
   console.log('Agent stand disabled: explicit ABELE_AGENT_STAND_STAGE required')
@@ -29,12 +31,64 @@ const vault = take.stdout.trim()
 if (!/^[A-Za-z0-9_-]+$/.test(vault)) throw new Error('Invalid pool lease result')
 const scratch = join(plugin, '../.scratch/agent-stand-run')
 mkdirSync(scratch, { recursive: true })
+console.log('Agent stand owned pool:', vault)
 const backup = mkdtempSync(join(scratch, 'build-')),
   target = join(homedir(), 'obsidian', vault, '.obsidian/plugins/abele'),
   files = ['main.js', 'styles.css', 'manifest.json']
+writeFileSync(join(backup, 'vault-name'), vault)
 let installed = false,
-  failed = false
+  failed = false,
+  restoreWindow = () => {}
 const cli = process.env.OBSIDIAN_CLI ?? join(homedir(), '.local/bin/obsidian')
+const appGate = (fn) => {
+  const lock = join(homedir(), '.local/state/abele/live.lock')
+  if (existsSync(lock)) throw new Error('Shared app gate busy')
+  mkdirSync(lock)
+  writeFileSync(
+    join(lock, 'owner'),
+    'app sync-agent-window ' + process.pid + ' ' + new Date().toISOString()
+  )
+  try {
+    return fn()
+  } finally {
+    rmSync(lock, { recursive: true })
+  }
+}
+const evaluateOwnedBoolean = (expression) => {
+  const id = randomUUID(),
+    code = `(async()=>JSON.stringify({__abeleReply:${JSON.stringify(id)},hasValue:true,value:await (${expression})}))()`
+  const r = spawnSync(
+    process.execPath,
+    [
+      join(plugin, 'tests/e2e/helpers/obsidianEvalProcess.mjs'),
+      cli,
+      id,
+      String(Date.now() + 10000),
+      'vault=' + vault,
+      'eval',
+      'code=' + code,
+    ],
+    { encoding: 'utf8', timeout: 10000, killSignal: 'SIGKILL', detached: true }
+  )
+  if (r.pid)
+    try {
+      process.kill(-r.pid, 'SIGKILL')
+    } catch {
+      /* owned proxy/CLI already reaped */
+    }
+  if (r.status !== 0) return false
+  for (const line of r.stdout.split('\n')) {
+    if (!line.startsWith('=> ')) continue
+    try {
+      const reply = JSON.parse(line.slice(3))
+      if (reply.__abeleReply === id && reply.value === true) return true
+    } catch {
+      /* unrelated/nonreply diagnostic */
+    }
+  }
+  return false
+}
+const probe = () => evaluateOwnedBoolean('app.vault.getName()===' + JSON.stringify(vault))
 const reload = () => {
   const r = spawnSync(cli, ['vault=' + vault, 'plugin:reload', 'id=abele'], {
     encoding: 'utf8',
@@ -44,6 +98,22 @@ const reload = () => {
   if (r.status !== 0) throw new Error('Pool plugin reload failed')
 }
 try {
+  restoreWindow = ensureOwnedPoolWindow({
+    probe,
+    gate: appGate,
+    open: () => {
+      const r = spawnSync('open', ['obsidian://open?vault=' + encodeURIComponent(vault)])
+      if (r.status !== 0) throw new Error('Owned pool open refused')
+    },
+    close: () => {
+      if (
+        !evaluateOwnedBoolean(
+          `(()=>{if(app.vault.getName()!==${JSON.stringify(vault)})return false;const w=require('@electron/remote').getCurrentWindow();window.setTimeout(()=>w.close(),100);return true})()`
+        )
+      )
+        throw new Error('Owned pool window close request could not be verified')
+    },
+  })
   for (const f of files) {
     if (existsSync(join(target, f))) copyFileSync(join(target, f), join(backup, f))
     else writeFileSync(join(backup, f + '.absent'), '')
@@ -95,6 +165,13 @@ try {
     failed = true
     process.exitCode = 1
     console.error('Original pool plugin restoration failed; preserved build backup for recovery')
+  }
+  try {
+    restoreWindow()
+  } catch {
+    failed = true
+    process.exitCode = 1
+    console.error('Owned pool window restore failed')
   }
   spawnSync(lease, ['drop', vault], { stdio: 'ignore' })
   if (failed) console.error('Agent stand run did not pass')
