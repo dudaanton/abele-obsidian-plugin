@@ -267,6 +267,30 @@ describe('finance sidebar — work per new transaction', () => {
     expect(shownTitles(w)).toContain('Transactions/while hidden.md')
   })
 
+  it('does not rebuild chart/account projections for account changes while hidden', async () => {
+    await baseline()
+    const w = await mountSidebar()
+    const accounts = GlobalStore.getInstance().accountsList.value!.accounts
+    const account = accounts.get('Accounts/Food.md')!
+    let type = account.accountType
+    const read = vi.fn(() => type)
+    Object.defineProperty(account, 'accountType', {
+      get: read,
+      set: (value) => {
+        type = value
+      },
+      configurable: true,
+    })
+    await w.setProps({ active: false })
+    read.mockClear()
+    accounts.set('Samples/extra.md', account)
+    await settle()
+    expect(read).not.toHaveBeenCalled()
+    await w.setProps({ active: true })
+    await settle()
+    expect(read).toHaveBeenCalled()
+  })
+
   it('costs nothing once closed', async () => {
     const none = await baseline()
     const w = await mountSidebar()

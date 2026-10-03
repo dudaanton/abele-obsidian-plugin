@@ -195,7 +195,7 @@
 <script setup lang="ts">
 import { escapeHtml } from '@/helpers/escapeHtml'
 import { addMoney } from '@/helpers/moneySum'
-import { computed, ref, unref, watch, toRef } from 'vue'
+import { ref, unref, watch, toRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
@@ -241,6 +241,7 @@ const visibleCount = ref(PAGE_SIZE)
 
 const store = GlobalStore.getInstance()
 const active = toRef(props, 'active')
+const computed = <T,>(getter: () => T) => pausedWhileHidden(active, getter)
 
 const accountsList = computed(() => unref(store.accountsList) as AccountsList | null)
 const balanceIndex = computed(() => unref(store.balanceIndex) as BalanceIndex | null)
