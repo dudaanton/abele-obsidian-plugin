@@ -83,6 +83,62 @@ async function setup() {
   return { input, data, meta, port, unit, receipt, make, authority }
 }
 describe('disabled durable publication intent integration', () => {
+  it('binds one exact ordered admitted subset before transport, never tolerates a mismatching receipt or replay', async () => {
+    const s = await setup(),
+      manager = s.make()
+    await manager.prepare(s.unit, [s.input])
+    const submitted = {
+      requestId: s.unit.requestId,
+      ops: [s.unit.ops[0]],
+      createHandles: { 0: s.unit.createHandles[0] },
+    }
+    await manager.bindSubmitted(submitted)
+    await manager.bindSubmitted(submitted)
+    await expect(manager.bindSubmitted(s.unit)).rejects.toThrow(/identity changed/)
+    await expect(manager.settle(s.receipt)).rejects.toThrow(/Exact publication receipt/)
+    const actual = {
+      requestId: s.receipt.requestId,
+      ops: submitted.ops,
+      outcomes: [s.receipt.outcomes[0]],
+    }
+    await manager.settle(actual)
+    await manager.retry(s.unit.requestId)
+    expect(s.port.apply).not.toHaveBeenCalled()
+    const unit = (await (manager as any).read()).units[0]
+    expect(unit.submission.prepared).toEqual(s.unit)
+    expect(unit.unit).toEqual(submitted)
+    expect(unit.intents[0]).toMatchObject({
+      state: 'held',
+      reason: 'operation not submitted after blob admission',
+    })
+  })
+  it.each(['changed', 'added', 'reordered', 'reminted-handle'])(
+    'refuses %s submitted evidence before any binding or effect',
+    async (kind) => {
+      const s = await setup(),
+        manager = s.make()
+      await manager.prepare(s.unit, [s.input])
+      const altered = structuredClone(s.unit)
+      if (kind === 'changed') (altered.ops[0] as any).sha = 'f'.repeat(64)
+      else if (kind === 'added')
+        altered.ops.push({
+          op: 'create',
+          path: 'Other/unprepared.png',
+          sha: 'f'.repeat(64),
+          size: 1,
+          mtime: 1,
+        })
+      else if (kind === 'reordered') {
+        altered.ops.reverse()
+        altered.createHandles = { 1: s.unit.createHandles[0] }
+      } else altered.createHandles[0] = 'sample-reminted'
+      await expect(manager.bindSubmitted(altered)).rejects.toThrow(
+        /Submitted publication|submitted publication/
+      )
+      expect(s.port.apply).not.toHaveBeenCalled()
+      expect((await (manager as any).read()).units[0].unit).toEqual(s.unit)
+    }
+  )
   it.each(['delete', 'rejection'])(
     'processes unrelated %s outcomes without inventing identity or blocking an eligible image',
     async (kind) => {

@@ -337,6 +337,58 @@ export class NativeOwnerPublication {
     // eslint-disable-next-line @typescript-eslint/unbound-method -- exact reference is restored to the same client
     this.originalCommit = this.options.client.commitRaw
     this.options.client.commitRaw = async (ops, key) => {
+      this.check()
+      const candidate = await this.read<{
+        ops: CommitOp[]
+        handles: Record<number, string>
+        submitted?: boolean
+        prepared?: { ops: CommitOp[]; handles: Record<number, string> }
+      }>('unit:' + key)
+      if (candidate) {
+        // Upload admission runs AFTER beforeUpload. Bind the exact durable submitted core
+        // request now, before transport, rather than accepting a reduced receipt afterward.
+        const journal = await this.options.state.getJournal()
+        if (
+          !journal ||
+          journal.idempotencyKey !== key ||
+          journal.publicationPhase !== 'submitted' ||
+          !journal.ownerBinding ||
+          journal.ownerBinding.issuer !== this.options.binding.issuer ||
+          journal.ownerBinding.vaultId !== this.options.binding.vaultId ||
+          JSON.stringify(journal.ops) !== JSON.stringify(ops)
+        )
+          throw new Error('Exact durable submitted owner journal required')
+        const handles = Object.fromEntries(
+          ops.flatMap((op, index) =>
+            op.op === 'create'
+              ? [[index, `${journal.batchId}:${journal.operationIndices?.[index] ?? index}`]]
+              : []
+          )
+        )
+        if (
+          candidate.submitted &&
+          (JSON.stringify(candidate.ops) !== JSON.stringify(ops) ||
+            JSON.stringify(candidate.handles) !== JSON.stringify(handles))
+        )
+          throw new Error('Native owner submitted request identity changed')
+        await this.intents.bindSubmitted({ requestId: key, ops: copy(ops), createHandles: handles })
+        if (!candidate.submitted)
+          await this.persisted('unit:' + key, {
+            ops: copy(ops),
+            handles,
+            submitted: true,
+            prepared: { ops: candidate.ops, handles: candidate.handles },
+          })
+        this.check()
+      } else if (
+        this.pastes.some(
+          (p) =>
+            !p.done &&
+            p.assetHandle &&
+            ops.some((op) => op.op === 'create' && op.path === p.assetPath && op.sha === p.assetSha)
+        )
+      )
+        throw new Error('Missing prepared native owner unit; recovery required')
       const outcome = await original(ops, key)
       this.check()
       const body = CommitResponseSchema.parse(outcome.body)

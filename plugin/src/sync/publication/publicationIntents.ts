@@ -79,6 +79,8 @@ interface Intent {
 interface Unit {
   unit: PushUnit
   sha: string
+  /** Immutable pre-upload evidence retained when admission reduces the actual request. */
+  submission?: { prepared: PushUnit; sha: string }
   intents: Intent[]
   holds: string[]
   settled: boolean
@@ -93,6 +95,34 @@ const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const hash = (v: unknown) => sha256(new TextEncoder().encode(JSON.stringify(v)))
 const digest = (s: unknown) => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s)
 const text = (s: unknown): s is string => typeof s === 'string' && s.length > 0 && s.length <= 4096
+/** Select only original operations in original order, with exact stable create handles.
+ * Receipt-time tolerance is NOT allowed; this is a pre-transport durable transition. */
+function admittedSubset(prepared: PushUnit, actual: PushUnit) {
+  if (prepared.requestId !== actual.requestId || !actual.ops.length)
+    throw new Error('Invalid submitted publication unit')
+  let next = 0
+  for (const [index, op] of actual.ops.entries()) {
+    const found = prepared.ops.findIndex(
+      (candidate, at) =>
+        at >= next &&
+        JSON.stringify(candidate) === JSON.stringify(op) &&
+        (op.op !== 'create' || prepared.createHandles[at] === actual.createHandles[index])
+    )
+    if (found < 0)
+      throw new Error('Submitted publication operation or handle differs from prepared evidence')
+    next = found + 1
+  }
+  for (const [key, handle] of Object.entries(actual.createHandles)) {
+    const index = Number(key)
+    if (
+      !Number.isSafeInteger(index) ||
+      String(index) !== key ||
+      actual.ops[index]?.op !== 'create' ||
+      !text(handle)
+    )
+      throw new Error('Invalid submitted publication handle map')
+  }
+}
 /** One host-owned writer, one durable metadata record. No network adapter or activation shortcut.
  * Entire inputs/deltas are immutable; recovery never rescans a merged/current note as owner additions.
  */
@@ -160,6 +190,12 @@ export class PublicationIntents {
         )
           throw new Error()
         CommitRequestSchema.parse({ ops: u.unit.ops })
+        if (u.submission) {
+          if (!digest(u.submission.sha) || (await hash(u.submission.prepared)) !== u.submission.sha)
+            throw new Error()
+          CommitRequestSchema.parse({ ops: u.submission.prepared.ops })
+          admittedSubset(u.submission.prepared, u.unit)
+        }
         for (const i of u.intents)
           if (
             !text(i.id) ||
@@ -308,6 +344,52 @@ export class PublicationIntents {
       await this.write(l)
     })
   }
+  /** Called with the exact durable core submitted journal BEFORE commitRaw can send.
+   * Admission may remove operations, never change/reorder/add them or remint a handle.
+   * Once bound, even a further subset is a different transport and must fail on replay. */
+  async bindSubmitted(actual: PushUnit): Promise<void> {
+    const request = copy(actual)
+    this.fence()
+    return this.serial(async () => {
+      CommitRequestSchema.parse({ ops: request.ops })
+      const ledger = await this.read(),
+        record = ledger.units.find((v) => v.unit.requestId === request.requestId)
+      if (!record) throw new Error('Missing prepared publication unit; recovery required')
+      const sha = await hash(request)
+      if (record.submission) {
+        if (record.sha !== sha) throw new Error('Submitted publication request identity changed')
+        return
+      }
+      if (record.settled && record.sha !== sha)
+        throw new Error('Settled publication request identity changed')
+      admittedSubset(record.unit, request)
+      record.submission = { prepared: copy(record.unit), sha: record.sha }
+      record.unit = request
+      record.sha = sha
+      for (const intent of record.intents) {
+        const input = intent.input,
+          targetPresent =
+            input.target.creator !== 'pending-local-create' ||
+            Object.values(request.createHandles).includes(input.target.create?.handle ?? ''),
+          sponsorPresent =
+            !!intent.sponsorBaseline ||
+            request.ops.some((op, index) =>
+              input.baseline.kind === 'local-create'
+                ? op.op === 'create' &&
+                  request.createHandles[index] === input.baseline.handle &&
+                  op.sha === input.current.sha
+                : op.op === 'modify' &&
+                  op.file_id === input.current.noteId &&
+                  op.sha === input.current.sha
+            )
+        if (!targetPresent || !sponsorPresent) {
+          intent.state = 'held'
+          intent.reason = 'operation not submitted after blob admission'
+        }
+      }
+      await this.write(ledger)
+    })
+  }
   async settle(receipt: PushReceipt): Promise<void> {
     const r = copy(receipt)
     this.fence()
@@ -347,6 +429,11 @@ export class PublicationIntents {
       )
         throw new Error('Publication receipt cardinality/identity invalid')
       for (const intent of unit.intents) {
+        if (
+          intent.state === 'held' &&
+          intent.reason === 'operation not submitted after blob admission'
+        )
+          continue
         const i = intent.input,
           p = intent.proposal
         const sponsor =
