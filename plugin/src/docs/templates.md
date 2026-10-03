@@ -10,7 +10,9 @@ and the result becomes a new note — or is inserted at the cursor of the one th
 
 Call `template_docs` for the token syntax and the full list. Dates, the note's own name,
 prompted variables, wikilinks and images all have their own forms, and guessing at them
-produces a note with the token still in it.
+produces a note with the token still in it. User templates accept both `{{date:YYYY}}` and
+`{{date.format('YYYY')}}` for the current local date; old path/data templates continue to use
+`{{date:YYYY}}` with their supplied date. The two contexts need not refer to the same day.
 
 ## Using them
 

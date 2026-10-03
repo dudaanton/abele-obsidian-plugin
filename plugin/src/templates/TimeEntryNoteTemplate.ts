@@ -1,7 +1,7 @@
 import { App } from 'obsidian'
 import { GenericTemplate } from './GenericTemplate'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { renderTemplate } from '@/helpers/notesUtils'
+import { renderDataTemplate as renderTemplate } from './dataTemplate'
 import { DATETIME_FORMAT } from '@/entities/TimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'

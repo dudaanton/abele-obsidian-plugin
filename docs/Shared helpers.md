@@ -94,6 +94,24 @@ whole-note serialization with cache data in a deduplication.
 Guards: `notePropertySources.test.ts`, `frontmatterCharacterization.test.ts`, `noteInfo.test.ts`,
 `userTemplatesCharacterization.test.ts`, and existing property characterization tests.
 
+## Template languages
+
+`parseTemplateVariables` / `applyTemplateVariables` accept both `{{date:YYYY}}` and
+`{{date.format('YYYY')}}` in user templates. Both use the current local date; offsets, defaults,
+input fields and plugin calls retain their existing contracts.
+
+`plugin/src/templates/dataTemplate.ts`: `renderDataTemplate(template, data)` is deliberately
+synchronous and data-only: it uses the supplied `data.date`, handles `date:FORMAT`, substitutes
+named fields and empties unknown fields. It never invokes plugins or shows forms. The old
+`helpers/notesUtils.renderTemplate` export remains compatible.
+
+`reader/noteTemplate.renderBookNoteTemplate` names the book-specific renderer explicitly;
+its old `renderTemplate` alias remains. Unknown book fields stay literal and substitutions are
+one-pass. Do not replace one renderer with another solely because both accept braces.
+
+Guards: `templateSyntaxCompatibility.test.ts`, `templateParserCharacterization.test.ts`,
+`frontmatterCharacterization.test.ts`, `bookNotes.test.ts`, and template-variable/component suites.
+
 ## Dead-code inventory
 
 Run `node plugin/scripts/dead-code.mjs`. CI also prints the inventory. It follows static,

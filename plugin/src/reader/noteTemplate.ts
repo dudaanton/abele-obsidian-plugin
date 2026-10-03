@@ -148,7 +148,7 @@ export function hasCommentField(template: NoteTemplate | null): boolean {
  * template again, so the words of a book cannot be. Dates are as in the plugin's other templates;
  * a name it does not know is left as written.
  */
-export function renderTemplate(text: string, vars: Partial<NoteVars>): string {
+export function renderBookNoteTemplate(text: string, vars: Partial<NoteVars>): string {
   return text.replace(VARIABLE, (raw, expr: string) => {
     const name = expr.trim()
     if (Object.hasOwn(vars, name)) return (vars as Record<string, string>)[name] ?? ''
@@ -162,16 +162,24 @@ export function renderTemplate(text: string, vars: Partial<NoteVars>): string {
   })
 }
 
+/** Compatibility name for existing consumers; unknown book fields stay literal. */
+export const renderTemplate = renderBookNoteTemplate
+
 /** The body for one highlight: the body as the template has it, the highlight in it. */
 function renderBody(body: string, vars: NoteVars): string {
   const lines = body.split('\n')
   const slot = commentSlotOf(lines)
   const forms = formsSlotOf(lines)
   const rendered = lines.map((line, i) => {
-    if (i === forms?.at) return renderTemplate(line, vars).trimEnd()
-    if (i !== slot?.at) return renderTemplate(line, vars)
-    const lead = renderTemplate(slot.lead, vars)
-    const field = commentLines(vars.comment, lead, carryOf(lead), renderTemplate(slot.end, vars))
+    if (i === forms?.at) return renderBookNoteTemplate(line, vars).trimEnd()
+    if (i !== slot?.at) return renderBookNoteTemplate(line, vars)
+    const lead = renderBookNoteTemplate(slot.lead, vars)
+    const field = commentLines(
+      vars.comment,
+      lead,
+      carryOf(lead),
+      renderBookNoteTemplate(slot.end, vars)
+    )
     // An empty field as the body's first line would only leave a blank line before the entry.
     return i === 0 && isBlankField(field) ? null : field.join('\n')
   })
@@ -190,11 +198,11 @@ export function entryFrom(template: NoteTemplate | null, vars: NoteVars): string
 /** A new note, made from the whole template for its first highlight. */
 export function newNoteFrom(template: NoteTemplate, vars: NoteVars): string {
   if (template.body == null) {
-    const head = renderTemplate(template.head, vars).replace(/\s+$/, '')
+    const head = renderBookNoteTemplate(template.head, vars).replace(/\s+$/, '')
     return `${head ? `${head}\n\n` : ''}${vars.highlight}\n`
   }
-  const head = renderTemplate(template.head, vars)
-  const tail = renderTemplate(template.tail, vars)
+  const head = renderBookNoteTemplate(template.head, vars)
+  const tail = renderBookNoteTemplate(template.tail, vars)
   return `${head}${renderBody(template.body, vars)}\n${tail}`
 }
 

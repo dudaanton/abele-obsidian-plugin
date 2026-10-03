@@ -1,5 +1,7 @@
 import { DATE_FORMAT } from '@/constants/dates'
 import { cachedFrontmatter } from '@/properties/noteCache'
+import { renderDataTemplate } from '@/templates/dataTemplate'
+export { renderDataTemplate as renderTemplate } from '@/templates/dataTemplate'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { normalizePath, stringifyYaml, TAbstractFile, TFile, TFolder, Vault } from 'obsidian'
 import fm from 'front-matter'
@@ -177,24 +179,6 @@ export function getNotesFromFolder(folderStr: string): Array<TFile> {
   return files
 }
 
-export function renderTemplate(template: string, data: Record<string, string>): string {
-  return template.replace(/{{(.*?)}}/g, (match, key) => {
-    const trimmedKey = key.trim()
-
-    if (trimmedKey.startsWith('date:')) {
-      const formatString = trimmedKey.substring(5)
-      try {
-        return dayjs(data?.date, DATE_FORMAT).format(formatString)
-      } catch (e) {
-        console.error(`Error formatting date with dayjs: ${formatString}`, e)
-        return ''
-      }
-    }
-
-    return data[trimmedKey] || ''
-  })
-}
-
 export async function createNoteFromTemplate(
   data: Record<string, string>,
   pathTemplate: string = 'Untitled',
@@ -210,8 +194,8 @@ export async function createNoteFromTemplate(
     }
   }
 
-  const finalContent = renderTemplate(templateContent, data)
-  let renderedPath = renderTemplate(pathTemplate, data).trim()
+  const finalContent = renderDataTemplate(templateContent, data)
+  let renderedPath = renderDataTemplate(pathTemplate, data).trim()
 
   if (!renderedPath) {
     renderedPath = 'Untitled'

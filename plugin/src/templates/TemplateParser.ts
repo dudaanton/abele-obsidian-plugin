@@ -40,6 +40,7 @@ export interface ParseResult {
 const VARIABLE_PATTERN = /\{\{\s*([^}]+?)\s*\}\}/g
 const DATE_SIMPLE_REGEX = /^date$/
 const DATE_FORMAT_REGEX = /^date\.format\(['"]([^'"]+)['"]\)$/
+const DATE_COLON_REGEX = /^date:(.+)$/
 const DATE_OFFSET_REGEX = /^date\.offset\(([-\d]+)\)$/
 const DATE_OFFSET_FORMAT_REGEX = /^date\.offset\(([-\d]+)\)\.format\(['"]([^'"]+)['"]\)$/
 const PLUGIN_REGEX = /^([^;]+);([^;]+);(.+)$/
@@ -114,7 +115,7 @@ function parseTypeExpression(raw: string, expr: string): TemplateVariable {
     return { raw, type: 'date', name: 'date', format: DATE_FORMAT }
   }
 
-  const formatMatch = expr.match(DATE_FORMAT_REGEX)
+  const formatMatch = expr.match(DATE_FORMAT_REGEX) ?? expr.match(DATE_COLON_REGEX)
   if (formatMatch) {
     return { raw, type: 'date', name: 'date', format: formatMatch[1] }
   }
