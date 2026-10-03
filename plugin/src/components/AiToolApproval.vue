@@ -160,6 +160,7 @@ import Input from './obsidian/Input.vue'
 import Diff from './Diff.vue'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { TFile } from 'obsidian'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
@@ -215,7 +216,14 @@ watch(
   }
 )
 const allowKeyAddress = async () => {
-  if (keyApprovalBusy.value) return
+  const s = session.value
+  const tc = s?.pendingToolCalls.value[0]
+  if (keyApprovalBusy.value || !s || !tc || tc.id !== props.message.toolCallId || tc.name !== props.message.toolName) return
+  const name = tc.name
+  const originalArgs = JSON.stringify(tc.arguments)
+  const args = JSON.parse(JSON.stringify(effectiveParams.value))
+  const keyIds = () => keyInfo.value?.names.map((key) => AbeleConfig.getInstance().ai.secrets.find((secret) => secret.name === key)?.keyId)
+  const originalKeys = JSON.stringify(keyIds())
   try {
     const request = secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
     if (!request) return
@@ -240,6 +248,13 @@ const allowKeyAddress = async () => {
         keyRevision.value++
       }
     )
+    if (
+      !unmounted && !controller.signal.aborted && session.value === s &&
+      s.pendingToolCalls.value[0]?.id === tc.id && props.message.toolCallId === tc.id &&
+      props.message.toolName === name && JSON.stringify(tc.arguments) === originalArgs &&
+      JSON.stringify(effectiveParams.value) === JSON.stringify(args) &&
+      JSON.stringify(keyIds()) === originalKeys && !s.needsApproval(name, args)
+    ) await s.approveToolCall(isEditing.value ? args : undefined)
   } catch {
     if (!unmounted)
       parseError.value =
