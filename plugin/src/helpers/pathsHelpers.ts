@@ -2,7 +2,7 @@
  * @param path File path
  * @returns Normalized file path with .md extension
  */
-export function normalizePath(path: string): string {
+export function normalizeMarkdownPath(path: string): string {
   // remove leading and trailing slashes and spaces
   path = path.trim().replace(/^\/+|\/+$/g, '')
   // ensure it ends with .md
@@ -10,6 +10,9 @@ export function normalizePath(path: string): string {
 
   return path
 }
+
+/** Compatibility export. This appends .md; it is not Obsidian's normalizePath. */
+export const normalizePath = normalizeMarkdownPath
 
 /** Extracts the file name from a given path with extension
  * @param path Full path to the file
@@ -52,8 +55,8 @@ export function isPath(path: string): boolean {
  * @returns True if paths are considered equal, false otherwise
  */
 export function comparePaths(pathA: string, pathB: string): boolean {
-  const normalizedA = normalizePath(pathA)
-  const normalizedB = normalizePath(pathB)
+  const normalizedA = normalizeMarkdownPath(pathA)
+  const normalizedB = normalizeMarkdownPath(pathB)
 
   // if one of the paths is name only, compare by name
   if (!isPath(pathA) || !isPath(pathB)) {
@@ -71,7 +74,7 @@ export function isWikilink(link: string): boolean {
 export function wikilinkToPath(link: string): string | null {
   const match = link.match(/\[\[([^\]]+)\]\]/)
   if (match) {
-    return normalizePath(match[1].split('|')[0]) // remove alias if present and normalize
+    return normalizeMarkdownPath(match[1].split('|')[0]) // remove alias if present and normalize
   }
   return null
 }
@@ -216,10 +219,10 @@ export function resolvePath(folder: string, name: string): string {
   name = name.trim().replace(/^\/+|\/+$/g, '') // remove leading and trailing slashes and spaces
 
   if (folder === '') {
-    return normalizePath(name)
+    return normalizeMarkdownPath(name)
   }
 
-  return normalizePath(`${folder}/${name}`)
+  return normalizeMarkdownPath(`${folder}/${name}`)
 }
 
 export function escapeRegExp(str: string): string {

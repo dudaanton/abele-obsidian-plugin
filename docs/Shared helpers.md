@@ -23,6 +23,23 @@ keep that policy explicit instead of silently switching it during a deduplicatio
 Guards: `vaultFolders.test.ts`, `attachmentFolder.test.ts`, `imageAttachmentFolder.test.ts`,
 `imageImport.test.ts`, and the built-in/user-template characterization suites.
 
+## Note paths and filenames
+
+`plugin/src/helpers/pathsHelpers.ts` is the pure path-policy module. `normalizeMarkdownPath`
+trims whitespace and outside slashes, then appends the case-sensitive `.md` extension.
+It is **not** Obsidian's slash normalizer. `normalizePath` remains a compatibility export;
+new consumers should use the explicit name. `resolvePath` has the same markdown policy.
+`getFolderFromPath` / `getFileNameFromPath` split rendered paths without interpreting them.
+
+Two filename policies are intentionally separate until their consumers opt in:
+`cleanFileName` is the legacy title cleaner (first line only, including removal of `%`),
+while `toSafeVaultPath` preserves `%` and cleans each path segment, using `Untitled` for an
+empty forbidden-only segment. Neither existing filenames nor collision rules are changed.
+`getAvailablePath` still owns collision suffixes and case-only rename handling.
+
+Guards: `pathContracts.test.ts`, `pathsHelpers.test.ts`, `vaultPathNames.test.ts`, and
+`builtinTemplatesCharacterization.test.ts`.
+
 ## Dead-code inventory
 
 Run `node plugin/scripts/dead-code.mjs`. CI also prints the inventory. It follows static,

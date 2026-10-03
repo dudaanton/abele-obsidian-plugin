@@ -4,6 +4,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import dayjs, { Dayjs } from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { renderTemplate } from '@/helpers/notesUtils'
+import { getFolderFromPath } from '@/helpers/pathsHelpers'
 import { UserTemplate } from './UserTemplate'
 import { parseTemplateVariables, applyTemplateVariables } from './TemplateParser'
 import { dumpCalendarYaml as dump, loadCalendarYaml as load } from '@/helpers/yamlDates'
@@ -47,10 +48,7 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
       currency: params.currency || config.defaultCurrency,
     }
 
-    const rendered = renderTemplate(template, data)
-    const parts = rendered.split('/')
-    parts.pop()
-    return parts.join('/')
+    return getFolderFromPath(renderTemplate(template, data))
   }
 
   protected getFilename(params: TransactionNoteParams): string {

@@ -6,7 +6,11 @@ import { DATETIME_FORMAT } from '@/entities/TimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
 import { dump } from 'js-yaml'
-import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
+import {
+  extractAliasOrNameFromWikilink,
+  getFileNameFromPath,
+  getFolderFromPath,
+} from '@/helpers/pathsHelpers'
 
 export interface TimeEntryNoteParams {
   start?: dayjs.Dayjs | null
@@ -48,18 +52,13 @@ export class TimeEntryNoteTemplate extends GenericTemplate<TimeEntryNoteParams> 
   protected getPath(params: TimeEntryNoteParams): string {
     if (params.entryFolder !== undefined) return params.entryFolder
 
-    const rendered = this.renderedPath(params)
-    const parts = rendered.split('/')
-    parts.pop()
-    return parts.join('/')
+    return getFolderFromPath(this.renderedPath(params))
   }
 
   protected getFilename(params: TimeEntryNoteParams): string {
     if (params.entryName) return params.entryName
 
-    const rendered = this.renderedPath(params)
-    const parts = rendered.split('/')
-    return parts.pop() || 'Timer'
+    return getFileNameFromPath(this.renderedPath(params)) || 'Timer'
   }
 
   createTemplate(params: TimeEntryNoteParams): string {
