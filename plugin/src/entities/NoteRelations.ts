@@ -10,6 +10,7 @@ import { Log } from './Log'
 import { Note } from './Note'
 import { markRaw, reactive, shallowRef, toRaw } from 'vue'
 import { Journal } from './Journal'
+import { acquireVaultNoteIndex } from './vaultNoteIndex'
 import dayjs from 'dayjs'
 import { DATE_FORMAT } from '@/constants/dates'
 
@@ -48,6 +49,7 @@ export class NoteRelations {
   logs: Map<string, Log> = reactive(new Map())
   notes: Map<string, Note> = reactive(new Map())
 
+  private noteIndex: ReturnType<typeof acquireVaultNoteIndex> | null = null
   private isActive = false
   private resolved = false
   private eventRefs: EventRef[] = []
@@ -332,10 +334,13 @@ export class NoteRelations {
     }
 
     if (this.journalDate && this.filePath === filePath) {
-      const allNotes = app.vault.getMarkdownFiles()
+      this.noteIndex ??= acquireVaultNoteIndex(app)
+      const paths = this.noteIndex.index.pathsOnDay(this.journalDate.format(DATE_FORMAT))
 
-      for (const note of allNotes) {
-        if (note.path === this.filePath) continue
+      for (const path of paths) {
+        if (path === this.filePath) continue
+        const note = app.vault.getAbstractFileByPath(path)
+        if (!(note instanceof TFile)) continue
 
         const cache = app.metadataCache.getFileCache(note)?.frontmatter
         if (!this.belongsToJournalDay(note.path, cache)) continue
@@ -660,6 +665,8 @@ export class NoteRelations {
     this.eventRefs = []
 
     this.removeRelations()
+    this.noteIndex?.release()
+    this.noteIndex = null
     this.isActive = false
   }
 }

@@ -51,16 +51,16 @@ describe('the vault-wide task list', () => {
     expect(list.tasks.size).toBe(2)
   })
 
-  it('rescans once at first resolved when startup metadata was late, not at every resolved', () => {
+  it('revisits indexed startup paths when metadata was late, without enumerating again', () => {
     const env = start()
     env.app.setFrontmatter('Tasks/Later.md', { type: 'task' })
     env.app.resetStats()
     env.resolved()
     expect(list.tasks.has('Tasks/Later.md')).toBe(true)
-    expect(env.app.stats.getMarkdownFiles).toBe(1)
+    expect(env.app.stats.getMarkdownFiles).toBe(0)
     env.resolved()
     env.resolved()
-    expect(env.app.stats.getMarkdownFiles).toBe(1)
+    expect(env.app.stats.getMarkdownFiles).toBe(0)
   })
 
   it('evaluates current metadata when draining a batch, ignoring deleted notes and folders', async () => {

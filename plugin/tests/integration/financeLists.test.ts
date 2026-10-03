@@ -100,15 +100,15 @@ describe.each(['account', 'transaction'] as const)('%s list metadata lifecycle',
     expect(tracked().size).toBe(0)
   })
 
-  it('cleans all entries and unregisters the four list handlers exactly once', () => {
+  it('cleans all entries and unregisters the five shared-index handlers exactly once', () => {
     const off = vi.spyOn(app.metadataCache, 'offref')
     const original = tracked().get('Finance/One.md')!
     list.cleanup()
     expect(tracked().size).toBe(0)
     expect(original.loaded).toBe(false)
-    expect(off).toHaveBeenCalledTimes(4)
+    expect(off).toHaveBeenCalledTimes(5)
     list.cleanup()
-    expect(off).toHaveBeenCalledTimes(4)
+    expect(off).toHaveBeenCalledTimes(5)
   })
 
   it('removes a note that is no longer a financial entity after its type is edited', () => {

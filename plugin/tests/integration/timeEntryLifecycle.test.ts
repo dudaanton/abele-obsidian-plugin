@@ -354,7 +354,7 @@ describe('TimeEntryList metadata batches', () => {
     resolved()
     expect(list.entries.size).toBe(0)
     expect(list.activeEntries.value).toEqual([])
-    expect(off).toHaveBeenCalledTimes(4)
+    expect(off).toHaveBeenCalledTimes(5) // Includes the shared index's create listener.
   })
 
   // BUG: changed only adds matching entries, never removes a note whose type was changed.
