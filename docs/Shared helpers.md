@@ -40,6 +40,23 @@ empty forbidden-only segment. Neither existing filenames nor collision rules are
 Guards: `pathContracts.test.ts`, `pathsHelpers.test.ts`, `vaultPathNames.test.ts`, and
 `builtinTemplatesCharacterization.test.ts`.
 
+## Media and presentation
+
+`plugin/src/media/extensions.ts` exports basic image formats (including AVIF), gallery-specific
+HEIC/HEIF additions, scanner-specific ICO and PDF additions, and video/audio lists. Keep the
+consumer's rendering limits explicit; recognizing a format does not promise a model can read it.
+Media scans and reference resolution use the same `SCAN_MEDIA_EXTENSIONS` / `scanMediaType`.
+
+`plugin/src/helpers/displayFormat.ts` is pure: `formatBytes` preserves the existing binary-unit
+labels; `formatDuration(seconds, padMinutes?)` preserves row versus summary padding;
+`formatTokenCount(value, options?)` makes precision, letter case and million abbreviation explicit.
+`parseCommaList` trims and drops empty entries, but never deduplicates or implements CSV quoting.
+`relativeDayLabel` accepts a day difference already calculated by the caller, not a date string.
+
+Guards: `sharedFormatting.test.ts`, `unusedMediaSafety.test.ts`, `deduplicateMediaSafety.test.ts`
+and existing gallery/UI-kit tests. Duration/token consumer adoption and journal navigation stay
+with the corresponding panel/runtime owners; this batch does not change their date arithmetic.
+
 ## Dead-code inventory
 
 Run `node plugin/scripts/dead-code.mjs`. CI also prints the inventory. It follows static,

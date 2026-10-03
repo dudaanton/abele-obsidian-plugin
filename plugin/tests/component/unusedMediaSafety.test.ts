@@ -26,6 +26,16 @@ async function open(specs: Parameters<typeof buildFakeVault>[0]) {
 }
 
 describe('unused media safety', () => {
+  it('recognizes AVIF while retaining references from chats', async () => {
+    const { state } = await open([
+      { path: 'sample-unused.avif' },
+      { path: 'sample-used.avif' },
+      { path: 'sample-chat.abchat', content: '{"attachments":["sample-used.avif"]}' },
+    ])
+    expect(state.items.map((item: any) => item.path)).toEqual(['sample-unused.avif'])
+    expect(state.items[0].mediaType).toBe('image')
+  })
+
   it('keeps resolved links, HTML attributes and nested properties; lists only media largest first', async () => {
     const { state, app } = await open([
       {

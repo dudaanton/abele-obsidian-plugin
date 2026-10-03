@@ -60,6 +60,23 @@ async function open(
 }
 
 describe('deduplicate media safety', () => {
+  it('includes AVIF files in the same byte-verified scan', async () => {
+    const { state } = await open({
+      extra: [
+        { path: 'media/sample-first.avif', content: 'sample image bytes' },
+        { path: 'media/sample-second.avif', content: 'sample image bytes' },
+      ],
+    })
+    const avif = state.groups.find((group: any) =>
+      group.files.some((file: any) => file.path.endsWith('.avif'))
+    )
+    expect(avif.files.map((file: any) => file.path)).toEqual([
+      'media/sample-first.avif',
+      'media/sample-second.avif',
+    ])
+    expect(avif.files.every((file: any) => file.mediaType === 'image')).toBe(true)
+  })
+
   it('groups equal bytes, keeps the most referenced file and trashes the duplicates', async () => {
     const { state, files, vault } = await open()
     expect(state.groups).toHaveLength(1)

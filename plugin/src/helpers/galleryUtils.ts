@@ -1,3 +1,5 @@
+import { GALLERY_IMAGE_EXTENSIONS as IMAGE_EXTENSIONS, VIDEO_EXTENSIONS } from '@/media/extensions'
+
 export type MediaType = 'image' | 'video'
 
 export interface GalleryImageEntry {
@@ -75,8 +77,6 @@ export function parseImageLine(line: string): GalleryImageEntry | null {
   return null
 }
 
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'heic', 'heif']
-const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'mkv', 'avi', 'ogv']
 const MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS]
 
 function getExtFromPath(path: string): string {

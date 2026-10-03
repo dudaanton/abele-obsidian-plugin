@@ -19,15 +19,13 @@ import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { debounce } from 'obsidian'
+import { parseCommaList } from '@/helpers/displayFormat'
 
 const logsNotesTypes = ref(AbeleConfig.getInstance().logsNotesTypes.join(','))
 
 const saveSettings = debounce(async () => {
   const config = AbeleConfig.getInstance()
-  config.logsNotesTypes = logsNotesTypes.value
-    .split(',')
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0)
+  config.logsNotesTypes = parseCommaList(logsNotesTypes.value)
 
   await config.saveSettings()
 }, 500)

@@ -6,6 +6,7 @@
  * `enabledByDefault` is only where a fresh vault starts.
  */
 import dayjs from 'dayjs'
+import { parseCommaList } from '@/helpers/displayFormat'
 import {
   filled,
   keyAndDefault,
@@ -25,11 +26,7 @@ const list = (params: LintParams, name: string): string[] => {
       .map(String)
       .map((s) => s.trim())
       .filter(Boolean)
-  if (typeof value === 'string')
-    return value
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
+  if (typeof value === 'string') return parseCommaList(value)
   return []
 }
 const text = (params: LintParams, name: string): string => {

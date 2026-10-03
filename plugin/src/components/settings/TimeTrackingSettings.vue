@@ -36,6 +36,7 @@ import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { debounce } from 'obsidian'
+import { parseCommaList } from '@/helpers/displayFormat'
 
 const timeEntryPathTemplate = ref(AbeleConfig.getInstance().timeEntryPathTemplate)
 const timeTrackableNoteTypes = ref(AbeleConfig.getInstance().timeTrackableNoteTypes.join(','))
@@ -44,10 +45,7 @@ const timeTrackAllNotes = ref(AbeleConfig.getInstance().timeTrackAllNotes)
 const saveSettings = debounce(async () => {
   const config = AbeleConfig.getInstance()
   config.timeEntryPathTemplate = timeEntryPathTemplate.value.trim()
-  config.timeTrackableNoteTypes = timeTrackableNoteTypes.value
-    .split(',')
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0)
+  config.timeTrackableNoteTypes = parseCommaList(timeTrackableNoteTypes.value)
   config.timeTrackAllNotes = timeTrackAllNotes.value
 
   await config.saveSettings()

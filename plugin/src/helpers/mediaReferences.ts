@@ -1,32 +1,10 @@
 import type { App } from 'obsidian'
 import { parseYaml } from 'obsidian'
 import { markdownLinkTargets } from './markdownLinkTargets'
+import { SCAN_MEDIA_EXTENSIONS as MEDIA_EXTENSIONS } from '@/media/extensions'
 
 /** Formats whose references are not included in Obsidian's Markdown link index. */
 const STRUCTURED = new Set(['abchat', 'json', 'jsonl', 'canvas', 'base', 'yaml', 'yml'])
-
-const MEDIA_EXTENSIONS = [
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'bmp',
-  'svg',
-  'ico',
-  'mp4',
-  'webm',
-  'ogv',
-  'mov',
-  'mkv',
-  'mp3',
-  'ogg',
-  'wav',
-  'flac',
-  'aac',
-  'm4a',
-  'pdf',
-]
 
 export function resolveMediaTarget(app: App, target: string, source: string): string | null {
   const paths = resolveMediaTargets(app, target, source)

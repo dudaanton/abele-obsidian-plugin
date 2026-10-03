@@ -81,15 +81,15 @@ import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { vaultUrl } from '@/helpers/vaultUrl'
 import { equalMediaBytes, mergeMediaFiles } from '@/helpers/mediaDeduplication'
+import { formatBytes as formatSize } from '@/helpers/displayFormat'
+import {
+  SCAN_MEDIA_EXTENSIONS as MEDIA_EXT,
+  scanMediaType as getMediaType,
+} from '@/media/extensions'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const { app } = GlobalStore.getInstance()
-
-const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico']
-const VIDEO_EXT = ['mp4', 'webm', 'ogv', 'mov', 'mkv']
-const AUDIO_EXT = ['mp3', 'ogg', 'wav', 'flac', 'aac', 'm4a']
-const MEDIA_EXT = [...IMAGE_EXT, ...VIDEO_EXT, ...AUDIO_EXT, 'pdf']
 
 interface DupFile {
   path: string
@@ -119,19 +119,6 @@ const totalDuplicateSize = computed(() => {
     .reduce((s, g) => s + g.size * (g.files.length - 1), 0)
   return formatSize(bytes)
 })
-
-const formatSize = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-const getMediaType = (ext: string): 'image' | 'video' | 'audio' | 'other' => {
-  if (IMAGE_EXT.includes(ext)) return 'image'
-  if (VIDEO_EXT.includes(ext)) return 'video'
-  if (AUDIO_EXT.includes(ext)) return 'audio'
-  return 'other'
-}
 
 const hashBuffer = (buf: ArrayBuffer): string => {
   const bytes = new Uint8Array(buf)

@@ -10,6 +10,7 @@
 import { computed } from 'vue'
 import dayjs from 'dayjs'
 import { DISPLAY_DATE_FORMAT, DATE_FORMAT } from '@/constants/dates'
+import { relativeDayLabel } from '@/helpers/displayFormat'
 
 const props = defineProps<{
   date: string
@@ -23,10 +24,8 @@ const label = computed(() => {
   const diff = d.startOf('day').diff(now.startOf('day'), 'day')
 
   const formatted = d.format(DISPLAY_DATE_FORMAT)
-  if (diff === 0) return `${formatted} — Today`
-  if (diff === -1) return `${formatted} — Yesterday`
-  if (diff === 1) return `${formatted} — Tomorrow`
-  return formatted
+  const relative = relativeDayLabel(diff)
+  return relative ? `${formatted} — ${relative}` : formatted
 })
 </script>
 
