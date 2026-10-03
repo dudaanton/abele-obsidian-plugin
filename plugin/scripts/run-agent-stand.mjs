@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { verifySyncFixture } from './verify-sync-inputs.mjs'
-import { ensureOwnedPoolWindow } from './agent-stand-window.mjs'
+import { requireRoutableOwnedPool } from './agent-stand-window.mjs'
 const plugin = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 if (!process.env.ABELE_AGENT_STAND_STAGE) {
   console.log('Agent stand disabled: explicit ABELE_AGENT_STAND_STAGE required')
@@ -38,23 +38,10 @@ const backup = mkdtempSync(join(scratch, 'build-')),
 writeFileSync(join(backup, 'vault-name'), vault)
 let installed = false,
   failed = false,
-  restoreWindow = () => {}
+  cliResponsive = true
 const cli = process.env.OBSIDIAN_CLI ?? join(homedir(), '.local/bin/obsidian')
-const appGate = (fn) => {
-  const lock = join(homedir(), '.local/state/abele/live.lock')
-  if (existsSync(lock)) throw new Error('Shared app gate busy')
-  mkdirSync(lock)
-  writeFileSync(
-    join(lock, 'owner'),
-    'app sync-agent-window ' + process.pid + ' ' + new Date().toISOString()
-  )
-  try {
-    return fn()
-  } finally {
-    rmSync(lock, { recursive: true })
-  }
-}
 const evaluateOwnedBoolean = (expression) => {
+  if (spawnSync('pgrep', ['-x', 'Obsidian'], { encoding: 'utf8' }).status !== 0) return false
   const id = randomUUID(),
     code = `(async()=>JSON.stringify({__abeleReply:${JSON.stringify(id)},hasValue:true,value:await (${expression})}))()`
   const r = spawnSync(
@@ -95,25 +82,15 @@ const reload = () => {
     timeout: 45000,
     killSignal: 'SIGKILL',
   })
-  if (r.status !== 0) throw new Error('Pool plugin reload failed')
+  if (r.status !== 0) {
+    cliResponsive = false
+    throw new Error(
+      'Pool CLI/plugin reload failed; stop and report to manager, no app recovery permitted'
+    )
+  }
 }
 try {
-  restoreWindow = ensureOwnedPoolWindow({
-    probe,
-    gate: appGate,
-    open: () => {
-      const r = spawnSync('open', ['obsidian://open?vault=' + encodeURIComponent(vault)])
-      if (r.status !== 0) throw new Error('Owned pool open refused')
-    },
-    close: () => {
-      if (
-        !evaluateOwnedBoolean(
-          `(()=>{if(app.vault.getName()!==${JSON.stringify(vault)})return false;const w=require('@electron/remote').getCurrentWindow();window.setTimeout(()=>w.close(),100);return true})()`
-        )
-      )
-        throw new Error('Owned pool window close request could not be verified')
-    },
-  })
+  requireRoutableOwnedPool({ probe })
   for (const f of files) {
     if (existsSync(join(target, f))) copyFileSync(join(target, f), join(backup, f))
     else writeFileSync(join(backup, f + '.absent'), '')
@@ -158,20 +135,14 @@ try {
             throw new Error('Original pool build bytes differ')
         }
       }
-      reload()
+      if (cliResponsive) reload()
+      else throw new Error('Original build bytes restored; runtime reload awaits manager')
     }
     rmSync(backup, { recursive: true, force: true })
   } catch {
     failed = true
     process.exitCode = 1
     console.error('Original pool plugin restoration failed; preserved build backup for recovery')
-  }
-  try {
-    restoreWindow()
-  } catch {
-    failed = true
-    process.exitCode = 1
-    console.error('Owned pool window restore failed')
   }
   spawnSync(lease, ['drop', vault], { stdio: 'ignore' })
   if (failed) console.error('Agent stand run did not pass')

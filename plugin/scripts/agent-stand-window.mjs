@@ -1,3 +1,11 @@
+/** Strict unattended policy: the manager supplies a running app and open/routable pool.
+ * Never launch/relaunch the app (even through an open-vault URI) after a failed CLI probe. */
+export function requireRoutableOwnedPool({ probe }) {
+  if (!probe())
+    throw new Error(
+      'Owned pool CLI unavailable; stop and report to manager; app launch/recovery is forbidden'
+    )
+}
 /** A pool lease is not proof that its Obsidian window is open/routable. Never reload a
  * different vault as fallback; open/close only the owned vault, under the app gate.
  */
