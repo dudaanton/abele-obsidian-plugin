@@ -121,22 +121,35 @@ export class CanvasEmbed extends MarkdownRenderChild {
       if (!file) throw new Error('Embedded diagram is missing')
       const options = canvasEmbedOptions(this.embed.getAttribute('src') ?? '')
       const graph = parseCanvas(await this.app.vault.read(file))
+      let stepError = '',
+        playable = false
+      try {
+        playable = stepsOf(graph).length > 0
+      } catch (error) {
+        stepError = String(error)
+      }
+      // Bad legacy walkthrough data does not invalidate an otherwise readable diagram.
+      // Keep node crops; a requested step falls back to the static diagram with an explicit warning.
+      const pictureOptions = { ...options, maxSide: 1600 }
+      if (stepError) delete pictureOptions.step
       const picture = await canvasPicture(
         this.app,
         graph,
         file.path,
-        { ...options, maxSide: 1600 },
+        pictureOptions,
         () => true,
         signal
       )
       if (this.stopped || token !== this.token) return
       this.image.src = picture.canvas.toDataURL('image/png')
-      this.image.alt = `${file.basename}${options.step ? `, step ${options.step}` : ''}`
+      this.image.alt = `${file.basename}${options.step && !stepError ? `, step ${options.step}` : ''}`
       const width = Number(this.embed.getAttribute('width'))
       this.box.setCssStyles({ width: Number.isFinite(width) && width > 0 ? `${width}px` : '100%' })
       this.narration.setText(picture.say ?? '')
-      this.status.setText('')
-      this.play.disabled = stepsOf(graph).length === 0
+      this.status.setText(
+        stepError ? `Walkthrough steps unavailable; showing the diagram: ${stepError}` : ''
+      )
+      this.play.disabled = !playable
     } catch (error) {
       if (!this.stopped && token === this.token && !signal.aborted) {
         this.status.setText(`Diagram could not be shown: ${String(error)}`)
