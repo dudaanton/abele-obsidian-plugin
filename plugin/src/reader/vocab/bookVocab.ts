@@ -83,6 +83,40 @@ export class NoteRules {
   }
 }
 
+interface SharedRules {
+  notes: NoteRules
+  listeners: Set<() => void>
+}
+
+const sharedRules = new WeakMap<App, SharedRules>()
+
+/** One vault scan and set of listeners while any book tab needs vocabulary. */
+function acquireRules(app: App, publish: () => void): { notes: NoteRules; stop(): void } {
+  let shared = sharedRules.get(app)
+  if (!shared) {
+    const listeners = new Set<() => void>()
+    const notes = new NoteRules(app, () => { for (const listener of listeners) listener() })
+    shared = { notes, listeners }
+    sharedRules.set(app, shared)
+    notes.start()
+  }
+  const current = shared
+  current.listeners.add(publish)
+  let stopped = false
+  return {
+    notes: current.notes,
+    stop: () => {
+      if (stopped) return
+      stopped = true
+      current.listeners.delete(publish)
+      if (!current.listeners.size) {
+        current.notes.stop()
+        sharedRules.delete(app)
+      }
+    },
+  }
+}
+
 /** Where a rule leads, opened: its note, or its highlight's entry in the highlights note. */
 async function openRule(
   app: App,
@@ -153,15 +187,15 @@ export function vocabFor(
   }
   const publish = () =>
     marks.setRules([...notes.applying(ref), ...highlightRules(reading.highlights())])
-  const notes = new NoteRules(app, publish)
+  const shared = acquireRules(app, publish)
+  const notes = shared.notes
   reading.marks.onWords = (rules, at, alongside) => openRules(app, reading, rules, at, alongside)
   reading.onHighlights = publish
-  notes.start()
   publish()
   return {
     publish,
     stop: () => {
-      notes.stop()
+      shared.stop()
       marks.stop()
       reading.onHighlights = () => {}
     },

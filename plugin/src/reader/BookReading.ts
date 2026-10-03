@@ -3,7 +3,7 @@
  * them, linking to a place, going to a place a link names, and searching. One per open book; the
  * tab makes it once the book is showing and drops it when the book closes.
  */
-import { MarkdownView, Notice, type App, type PaneType, type TFile } from 'obsidian'
+import { MarkdownView, Notice, TFile, type App, type PaneType } from 'obsidian'
 import { flashLines } from '@/lineLinks/open'
 import { openNoteInTab } from '@/helpers/openLeaves'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
@@ -14,6 +14,8 @@ import { searchMatcher } from '@/vendor/foliate-js/search.js'
 import { linkToPlace, quoteWithLink, type BookPlace } from './bookLinks'
 import {
   deleteHighlight,
+  companionPath,
+  isCompanionFor,
   highlightAt,
   noteFor,
   notesOf,
@@ -214,7 +216,14 @@ export class BookReading {
 
   /** Whether a changed file is one of this book's highlights notes, which are then read again. */
   noteChanged(path: string): boolean {
-    if (!this.notePaths.includes(path) && !this.notes().some((n) => n.path === path)) return false
+    if (this.disposed) return false
+    const target = this.where().target
+    const named = path === companionPath(this.file) || target.alsoIn.includes(path) ||
+      (target.to === 'note' && target.path === path)
+    if (!this.notePaths.includes(path) && !named) {
+      const file = this.app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile) || !isCompanionFor(this.app, this.file, file)) return false
+    }
     void this.loadHighlights()
     return true
   }

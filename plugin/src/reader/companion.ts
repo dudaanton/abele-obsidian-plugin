@@ -61,26 +61,28 @@ export function companionPath(book: TFile): string {
   return normalizePath(`${dir}${book.basename} highlights.md`)
 }
 
+/** Whether this one note's properties name the book as its companion. */
+export function isCompanionFor(app: App, book: TFile, file: TFile): boolean {
+  const fm = app.metadataCache.getFileCache(file)?.frontmatter
+  if (!fm || fm.type !== HIGHLIGHTS_TYPE) return false
+  // `file` in notes made now, `book` in the ones made before: either says whose it is.
+  return BOOK_LINK_KEYS.some((key) => {
+    const value: unknown = fm[key]
+    if (typeof value !== 'string') return false
+    const linkpath = value
+      .replace(/^\[\[|\]\]$/g, '')
+      .split('|')[0]
+      .split('#')[0]
+      .trim()
+    return app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path === book.path
+  })
+}
+
 /** The book's own highlights note, if there is one. */
 export function findCompanion(app: App, book: TFile): TFile | null {
   const byName = app.vault.getAbstractFileByPath(companionPath(book))
-  const matches = (file: TFile): boolean => {
-    const fm = app.metadataCache.getFileCache(file)?.frontmatter
-    if (!fm || fm.type !== HIGHLIGHTS_TYPE) return false
-    // `file` in notes made now, `book` in the ones made before: either says whose it is.
-    return BOOK_LINK_KEYS.some((key) => {
-      const value: unknown = fm[key]
-      if (typeof value !== 'string') return false
-      const linkpath = value
-        .replace(/^\[\[|\]\]$/g, '')
-        .split('|')[0]
-        .split('#')[0]
-        .trim()
-      return app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path === book.path
-    })
-  }
-  if (byName instanceof TFile && matches(byName)) return byName
-  for (const file of app.vault.getMarkdownFiles()) if (matches(file)) return file
+  if (byName instanceof TFile && isCompanionFor(app, book, byName)) return byName
+  for (const file of app.vault.getMarkdownFiles()) if (isCompanionFor(app, book, file)) return file
   // A note of that name that has not been indexed yet, or lost its properties: still the one.
   return byName instanceof TFile ? byName : null
 }
