@@ -35,6 +35,14 @@ onMounted(() => {
     padding-top: calc(var(--size-4-2) + var(--icon-size));
   }
 }
+// An absolute main-pane scroller must begin below the native phone header, not the
+// leaf's top edge. This is shared by all list panels, including inset-sized accounts.
+body.is-phone .workspace-split.mod-root .abele-sidebar-panel {
+  top: calc(var(--safe-area-inset-top, 0px) + var(--view-header-height, 0px) + var(--size-4-2));
+  height: calc(
+    100% - var(--safe-area-inset-top, 0px) - var(--view-header-height, 0px) - var(--size-4-2)
+  );
+}
 // Main-pane lists own an absolute scroller, so the view-content's native bottom inset
 // cannot protect their last row from the phone's floating navigation.
 .is-mobile .workspace-split.mod-root .abele-sidebar-panel {

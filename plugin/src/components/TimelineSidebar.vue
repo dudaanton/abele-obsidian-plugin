@@ -105,16 +105,6 @@ const timelineTasks = pausedWhileHidden(active, () =>
   }
 }
 
-// A main-tab view has its own native floating header on a phone. This absolute scroller
-// starts at the status bar otherwise; keep its own scroll owner, but place its top below
-// Obsidian's safe area and view header instead of underneath them.
-body.is-phone .workspace-split.mod-root .abele-timeline-sidebar {
-  top: calc(var(--safe-area-inset-top, 0px) + var(--view-header-height, 0px) + var(--size-4-2));
-  height: calc(
-    100% - var(--safe-area-inset-top, 0px) - var(--view-header-height, 0px) - var(--size-4-2)
-  );
-}
-
 .abele-timeline-sidebar__calendar {
   margin-bottom: calc(var(--p-spacing) * 2);
 }
