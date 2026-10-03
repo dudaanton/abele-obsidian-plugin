@@ -14,6 +14,7 @@ import { noteDeckSource, noteMedia, noteRenderer } from './adapter'
 import { liveRenderer } from './liveAdapter'
 import { DECK_VIEW_TYPE, sourceLeaves } from './opening'
 import { desktopFullscreen } from './fullscreen'
+import { mobilePresentation } from './mobilePresentation'
 import { Presentation } from './core/Presentation'
 import { PresenterView } from './core/PresenterView'
 import type { Deck } from './core/model'
@@ -154,6 +155,9 @@ export class DeckView extends FileView {
       {
         fullscreen: !Platform.isMobile,
         fullscreenHost: desktopFullscreen(this.contentEl),
+        presentationHost: Platform.isMobile
+          ? mobilePresentation(this.contentEl.ownerDocument.defaultView!)
+          : undefined,
         onExit: () => this.show?.end(),
         onNotes: () => {
           if (Platform.isMobile) void this.startPresenter()

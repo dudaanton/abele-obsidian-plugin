@@ -224,8 +224,45 @@
   box-sizing: border-box;
 }
 
-.abele-deck-presenting:fullscreen {
+.abele-deck.abele-deck-presenting {
   padding: 0;
+}
+
+/* Controls overlay the canvas: revealing them never resizes or shifts a slide. */
+.abele-deck.abele-deck-presenting .abele-deck-toolbar {
+  position: absolute;
+  top: env(safe-area-inset-top);
+  left: env(safe-area-inset-left);
+  right: env(safe-area-inset-right);
+  z-index: 3;
+  background: var(--background-primary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 150ms,
+    visibility 150ms;
+}
+
+/* A movable audience window still has native title-bar buttons. */
+.mod-macos .abele-deck.abele-deck-presenting:not(.abele-deck-fullscreen) .abele-deck-toolbar {
+  top: max(env(safe-area-inset-top), var(--header-height, 40px));
+}
+
+.abele-deck.abele-deck-presenting.abele-deck-controls-visible .abele-deck-toolbar {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.abele-deck.abele-deck-presenting:not(.abele-deck-controls-visible) {
+  cursor: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .abele-deck.abele-deck-presenting .abele-deck-toolbar {
+    transition: none;
+  }
 }
 
 .abele-slide-divider {

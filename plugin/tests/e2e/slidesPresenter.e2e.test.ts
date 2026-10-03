@@ -100,6 +100,8 @@ describe.skipIf(!available)('shared presenter show', () => {
         const fullscreen=[...viewer.toolbar.querySelectorAll('button')].find(b=>b.textContent==='Fullscreen')
         const cdp=doc.defaultView.require('@electron/remote').getCurrentWebContents().debugger
         if(!cdp.isAttached()){cdp.attach('1.3');attached.push(doc.defaultView.require('@electron/remote').getCurrentWindow().id)}
+        await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:doc.defaultView.innerWidth/2,y:10})
+        if(!await until(()=>doc.defaultView.getComputedStyle(viewer.toolbar).visibility==='visible'))throw Error('audience controls did not reveal at the top strip')
         const box=fullscreen.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2
         await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1})
         await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1})
@@ -133,6 +135,9 @@ describe.skipIf(!available)('shared presenter show', () => {
         source.detach()
         await wait(350)
         result.presenterShot=await picture('desktop-presenter')
+        await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:doc.defaultView.innerWidth/2,y:doc.defaultView.innerHeight/2})
+        await wait(2800)
+        result.audienceHidden=doc.defaultView.getComputedStyle(viewer.toolbar).visibility==='hidden'
         result.audienceShot=await picture('desktop-audience',doc)
         result.fullscreen=doc.defaultView.require('@electron/remote').getCurrentWindow().isSimpleFullScreen() || doc.defaultView.require('@electron/remote').getCurrentWindow().isFullScreen()
         doc.defaultView.require('@electron/remote').getCurrentWindow().close()
@@ -171,6 +176,7 @@ describe.skipIf(!available)('shared presenter show', () => {
       expect(r.reduced).toBe('none')
       expect(r.movable, JSON.stringify(r)).toBe(true)
       expect(r.fullscreen, JSON.stringify(r)).toBe(true)
+      expect(r.audienceHidden, JSON.stringify(r)).toBe(true)
       expect(r.closed).toBe(true)
       expect(r.presenterClosed).toBe(true)
     }

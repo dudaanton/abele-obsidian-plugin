@@ -58,6 +58,8 @@ export class DeckViewer {
   private placeholder: Comment | null = null
   private focusBefore: HTMLElement | null = null
   private fullscreenOwned = false
+  private controlsTimer: number | undefined
+  private overControls = false
   private closed = false
   private revision = 0
   private gesture: { start: Point; id: number; time: number } | null = null
@@ -74,6 +76,8 @@ export class DeckViewer {
     private readonly options: {
       fullscreen?: boolean
       fullscreenHost?: FullscreenHost
+      /** Optional native chrome lifetime, also used by full-window shows without fullscreen. */
+      presentationHost?: FullscreenHost
       preview?: boolean
       revealAll?: boolean
       /** Original numbering when rendering a subset, used by deck CSS selectors. */
@@ -86,8 +90,15 @@ export class DeckViewer {
     this.root = doc.createElement('div')
     this.root.className = 'abele-deck'
     this.root.tabIndex = 0
-    this.root.setAttribute('aria-label', 'Presentation')
+    this.root.setAttribute('role', 'region')
     this.scopeId = `deck-${Math.random().toString(36).slice(2)}`
+    // Obsidian turns aria-label into a hover tooltip. A referenced hidden label names the
+    // region for assistive technology without putting a tooltip over the audience slide.
+    const label = doc.createElement('span')
+    label.id = `${this.scopeId}-label`
+    label.hidden = true
+    label.textContent = 'Presentation'
+    this.root.setAttribute('aria-labelledby', label.id)
     this.root.dataset.deckId = this.scopeId
     this.stylesheet = doc.createElement('style')
     this.toolbar = doc.createElement('div')
@@ -112,7 +123,7 @@ export class DeckViewer {
     })
     this.viewport = doc.createElement('div')
     this.viewport.className = 'abele-deck-viewport'
-    this.root.append(this.stylesheet, this.toolbar, this.viewport)
+    this.root.append(label, this.stylesheet, this.toolbar, this.viewport)
     host.append(this.root)
     this.unwatch = this.navigation.watch(this.syncNavigation)
     this.resize = new ResizeObserver(() => this.scale())
@@ -131,6 +142,17 @@ export class DeckViewer {
     )
     const unwatchFullscreen = options.fullscreenHost?.watchExited?.(() => this.exitPresenting())
     this.abort.signal.addEventListener('abort', () => unwatchFullscreen?.(), { once: true })
+    this.root.addEventListener('pointermove', this.onPointerMove, listen)
+    this.root.addEventListener(
+      'pointerleave',
+      () => {
+        this.overControls = false
+        this.scheduleControlsHide()
+      },
+      listen
+    )
+    this.toolbar.addEventListener('focusin', () => this.showControls(), listen)
+    this.toolbar.addEventListener('focusout', () => this.scheduleControlsHide(), listen)
     this.viewport.addEventListener('pointerdown', this.onPointerDown, listen)
     this.viewport.addEventListener('pointerup', this.onPointerUp, listen)
     this.viewport.addEventListener(
@@ -585,6 +607,8 @@ export class DeckViewer {
       this.root.before(this.placeholder)
       doc.body.append(this.root)
       this.root.classList.add('abele-deck-presenting')
+      this.hideControls()
+      void this.options.presentationHost?.enter()
       this.play.textContent = 'Exit'
       this.play.setAttribute('aria-label', 'Exit presentation')
       this.scale()
@@ -598,7 +622,10 @@ export class DeckViewer {
         if (this.closed || !this.placeholder) {
           if (host) await host.exit()
           else if (doc.fullscreenElement === this.root) await doc.exitFullscreen()
-        } else this.fullscreenOwned = true
+        } else {
+          this.fullscreenOwned = true
+          this.root.classList.add('abele-deck-fullscreen')
+        }
       } catch {
         /* The full-window surface remains usable when element fullscreen is unavailable. */
       }
@@ -610,7 +637,13 @@ export class DeckViewer {
     const doc = this.root.ownerDocument
     this.placeholder.replaceWith(this.root)
     this.placeholder = null
-    this.root.classList.remove('abele-deck-presenting')
+    this.root.classList.remove('abele-deck-presenting', 'abele-deck-fullscreen')
+    this.clearControlsTimer()
+    this.overControls = false
+    this.root.classList.remove('abele-deck-controls-visible')
+    this.toolbar.inert = false
+    this.toolbar.removeAttribute('aria-hidden')
+    void this.options.presentationHost?.exit()
     this.play.textContent = 'Play'
     this.play.setAttribute('aria-label', 'Play')
     if (this.fullscreenOwned) {
@@ -622,6 +655,47 @@ export class DeckViewer {
     this.focusBefore = null
     this.scale()
     this.options.onExit?.()
+  }
+
+  private clearControlsTimer(): void {
+    this.root.ownerDocument.defaultView?.clearTimeout(this.controlsTimer)
+    this.controlsTimer = undefined
+  }
+
+  private hideControls(): void {
+    this.clearControlsTimer()
+    this.root.classList.remove('abele-deck-controls-visible')
+    this.toolbar.inert = true
+    this.toolbar.setAttribute('aria-hidden', 'true')
+  }
+
+  private scheduleControlsHide(): void {
+    this.clearControlsTimer()
+    if (!this.placeholder) return
+    this.controlsTimer = this.root.ownerDocument.defaultView?.setTimeout(() => {
+      this.controlsTimer = undefined
+      if (!this.overControls && !this.toolbar.contains(this.root.ownerDocument.activeElement))
+        this.hideControls()
+    }, 2500)
+  }
+
+  private showControls(): void {
+    if (!this.placeholder) return
+    this.root.classList.add('abele-deck-controls-visible')
+    this.toolbar.inert = false
+    this.toolbar.setAttribute('aria-hidden', 'false')
+    this.scheduleControlsHide()
+  }
+
+  /** Only the top strip reveals desktop controls; moving over the slide does not disturb it. */
+  private onPointerMove = (event: PointerEvent): void => {
+    if (!this.placeholder || event.pointerType !== 'mouse') return
+    const box = this.root.getBoundingClientRect()
+    const top = event.clientY - box.top
+    const wasOver = this.overControls
+    this.overControls = (top >= 0 && top <= 48) || this.toolbar.contains(event.target as Node)
+    if (this.overControls) this.showControls()
+    else if (wasOver) this.scheduleControlsHide()
   }
 
   private onWindowKey = (event: KeyboardEvent): void => {
@@ -636,6 +710,7 @@ export class DeckViewer {
       this.exitPresenting()
       return
     }
+    if (event.key === 'Tab' && this.placeholder) this.showControls()
     if (interactive(event.target)) return
     const action = slideForKey(event.key)
     if (action === null) return
@@ -669,6 +744,7 @@ export class DeckViewer {
       this.options.onNotes()
       return
     }
+    this.showControls()
     const action = slideForGesture(
       gesture.start,
       { x: event.clientX - box.left, y: event.clientY - box.top },

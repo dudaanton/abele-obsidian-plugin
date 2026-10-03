@@ -176,15 +176,22 @@ End go to the first and last slides. Click the slide first if the focus is elsew
 touch screen, tap the left or right third, or swipe horizontally. Text fields, links, media
 and live map or chart controls keep their normal interaction.
 
-**Play** requests fullscreen on desktop and fills the Obsidian window on a phone. The exit
-button stays clear of the phone's safe area. **Exit** or Escape returns to the same deck tab.
-Use it when you want a single-screen show.
+**Play** enters native fullscreen on desktop and covers Obsidian's interface on a phone.
+On supported phones it also hides the system status bar, restoring it when you leave.
+Only the slide stays on screen: controls are hidden until you hover over the **top strip**
+on desktop or tap an empty slide area on a phone. They fade away a couple of seconds after
+you leave the strip or stop tapping. Moving the pointer over the slide does not reveal them.
+Tab also reveals the controls for keyboard access. The controls overlay the slide without
+moving it and stay clear of the phone's safe areas. **Exit** or Escape returns to the same
+deck tab. Use it when you want a single-screen show.
 
 ## Present with notes
 
 Choose **Present** in the deck or the command **Present with speaker view**. On a computer,
 this opens a second Obsidian window for the audience. Move that window to your projector or
-second display, then click **Fullscreen** there. Your original tab keeps the current and next
+second display, then hover over its top strip and click **Fullscreen** there. The audience
+controls hide just as in Play; the movable window deliberately starts without fullscreen.
+Your original tab keeps the current and next
 slides, your private speaker notes, a slide selector and a timer. Use **Pause timer** to pause
 or resume the clock, and **Reset timer** to start it again. Preview videos stay paused so they
 do not play twice; the audience slide keeps its usual playback controls.

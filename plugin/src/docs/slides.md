@@ -108,18 +108,24 @@ an **Open presentation** header action. The file menu also offers **Edit present
 
 **Play presentation** or the deck's **Play** button presents on one screen. Desktop requests
 native window fullscreen through the desktop adapter; if it is unavailable the full-window
-surface still works. Mobile uses a
-full-window overlay with safe-area padding, not element fullscreen. **Exit** or Escape returns
-to the same tab. Arrow keys, Page Up/Down, Space, Home and End navigate while the deck is
-focused. On touch screens, tap the outer thirds or swipe horizontally to page. Links, media,
+surface still works. Mobile uses a full-window overlay, not element fullscreen, and hides the
+native status bar when the host provides that capability. Its previous visibility is restored
+on exit. The slide fills the available canvas; safe-area insets apply to the overlaid controls,
+not the slide. Controls start hidden and appear only while hovering over the top strip on
+desktop, tapping a noninteractive slide area on mobile, or using Tab for keyboard access.
+They fade after 2.5 seconds away from the strip or after a tap; focused controls remain visible.
+Pointer movement over the slide does not reveal them. Revealing controls never resizes the
+slide. **Exit** or Escape returns to the same tab. Arrow keys, Page Up/Down, Space, Home and
+End navigate while the deck is focused. On touch screens, tap the outer thirds or swipe horizontally to page. Links, media,
 editable fields and live map/chart/gallery controls keep their own gestures and keys.
 
 ## Presenter mode
 
 **Present** or **Present with speaker view** starts a show at the current slide. Desktop opens
 an Obsidian audience popout; drag it to the display for the audience, then use its **Fullscreen**
-button. The original tab shows the current slide, next slide, rendered speaker notes, a slide
-selector and elapsed timer. Pause/resume and reset affect only the timer, not navigation.
+button, revealed by hovering over the top strip. Audience controls auto-hide as in Play, and
+stay below native title-bar buttons while the window is movable. The original tab shows the
+current slide, next slide, rendered speaker notes, a slide selector and elapsed timer. Pause/resume and reset affect only the timer, not navigation.
 Preview media is paused; autoplay runs only in the audience view. Both windows share one
 in-memory navigation/step state, with no server or messaging transport. Source edits refresh
 both views and the notes panel without moving the current slide.
