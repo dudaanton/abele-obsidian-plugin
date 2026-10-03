@@ -82,7 +82,12 @@ or local trust storage. Only its name, stable ID, keychain ID and `allowedOrigin
 `ai.secrets`; the existing stored-keys transfer carries that metadata and protected key.
 Home-network HTTP transport exceptions are separate from per-key recipient approval: an exception
 does not approve other credentials. Removing the exception blocks credential-bearing HTTP again.
-Manual approval never queues or replays a script.
+Manual approval never queues or replays a script. The dialog lists named key-recipient
+permissions after save/reopen. Removing one persists its removal from `allowedOrigins` and
+revokes its local pair trust, without deleting the protected key or other HTTP allowances.
+Basic authentication compares the decoded password exactly against protected saved values;
+its username and derived Authorization/Base64 material are request-local, never new settings,
+trust-cache identities or duplicate stored keys.
 
 ## Excel files
 

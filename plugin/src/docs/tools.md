@@ -377,7 +377,18 @@ does not change the keys' allowed-address lists. Imported allowed origins still 
 on this device. Interceptor policies cannot approve unconfirmed recipients; unattended agent
 runs refuse them. MCP tools whose configured headers substitute named keys follow the same rule. Ordinary keyless local requests and discussion
 requests keep their existing permissions. A placeholder cannot select the URL's authority.
-Echoed keys are redacted from fetch results.
+Echoed keys and derived Basic credentials are redacted from fetch results and network errors.
+
+For HTTP Basic authentication, `fetch`, `download_image` and `download_file` accept
+`basicAuth: { username: "sample-user", password: "${abele_key:sample-password}" }`.
+The saved key must contain the password, not Base64 material. Abele resolves it internally
+only after recipient consent, then UTF-8 encodes `username:password` into Authorization.
+Do not ask the person to paste the password into chat, create a duplicate Base64 secret, or
+put placeholders in URL userinfo. Do not also supply an Authorization header. Usernames
+cannot contain a colon; later colons in the exact password are preserved. A correctly
+constructed literal Basic header is also recognized against saved passwords and their
+key-recipient permissions. An HTTP 401 means the server refused the login, unlike a
+permission error before sending.
 
 `fetch` brings back a page; the vault may hold a skill that teaches a better way of turning one
 into markdown. Downloads land in the vault, so they are subject to scope.

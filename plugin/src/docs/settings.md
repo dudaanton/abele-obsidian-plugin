@@ -18,8 +18,10 @@ choose the concrete saved key or explicitly save a new named key in protected st
 **Allow key and address** records that key-recipient pair and the local HTTP exception when
 needed. The canonical scheme, host and port and the unencrypted warning are shown beside the
 action. A name collision never overwrites an existing key. Retry the original literal-header
-script afterwards; no script is replayed automatically. Other keys do not gain permission from
-the HTTP exception. Public HTTP is not eligible. Keyless local services are unchanged.
+script afterwards; no script is replayed automatically. The key-recipient permission remains visible after saving and reopening. Removing that
+permission keeps the saved key and other keys' permissions; the separate HTTP exception
+controls unencrypted transport for the address on this device. Other keys do not gain
+permission from the HTTP exception. Public HTTP is not eligible. Keyless local services are unchanged.
 
 
 What the plugin's own settings are and what each group of them decides, for `read_settings` and

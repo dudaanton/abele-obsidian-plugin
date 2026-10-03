@@ -21,6 +21,22 @@ key and canonical recipient and the device-local unencrypted transport. Retry th
 script yourself; approval never replays it. Different keys, hosts or ports remain unapproved.
 Key values are never written to the destination list or ordinary settings.
 
+For Basic authentication use the same explicit option on `ctx.fetch`, `ctx.downloadImage`
+and `ctx.downloadFile`:
+
+```js
+await ctx.fetch('http://192.168.55.18:8764/stats', {
+  basicAuth: { username: 'sample-user', password: '${abele_key:sample-password}' },
+})
+```
+
+Save only the password under that name; Abele resolves and encodes it after consent. Do not
+put the password into chat or save a Base64 duplicate. Do not combine `basicAuth` with an
+Authorization header, use colons in the username, or put credentials/placeholders in URL
+userinfo. Existing literal `Authorization: Basic base64(username:password)` scripts can be
+retried unchanged after permission for the saved password and canonical recipient. Derived
+headers, their Base64 payloads and raw passwords are redacted in results and network errors.
+
 ## Network limits
 
 `ctx.fetch` waits at most five minutes, including redirects, and accepts at most 20 MB.
