@@ -106,46 +106,15 @@ export class Journal {
   }
 
   getNextDate(fromDate: dayjs.Dayjs) {
-    const baseDate = fromDate.add(1, this.dayjsReccurence)
-
-    if (this.recurrence === 'yearly' && this.dayOfPeriod) {
-      if (this.dayOfPeriod === 'first') {
-        return baseDate.month(0).date(1)
-      } else if (this.dayOfPeriod === 'last') {
-        return baseDate.month(11).endOf('month')
-      } else if (typeof this.dayOfPeriod === 'number') {
-        const startOfYear = baseDate.month(0).date(1)
-        const targetDate = startOfYear.add(this.dayOfPeriod - 1, 'day')
-        return targetDate
-      }
-    }
-
-    if (this.recurrence === 'monthly' && this.dayOfPeriod) {
-      if (this.dayOfPeriod === 'first') {
-        return baseDate.date(1)
-      } else if (this.dayOfPeriod === 'last') {
-        return baseDate.endOf('month')
-      } else if (typeof this.dayOfPeriod === 'number') {
-        return baseDate.date(this.dayOfPeriod)
-      }
-    }
-
-    if (this.recurrence === 'weekly' && this.dayOfPeriod) {
-      if (typeof this.dayOfPeriod === 'number') {
-        const dayOfWeek = (this.dayOfPeriod - 1) % 7 // 0 (Sunday) to 6 (Saturday)
-        return baseDate.startOf('week').add(dayOfWeek, 'day')
-      } else if (this.dayOfPeriod === 'first') {
-        return baseDate.startOf('week')
-      } else if (this.dayOfPeriod === 'last') {
-        return baseDate.endOf('week')
-      }
-    }
-
-    return baseDate
+    return this.shiftDate(fromDate, 1)
   }
 
   getPrevDate(fromDate: dayjs.Dayjs) {
-    const baseDate = fromDate.subtract(1, this.dayjsReccurence)
+    return this.shiftDate(fromDate, -1)
+  }
+
+  private shiftDate(fromDate: dayjs.Dayjs, direction: number) {
+    const baseDate = fromDate.add(direction, this.dayjsReccurence)
 
     if (this.recurrence === 'yearly' && this.dayOfPeriod) {
       if (this.dayOfPeriod === 'first') {
@@ -165,7 +134,7 @@ export class Journal {
       } else if (this.dayOfPeriod === 'last') {
         return baseDate.endOf('month')
       } else if (typeof this.dayOfPeriod === 'number') {
-        return baseDate.date(this.dayOfPeriod)
+        return baseDate.date(Math.min(this.dayOfPeriod, baseDate.daysInMonth()))
       }
     }
 

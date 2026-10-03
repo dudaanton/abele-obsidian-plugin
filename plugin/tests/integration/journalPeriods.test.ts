@@ -104,11 +104,25 @@ describe('journal period navigation', () => {
     expect(date(journal('daily').getPrevDate(dayjs('2024-01-01')))).toBe('2023-12-31')
   })
 
-  it('pins numeric overflow rather than silently clamping configured days', () => {
-    expect(date(journal('monthly', 31).getNextDate(dayjs('2024-01-31')))).toBe('2024-03-02')
-    expect(date(journal('monthly', 31).getPrevDate(dayjs('2024-03-31')))).toBe('2024-03-02')
+  it('clamps a configured monthly day without changing yearly day-of-year semantics', () => {
+    // Monthly navigation is one calendar month, not an overflowing day assignment.
+    expect(date(journal('monthly', 31).getNextDate(dayjs('2024-01-31')))).toBe('2024-02-29')
+    expect(date(journal('monthly', 31).getPrevDate(dayjs('2024-03-31')))).toBe('2024-02-29')
     expect(date(journal('yearly', 366).getNextDate(dayjs('2024-01-01')))).toBe('2026-01-01')
     expect(date(journal('yearly', 60).getNextDate(dayjs('2023-01-01')))).toBe('2024-02-29')
+  })
+
+  it.each([
+    ['2023-01-31', '2023-02-28'],
+    ['2024-01-31', '2024-02-29'],
+    ['2024-03-31', '2024-04-30'],
+    ['2024-12-31', '2025-01-31'],
+  ])('one month after %s is %s, not 31 days later', (from, next) => {
+    const input = dayjs(`${from}T12:34:56`)
+    const target = journal('monthly', 31).getNextDate(input)
+    expect(date(target)).toBe(next)
+    expect(target.format('HH:mm:ss')).toBe('12:34:56')
+    expect(input.format('YYYY-MM-DD')).toBe(from)
   })
 
   it.each([
