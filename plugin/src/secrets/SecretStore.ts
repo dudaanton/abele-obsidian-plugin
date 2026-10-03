@@ -12,6 +12,7 @@
  * - turning the store off leaves every device with its keys, not with nothing.
  * "Remove from this device" is what takes them out of the keychain again.
  */
+import { CredentialGenerations } from './credentialGenerations'
 import { ref, type Ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { fromBase64, toBase64 } from './crypto'
@@ -94,6 +95,11 @@ export class SecretStore {
     if (!id) return ''
     if (this.status.value === 'unlocked' && this.entries?.[id]) return this.entries[id].value
     return this.host.keychain().getSecret(id) ?? ''
+  }
+
+  /** A device-local credential clock; neither its verifier nor the keychain leaves this service. */
+  credentialGeneration(id: string): number {
+    return new CredentialGenerations(this.host.keychain()).get(id, this.get(id))
   }
 
   /**

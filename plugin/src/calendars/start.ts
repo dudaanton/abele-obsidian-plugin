@@ -8,7 +8,6 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { CalendarService, setCalendars } from './CalendarService'
 import { obsidianRequester } from './http'
-import { CredentialGenerations } from './credentialGenerations'
 import { EventCompletionStore } from './completion'
 
 /** How often the plugin asks whether the refresh interval has passed. */
@@ -20,7 +19,6 @@ export function startCalendars(plugin: Plugin): CalendarService {
   const path = `${dir}/calendars-cache.json`
   const config = AbeleConfig.getInstance()
 
-  const generations = new CredentialGenerations(plugin.app.secretStorage as never)
   const service = new CalendarService({
     storage: {
       read: async () => ((await adapter.exists(path)) ? adapter.read(path) : null),
@@ -48,7 +46,7 @@ export function startCalendars(plugin: Plugin): CalendarService {
     request: obsidianRequester,
     settings: () => config.calendars,
     secret: (id) => secrets().get(id),
-    credentialGeneration: (id) => generations.get(id, secrets().get(id)),
+    credentialGeneration: (id) => secrets().credentialGeneration(id),
   })
   setCalendars(service)
 

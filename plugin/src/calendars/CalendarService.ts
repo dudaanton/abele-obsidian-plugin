@@ -11,7 +11,7 @@
  * Calendars are read when the layout is ready, every `refreshMinutes` after that, when their
  * settings change, and when asked to from the settings screen.
  */
-import { sourceHash } from './credentialGenerations'
+import { sourceHash } from '@/secrets/credentialGenerations'
 import { markRaw, reactive } from 'vue'
 import type { CalendarEvent } from './events'
 import { EventCompletionStore } from './completion'

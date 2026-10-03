@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CalendarService } from '@/calendars/CalendarService'
-import { CredentialGenerations } from '@/calendars/credentialGenerations'
+import { CredentialGenerations } from '@/secrets/credentialGenerations'
 import { newFeed } from '@/calendars/settings'
 
 const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n'
