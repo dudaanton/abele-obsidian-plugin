@@ -15,6 +15,7 @@ import { OwnerFolderHttpPort } from '@/sync/sharing/ownerHttp'
 import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
 import { InitialAssetBatch } from '@/sync/sharing/groupSharing'
 import { GroupJoinHttp } from '@/sync/scoped/groupJoinHttp'
+import { SCOPED_CONNECTION_KEY, SCOPED_JOIN_KEY } from '@/sync/scoped/scopedJoin'
 import { vaultCli, type VaultCli } from './helpers/obsidianCli'
 import { waitFor } from './helpers/syncVault'
 import { spawnCollaborationStandServer } from './helpers/collaborationStandHarness'
@@ -337,7 +338,10 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
         expect(readFileSync(join(dir, NOTE), 'utf8')).toContain('one\ntwo\nthree')
       }
       expect(peers[0].principalId).not.toBe(peers[1].principalId)
-      expect(cli.evalAwait('app.loadLocalStorage("abele-scoped-connection")')).toBeNull()
+      expect(
+        cli.evalAwait(`app.loadLocalStorage(${JSON.stringify(SCOPED_CONNECTION_KEY)})`)
+      ).toBeNull()
+      expect(cli.evalAwait(`app.loadLocalStorage(${JSON.stringify(SCOPED_JOIN_KEY)})`)).toBeNull()
       const mirrored = await json('/v1/devices', account, 'POST', {
           vault_id: vault,
           name: 'Sample personal mirror',
