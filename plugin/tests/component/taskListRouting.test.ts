@@ -47,7 +47,7 @@ describe('routing tasks to sidebars and lists', () => {
   it.each([TodoSidebar, TimelineSidebar])(
     'starts empty before the global index exists',
     (component) => {
-      view = mount(component, { shallow: true })
+      view = mount(component, { shallow: true, global: { stubs: { SidebarPanel: false } } })
       expect(
         view.findComponent(component === TodoSidebar ? TodoList : Timeline).props('tasks')
       ).toEqual([])
@@ -66,7 +66,7 @@ describe('routing tasks to sidebars and lists', () => {
     for (const value of [noDate, dated, dueOnly, completed, missing])
       list.tasks.set(value.taskPath, value)
     GlobalStore.getInstance().tasksList.value = list
-    view = mount(TodoSidebar, { shallow: true })
+    view = mount(TodoSidebar, { shallow: true, global: { stubs: { SidebarPanel: false } } })
     expect(
       view
         .findComponent(TodoList)
@@ -74,7 +74,7 @@ describe('routing tasks to sidebars and lists', () => {
         .map((t: Task) => t.title)
     ).toEqual(['Undated', 'Completed'])
     view.unmount()
-    view = mount(TimelineSidebar, { shallow: true })
+    view = mount(TimelineSidebar, { shallow: true, global: { stubs: { SidebarPanel: false } } })
     expect(
       view
         .findComponent(Timeline)
@@ -134,7 +134,10 @@ describe('routing tasks to sidebars and lists', () => {
     rescan(makeTasks())
     GlobalStore.getInstance().tasksList.value = list
     const open = () => {
-      view = mount(TimelineSidebar, { shallow: true, global: { stubs: { Timeline: false } } })
+      view = mount(TimelineSidebar, {
+        shallow: true,
+        global: { stubs: { Timeline: false, SidebarPanel: false } },
+      })
     }
     open()
     await flushPromises()

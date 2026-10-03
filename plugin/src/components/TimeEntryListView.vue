@@ -47,7 +47,7 @@ import FoldHeading from './obsidian/FoldHeading.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
 import { useFooterPages } from '@/composables/useFooterView'
 import { computed, ref, watch } from 'vue'
-import { useIntersectionObserver } from '@vueuse/core'
+import { usePagedList } from '@/composables/usePagedList'
 import dayjs from 'dayjs'
 
 const PAGE_SIZE = 20
@@ -78,21 +78,12 @@ const sorted = computed(() => {
     .map(({ entry }) => entry)
 })
 
-const pages = useFooterPages('time')
-const visibleCount = ref(PAGE_SIZE * pages.initial)
-watch(visibleCount, (count) => pages.record(Math.ceil(count / PAGE_SIZE)))
-const visible = computed(() => sorted.value.slice(0, visibleCount.value))
-
-const scrollSentinel = ref<HTMLElement | null>(null)
-useIntersectionObserver(scrollSentinel, ([entry]) => {
-  if (entry?.isIntersecting && sorted.value.length > visibleCount.value) {
-    visibleCount.value += PAGE_SIZE
-  }
-})
-
-watch(periodEnd, () => {
-  visibleCount.value = PAGE_SIZE
-})
+const {
+  visible,
+  sentinel: scrollSentinel,
+  reset,
+} = usePagedList(() => sorted.value, PAGE_SIZE, useFooterPages('time'))
+watch(periodEnd, reset)
 
 const entryDate = (entry: TimeEntry): string => {
   return entry.start?.format(DATE_FORMAT) ?? ''

@@ -1,5 +1,5 @@
 <template>
-  <div ref="container" class="abele-timeline-sidebar">
+  <SidebarPanel class="abele-timeline-sidebar" @element="container = $event">
     <Calendar
       :selected-date="selectedJournal?.date"
       show-tasks
@@ -9,12 +9,13 @@
       @date-right-clicked="onDateRightClick"
     />
     <Timeline :tasks="timelineTasks" :events="upcomingEvents" show-add-button />
-  </div>
+  </SidebarPanel>
 </template>
 
 <script setup lang="ts">
 import { TasksList } from '@/entities/TasksList'
 import Timeline from './Timeline.vue'
+import SidebarPanel from './obsidian/SidebarPanel.vue'
 import Calendar from './Calendar.vue'
 import { computed, ref, unref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -91,17 +92,6 @@ const timelineTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound &
 
 <style lang="scss">
 .abele-timeline-sidebar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow-y: auto;
-  background-color: var(--background-primary);
-
-  padding: calc(var(--p-spacing) * 2);
-  padding-top: calc(var(--size-4-2) * 2 + var(--icon-size));
-
   p {
     margin: 0;
   }
@@ -112,14 +102,9 @@ const timelineTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound &
 // Obsidian's safe area and view header instead of underneath them.
 body.is-phone .workspace-split.mod-root .abele-timeline-sidebar {
   top: calc(var(--safe-area-inset-top, 0px) + var(--view-header-height, 0px) + var(--size-4-2));
-  height: calc(100% - var(--safe-area-inset-top, 0px) - var(--view-header-height, 0px) - var(--size-4-2));
-}
-
-@media (max-width: 600px) {
-  .abele-timeline-sidebar {
-    padding: calc(var(--size-4-4));
-    padding-top: calc(var(--size-4-2) + var(--icon-size));
-  }
+  height: calc(
+    100% - var(--safe-area-inset-top, 0px) - var(--view-header-height, 0px) - var(--size-4-2)
+  );
 }
 
 .abele-timeline-sidebar__calendar {

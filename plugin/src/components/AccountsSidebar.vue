@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-accounts-sidebar">
+  <SidebarPanel inset class="abele-accounts-sidebar">
     <div class="abele-accounts-sidebar__header">
       <div class="abele-accounts-sidebar__title">Accounts</div>
       <ObsidianIcon
@@ -80,7 +80,7 @@
     </Section>
 
     <EmptyState v-if="!groups.length" :text="emptyText" />
-  </div>
+  </SidebarPanel>
 </template>
 
 <script setup lang="ts">
@@ -111,6 +111,7 @@ import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Section from './obsidian/Section.vue'
+import SidebarPanel from './obsidian/SidebarPanel.vue'
 import Table from './obsidian/Table.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 
@@ -228,22 +229,6 @@ const emptyText = computed(() =>
 </script>
 
 <style lang="scss">
-.abele-accounts-sidebar {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  background-color: var(--background-primary);
-  padding: calc(var(--p-spacing) * 2);
-  padding-top: calc(var(--size-4-2) * 2 + var(--icon-size));
-}
-
-@media (max-width: 600px) {
-  .abele-accounts-sidebar {
-    padding: var(--size-4-4);
-    padding-top: calc(var(--size-4-2) + var(--icon-size));
-  }
-}
-
 .abele-accounts-sidebar__header {
   display: flex;
   align-items: center;

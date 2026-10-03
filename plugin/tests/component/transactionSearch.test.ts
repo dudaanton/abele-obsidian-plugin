@@ -219,7 +219,7 @@ describe('searching the finance sidebar', () => {
     wrapper = mount(FinanceSidebar, {
       shallow: true,
       props: { active: true },
-      global: { stubs: { ObsidianSearch: false, Search: false } },
+      global: { stubs: { ObsidianSearch: false, Search: false, SidebarPanel: false } },
     }) as VueWrapper
     await vi.advanceTimersByTimeAsync(SETTLE_MS)
     await flushPromises()

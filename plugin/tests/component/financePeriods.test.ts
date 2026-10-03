@@ -129,7 +129,7 @@ async function settle() {
 async function sidebar() {
   wrapper = mount(FinanceSidebar, {
     shallow: true,
-    global: { renderStubDefaultSlot: true, stubs: { Chart: false } },
+    global: { renderStubDefaultSlot: true, stubs: { Chart: false, SidebarPanel: false } },
   })
   await settle()
   return wrapper

@@ -69,7 +69,11 @@ beforeEach(async () => {
   useVault(fixture)
   AbeleConfig.getInstance().pinnedCurrencies = 'EUR,USD,GBP,CHF'
   GlobalStore.getInstance().initFinance()
-  wrapper = mount(FinanceSidebar, { shallow: true, props: { active: true } })
+  wrapper = mount(FinanceSidebar, {
+    shallow: true,
+    props: { active: true },
+    global: { stubs: { SidebarPanel: false } },
+  })
   await flushPromises()
   await nextTick()
   await flushPromises()

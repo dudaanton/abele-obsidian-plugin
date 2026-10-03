@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-time-tracking-sidebar">
+  <SidebarPanel class="abele-time-tracking-sidebar">
     <div class="abele-time-tracking-sidebar__header">
       <div class="abele-time-tracking-sidebar__header-left">
         <div class="abele-time-tracking-sidebar__header-text">Time Tracking</div>
@@ -83,7 +83,7 @@
       </div>
       <div v-else class="abele-time-tracking-sidebar__empty">No entries found</div>
     </section>
-  </div>
+  </SidebarPanel>
 </template>
 
 <script setup lang="ts">
@@ -97,6 +97,7 @@ import { createTimeEntry } from '@/commands/createTimeEntry'
 import { TFile } from 'obsidian'
 import { DATE_FORMAT } from '@/constants/dates'
 import Chart from './obsidian/Chart.vue'
+import SidebarPanel from './obsidian/SidebarPanel.vue'
 import { getThemeColors, EChartsType } from '@/bases/echarts'
 import {
   ensureWikilinkAlias,
@@ -408,26 +409,8 @@ function renderGroupsPieChart(groupsPieChart: EChartsType) {
 
 <style lang="scss">
 .abele-time-tracking-sidebar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow-y: auto;
-  background-color: var(--background-primary);
-
-  padding: calc(var(--p-spacing) * 2);
-  padding-top: calc(var(--size-4-2) * 2 + var(--icon-size));
-
   > * + * {
     margin-top: var(--size-4-3);
-  }
-}
-
-@media (max-width: 600px) {
-  .abele-time-tracking-sidebar {
-    padding: calc(var(--size-4-4));
-    padding-top: calc(var(--size-4-2) + var(--icon-size));
   }
 }
 

@@ -141,7 +141,11 @@ function shownTitles(w: VueWrapper): string[] {
 }
 
 async function mountSidebar(active = true) {
-  wrapper = mount(FinanceSidebar, { shallow: true, props: { active } })
+  wrapper = mount(FinanceSidebar, {
+    shallow: true,
+    props: { active },
+    global: { stubs: { SidebarPanel: false } },
+  })
   await settle()
   return wrapper
 }

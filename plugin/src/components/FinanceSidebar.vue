@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-finance-sidebar">
+  <SidebarPanel class="abele-finance-sidebar">
     <div class="abele-finance-sidebar__header">
       <div class="abele-finance-sidebar__header-left">
         <div class="abele-finance-sidebar__header-text">Transactions</div>
@@ -186,7 +186,7 @@
         {{ search.terms.value.length ? 'Nothing matches the search.' : 'No transactions found' }}
       </div>
     </section>
-  </div>
+  </SidebarPanel>
 </template>
 
 <script setup lang="ts">
@@ -201,6 +201,7 @@ import { createTransaction } from '@/commands/createTransaction'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DATE_FORMAT } from '@/constants/dates'
 import Chart from './obsidian/Chart.vue'
+import SidebarPanel from './obsidian/SidebarPanel.vue'
 import { getThemeColors, EChartsType } from '@/bases/echarts'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
@@ -837,26 +838,6 @@ const dayTotals = computed(() => {
 </script>
 
 <style lang="scss">
-.abele-finance-sidebar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow-y: auto;
-  background-color: var(--background-primary);
-
-  padding: calc(var(--p-spacing) * 2);
-  padding-top: calc(var(--size-4-2) * 2 + var(--icon-size));
-}
-
-@media (max-width: 600px) {
-  .abele-finance-sidebar {
-    padding: calc(var(--size-4-4));
-    padding-top: calc(var(--size-4-2) + var(--icon-size));
-  }
-}
-
 .abele-finance-sidebar__header {
   display: flex;
   align-items: center;

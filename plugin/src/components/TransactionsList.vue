@@ -64,7 +64,7 @@ import FoldHeading from './obsidian/FoldHeading.vue'
 import { createTransaction } from '@/commands/createTransaction'
 import { DATE_FORMAT } from '@/constants/dates'
 import { computed, ref, unref, watch } from 'vue'
-import { useIntersectionObserver } from '@vueuse/core'
+import { usePagedList } from '@/composables/usePagedList'
 import dayjs from 'dayjs'
 import { formatAmount } from '@/helpers/moneyFormat'
 import { transactionSearch, useListSearch } from '@/composables/useListSearch'
@@ -138,34 +138,12 @@ const sorted = computed(() => {
   })
 })
 
-const pages = useFooterPages('transactions')
-/** What was drawn when a search opened, given back when it closes; null with no search. */
-let beforeSearch: number | null = null
-const visibleCount = ref(PAGE_SIZE * pages.initial)
-watch(visibleCount, (count) => {
-  if (beforeSearch === null) pages.record(Math.ceil(count / PAGE_SIZE))
-})
-const visible = computed(() => sorted.value.slice(0, visibleCount.value))
-
-// A new query is a different list; the window expanded over the old one means nothing here.
-// Closing the search gives back the pages drawn before it; nothing drawn while searching is
-// remembered as how the list was left.
-watch(search.terms, (terms) => {
-  if (terms.length) {
-    beforeSearch ??= visibleCount.value
-    visibleCount.value = PAGE_SIZE
-  } else if (beforeSearch !== null) {
-    visibleCount.value = beforeSearch
-    beforeSearch = null
-  }
-})
-
-const scrollSentinel = ref<HTMLElement | null>(null)
-useIntersectionObserver(scrollSentinel, ([entry]) => {
-  if (entry?.isIntersecting && sorted.value.length > visibleCount.value) {
-    visibleCount.value += PAGE_SIZE
-  }
-})
+const {
+  visible,
+  sentinel: scrollSentinel,
+  followSearch,
+} = usePagedList(() => sorted.value, PAGE_SIZE, useFooterPages('transactions'))
+watch(search.terms, followSearch)
 
 const txDate = (tx: Transaction): string => {
   return tx.date?.format(DATE_FORMAT) ?? ''

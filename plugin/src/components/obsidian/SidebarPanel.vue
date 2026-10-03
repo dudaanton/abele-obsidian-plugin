@@ -1,0 +1,38 @@
+<template>
+  <div ref="element" class="abele-sidebar-panel" :class="{ 'abele-sidebar-panel_inset': inset }">
+    <slot />
+  </div>
+</template>
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+defineProps<{ inset?: boolean }>()
+const emit = defineEmits<{ element: [HTMLElement] }>()
+const element = ref<HTMLElement>()
+onMounted(() => {
+  if (element.value) emit('element', element.value)
+})
+</script>
+<style lang="scss">
+.abele-sidebar-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--background-primary);
+  padding: calc(var(--p-spacing) * 2);
+  padding-top: calc(var(--size-4-2) * 2 + var(--icon-size));
+}
+.abele-sidebar-panel_inset {
+  inset: 0;
+  width: auto;
+  height: auto;
+}
+@media (max-width: 600px) {
+  .abele-sidebar-panel {
+    padding: var(--size-4-4);
+    padding-top: calc(var(--size-4-2) + var(--icon-size));
+  }
+}
+</style>
