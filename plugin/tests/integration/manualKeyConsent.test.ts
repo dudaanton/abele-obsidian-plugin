@@ -142,6 +142,72 @@ describe('manual concrete key and recipient consent', () => {
     expect(secrets().get('sample-key')).toBe(VALUE)
     expect(allowedHttpOrigins()).toEqual([])
   })
+  it.each(['existing', 'new'] as const)(
+    'refuses %s-key consent before any mutation when settings are unreadable',
+    async (kind) => {
+      vi.spyOn(config(), 'settingsUnreadable', 'get').mockReturnValue(true)
+      const before = JSON.stringify(config().ai)
+      const set = vi.spyOn(secrets(), 'set')
+      const localWrites = vi.spyOn(GlobalStore.getInstance().app, 'saveLocalStorage')
+      const request =
+        kind === 'new'
+          ? { address: ORIGIN, newKey: { name: 'Unreadable sample', value: 'fake-unreadable-key' } }
+          : { address: ORIGIN, keyId: 'sample-key' }
+      await expect(allowKeyRecipient(request)).rejects.toThrow()
+      expect(set).not.toHaveBeenCalled()
+      expect(config().saveSettings).not.toHaveBeenCalled()
+      expect(localWrites).not.toHaveBeenCalled()
+      expect(JSON.stringify(config().ai)).toBe(before)
+      expect(allowedHttpOrigins()).toEqual([])
+    }
+  )
+  it('rolls back its protected key if settings become unreadable during the store flush', async () => {
+    let unreadable = false
+    vi.spyOn(config(), 'settingsUnreadable', 'get').mockImplementation(() => unreadable)
+    const store = secrets()
+    const set = vi.spyOn(store, 'set')
+    vi.spyOn(store, 'flush').mockImplementation(async () => {
+      unreadable = true
+    })
+    await expect(
+      allowKeyRecipient({
+        address: ORIGIN,
+        newKey: { name: 'Flush sample', value: 'fake-flush-key' },
+      })
+    ).rejects.toThrow()
+    const keyId = set.mock.calls[0][0]
+    expect(store.get(keyId)).toBe('')
+    expect(config().ai.secrets.map((s) => s.name)).toEqual(['Sample', 'Other'])
+    expect(config().saveSettings).not.toHaveBeenCalled()
+    expect(destinationAccepted({ keyId, name: 'Flush sample', origin: ORIGIN })).toBe(false)
+    expect(allowedHttpOrigins()).toEqual([])
+  })
+  it.each(['existing', 'new'] as const)(
+    'rolls back %s-key consent when a resolving save leaves settings unreadable',
+    async (kind) => {
+      let unreadable = false
+      vi.spyOn(config(), 'settingsUnreadable', 'get').mockImplementation(() => unreadable)
+      const store = secrets()
+      const set = vi.spyOn(store, 'set')
+      vi.mocked(config().saveSettings).mockImplementationOnce(async () => {
+        config().ai = { ...config().ai, maxIterations: 43 }
+        unreadable = true
+        // A save can resolve without writing while the settings file cannot be read.
+      })
+      const request =
+        kind === 'new'
+          ? { address: ORIGIN, newKey: { name: 'Skipped sample', value: 'fake-skipped-key' } }
+          : { address: ORIGIN, keyId: 'sample-key' }
+      await expect(allowKeyRecipient(request)).rejects.toThrow('Could not save key permission')
+      const keyId = kind === 'new' ? set.mock.calls[0][0] : 'sample-key'
+      expect(store.get(keyId)).toBe(kind === 'new' ? '' : VALUE)
+      expect(config().ai.secrets.map((s) => s.name)).toEqual(['Sample', 'Other'])
+      expect(config().ai.secrets[0].allowedOrigins ?? []).toEqual([])
+      expect(config().ai.maxIterations).toBe(43)
+      expect(destinationAccepted({ keyId, name: 'Skipped sample', origin: ORIGIN })).toBe(false)
+      expect(allowedHttpOrigins()).toEqual([])
+    }
+  )
   it('rolls back metadata, new key and permissions on save failure, preserving unrelated edits', async () => {
     vi.mocked(config().saveSettings).mockImplementationOnce(async () => {
       config().ai = { ...config().ai, maxIterations: 37 }

@@ -52,10 +52,16 @@ export function allowKeyRecipient(
   return work
 }
 
+function requireReadableSettings(config: AbeleConfig): void {
+  if (config.settingsUnreadable)
+    throw new Error('Settings cannot be read; key permission was not saved')
+}
+
 async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal): Promise<void> {
   signal?.throwIfAborted()
   const origin = recipientOrigin(request.address)
   const config = AbeleConfig.getInstance()
+  requireReadableSettings(config)
   const store = secrets()
   if (!!request.keyId === !!request.newKey) throw new Error('Choose one key')
   const selected = request.keyId ? recipientKeys().find((row) => row.id === request.keyId) : null
@@ -94,6 +100,7 @@ async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal
       store.set(keyId, request.newKey.value)
       await store.flush()
       signal?.throwIfAborted()
+      requireReadableSettings(config)
     }
     // An independent editor may have changed the catalog while protected storage was saving.
     if (!previous && config.ai.secrets.some((s) => s.name === name))
@@ -109,6 +116,8 @@ async function persistConsent(request: KeyRecipientConsent, signal?: AbortSignal
     introduced = true
     await config.saveSettings()
     signal?.throwIfAborted()
+    // A save can resolve without writing when the settings file becomes unreadable.
+    requireReadableSettings(config)
     accepting = true
     acceptDestinations([destination])
     if (canAllowHttp(origin) && !hadHttp) {
