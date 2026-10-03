@@ -7,6 +7,7 @@ import { repoTree, forgetRepoTrees } from '@/github/tree/repoTree'
 import { repoIndex, indexes, cachedIndex } from '@/github/search/source'
 import { resetGithubClients } from '@/github/GithubService'
 import { useVault } from '../helpers/testEnv'
+import { deferred } from '../helpers/deferred'
 import { loadLatestRelease } from '@/github/repoPage/repoHome'
 import { createLinker } from '@/github/linking'
 import { guardedGithubClient } from '@/github/guardedClient'
@@ -33,6 +34,50 @@ beforeEach(() => {
 })
 
 describe('connection content isolation', () => {
+  it('does not let an old same-key build remove the newer build after reset', async () => {
+    useVault([])
+    const oldArchive = deferred<RequestUrlResponse>()
+    const newArchive = deferred<RequestUrlResponse>()
+    let downloads = 0
+    const client = new GithubClient(endpoints(''), 'invented-overlap', async (r) => {
+      if (!r.url.includes('/tarball/')) return reply(200, { tree: [{ type: 'blob', path: 'sample.ts', size: 20 }] })
+      return ++downloads === 1 ? oldArchive.promise : newArchive.promise
+    })
+    const old = repoIndex(client, repo, sha, { limitBytes: 1000 })
+    const oldResult = old.catch(error => error)
+    await vi.waitFor(() => expect(downloads).toBe(1))
+    resetGithubClients()
+    const newer = repoIndex(client, repo, sha, { limitBytes: 1000 })
+    await vi.waitFor(() => expect(downloads).toBe(2))
+    oldArchive.resolve(reply(200, {}, archive))
+    expect(await oldResult).toMatchObject({ message: 'GitHub code search was reset' })
+    expect(cachedIndex(client, repo, sha)).toBeUndefined()
+    const joined = repoIndex(client, repo, sha, { limitBytes: 1000 })
+    newArchive.resolve(reply(200, {}, archive))
+    expect(await joined).toBe(await newer)
+    expect(downloads).toBe(2)
+    expect(cachedIndex(client, repo, sha)).toBe(await newer)
+  })
+
+  it('cancels one index waiter without disrupting a simultaneous waiter', async () => {
+    const download = deferred<RequestUrlResponse>()
+    let downloads = 0
+    const client = new GithubClient(endpoints(''), 'invented-waiters', async (r) => {
+      if (!r.url.includes('/tarball/')) return reply(200, { tree: [{ type: 'blob', path: 'sample.ts', size: 20 }] })
+      downloads++
+      return download.promise
+    })
+    const controller = new AbortController()
+    const cancelled = repoIndex(client, repo, sha, { limitBytes: 1000, signal: controller.signal }).catch(error => error)
+    const kept = repoIndex(client, repo, sha, { limitBytes: 1000 })
+    await vi.waitFor(() => expect(downloads).toBe(1))
+    controller.abort()
+    download.resolve(reply(200, {}, archive))
+    expect(await cancelled).toMatchObject({ name: 'AbortError' })
+    expect(await kept).toBe(cachedIndex(client, repo, sha))
+    expect(downloads).toBe(1)
+  })
+
   it('clears downloaded code when credentials are reset', async () => {
     useVault([])
     const client = new GithubClient(endpoints(''), 'invented-one', async (r) =>
