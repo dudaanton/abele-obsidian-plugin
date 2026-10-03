@@ -43,7 +43,13 @@ export function followNoteRename(app: App, from: string, to: string): Promise<vo
       try {
         while (current.pending.length) {
           const batch = current.pending.splice(0)
-          await followBatch(app, batch)
+          try {
+            await followBatch(app, batch)
+          } catch (error) {
+            // Enumeration failed, not a particular write. Do not replay applied steps; keep
+            // ownership of the drain so a later queued rename is not stranded.
+            console.error('[Abele] could not enumerate drawings after note rename', error)
+          }
         }
       } finally {
         current.running = null
@@ -66,20 +72,29 @@ async function followBatch(app: App, renames: Rename[]): Promise<void> {
     const session = view.session
     if (!view.file || !session) continue
     open.add(view.file.path)
-    const next = renamedBatch(session.items.items, renames)
-    if (!next) continue
-    session.replaceItems(next.filter((i, n) => i !== session.items.items[n]))
+    try {
+      const next = renamedBatch(session.items.items, renames)
+      if (next) session.replaceItems(next.filter((i, n) => i !== session.items.items[n]))
+    } catch (error) {
+      console.error('[Abele] could not update drawing after note rename', view.file.path, error)
+    }
   }
   const needles = renames.map(({ from }) => JSON.stringify(from).slice(1, -1))
   for (const file of app.vault.getFiles()) {
     if (file.extension !== 'svg' || open.has(file.path)) continue
-    const text = await app.vault.cachedRead(file)
-    if (!needles.some((needle) => text.includes(needle))) continue
-    if (file instanceof TFile)
-      await app.vault.process(file, (current) => {
-        const data = parseDrawingSvg(current)
-        const next = data && renamedBatch(data.items, renames)
-        return next ? drawingSvg({ items: next }) : current
-      })
+    try {
+      const text = await app.vault.cachedRead(file)
+      if (!needles.some((needle) => text.includes(needle))) continue
+      if (file instanceof TFile)
+        await app.vault.process(file, (current) => {
+          const data = parseDrawingSvg(current)
+          const next = data && renamedBatch(data.items, renames)
+          return next ? drawingSvg({ items: next }) : current
+        })
+    } catch (error) {
+      // Keep the failing path and cause, but never let one file stop unrelated drawings or
+      // the next batch. A failed file is not retried implicitly: a write may have applied.
+      console.error('[Abele] could not update drawing after note rename', file.path, error)
+    }
   }
 }
