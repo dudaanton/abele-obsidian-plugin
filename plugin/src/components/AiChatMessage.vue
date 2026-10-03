@@ -378,7 +378,6 @@
           class="abele-chat-msg__interceptor-input"
         >
           <textarea
-            ref="interceptorInputEl"
             :value="interceptorText"
             class="abele-chat-msg__interceptor-textarea"
             placeholder="Reply..."
@@ -517,7 +516,6 @@ const onContentMenu = (event: MouseEvent) => {
 }
 
 const interceptorText = ref('')
-const interceptorInputEl = ref<HTMLTextAreaElement | null>(null)
 
 const sendInterceptorReply = () => {
   const text = interceptorText.value.trim()

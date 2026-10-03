@@ -3,8 +3,7 @@
     ref="chatContainer"
     class="abele-ai-chat"
     :class="{ 'abele-ai-chat--composing': composing, 'abele-keyboard-open': keyboardOpen }"
-    @dragover.prevent="onDragOver"
-    @dragleave="onDragLeave"
+    @dragover.prevent
     @drop.prevent="onFileDrop"
   >
     <!-- Tabs -->
@@ -1883,21 +1882,6 @@ function isCurrentImportConversation(owner?: ConversationOwner): boolean {
 
 // ── Drag & drop on the whole chat area ──
 
-let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null
-
-const onDragOver = () => {
-  if (dragLeaveTimer) {
-    window.clearTimeout(dragLeaveTimer)
-    dragLeaveTimer = null
-  }
-}
-
-const onDragLeave = () => {
-  dragLeaveTimer = window.setTimeout(() => {
-    dragLeaveTimer = null
-  }, 50)
-}
-
 const onFileDrop = async (e: DragEvent) => {
   const dt = e.dataTransfer
   if (!dt) return
@@ -2086,10 +2070,6 @@ const showDebug = () => {
     min-width: 2em;
     flex-shrink: 0;
   }
-}
-
-.abele-ai-chat__header-active {
-  color: var(--interactive-accent) !important;
 }
 
 /** Between beginnings: the same strip a message carries under it, at the top of the list. */

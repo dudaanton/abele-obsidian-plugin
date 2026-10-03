@@ -323,15 +323,6 @@ const emit = defineEmits<{
 </script>
 
 <style lang="scss">
-.modal:has(.abele-sar-fm-modal) {
-  width: 700px;
-}
-
-.abele-sar-fm-modal__description {
-  margin-top: calc(var(--p-spacing));
-  margin-bottom: calc(var(--p-spacing) * 1.5);
-}
-
 .abele-migrate-dv-modal__buttons {
   display: flex;
   flex-wrap: wrap;
