@@ -1,5 +1,17 @@
 /** Page-side screenshot helpers; stability does not change the zero-difference assertion. */
 export const PIXEL_PROBE = `
+  // CDP's PNG is a physical raster. Decode at its native scale and map CSS coordinates
+  // explicitly; NativeImage's scaleFactor option can reinterpret its encoded buffer.
+  const viewportRasterCrop = (size, viewport, rect) => {
+    if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0 ||
+      rect.x + rect.width > viewport.width || rect.y + rect.height > viewport.height)
+      throw Error('timeline raster crop is outside the viewport: ' + JSON.stringify({ viewport, rect }))
+    const sx = size.width / viewport.width, sy = size.height / viewport.height
+    if (!(sx > 0 && sy > 0)) throw Error('timeline screenshot has no raster')
+    const x = Math.round(rect.x * sx), y = Math.round(rect.y * sy)
+    return { x, y, width: Math.round((rect.x + rect.width) * sx) - x,
+      height: Math.round((rect.y + rect.height) * sy) - y }
+  }
   const pixelDifference = (before, after) => {
     if (before.pixels.length !== after.pixels.length || before.pixelWidth !== after.pixelWidth)
       return { count: -1, coordinates: [] }

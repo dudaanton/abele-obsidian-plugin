@@ -2,9 +2,14 @@ import { expect, it } from 'vitest'
 import { PIXEL_PROBE } from '../e2e/helpers/stablePixels'
 
 type Capture = { pixels: Buffer; rect: number[]; pixelWidth: number }
-const { stableCapture, pixelDifference } = new Function(
-  `${PIXEL_PROBE}; return { stableCapture, pixelDifference }`
+const { stableCapture, pixelDifference, viewportRasterCrop } = new Function(
+  `${PIXEL_PROBE}; return { stableCapture, pixelDifference, viewportRasterCrop: typeof viewportRasterCrop === 'undefined' ? undefined : viewportRasterCrop }`
 )() as {
+  viewportRasterCrop: (
+    size: { width: number; height: number },
+    viewport: { width: number; height: number },
+    rect: { x: number; y: number; width: number; height: number }
+  ) => { x: number; y: number; width: number; height: number }
   stableCapture: (
     capture: () => Promise<Capture>,
     frame: () => Promise<void>,
@@ -19,6 +24,26 @@ const shot = (value: number, left = 10): Capture => ({
   pixels: Buffer.from([value, 0, 0, 255]),
   rect: [left, 20, 1, 1],
   pixelWidth: 1,
+})
+
+it.each([1, 2])('maps CSS viewport coordinates into a %sx screenshot raster', (scale) => {
+  expect(
+    viewportRasterCrop(
+      { width: 400 * scale, height: 800 * scale },
+      { width: 400, height: 800 },
+      { x: 24, y: 484, width: 342, height: 159 }
+    )
+  ).toEqual({ x: 24 * scale, y: 484 * scale, width: 342 * scale, height: 159 * scale })
+})
+
+it('rejects offscreen crops instead of comparing clipped or empty rasters', () => {
+  expect(() =>
+    viewportRasterCrop(
+      { width: 800, height: 1600 },
+      { width: 400, height: 800 },
+      { x: 24, y: 750, width: 342, height: 159 }
+    )
+  ).toThrow('outside the viewport')
 })
 
 it('waits through geometry and raster churn for three identical frame captures', async () => {

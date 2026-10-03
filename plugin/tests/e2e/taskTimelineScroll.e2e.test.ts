@@ -219,10 +219,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
           const { data } = await wc.debugger.sendCommand('Page.captureScreenshot', {
             format: 'png', fromSurface: true, captureBeyondViewport: false,
           })
-          const image = remote.nativeImage.createFromBuffer(Buffer.from(data, 'base64'), {
-            scaleFactor: window.devicePixelRatio,
-          })
-          return rect ? image.crop(rect) : image
+          const image = remote.nativeImage.createFromBuffer(Buffer.from(data, 'base64'))
+          return rect ? image.crop(viewportRasterCrop(image.getSize(), { width: innerWidth, height: innerHeight }, rect)) : image
         }
         const el = blocks().find(x => x.dataset.abeleAnchor === 'date:' + day(0))
         const capture = async suffix => {
@@ -244,8 +242,9 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
                 viewport: [innerWidth, innerHeight], devicePixelRatio, suffix }) + ': ' + String(error))
             }
             const pixels = image.toBitmap()
-            const scale = Math.sqrt(pixels.length / 4 / (rect.width * rect.height))
-            return { image, pixels, pixelWidth: Math.round(rect.width * scale),
+            const size = image.getSize()
+            if (pixels.length !== size.width * size.height * 4) throw Error('timeline raster dimensions do not match its pixels')
+            return { image, pixels, pixelWidth: size.width,
               rect: [r.left, r.top, r.width, r.height], crop: [rect.x, rect.y, rect.width, rect.height], devicePixelRatio }
           }, () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))
           fs.writeFileSync(path.replace('.png', suffix + '.png'), captured.image.toPNG())
