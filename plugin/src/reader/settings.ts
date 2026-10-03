@@ -6,7 +6,7 @@
  */
 import { PROGRESS_SHOWS, type ProgressShow } from './readingProgress'
 import { bookMenuScriptsFrom, type BookMenuScript } from '@/scripting/bookMenuScripts'
-import { THICKNESSES, type Thickness } from '@/drawing/model'
+import { THICKNESSES, type Thickness } from '@/ink/thickness'
 import { cleanFamily } from './fontNames'
 
 export type ReaderFlow = 'paginated' | 'scrolled'

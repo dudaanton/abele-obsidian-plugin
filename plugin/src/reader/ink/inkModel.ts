@@ -2,7 +2,7 @@
  * Drawing on a PDF's pages, as the bar under the page shows it: whether drawing is on, with what,
  * in which colour and thickness, and what can be undone.
  */
-import type { Thickness } from '@/drawing/model'
+import type { Thickness } from '@/ink/thickness'
 import type { InkColor, InkStroke } from './stroke'
 
 export type InkToolName = 'pen' | 'marker' | 'eraser'

@@ -2,13 +2,12 @@
  * A drawing's tab as its bar shows it: whether drawing is on, with what, in which colour and
  * width, and what can be undone.
  */
-import type { InkColor } from '@/reader/ink/stroke'
+import type { InkColor } from '@/ink/stroke'
+import type { Thickness } from '@/ink/thickness'
+export { THICKNESSES, type Thickness } from '@/ink/thickness'
 import type { ShapeKind } from './items'
 
 export type DrawingTool = 'pen' | 'marker' | 'eraser' | 'lasso' | 'shape' | 'text'
-
-export type Thickness = 'fine' | 'medium' | 'bold'
-export const THICKNESSES: readonly Thickness[] = ['fine', 'medium', 'bold']
 
 /** The pen's and the marker's width at each thickness, in the drawing's units at 100%. */
 export const WIDTHS: Record<'pen' | 'marker' | 'shape', Record<Thickness, number>> = {

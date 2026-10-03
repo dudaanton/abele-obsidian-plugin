@@ -7,8 +7,8 @@
  * that lands on the surface reaches Obsidian.
  */
 import { Platform, type App } from 'obsidian'
-import { routePointer } from '@/reader/ink/inkRoute'
-import type { InkColor } from '@/reader/ink/stroke'
+import { routePointer } from '@/ink/route'
+import type { InkColor } from '@/ink/stroke'
 import { DrawingItems } from './history'
 import {
   boundsOf,

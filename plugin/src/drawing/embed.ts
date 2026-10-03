@@ -21,7 +21,7 @@ import {
   type App,
   type MarkdownPostProcessorContext,
 } from 'obsidian'
-import { guardSurface } from '@/reader/ink/inkGuard'
+import { guardSurface } from '@/ink/guard'
 import { PAPER } from './drawingFile'
 import {
   DRAWING_CALLOUT,

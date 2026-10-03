@@ -8,7 +8,7 @@
  * full paint comes when the movement rests. When a full paint is quick, it is simply done every
  * frame.
  */
-import { MARKER_OPACITY, inkLiteral, strokePath } from '@/reader/ink/stroke'
+import { MARKER_OPACITY, inkLiteral, strokePath } from '@/ink/stroke'
 import { arrowHeadPath, baselineOf, writtenPaths } from './drawingFile'
 import { paintNoteCard } from './noteCard'
 import {

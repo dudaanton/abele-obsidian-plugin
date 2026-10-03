@@ -4,7 +4,7 @@
  * on a PDF's page. Each works on the drawing's items and says what has to be painted again; none
  * touches the screen itself, so they are tested without a canvas.
  */
-import { roundPoint, type InkColor, type InkTool } from '@/reader/ink/stroke'
+import { roundPoint, type InkColor, type InkTool } from '@/ink/stroke'
 import type { DrawingItems, ItemChange } from './history'
 import {
   boundsOf,

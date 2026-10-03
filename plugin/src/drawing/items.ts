@@ -7,10 +7,10 @@
  * with the same id, which is what lets undo keep the old one and a painter cache its shapes by
  * the object.
  *
- * Strokes are the PDF ink's (`reader/ink/stroke.ts`): the same outline, pressure, colours and
+ * Strokes are shared with PDF ink (`ink/stroke.ts`): the same outline, pressure, colours and
  * hit test.
  */
-import { hitStroke, isInkColor, penWidth, type InkColor, type InkTool } from '@/reader/ink/stroke'
+import { hitStroke, isInkColor, penWidth, type InkColor, type InkTool } from '@/ink/stroke'
 
 export interface StrokeItem {
   id: string

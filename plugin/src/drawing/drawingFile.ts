@@ -17,7 +17,7 @@
  *
  * Everything here works on text, so it is tested without a vault.
  */
-import { MARKER_OPACITY, inkLiteral, strokePath } from '@/reader/ink/stroke'
+import { MARKER_OPACITY, inkLiteral, strokePath } from '@/ink/stroke'
 import {
   LINE_HEIGHT,
   TEXT_FONT,

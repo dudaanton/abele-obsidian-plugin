@@ -7,6 +7,7 @@
  * too.
  */
 import type { DrawingItem } from './items'
+import { StepHistory } from '@/ink/history'
 
 export interface ItemChange {
   id: string
@@ -21,28 +22,28 @@ export interface ItemChange {
 
 export class DrawingItems {
   private list: DrawingItem[] = []
-  private past: ItemChange[][] = []
-  private future: ItemChange[][] = []
+  private readonly history: StepHistory<ItemChange[]>
 
-  constructor(private readonly limit = 300) {}
+  constructor(limit = 300) {
+    this.history = new StepHistory(limit)
+  }
 
   get items(): readonly DrawingItem[] {
     return this.list
   }
 
   get canUndo(): boolean {
-    return this.past.length > 0
+    return this.history.canUndo
   }
 
   get canRedo(): boolean {
-    return this.future.length > 0
+    return this.history.canRedo
   }
 
   /** A drawing read in afresh: what undo held is about items that may no longer be there. */
   load(items: DrawingItem[]): void {
     this.list = [...items]
-    this.past = []
-    this.future = []
+    this.history.clear()
   }
 
   get(id: string): DrawingItem | undefined {
@@ -92,23 +93,19 @@ export class DrawingItems {
   /** Joins changes already applied into one step. */
   record(changes: ItemChange[]): void {
     if (!changes.length) return
-    this.past.push(changes)
-    if (this.past.length > this.limit) this.past.shift()
-    this.future = []
+    this.history.push(changes)
   }
 
   undo(): ItemChange[] | null {
-    const step = this.past.pop()
+    const step = this.history.undo()
     if (!step) return null
-    this.future.push(step)
     this.run(step, false)
     return step
   }
 
   redo(): ItemChange[] | null {
-    const step = this.future.pop()
+    const step = this.history.redo()
     if (!step) return null
-    this.past.push(step)
     this.run(step, true)
     return step
   }

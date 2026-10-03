@@ -15,8 +15,8 @@
  * What a drawing touch does is the tool's (`ToolGesture`): the surface gives it the points, in
  * the drawing's units, at the pen's full rate, and paints its live part on a layer of its own.
  */
-import { guardSurface } from '@/reader/ink/inkGuard'
-import type { InkRoute } from '@/reader/ink/inkRoute'
+import { guardSurface } from '@/ink/guard'
+import type { InkRoute } from '@/ink/route'
 import { panBy, toWorld, zoomAt, type Camera } from './camera'
 import { DrawingRenderer } from './renderer'
 import { PAPER } from './drawingFile'

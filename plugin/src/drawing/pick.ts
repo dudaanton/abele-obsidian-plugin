@@ -7,7 +7,7 @@
  * off it and drawn on the live layer, moved and scaled, so a drag of a thousand strokes paints
  * nothing but them.
  */
-import type { InkColor } from '@/reader/ink/stroke'
+import type { InkColor } from '@/ink/stroke'
 import type { DrawingItems } from './history'
 import { LINE_HEIGHT, hasColor, newId, type DrawingItem, type TextItem } from './items'
 import type { Camera } from './camera'

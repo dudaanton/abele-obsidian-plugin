@@ -7,7 +7,7 @@
  * It stays open while the drawing is moved or zoomed, following its place; it closes, keeping
  * what was typed, when it loses the focus, on Esc, or when another touch lands on the drawing.
  */
-import { inkLiteral, type InkColor } from '@/reader/ink/stroke'
+import { inkLiteral, type InkColor } from '@/ink/stroke'
 import { LINE_HEIGHT, TEXT_FONT } from './items'
 import { toScreen, type Camera } from './camera'
 
