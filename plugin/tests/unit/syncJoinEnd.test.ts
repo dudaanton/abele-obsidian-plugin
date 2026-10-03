@@ -78,12 +78,16 @@ function report(joined: boolean): SyncReport {
 
 describe('the end of a join', () => {
   const joinedCalls: unknown[] = []
+  let recipe: EngineRecipe
 
   beforeEach(async () => {
     joinedCalls.length = 0
     built.onSync = undefined
-    const recipe = {
-      app: { vault: { configDir: '.obsidian', on: () => ({}), offref: () => undefined } },
+    recipe = {
+      app: {
+        loadLocalStorage: () => null,
+        vault: { configDir: '.obsidian', on: () => ({}), offref: () => undefined },
+      },
       host: {
         deps: () => ({}),
         manifest: () => ({ id: 'abele' }),
@@ -103,6 +107,13 @@ describe('the end of a join', () => {
     await buildEngine(recipe)
   })
 
+  it('refuses personal engine construction with retained scoped context before replacing callbacks', async () => {
+    const previous = built.onSync
+    recipe.app.loadLocalStorage = (key) =>
+      key === 'abele-sync-scoped-connection' ? { sample: true } : null
+    await expect(buildEngine(recipe)).rejects.toThrow(/Scoped/)
+    expect(built.onSync).toBe(previous)
+  })
   it('keeps the choice after a run that got through without finishing the join', () => {
     built.onSync?.(report(false))
     expect(joinedCalls).toEqual([])
