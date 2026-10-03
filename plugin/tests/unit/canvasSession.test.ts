@@ -404,6 +404,200 @@ describe('portable canvas document session', () => {
     expect(session.committed).toEqual(initial())
   })
 
+  it('settles a no-write rejection after external invalidation before apply and recovers the proposal', () => {
+    const session = new CanvasSession(initial())
+    commit(session, session.prepare(edit('Local')), 'revision-1')
+    commit(session, session.prepareUndo(), 'revision-2')
+    const history = session.history
+    const proposal = session.prepare(edit('Recoverable agent proposal'))
+    const external = { graph: edit('External')(sample()), revision: 'revision-external' }
+    session.externalChanged(external)
+    expectCode(() => session.apply(proposal, session.committed), 'stale')
+    session.reject(proposal)
+    expect(session.committed).toEqual(external)
+    expect(session.history).toEqual(history)
+    expect(session.draft).toEqual({
+      graph: proposal.graph,
+      baseRevision: 'revision-2',
+      active: false,
+    })
+    expect(session.dirty).toBe(true)
+    expect(session.busy).toBe(false)
+    expect(session.conflict).toBe(true)
+    expectCode(() => session.reject(proposal), 'stale')
+    expectCode(() => session.prepareDraft(), 'conflict')
+    session.reapplyDraft(edit('Recovered on latest baseline'))
+    commit(session, session.prepareDraft(), 'revision-recovered')
+    expect(session.history).toEqual({ undo: 1, redo: 0 })
+  })
+
+  it.each(['before', 'after'] as const)(
+    'preserves a newer human draft started %s external invalidation when rejecting an old proposal',
+    (when) => {
+      const session = new CanvasSession(initial())
+      const proposal = session.prepare(edit('Old agent proposal'))
+      const external = { graph: edit('External')(sample()), revision: 'revision-external' }
+      if (when === 'after') session.externalChanged(external)
+      session.beginDraft()
+      session.updateDraft(edit('New human draft'))
+      if (when === 'before') session.externalChanged(external)
+      const draft = session.draft
+      expectCode(() => session.apply(proposal, session.committed), 'stale')
+      session.reject(proposal)
+      expect(session.draft).toEqual(draft)
+      expect(session.committed).toEqual(external)
+      expect(session.history).toEqual({ undo: 0, redo: 0 })
+      expect(session.conflict).toBe(when === 'before')
+      expect(session.busy).toBe(true)
+      session.finishDraft()
+      if (when === 'after') commit(session, session.prepareDraft(), 'revision-human')
+      else expectCode(() => session.prepareDraft(), 'conflict')
+    }
+  )
+
+  it.each(['agent', 'draft'] as const)(
+    'does not resurrect an explicitly discarded %s preparation after external change',
+    (kind) => {
+      const session = new CanvasSession(initial())
+      if (kind === 'draft') {
+        session.beginDraft()
+        session.updateDraft(edit('Discarded human proposal'))
+        session.finishDraft()
+      }
+      const proposal =
+        kind === 'draft'
+          ? session.prepareDraft()
+          : session.prepare(edit('Discarded agent proposal'))
+      const external = { graph: edit('External')(sample()), revision: 'revision-external' }
+      session.externalChanged(external)
+      session.discardDraft()
+      expectCode(() => session.reject(proposal), 'stale')
+      expectCode(() => session.apply(proposal, session.committed), 'stale')
+      expect(session.draft).toBeNull()
+      expect(session.conflict).toBe(false)
+      expect(session.dirty).toBe(false)
+      expect(session.committed).toEqual(external)
+      commit(session, session.prepare(edit('Fresh proposal')), 'revision-fresh')
+    }
+  )
+
+  it('cannot settle a superseded token instead of its still-owned replacement after external change', () => {
+    const session = new CanvasSession(initial())
+    const superseded = session.prepare(edit('Superseded'))
+    const replacement = session.prepare(edit('Replacement'))
+    const external = { graph: edit('External')(sample()), revision: 'revision-external' }
+    session.externalChanged(external)
+    expectCode(() => session.reject(superseded), 'stale')
+    expect(session.draft).toBeNull()
+    session.reject(replacement)
+    expect(session.draft?.graph).toEqual(replacement.graph)
+    expect(session.committed).toEqual(external)
+    expect(session.conflict).toBe(true)
+  })
+
+  it('does not replace reentrantly applied publication with the outer preparation', () => {
+    const session = new CanvasSession(initial())
+    const first = session.prepare(edit('Actually published'))
+    let published: CanvasGraph, outerError: unknown
+    try {
+      session.prepare((graph) => {
+        published = session.apply(first, session.committed)
+        return edit('Outer proposal')(graph)
+      })
+    } catch (error) {
+      outerError = error
+    }
+    expect(session.busy).toBe(true)
+    expect(session.committed).toEqual(initial())
+    expect(session.history).toEqual({ undo: 0, redo: 0 })
+    session.acknowledge(first, { graph: published, revision: 'revision-confirmed' })
+    expect(session.committed.graph.nodes[1].text).toBe('Actually published')
+    expect(session.busy).toBe(false)
+    expect(session.draft).toBeNull()
+    expect(session.history).toEqual({ undo: 1, redo: 0 })
+    expect(outerError).toBeInstanceOf(CanvasSessionError)
+    expect((outerError as CanvasSessionError).code).toBe('stale')
+    expectCode(
+      () => session.acknowledge(first, { graph: published, revision: 'revision-confirmed' }),
+      'stale'
+    )
+  })
+
+  it('keeps a nested preparation owned when it supersedes the outer planner without changing generation', () => {
+    const session = new CanvasSession(initial())
+    let nested: ReturnType<CanvasSession['prepare']>
+    expectCode(
+      () =>
+        session.prepare((graph) => {
+          nested = session.prepare(edit('Nested proposal'))
+          return edit('Outer proposal')(graph)
+        }),
+      'stale'
+    )
+    commit(session, nested, 'revision-nested')
+    expect(session.committed.graph.nodes[1].text).toBe('Nested proposal')
+    expect(session.history.undo).toBe(1)
+  })
+
+  it('cannot stage over a rejection settled reentrantly inside the outer planner', () => {
+    const session = new CanvasSession(initial())
+    const first = session.prepare(edit('Recoverable first proposal'))
+    expectCode(
+      () =>
+        session.prepare((graph) => {
+          session.apply(first, session.committed)
+          session.reject(first)
+          return edit('Outer proposal')(graph)
+        }),
+      'stale'
+    )
+    expect(session.draft?.graph).toEqual(first.graph)
+    expect(session.committed).toEqual(initial())
+    expect(session.history.undo).toBe(0)
+    expect(session.busy).toBe(false)
+    commit(session, session.prepareDraft(), 'revision-recovered')
+  })
+
+  it('keeps explicit reentrant discard final instead of restoring the outer or old proposal', () => {
+    const session = new CanvasSession(initial())
+    const first = session.prepare(edit('Old proposal'))
+    expectCode(
+      () =>
+        session.prepare((graph) => {
+          session.discardDraft()
+          return edit('Outer proposal')(graph)
+        }),
+      'stale'
+    )
+    expectCode(() => session.reject(first), 'stale')
+    expect(session.draft).toBeNull()
+    expect(session.committed).toEqual(initial())
+    expect(session.busy).toBe(false)
+  })
+
+  it('protects in-flight ownership from all competing preparation and draft paths', () => {
+    const session = new CanvasSession(initial())
+    const first = session.prepare(edit('First proposal'))
+    const published = session.apply(first, session.committed)
+    const attempts = [
+      () => session.prepare(edit('Competing proposal')),
+      () => session.prepareDraft(),
+      () => session.prepareUndo(),
+      () => session.prepareRedo(),
+      () => session.beginDraft(),
+      () => session.updateDraft(edit('Competing draft')),
+      () => session.finishDraft(),
+      () => session.discardDraft(),
+      () => session.reapplyDraft(edit('Competing recovery')),
+      () => session.apply(first, session.committed),
+    ]
+    for (const attempt of attempts) expectCode(attempt, 'busy')
+    session.acknowledge(first, { graph: published, revision: 'revision-confirmed' })
+    expect(session.busy).toBe(false)
+    expect(session.history).toEqual({ undo: 1, redo: 0 })
+    expect(session.committed.graph).toEqual(first.graph)
+  })
+
   it('discards a conflicted draft explicitly and starts new history on the current external baseline', () => {
     const session = new CanvasSession(initial())
     commit(session, session.prepare(edit('Old local')), 'revision-1')

@@ -219,6 +219,7 @@ export class CanvasSession {
     if (this.publishing) throw new CanvasSessionError('busy')
     this.preview = null
     this.conflicted = false
+    this.prepared = null // Explicit discard revokes recovery as well as publication.
     this.version++
   }
   /** Explicit host-chosen recovery on the latest baseline; no guessed merge of someone else's text. */
@@ -241,6 +242,7 @@ export class CanvasSession {
     kind: Preparation['kind'],
     patch?: GraphPatch
   ): PreparedCanvasTransaction {
+    if (this.publishing) throw new CanvasSessionError('busy')
     const before = cloneCanvas(this.baseline.graph),
       graph = cloneCanvas(after)
     const token: PreparedCanvasTransaction = Object.freeze({
@@ -254,9 +256,12 @@ export class CanvasSession {
     return token
   }
   private transform(input: CanvasGraph, transform: GraphTransform): CanvasGraph {
-    const generation = this.version
+    const generation = this.version,
+      preparation = this.prepared
     const graph = cloneCanvas(transform(cloneCanvas(input)))
-    if (generation !== this.version) throw new CanvasSessionError('stale')
+    // Preparation replacement and publication start need not change document generation.
+    if (generation !== this.version || preparation !== this.prepared || this.publishing)
+      throw new CanvasSessionError('stale')
     return graph
   }
   /** Existing edit/layout/steps planners can be composed into one command on a detached clone. */
@@ -349,15 +354,15 @@ export class CanvasSession {
   reject(token: PreparedCanvasTransaction): void {
     const prepared = this.prepared
     if (!prepared || prepared.token !== token) throw new CanvasSessionError('stale')
-    if (!this.publishing) this.matching(token)
-    // An external notification may have invalidated the plan while storage was pending.
-    // Preserve any existing human draft, or retain this proposal for explicit recovery.
+    // Settlement requires ownership, not permission to publish on the old baseline.
+    // External invalidation or a newer human draft may have made application stale.
+    // Preserve that draft, or retain the still-owned proposal for explicit recovery.
     this.preview ??= {
       graph: cloneCanvas(prepared.after),
       baseRevision: token.revision,
       active: false,
     }
-    this.conflicted ||= token.revision !== this.baseline.revision
+    this.conflicted ||= this.preview.baseRevision !== this.baseline.revision
     this.publishing = false
     this.prepared = null
     this.version++
