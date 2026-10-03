@@ -74,7 +74,13 @@ const props = withDefaults(
       enabled?: boolean
       state?: string
     }>(),
-    { state: 'awaiting exact confirmation' }
+    {
+      state: 'awaiting exact confirmation',
+      flow: undefined,
+      preview: undefined,
+      entries: () => [],
+      audiences: () => [],
+    }
   ),
   emit = defineEmits<{ close: [] }>(),
   enabled = props.enabled ?? OWNER_SHARING_ENABLED,

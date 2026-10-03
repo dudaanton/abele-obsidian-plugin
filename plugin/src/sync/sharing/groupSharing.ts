@@ -103,8 +103,8 @@ export class GroupSharingFlow {
         (r) =>
           !notes.has(r.sourceId) ||
           !notes.has(r.targetId) ||
-          notes.get(r.sourceId)!.versionId !== r.sourceVersion ||
-          notes.get(r.targetId)!.versionId !== r.targetVersion ||
+          notes.get(r.sourceId).versionId !== r.sourceVersion ||
+          notes.get(r.targetId).versionId !== r.targetVersion ||
           !r.tokenKey ||
           r.tokenKey.length > 1024 ||
           !(r.targetId === p.root.fileId || p.anchors.some((a) => a.fileId === r.targetId))
@@ -364,7 +364,7 @@ export class InitialAssetBatch {
         if (op.done) continue
         this.fence(generation)
         const e = j.review.entries[op.entry],
-          a = j.review.audiences.find((a) => a.grantId === op.grantId)!
+          a = j.review.audiences.find((a) => a.grantId === op.grantId)
         if (op.request && (await this.port.lookup(copy(op.request)))) {
           op.done = true
           await this.write(j)
