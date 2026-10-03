@@ -6,7 +6,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { UserTemplate } from './UserTemplate'
 import { parseTemplateVariables, applyTemplateVariables } from './TemplateParser'
-import { dump, load } from 'js-yaml'
+import { dumpCalendarYaml as dump, loadCalendarYaml as load } from '@/helpers/yamlDates'
 
 export interface TransactionNoteContentParams {
   date?: dayjs.Dayjs | null

@@ -1,5 +1,5 @@
 import { TFile } from 'obsidian'
-import { dump, load } from 'js-yaml'
+import { dumpCalendarYaml as dump, loadCalendarYaml as load } from '@/helpers/yamlDates'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { UserTemplate } from './UserTemplate'
 import { parseTemplateVariables, applyTemplateVariables, TemplateVariable } from './TemplateParser'

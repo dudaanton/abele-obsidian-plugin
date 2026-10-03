@@ -4,18 +4,26 @@ import { normalizePath, stringifyYaml, TAbstractFile, TFile, TFolder, Vault } fr
 import fm from 'front-matter'
 import { getFileByPath, getFileByPathOrName, readFileContent } from './vaultUtils'
 import dayjs from 'dayjs'
-import { DEFAULT_SCHEMA, load as loadYaml, Type } from 'js-yaml'
+import { load as loadYaml } from 'js-yaml'
+import { isCalendarDate, timestampTextSchema } from './yamlDates'
 
-// Retain timestamp scalar spelling, including anchors and explicitly tagged values.
-const timestampTextSchema = DEFAULT_SCHEMA.extend({
-  implicit: [
-    new Type('tag:yaml.org,2002:timestamp', {
-      kind: 'scalar',
-      resolve: (text: string) => /^\d{4}-\d{1,2}-\d{1,2}(?:$|[Tt \t])/.test(text),
-      construct: (text: string) => text,
-    }),
-  ],
-})
+/** Normalize only top-level Dates, using source syntax rather than local clock time. */
+function normalizeFrontmatterDates(
+  attributes: Record<string, any>,
+  frontmatter: string
+): Record<string, any> {
+  const sourceAttributes = Object.values(attributes).some((value) => value instanceof Date)
+    ? ((loadYaml(frontmatter, { schema: timestampTextSchema }) as Record<string, unknown>) ?? {})
+    : {}
+
+  return Object.fromEntries(
+    Object.entries(attributes).map(([key, value]) => {
+      if (!(value instanceof Date)) return [key, value]
+      const source = sourceAttributes[key]
+      return [key, isCalendarDate(source) ? source : dayjs(value).format('YYYY-MM-DDTHH:mm:ss')]
+    })
+  )
+}
 
 const frontMatterRegex = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/
 
@@ -39,16 +47,7 @@ export async function parseNoteContent(
 
   const parsed = fm<Record<string, any>>(content)
 
-  const parsedData: Record<string, any> = {}
-  for (const [key, value] of Object.entries(parsed.attributes)) {
-    if (value instanceof Date) {
-      const d = dayjs(value)
-      const hasTime = d.hour() !== 0 || d.minute() !== 0 || d.second() !== 0
-      parsedData[key] = hasTime ? d.format('YYYY-MM-DDTHH:mm:ss') : d.format(DATE_FORMAT)
-    } else {
-      parsedData[key] = value
-    }
-  }
+  const parsedData = normalizeFrontmatterDates(parsed.attributes, parsed.frontmatter)
 
   // `front-matter` swallows the blank lines after the closing `---`, and a body read here is
   // written back under rewritten frontmatter — so the text is taken as it stands in the note.
@@ -113,29 +112,7 @@ export const updateNoteFrontmatter = async (
 
   // Parse the frontmatter and content
   const parsed = fm<Record<string, any>>(content)
-  // Only needed while the reader returns Dates. String-valued host dates pass through unchanged.
-  const sourceAttributes = Object.values(parsed.attributes).some((value) => value instanceof Date)
-    ? ((loadYaml(parsed.frontmatter, { schema: timestampTextSchema }) as Record<string, unknown>) ??
-      {})
-    : {}
-
-  const parsedAttributes = Object.keys(parsed.attributes).reduce(
-    (obj, key) => {
-      let value = parsed.attributes[key]
-      if (value instanceof Date) {
-        const source = sourceAttributes[key]
-        value =
-          typeof source === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(source)
-            ? source
-            : dayjs(value).format('YYYY-MM-DDTHH:mm:ss')
-      }
-
-      obj[key] = value
-
-      return obj
-    },
-    {} as Record<string, any>
-  )
+  const parsedAttributes = normalizeFrontmatterDates(parsed.attributes, parsed.frontmatter)
 
   // Update the frontmatter with the provided properties
   const updatedAttributes = { ...parsedAttributes, ...properties, ...{ name: undefined } }
