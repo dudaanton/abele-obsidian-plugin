@@ -1471,6 +1471,9 @@ preparing grant is not automatic approval. No whole-vault client parser, basenam
 received-file remap supplies authority. Initial existing-image batches use checksum-bound
 `initial-asset-batch-v1:` metadata with exact target/sponsor/audience versions, withdrawals and
 stable per-operation request IDs before publication; stale replacements or lost evidence hold.
+An existing/resumed review whose journal disappears cannot mint replacement operation IDs.
+Successful relation acknowledgements advance the reviewed ACL revision and retain confirmed
+progress; an uncertain approval reply is recovery, not permission to guess another revision.
 
 The untrusted Books profile writes only a device-local scoped descriptor and independently bound
 keychain secret, with purpose `books-untrusted`, group-only stable root and editor ceiling. It
@@ -1506,8 +1509,15 @@ never trigger a stale re-add. Missing ledger evidence on reopen requires recover
 manufacturing a new intent. The separate `publication-scoped-unit-v1:` records connect the
 reviewed core's durable pre-upload and exact-version settlement hooks to immutable cache facts;
 completed unit metadata is removed only after core journal retirement. Neither class has a
-production call site while activation is disabled. Personal owner hooks, exact novel-create
-receipt proof, native cache/paste barriers and sponsored HTTP adapters remain required.
+production call site while activation is disabled. The trusted disabled owner host port uses
+reviewed personal hooks, including exact received-note delivery, and `native-owner-v1:` metadata
+in an independently owned store. Rows bind note/cache observations, paste range, stable handles,
+exact sending subsets and wire receipts to the connection with checksums. Ready-image intents
+are durable before a partial hold can release any upload. Only trusted exact native paste-range
+introduction plus verified novel creation and authorized intrinsic sponsor proof may publish;
+received snapshots are baselines, never owner introduction or script consent. Lost evidence
+holds. Production host installation and unverified native cache/paste barriers remain separate
+requirements; the disposable test port does not activate the application pipeline.
 
 ## Disabled publication snapshot contract
 
