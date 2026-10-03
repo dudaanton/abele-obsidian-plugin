@@ -6,6 +6,8 @@
  * and they are what the external calendars already index by. Walking from one day to the next
  * goes through a day number (days since 1970 in UTC), which never meets a clock change.
  */
+import { addDays, dayNumber, dayString } from '@/helpers/calendarDays'
+export { addDays, dayNumber, dayString } from '@/helpers/calendarDays'
 import type { KitColor } from '@/constants/colors'
 import { eventDays, type CalendarEvent } from '@/calendars/events'
 
@@ -43,22 +45,6 @@ export interface CalendarItem {
 }
 
 // ---- days ------------------------------------------------------------------------------------
-
-const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})/
-
-export function dayNumber(day: string): number {
-  const m = DAY_RE.exec(day)
-  if (!m) return NaN
-  return Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86_400_000)
-}
-
-export function dayString(n: number): string {
-  const d = new Date(n * 86_400_000)
-  const pad = (v: number) => String(v).padStart(2, '0')
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
-}
-
-export const addDays = (day: string, n: number): string => dayString(dayNumber(day) + n)
 
 /** 0 for Sunday … 6 for Saturday, as `Date.getDay`. */
 export const weekday = (day: string): number => (((dayNumber(day) + 4) % 7) + 7) % 7

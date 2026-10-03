@@ -51,20 +51,10 @@ export function refreshedOccurrence(
   return slot.length === 1 ? slot[0] : undefined
 }
 
-const pad = (n: number) => String(n).padStart(2, '0')
+import { addDays, localDay } from '@/helpers/calendarDays'
+export { localDay } from '@/helpers/calendarDays'
 
-/** `YYYY-MM-DD` of the day this instant falls on, on this device's clock. */
-export function localDay(ms: number): string {
-  const d = new Date(ms)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-/** `YYYY-MM-DD` read as a calendar date, one day on. */
-function nextDay(day: string): string {
-  const [y, m, d] = day.split('-').map(Number)
-  const next = new Date(Date.UTC(y, m - 1, d + 1))
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}`
-}
+const nextDay = (day: string): string => addDays(day, 1)
 
 /** A guard against a malformed event claiming years: no event is filed under more days. */
 const MAX_DAYS = 400

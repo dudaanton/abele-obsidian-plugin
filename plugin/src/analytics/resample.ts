@@ -5,6 +5,8 @@
  * Dates are `YYYY-MM-DD` strings and all arithmetic is on UTC midnights, so no time zone or
  * daylight-saving change can move a value into the neighbouring day.
  */
+import { addDays } from '@/helpers/calendarDays'
+export { addDays } from '@/helpers/calendarDays'
 import { mean, median, present, sum } from './stats'
 
 export type Period = 'day' | 'week' | 'month' | 'quarter' | 'year'
@@ -18,7 +20,6 @@ export const AGGS: Agg[] = ['sum', 'mean', 'median', 'min', 'max', 'count', 'fir
 export type Fill = 'none' | 'zero' | 'previous' | 'linear'
 export const FILLS: Fill[] = ['none', 'zero', 'previous', 'linear']
 
-const DAY_MS = 86_400_000
 const pad = (n: number, w = 2) => String(n).padStart(w, '0')
 
 export function isDate(s: unknown): s is string {
@@ -32,10 +33,6 @@ export function toUtc(date: string): number {
 export function fromUtc(ms: number): string {
   const d = new Date(ms)
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
-}
-
-export function addDays(date: string, days: number): string {
-  return fromUtc(toUtc(date) + days * DAY_MS)
 }
 
 /** The key of the period `date` falls in: the day, the first day of its week, `YYYY-MM`, `YYYY-Q3`, `YYYY`. */

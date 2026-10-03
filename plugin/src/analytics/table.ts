@@ -4,6 +4,7 @@
  * currency of each row is in a `currency` column beside it, or in `column.currency` when the whole
  * column is one currency.
  */
+import { localDay } from '@/helpers/calendarDays'
 import { isDate } from './resample'
 
 export type ColumnType = 'date' | 'number' | 'money' | 'string' | 'boolean' | 'list'
@@ -49,10 +50,7 @@ export function parseNumber(v: unknown): number | null {
 
 /** A date as `YYYY-MM-DD`, from a date, a datetime or a `Date`; null otherwise. */
 export function parseDate(v: unknown): string | null {
-  if (v instanceof Date && !isNaN(v.getTime())) {
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`
-  }
+  if (v instanceof Date && !isNaN(v.getTime())) return localDay(v.getTime())
   if (typeof v !== 'string') return null
   const head = v.trim().slice(0, 10)
   return isDate(head) ? head : null
