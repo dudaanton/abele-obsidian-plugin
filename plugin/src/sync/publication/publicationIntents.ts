@@ -114,6 +114,36 @@ const hash = (v: unknown) => sha256(new TextEncoder().encode(JSON.stringify(v)))
 const digest = (s: unknown) => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s)
 const text = (s: unknown): s is string => typeof s === 'string' && s.length > 0 && s.length <= 4096
 const admittedSubset = ownerSubsetIndices
+const admissionReason = 'operation not submitted after blob admission'
+/** Held status/reason is a deterministic view of the immutable admitted selection. It
+ * must not append bytes to a ledger after core has durably submitted that selection. */
+function omittedByAdmission(unit: Unit, intent: Intent) {
+  if (!unit.submission) return false
+  const input = intent.input,
+    request = unit.unit,
+    target =
+      input.target.creator !== 'pending-local-create' ||
+      Object.values(request.createHandles).includes(input.target.create?.handle ?? ''),
+    sponsor =
+      !!intent.sponsorBaseline ||
+      request.ops.some((op, index) =>
+        input.baseline.kind === 'local-create'
+          ? op.op === 'create' &&
+            request.createHandles[index] === input.baseline.handle &&
+            op.sha === input.current.sha
+          : op.op === 'modify' &&
+            op.file_id === input.current.noteId &&
+            op.sha === input.current.sha
+      )
+  return !target || !sponsor
+}
+function storedIntent(unit: Unit, intent: Intent): Intent {
+  if (!omittedByAdmission(unit, intent)) return intent
+  const original = copy(intent)
+  original.state = 'prepared'
+  delete original.reason
+  return original
+}
 /** One host-owned writer, one durable metadata record. No network adapter or activation shortcut.
  * Entire inputs/deltas are immutable; recovery never rescans a merged/current note as owner additions.
  */
@@ -207,7 +237,7 @@ export class PublicationIntents {
           CommitRequestSchema.parse({ ops: u.submission.prepared.ops })
           admittedSubset(u.submission.prepared, u.unit)
         }
-        for (const i of u.intents)
+        for (const i of u.intents) {
           if (
             !text(i.id) ||
             !digest(i.proposal.fingerprint) ||
@@ -217,6 +247,11 @@ export class PublicationIntents {
             !Array.isArray(i.authorities)
           )
             throw new Error()
+          if (omittedByAdmission(u, i)) {
+            i.state = 'held'
+            i.reason = admissionReason
+          }
+        }
       }
       return l
     } catch {
@@ -233,7 +268,7 @@ export class PublicationIntents {
       units: l.units.map((u) => ({
         e: storeOwnerUnit(u.submission?.prepared ?? u.unit, u.unit, !!u.submission),
         h: u.submission?.sha ?? u.sha,
-        intents: u.intents,
+        intents: u.intents.map((i) => storedIntent(u, i)),
         holds: u.holds,
         s: u.settled,
         ...(u.receiptSha ? { receiptSha: u.receiptSha } : {}),
@@ -391,27 +426,6 @@ export class PublicationIntents {
       record.submission = { prepared: copy(record.unit), sha: record.sha }
       record.unit = request
       record.sha = sha
-      for (const intent of record.intents) {
-        const input = intent.input,
-          targetPresent =
-            input.target.creator !== 'pending-local-create' ||
-            Object.values(request.createHandles).includes(input.target.create?.handle ?? ''),
-          sponsorPresent =
-            !!intent.sponsorBaseline ||
-            request.ops.some((op, index) =>
-              input.baseline.kind === 'local-create'
-                ? op.op === 'create' &&
-                  request.createHandles[index] === input.baseline.handle &&
-                  op.sha === input.current.sha
-                : op.op === 'modify' &&
-                  op.file_id === input.current.noteId &&
-                  op.sha === input.current.sha
-            )
-        if (!targetPresent || !sponsorPresent) {
-          intent.state = 'held'
-          intent.reason = 'operation not submitted after blob admission'
-        }
-      }
       await this.write(ledger)
     })
   }

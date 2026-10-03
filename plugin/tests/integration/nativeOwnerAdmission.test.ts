@@ -89,6 +89,29 @@ it('a failed native submitted-binding write prevents transport and resumes the e
     f.close()
   }
 })
+it('receipt storage references the exact frozen unit digest, never a different submitted body', async () => {
+  const f = await nativeOwnerAdmissionFixture('quota_waiting')
+  try {
+    await push(f.transport, f.fs, f.state, f.scan, f.options())
+    const native = f.runtime() as any,
+      key = 'receipt:sample-request',
+      metaKey = native.prefix + key,
+      stored = JSON.parse((await f.meta.getMeta(metaKey))!)
+    expect(stored.value.ops).toBeUndefined()
+    expect(stored.value.opsSha).toMatch(/^[a-f0-9]{64}$/)
+    expect((await native.read(key)).ops).toEqual([f.ops[0]])
+    stored.value.opsSha = 'f'.repeat(64)
+    stored.checksum = await sha256(
+      new TextEncoder().encode(
+        JSON.stringify({ binding: stored.binding, key: stored.key, value: stored.value })
+      )
+    )
+    await f.meta.setMeta(metaKey, JSON.stringify(stored))
+    await expect(native.read(key)).rejects.toThrow(/evidence corrupt/)
+  } finally {
+    f.close()
+  }
+})
 for (const code of ['too_large', 'quota_exceeded', 'quota_waiting'] as const) {
   it(`binds the final admitted commit before transport after ${code}, then settles without weakening exact receipts`, async () => {
     const f = await nativeOwnerAdmissionFixture(code)

@@ -37,7 +37,13 @@ export async function nativeOwnerAdmissionFixture(
   const preparedBytes: { intent: number; native: number }[] = []
   const uploads = new Map<string, Uint8Array>(),
     receipts = new Map<string, { ops: CommitOp[]; body: any }>(),
-    wireChecks: { ops: CommitOp[]; stored: any; intentUnit: any }[] = []
+    wireChecks: {
+      ops: CommitOp[]
+      stored: any
+      intentUnit: any
+      intentBytes: number
+      nativeBytes: number
+    }[] = []
   let responseLost = loseReply,
     versionCount = 0,
     publicationCount = 0,
@@ -57,6 +63,8 @@ export async function nativeOwnerAdmissionFixture(
     getBlob: async (sha: string) => uploads.get(sha)!.slice(),
     commitRaw: vi.fn(async (ops: CommitOp[], key: string) => {
       wireChecks.push({
+        intentBytes: (await meta.getMeta((runtime as any).intents.key))!.length,
+        nativeBytes: (await meta.getMeta((runtime as any).prefix + 'unit:' + key))!.length,
         ops: structuredClone(ops),
         stored: await (runtime as any).read('unit:' + key),
         intentUnit: (await (runtime as any).intents.read()).units.find(

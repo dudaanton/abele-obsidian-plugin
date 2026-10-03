@@ -252,6 +252,13 @@ export class NativeOwnerPublication {
             : {}),
         } as T
       }
+      if (key.startsWith('receipt:') && r.value?.opsSha) {
+        const unit = await this.read<{ ops: CommitOp[]; submitted?: boolean }>(
+          'unit:' + key.slice(8)
+        )
+        if (!unit?.submitted || (await hash(unit.ops)) !== r.value.opsSha) throw new Error()
+        return { ops: unit.ops, body: r.value.body } as T
+      }
       return r.value as T
     } catch {
       throw new Error('Native owner evidence corrupt or checksum changed; recovery required')
@@ -423,7 +430,7 @@ export class NativeOwnerPublication {
       this.check()
       const body = CommitResponseSchema.parse(outcome.body)
       if (await this.read('unit:' + key))
-        await this.persisted('receipt:' + key, { ops: copy(ops), body: copy(body) })
+        await this.persisted('receipt:' + key, { opsSha: await hash(ops), body: copy(body) })
       return outcome
     }
   }
