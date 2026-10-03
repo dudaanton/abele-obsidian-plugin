@@ -1214,7 +1214,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           toolParams: event.args,
-          toolStatus: 'pending',
+          // tool_start follows the permission check; running is not a request for approval.
+          toolStatus: 'approved',
           timestamp: Date.now(),
         }
         this.appendChatMessage(chatMsg)
@@ -1224,10 +1225,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
       case 'tool_end': {
         this.updateChatMessage(
-          (m) =>
-            m.role === 'tool-call' &&
-            m.toolCallId === event.toolCallId &&
-            m.toolStatus === 'pending',
+          (m) => m.role === 'tool-call' && m.toolCallId === event.toolCallId,
           (m) => {
             const resultText = event.result.content?.map((c) => c.text).join('') || ''
             const diff = (event.result.details as ToolWriteDetails)?.diff
@@ -1537,7 +1535,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           )
         }
 
-        this.ensurePendingToolCallMessage(tc)
+        // Reevaluate before publishing the next call: automatic and interceptor-approved
+        // calls must never enter the pending state, even while execution is awaiting I/O.
+        this.ensurePendingToolCallMessage(tc, 'approved')
 
         const controller = new AbortController()
         this.toolAbortController = controller
@@ -1565,9 +1565,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     await this.runAgentLoop()
   }
 
-  private ensurePendingToolCallMessage(tc: ToolCallContent): void {
+  private ensurePendingToolCallMessage(
+    tc: ToolCallContent,
+    status: 'pending' | 'approved' = 'pending'
+  ): void {
     const exists = this.allChatMessages.some((m) => m.toolCallId === tc.id)
-    if (exists) return
+    if (exists) {
+      if (status === 'approved')
+        this.updateChatMessage(
+          (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
+          (m) => ({ ...m, toolStatus: 'approved' as const })
+        )
+      return
+    }
 
     const chatMsg: ChatMessage = {
       id: nanoid(),
@@ -1576,7 +1586,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       toolCallId: tc.id,
       toolName: tc.name,
       toolParams: tc.arguments,
-      toolStatus: 'pending',
+      toolStatus: status,
       timestamp: Date.now(),
     }
     this.appendChatMessage(chatMsg)
