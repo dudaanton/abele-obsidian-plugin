@@ -67,15 +67,15 @@ bindings, layout and all owned server/daemon/database resources are restored by 
 
 ### Verification checkpoint
 
-The initial reviewed-input scenario ran **3/3 green**, including Cyrillic paths and both real
-image cases. Subsequent strengthening added exact paste-range/remote invalidation, current
-eligibility, admission-generation out/re-entry and exact all-format clipboard restoration.
-Scoped native-create/private-collision assertions also passed after out/re-entry. Final-source
-owner reruns were first blocked by another pool lease, then by an unresponsive/non-routable
-Obsidian CLI before the suite started. Thus the strengthened **final native gate is not yet
-signed off green**. No additional missing sponsor-proof server contract was identified. The
-manager must rerun the explicit gate on a healthy native CLI; no mandatory assertion was
-removed, relaxed or skipped. See the worker's batch16 report for chronological logs.
+The strengthened final-source scenario ran **3/3 green**, including Cyrillic folder/file paths,
+exact paste-range/remote invalidation, current eligibility, sponsor out/re-entry with admission
+generation greater than one, and exact all-item/type clipboard restoration. Owner-extra
+publication reached the real scoped daemon automatically; scoped native-create replay and
+private-collision refusal preserved exact identities/bytes. Earlier attempts were blocked by a
+shared lease and then an unresponsive native CLI. After shared resources drained, a short
+app-gated restart restored CLI responsiveness and the complete gate passed. The same exact
+reviewed archive supplied core, protocol, server and CLI. No additional missing sponsor-proof
+server contract was identified; no mandatory assertion was removed, relaxed or skipped.
 
 This is the desktop owner plus real CLI scenario, not Android/Boox/iPad/physical-phone acceptance
 or production activation. The narrow paste-range adapter deliberately does not authorize other
