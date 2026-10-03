@@ -60,6 +60,17 @@
       />
     </Setting>
     <ScopedInvitationModal v-if="scopedPreview" @close="scopedPreview = false" />
+    <Setting
+      name="Scoped new-file choice"
+      desc="Preview the disabled exact-path/root and native paste protections."
+    >
+      <Button
+        text="Preview scoped file creation…"
+        tooltip="Inspect the disabled scoped note/image creation choices without creating a file"
+        @click="creationPreview = true"
+      />
+    </Setting>
+    <ScopedCreationModal v-if="creationPreview" @close="creationPreview = false" />
     <template v-if="vaults !== null">
       <Section
         title="Choose a vault"
@@ -162,7 +173,9 @@
  */
 import { computed, ref } from 'vue'
 import ScopedInvitationModal from '../../sync/ScopedInvitationModal.vue'
-const scopedPreview = ref(false)
+import ScopedCreationModal from '../../sync/ScopedCreationModal.vue'
+const scopedPreview = ref(false),
+  creationPreview = ref(false)
 import { Platform } from 'obsidian'
 import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import Section from '../../obsidian/Section.vue'

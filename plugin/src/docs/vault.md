@@ -1463,6 +1463,23 @@ CAS/withdrawal generations and own-upload proof; no body parser or personal-toke
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports are not an activated scoped engine or owner publication pipeline.
 
+## Disabled scoped invitation and creation state
+
+Device-local `abele-sync-scoped-join` keeps the exact resumable invitation/enrolment attempt;
+`abele-sync-scoped-connection` is a disjoint scoped installation descriptor with script policy
+`refuse`. Account tokens/passwords are never persisted. Invitation/installation secrets and
+independent issuer/member/credential binding proofs remain in the device-only keychain, not
+in transferred settings. Retained personal state or another scoped connection blocks setup;
+missing scoped ledger state requires recovery. Joining publishes no unrelated local file and
+holds unmanaged incoming-path collisions without replacement/remap. Pending/malformed scoped
+context also refuses personal enrolment and vault script execution before credentials/effects.
+
+The disabled `scoped-native-create-v1:` metadata records exact new-file reviews, immutable bytes,
+operation handles, root/sponsor and own-upload proof for retry. The UI can preview these flows,
+but actual scoped engine/ledger/paste/native HTTP/link host adapters are not enabled. Reader or
+changed scope/root/sponsor, occupied path, adoption and lost evidence hold instead of upload or
+replacement. No received file is moved to satisfy a new-file choice.
+
 ## Disabled publication intent integration
 
 The disabled intent ledger uses `publication-intents-v1:` metadata, exact connection binding
