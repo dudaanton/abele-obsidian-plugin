@@ -51,6 +51,9 @@ const localOrManaged = {
   },
   ai: {
     chatHistory: 'Vault-local index of conversation paths, rebuilt where those files live.',
+    systemPromptFromNote: 'Migration-only prompt selection; agent definitions travel instead.',
+    systemPromptNotePath: 'Migration-only prompt path; agent definitions travel instead.',
+    interceptors: 'Migration-only interceptor definitions; agent definitions travel instead.',
     openRouterApiKey: 'Retired plaintext input migrated into image provider keychain references.',
     imageModel: 'Retired model selection migrated into imageProviders.',
     imageGeneration: 'Retired generator configuration migrated into imageProviders.',

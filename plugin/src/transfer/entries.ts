@@ -127,7 +127,6 @@ export const SECTIONS: Section[] = [
       'activeProviderId',
       'activeModelId',
       'auxiliaryModelId',
-      'wiseModelId',
       'sequentialAuxiliary',
       'autoRetry',
       'permissionMode',
@@ -141,13 +140,7 @@ export const SECTIONS: Section[] = [
       'skillsFolder',
       'braveSearchApiKey',
       'defaultImageModel',
-      'systemPrompt',
-      'systemPromptFromNote',
-      'systemPromptNotePath',
       'defaultAgentId',
-      'allowWebSearch',
-      'allowFetch',
-      'allowWiseModel',
     ],
     {
       // The setting holds the *name* of the key, not the key: without this the other device
@@ -178,7 +171,6 @@ export const SECTIONS: Section[] = [
   aiList('ai-mcp-servers', 'MCP servers', 'mcpServers', (s: Identified & { keyId?: string }) =>
     s.keyId ? [s.keyId] : []
   ),
-  aiList('ai-interceptors', 'Interceptors', 'interceptors'),
   {
     ...aiList('ai-secrets', 'Stored keys', 'secrets', (s: Identified & { keyId?: string }) =>
       s.keyId ? [s.keyId] : []

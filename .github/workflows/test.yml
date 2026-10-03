@@ -54,6 +54,11 @@ jobs:
         working-directory: plugin
         run: npm audit --omit=dev --audit-level=moderate
 
+      # Advisory only: dynamic registration and script APIs must be reviewed before deletion.
+      - name: Dead-code inventory
+        working-directory: plugin
+        run: node scripts/dead-code.mjs
+
       - name: Type check
         working-directory: plugin
         run: npm run types
