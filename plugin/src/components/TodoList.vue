@@ -1,27 +1,19 @@
 <template>
   <div class="abele-todo-list" data-abele-anchor="section:tasks">
-    <div class="abele-todo-list__header">
-      <div class="abele-todo-list__header-left">
-        <FoldHeading
-          class="abele-todo-list__header-text"
-          text="Tasks"
-          :count="fold.enabled ? tasksWithoutDates.length : undefined"
-          :collapsible="fold.enabled"
-          :collapsed="fold.collapsed.value"
-          @toggle="fold.toggle"
-        />
-        <ObsidianIcon v-if="showAddButton" icon="square-plus" @click="createTask()" />
-      </div>
-      <div v-if="!fold.collapsed.value" class="abele-todo-list__header-right">
-        <ObsidianIcon
-          class="abele-todo-list__search-toggle"
-          icon="search"
-          :active="search.open.value"
-          :tooltip="
-            search.open.value ? 'Close the search' : 'Search tasks by title and description'
-          "
-          @click="search.toggle"
-        />
+    <ListSectionHeader
+      class-prefix="abele-todo-list"
+      text="Tasks"
+      :count="tasksWithoutDates.length"
+      :fold="fold"
+      :search="search"
+      search-tooltip="Search tasks by title and description"
+      placeholder="Search tasks…"
+      group-actions
+    >
+      <template #leading
+        ><ObsidianIcon v-if="showAddButton" icon="square-plus" @click="createTask()"
+      /></template>
+      <template #actions>
         <ObsidianIcon
           v-if="labelOptions.length"
           class="abele-task-label-filter"
@@ -35,17 +27,9 @@
           :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
           @click="hideCompleted = !hideCompleted"
         />
-      </div>
-    </div>
+      </template>
+    </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
-      <ObsidianSearch
-        v-if="search.open.value"
-        v-model="search.query.value"
-        class="abele-todo-list__search"
-        placeholder="Search tasks…"
-        autofocus
-        @keydown.escape.stop.prevent="search.close"
-      />
       <div ref="itemsEl" class="abele-todo-list__tasks">
         <TaskView
           v-for="task in visible"
@@ -66,8 +50,7 @@
 import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
-import ObsidianSearch from './obsidian/Search.vue'
-import FoldHeading from './obsidian/FoldHeading.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { ref, watch } from 'vue'
 import { panelComputed as computed } from '@/composables/usePanelComputed'
 import { createTask } from '@/commands/createTask'

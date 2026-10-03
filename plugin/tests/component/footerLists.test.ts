@@ -79,7 +79,11 @@ function buildDatedTasks(count: number): Task[] {
 let wrapper: VueWrapper | null = null
 
 function render(component: unknown, props: Record<string, unknown>): VueWrapper {
-  wrapper = mount(component as never, { props, shallow: true }) as VueWrapper
+  wrapper = mount(component as never, {
+    props,
+    shallow: true,
+    global: { stubs: { ListSectionHeader: false } },
+  }) as VueWrapper
   return wrapper
 }
 

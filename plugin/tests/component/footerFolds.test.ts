@@ -76,7 +76,7 @@ function render(
     props,
     shallow: true,
     global: {
-      stubs: { FoldHeading: false },
+      stubs: { FoldHeading: false, ListSectionHeader: false },
       provide: notePath ? { [FOOTER_FOLD as symbol]: () => notePath } : {},
     },
   }) as VueWrapper

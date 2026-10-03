@@ -1,35 +1,19 @@
 <template>
   <div class="abele-transactions-list" data-abele-anchor="section:transactions">
-    <div class="abele-transactions-list__header">
-      <div class="abele-transactions-list__header-left">
-        <FoldHeading
-          class="abele-transactions-list__header-text"
-          text="Transactions"
-          :count="fold.enabled ? transactions.length : undefined"
-          :collapsible="fold.enabled"
-          :collapsed="fold.collapsed.value"
-          @toggle="fold.toggle"
-        />
-        <ObsidianIcon icon="banknote-arrow-down" @click="addTransaction()" />
-      </div>
-      <ObsidianIcon
-        v-if="!fold.collapsed.value"
-        class="abele-transactions-list__search-toggle"
-        icon="search"
-        :active="search.open.value"
-        :tooltip="search.open.value ? 'Close the search' : 'Search transactions'"
-        @click="search.toggle"
-      />
-    </div>
+    <ListSectionHeader
+      class-prefix="abele-transactions-list"
+      text="Transactions"
+      :count="transactions.length"
+      :fold="fold"
+      :search="search"
+      search-tooltip="Search transactions"
+      placeholder="Search transactions…"
+    >
+      <template #leading
+        ><ObsidianIcon icon="banknote-arrow-down" @click="addTransaction()"
+      /></template>
+    </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
-      <ObsidianSearch
-        v-if="search.open.value"
-        v-model="search.query.value"
-        class="abele-transactions-list__search"
-        placeholder="Search transactions…"
-        autofocus
-        @keydown.escape.stop.prevent="search.close"
-      />
       <div v-if="visible.length" ref="itemsEl" class="abele-transactions-list__items">
         <template v-for="(tx, idx) in visible" :key="tx.id">
           <DateDivider v-if="showDateBefore(idx)" :date="txDate(tx)">
@@ -59,8 +43,7 @@ import { pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 import TransactionItem from './TransactionItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
-import ObsidianSearch from './obsidian/Search.vue'
-import FoldHeading from './obsidian/FoldHeading.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { createTransaction } from '@/commands/createTransaction'
 import { DATE_FORMAT } from '@/constants/dates'
 import { computed, ref, unref, watch } from 'vue'

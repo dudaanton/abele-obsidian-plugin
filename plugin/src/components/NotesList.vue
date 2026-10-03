@@ -1,22 +1,17 @@
 <template>
   <div class="abele-notes-list" data-abele-anchor="section:backlinks">
-    <div class="abele-notes-list__header">
-      <FoldHeading
-        class="abele-notes-list__header-text"
-        text="Backlinks"
-        :count="fold.enabled ? notes.length : undefined"
-        :collapsible="fold.enabled"
-        :collapsed="fold.collapsed.value"
-        @toggle="fold.toggle"
-      />
-      <button
-        v-if="!fold.collapsed.value"
-        class="abele-notes-list__sort-btn clickable-icon"
-        @click="toggleSort"
+    <ListSectionHeader
+      class-prefix="abele-notes-list"
+      text="Backlinks"
+      :count="notes.length"
+      :fold="fold"
+    >
+      <template #actions
+        ><button class="abele-notes-list__sort-btn clickable-icon" @click="toggleSort">
+          {{ sortBy === 'created' ? 'created' : 'updated' }}
+        </button></template
       >
-        {{ sortBy === 'created' ? 'created' : 'updated' }}
-      </button>
-    </div>
+    </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
       <div class="abele-notes-list__notes">
         <Card
@@ -46,7 +41,7 @@ import { openFile } from '@/helpers/vaultUtils'
 import { compactDate } from '@/helpers/datesHelper'
 import { resourceUrl } from '@/helpers/resourceUrl'
 import Card from './obsidian/Card.vue'
-import FoldHeading from './obsidian/FoldHeading.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
 import { usePagedList } from '@/composables/usePagedList'
 import { useFooterPages } from '@/composables/useFooterView'

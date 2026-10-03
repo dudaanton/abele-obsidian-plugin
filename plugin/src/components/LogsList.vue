@@ -1,32 +1,15 @@
 <template>
   <div class="abele-logs-list" data-abele-anchor="section:logs">
-    <div class="abele-logs-list__header">
-      <FoldHeading
-        class="abele-logs-list__header-text"
-        text="Logs"
-        :count="fold.enabled ? logs.length : undefined"
-        :collapsible="fold.enabled"
-        :collapsed="fold.collapsed.value"
-        @toggle="fold.toggle"
-      />
-      <ObsidianIcon
-        v-if="!fold.collapsed.value"
-        class="abele-logs-list__search-toggle"
-        icon="search"
-        :active="search.open.value"
-        :tooltip="search.open.value ? 'Close the search' : 'Search logs by name and text'"
-        @click="search.toggle"
-      />
-    </div>
+    <ListSectionHeader
+      class-prefix="abele-logs-list"
+      text="Logs"
+      :count="logs.length"
+      :fold="fold"
+      :search="search"
+      search-tooltip="Search logs by name and text"
+      placeholder="Search logs…"
+    />
     <template v-if="!fold.collapsed.value">
-      <ObsidianSearch
-        v-if="search.open.value"
-        v-model="search.query.value"
-        class="abele-logs-list__search"
-        placeholder="Search logs…"
-        autofocus
-        @keydown.escape.stop.prevent="search.close"
-      />
       <div ref="itemsEl" class="abele-logs-list__logs">
         <LogView
           v-for="log in visible"
@@ -47,9 +30,7 @@
 <script setup lang="ts">
 import { Log } from '@/entities/Log'
 import LogView from './Log.vue'
-import ObsidianIcon from './obsidian/Icon.vue'
-import ObsidianSearch from './obsidian/Search.vue'
-import FoldHeading from './obsidian/FoldHeading.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { computed, ref, watch } from 'vue'
 import { usePagedList } from '@/composables/usePagedList'
 import { useFooterPages } from '@/composables/useFooterView'

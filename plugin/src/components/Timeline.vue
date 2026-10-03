@@ -1,27 +1,19 @@
 <template>
   <div ref="clockEl" class="abele-timeline" data-abele-anchor="section:calendar">
-    <div class="abele-timeline__header">
-      <div class="abele-timeline__header-left">
-        <FoldHeading
-          class="abele-timeline__header-text"
-          :text="title ?? 'Timeline'"
-          :count="fold.enabled ? shownTasks.length : undefined"
-          :collapsible="fold.enabled"
-          :collapsed="fold.collapsed.value"
-          @toggle="fold.toggle"
-        />
-        <ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="createTask()" />
-      </div>
-      <div v-if="!fold.collapsed.value" class="abele-timeline__header-right">
-        <ObsidianIcon
-          class="abele-timeline__search-toggle"
-          icon="search"
-          :active="search.open.value"
-          :tooltip="
-            search.open.value ? 'Close the search' : 'Search tasks by title and description'
-          "
-          @click="search.toggle"
-        />
+    <ListSectionHeader
+      class-prefix="abele-timeline"
+      :text="title ?? 'Timeline'"
+      :count="shownTasks.length"
+      :fold="fold"
+      :search="search"
+      search-tooltip="Search tasks by title and description"
+      placeholder="Search tasks…"
+      group-actions
+    >
+      <template #leading
+        ><ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="createTask()"
+      /></template>
+      <template #actions>
         <ObsidianIcon
           v-if="labelOptions.length"
           class="abele-task-label-filter"
@@ -35,17 +27,9 @@
           :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
           @click="hideCompleted = !hideCompleted"
         />
-      </div>
-    </div>
+      </template>
+    </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
-      <ObsidianSearch
-        v-if="search.open.value"
-        v-model="search.query.value"
-        class="abele-timeline__search"
-        placeholder="Search tasks…"
-        autofocus
-        @keydown.escape.stop.prevent="search.close"
-      />
       <div
         v-if="past.length && !search.terms.value.length"
         ref="historyEl"
@@ -130,8 +114,7 @@ import { ref, watch } from 'vue'
 import { panelComputed as computed } from '@/composables/usePanelComputed'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
-import ObsidianSearch from './obsidian/Search.vue'
-import FoldHeading from './obsidian/FoldHeading.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useOwnerVisibility } from '@/composables/useOwnerVisibility'

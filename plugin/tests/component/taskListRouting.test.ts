@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { config as mountConfig, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import dayjs from 'dayjs'
 import TodoSidebar from '@/components/TodoSidebar.vue'
@@ -18,7 +18,9 @@ import { installFakeIntersectionObserver } from '../helpers/fakeIntersectionObse
 vi.mock('@/composables/useDate', () => ({ useDate: () => ({ now: ref(dayjs('2028-02-01')) }) }))
 vi.mock('@/composables/useCalendarDays', () => ({ useCalendarDays: () => ref(new Map()) }))
 let view: VueWrapper | undefined
+const originalStubs = mountConfig.global.stubs
 beforeEach(() => {
+  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false }
   useVault([])
   configureAbele()
   installFakeIntersectionObserver()
@@ -29,6 +31,7 @@ afterEach(() => {
   GlobalStore.getInstance().tasksList.value?.cleanup()
   GlobalStore.getInstance().tasksList.value = null
   VaultWatcherWrapper.destroy()
+  mountConfig.global.stubs = originalStubs
 })
 const task = (name: string, date?: string, done = false) => {
   const value = new Task({

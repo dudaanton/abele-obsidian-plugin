@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
+import { config as mountConfig, mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { nextTick, toRaw } from 'vue'
 import dayjs from 'dayjs'
 import FinanceSidebar from '@/components/FinanceSidebar.vue'
@@ -95,7 +95,9 @@ function fixture(): FakeFileSpec[] {
 const store = GlobalStore.getInstance()
 let wrapper: VueWrapper | undefined
 let pinned: string
+const originalStubs = mountConfig.global.stubs
 beforeEach(() => {
+  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false }
   vi.stubEnv('TZ', 'Europe/Moscow')
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
   vi.setSystemTime(new Date('2024-03-01T00:15:00+03:00'))
@@ -120,6 +122,7 @@ afterEach(() => {
   vi.clearAllMocks()
   vi.useRealTimers()
   vi.unstubAllEnvs()
+  mountConfig.global.stubs = originalStubs
 })
 async function settle() {
   await nextTick()

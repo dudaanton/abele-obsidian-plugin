@@ -152,7 +152,10 @@ describe('LogsList ordering and search page restoration', () => {
       wrapper = mount(LogsList, {
         props: { logs: items },
         shallow: true,
-        global: { provide: { [FOOTER_FOLD as symbol]: () => 'Notes/Orchard.md' } },
+        global: {
+          stubs: { ListSectionHeader: false },
+          provide: { [FOOTER_FOLD as symbol]: () => 'Notes/Orchard.md' },
+        },
       })
       await more()
       expect(shown()).toHaveLength(40)

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
+import { config as mountConfig, mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import dayjs from 'dayjs'
 import { useFakeClock } from '../helpers/fakeClock'
@@ -35,12 +35,17 @@ const render = (tasks: Task[]) => {
   view = mount(Timeline, { props: { tasks }, shallow: true, attachTo: document.body })
   return view
 }
+const originalStubs = mountConfig.global.stubs
 beforeEach(() => {
+  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false }
   useVault([])
   configureAbele()
   installFakeIntersectionObserver()
 })
-afterEach(() => view?.unmount())
+afterEach(() => {
+  view?.unmount()
+  mountConfig.global.stubs = originalStubs
+})
 
 describe('folded timeline history', () => {
   it('restores the same future page without rounding revealed history into extra future pages', async () => {

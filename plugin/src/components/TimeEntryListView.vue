@@ -1,16 +1,16 @@
 <template>
   <div class="abele-time-entries-list" data-abele-anchor="section:time">
-    <div class="abele-time-entries-list__header">
-      <FoldHeading
-        class="abele-time-entries-list__header-text"
-        text="Time Entries"
-        :count="fold.enabled ? timeEntries.length : undefined"
-        :collapsible="fold.enabled"
-        :collapsed="fold.collapsed.value"
-        @toggle="fold.toggle"
-      />
-      <div class="abele-time-entries-list__header-total">{{ totalText }}</div>
-    </div>
+    <ListSectionHeader
+      class-prefix="abele-time-entries-list"
+      text="Time Entries"
+      :count="timeEntries.length"
+      :fold="fold"
+      actions-when-collapsed
+    >
+      <template #actions
+        ><div class="abele-time-entries-list__header-total">{{ totalText }}</div></template
+      >
+    </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
       <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
       <Chart
@@ -43,7 +43,7 @@ import { getThemeColors, EChartsType } from '@/bases/echarts'
 import TimeEntryItem from './TimeEntryItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
-import FoldHeading from './obsidian/FoldHeading.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
 import { useFooterPages } from '@/composables/useFooterView'
 import { computed, ref, watch } from 'vue'
