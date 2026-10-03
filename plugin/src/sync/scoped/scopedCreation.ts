@@ -96,7 +96,8 @@ export class ScopedCreationFlow {
     private readonly meta: SnapshotMeta,
     private readonly port: ScopedCreationPort,
     private readonly enabled: () => boolean = () => SCOPED_CREATION_ENABLED,
-    private readonly held: () => boolean = () => false
+    private readonly held: () => boolean = () => false,
+    private readonly configurationRoots: string[] = []
   ) {}
   private fence(g?: number) {
     if (!this.enabled()) throw new Error('Scoped native creation is disabled')
@@ -156,7 +157,11 @@ export class ScopedCreationFlow {
       scope = copy(await this.port.scope())
     this.fence(generation)
     this.current(scope)
-    if (!allowed(i.path)) throw new Error('Choose an allowed exact new-file path')
+    if (
+      !allowed(i.path) ||
+      this.configurationRoots.some((root) => i.path === root || i.path.startsWith(root + '/'))
+    )
+      throw new Error('Choose an allowed exact new-file path outside configuration')
     if (
       i.kind === 'note' &&
       scope.selector.kind === 'folder' &&

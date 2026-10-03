@@ -71,6 +71,32 @@ describe('fenced exact-path native creation choices', () => {
     expect(s.port.place).not.toHaveBeenCalled()
     expect(s.port.upload).not.toHaveBeenCalled()
   })
+  it('does not place an asset under the host registered non-dot configuration folder', async () => {
+    const s = setup()
+    const flow = new ScopedCreationFlow(
+      s.meta,
+      s.port,
+      () => true,
+      () => true,
+      ['Setup']
+    )
+    await expect(
+      flow.review({
+        kind: 'asset',
+        path: 'Setup/plugins/sample/data.json',
+        bytes: new Uint8Array([1]),
+        sponsor: {
+          fileId: 'sample-note',
+          versionId: 'note-v1',
+          inScope: true,
+          intrinsic: true,
+          admissionGeneration: 1,
+        },
+      })
+    ).rejects.toThrow(/configuration|path/)
+    expect(s.port.place).not.toHaveBeenCalled()
+    expect(s.port.upload).not.toHaveBeenCalled()
+  })
   it('reader or lost writer cannot place/upload a new file', async () => {
     const s = setup()
     s.scope.role = 'reader'
