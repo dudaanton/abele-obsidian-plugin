@@ -37,14 +37,14 @@ export async function adoptCanvasLeaves(app: App): Promise<void> {
       continue
     nativeCanvasLeaves.delete(leaf)
     // Native TextFileView saves on unload even when its serializer only reordered keys.
-    // Suppress that formatting-only write; genuine pending edits still flush normally.
+    // Suppress that formatting-only write. Never save native data during a view switch:
+    // a mismatch may be an unsaved native edit OR a native view lagging an external write.
     // This private seam is pinned by host tests, like native undo in the storage adapter.
     const view = leaf.view as unknown as {
       canvas: { getData(): unknown }
       getViewData(): string
       lastSavedData: string | null
       requestSave: { cancel?: () => void }
-      save(): Promise<void>
     }
     const bytes = await app.vault.read(file)
     if (leaf.view !== (view as unknown) || (leaf.view as { file?: TFile }).file?.path !== file.path)
@@ -60,12 +60,16 @@ export async function adoptCanvasLeaves(app: App): Promise<void> {
       })),
     }
     if (
-      nativeCanvasFingerprint(defaults) ===
+      nativeCanvasFingerprint(defaults) !==
       nativeCanvasFingerprint(parseCanvas(view.canvas.getData()))
-    ) {
-      view.requestSave.cancel?.()
-      view.lastSavedData = view.getViewData()
-    } else await view.save()
+    )
+      throw new Error(
+        'Native Canvas is still saving or reloading a different version. Wait for it to finish before opening the viewer; the view switch did not save or discard any changes.'
+      )
+    // No await between this snapshot and switching: unload sees the same serialized data.
+    // If storage changes after our read, the viewer reads that new version without writing.
+    view.requestSave.cancel?.()
+    view.lastSavedData = view.getViewData()
     if (
       leaf.view.getViewType() !== 'canvas' ||
       (leaf.view as { file?: TFile }).file?.path !== file.path

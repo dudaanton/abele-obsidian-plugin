@@ -56,7 +56,9 @@ and successful writes return that revision; edit/layout refuse versions changed 
 checking again at publication. The token is not a stored canvas field or sidecar. An open native
 editor receives one undo item per batch. `canvasViewer` is a transferable plugin setting,
 on by default, choosing Abele for newly opened canvas leaves; the per-leaf native action keeps
-that tab native until reopened in Abele. Camera and selected step live only in the workspace
+that tab native until reopened in Abele. A view switch never writes the diagram. If the native
+editor and stored version differ, adoption waits for native saving/reloading rather than deciding
+which version to overwrite; pending edits remain in their native tab. Camera and selected step live only in the workspace
 leaf state, not the `.canvas` file. `![[sample.canvas#step=N]]` and `#node=id` embeds store only
 that link in the note; their pictures are transient. User PNG/SVG exports go to the ordinary
 attachments folder, never beside the canvas as a sidecar. SVG exports contain a self-contained
