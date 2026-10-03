@@ -13,16 +13,18 @@ export function bindCanvasTap(button: HTMLButtonElement, action: () => void): ()
     if (e.pointerType === 'mouse') return
     start = { id: e.pointerId, x: e.clientX, y: e.clientY }
   })
-  for (const type of ['mousedown', 'touchstart', 'touchend'])
-    listen(
-      type,
-      (e) => {
-        e.stopPropagation()
-        // Neither move the editor cursor nor wait for a second tap to focus the widget.
-        if (e.cancelable) e.preventDefault()
-      },
-      { passive: false }
-    )
+  listen('mousedown', (e) => {
+    e.stopPropagation()
+    if (e.cancelable) e.preventDefault()
+  })
+  // Touches still belong to the note's native scrolling until a stationary release activates.
+  for (const type of ['touchstart', 'touchend'])
+    listen(type, (e) => e.stopPropagation(), { passive: true })
+  listen('pointermove', (event) => {
+    const e = event as PointerEvent
+    if (start?.id === e.pointerId && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8)
+      start = null
+  })
   listen('pointercancel', () => {
     start = null
   })

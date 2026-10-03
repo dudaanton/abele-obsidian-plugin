@@ -1,5 +1,55 @@
 import { expect, it, vi } from 'vitest'
 import { bindCanvasTap } from '@/canvas/tap'
+it('allows a vertical scroll gesture to start on an embed button without cancelling the browser touch stream', () => {
+  const button = document.createElement('button'),
+    action = vi.fn(),
+    off = bindCanvasTap(button, action)
+  try {
+    button.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        pointerId: 1,
+        pointerType: 'touch',
+        clientX: 30,
+        clientY: 20,
+      })
+    )
+    const start = new Event('touchstart', { cancelable: true, bubbles: true })
+    button.dispatchEvent(start)
+    expect(start.defaultPrevented).toBe(false)
+    button.dispatchEvent(
+      new PointerEvent('pointermove', {
+        pointerId: 1,
+        pointerType: 'touch',
+        clientX: 30,
+        clientY: 120,
+      })
+    )
+    button.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1, pointerType: 'touch' }))
+    const end = new Event('touchend', { cancelable: true, bubbles: true })
+    button.dispatchEvent(end)
+    expect(end.defaultPrevented).toBe(false)
+    expect(action).not.toHaveBeenCalled()
+  } finally {
+    off()
+  }
+})
+it('does not mistake a scroll that returns to its initial position for a stationary tap', () => {
+  const button = document.createElement('button'),
+    action = vi.fn(),
+    off = bindCanvasTap(button, action)
+  try {
+    const pointer = (type: string, y: number) =>
+      button.dispatchEvent(
+        new PointerEvent(type, { pointerId: 1, pointerType: 'touch', clientX: 30, clientY: y })
+      )
+    pointer('pointerdown', 20)
+    pointer('pointermove', 120)
+    pointer('pointerup', 20)
+    expect(action).not.toHaveBeenCalled()
+  } finally {
+    off()
+  }
+})
 it('opens on the first touch release and ignores its delayed synthetic click', () => {
   const button = document.createElement('button'),
     action = vi.fn(),
