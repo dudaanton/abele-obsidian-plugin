@@ -21,6 +21,7 @@ import {
 } from './urls'
 import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
 import { forgetRepoTrees } from './tree/repoTree'
+import { forgetCodeIndexes } from './search/source'
 import { rememberRepo } from './open/repoList'
 
 export const GITHUB_VIEW_TYPE = 'abele-github'
@@ -36,7 +37,9 @@ export function connectionClient(id: string): GithubClient {
     connectionClients = new ConnectionClients(
       () => githubSettings().connections ?? [],
       (keyId) => (keyId ? (secrets().get(keyId) ?? '') : ''),
-      () => secrets().status.value
+      () => secrets().status.value,
+      undefined,
+      forgetCodeIndexes
     )
     watch(
       [AbeleConfig.getInstance().version, secrets().version, secrets().status],
@@ -130,6 +133,14 @@ function cachedClient(ends: Endpoints, token: string, noTokenReason?: string): G
   const key = `${ends.api}\n${token}\n${noTokenReason ?? ''}`
   let client = clients.get(key)
   if (!client) {
+    // A legacy credential changed on this server: stop old loads as well as forgetting text.
+    for (const [oldKey, oldClient] of clients) {
+      if (oldKey.startsWith(`${ends.api}\n`)) {
+        oldClient.retire()
+        clients.delete(oldKey)
+        forgetCodeIndexes()
+      }
+    }
     client = new GithubClient(ends, token, undefined, noTokenReason)
     clients.set(key, client)
   }
@@ -200,6 +211,7 @@ export function resetGithubClients(): void {
   connectionClients?.reconcile()
   notificationClients.reconcile()
   forgetRepoTrees()
+  forgetCodeIndexes()
 }
 
 interface KeyedView {

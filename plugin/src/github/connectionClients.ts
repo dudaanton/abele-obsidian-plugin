@@ -9,7 +9,8 @@ export class ConnectionClients {
     private readonly connections: () => GithubConnection[],
     private readonly secret: (keyId: string) => string,
     private readonly secretState: () => string,
-    private readonly transport?: Requester
+    private readonly transport?: Requester,
+    private readonly onRetire: () => void = () => {}
   ) {}
 
   reconcile(): void {
@@ -19,6 +20,7 @@ export class ConnectionClients {
       if (!row || entry.signature !== this.signature(row)) {
         entry.client.retire()
         this.clients.delete(id)
+        this.onRetire()
       }
     }
   }
@@ -49,6 +51,7 @@ export class ConnectionClients {
 
   clear(): void {
     for (const entry of this.clients.values()) entry.client.retire()
+    if (this.clients.size) this.onRetire()
     this.clients.clear()
   }
 }

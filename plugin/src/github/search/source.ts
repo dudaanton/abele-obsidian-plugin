@@ -120,6 +120,14 @@ export interface IndexRequest {
 /** Every repository index built this session, shared by the tabs and the agent. */
 export const indexes = new IndexCache()
 const building = new Map<string, Promise<RepoIndex>>()
+let generation = 0
+
+/** Drop private source and invalidate archives still being unpacked after a token change. */
+export function forgetCodeIndexes(): void {
+  generation++
+  indexes.clear()
+  building.clear()
+}
 
 /**
  * The whole repository at a commit, searchable. Built once a session per commit — the archive is
@@ -133,6 +141,7 @@ export async function repoIndex(
   request: IndexRequest
 ): Promise<RepoIndex> {
   client.assertCurrent?.()
+  const startedIn = generation
   const key = `${client.cacheNamespace}:${indexKey(repo.host, repo.owner, repo.repo, sha)}`
   const cached = indexes.get(key)
   if (cached) return cached
@@ -143,17 +152,19 @@ export async function repoIndex(
     building.set(key, pending)
     void pending.then(
       (index) => {
-        building.delete(key)
+        if (building.get(key) === pending) building.delete(key)
+        if (startedIn !== generation) return
         // A guarded client can revoke capability while the archive is being unpacked. The
         // awaiting caller below reports that refusal; this independent callback must not reject.
         let current = false
         try { current = client.isCurrent !== false } catch { return }
         if (current) indexes.set(key, index)
       },
-      () => building.delete(key)
+      () => { if (building.get(key) === pending) building.delete(key) }
     )
   }
   const index = await pending
+  if (startedIn !== generation) throw new Error('GitHub code search was reset')
   if (client.isCurrent === false) client.assertCurrent()
   if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
   return index

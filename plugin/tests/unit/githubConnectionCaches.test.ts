@@ -5,6 +5,8 @@ import { GithubClient } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import { repoTree, forgetRepoTrees } from '@/github/tree/repoTree'
 import { repoIndex, indexes, cachedIndex } from '@/github/search/source'
+import { resetGithubClients } from '@/github/GithubService'
+import { useVault } from '../helpers/testEnv'
 import { loadLatestRelease } from '@/github/repoPage/repoHome'
 import { createLinker } from '@/github/linking'
 import { guardedGithubClient } from '@/github/guardedClient'
@@ -31,6 +33,36 @@ beforeEach(() => {
 })
 
 describe('connection content isolation', () => {
+  it('clears downloaded code when credentials are reset', async () => {
+    useVault([])
+    const client = new GithubClient(endpoints(''), 'invented-one', async (r) =>
+      r.url.includes('/tarball/')
+        ? reply(200, {}, archive)
+        : reply(200, { tree: [{ type: 'blob', path: 'sample.ts', size: 20 }] })
+    )
+    await repoIndex(client, repo, sha, { limitBytes: 1000 })
+    expect(indexes.keys()).toHaveLength(1)
+    resetGithubClients()
+    expect(indexes.keys()).toEqual([])
+    expect(cachedIndex(client, repo, sha)).toBeUndefined()
+  })
+
+  it('does not republish an archive finishing after a credential reset', async () => {
+    useVault([])
+    let finish!: (response: RequestUrlResponse) => void
+    const client = new GithubClient(endpoints(''), 'invented-one', async (r) =>
+      r.url.includes('/tarball/')
+        ? new Promise((resolve) => { finish = resolve })
+        : reply(200, { tree: [{ type: 'blob', path: 'sample.ts', size: 20 }] })
+    )
+    const pending = repoIndex(client, repo, sha, { limitBytes: 1000 })
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    resetGithubClients()
+    finish(reply(200, {}, archive))
+    await expect(pending).rejects.toThrow('GitHub code search was reset')
+    expect(indexes.keys()).toEqual([])
+  })
+
   it('rejects a capability revoked during unpacking without an unhandled cache-write rejection', async () => {
     let allowed=true
     const raw=new GithubClient(endpoints(''),'invented-one',async r=>r.url.includes('/tarball/') ? reply(200,{},archive) : reply(200,{tree:[{type:'blob',path:'sample.ts',size:20}]}))
