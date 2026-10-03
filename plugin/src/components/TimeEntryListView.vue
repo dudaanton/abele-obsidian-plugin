@@ -29,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDuration } from '@/helpers/displayFormat'
 import { escapeHtml } from '@/helpers/escapeHtml'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
@@ -66,11 +67,10 @@ const filtered = computed(() => {
 })
 
 const sorted = computed(() => {
-  return [...filtered.value].sort((a, b) => {
-    const da = a.start ? a.start.valueOf() : 0
-    const db = b.start ? b.start.valueOf() : 0
-    return db - da
-  })
+  return filtered.value
+    .map((entry) => ({ entry, start: entry.start?.valueOf() ?? 0 }))
+    .sort((a, b) => b.start - a.start)
+    .map(({ entry }) => entry)
 })
 
 const pages = useFooterPages('time')
@@ -98,45 +98,25 @@ const showDateBefore = (idx: number): boolean => {
   return entryDate(visible.value[idx]) !== entryDate(visible.value[idx - 1])
 }
 
-const dayDuration = (date: string): string => {
+const durations = computed(() => {
+  const byDay = new Map<string, number>()
   let total = 0
-  for (const e of filtered.value) {
-    if (e.start?.format(DATE_FORMAT) === date) total += e.duration
-  }
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
-
-const totalText = computed(() => {
-  let totalSeconds = 0
   for (const entry of filtered.value) {
-    totalSeconds += entry.duration
+    const day = entryDate(entry)
+    const seconds = entry.duration
+    total += seconds
+    byDay.set(day, (byDay.get(day) || 0) + seconds)
   }
-  const h = Math.floor(totalSeconds / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
+  return { byDay, total }
 })
+
+const dayDuration = (date: string): string => formatDuration(durations.value.byDay.get(date) ?? 0)
+const totalText = computed(() => formatDuration(durations.value.total))
 
 // --- Daily bar chart ---
 
-const formatDurationShort = (seconds: number): string => {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
-
 const dailyChartData = computed(() => {
-  const byDay = new Map<string, number>()
-
-  for (const entry of filtered.value) {
-    if (!entry.start) continue
-    const day = entry.start.format(DATE_FORMAT)
-    byDay.set(day, (byDay.get(day) || 0) + entry.duration)
-  }
+  const { byDay } = durations.value
 
   const result: { date: string; hours: number }[] = []
   let d = periodStart.value.startOf('day')
@@ -190,7 +170,7 @@ function renderChart() {
         confine: true,
         formatter: (params: any) => {
           const p = Array.isArray(params) ? params[0] : params
-          return `${escapeHtml(p.name)}<br/>${formatDurationShort(Math.round(p.value * 3600))}`
+          return `${escapeHtml(p.name)}<br/>${formatDuration(Math.round(p.value * 3600))}`
         },
       },
       grid: { left: 40, right: 12, top: 8, bottom: 24 },

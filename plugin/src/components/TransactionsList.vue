@@ -183,19 +183,29 @@ const isAssetToAsset = (tx: Transaction): boolean => {
   return !!(toPath && asset.has(toPath) && fromPath && asset.has(fromPath))
 }
 
-const dayTotals = (date: string): string[] => {
-  const byCurrency = new Map<string, number>()
+const totalsByDay = computed(() => {
+  const days = new Map<string, Map<string, number>>()
   for (const tx of sorted.value) {
-    if (txDate(tx) !== date) continue
     if (isAssetToAsset(tx)) continue
+    const date = txDate(tx)
+    let byCurrency = days.get(date)
+    if (!byCurrency) days.set(date, (byCurrency = new Map()))
     const cur = tx.currency || '?'
     const sign = getType(tx) === 'income' ? 1 : -1
     byCurrency.set(cur, addMoney(byCurrency.get(cur) || 0, sign * (tx.amount || 0)))
   }
-  return Array.from(byCurrency.entries()).map(
-    ([cur, amount]) => `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
+  return new Map(
+    Array.from(days, ([date, currencies]) => [
+      date,
+      Array.from(
+        currencies,
+        ([cur, amount]) => `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
+      ),
+    ])
   )
-}
+})
+
+const dayTotals = (date: string): string[] => totalsByDay.value.get(date) ?? []
 
 function addTransaction() {
   const al = unref(store.accountsList) as AccountsList | null
