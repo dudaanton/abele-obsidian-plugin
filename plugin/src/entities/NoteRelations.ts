@@ -2,15 +2,17 @@ import { isWikilink, pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpe
 import { getBacklinksByPath } from '@/helpers/vaultUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { EventRef, normalizePath, TAbstractFile, TFile } from 'obsidian'
+import { normalizePath, TFile } from 'obsidian'
 import { Task } from './Task'
 import { Transaction } from './Transaction'
 import { TimeEntry } from './TimeEntry'
 import { Log } from './Log'
 import { Note } from './Note'
-import { markRaw, reactive, shallowRef, toRaw } from 'vue'
+import { markRaw, reactive, shallowRef } from 'vue'
 import { Journal } from './Journal'
 import { acquireVaultNoteIndex } from './vaultNoteIndex'
+import { acquireVaultRelationBatches } from './vaultRelationBatches'
+import type { RelationChange } from './RelationBatchRouter'
 import dayjs from 'dayjs'
 import { DATE_FORMAT } from '@/constants/dates'
 
@@ -52,7 +54,10 @@ export class NoteRelations {
   private noteIndex: ReturnType<typeof acquireVaultNoteIndex> | null = null
   private isActive = false
   private resolved = false
-  private eventRefs: EventRef[] = []
+  private batches: ReturnType<typeof acquireVaultRelationBatches> | null = null
+  private routing: ReturnType<
+    ReturnType<typeof acquireVaultRelationBatches>['router']['subscribe']
+  > | null = null
 
   // to avoid debounced calls after cleanup
   private cleanedUp = false
@@ -414,8 +419,7 @@ export class NoteRelations {
       this.addBacklink(this.filePath, newPath)
       if (this.isWalkedInto(newPath, new Set())) this.findRelations(newPath)
     }
-    // What was filed under it may have belonged only through it.
-    if (wasRelated) this.removeRemainingRelations()
+    // Stale descendants are reconciled once at the end of the resolved batch.
   }
 
   /**
@@ -507,8 +511,6 @@ export class NoteRelations {
     const note = this.removeNote(path)
 
     if (!task && !transaction && !timeEntry && !log && !note) return
-
-    this.removeRemainingRelations()
   }
 
   /**
@@ -534,98 +536,68 @@ export class NoteRelations {
     }
   }
 
-  private relationsCallbacksQueue: Array<() => void> = []
+  private refreshRouting(): void {
+    this.routing?.update(this.filePath, this.journalDate?.format(DATE_FORMAT) ?? null, [
+      this.filePath,
+      ...this.tasks.keys(),
+      ...this.transactions.keys(),
+      ...this.timeEntries.keys(),
+      ...this.logs.keys(),
+      ...this.notes.keys(),
+    ])
+  }
+
+  private applyChanges(changes: RelationChange[]): void {
+    if (this.cleanedUp) return
+    if (!this.resolved) {
+      if (this.tellJournal()) this.removeRemainingRelations()
+      this.findRelations(this.filePath)
+      this.resolved = true
+    }
+    let reconcile = false
+    for (const change of changes) {
+      if (this.cleanedUp) return
+      try {
+        const { path, oldPath } = change
+        if (change.kind === 'delete') {
+          if (path === this.filePath) {
+            this.cleanup()
+            return
+          }
+          if (this.hasPath(path)) {
+            this.unlinkPath(path)
+            reconcile = true
+          }
+        } else if (change.kind === 'rename') {
+          if (oldPath === this.filePath) {
+            this.filePath = path
+            this.retellJournal()
+          } else {
+            reconcile ||= this.hasPath(oldPath)
+            this.relationRenameCallback(oldPath, path)
+          }
+        } else {
+          if (path === this.filePath) this.retellJournal()
+          const wasRelated = this.hasPath(path)
+          if (this.isRelatedPath(path)) {
+            this.addBacklink(this.filePath, path)
+            if (this.isWalkedInto(path, new Set())) this.findRelations(path)
+          } else if (wasRelated) this.unlinkPath(path)
+          reconcile ||= wasRelated
+        }
+      } catch (error) {
+        console.error(`[Abele] NoteRelations: a change for ${this.filePath} failed`, error)
+      }
+    }
+    if (reconcile) this.removeRemainingRelations()
+    this.refreshRouting()
+  }
 
   private startWatching(): void {
     if (this.isActive) return
-
-    const { app } = GlobalStore.getInstance()
-
-    this.eventRefs.push(
-      app.metadataCache.on('resolved', () => {
-        const startedAt = performance.now()
-        const wasResolved = this.resolved
-        const queue = this.relationsCallbacksQueue.splice(0)
-
-        try {
-          for (const callback of queue) {
-            if (this.cleanedUp) return
-            // The queue has already been taken: a change that throws must not take the rest of
-            // the batch with it, or whatever came after it is never judged until a reopen.
-            try {
-              callback()
-            } catch (error) {
-              console.error(`[Abele] NoteRelations: a change for ${this.filePath} failed`, error)
-            }
-          }
-
-          if (this.resolved) return
-          // The first pass is the one that follows the cache reading every note; one open at
-          // startup may only now say which journal it is.
-          if (this.tellJournal()) this.removeRemainingRelations()
-          this.findRelations(this.filePath)
-          this.resolved = true
-        } finally {
-          if (queue.length > 0 || !wasResolved) {
-            console.debug(
-              `[Abele] perf: NoteRelations resolved-queue drain ${this.filePath} (${queue.length} queued)`,
-              performance.now() - startedAt
-            )
-          }
-        }
-      })
-    )
-
-    this.eventRefs.push(
-      app.metadataCache.on('changed', (file: TFile) => {
-        this.relationsCallbacksQueue.push(() => {
-          const path = normalizePath(file.path)
-          if (path === this.filePath) this.retellJournal()
-          const wasRelated = this.hasPath(path)
-
-          if (this.isRelatedPath(path)) {
-            this.addBacklink(this.filePath, path)
-            // Now grouped under something this note walks into: what is filed under it
-            // belongs too, as it would on opening.
-            if (this.isWalkedInto(path, new Set())) this.findRelations(path)
-            // Still here, but it may have stopped being a group of this note, and what was
-            // filed under it has to go with it.
-            if (wasRelated) this.removeRemainingRelations()
-          } else if (wasRelated) {
-            this.unlinkPath(path)
-          }
-        })
-      })
-    )
-
-    this.eventRefs.push(
-      app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-        this.relationsCallbacksQueue.push(() => {
-          if (normalizePath(oldPath) === this.filePath && file instanceof TFile) {
-            // update tracked path
-            this.filePath = file.path
-
-            // A rename can change the day without changing the journal definition.
-            this.retellJournal()
-          } else if (file instanceof TFile) {
-            this.relationRenameCallback(oldPath, file.path)
-          }
-        })
-      })
-    )
-
-    this.eventRefs.push(
-      app.vault.on('delete', (file: TAbstractFile) => {
-        this.relationsCallbacksQueue.push(() => {
-          if (file instanceof TFile && normalizePath(file.path) === this.filePath) {
-            this.cleanup()
-          } else if (file instanceof TFile) {
-            this.removeRemainingRelations()
-          }
-        })
-      })
-    )
-
+    this.batches = acquireVaultRelationBatches(GlobalStore.getInstance().app)
+    this.routing = this.batches.router.subscribe((changes) => this.applyChanges(changes))
+    this.refreshRouting()
     this.isActive = true
   }
 
@@ -655,15 +627,10 @@ export class NoteRelations {
     if (!this.isActive) return
     this.cleanedUp = true
 
-    const { app } = GlobalStore.getInstance()
-
-    this.eventRefs.forEach((ref) => {
-      const rawRef = toRaw(ref)
-      app.vault.offref(rawRef)
-      app.metadataCache.offref(rawRef)
-    })
-    this.eventRefs = []
-
+    this.routing?.stop()
+    this.routing = null
+    this.batches?.release()
+    this.batches = null
     this.removeRelations()
     this.noteIndex?.release()
     this.noteIndex = null
