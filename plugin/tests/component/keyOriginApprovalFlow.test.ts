@@ -183,7 +183,7 @@ describe('trusting the current saved-key origin', () => {
     expect(other.pendingToolCalls.value[0].id).toBe('other')
   })
 
-  it.each(['args', 'key', 'reject'])(
+  it.each(['args', 'key', 'reject', 'replacement'])(
     'does not settle a stale %s while trust is saving',
     async (change) => {
       const saving = deferred()
@@ -193,6 +193,13 @@ describe('trusting the current saved-key origin', () => {
       if (change === 'args')
         session.pendingToolCalls.value[0].arguments.url = 'https://other.example/data'
       if (change === 'key') AbeleConfig.getInstance().ai.secrets[0].keyId = 'replacement-key'
+      if (change === 'replacement')
+        session.pendingToolCalls.value = [
+          {
+            ...session.pendingToolCalls.value[0],
+            arguments: { ...request, body: 'replacement request' },
+          },
+        ]
       if (change === 'reject') await session.rejectToolCall()
       saving.resolve()
       await flushPromises()

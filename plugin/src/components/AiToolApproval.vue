@@ -250,8 +250,9 @@ const allowKeyAddress = async () => {
     )
     if (
       !unmounted && !controller.signal.aborted && session.value === s &&
-      s.pendingToolCalls.value[0]?.id === tc.id && props.message.toolCallId === tc.id &&
-      props.message.toolName === name && JSON.stringify(tc.arguments) === originalArgs &&
+      s.pendingToolCalls.value[0] === tc && tc.name === name &&
+      props.message.toolCallId === tc.id && props.message.toolName === name &&
+      JSON.stringify(tc.arguments) === originalArgs &&
       JSON.stringify(effectiveParams.value) === JSON.stringify(args) &&
       JSON.stringify(keyIds()) === originalKeys && !s.needsApproval(name, args)
     ) await s.approveToolCall(isEditing.value ? args : undefined)
