@@ -78,6 +78,57 @@ describe('canvas viewer controls and lifetime', () => {
       context.mockRestore()
     }
   })
+  it('does not open a hidden file card inside a collapsed group, but opens it when expanded', () => {
+    const { viewer, el } = make()
+    const open = vi.spyOn((viewer as unknown as { ports: { openNode(): void } }).ports, 'openNode')
+    const data = {
+      nodes: [
+        {
+          id: 'frame',
+          type: 'group' as const,
+          label: 'Collapsed sample',
+          collapsed: true,
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 200,
+        },
+        {
+          id: 'note',
+          type: 'file' as const,
+          file: 'sample-note.md',
+          x: 30,
+          y: 40,
+          width: 200,
+          height: 100,
+        },
+      ],
+      edges: [],
+    }
+    const tap = () => {
+      for (const type of ['pointerdown', 'pointerup'])
+        viewer.stage.dispatchEvent(
+          new PointerEvent(type, {
+            pointerId: 1,
+            pointerType: 'touch',
+            clientX: 80,
+            clientY: 80,
+            bubbles: true,
+          })
+        )
+    }
+    try {
+      viewer.load(data)
+      tap()
+      expect(open).not.toHaveBeenCalled()
+      viewer.load({ ...data, nodes: [{ ...data.nodes[0], collapsed: false }, data.nodes[1]] })
+      tap()
+      expect(open).toHaveBeenCalledOnce()
+    } finally {
+      viewer.destroy()
+      el.remove()
+    }
+  })
   it('plays and rewinds with keys and taps; narration stays literal and navigation bounded', () => {
     const { viewer, el } = make()
     viewer.load(graph())

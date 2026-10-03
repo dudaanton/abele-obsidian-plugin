@@ -3,14 +3,7 @@ import { Component, MarkdownRenderer, TFile, type App } from 'obsidian'
 import { CanvasViewer, type ViewerCards } from './Viewer'
 import { canvasRegionAssets, canvasTheme, notePart } from './pictureAdapter'
 import { contentBox } from './core/scene'
-import {
-  bounds,
-  canvasPaintOrder,
-  descendants,
-  overlaps,
-  parentsOf,
-  type CanvasGraph,
-} from './core/model'
+import { bounds, type CanvasGraph } from './core/model'
 import {
   paintCanvas,
   withoutLiveCardAssets,
@@ -20,6 +13,7 @@ import {
 import { visibleRect, type Camera } from '../drawing/camera'
 import { openCanvas } from './opening'
 import { openExternal } from '../helpers/openExternal'
+import { canvasVisibility } from './core/visibility'
 
 interface CardLayer {
   el: HTMLElement
@@ -52,15 +46,11 @@ class LiveCards implements ViewerCards {
     if (!this.layer) this.layer = this.stage.createDiv({ cls: 'abele-canvas-cards' })
     const r = visibleRect(camera, width, height),
       region = { x: r.x, y: r.y, width: r.w, height: r.h }
-    const parents = parentsOf(graph),
-      hidden = new Set(
-        graph.nodes.filter((n) => n.collapsed).flatMap((n) => descendants(n.id, parents))
-      )
     const shown = new Set<string>(),
       live = new Set<string>()
     const ratio = this.stage.ownerDocument.defaultView.devicePixelRatio || 1
-    for (const node of canvasPaintOrder(graph)) {
-      if (node.type === 'group' || hidden.has(node.id) || !overlaps(node, region)) continue
+    for (const node of canvasVisibility(graph, region).visible) {
+      if (node.type === 'group') continue
       shown.add(node.id)
       const file =
         node.type === 'file' && node.file ? this.app.vault.getAbstractFileByPath(node.file) : null

@@ -1,14 +1,12 @@
 /** Canvas 2D graph painter. The host supplies its theme, note text, and local image assets. */
 import { arrowHead } from '../../drawing/items'
 import { stepScene } from './steps'
+import { canvasVisibility } from './visibility'
 import {
   bounds,
   contains,
-  canvasPaintOrder,
-  descendants,
   labelOf,
   overlaps,
-  parentsOf,
   type CanvasGraph,
   type CanvasNode,
   type Rect,
@@ -200,13 +198,7 @@ export function paintCanvas(
       assets.lint === false
         ? []
         : lintCanvas(assets.diagnosticGraph ?? graph, metrics, assets.contents),
-    parents = parentsOf(graph)
-  const hidden = new Set(
-    graph.nodes
-      .filter((n) => n.type === 'group' && n.collapsed)
-      .flatMap((n) => descendants(n.id, parents))
-  )
-  const visible = canvasPaintOrder(graph).filter((n) => !hidden.has(n.id) && overlaps(n, region))
+    { parents, hidden, visible } = canvasVisibility(graph, region)
   ctx.save()
   ctx.beginPath()
   ctx.rect(region.x, region.y, region.width, region.height)

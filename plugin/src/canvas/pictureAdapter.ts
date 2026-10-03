@@ -1,5 +1,6 @@
 import { TFile, type App } from 'obsidian'
 import { stepScene } from './core/steps'
+import { canvasVisibility } from './core/visibility'
 import { rasterScale } from '../drawing/rasterize'
 import { vaultUrl } from '../helpers/vaultUrl'
 import {
@@ -11,14 +12,7 @@ import {
   type ImageAsset,
 } from './core/painter'
 import { defaultMetrics, type TextMetricsPort } from './core/scene'
-import {
-  descendants,
-  overlaps,
-  parentsOf,
-  labelOf,
-  type CanvasGraph,
-  type Rect,
-} from './core/model'
+import { labelOf, type CanvasGraph, type Rect } from './core/model'
 
 export function canvasTheme(doc: Document): CanvasTheme {
   const css = doc.defaultView.getComputedStyle(doc.body)
@@ -179,13 +173,7 @@ export async function canvasRegionAssets(
   region: Rect,
   signal?: AbortSignal
 ) {
-  const parents = parentsOf(graph)
-  const hidden = new Set(
-    graph.nodes
-      .filter((n) => n.type === 'group' && n.collapsed)
-      .flatMap((n) => descendants(n.id, parents))
-  )
-  const nodes = graph.nodes.filter((n) => !hidden.has(n.id) && overlaps(n, region))
+  const nodes = canvasVisibility(graph, region).visible
   return canvasAssets(app, { ...graph, nodes }, path, inScope, doc, signal)
 }
 

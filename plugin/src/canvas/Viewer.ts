@@ -1,14 +1,7 @@
 /** Read-only DOM viewer. All vault, theme, markdown and file-opening behavior comes through ports. */
 import { fitRect, panBy, toWorld, visibleRect, zoomAt, type Camera } from '../drawing/camera'
 import { guardSurface } from '../reader/ink/inkGuard'
-import {
-  canvasPaintOrder,
-  emptyCanvas,
-  overlaps,
-  type CanvasGraph,
-  type CanvasNode,
-  type Rect,
-} from './core/model'
+import { emptyCanvas, overlaps, type CanvasGraph, type CanvasNode, type Rect } from './core/model'
 import {
   paintCanvas,
   pictureRegion,
@@ -17,6 +10,7 @@ import {
   type CanvasTheme,
 } from './core/painter'
 import { stepScene, stepsOf, type CanvasStep } from './core/steps'
+import { canvasVisibility } from './core/visibility'
 
 export interface ViewerCards {
   sync(
@@ -403,8 +397,8 @@ export class CanvasViewer {
     if (Math.hypot(dx, dy) > 8) return
     const rect = this.stage.getBoundingClientRect(),
       [x, y] = toWorld(this.camera, e.clientX - rect.left, e.clientY - rect.top)
-    const node = canvasPaintOrder(this.scene().graph)
-      .reverse()
+    const node = canvasVisibility(this.scene().graph)
+      .visible.reverse()
       .find(
         (n) =>
           n.type !== 'group' && x >= n.x && x <= n.x + n.width && y >= n.y && y <= n.y + n.height
