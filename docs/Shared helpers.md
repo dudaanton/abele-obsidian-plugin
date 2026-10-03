@@ -74,6 +74,26 @@ Obsidian transport would change credential behavior. Domain-specific errors stay
 Guards: `requestContract.test.ts`, `networkLimits.test.ts`, `localProviderTransport.test.ts`,
 and the existing calendar, MCP and GitHub transport/security suites.
 
+## Note-property sources
+
+`plugin/src/properties/noteCache.ts` is pure: `cachedFrontmatter(cache)` returns the original
+host object or `null`, with no coercion; `frontmatterProperties(frontmatter)` makes a shallow
+snapshot excluding only the host's `position` metadata. Nested objects and timestamps remain
+as supplied. Cache absence is not proof that a note has no properties.
+
+`plugin/src/properties/noteReader.ts`: `readNoteProperties(app, file, { source })` requires
+`cache`, `disk`, or `text` with a captured string. It never silently falls back from cache to
+disk. Disk/text use the existing `parseNoteContent` and its reserved `content` body field,
+including YAML/fence semantics. Cache and parsed values are **not** interchangeable. This is
+a source-selection facade for subsequent adoption, not a new parser.
+
+The front-matter dependency, timestamp parsing and property serialization are deliberately
+unchanged. Writes still use each caller's established host/serializer path; do not replace
+whole-note serialization with cache data in a deduplication.
+
+Guards: `notePropertySources.test.ts`, `frontmatterCharacterization.test.ts`, `noteInfo.test.ts`,
+`userTemplatesCharacterization.test.ts`, and existing property characterization tests.
+
 ## Dead-code inventory
 
 Run `node plugin/scripts/dead-code.mjs`. CI also prints the inventory. It follows static,

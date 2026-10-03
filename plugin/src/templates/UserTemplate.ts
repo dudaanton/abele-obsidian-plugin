@@ -1,5 +1,6 @@
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { cachedFrontmatter } from '@/properties/noteCache'
 
 /**
  * Represents properties extracted from a template note's frontmatter
@@ -251,8 +252,7 @@ export class UserTemplate {
    */
   static fromFile(file: TFile): UserTemplate | null {
     const { app } = GlobalStore.getInstance()
-    const cache = app.metadataCache.getFileCache(file)
-    const frontmatter = cache?.frontmatter
+    const frontmatter = cachedFrontmatter(app.metadataCache.getFileCache(file))
 
     if (!frontmatter) return null
     if (frontmatter.type !== 'template') return null

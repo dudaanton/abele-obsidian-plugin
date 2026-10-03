@@ -1,4 +1,5 @@
 import { DATE_FORMAT } from '@/constants/dates'
+import { cachedFrontmatter } from '@/properties/noteCache'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { normalizePath, stringifyYaml, TAbstractFile, TFile, TFolder, Vault } from 'obsidian'
 import fm from 'front-matter'
@@ -151,10 +152,7 @@ export function getFrontmatterFromCache(path: string): Record<string, any> | nul
   const file = getFileByPath(path)
   if (!file) return null
 
-  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter
-  if (!frontmatter) return null
-
-  return frontmatter
+  return cachedFrontmatter(app.metadataCache.getFileCache(file))
 }
 
 export function getNotesFromFolder(folderStr: string): Array<TFile> {

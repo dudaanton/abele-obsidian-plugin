@@ -12,6 +12,7 @@ import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseGalleryHeader } from '@/helpers/galleryUtils'
 import { coverLink, resolveVaultFile } from '@/helpers/resourceUrl'
+import { frontmatterProperties } from '@/properties/noteCache'
 
 export interface NoteInfo {
   path: string
@@ -147,10 +148,7 @@ export async function noteInfo(path: string): Promise<NoteInfo> {
 
   const raw = await app.vault.cachedRead(file)
   const cache = app.metadataCache.getFileCache(file)
-  const { position: _position, ...frontmatter } = (cache?.frontmatter ?? {}) as Record<
-    string,
-    unknown
-  >
+  const frontmatter = frontmatterProperties(cache?.frontmatter)
   const body = stripFrontmatter(raw)
   const text = plainText(body)
   const title =
