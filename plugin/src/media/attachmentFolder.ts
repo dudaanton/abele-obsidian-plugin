@@ -1,4 +1,5 @@
 import type { App } from 'obsidian'
+import { ensureVaultFolder } from '@/helpers/vaultFolders'
 
 /** Resolve Obsidian's attachment setting to a vault-relative folder (empty means vault root). */
 export function resolveAttachmentFolder(setting: string, notePath?: string): string {
@@ -7,6 +8,12 @@ export function resolveAttachmentFolder(setting: string, notePath?: string): str
   const parent = notePath?.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : ''
   const subfolder = setting.slice(2)
   return parent && subfolder ? `${parent}/${subfolder}` : parent || subfolder
+}
+
+/** Filename is already chosen by the caller: no sanitizing, extension or collision suffix. */
+export function attachmentPath(setting: string, filename: string, notePath?: string): string {
+  const folder = resolveAttachmentFolder(setting, notePath)
+  return folder ? `${folder}/${filename}` : filename
 }
 
 /** Without a source note, "same folder" is the vault root; ./sub resolves from that root. */
@@ -26,14 +33,6 @@ export async function ensureAttachmentFolder(
 ): Promise<string> {
   signal?.throwIfAborted()
   const folder = configuredAttachmentFolder(app, notePath)
-  if (!folder) return ''
-  const parts = folder.split('/')
-  for (let i = 1; i <= parts.length; i++) {
-    const path = parts.slice(0, i).join('/')
-    if (!app.vault.getAbstractFileByPath(path)) {
-      signal?.throwIfAborted()
-      await app.vault.createFolder(path)
-    }
-  }
+  await ensureVaultFolder(app.vault, folder, signal)
   return folder
 }

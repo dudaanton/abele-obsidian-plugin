@@ -1,5 +1,6 @@
 import { GlobalStore } from '@/stores/GlobalStore'
-import { toSafeVaultPath } from '@/helpers/pathsHelpers'
+import { getFolderFromPath, toSafeVaultPath } from '@/helpers/pathsHelpers'
+import { ensureVaultFolder } from '@/helpers/vaultFolders'
 import { App, MarkdownView, Notice, TFile, normalizePath } from 'obsidian'
 
 /**
@@ -81,17 +82,7 @@ export abstract class GenericTemplate<T> {
   ): Promise<TFile> {
     const { app } = GlobalStore.getInstance()
 
-    const pathParts = filePath.split('/')
-    pathParts.pop() // remove the file name
-    let currentPath = ''
-
-    for (const part of pathParts) {
-      currentPath = currentPath ? `${currentPath}/${part}` : part
-      const folder = app.vault.getAbstractFileByPath(currentPath)
-      if (!folder) {
-        await app.vault.createFolder(currentPath)
-      }
-    }
+    await ensureVaultFolder(app.vault, getFolderFromPath(filePath))
 
     // Same cleaning as the agent's `create`, for the same reason: a name carrying a `#` or a
     // `^` is written to disk without complaint and can never be linked to afterwards. The new

@@ -4,6 +4,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { UserTemplate } from './UserTemplate'
 import { parseTemplateVariables, applyTemplateVariables, TemplateVariable } from './TemplateParser'
 import { getAvailablePath, getEditorForFile } from '@/helpers/vaultUtils'
+import { getFolderFromPath } from '@/helpers/pathsHelpers'
+import { ensureVaultFolder } from '@/helpers/vaultFolders'
 
 /** Wrap value in quotes if it contains a colon (breaks YAML), but leave wikilinks and arrays as-is */
 function escapeFrontmatterValue(value: string): string {
@@ -366,21 +368,7 @@ export class TemplateService {
 
     console.debug(content)
 
-    // Ensure directory exists
-    const pathParts = filePath.split('/')
-    pathParts.pop() // Remove filename
-
-    if (pathParts.length > 0) {
-      let currentPath = ''
-      for (const part of pathParts) {
-        currentPath = currentPath ? `${currentPath}/${part}` : part
-        const folder = app.vault.getAbstractFileByPath(currentPath)
-        if (!folder) {
-          signal?.throwIfAborted()
-          await app.vault.createFolder(currentPath)
-        }
-      }
-    }
+    await ensureVaultFolder(app.vault, getFolderFromPath(filePath), signal)
 
     signal?.throwIfAborted()
     return await app.vault.create(filePath, content)
