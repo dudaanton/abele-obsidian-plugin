@@ -15,6 +15,49 @@ afterAll(async () => {
 })
 
 describe('map pin popups with global styles', () => {
+  it('wraps a long pin label without clipping it behind the phone close button', async () => {
+    evalRaw(`require('electron').remote.getCurrentWindow().setSize(390,844)`)
+    await reloadApp('app.emulateMobile(true)')
+    const label =
+      'Sample station platform with a very long descriptive label and sampleunbrokenidentifier012345678901234567890123456789'
+    const answer = await evalLong(`(async () => {
+      const root = document.createElement('div')
+      root.className = 'abele-map'
+      Object.assign(root.style, { position: 'fixed', left: '16px', right: '16px', top: '100px', height: '350px', zIndex: '1000' })
+      document.body.appendChild(root)
+      let handle
+      try {
+        handle = await window.__abeleTest.renderMap(root, {
+          points: [{ lat: 48.858, lon: 2.294, label: ${JSON.stringify(label)} }], lines: [],
+          center: { lat: 48.858, lon: 2.294 }, zoom: 14, height: 350, interactive: true,
+        })
+        root.querySelector('.abele-map__pin').click()
+        const deadline = Date.now() + 15000
+        while (!root.querySelector('.maplibregl-popup-content')) {
+          if (Date.now() > deadline) throw Error('popup absent')
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        const popup = root.querySelector('.maplibregl-popup-content')
+        const close = popup.querySelector('button').getBoundingClientRect()
+        const node = [...popup.childNodes].find(n => n.nodeName !== 'BUTTON')
+        const range = document.createRange()
+        range.selectNodeContents(node)
+        const rects = [...range.getClientRects()]
+        const box = popup.getBoundingClientRect()
+        const overlap = rects.some(text => close.left < text.right && close.right > text.left && close.top < text.bottom && close.bottom > text.top)
+        const clipped = rects.some(text => text.left < box.left || text.right > box.right + 1)
+        const image = await require('electron').remote.getCurrentWindow().webContents.capturePage()
+        require('fs').writeFileSync(${JSON.stringify(shots + '/phone-long-label.png')}, image.toPNG())
+        return { overlap, clipped, lines: rects.length, text: node.textContent, overflow: popup.scrollWidth > popup.clientWidth }
+      } finally { handle?.destroy(); root.remove() }
+    })()`)
+    expect(answer).not.toMatch(/^Error:/)
+    const result = JSON.parse(answer)
+    expect(result).toMatchObject({ overlap: false, clipped: false, overflow: false, text: label })
+    expect(result.lines).toBeGreaterThan(1)
+  }, 60000)
+
   it.each([false, true])(
     'opens a readable popup with mobile emulation %s',
     async (mobile) => {

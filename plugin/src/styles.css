@@ -618,6 +618,13 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-bottom-color: var(--background-primary);
 }
 
+.abele-map__place,
+.abele-map__label {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
 .abele-map__place > strong {
   display: block;
   margin-bottom: 2px;

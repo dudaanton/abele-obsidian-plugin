@@ -171,7 +171,12 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
       .addTo(map)
 
     if (point.label) {
-      marker.setPopup(new maplibre.Popup({ offset: 12 }).setText(point.label))
+      // A text node is an anonymous flex item and cannot be allowed to shrink around the
+      // host's close button. Keep the label in an explicit, safely populated wrapper.
+      const label = (el.ownerDocument || document).createElement('div')
+      label.className = 'abele-map__label'
+      label.textContent = point.label
+      marker.setPopup(new maplibre.Popup({ offset: 12 }).setDOMContent(label))
     }
     // MapLibre normally toggles via the map's delegated click. Keep the press away from
     // the base-map lookup, but explicitly preserve that popup action before stopping it.
