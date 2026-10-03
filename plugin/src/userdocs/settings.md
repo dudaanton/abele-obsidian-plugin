@@ -113,6 +113,11 @@ notes where you left them (see [Where you left off](writing#where-you-left-off))
 coordinates property and map style for maps, and keyboard diagnostics, a troubleshooting panel
 for the on-screen keyboard.
 
+**Open canvases in Abele** chooses the default for newly opened `.canvas` tabs. On uses the
+read-only [diagram viewer](drawing#canvas-diagrams) with walkthrough steps; off uses native
+Canvas. An individual viewer tab can always return to native Canvas from its header. This
+preference travels with settings; diagram embeds keep their picture and Open/Play actions.
+
 Service keys now stay with their configured address. If an address changes by sync, import,
 or an agent, the key is held on this device. Run **Abele: Review key destinations** from the
 command palette, or use **AI → General → Key destinations → Review**, to allow each address.

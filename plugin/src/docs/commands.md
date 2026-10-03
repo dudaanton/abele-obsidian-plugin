@@ -110,6 +110,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 - New drawing — creates a drawing and opens it
 - Insert a new drawing — creates a drawing and embeds it at the cursor
+- Open current canvas in diagram viewer — opens the active `.canvas` in the read-only Abele
+  viewer, even when the default-opening setting is off. Steps play with camera framing and
+  narration; the header's native Canvas action returns that leaf to the editor
 - Insert image gallery · Convert images on page to galleries
 - Set cover from first image/video in note
 - Import files to vault · Save remote media to vault

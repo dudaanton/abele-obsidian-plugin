@@ -131,6 +131,51 @@ picture is still saved and the note is left as it is; a message says so. A
 picture that cannot be written in its own kind — GIF, BMP — is saved as a new PNG. Closing the tab
 without saving keeps nothing.
 
+## Canvas diagrams
+
+Structured diagrams stay ordinary `.canvas` files, separate from SVG drawings. Ask an agent to
+build a diagram, lay it out, and define a short walkthrough: an overview, then a few new cards
+per step, with an explanation and a camera focus. It can refine cards and connections by their
+stable names and check the result as pictures and a list of layout warnings. Canvas write tools
+have independent per-agent Off/Ask/On permissions; creating, editing, laying out and defining
+steps default to Ask. Reading and inspecting pictures default to On, within the chat's scope.
+
+**Open current canvas in diagram viewer** opens the active canvas in Abele. Canvases use this
+viewer by default; **Settings → Abele → Other → Open canvases in Abele** chooses the default.
+**Open in Obsidian Canvas** in the viewer's header returns that tab to the native editor and
+keeps it there. A file's context menu offers **Open in Abele** to return to the viewer. The
+viewer is read-only: moving or resizing cards still happens in native Canvas or through the
+agent. Viewing, panning and playing steps never save changes into the diagram.
+
+Use **Play**, then the arrow buttons, Right/Left or Space to move through steps. On a phone,
+swipe horizontally on the diagram or tap an empty area to go forward. **All** or Escape shows
+the complete diagram; **Fit** frames it again. Drag to pan and pinch to zoom; Ctrl or ⌘ with
+the wheel also zooms. Each step reveals more of the diagram, highlights the important parts,
+and puts its explanation below the picture. Longer explanations scroll above the phone's
+navigation. Going backwards hides later cards again. A linked note shows its live content;
+tap it to open the note. A linked sub-diagram opens its own viewer.
+
+## A diagram inside a note
+
+Embed a canvas as usual, or name a one-based step or a card:
+
+```markdown
+![[sample.canvas]]
+![[sample.canvas#step=2]]
+![[sample.canvas#node=alpha]]
+```
+
+Reading view and Live Preview show a static picture with **Open** and **Play** buttons.
+The step's explanation appears below its picture. Open goes to the named view; Play begins
+at the named step (the first step when no step is named). Pictures follow changes to the
+source. Scrolling the surrounding note is still the note's gesture, not canvas panning.
+Without Abele, Obsidian can still open and embed the ordinary canvas, without the walkthrough.
+
+The picture action in the viewer's header exports the current diagram view, or every step,
+as PNG or SVG into the vault's ordinary attachments folder. SVG is a self-contained picture
+with embedded PNG pixels, not editable vector shapes. PDF export and human drawing tools on
+these diagrams are not available yet. SVG drawings retain their existing pen tools and export.
+
 ## Where it is kept
 
 The drawing is saved a moment after you stop, when drawing is turned off and when the tab

@@ -6,6 +6,7 @@ import { contentBox } from './core/scene'
 import { canvasPaintOrder, descendants, overlaps, parentsOf, type CanvasGraph } from './core/model'
 import { visibleRect, type Camera } from '../drawing/camera'
 import { openCanvas } from './opening'
+import { openExternal } from '../helpers/openExternal'
 
 class LiveCards implements ViewerCards {
   private cards = new Map<string, { el: HTMLElement; signature: string; component: Component }>()
@@ -114,7 +115,7 @@ export function hostCanvasViewer(app: App, el: HTMLElement, source: () => string
         if (file instanceof TFile && file.extension === 'canvas') void openCanvas(app, file)
         else void app.workspace.openLinkText(`${node.file}${node.subpath ?? ''}`, source(), 'tab')
       } else if (node.type === 'link' && node.url && /^https?:\/\//i.test(node.url))
-        window.open(node.url, '_blank', 'noopener,noreferrer')
+        openExternal(node.url, '_blank')
     },
   })
   cards.stage = viewer.stage
