@@ -1,5 +1,11 @@
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
-import { EngineError, type FileInfo, type FileSystem, type StateStore } from '@abele/sync-core'
+import {
+  EngineError,
+  sha256,
+  type FileInfo,
+  type FileSystem,
+  type StateStore,
+} from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
 import { folderMutations } from './folderMutations'
@@ -114,6 +120,9 @@ export class ObsidianFileSystem implements FileSystem {
    * what a `stat` compares against before it answers mtime 0 (`yieldsToServer`).
    */
   private readonly yielded = new Map<string, string>()
+  /** Last engine-visible byte/absence observation, not a fresh read inside a replacement.
+   * Digests avoid retaining the vault's binary contents. A later stat never promotes new bytes. */
+  private readonly observedBases = new Map<string, { sha: string } | { absent: true }>()
   private readonly ledger: Pick<StateStore, 'all'> | null
   /** Pulls can finish before Obsidian's file index sees their adapter renames. */
   private readonly awaitingIndex = new Set<string>()
@@ -228,17 +237,31 @@ export class ObsidianFileSystem implements FileSystem {
 
   async read(path: string): Promise<Uint8Array> {
     try {
-      return new Uint8Array(await this.adapter.readBinary(path))
+      const bytes = new Uint8Array(await this.adapter.readBinary(path))
+      this.observedBases.set(caseKey(path), { sha: await sha256(bytes) })
+      return bytes
     } catch (cause) {
       throw new EngineError('io', `cannot read ${path}`, cause)
     }
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
-    await this.beforeEngineMutation?.([path])
+    const key = caseKey(path),
+      expected = this.observedBases.get(key)
     const standing = await this.onlyFileOrNothing(path)
-    const before = standing === null ? null : bytesOf(await this.read(path))
+    const before = standing === null ? null : await this.adapter.readBinary(path)
+    if (
+      expected &&
+      (('absent' in expected && before !== null) ||
+        ('sha' in expected &&
+          (before === null || (await sha256(new Uint8Array(before))) !== expected.sha)))
+    )
+      throw new EngineError('conflict', `${path} changed since the engine byte decision`)
+    // Capture BEFORE the awaited provenance/publication hold. The native final fence must
+    // compare these authorized bytes, not adopt a local save that arrives during that await.
+    await this.beforeEngineMutation?.([path])
     await this.writer.write(path, bytesOf(bytes), mtime, standing !== null, before)
+    this.observedBases.delete(key)
   }
 
   async move(from: string, to: string): Promise<void> {
@@ -312,6 +335,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async stat(path: string): Promise<FileInfo | null> {
     const info = await this.fileAt(path)
+    if (info === null) this.observedBases.set(caseKey(path), { absent: true })
     return info === null ? null : this.told(info, false)
   }
 
@@ -521,7 +545,13 @@ export class ObsidianFileSystem implements FileSystem {
 
   private async rename(from: string, to: string): Promise<void> {
     try {
+      const base = this.observedBases.get(caseKey(from))
       await this.adapter.rename(from, to)
+      if (caseKey(from) !== caseKey(to)) {
+        this.observedBases.set(caseKey(from), { absent: true })
+        if (base) this.observedBases.set(caseKey(to), base)
+        else this.observedBases.delete(caseKey(to))
+      }
     } catch (cause) {
       // A name taken between the look and the rename — by the user, or by Obsidian itself —
       // is the puller's to hold rather than the sync's to fail on. Anything else is a disk
