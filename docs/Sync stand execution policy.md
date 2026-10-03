@@ -29,8 +29,11 @@ exactly. Production feature flags remain false.
 - Full offline suite: **420 files / 4,933 tests passed** with explicit immutable fixtures.
 - Types, development/production builds and production testing-module graph guard pass.
 - Lint: **0 errors / 311 existing warnings**; testing/fixture artifact markers: **0**.
-- The one gate 43 rerun attempt on the new pin stopped before build installation because the
-  leased vault supplied no valid CLI reply. Its lease was released and the app was left untouched.
+- The first gate 43 attempt on the new pin stopped before installation for an unavailable
+  owned-vault reply. A manager-authorized single retry then reached the suite with a healthy
+  CLI: folder lifecycle and scoped native-image/replay/private-collision cases passed, but the
+  owner clipboard case was blocked by another pool lease not draining within the existing
+  allowance. No clipboard mutation or app recovery was performed; originals and lease restored.
 - Native gate 43 on this new pin is therefore **blocked**, not green. Earlier green results on
   another input are preserved as historical evidence and are not transferred to this pin.
 - Collaboration scenario C (task 56) and Books desktop simulation B (task 58) have not started;

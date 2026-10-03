@@ -3,8 +3,10 @@
 The current reviewed input is exactly `ac0df5090f7e754cda76296fbf3c8081d1076115`, built and
 checksum verified from a committed archive. Disposable gates use that same archived server and CLI.
 The completed native results below belong to the previous exact reviewed input
-`3b82b27ef378b33a7edf1bced02332612960c4b2`; the new pin's native rerun is currently blocked by
-an unavailable owned-vault CLI reply, not a passing result.
+`3b82b27ef378b33a7edf1bced02332612960c4b2`. The new pin's first native attempt was blocked by
+an unavailable owned-vault CLI reply. A single authorized retry reached the suite: folder and
+scoped native-image assertions passed, while automatic owner paste remained blocked at the
+shared clipboard lease boundary. This is not a complete native pass on the new pin.
 No sibling live build, SQL sponsor-generation read, generation-one guess or personal-token
 fallback is used. The unchanged stock server still advertises scoped activation as false and
 refuses management with 503; the explicitly authorized disposable assembly exercises its
