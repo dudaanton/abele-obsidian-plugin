@@ -19,10 +19,11 @@ export interface PushReceipt {
   outcomes: {
     index: number
     status: 'created' | 'applied' | 'merged' | 'adopted' | 'conflict' | 'restored' | 'rejected'
-    fileId: string
-    versionId: string
-    sha: string
-    path: string
+    fileId?: string
+    versionId?: string
+    sha?: string | null
+    path?: string
+    code?: string
   }[]
 }
 export interface PublicationAuthority {
@@ -312,9 +313,15 @@ export class PublicationIntents {
             !Number.isSafeInteger(o.index) ||
             o.index < 0 ||
             o.index >= r.ops.length ||
-            !text(o.fileId) ||
-            !text(o.versionId) ||
-            !digest(o.sha)
+            (o.status === 'rejected'
+              ? !text(o.code) && !(text(o.fileId) && text(o.versionId))
+              : !text(o.fileId) ||
+                !text(o.versionId) ||
+                !text(o.path) ||
+                !(
+                  digest(o.sha) ||
+                  (r.ops[o.index].op === 'delete' && o.status === 'applied' && o.sha === null)
+                ))
         )
       )
         throw new Error('Publication receipt cardinality/identity invalid')
@@ -349,7 +356,17 @@ export class PublicationIntents {
                 sha: i.target.sha,
                 path: i.target.path,
               }
-        if (!sponsor || !target || !target.fileId || !target.versionId) {
+        if (
+          !sponsor ||
+          !text(sponsor.fileId) ||
+          !text(sponsor.versionId) ||
+          !digest(sponsor.sha) ||
+          !target ||
+          !text(target.fileId) ||
+          !text(target.versionId) ||
+          !digest(target.sha) ||
+          !text(target.path)
+        ) {
           intent.state = 'held'
           intent.reason = 'create adopted/collided or sponsor changed'
           continue

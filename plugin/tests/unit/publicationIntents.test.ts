@@ -83,6 +83,38 @@ async function setup() {
   return { input, data, meta, port, unit, receipt, make, authority }
 }
 describe('disabled durable publication intent integration', () => {
+  it.each(['delete', 'rejection'])(
+    'processes unrelated %s outcomes without inventing identity or blocking an eligible image',
+    async (kind) => {
+      const s = await setup()
+      s.unit.ops.push({ op: 'delete', file_id: 'sample-old', base_version_id: 'old-v1' })
+      s.receipt.ops = s.unit.ops
+      s.receipt.outcomes.push(
+        kind === 'delete'
+          ? {
+              index: 2,
+              status: 'applied',
+              fileId: 'sample-old',
+              versionId: 'delete-v2',
+              path: 'Other/old.md',
+              sha: null,
+            }
+          : ({ index: 2, status: 'rejected', code: 'forbidden' } as any)
+      )
+      await s.make().prepare(s.unit, [s.input])
+      await s.make().settle(s.receipt)
+      await s.make().retry(s.unit.requestId)
+      expect(s.port.apply).toHaveBeenCalledTimes(1)
+    }
+  )
+  it('an identity-free rejection of the target holds only that candidate', async () => {
+    const s = await setup()
+    await s.make().prepare(s.unit, [s.input])
+    s.receipt.outcomes[0] = { index: 0, status: 'rejected', code: 'conflict' } as any
+    await s.make().settle(s.receipt)
+    await s.make().retry(s.unit.requestId)
+    expect(s.port.apply).not.toHaveBeenCalled()
+  })
   it('default fence performs no persistence or publication', async () => {
     const s = await setup(),
       m = new PublicationIntents(s.meta, s.input.binding, s.port)
