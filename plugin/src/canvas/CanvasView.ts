@@ -113,9 +113,14 @@ export class CanvasView extends FileView {
       viewer = this.viewer
     if (!state || !viewer || !this.bytes) return
     this.pending = null
-    const steps = stepsOf(viewer.graph)
-    const byId =
-      typeof state.stepId === 'string' ? steps.findIndex((s) => s.id === state.stepId) + 1 : 0
+    let byId = 0
+    if (typeof state.stepId === 'string') {
+      try {
+        byId = stepsOf(viewer.graph).findIndex((s) => s.id === state.stepId) + 1
+      } catch (error) {
+        viewer.status.setText(`Walkthrough steps unavailable: ${String(error)}`)
+      }
+    }
     const playback = byId || typeof state.step === 'number' || state.play === true
     if (playback) viewer.go(byId || (typeof state.step === 'number' ? state.step : 1), false)
     // A node subpath frames Open; it must not cancel the explicitly requested walkthrough.
