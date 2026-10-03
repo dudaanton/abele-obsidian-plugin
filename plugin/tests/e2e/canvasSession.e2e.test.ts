@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
+import { screenshot } from './helpers/phone'
 import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
@@ -100,7 +101,8 @@ describe.skipIf(!available)('shared Abele sessions at the live storage boundary'
     expect(result.disk).toMatch(/^Committed/)
     expect(result.undo).toBe(1)
     expect(result.dirty).toBe(false)
-    if (!onPhone())
+    if (onPhone()) screenshot(`${SHOTS}/shared-committed.png`)
+    else
       run(`
       const image = await require('@electron/remote').getCurrentWebContents().capturePage()
       require('fs').writeFileSync(${JSON.stringify(SHOTS + '/shared-committed.png')}, image.toPNG())
