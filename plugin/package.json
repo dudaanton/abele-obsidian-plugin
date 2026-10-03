@@ -94,8 +94,8 @@
     "qrcode-generator": "2.0.4",
     "vue": "3.5.43",
     "zod": "4.6.5",
-    "@abele/sync-core": "file:vendor/sync/abele-sync-core-0.0.0-c3cec3ff2d08.tgz",
-    "@abele/sync-protocol": "file:vendor/sync/abele-sync-protocol-0.0.0-c3cec3ff2d08.tgz"
+    "@abele/sync-core": "file:vendor/sync/abele-sync-core-0.0.0-3b82b27ef378.tgz",
+    "@abele/sync-protocol": "file:vendor/sync/abele-sync-protocol-0.0.0-3b82b27ef378.tgz"
   },
   "overrides": {
     "moment": "2.31.0"

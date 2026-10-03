@@ -6,8 +6,8 @@ describe('reviewed scoped input pin', () => {
     const provenance = JSON.parse(
       readFileSync(new URL('../../vendor/sync/provenance.json', import.meta.url), 'utf8')
     )
-    expect(provenance.commit).toBe('c3cec3ff2d0831d10fa13fc76338c4c78ed40be3')
+    expect(provenance.commit).toBe('3b82b27ef378b33a7edf1bced02332612960c4b2')
     for (const pkg of Object.values(provenance.packages) as any[])
-      expect(pkg.archive).toContain('c3cec3ff2d08')
+      expect(pkg.archive).toContain('3b82b27ef378')
   })
 })

@@ -88,7 +88,7 @@ afterEach(() => {
 
 describe('sync input provenance preflight', () => {
   it('verifies the real committed payload and installed packages', () => {
-    expect(verifySyncInputs().commit).toBe('c3cec3ff2d0831d10fa13fc76338c4c78ed40be3')
+    expect(verifySyncInputs().commit).toBe('3b82b27ef378b33a7edf1bced02332612960c4b2')
   })
   it('refuses provenance that omits one of the pinned inputs', () => {
     const { root } = sample()
