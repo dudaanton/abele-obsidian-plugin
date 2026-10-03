@@ -136,6 +136,54 @@ describe.skipIf(!available)('new native Canvas opening', () => {
     shoot('delayed-native-save')
   }, 120_000)
 
+  it.each([
+    { nodes: [], edges: [] },
+    {
+      nodes: [
+        { id: 'sample', type: 'text', text: 'Sample content', x: 0, y: 0, width: 200, height: 100 },
+      ],
+      edges: [],
+    },
+  ])(
+    'rejects a JSON-string-wrapped graph %# in both native adoption and the viewer',
+    (graph) => {
+      const result = run<{
+        native: string
+        viewer: string
+        status: string
+        unchanged: boolean
+        other: string
+      }>(`
+      const graph = ${JSON.stringify(graph)}, serialized = JSON.stringify(graph), encoded = JSON.stringify(serialized)
+      const path = dir + '/sample-encoded-' + window.__canvasOpeningFiles.length + '.canvas'
+      window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false
+      const file = await app.vault.create(path, serialized); window.__canvasOpeningFiles.push(path)
+      const nativeLeaf = app.workspace.getLeaf('tab')
+      await nativeLeaf.setViewState({ type: 'canvas', state: { file: path }, active: true })
+      await app.vault.modify(file, encoded)
+      window.__abeleTest.AbeleConfig.getInstance().canvasViewer = true
+      app.workspace.trigger('layout-change'); await wait(300)
+      const native = nativeLeaf.view.getViewType()
+      const viewerLeaf = app.workspace.getLeaf('tab')
+      await viewerLeaf.setViewState({ type: 'abele-canvas', state: { file: path }, active: true })
+      const otherPath = dir + '/sample-valid-' + window.__canvasOpeningFiles.length + '.canvas'
+      const otherFile = await app.vault.create(otherPath, '{"nodes":[],"edges":[]}'); window.__canvasOpeningFiles.push(otherPath)
+      const otherLeaf = app.workspace.getLeaf('tab')
+      await otherLeaf.setViewState({ type: 'canvas', state: { file: otherPath }, active: true }); await wait(600)
+      await app.workspace.revealLeaf(viewerLeaf); await wait(100)
+      return { native, viewer: viewerLeaf.view.getViewType(), status: viewerLeaf.view.viewer?.status.textContent ?? '',
+        unchanged: encoded === await app.vault.read(file), other: otherLeaf.view.getViewType() }
+    `)
+      expect(result.native).toBe('canvas')
+      expect(result.viewer).toBe('abele-canvas')
+      expect(result.status).toMatch(/could not be read/i)
+      expect(result.unchanged).toBe(true)
+      expect(result.other).toBe('abele-canvas')
+      shoot('encoded-' + (graph.nodes.length ? 'populated' : 'empty'))
+    },
+    120_000
+  )
+
   it('keeps unsaved native edits and malformed nonempty bytes while adopting another leaf', () => {
     const result = run<{
       pending: string

@@ -27,6 +27,31 @@ it.each(['', '{}'])(
   }
 )
 
+it.each([
+  { nodes: [], edges: [] },
+  {
+    nodes: [
+      { id: 'sample', type: 'text', text: 'Sample content', x: 0, y: 0, width: 200, height: 100 },
+    ],
+    edges: [],
+  },
+])('reports a read error for a JSON-string-wrapped graph %# without loading it', async (graph) => {
+  const view = Object.create(CanvasView.prototype) as CanvasView
+  const load = vi.fn(),
+    setText = vi.fn()
+  view.viewer = { load, status: { setText } } as unknown as CanvasViewer
+  const file = Object.assign(new TFile(), { path: 'sample-invalid.canvas' })
+  const bytes = JSON.stringify(JSON.stringify(graph))
+  ;(view as unknown as { app: unknown; refreshToken: number }).app = {
+    vault: { read: async () => bytes },
+  }
+  ;(view as unknown as { refreshToken: number }).refreshToken = 0
+  await view.onLoadFile(file)
+  expect(load).not.toHaveBeenCalled()
+  expect(setText).toHaveBeenCalledWith(expect.stringMatching(/could not be read/i))
+  expect((view as unknown as { bytes: string | null }).bytes).toBeNull()
+})
+
 it('keeps a readable static view and a steps-specific error when legacy walkthrough data is malformed', async () => {
   const el = document.createElement('div')
   const viewer = new CanvasViewer(el, {

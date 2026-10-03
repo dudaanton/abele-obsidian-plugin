@@ -108,6 +108,28 @@ it.each([
     expect(second.leaf.setViewState).toHaveBeenCalledOnce()
   }
 )
+it.each([{ nodes: [], edges: [] }, JSON.parse(bytes)])(
+  'retains a native leaf with a JSON-string-wrapped graph %# without cancelling its save',
+  async (graph) => {
+    const first = setup(),
+      second = setup()
+    const encoded = JSON.stringify(JSON.stringify(graph))
+    first.view.canvas.getData = () => graph
+    second.view.file.path = 'sample-other.canvas'
+    first.app.vault.read = async (file) => (file === first.view.file ? encoded : bytes)
+    first.app.vault.getAbstractFileByPath = (path) =>
+      path === first.view.file.path ? first.view.file : second.view.file
+    first.app.workspace.getLeavesOfType = () => [first.leaf, second.leaf]
+    await expect(adoptCanvasLeaves(first.app)).rejects.toThrow()
+    expect(first.leaf.setViewState).not.toHaveBeenCalled()
+    expect(first.cancel).not.toHaveBeenCalled()
+    expect(first.save).not.toHaveBeenCalled()
+    expect(first.view.lastSavedData).toBe(bytes)
+    expect(first.view.canvas.getData()).toEqual(graph)
+    expect(await first.app.vault.read(first.view.file)).toBe(encoded)
+    expect(second.leaf.setViewState).toHaveBeenCalledOnce()
+  }
+)
 it('does not overwrite an external file revision when the native view is behind', async () => {
   const { app, leaf, view, save } = setup()
   const external = JSON.parse(bytes)

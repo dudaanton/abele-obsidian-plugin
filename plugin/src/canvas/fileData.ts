@@ -7,5 +7,6 @@ export function parseCanvasFile(bytes: string): CanvasGraph {
   if (data && typeof data === 'object' && !Array.isArray(data) && !Object.keys(data).length)
     return emptyCanvas()
   // Never turn malformed/truncated data or an unrecognized nonempty object into a blank graph.
-  return parseCanvas(data)
+  // Pass the original document: parseCanvas also decodes strings, not just validates them.
+  return parseCanvas(bytes)
 }
