@@ -1,9 +1,95 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { scopedApiServer } from '../helpers/scopedApiServer'
 import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
+import { SyncClient, sha256 } from '@abele/sync-core'
+import { SCOPED_VERSION_HEADER } from '@abele/sync-protocol'
+const currentCommit = 'b5357cff918028e1e58b443ccc22eed0093eb689'
+function sponsoredPaths(vault: string, grant: string, note: string) {
+  const owner = '/v1/vaults/' + vault + '/grants/' + grant + '/assets',
+    scoped = '/v1/scoped/vaults/' + vault + '/grants/' + grant
+  return [
+    { method: 'GET', path: owner },
+    { method: 'GET', path: owner + '/sponsors/' + note + '/proof' },
+    { method: 'POST', path: owner + '/add' },
+    { method: 'POST', path: owner + '/mutate' },
+    { method: 'GET', path: scoped + '/assets' },
+    { method: 'GET', path: scoped + '/assets/sponsors/' + note + '/proof' },
+    { method: 'GET', path: scoped + '/uploads/' + 'a'.repeat(64) + '/proof' },
+    { method: 'POST', path: scoped + '/assets/native' },
+  ]
+}
+async function assertSponsoredDenied(
+  fetcher: typeof fetch,
+  cases: ReturnType<typeof sponsoredPaths>,
+  token: string,
+  status: number
+) {
+  for (const route of cases) {
+    const response = await fetcher('http://127.0.0.1' + route.path, {
+      method: route.method,
+      headers: {
+        authorization: 'Bearer ' + token,
+        ...(route.path.startsWith('/v1/scoped/') ? { [SCOPED_VERSION_HEADER]: '4' } : {}),
+        ...(route.method === 'POST' ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(route.method === 'POST' ? { body: '{}' } : {}),
+    })
+    if (response.status !== status)
+      throw new Error(
+        'Sponsored route availability guard: ' +
+          route.method +
+          ' ' +
+          route.path +
+          ' expected ' +
+          status +
+          ' got ' +
+          response.status
+      )
+  }
+}
+async function realOwnerContext(s: Awaited<ReturnType<typeof scopedApiServer>>) {
+  const owner = await s.account('sample-route-owner@example.com'),
+    { vaultId } = await s.vault(owner.accountToken, 'Sample route isolation'),
+    device = await s.device(owner.accountToken, vaultId),
+    client = new SyncClient({
+      baseUrl: 'http://127.0.0.1',
+      fetch: s.fetch,
+      token: device.deviceToken,
+    }).forVault(vaultId),
+    bytes = new TextEncoder().encode('sample intrinsic note'),
+    sha = await sha256(bytes)
+  await client.putBlob(sha, bytes)
+  const result = await client.commit([
+      { op: 'create', path: 'SharedSample/note.md', sha, size: bytes.length, mtime: 1 },
+    ]),
+    note = result.results[0] as any,
+    response = await s.fetch('http://127.0.0.1/v1/vaults/' + vaultId + '/grants', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + owner.accountToken,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        label: 'Sample scoped grant',
+        prefix: 'SharedSample/',
+        role: 'editor',
+      }),
+    })
+  expect(response.status).toBe(201)
+  const grant = await response.json()
+  await s.prepareFolder(owner.accountToken, vaultId, grant.id)
+  return {
+    owner,
+    vaultId,
+    device,
+    note,
+    grant,
+    cases: sponsoredPaths(vaultId, grant.id, note.file_id),
+  }
+}
 let server: Awaited<ReturnType<typeof scopedApiServer>> | undefined
 afterEach(async () => {
   await server?.close()
@@ -40,10 +126,23 @@ describe('reviewed server sponsored surface availability', () => {
     })
     expect(withoutEarlyFence.status).toBe(404)
     const root = process.env.ABELE_SCOPED_API_FIXTURE!
-    const files = readdirSync(join(root, 'packages/server/src/api/routes'))
-    expect(files.some((f) => /sponsor|extra|publication/i.test(f))).toBe(false)
+    const context = await realOwnerContext(server)
+    await assertSponsoredDenied(server.closedFetch, context.cases, context.device.deviceToken, 503)
+    await assertSponsoredDenied(server.fetch, context.cases, context.device.deviceToken, 404)
     const schema = readFileSync(join(root, 'packages/protocol/src/scopedCommits.ts'), 'utf8')
     expect(schema).not.toContain('native_asset')
     expect(schema).not.toContain('sponsors')
+  })
+  it('the runtime guard detects accidental actual sponsored registration and an absent production fence', async () => {
+    const root = process.env.ABELE_SCOPED_API_FIXTURE!
+    server = await scopedApiServer({ root, commit: currentCommit, assets: true })
+    const context = await realOwnerContext(server)
+    await expect(
+      assertSponsoredDenied(server.fetch, context.cases, context.device.deviceToken, 404)
+    ).rejects.toThrow(/availability guard.*expected 404 got 200/)
+    await expect(
+      assertSponsoredDenied(server.fetch, context.cases, context.device.deviceToken, 503)
+    ).rejects.toThrow(/availability guard.*expected 503 got 200/)
+    await assertSponsoredDenied(server.closedFetch, context.cases, context.device.deviceToken, 503)
   })
 })

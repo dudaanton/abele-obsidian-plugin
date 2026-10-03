@@ -87,7 +87,9 @@ export async function scopedApiServer(options?: {
       const app =
         !closed &&
         (/^\/v1\/vaults\/[^/]+\/grants(?:\/|$)/.test(url.pathname) ||
-          (options?.assets && /^\/v1\/scoped\/vaults\//.test(url.pathname)) ||
+          // Exercise the chosen disposable assembly even when asset routes are NOT opted in;
+          // falling back to the closed app would mask missing-route/accidental-registration checks.
+          /^\/v1\/scoped\/vaults\//.test(url.pathname) ||
           (options?.group &&
             /^\/v1\/(?:invitations\/|scoped\/discovery|scoped\/grants\/)/.test(url.pathname)))
           ? management
