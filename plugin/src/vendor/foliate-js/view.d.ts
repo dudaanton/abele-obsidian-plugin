@@ -59,6 +59,21 @@ export class View extends HTMLElement {
   open(book: FoliateBook): Promise<void>
   close(): void
   init(opts: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>
+  getCFI(index: number, range?: Range): string
+  getProgressOf(index: number, range: Range): { tocItem?: { label?: string } | null }
+  resolveNavigation(target: string | number): {
+    index: number
+    anchor?: (doc: Document) => Range | Element | null
+  } | null
+  search(opts: {
+    query: string
+    draw?: unknown
+    drawOptions?: unknown
+    matcher?: unknown
+  }): AsyncGenerator<unknown>
+  clearSearch(): void
+  addAnnotation(annotation: { value: string; cfi?: string }, remove?: boolean): Promise<unknown>
+  deleteAnnotation(annotation: { value: string; cfi?: string }): Promise<unknown>
   goTo(target: string | number | { fraction: number }): Promise<unknown>
   select(target: string): Promise<void>
   deselect(): void

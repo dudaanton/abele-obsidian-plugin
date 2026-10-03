@@ -34,19 +34,6 @@ import { emptySearch, type BookModel, type SearchGroup } from './model'
 import { bookPlaces } from './places'
 import type { PdfBookExtras, PdfPageDrawn } from './pdfBook'
 
-interface Engine extends FoliateView {
-  getCFI(index: number, range?: Range): string
-  getProgressOf(index: number, range: Range): { tocItem?: { label?: string } | null }
-  search(opts: {
-    query: string
-    draw?: unknown
-    drawOptions?: unknown
-    matcher?: unknown
-  }): AsyncGenerator<unknown>
-  clearSearch(): void
-  resolveNavigation(target: string | number): { index: number } | null
-}
-
 export class BookReading {
   readonly marks: BookMarks
   readonly speech: ReadAloud
@@ -91,7 +78,7 @@ export class BookReading {
   constructor(
     private readonly app: App,
     private readonly file: TFile,
-    private readonly engine: Engine,
+    private readonly engine: FoliateView,
     private readonly model: BookModel,
     private readonly themeEl: HTMLElement,
     private readonly pdf: (PdfBookExtras & object) | null,

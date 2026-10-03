@@ -277,11 +277,7 @@ export class BookMarks {
 
   private resolve(cfi: string): Resolved | null {
     try {
-      return (
-        (
-          this.engine as unknown as { resolveNavigation(t: string): Resolved | null }
-        ).resolveNavigation(cfi) ?? null
-      )
+      return this.engine.resolveNavigation(cfi) ?? null
     } catch {
       return null
     }
@@ -317,11 +313,7 @@ export class BookMarks {
           e
         )
       }
-      await (
-        this.engine as unknown as {
-          addAnnotation(a: { value: string; cfi?: string }): Promise<unknown>
-        }
-      ).addAnnotation(at === h.cfi ? { value: h.cfi } : { value: h.cfi, cfi: at })
+      await this.engine.addAnnotation(at === h.cfi ? { value: h.cfi } : { value: h.cfi, cfi: at })
       if (generation !== this.generation.get(h.cfi) ||
           !this.list.some((x) => x.cfi === h.cfi && x.text === h.text)) return
       this.drawn.add(h.cfi)
@@ -335,18 +327,13 @@ export class BookMarks {
     this.drawn.delete(cfi)
     this.generation.set(cfi, (this.generation.get(cfi) ?? 0) + 1)
     if (!keepRepair) this.publish(cfi)
-    void (this.engine as unknown as { deleteAnnotation(a: { value: string }): Promise<unknown> })
-      .deleteAnnotation({ value: cfi })
+    void this.engine.deleteAnnotation({ value: cfi })
       ?.catch?.(() => {})
   }
 
   private async addLink(cfi: string): Promise<void> {
     try {
-      await (
-        this.engine as unknown as {
-          addAnnotation(a: { value: string; cfi: string }): Promise<unknown>
-        }
-      ).addAnnotation({ value: LINK_KEY + cfi, cfi })
+      await this.engine.addAnnotation({ value: LINK_KEY + cfi, cfi })
       this.linksDrawn.add(cfi)
     } catch (e) {
       console.debug('[Abele] a linked place could not be marked', cfi, e)
@@ -377,9 +364,7 @@ export class BookMarks {
           ?.catch?.(() => {})
       }
     const showing = new Set(
-      (this.engine.renderer as unknown as { getContents(): { index: number }[] })
-        .getContents()
-        .map((c) => c.index)
+      this.engine.renderer.getContents().map((c) => c.index)
     )
     for (const cfi of places)
       if (!before.has(cfi) && showing.has(this.indexOf(cfi))) void this.addLink(cfi)
@@ -496,9 +481,7 @@ export class BookMarks {
     const words = ownWords(doc, place, h.text)
     if (!words || words === place) return { cfi: h.cfi, evaluated: true }
     try {
-      const cfi = (
-        this.engine as unknown as { getCFI(index: number, range: Range): string }
-      ).getCFI(index, words)
+      const cfi = this.engine.getCFI(index, words)
       console.debug('[Abele] a highlight is drawn on its words, away from its place', h.cfi, cfi)
       const back = cfi !== h.cfi ? this.rangeIn(doc, cfi) : null
       const candidate = back && quoteKey(back.toString()) === quoteKey(h.text)
