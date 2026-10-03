@@ -651,16 +651,21 @@ export class NativeOwnerPublication {
           decisions: [],
         })
       }
+      if (inputs.length) {
+        // The reviewed core submits this filtered subset under the original request key,
+        // WITHOUT calling the hook again. Persist its exact body/renumbered handle map now.
+        const sending = unit.operations.filter((o) => !holds.includes(o.index)),
+          ops = sending.map((o) => copy(o.op)),
+          handles = Object.fromEntries(
+            sending.flatMap((o, index) => (o.op.op === 'create' ? [[index, o.handle]] : []))
+          )
+        await this.persisted('unit:' + unit.idempotencyKey, { ops, handles })
+        await this.intents.prepare(
+          { requestId: unit.idempotencyKey, ops, createHandles: handles },
+          inputs
+        )
+      }
       if (holds.length) return { holdIndices: holds }
-      if (!inputs.length) return
-      const handles = Object.fromEntries(
-        unit.operations.filter((o) => o.op.op === 'create').map((o) => [o.index, o.handle])
-      )
-      await this.persisted('unit:' + unit.idempotencyKey, { ops: copy(unit.ops), handles })
-      await this.intents.prepare(
-        { requestId: unit.idempotencyKey, ops: copy(unit.ops), createHandles: handles },
-        inputs
-      )
     },
     onSettled: async (item, bytes, id) => {
       this.check()
