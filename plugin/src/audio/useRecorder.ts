@@ -72,7 +72,7 @@ export function useRecorder(win: Window & typeof window): Recorder {
 
     // Speech sits low in the range, so the bars are scaled up and then capped rather than
     // drawn linearly, where an ordinary voice would be a flat line along the bottom.
-    levels.value = [...levels.value, Math.min(1, rms * 4)]
+    levels.value.push(Math.min(1, rms * 4))
     elapsed.value = accumulated + win.performance.now() - startedAt
   }
 

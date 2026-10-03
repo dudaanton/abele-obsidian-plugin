@@ -192,7 +192,7 @@ async function build(
   const tar = await gunzip(new Uint8Array(archive))
   const t2 = performance.now()
   onStage?.('indexing')
-  const index = RepoIndex.fromTar(tar)
+  const index = await RepoIndex.fromTarAsync(tar)
   console.debug(
     '[Abele] GitHub code index built',
     `${repo.owner}/${repo.repo}@${sha.slice(0, 7)}`,

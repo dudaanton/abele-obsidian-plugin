@@ -86,6 +86,17 @@ beforeEach(() => {
 })
 
 describe('starting', () => {
+  it('appends loudness readings without copying the previous waveform', async () => {
+    const { win, fire } = fakeWindow()
+    const recorder = useRecorder(win)
+    await recorder.start()
+    const levels = recorder.levels.value
+    for (let i = 0; i < 1000; i++) fire()
+    expect(recorder.levels.value).toBe(levels)
+    expect(levels).toHaveLength(1000)
+    recorder.dispose()
+  })
+
   it('is recording, and collecting the loudness for the waveform', async () => {
     const { win, fire } = fakeWindow()
     const recorder = useRecorder(win)

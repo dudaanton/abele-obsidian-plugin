@@ -6,7 +6,7 @@
  * listed by name but not kept, and the whole index is only as long-lived as the session: a few
  * of them are cached, the least recently used dropped first, under a cap on the memory they take.
  */
-import { readTar, stripRoot } from './tar'
+import { readTar, stripRoot, type TarEntry } from './tar'
 import { compileQuery, globMatcher, searchText, type CodeQuery, type LineMatch } from './textSearch'
 
 export interface IndexedFile {
@@ -17,6 +17,7 @@ export interface IndexedFile {
 export interface IndexOptions {
   /** A file larger than this is named but not searched. */
   maxFileBytes?: number
+  yieldWork?: () => Promise<void>
 }
 
 /** A megabyte of source is a generated file or a data dump, not something to read for code. */
@@ -68,21 +69,36 @@ export class RepoIndex {
   static fromTar(tar: Uint8Array, options: IndexOptions = {}): RepoIndex {
     const max = options.maxFileBytes ?? MAX_FILE_BYTES
     const index = new RepoIndex()
+    for (const entry of readTar(tar)) index.readEntry(entry, max)
+    return index
+  }
+
+  /** Same index, yielding between batches so a repository never monopolizes one task. */
+  static async fromTarAsync(tar: Uint8Array, options: IndexOptions = {}): Promise<RepoIndex> {
+    const index = new RepoIndex()
+    const max = options.maxFileBytes ?? MAX_FILE_BYTES
+    const yieldWork = options.yieldWork ?? breathe
+    let entries = 0, bytes = 0
     for (const entry of readTar(tar)) {
-      const path = stripRoot(entry.path)
-      if (!path) continue
-      index.paths.push(path)
-      if (entry.data.length > max) {
-        index.oversized++
-        continue
+      if (entries >= 256 || bytes >= 2 * 1024 * 1024) {
+        await yieldWork()
+        entries = 0
+        bytes = 0
       }
-      if (isBinary(entry.data)) {
-        index.binary++
-        continue
-      }
-      index.add(path, decoder.decode(entry.data))
+      index.readEntry(entry, max)
+      entries++
+      bytes += entry.data.length
     }
     return index
+  }
+
+  private readEntry(entry: TarEntry, max: number): void {
+    const path = stripRoot(entry.path)
+    if (!path) return
+    this.paths.push(path)
+    if (entry.data.length > max) { this.oversized++; return }
+    if (isBinary(entry.data)) { this.binary++; return }
+    this.add(path, decoder.decode(entry.data))
   }
 
   add(path: string, text: string): void {

@@ -87,6 +87,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { hashMediaBytes } from '@/media/contentHash'
 import { TFile, TFolder } from 'obsidian'
 import { request as requestUrl } from '@/helpers/http'
 import ObsidianModal from './obsidian/Modal.vue'
@@ -276,17 +277,6 @@ const scan = async () => {
 
 // ── Downloading ──
 
-/** Hash an ArrayBuffer for content dedup (simple FNV-1a 32-bit) */
-const hashBuffer = (buf: ArrayBuffer): string => {
-  const bytes = new Uint8Array(buf)
-  let h = 0x811c9dc5
-  for (let i = 0; i < bytes.length; i++) {
-    h ^= bytes[i]
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(36)
-}
-
 /** Build content hash index of existing attachment files */
 const attachmentHashIndex = new Map<string, string[]>() // hash → candidate vault paths
 const indexAttachment = (hash: string, path: string) => {
@@ -320,7 +310,7 @@ const buildHashIndex = async (size: number) => {
     if (f.extension === 'md' || f.stat.size !== size) continue
     try {
       const buf = await app.vault.readBinary(f)
-      const h = hashBuffer(buf)
+      const h = await hashMediaBytes(buf)
       indexAttachment(h, f.path)
     } catch {
       // skip unreadable files
@@ -410,7 +400,7 @@ const downloadItem = async (item: MediaItem) => {
 
       // Content equality requires equal length; do not read unrelated attachment bodies.
       await buildHashIndex(response.arrayBuffer.byteLength)
-      const contentHash = hashBuffer(response.arrayBuffer)
+      const contentHash = await hashMediaBytes(response.arrayBuffer)
 
       // 3. Content already exists in attachments?
       const existingByHash = await equalAttachment(contentHash, response.arrayBuffer)

@@ -74,6 +74,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { hashMediaBytes } from '@/media/contentHash'
 import { TFile } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
@@ -120,16 +121,6 @@ const totalDuplicateSize = computed(() => {
   return formatSize(bytes)
 })
 
-const hashBuffer = (buf: ArrayBuffer): string => {
-  const bytes = new Uint8Array(buf)
-  let h = 0x811c9dc5
-  for (let i = 0; i < bytes.length; i++) {
-    h ^= bytes[i]
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(36)
-}
-
 /** Count how many notes reference a given file path */
 const countRefs = (path: string): number => {
   const allLinks = app.metadataCache.resolvedLinks
@@ -159,7 +150,7 @@ const scan = async () => {
     for (const file of allFiles) {
       try {
         const buf = await app.vault.readBinary(file)
-        const h = hashBuffer(buf)
+        const h = await hashMediaBytes(buf)
         if (!hashMap.has(h)) hashMap.set(h, [])
         const buckets = hashMap.get(h)!
         let matching: TFile[] | undefined
