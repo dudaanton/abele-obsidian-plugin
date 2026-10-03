@@ -122,8 +122,10 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
         await trust.provenance.record(entry.path, entry.fileId)
     }
     store.observeEntries((entry) => trust.provenance.record(entry.path, entry.fileId))
+    let ownerPublication: Awaited<ReturnType<NonNullable<typeof deps.ownerPublication>>> | undefined
     const fs = new ObsidianFileSystem(app, {
       beforeEngineMutation: async (paths) => {
+        await ownerPublication?.beforeRemote?.(paths)
         for (const path of paths) await trust.provenance.pending(path)
       },
       ledger: store,
@@ -150,8 +152,25 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
         return outcome
       }
     }
+    if (deps.ownerPublication) {
+      ownerPublication = await deps.ownerPublication({
+        app,
+        state: store,
+        client: vault,
+        connection,
+        token,
+        fetch: transportOf(deps),
+        held: () => store.permitsEngineEffects && trust.store.permitsEngineEffects,
+      })
+      const previous = store.close.bind(store)
+      store.close = () => {
+        ownerPublication?.close()
+        previous()
+      }
+    }
     const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
     const engine = new SyncEngine({
+      ...(ownerPublication?.hooks ?? {}),
       client: vault,
       fs,
       state: store,

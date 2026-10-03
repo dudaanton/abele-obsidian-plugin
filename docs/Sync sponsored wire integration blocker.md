@@ -1,6 +1,20 @@
 # Reviewed sponsored wire integration and intrinsic-sponsor read blocker
 
-Plugin core/protocol now use exact reviewed archive
+## Update: the read contract landed
+
+Core/protocol are now pinned to exact reviewed archive
+`3b82b27ef378b33a7edf1bced02332612960c4b2`. `SponsoredAssetsHttpPort.sponsorProof()` uses
+`GET /v1/vaults/:v/grants/:g/assets/sponsors/:f/proof` for the personal owner and
+`GET /v1/scoped/vaults/:v/grants/:g/assets/sponsors/:f/proof` for the scoped editor. Strict
+response identity, current version, intrinsic membership and admission generation are used by
+the owner-add/native-create paths, without SQL, a generation-one guess, or credential fallback.
+The stock activation fence is unchanged. See [the native owner integration](Sync%20native%20owner%20publication%20integration.md).
+
+The text below records the **historical c3 blocker**, not the current contract.
+
+## Historical archive and evidence
+
+Plugin core/protocol at that checkpoint used exact reviewed archive
 `c3cec3ff2d0831d10fa13fc76338c4c78ed40be3`. The archived server provides the actual sponsored
 add/mutate/read, scoped upload-proof and native-sponsored-create routes. `SponsoredAssetsHttpPort`
 implements those strict DTOs with separate bound personal-device and scoped credentials;

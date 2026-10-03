@@ -265,7 +265,11 @@ export class PublicationIntents {
         }
         const authorities: PublicationAuthority[] = []
         for (const a of input.audiences) {
-          const current = await this.port.inspect(a.grantId)
+          const current = await this.port.inspect(
+            a.grantId,
+            input.target.id ?? undefined,
+            input.current.noteId
+          )
           this.fence()
           if (
             !current.active ||

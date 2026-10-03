@@ -1,4 +1,6 @@
-import { Platform } from 'obsidian'
+import { Platform, type App } from 'obsidian'
+import type { OwnerPushHooks, VaultClient, StateStore } from '@abele/sync-core'
+import type { DeviceConnection } from './connection'
 import { PHONE_POLL_MS, phoneSocket } from './phone'
 import { wsFor } from './transport'
 import { mobileTransport } from './mobileTransport'
@@ -14,6 +16,20 @@ import { desktopTransport } from './desktopTransport'
  * no two tests share a database.
  */
 export interface SyncServiceDeps {
+  /** Trusted host injection for disabled owner publication integration/native fixture. No setting/env override. */
+  ownerPublication?: (context: {
+    app: App
+    state: StateStore
+    client: VaultClient
+    connection: DeviceConnection
+    token: string
+    fetch: typeof fetch
+    held: () => boolean
+  }) => Promise<{
+    hooks: OwnerPushHooks
+    beforeRemote?(paths: string[]): void | Promise<void>
+    close(): void
+  }>
   fetch?: typeof fetch
   WebSocket?: typeof WebSocket
   indexedDB?: IDBFactory
