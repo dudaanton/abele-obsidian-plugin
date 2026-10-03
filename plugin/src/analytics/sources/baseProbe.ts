@@ -79,13 +79,6 @@ export function probeYaml(source: string, viewName: string | undefined, probeTyp
   return stringifyYaml({ ...config, views: [{ ...view, type: probeType }] })
 }
 
-/** The names of a base's views, for the error that says which exist. */
-export function baseViewNames(source: string): string[] {
-  const config = (parseYaml(source) ?? {}) as Record<string, unknown>
-  const views = Array.isArray(config.views) ? (config.views as Record<string, unknown>[]) : []
-  return views.map((v) => String(v?.name ?? '')).filter(Boolean)
-}
-
 /** Runs the query of a view of a `.base` file and returns its rows, as the view would show them. */
 export async function queryBase(
   file: TFile,

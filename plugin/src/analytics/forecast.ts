@@ -15,7 +15,6 @@
 import { tQuantile, Z80, Z95 } from './tdist'
 
 export type ForecastMethod = 'linear' | 'moving-average' | 'seasonal'
-export const FORECAST_METHODS: ForecastMethod[] = ['linear', 'moving-average', 'seasonal']
 
 export interface ForecastPoint {
   /** 1 for the first period after the data. */

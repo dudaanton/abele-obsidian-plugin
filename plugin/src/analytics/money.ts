@@ -52,9 +52,3 @@ export function sumUnits(units: Iterable<number>): number {
   for (const u of units) total = checkSafe(total + u)
   return total
 }
-
-/** Rounds a derived amount (a mean, a slope) to what money is written with, plus two places. */
-export function roundMoney(x: number | null, scale: number): number | null {
-  if (x === null || !Number.isFinite(x)) return null
-  return Number(x.toFixed(Math.min(scale + 2, 12))) + 0
-}

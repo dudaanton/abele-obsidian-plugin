@@ -19,42 +19,6 @@ export const getFileByPathOrName = (pathOrName: string): TFile | null => {
 }
 
 /**
- * Creates a new file in the Obsidian vault
- * @param app Obsidian App instance
- * @param fileName Name of the file to create (including extension)
- * @param content Content of the file
- * @param folderPath Optional folder path to create the file in
- * @returns Promise resolving to the created TFile
- */
-export async function createNewFileInVault(
-  fileName: string,
-  content: string,
-  folderPath?: string
-): Promise<TFile> {
-  const { app } = GlobalStore.getInstance()
-
-  try {
-    // Determine the full path for the file
-    const fullPath = folderPath ? `${folderPath}/${fileName}` : fileName
-
-    // Check if file already exists
-    const existingFile = app.vault.getAbstractFileByPath(fullPath)
-    if (existingFile instanceof TFile) {
-      console.debug(`File ${fullPath} already exists, returning existing file`)
-      return existingFile
-    }
-
-    // Create the file
-    const file = await app.vault.create(fullPath, content)
-    console.debug(`Created new file: ${file.path}`)
-    return file
-  } catch (error) {
-    console.error(`Error creating file ${fileName}:`, error)
-    throw error
-  }
-}
-
-/**
  * Checks if a file exists in the vault
  * @param app Obsidian App instance
  * @param path Path to the file
@@ -78,25 +42,6 @@ export function getFileByPath(path: string): TFile | null {
 
   const file = app.vault.getAbstractFileByPath(path)
   return file instanceof TFile ? file : null
-}
-
-/**
- * Reads the content of a file
- * @param app Obsidian App instance
- * @param file TFile to read
- * @returns Promise resolving to the file content
- */
-export async function readDiskFileContent(file: TFile | string): Promise<string> {
-  const { app } = GlobalStore.getInstance()
-
-  if (typeof file === 'string') {
-    const tfile = getFileByPath(file)
-    if (!tfile) {
-      throw new Error(`File not found: ${file}`)
-    }
-    file = tfile
-  }
-  return await app.vault.read(file)
 }
 
 export const readFileContent = async (file: TFile | string): Promise<string> => {
@@ -143,26 +88,6 @@ export function getEditorForFile(fileOrPath: TFile | string): Editor | null {
 
   return (leaf?.view as MarkdownView)?.editor || null
 }
-
-/**
- * Writes content to a file
- * @param app Obsidian App instance
- * @param file TFile to write to
- * @param content Content to write
- * @returns Promise resolving when the write is complete
- */
-export async function writeFileContent(file: TFile, content: string): Promise<void> {
-  const { app } = GlobalStore.getInstance()
-
-  return await app.vault.modify(file, content)
-}
-
-// // Regular expressions for matching wiki links and markdown links
-// const wikiLinkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g
-// const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
-
-// Combined regex to match either wiki links or markdown links
-export const linkRegex = /!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[([^\]]+)\]\(([^)]+)\)/g
 
 export async function openFile(pathOrName: string): Promise<void> {
   const { app } = GlobalStore.getInstance()

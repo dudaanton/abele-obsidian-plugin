@@ -5,8 +5,7 @@
  * a panel: the editor is the whole pane. What comes back is the words, which the caller drops
  * in at the cursor.
  *
- * Mounted by hand rather than through `VueRenderer`: that one finds its mount point through
- * the main document, and a note can be open in a window of its own.
+ * Mounted directly into the dialog's container: a note can be open in a window of its own.
  */
 import type { App } from 'obsidian'
 import { ShellModal } from '@/modal/ShellModal'

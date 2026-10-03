@@ -143,33 +143,7 @@ export const updateNoteFrontmatter = async (
   }
 }
 
-/**
- * Removes all double newlines (consecutive empty lines) from a file and saves the modified content
- * Special handling for the beginning of the file: if it starts with multiple newlines, replace with a single newline
- * @param file The file to process
- * @returns Promise that resolves when the file is updated
- */
-export const removeDoubleNewlines = async (file: TFile): Promise<void> => {
-  const app = GlobalStore.getInstance().app
-
-  // Get the current content of the file
-  const content = await readFileContent(file)
-
-  // First, handle the special case for the beginning of the file
-  // If the file starts with multiple newlines, replace them with a single newline
-  let updatedContent = content.replace(/^\r\r+/, '\n')
-
-  // Then handle the rest of the file - replace multiple newlines with double newlines
-  // Regular expression to match double newlines (two or more consecutive newlines)
-  const doubleNewlinesRegex = /\r\r+/g
-  updatedContent = updatedContent.replace(doubleNewlinesRegex, '\r\r')
-
-  // Save the updated content back to the file
-  await app.vault.modify(file, updatedContent)
-}
-
 export const getCurrentFile = () => GlobalStore.getInstance().app.workspace.getActiveFile()
-export const getCurrentFilePath = () => getCurrentFile()?.path || ''
 
 export function getFrontmatterFromCache(path: string): Record<string, any> | null {
   const { app } = GlobalStore.getInstance()
