@@ -90,6 +90,7 @@
 
 <script setup lang="ts">
 import { escapeHtml } from '@/helpers/escapeHtml'
+import { formatDuration as formatDurationShort } from '@/helpers/displayFormat'
 import { computed, ref, toRef, unref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -135,13 +136,6 @@ const activeEntries = pausedWhileHidden(
   () => (timeEntryList.value?.activeEntries ?? []) as unknown as TimeEntry[]
 )
 
-const formatDurationShort = (seconds: number): string => {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
-
 const entryDate = (entry: TimeEntry): string => {
   return entry.start?.format(DATE_FORMAT) ?? ''
 }
@@ -151,16 +145,8 @@ const showDateBefore = (idx: number): boolean => {
   return entryDate(visibleEntries.value[idx]) !== entryDate(visibleEntries.value[idx - 1])
 }
 
-const dayDuration = (date: string): string => {
-  let total = 0
-  for (const e of periodEntries.value) {
-    if (e.start?.format(DATE_FORMAT) === date) total += e.duration
-  }
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
+const dayDuration = (date: string): string =>
+  formatDurationShort(durations.value.byDay.get(date) ?? 0)
 
 const stopSingle = async (entry: TimeEntry) => {
   const file = store.app.vault.getAbstractFileByPath(entry.entryPath)
@@ -196,11 +182,10 @@ const periodEntries = pausedWhileHidden(active, () => {
     }
   }
 
-  return entries.sort((a, b) => {
-    const da = a.start ? a.start.valueOf() : 0
-    const db = b.start ? b.start.valueOf() : 0
-    return db - da
-  })
+  return entries
+    .map((entry) => ({ entry, start: entry.start?.valueOf() ?? 0 }))
+    .sort((a, b) => b.start - a.start)
+    .map(({ entry }) => entry)
 })
 
 watch(periodEnd, () => {
@@ -218,17 +203,21 @@ useIntersectionObserver(scrollSentinel, ([entry]) => {
 
 // --- Total time ---
 
-const totalSeconds = pausedWhileHidden(active, () => {
+const durations = pausedWhileHidden(active, () => {
   let total = 0
+  const byDay = new Map<string, number>()
   for (const entry of periodEntries.value) {
-    total += entry.duration
+    const seconds = entry.duration
+    total += seconds
+    const day = entryDate(entry)
+    byDay.set(day, (byDay.get(day) ?? 0) + seconds)
   }
-  return total
+  return { total, byDay }
 })
 
 const totalTimeText = computed(() => {
-  const hours = Math.floor(totalSeconds.value / 3600)
-  const minutes = Math.floor((totalSeconds.value % 3600) / 60)
+  const hours = Math.floor(durations.value.total / 3600)
+  const minutes = Math.floor((durations.value.total % 3600) / 60)
   return `${hours}h ${minutes}m`
 })
 
@@ -242,13 +231,7 @@ const chartTab = ref<ChartTab>('daily')
 
 // Daily bar chart
 const dailyChartData = pausedWhileHidden(active, () => {
-  const byDay = new Map<string, number>()
-
-  for (const entry of periodEntries.value) {
-    if (!entry.start) continue
-    const day = entry.start.format(DATE_FORMAT)
-    byDay.set(day, (byDay.get(day) || 0) + entry.duration)
-  }
+  const { byDay } = durations.value
 
   const result: [string, number][] = []
   const cursor = periodStart.value.startOf('day')

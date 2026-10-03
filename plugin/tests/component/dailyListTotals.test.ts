@@ -3,6 +3,8 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import dayjs from 'dayjs'
 import TransactionsList from '@/components/TransactionsList.vue'
 import TimeEntryListView from '@/components/TimeEntryListView.vue'
+import TimeTrackingSidebar from '@/components/TimeTrackingSidebar.vue'
+import { GlobalStore } from '@/stores/GlobalStore'
 import DateDivider from '@/components/obsidian/DateDivider.vue'
 import { configureAbele, useVault } from '../helpers/testEnv'
 import { installFakeIntersectionObserver } from '../helpers/fakeIntersectionObserver'
@@ -48,6 +50,32 @@ describe('daily totals over the complete filtered list', () => {
     expect(view.findAllComponents(DateDivider)).toHaveLength(20)
     expect(view.findComponent(DateDivider).text()).toContain('-0.10 EUR')
     expect(dates).toBeLessThan(1000)
+  })
+
+  it('also buckets sidebar time headings once without changing the hour display', () => {
+    let starts = 0
+    const entries = new Map(
+      Array.from({ length: 100 }, (_, i) => [
+        `Samples/time-${i}.md`,
+        {
+          id: String(i),
+          duration: 90,
+          entryPath: `Samples/time-${i}.md`,
+          groups: [],
+          entryNotFound: false,
+          get start() {
+            starts++
+            return dayjs()
+              .startOf('month')
+              .add(i % 28, 'day')
+          },
+        },
+      ])
+    )
+    GlobalStore.getInstance().timeEntryList.value = { entries, activeEntries: [] } as never
+    view = mount(TimeTrackingSidebar, { global: { stubs: { TimeEntryItem: true } } })
+    expect(view.find('.abele-time-tracking-sidebar__summary-value').text()).toBe('2h 30m')
+    expect(starts).toBeLessThan(1000)
   })
 
   it('reuses time buckets for headings, total and chart', () => {
