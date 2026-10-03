@@ -76,8 +76,29 @@ export class ScopedPushIntegration {
       throw new Error('Scoped publication unit unreadable; recovery required')
     }
   }
+  private async active(id: string | null) {
+    const key = this.prefix + 'active-unit'
+    await this.meta.setMeta(key, id)
+    if ((await this.meta.getMeta(key)) !== id)
+      throw new Error('Scoped active unit pointer was not persisted')
+  }
+  private async cleanup(id: string, opts: ScopedPushOptions) {
+    this.fence(opts)
+    await this.meta.setMeta(this.prefix + id, null)
+    this.fence(opts)
+    if ((await this.meta.getMeta(this.prefix + id)) !== null)
+      throw new Error('Scoped completed unit cleanup was not persisted')
+    await this.active(null)
+    this.fence(opts)
+  }
   async push(opts: ScopedPushOptions) {
     this.fence(opts)
+    const previous = await this.meta.getMeta(this.prefix + 'active-unit'),
+      current = await opts.state.getJournal()
+    this.fence(opts)
+    if (previous !== null && (!previous || previous.length > 200 || previous === 'active-unit'))
+      throw new Error('Scoped active unit pointer unreadable')
+    if (previous !== null && current?.request_id !== previous) await this.cleanup(previous, opts)
     const checkJournal = async (j: ScopedJournal, initialize: boolean) => {
       this.fence(opts)
       const old = await this.read(j.request_id),
@@ -85,6 +106,8 @@ export class ScopedPushIntegration {
         sourcesSha = await hash(j.sources)
       this.fence(opts)
       if (old) {
+        await this.active(j.request_id)
+        this.fence(opts)
         if (old.bodySha !== bodySha || old.sourcesSha !== sourcesSha)
           throw new Error('Scoped publication request identity changed')
         return old
@@ -97,6 +120,8 @@ export class ScopedPushIntegration {
         sourcesSha,
         settled: [],
       }
+      await this.active(j.request_id)
+      this.fence(opts)
       await this.write(e)
       this.fence(opts)
       return e
@@ -178,11 +203,7 @@ export class ScopedPushIntegration {
     })
     // Core retired the request only after all hooks completed. No unbounded historic unit map.
     if (report.requestId && (await opts.state.getJournal()) === null) {
-      this.fence(opts)
-      await this.meta.setMeta(this.prefix + report.requestId, null)
-      this.fence(opts)
-      if ((await this.meta.getMeta(this.prefix + report.requestId)) !== null)
-        throw new Error('Scoped completed unit cleanup was not persisted')
+      await this.cleanup(report.requestId, opts)
     }
     return report
   }

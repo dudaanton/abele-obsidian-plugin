@@ -110,6 +110,30 @@ describe('reviewed scoped push exact-version hook integration', () => {
     })
     expect(s.observe).toHaveBeenCalledTimes(2)
   })
+  it('recovers completed unit cleanup after core retired its journal and the process stopped', async () => {
+    const s = await setup(),
+      original = s.meta.setMeta.bind(s.meta)
+    let fault = true
+    vi.spyOn(s.meta, 'setMeta').mockImplementation(async (key, value) => {
+      if (fault && value === null && key.startsWith('publication-scoped-unit-v1:')) {
+        fault = false
+        throw new Error('Synthetic death after journal retirement')
+      }
+      return original(key, value)
+    })
+    await expect(s.make().push({ ...f!, ops: s.ops, stillHeld: () => true })).rejects.toThrow(
+      /retirement/
+    )
+    expect(await f!.state.getJournal()).toBeNull()
+    const commits = f!.client.commit.mock.calls.length
+    await s.make().push({ ...f!, stillHeld: () => true })
+    expect(
+      [...(f!.raw as any).meta.entries()].filter(
+        ([key, value]: any) => key.startsWith('publication-scoped-unit-v1:') && value !== null
+      )
+    ).toEqual([])
+    expect(f!.client.commit).toHaveBeenCalledTimes(commits)
+  })
   it('refuses a missing persisted unit on staged replay before a commit', async () => {
     const s = await setup()
     f!.client.commit.mockRejectedValueOnce(new Error('Synthetic network loss'))
