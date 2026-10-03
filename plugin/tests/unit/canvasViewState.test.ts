@@ -67,7 +67,7 @@ it('keeps a readable static view and a steps-specific error when legacy walkthro
   })
   const view = Object.create(CanvasView.prototype) as CanvasView
   view.viewer = viewer
-  ;(view as unknown as { bytes: string }).bytes = 'sample loaded data'
+  ;(view as unknown as { loaded: boolean }).loaded = true
   try {
     await expect(view.setState({ file: 'sample.canvas', play: false }, {})).resolves.toBeUndefined()
     expect(viewer.scene().graph.nodes).toHaveLength(1)
@@ -97,7 +97,7 @@ it('starts the walkthrough for Play on a node embed while Open still frames only
   })
   const view = Object.create(CanvasView.prototype) as CanvasView
   view.viewer = viewer
-  ;(view as unknown as { bytes: string }).bytes = 'sample loaded data'
+  ;(view as unknown as { loaded: boolean }).loaded = true
   const focus = vi.spyOn(viewer, 'focusRegion')
   try {
     await view.setState({ node: 'alpha', play: true }, {})

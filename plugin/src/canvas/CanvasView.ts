@@ -11,16 +11,18 @@ import { cameraFrom } from '../drawing/camera'
 import { hostCanvasViewer } from './adapter'
 import { CANVAS_VIEW_TYPE, nativeCanvas } from './opening'
 import { emptyCanvas } from './core/model'
-import { parseCanvasFile } from './fileData'
+import { ObsidianCanvasStore } from './obsidianStore'
+import type { CanvasDocument, CanvasDocumentLease } from './documentRegistry'
 import { stepsOf } from './core/steps'
 import { canvasPicture } from './pictureAdapter'
 import type { CanvasViewer } from './Viewer'
 
-/** Read-only FileView: external/native/agent writes reload; no save hook ever publishes a preview. */
+/** Read-only surface on a shared session; no save hook ever publishes a transient preview. */
 export class CanvasView extends FileView {
   viewer: CanvasViewer | null = null
   private refreshToken = 0
-  private bytes: string | null = null
+  private loaded = false
+  private documentLease: CanvasDocumentLease | null = null
   private pending: Record<string, unknown> | null = null
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -41,8 +43,8 @@ export class CanvasView extends FileView {
       })
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (file.path === this.file?.path) void this.refresh()
-        else if (
+        if (
+          file.path !== this.file?.path &&
           file instanceof TFile &&
           this.viewer?.graph.nodes.some((n) => n.file === file.path)
         ) {
@@ -74,45 +76,58 @@ export class CanvasView extends FileView {
     this.addAction('image-down', 'Export diagram picture', (e) => this.exportMenu(e))
   }
   async onLoadFile(file: TFile): Promise<void> {
+    this.releaseDocument()
     this.file = file
-    this.bytes = null
-    await this.refresh()
-  }
-  async onUnloadFile(file: TFile): Promise<void> {
-    this.refreshToken++
-    this.bytes = null
-    this.viewer?.load(emptyCanvas(), true)
-    await super.onUnloadFile(file)
-  }
-  async onClose(): Promise<void> {
-    this.refreshToken++
-    this.viewer?.destroy()
-    this.viewer = null
-    await super.onClose()
-  }
-  private async refresh(): Promise<void> {
-    const file = this.file,
-      token = ++this.refreshToken
-    if (!file || !this.viewer) return
+    this.loaded = false
+    const token = ++this.refreshToken
     try {
-      const bytes = await this.app.vault.read(file)
-      if (token !== this.refreshToken || !this.viewer) return
-      if (bytes !== this.bytes) {
-        const graph = parseCanvasFile(bytes),
-          initial = this.bytes === null
-        this.bytes = bytes
-        this.viewer.load(graph, initial)
-      }
-      this.place()
+      const lease = await new ObsidianCanvasStore(this.app).open(file, this, (document) => {
+        if (token === this.refreshToken) this.renderDocument(document)
+      })
+      if (token !== this.refreshToken) lease.release()
+      else this.documentLease = lease
     } catch (error) {
       if (token === this.refreshToken && this.viewer)
         this.viewer.status.setText(`Diagram could not be read: ${String(error)}`)
     }
   }
+  async onUnloadFile(file: TFile): Promise<void> {
+    this.refreshToken++
+    this.releaseDocument()
+    this.loaded = false
+    this.viewer?.load(emptyCanvas(), true)
+    await super.onUnloadFile(file)
+  }
+  async onClose(): Promise<void> {
+    this.refreshToken++
+    this.releaseDocument()
+    this.viewer?.destroy()
+    this.viewer = null
+    await super.onClose()
+  }
+  private releaseDocument(): void {
+    const lease = this.documentLease
+    this.documentLease = null
+    if (lease?.document.session.dirty)
+      new Notice('Unsaved diagram work is retained in its session; reopen to recover it')
+    lease?.release()
+  }
+  private renderDocument(document: CanvasDocument): void {
+    if (!this.viewer || document.file !== this.file) return
+    this.viewer.load(document.session.graph, !this.loaded)
+    this.loaded = true
+    this.place()
+    const state = document.state
+    if (state.error) this.viewer.status.setText(`Diagram could not be read: ${state.error}`)
+    else if (state.conflict)
+      this.viewer.status.setText('Diagram changed outside this session; pending work is retained')
+    else if (state.dirty)
+      this.viewer.status.setText('Diagram has pending session work; it has not been saved')
+  }
   private place(): void {
     const state = this.pending,
       viewer = this.viewer
-    if (!state || !viewer || this.bytes === null) return
+    if (!state || !viewer || !this.loaded) return
     this.pending = null
     let byId = 0
     if (typeof state.stepId === 'string') {
