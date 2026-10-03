@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
-const COMMIT = '9b1136a0554287def69afb79b56eaaffcb09ca00'
+const COMMIT = 'b5357cff918028e1e58b443ccc22eed0093eb689'
 /** Separate server-only archive. Never aliases/pins this archive's unreviewed core push into plugin code. */
 export async function scopedApiServer(options?: {
   root: string

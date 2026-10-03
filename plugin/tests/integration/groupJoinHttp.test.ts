@@ -13,7 +13,7 @@ async function setup() {
   if (!root) throw new Error('Explicit group API archive required')
   s = await scopedApiServer({
     root,
-    commit: '689779f7aa5315954d3a313fc5b17ce1d2178ebe',
+    commit: 'b5357cff918028e1e58b443ccc22eed0093eb689',
     group: true,
   })
   const owner = await s.account('sample-owner@example.com'),

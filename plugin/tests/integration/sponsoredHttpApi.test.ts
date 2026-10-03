@@ -13,7 +13,7 @@ async function setup() {
   if (!root) throw new Error('Explicit reviewed sponsored API archive required')
   s = await scopedApiServer({
     root,
-    commit: 'c3cec3ff2d0831d10fa13fc76338c4c78ed40be3',
+    commit: 'b5357cff918028e1e58b443ccc22eed0093eb689',
     assets: true,
   })
   const { accountToken } = await s.account('sample-assets@example.com'),

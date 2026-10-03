@@ -1,5 +1,5 @@
 {
-  "commit": "ac0df5090f7e754cda76296fbf3c8081d1076115",
+  "commit": "b5357cff918028e1e58b443ccc22eed0093eb689",
   "lockSha256": "63dda462a22f354606984d224262a1f1bae21bd820856955b5da5ca91c782773",
   "node": "v22.23.2",
   "npm": "10.9.8",
@@ -7,9 +7,9 @@
   "sourceMap": false,
   "packages": {
     "@abele/sync-protocol": {
-      "archive": "abele-sync-protocol-0.0.0-ac0df5090f7e.tgz",
-      "sha256": "fc867fd63565649e3024fe0d562b4fda9bad80c51bb27ca55a2cfde428e3221a",
-      "integrity": "sha512-YEB3DTEX4W1zGxObxPUkwwFatAFmkGSzbJwv7MrllJ+pevVk6AYLbCw7CXbW7cbuDMHwZZF5AAq5ONQi10mrcQ==",
+      "archive": "abele-sync-protocol-0.0.0-b5357cff9180.tgz",
+      "sha256": "49582cb7b769901c9b46492bcf89ef331d4149b7428a45580617b3804eb4c799",
+      "integrity": "sha512-qadosa/nB7ZiCSOKCA66NCQWuqNvPGUH7STYXD2+rDNeYKny5LW9zCVMSP2J8uxci0p/KanfSGl5LDOFNlZv/A==",
       "tree": "2a252c982d44f1ac11cc893d7fd152e0af1673a8",
       "files": {
         "dist/capabilities.d.ts": "eb75091b4222db8a851d7a96c547a25fc88dc56b1c5d5c2939b7927e331977b6",
@@ -42,14 +42,14 @@
         "dist/serverUrl.js": "eac8848ce2b989b4180ef6d0cc9c5afc662a9523d61b48b770b5ce8376f91951",
         "dist/sponsoredAssets.d.ts": "e4f6e40c0ebbebcf36b8d05ff8675cc17ac5d9886100472a958e8e8c0c95341b",
         "dist/sponsoredAssets.js": "9b8d8a720c3408d577f578da297fe1de384a2cc48bff8adbed98fdb65178921d",
-        "package.json": "0357470519127d39a7bd78b5f6c78de706a60029b52775839f6ea8c45550ba32"
+        "package.json": "6386e11b763a8730f2795eacc3ec42e0cb1432683fc3f1d6addff26a0c4a5548"
       }
     },
     "@abele/sync-core": {
-      "archive": "abele-sync-core-0.0.0-ac0df5090f7e.tgz",
-      "sha256": "45b9ffb0a8346a7c203c8a4f9a469491788b01dbde873b76f1bbc2dd1f0792e7",
-      "integrity": "sha512-lBxArJOk5Twk9CjI1v+ny8TnsvaAZSnutMh01OinmjHGn2C3DmRa0OjlSDteqlpTREuYQCYw9OxetdZyidBioA==",
-      "tree": "4e59699a0fe73286bd4cbe1b5c7204beeeb09c6a",
+      "archive": "abele-sync-core-0.0.0-b5357cff9180.tgz",
+      "sha256": "aa4e28bbd509b8abd6815c1bb047944030a5f763c01c45db174e57c410f3c36b",
+      "integrity": "sha512-3WFakszUTI9yfzZppTmHwCXmKg06FSBmfEX9sC4RjLrvi7uiQEe93CagpaaptVEkRCoj7VwsWXIZAJA/iV4iIQ==",
+      "tree": "d115692ae637461eed9c5936a209a11ca8766dc8",
       "files": {
         "dist/apply.d.ts": "75ef304d3ff8b41bce6e7a8e6096bc87a9ab6060220a2e845dbc77178740b85d",
         "dist/apply.js": "d5d11884493a9ce1db80556e02d113406e2551d1057024bf0ffffcf0a70df211",
@@ -101,12 +101,12 @@
         "dist/pullWrite.js": "1ab493b989eaae8b3bfab3041506627ab50ce435f2ca76eb3e183db080501c7f",
         "dist/pushBatches.d.ts": "39d301427753e962890f9a84518077803995e69dc651e0679c99ac6b25c83ec4",
         "dist/pushBatches.js": "c7c6bbbec73a111e878c739afe8177e8c8e84db32485eca8e7f91c0a05640baf",
-        "dist/pushDisk.d.ts": "f80c399280b634cc7b7e76d2ef7f70263f347d09ce75bfdb195a22879c3bc09d",
-        "dist/pushDisk.js": "8fd1228b58dfeb04906172d4ac266d20e1f4200f28ffbae904bd2af8333c313d",
+        "dist/pushDisk.d.ts": "87c7ed8eeac249355655301ee1b0420a031b46139db04c41ac9f2c7ef543166f",
+        "dist/pushDisk.js": "451ea190384ab6e69d97113b26c6d0eb5b80af8f448582af758d3b86a19e34e6",
         "dist/pusher.d.ts": "8807b6cc6a0cee08ea1015c61f752a60835b8043b86235f3c076d718e8deaa64",
         "dist/pusher.js": "2fc4d59db76f7a669f251da0ec58bf0238b990ac08ca70c33316a60b38df683f",
         "dist/pushRecord.d.ts": "d88b209b9bcdc8f63dda1219e0d27d3ca549774e0a09f2064e5c9b6a484a36a2",
-        "dist/pushRecord.js": "6edbaa4a20994738a3a35c29459730002f7bab04a621028eda78b82ce2ba0c1b",
+        "dist/pushRecord.js": "6ab1b57071796be90c85114ac2728af1b55c7d742e8535983e9aed719510fc79",
         "dist/pushSources.d.ts": "89d9405900e4ba0e13eb58763c0de3a88a006bcb8ec4851058315c5a06e5f0a2",
         "dist/pushSources.js": "4a29ab4ec7fc7c8a7e64a8135f7956a7ba0448c45b5ff0fb7fcf522470ab8220",
         "dist/pushStage.d.ts": "ddbf9f30dda9fcd85f2459ff8a6f564917bfcd3e3a7ad77aa770845ca54bbf04",
@@ -124,9 +124,9 @@
         "dist/scopedIdentity.d.ts": "149ffad0ae3c13dec4afa78d365d39d6415e65d225ce4397a44c54ff14895687",
         "dist/scopedIdentity.js": "1bd2461a73115acc76cc8e9120fb623703d5e733977b0a6ad1807bb13fd8ef66",
         "dist/scopedPull.d.ts": "d932bfee5a68fd7efd7e2586f0f9962d8b8d74703b9ed33a9f22bbc3053af2eb",
-        "dist/scopedPull.js": "340bfcb02ae8c55d1eaf7bbb4a6dbb38bbec244469dc9aa229dca34814f0aafd",
+        "dist/scopedPull.js": "15c461666c1d3dd1e0db9c8e485f9ad0995fc92019a101aa54d6824beb2627ee",
         "dist/scopedPush.d.ts": "6fa490ae64f5f9dabdd361d2a373e98aac6576e165ab0f456acf2ddd08da48ef",
-        "dist/scopedPush.js": "d348aa89360c9337485168105dd2f93368f3fce732ac4630f7ce61bcbdd76e38",
+        "dist/scopedPush.js": "9e9c7888d8da1f7c96d8e9b1401ace2b8829af4899c948fd085364622e651983",
         "dist/scopedSafety.d.ts": "05807cc5feffc2bee32cc6e9e0cb964825ca0feb4df05f29f75b4283880680cd",
         "dist/scopedSafety.js": "88ed85831cc6ab001294005580ec4bda82c7d491e9432df67d6110a28cd30821",
         "dist/scopedScan.d.ts": "445c7e82105c062271f8182f7efc2a018f75c06875892c49964b5c543ba5f2b7",
@@ -143,7 +143,7 @@
         "dist/wake.js": "e68b5b45c2c0f950a7f93e9c61760f7b2be7ca67f5ea0f6ffac30b43767c9423",
         "dist/watchReports.d.ts": "da31039a76e466f7f08677d2b9c584734ce6addd6a66b03ef93cfebc8ba69d48",
         "dist/watchReports.js": "bb575feac69ffb45956fb06b390ece752b327b2cae9d65d62299e1a4b8f511ec",
-        "package.json": "f0d36f0351040f5b29a1be3a0cb86b88c9119b19b3ad6a9a4963ccc6dcfe2519"
+        "package.json": "d5f9eee1d70b9b3438cf416fc9299e32641ed0291023cdabd78a9268d73e9984"
       }
     }
   }
