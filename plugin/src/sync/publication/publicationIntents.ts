@@ -53,7 +53,11 @@ export interface PublicationIntentPort {
   attest(input: PublicationInput): Promise<boolean>
   /** Must distinguish genuinely created identity; ordinary applied does NOT certify novelty. */
   verifyReceipt(receipt: PushReceipt): Promise<boolean>
-  inspect(grantId: string): Promise<PublicationAuthority>
+  inspect(
+    grantId: string,
+    targetFileId?: string,
+    sponsorFileId?: string
+  ): Promise<PublicationAuthority>
   /** Authorized exact stored receipt lookup, never derive success from current membership. */
   lookup(delta: PublicationDelta): Promise<{ status: 'applied' } | null>
   apply(
@@ -67,7 +71,7 @@ interface Intent {
   authorities: PublicationAuthority[]
   state: 'prepared' | 'settled' | 'held' | 'published'
   reason?: string
-  deltas?: { value: PublicationDelta; done: boolean }[]
+  deltas?: { value: PublicationDelta; done: boolean; attempted?: boolean }[]
 }
 interface Unit {
   unit: PushUnit
@@ -414,7 +418,11 @@ export class PublicationIntents {
             await this.write(l)
             continue
           }
-          const a = await this.port.inspect(value.grantId)
+          const a = await this.port.inspect(
+            value.grantId,
+            value.target.fileId,
+            value.sponsor.fileId
+          )
           this.fence()
           if (
             !a.active ||
@@ -432,8 +440,15 @@ export class PublicationIntents {
             await this.write(l)
             break
           }
-          // The exact persisted CAS delta/id is sent even if revision advanced: a lost successful
-          // reply can return its stored receipt. A real CAS conflict is a hold, never list replacement.
+          // Before the FIRST send only, reconcile the current grant CAS after validating exact
+          // target/sponsor/generation authority. Earlier deltas (or unrelated list edits) are not
+          // whole-list replacement. Once attempted, the id/body stays immutable for lost replies.
+          if (!d.attempted) {
+            if (!Number.isSafeInteger(a.revision) || a.revision < value.expectedRevision)
+              throw new Error('Publication CAS revision invalid')
+            value.expectedRevision = a.revision
+            d.attempted = true
+          }
           await this.write(l)
           this.fence()
           const result = await this.port.apply(copy(value))

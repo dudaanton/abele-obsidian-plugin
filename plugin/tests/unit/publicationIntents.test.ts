@@ -115,6 +115,55 @@ describe('disabled durable publication intent integration', () => {
     await s.make().retry(s.unit.requestId)
     expect(s.port.apply).not.toHaveBeenCalled()
   })
+  it('publishes two exact targets into one grant without conflicting with its own first CAS', async () => {
+    const s = await setup(),
+      second = structuredClone(s.input)
+    second.target.path = 'Assets/second.png'
+    second.target.sha = 'b'.repeat(64)
+    second.target.create!.handle = 'sample-second-create'
+    second.current.facts[0].resolvedPath = second.target.path
+    second.current.facts[0].spelling = second.target.path
+    second.current.facts[0].provenance!.linkId = 'sample-second-link'
+    s.unit.ops.push({
+      op: 'create',
+      path: second.target.path,
+      sha: second.target.sha,
+      size: 1,
+      mtime: 1,
+    })
+    s.unit.createHandles[2] = second.target.create!.handle
+    s.receipt.ops = s.unit.ops
+    s.receipt.outcomes.push({
+      index: 2,
+      status: 'created',
+      fileId: 'sample-second-asset',
+      versionId: 'second-v1',
+      path: second.target.path,
+      sha: second.target.sha,
+    })
+    let revision = 1
+    s.port.inspect.mockImplementation(async (_grant, file) => ({
+      ...s.authority,
+      revision,
+      ...(file === 'sample-second-asset'
+        ? { targetFileId: file, targetVersionId: 'second-v1' }
+        : {}),
+    }))
+    s.port.apply.mockImplementation(async (delta) => {
+      if (delta.expectedRevision !== revision) return { status: 'cas-conflict' } as any
+      revision++
+      return { status: 'applied' }
+    })
+    await s.make().prepare(s.unit, [s.input, second])
+    await s.make().settle(s.receipt)
+    await s.make().retry(s.unit.requestId)
+    expect(s.port.apply.mock.calls.map(([d]) => d.expectedRevision)).toEqual([1, 2])
+    expect(
+      JSON.parse([...s.data.values()][0]).ledger.units[0].intents.every(
+        (i: any) => i.state === 'published'
+      )
+    ).toBe(true)
+  })
   it('default fence performs no persistence or publication', async () => {
     const s = await setup(),
       m = new PublicationIntents(s.meta, s.input.binding, s.port)
