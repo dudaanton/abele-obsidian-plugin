@@ -50,6 +50,8 @@ export interface AbeleSettings {
   lifeExpectancy?: number
   /** Frontmatter property a task's labels are read from. */
   taskLabelProperty?: string
+  /** Frontmatter property used for task priority, independent of widget property lists. */
+  taskPriorityProperty?: string
   /** A colour per label value. A label with no entry here is grey. */
   taskLabelColors?: LabelColor[]
   journals?: JournalDTO[]
@@ -291,6 +293,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   birthDate: '',
   lifeExpectancy: DEFAULT_LIFE_YEARS,
   taskLabelProperty: DEFAULT_LABEL_PROPERTY,
+  taskPriorityProperty: 'priority',
   taskLabelColors: [],
   journals: [],
   busyDayThreshold: 3,
@@ -349,6 +352,7 @@ export class AbeleConfig {
   public birthDate: string
   public lifeExpectancy: number
   public taskLabelProperty: string
+  public taskPriorityProperty: string
   public taskLabelColors: LabelColor[]
   public busyDayThreshold: number
   public excludedPathsForDefaultTemplate: string[]
@@ -623,6 +627,10 @@ export class AbeleConfig {
     this.lifeExpectancy = lifeYears(settings?.lifeExpectancy, DEFAULT_LIFE_YEARS)
     this.taskLabelProperty =
       settings?.taskLabelProperty?.trim() || DEFAULT_SETTINGS.taskLabelProperty
+    this.taskPriorityProperty =
+      typeof settings?.taskPriorityProperty === 'string'
+        ? settings.taskPriorityProperty.trim() || DEFAULT_SETTINGS.taskPriorityProperty
+        : DEFAULT_SETTINGS.taskPriorityProperty
     // Cleaned on the way in: the file can be edited by hand, and a colour the kit has no class
     // for would render as nothing. Grey is the absence of a colour, so it is not stored.
     this.taskLabelColors = (settings?.taskLabelColors ?? [])
@@ -803,6 +811,7 @@ export class AbeleConfig {
       birthDate: this.birthDate,
       lifeExpectancy: this.lifeExpectancy,
       taskLabelProperty: this.taskLabelProperty,
+      taskPriorityProperty: this.taskPriorityProperty,
       taskLabelColors: this.taskLabelColors.map((c) => ({ ...c })),
       journals: this.journals.map((j) => j.toDTO()),
       busyDayThreshold: this.busyDayThreshold,

@@ -310,6 +310,7 @@ export function createReadTasksTool(): AgentTool {
       }
 
       const labelProperty = AbeleConfig.getInstance().taskLabelProperty || DEFAULT_LABEL_PROPERTY
+      const priorityProperty = AbeleConfig.getInstance().taskPriorityProperty || PRIORITY_PROPERTY
 
       let rows: TaskRow[]
 
@@ -341,7 +342,7 @@ export function createReadTasksTool(): AgentTool {
             due: fm.due || '',
             completed: fm.completed || '',
             recurrence: fm.recurrence || '',
-            priority: parsePriority(fm[PRIORITY_PROPERTY]) || '',
+            priority: parsePriority(fm[priorityProperty]) || '',
             labels: parseLabels(fm[labelProperty]),
           })
         }

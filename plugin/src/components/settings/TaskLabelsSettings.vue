@@ -15,6 +15,17 @@
         @update:model-value="propertyChanged"
       />
     </Setting>
+    <Setting
+      class="abele-task-labels__priority-property"
+      name="Priority property"
+      desc='The task property priority is read from and written to (default: "priority"). Does not change which properties have widgets.'
+    >
+      <Input
+        :model-value="priorityProperty"
+        placeholder="priority"
+        @update:model-value="priorityPropertyChanged"
+      />
+    </Setting>
     <Setting v-for="row in rows" :key="row.key" :name="row.label">
       <Badge :text="row.label" :color="row.color" />
       <Dropdown
@@ -51,6 +62,12 @@ import { DEFAULT_LABEL_PROPERTY, labelColor, labelKey } from '@/helpers/taskMeta
 const config = AbeleConfig.getInstance()
 
 const property = ref(config.taskLabelProperty)
+const priorityProperty = ref(config.taskPriorityProperty)
+const priorityPropertyChanged = (value: string) => {
+  priorityProperty.value = value
+  config.taskPriorityProperty = value.trim() || 'priority'
+  save()
+}
 /** Typed in on this screen and not yet on any task or given a colour. */
 const added = ref<string[]>([])
 const newLabel = ref('')
@@ -96,9 +113,7 @@ const colorChanged = (label: string, color: string) => {
   const rest = config.taskLabelColors.filter((entry) => labelKey(entry.value) !== key)
   // Grey is no colour at all, so choosing it drops the entry rather than storing it.
   config.taskLabelColors =
-    isKitColor(color) && color !== 'grey'
-      ? [...rest, { value: label, color }]
-      : rest
+    isKitColor(color) && color !== 'grey' ? [...rest, { value: label, color }] : rest
   changed.value++
   save()
 }

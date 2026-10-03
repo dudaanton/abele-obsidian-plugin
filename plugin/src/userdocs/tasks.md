@@ -75,7 +75,8 @@ and `every 2 months on 15` skips the intervening month after the current month's
 
 ## Priority and labels
 
-`priority` is `low`, `medium` or `high`. It puts a task higher in the list of tasks without a
+`priority` is `low`, `medium` or `high`. The task settings can name another priority property;
+its default remains `priority`, and changing it does not rewrite existing notes. It puts a task higher in the list of tasks without a
 date. Dated tasks stay in date order.
 
 `labels` holds any words you like, such as `labels: [work, errands]`. Every task list can be

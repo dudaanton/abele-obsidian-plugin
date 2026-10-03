@@ -255,6 +255,7 @@ export const SECTIONS: Section[] = [
     'lifeExpectancy',
     'busyDayThreshold',
     'taskLabelProperty',
+    'taskPriorityProperty',
     'taskLabelColors',
   ]),
   rootBlock(

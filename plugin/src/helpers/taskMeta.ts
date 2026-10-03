@@ -13,7 +13,7 @@ import { isKitColor, type KitColor } from '@/constants/colors'
 export const TASK_PRIORITIES = ['low', 'medium', 'high'] as const
 export type TaskPriority = (typeof TASK_PRIORITIES)[number]
 
-/** The frontmatter property priority is read from. Fixed, unlike the label property. */
+/** Default task-priority property; the dedicated setting may name another. */
 export const PRIORITY_PROPERTY = 'priority'
 
 /** The label property used until someone picks another. */

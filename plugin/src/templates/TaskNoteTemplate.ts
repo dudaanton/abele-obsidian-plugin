@@ -16,6 +16,7 @@ export interface TaskNoteContentParams {
   date?: dayjs.Dayjs | null
   dateTime?: dayjs.Dayjs | null
   recurrence?: string | null
+  priority?: import('@/helpers/taskMeta').TaskPriority | null
   content?: string
   oldProps?: Record<string, any>
 }
@@ -69,10 +70,13 @@ export class TaskNoteTemplate extends GenericTemplate<TaskNoteParams> {
       due: { fmKey: 'due', format: (v: Dayjs) => v.format(DATE_FORMAT) },
       dueTime: { fmKey: 'dueTime', format: (v: Dayjs) => v.format('HH:mm') },
       recurrence: { fmKey: 'recurrence' },
+      priority: { fmKey: AbeleConfig.getInstance().taskPriorityProperty || 'priority' },
       createdAt: { fmKey: 'created', format: (v: Dayjs) => v.format(DATE_FORMAT) },
     }
 
     for (const paramKey of Object.keys(propMap)) {
+      // A loaded Task exposes a parsed getter; implicit rewrites keep the original spelling.
+      if (paramKey === 'priority' && !Object.hasOwn(params, 'priority')) continue
       const value = params[paramKey as PropKey]
       const { fmKey, format } = propMap[paramKey as PropKey]
 

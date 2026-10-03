@@ -60,7 +60,17 @@ export class Task {
   public due: dayjs.Dayjs | null = null
   public dueTime: dayjs.Dayjs | null = null
   public recurrence: string | null = null
-  public priority: TaskPriority | null = null
+  get priority(): TaskPriority | null {
+    const config = AbeleConfig.getInstance()
+    void config.version.value
+    return parsePriority(this.oldProps?.[config.taskPriorityProperty || PRIORITY_PROPERTY])
+  }
+
+  set priority(value: TaskPriority | null) {
+    const key = AbeleConfig.getInstance().taskPriorityProperty || PRIORITY_PROPERTY
+    if (value === null) delete this.oldProps[key]
+    else this.oldProps[key] = value
+  }
   public content: string
 
   public oldProps: Record<string, any> = {}
@@ -159,7 +169,6 @@ export class Task {
       this.due = parseDateOrNull(frontmatter.due)
       this.dueTime = parseDateTimeOrNull(frontmatter.due, frontmatter.dueTime)
       this.due = applyTimeToDate(this.due, this.dueTime)
-      this.priority = parsePriority(frontmatter[PRIORITY_PROPERTY])
 
       this.oldProps = { ...frontmatter, content: undefined }
     } else {

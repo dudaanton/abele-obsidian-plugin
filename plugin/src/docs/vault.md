@@ -206,7 +206,7 @@ The person gets the same links from **Copy link to lines** on the editor's menu.
 | `completed` | Date it was finished. Its presence is what "done" means |
 | `recurrence` | Repeat rule, when it repeats |
 | `groups` | What the task belongs to — the project, the person, the note it came out of |
-| `priority` | `low`, `medium` or `high`. Anything else, or nothing, is no priority |
+| `priority` | `low`, `medium` or `high`. Anything else, or nothing, is no priority. The property's name is selected by `taskPriorityProperty` (default `priority`); read that setting before writing. `priorityProperties` only controls property widgets |
 | `labels` | Labels, one value or a list — `labels: [work, errands]`. The property's name is a setting (`taskLabelProperty`); read it before writing labels, it may not be `labels` |
 
 Priority orders the task list of tasks without a date, highest first; dated tasks stay in date
