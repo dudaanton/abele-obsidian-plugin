@@ -4,7 +4,12 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { initializeDestinations } from '@/secrets/destinations'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
-import { needsSecretApproval, prepareSecretRequest } from '@/ai/tools/secretUtils'
+import {
+  allowSecretOrigin,
+  needsSecretApproval,
+  prepareSecretRequest,
+} from '@/ai/tools/secretUtils'
+import { deferred } from '../helpers/deferred'
 
 const request = {
   url: 'https://api.sample.example/first',
@@ -23,6 +28,38 @@ beforeEach(() => {
 afterEach(() => document.body.replaceChildren())
 
 describe('remembering a saved-key address from the request dialog', () => {
+  it('does not report concurrent trust as saved after another save rolls back the same grant', async () => {
+    const firstSave = deferred()
+    vi.mocked(AbeleConfig.getInstance().saveSettings)
+      .mockReturnValueOnce(firstSave.promise)
+      .mockResolvedValue(undefined)
+    const first = allowSecretOrigin('sample', request.url)
+    const second = allowSecretOrigin('sample', request.url)
+    const settled = Promise.allSettled([first, second])
+    firstSave.reject(new Error('Synthetic save failure'))
+    const results = await settled
+    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(1)
+    expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected'])
+    // Each successful trust action must leave a usable grant; a failed shared save can
+    // instead reject both actions, so neither chat executes under a nonexistent grant.
+    if (results.some((result) => result.status === 'fulfilled')) {
+      expect(needsSecretApproval('fetch', request)).toBe(false)
+    } else {
+      expect(needsSecretApproval('fetch', request)).toBe(true)
+    }
+  })
+  it('lets simultaneous explicit trust actions share a successful persisted grant', async () => {
+    const saving = deferred()
+    vi.mocked(AbeleConfig.getInstance().saveSettings).mockReturnValue(saving.promise)
+    const first = allowSecretOrigin('sample', request.url)
+    const second = allowSecretOrigin('sample', request.url)
+    expect(first).toBe(second)
+    saving.resolve()
+    await Promise.all([first, second])
+    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(1)
+    expect(needsSecretApproval('fetch', request)).toBe(false)
+  })
+
   it('reports a failed settings write as an Error without sending the request', async () => {
     vi.mocked(AbeleConfig.getInstance().saveSettings).mockRejectedValue('Synthetic save failure')
     const approval = approveScriptKeyRequest(request)
