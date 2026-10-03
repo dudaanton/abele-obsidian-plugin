@@ -125,6 +125,7 @@
       <template v-if="chartTab === 'expenses' || chartTab === 'income'">
         <Chart
           v-if="pieData.length"
+          :active="active"
           :source="pieData"
           :render="renderPieChart"
           :created="createPieChart"
@@ -134,6 +135,7 @@
       </template>
       <template v-else-if="chartTab === 'calendar'">
         <Chart
+          :active="active"
           :source="[calendarData, store.weekStartsOnMonday.value]"
           :render="renderCalendarChart"
           class="abele-finance-sidebar__calendar-chart"
@@ -141,6 +143,7 @@
       </template>
       <template v-else-if="chartTab === 'networth'">
         <Chart
+          :active="active"
           :source="networthData"
           :render="renderNetworthChart"
           :created="createNetworthChart"

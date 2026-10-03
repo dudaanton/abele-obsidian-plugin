@@ -1,13 +1,14 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
-import { forgetPanel, registerPanelElement } from './panelVisibility'
+import { forgetPanel, registerPanelElement, trackPanelVisibility } from './panelVisibility'
 
 export const TODO_SIDEBAR_VIEW_TYPE = 'abele-todo-sidebar-view'
 export const TODO_SIDEBAR_ID_ATTR = 'abele-todo-sidebar-id'
 
 export class TodoSidebarView extends ItemView {
   private id: string
+  private updateVisibility: (() => void) | null = null
 
   constructor(leaf: WorkspaceLeaf, app: App) {
     super(leaf)
@@ -38,8 +39,14 @@ export class TodoSidebarView extends ItemView {
     container.appendChild(widgetContainer)
 
     registerPanelElement(this.id, widgetContainer)
+    this.updateVisibility = trackPanelVisibility(this, this.id)
+    this.updateVisibility()
     const open = GlobalStore.getInstance().todoSidebarIds
     open.value = [...open.value, this.id]
+  }
+
+  onResize() {
+    this.updateVisibility?.()
   }
 
   async onClose() {

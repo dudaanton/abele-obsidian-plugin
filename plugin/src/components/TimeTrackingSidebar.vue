@@ -52,6 +52,7 @@
     <template v-if="chartTab === 'daily'">
       <Chart
         v-if="dailyChartData.length"
+        :active="active"
         :source="dailyChartData"
         :render="renderDailyChart"
         class="abele-time-tracking-sidebar__chart"
@@ -61,6 +62,7 @@
     <template v-else-if="chartTab === 'groups'">
       <Chart
         v-if="groupsPieData.length"
+        :active="active"
         :source="groupsPieData"
         :render="renderGroupsPieChart"
         :created="createGroupsPieChart"
@@ -88,7 +90,7 @@
 
 <script setup lang="ts">
 import { escapeHtml } from '@/helpers/escapeHtml'
-import { computed, ref, unref, watch } from 'vue'
+import { computed, ref, toRef, unref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TimeEntryList } from '@/entities/TimeEntryList'
@@ -119,11 +121,17 @@ type ChartTab = 'daily' | 'groups'
 const PAGE_SIZE = 20
 const visibleCount = ref(PAGE_SIZE)
 
+import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'
+import { providePanelActive } from '@/composables/usePanelComputed'
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true })
+const active = toRef(props, 'active')
+providePanelActive(active)
 const store = GlobalStore.getInstance()
 
 const timeEntryList = computed(() => unref(store.timeEntryList) as TimeEntryList | null)
 
-const activeEntries = computed(
+const activeEntries = pausedWhileHidden(
+  active,
   () => (timeEntryList.value?.activeEntries ?? []) as unknown as TimeEntry[]
 )
 
@@ -172,7 +180,7 @@ const periodEnd = ref<dayjs.Dayjs>(dayjs().endOf('month'))
 
 // --- Filtered entries ---
 
-const periodEntries = computed(() => {
+const periodEntries = pausedWhileHidden(active, () => {
   const tl = timeEntryList.value
   if (!tl) return []
 
@@ -210,7 +218,7 @@ useIntersectionObserver(scrollSentinel, ([entry]) => {
 
 // --- Total time ---
 
-const totalSeconds = computed(() => {
+const totalSeconds = pausedWhileHidden(active, () => {
   let total = 0
   for (const entry of periodEntries.value) {
     total += entry.duration
@@ -233,7 +241,7 @@ const chartTabs: Array<{ id: ChartTab; label: string }> = [
 const chartTab = ref<ChartTab>('daily')
 
 // Daily bar chart
-const dailyChartData = computed(() => {
+const dailyChartData = pausedWhileHidden(active, () => {
   const byDay = new Map<string, number>()
 
   for (const entry of periodEntries.value) {
@@ -319,7 +327,7 @@ interface GroupPieItem {
   path?: string
 }
 
-const groupsPieData = computed<GroupPieItem[]>(() => {
+const groupsPieData = pausedWhileHidden(active, (): GroupPieItem[] => {
   const { app } = store
   const byGroup = new Map<string, { seconds: number; path?: string }>()
 

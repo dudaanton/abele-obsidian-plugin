@@ -17,7 +17,7 @@ import { TasksList } from '@/entities/TasksList'
 import Timeline from './Timeline.vue'
 import SidebarPanel from './obsidian/SidebarPanel.vue'
 import Calendar from './Calendar.vue'
-import { computed, ref, unref } from 'vue'
+import { computed, ref, toRef, unref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Menu, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -28,9 +28,14 @@ import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import { DATE_FORMAT } from '@/constants/dates'
 
+import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'
+import { providePanelActive } from '@/composables/usePanelComputed'
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true })
+const active = toRef(props, 'active')
+providePanelActive(active)
 const { selectedJournal } = GlobalStore.getInstance()
 
-const tasks = computed(() => {
+const tasks = pausedWhileHidden(active, () => {
   const { tasksList: tasksListRef } = GlobalStore.getInstance()
 
   const tasksList = unref(tasksListRef) as TasksList
@@ -84,10 +89,13 @@ const container = ref<HTMLElement>()
 const visible = useOwnerVisibility(container)
 const { now } = useDate(visible, () => container.value?.ownerDocument ?? document)
 // Past events are history, not something to do: the list of what is coming starts today.
-const upcomingEvents = useCalendarDays((day) => day >= now.value.format(DATE_FORMAT))
+const calendarDays = useCalendarDays((day) => day >= now.value.format(DATE_FORMAT))
+const upcomingEvents = pausedWhileHidden(active, () => calendarDays.value)
 
 // const todoTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && !t.dates.length))
-const timelineTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && t.dates.length))
+const timelineTasks = pausedWhileHidden(active, () =>
+  tasks.value.filter((t) => !t.taskNotFound && t.dates.length)
+)
 </script>
 
 <style lang="scss">

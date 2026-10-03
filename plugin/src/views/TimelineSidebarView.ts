@@ -1,13 +1,14 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
-import { forgetPanel, registerPanelElement } from './panelVisibility'
+import { forgetPanel, registerPanelElement, trackPanelVisibility } from './panelVisibility'
 
 export const TIMELINE_SIDEBAR_VIEW_TYPE = 'abele-timeline-sidebar-view'
 export const TIMELINE_SIDEBAR_ID_ATTR = 'abele-timeline-sidebar-id'
 
 export class TimelineSidebarView extends ItemView {
   private id: string
+  private updateVisibility: (() => void) | null = null
 
   constructor(leaf: WorkspaceLeaf, app: App) {
     super(leaf)
@@ -38,8 +39,14 @@ export class TimelineSidebarView extends ItemView {
     container.appendChild(widgetContainer)
 
     registerPanelElement(this.id, widgetContainer)
+    this.updateVisibility = trackPanelVisibility(this, this.id)
+    this.updateVisibility()
     const open = GlobalStore.getInstance().timelineSidebarIds
     open.value = [...open.value, this.id]
+  }
+
+  onResize() {
+    this.updateVisibility?.()
   }
 
   async onClose() {

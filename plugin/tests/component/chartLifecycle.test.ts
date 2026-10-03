@@ -20,6 +20,25 @@ afterEach(() => {
 })
 
 describe('shared chart lifetime', () => {
+  it('does not render hidden source updates and catches up on reveal', async () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        disconnect() {}
+        observe() {}
+      }
+    )
+    const render = vi.fn()
+    const view = mount(Chart, { props: { source: [1], render, active: false } })
+    await nextTick()
+    expect(render).not.toHaveBeenCalled()
+    await view.setProps({ source: [2] })
+    expect(render).not.toHaveBeenCalled()
+    await view.setProps({ active: true })
+    expect(render).toHaveBeenCalledTimes(1)
+    view.unmount()
+  })
+
   it('has one observer per chart, disconnects on every theme recreation and unmount', async () => {
     const observers: { disconnect: ReturnType<typeof vi.fn>; observe: ReturnType<typeof vi.fn> }[] =
       []

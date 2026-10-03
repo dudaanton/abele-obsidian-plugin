@@ -109,7 +109,7 @@
  * the script printed, and offer the two things wanted after reading that — the same run again,
  * or the same script with the values reconsidered.
  */
-import { computed, onUnmounted, reactive, ref } from 'vue'
+import { computed, onUnmounted, reactive, ref, toRef, watch } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
@@ -148,11 +148,14 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   interceptor: 'interceptor',
 }
 
+import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true })
+const active = toRef(props, 'active')
 const store = ScriptRuns.getInstance()
-const runs = computed(() => store.runs.value)
+const runs = pausedWhileHidden(active, () => store.runs.value)
 const opened = reactive(new Set<string>())
 
-const heading = computed(() => {
+const heading = pausedWhileHidden(active, () => {
   const going = runs.value.filter((run) => run.status === 'running').length
   if (going) return `${going} running`
   return runs.value.length ? `${runs.value.length} run${runs.value.length > 1 ? 's' : ''}` : 'Runs'
@@ -163,10 +166,25 @@ const heading = computed(() => {
  * changes, and a sidebar that redraws every second for nothing is a sidebar left closed.
  */
 const now = ref(Date.now())
-const ticker = window.setInterval(() => {
-  if (runs.value.some((run) => run.status === 'running')) now.value = Date.now()
-}, 1000)
-onUnmounted(() => window.clearInterval(ticker))
+let ticker: number | null = null
+const stopTicker = () => {
+  if (ticker !== null) window.clearInterval(ticker)
+  ticker = null
+}
+watch(
+  () => active.value && store.runs.value.some((run) => run.status === 'running'),
+  (running) => {
+    stopTicker()
+    if (running) {
+      now.value = Date.now()
+      ticker = window.setInterval(() => {
+        now.value = Date.now()
+      }, 1000)
+    }
+  },
+  { immediate: true }
+)
+onUnmounted(stopTicker)
 
 const clock = (at: number) => {
   const d = new Date(at)
@@ -223,8 +241,10 @@ const start = async (run: ScriptRun, params: Record<string, unknown>) => {
     const result = await ScriptService.getInstance().execute(run.path, params, {
       formHandler: showFormModal,
       // Run again by hand, an agent's or an automation's run is the person's own.
-      source: run.source === 'agent' || run.source === 'automation' || run.source === 'startup'
-          ? 'command' : run.source,
+      source:
+        run.source === 'agent' || run.source === 'automation' || run.source === 'startup'
+          ? 'command'
+          : run.source,
       book: run.book,
     })
     if (result.trim()) new Notice(result.length > 500 ? result.slice(0, 500) + '…' : result, 10000)

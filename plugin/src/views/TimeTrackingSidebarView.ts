@@ -1,13 +1,14 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
-import { forgetPanel, registerPanelElement } from './panelVisibility'
+import { forgetPanel, registerPanelElement, trackPanelVisibility } from './panelVisibility'
 
 export const TIME_TRACKING_SIDEBAR_VIEW_TYPE = 'abele-time-tracking-sidebar-view'
 export const TIME_TRACKING_SIDEBAR_ID_ATTR = 'abele-time-tracking-sidebar-id'
 
 export class TimeTrackingSidebarView extends ItemView {
   private id: string
+  private updateVisibility: (() => void) | null = null
 
   constructor(leaf: WorkspaceLeaf, app: App) {
     super(leaf)
@@ -38,8 +39,14 @@ export class TimeTrackingSidebarView extends ItemView {
     container.appendChild(widgetContainer)
 
     registerPanelElement(this.id, widgetContainer)
+    this.updateVisibility = trackPanelVisibility(this, this.id)
+    this.updateVisibility()
     const open = GlobalStore.getInstance().timeTrackingSidebarIds
     open.value = [...open.value, this.id]
+  }
+
+  onResize() {
+    this.updateVisibility?.()
   }
 
   async onClose() {

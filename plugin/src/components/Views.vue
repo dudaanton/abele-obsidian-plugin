@@ -6,14 +6,14 @@
     :key="id"
     :to="panelElements.get(id) ?? `[${TIMELINE_SIDEBAR_ID_ATTR}='${id}']`"
   >
-    <TimelineSidebarView />
+    <TimelineSidebarView :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
   <Teleport
     v-for="id in todoSidebarIds"
     :key="id"
     :to="panelElements.get(id) ?? `[${TODO_SIDEBAR_ID_ATTR}='${id}']`"
   >
-    <TodoSidebarView />
+    <TodoSidebarView :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
   <Teleport
     v-for="id in aiSidebarIds"
@@ -41,14 +41,14 @@
     :key="id"
     :to="panelElements.get(id) ?? `[${TIME_TRACKING_SIDEBAR_ID_ATTR}='${id}']`"
   >
-    <TimeTrackingSidebarView />
+    <TimeTrackingSidebarView :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
   <Teleport
     v-for="id in scriptRunsIds"
     :key="id"
     :to="panelElements.get(id) ?? `[${SCRIPT_RUNS_ID_ATTR}='${id}']`"
   >
-    <ScriptRunsView />
+    <ScriptRunsView :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
   <!-- By element, not selector: a selector is looked up in the main document, and a script
        view opened with `where: 'window'` lives in a document of its own. -->
