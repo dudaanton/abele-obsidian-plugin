@@ -1516,7 +1516,10 @@ prepared sending candidates, exact admitted submitted bodies and wire receipts t
 with checksums. Ready-image intents are durable before a partial hold can release any upload.
 Blob refusals can further reduce a candidate: before transport, the exact durable core submitted
 journal binds an ordered subset without changing fields or stable handles, retaining the original
-plan. Once bound, body/key/handles are immutable on replay; receipts must match exactly, and
+plan. Version-2 metadata stores original operation values once, preserving field order, with a
+fixed-size admitted-selection bitmap reserved before upload. Binding cannot duplicate the body
+or grow past storage limits after submission; legacy rows decode to the same exact evidence.
+Once bound, body/key/handles are immutable on replay; receipts must match exactly, and
 omitted targets/sponsors stay held. A final-binding persistence failure prevents transport. Only trusted exact native paste-range
 introduction plus verified novel creation and authorized intrinsic sponsor proof may publish;
 received snapshots are baselines, never owner introduction or script consent. Lost evidence

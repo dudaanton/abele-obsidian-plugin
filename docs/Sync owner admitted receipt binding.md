@@ -24,7 +24,10 @@ Production activation remains disabled.
 Only an exact ordered subset of prepared operations is permitted. An operation's path, SHA,
 base/version, size, timestamp or other request field cannot change; operations cannot be added
 or reordered, and create handles cannot be reminted. The immutable original plan is retained as
-checksum-bound evidence. Omitted target/sponsor operations keep their intents held, not published.
+checksum-bound evidence. Version-2 storage keeps its operation values only once, with ordered
+key dictionaries and a fixed-size selection bitmap allocated during preparation. Binding changes
+bitmap bits and a boolean, not storage size; exact admitted bodies/handles are derived losslessly.
+Both native and intent consumers use this representation, with unchanged 2 MiB/1 MiB limits. Omitted target/sponsor operations keep their intents held, not published.
 An independent verified prior sponsor settlement remains distinct from an omitted sponsor op.
 
 Once bound, the admitted body/handles are immutable, including across reopen and lost-reply
@@ -37,10 +40,29 @@ Receipt equality, cardinality, novelty and independently verified wire identity 
 The transition happens **before transport**, not by tolerating a smaller response after success.
 Missing prepared native evidence for a publication-sensitive request is recovery before send.
 
+## Follow-up: final-binding ledger budget
+
+A fresh independent review found that the first implementation physically duplicated full
+prepared and admitted units. An allowed 1000-operation plan occupied about 620 KB, but final
+binding crossed 1 MiB after core had durably submitted; reopening repeated the same permanent
+failure before transport. The revised representation removes that duplicate, reserves a
+constant-width selection at prepare, preserves original JSON field order and stable handles,
+and accepts old prepared/submitted rows without reinterpreting receipt authority. Unchanged
+and partially reduced bodies cannot grow at final binding. Oversized new evidence is still
+refused at preparation, before upload/submitted phase; there is no blind budget increase or
+new path/batch restriction.
+
+Actual-scanner large regressions show the old budget error twice (first attempt/reopen), then
+successful lost-reply replay with one version/publication after the fix. Legacy already-submitted
+state, legacy evidence at the prior limit, invalid bitmap/dictionary and exact serialization
+checks are covered. The original full-body/handle/replay rejection assertions remain intact.
+
 ## Evidence and limits
 
-Synthetic fixtures execute the actual installed core scanner/pusher/partial-hold/admission and
-resume code with a controlled blob/receipt transport. For each refusal code they prove:
+The original admission fixture constructs its scan manually and executes the actual installed
+core pusher/partial-hold/admission and resume code with controlled blob/receipt transport. It
+is not scanner evidence. The separate large-budget fixture calls the actual installed scanner
+before passing its result to that same pusher. For each refusal code they prove:
 
 - candidate A + held B + ordinary C is prepared before upload;
 - C is refused after preparation, and only A is committed;
