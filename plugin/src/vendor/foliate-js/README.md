@@ -16,7 +16,7 @@ Updating is a deliberate step: take a newer commit, re-apply the patches, update
 
 `view.js`, `epub.js`, `epubcfi.js`, `paginator.js`, `fixed-layout.js`, `progress.js`,
 `overlayer.js`, `text-walker.js`, `search.js`, `footnotes.js`, `mobi.js`, `fb2.js`,
-`comic-book.js`, `tts.js`.
+`comic-book.js`.
 
 Not taken: the demo reader (`reader.html`, `reader.js`, `ui/`), `opds.js`, `dict.js`,
 `quote-image.js`, `uri-template.js`, the tests, the rollup setup and upstream's own `vendor/`
@@ -116,6 +116,9 @@ Every change is marked `ABELE PATCH` at its site.
     A page source's optional `onUnload` callback is called when its frame leaves a spread or
     the renderer closes, including PDF images and their frame URLs. Independent consumers
     retain their own leases while a replacement spread is being loaded.
+
+14. **Speech is supplied by the host** (`view.js`). The unused `initTTS` entry point and
+    upstream's `tts.js` are omitted. Abele's narrator and read-aloud controls remain unchanged.
 
 ## Additions
 
