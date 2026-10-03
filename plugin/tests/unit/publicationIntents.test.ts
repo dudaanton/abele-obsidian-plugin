@@ -164,6 +164,19 @@ describe('disabled durable publication intent integration', () => {
       )
     ).toBe(true)
   })
+  it('resolves an asset unit against an independently verified already settled exact sponsor version', async () => {
+    const s = await setup()
+    s.unit.ops.splice(1, 1)
+    s.receipt.ops = s.unit.ops
+    s.receipt.outcomes.splice(1, 1)
+    s.input.current.versionId = 'note-v1'
+    s.input.current.evidence.versionId = 'note-v1'
+    ;(s.port as any).verifySponsor = vi.fn(async () => true)
+    await s.make().prepare(s.unit, [s.input])
+    await s.make().settle(s.receipt)
+    await s.make().retry(s.unit.requestId)
+    expect(s.port.apply).toHaveBeenCalledTimes(1)
+  })
   it('default fence performs no persistence or publication', async () => {
     const s = await setup(),
       m = new PublicationIntents(s.meta, s.input.binding, s.port)

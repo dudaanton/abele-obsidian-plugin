@@ -53,6 +53,8 @@ export interface PublicationIntentPort {
   attest(input: PublicationInput): Promise<boolean>
   /** Must distinguish genuinely created identity; ordinary applied does NOT certify novelty. */
   verifyReceipt(receipt: PushReceipt): Promise<boolean>
+  /** Separate prior settlement proof when a held asset and its note use different units. */
+  verifySponsor?(input: PublicationInput): Promise<boolean>
   inspect(
     grantId: string,
     targetFileId?: string,
@@ -71,6 +73,7 @@ interface Intent {
   authorities: PublicationAuthority[]
   state: 'prepared' | 'settled' | 'held' | 'published'
   reason?: string
+  sponsorBaseline?: { fileId: string; versionId: string; sha: string }
   deltas?: { value: PublicationDelta; done: boolean; attempted?: boolean }[]
 }
 interface Unit {
@@ -245,17 +248,18 @@ export class PublicationIntents {
             continue
           }
         }
-        // Sponsor bytes must belong to this exact unit, not an unrelated later body save.
-        if (
-          !u.ops.some((op, index) =>
-            op.op === 'create' && input.baseline.kind === 'local-create'
-              ? u.createHandles[index] === input.baseline.handle && op.sha === input.current.sha
-              : op.op === 'modify' &&
-                op.file_id === input.current.noteId &&
-                op.sha === input.current.sha
-          ) ||
-          p.sponsors.length !== 1
-        ) {
+        // Sponsor bytes belong to this unit OR a separately verified immutable prior
+        // settlement. This supports asset-created-before-note-save held units without
+        // deriving authority from a later uncommitted disk/cache read.
+        const inUnit = u.ops.some((op, index) =>
+          op.op === 'create' && input.baseline.kind === 'local-create'
+            ? u.createHandles[index] === input.baseline.handle && op.sha === input.current.sha
+            : op.op === 'modify' &&
+              op.file_id === input.current.noteId &&
+              op.sha === input.current.sha
+        )
+        const verifiedPrior = !inUnit && (await this.port.verifySponsor?.(copy(input))) === true
+        if ((!inUnit && !verifiedPrior) || p.sponsors.length !== 1) {
           record.holds.push('sponsor is not in exact committed unit')
           continue
         }
@@ -285,6 +289,15 @@ export class PublicationIntents {
           input,
           authorities,
           state: 'prepared',
+          ...(verifiedPrior
+            ? {
+                sponsorBaseline: {
+                  fileId: input.current.noteId,
+                  versionId: input.current.versionId,
+                  sha: input.current.sha,
+                },
+              }
+            : {}),
         })
       }
       l.units.push(record)
@@ -332,18 +345,20 @@ export class PublicationIntents {
       for (const intent of unit.intents) {
         const i = intent.input,
           p = intent.proposal
-        const sponsor = r.outcomes.find(
-          (o) =>
-            o.sha === i.current.sha &&
-            (i.baseline.kind === 'local-create'
-              ? r.ops[o.index].op === 'create' &&
-                unit.unit.createHandles[o.index] === i.baseline.handle &&
-                o.status === 'created'
-              : r.ops[o.index].op === 'modify' &&
-                (r.ops[o.index] as { file_id: string }).file_id === i.current.noteId &&
-                o.fileId === i.current.noteId &&
-                o.status === 'applied')
-        )
+        const sponsor =
+          intent.sponsorBaseline ??
+          r.outcomes.find(
+            (o) =>
+              o.sha === i.current.sha &&
+              (i.baseline.kind === 'local-create'
+                ? r.ops[o.index].op === 'create' &&
+                  unit.unit.createHandles[o.index] === i.baseline.handle &&
+                  o.status === 'created'
+                : r.ops[o.index].op === 'modify' &&
+                  (r.ops[o.index] as { file_id: string }).file_id === i.current.noteId &&
+                  o.fileId === i.current.noteId &&
+                  o.status === 'applied')
+          )
         const target =
           i.target.creator === 'pending-local-create'
             ? r.outcomes.find(
