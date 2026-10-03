@@ -13,7 +13,12 @@
     </div>
     <template v-if="!fold.collapsed.value">
       <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
-      <div v-if="dailyChartData.length" ref="chartEl" class="abele-time-entries-list__chart" />
+      <Chart
+        v-if="dailyChartData.length"
+        :source="dailyChartData"
+        :render="renderChart"
+        class="abele-time-entries-list__chart"
+      />
       <div v-if="visible.length" class="abele-time-entries-list__items">
         <template v-for="(entry, idx) in visible" :key="entry.id">
           <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
@@ -33,15 +38,15 @@ import { formatDuration } from '@/helpers/displayFormat'
 import { escapeHtml } from '@/helpers/escapeHtml'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
-import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
-import { GlobalStore } from '@/stores/GlobalStore'
+import Chart from './obsidian/Chart.vue'
+import { getThemeColors, EChartsType } from '@/bases/echarts'
 import TimeEntryItem from './TimeEntryItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import FoldHeading from './obsidian/FoldHeading.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
 import { useFooterPages } from '@/composables/useFooterView'
-import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import dayjs from 'dayjs'
 
@@ -134,25 +139,7 @@ const dailyChartData = computed(() => {
   return result
 })
 
-const chartEl = ref<HTMLElement | null>(null)
-let chart: EChartsType | null = null
-let chartObserver: ResizeObserver | null = null
-
-function renderChart() {
-  if (!chartEl.value) {
-    chart?.dispose()
-    chart = null
-    chartObserver?.disconnect()
-    chartObserver = null
-    return
-  }
-
-  if (!chart || chart.isDisposed()) {
-    chart = echartsInit(chartEl.value)
-    chartObserver = new ResizeObserver(() => chart?.resize())
-    chartObserver.observe(chartEl.value)
-  }
-
+function renderChart(chart: EChartsType) {
   const colors = getThemeColors()
   const data = dailyChartData.value
 
@@ -205,22 +192,6 @@ function renderChart() {
     true
   )
 }
-
-watch([dailyChartData, chartEl], () => nextTick(renderChart), { immediate: true })
-
-watch(
-  () => GlobalStore.getInstance().themeVersion.value,
-  () => {
-    chart?.dispose()
-    chart = null
-    nextTick(renderChart)
-  }
-)
-
-onUnmounted(() => {
-  chart?.dispose()
-  chartObserver?.disconnect()
-})
 </script>
 
 <style lang="scss">

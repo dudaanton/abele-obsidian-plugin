@@ -123,14 +123,29 @@
         class="abele-finance-sidebar__chart-tabs"
       />
       <template v-if="chartTab === 'expenses' || chartTab === 'income'">
-        <div v-if="pieData.length" ref="pieChartEl" class="abele-finance-sidebar__pie-chart" />
+        <Chart
+          v-if="pieData.length"
+          :source="pieData"
+          :render="renderPieChart"
+          :created="createPieChart"
+          class="abele-finance-sidebar__pie-chart"
+        />
         <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
       </template>
       <template v-else-if="chartTab === 'calendar'">
-        <div ref="calendarChartEl" class="abele-finance-sidebar__calendar-chart" />
+        <Chart
+          :source="[calendarData, store.weekStartsOnMonday.value]"
+          :render="renderCalendarChart"
+          class="abele-finance-sidebar__calendar-chart"
+        />
       </template>
       <template v-else-if="chartTab === 'networth'">
-        <div ref="networthChartEl" class="abele-finance-sidebar__networth-chart" />
+        <Chart
+          :source="networthData"
+          :render="renderNetworthChart"
+          :created="createNetworthChart"
+          class="abele-finance-sidebar__networth-chart"
+        />
       </template>
     </section>
 
@@ -177,7 +192,7 @@
 <script setup lang="ts">
 import { escapeHtml } from '@/helpers/escapeHtml'
 import { addMoney } from '@/helpers/moneySum'
-import { computed, ref, unref, watch, nextTick, onUnmounted, toRef } from 'vue'
+import { computed, ref, unref, watch, toRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
@@ -185,7 +200,8 @@ import { BalanceIndex } from '@/entities/BalanceIndex'
 import { createTransaction } from '@/commands/createTransaction'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DATE_FORMAT } from '@/constants/dates'
-import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
+import Chart from './obsidian/Chart.vue'
+import { getThemeColors, EChartsType } from '@/bases/echarts'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianSearch from './obsidian/Search.vue'
@@ -248,33 +264,6 @@ const currencyCards = pausedWhileHidden(active, (): CurrencyCard[] => {
     currencyCard(currency, al.accounts, (path) => bi.getBalanceAtDate(path, asOfDate))
   )
 })
-
-onUnmounted(() => {
-  pieChart?.dispose()
-  pieObserver?.disconnect()
-  calendarChart?.dispose()
-  calendarObserver?.disconnect()
-  networthChart?.dispose()
-  networthObserver?.disconnect()
-})
-
-// Re-render charts on theme change
-watch(
-  () => GlobalStore.getInstance().themeVersion.value,
-  () => {
-    pieChart?.dispose()
-    pieChart = null
-    calendarChart?.dispose()
-    calendarChart = null
-    networthChart?.dispose()
-    networthChart = null
-    nextTick(() => {
-      renderPieChart()
-      renderCalendarChart()
-      renderNetworthChart()
-    })
-  }
-)
 
 // --- Period Summary ---
 
@@ -486,37 +475,20 @@ const pieTab = computed(() => (chartTab.value === 'income' ? 'income' : 'expense
 
 // --- Pie Chart ---
 
-const pieChartEl = ref<HTMLElement | null>(null)
-let pieChart: EChartsType | null = null
-let pieObserver: ResizeObserver | null = null
-
 const pieData = computed(() =>
   pieTab.value === 'expenses'
     ? periodTotals.value.expenseBreakdown
     : periodTotals.value.incomeBreakdown
 )
 
-function renderPieChart() {
-  if (!pieChartEl.value) {
-    pieChart?.dispose()
-    pieChart = null
-    pieObserver?.disconnect()
-    pieObserver = null
-    return
-  }
+function createPieChart(pieChart: EChartsType) {
+  pieChart.on('click', (params: any) => {
+    const item = pieData.value[params.dataIndex]
+    if (item?.path) openFile(item.path)
+  })
+}
 
-  if (!pieChart || pieChart.isDisposed()) {
-    pieChart = echartsInit(pieChartEl.value)
-    pieObserver = new ResizeObserver(() => pieChart?.resize())
-    pieObserver.observe(pieChartEl.value)
-    pieChart.on('click', (params: any) => {
-      const item = pieData.value[params.dataIndex]
-      if (item?.path) {
-        openFile(item.path)
-      }
-    })
-  }
-
+function renderPieChart(pieChart: EChartsType) {
   const colors = getThemeColors()
   const data = pieData.value
 
@@ -565,13 +537,7 @@ function renderPieChart() {
   )
 }
 
-watch([pieData, pieChartEl], () => nextTick(renderPieChart), { immediate: true })
-
 // --- Calendar Heatmap ---
-
-const calendarChartEl = ref<HTMLElement | null>(null)
-let calendarChart: EChartsType | null = null
-let calendarObserver: ResizeObserver | null = null
 
 const calendarData = computed(() => {
   const { expense: expPaths, revenue: revPaths } = accountTypeSets.value
@@ -593,21 +559,7 @@ const calendarData = computed(() => {
   return dayMap
 })
 
-function renderCalendarChart() {
-  if (!calendarChartEl.value) {
-    calendarChart?.dispose()
-    calendarChart = null
-    calendarObserver?.disconnect()
-    calendarObserver = null
-    return
-  }
-
-  if (!calendarChart || calendarChart.isDisposed()) {
-    calendarChart = echartsInit(calendarChartEl.value)
-    calendarObserver = new ResizeObserver(() => calendarChart?.resize())
-    calendarObserver.observe(calendarChartEl.value)
-  }
-
+function renderCalendarChart(calendarChart: EChartsType) {
   const colors = getThemeColors()
   const rangeStart = periodStart.value.format(DATE_FORMAT)
   const rangeEnd = periodEnd.value.format(DATE_FORMAT)
@@ -700,13 +652,8 @@ function renderCalendarChart() {
   )
 }
 
-watch([calendarData, calendarChartEl], () => nextTick(renderCalendarChart), { immediate: true })
-
 // --- Net Worth Chart ---
 
-const networthChartEl = ref<HTMLElement | null>(null)
-let networthChart: EChartsType | null = null
-let networthObserver: ResizeObserver | null = null
 const networthLegendSelected = ref<Record<string, boolean>>({})
 
 interface NetworthSeries {
@@ -740,24 +687,13 @@ const networthData = pausedWhileHidden(active, () => {
   return { dates, series }
 })
 
-function renderNetworthChart() {
-  if (!networthChartEl.value) {
-    networthChart?.dispose()
-    networthChart = null
-    networthObserver?.disconnect()
-    networthObserver = null
-    return
-  }
+function createNetworthChart(networthChart: EChartsType) {
+  networthChart.on('legendselectchanged', (params: any) => {
+    networthLegendSelected.value = { ...params.selected }
+  })
+}
 
-  if (!networthChart || networthChart.isDisposed()) {
-    networthChart = echartsInit(networthChartEl.value)
-    networthObserver = new ResizeObserver(() => networthChart?.resize())
-    networthObserver.observe(networthChartEl.value)
-    networthChart.on('legendselectchanged', (params: any) => {
-      networthLegendSelected.value = { ...params.selected }
-    })
-  }
-
+function renderNetworthChart(networthChart: EChartsType) {
   const { dates, series } = networthData.value
 
   if (!dates.length || !series.length) {
@@ -808,8 +744,6 @@ function renderNetworthChart() {
     true
   )
 }
-
-watch([networthData, networthChartEl], () => nextTick(renderNetworthChart), { immediate: true })
 
 // --- Recent Transactions ---
 

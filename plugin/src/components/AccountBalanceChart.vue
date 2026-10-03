@@ -15,18 +15,19 @@
       </div>
     </div>
     <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
-    <div ref="chartEl" class="abele-account-balance-chart__chart" />
+    <Chart :source="chartData" :render="renderChart" class="abele-account-balance-chart__chart" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { addMoney, sumMoney } from '@/helpers/moneySum'
-import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { AccountsList } from '@/entities/AccountsList'
 import { TransactionsList } from '@/entities/TransactionsList'
-import { echartsInit, EChartsType } from '@/bases/echarts'
+import Chart from './obsidian/Chart.vue'
+import { EChartsType } from '@/bases/echarts'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
@@ -193,25 +194,7 @@ const monthTotals = computed(() => {
   }))
 })
 
-const chartEl = ref<HTMLElement | null>(null)
-let chart: EChartsType | null = null
-let chartObserver: ResizeObserver | null = null
-
-function renderChart() {
-  if (!chartEl.value) {
-    chart?.dispose()
-    chart = null
-    chartObserver?.disconnect()
-    chartObserver = null
-    return
-  }
-
-  if (!chart || chart.isDisposed()) {
-    chart = echartsInit(chartEl.value)
-    chartObserver = new ResizeObserver(() => chart?.resize())
-    chartObserver.observe(chartEl.value)
-  }
-
+function renderChart(chart: EChartsType) {
   const { dates, seriesList, chartType } = chartData.value
 
   if (!dates.length || !seriesList.length) {
@@ -262,28 +245,12 @@ function renderChart() {
   )
 }
 
-watch([chartData, chartEl], () => nextTick(renderChart), { immediate: true })
-
 watch(
   [periodStart, periodEnd],
   () => {
     emit('periodChange', periodStart.value, periodEnd.value)
   },
   { immediate: true }
-)
-
-onUnmounted(() => {
-  chart?.dispose()
-  chartObserver?.disconnect()
-})
-
-watch(
-  () => GlobalStore.getInstance().themeVersion.value,
-  () => {
-    chart?.dispose()
-    chart = null
-    nextTick(renderChart)
-  }
 )
 </script>
 

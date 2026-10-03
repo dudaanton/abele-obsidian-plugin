@@ -88,7 +88,11 @@ async function settle() {
   await nextTick()
 }
 async function show(accountPath: string) {
-  wrapper = mount(AccountBalanceChart, { shallow: true, props: { accountPath } })
+  wrapper = mount(AccountBalanceChart, {
+    shallow: true,
+    props: { accountPath },
+    global: { stubs: { Chart: false } },
+  })
   await settle()
 }
 function option() {

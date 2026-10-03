@@ -50,17 +50,20 @@
     <!-- Charts -->
     <Tabs v-model="chartTab" :tabs="chartTabs" level="secondary" />
     <template v-if="chartTab === 'daily'">
-      <div
+      <Chart
         v-if="dailyChartData.length"
-        ref="dailyChartEl"
+        :source="dailyChartData"
+        :render="renderDailyChart"
         class="abele-time-tracking-sidebar__chart"
       />
       <div v-else class="abele-time-tracking-sidebar__chart-empty">No data</div>
     </template>
     <template v-else-if="chartTab === 'groups'">
-      <div
+      <Chart
         v-if="groupsPieData.length"
-        ref="groupsPieChartEl"
+        :source="groupsPieData"
+        :render="renderGroupsPieChart"
+        :created="createGroupsPieChart"
         class="abele-time-tracking-sidebar__chart"
       />
       <div v-else class="abele-time-tracking-sidebar__chart-empty">No data</div>
@@ -85,7 +88,7 @@
 
 <script setup lang="ts">
 import { escapeHtml } from '@/helpers/escapeHtml'
-import { computed, ref, unref, watch, nextTick, onUnmounted } from 'vue'
+import { computed, ref, unref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TimeEntryList } from '@/entities/TimeEntryList'
@@ -93,7 +96,8 @@ import { TimeEntry, DATETIME_FORMAT } from '@/entities/TimeEntry'
 import { createTimeEntry } from '@/commands/createTimeEntry'
 import { TFile } from 'obsidian'
 import { DATE_FORMAT } from '@/constants/dates'
-import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
+import Chart from './obsidian/Chart.vue'
+import { getThemeColors, EChartsType } from '@/bases/echarts'
 import {
   ensureWikilinkAlias,
   extractAliasOrNameFromWikilink,
@@ -121,13 +125,6 @@ const timeEntryList = computed(() => unref(store.timeEntryList) as TimeEntryList
 const activeEntries = computed(
   () => (timeEntryList.value?.activeEntries ?? []) as unknown as TimeEntry[]
 )
-
-onUnmounted(() => {
-  dailyChart?.dispose()
-  dailyObserver?.disconnect()
-  groupsPieChart?.dispose()
-  groupsPieObserver?.disconnect()
-})
 
 const formatDurationShort = (seconds: number): string => {
   const h = Math.floor(seconds / 3600)
@@ -259,25 +256,7 @@ const dailyChartData = computed(() => {
   return result
 })
 
-const dailyChartEl = ref<HTMLElement | null>(null)
-let dailyChart: EChartsType | null = null
-let dailyObserver: ResizeObserver | null = null
-
-function renderDailyChart() {
-  if (!dailyChartEl.value) {
-    dailyChart?.dispose()
-    dailyChart = null
-    dailyObserver?.disconnect()
-    dailyObserver = null
-    return
-  }
-
-  if (!dailyChart || dailyChart.isDisposed()) {
-    dailyChart = echartsInit(dailyChartEl.value)
-    dailyObserver = new ResizeObserver(() => dailyChart?.resize())
-    dailyObserver.observe(dailyChartEl.value)
-  }
-
+function renderDailyChart(dailyChart: EChartsType) {
   const colors = getThemeColors()
   const data = dailyChartData.value
 
@@ -332,8 +311,6 @@ function renderDailyChart() {
   )
 }
 
-watch([dailyChartData, dailyChartEl], () => nextTick(renderDailyChart), { immediate: true })
-
 // Groups pie chart
 interface GroupPieItem {
   name: string
@@ -377,31 +354,14 @@ const groupsPieData = computed<GroupPieItem[]>(() => {
     .sort((a, b) => b.value - a.value)
 })
 
-const groupsPieChartEl = ref<HTMLElement | null>(null)
-let groupsPieChart: EChartsType | null = null
-let groupsPieObserver: ResizeObserver | null = null
+function createGroupsPieChart(groupsPieChart: EChartsType) {
+  groupsPieChart.on('click', (params: any) => {
+    const item = groupsPieData.value[params.dataIndex]
+    if (item?.path) openFile(item.path)
+  })
+}
 
-function renderGroupsPieChart() {
-  if (!groupsPieChartEl.value) {
-    groupsPieChart?.dispose()
-    groupsPieChart = null
-    groupsPieObserver?.disconnect()
-    groupsPieObserver = null
-    return
-  }
-
-  if (!groupsPieChart || groupsPieChart.isDisposed()) {
-    groupsPieChart = echartsInit(groupsPieChartEl.value)
-    groupsPieObserver = new ResizeObserver(() => groupsPieChart?.resize())
-    groupsPieObserver.observe(groupsPieChartEl.value)
-    groupsPieChart.on('click', (params: any) => {
-      const item = groupsPieData.value[params.dataIndex]
-      if (item?.path) {
-        openFile(item.path)
-      }
-    })
-  }
-
+function renderGroupsPieChart(groupsPieChart: EChartsType) {
   const colors = getThemeColors()
   const data = groupsPieData.value
 
@@ -444,23 +404,6 @@ function renderGroupsPieChart() {
     true
   )
 }
-
-watch([groupsPieData, groupsPieChartEl], () => nextTick(renderGroupsPieChart), { immediate: true })
-
-// Re-render charts on theme change
-watch(
-  () => GlobalStore.getInstance().themeVersion.value,
-  () => {
-    dailyChart?.dispose()
-    dailyChart = null
-    groupsPieChart?.dispose()
-    groupsPieChart = null
-    nextTick(() => {
-      renderDailyChart()
-      renderGroupsPieChart()
-    })
-  }
-)
 </script>
 
 <style lang="scss">
