@@ -115,15 +115,13 @@ export class GithubUsers {
   private readonly people = reactive(new Map<string, Entry>())
   private readonly failed = new Map<string, number>()
   private readonly gatherings = new Map<string, Gathering>()
-  private readonly loaded: Promise<void>
+  private loaded: Promise<void> | null = null
   private saveTimer: number | null = null
 
   constructor(
     private readonly storage: UserStorage | null = null,
     private readonly now: () => number = () => Date.now()
-  ) {
-    this.loaded = this.load()
-  }
+  ) {}
 
   private async load(): Promise<void> {
     if (!this.storage) return
@@ -142,7 +140,7 @@ export class GithubUsers {
 
   /** Waits for the cache on disk to be read — for a test, and for the tools. */
   ready(): Promise<void> {
-    return this.loaded
+    return this.loaded ??= this.load()
   }
 
   /** How many people are kept. */
@@ -184,7 +182,7 @@ export class GithubUsers {
     logins: string[],
     avatarUrls: Record<string, string> = {}
   ): Promise<void> {
-    await this.loaded
+    await this.ready()
     const host = peopleServer(client)
     const now = this.now()
     const wanted: string[] = []
@@ -361,7 +359,8 @@ export class GithubUsers {
   async save(): Promise<void> {
     if (this.saveTimer) window.clearTimeout(this.saveTimer)
     this.saveTimer = null
-    if (!this.storage) return
+    if (!this.storage || !this.loaded) return
+    await this.loaded
     const stored: Stored = { version: 1, people: Object.fromEntries(this.people) }
     try {
       await this.storage.write(JSON.stringify(stored))
@@ -372,7 +371,7 @@ export class GithubUsers {
 
   /** Forgets every name and picture, on disk too; they are asked for again as people are shown. */
   async clear(): Promise<void> {
-    await this.loaded
+    await this.ready()
     this.people.clear()
     this.failed.clear()
     await this.save()

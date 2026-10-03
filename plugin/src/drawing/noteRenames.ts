@@ -19,24 +19,67 @@ export function renamedNotes(
   return items.map((i) => (i.type === 'note' && i.path === from ? { ...i, path: to } : i))
 }
 
-export async function followNoteRename(app: App, from: string, to: string): Promise<void> {
+interface Rename {
+  from: string
+  to: string
+}
+interface RenameQueue {
+  pending: Rename[]
+  running: Promise<void> | null
+}
+const queues = new WeakMap<App, RenameQueue>()
+
+/** Coalesce a rename burst and serialize it with an earlier burst still reading drawings. */
+export function followNoteRename(app: App, from: string, to: string): Promise<void> {
+  let queue = queues.get(app)
+  if (!queue) {
+    queue = { pending: [], running: null }
+    queues.set(app, queue)
+  }
+  const current = queue
+  current.pending.push({ from, to })
+  if (!current.running) {
+    current.running = Promise.resolve().then(async () => {
+      try {
+        while (current.pending.length) {
+          const batch = current.pending.splice(0)
+          await followBatch(app, batch)
+        }
+      } finally {
+        current.running = null
+      }
+    })
+  }
+  return current.running
+}
+
+function renamedBatch(items: readonly DrawingItem[], renames: Rename[]): DrawingItem[] | null {
+  let next: readonly DrawingItem[] = items
+  for (const { from, to } of renames) next = renamedNotes(next, from, to) ?? next
+  return next === items ? null : (next as DrawingItem[])
+}
+
+async function followBatch(app: App, renames: Rename[]): Promise<void> {
   const open = new Set<string>()
   for (const leaf of app.workspace.getLeavesOfType(DRAWING_VIEW_TYPE)) {
     const view = leaf.view as DrawingView
     const session = view.session
     if (!view.file || !session) continue
     open.add(view.file.path)
-    const next = renamedNotes(session.items.items, from, to)
+    const next = renamedBatch(session.items.items, renames)
     if (!next) continue
     session.replaceItems(next.filter((i, n) => i !== session.items.items[n]))
   }
-  const needle = JSON.stringify(from).slice(1, -1)
+  const needles = renames.map(({ from }) => JSON.stringify(from).slice(1, -1))
   for (const file of app.vault.getFiles()) {
     if (file.extension !== 'svg' || open.has(file.path)) continue
     const text = await app.vault.cachedRead(file)
-    if (!text.includes(needle)) continue
-    const data = parseDrawingSvg(text)
-    const next = data && renamedNotes(data.items, from, to)
-    if (next && file instanceof TFile) await app.vault.modify(file, drawingSvg({ items: next }))
+    if (!needles.some((needle) => text.includes(needle))) continue
+    if (file instanceof TFile)
+      await app.vault.process(file, (current) => {
+        const data = parseDrawingSvg(current)
+        const next = data && renamedBatch(data.items, renames)
+        return next ? drawingSvg({ items: next }) : current
+      })
   }
 }
