@@ -119,6 +119,16 @@ describe('fenced untrusted Books scoped-only setup', () => {
     await expect(t.flow.setup(input)).rejects.toThrow(/transport/)
     expect(t.port.pullManifest).not.toHaveBeenCalled()
   })
+  it('a personal connection arriving during negotiation invalidates cold scoped ownership before storing secrets', async () => {
+    const s = setup()
+    s.port.negotiate.mockImplementation(async () => {
+      s.local.set('abele-sync-connection', { vaultId: 'other-personal' })
+      return s.state
+    })
+    await expect(s.flow.setup(input)).rejects.toThrow(/personal/)
+    expect(s.secret.size).toBe(0)
+    expect(s.port.ledger).not.toHaveBeenCalled()
+  })
   it('revocation makes all network writes unavailable while preserving downloaded bytes/descriptor', () => {
     expect(booxPermission('editor', 'revoked', 'edit-note')).toBe(false)
     expect(booxPermission('editor', 'revoked', 'read-local')).toBe(true)

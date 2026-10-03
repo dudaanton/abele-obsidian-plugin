@@ -183,6 +183,16 @@ export class BooxBooksSetup {
       const authority = await this.port.negotiate(copy(i))
       this.fence(generation)
       this.validate(i, authority)
+      // Negotiation awaited: cold ownership may have changed in another window/flow.
+      this.personal()
+      if (
+        this.storage.loadLocalStorage(SCOPED_CONNECTION_KEY) != null ||
+        this.storage.loadLocalStorage(SCOPED_JOIN_KEY) != null
+      )
+        throw new Error('Scoped ownership changed during Books negotiation')
+      if ((await this.port.localPaths()).length)
+        throw new Error('Books local vault is no longer empty')
+      this.fence(generation)
       const d: BooksDescriptor = {
         version: 4,
         facet: 'scoped',
