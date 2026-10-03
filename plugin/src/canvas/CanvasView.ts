@@ -10,7 +10,8 @@ import {
 import { cameraFrom } from '../drawing/camera'
 import { hostCanvasViewer } from './adapter'
 import { CANVAS_VIEW_TYPE, nativeCanvas } from './opening'
-import { emptyCanvas, parseCanvas } from './core/model'
+import { emptyCanvas } from './core/model'
+import { parseCanvasFile } from './fileData'
 import { stepsOf } from './core/steps'
 import { canvasPicture } from './pictureAdapter'
 import type { CanvasViewer } from './Viewer'
@@ -19,7 +20,7 @@ import type { CanvasViewer } from './Viewer'
 export class CanvasView extends FileView {
   viewer: CanvasViewer | null = null
   private refreshToken = 0
-  private bytes = ''
+  private bytes: string | null = null
   private pending: Record<string, unknown> | null = null
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -74,12 +75,12 @@ export class CanvasView extends FileView {
   }
   async onLoadFile(file: TFile): Promise<void> {
     this.file = file
-    this.bytes = ''
+    this.bytes = null
     await this.refresh()
   }
   async onUnloadFile(file: TFile): Promise<void> {
     this.refreshToken++
-    this.bytes = ''
+    this.bytes = null
     this.viewer?.load(emptyCanvas(), true)
     await super.onUnloadFile(file)
   }
@@ -97,8 +98,8 @@ export class CanvasView extends FileView {
       const bytes = await this.app.vault.read(file)
       if (token !== this.refreshToken || !this.viewer) return
       if (bytes !== this.bytes) {
-        const graph = parseCanvas(bytes),
-          initial = !this.bytes
+        const graph = parseCanvasFile(bytes),
+          initial = this.bytes === null
         this.bytes = bytes
         this.viewer.load(graph, initial)
       }
@@ -111,7 +112,7 @@ export class CanvasView extends FileView {
   private place(): void {
     const state = this.pending,
       viewer = this.viewer
-    if (!state || !viewer || !this.bytes) return
+    if (!state || !viewer || this.bytes === null) return
     this.pending = null
     let byId = 0
     if (typeof state.stepId === 'string') {

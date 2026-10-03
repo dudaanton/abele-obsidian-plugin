@@ -1,6 +1,31 @@
 import { expect, it, vi } from 'vitest'
 import { CanvasView } from '@/canvas/CanvasView'
 import { CanvasViewer } from '@/canvas/Viewer'
+import { TFile } from 'obsidian'
+
+it.each(['', '{}'])(
+  'loads the untouched native empty state %j without hiding nonempty malformed data',
+  async (initialBytes) => {
+    const view = Object.create(CanvasView.prototype) as CanvasView
+    const load = vi.fn(),
+      setText = vi.fn()
+    view.viewer = { load, status: { setText } } as unknown as CanvasViewer
+    const file = Object.assign(new TFile(), { path: 'sample-empty.canvas' })
+    let bytes = initialBytes
+    ;(view as unknown as { app: unknown; refreshToken: number }).app = {
+      vault: { read: async () => bytes },
+    }
+    ;(view as unknown as { refreshToken: number }).refreshToken = 0
+    await view.onLoadFile(file)
+    expect(load).toHaveBeenCalledWith({ nodes: [], edges: [] }, true)
+    expect(setText).not.toHaveBeenCalled()
+    bytes = '{"nodes":[]'
+    await (view as unknown as { refresh(): Promise<void> }).refresh()
+    expect(load).toHaveBeenCalledOnce()
+    expect(setText).toHaveBeenCalledWith(expect.stringMatching(/could not be read/i))
+    expect(bytes).toBe('{"nodes":[]')
+  }
+)
 
 it('keeps a readable static view and a steps-specific error when legacy walkthrough data is malformed', async () => {
   const el = document.createElement('div')

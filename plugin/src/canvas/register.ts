@@ -14,7 +14,12 @@ export function registerCanvas(plugin: Plugin): void {
   const adopt = () => {
     window.clearTimeout(pending)
     pending = window.setTimeout(() => {
-      if (adopting || !AbeleConfig.getInstance().canvasViewer) return
+      if (!AbeleConfig.getInstance().canvasViewer) return
+      // A save/layout event during a slow read still needs a pass after that read.
+      if (adopting) {
+        adopt()
+        return
+      }
       adopting = true
       void adoptCanvasLeaves(app)
         .catch((error) => new Notice(`Could not open diagram: ${String(error)}`))
@@ -26,6 +31,11 @@ export function registerCanvas(plugin: Plugin): void {
   app.workspace.onLayoutReady(adopt)
   plugin.registerEvent(app.workspace.on('file-open', adopt))
   plugin.registerEvent(app.workspace.on('layout-change', adopt))
+  plugin.registerEvent(
+    app.vault.on('modify', (file) => {
+      if (file instanceof TFile && file.extension === 'canvas') adopt()
+    })
+  )
   plugin.register(() => window.clearTimeout(pending))
   plugin.registerMarkdownPostProcessor(canvasEmbedProcessor(app))
   plugin.registerEditorExtension(

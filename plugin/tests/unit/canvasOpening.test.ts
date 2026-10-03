@@ -41,6 +41,73 @@ const setup = (changed = false) => {
     serialized,
   }
 }
+it('adopts a zero-byte new canvas only when the native graph is empty, without writing it', async () => {
+  const { app, leaf, view, save, cancel } = setup()
+  app.vault.read = async () => ''
+  view.canvas.getData = () => ({ nodes: [], edges: [] })
+  view.getViewData = () => JSON.stringify({ nodes: [], edges: [] })
+  await adoptCanvasLeaves(app)
+  expect(leaf.setViewState).toHaveBeenCalledWith({
+    type: 'abele-canvas',
+    state: { file: 'sample.canvas' },
+  })
+  expect(save).not.toHaveBeenCalled()
+  expect(cancel).toHaveBeenCalledOnce()
+  expect(await app.vault.read(view.file)).toBe('')
+})
+it.each(['{}', JSON.stringify({ nodes: [], edges: [] })])(
+  'adopts a valid native empty canvas %s without writing it',
+  async (empty) => {
+    const { app, leaf, view, save } = setup()
+    app.vault.read = async () => empty
+    view.canvas.getData = () => ({ nodes: [], edges: [] })
+    await adoptCanvasLeaves(app)
+    expect(leaf.setViewState).toHaveBeenCalledOnce()
+    expect(save).not.toHaveBeenCalled()
+    expect(await app.vault.read(view.file)).toBe(empty)
+  }
+)
+it('defers a zero-byte canvas with pending native content until its initial save finishes', async () => {
+  const { app, leaf, view, save, cancel } = setup()
+  let stored = ''
+  app.vault.read = async () => stored
+  await expect(adoptCanvasLeaves(app)).resolves.toBeUndefined()
+  expect(leaf.setViewState).not.toHaveBeenCalled()
+  expect(cancel).not.toHaveBeenCalled()
+  expect(view.lastSavedData).toBe(bytes)
+  expect(save).not.toHaveBeenCalled()
+  stored = bytes // The native editor, not the view switch, completes its pending save.
+  await adoptCanvasLeaves(app)
+  expect(leaf.setViewState).toHaveBeenCalledOnce()
+  expect(stored).toBe(bytes)
+})
+it.each([
+  '{',
+  ' ',
+  '{"nodes":[]',
+  '{"nodes":[],"edges":[],"sample":',
+  'null',
+  '[]',
+  '{"sample":true}',
+])(
+  'preserves nonempty malformed bytes %j and still adopts an unrelated leaf',
+  async (malformed) => {
+    const first = setup(),
+      second = setup()
+    second.view.file.path = 'sample-other.canvas'
+    first.app.vault.read = async (file) => (file === first.view.file ? malformed : bytes)
+    first.app.vault.getAbstractFileByPath = (path) =>
+      path === first.view.file.path ? first.view.file : second.view.file
+    first.app.workspace.getLeavesOfType = () => [first.leaf, second.leaf]
+    await expect(adoptCanvasLeaves(first.app)).rejects.toThrow()
+    expect(first.leaf.setViewState).not.toHaveBeenCalled()
+    expect(first.cancel).not.toHaveBeenCalled()
+    expect(first.view.lastSavedData).toBe(bytes)
+    expect(first.save).not.toHaveBeenCalled()
+    expect(await first.app.vault.read(first.view.file)).toBe(malformed)
+    expect(second.leaf.setViewState).toHaveBeenCalledOnce()
+  }
+)
 it('does not overwrite an external file revision when the native view is behind', async () => {
   const { app, leaf, view, save } = setup()
   const external = JSON.parse(bytes)
@@ -82,6 +149,31 @@ it('refuses a pending native edit rather than discarding or saving it during ado
   expect(save).not.toHaveBeenCalled()
   expect(leaf.setViewState).not.toHaveBeenCalled()
   expect(view.canvas.getData().nodes[0].text).toBe('Pending change')
+})
+it('keeps an unsaved native edit intact while switching an independent leaf', async () => {
+  const first = setup(true),
+    second = setup()
+  second.view.file.path = 'sample-other.canvas'
+  first.app.workspace.getLeavesOfType = () => [first.leaf, second.leaf]
+  first.app.vault.getAbstractFileByPath = (path) =>
+    path === first.view.file.path ? first.view.file : second.view.file
+  await expect(adoptCanvasLeaves(first.app)).rejects.toThrow(/saving|reloading/i)
+  expect(first.view.canvas.getData().nodes[0].text).toBe('Pending change')
+  expect(first.view.lastSavedData).toBe(bytes)
+  expect(first.cancel).not.toHaveBeenCalled()
+  expect(first.save).not.toHaveBeenCalled()
+  expect(first.leaf.setViewState).not.toHaveBeenCalled()
+  expect(second.leaf.setViewState).toHaveBeenCalledOnce()
+})
+it('does not switch a leaf that changes file during the adoption read', async () => {
+  const { app, leaf, view, cancel } = setup()
+  app.vault.read = async () => {
+    view.file = Object.assign(new TFile(), { path: 'sample-other.canvas', extension: 'canvas' })
+    return ''
+  }
+  await adoptCanvasLeaves(app)
+  expect(cancel).not.toHaveBeenCalled()
+  expect(leaf.setViewState).not.toHaveBeenCalled()
 })
 it('adopts semantically unchanged native data without triggering a formatting-only save on unload', async () => {
   const { app, view, save, cancel, serialized } = setup()
