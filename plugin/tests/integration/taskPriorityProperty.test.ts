@@ -83,6 +83,32 @@ describe('dedicated task priority property', () => {
     expect((await parseNoteContent(null, cleared)).priority).toBe('Low')
   })
 
+  it('uses the configured key on entity writes while preserving an implicit rewrite verbatim', async () => {
+    const config = AbeleConfig.getInstance()
+    config.taskPriorityProperty = 'importance'
+    const task = new Task({ wikilink: '[[Tasks/sample-task]]' })
+    await task.load()
+    await task.loadContent()
+    const { app } = (await import('@/stores/GlobalStore')).GlobalStore.getInstance()
+    const file = app.vault.getFileByPath('Tasks/sample-task.md')!
+    await task.writeTaskToFile()
+    expect((await parseNoteContent(null, await app.vault.read(file))).importance).toEqual([
+      ' High ',
+    ])
+    task.priority = 'medium'
+    await task.writeTaskToFile()
+    expect(await parseNoteContent(null, await app.vault.read(file))).toMatchObject({
+      importance: 'medium',
+      priority: 'Low',
+    })
+    task.priority = null
+    await task.writeTaskToFile()
+    expect(await parseNoteContent(null, await app.vault.read(file))).not.toHaveProperty(
+      'importance'
+    )
+    task.cleanup()
+  })
+
   it('offers a native input alongside the label property', async () => {
     const config = AbeleConfig.getInstance()
     vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
