@@ -4,6 +4,7 @@ import {
   AssetMutationSchema,
   OwnerAssetAddSchema,
   NativeSponsoredCreateSchema,
+  IntrinsicSponsorProofSchema,
 } from '@abele/sync-protocol'
 import { z } from 'zod'
 import { SharingHttp, SharingHttpError, type SharingHttpOptions } from './sharingHttp'
@@ -101,6 +102,19 @@ export class SponsoredAssetsHttpPort implements SponsoredAssetPort {
     )
     if (v.grantId !== request.grantId) throw new Error('Sponsored response grant binding differs')
     return v
+  }
+  async sponsorProof(grantId: string, fileId: string) {
+    const c = this.path(grantId),
+      proof = IntrinsicSponsorProofSchema.parse(
+        await this.http.json(
+          'GET',
+          c.base + '/assets/sponsors/' + encodeURIComponent(fileId) + '/proof',
+          c.token
+        )
+      )
+    if (proof.grantId !== grantId || proof.sponsor.fileId !== fileId)
+      throw new Error('Intrinsic sponsor proof identity differs')
+    return proof.sponsor
   }
   async proof(grantId: string, sha: string) {
     const c = this.path(grantId, 'scoped')

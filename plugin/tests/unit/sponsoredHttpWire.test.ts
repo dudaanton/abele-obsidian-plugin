@@ -41,6 +41,38 @@ describe('concrete sponsored HTTP wire binding', () => {
       delta: { kind: 'withdraw', fileId: 'sample-target', expectedGeneration: 0 },
     })
   })
+  it.each(['personal', 'scoped'])(
+    'uses the authorized %s intrinsic-note proof without a generation guess',
+    async (facet) => {
+      const sponsor = {
+          fileId: 'sample-note',
+          versionId: 'note-v2',
+          admissionGeneration: 7,
+          inScope: true,
+          intrinsic: true,
+        },
+        transport = vi.fn(
+          async () => new Response(JSON.stringify({ grantId: 'sample-grant', sponsor }))
+        ),
+        port = new SponsoredAssetsHttpPort({
+          baseUrl: 'https://sync.example',
+          fetch: transport as any,
+          enabled: () => true,
+          context: {
+            facet: facet as any,
+            vaultId: 'sample-vault',
+            principalId: 'sample-principal',
+            token: () => (facet === 'personal' ? 'absd_' : 'absk_') + 'a'.repeat(43),
+          },
+        })
+      expect(await port.sponsorProof('sample-grant', 'sample-note')).toEqual(sponsor)
+      expect(transport.mock.calls[0][0]).toBe(
+        'https://sync.example/v1/' +
+          (facet === 'scoped' ? 'scoped/' : '') +
+          'vaults/sample-vault/grants/sample-grant/assets/sponsors/sample-note/proof'
+      )
+    }
+  )
   it('keeps native creation/proof scoped, with no personal token fallback', async () => {
     const transport = vi.fn(),
       port = new SponsoredAssetsHttpPort({
