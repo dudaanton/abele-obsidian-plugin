@@ -1,7 +1,10 @@
 # Native owner publication integration behind the fence
 
-The reviewed input is exactly `3b82b27ef378b33a7edf1bced02332612960c4b2`, built and checksum
-verified from a committed archive. The disposable gate uses that same archived server and CLI.
+The current reviewed input is exactly `ac0df5090f7e754cda76296fbf3c8081d1076115`, built and
+checksum verified from a committed archive. Disposable gates use that same archived server and CLI.
+The completed native results below belong to the previous exact reviewed input
+`3b82b27ef378b33a7edf1bced02332612960c4b2`; the new pin's native rerun is currently blocked by
+an unavailable owned-vault CLI reply, not a passing result.
 No sibling live build, SQL sponsor-generation read, generation-one guess or personal-token
 fallback is used. The unchanged stock server still advertises scoped activation as false and
 refuses management with 503; the explicitly authorized disposable assembly exercises its
@@ -60,8 +63,10 @@ preserves/restores every native pasteboard item/type with exact comparison (not 
 Electron `writeBuffer` loop), and drives only the owned source editor. The archive implementation
 also has a real AppKit round-trip test in an isolated named pasteboard, never the global clipboard.
 A pool lease does not imply that its window is open: the runner verifies a nonce-framed owned-vault
-reply, opens a closed owned window under the short app gate, and requests its original closed
-state afterward. Unroutable CLI/close requests are errors, not successful process-exit proof. A busy shared
+reply before installation. Unavailable CLI replies stop the run for the manager. Unattended
+code never starts, quits, restarts or relaunches the app, including by an open-vault URI. The
+manager supplies an already open/routable pool; its window state is left alone. The earlier
+window-recovery/restart procedure is historical evidence only, not authorization to repeat it. A busy shared
 resource is a failed/blocked run, never a skip or acceptance pass. Builds, styles, original local
 bindings, layout and all owned server/daemon/database resources are restored by the harness.
 
