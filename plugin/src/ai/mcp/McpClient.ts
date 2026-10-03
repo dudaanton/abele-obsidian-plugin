@@ -15,7 +15,7 @@
  * The older HTTP+SSE transport (2024-11-05) is not spoken: it is deprecated, and it needs a
  * stream held open for every answer, which `requestUrl` cannot hold.
  */
-import { request as requestUrl } from '@/helpers/http'
+import { requestText } from '@/helpers/http'
 import { parseSseData } from './sse'
 import type { McpCallResult, McpToolSnapshot } from './types'
 
@@ -65,20 +65,8 @@ export class McpError extends Error {
 }
 
 /** Obsidian's `requestUrl`: no CORS, on every platform. It throws only when nothing answered. */
-export const obsidianRequest: McpRequest = async ({ url, method, headers, body }) => {
-  const response = await requestUrl({ url, method, headers, body, throw: false })
-  const lower: Record<string, string> = {}
-  for (const [key, value] of Object.entries(response.headers ?? {})) {
-    lower[key.toLowerCase()] = value
-  }
-  let text = ''
-  try {
-    text = response.text
-  } catch {
-    // A body that is not text: nothing an MCP server should send, and nothing to read.
-  }
-  return { status: response.status, headers: lower, text }
-}
+export const obsidianRequest: McpRequest = ({ url, method, headers, body }) =>
+  requestText({ url, method, headers, body }, true)
 
 export interface McpClientOptions {
   url: string

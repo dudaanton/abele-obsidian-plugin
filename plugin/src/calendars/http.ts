@@ -3,7 +3,7 @@
  * front of and which works the same on a phone. Behind a function of its own so tests can send
  * the same requests to a server they start themselves.
  */
-import { request as requestUrl } from '@/helpers/http'
+import { requestText, headerValue } from '@/helpers/http'
 
 export interface HttpRequest {
   url: string
@@ -20,24 +20,11 @@ export interface HttpResponse {
 
 export type Requester = (request: HttpRequest) => Promise<HttpResponse>
 
-export const obsidianRequester: Requester = async (request) => {
-  const response = await requestUrl({ ...request, throw: false })
-  let text = ''
-  try {
-    text = response.text
-  } catch {
-    // A body that is not text — nothing a calendar would send; the status says what happened.
-  }
-  return { status: response.status, text, headers: response.headers ?? {} }
-}
+export const obsidianRequester: Requester = (request) => requestText(request)
 
 /** A header whatever case the server wrote it in. */
 export function header(response: HttpResponse, name: string): string {
-  const wanted = name.toLowerCase()
-  for (const [key, value] of Object.entries(response.headers)) {
-    if (key.toLowerCase() === wanted) return value
-  }
-  return ''
+  return headerValue(response.headers, name) ?? ''
 }
 
 /** `Basic …` for a login and password, UTF-8 as RFC 7617 asks. */

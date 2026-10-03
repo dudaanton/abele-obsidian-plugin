@@ -71,8 +71,41 @@ export function setRequestTransport(transport: RequestTransport | undefined): vo
 const redirects = new Set([301, 302, 303, 307, 308])
 const credentialHeader =
   /^(authorization|proxy-authorization|cookie|x-api-key|api-key|x-auth-token|x-subscription-token)$/i
-export function headerValue(headers: Record<string, string>, name: string): string | undefined {
+export function headerValue(
+  headers: Record<string, string> | undefined,
+  name: string
+): string | undefined {
   return Object.entries(headers ?? {}).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]
+}
+
+export interface TextResponse {
+  status: number
+  headers: Record<string, string>
+  text: string
+}
+
+/** Domain adapters interpret status themselves; transport/guard failures still propagate. */
+export async function requestText(
+  options: NetworkRequest,
+  lowercaseHeaders = false
+): Promise<TextResponse> {
+  const response = await request({ ...options, throw: false })
+  const headers = response.headers ?? {}
+  let text = ''
+  try {
+    text = response.text
+  } catch {
+    // A non-text body does not erase the HTTP status.
+  }
+  return {
+    status: response.status,
+    headers: lowercaseHeaders
+      ? Object.fromEntries(
+          Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value])
+        )
+      : headers,
+    text,
+  }
 }
 
 /**

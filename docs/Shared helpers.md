@@ -57,6 +57,23 @@ Guards: `sharedFormatting.test.ts`, `unusedMediaSafety.test.ts`, `deduplicateMed
 and existing gallery/UI-kit tests. Duration/token consumer adoption and journal navigation stay
 with the corresponding panel/runtime owners; this batch does not change their date arithmetic.
 
+## Requests
+
+`plugin/src/helpers/http.ts` remains the common guarded transport. `requestText(options,
+lowercaseHeaders?)` is the calendar/MCP adapter: it passes status through (`throw: false`),
+never parses JSON, returns empty text for a body getter that throws, and propagates transport
+and guard failures unchanged. Header casing is retained by default, lowercased for MCP.
+`headerValue(headers, name)` is case-insensitive and returns `undefined` when absent;
+calendar's `header` preserves its existing empty-string fallback.
+
+Timeouts, size limits, redirects and credential guards are unchanged. Streaming still uses
+its existing streaming adapter. GitHub deliberately retains its redirect-controlled single-hop
+transport, including the native phone bridge: replacing it with the auto-following native
+Obsidian transport would change credential behavior. Domain-specific errors stay in their domains.
+
+Guards: `requestContract.test.ts`, `networkLimits.test.ts`, `localProviderTransport.test.ts`,
+and the existing calendar, MCP and GitHub transport/security suites.
+
 ## Dead-code inventory
 
 Run `node plugin/scripts/dead-code.mjs`. CI also prints the inventory. It follows static,
