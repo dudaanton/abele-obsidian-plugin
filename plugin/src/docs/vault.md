@@ -1518,7 +1518,10 @@ Blob refusals can further reduce a candidate: before transport, the exact durabl
 journal binds an ordered subset without changing fields or stable handles, retaining the original
 plan. Version-2 metadata stores original operation values once, preserving field order, with a
 fixed-size admitted-selection bitmap reserved before upload. Binding cannot duplicate the body
-or grow past storage limits after submission; legacy rows decode to the same exact evidence.
+or grow past storage limits after submission; admission-held reasons are derived from the
+selection rather than appended, and legacy rows decode to the same exact evidence. Receipt
+metadata references that frozen unit's operation digest instead of duplicating its operation
+array, while retaining the strict original wire body and receipt verification.
 Once bound, body/key/handles are immutable on replay; receipts must match exactly, and
 omitted targets/sponsors stay held. A final-binding persistence failure prevents transport. Only trusted exact native paste-range
 introduction plus verified novel creation and authorized intrinsic sponsor proof may publish;

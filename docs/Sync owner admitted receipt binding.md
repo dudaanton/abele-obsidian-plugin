@@ -27,7 +27,10 @@ or reordered, and create handles cannot be reminted. The immutable original plan
 checksum-bound evidence. Version-2 storage keeps its operation values only once, with ordered
 key dictionaries and a fixed-size selection bitmap allocated during preparation. Binding changes
 bitmap bits and a boolean, not storage size; exact admitted bodies/handles are derived losslessly.
-Both native and intent consumers use this representation, with unchanged 2 MiB/1 MiB limits. Omitted target/sponsor operations keep their intents held, not published.
+Both native and intent consumers use this representation, with unchanged 2 MiB/1 MiB limits.
+Admission-held state/reason is a derived view of that immutable selection, not another appended
+serialized field. Its canonical stored intent stays prepared; reads expose the same restrictive
+held status. Legacy persisted admission reasons normalize without changing their meaning. Omitted target/sponsor operations keep their intents held, not published.
 An independent verified prior sponsor settlement remains distinct from an omitted sponsor op.
 
 Once bound, the admitted body/handles are immutable, including across reopen and lost-reply
@@ -51,6 +54,16 @@ and accepts old prepared/submitted rows without reinterpreting receipt authority
 and partially reduced bodies cannot grow at final binding. Oversized new evidence is still
 refused at preparation, before upload/submitted phase; there is no blind budget increase or
 new path/batch restriction.
+
+A final targeted review found another binding mutation: omitting an actual target/sponsor
+appended a held reason, adding 51 characters to the whole envelope after submission. The fix
+derives that held view on read and canonicalizes it on write. A protocol-valid 1000-op plan at
+1 MiB minus one, with the target upload rejected and 999 admitted operations, now binds to
+1 MiB minus two and replays once. Sponsor omission is separately checked at the same full-ledger
+boundary. Prepared and already-submitted legacy metadata round-trip/replay remains supported.
+The native receipt record also avoids copying admitted operations again: it stores their exact
+digest against the frozen unit, keeping the original wire body and all strict verification.
+This prevents the corresponding large receipt from exceeding the unchanged native 2 MiB cap.
 
 Actual-scanner large regressions show the old budget error twice (first attempt/reopen), then
 successful lost-reply replay with one version/publication after the fix. Legacy already-submitted
