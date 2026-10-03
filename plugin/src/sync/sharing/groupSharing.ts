@@ -257,6 +257,7 @@ interface BatchJournal {
 /** Manual existing-file batch is explicit per audience; immutable requests are durable before send. */
 export class InitialAssetBatch {
   private shown: BatchReview | null = null
+  private readonly expectedJournals = new Set<string>()
   private generation = 0
   private busy = false
   constructor(
@@ -274,6 +275,10 @@ export class InitialAssetBatch {
     this.fence()
     const value = JSON.stringify({ journal: j, checksum: await hash(j) })
     if (value.length > 1024 * 1024) throw new Error('Initial batch journal budget reached')
+    if (this.expectedJournals.has(j.review.id) && !(await this.read(j.review.id)))
+      throw new Error('Missing retained initial batch journal; recovery required')
+    // Also remember an uncertain first persistence attempt; retries never mint replacement IDs.
+    this.expectedJournals.add(j.review.id)
     await this.meta.setMeta('initial-asset-batch-v1:' + j.review.id, value)
     if ((await this.meta.getMeta('initial-asset-batch-v1:' + j.review.id)) !== value)
       throw new Error('Initial batch journal was not persisted')
@@ -341,8 +346,11 @@ export class InitialAssetBatch {
   }
   async resume(id: string): Promise<BatchReview> {
     this.fence()
-    const j = await this.read(id)
+    const generation = this.generation,
+      j = await this.read(id)
+    this.fence(generation)
     if (!j) throw new Error('Missing initial batch journal; recovery required')
+    this.expectedJournals.add(id)
     this.shown = copy(j.review)
     return copy(j.review)
   }
@@ -355,6 +363,10 @@ export class InitialAssetBatch {
     const generation = this.generation
     try {
       let j = await this.read(shown.id)
+      this.fence(generation)
+      if (j) this.expectedJournals.add(shown.id)
+      else if (this.expectedJournals.has(shown.id))
+        throw new Error('Missing retained initial batch journal; recovery required')
       if (!j) {
         // Preflight ALL targets/audiences before the first mutation; never partial stale acceptance.
         for (const e of shown.entries) {
@@ -431,6 +443,10 @@ export class InitialAssetBatch {
           await this.write(j)
         }
         this.fence(generation)
+        const durable = await this.read(shown.id)
+        this.fence(generation)
+        if (!durable || !equal(durable, j))
+          throw new Error('Initial batch journal missing or changed; recovery required')
         const result = await this.port.add(copy(op.request))
         this.fence(generation)
         if (result.grantId !== op.grantId) throw new Error('Batch response audience differs')

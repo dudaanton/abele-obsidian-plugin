@@ -283,6 +283,38 @@ describe('explicit reviewed existing-image batch', () => {
     await recovered.confirm(shown)
     expect(s.port.add).not.toHaveBeenCalled()
   })
+  it('losing an already-created journal after a lost response requires recovery, never fresh operation IDs', async () => {
+    const s = batch(),
+      r = await s.flow.review([entry], ['sample-grant'])
+    s.port.add.mockRejectedValueOnce(new Error('Synthetic lost response'))
+    await expect(s.flow.confirm(r)).rejects.toThrow(/lost/)
+    s.data.delete('initial-asset-batch-v1:' + r.id)
+    await expect(s.flow.confirm(r)).rejects.toThrow(/journal.*recovery/i)
+    expect(s.port.add).toHaveBeenCalledTimes(1)
+  })
+  it('losing journal evidence after resume or during resumed preflight cannot recreate a batch', async () => {
+    for (const duringPreflight of [false, true]) {
+      const s = batch(),
+        r = await s.flow.review([entry], ['sample-grant'])
+      s.port.add.mockRejectedValueOnce(new Error('Synthetic lost response'))
+      await expect(s.flow.confirm(r)).rejects.toThrow(/lost/)
+      const flow = new InitialAssetBatch(
+          s.meta,
+          { vaultId: 'sample-vault', principal: 'sample-owner' },
+          s.port,
+          () => true
+        ),
+        shown = await flow.resume(r.id)
+      if (duringPreflight)
+        s.port.lookup.mockImplementationOnce(async () => {
+          s.data.delete('initial-asset-batch-v1:' + r.id)
+          return false
+        })
+      else s.data.delete('initial-asset-batch-v1:' + r.id)
+      await expect(flow.confirm(shown)).rejects.toThrow(/journal.*recovery/i)
+      expect(s.port.add).toHaveBeenCalledTimes(1)
+    }
+  })
   it('two targets in one audience use current CAS and a lost response retries the same exact id/body', async () => {
     const s = batch(),
       second = {
