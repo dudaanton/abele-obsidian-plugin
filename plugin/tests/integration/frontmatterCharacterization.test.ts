@@ -57,11 +57,13 @@ Body`
     expect(raw.attributes.day).toEqual(new Date('2028-03-01T00:00:00Z'))
     expect(raw.attributes.quoted).toBe('2028-03-01')
     expect(raw.body).toBe('Body')
+    // The timezone-dependent calendar-day shift was fixed intentionally.
     expect(await parse(text)).toEqual({
-      day: '2028-02-29T16:00:00',
+      day: '2028-03-01',
       quoted: '2028-03-01',
       time: '2028-03-01T10:45:12',
-      midnight: '2028-03-01',
+      // Dropping the time from an explicit midnight datetime was fixed intentionally.
+      midnight: '2028-03-01T00:00:00',
       quotedTime: '2028-03-01T18:45:12Z',
       nested: { day: new Date('2028-03-01T00:00:00Z') },
       list: [new Date('2028-03-01T00:00:00Z'), '2028-03-01'],
@@ -177,7 +179,7 @@ describe('frontmatter read and write surfaces', () => {
     expect(getFrontmatterFromCache('Notes/sample.md')).toBe(cached)
     expect(getFrontmatterFromCache('missing.md')).toBeNull()
     expect(await getNoteData('Notes/sample.md')).toEqual({
-      day: '2028-02-29T16:00:00',
+      day: '2028-03-01',
       content: 'Disk',
     })
     expect(await getNoteData('missing.md')).toBeNull()
