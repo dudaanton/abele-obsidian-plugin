@@ -7,6 +7,8 @@ import {
 } from '@abele/sync-protocol'
 import { sha256 } from '@abele/sync-core'
 import { SharingHttp, type SharingHttpOptions } from './sharingHttp'
+import { z } from 'zod'
+import type { GroupGrant, GroupRelation } from './groupSharing'
 import type {
   FolderSharingPort,
   FolderPreview,
@@ -179,6 +181,95 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
     )
       throw new Error('Machine key is not bound to reviewed grant')
     return { grantId: grant.id, facet: 'scoped', role: body.role, token: value.key_token }
+  }
+  async createGroup(
+    session: OwnerSession,
+    input: { label: string; rootId: string; rootVersion: string; role: 'reader' | 'editor' }
+  ): Promise<GroupGrant> {
+    const token = this.ownerToken(session),
+      id = z.string().min(1).max(200),
+      body = z
+        .object({
+          label: id,
+          root_file_id: id,
+          expected_root_version: id,
+          role: z.enum(['reader', 'editor']),
+        })
+        .strict()
+        .parse({
+          label: input.label,
+          root_file_id: input.rootId,
+          expected_root_version: input.rootVersion,
+          role: input.role,
+        })
+    const r = (await this.http.json(
+      'POST',
+      '/v1/vaults/' + segment(this.options.vaultId) + '/grants/groups',
+      token,
+      body
+    )) as Record<string, unknown>
+    if (
+      typeof r.id !== 'string' ||
+      r.vault_id !== this.options.vaultId ||
+      r.selector_kind !== 'group' ||
+      r.root_file_id !== body.root_file_id ||
+      r.role !== body.role ||
+      !Number.isSafeInteger(r.acl_revision) ||
+      Number(r.acl_revision) < 0 ||
+      typeof r.state !== 'string'
+    )
+      throw new Error('Group grant response differs from reviewed root/role')
+    return {
+      id: r.id,
+      rootId: body.root_file_id,
+      rootVersion: body.expected_root_version,
+      role: body.role,
+      revision: Number(r.acl_revision),
+      state: r.state,
+    }
+  }
+  async approveGroup(
+    session: OwnerSession,
+    grant: GroupGrant,
+    relation: GroupRelation
+  ): Promise<void> {
+    const token = this.ownerToken(session),
+      device = this.options.deviceToken(),
+      id = z.string().min(1).max(200)
+    if (!device || !/^absd_[A-Za-z0-9_-]{43}$/.test(device))
+      throw new Error('Actual owner-personal device proof required')
+    const body = z
+      .object({
+        device_token: z.string(),
+        expected_revision: z.number().int().nonnegative(),
+        source_file_id: id,
+        source_version_id: id,
+        target_file_id: id,
+        target_version_id: id,
+        token_key: z.string().min(1).max(1024),
+        anchor: z.boolean(),
+      })
+      .strict()
+      .parse({
+        device_token: device,
+        expected_revision: grant.revision,
+        source_file_id: relation.sourceId,
+        source_version_id: relation.sourceVersion,
+        target_file_id: relation.targetId,
+        target_version_id: relation.targetVersion,
+        token_key: relation.tokenKey,
+        anchor: relation.anchor,
+      })
+    await this.http.json(
+      'POST',
+      '/v1/vaults/' +
+        segment(this.options.vaultId) +
+        '/grants/groups/' +
+        segment(grant.id) +
+        '/approve',
+      token,
+      body
+    )
   }
   close() {
     this.sessions = new WeakMap()

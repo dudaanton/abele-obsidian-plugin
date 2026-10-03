@@ -67,6 +67,22 @@
         </ul>
       </template>
       <p v-if="error" role="alert">{{ error }}</p>
+      <Setting
+        name="Group root and anchors"
+        desc="Review stable group identities and explicit relations; no folder/remap or inferred anchor authority."
+        ><Button
+          text="Review group sharing"
+          tooltip="Inspect the disabled exact-root group wizard"
+          @click="groupOpen = true"
+      /></Setting>
+      <Setting
+        name="Existing-image initial batch"
+        desc="One exact target/sponsor/audience review, never a whole-list replacement."
+        ><Button
+          text="Review initial asset batch"
+          tooltip="Inspect the disabled existing-file exposure batch"
+          @click="batchOpen = true"
+      /></Setting>
       <p>
         Renames preserve identity; delete/recreate never inherits approval. Removing extra authority
         does not remove independent folder/group access.
@@ -78,6 +94,8 @@
       :enabled="enabled"
       @close="folderOpen = false"
     />
+    <GroupSharingModal v-if="groupOpen" :enabled="enabled" @close="groupOpen = false" />
+    <InitialAssetBatchModal v-if="batchOpen" :enabled="enabled" @close="batchOpen = false" />
     <ConfirmModal
       v-if="unshare"
       title="Unshare this exact file?"
@@ -105,6 +123,8 @@ import Setting from '../../obsidian/Setting.vue'
 import Button from '../../obsidian/Button.vue'
 import ConfirmModal from '../../obsidian/ConfirmModal.vue'
 import OwnerFolderSharingModal from '../../sync/OwnerFolderSharingModal.vue'
+import GroupSharingModal from '../../sync/GroupSharingModal.vue'
+import InitialAssetBatchModal from '../../sync/InitialAssetBatchModal.vue'
 import { OWNER_SHARING_ENABLED, type FolderSharingFlow } from '@/sync/sharing/folderSharing'
 import type { AssetView } from '@/sync/sharing/sponsoredAssets'
 import type { PublicationSettingsModel, UnshareReview } from '@/sync/sharing/publicationSettings'
@@ -125,6 +145,8 @@ const props = withDefaults(
 const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   ownerContext = computed(() => props.facet !== 'scoped' && (props.owner ?? true)),
   folderOpen = ref(false),
+  groupOpen = ref(false),
+  batchOpen = ref(false),
   error = ref(''),
   busy = ref(false),
   unshare = ref<UnshareReview | null>(null)
