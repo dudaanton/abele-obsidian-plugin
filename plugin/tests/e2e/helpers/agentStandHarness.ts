@@ -52,14 +52,28 @@ function ended(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
   return new Promise((resolve) => child.once('exit', () => resolve()))
 }
-export async function spawnAgentStandServer(root: string, commit: string, work: string) {
+export async function spawnAgentStandServer(
+  root: string,
+  commit: string,
+  work: string,
+  options: { assembly?: (source: string) => string; extraImports?: string[] } = {}
+) {
   verifySyncFixture(root, commit)
   const appPath = join(root, 'packages/server/dist/api/app.js'),
     appSource = readFileSync(appPath, 'utf8')
   writeFileSync(
     join(work, 'disposable-app.mjs'),
     `import {prepareFolderAdmissions} from ${JSON.stringify(pathToFileURL(join(root, 'packages/server/dist/scoped/admissions.js')).href)};\n` +
-      imports(assembleDisposableAgentApp(appSource), appPath, root)
+      (options.extraImports ?? [])
+        .map(
+          (file) =>
+            `import * as groupModule${file.includes('bootstrap') ? 'Bootstrap' : 'Worker'} from ${JSON.stringify(pathToFileURL(join(root, 'packages/server/dist', file)).href)};\n`
+        )
+        .join('') +
+      (options.extraImports?.length
+        ? 'const {prepareGroupBootstrap}=groupModuleBootstrap;const {processGroupDirtyPage}=groupModuleWorker;\n'
+        : '') +
+      imports((options.assembly ?? assembleDisposableAgentApp)(appSource), appPath, root)
   )
   const module = (file: string) =>
     JSON.stringify(pathToFileURL(join(root, 'packages/server/dist', file)).href)
@@ -137,6 +151,15 @@ export async function spawnAgentStandServer(root: string, commit: string, work: 
             'Disposable folder preparation failed: ' + res.status + ' ' + JSON.stringify(body.error)
           )
         }
+        return res.json()
+      },
+      async prepareGroup(token: string, vaultId: string) {
+        const res = await globalThis.fetch(url + '/__disposable/prepare-group', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-disposable-owner': nonce },
+          body: JSON.stringify({ token, vaultId }),
+        })
+        if (!res.ok) throw new Error('Disposable group preparation refused: ' + res.status)
         return res.json()
       },
       createAccount(email: string, password: string) {
