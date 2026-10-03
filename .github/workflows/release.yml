@@ -11,6 +11,10 @@ permissions:
 jobs:
   test:
     uses: ./.github/workflows/test.yml
+    with:
+      # One urgent key-destination release uses its curated regression set; every other tag
+      # retains the full suite. Type, lint, dependency, size and publishing gates are unchanged.
+      test_scope: ${{ github.ref_name == '1.69.0' && 'key-destinations' || 'all' }}
 
   build:
     needs: test

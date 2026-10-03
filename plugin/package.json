@@ -9,6 +9,7 @@
     "build:test": "tsc -noEmit -skipLibCheck && vite build --mode development",
     "types": "tsc -noEmit -skipLibCheck",
     "test": "vitest run",
+    "test:key-destinations": "vitest run tests/unit/keyDestinationSecurity.test.ts tests/unit/keyHttpSecurity.test.ts tests/unit/localProviderTransport.test.ts tests/unit/savedKeyRequests.test.ts tests/component/securityDialogs.test.ts tests/component/manualKeyConsentDialog.test.ts tests/integration/scriptKeyApproval.test.ts tests/integration/manualKeyConsent.test.ts tests/harness/keyDestinationRouting.test.ts",
     "test:watch": "vitest",
     "test:perf": "vitest run .perf.test.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",

@@ -7,6 +7,11 @@ on:
   # Callable, so a release runs exactly these checks against the tag it is about to publish
   # rather than a copy of them that can drift.
   workflow_call:
+    inputs:
+      test_scope:
+        type: string
+        required: false
+        default: all
 
 permissions:
   contents: read
@@ -87,7 +92,14 @@ jobs:
       # through its CLI and has no meaning on a headless runner.
       - name: Unit and integration tests
         working-directory: plugin
-        run: npm test
+        env:
+          TEST_SCOPE: ${{ inputs.test_scope || 'all' }}
+        run: |
+          case "${TEST_SCOPE:-all}" in
+            all) npm test ;;
+            key-destinations) npm run test:key-destinations ;;
+            *) echo "Unknown test scope" >&2; exit 1 ;;
+          esac
 
       # Builds the production bundle and holds main.js and the stylesheet to the budget in
       # plugin/tests/size/budget.json. Every byte of main.js is read and compiled at every start.
