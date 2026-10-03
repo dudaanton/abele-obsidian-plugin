@@ -58,7 +58,7 @@
         />
         <Button
           text="Connect"
-          accent
+          :accent="!busy"
           :disabled="busy || !named"
           :tooltip="named ? connectTooltip : 'Name this device first'"
           @click="connect"
@@ -241,6 +241,7 @@ function connect(): void {
 }
 
 .abele-join-vault__actions {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;

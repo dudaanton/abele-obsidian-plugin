@@ -1463,6 +1463,22 @@ CAS/withdrawal generations and own-upload proof; no body parser or personal-toke
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports are not an activated scoped engine or owner publication pipeline.
 
+## Disabled group wizard, initial batch and Books profile
+
+The owner group wizard requires a certified exact root/member/anchor preview and fresh owner
+account authentication. Relations/anchors are separate explicit version-bound approvals; a
+preparing grant is not automatic approval. No whole-vault client parser, basename inference or
+received-file remap supplies authority. Initial existing-image batches use checksum-bound
+`initial-asset-batch-v1:` metadata with exact target/sponsor/audience versions, withdrawals and
+stable per-operation request IDs before publication; stale replacements or lost evidence hold.
+
+The untrusted Books profile writes only a device-local scoped descriptor and independently bound
+keychain secret, with purpose `books-untrusted`, group-only stable root and editor ceiling. It
+never holds an account/personal token or fetches full-vault frontmatter. Known/materialized/omitted
+counts are distinct from deletion; revoke retains downloaded bytes but prevents further network
+writes. Native transport, protected ledger and server manifest host ports stay mandatory while
+the fence is false. iPhone/desktop UI inspection is not native Android/Boox acceptance.
+
 ## Disabled scoped invitation and creation state
 
 Device-local `abele-sync-scoped-join` keeps the exact resumable invitation/enrolment attempt;

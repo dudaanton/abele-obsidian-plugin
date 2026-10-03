@@ -21,8 +21,9 @@
         <Button
           text="Approve and run"
           tooltip="Approve these exact bytes on this device and run"
-          accent
-          @click="request.answer(true)"
+          :accent="!readOnly"
+          :disabled="readOnly"
+          @click="!readOnly && request.answer(true)"
         />
       </div>
     </div>
@@ -33,7 +34,9 @@
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
 import type { ScriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
-defineProps<{ request: ScriptApprovalDialog }>()
+withDefaults(defineProps<{ request: ScriptApprovalDialog; readOnly?: boolean }>(), {
+  readOnly: false,
+})
 </script>
 
 <style lang="scss">

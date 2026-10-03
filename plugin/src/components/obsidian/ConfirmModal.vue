@@ -3,7 +3,7 @@
     <p class="abele-confirm__message">{{ message }}</p>
     <template #footer>
       <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
-      <Button :text="confirmText" warning :tooltip="confirmTooltip" @click="onConfirm" />
+      <Button :text="confirmText" :warning="!readOnly" :disabled="readOnly" :tooltip="confirmTooltip" @click="onConfirm" />
     </template>
   </ObsidianModal>
 </template>
@@ -18,7 +18,7 @@ import Button from './Button.vue'
  * Deliberately not `window.confirm`: that dialog is the operating system's, ignores the
  * theme, and blocks the whole app — including the separate window settings can open in.
  */
-withDefaults(
+const props = withDefaults(
   defineProps<{
     title: string
     /** What will be lost, named. */
@@ -26,8 +26,10 @@ withDefaults(
     confirmText?: string
     confirmTooltip?: string
     cancelTooltip?: string
+    readOnly?: boolean
   }>(),
   {
+    readOnly: false,
     confirmText: 'Delete',
     confirmTooltip: 'Go ahead and delete it',
     cancelTooltip: 'Close this and change nothing',
@@ -40,6 +42,7 @@ const emit = defineEmits<{
 }>()
 
 function onConfirm(): void {
+  if (props.readOnly) return
   emit('confirm')
   emit('close')
 }

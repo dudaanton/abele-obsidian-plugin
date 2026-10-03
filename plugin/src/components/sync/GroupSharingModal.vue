@@ -5,6 +5,9 @@
         Group sharing is not active. This read-only preview makes no management or publication
         request.
       </p>
+      <p v-if="display && (!display.preview.certified || !display.preview.complete)" role="status">
+        Scope preparing or incomplete. Root/anchor approval stays held; no inferred exposure.
+      </p>
       <p>
         A root is a stable approved note identity, not a folder or matching basename. Notes and
         images keep their scattered original paths. Received edges and uncertain anchors never

@@ -40,6 +40,17 @@ describe('script approval UI', () => {
     expect(answer).toHaveBeenCalledWith(true)
     wrapper.unmount()
   })
+  it('readonly native inspection never approves/runs while retaining exact facts and source', async () => {
+    const answer = vi.fn(),
+      w = mount(ScriptApprovalModal, {
+        props: { request: { ...request, id: 1, answer }, readOnly: true },
+        global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
+      })
+    await w.findAll('button')[1].trigger('click')
+    expect(answer).not.toHaveBeenCalled()
+    expect(w.findAll('button')[1].attributes()).toHaveProperty('disabled')
+    w.unmount()
+  })
   it('queues concurrent requests and cancellation never accepts the next one', async () => {
     const first = showScriptApproval(request)
     const second = showScriptApproval({ ...request, path: 'Scripts/other.js' })

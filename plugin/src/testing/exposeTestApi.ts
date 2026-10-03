@@ -87,6 +87,7 @@ import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
 import { joinFixtureTransfer } from './joinFixtureTransfer'
 import { prepareFixtureContext, restoreFixtureContext } from './fixtureContext'
+import { openFencedScreen, closeFencedScreen, FENCED_SCREENS } from './fencedScreens'
 import { startPhoneReplay, verifyPhoneReplay, clearPhoneReplayEvidence } from './phoneReplay'
 import { desktopTransport } from '@/sync/desktopTransport'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -184,6 +185,9 @@ interface AbeleTestApi {
   /** Production transport selection, for native credential/redirect probes. */
   syncTransport: typeof transportOf
   joinFixtureTransfer: typeof joinFixtureTransfer
+  openFencedScreen: typeof openFencedScreen
+  closeFencedScreen: typeof closeFencedScreen
+  fencedScreens: typeof FENCED_SCREENS
   prepareFixtureContext: typeof prepareFixtureContext
   restoreFixtureContext: typeof restoreFixtureContext
   startPhoneReplay: typeof startPhoneReplay
@@ -746,6 +750,9 @@ export function exposeTestApi(plugin: Plugin): void {
     SyncService,
     syncTransport: transportOf,
     joinFixtureTransfer,
+    openFencedScreen,
+    closeFencedScreen,
+    fencedScreens: FENCED_SCREENS,
     prepareFixtureContext,
     restoreFixtureContext,
     startPhoneReplay,

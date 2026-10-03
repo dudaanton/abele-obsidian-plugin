@@ -27,13 +27,13 @@
         :disabled="busy || !enabled"
         @click="review"
       />
-      <template v-if="preview">
+      <template v-if="display">
         <p>
-          Exact prefix: <code>{{ preview.prefix }}</code
+          Exact prefix: <code>{{ display.prefix }}</code
           >. Files keep their existing paths; no mount or remap is created.
         </p>
         <ul>
-          <li v-for="file in preview.files" :key="file.path">
+          <li v-for="file in display.files" :key="file.path">
             <code>{{ file.path }}</code> —
             {{ file.eligibility ?? (file.eligible ? 'eligible' : 'excluded code or settings') }}
           </li>
@@ -58,7 +58,7 @@
           text="Create scoped receiver key"
           tooltip="Recheck the preview and authenticate the owner before issuing only a scoped machine key"
           :disabled="busy || !enabled || !password"
-          accent
+          :accent="enabled"
           @click="confirm"
         />
       </template>
@@ -81,7 +81,7 @@
   </ObsidianModal>
 </template>
 <script setup lang="ts">
-import { ref, onUnmounted, watch } from 'vue'
+import { ref, onUnmounted, watch, computed } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import {
@@ -90,7 +90,11 @@ import {
   type FolderPreview,
   type MachineCredential,
 } from '@/sync/sharing/folderSharing'
-const props = defineProps<{ flow?: FolderSharingFlow; enabled?: boolean }>(),
+const props = defineProps<{
+    flow?: FolderSharingFlow
+    enabled?: boolean
+    preview?: FolderPreview
+  }>(),
   emit = defineEmits<{ close: [] }>()
 const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   prefix = ref('Sample folder/'),
@@ -101,7 +105,8 @@ const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   busy = ref(false),
   error = ref(''),
   preview = ref<FolderPreview | null>(null),
-  secret = ref<MachineCredential | null>(null)
+  secret = ref<MachineCredential | null>(null),
+  display = computed(() => preview.value ?? props.preview)
 watch([prefix, label, role], () => {
   preview.value = null
   password.value = ''
@@ -143,6 +148,14 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
+.abele-folder-sharing {
+  overflow-y: auto;
+  padding: 0 var(--size-4-1) var(--size-4-3);
+}
+.abele-modal__buttons {
+  flex: 0 0 auto;
+  padding-top: var(--size-4-3);
+}
 .abele-folder-sharing label {
   display: flex;
   flex-direction: column;

@@ -31,7 +31,7 @@ const scratch = join(plugin, '../.scratch/agent-stand-run')
 mkdirSync(scratch, { recursive: true })
 const backup = mkdtempSync(join(scratch, 'build-')),
   target = join(homedir(), 'obsidian', vault, '.obsidian/plugins/abele'),
-  files = ['main.js', 'main.css', 'manifest.json']
+  files = ['main.js', 'styles.css', 'manifest.json']
 let installed = false,
   failed = false
 const cli = process.env.OBSIDIAN_CLI ?? join(homedir(), '.local/bin/obsidian')
@@ -53,7 +53,9 @@ try {
   installed = true
   for (const f of files)
     copyFileSync(
-      f === 'manifest.json' ? join(plugin, '..', f) : join(plugin, 'build', f),
+      f === 'manifest.json'
+        ? join(plugin, '..', f)
+        : join(plugin, 'build', f === 'styles.css' ? 'main.css' : f),
       join(target, f)
     )
   reload()

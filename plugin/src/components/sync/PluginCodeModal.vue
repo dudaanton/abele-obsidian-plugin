@@ -22,14 +22,14 @@
         />
         <Button
           text="Keep local code"
-          :disabled="busy"
+          :disabled="busy || readOnly"
           tooltip="Decline these changes and keep this device's plugin code"
           @click="keep"
         />
         <Button
           :text="reloadable ? 'Install and reload' : 'Install plugin code'"
-          accent
-          :disabled="busy"
+          :accent="!readOnly"
+          :disabled="busy || readOnly"
           tooltip="Install only the plugin code shown here; restart Obsidian if reload is unavailable"
           @click="install"
         />
@@ -53,6 +53,7 @@ const props = defineProps<{
   changes: ChangeItem[]
   names: Record<string, string>
   questionKey: number
+  readOnly?: boolean
 }>()
 const emit = defineEmits<{ (e: 'close', questionKey: number): void }>()
 const sync = SyncService.getInstance()
@@ -73,7 +74,7 @@ const close = (): void => {
 const versions = (): string[] => props.changes.map((one) => one.version_id)
 
 async function run(work: () => Promise<string>): Promise<void> {
-  if (busy.value) return
+  if (busy.value || props.readOnly) return
   busy.value = true
   error.value = null
   try {

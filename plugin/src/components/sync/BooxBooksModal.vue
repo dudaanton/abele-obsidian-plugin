@@ -4,6 +4,22 @@
       <p v-if="!enabled" role="status">
         Books group-only setup is not active. This preview sends no credential or content request.
       </p>
+      <p role="status">State: {{ status.status }}. Effective role: {{ status.role }}.</p>
+      <p v-if="status.status === 'revoked'">
+        Access revoked. Downloaded bytes remain locally readable; no more downloads or writes.
+      </p>
+      <p v-if="status.status === 'unsupported-transport'">
+        Native transport is unverified on this device. No unsafe fallback or personal token is used.
+      </p>
+      <p v-if="status.status === 'recovery'">
+        Retained identity/ledger requires explicit recovery. No reinitialization or personal
+        fallback.
+      </p>
+      <p>
+        Authorized known files: {{ status.known }}; local materialized: {{ status.materialized }};
+        omitted/known-not-materialized: {{ status.omitted }}. Omitted files are not remote deletions
+        or local creates.
+      </p>
       <p>
         This device may read and write only the owner-selected Books group. It is untrusted: only a
         scoped key/installation secret, never an account or personal device token. No whole-vault
@@ -40,18 +56,6 @@
       <p>
         Required role: <strong>Editor — reads and writes</strong>. A reader ceiling is shown as a
         hold and requires owner renewal; the client cannot upgrade it locally.
-      </p>
-      <p>State: {{ status.status }}. Effective role: {{ status.role }}.</p>
-      <p>
-        Authorized known files: {{ status.known }}; local materialized: {{ status.materialized }};
-        omitted/known-not-materialized: {{ status.omitted }}. Omitted files are not remote deletions
-        or local creates.
-      </p>
-      <p v-if="status.status === 'revoked'">
-        Access revoked. Downloaded bytes remain locally readable; no more downloads or writes.
-      </p>
-      <p v-if="status.status === 'unsupported-transport'">
-        Native transport is unverified on this device. No unsafe fallback or personal token is used.
       </p>
       <h4>Available actions</h4>
       <ul>
