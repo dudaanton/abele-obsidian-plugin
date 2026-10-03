@@ -1,4 +1,10 @@
 import { sha256 } from '@abele/sync-core'
+import {
+  storeOwnerUnit,
+  loadOwnerUnit,
+  ownerSubsetIndices,
+  type StoredOwnerUnit,
+} from './ownerUnitStorage'
 import { CommitRequestSchema, type CommitOp } from '@abele/sync-protocol'
 import { bindingKey, type SnapshotBinding, type SnapshotMeta } from './LinkSnapshotStore'
 import {
@@ -91,38 +97,23 @@ interface Ledger {
   binding: SnapshotBinding
   units: Unit[]
 }
+interface StoredLedger {
+  version: 2
+  binding: SnapshotBinding
+  units: {
+    e: StoredOwnerUnit
+    h: string
+    intents: Intent[]
+    holds: string[]
+    s: boolean
+    receiptSha?: string
+  }[]
+}
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const hash = (v: unknown) => sha256(new TextEncoder().encode(JSON.stringify(v)))
 const digest = (s: unknown) => typeof s === 'string' && /^[a-f0-9]{64}$/.test(s)
 const text = (s: unknown): s is string => typeof s === 'string' && s.length > 0 && s.length <= 4096
-/** Select only original operations in original order, with exact stable create handles.
- * Receipt-time tolerance is NOT allowed; this is a pre-transport durable transition. */
-function admittedSubset(prepared: PushUnit, actual: PushUnit) {
-  if (prepared.requestId !== actual.requestId || !actual.ops.length)
-    throw new Error('Invalid submitted publication unit')
-  let next = 0
-  for (const [index, op] of actual.ops.entries()) {
-    const found = prepared.ops.findIndex(
-      (candidate, at) =>
-        at >= next &&
-        JSON.stringify(candidate) === JSON.stringify(op) &&
-        (op.op !== 'create' || prepared.createHandles[at] === actual.createHandles[index])
-    )
-    if (found < 0)
-      throw new Error('Submitted publication operation or handle differs from prepared evidence')
-    next = found + 1
-  }
-  for (const [key, handle] of Object.entries(actual.createHandles)) {
-    const index = Number(key)
-    if (
-      !Number.isSafeInteger(index) ||
-      String(index) !== key ||
-      actual.ops[index]?.op !== 'create' ||
-      !text(handle)
-    )
-      throw new Error('Invalid submitted publication handle map')
-  }
-}
+const admittedSubset = ownerSubsetIndices
 /** One host-owned writer, one durable metadata record. No network adapter or activation shortcut.
  * Entire inputs/deltas are immutable; recovery never rescans a merged/current note as owner additions.
  */
@@ -168,10 +159,30 @@ export class PublicationIntents {
     if (raw === null) throw new Error('Publication intent storage missing; recovery required')
     try {
       if (raw.length > 1024 * 1024) throw new Error()
-      const envelope = JSON.parse(raw) as { ledger: Ledger; checksum: string }
+      const envelope = JSON.parse(raw) as { ledger: Ledger | StoredLedger; checksum: string }
       if (!digest(envelope.checksum) || (await hash(envelope.ledger)) !== envelope.checksum)
         throw new Error()
-      const l = envelope.ledger
+      let l: Ledger
+      if (envelope.ledger.version === 2) {
+        const stored = envelope.ledger
+        if (!Array.isArray(stored.units) || stored.units.length > 128) throw new Error()
+        const units = await Promise.all(
+          stored.units.map(async (row) => {
+            const { prepared, actual, bound } = loadOwnerUnit(row.e)
+            if (!digest(row.h) || (await hash(prepared)) !== row.h) throw new Error()
+            return {
+              unit: actual,
+              sha: await hash(actual),
+              intents: row.intents,
+              holds: row.holds,
+              settled: row.s,
+              ...(row.receiptSha ? { receiptSha: row.receiptSha } : {}),
+              ...(bound ? { submission: { prepared, sha: row.h } } : {}),
+            }
+          })
+        )
+        l = { version: 1, binding: stored.binding, units }
+      } else l = envelope.ledger
       if (
         l.version !== 1 ||
         bindingKey(l.binding) !== bindingKey(this.binding) ||
@@ -214,7 +225,21 @@ export class PublicationIntents {
   }
   private async write(l: Ledger) {
     this.fence()
-    const raw = JSON.stringify({ ledger: l, checksum: await hash(l) })
+    // The fixed selection bitmap is already allocated by prepare; binding only changes
+    // its bits and false->true. No second full body can grow after core marks submitted.
+    const ledger: StoredLedger = {
+      version: 2,
+      binding: copy(l.binding),
+      units: l.units.map((u) => ({
+        e: storeOwnerUnit(u.submission?.prepared ?? u.unit, u.unit, !!u.submission),
+        h: u.submission?.sha ?? u.sha,
+        intents: u.intents,
+        holds: u.holds,
+        s: u.settled,
+        ...(u.receiptSha ? { receiptSha: u.receiptSha } : {}),
+      })),
+    }
+    const raw = JSON.stringify({ ledger, checksum: await hash(ledger) })
     if (raw.length > 1024 * 1024) throw new Error('Publication intent storage budget reached')
     await this.meta.setMeta(this.key, raw)
     this.fence()

@@ -5,6 +5,7 @@ import {
   type VaultClient,
   type StateStore,
 } from '@abele/sync-core'
+import { storeOwnerUnit, loadOwnerUnit, type StoredOwnerUnit } from './ownerUnitStorage'
 import { CommitResponseSchema, type CommitOp } from '@abele/sync-protocol'
 import { MarkdownView, type App, type CachedMetadata } from 'obsidian'
 import { PublicationIntents, type PushReceipt, type PublicationDelta } from './publicationIntents'
@@ -201,6 +202,23 @@ export class NativeOwnerPublication {
   }
   private async persisted(key: string, value: unknown) {
     this.check()
+    if (key.startsWith('unit:')) {
+      const unit = value as {
+          ops: CommitOp[]
+          handles: Record<number, string>
+          submitted?: boolean
+          prepared?: { ops: CommitOp[]; handles: Record<number, string> }
+        },
+        prepared = unit.prepared ?? unit
+      value = {
+        version: 2,
+        ...storeOwnerUnit(
+          { requestId: key.slice(5), ops: prepared.ops, createHandles: prepared.handles },
+          { requestId: key.slice(5), ops: unit.ops, createHandles: unit.handles },
+          !!unit.submitted
+        ),
+      }
+    }
     const record = { binding: this.options.binding, key, value }
     const raw = JSON.stringify({ ...record, checksum: await hash(record) })
     if (raw.length > 2 * 1024 * 1024) throw new Error('Native owner evidence budget exceeded')
@@ -222,6 +240,18 @@ export class NativeOwnerPublication {
         r.checksum !== (await hash(record))
       )
         throw new Error()
+      if (key.startsWith('unit:') && r.value?.version === 2) {
+        const decoded = loadOwnerUnit(r.value as StoredOwnerUnit)
+        if (decoded.prepared.requestId !== key.slice(5)) throw new Error()
+        return {
+          ops: decoded.actual.ops,
+          handles: decoded.actual.createHandles,
+          submitted: decoded.bound,
+          ...(decoded.bound
+            ? { prepared: { ops: decoded.prepared.ops, handles: decoded.prepared.createHandles } }
+            : {}),
+        } as T
+      }
       return r.value as T
     } catch {
       throw new Error('Native owner evidence corrupt or checksum changed; recovery required')

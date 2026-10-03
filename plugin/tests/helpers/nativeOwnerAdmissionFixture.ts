@@ -13,7 +13,7 @@ import { buildFakeVault } from './fakeVault'
 /** Synthetic native observation inputs; the uploader, journal splitting, settlement and replay
  * below are the exact installed core. No app, clipboard, live transport or real credentials. */
 export async function nativeOwnerAdmissionFixture(
-  code: 'too_large' | 'quota_exceeded' | 'quota_waiting',
+  code: 'too_large' | 'quota_exceeded' | 'quota_waiting' | 'allow',
   loseReply = false
 ) {
   const input = await publicationFixture(),
@@ -34,6 +34,7 @@ export async function nativeOwnerAdmissionFixture(
   await fs.writeAtomic(input.target.path, a, 1)
   await fs.writeAtomic('Assets/waiting.png', b, 1)
   await fs.writeAtomic('Other/ordinary.bin', c, 1)
+  const preparedBytes: { intent: number; native: number }[] = []
   const uploads = new Map<string, Uint8Array>(),
     receipts = new Map<string, { ops: CommitOp[]; body: any }>(),
     wireChecks: { ops: CommitOp[]; stored: any; intentUnit: any }[] = []
@@ -49,7 +50,8 @@ export async function nativeOwnerAdmissionFixture(
     }),
     hasBlob: async (sha: string) => uploads.has(sha),
     putBlob: vi.fn(async (sha: string, bytes: Uint8Array) => {
-      if (sha === shaC) throw new AbeleError(code, 'Synthetic blob admission refusal')
+      if (sha === shaC && code !== 'allow')
+        throw new AbeleError(code, 'Synthetic blob admission refusal')
       uploads.set(sha, bytes.slice())
     }),
     getBlob: async (sha: string) => uploads.get(sha)!.slice(),
@@ -192,9 +194,21 @@ export async function nativeOwnerAdmissionFixture(
     scan,
     ops,
     wireChecks,
+    preparedBytes,
     options: () => ({
       expected: new ExpectedWrites(),
       ...runtime.hooks,
+      beforeUpload: async (unit: Parameters<NonNullable<typeof runtime.hooks.beforeUpload>>[0]) => {
+        const decision = await runtime.hooks.beforeUpload!(unit),
+          native = runtime as any
+        const evidence = await meta.getMeta(native.prefix + 'unit:' + unit.idempotencyKey)
+        if (evidence !== null)
+          preparedBytes.push({
+            intent: (await meta.getMeta(native.intents.key))!.length,
+            native: evidence.length,
+          })
+        return decision
+      },
       keys: () => 'sample-request',
     }),
     runtime: () => runtime,
