@@ -5,15 +5,16 @@
  */
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from '@/reader/settings'
+import { currentReaderSettings } from '@/reader/currentSettings'
 import type { Thickness } from './model'
 
 export function keptDrawingThickness(): Thickness {
-  return readerSettingsFrom(AbeleConfig.getInstance().reader).drawingInkThickness
+  return currentReaderSettings().drawingInkThickness
 }
 
 export function keepDrawingThickness(thickness: Thickness): void {
   const config = AbeleConfig.getInstance()
-  if (readerSettingsFrom(config.reader).drawingInkThickness === thickness) return
+  if (currentReaderSettings().drawingInkThickness === thickness) return
   config.reader = readerSettingsFrom({ ...config.reader, drawingInkThickness: thickness })
   void config.saveSettings()
 }

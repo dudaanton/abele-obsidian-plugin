@@ -29,8 +29,8 @@ import type { Highlight, HighlightColor } from './highlights'
 import { BookMarks } from './marks'
 import { bookScriptContext, rangeOnScreen } from './bookScriptTarget'
 import { ReadAloud } from './readAloud'
-import { notesTargetFor, readerSettingsFrom } from './settings'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { notesTargetFor } from './settings'
+import { currentReaderSettings } from './currentSettings'
 import { Overlayer } from '@/vendor/foliate-js/overlayer.js'
 import { emptySearch, type BookModel, type SearchGroup } from './model'
 import { bookPlaces } from './places'
@@ -100,7 +100,7 @@ export class BookReading {
       (doc) => this.docIndex.get(doc),
       themeEl,
       () => {
-        const s = readerSettingsFrom(AbeleConfig.getInstance().reader)
+        const s = currentReaderSettings()
         return { voice: s.ttsVoice, rate: s.ttsRate }
       },
       (state) => (this.model.speech = state)
@@ -121,7 +121,7 @@ export class BookReading {
   /** Where this book's highlights go, as the settings say now. */
   where(): NotesPlace {
     const { key, title, author } = this.book()
-    const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+    const settings = currentReaderSettings()
     return { title, author, target: notesTargetFor(settings, key) }
   }
 

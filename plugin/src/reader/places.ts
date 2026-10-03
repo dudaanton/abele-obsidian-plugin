@@ -16,7 +16,8 @@ import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { BookPlaces, type PlaceStorage } from './positions'
 import { PlaceFollow } from './placeFollow'
-import { placesPathOf, readerSettingsFrom } from './settings'
+import { placesPathOf } from './settings'
+import { currentReaderSettings } from './currentSettings'
 
 /** What of Obsidian's file adapter the places need. */
 export interface PlacesAdapter {
@@ -56,7 +57,7 @@ export function initBookPlaces(plugin: Plugin): BookPlaces {
   const { vault } = plugin.app
   const dir = plugin.manifest.dir ?? `${vault.configDir}/plugins/abele`
   const pathNow = () =>
-    normalizePath(placesPathOf(readerSettingsFrom(AbeleConfig.getInstance().reader)))
+    normalizePath(placesPathOf(currentReaderSettings()))
   let path = pathNow()
   const store = new BookPlaces(placeFiles(vault.adapter, dir, path))
   places = store

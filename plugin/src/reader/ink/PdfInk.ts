@@ -21,6 +21,7 @@ import type { InkPage } from './inkFile'
 import { inkBrush, type InkToolName } from './inkModel'
 import type { Thickness } from '@/drawing/model'
 import { readerSettingsFrom } from '../settings'
+import { currentReaderSettings } from '../currentSettings'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { zoomedPast, type PdfZoom } from '../pdfZoom'
 
@@ -93,7 +94,7 @@ export class PdfInk {
     const ink = this.h.model.ink
     ink.touch = Platform.isMobile
     // As chosen last, on this device or another: it travels with the reader's settings.
-    ink.thickness = readerSettingsFrom(AbeleConfig.getInstance().reader).pdfInkThickness
+    ink.thickness = currentReaderSettings().pdfInkThickness
     // A phone has no pen: its finger draws. A tablet's finger moves the pages, and the pen draws.
     if (!this.penSeen) ink.finger = Platform.isPhone
     // Words selected, a highlight's bar open: put away, the bar's row is the pen's now.

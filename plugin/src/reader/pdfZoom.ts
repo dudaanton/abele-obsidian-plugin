@@ -11,8 +11,8 @@
  * The zoom a book was left at is kept for it on this device — screens differ from one device to
  * another, so it is not synced with the book's place.
  */
-import { AbeleConfig } from '@/services/AbeleConfig'
-import { pdfZoomFor, readerSettingsFrom } from './settings'
+import { pdfZoomFor } from './settings'
+import { currentReaderSettings } from './currentSettings'
 
 export const MIN_ZOOM = 0.25
 export const MAX_ZOOM = 4
@@ -458,7 +458,7 @@ export function zoomFor(
     {
       engine: () => engine,
       renderer: () => (engine.renderer as HTMLElement | undefined) ?? null,
-      setting: () => pdfZoomFor(readerSettingsFrom(AbeleConfig.getInstance().reader)),
+      setting: () => pdfZoomFor(currentReaderSettings()),
       changed: (scale) => (view.model.zoom = scale),
     },
     memory,

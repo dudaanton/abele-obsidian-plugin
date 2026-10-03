@@ -11,7 +11,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './BookView'
 import { initBookPlaces } from './places'
 import { initBookBookmarks } from './bookmarkFiles'
-import { fontsFolderOf, readerSettingsFrom, renamedBookNotes } from './settings'
+import { fontsFolderOf, renamedBookNotes } from './settings'
+import { currentReaderSettings } from './currentSettings'
 import { ReaderFonts, initReaderFonts } from './readerFonts'
 import { adoptPdfLeaves, setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
@@ -51,7 +52,7 @@ export function registerReader(plugin: Plugin): void {
   })
   // The fonts folder: read when a book or the settings first ask, followed from then on.
   const fonts = new ReaderFonts(app.vault, () =>
-    fontsFolderOf(readerSettingsFrom(AbeleConfig.getInstance().reader))
+    fontsFolderOf(currentReaderSettings())
   )
   initReaderFonts(fonts)
   plugin.register(fonts.start())
@@ -87,7 +88,7 @@ export function registerReader(plugin: Plugin): void {
       if (file.extension === 'pdf') void moveInk(app, oldPath, file.path)
       // Its own choice of where its highlights go, too.
       const config = AbeleConfig.getInstance()
-      const reader = readerSettingsFrom(config.reader)
+      const reader = currentReaderSettings()
       const moved = renamedBookNotes(reader.bookNotes, oldPath, file.path)
       if (!moved) return
       config.reader = { ...reader, bookNotes: moved }
@@ -129,7 +130,7 @@ export function registerReader(plugin: Plugin): void {
   const config = AbeleConfig.getInstance()
   let taken = false
   const apply = () => {
-    const on = readerSettingsFrom(config.reader).pdfInReader
+    const on = currentReaderSettings().pdfInReader
     if (!setPdfTakeover(app, on, BOOK_VIEW_TYPE)) return
     if (on && !taken) void adoptPdfLeaves(app, BOOK_VIEW_TYPE)
     taken = on

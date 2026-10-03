@@ -23,7 +23,7 @@ import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { formsPlaces, type EntryFrame, type FormsPlace } from '../highlights'
 import { entryFrame, parseNoteTemplate } from '../noteTemplate'
-import { readerSettingsFrom } from '../settings'
+import { currentReaderSettings } from '../currentSettings'
 
 const WORDS = 'words='
 
@@ -61,7 +61,7 @@ const editors = new Set<EditorView>()
 const framesRead = StateEffect.define<null>()
 
 function templatePaths(): string[] {
-  const s = readerSettingsFrom(AbeleConfig.getInstance().reader)
+  const s = currentReaderSettings()
   const all = [s.notesTemplate, ...Object.values(s.bookNotes).map((b) => b.notesTemplate ?? '')]
   return [...new Set(all.map((p) => p.trim()).filter(Boolean))].map((p) =>
     p.endsWith('.md') ? p : `${p}.md`

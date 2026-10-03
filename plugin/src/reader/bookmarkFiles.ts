@@ -12,7 +12,8 @@ import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { BookBookmarks, type BookmarkStorage } from './bookmarks'
 import { MOVE_AFTER_MS, type PlacesAdapter } from './places'
-import { placesPathOf, readerSettingsFrom, type ReaderSettings } from './settings'
+import { placesPathOf, type ReaderSettings } from './settings'
+import { currentReaderSettings } from './currentSettings'
 
 export const BOOKMARKS_FILE = 'abele-book-bookmarks.json'
 
@@ -44,7 +45,7 @@ export function initBookBookmarks(plugin: Plugin): BookBookmarks {
   const { vault } = plugin.app
   const dir = plugin.manifest.dir ?? `${vault.configDir}/plugins/abele`
   const pathNow = () =>
-    normalizePath(bookmarksPathOf(readerSettingsFrom(AbeleConfig.getInstance().reader)))
+    normalizePath(bookmarksPathOf(currentReaderSettings()))
   let path = pathNow()
   const store = new BookBookmarks(bookmarkFiles(vault.adapter, dir, path))
   bookmarks = store

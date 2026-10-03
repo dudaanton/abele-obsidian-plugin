@@ -23,7 +23,6 @@ import {
   layoutAttributes,
   pageStyles,
   pdfZoomFor,
-  readerSettingsFrom,
   themeValues,
   vaultFontOf,
 } from './settings'
@@ -62,12 +61,13 @@ import { inkFor, type PdfInk } from './ink/PdfInk'
 import { zoomFor, type PdfZoom } from './pdfZoom'
 import { EINK_PAGE_STYLE, eink, einkTheme, followEink, withEink } from './eink'
 import type { ReaderSettings } from './settings'
+import { currentReaderSettings } from './currentSettings'
 import { escLeavesZen, setZen, zen } from './zen'
 import { ZenChrome, type MobileNavbar } from './zenChrome'
 
 /** The reader's settings as this device reads them: e-ink mode keeps pages and paper. */
 const readerSettings = (): ReaderSettings =>
-  withEink(readerSettingsFrom(AbeleConfig.getInstance().reader), eink().on)
+  withEink(currentReaderSettings(), eink().on)
 
 /** The settings a PDF's layout is decided by when it opens. */
 const pdfLayoutKey = (s: { pdfLayout: string; pdfTwoPages: boolean }) =>

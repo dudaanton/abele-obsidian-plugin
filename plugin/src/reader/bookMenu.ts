@@ -5,6 +5,7 @@
 import type { Menu } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from './settings'
+import { currentReaderSettings } from './currentSettings'
 import { eink, setEink } from './eink'
 import { setZen, zen } from './zen'
 
@@ -80,7 +81,7 @@ async function setFlow(flow: 'paginated' | 'scrolled', pdf: boolean): Promise<vo
 }
 
 export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
-  const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+  const settings = currentReaderSettings()
   const flow = host.pdf ? settings.pdfLayout : settings.flow
   // E-ink mode keeps pages: scrolling is not offered while it is on.
   if (!eink().on)

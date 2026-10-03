@@ -15,7 +15,8 @@ import {
   type NotesPlace,
 } from '../companion'
 import type { Highlight, HighlightColor } from '../highlights'
-import { notesTargetFor, readerSettingsFrom } from '../settings'
+import { notesTargetFor } from '../settings'
+import { currentReaderSettings } from '../currentSettings'
 import { bookKey } from '../positions'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { parseForms } from './words'
@@ -24,7 +25,7 @@ import { parseForms } from './words'
 export function notesPlaceOf(
   loaded: Pick<LoadedBook, 'book' | 'file' | 'title' | 'author'>
 ): NotesPlace {
-  const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+  const settings = currentReaderSettings()
   return {
     title: loaded.title,
     author: loaded.author,
