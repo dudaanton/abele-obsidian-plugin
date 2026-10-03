@@ -6,6 +6,7 @@ const runtime = createMaplibreRuntime<typeof import('maplibre-gl')>(assets, {
   createUrl: (source) => URL.createObjectURL(new Blob([source], { type: 'text/javascript' })),
   revokeUrl: (url) => URL.revokeObjectURL(url),
   // These URLs refer exclusively to the library sources embedded by our build, never note text.
+  // eslint-disable-next-line no-unsanitized/method -- This private host receives only URLs it created from the fixed build assets, never caller-provided URLs.
   importModule: (url) => import(/* @vite-ignore */ url),
 })
 const registered = new WeakSet<object>()

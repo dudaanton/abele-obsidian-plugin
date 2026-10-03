@@ -36,7 +36,7 @@ export function createMaplibreRuntime<T extends WorkerModule>(
   }
   return {
     load(): Promise<T> {
-      if (pending) return pending
+      if (pending !== null) return pending
       const started = generation
       const owned: string[] = []
       const loading = (async () => {
