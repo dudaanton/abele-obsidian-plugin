@@ -270,11 +270,16 @@ export class CanvasViewer {
       -this.camera.y * ratio * this.camera.zoom
     )
     const live = this.ports.cards.sync(scene.graph, this.camera, width, height, scene.highlight)
-    const contents = new Map(this.assets.contents)
-    for (const id of live) contents.set(id, '')
+    const contents = new Map(this.assets.contents),
+      images = new Map(this.assets.images)
+    for (const id of live) {
+      contents.set(id, '')
+      images.delete(id)
+    }
     paintCanvas(ctx, scene.graph, region, this.ports.theme(), {
       ...this.assets,
       contents,
+      images,
       highlight: scene.highlight,
       lint: false,
     })

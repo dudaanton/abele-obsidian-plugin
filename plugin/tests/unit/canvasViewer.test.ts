@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CanvasViewer } from '@/canvas/Viewer'
 import { parseCanvas } from '@/canvas/core/model'
+import * as painter from '@/canvas/core/painter'
 
 const graph = () =>
   parseCanvas({
@@ -42,6 +43,41 @@ const make = () => {
   return { viewer, el, sync, dispose }
 }
 describe('canvas viewer controls and lifetime', () => {
+  it('does not paint a second image beneath a live markdown note card', () => {
+    const { viewer, el, sync } = make()
+    viewer.load(graph())
+    Object.defineProperties(viewer.stage, {
+      clientWidth: { value: 600 },
+      clientHeight: { value: 400 },
+    })
+    sync.mockReturnValue(new Set(['beta']))
+    const image = { source: document.createElement('img'), width: 100, height: 60 }
+    const images = new Map([
+      ['beta', [image]],
+      ['alpha', [image]],
+    ])
+    ;(viewer as unknown as { assets: painter.CanvasAssets }).assets = {
+      contents: new Map([['beta', 'Body before image']]),
+      images,
+    }
+    const context = vi
+      .spyOn(viewer.canvas, 'getContext')
+      .mockReturnValue({ setTransform: vi.fn() } as never)
+    const paint = vi.spyOn(painter, 'paintCanvas').mockReturnValue({ visible: [], warnings: [] })
+    try {
+      ;(viewer as unknown as { paint(): void }).paint()
+      const assets = paint.mock.calls[0][4]!
+      expect(assets.contents?.get('beta')).toBe('')
+      expect(assets.images?.has('beta')).toBe(false)
+      expect(assets.images?.get('alpha')).toEqual([image])
+      expect(images.has('beta')).toBe(true)
+    } finally {
+      viewer.destroy()
+      el.remove()
+      paint.mockRestore()
+      context.mockRestore()
+    }
+  })
   it('plays and rewinds with keys and taps; narration stays literal and navigation bounded', () => {
     const { viewer, el } = make()
     viewer.load(graph())
