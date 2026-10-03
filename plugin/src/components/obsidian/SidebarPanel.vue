@@ -35,4 +35,9 @@ onMounted(() => {
     padding-top: calc(var(--size-4-2) + var(--icon-size));
   }
 }
+// Main-pane lists own an absolute scroller, so the view-content's native bottom inset
+// cannot protect their last row from the phone's floating navigation.
+.is-mobile .workspace-split.mod-root .abele-sidebar-panel {
+  padding-bottom: calc(var(--size-4-4) + var(--view-bottom-spacing, 0px));
+}
 </style>
