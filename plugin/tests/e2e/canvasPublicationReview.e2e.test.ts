@@ -26,6 +26,11 @@ const inside = <T>(body: string): T => run<T>(`${PUBLICATION_PRELUDE}${body}`)
 const press = async (selector: string) => {
   const point = inside<{ x: number; y: number }>(`
     const element=(${selector});if(!element)throw Error('Canvas review control missing')
+    const root=element.closest('.modal')
+    if(root){
+      const animations=[...root.getAnimations(),...(root.closest('.modal-container')?.getAnimations()??[])]
+      await Promise.all(animations.filter(animation=>animation.playState==='running'&&animation.effect.getTiming().iterations!==Infinity).map(animation=>animation.finished.catch(()=>{})))
+    }
     const r=element.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2
     if(!r.width||!r.height||x<0||x>=innerWidth||y<0||y>=innerHeight||!element.contains(document.elementFromPoint(x,y)))throw Error('Canvas review control is not visible/hittable')
     return {x,y}
