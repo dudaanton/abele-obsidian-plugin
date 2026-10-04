@@ -210,13 +210,21 @@ const probe = (label: string) => String.raw`(async () => {
     // switching away/back must restore it, not satisfy the tail reset case by erasing it.
     await until(() => pagingState().gap <= 1, 'appended tail page')
     await frame()
-    const box = pager().getBoundingClientRect(), x = Math.round(box.left+box.width/2), y = Math.round(box.top+box.height/2)
-    if (window.__e2eHost) await window.__e2eHost.swipe(x,y,x,y+160,{velocity:160})
+    const box = pager().getBoundingClientRect(), x = Math.round(box.left+box.width/2)
+    // The keyboard may leave a short messages viewport. Keep the whole single native
+    // gesture in its scroll owner; a fixed160px move from the midpoint can land on input.
+    const y = Math.round(box.top+box.height/4), endY = Math.round(Math.min(box.bottom-8,y+Math.min(160,box.height/2)))
+    for (const at of [y,endY]) {
+      const hit=document.elementFromPoint(x,at)
+      if(!hit||!pager().contains(hit)) throw Error('non-tail gesture point is outside owner: '+JSON.stringify({x,at,box:box.toJSON(),hit:hit?.className}))
+    }
+    pagingDiagnostics.push({phase:'non-tail native gesture',start:[x,y],end:[x,endY],owner:pagingOwner.id})
+    if (window.__e2eHost) await window.__e2eHost.swipe(x,y,x,endY,{velocity:160})
     else {
       const cdp=require('@electron/remote').getCurrentWebContents().debugger
       if(app.isMobile) {
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]})
-        await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+160}]})
+        await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:endY}]})
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
       } else await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseWheel',x,y,deltaX:0,deltaY:-180})
     }
