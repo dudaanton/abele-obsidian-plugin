@@ -21,8 +21,10 @@ vi.mock('obsidian', async (original) => {
     TextComponent: Text,
     Setting: class {
       private el: HTMLElement
+      readonly controlEl: HTMLElement
       constructor(parent: HTMLElement) {
         this.el = parent.createDiv({ cls: 'setting-item' })
+        this.controlEl = this.el.createDiv({ cls: 'setting-item-control' })
       }
       setName(text: string) {
         this.el.createDiv({ cls: 'setting-item-name', text })
@@ -33,15 +35,15 @@ vi.mock('obsidian', async (original) => {
         return this
       }
       addButton(build: (button: ButtonComponent) => void) {
-        build(new api.ButtonComponent(this.el))
+        build(new api.ButtonComponent(this.controlEl))
         return this
       }
       addText(build: (text: TextComponent) => void) {
-        build(new Text(this.el) as unknown as TextComponent)
+        build(new Text(this.controlEl) as unknown as TextComponent)
         return this
       }
       addDropdown(build: (dropdown: DropdownComponent) => void) {
-        build(new api.DropdownComponent(this.el))
+        build(new api.DropdownComponent(this.controlEl))
         return this
       }
     },
@@ -123,6 +125,7 @@ describe('manual recipient form in an empty review', () => {
         (button) => button.textContent === 'Allow unencrypted HTTP'
       )!
       expect(allow).toBeDefined()
+      expect(row.querySelector<HTMLElement>('.setting-item-control')!.style.flexWrap).toBe('wrap')
       expect(allowedHttpOrigins()).toEqual([])
       allow.click()
       await vi.waitFor(() => expect(allowedHttpOrigins()).toEqual([origin]))

@@ -80,8 +80,10 @@ vi.mock('obsidian', async (original) => {
     ...api,
     Setting: class {
       private el: HTMLElement
+      readonly controlEl: HTMLElement
       constructor(parent: HTMLElement) {
         this.el = parent.createDiv({ cls: 'setting-item' })
+        this.controlEl = this.el.createDiv({ cls: 'setting-item-control' })
       }
       setName(text: string) {
         this.el.createEl('div', { cls: 'setting-item-name', text })
@@ -92,15 +94,15 @@ vi.mock('obsidian', async (original) => {
         return this
       }
       addText(build: (text: TextComponent) => void) {
-        build(new api.SearchComponent(this.el) as unknown as TextComponent)
+        build(new api.SearchComponent(this.controlEl) as unknown as TextComponent)
         return this
       }
       addDropdown(build: (dropdown: DropdownComponent) => void) {
-        build(new api.DropdownComponent(this.el))
+        build(new api.DropdownComponent(this.controlEl))
         return this
       }
       addButton(build: (button: ButtonComponent) => void) {
-        build(new api.ButtonComponent(this.el))
+        build(new api.ButtonComponent(this.controlEl))
         return this
       }
     },
