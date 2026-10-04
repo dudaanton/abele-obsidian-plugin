@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { settledGeometry } from '../helpers/settledGeometry'
+import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
+import { nativeGesture } from '../helpers/nativeGesture'
 
 targets('desktop', 'phone')
 const shots = shotDir('abele-manual-key-consent')
@@ -68,22 +71,63 @@ describe.skipIf(!available)('native manual key consent with mock transport', () 
         out.secretAbsentFromText = !modal.modalEl.textContent.includes(value)
         out.outside = []
         out.ringCuts = []
+        out.geometry = []
+        let wholeHeight = innerHeight
+        if (Math.abs(screen.width - innerWidth) < 2) wholeHeight = Math.max(wholeHeight, screen.height)
+        const rect = el => { const r = el.getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width} }
+        const primary = () => [...modal.footerEl.querySelectorAll('button')].find(b => b.textContent === 'Allow key and address')
+        // Native Modal.open schedules its own initial focus. Let that actual opening finish
+        // before deliberately focusing another control; otherwise it steals that focus later.
+        out.opening = await (${settledGeometry.toString()})(() => ({
+          modal:rect(modal.modalEl),primary:rect(primary()),
+          active:[...modal.modalEl.querySelectorAll('input,select,button')].indexOf(document.activeElement),
+          viewport:[innerWidth,innerHeight,visualViewport?.height,visualViewport?.offsetTop],
+          keyboard:getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height'),
+        }), () => wait(50), Date.now)
         for (const control of modal.modalEl.querySelectorAll('input, select, button')) {
-          const r = control.getBoundingClientRect()
-          if (!r.width) continue
-          if (r.left < 0 || r.right > innerWidth || r.top < 0 || r.bottom > innerHeight) out.outside.push(control.getAttribute('aria-label') || control.textContent)
-          control.focus()
-          const cs = getComputedStyle(control)
-          const nums = (cs.boxShadow.match(/-?\\d+(\\.\\d+)?px/g) || []).map(parseFloat)
-          const shadow = nums.length >= 4 ? Math.max(0, nums[2]) + Math.max(0, nums[3]) : 0
-          const outline = cs.outlineStyle !== 'none' ? parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset || '0') : 0
-          const reach = Math.max(shadow, outline)
-          for (let el = control.parentElement; reach > 0 && el && el !== document.documentElement; el = el.parentElement) {
-            const s = getComputedStyle(el)
-            if (s.overflowX === 'visible' && s.overflowY === 'visible') continue
-            const b = el.getBoundingClientRect(), left = b.left + el.clientLeft
-            if (Math.max(left - (r.left - reach), r.right + reach - left - el.clientWidth) > .5) out.ringCuts.push(control.getAttribute('aria-label') || control.textContent)
+          if (!control.getBoundingClientRect().width) continue
+          const label = control.getAttribute('aria-label') || control.textContent
+          // Obsidian adds an aria-hidden SELECT solely to size the real dropdown.
+          // Keep its geometry checks, but do not fabricate focus on that sizing copy.
+          const sizingCopy = control.matches('select.is-measuring[aria-hidden="true"]')
+          if (!sizingCopy) control.focus()
+          if (window.__e2eHost && control.tagName === 'INPUT') {
+            // One actual native tap, never replayed, brings the real keyboard to the focused field.
+            control.scrollIntoView({block:'center'})
+            const at = control.getBoundingClientRect()
+            await (${nativeGesture.toString()})(() => window.__e2eHost.tap(at.left + at.width/2, at.top + at.height/2))
           }
+          const read = () => {
+            const viewport = visualViewport
+            const keyboard = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height')) || 0
+            wholeHeight = Math.max(wholeHeight, innerHeight)
+            const cs = getComputedStyle(control)
+            const shadow = (${outwardBoxShadowReach.toString()})(cs.boxShadow)
+            const outline = cs.outlineStyle !== 'none' ? parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset || '0') : 0
+            const reach = Math.max(shadow, outline)
+            const r = rect(control), cuts = []
+            for (let el = control.parentElement; reach > 0 && el && el !== document.documentElement; el = el.parentElement) {
+              const s = getComputedStyle(el)
+              if (s.overflowX === 'visible' && s.overflowY === 'visible') continue
+              const b = el.getBoundingClientRect(), left = b.left + el.clientLeft
+              if (Math.max(left - (r.left - reach), r.right + reach - left - el.clientWidth) > .5) cuts.push(label)
+            }
+            return {label,focused:document.activeElement === control,field:r,primary:rect(primary()),modal:rect(modal.modalEl),reach,cuts,keyboard,
+              viewport:{left:viewport?.offsetLeft||0,top:viewport?.offsetTop||0,right:Math.min(innerWidth,(viewport?.offsetLeft||0)+(viewport?.width||innerWidth)),
+                bottom:Math.min(innerHeight,(viewport?.offsetTop||0)+(viewport?.height||innerHeight),keyboard>0?wholeHeight-keyboard+(viewport?.offsetTop||0):innerHeight)}}
+          }
+          const geometry = await (${settledGeometry.toString()})(read, () => wait(50), Date.now)
+          if (!sizingCopy && !geometry.focused) throw Error('Sample consent control lost actual focus: ' + JSON.stringify({label,tag:control.tagName,disabled:control.disabled,connected:control.isConnected,ownerSame:control.ownerDocument===document,activeTag:document.activeElement?.tagName,activeLabel:document.activeElement?.getAttribute('aria-label'),geometry}))
+          geometry.kind = sizingCopy ? 'native-sizing-copy' : 'focused-control'
+          out.geometry.push(geometry)
+          const viewport = geometry.viewport
+          for (const [name, r] of [[label,geometry.field],['Allow key and address',geometry.primary]]) {
+            if (r.left < viewport.left || r.right > viewport.right || r.top < viewport.top || r.bottom > viewport.bottom) out.outside.push(name)
+          }
+          out.ringCuts.push(...geometry.cuts)
+          const r = geometry.field, reach = geometry.reach
+          if (r.left-reach < viewport.left || r.right+reach > viewport.right || r.top-reach < viewport.top || r.bottom+reach > viewport.bottom) out.ringCuts.push(label)
+          if (window.__e2eHost && control.tagName === 'INPUT') out.geometry[out.geometry.length-1].shot = await shot('focus-' + label.toLowerCase().replace(/[^a-z0-9]+/g,'-'))
           control.blur()
         }
         out.formShot = await shot('new-key-masked')
@@ -119,6 +163,7 @@ describe.skipIf(!available)('native manual key consent with mock transport', () 
     )
     if (raw.startsWith('Error:')) throw new Error(raw)
     const report = JSON.parse(raw)
+    console.info('manual consent focused geometry', JSON.stringify(report.geometry))
     expect(report.blockedBefore).toBe(true)
     expect(report.callsBefore).toBe(0)
     expect(report.empty).toBe(true)
