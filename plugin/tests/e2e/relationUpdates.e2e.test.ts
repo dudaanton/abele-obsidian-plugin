@@ -26,6 +26,8 @@ const probe = (label: string) => String.raw`(async () => {
   const rightCollapsed = app.workspace.rightSplit.collapsed
   let leaf, tracked, releaseRead, session
   const report = {}
+  const pagingDiagnostics = []
+  let pagingState = () => null
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async (fn, label) => {
     const deadline = Date.now() + 15000
@@ -34,9 +36,8 @@ const probe = (label: string) => String.raw`(async () => {
       if (result) return result
       await wait(50)
     }
-    const detail = label === 'initial tail page'
-      ? '; global rows=' + document.querySelectorAll('.abele-ai-chat [data-message-id]').length +
-        '; chat panes=' + app.workspace.getLeavesOfType('abele-ai-sidebar-view').length
+    const detail = label.includes('tail page') || label.includes('reading place')
+      ? '; paging=' + JSON.stringify(pagingState()) + '; prior=' + JSON.stringify(pagingDiagnostics)
       : ''
     throw Error('not ready: ' + label + detail)
   }
@@ -167,13 +168,32 @@ const probe = (label: string) => String.raw`(async () => {
     const pagingOwner = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
     if (!pagingOwner) throw Error('paging owner was not revealed')
     const rows = () => [...pagingOwner.view.containerEl.querySelectorAll('.abele-ai-chat [data-message-id]')]
+    const pager = () => pagingOwner.view.containerEl.querySelector('.abele-ai-chat__messages')
+    pagingState = () => {
+      const el = pager(), rect = el?.getBoundingClientRect()
+      const visible = rect && rows().find(row => row.getBoundingClientRect().bottom > rect.top)
+      return {owner:pagingOwner.id,activeTab:chats.activeTabId.value,session:session.id,
+        width:el?.clientWidth,height:el?.clientHeight,scrollHeight:el?.scrollHeight,scrollTop:el?.scrollTop,
+        gap:el ? el.scrollHeight-el.scrollTop-el.clientHeight : null,
+        ids:rows().map(row=>row.getAttribute('data-message-id')),
+        firstVisible:visible?.getAttribute('data-message-id'),offset:visible&&rect ? visible.getBoundingClientRect().top-rect.top : null}
+    }
     await until(() => rows().length === 30, 'initial tail page')
     // Switching tabs resets the page. Leaving it at its end avoids restoring an older place.
     if (!previousTab) throw Error('no original chat tab')
+    // Row mounting precedes the native scroll-to-end/layout work. Observe its real tail
+    // rather than resetting or forcing scroll state that the tab switch is meant to test.
+    const tail = () => { const state = pagingState(); return state.activeTab === session.id &&
+      state.width > 0 && state.height > 0 && state.gap <= 1 && state.ids.at(-1) === 'sample-79' }
+    await until(tail, 'actual initial tail page')
+    await frame()
+    await until(tail, 'painted initial tail page')
+    pagingDiagnostics.push({phase:'before reset switch',...pagingState()})
     chats.switchTab(previousTab)
     await frame()
     chats.switchTab(session.id)
     await until(() => rows().length === 30, 'reset tail page')
+    pagingDiagnostics.push({phase:'after reset switch',...pagingState()})
     const resetFirst = rows()[0].getAttribute('data-message-id')
     session.messages.value.push({ id: 'sample-reset-reply', role: 'user', content: 'Sample appended reply', timestamp: Date.now() })
     await until(() => rows().some(el => el.getAttribute('data-message-id') === 'sample-reset-reply'), 'appended reset reply')
@@ -185,6 +205,51 @@ const probe = (label: string) => String.raw`(async () => {
     await until(() => rows().some(el => el.getAttribute('data-message-id') === 'sample-shrink-reply'), 'appended shrink reply')
     report.shrinkHeld = rows()[0].getAttribute('data-message-id') === shrinkFirst && rows().length === 31
     await shoot('chat')
+
+    // Independent non-tail reader: ordinary native scrolling establishes a reading place;
+    // switching away/back must restore it, not satisfy the tail reset case by erasing it.
+    await until(() => pagingState().gap <= 1, 'appended tail page')
+    await frame()
+    const box = pager().getBoundingClientRect(), x = Math.round(box.left+box.width/2), y = Math.round(box.top+box.height/2)
+    if (window.__e2eHost) await window.__e2eHost.swipe(x,y,x,y+160,{velocity:160})
+    else {
+      const cdp=require('@electron/remote').getCurrentWebContents().debugger
+      if(app.isMobile) {
+        await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]})
+        await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+160}]})
+        await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+      } else await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseWheel',x,y,deltaX:0,deltaY:-180})
+    }
+    await until(() => pagingState().gap > 60, 'non-tail reading place')
+    // Returning can legitimately reveal older history; require the complete prior window
+    // as an unchanged suffix, plus the same visible message/offset, not fewer rendered rows.
+    let reading
+    await until(() => {
+      const current=pagingState()
+      const stable=reading && current.scrollTop===reading.scrollTop && current.firstVisible===reading.firstVisible && current.offset===reading.offset
+      reading=current
+      return stable
+    }, 'settled non-tail reading place')
+    await frame()
+    reading=pagingState()
+    pagingDiagnostics.push({phase:'before non-tail switch',...reading})
+    chats.switchTab(previousTab)
+    await frame()
+    chats.switchTab(session.id)
+    await until(() => {
+      const current=pagingState()
+      return current.activeTab===session.id && current.firstVisible===reading.firstVisible &&
+        Math.abs(current.offset-reading.offset)<=1 &&
+        current.ids.slice(-reading.ids.length).join()===reading.ids.join() && current.gap>60
+    },'restored non-tail reading place')
+    await frame()
+    const returned=pagingState()
+    pagingDiagnostics.push({phase:'after non-tail switch',...returned})
+    report.nonTailRestored=returned.firstVisible===reading.firstVisible &&
+      Math.abs(returned.offset-reading.offset)<=1 &&
+      returned.ids.slice(-reading.ids.length).join()===reading.ids.join() && returned.gap>60
+    await shoot('chat-reading-place')
+    report.pagingDiagnostics = pagingDiagnostics
     return report
   } finally {
     releaseRead?.()
@@ -210,7 +275,16 @@ async function check(label: string) {
   const raw = await evalLong(probe(label))
   if (raw.startsWith('Error:')) throw new Error(raw)
   const report = JSON.parse(raw)
-  expect(report).toEqual({
+  console.info(JSON.stringify(report.pagingDiagnostics))
+  const { pagingDiagnostics, ...outcomes } = report
+  const beforeReset = pagingDiagnostics.find(
+    (entry: { phase: string }) => entry.phase === 'before reset switch'
+  )
+  expect(beforeReset.activeTab).toBe(beforeReset.session)
+  expect(beforeReset.gap).toBeLessThanOrEqual(1)
+  expect(beforeReset.ids).toHaveLength(30)
+  expect(beforeReset.ids.at(-1)).toBe('sample-79')
+  expect(outcomes).toEqual({
     nested: true,
     reclassified: true,
     search: true,
@@ -218,6 +292,7 @@ async function check(label: string) {
     oldDayGone: true,
     resetHeld: true,
     shrinkHeld: true,
+    nonTailRestored: true,
   })
 }
 
