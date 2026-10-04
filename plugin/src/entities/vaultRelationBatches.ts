@@ -18,7 +18,10 @@ class VaultRelationBatches {
       if (file instanceof TFolder && kind !== 'changed') {
         const prefix = normalizePath(oldPath ?? file.path) + '/'
         const watched = new Set(this.router.watchedPaths())
+        // Snapshot queue identities once; per-descendant reverse searches are quadratic.
+        const pendingIdentityByPath = new Map<string, unknown>()
         for (const change of this.pending) {
+          pendingIdentityByPath.set(change.path, change.identity)
           if (change.kind === 'rename') {
             watched.delete(change.oldPath!)
             watched.add(change.path)
@@ -30,14 +33,13 @@ class VaultRelationBatches {
             kind === 'rename' ? normalizePath(file.path) + '/' + path.slice(prefix.length) : path
           if (kind === 'rename' && !(app.vault.getAbstractFileByPath(next) instanceof TFile))
             continue
-          const identity =
-            app.vault.getAbstractFileByPath(next) ??
-            [...this.pending].reverse().find((change) => change.path === path)?.identity
+          const identity = app.vault.getAbstractFileByPath(next) ?? pendingIdentityByPath.get(path)
           const change: RelationChange =
             kind === 'rename'
               ? { kind, path: next, oldPath: path, identity: toRaw(identity) }
               : { kind, path, identity: toRaw(identity) }
           this.pending.push(change)
+          pendingIdentityByPath.set(change.path, change.identity)
         }
         return
       }
