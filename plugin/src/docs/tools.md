@@ -388,7 +388,11 @@ put placeholders in URL userinfo. Do not also supply an Authorization header. Us
 cannot contain a colon; later colons in the exact password are preserved. A correctly
 constructed literal Basic header is also recognized against saved passwords and their
 key-recipient permissions. An HTTP 401 means the server refused the login, unlike a
-permission error before sending.
+permission error before sending. A password may compose literal text and several saved-key
+placeholders; its full generated header, Base64 payload and resolved credentials are tracked
+for redaction independently of credential identity recognition. Approval captures every
+name/key-ID binding before waiting and persists the named request as one owned transaction;
+rebinding a later name or cancelling an outstanding save does not retain partial new grants.
 
 `fetch` brings back a page; the vault may hold a skill that teaches a better way of turning one
 into markdown. Downloads land in the vault, so they are subject to scope.
