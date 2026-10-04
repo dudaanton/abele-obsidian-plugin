@@ -358,6 +358,37 @@ describe('optional content search', () => {
     expect(toggle(await open()).attributes('aria-checked')).toBe('false')
   })
 
+  it.each([' ', 'Enter'])(
+    'changes Content once with %j, retains its label, and persists the search choice',
+    async (key) => {
+      const view = await open()
+      await type(view, 'lightest')
+      const save = vi.spyOn(app, 'saveLocalStorage')
+      const control = toggle(view)
+      expect(control.attributes('aria-labelledby')).toBe('abele-chat-history-content-label')
+      expect(view.get('#abele-chat-history-content-label').text()).toBe('Content')
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      control.element.dispatchEvent(event)
+      await advance(260)
+      await flushPromises()
+      expect(event.defaultPrevented).toBe(true)
+      expect(control.attributes('aria-checked')).toBe('true')
+      expect(save.mock.calls.filter(([name]) => name === 'abele-chat-history-content')).toEqual([
+        ['abele-chat-history-content', true],
+      ])
+      expect(view.findAllComponents(Card)).toHaveLength(2)
+      expect(view.find('.abele-chat-history__snippet').exists()).toBe(true)
+      save.mockClear()
+      await control.trigger('click')
+      expect(control.attributes('aria-checked')).toBe('false')
+      expect(save.mock.calls.filter(([name]) => name === 'abele-chat-history-content')).toEqual([
+        ['abele-chat-history-content', false],
+      ])
+      expect(view.findAllComponents(Card)).toHaveLength(0)
+      expect(view.emitted('select')).toBeUndefined()
+    }
+  )
+
   it('does not publish an in-flight content search after it is switched off', async () => {
     const view = await open()
     let complete!: () => void

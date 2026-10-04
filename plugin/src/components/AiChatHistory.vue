@@ -20,8 +20,6 @@
               aria-labelledby="abele-chat-history-content-label"
               :aria-checked="contentSearch"
               @toggle="setContentSearch(!contentSearch)"
-              @keydown.space.prevent="setContentSearch(!contentSearch)"
-              @keydown.enter.prevent="setContentSearch(!contentSearch)"
             />
           </div>
         </div>

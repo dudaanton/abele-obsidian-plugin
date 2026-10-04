@@ -5,10 +5,11 @@
  * everywhere. What is asserted is the contract a screen relies on — what reaches the DOM,
  * what is emitted — never how it looks; happy-dom computes no layout.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { h } from 'vue'
+import { h, ref, nextTick } from 'vue'
 import Tabs from '@/components/obsidian/Tabs.vue'
+import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Badge from '@/components/obsidian/Badge.vue'
 import Card from '@/components/obsidian/Card.vue'
 import CardGrid from '@/components/obsidian/CardGrid.vue'
@@ -87,6 +88,100 @@ describe('Tabs', () => {
 
     expect(primary.classes()).toContain('abele-tabs_primary')
     expect(secondary.classes()).toContain('abele-tabs_secondary')
+  })
+})
+
+describe('Checkbox', () => {
+  it('reports one pointer activation without activating its containing row', async () => {
+    const parent = vi.fn()
+    const toggle = vi.fn()
+    const view = mount({
+      render: () =>
+        h('div', { onClick: parent }, [h(Checkbox, { isEnabled: false, onToggle: toggle })]),
+    })
+    await view.get('.checkbox-container').trigger('click')
+    expect(toggle).toHaveBeenCalledOnce()
+    expect(parent).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
+  it.each([' ', 'Enter'])(
+    'focuses and activates once with %j without row, scroll or form defaults',
+    async (key) => {
+      // Vue ignores bubbling events stamped at/before a listener's attachment time.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      const parentKey = vi.fn()
+      const submit = vi.fn()
+      const toggle = vi.fn()
+      const view = mount(
+        {
+          render: () =>
+            h('form', { onSubmit: submit, onKeydown: parentKey, onKeyup: parentKey }, [
+              h(Checkbox, { isEnabled: false, 'aria-label': 'Sample option', onToggle: toggle }),
+              h('button', { type: 'submit' }, 'Save'),
+            ]),
+        },
+        { attachTo: document.body }
+      )
+      try {
+        vi.advanceTimersByTime(10)
+        const control = view.get('.checkbox-container').element as HTMLElement
+        expect(control.tabIndex).toBe(0)
+        control.focus()
+        expect(document.activeElement).toBe(control)
+        const down = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+        control.dispatchEvent(down)
+        expect(down.defaultPrevented).toBe(true)
+        expect(toggle).toHaveBeenCalledOnce()
+        const repeat = new KeyboardEvent('keydown', {
+          key,
+          repeat: true,
+          bubbles: true,
+          cancelable: true,
+        })
+        control.dispatchEvent(repeat)
+        expect(repeat.defaultPrevented).toBe(true)
+        const up = new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true })
+        control.dispatchEvent(up)
+        expect(up.defaultPrevented).toBe(true)
+        expect(toggle).toHaveBeenCalledOnce()
+        expect(parentKey).not.toHaveBeenCalled()
+        expect(submit).not.toHaveBeenCalled()
+        const other = new KeyboardEvent('keydown', {
+          key: 'ArrowDown',
+          bubbles: true,
+          cancelable: true,
+        })
+        control.dispatchEvent(other)
+        expect(other.defaultPrevented).toBe(false)
+        expect(parentKey).toHaveBeenCalledOnce()
+      } finally {
+        view.unmount()
+        vi.useRealTimers()
+      }
+    }
+  )
+
+  it('exposes the parent value and accessible name without keeping a hidden checked value', async () => {
+    const enabled = ref(false)
+    const view = mount({
+      render: () => h(Checkbox, { isEnabled: enabled.value, 'aria-label': 'Sample option' }),
+    })
+    expect(view.attributes('role')).toBe('checkbox')
+    expect(view.attributes('aria-label')).toBe('Sample option')
+    expect(view.attributes('aria-checked')).toBe('false')
+    await view.trigger('click')
+    expect(view.attributes('aria-checked')).toBe('false')
+    expect(view.classes()).not.toContain('is-enabled')
+    enabled.value = true
+    await nextTick()
+    expect(view.attributes('aria-checked')).toBe('true')
+    expect(view.classes()).toContain('is-enabled')
+    enabled.value = false
+    await nextTick()
+    expect(view.attributes('aria-checked')).toBe('false')
+    expect(view.classes()).not.toContain('is-enabled')
+    view.unmount()
   })
 })
 
