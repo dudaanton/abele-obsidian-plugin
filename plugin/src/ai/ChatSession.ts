@@ -86,6 +86,7 @@ import { isScriptPath } from '@/scripting/scriptPath'
 import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent, skillNeedsApproval, offeredSkills } from './tools/SkillTool'
 import type { ToolContext } from './toolContext'
+import { snapshotZipRequest } from '@/archive/vaultZip'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
 import { isImagePath } from './tools/ReadImageTool'
@@ -994,10 +995,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         signal?: AbortSignal,
         callerCtx?: ToolContext
       ): Promise<AgentToolResult> => {
+        // ZIP's selected array and invocation owner must not change during approval/tracker awaits.
+        const invocationParams = tool.name === 'zip' ? { ...snapshotZipRequest(params) } : params
+        const ownerAgent = this.agent.value
+        const version = this.conversationVersion.value
+        const invocationApp = GlobalStore.getInstance().app
         const ctx: ToolContext = {
           scope: this.scopeResolver,
           session: this,
-          agentId: this.agent.value?.id,
+          agentId: tool.name === 'zip' ? ownerAgent?.id : this.agent.value?.id,
+          app: invocationApp,
+          validateWrite: () => {
+            if (
+              this.destroyed ||
+              this.conversationVersion.value !== version ||
+              !ownerAgent ||
+              this.agent.value !== ownerAgent ||
+              GlobalStore.getInstance().app !== invocationApp
+            )
+              throw new Error('ZIP invocation owner changed')
+            if (!(ctx.interactive && ctx.approved) && this.needsApproval('zip', invocationParams))
+              throw new Error('ZIP write operations are not permitted without approval')
+          },
           skillCeiling: this.skillCeiling,
           interactive: this.kind !== 'run',
           approved: callerCtx?.approved === true || (await this.turnPolicy.isApproved(id)),
@@ -1011,7 +1030,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           const refused = await this.readGuard.check(tool.name, params)
           if (refused) throw new Error(refused)
           signal?.throwIfAborted()
-          const result = await tool.execute(id, params, signal, ctx)
+          const result = await tool.execute(id, invocationParams, signal, ctx)
           await this.readGuard.record(tool.name, params, result)
           // After the guard, which has to see a file's text as the tool gave it.
           this.results.keep(tool.name, id, result)

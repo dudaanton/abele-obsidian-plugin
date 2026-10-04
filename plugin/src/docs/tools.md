@@ -13,6 +13,42 @@ selected passage. Off tools are never revealed; Ask still requires approval. Rev
 stay in reveal order when the chat is reopened. In **All at once** mode, all enabled tools
 are offered immediately and `enable_tools` is absent.
 
+## ZIP archives
+
+`zip({path, files: [{path, name?}]})` is a core **Files** write tool, immediately available
+including in By group mode. Select explicit context-visible files of any byte type. `path`
+is an exact new vault-relative `.zip` destination; `files[].path` is an exact source file,
+not a folder or glob. Without `name`, the entry preserves the source's vault-relative hierarchy.
+Optional `name` chooses a virtual archive subfolder/rename, not a vault permission:
+
+```json
+{"path":"Exports/sample.zip","files":[{"path":"Notes/sample.md"},{"path":"Media/sample-image.png","name":"images/picture.png"}]}
+```
+
+All selected files must remain visible and unchanged throughout packing. A single denied,
+missing, changed or invalid source rejects the entire selection, never silently filters it.
+A listable ancestor does not grant access to its siblings. Ordinary write approval allows a new
+output outside readable scope, but never widens source access. Successful creation adds the
+output only to the originating caller's scope; delegated scope ceilings remain authoritative.
+Confirm all asks, Allow edits/Allow all admits creation, and unattended callers cannot ask.
+
+Raw binary, text BOMs and line endings are preserved. Virtual names use `/` separators and NFC
+Unicode; absolute/traversal paths, duplicate canonical names and file/directory-prefix conflicts
+reject. Case-distinct entries remain distinct, but can conflict when extracted on a
+case-insensitive filesystem. Repeated sources with distinct entry names are allowed. Existing
+file/folder destinations reject without overwrite, destination-content reads or auto-renaming.
+There are no source changes, text diffs or read-before-write marks from packing.
+
+Ceilings are 5000 entries, 512 MiB aggregate source bytes and 64 MiB **complete** output including
+headers and UTF-8 filenames. These are roundtrip bounds, not maximum-case mobile safety claims:
+public reads materialize one source and final assembly temporarily duplicates output buffers.
+Compression yields between bounded chunks. Stop before native creation saves no ZIP; already
+created parents may remain. Once creation is issued it must settle: a saved ZIP is reported as
+saved even if Stop arrived in flight. Public vault APIs cannot promise atomic no-replace against
+external writers. Existing rewind recordings include concurrent writes broadly, not exclusively
+one chat's changes. This agent tool does not add a `ScriptContext.zip` or eval file API; script
+`unzip` stays unchanged.
+
 ## Rendered output
 
 Chat replies, thinking, run output, script markdown and GitHub text show other plugins' code

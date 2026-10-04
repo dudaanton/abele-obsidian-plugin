@@ -11,6 +11,7 @@ import { createLsTool } from './LsTool'
 import { createFindTool } from './FindTool'
 import { createEditFileTool } from './EditFileTool'
 import { createCreateFileTool } from './CreateFileTool'
+import { createZipTool } from './ZipTool'
 import { createDeleteFileTool } from './DeleteFileTool'
 import { createMoveFileTool } from './MoveFileTool'
 import { createCopyFileTool } from './CopyFileTool'
@@ -98,6 +99,7 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     replace: { label: 'Replace', category: 'Files' },
     write: { label: 'Write file', category: 'Files' },
     create: { label: 'Create file', category: 'Files' },
+    zip: { label: 'Create ZIP', category: 'Files' },
     rm: { label: 'Delete file', category: 'Files' },
     mv: { label: 'Move file', category: 'Files' },
     cp: { label: 'Copy file', category: 'Files' },
@@ -279,6 +281,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createFindTool({ compact: true }),
     createEditFileTool(),
     createCreateFileTool(),
+    createZipTool(),
     createDeleteFileTool(),
     createMoveFileTool(),
     createCopyFileTool(),

@@ -284,6 +284,7 @@ export const DECK_WRITE_TOOLS = ['deck_create', 'deck_edit']
 export const WRITE_TOOLS = [
   'edit',
   'create',
+  'zip',
   'replace',
   'write',
   EDIT_SELECTION_TOOL,
@@ -354,6 +355,7 @@ export const CORE_TOOLS = new Set([
   'edit',
   'replace',
   'create',
+  'zip',
   'rm',
   'mv',
   'cp',

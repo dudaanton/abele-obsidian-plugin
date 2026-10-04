@@ -79,7 +79,8 @@ export function validateZipEntries<S>(
 }
 
 const CHUNK_BYTES = 64 * 1024
-const yieldToEventLoop = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+// Non-DOM clients use the same macrotask default; browser adapters may inject their scheduler.
+const yieldToEventLoop = () => new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0))
 
 /** Sequential streaming compression: one materialized source, bounded output, one final assembly. */
 export async function buildZip<S, R>(

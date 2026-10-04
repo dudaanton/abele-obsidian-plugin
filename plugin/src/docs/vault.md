@@ -4,6 +4,17 @@ The shape of every kind of note the plugin owns: which `type` marks it, which pr
 carries, and where new ones are put. Dates are `YYYY-MM-DD` and times are `HH:mm` unless said
 otherwise; a note that breaks that is a note the plugin will read wrongly.
 
+## ZIP archives
+
+Agent `zip` stores an ordinary binary `.zip` file at the explicitly requested new path, creating
+missing parents through normal vault APIs. There is no archive sidecar, new note type, settings
+schema or source mutation. Entry names describe virtual archive hierarchy, not vault scope.
+Successful results and the normal chat touched-file/rewind record refer to the saved output;
+packing does not fabricate text diffs or mark source contents as read by the model. Existing
+rewind recording remains broad across concurrent operations. Failed/stopped construction saves
+no partial ZIP; parents already created before a later failure may remain. See `tools` topic
+**ZIP archives** for selection, permission, byte preservation and resource contracts.
+
 ## Presentations
 
 `type: presentation` marks an ordinary Markdown note that opens as a deck. Deck frontmatter

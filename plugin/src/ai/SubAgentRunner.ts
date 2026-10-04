@@ -8,6 +8,8 @@ import { WRITE_TOOLS, DECK_WRITE_TOOLS } from './types'
 import { skillNeedsApproval } from './tools/SkillTool'
 import { ReadGuard, withReadGuard } from './readGuard'
 import { ResultStore, withResultStore } from './resultStore'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { AgentRegistry } from './agents/AgentRegistry'
 
 export interface SubAgentTask {
   systemPrompt: string
@@ -104,7 +106,24 @@ export async function runSubAgent(
   scope = runScopeFor(agent)
 ): Promise<string> {
   if (task.signal?.aborted) throw new Error('Aborted')
-  const ctx: ToolContext = { scope, agentId: agent.id, interactive: false }
+  const app = GlobalStore.getInstance().app
+  const agentId = agent.id
+  const ctx: ToolContext = {
+    scope,
+    agentId,
+    interactive: false,
+    app,
+    validateWrite: () => {
+      if (
+        GlobalStore.getInstance().app !== app ||
+        agent.id !== agentId ||
+        AgentRegistry.getInstance().get(agentId) !== agent
+      )
+        throw new Error('ZIP invocation owner changed')
+      const refused = subAgentRefusal('zip', {}, agent, scope)
+      if (refused) throw new Error(refused)
+    },
+  }
   const bound = task.tools.map((tool) => ({
     ...tool,
     execute: (id: string, params: Record<string, unknown>, signal?: AbortSignal) =>
