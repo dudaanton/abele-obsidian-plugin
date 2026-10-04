@@ -20,7 +20,8 @@ export interface ZipPorts<S, R> {
   read(source: S): Promise<Uint8Array>
   /** Synchronous current authorization/identity/cancellation validation, never a cached grant. */
   checkpoint(): void
-  yieldTask?: () => Promise<void>
+  /** A genuine macrotask opportunity, supplied by the host (not a resolved Promise). */
+  yieldTask: () => Promise<void>
   publish(bytes: Uint8Array): Promise<R>
   limits?: ZipLimits
 }
@@ -79,8 +80,6 @@ export function validateZipEntries<S>(
 }
 
 const CHUNK_BYTES = 64 * 1024
-// Non-DOM clients use the same macrotask default; browser adapters may inject their scheduler.
-const yieldToEventLoop = () => new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0))
 
 /** Sequential streaming compression: one materialized source, bounded output, one final assembly. */
 export async function buildZip<S, R>(
@@ -90,7 +89,7 @@ export async function buildZip<S, R>(
   const limits = ports.limits ?? ZIP_LIMITS
   ports.checkpoint()
   const entries = validateZipEntries(selection, limits)
-  const yieldTask = ports.yieldTask ?? yieldToEventLoop
+  const yieldTask = ports.yieldTask
   let centralBytes = 22
   for (const entry of entries) centralBytes += 46 + new TextEncoder().encode(entry.name).length
   let outputBytes = 0

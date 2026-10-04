@@ -125,7 +125,7 @@ it('yields between bounded pushes and reads sequentially', async () => {
   expect(yields).toBeGreaterThanOrEqual(4)
 })
 
-it('provides a real event-loop opportunity by default', async () => {
+it('services the event loop through the injected host scheduler', async () => {
   let serviced = false
   const timer = setTimeout(() => {
     serviced = true
@@ -134,6 +134,7 @@ it('provides a real event-loop opportunity by default', async () => {
     await buildZip([entry('a', new Uint8Array(140000))], {
       read: async (b) => b,
       checkpoint: () => {},
+      yieldTask: () => new Promise<void>((resolve) => setTimeout(resolve, 0)),
       publish: async () => {
         expect(serviced).toBe(true)
       },

@@ -182,6 +182,7 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
     const entries = selected.map((source) => ({ name: source.name, source, size: source.size }))
     return await buildZip(entries, {
       checkpoint: checkSources,
+      yieldTask: () => new Promise<void>((resolve) => window.setTimeout(resolve, 0)),
       read: async (source) => {
         checkSources()
         const bytes = await vault.readBinary(source.file)
