@@ -40,6 +40,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { sampleDocx } from '../fixtures/docx/sampleDocx'
+import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import {
   recipientRowFailures,
   RECIPIENT_ROWS,
@@ -221,8 +222,7 @@ const probeScript = `(async () => {
    * dialog's mount point did not, and the search field lost 2px off each side on a phone.
    */
   const ringClipped = (field) => {
-    const nums = (getComputedStyle(field).boxShadow.match(/-?\\d+(\\.\\d+)?px/g) || []).map(parseFloat)
-    const reach = nums.length >= 4 ? Math.max(0, nums[2]) + Math.max(0, nums[3]) : 0
+    const reach = (${outwardBoxShadowReach.toString()})(getComputedStyle(field).boxShadow)
     const r = field.getBoundingClientRect()
     const ring = { left: r.left - reach, right: r.right + reach, top: r.top - reach, bottom: r.bottom + reach }
     const cut = []

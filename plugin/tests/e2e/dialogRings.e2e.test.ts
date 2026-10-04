@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
+import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 
 interface Cut {
   screen: string
@@ -40,8 +41,7 @@ const script = `(async () => {
 
   const ringClipped = (field) => {
     const cs = getComputedStyle(field)
-    const nums = (cs.boxShadow.match(/-?\\d+(\\.\\d+)?px/g) || []).map(parseFloat)
-    const shadow = nums.length >= 4 ? Math.max(0, nums[2]) + Math.max(0, nums[3]) : 0
+    const shadow = (${outwardBoxShadowReach.toString()})(cs.boxShadow)
     const outline = cs.outlineStyle !== 'none' ? parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset || '0') : 0
     const reach = Math.max(shadow, outline)
     if (reach <= 0) return []
