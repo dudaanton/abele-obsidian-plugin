@@ -12,6 +12,14 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
+import { evalAsync } from './helpers/githubLive'
+import {
+  PUBLICATION_SETUP,
+  PUBLICATION_PRELUDE,
+  PUBLICATION_CLEANUP,
+  PUBLICATION_MEASURE,
+  publicationFault,
+} from './helpers/canvasPublicationReview'
 
 interface Cut {
   screen: string
@@ -179,6 +187,34 @@ describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', ()
 
   it('no box in any dialog of the plugin cuts the ring off a focused field', () => {
     expect(cuts.map((c) => `${c.screen}: ${c.field} — ${c.by.join(', ')}`)).toEqual([])
+  })
+})
+
+describe('Canvas publication review focus inventory', () => {
+  it('keeps local review and affirmative confirmation rings inside their clipping ancestors', () => {
+    const run = <T>(body: string): T => evalAsync<T>(`(async () => { ${body} })()`)
+    run(PUBLICATION_SETUP)
+    try {
+      run(publicationFault('persisted'))
+      run(`${PUBLICATION_PRELUDE}
+        fixture.view.containerEl.querySelector('[aria-label="Recover failed canvas change"]').click()
+        await until(() => modal()); return true
+      `)
+      for (const screen of ['review', 'confirmation']) {
+        if (screen === 'confirmation')
+          run(`${PUBLICATION_PRELUDE}
+          [...modal().querySelectorAll('button')].find(button => button.textContent === 'Discard local pending copy…').click(); return true
+        `)
+        const result = run<{ cuts: string[]; outside: string[]; bodyOverflow: boolean }>(
+          PUBLICATION_MEASURE
+        )
+        expect(result.cuts).toEqual([])
+        expect(result.outside).toEqual([])
+        expect(result.bodyOverflow).toBe(false)
+      }
+    } finally {
+      run(PUBLICATION_CLEANUP)
+    }
   })
 })
 
