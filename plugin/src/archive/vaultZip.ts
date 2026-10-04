@@ -144,7 +144,7 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
     parentPath = parentPath ? `${parentPath}/${part}` : part
     const parent = vault.getAbstractFileByPath(parentPath)
     if (parent && !(parent instanceof TFolder)) throw new Error('ZIP parent is not a folder')
-    parents.set(parentPath, parent)
+    parents.set(parentPath, parent instanceof TFolder ? parent : null)
   }
   const checkDestination = () => {
     checkSources()
