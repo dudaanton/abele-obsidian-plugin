@@ -9,29 +9,78 @@
  * in the background is covered by the unit tests (`tests/unit/bookPlaces.test.ts`).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { shotDir } from './helpers/shots'
 import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub, RICH_BOOK_ID } from '../fixtures/books/richBook'
+import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
 import { WAIT_PRELUDE } from './helpers/wait'
 
 const available = isObsidianRunning() && hasTestApi()
+const SHOTS = shotDir('book-places')
 const DIR = 'Abele reader places e2e'
 const BOOK = `${DIR}/rich.epub`
-const PDF = `${DIR}/long.pdf`
+const RUN = Date.now().toString(36)
+const PDF = `${DIR}/sample-pages-${RUN}.pdf`
+const BOOK_ID = `urn:uuid:sample-reading-place-${RUN}`
+
+// Fresh identities prevent an old fixture record from satisfying a new-write proof.
+const freshBook = () => {
+  const entries = unzipSync(buildRichEpub())
+  entries['OEBPS/content.opf'] = strToU8(
+    strFromU8(entries['OEBPS/content.opf']).replace(RICH_BOOK_ID, BOOK_ID)
+  )
+  return zipSync(entries)
+}
 
 const PRELUDE = `
   ${WAIT_PRELUDE}
   const placesFile = window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath || 'abele-book-places.json'
   const saved = async () => JSON.parse(await app.vault.adapter.read(placesFile))
+  const observed = new Map()
+  const diagnostics = { configuredPath: window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath, placesFile, events: [], warnings: [] }
+  const originalWarn = console.warn
+  console.warn = (...args) => {
+    if (String(args[0]).includes('book places')) diagnostics.warnings.push(args.map(value => String(value?.stack || value)))
+    originalWarn.apply(console, args)
+  }
+  const observe = view => {
+    if (observed.has(view)) return
+    const state = { path: view.file.path, readingCfi: null, readingReason: null }
+    const handler = event => {
+      const detail = event.detail
+      diagnostics.events.push({ path: state.path, reason: detail.reason ?? null, cfi: detail.cfi, status: view.model.status })
+      if (view.model.status === 'ready' && detail.reason !== 'anchor' && detail.cfi) {
+        state.readingCfi = detail.cfi; state.readingReason = detail.reason ?? null
+      }
+    }
+    view.engine.addEventListener('relocate', handler)
+    observed.set(view, { state, handler })
+  }
+  const reportPlaces = async () => ({ ...diagnostics,
+    disk: await saved().then(places => Object.fromEntries(Object.entries(places).filter(([key, place]) => key === 'id:' + ${JSON.stringify(BOOK_ID)} || place.path === ${JSON.stringify(PDF)})), error => ({ error: String(error) })),
+    views: [...observed].map(([view, value]) => ({ ...value.state, currentCfi: view.engine?.lastLocation?.cfi })) })
+  const capture = async name => {
+    const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+    require('fs').writeFileSync(${JSON.stringify(SHOTS + '/')} + name + '.png', image.toPNG())
+  }
+  const finishObservation = () => {
+    for (const [view, value] of observed) view.engine?.removeEventListener('relocate', value.handler)
+    console.warn = originalWarn
+  }
   const leafOf = (path) => app.workspace.getLeavesOfType('abele-book').find((l) => l.getViewState().state?.file === path)
   const ready = async (leaf) => {
+    if (!leaf) throw new Error('reader tab is absent')
     await leaf.loadIfDeferred?.()
     if (!await until(() => {
       const v = leaf.view
       return v.model?.status === 'ready' && v.model.chapter && v.engine?.lastLocation?.cfi &&
         v.engine.renderer?.getContents().some(c => c.doc?.readyState === 'complete')
     })) throw new Error('reader did not become ready with a page and location')
+    observe(leaf.view)
     return leaf.view
   }
   const chapterAt = async (book, index) => {
@@ -40,32 +89,46 @@ const PRELUDE = `
     if (!await until(() => book.model.currentHref === href && book.engine.lastLocation?.cfi))
       throw new Error('reader did not reach chapter ' + (index + 1))
   }
-  const written = async (view, matches) => {
+  // A later layout/anchor relocation may change the visible range without moving the saved
+  // reading position. Match the independent reading event, not a mutable display CFI.
+  const written = async (view, matches, wanted = observed.get(view)?.state.readingCfi) => {
+    if (!wanted) throw new Error('no local reading CFI captured for ' + view.file.path)
     if (!await until(async () => Object.entries(await saved()).some(([key, place]) =>
-      matches(key, place) && place.cfi === view.engine.lastLocation?.cfi)))
-      throw new Error('reader place was not written')
+      matches(key, place) && place.cfi === wanted)))
+      throw new Error('reader place was not written: ' + JSON.stringify({ path: view.file.path, wanted, readingCfi: observed.get(view)?.state.readingCfi, currentCfi: view.engine.lastLocation?.cfi, record: Object.entries(await saved()).find(([key, place]) => matches(key, place)) }))
   }
 `
 
 const run = <T>(body: string): T =>
   evalAsync<T>(
     `(async () => { ${PRELUDE}
-      try { ${body} } catch (e) { return { error: String((e && e.stack) || e) } }
+      try { const result = await (async () => { ${body} })(); return { ...result, diagnostics: await reportPlaces() } }
+      catch (e) { return { error: String((e && e.stack) || e), diagnostics: await reportPlaces() } }
+      finally { finishObservation() }
     })()`,
     90_000
   )
 
 describe.skipIf(!available)('where a book was left, across a restart', () => {
-  let before: { error?: string; chapter?: string; page?: string; bookCfi?: string; pdfCfi?: string }
+  let before: {
+    error?: string
+    chapter?: string
+    page?: string
+    bookCfi?: string
+    pdfCfi?: string
+    bookReadingCfi?: string
+    pdfReadingCfi?: string
+  }
 
   beforeAll(async () => {
     const files = {
-      'rich.epub': Buffer.from(buildRichEpub()).toString('base64'),
-      'long.pdf': Buffer.from(buildLongPdf(12)).toString('base64'),
+      'rich.epub': Buffer.from(freshBook()).toString('base64'),
+      [PDF.split('/').at(-1)!]: Buffer.from(buildLongPdf(12)).toString('base64'),
     }
     evalRaw(
       `(async () => {
-        for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+        for (const leaf of app.workspace.getLeavesOfType('abele-book'))
+          if (leaf.getViewState().state?.file?.startsWith(${JSON.stringify(DIR + '/')})) leaf.detach()
         const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (old) await app.vault.delete(old, true)
         await app.vault.createFolder(${JSON.stringify(DIR)})
@@ -92,14 +155,21 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       if (!await until(() => book.engine.lastLocation?.cfi !== firstPage))
         throw new Error('reader did not turn the page')
       const chapter = book.model.chapter
+      const bookReadingCfi = observed.get(book).state.readingCfi
       const pdf = await open(${JSON.stringify(PDF)})
+      // A previous fixture run may have left this PDF on page 7 already. Make an actual
+      // navigation before the wanted page, rather than accepting an unchanged old record.
+      await pdf.engine.goTo(0)
+      if (!await until(() => pdf.model.chapter?.startsWith('Page 1 of 12')))
+        throw new Error('PDF did not reach the initial page')
       await pdf.engine.goTo(6)
       if (!await until(() => pdf.model.chapter?.startsWith('Page 7 of 12')))
         throw new Error('PDF did not reach page 7')
       const page = pdf.model.chapter
+      const pdfReadingCfi = observed.get(pdf).state.readingCfi
       // Observe the debounced writes on disk, without flushing them on the test's behalf.
-      await written(book, key => key === 'id:' + ${JSON.stringify(RICH_BOOK_ID)})
-      await written(pdf, (_key, place) => place.path === ${JSON.stringify(PDF)})
+      await written(book, key => key === 'id:' + ${JSON.stringify(BOOK_ID)}, bookReadingCfi)
+      await written(pdf, (_key, place) => place.path === ${JSON.stringify(PDF)}, pdfReadingCfi)
       app.workspace.requestSaveLayout()
       if (!await until(async () => {
         const layout = JSON.parse(await app.vault.adapter.read(app.vault.configDir + '/workspace.json'))
@@ -109,27 +179,38 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
           tabs.some(tab => tab.id === view.leaf.id && tab.state?.state?.file === view.file.path))
       })) throw new Error('book tabs were not saved in the workspace')
       const places = await saved()
+      await capture('reading-places-before-reload')
       return {
-        chapter, page,
-        bookCfi: places['id:' + ${JSON.stringify(RICH_BOOK_ID)}]?.cfi,
+        chapter, page, bookReadingCfi, pdfReadingCfi,
+        bookCfi: places['id:' + ${JSON.stringify(BOOK_ID)}]?.cfi,
         pdfCfi: Object.entries(places).find(([k, v]) => v.path === ${JSON.stringify(PDF)})?.[1]?.cfi,
       }
     `)
-    await reloadApp()
-    evalRaw(
-      `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
-    )
+    console.log('place persistence observation', JSON.stringify(before))
+    writeFileSync(join(shotDir('book-places'), 'before.json'), JSON.stringify(before, null, 2))
+    if (!before.error) {
+      await reloadApp()
+      evalRaw(
+        `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
+      )
+    }
   }, 180_000)
 
   afterAll(() => {
     evalRaw(
       `(async () => {
-        for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+        for (const leaf of app.workspace.getLeavesOfType('abele-book'))
+          if (leaf.getViewState().state?.file?.startsWith(${JSON.stringify(DIR + '/')})) leaf.detach()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
         // The fixture vault holds nothing of the tests' own afterwards.
         const places = window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath || 'abele-book-places.json'
-        if (await app.vault.adapter.exists(places)) await app.vault.adapter.remove(places)
+        if (await app.vault.adapter.exists(places)) {
+          const current = JSON.parse(await app.vault.adapter.read(places))
+          const kept = Object.fromEntries(Object.entries(current).filter(([_key, place]) => !place.path?.startsWith(${JSON.stringify(DIR + '/')})))
+          if (Object.keys(kept).length) await app.vault.adapter.write(places, JSON.stringify(kept))
+          else await app.vault.adapter.remove(places)
+        }
         return 'ok'
       })()`,
       60_000
@@ -142,21 +223,38 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
     expect(before.page).toMatch(/^Page 7 of 12/)
     expect(before.bookCfi).toMatch(/^epubcfi\(\/6\/6!/)
     expect(before.pdfCfi).toBeTruthy()
+    expect(before.bookCfi).toBe(before.bookReadingCfi)
+    expect(before.pdfCfi).toBe(before.pdfReadingCfi)
   })
 
   it('opens the restored tabs where they were left, and keeps the places', () => {
+    expect(
+      before.error,
+      'the persistence baseline must succeed before testing reopen'
+    ).toBeUndefined()
+    expect(before.bookCfi).toBeTruthy()
+    expect(before.pdfCfi).toBeTruthy()
     const r = run<{
       error?: string
       chapter?: string
       page?: string
       bookCfi?: string
       pdfCfi?: string
+      readingAnchorVisible?: boolean
+      pdfSection?: number
+      expectedPdfSection?: number
     }>(`
       const bookLeaf = await until(() => leafOf(${JSON.stringify(BOOK)}), 15000)
       const pdfLeaf = await until(() => leafOf(${JSON.stringify(PDF)}), 15000)
       if (!bookLeaf || !pdfLeaf) return { error: 'the tabs were not restored' }
       app.workspace.setActiveLeaf(bookLeaf, { focus: true })
       const book = await ready(bookLeaf)
+      const resolved = book.engine.resolveNavigation(${JSON.stringify(before.bookCfi)})
+      const content = book.engine.renderer.getContents().find(item => item.index === resolved?.index)
+      const anchor = content && resolved?.anchor?.(content.doc)
+      const visible = book.engine.lastLocation?.range
+      const readingAnchorVisible = !!anchor && !!visible && visible.comparePoint(anchor.startContainer, anchor.startOffset) === 0
+      await capture('restored-reading-anchor')
       app.workspace.setActiveLeaf(pdfLeaf, { focus: true })
       const pdf = await ready(pdfLeaf)
       // Observation window: restoration must not overwrite either saved place later.
@@ -164,8 +262,11 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       const places = await saved()
       return {
         chapter: book.model.chapter,
+        readingAnchorVisible,
         page: pdf.model.chapter,
-        bookCfi: places['id:' + ${JSON.stringify(RICH_BOOK_ID)}]?.cfi,
+        pdfSection: pdf.engine.lastLocation?.section?.current,
+        expectedPdfSection: pdf.engine.resolveNavigation(${JSON.stringify(before.pdfCfi)})?.index,
+        bookCfi: places['id:' + ${JSON.stringify(BOOK_ID)}]?.cfi,
         pdfCfi: Object.entries(places).find(([k, v]) => v.path === ${JSON.stringify(PDF)})?.[1]?.cfi,
       }
     `)
@@ -174,6 +275,10 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
     expect(r.page).toBe(before.page)
     expect(r.bookCfi).toBe(before.bookCfi)
     expect(r.pdfCfi).toBe(before.pdfCfi)
+    expect(r.readingAnchorVisible).toBe(true)
+    expect(r.pdfSection).toBe(r.expectedPdfSection)
+    console.log('reopened reading places', JSON.stringify(r))
+    writeFileSync(join(shotDir('book-places'), 'reopened.json'), JSON.stringify(r, null, 2))
   })
 
   it('waits while read here, follows another device once looked at again, and says so once', () => {
@@ -194,7 +299,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       // Keep the activation dwell: looked-again resets the reading clock after its layout
       // debounce, with no public completion signal. The turns below must happen afterwards.
       await wait(800)
-      const key = 'id:' + ${JSON.stringify(RICH_BOOK_ID)}
+      const key = 'id:' + ${JSON.stringify(BOOK_ID)}
       const full = require('path').join(app.vault.adapter.getBasePath(), placesFile)
       // Another device's place arriving as a sync writes it: on disk, beside the app.
       const arrive = async (cfi) => {
@@ -242,6 +347,8 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       const kept = (await saved())[key]?.cfi === second ? 'yes' : 'no'
       return { stayed, followed, next, nextWant, notices: told.size, kept }
     `)
+    console.log('remote place follow', JSON.stringify(r))
+    writeFileSync(join(SHOTS, 'remote-follow.json'), JSON.stringify(r, null, 2))
     expect(r.error).toBeUndefined()
     expect(r.stayed).not.toMatch(/^Chapter 1/)
     expect(r.followed).toMatch(/^Chapter 1/)
