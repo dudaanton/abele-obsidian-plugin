@@ -12,6 +12,10 @@ import { hostCanvasViewer } from './adapter'
 import { CANVAS_VIEW_TYPE, nativeCanvas } from './opening'
 import { emptyCanvas } from './core/model'
 import { ObsidianCanvasStore } from './obsidianStore'
+import {
+  CanvasPublicationReviewModal,
+  canvasPublicationStatus,
+} from './CanvasPublicationReviewModal'
 import type { CanvasDocument, CanvasDocumentLease } from './documentRegistry'
 import { stepsOf } from './core/steps'
 import { canvasPicture } from './pictureAdapter'
@@ -26,6 +30,8 @@ export class CanvasView extends FileView {
   private documentLease: CanvasDocumentLease | null = null
   private requestedFile: TFile | null = null
   private closed = false
+  private publicationReviewModal: CanvasPublicationReviewModal | null = null
+  private reviewRequest = 0
   private attachmentError: string | null = null
   private pending: Record<string, unknown> | null = null
   constructor(leaf: WorkspaceLeaf) {
@@ -136,6 +142,9 @@ export class CanvasView extends FileView {
     await super.onClose()
   }
   private releaseDocument(): void {
+    this.reviewRequest++
+    this.publicationReviewModal?.close()
+    this.publicationReviewModal = null
     const lease = this.documentLease
     this.documentLease = null
     if (lease?.document.recovery)
@@ -153,7 +162,12 @@ export class CanvasView extends FileView {
     }
     this.place()
     const state = document.state
-    if (state.error) this.viewer.status.setText(`Diagram could not be read: ${state.error}`)
+    if (document.session.publicationOutcome)
+      this.viewer.status.setText(
+        canvasPublicationStatus(document.session.publicationOutcome) +
+          (state.error ? ` Persisted source could not be read: ${state.error}` : '')
+      )
+    else if (state.error) this.viewer.status.setText(`Diagram could not be read: ${state.error}`)
     else if (state.conflict)
       this.viewer.status.setText('Diagram changed outside this session; pending work is retained')
     else if (state.dirty)
@@ -210,8 +224,37 @@ export class CanvasView extends FileView {
       new Notice('No failed canvas change to recover')
       return
     }
-    const store = new ObsidianCanvasStore(this.app)
+    const store = new ObsidianCanvasStore(this.app),
+      epoch = this.refreshToken,
+      request = ++this.reviewRequest,
+      isCurrent = () =>
+        !this.closed &&
+        this.requestedFile === file &&
+        this.file === file &&
+        this.refreshToken === epoch &&
+        this.reviewRequest === request &&
+        this.documentLease?.document === document
     try {
+      if (document.session.publicationOutcome) {
+        this.publicationReviewModal?.close()
+        const review = await store.reviewPublication(file, this, isCurrent)
+        if (!isCurrent()) {
+          store.keepPublicationReview(review)
+          return
+        }
+        const modal = new CanvasPublicationReviewModal(
+          this.app,
+          review,
+          () => {
+            store.keepPublicationReview(review)
+            if (this.publicationReviewModal === modal) this.publicationReviewModal = null
+          },
+          () => store.discardPublicationReview(review)
+        )
+        this.publicationReviewModal = modal
+        modal.open()
+        return
+      }
       const snapshot = await store.snapshotFile(file),
         recovery = snapshot.state?.recovery
       if (!recovery) {

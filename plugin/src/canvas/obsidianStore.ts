@@ -13,6 +13,7 @@ import type {
   PreparedCanvasTransaction,
   GraphTransform,
   CanvasPublicationOutcome,
+  CanvasPublicationEvidence,
 } from './core/session'
 import { canvasRevision, CANVAS_CONFLICT } from './core/revision'
 import { parseCanvasFile } from './fileData'
@@ -80,8 +81,135 @@ export function canvasPath(input: unknown): string {
     throw new Error('Use an exact safe vault-relative .canvas path')
   return input
 }
+export interface CanvasPublicationReview {
+  readonly source: {
+    bytes: string
+    graph: CanvasGraph | null
+    error: string | null
+    revision: string
+  }
+  readonly evidence: CanvasPublicationEvidence
+  readonly native: boolean
+}
+interface LocalPublicationDecision {
+  active: boolean
+  used: boolean
+  check(): void
+  bytes: string
+  graph: CanvasGraph | null
+  revision: string
+  error: string | null
+  document: CanvasDocument
+  attempt: object
+  generation: number
+}
 export class ObsidianCanvasStore implements GraphStore {
+  private readonly localReviews = new WeakMap<CanvasPublicationReview, LocalPublicationDecision>()
   constructor(private readonly app: App) {}
+  /** Read source independently of the draft/native preview, without observing or settling it. */
+  async reviewPublication(
+    file: TFile,
+    owner: object,
+    isCurrent: () => boolean
+  ): Promise<CanvasPublicationReview> {
+    const registry = canvasDocuments(this.app),
+      document = registry.find(file)
+    if (!document) throw new Error('Canvas local review is stale')
+    const session = document.session,
+      attempt = session.publicationAttempt,
+      generation = session.generation,
+      path = file.path,
+      evidence = session.publicationEvidence
+    if (!attempt || !evidence) throw new Error('Canvas local review is stale')
+    const check = () => {
+      if (
+        !isCurrent() ||
+        !document.owners.has(owner) ||
+        registry.find(file) !== document ||
+        document.session !== session ||
+        session.publicationAttempt !== attempt ||
+        session.generation !== generation ||
+        session.busy ||
+        file.path !== path ||
+        this.app.vault.getAbstractFileByPath(path) !== file
+      )
+        throw new Error('Canvas local review is stale; retained work was not discarded')
+    }
+    check()
+    const bytes = await this.app.vault.read(file)
+    check()
+    let graph: CanvasGraph | null = null,
+      error: string | null = null
+    try {
+      graph = parseCanvasFile(bytes)
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : 'Persisted source could not be parsed'
+    }
+    const revision = await canvasRevision(bytes, graph ?? { nodes: [], edges: [] })
+    check()
+    // Hash completion is not a source-read barrier. Recheck bytes and live ownership afterward.
+    if ((await this.app.vault.read(file)) !== bytes)
+      throw new Error('Canvas source changed during local review')
+    check()
+    const native = this.views(file).length > 0
+    const review: CanvasPublicationReview = Object.freeze({
+      get source() {
+        return { bytes, graph: graph ? cloneCanvas(graph) : null, revision, error }
+      },
+      get evidence() {
+        return {
+          ...evidence,
+          baseline: { ...evidence.baseline, graph: cloneCanvas(evidence.baseline.graph) },
+          proposed: cloneCanvas(evidence.proposed),
+        }
+      },
+      native,
+    })
+    this.localReviews.set(review, {
+      active: true,
+      used: false,
+      check,
+      bytes,
+      graph,
+      revision,
+      error,
+      document,
+      attempt,
+      generation,
+    })
+    return review
+  }
+  /** Keep/cancel also revokes an in-flight local choice, without changing document state. */
+  keepPublicationReview(review: CanvasPublicationReview): void {
+    const decision = this.localReviews.get(review)
+    if (decision) decision.active = false
+    this.localReviews.delete(review)
+  }
+  async discardPublicationReview(review: CanvasPublicationReview): Promise<void> {
+    const decision = this.localReviews.get(review)
+    if (!decision || !decision.active || decision.used)
+      throw new Error('Canvas local review is stale')
+    decision.used = true // One use, reserved before the first await.
+    try {
+      decision.check()
+      const current = await this.app.vault.read(decision.document.file)
+      if (!decision.active || current !== decision.bytes)
+        throw new Error('Canvas local review is stale; source changed or review closed')
+      decision.check()
+      // No await, source publication, acknowledgment, or history advancement after this guard.
+      decision.document.session.discardPublication(decision.attempt, decision.generation)
+      decision.document.clearRecovery()
+      if (decision.graph)
+        decision.document.observe({ graph: decision.graph, revision: decision.revision })
+      else {
+        decision.document.error = decision.error
+        decision.document.notify()
+      }
+    } finally {
+      decision.active = false
+      this.localReviews.delete(review)
+    }
+  }
   private file(path: string): TFile {
     const file = this.app.vault.getAbstractFileByPath(canvasPath(path))
     if (!(file instanceof TFile)) throw new Error(`Canvas file not found: ${path}`)

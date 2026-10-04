@@ -77,6 +77,15 @@ attachments folder, never beside the canvas as a sidecar. SVG exports contain a 
 PNG picture, not editable vector paths. `look_at_canvas` creates no export file, cache note or
 diagram attachment: its PNG is an agent-message image. Source notes and local images are read only within scope.
 
+Uncertain publication and confirmed-writing/local-acknowledgment-pending work is retained only
+in the running session: proposed draft, original baseline, operation kind, and revoked-attempt
+evidence. The local recovery action reviews freshly read persisted bytes separately from this
+work and native unsaved data. Keep/cancel leaves it intact. Confirmed local discard removes only
+that memory and its unresolved evidence, leaving source bytes and history unchanged. It does
+not undo a write, acknowledge matching bytes, reconstruct missing history, or save a sidecar.
+Any desired change afterward is a new ordinary edit from a fresh read. No reload/crash durability
+or automatic uncertain replay is provided.
+
 ## Device-local key destinations
 
 Obsidian's vault-scoped local storage holds `abele-key-destinations-v1`: key identifiers and

@@ -286,7 +286,7 @@ must be in scope. New diagrams join scope after creation, like `create`.
   images are not fetched; missing/out-of-scope assets are reported, not read. It never executes note
   code blocks. Native Canvas may show rectangles where the painter shows an extension shape.
 
-If an agent write fails before storage confirms success, an open Abele session can retain its
+If the host knows an agent write did not reach storage, an open Abele session can retain its
 proposal without writing it or adding history. `canvas_read.state.recovery` reports the original
 `tool`, opaque `proposal` id and available `actions`. Ordinary writes remain blocked while it
 is pending. Recover explicitly through that same original write tool with
@@ -302,6 +302,17 @@ The local user can also choose **Recover failed canvas change** in the Abele vie
 then explicitly retry, reapply or discard a retained failed agent change. This is recovery,
 not a human editor. Retention is in the running plugin only: durable crash/plugin-reload
 recovery is not provided yet, and human editing remains disabled.
+
+An issued write with an uncertain outcome is **not** an ordinary retryable failed proposal.
+`canvas_read.state.publicationOutcome` distinguishes `unknown` from
+`written-acknowledgment-pending` (source writing confirmed, local acknowledgment incomplete).
+The same local view action opens a read-only review of current persisted bytes, the retained
+proposed draft, and its original baseline. Native unsaved data is not persisted-source evidence.
+Keep/close/cancel preserves retained work. Affirmatively discarding clears only the local pending
+copy and unresolved evidence; it neither restores/writes the file nor acknowledges/adds history.
+It does not reconstruct a missing history entry for a confirmed write. Reread afterward and form
+any desired difference as a **new ordinary edit**, never blind replay of the old attempt.
+Matching bytes do not settle publication. This local choice grants no autonomous agent authority.
 
 Write meaning, not a giant coordinate dump: stable, descriptive ids, groups and note/sub-canvas
 file nodes for levels. Start with an overview, at most about seven new elements per explanatory

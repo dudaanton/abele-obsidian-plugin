@@ -161,6 +161,7 @@ export class CanvasSession {
   private prepared: Preparation | null = null
   private publishing = false
   private unsettledPublication: {
+    identity: object
     outcome: CanvasPublicationOutcome
     preparation: Preparation
   } | null = null
@@ -199,6 +200,21 @@ export class CanvasSession {
   }
   get publicationOutcome(): CanvasPublicationOutcome | null {
     return this.unsettledPublication?.outcome ?? null
+  }
+  /** Opaque unresolved-attempt identity; not the revoked publication token. */
+  get publicationAttempt(): object | null {
+    return this.unsettledPublication?.identity ?? null
+  }
+  /** A reviewed local discard removes memory only, without acknowledging or advancing history. */
+  discardPublication(attempt: object, generation: number): void {
+    if (
+      !this.unsettledPublication ||
+      this.unsettledPublication.identity !== attempt ||
+      this.version !== generation ||
+      this.busy
+    )
+      throw new CanvasSessionError('stale')
+    this.discardDraft()
   }
   /** Detached historical evidence, never a publication or acknowledgment capability. */
   get publicationEvidence(): CanvasPublicationEvidence | null {
@@ -391,7 +407,7 @@ export class CanvasSession {
       baseRevision: token.revision,
       active: false,
     }
-    this.unsettledPublication = { outcome, preparation: prepared }
+    this.unsettledPublication = { identity: Object.freeze({}), outcome, preparation: prepared }
     this.conflicted = true
     this.publishing = false
     this.prepared = null

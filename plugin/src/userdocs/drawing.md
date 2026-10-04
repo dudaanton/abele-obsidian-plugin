@@ -155,6 +155,24 @@ and puts its explanation below the picture. Longer explanations scroll above the
 navigation. Going backwards hides later cards again. A linked note shows its live content;
 tap it to open the note. A linked sub-diagram opens its own viewer.
 
+### A canvas change that did not finish
+
+Use **Recover failed canvas change** in the viewer's header. A change known not to have been
+written keeps its existing Retry, Reapply, and Discard choices. If the write outcome is uncertain,
+or writing succeeded but local acknowledgment did not finish, the action instead opens a local
+read-only review: current persisted file, retained proposed draft, and original baseline are
+shown separately. Native unsaved edits are not labelled as saved file contents.
+
+**Keep retained work**, closing, or cancelling leaves the work and evidence intact.
+**Discard local pending copy…** asks first: this only forgets that pending copy and unresolved
+attempt evidence in this running session. It does not undo changes already written to the file,
+write or restore any file contents, or add the missing acknowledgment/history entry. The file
+may already contain the change; matching contents do not establish that the attempt succeeded.
+
+After discarding, reread the current diagram. Ask for any still-desired difference as a new
+ordinary edit, not replay of the old attempt. This is not a human editor or automatic agent
+settlement, and retained work does not survive a plugin reload or crash.
+
 ## A diagram inside a note
 
 Embed a canvas as usual, or name a one-based step or a card:

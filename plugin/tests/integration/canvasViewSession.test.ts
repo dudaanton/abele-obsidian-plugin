@@ -68,6 +68,163 @@ function repairScenario(raw = '{malformed') {
 }
 
 describe('Abele canvas leaf session lifecycle', () => {
+  it.each(['persisted-rejection', 'unpersisted-rejection', 'digest-failure'] as const)(
+    'reviews %s through the registered action, keeping or discarding only local work',
+    async (fault) => {
+      const graph = planCanvasEdit(emptyCanvas(), [
+        {
+          op: 'add_node',
+          node: { id: 'sample', kind: 'text', label: 'Original source', x: 0, y: 0 },
+        },
+      ])
+      const { app, host, file, view, registry } = repairScenario(serializeCanvas(graph))
+      await view.onOpen()
+      await view.onLoadFile(file)
+      ;(GlobalStore.getInstance() as unknown as { _app: App })._app = host
+      const scope = new ScopeResolver()
+      scope.setFullVaultAccess(true)
+      const ctx = { scope, interactive: true },
+        tools = createCanvasTools(),
+        read = async () =>
+          JSON.parse(
+            (
+              await tools
+                .find((t) => t.name === 'canvas_read')!
+                .execute('sample-read', { path: file.path, detail: 'full' }, undefined, ctx)
+            ).content[0].text
+          ),
+        approved = await read(),
+        originalProcess = app.vault.process.bind(app.vault)
+      let digest: ReturnType<typeof vi.spyOn> | undefined
+      const process = vi
+        .spyOn(app.vault, 'process')
+        .mockImplementationOnce(async (target, transform) => {
+          if (fault === 'unpersisted-rejection') {
+            transform(await app.vault.read(target))
+            throw new Error('Sample unsettled source')
+          }
+          const result = await originalProcess(target, transform)
+          if (fault === 'persisted-rejection') throw new Error('Sample unsettled source')
+          digest = vi
+            .spyOn(crypto.subtle, 'digest')
+            .mockRejectedValueOnce(new Error('Sample local digest failure'))
+          return result
+        })
+      try {
+        await expect(
+          tools
+            .find((t) => t.name === 'canvas_edit')!
+            .execute(
+              'sample-edit',
+              {
+                path: file.path,
+                revision: approved.revision,
+                ops: [{ op: 'update', id: 'sample', patch: { text: 'Retained pending copy' } }],
+              },
+              undefined,
+              ctx
+            )
+        ).rejects.toThrow()
+      } finally {
+        digest?.mockRestore()
+      }
+      const current = registry.find(file)!,
+        session = current.session,
+        retained = {
+          draft: session.draft,
+          evidence: session.publicationEvidence,
+          baseline: session.committed,
+          history: session.history,
+          generation: session.generation,
+        },
+        before = await app.vault.read(file),
+        acknowledge = vi.spyOn(session, 'acknowledge'),
+        action = (
+          view as unknown as { actionHandlers: Map<string, (event: MouseEvent) => unknown> }
+        ).actionHandlers.get('Recover failed canvas change')!,
+        click = (text: string) => {
+          const button = [
+            ...document.querySelectorAll<HTMLButtonElement>(
+              '.abele-canvas-publication-review button'
+            ),
+          ].find((value) => value.textContent === text)
+          expect(button).toBeTruthy()
+          button!.click()
+        },
+        unchanged = () => {
+          expect({
+            draft: session.draft,
+            evidence: session.publicationEvidence,
+            baseline: session.committed,
+            history: session.history,
+            generation: session.generation,
+          }).toEqual(retained)
+        }
+      process.mockClear()
+      action(new MouseEvent('click'))
+      await vi.waitFor(() =>
+        expect(document.querySelector('.abele-canvas-publication-review')).not.toBeNull()
+      )
+      const modal = document.querySelector('.abele-canvas-publication-review')!
+      expect(modal.textContent).toContain('Current persisted source')
+      expect(modal.querySelector('[data-review="source"]')?.textContent).toBe(before)
+      expect(modal.querySelector('[data-review="proposed"]')?.textContent).toContain(
+        'Retained pending copy'
+      )
+      expect(modal.querySelector('[data-review="baseline"]')?.textContent).toContain(
+        'Original source'
+      )
+      expect(modal.textContent).toMatch(
+        fault === 'digest-failure' ? /write was confirmed/i : /outcome is uncertain/i
+      )
+      unchanged()
+      click('Keep retained work')
+      expect(document.querySelector('.abele-canvas-publication-review')).toBeNull()
+      unchanged()
+      action(new MouseEvent('click'))
+      await vi.waitFor(() =>
+        expect(document.querySelector('.abele-canvas-publication-review')).not.toBeNull()
+      )
+      click('Discard local pending copy…')
+      expect(document.querySelector('.abele-canvas-publication-review')!.textContent).toMatch(
+        /does not undo/i
+      )
+      click('Cancel')
+      expect(document.querySelector('.abele-canvas-publication-review')).toBeNull()
+      unchanged()
+      action(new MouseEvent('click'))
+      await vi.waitFor(() =>
+        expect(document.querySelector('.abele-canvas-publication-review')).not.toBeNull()
+      )
+      click('Discard local pending copy…')
+      click('Discard local pending copy')
+      await vi.waitFor(() => expect(session.dirty).toBe(false))
+      expect(session.publicationEvidence).toBeNull()
+      expect(session.history).toEqual(retained.history)
+      expect(await app.vault.read(file)).toBe(before)
+      expect(process).not.toHaveBeenCalled()
+      expect(acknowledge).not.toHaveBeenCalled()
+      const fresh = await read()
+      await tools
+        .find((t) => t.name === 'canvas_edit')!
+        .execute(
+          'sample-fresh',
+          {
+            path: file.path,
+            revision: fresh.revision,
+            ops: [{ op: 'update', id: 'sample', patch: { text: 'New independently chosen edit' } }],
+          },
+          undefined,
+          ctx
+        )
+      expect(session.history.undo).toBe(1)
+      expect(JSON.parse(await app.vault.read(file)).nodes[0].text).toBe(
+        'New independently chosen edit'
+      )
+      await view.onClose()
+    }
+  )
+
   it.each(['retry', 'discard'] as const)(
     'exposes supported local %s recovery through the registered view action',
     async (action) => {
