@@ -24,6 +24,9 @@ export class CanvasView extends FileView {
   private loaded = false
   private renderedGeneration: number | null = null
   private documentLease: CanvasDocumentLease | null = null
+  private requestedFile: TFile | null = null
+  private closed = false
+  private attachmentError: string | null = null
   private pending: Record<string, unknown> | null = null
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -45,6 +48,13 @@ export class CanvasView extends FileView {
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (
+          file instanceof TFile &&
+          file === this.requestedFile &&
+          !this.documentLease &&
+          !this.closed
+        ) {
+          void this.attachDocument(file)
+        } else if (
           file.path !== this.file?.path &&
           file instanceof TFile &&
           this.viewer?.graph.nodes.some((n) => n.file === file.path)
@@ -68,6 +78,7 @@ export class CanvasView extends FileView {
     return extension === 'canvas'
   }
   async onOpen(): Promise<void> {
+    this.closed = false
     this.contentEl.empty()
     this.contentEl.addClass('abele-canvas-view')
     this.viewer = hostCanvasViewer(this.app, this.contentEl, () => this.file?.path ?? '')
@@ -75,24 +86,40 @@ export class CanvasView extends FileView {
       if (this.file) void nativeCanvas(this.leaf, this.file)
     })
     this.addAction('image-down', 'Export diagram picture', (e) => this.exportMenu(e))
+    this.addAction('rotate-ccw', 'Recover failed canvas change', (e) => void this.recoveryMenu(e))
+    if (this.documentLease) this.renderDocument(this.documentLease.document)
+    else if (this.attachmentError) this.viewer.status.setText(this.attachmentError)
   }
   async onLoadFile(file: TFile): Promise<void> {
+    if (this.closed) return
     this.releaseDocument()
     this.file = file
+    this.requestedFile = file
     this.loaded = false
+    this.attachmentError = null
+    await this.attachDocument(file)
+  }
+  private async attachDocument(file: TFile): Promise<void> {
+    if (this.closed || this.requestedFile !== file) return
     const token = ++this.refreshToken
     try {
       const lease = await new ObsidianCanvasStore(this.app).open(file, this, (document) => {
         if (token === this.refreshToken) this.renderDocument(document)
       })
-      if (token !== this.refreshToken) lease.release()
-      else this.documentLease = lease
+      if (token !== this.refreshToken || this.closed || this.requestedFile !== file) lease.release()
+      else {
+        this.documentLease = lease
+        this.attachmentError = null
+      }
     } catch (error) {
-      if (token === this.refreshToken && this.viewer)
-        this.viewer.status.setText(`Diagram could not be read: ${String(error)}`)
+      if (token === this.refreshToken && !this.closed && this.requestedFile === file) {
+        this.attachmentError = `Diagram could not be read: ${String(error)}`
+        this.viewer?.status.setText(this.attachmentError)
+      }
     }
   }
   async onUnloadFile(file: TFile): Promise<void> {
+    this.requestedFile = null
     this.refreshToken++
     this.releaseDocument()
     this.loaded = false
@@ -100,6 +127,8 @@ export class CanvasView extends FileView {
     await super.onUnloadFile(file)
   }
   async onClose(): Promise<void> {
+    this.closed = true
+    this.requestedFile = null
     this.refreshToken++
     this.releaseDocument()
     this.viewer?.destroy()
@@ -109,8 +138,10 @@ export class CanvasView extends FileView {
   private releaseDocument(): void {
     const lease = this.documentLease
     this.documentLease = null
-    if (lease?.document.session.dirty)
-      new Notice('Unsaved diagram work is retained in its session; reopen to recover it')
+    if (lease?.document.recovery)
+      new Notice('Failed canvas change retained; reopen and use the recovery action')
+    else if (lease?.document.session.dirty)
+      new Notice('Unsaved diagram work is retained in this running session')
     lease?.release()
   }
   private renderDocument(document: CanvasDocument): void {
@@ -171,6 +202,49 @@ export class CanvasView extends FileView {
       }
     }
     return state
+  }
+  private async recoveryMenu(e: MouseEvent): Promise<void> {
+    const document = this.documentLease?.document,
+      file = this.requestedFile
+    if (!document || !file || this.closed) {
+      new Notice('No failed canvas change to recover')
+      return
+    }
+    const store = new ObsidianCanvasStore(this.app)
+    try {
+      const snapshot = await store.snapshotFile(file),
+        recovery = snapshot.state?.recovery
+      if (!recovery) {
+        new Notice('No failed agent proposal; human work has not been changed')
+        return
+      }
+      const menu = new Menu()
+      const labels = {
+        retry: 'Retry failed change',
+        reapply: 'Reapply failed change to current diagram',
+        discard: 'Discard failed change',
+      }
+      for (const action of recovery.actions)
+        menu.addItem((item) =>
+          item.setTitle(labels[action]).onClick(async () => {
+            if (
+              this.closed ||
+              this.requestedFile !== file ||
+              this.documentLease?.document !== document
+            )
+              return
+            try {
+              await store.recoverFile(file, snapshot.revision, recovery.proposal, action)
+            } catch (error) {
+              new Notice(`Canvas recovery did not complete: ${String(error)}`)
+            }
+          })
+        )
+      if (!this.closed && this.requestedFile === file && this.documentLease?.document === document)
+        menu.showAtMouseEvent(e)
+    } catch (error) {
+      new Notice(`Canvas recovery unavailable: ${String(error)}`)
+    }
   }
   private exportMenu(e: MouseEvent): void {
     const menu = new Menu()

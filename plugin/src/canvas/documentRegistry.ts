@@ -1,7 +1,29 @@
 /** Host registry: TFile identity survives rename; cameras and selection remain leaf-local. */
 import { TFile, type App, type EventRef } from 'obsidian'
+import { nanoid } from 'nanoid'
 import { CanvasSession, type GraphTransform } from './core/session'
 import type { GraphSnapshot } from './core/service'
+
+export type CanvasRecoveryAction = 'retry' | 'reapply' | 'discard'
+export type CanvasWriteTool = 'canvas_edit' | 'canvas_layout' | 'canvas_steps'
+export interface CanvasProposalOwner {
+  actor: string
+  tool: CanvasWriteTool
+}
+export interface CanvasRecovery {
+  proposal: string
+  tool: CanvasWriteTool
+  actions: CanvasRecoveryAction[]
+}
+interface FailedProposal {
+  id: string
+  generation: number
+  owner: CanvasProposalOwner
+  transform: GraphTransform
+}
+// The namespace also separates module reloads; the counter never reuses a live-module epoch.
+const incarnationNamespace = nanoid()
+let nextIncarnation = 0
 
 export interface CanvasDocumentState {
   generation: number
@@ -11,6 +33,7 @@ export interface CanvasDocumentState {
   writer: boolean
   native: boolean
   error: string | null
+  recovery?: CanvasRecovery
 }
 type Loader = () => Promise<GraphSnapshot>
 type Listener = (document: CanvasDocument) => void
@@ -20,6 +43,9 @@ export interface CanvasDocumentLease {
 }
 export class CanvasDocument {
   readonly session: CanvasSession
+  readonly incarnation = `${incarnationNamespace}-${++nextIncarnation}`
+  private failedProposal: FailedProposal | null = null
+  private nextProposal = 0
   readonly owners = new Map<object, Listener>()
   writer = false
   operations = 0
@@ -34,6 +60,7 @@ export class CanvasDocument {
     this.session = new CanvasSession(snapshot)
   }
   get state(): CanvasDocumentState {
+    const recovery = this.recovery
     return {
       generation: this.session.generation,
       dirty: this.session.dirty,
@@ -42,7 +69,66 @@ export class CanvasDocument {
       writer: this.writer,
       native: this.native(),
       error: this.error,
+      ...(recovery ? { recovery } : {}),
     }
+  }
+  get recovery(): CanvasRecovery | null {
+    const proposal = this.failedProposal
+    if (
+      !proposal ||
+      proposal.generation !== this.session.generation ||
+      !this.session.dirty ||
+      this.session.busy
+    )
+      return null
+    return {
+      proposal: proposal.id,
+      tool: proposal.owner.tool,
+      actions: this.native()
+        ? ['discard']
+        : this.session.conflict
+          ? ['reapply', 'discard']
+          : ['retry', 'reapply', 'discard'],
+    }
+  }
+  requireRecovery(id: string, owner?: CanvasProposalOwner): FailedProposal {
+    if (!this.recovery || this.recovery.proposal !== id)
+      throw new Error('No matching failed agent proposal; human work was not changed')
+    const proposal = this.failedProposal
+    if (owner && proposal.owner.actor !== owner.actor)
+      throw new Error('This failed proposal belongs to another owner')
+    if (owner && proposal.owner.tool !== owner.tool)
+      throw new Error(
+        'This failed proposal belongs to another tool; use its original write permission'
+      )
+    return proposal
+  }
+  ownsRecovery(proposal: FailedProposal): boolean {
+    // Starting or changing a human draft increments generation; publication itself does not.
+    return (
+      this.failedProposal === proposal &&
+      proposal.generation === this.session.generation &&
+      this.session.dirty
+    )
+  }
+  recordFailedProposal(owner: CanvasProposalOwner, transform: GraphTransform): void {
+    const draft = this.session.draft
+    if (!draft || draft.active || this.session.busy) return
+    this.failedProposal = {
+      id: `${this.incarnation}:proposal-${++this.nextProposal}`,
+      generation: this.session.generation,
+      owner,
+      transform,
+    }
+  }
+  clearRecovery(): void {
+    this.failedProposal = null
+  }
+  reapplyProposal(id: string): void {
+    const proposal = this.requireRecovery(id)
+    this.session.reapplyDraft(proposal.transform)
+    proposal.generation = this.session.generation
+    this.notify()
   }
   acquireWriter(): void {
     if (this.session.busy)
@@ -68,27 +154,35 @@ export class CanvasDocument {
         'Native Canvas is active; settle its pending work before acquiring the Abele writer'
       )
     this.session.beginDraft()
+    this.clearRecovery()
     this.writer = true
     this.notify()
   }
   updateDraft(transform: GraphTransform): void {
     this.session.updateDraft(transform)
+    this.clearRecovery()
     this.notify()
   }
   finishDraft(): void {
     this.session.finishDraft()
+    this.clearRecovery()
     this.notify()
   }
   discardDraft(): void {
     this.session.discardDraft()
+    this.clearRecovery()
     this.notify()
   }
   reapplyDraft(transform: GraphTransform): void {
     this.session.reapplyDraft(transform)
+    this.clearRecovery()
     this.notify()
   }
   observe(snapshot: GraphSnapshot): void {
+    const owned = this.recovery ? this.failedProposal : null
     this.session.externalChanged(snapshot)
+    if (owned) owned.generation = this.session.generation
+    else this.clearRecovery()
     this.error = null
     this.notify()
   }
@@ -116,7 +210,7 @@ export function canvasDocuments(app: App): CanvasDocumentRegistry {
 export class CanvasDocumentRegistry {
   private readonly documents = new Map<TFile, CanvasDocument>()
   private readonly queues = new Map<TFile | string, Promise<unknown>>()
-  private readonly opening = new Set<TFile>()
+  private readonly opening = new Map<TFile, number>()
   private vaultRefs: EventRef[] = []
   private workspaceRef: EventRef | null = null
   constructor(private readonly app: App) {}
@@ -152,7 +246,7 @@ export class CanvasDocumentRegistry {
     load: Loader,
     listener: Listener = () => {}
   ): Promise<CanvasDocumentLease> {
-    this.opening.add(file)
+    this.opening.set(file, (this.opening.get(file) ?? 0) + 1)
     this.listen()
     try {
       return await this.serial(file, async () => {
@@ -185,7 +279,9 @@ export class CanvasDocumentRegistry {
         }
       })
     } finally {
-      this.opening.delete(file)
+      const remaining = this.opening.get(file) - 1
+      if (remaining) this.opening.set(file, remaining)
+      else this.opening.delete(file)
       this.stopIfIdle()
     }
   }

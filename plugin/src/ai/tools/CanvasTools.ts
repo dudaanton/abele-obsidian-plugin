@@ -4,6 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { scopeOf, type ToolContext } from '../toolContext'
 import { guardChatWrite } from './chatWriteGuard'
 import { canvasPath, ObsidianCanvasStore } from '@/canvas/obsidianStore'
+import type { CanvasWriteTool, CanvasProposalOwner } from '@/canvas/documentRegistry'
 import {
   createCanvasGraph,
   graphInputSchema,
@@ -26,6 +27,48 @@ const revision = z
   .describe(
     'Revision from canvas_read or the last successful canvas write; stale revisions are refused'
   )
+const recoveryInputSchema = z
+  .object({
+    path,
+    revision,
+    recovery: z.enum(['retry', 'reapply', 'discard']),
+    proposal: z.string().min(1),
+  })
+  .strict()
+function proposalOwner(ctx: ToolContext | undefined, tool: CanvasWriteTool): CanvasProposalOwner {
+  return { actor: JSON.stringify([ctx?.session?.id ?? null, ctx?.agentId ?? null]), tool }
+}
+async function recoverProposal(
+  tool: CanvasWriteTool,
+  key: string,
+  params: z.output<typeof recoveryInputSchema>,
+  signal?: AbortSignal,
+  ctx?: ToolContext
+): Promise<AgentToolResult> {
+  const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).recover(
+    key,
+    params.revision,
+    params.proposal,
+    params.recovery,
+    proposalOwner(ctx, tool),
+    signal
+  )
+  return {
+    ...answer({
+      path: key,
+      revision: result.revision,
+      recovered: result.recovery,
+      warnings: lintCanvas(result.after),
+      ...(result.warning ? { storageWarning: result.warning } : {}),
+    }),
+    details: {
+      path: key,
+      diff: { old: serializeCanvas(result.before), new: serializeCanvas(result.after) },
+    },
+  }
+}
+const recoveryHelp =
+  ' A failed agent proposal is reported by canvas_read(state.recovery). To recover it explicitly, use this same tool with {path,revision,recovery:retry|reapply|discard,proposal}, without ordinary edit/layout/step arguments. Retry publishes only on its unchanged baseline; reapply reruns its structured operation on the latest baseline; discard does not write the file. The original agent/chat and this tool permission are required; human drafts are never recovered implicitly.'
 const region = z
   .object({
     x: z.number(),
@@ -43,6 +86,26 @@ function scoped(input: string, ctx?: ToolContext): string {
     throw new Error(`Access denied: ${key} is outside this chat's scope`)
   return key
 }
+function toolParameters(schema: z.ZodType) {
+  const json = z.toJSONSchema(schema, { io: 'input' })
+  if (!json.anyOf) return json
+  // Providers require an object root. The Zod union still enforces the exact command/recovery alternatives.
+  const { anyOf, ...rest } = json
+  const properties = Object.assign({}, ...anyOf.map((alternative) => alternative.properties ?? {}))
+  return {
+    ...rest,
+    type: 'object',
+    properties,
+    required: ['path', 'revision'],
+    additionalProperties: false,
+  }
+}
+function nestedIssues(issues: z.ZodError['issues']): z.ZodError['issues'] {
+  return issues.flatMap((issue) => [
+    issue,
+    ...(issue.code === 'invalid_union' ? nestedIssues(issue.errors.flat()) : []),
+  ])
+}
 function definition<T extends z.ZodType>(
   name: string,
   label: string,
@@ -55,7 +118,7 @@ function definition<T extends z.ZodType>(
     label,
     category: 'Canvas',
     description,
-    parameters: z.toJSONSchema(schema, { io: 'input' }),
+    parameters: toolParameters(schema),
     execute: async (_id, params, signal, ctx) => {
       signal?.throwIfAborted()
       let parsed: z.output<T>
@@ -63,7 +126,7 @@ function definition<T extends z.ZodType>(
         parsed = schema.parse(params)
       } catch (error) {
         if (name === 'canvas_edit' && error instanceof z.ZodError) {
-          const path = error.issues.find(
+          const path = nestedIssues(error.issues).find(
             (issue) => issue.path[0] === 'ops' && typeof issue.path[1] === 'number'
           )?.path
           if (path) throw new CanvasEditError(path[1] as number, error)
@@ -79,7 +142,7 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_read',
       'Read canvas',
-      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline; step (one-based) shows cumulative revealed content and camera/narration. Works without an open tab; read-only. Open Abele sessions expose pending graph content and state (generation, dirty, busy, conflict and native writer presence); a pending read never commits text. Node/edge array order preserves stacking, not identity.',
+      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline; step (one-based) shows cumulative revealed content and camera/narration. Works without an open tab; read-only. Open Abele sessions expose pending graph content and state (generation, dirty, busy, conflict, native writer presence and failed-proposal recovery instructions); a pending read never commits text. Node/edge array order preserves stacking, not identity.',
       z
         .object({
           path,
@@ -141,16 +204,23 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_edit',
       'Edit canvas',
-      'Pass revision from canvas_read or the last successful write; stale file/native/Abele session state is refused before any agent change; pending human drafts remain unsaved and block writes. Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, remove {id}, connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Removing a group promotes its children; removing a node removes incident edges. One shared Abele session or native Canvas undo item when open. Own Ask mode.',
-      z.object({ path, revision, ops: z.array(operationSchema).min(1) }).strict(),
+      'Pass revision from canvas_read or the last successful write; stale file/native/Abele session state is refused before any agent change; pending human drafts remain unsaved and block writes. Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, remove {id}, connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Removing a group promotes its children; removing a node removes incident edges. One shared Abele session or native Canvas undo item when open. Own Ask mode.' +
+        recoveryHelp,
+      z.union([
+        z.object({ path, revision, ops: z.array(operationSchema).min(1) }).strict(),
+        recoveryInputSchema,
+      ]),
       async (params, signal, ctx) => {
         const key = scoped(params.path, ctx)
         guardChatWrite(key)
+        if ('recovery' in params) return recoverProposal('canvas_edit', key, params, signal, ctx)
+        const operations = structuredClone(params.ops)
         const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
           key,
           params.revision,
-          (graph) => planCanvasEdit(graph, params.ops, hostMetrics()),
-          signal
+          (graph) => planCanvasEdit(graph, operations, hostMetrics()),
+          signal,
+          proposalOwner(ctx, 'canvas_edit')
         )
         return {
           ...answer({
@@ -169,17 +239,20 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_layout',
       'Lay out canvas',
-      'Pass revision from canvas_read or the last successful write; a changed version is refused and must be reread. Lay out the diagram automatically: layered (dagre), tree, radial, or grid; direction LR/RL/TB/BT. scope is a group id; keep pins ids (a kept group pins its whole subtree). Nested groups are laid out one level at a time. Other extension data survives. Own Ask mode, one Abele session or native undo item; pending drafts block writes. Review warnings then inspect a region or node with look_at_canvas.',
-      layoutOptionsSchema.extend({ path, revision }),
+      'Pass revision from canvas_read or the last successful write; a changed version is refused and must be reread. Lay out the diagram automatically: layered (dagre), tree, radial, or grid; direction LR/RL/TB/BT. scope is a group id; keep pins ids (a kept group pins its whole subtree). Nested groups are laid out one level at a time. Other extension data survives. Own Ask mode, one Abele session or native undo item; pending drafts block writes. Review warnings then inspect a region or node with look_at_canvas.' +
+        recoveryHelp,
+      z.union([layoutOptionsSchema.extend({ path, revision }), recoveryInputSchema]),
       async (params, signal, ctx) => {
         const key = scoped(params.path, ctx)
         guardChatWrite(key)
+        if ('recovery' in params) return recoverProposal('canvas_layout', key, params, signal, ctx)
         const { path: _path, revision: _revision, ...options } = params
         const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
           key,
           params.revision,
           (graph) => planCanvasLayout(graph, options, hostMetrics()),
-          signal
+          signal,
+          proposalOwner(ctx, 'canvas_layout')
         )
         return {
           ...answer({
@@ -198,16 +271,23 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_steps',
       'Define canvas walkthrough',
-      'Define an ordered explanation under abele.steps, by stable step and diagram ids. Pass the revision from canvas_read. Atomic ops: replace {steps}, upsert {step,before?:stepId|null}, remove {id}, move {id,before:stepId|null}. Each step has {id,reveal:ids[],say:string,highlight?:ids[],focus?:nodeOrEdgeId|{x,y,width,height}}. Reveal is cumulative; a group reveals its descendants, connections appear when both endpoints are visible. Highlight never reveals hidden nodes. before=null appends; upsert without before updates in place. Abele session or native Canvas undo is one batch; pending drafts block writes. Own Ask mode; scope and write guards apply. Aim for at most seven new cards per step; inspect with look_at_canvas(step=1-based number).',
-      z.object({ path, revision, ops: z.array(stepOperationSchema).min(1) }).strict(),
+      'Define an ordered explanation under abele.steps, by stable step and diagram ids. Pass the revision from canvas_read. Atomic ops: replace {steps}, upsert {step,before?:stepId|null}, remove {id}, move {id,before:stepId|null}. Each step has {id,reveal:ids[],say:string,highlight?:ids[],focus?:nodeOrEdgeId|{x,y,width,height}}. Reveal is cumulative; a group reveals its descendants, connections appear when both endpoints are visible. Highlight never reveals hidden nodes. before=null appends; upsert without before updates in place. Abele session or native Canvas undo is one batch; pending drafts block writes. Own Ask mode; scope and write guards apply. Aim for at most seven new cards per step; inspect with look_at_canvas(step=1-based number).' +
+        recoveryHelp,
+      z.union([
+        z.object({ path, revision, ops: z.array(stepOperationSchema).min(1) }).strict(),
+        recoveryInputSchema,
+      ]),
       async (params, signal, ctx) => {
         const key = scoped(params.path, ctx)
         guardChatWrite(key)
+        if ('recovery' in params) return recoverProposal('canvas_steps', key, params, signal, ctx)
+        const operations = structuredClone(params.ops)
         const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
           key,
           params.revision,
-          (graph) => editCanvasSteps(graph, params.ops),
-          signal
+          (graph) => editCanvasSteps(graph, operations),
+          signal,
+          proposalOwner(ctx, 'canvas_steps')
         )
         return {
           ...answer({

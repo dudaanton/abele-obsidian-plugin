@@ -203,9 +203,11 @@ must be in scope. New diagrams join scope after creation, like `create`.
    `detail` is `outline` (default) or `full`. The outline
   gives ids, one-line labels, group hierarchy, edges and lint; full adds geometry and all extension
   data. It includes an open native Canvas's pending data and returns an opaque `revision` covering
-  both file bytes and pending native state. Read before refining; every successful write returns
-  its new revision for the next operation. If a write refuses a stale revision, read again and
-  reconsider the patch, rather than reusing it blindly.
+  file bytes and pending native state. Open Abele sessions also return their pending graph and
+  `state` (dirty, busy, conflict and native writer presence); their opaque revision includes a
+  non-reused session incarnation and generation. Read again after closing/reopening a session.
+  Read before refining; every successful write returns its new revision. If a write refuses a
+  stale revision, read again and reconsider the patch rather than reusing it blindly.
 - `canvas_create(path, {title?, from})`: choose exactly one of `from.graph` or `from.mermaid`.
   Graph input is `{nodes:[{id,kind,label?,file?,url?,shape?,parent?,near?,x?,y?,width?,height?}],
   edges:[{id,fromNode,toNode,label?,...}]}`. Kinds are `text`, `note`, `link`, `group`, `shape`;
@@ -247,6 +249,23 @@ must be in scope. New diagrams join scope after creation, like `create`.
   Complex HTML/markdown and interactive embeds are not rendered as browser widgets. Remote
   images are not fetched; missing/out-of-scope assets are reported, not read. It never executes note
   code blocks. Native Canvas may show rectangles where the painter shows an extension shape.
+
+If an agent write fails before storage confirms success, an open Abele session can retain its
+proposal without writing it or adding history. `canvas_read.state.recovery` reports the original
+`tool`, opaque `proposal` id and available `actions`. Ordinary writes remain blocked while it
+is pending. Recover explicitly through that same original write tool with
+`{path, revision, proposal, recovery: "retry" | "reapply" | "discard"}` and **no** ordinary
+ops/layout arguments. Use a fresh read revision. Retry publishes the retained proposal only
+against its unchanged baseline; reapply reruns the original structured operation on current
+content, preserving unrelated external changes; discard clears only that failed proposal and
+never writes the file. Failed reapplication leaves the proposal recoverable. The original
+agent/chat ownership, original tool's Off/Ask/On setting, scope and write guards still apply;
+another tool cannot bypass them. Human drafts are never implicitly committed or discarded.
+
+The local user can also choose **Recover failed canvas change** in the Abele view header,
+then explicitly retry, reapply or discard a retained failed agent change. This is recovery,
+not a human editor. Retention is in the running plugin only: durable crash/plugin-reload
+recovery is not provided yet, and human editing remains disabled.
 
 Write meaning, not a giant coordinate dump: stable, descriptive ids, groups and note/sub-canvas
 file nodes for levels. Start with an overview, at most about seven new elements per explanatory

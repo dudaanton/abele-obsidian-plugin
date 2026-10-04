@@ -17,6 +17,8 @@ import {
   type CanvasDocument,
   type CanvasDocumentLease,
   type CanvasDocumentState,
+  type CanvasProposalOwner,
+  type CanvasRecoveryAction,
 } from './documentRegistry'
 
 interface NativeCanvasView extends TextFileView {
@@ -40,6 +42,7 @@ export interface CanvasWriteResult {
   after: CanvasGraph
   revision: string
   warning?: string
+  recovery?: CanvasRecoveryAction
 }
 export function canvasPath(input: unknown): string {
   if (
@@ -63,13 +66,21 @@ export class ObsidianCanvasStore implements GraphStore {
     if (!(file instanceof TFile)) throw new Error(`Canvas file not found: ${path}`)
     return file
   }
+  private canonical(file: TFile): void {
+    if (
+      !(file instanceof TFile) ||
+      file.extension !== 'canvas' ||
+      this.app.vault.getAbstractFileByPath(file.path) !== file
+    )
+      throw new Error(CANVAS_CONFLICT)
+  }
   private views(file: TFile): NativeCanvasView[] {
     return (this.app.workspace?.getLeavesOfType('canvas') ?? [])
       .map((leaf) => leaf.view as NativeCanvasView)
       .filter((view) => view.file === file)
   }
   private async stored(file: TFile): Promise<StoredSnapshot> {
-    if (this.file(file.path) !== file) throw new Error(CANVAS_CONFLICT)
+    this.canonical(file)
     const bytes = await this.app.vault.read(file),
       views = this.views(file)
     if (views.length > 1)
@@ -93,7 +104,7 @@ export class ObsidianCanvasStore implements GraphStore {
     return document
       ? {
           graph: document.session.graph,
-          revision: `${stored.revision}:abele-${document.session.generation}`,
+          revision: `${stored.revision}:abele-${document.incarnation}-${document.session.generation}`,
           state: document.state,
         }
       : { graph: cloneCanvas(stored.graph), revision: stored.revision }
@@ -107,7 +118,10 @@ export class ObsidianCanvasStore implements GraphStore {
     return { stored, document, snapshot: this.publicSnapshot(stored, document) }
   }
   async snapshot(key: string): Promise<CanvasStoreSnapshot> {
-    const file = this.file(key)
+    return this.snapshotFile(this.file(key))
+  }
+  snapshotFile(file: TFile): Promise<CanvasStoreSnapshot> {
+    this.canonical(file)
     return canvasDocuments(this.app).serial(file, async () => (await this.capture(file)).snapshot)
   }
   async read(key: string): Promise<CanvasGraph> {
@@ -135,9 +149,39 @@ export class ObsidianCanvasStore implements GraphStore {
     key: string,
     revision: string,
     transform: GraphTransform,
+    signal?: AbortSignal,
+    owner?: CanvasProposalOwner
+  ): Promise<CanvasWriteResult> {
+    return this.publish(this.file(key), key, revision, 'command', transform, signal, owner)
+  }
+  recover(
+    key: string,
+    revision: string,
+    proposal: string,
+    action: CanvasRecoveryAction,
+    owner: CanvasProposalOwner,
     signal?: AbortSignal
   ): Promise<CanvasWriteResult> {
-    return this.publish(this.file(key), key, revision, 'command', transform, signal)
+    return this.publish(this.file(key), key, revision, action, undefined, signal, owner, proposal)
+  }
+  /** Explicit local-user recovery, on an already canonical file rather than an agent path. */
+  recoverFile(
+    file: TFile,
+    revision: string,
+    proposal: string,
+    action: CanvasRecoveryAction
+  ): Promise<CanvasWriteResult> {
+    this.canonical(file)
+    return this.publish(
+      file,
+      file.path,
+      revision,
+      action,
+      undefined,
+      undefined,
+      undefined,
+      proposal
+    )
   }
   publishDraft(file: TFile, signal?: AbortSignal): Promise<CanvasWriteResult> {
     return this.publish(file, file.path, undefined, 'draft', undefined, signal)
@@ -152,14 +196,17 @@ export class ObsidianCanvasStore implements GraphStore {
     file: TFile,
     path: string,
     revision: string | undefined,
-    kind: 'command' | 'draft' | 'undo' | 'redo',
+    kind: 'command' | 'draft' | 'undo' | 'redo' | CanvasRecoveryAction,
     transform?: GraphTransform,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    owner?: CanvasProposalOwner,
+    proposal?: string
   ): Promise<CanvasWriteResult> {
     const registry = canvasDocuments(this.app)
     return registry.serial(file, async () => {
       const release = registry.retain(file)
       let token: PreparedCanvasTransaction | undefined, document: CanvasDocument | undefined
+      let recovered: ReturnType<CanvasDocument['requireRecovery']> | undefined
       try {
         signal?.throwIfAborted()
         if (file.path !== path)
@@ -169,6 +216,23 @@ export class ObsidianCanvasStore implements GraphStore {
         document = captured.document
         if (kind !== 'draft' && (!revision || captured.snapshot.revision !== revision))
           throw new Error(CANVAS_CONFLICT)
+        signal?.throwIfAborted()
+        if (kind === 'retry' || kind === 'reapply' || kind === 'discard') {
+          if (!document) throw new Error('No retained failed canvas proposal')
+          recovered = document.requireRecovery(proposal, owner)
+          if (file.path !== path || this.app.vault.getAbstractFileByPath(path) !== file)
+            throw new Error(CANVAS_CONFLICT)
+          if (kind === 'discard') {
+            document.discardDraft()
+            const graph = cloneCanvas(snapshot.graph)
+            return {
+              before: graph,
+              after: cloneCanvas(graph),
+              revision: this.publicSnapshot(snapshot, document).revision,
+              recovery: kind,
+            }
+          }
+        }
         const view = snapshot.views[0]
         if (
           view &&
@@ -183,8 +247,9 @@ export class ObsidianCanvasStore implements GraphStore {
             'Canvas draft/history requires the active Abele session without a native writer'
           )
         if (document && !view) {
+          if (kind === 'reapply') document.reapplyProposal(proposal)
           token =
-            kind === 'draft'
+            kind === 'draft' || kind === 'retry' || kind === 'reapply'
               ? document.session.prepareDraft()
               : kind === 'undo'
                 ? document.session.prepareUndo()
@@ -196,7 +261,7 @@ export class ObsidianCanvasStore implements GraphStore {
         let before: CanvasGraph | undefined, after: CanvasGraph | undefined
         const published = await this.app.vault.process(file, (current) => {
           signal?.throwIfAborted()
-          if (file.path !== path || this.file(path) !== file)
+          if (file.path !== path || this.app.vault.getAbstractFileByPath(path) !== file)
             throw new Error('Canvas renamed during publication; reread its current path')
           if (current !== snapshot.bytes) throw new Error(CANVAS_CONFLICT)
           const currentViews = this.views(file)
@@ -232,8 +297,10 @@ export class ObsidianCanvasStore implements GraphStore {
         if (!before || !after) throw new Error('Canvas storage did not run the transaction')
         const confirmed = { graph: after, revision: await canvasRevision(published, after) }
         // No abort check after publication: a confirmed write is a committed result, not a cancellation.
-        if (token) document.session.acknowledge(token, confirmed)
-        else document?.observe(confirmed)
+        if (token) {
+          document.session.acknowledge(token, confirmed)
+          document.clearRecovery()
+        } else document?.observe(confirmed)
         document?.notify()
         let warning: string | undefined
         if (view) {
@@ -258,11 +325,21 @@ export class ObsidianCanvasStore implements GraphStore {
           after,
           revision: this.publicSnapshot(confirmed, document).revision,
           ...(warning ? { warning } : {}),
+          ...(kind === 'retry' || kind === 'reapply' ? { recovery: kind } : {}),
         }
       } catch (error) {
         if (token && document) {
+          const existing = document.session.draft
+          const stillOwned = recovered && document.ownsRecovery(recovered)
           try {
             document.session.reject(token)
+            // Never relabel a newer human draft as agent-owned recovery work.
+            if (!existing || stillOwned) {
+              const failedOwner = recovered?.owner ?? owner,
+                failedTransform = recovered?.transform ?? transform
+              if (failedOwner && failedTransform)
+                document.recordFailedProposal(failedOwner, failedTransform)
+            }
           } catch {
             /* Explicit discard or supersession already revoked this token. */
           }
