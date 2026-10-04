@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { onPhone, desktopOnly } from './target'
 import { phoneEval, installPhoneHost, assertPhoneTransport } from './phone'
+import { confirmReload, type ReloadWitness } from './reloadWitness'
 
 const CLI = process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian'
 
@@ -588,11 +589,14 @@ async function takeReloadLock(): Promise<void> {
  * seconds one window takes to start, under a lock across runs, and taken away again after: a
  * window's phone or desktop is its own, whoever else reloads.
  */
-export async function reloadApp(how = 'location.reload()'): Promise<void> {
+export async function reloadApp(
+  how = 'location.reload()',
+  launch: typeof evalRaw = evalRaw
+): Promise<void> {
   if (onPhone()) return reloadPhone()
   const asked = /emulateMobile\((true|false)\)/.exec(how)?.[1]
   if (asked === 'true') rememberDesktop()
-  await reloadWindow(asked)
+  await reloadWindow(asked, launch)
   if (asked === 'false') putDesktopBack()
 }
 
@@ -661,42 +665,85 @@ export async function restoreDesktopWindow(): Promise<void> {
   putDesktopBack()
 }
 
-async function reloadWindow(asked: string | undefined): Promise<void> {
+const RELOAD_REQUEST = 'abele-e2e-reload-request'
+
+function readReloadWitness(): ReloadWitness {
+  return evalJsonIdempotent<ReloadWitness>(
+    `({ owner: app.vault.getName() + ':' + require('@electron/remote').getCurrentWindow().id,
+      generation: performance.timeOrigin, requestId: sessionStorage.getItem('${RELOAD_REQUEST}'),
+      mobile: !!app.isMobile, apiReady: !!window.__abeleTest, layoutReady: !!app.workspace.layoutReady })`,
+    10_000
+  )
+}
+
+async function reloadWindow(
+  asked: string | undefined,
+  launch: typeof evalRaw = evalRaw
+): Promise<void> {
   await takeReloadLock()
+  const requestId = 'reload-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+  let owner: string | undefined
+  let failure: unknown
+  let cleanupFailure: unknown
   try {
-    evalRaw(
-      `(() => {
+    const before = readReloadWitness()
+    owner = before.owner
+    const outcome = await confirmReload(
+      before,
+      requestId,
+      asked === undefined ? before.mobile : asked === 'true',
+      {
+        request: () =>
+          launch(
+            `(() => {
         const asked = ${asked === undefined ? 'null' : `'${asked === 'true' ? '1' : ''}'`}
         if (asked !== null) sessionStorage.setItem('${MOBILE_WISH}', asked)
         const wish = sessionStorage.getItem('${MOBILE_WISH}') ?? (app.isMobile ? '1' : '')
         if (wish) localStorage.setItem('${MOBILE_KEY}', '1')
         else localStorage.removeItem('${MOBILE_KEY}')
+        sessionStorage.setItem('${RELOAD_REQUEST}', ${JSON.stringify(requestId)})
         setTimeout(() => location.reload(), 50)
-        return 'ok'
+        return ${JSON.stringify(requestId)}
       })()`,
-      30_000
+            30_000
+          ).replace(/^['"]|['"]$/g, ''),
+        read: readReloadWitness,
+        pause: pauseAsync,
+        now: Date.now,
+      },
+      60_000
     )
-    await pauseAsync(4000)
-    await waitForTestApi()
-    const deadline = Date.now() + 60_000
-    // The plugin is back before the layout is; a tab opened in between finds no tab group.
-    while (
-      Date.now() < deadline &&
-      !evalJsonIdempotent<boolean>('app.workspace.layoutReady', 30_000)
-    )
-      await pauseAsync(500)
+    console.info('[abele e2e] reload witness', JSON.stringify({ before, ...outcome }))
+  } catch (error) {
+    failure = error
+    throw error
   } finally {
     try {
       // Even a failed readiness gate must not leave phone emulation shared with other windows.
-      evalRawIdempotent(
-        `(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`,
-        30_000
-      )
+      if (owner) {
+        const cleaned = evalRawIdempotent(
+          `(() => {
+            const owner = app.vault.getName() + ':' + require('@electron/remote').getCurrentWindow().id
+            if (owner !== ${JSON.stringify(owner)}) return 'foreign-owner-not-touched'
+            localStorage.removeItem('${MOBILE_KEY}')
+            if (sessionStorage.getItem('${RELOAD_REQUEST}') === ${JSON.stringify(requestId)}) sessionStorage.removeItem('${RELOAD_REQUEST}')
+            return 'ok'
+          })()`,
+          30_000
+        )
+        if (cleaned.includes('foreign-owner-not-touched'))
+          cleanupFailure = new Error('Reload cleanup refused a foreign window')
+      }
+    } catch (cleanupError) {
+      // A later read failure cannot replace the primary uncertain-reload diagnosis.
+      cleanupFailure = cleanupError
+      if (failure) console.warn('[abele e2e] reload cleanup failed after primary error', cleanupError)
     } finally {
       unlinkSync(join(RELOAD_LOCK, String(process.pid)))
       rmdirSync(RELOAD_LOCK)
     }
   }
+  if (cleanupFailure) throw cleanupFailure
   setBackgroundThrottling(false)
   wakeWindow()
 }

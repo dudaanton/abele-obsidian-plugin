@@ -78,9 +78,18 @@ describe('explicitly idempotent CLI calls', () => {
   it('retries shared-key cleanup under the reload lock even when readiness fails', async () => {
     vi.useFakeTimers()
     let cleanup = 0
+    let reads = 0
+    let launches = 0
     const lock = join(process.cwd(), 'node_modules/abele-e2e-reload.lock')
     exec.mockImplementation((_bin, args) => {
       const code = args.join(' ')
+      // Capture the owned old document before injecting the same invalid readiness answer.
+      if (code.includes('performance.timeOrigin')) {
+        if (reads++ === 0)
+          return '=> {"owner":"sample-window","generation":100,"requestId":null,"mobile":false,"apiReady":true,"layoutReady":true}'
+        return 'Error: invalid API probe'
+      }
+      if (code.includes('location.reload')) launches++
       if (code.includes('typeof window.__abeleTest')) return 'Error: invalid API probe'
       if (
         code.includes("localStorage.removeItem('EmulateMobile')") &&
@@ -97,6 +106,7 @@ describe('explicitly idempotent CLI calls', () => {
       expect(await result).toBeInstanceOf(Error)
       expect((await result).message).toContain('Could not parse')
       expect(cleanup).toBe(2)
+      expect(launches).toBe(1)
       expect(existsSync(lock)).toBe(false)
     } finally {
       vi.useRealTimers()
