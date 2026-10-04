@@ -11,6 +11,11 @@ import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import type { AgentTool, Message, ToolCallContent } from '@/ai/client'
 import { initializeDestinations } from '@/secrets/destinations'
 import { needsSecretApproval } from '@/ai/tools/secretUtils'
+import * as secretUtils from '@/ai/tools/secretUtils'
+import { createMcpServer } from '@/ai/mcp/types'
+import { acceptDestinations } from '@/secrets/destinations'
+import { setSecrets } from '@/secrets/SecretStore'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
@@ -99,9 +104,14 @@ const start = async (...calls: ToolCallContent[]) => {
 
 destroyChatsAfterEach()
 beforeEach(() => {
-  useVault([])
+  setSecrets(null)
+  const app = useVault([])
+  app.secretStorage.setSecret('sample-key', 'fake-sample-value')
+  app.secretStorage.setSecret('other-key', 'fake-other-value')
   AgentRegistry.destroy()
   const config = AbeleConfig.getInstance()
+  config.applySettings(undefined)
+  vi.spyOn(config, 'settingsUnreadable', 'get').mockReturnValue(false)
   config.ai = {
     ...DEFAULT_AI_SETTINGS,
     providers: [provider],
@@ -129,7 +139,189 @@ beforeEach(() => {
 afterEach(() => {
   view.unmount()
   active.value = null
+  AbeleConfig.getInstance().destroy()
+  setSecrets(null)
   vi.restoreAllMocks()
+})
+
+const installRealSettings = async (unreadable = false) => {
+  const config = AbeleConfig.getInstance()
+  vi.mocked(config.saveSettings).mockRestore()
+  vi.mocked(Object.getOwnPropertyDescriptor(config, 'settingsUnreadable')!.get!).mockRestore()
+  const ai = config.ai
+  let disk: unknown = unreadable ? undefined : JSON.parse(JSON.stringify(config.exportSettings()))
+  const write = vi.fn(async (value: unknown) => {
+    disk = structuredClone(value)
+  })
+  const plugin = {
+    app: GlobalStore.getInstance().app,
+    loadData: async () => disk,
+    saveData: write,
+    syncAiFeatures: () => {},
+  }
+  config.init(plugin as never)
+  await config.loadSettings()
+  config.ai = ai
+  write.mockClear()
+  return { write, read: () => disk as ReturnType<typeof config.exportSettings> }
+}
+
+const mcp = () => {
+  const config = AbeleConfig.getInstance()
+  const other = 'https://other.example'
+  config.ai.secrets[0].allowedOrigins = [other]
+  config.ai.secrets.push({
+    name: 'other',
+    keyId: 'other-key',
+    allowedOrigins: [other, 'https://api.sample.example'],
+  })
+  acceptDestinations([
+    { name: 'sample', keyId: 'sample-key', origin: other },
+    { name: 'other', keyId: 'other-key', origin: 'https://api.sample.example' },
+  ])
+  config.ai.mcpServers = [
+    createMcpServer({
+      name: 'Sample',
+      url: request.url,
+      headers: { ...request.headers },
+      tools: [{ name: 'read', description: '', inputSchema: {} }],
+    }),
+  ]
+  const name = 'mcp_sample_read'
+  session.toolModes.value = { [name]: 'auto' }
+  vi.mocked((session as unknown as { getTools(): AgentTool[] }).getTools).mockReturnValue([
+    {
+      name,
+      label: 'Sample MCP',
+      description: 'Synthetic MCP tool; no transport',
+      parameters: {},
+      execute: async (id) => {
+        executed.push(`${session.id}:${id}`)
+        return { content: [{ type: 'text', text: 'done' }] }
+      },
+    },
+  ])
+  return {
+    tc: { ...call('mcp-first'), name, arguments: { query: 'sample' } },
+    server: config.ai.mcpServers[0],
+  }
+}
+
+describe('resolved requests and actual settings adapter outcomes', () => {
+  it('continues an unchanged automatic MCP request exactly once', async () => {
+    const { tc } = mcp()
+    await start(tc)
+    await button('Allow this address for these keys').trigger('click')
+    await flushPromises()
+    expect(executed).toEqual([`${session.id}:mcp-first`])
+    expect(view.findComponent(AiToolApproval).exists()).toBe(false)
+  })
+
+  it('does not consent to an undisplayed replacement of a named key ID', async () => {
+    const { tc } = mcp()
+    await start(tc)
+    GlobalStore.getInstance().app.secretStorage!.setSecret(
+      'replacement-key',
+      'fake-replacement-value'
+    )
+    AbeleConfig.getInstance().ai.secrets[0].keyId = 'replacement-key'
+    await button('Allow this address for these keys').trigger('click')
+    await flushPromises()
+    expect(executed).toEqual([])
+    expect(session.pendingToolCalls.value[0].id).toBe('mcp-first')
+    expect(AbeleConfig.getInstance().ai.secrets[0].allowedOrigins).not.toContain(
+      'https://api.sample.example'
+    )
+  })
+
+  it.each(['url', 'header-key', 'header-content'])(
+    'does not consent to an undisplayed MCP %s edit before the trust click',
+    async (change) => {
+      const { tc, server } = mcp()
+      await start(tc)
+      if (change === 'url') server.url = 'https://other.example/data'
+      if (change === 'header-key') server.headers.Authorization = '${abele_key:other}'
+      if (change === 'header-content') server.headers['X-Sample'] = 'changed-header'
+      await button('Allow this address for these keys').trigger('click')
+      await flushPromises()
+      expect(executed).toEqual([])
+      expect(session.pendingToolCalls.value[0].id).toBe('mcp-first')
+      expect(view.findComponent(AiToolApproval).exists()).toBe(true)
+    }
+  )
+
+  it.each(['url', 'header-key', 'header-content'])(
+    'keeps changed MCP %s pending during a delayed trust save',
+    async (change) => {
+      const { tc, server } = mcp()
+      const saving = deferred()
+      vi.mocked(AbeleConfig.getInstance().saveSettings).mockReturnValue(saving.promise)
+      await start(tc)
+      await button('Allow this address for these keys').trigger('click')
+      await flushPromises()
+      if (change === 'url') server.url = 'https://other.example/data'
+      if (change === 'header-key') server.headers.Authorization = '${abele_key:other}'
+      if (change === 'header-content') server.headers['X-Sample'] = 'changed-header'
+      saving.resolve()
+      await flushPromises()
+      expect(executed).toEqual([])
+      expect(session.pendingToolCalls.value[0].id).toBe('mcp-first')
+      expect(view.findComponent(AiToolApproval).exists()).toBe(true)
+      if (change !== 'header-content')
+        expect(session.needsApproval(tc.name, tc.arguments)).toBe(false)
+    }
+  )
+
+  it.each(['url', 'header-key', 'header-content'])(
+    'keeps changed MCP %s pending between consent commit and continuation',
+    async (change) => {
+      const { tc, server } = mcp()
+      const allow = secretUtils.allowSecretRequestOrigins
+      vi.spyOn(secretUtils, 'allowSecretRequestOrigins').mockImplementation(async (...args) => {
+        await allow(...args)
+        if (change === 'url') server.url = 'https://other.example/data'
+        if (change === 'header-key') server.headers.Authorization = '${abele_key:other}'
+        if (change === 'header-content') server.headers['X-Sample'] = 'changed-header'
+      })
+      await start(tc)
+      await button('Allow this address for these keys').trigger('click')
+      await flushPromises()
+      expect(session.needsApproval(tc.name, tc.arguments)).toBe(false)
+      expect(executed).toEqual([])
+      expect(session.pendingToolCalls.value[0].id).toBe('mcp-first')
+      expect(view.findComponent(AiToolApproval).exists()).toBe(true)
+    }
+  )
+
+  it('does not treat the real adapter no-write outcome as persisted trust', async () => {
+    const adapter = await installRealSettings(true)
+    const config = AbeleConfig.getInstance()
+    expect(config.settingsUnreadable).toBe(true)
+    await expect(config.saveSettings()).resolves.toBeUndefined()
+    expect(adapter.write).not.toHaveBeenCalled()
+    await start(call('first'))
+    await button('Allow this address for these keys').trigger('click')
+    await flushPromises()
+    expect(executed).toEqual([])
+    expect(adapter.write).not.toHaveBeenCalled()
+    expect(view.text()).toContain('Could not save key permission')
+    expect(needsSecretApproval('fetch', request)).toBe(true)
+    expect(config.ai.secrets[0].allowedOrigins).toBeUndefined()
+  })
+
+  it('writes and reads back origin metadata through the real settings adapter before continuing', async () => {
+    const adapter = await installRealSettings()
+    await start(call('first'))
+    await button('Allow this address for these keys').trigger('click')
+    await flushPromises()
+    expect(adapter.write).toHaveBeenCalled()
+    expect(adapter.read().ai.secrets[0].allowedOrigins).toEqual(['https://api.sample.example'])
+    expect(JSON.stringify(adapter.read())).not.toContain('fake-sample-value')
+    expect(executed).toEqual([`${session.id}:first`])
+    await AbeleConfig.getInstance().reloadSettings()
+    expect(needsSecretApproval('fetch', request)).toBe(false)
+    expect(view.findComponent(AiToolApproval).exists()).toBe(false)
+  })
 })
 
 describe('trusting the current saved-key origin', () => {
@@ -214,6 +406,7 @@ describe('trusting the current saved-key origin', () => {
     const trust = button('Allow this address for these keys')
     await trust.trigger('click')
     await trust.trigger('click')
+    await flushPromises()
     expect(executed).toEqual([])
     expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(1)
     saving.resolve()
@@ -229,7 +422,8 @@ describe('trusting the current saved-key origin', () => {
       await button('Allow this address for these keys').trigger('click')
       await flushPromises()
       expect(executed).toEqual([])
-      expect(view.text()).toContain('Synthetic save failure')
+      expect(view.text()).toContain('Could not save key permission')
+      expect(view.text()).not.toContain('Synthetic save failure')
       expect(needsSecretApproval('fetch', request)).toBe(true)
     }
   )

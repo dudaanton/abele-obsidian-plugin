@@ -10,13 +10,17 @@ import {
   prepareSecretRequest,
 } from '@/ai/tools/secretUtils'
 import { deferred } from '../helpers/deferred'
+import { flushPromises } from '@vue/test-utils'
+import { setSecrets } from '@/secrets/SecretStore'
 
 const request = {
   url: 'https://api.sample.example/first',
   headers: { Authorization: '${abele_key:sample}' },
 }
 beforeEach(() => {
+  setSecrets(null)
   const app = useVault([])
+  vi.spyOn(AbeleConfig.getInstance(), 'settingsUnreadable', 'get').mockReturnValue(false)
   app.secretStorage.setSecret('sample-key', 'sample-value')
   AbeleConfig.getInstance().ai = {
     ...DEFAULT_AI_SETTINGS,
@@ -25,7 +29,11 @@ beforeEach(() => {
   vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue()
   initializeDestinations(AbeleConfig.getInstance())
 })
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  document.body.replaceChildren()
+  setSecrets(null)
+  vi.restoreAllMocks()
+})
 
 describe('remembering a saved-key address from the request dialog', () => {
   it('does not report concurrent trust as saved after another save rolls back the same grant', async () => {
@@ -36,38 +44,45 @@ describe('remembering a saved-key address from the request dialog', () => {
     const first = allowSecretOrigin('sample', request.url)
     const second = allowSecretOrigin('sample', request.url)
     const settled = Promise.allSettled([first, second])
+    await flushPromises()
+    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(1)
     firstSave.reject(new Error('Synthetic save failure'))
     const results = await settled
-    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(1)
-    expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected'])
-    // Each successful trust action must leave a usable grant; a failed shared save can
-    // instead reject both actions, so neither chat executes under a nonexistent grant.
-    if (results.some((result) => result.status === 'fulfilled')) {
-      expect(needsSecretApproval('fetch', request)).toBe(false)
-    } else {
-      expect(needsSecretApproval('fetch', request)).toBe(true)
-    }
+    // The shared consent adapter serializes independent actions: the first rolls back,
+    // then the second makes a fresh grant. Success must never describe a revoked grant.
+    expect(results.map((result) => result.status)).toEqual(['rejected', 'fulfilled'])
+    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(3)
+    expect(needsSecretApproval('fetch', request)).toBe(false)
   })
   it('lets simultaneous explicit trust actions share a successful persisted grant', async () => {
     const saving = deferred()
     vi.mocked(AbeleConfig.getInstance().saveSettings).mockReturnValue(saving.promise)
     const first = allowSecretOrigin('sample', request.url)
     const second = allowSecretOrigin('sample', request.url)
-    expect(first).toBe(second)
+    await flushPromises()
+    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(1)
+    expect(needsSecretApproval('fetch', request)).toBe(true)
     saving.resolve()
     await Promise.all([first, second])
-    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(1)
+    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalledTimes(2)
     expect(needsSecretApproval('fetch', request)).toBe(false)
   })
 
   it('reports a failed settings write as an Error without sending the request', async () => {
     vi.mocked(AbeleConfig.getInstance().saveSettings).mockRejectedValue('Synthetic save failure')
     const approval = approveScriptKeyRequest(request)
-    const result = expect(approval).rejects.toEqual(new Error('Synthetic save failure'))
+    const result = expect(approval).rejects.toThrow('Saved-key request was not approved')
     const button = [...document.querySelectorAll('button')].find(
       (button) => button.textContent === 'Allow address and send'
     )!
     button.click()
+    await flushPromises()
+    expect(document.querySelector('.modal')?.textContent).toContain(
+      'Could not save this key permission'
+    )
+    expect(document.querySelector('.modal')?.textContent).not.toContain('Synthetic save failure')
+    expect(needsSecretApproval('fetch', request)).toBe(true)
+    document.querySelector<HTMLButtonElement>('.abele-modal__footer button')!.click()
     await result
     expect(needsSecretApproval('fetch', request)).toBe(true)
     expect(document.querySelector('.modal')).toBeNull()

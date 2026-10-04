@@ -186,18 +186,19 @@ const effectiveParams = computed(() => {
     return {}
   }
 })
-const keyRequest = computed(
-  () =>
-    secretNames(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)).length >
-    0
-)
+// The summary and action share the same unresolved snapshot. Unsaved MCP edits must
+// not silently replace the request the person saw before clicking trust.
+const resolvedKeyRequest = computed(() => {
+  void keyRevision.value
+  void AbeleConfig.getInstance().version.value
+  return secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
+})
+const keyRequest = computed(() => secretNames(resolvedKeyRequest.value).length > 0)
 const keyInfo = computed(() => {
   void keyRevision.value
   if (!keyRequest.value) return null
   try {
-    return secretRequestInfo(
-      secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)!
-    )
+    return secretRequestInfo(resolvedKeyRequest.value!)
   } catch {
     return null
   }
@@ -217,18 +218,22 @@ watch(
 )
 const allowKeyAddress = async () => {
   const s = session.value
-  const tc = s?.pendingToolCalls.value[0]
-  if (keyApprovalBusy.value || !s || !tc || tc.id !== props.message.toolCallId || tc.name !== props.message.toolName) return
-  const name = tc.name
-  const originalArgs = JSON.stringify(tc.arguments)
+  const tc = s?.pendingToolCalls?.value[0]
+  if (
+    keyApprovalBusy.value ||
+    (tc && (tc.id !== props.message.toolCallId || tc.name !== props.message.toolName))
+  )
+    return
+  const name = props.message.toolName ?? ''
+  const originalArgs = JSON.stringify(tc?.arguments)
   const args = JSON.parse(JSON.stringify(effectiveParams.value))
-  const keyIds = () => keyInfo.value?.names.map((key) => AbeleConfig.getInstance().ai.secrets.find((secret) => secret.name === key)?.keyId)
-  const originalKeys = JSON.stringify(keyIds())
   try {
-    const request = secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
+    const request = resolvedKeyRequest.value
     if (!request) return
     const binding = JSON.stringify(request)
-    const info = secretRequestInfo(request)
+    const info = keyInfo.value
+    if (!info) return
+    const originalKeys = JSON.stringify(info.bindings)
     const controller = new AbortController()
     keyApprovalController = controller
     keyApprovalBusy.value = true
@@ -248,15 +253,29 @@ const allowKeyAddress = async () => {
         keyRevision.value++
       }
     )
+    // MCP recipients and headers come from settings, not tool arguments. Recheck the
+    // resolved request at continuation too, after the consent transaction has settled.
+    const currentRequest = secretRequestForTool(name, effectiveParams.value)
     if (
-      !unmounted && !controller.signal.aborted && session.value === s &&
-      s.pendingToolCalls.value[0] === tc && tc.name === name &&
-      props.message.toolCallId === tc.id && props.message.toolName === name &&
+      s &&
+      tc &&
+      currentRequest &&
+      JSON.stringify(currentRequest) === binding &&
+      JSON.stringify(secretRequestInfo(currentRequest).bindings) === originalKeys &&
+      !unmounted &&
+      !controller.signal.aborted &&
+      session.value === s &&
+      s.pendingToolCalls.value[0] === tc &&
+      tc.name === name &&
+      props.message.toolCallId === tc.id &&
+      props.message.toolName === name &&
       JSON.stringify(tc.arguments) === originalArgs &&
       JSON.stringify(effectiveParams.value) === JSON.stringify(args) &&
-      JSON.stringify(keyIds()) === originalKeys && !s.needsApproval(name, args)
-    ) await s.approveToolCall(isEditing.value ? args : undefined)
+      !s.needsApproval(name, args)
+    )
+      await s.approveToolCall(isEditing.value ? args : undefined)
   } catch {
+    keyRevision.value++
     if (!unmounted)
       parseError.value =
         'Could not save key permission. Review the current request and key destinations, then retry.'
