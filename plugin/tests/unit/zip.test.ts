@@ -38,6 +38,95 @@ it('preserves bytes, Unicode paths, repeated sources and case-distinct entries',
   expect(result.sink).toHaveBeenCalledOnce()
 })
 
+it('validates maximum-byte deep names with linear prefix work and no depth cutoff', () => {
+  const names = ['a/'.repeat(32767) + 'z', 'a/'.repeat(32767) + 'w']
+  const characterBudget = names.reduce((sum, name) => sum + name.length, 0)
+  let joinedSegments = 0
+  let characterReads = 0
+  const join = Array.prototype.join
+  const code = String.prototype.charCodeAt
+  const joinSpy = vi.spyOn(Array.prototype, 'join').mockImplementation(function (separator) {
+    joinedSegments += this.length
+    // Fail early instead of allocating the old billion-character prefix workload.
+    if (joinedSegments > characterBudget * 4) throw new Error('Superlinear ZIP prefix work')
+    return join.call(this, separator)
+  })
+  const codeSpy = vi.spyOn(String.prototype, 'charCodeAt').mockImplementation(function (position) {
+    characterReads++
+    return code.call(this, position)
+  })
+  let result: ReturnType<typeof validateZipEntries>
+  try {
+    result = validateZipEntries(names.map((name) => entry(name)))
+  } finally {
+    joinSpy.mockRestore()
+    codeSpy.mockRestore()
+  }
+  expect(result!.map((item) => item.name)).toEqual(names)
+  expect(joinedSegments).toBeLessThanOrEqual(characterBudget)
+  expect(characterReads).toBeLessThanOrEqual(characterBudget * 6)
+  expect(() => validateZipEntries([entry(names[0]), entry('a')])).toThrow(/prefix/)
+  expect(() => validateZipEntries([entry('a'), entry(names[0])])).toThrow(/prefix/)
+})
+
+it('splits shared trie edges without repeatedly copying the remaining long name', () => {
+  const names = ['a'.repeat(500) + 'z', ...Array.from({ length: 20 }, (_, i) => 'a'.repeat(i + 1))]
+  const bytes = names.reduce((sum, name) => sum + name.length, 0)
+  const slice = String.prototype.slice
+  let copiedCharacters = 0
+  const copy = vi.spyOn(String.prototype, 'slice').mockImplementation(function (start, end) {
+    const result = slice.call(this, start, end)
+    copiedCharacters += result.length
+    if (copiedCharacters > bytes * 4) throw new Error('Superlinear ZIP edge copying')
+    return result
+  })
+  let result: ReturnType<typeof validateZipEntries>
+  try {
+    result = validateZipEntries(names.map((name) => entry(name)))
+  } finally {
+    copy.mockRestore()
+  }
+  expect(result!).toHaveLength(names.length)
+  expect(copiedCharacters).toBeLessThanOrEqual(bytes * 2)
+})
+
+it('rejects cumulative metadata/input overflow before evaluating later entries', () => {
+  const nameRead = vi.fn(() => {
+    throw new Error('A later name must not be evaluated')
+  })
+  const later = {
+    get name(): string {
+      return nameRead()
+    },
+    source: new Uint8Array(),
+    size: 0,
+  }
+  for (const limits of [
+    { ...ZIP_LIMITS, outputBytes: 120 },
+    { ...ZIP_LIMITS, inputBytes: 1 },
+  ]) {
+    expect(() =>
+      validateZipEntries([entry('long-sample-name.bin', new Uint8Array(2)), later], limits)
+    ).toThrow(/ZIP (output metadata|input byte) limit/)
+    expect(nameRead).not.toHaveBeenCalled()
+  }
+})
+
+it('distinguishes ordinary string prefixes from file/directory prefixes in either order', () => {
+  for (const names of [
+    ['a', 'ab', 'ab/c', 'ab/d'],
+    ['ab/c', 'ab/d', 'ab', 'a'],
+  ]) {
+    // ab is a file-prefix conflict with ab/c; a alone is not a prefix of ab.
+    expect(() => validateZipEntries(names.map((name) => entry(name)))).toThrow(/prefix/)
+  }
+  for (const names of [
+    ['a', 'ab/c', 'ab/d', 'abc'],
+    ['abc', 'ab/d', 'ab/c', 'a'],
+  ])
+    expect(validateZipEntries(names.map((name) => entry(name)))).toHaveLength(4)
+})
+
 describe('whole-layout preflight', () => {
   it.each([
     '../x',

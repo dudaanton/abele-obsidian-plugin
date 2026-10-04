@@ -9,7 +9,8 @@ otherwise; a note that breaks that is a note the plugin will read wrongly.
 Agent `zip` stores an ordinary binary `.zip` file at the explicitly requested new path, creating
 missing parents through normal vault APIs. There is no archive sidecar, new note type, settings
 schema or source mutation. Entry names describe virtual archive hierarchy, not vault scope.
-Successful results and the normal chat touched-file/rewind record refer to the saved output;
+The successful tool result and rewind record refer to the saved output. ZIP outputs are
+not added to the chat touched-file list, which still includes only Markdown and scripts;
 packing does not fabricate text diffs or mark source contents as read by the model. Existing
 rewind recording remains broad across concurrent operations. Failed/stopped construction saves
 no partial ZIP; parents already created before a later failure may remain. See `tools` topic

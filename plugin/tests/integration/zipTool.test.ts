@@ -60,6 +60,10 @@ it('exposes runtime tools and storage documentation through query_docs', async (
     const result = await createQueryDocsTool().execute('docs', { section, topic: 'zip-archives' })
     expect(result.content[0].text).toContain('ZIP archives')
     expect(result.content[0].text).toContain('zip')
+    if (section === 'vault') {
+      expect(result.content[0].text).toContain('not added to the chat touched-file list')
+      expect(result.content[0].text).toContain('tool result and rewind record')
+    }
   }
 })
 
@@ -289,24 +293,107 @@ it.each([
     vi.spyOn(app.vault, 'readBinary').mockReturnValueOnce(gate.promise)
     const operation = tool(s).execute('sample', request(), controller.signal)
     await vi.waitFor(() => expect(app.vault.readBinary).toHaveBeenCalled())
-    if (change === 'scope') s.scopeResolver.entries.value = []
+    if (change === 'scope') s.scopeResolver.clear()
     if (change === 'revision') source.stat.mtime++
     if (change === 'rename') await app.vault.rename(source, 'Private/moved.md')
     if (change === 'replace') {
       await app.vault.delete(source)
       await app.vault.create('Notes/sample.md', 'replacement')
     }
-    if (change === 'owner') s.agentId.value = 'unbound'
+    if (change === 'owner') {
+      const other = AgentRegistry.getInstance().create({
+        name: 'Sample other worker',
+        permissionMode: 'allow-edit',
+        scope: [{ type: 'file', path: 'Notes/sample.md' }],
+      })
+      s.bindAgent(other.id)
+    }
     if (change === 'conversation') s.conversationVersion.value++
     if (change === 'destroy') s.destroy()
     if (change === 'permission') s.permissionMode.value = 'confirm-all'
     if (change === 'stop') controller.abort()
-    gate.resolve(new Uint8Array([1]).buffer)
-    await expect(operation).rejects.toThrow()
+    gate.resolve(new TextEncoder().encode('sample\r\n').buffer)
+    const category =
+      change === 'scope'
+        ? /Selected files are not available in this scope/
+        : ['revision', 'rename', 'replace'].includes(change)
+          ? /Selected files changed during ZIP creation/
+          : change === 'permission'
+            ? /not permitted without approval/
+            : change === 'stop'
+              ? /abort/i
+              : /invocation owner changed/
+    await expect(operation).rejects.toThrow(category)
     expect(app.vault.getAbstractFileByPath('Exports')).toBeNull()
     expect(s.scopeResolver.isInScope('Exports/sample.zip')).toBe(false)
   }
 )
+it('unchanged deferred source succeeds with the original valid payload', async () => {
+  const owner = session()
+  const gate = deferred<ArrayBuffer>()
+  const original = new TextEncoder().encode('sample\r\n')
+  const reads = vi.spyOn(app.vault, 'readBinary').mockReturnValueOnce(gate.promise)
+  const operation = tool(owner).execute('sample-control', request('control.zip'))
+  await vi.waitFor(() => expect(reads).toHaveBeenCalled())
+  gate.resolve(original.slice().buffer)
+  const result = await operation
+  expect(result.details).toMatchObject({ path: 'control.zip', count: 1 })
+  expect(owner.scopeResolver.isInScope('control.zip')).toBe(true)
+  const extracted = new Map<string, Uint8Array>()
+  await extractArchive(new Uint8Array(await read('control.zip')), '', {
+    write: async (path, data) => {
+      extracted.set(path, data)
+    },
+  })
+  expect(extracted.get('Notes/sample.md')).toEqual(original)
+})
+
+it.each(['native-settlement', 'recording'] as const)(
+  'an issued first parent may remain after %s rejection',
+  async (fault) => {
+    const owner = session()
+    const native = app.vault.createFolder.bind(app.vault)
+    if (fault === 'native-settlement')
+      vi.spyOn(app.vault, 'createFolder').mockImplementationOnce(async (path) => {
+        await native(path)
+        throw new Error('Sample parent settlement failure')
+      })
+    else
+      ChangeTracker.install(app).open({
+        record: () => {
+          throw new Error('Sample recording failure')
+        },
+      })
+    const output = vi.spyOn(app.vault, 'createBinary')
+    const remove = vi.spyOn(app.vault, 'delete')
+    await expect(tool(owner).execute('sample-parent', request())).rejects.toThrow(
+      /parent folders may remain/
+    )
+    expect(app.vault.getAbstractFileByPath('Exports')).not.toBeNull()
+    expect(app.vault.getAbstractFileByPath('Exports/sample.zip')).toBeNull()
+    expect(output).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+    expect(owner.scopeResolver.isInScope('Exports/sample.zip')).toBe(false)
+  }
+)
+
+it('a rejected parent validator before issuance does not claim leftover folders', async () => {
+  const owner = session()
+  const tracker = ChangeTracker.install(app)
+  const original = tracker.prepareCreate.bind(tracker)
+  vi.spyOn(tracker, 'prepareCreate').mockImplementation((path, kind, _validate) =>
+    original(path, kind, () => {
+      throw new Error('Sample pre-issuance refusal')
+    })
+  )
+  const create = vi.spyOn(app.vault, 'createFolder')
+  await expect(tool(owner).execute('sample-parent', request())).rejects.toThrow(
+    /^Sample pre-issuance refusal$/
+  )
+  expect(create).not.toHaveBeenCalled()
+  expect(app.vault.getAbstractFileByPath('Exports')).toBeNull()
+})
+
 it('snapshots caller arguments and does not rebind to a foreground chat', async () => {
   const owner = session()
   const visible = session()

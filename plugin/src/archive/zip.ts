@@ -46,36 +46,91 @@ export function canonicalEntryName(name: string): string {
   return result
 }
 
+interface NameEdge {
+  /** Range of an existing canonical name: splitting an edge never copies a long suffix. */
+  text: string
+  start: number
+  end: number
+  file: boolean
+  next: Map<number, NameEdge>
+}
+const SLASH = '/'.charCodeAt(0)
+
+/** Compressed trie: linear character visits, at most two edges per entry, no depth recursion. */
+class EntryNames {
+  private readonly root = new Map<number, NameEdge>()
+
+  private leaf(text: string, start: number): NameEdge {
+    return { text, start, end: text.length, file: true, next: new Map() }
+  }
+
+  add(name: string): void {
+    let next = this.root
+    let offset = 0
+    while (offset < name.length) {
+      const key = name.charCodeAt(offset)
+      const edge = next.get(key)
+      if (!edge) {
+        next.set(key, this.leaf(name, offset))
+        return
+      }
+      const length = edge.end - edge.start
+      let matched = 0
+      while (
+        matched < length &&
+        offset + matched < name.length &&
+        edge.text.charCodeAt(edge.start + matched) === name.charCodeAt(offset + matched)
+      )
+        matched++
+      offset += matched
+      if (matched < length) {
+        const terminal = offset === name.length
+        if (terminal && edge.text.charCodeAt(edge.start + matched) === SLASH)
+          throw new Error('ZIP file/directory prefix conflict')
+        const suffix: NameEdge = { ...edge, start: edge.start + matched }
+        edge.end = suffix.start
+        edge.file = terminal
+        edge.next = new Map([[suffix.text.charCodeAt(suffix.start), suffix]])
+        if (!terminal) edge.next.set(name.charCodeAt(offset), this.leaf(name, offset))
+        return
+      }
+      if (offset === name.length) {
+        if (edge.file) throw new Error('Duplicate ZIP entry name')
+        if (edge.next.has(SLASH)) throw new Error('ZIP file/directory prefix conflict')
+        edge.file = true
+        return
+      }
+      // A and AB can coexist; only a slash after a file creates a directory-prefix conflict.
+      if (edge.file && name.charCodeAt(offset) === SLASH)
+        throw new Error('ZIP file/directory prefix conflict')
+      next = edge.next
+    }
+  }
+}
+
 export function validateZipEntries<S>(
   entries: readonly ZipEntry<S>[],
   limits: ZipLimits = ZIP_LIMITS
 ): ZipEntry<S>[] {
   if (!entries.length || entries.length > limits.entries)
     throw new Error('ZIP entry count limit exceeded')
-  const names = new Set<string>()
+  const names = new EntryNames()
   let input = 0
   let metadata = 22
-  const result = entries.map((entry) => {
+  if (metadata > limits.outputBytes) throw new Error('ZIP output metadata limit exceeded')
+  const result: ZipEntry<S>[] = []
+  for (const entry of entries) {
     const name = canonicalEntryName(entry.name)
-    if (names.has(name)) throw new Error('Duplicate ZIP entry name')
-    names.add(name)
     if (!Number.isSafeInteger(entry.size) || entry.size < 0)
       throw new Error('Invalid ZIP source size')
     input += entry.size
+    if (input > limits.inputBytes) throw new Error('ZIP input byte limit exceeded')
     // Local header + streaming descriptor + central header, with UTF-8 name in both headers.
     metadata += 92 + 2 * new TextEncoder().encode(name).length
-    return { ...entry, name }
-  })
-  for (const name of names) {
-    const parts = name.split('/')
-    parts.pop()
-    while (parts.length) {
-      if (names.has(parts.join('/'))) throw new Error('ZIP file/directory prefix conflict')
-      parts.pop()
-    }
+    if (metadata > limits.outputBytes) throw new Error('ZIP output metadata limit exceeded')
+    names.add(name)
+    result.push({ ...entry, name })
   }
-  if (input > limits.inputBytes) throw new Error('ZIP input byte limit exceeded')
-  if (metadata > limits.outputBytes) throw new Error('ZIP output metadata limit exceeded')
   return result
 }
 

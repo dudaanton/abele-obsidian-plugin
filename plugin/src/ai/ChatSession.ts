@@ -1472,7 +1472,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           if (!this.turnPolicy.active) return { pause: true }
           if (decided.kind === 'deny') return { block: true, reason: decided.reason }
           if (decided.kind === 'approve') {
-            this.widenScopeFor(args)
+            this.widenScopeFor(toolName, args)
             return
           }
           return { pause: true }
@@ -1547,7 +1547,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
             this.markDirty()
             return // Wait for user approve/reject
           }
-          this.widenScopeFor(tc.arguments)
+          this.widenScopeFor(tc.name, tc.arguments)
           this.updateChatMessage(
             (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
             (m) => ({ ...m, toolStatus: 'approved' as const })
@@ -1981,7 +1981,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (m) => ({ ...m, toolStatus: 'approved' as const })
     )
 
-    this.widenScopeFor(modifiedArgs || tc.arguments)
+    this.widenScopeFor(tc.name, modifiedArgs || tc.arguments)
 
     try {
       await this.processAllPendingToolCalls({ args: modifiedArgs })
@@ -2040,9 +2040,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
   }
 
-  /** An approved call outside the scope brings its file into it, as it always has. */
-  private widenScopeFor(args: Record<string, unknown> | undefined): void {
-    if (!args) return
+  /** Existing source-path approval widens access; ZIP's new output is granted only after saving. */
+  private widenScopeFor(toolName: string, args: Record<string, unknown> | undefined): void {
+    if (toolName === 'zip' || !args) return
     const path = (args.path || args.from) as string
     if (path && !this.scopeResolver.isInScope(path)) this.scopeResolver.addFile(path)
   }

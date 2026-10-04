@@ -171,7 +171,7 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
     validate()
     return run()
   }
-  let madeFolders = false
+  let parentCreationIssued = false
   try {
     refs.push(vault.on('modify', changed), vault.on('rename', changed), vault.on('delete', changed))
     checkDestination()
@@ -200,10 +200,10 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
           if (parent) continue
           if (await vault.adapter.exists(path))
             throw new Error('ZIP parent changed during creation')
-          const folder = await preparedCreate(path, 'folder', checkDestination, () =>
-            vault.createFolder(path)
-          )
-          madeFolders = true
+          const folder = await preparedCreate(path, 'folder', checkDestination, () => {
+            parentCreationIssued = true
+            return vault.createFolder(path)
+          })
           // Issued folders cannot be recalled; if stopped afterwards they may remain.
           if (
             !(folder instanceof TFolder) ||
@@ -257,9 +257,9 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
     })
   } catch (error) {
     // Never roll back folders or delete a path that may now belong to an external writer.
-    if (madeFolders)
+    if (parentCreationIssued)
       throw new Error(
-        `${error instanceof Error ? error.message : 'ZIP creation failed'}; created parent folders may remain`,
+        `${error instanceof Error ? error.message : 'ZIP creation failed'}; parent folder creation was issued; parent folders may remain`,
         { cause: error }
       )
     throw error
