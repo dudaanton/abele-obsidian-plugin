@@ -116,10 +116,18 @@ export class CanvasPublicationReviewModal extends ShellModal {
       this.addButton('Keep retained work', () => this.close())
     }
   }
-  onClose(): void {
+  private revoke(): void {
     if (this.finished) return
     this.finished = true
     this.keep()
+  }
+  close(): void {
+    // Admission ends at the user's choice, not at the host's eventual animation callback.
+    this.revoke()
+    super.close()
+  }
+  onClose(): void {
+    this.revoke()
     super.onClose()
   }
 }

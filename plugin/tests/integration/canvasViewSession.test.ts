@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { TFile, WorkspaceLeaf, Menu, type App } from 'obsidian'
+import { TFile, WorkspaceLeaf, Menu, Modal, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { createCanvasTools } from '@/ai/tools/CanvasTools'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { deferred } from '../helpers/deferred'
 import { CanvasView } from '@/canvas/CanvasView'
+import { CanvasPublicationReviewModal } from '@/canvas/CanvasPublicationReviewModal'
 import { canvasDocuments } from '@/canvas/documentRegistry'
 import { planCanvasEdit } from '@/canvas/core/service'
 import { emptyCanvas, serializeCanvas } from '@/canvas/core/model'
@@ -68,6 +69,39 @@ function repairScenario(raw = '{malformed') {
 }
 
 describe('Abele canvas leaf session lifecycle', () => {
+  it('revokes a local choice synchronously before the host finishes its close animation', () => {
+    const { host } = repairScenario(serializeCanvas(emptyCanvas())),
+      keep = vi.fn()
+    const modal = new CanvasPublicationReviewModal(
+      host,
+      {
+        source: { bytes: '{}', graph: emptyCanvas(), error: null, revision: 'sample-source' },
+        evidence: {
+          outcome: 'unknown',
+          baseline: { graph: emptyCanvas(), revision: 'sample-baseline' },
+          proposed: emptyCanvas(),
+          kind: 'command',
+        },
+        native: false,
+      },
+      keep,
+      async () => {}
+    )
+    const close = vi.spyOn(Modal.prototype, 'close').mockImplementation(() => {
+      // The host can defer onClose and removal while its mobile sheet animates away.
+    })
+    try {
+      modal.open()
+      modal.close()
+      expect(keep).toHaveBeenCalledOnce()
+      modal.onClose()
+      expect(keep).toHaveBeenCalledOnce()
+    } finally {
+      close.mockRestore()
+      modal.containerEl.remove()
+    }
+  })
+
   it.each(['persisted-rejection', 'unpersisted-rejection', 'digest-failure'] as const)(
     'reviews %s through the registered action, keeping or discarding only local work',
     async (fault) => {

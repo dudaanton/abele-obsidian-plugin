@@ -81,6 +81,7 @@ export const PUBLICATION_CASE_CLEANUP = `
   // Failure-only cleanup, not acceptance proof: dispose only this synthetic session's memory.
   if(fixture.session?.dirty && !fixture.session.busy)fixture.session.discardDraft()
   if(fixture.view)fixture.view.leaf.detach()
+  await until(()=>!modal())
   fixture.view=null;fixture.session=null;fixture.file=null
   return true
 `
@@ -94,6 +95,7 @@ export const PUBLICATION_CLEANUP = `
   if(fixture.session?.dirty && !fixture.session.busy)fixture.session.discardDraft()
   const leaves=[];app.workspace.iterateAllLeaves(leaf=>{if(leaf.view.file?.path.startsWith(dir+'/'))leaves.push(leaf)})
   leaves.forEach(leaf=>leaf.detach())
+  await until(()=>!modal())
   if(fixture.owned){const folder=app.vault.getAbstractFileByPath(dir);if(folder)await app.vault.delete(folder,true)}
   if(fixture.layout)await app.workspace.changeLayout(fixture.layout)
   document.removeEventListener('click',fixture.listener,true)
@@ -105,6 +107,8 @@ export const PUBLICATION_MEASURE = `
   ${PUBLICATION_PRELUDE}
   await until(()=>modal());await wait(150)
   const root=modal(),cuts=[],outside=[]
+  const animations=[...root.getAnimations(),...(root.closest('.modal-container')?.getAnimations()??[])]
+  await Promise.all(animations.filter(animation=>animation.playState==='running'&&animation.effect.getTiming().iterations!==Infinity).map(animation=>animation.finished.catch(()=>{})))
   const viewport={width:innerWidth,height:innerHeight},bounds=root.getBoundingClientRect()
   if(bounds.left<0 || bounds.right>innerWidth+.5 || bounds.top<0 || bounds.bottom>innerHeight+.5) outside.push('modal')
   for(const field of root.querySelectorAll('button,summary')) {
