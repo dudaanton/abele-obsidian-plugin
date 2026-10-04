@@ -25,6 +25,7 @@ const run = <T>(body: string): T =>
 const inside = <T>(body: string): T => run<T>(`${PUBLICATION_PRELUDE}${body}`)
 const press = async (selector: string) => {
   const point = inside<{ x: number; y: number }>(`
+    await until(()=>!!(${selector}))
     const element=(${selector});if(!element)throw Error('Canvas review control missing')
     const root=element.closest('.modal')
     if(root){
@@ -148,6 +149,7 @@ describe('supported local exit for unsettled Canvas publication', () => {
       preserved()
       await openReview()
       await press(button('Discard local pending copy…'))
+      inside(`await until(()=>modal()?.textContent.includes('does not undo'));return true`)
       expect(inside<string>(`return modal().textContent`)).toMatch(/does not undo/i)
       if (fault === 'digest')
         expect(inside<string>(`return modal().textContent`)).toMatch(/does not reconstruct/i)
