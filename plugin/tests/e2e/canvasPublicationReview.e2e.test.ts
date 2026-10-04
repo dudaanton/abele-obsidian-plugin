@@ -31,6 +31,10 @@ const press = async (selector: string) => {
       const animations=[...root.getAnimations(),...(root.closest('.modal-container')?.getAnimations()??[])]
       await Promise.all(animations.filter(animation=>animation.playState==='running'&&animation.effect.getTiming().iterations!==Infinity).map(animation=>animation.finished.catch(()=>{})))
     }
+    await until(()=>{
+      const box=element.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2
+      return element.isConnected&&box.width>0&&box.height>0&&x>=0&&x<innerWidth&&y>=0&&y<innerHeight&&element.contains(document.elementFromPoint(x,y))
+    })
     const r=element.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2
     if(!r.width||!r.height||x<0||x>=innerWidth||y<0||y>=innerHeight||!element.contains(document.elementFromPoint(x,y)))throw Error('Canvas review control is not visible/hittable')
     return {x,y}
