@@ -34,7 +34,11 @@ const probe = (label: string) => String.raw`(async () => {
       if (result) return result
       await wait(50)
     }
-    throw Error('not ready: ' + label)
+    const detail = label === 'initial tail page'
+      ? '; global rows=' + document.querySelectorAll('.abele-ai-chat [data-message-id]').length +
+        '; chat panes=' + app.workspace.getLeavesOfType('abele-ai-sidebar-view').length
+      : ''
+    throw Error('not ready: ' + label + detail)
   }
   const frame = () => new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(Error('window is not drawing')), 5000)
@@ -155,7 +159,14 @@ const probe = (label: string) => String.raw`(async () => {
       content: 'Sample message ' + i, timestamp: Date.now() }))
     session.messages.value = messages(80)
     await chats.revealSidebar({ focus: false })
-    const rows = () => [...document.querySelectorAll('.abele-ai-chat [data-message-id]')]
+    // A retained second pane must not be mistaken for extra rows in the paging owner.
+    // Exercise that layout explicitly rather than relying on the pool's previous workspace.
+    const secondChatPane = app.workspace.getLeaf('tab')
+    await secondChatPane.setViewState({ type: 'abele-ai-sidebar-view', active: false })
+    await chats.revealSidebar({ focus: false })
+    const pagingOwner = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
+    if (!pagingOwner) throw Error('paging owner was not revealed')
+    const rows = () => [...pagingOwner.view.containerEl.querySelectorAll('.abele-ai-chat [data-message-id]')]
     await until(() => rows().length === 30, 'initial tail page')
     // Switching tabs resets the page. Leaving it at its end avoids restoring an older place.
     if (!previousTab) throw Error('no original chat tab')
