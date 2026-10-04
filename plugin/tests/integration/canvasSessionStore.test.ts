@@ -74,6 +74,112 @@ function native() {
 }
 
 describe('shared canvas document storage', () => {
+  it('retains an uncertain persisted-then-rejected publication without calling known-no-write rejection', async () => {
+    const lease = await open(),
+      baseline = lease.document.session.committed,
+      snapshot = await store.snapshot(path),
+      reject = vi.spyOn(lease.document.session, 'reject'),
+      process = app.vault.process.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
+      await process(target, transform)
+      throw new Error('Sample uncertain source outcome')
+    })
+    await expect(
+      store.change(path, snapshot.revision, edit('Possibly persisted'))
+    ).rejects.toMatchObject({
+      outcome: 'unknown',
+    })
+    expect(parseCanvas(await bytes()).nodes[0].text).toBe('Possibly persisted')
+    expect(reject).not.toHaveBeenCalled()
+    expect(lease.document.session.committed).toEqual(baseline)
+    expect(lease.document.session.history).toEqual({ undo: 0, redo: 0 })
+    expect(lease.document.session.draft?.graph.nodes[0].text).toBe('Possibly persisted')
+    expect(lease.document.session.busy).toBe(false)
+    expect(lease.document.session.conflict).toBe(true)
+    // Even identical observed source bytes cannot acknowledge this attempt or enable blind retry.
+    const pending = await store.snapshot(path)
+    expect(pending.state).toMatchObject({ publicationOutcome: 'unknown', conflict: true })
+    await expect(store.publishDraft(file)).rejects.toThrow(/conflict/i)
+    expect(lease.document.session.history.undo).toBe(0)
+  })
+
+  it('retains a confirmed write as acknowledgment-pending when the post-write digest fails', async () => {
+    const lease = await open(),
+      baseline = lease.document.session.committed,
+      snapshot = await store.snapshot(path),
+      reject = vi.spyOn(lease.document.session, 'reject'),
+      process = app.vault.process.bind(app.vault)
+    let digest: ReturnType<typeof vi.spyOn> | undefined
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
+      const published = await process(target, transform)
+      digest = vi
+        .spyOn(crypto.subtle, 'digest')
+        .mockRejectedValueOnce(new Error('Sample result digest failure'))
+      return published
+    })
+    try {
+      await expect(
+        store.change(path, snapshot.revision, edit('Confirmed source'))
+      ).rejects.toMatchObject({
+        outcome: 'written-acknowledgment-pending',
+      })
+    } finally {
+      digest?.mockRestore()
+    }
+    expect(parseCanvas(await bytes()).nodes[0].text).toBe('Confirmed source')
+    expect(reject).not.toHaveBeenCalled()
+    expect(lease.document.session.committed).toEqual(baseline)
+    expect(lease.document.session.history).toEqual({ undo: 0, redo: 0 })
+    expect(lease.document.session.draft?.graph.nodes[0].text).toBe('Confirmed source')
+    expect((await store.snapshot(path)).state).toMatchObject({
+      publicationOutcome: 'written-acknowledgment-pending',
+      conflict: true,
+      busy: false,
+    })
+    await expect(store.publishDraft(file)).rejects.toThrow(/conflict/i)
+  })
+
+  it('retains preexisting history when an undo has an uncertain source outcome', async () => {
+    const lease = await open(),
+      snapshot = await store.snapshot(path)
+    const saved = await store.change(path, snapshot.revision, edit('Saved command'))
+    const baseline = lease.document.session.committed,
+      process = app.vault.process.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
+      await process(target, transform)
+      throw new Error('Sample uncertain inverse outcome')
+    })
+    await expect(store.undo(path, saved.revision)).rejects.toMatchObject({ outcome: 'unknown' })
+    expect(parseCanvas(await bytes())).toEqual(initial)
+    expect(lease.document.session.committed).toEqual(baseline)
+    expect(lease.document.session.history).toEqual({ undo: 1, redo: 0 })
+    expect(lease.document.session.draft?.graph).toEqual(initial)
+  })
+
+  it('does not relabel an already acknowledged write after a later local reporting failure', async () => {
+    const lease = await open(),
+      snapshot = await store.snapshot(path),
+      acknowledge = vi.spyOn(lease.document.session, 'acknowledge'),
+      reject = vi.spyOn(lease.document.session, 'reject')
+    const clearRecovery = lease.document.clearRecovery.bind(lease.document)
+    vi.spyOn(lease.document, 'clearRecovery').mockImplementation(() => {
+      if (lease.document.session.history.undo === 1)
+        throw new Error('Sample post-acknowledgment reporting failure')
+      clearRecovery()
+    })
+    await expect(
+      store.change(path, snapshot.revision, edit('Already acknowledged'))
+    ).rejects.toMatchObject({
+      outcome: 'written',
+    })
+    expect(reject).not.toHaveBeenCalled()
+    expect(parseCanvas(await bytes())).toEqual(lease.document.session.committed.graph)
+    expect(lease.document.session.history).toEqual({ undo: 1, redo: 0 })
+    expect(lease.document.session.draft).toBeNull()
+    expect(lease.document.session.busy).toBe(false)
+    expect(acknowledge).toHaveBeenCalledOnce()
+  })
+
   it('shares one canonical session across leaves and does not write on open or reload', async () => {
     const left = await open(),
       right = await open()
@@ -155,6 +261,23 @@ describe('shared canvas document storage', () => {
     expect(parseCanvas(await bytes())).toEqual(initial)
     await store.redo(path, undone.revision)
     expect(parseCanvas(await bytes())).toEqual(written.after)
+  })
+
+  it('retains an ordinary no-write proposal when storage resolves without invoking its transform', async () => {
+    const lease = await open(),
+      snapshot = await store.snapshot(path),
+      apply = vi.spyOn(lease.document.session, 'apply'),
+      reject = vi.spyOn(lease.document.session, 'reject')
+    vi.spyOn(app.vault, 'process').mockResolvedValueOnce(serializeCanvas(initial))
+    await expect(store.change(path, snapshot.revision, edit('Never issued'))).rejects.toThrow(
+      /did not run/i
+    )
+    expect(apply).not.toHaveBeenCalled()
+    expect(reject).toHaveBeenCalledOnce()
+    expect(lease.document.session.conflict).toBe(false)
+    expect(lease.document.session.publicationOutcome).toBeNull()
+    expect(lease.document.session.history.undo).toBe(0)
+    expect(await bytes()).toBe(serializeCanvas(initial))
   })
 
   it('retains failed publication as a recoverable draft without advancing baseline or history', async () => {

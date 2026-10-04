@@ -9,7 +9,11 @@ import {
   type CanvasGraph,
 } from './core/model'
 import type { GraphStore, GraphSnapshot } from './core/service'
-import type { PreparedCanvasTransaction, GraphTransform } from './core/session'
+import type {
+  PreparedCanvasTransaction,
+  GraphTransform,
+  CanvasPublicationOutcome,
+} from './core/session'
 import { canvasRevision, CANVAS_CONFLICT } from './core/revision'
 import { parseCanvasFile } from './fileData'
 import {
@@ -35,7 +39,24 @@ interface StoredSnapshot extends GraphSnapshot {
   views: NativeCanvasView[]
 }
 export interface CanvasStoreSnapshot extends GraphSnapshot {
-  state?: CanvasDocumentState
+  state?: CanvasDocumentState & { publicationOutcome?: CanvasPublicationOutcome }
+}
+/** Issued-source failures must never be described as an ordinary no-write proposal. */
+export class CanvasPublicationError extends Error {
+  constructor(
+    readonly outcome: CanvasPublicationOutcome | 'written',
+    readonly cause: unknown
+  ) {
+    const status =
+      outcome === 'unknown'
+        ? 'Canvas source publication outcome is uncertain; retained work requires review before reapplication'
+        : outcome === 'written-acknowledgment-pending'
+          ? 'Canvas source was written, but local acknowledgment is pending; do not retry publication blindly'
+          : 'Canvas source was written and acknowledged, but local reporting failed'
+    const detail =
+      cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : 'Local failure'
+    super(`${status}: ${detail}`)
+  }
 }
 export interface CanvasWriteResult {
   before: CanvasGraph
@@ -105,7 +126,12 @@ export class ObsidianCanvasStore implements GraphStore {
       ? {
           graph: document.session.graph,
           revision: `${stored.revision}:abele-${document.incarnation}-${document.session.generation}`,
-          state: document.state,
+          state: {
+            ...document.state,
+            ...(document.session.publicationOutcome
+              ? { publicationOutcome: document.session.publicationOutcome }
+              : {}),
+          },
         }
       : { graph: cloneCanvas(stored.graph), revision: stored.revision }
   }
@@ -207,6 +233,9 @@ export class ObsidianCanvasStore implements GraphStore {
       const release = registry.retain(file)
       let token: PreparedCanvasTransaction | undefined, document: CanvasDocument | undefined
       let recovered: ReturnType<CanvasDocument['requireRecovery']> | undefined
+      let returnedBytes = false,
+        sourceConfirmed = false,
+        acknowledged = false
       try {
         signal?.throwIfAborted()
         if (file.path !== path)
@@ -292,15 +321,23 @@ export class ObsidianCanvasStore implements GraphStore {
             const pendingSave = view.requestSave as (() => void) & { cancel?: () => void }
             pendingSave?.cancel?.()
           }
-          return serializeCanvas(after)
+          const bytes = serializeCanvas(after)
+          // After returning bytes, a rejected process promise cannot prove no source write.
+          returnedBytes = true
+          return bytes
         })
+        sourceConfirmed = returnedBytes
         if (!before || !after) throw new Error('Canvas storage did not run the transaction')
         const confirmed = { graph: after, revision: await canvasRevision(published, after) }
         // No abort check after publication: a confirmed write is a committed result, not a cancellation.
         if (token) {
           document.session.acknowledge(token, confirmed)
+          acknowledged = true
           document.clearRecovery()
-        } else document?.observe(confirmed)
+        } else {
+          document?.observe(confirmed)
+          acknowledged = true
+        }
         document?.notify()
         let warning: string | undefined
         if (view) {
@@ -328,6 +365,23 @@ export class ObsidianCanvasStore implements GraphStore {
           ...(kind === 'retry' || kind === 'reapply' ? { recovery: kind } : {}),
         }
       } catch (error) {
+        if (returnedBytes || sourceConfirmed) {
+          const outcome = acknowledged
+            ? 'written'
+            : sourceConfirmed
+              ? 'written-acknowledgment-pending'
+              : 'unknown'
+          if (token && document && outcome !== 'written') {
+            try {
+              document.session.quarantine(token, outcome)
+              document.clearRecovery()
+            } catch {
+              /* Obsolete callbacks have no authority over replacement work. */
+            }
+            document.notify()
+          }
+          throw new CanvasPublicationError(outcome, error)
+        }
         if (token && document) {
           const existing = document.session.draft
           const stillOwned = recovered && document.ownsRecovery(recovered)

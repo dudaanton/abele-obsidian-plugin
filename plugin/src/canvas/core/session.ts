@@ -3,6 +3,13 @@ import { cloneCanvas, type CanvasGraph, type CanvasNode, type CanvasEdge } from 
 import type { GraphSnapshot } from './service'
 
 export type GraphTransform = (graph: CanvasGraph) => CanvasGraph
+export type CanvasPublicationOutcome = 'unknown' | 'written-acknowledgment-pending'
+export interface CanvasPublicationEvidence {
+  outcome: CanvasPublicationOutcome
+  baseline: GraphSnapshot
+  proposed: CanvasGraph
+  kind: 'command' | 'undo' | 'redo'
+}
 export type SessionErrorCode = 'busy' | 'conflict' | 'stale' | 'no-draft' | 'empty-history'
 export class CanvasSessionError extends Error {
   constructor(readonly code: SessionErrorCode) {
@@ -153,6 +160,10 @@ export class CanvasSession {
   private conflicted = false
   private prepared: Preparation | null = null
   private publishing = false
+  private unsettledPublication: {
+    outcome: CanvasPublicationOutcome
+    preparation: Preparation
+  } | null = null
   private undoJournal: GraphPatch[] = []
   private redoJournal: GraphPatch[] = []
   private journalRevision: string
@@ -185,6 +196,20 @@ export class CanvasSession {
   }
   get conflict(): boolean {
     return this.conflicted
+  }
+  get publicationOutcome(): CanvasPublicationOutcome | null {
+    return this.unsettledPublication?.outcome ?? null
+  }
+  /** Detached historical evidence, never a publication or acknowledgment capability. */
+  get publicationEvidence(): CanvasPublicationEvidence | null {
+    if (!this.unsettledPublication) return null
+    const { outcome, preparation } = this.unsettledPublication
+    return {
+      outcome,
+      baseline: { graph: cloneCanvas(preparation.before), revision: preparation.token.revision },
+      proposed: cloneCanvas(preparation.after),
+      kind: preparation.kind,
+    }
   }
   get history(): { undo: number; redo: number } {
     return { undo: this.undoJournal.length, redo: this.redoJournal.length }
@@ -219,6 +244,7 @@ export class CanvasSession {
     if (this.publishing) throw new CanvasSessionError('busy')
     this.preview = null
     this.conflicted = false
+    this.unsettledPublication = null
     this.prepared = null // Explicit discard revokes recovery as well as publication.
     this.version++
   }
@@ -229,6 +255,7 @@ export class CanvasSession {
     const graph = this.transform(this.baseline.graph, transform)
     this.preview = { graph, baseRevision: this.baseline.revision, active: false }
     this.conflicted = false
+    this.unsettledPublication = null
     this.version++
   }
 
@@ -348,6 +375,26 @@ export class CanvasSession {
     this.conflicted = false
     this.prepared = null
     this.publishing = false
+    this.version++
+  }
+  /**
+   * Retain issued work without guessing its acknowledgment. Revoke the attempted capability,
+   * not its draft, baseline or history. Source observation alone cannot settle this barrier;
+   * existing explicit discard/reapplication remains available after review.
+   */
+  quarantine(token: PreparedCanvasTransaction, outcome: CanvasPublicationOutcome): void {
+    const prepared = this.prepared
+    if (!prepared || prepared.token !== token || !this.publishing)
+      throw new CanvasSessionError('stale')
+    this.preview ??= {
+      graph: cloneCanvas(prepared.after),
+      baseRevision: token.revision,
+      active: false,
+    }
+    this.unsettledPublication = { outcome, preparation: prepared }
+    this.conflicted = true
+    this.publishing = false
+    this.prepared = null
     this.version++
   }
   /** Reject only when the host knows no write occurred. After a write, acknowledge even on abort. */

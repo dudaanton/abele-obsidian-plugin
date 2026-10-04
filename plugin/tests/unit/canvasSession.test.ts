@@ -69,6 +69,82 @@ function expectCode(action: () => unknown, code: string) {
 }
 
 describe('portable canvas document session', () => {
+  it.each(['unknown', 'written-acknowledgment-pending'] as const)(
+    'retains %s work and history while revoking the attempted publication capability',
+    (outcome) => {
+      const session = new CanvasSession(initial())
+      commit(session, session.prepare(edit('Prior history')), 'revision-1')
+      const baseline = session.committed,
+        history = session.history,
+        token = session.prepare(edit('Unsettled command'))
+      session.apply(token, baseline)
+      session.quarantine(token, outcome)
+      expect(session.publicationOutcome).toBe(outcome)
+      expect(session.committed).toEqual(baseline)
+      expect(session.history).toEqual(history)
+      expect(session.draft).toEqual({
+        graph: token.graph,
+        baseRevision: token.revision,
+        active: false,
+      })
+      expect(session.busy).toBe(false)
+      expect(session.conflict).toBe(true)
+      expectCode(() => session.apply(token, baseline), 'stale')
+      expectCode(() => session.reject(token), 'stale')
+      expectCode(
+        () => session.acknowledge(token, { graph: token.graph, revision: 'revision-result' }),
+        'stale'
+      )
+      expectCode(() => session.prepareDraft(), 'conflict')
+      session.externalChanged({ graph: token.graph, revision: 'revision-observed' })
+      expect(session.publicationOutcome).toBe(outcome)
+      const evidence = session.publicationEvidence
+      expect(evidence).toEqual({
+        outcome,
+        baseline,
+        proposed: token.graph,
+        kind: 'command',
+      })
+      evidence!.baseline.graph.nodes[1].text = 'Outside mutation'
+      evidence!.proposed.nodes.reverse()
+      expect(session.publicationEvidence).toEqual({
+        outcome,
+        baseline,
+        proposed: token.graph,
+        kind: 'command',
+      })
+      expect(session.history).toEqual(history)
+      expectCode(() => session.prepareDraft(), 'conflict')
+      session.reapplyDraft(edit('Explicitly reviewed'))
+      expect(session.publicationOutcome).toBeNull()
+      expect(session.publicationEvidence).toBeNull()
+      commit(session, session.prepareDraft(), 'revision-reviewed')
+      expect(session.committed.graph.nodes[1].text).toBe('Explicitly reviewed')
+    }
+  )
+
+  it('does not let late outcome callbacks erase or relabel a newer draft after explicit discard', () => {
+    const session = new CanvasSession(initial()),
+      token = session.prepare(edit('Old attempt'))
+    session.apply(token, session.committed)
+    session.quarantine(token, 'unknown')
+    session.discardDraft()
+    session.beginDraft()
+    session.updateDraft(edit('New composition'))
+    const draft = session.draft,
+      generation = session.generation
+    expectCode(() => session.quarantine(token, 'written-acknowledgment-pending'), 'stale')
+    expectCode(
+      () => session.acknowledge(token, { graph: token.graph, revision: 'revision-late' }),
+      'stale'
+    )
+    expectCode(() => session.reject(token), 'stale')
+    expect(session.draft).toEqual(draft)
+    expect(session.generation).toBe(generation)
+    expect(session.publicationOutcome).toBeNull()
+    expect(session.history).toEqual({ undo: 0, redo: 0 })
+  })
+
   it('validates an entire batch without changing the baseline, generation or history on error', () => {
     const session = new CanvasSession(initial())
     expect(() =>

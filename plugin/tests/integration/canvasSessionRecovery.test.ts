@@ -63,6 +63,102 @@ async function fail(name = 'canvas_edit', input: Record<string, unknown> = { ops
 }
 
 describe('supported canvas recovery and approval lifetime', () => {
+  it.each([
+    'persisted-rejection',
+    'transform-returned-rejection',
+    'confirmed-digest-failure',
+  ] as const)(
+    'reports %s through the public edit tool without offering a known-no-write proposal',
+    async (fault) => {
+      const lease = await store.open(file, {}),
+        approved = await read(),
+        baseline = lease.document.session.committed,
+        process = app.vault.process.bind(app.vault),
+        reject = vi.spyOn(lease.document.session, 'reject')
+      let digest: ReturnType<typeof vi.spyOn> | undefined
+      vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
+        if (fault === 'transform-returned-rejection') {
+          transform(await app.vault.read(target))
+          throw new Error('Sample unconfirmed write outcome')
+        }
+        const published = await process(target, transform)
+        if (fault === 'persisted-rejection') throw new Error('Sample unconfirmed write outcome')
+        digest = vi
+          .spyOn(crypto.subtle, 'digest')
+          .mockRejectedValueOnce(new Error('Sample local digest failure'))
+        return published
+      })
+      const outcome =
+        fault === 'confirmed-digest-failure' ? 'written-acknowledgment-pending' : 'unknown'
+      try {
+        await expect(
+          call('canvas_edit', { path, revision: approved.revision, ops })
+        ).rejects.toMatchObject({ outcome })
+      } finally {
+        digest?.mockRestore()
+      }
+      expect(await app.vault.read(file)).toBe(
+        fault === 'transform-returned-rejection'
+          ? serializeCanvas(original)
+          : serializeCanvas(planCanvasEdit(original, ops))
+      )
+      expect(reject).not.toHaveBeenCalled()
+      expect(lease.document.session.committed).toEqual(baseline)
+      expect(lease.document.session.history).toEqual({ undo: 0, redo: 0 })
+      const pending = await read()
+      expect(pending.state).toMatchObject({
+        publicationOutcome: outcome,
+        conflict: true,
+        dirty: true,
+        busy: false,
+      })
+      expect(pending.state.recovery).toBeUndefined()
+      expect(pending.nodes[0].data.text).toBe('Recovered change')
+      await expect(
+        call('canvas_edit', {
+          path,
+          revision: pending.revision,
+          recovery: 'retry',
+          proposal: 'sample-obsolete',
+        })
+      ).rejects.toThrow(/proposal|recovery/i)
+      await expect(call('canvas_edit', { path, revision: pending.revision, ops })).rejects.toThrow(
+        /conflict/i
+      )
+    }
+  )
+
+  it('revokes an owned retry proposal if the retry returns bytes but storage then rejects', async () => {
+    const lease = await store.open(file, {}),
+      pending = await fail(),
+      process = app.vault.process.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
+      await process(target, transform)
+      throw new Error('Sample uncertain retry outcome')
+    })
+    await expect(
+      call('canvas_edit', {
+        path,
+        revision: pending.revision,
+        recovery: 'retry',
+        proposal: pending.state.recovery.proposal,
+      })
+    ).rejects.toMatchObject({ outcome: 'unknown' })
+    expect(parseCanvas(await app.vault.read(file)).nodes[0].text).toBe('Recovered change')
+    expect(lease.document.session.history.undo).toBe(0)
+    const current = await read()
+    expect(current.state.recovery).toBeUndefined()
+    expect(current.state.publicationOutcome).toBe('unknown')
+    await expect(
+      call('canvas_edit', {
+        path,
+        revision: current.revision,
+        recovery: 'reapply',
+        proposal: pending.state.recovery.proposal,
+      })
+    ).rejects.toThrow(/proposal|recovery/i)
+  })
+
   it.each(['canvas_edit', 'canvas_layout', 'canvas_steps'])(
     'keeps %s provider parameters an object with discoverable recovery fields',
     (name) => {
@@ -129,8 +225,9 @@ describe('supported canvas recovery and approval lifetime', () => {
   it('retains owned recovery after a second known no-write failure at the publication boundary', async () => {
     const lease = await store.open(file, {}),
       pending = await fail()
-    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
-      transform(await app.vault.read(target))
+    const apply = vi.spyOn(lease.document.session, 'apply')
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async () => {
+      // No output reached storage: ordinary retry remains valid for this attempt.
       throw new Error('Sample boundary persistence failure')
     })
     await expect(
@@ -142,6 +239,7 @@ describe('supported canvas recovery and approval lifetime', () => {
       })
     ).rejects.toThrow('Sample boundary persistence failure')
     const second = await read()
+    expect(apply).not.toHaveBeenCalled()
     expect(second.state.recovery.proposal).not.toBe(pending.state.recovery.proposal)
     expect(lease.document.session.history.undo).toBe(0)
     expect(lease.document.session.busy).toBe(false)
