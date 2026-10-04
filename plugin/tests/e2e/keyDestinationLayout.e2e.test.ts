@@ -10,6 +10,7 @@ import {
 import { targets, onPhone } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
+import { securityDialogScript, type DialogReport } from '../helpers/securityDialogProbe'
 import {
   RECIPIENT_ROWS,
   recipientRowFailures,
@@ -24,9 +25,14 @@ export const recipientLayoutScript = (screen: string) => `(async () => {
   ${recipientLayoutProbe}
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const restore = recipientFixture(), report = { error: '', shots: [] }
+  let completion
   const close = async () => {
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
-    await wait(50)
+    if (!completion) return
+    const modal = document.querySelector('.modal[data-abele-fixture]')
+    modal?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+    const settled = completion; completion = null
+    await settled
+    if (document.querySelector('.modal[data-abele-fixture]')) throw Error('Owned recipient fixture did not close')
   }
   const shot = async label => {
     const path = ${JSON.stringify(shots)} + '/' + ${JSON.stringify(screen)} + '-' + label + '.png'
@@ -37,8 +43,8 @@ export const recipientLayoutScript = (screen: string) => `(async () => {
     }
   }
   try {
-    window.__abeleTest.openDialog('key-destinations'); await wait(300)
-    const modal = document.querySelector('.modal.abele-modal')
+    completion = window.__abeleTest.openDialog('key-destinations'); await wait(300)
+    const modal = document.querySelector('.modal[data-abele-fixture="key-destinations"]')
     if (!modal) throw Error('recipient dialog missing')
     Object.assign(report, await recipientActions(modal))
     const rect = modal.getBoundingClientRect()
@@ -55,14 +61,14 @@ export const recipientLayoutScript = (screen: string) => `(async () => {
       await shot('row-' + i)
     }
     await close()
-    window.__abeleTest.openDialog('saved-key-request'); await wait(300)
-    const request = document.querySelector('.modal.abele-modal')
+    completion = window.__abeleTest.openDialog('saved-key-request'); await wait(300)
+    const request = document.querySelector('.modal[data-abele-fixture="saved-key-request"]')
     if (!request) throw Error('saved-key request dialog missing')
     report.savedPinnedActions = [...request.querySelectorAll('.abele-modal__footer button')].map(button => button.textContent.trim())
     report.savedBodyActions = [...request.querySelectorAll('.abele-modal__body button')].map(button => button.textContent.trim())
     await shot('saved-request')
   } catch (error) { report.error = String(error.message ?? error) }
-  finally { await close(); restore() }
+  finally { await close(); await restore(); report.restored = true }
   return report
 })()`
 
@@ -90,6 +96,7 @@ describe('native recipient action layout', () => {
         }
         console.info(JSON.stringify(report))
         expect(report.error).toBe('')
+        expect((report as typeof report & { restored: boolean }).restored).toBe(true)
         expect(recipientRowFailures(report, RECIPIENT_ROWS)).toEqual([])
         expect(report.pinnedActions).toEqual(['Allow key and address'])
         expect(report.primary).toMatchObject({
@@ -111,6 +118,48 @@ describe('native recipient action layout', () => {
         expect(report.savedBodyActions).toEqual([])
         expect(report.shots).toHaveLength(7)
         expect(report.shots.some((path) => path.startsWith('no picture:'))).toBe(false)
+        // Keep this order inside each case: file scheduling must not turn the cleanup
+        // regression into an isolated pass before the synthetic row fixture ran.
+        for (const [name, actions, rowActions] of [
+          [
+            'key-destinations',
+            ['Allow key and address'],
+            ['Allow on this device', 'Allow unencrypted HTTP'],
+          ],
+          ['key-destinations-new', ['Allow key and address'], []],
+          ['saved-key-request', ['Cancel', 'Allow address and send'], []],
+        ] as const) {
+          const rawSecurity = await evalLong(
+            securityDialogScript(name, shots + '/' + screen + '-after-layout-' + name + '.png'),
+            30_000
+          )
+          if (rawSecurity.startsWith('Error:')) throw Error(rawSecurity)
+          const security = JSON.parse(rawSecurity) as DialogReport
+          console.info('after recipient layout', JSON.stringify(security))
+          expect(security.shell).toBe(true)
+          expect(security.actions).toEqual(actions)
+          expect(security.bodyActions).toEqual(rowActions)
+          if (name === 'key-destinations')
+            expect(security.rows).toEqual([
+              {
+                name: 'Sample secure provider',
+                description: 'https://api.sample.example',
+                actions: ['Allow on this device'],
+              },
+              {
+                name: 'Sample home provider',
+                description:
+                  'http://192.168.8.20:1234 — Unencrypted: anyone on the network path can read the key.',
+                actions: ['Allow unencrypted HTTP'],
+              },
+            ])
+          else expect(security.rows).toEqual([])
+          expect(security.outside).toEqual([])
+          expect(security.scrolled).toBe(true)
+          expect(security.footerMoved).toBeLessThanOrEqual(1)
+          expect(security.restored).toBe(true)
+          expect(security.shot).not.toMatch(/^no picture:/)
+        }
       } finally {
         if (screen === 'mobile') await restoreDesktopWindow()
       }

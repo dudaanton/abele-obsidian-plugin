@@ -2,23 +2,22 @@
 // Metadata and form input only: it never clicks a consent/removal action or sends credentials.
 export const recipientLayoutProbe = String.raw`
   const recipientFixture = () => {
-    const config = window.__abeleTest.AbeleConfig.getInstance()
-    const before = { ai: config.ai, firefly: config.fireflyBaseUrl, calendars: config.calendars }
-    const storageKeys = ['abele-key-destinations-v1', 'abele-key-http-origins-v1']
-    const local = storageKeys.map(key => app.loadLocalStorage(key))
-    config.ai = { ...config.ai, providers: [], imageProviders: [], mcpServers: [], braveSearchApiKey: '',
-      voice: { ...config.ai.voice, apiKeyId: 'layout-voice-key', endpoint: 'https://voice.sample.example' },
-      secrets: [
-        { name: 'Sample secure key', keyId: 'layout-secure-key', allowedOrigins: ['https://keys.sample.example'] },
-        { name: 'Sample local key', keyId: 'layout-local-key', allowedOrigins: ['http://192.168.54.12:8123'] },
-      ],
+    const api = window.__abeleTest, config = api.AbeleConfig.getInstance()
+    const open = api.openDialog, completions = []
+    const snapshot = () => JSON.stringify({ ai: config.ai, firefly: config.fireflyBaseUrl, calendars: config.calendars,
+      local: ['abele-key-destinations-v1', 'abele-key-http-origins-v1'].map(key => app.loadLocalStorage(key)) })
+    const before = snapshot(), originalAi = config.ai
+    // Select an explicit owned profile instead of mutating ambient settings underneath a
+    // dialog that has an independently settling restoration callback.
+    api.openDialog = (name, options) => {
+      const completion = open(name, name === 'key-destinations' ? { ...options, recipientRows: true } : options)
+      if (completion) completions.push(completion)
+      return completion
     }
-    config.fireflyBaseUrl = ''; config.calendars = { ...config.calendars, feeds: [] }
-    app.saveLocalStorage(storageKeys[0], { 'layout-voice-key': ['https://voice.sample.example'] })
-    app.saveLocalStorage(storageKeys[1], ['http://192.168.54.14:8125'])
-    return () => {
-      config.ai = before.ai; config.fireflyBaseUrl = before.firefly; config.calendars = before.calendars
-      storageKeys.forEach((key, i) => app.saveLocalStorage(key, local[i]))
+    return async () => {
+      try { await Promise.all(completions) }
+      finally { api.openDialog = open }
+      if (config.ai !== originalAi || snapshot() !== before) throw Error('Recipient fixture state was not restored exactly')
     }
   }
   const recipientActions = async modal => {
