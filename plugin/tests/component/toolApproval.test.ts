@@ -59,6 +59,24 @@ async function settled(wrapper: ReturnType<typeof approval>) {
   return wrapper
 }
 
+it('shows ZIP selections and virtual names literally without a content/diff preview', async () => {
+  const files = [
+    { path: 'Notes/sample.md' },
+    { path: 'Media/sample-image.png', name: 'nested/picture.png' },
+  ]
+  const wrapper = approval('zip', { path: 'Exports/sample.zip', files })
+  try {
+    await nextTick()
+    expect(wrapper.text()).toContain('Exports/sample.zip')
+    expect(wrapper.text()).toContain(JSON.stringify(files))
+    expect(wrapper.findComponent(Diff).exists()).toBe(false)
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(app.stats.read).toBe(0)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 describe('saved-key approval choices', () => {
   it('shows the named password and recipient for the registered Basic input without exposing or pre-encoding it', async () => {
     const config = AbeleConfig.getInstance()

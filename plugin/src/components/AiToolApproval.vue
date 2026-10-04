@@ -563,6 +563,8 @@ const toggleEdit = () => {
 .abele-tool-approval__param {
   font-size: var(--font-small);
   margin-bottom: var(--size-4-1);
+  // Nested file selections and other JSON values must remain readable in a narrow chat.
+  overflow-wrap: anywhere;
 
   .abele-tool-approval__param-key {
     font-weight: 600;
