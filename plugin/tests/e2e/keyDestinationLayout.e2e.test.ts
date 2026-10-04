@@ -24,7 +24,7 @@ const shots = shotDir('abele-recipient-layout')
 export const recipientLayoutScript = (screen: string) => `(async () => {
   ${recipientLayoutProbe}
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
-  const restore = recipientFixture(), report = { error: '', shots: [] }
+  const restore = recipientFixture(), report = { error: '', shots: [], cleanupErrors: [] }
   let completion
   const close = async () => {
     if (!completion) return
@@ -43,7 +43,11 @@ export const recipientLayoutScript = (screen: string) => `(async () => {
     }
   }
   try {
-    completion = window.__abeleTest.openDialog('key-destinations'); await wait(300)
+    let openingError
+    completion = window.__abeleTest.openDialog('key-destinations')
+    completion?.catch(error => { openingError = error })
+    await wait(300)
+    if (openingError) throw openingError
     const modal = document.querySelector('.modal[data-abele-fixture="key-destinations"]')
     if (!modal) throw Error('recipient dialog missing')
     Object.assign(report, await recipientActions(modal))
@@ -61,18 +65,73 @@ export const recipientLayoutScript = (screen: string) => `(async () => {
       await shot('row-' + i)
     }
     await close()
-    completion = window.__abeleTest.openDialog('saved-key-request'); await wait(300)
+    openingError = null
+    completion = window.__abeleTest.openDialog('saved-key-request')
+    completion?.catch(error => { openingError = error })
+    await wait(300)
+    if (openingError) throw openingError
     const request = document.querySelector('.modal[data-abele-fixture="saved-key-request"]')
     if (!request) throw Error('saved-key request dialog missing')
     report.savedPinnedActions = [...request.querySelectorAll('.abele-modal__footer button')].map(button => button.textContent.trim())
     report.savedBodyActions = [...request.querySelectorAll('.abele-modal__body button')].map(button => button.textContent.trim())
     await shot('saved-request')
   } catch (error) { report.error = String(error.message ?? error) }
-  finally { await close(); await restore(); report.restored = true }
+  finally { await cleanupRecipientConsumer(report, close, restore) }
   return report
 })()`
 
 describe('native recipient action layout', () => {
+  it.each(['occupied-slot', 'opening-refusal'])(
+    '%s restores the browser wrapper and permits the next ordinary review',
+    async (fault) => {
+      expect(isObsidianRunning() && hasTestApi()).toBe(true)
+      const raw = await evalLong(
+        `(async () => {
+      const api = window.__abeleTest, original = api.openDialog, store = api.secrets(), get = store.get
+      const config = api.AbeleConfig.getInstance(), ai = config.ai
+      const state = () => JSON.stringify({ ai: config.ai, firefly: config.fireflyBaseUrl, calendars: config.calendars, local: ['abele-key-destinations-v1', 'abele-key-http-origins-v1'].map(key => app.loadLocalStorage(key)) })
+      const before = state()
+      let result, completion
+      try {
+        if (${JSON.stringify(fault)} === 'occupied-slot') store.get = function(id) { return id === 'sample-request-key' ? 'fake-occupied-boundary-value' : get.call(this, id) }
+        else api.openDialog = (name, options) => options?.recipientRows ? Promise.reject(Error('Sample opening refusal')) : original(name, options)
+        const installed = api.openDialog
+        result = await ${recipientLayoutScript('fault')}
+        result.wrapperRestored = api.openDialog === installed
+      } finally { api.openDialog = original; store.get = get }
+      result.stateRestored = state() === before && config.ai === ai
+      try {
+        completion = api.openDialog('key-destinations')
+        const deadline = Date.now() + 5000
+        while (!document.querySelector('.modal[data-abele-fixture="key-destinations"]')) { if (Date.now() > deadline) throw Error('ordinary review missing'); await new Promise(resolve => setTimeout(resolve, 50)) }
+        const modal = document.querySelector('.modal[data-abele-fixture="key-destinations"]')
+        result.ordinaryActions = [...modal.querySelectorAll('.abele-modal__body button')].map(button => button.textContent.trim())
+        const path = ${JSON.stringify(shots)} + '/fault-' + ${JSON.stringify(fault)} + '.png'
+        if (window.__e2eHost) result.faultShot = await window.__e2eHost.shot(path)
+        else { const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage(); require('fs').writeFileSync(path, image.toPNG()); result.faultShot = path }
+        modal.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape',code:'Escape',keyCode:27,bubbles:true }))
+      } finally { if (completion) await completion }
+      result.finalStateRestored = state() === before && config.ai === ai
+      return result
+    })()`,
+        30_000
+      )
+      if (raw.startsWith('Error:')) throw Error(raw)
+      const result = JSON.parse(raw)
+      console.info('cleanup refusal guard', JSON.stringify(result))
+      expect(result.error).toMatch(
+        fault === 'occupied-slot' ? /occupied/ : /Sample opening refusal/
+      )
+      expect(result.cleanupErrors.length).toBeGreaterThan(0)
+      expect(result.wrapperRestored).toBe(true)
+      expect(result.stateRestored).toBe(true)
+      expect(result.ordinaryActions).toEqual(['Allow on this device', 'Allow unencrypted HTTP'])
+      expect(result.finalStateRestored).toBe(true)
+      expect(result.faultShot).not.toMatch(/^no picture:/)
+    },
+    90_000
+  )
+
   it.each(onPhone() ? ['phone'] : ['desktop', 'mobile'])(
     '%s preserves exact actions and visible recipient context',
     async (screen) => {
@@ -86,6 +145,7 @@ describe('native recipient action layout', () => {
         if (raw.startsWith('Error:')) throw Error(raw)
         const report = JSON.parse(raw) as RecipientLayoutReport & {
           error: string
+          cleanupErrors: { stage: string; message: string }[]
           pinnedActions: string[]
           primary: RecipientAction & { pinned: boolean; summary: string }
           edges: number[]
@@ -96,6 +156,7 @@ describe('native recipient action layout', () => {
         }
         console.info(JSON.stringify(report))
         expect(report.error).toBe('')
+        expect(report.cleanupErrors).toEqual([])
         expect((report as typeof report & { restored: boolean }).restored).toBe(true)
         expect(recipientRowFailures(report, RECIPIENT_ROWS)).toEqual([])
         expect(report.pinnedActions).toEqual(['Allow key and address'])

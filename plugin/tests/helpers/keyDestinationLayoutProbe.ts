@@ -1,6 +1,16 @@
 // Browser-side test instrumentation shared by the broad layout tier and focused/device probes.
 // Metadata and form input only: it never clicks a consent/removal action or sends credentials.
 export const recipientLayoutProbe = String.raw`
+  const recipientError = error => String(error?.message ?? error)
+  const cleanupRecipientConsumer = async (report, close, restore, completion) => {
+    const failures = report.cleanupErrors ??= []
+    try { await close() } catch (error) { failures.push({ stage: 'close', message: recipientError(error) }) }
+    try { if (completion) await completion } catch (error) { failures.push({ stage: 'completion', message: recipientError(error) }) }
+    // Restoration is unconditional, including when close or the completion itself rejected.
+    try { if (restore) await restore() } catch (error) { failures.push({ stage: 'restore', message: recipientError(error) }) }
+    if (failures.length && !report.error) report.error = 'Recipient cleanup failed: ' + failures.map(failure => failure.stage + ': ' + failure.message).join('; ')
+    report.restored = failures.length === 0
+  }
   const recipientFixture = () => {
     const api = window.__abeleTest, config = api.AbeleConfig.getInstance()
     const open = api.openDialog, completions = []
@@ -15,9 +25,14 @@ export const recipientLayoutProbe = String.raw`
       return completion
     }
     return async () => {
-      try { await Promise.all(completions) }
-      finally { api.openDialog = open }
-      if (config.ai !== originalAi || snapshot() !== before) throw Error('Recipient fixture state was not restored exactly')
+      let failures = []
+      try {
+        const results = await Promise.allSettled(completions)
+        failures = results.filter(result => result.status === 'rejected').map(result => result.reason)
+      } finally { api.openDialog = open }
+      if (config.ai !== originalAi || snapshot() !== before) failures.push(Error('Recipient fixture state was not restored exactly'))
+      if (failures.length === 1) throw failures[0]
+      if (failures.length) throw new AggregateError(failures, failures.map(recipientError).join('; '))
     }
   }
   const recipientActions = async modal => {

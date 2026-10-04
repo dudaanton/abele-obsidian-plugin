@@ -889,9 +889,12 @@ const probeScript = `(async () => {
     for (const dialogName of report.__dialogs) {
       const label = 'dialog ' + dialogName
       const restoreRecipients = dialogName === 'key-destinations' ? recipientFixture() : null
+      let fixtureCompletion, openingError
       try {
-        window.__abeleTest.openDialog(dialogName)
-        if (!(await until(() => document.querySelector('.modal.abele-modal'), 5000))) throw new Error('did not open')
+        fixtureCompletion = window.__abeleTest.openDialog(dialogName)
+        fixtureCompletion?.catch(error => { openingError = error })
+        if (!(await until(() => openingError || document.querySelector('.modal.abele-modal'), 5000))) throw new Error('did not open')
+        if (openingError) throw openingError
         await wait(300)
         const modal = document.querySelector('.modal.abele-modal')
         if (dialogName === 'github-connections') {
@@ -995,8 +998,15 @@ const probeScript = `(async () => {
       } catch (e) {
         report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
       } finally {
-        await closeDialog()
-        restoreRecipients?.()
+        if (restoreRecipients || fixtureCompletion) {
+          const entry = report[label] ??= { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: '' }
+          const closeOwnedFixture = async () => {
+            if (document.querySelector('.modal[data-abele-fixture="' + dialogName + '"]')) await closeDialog()
+          }
+          // The next inventory entry cannot mutate state until this restoration and its
+          // verification have settled; rejected cleanup is part of this entry's failure.
+          await cleanupRecipientConsumer(entry, closeOwnedFixture, restoreRecipients, fixtureCompletion)
+        } else await closeDialog()
       }
     }
 
