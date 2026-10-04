@@ -142,6 +142,35 @@ export class ChangeTracker {
     return (run) => this.around('vault.modifyBinary', { paths: [path] }, run, prepared)
   }
 
+  /**
+   * A create-only operation has a known-missing before-state: never snapshot a collision.
+   * Validate inside the prepared operation, after tracker preparation and immediately before
+   * issuance. The public vault call is nested/suppressed normally; all open recordings still
+   * receive successful changes. Validation also runs while tracking is inactive or muted.
+   */
+  prepareCreate(
+    path: string,
+    kind: 'binary' | 'folder',
+    validate: () => void
+  ): <T>(run: () => Promise<T>) => Promise<T> {
+    const prepared: PreparedBinary = {
+      path,
+      before: { t: 'missing' },
+      blobs: new Map(),
+      didWrite: () => false,
+    }
+    return (run) =>
+      this.around(
+        kind === 'binary' ? 'vault.createBinary' : 'vault.createFolder',
+        { paths: [path] },
+        () => {
+          validate()
+          return run()
+        },
+        prepared
+      )
+  }
+
   /** Puts every wrapped method back as it was. */
   uninstall(): void {
     for (const restore of this.restores.splice(0).reverse()) restore()
