@@ -40,6 +40,36 @@ const PRELUDE = `
   ${WAIT_PRELUDE}
   const placesFile = window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath || 'abele-book-places.json'
   const saved = async () => JSON.parse(await app.vault.adapter.read(placesFile))
+  const leafOf = (path) => app.workspace.getLeavesOfType('abele-book').find((l) => l.getViewState().state?.file === path)
+  const ready = async (leaf) => {
+    if (!leaf) throw new Error('reader tab is absent')
+    await leaf.loadIfDeferred?.()
+    if (!await until(() => {
+      const v = leaf.view
+      return v.model?.status === 'ready' && v.model.chapter && v.engine?.lastLocation?.cfi &&
+        v.engine.renderer?.getContents().some(c => c.doc?.readyState === 'complete')
+    })) throw new Error('reader did not become ready with a page and location')
+    return leaf.view
+  }
+  const chapterAt = async (book, index) => {
+    const href = book.model.toc[index].href
+    await book.engine.goTo(href)
+    if (!await until(() => book.model.currentHref === href && book.engine.lastLocation?.cfi))
+      throw new Error('reader did not reach chapter ' + (index + 1))
+  }
+  // A later layout/anchor relocation may change the visible range without moving the saved
+  // reading position. Match the independent reading event, not a mutable display CFI.
+  const written = async (view, matches, wanted = observed.get(view)?.state.readingCfi) => {
+    if (!wanted) throw new Error('no local reading CFI captured for ' + view.file.path)
+    if (!await until(async () => Object.entries(await saved()).some(([key, place]) =>
+      matches(key, place) && place.cfi === wanted)))
+      throw new Error('reader place was not written: ' + JSON.stringify({ path: view.file.path, wanted, readingCfi: observed.get(view)?.state.readingCfi, currentCfi: view.engine.lastLocation?.cfi, record: Object.entries(await saved()).find(([key, place]) => matches(key, place)) }))
+  }
+`
+
+// Readiness remains self-contained for its fast-tier contract; live-only recording is
+// installed separately and removed after each probe.
+const OBSERVATION = `
   const observed = new Map()
   const diagnostics = { configuredPath: window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath, placesFile, events: [], warnings: [] }
   const originalWarn = console.warn
@@ -71,37 +101,11 @@ const PRELUDE = `
     for (const [view, value] of observed) view.engine?.removeEventListener('relocate', value.handler)
     console.warn = originalWarn
   }
-  const leafOf = (path) => app.workspace.getLeavesOfType('abele-book').find((l) => l.getViewState().state?.file === path)
-  const ready = async (leaf) => {
-    if (!leaf) throw new Error('reader tab is absent')
-    await leaf.loadIfDeferred?.()
-    if (!await until(() => {
-      const v = leaf.view
-      return v.model?.status === 'ready' && v.model.chapter && v.engine?.lastLocation?.cfi &&
-        v.engine.renderer?.getContents().some(c => c.doc?.readyState === 'complete')
-    })) throw new Error('reader did not become ready with a page and location')
-    observe(leaf.view)
-    return leaf.view
-  }
-  const chapterAt = async (book, index) => {
-    const href = book.model.toc[index].href
-    await book.engine.goTo(href)
-    if (!await until(() => book.model.currentHref === href && book.engine.lastLocation?.cfi))
-      throw new Error('reader did not reach chapter ' + (index + 1))
-  }
-  // A later layout/anchor relocation may change the visible range without moving the saved
-  // reading position. Match the independent reading event, not a mutable display CFI.
-  const written = async (view, matches, wanted = observed.get(view)?.state.readingCfi) => {
-    if (!wanted) throw new Error('no local reading CFI captured for ' + view.file.path)
-    if (!await until(async () => Object.entries(await saved()).some(([key, place]) =>
-      matches(key, place) && place.cfi === wanted)))
-      throw new Error('reader place was not written: ' + JSON.stringify({ path: view.file.path, wanted, readingCfi: observed.get(view)?.state.readingCfi, currentCfi: view.engine.lastLocation?.cfi, record: Object.entries(await saved()).find(([key, place]) => matches(key, place)) }))
-  }
 `
 
 const run = <T>(body: string): T =>
   evalAsync<T>(
-    `(async () => { ${PRELUDE}
+    `(async () => { ${PRELUDE} ${OBSERVATION}
       try { const result = await (async () => { ${body} })(); return { ...result, diagnostics: await reportPlaces() } }
       catch (e) { return { error: String((e && e.stack) || e), diagnostics: await reportPlaces() } }
       finally { finishObservation() }
@@ -146,7 +150,9 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
         let leaf
         try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
         await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
-        return ready(leaf)
+        const view = await ready(leaf)
+        observe(view)
+        return view
       }
       const book = await open(${JSON.stringify(BOOK)})
       await chapterAt(book, 2)
@@ -249,6 +255,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       if (!bookLeaf || !pdfLeaf) return { error: 'the tabs were not restored' }
       app.workspace.setActiveLeaf(bookLeaf, { focus: true })
       const book = await ready(bookLeaf)
+      observe(book)
       const resolved = book.engine.resolveNavigation(${JSON.stringify(before.bookCfi)})
       const content = book.engine.renderer.getContents().find(item => item.index === resolved?.index)
       const anchor = content && resolved?.anchor?.(content.doc)
@@ -257,6 +264,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       await capture('restored-reading-anchor')
       app.workspace.setActiveLeaf(pdfLeaf, { focus: true })
       const pdf = await ready(pdfLeaf)
+      observe(pdf)
       // Observation window: restoration must not overwrite either saved place later.
       await wait(2500)
       const places = await saved()
@@ -296,6 +304,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       // In front: the tab before showed the PDF.
       app.workspace.setActiveLeaf(bookLeaf, { focus: true })
       const book = await ready(bookLeaf)
+      observe(book)
       // Keep the activation dwell: looked-again resets the reading clock after its layout
       // debounce, with no public completion signal. The turns below must happen afterwards.
       await wait(800)
