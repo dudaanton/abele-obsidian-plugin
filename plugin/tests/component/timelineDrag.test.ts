@@ -282,9 +282,13 @@ describe('timeline task dragging', () => {
     await pointer('pointermove', 80, 205)
     await pointer('pointercancel', 80, 205)
     expect(days()).toEqual(['date:2030-06-15'])
+    owner.scrollTop = 100
     await pointer('pointerdown', 80, 190, row().element)
     await pointer('pointermove', 80, 205)
     view.unmount()
+    owner.scrollTop = 250
+    await flushPromises()
+    expect(owner.scrollTop).toBe(250)
     expect(document.querySelector('.abele-timeline__drag-card')).toBeNull()
     expect(write).not.toHaveBeenCalled()
     expect(current.date?.format('YYYY-MM-DD')).toBe('2030-06-15')

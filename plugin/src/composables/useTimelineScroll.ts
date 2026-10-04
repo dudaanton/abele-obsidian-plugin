@@ -62,7 +62,14 @@ export function useTimelineScroll(
 
   let leadingSpace = 0
   let releaseLeadingOnScroll = false
-  let restoringDrag = false
+  let restoringDrag: number | null = null
+  let layoutGeneration = 0
+  let disposed = false
+  const invalidateRestoration = () => {
+    layoutGeneration++
+    restoringDrag = null
+  }
+  watch([items, anchorSpace], invalidateRestoration, { flush: 'sync' })
   // Cancellation is a rollback, not a drop anchor. Snapshot only this scroll owner's
   // layout so a temporary month cannot leave leading/trailing compensation behind.
   const captureDragLayout = () => {
@@ -71,6 +78,18 @@ export function useTimelineScroll(
     if (!root) return async () => {}
     const owner = timelineScrollOwner(root)
     const space = anchorSpace.value
+    invalidateRestoration()
+    const generation = layoutGeneration
+    const ownsLayout = () =>
+      !disposed &&
+      generation === layoutGeneration &&
+      items.value === root &&
+      anchorSpace.value === space &&
+      root.isConnected &&
+      owner.isConnected &&
+      owner.contains(root) &&
+      timelineScrollOwner(root) === owner &&
+      (!space || (space.isConnected && owner.contains(space)))
     const before = {
       top: owner.scrollTop,
       padding: root.style.paddingTop,
@@ -79,10 +98,14 @@ export function useTimelineScroll(
       releaseLeading: releaseLeadingOnScroll,
     }
     return async () => {
-      restoringDrag = true
+      if (!ownsLayout()) return
+      restoringDrag = generation
       stopHolding()
       try {
         await nextTick()
+        // Disposal or a newer snapshot may have handed the editor back to its reader.
+        // Check ownership after the patch, before touching any styles or bookkeeping.
+        if (!ownsLayout() || restoringDrag !== generation) return
         root.style.paddingTop = before.padding
         if (space) space.style.height = before.height
         leadingSpace = before.leading
@@ -90,7 +113,7 @@ export function useTimelineScroll(
         owner.scrollTop = before.top
         alignedScroll = { owner, top: owner.scrollTop }
       } finally {
-        restoringDrag = false
+        if (restoringDrag === generation) restoringDrag = null
       }
     }
   }
@@ -275,7 +298,7 @@ export function useTimelineScroll(
   watch(
     () => (items.value ? windowSource() : null),
     () => {
-      if (restoringDrag) return
+      if (restoringDrag !== null) return
       const align = hold()
       void nextTick(align)
     },
@@ -381,6 +404,8 @@ export function useTimelineScroll(
     { flush: 'post' }
   )
   onScopeDispose(() => {
+    disposed = true
+    invalidateRestoration()
     disposeInput()
     stopHolding()
     releaseSpace()

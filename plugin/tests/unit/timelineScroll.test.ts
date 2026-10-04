@@ -86,10 +86,99 @@ async function pane(
     patch,
     shift: (amount: number) => (top += amount),
     captureDragLayout: () => scroll.captureDragLayout(),
+    items,
+    anchorSpace,
+    dispose: () => scope.stop(),
   }
 }
 
 describe('timeline scroll ownership', () => {
+  it('does not let queued drag rollback restore retired styles or overwrite a released editor owner', async () => {
+    const p = await pane(100)
+    p.root.style.paddingTop = '36px'
+    p.space.style.height = '80px'
+    const restore = p.captureDragLayout()
+    const pending = restore()
+    p.dispose()
+    p.root.remove()
+    p.space.remove()
+    p.owner.scrollTop = 250
+    await pending
+    expect(p.owner.scrollTop).toBe(250)
+    expect(p.root.style.paddingTop).toBe('')
+    expect(p.space.style.height).toBe('')
+  })
+
+  it.each(['root', 'spacer'] as const)(
+    'invalidates queued rollback when the current %s is replaced',
+    async (part) => {
+      const p = await pane(100)
+      p.root.style.paddingTop = '36px'
+      p.space.style.height = '80px'
+      const pending = p.captureDragLayout()()
+      p.root.style.paddingTop = '7px'
+      p.space.style.height = '9px'
+      const replacement = document.createElement('div')
+      p.owner.append(replacement)
+      if (part === 'root') {
+        p.root.remove()
+        p.items.value = replacement
+      } else {
+        p.space.remove()
+        p.anchorSpace.value = replacement
+      }
+      p.owner.scrollTop = 250
+      await pending
+      await nextTick()
+      expect(p.owner.scrollTop).toBe(250)
+      expect(p.root.style.paddingTop).toBe('7px')
+      expect(p.space.style.height).toBe('9px')
+    }
+  )
+
+  it.each(['disconnect', 'reparent'] as const)(
+    'leaves a newer scroll position alone after owner %s without changing the root refs',
+    async (change) => {
+      const p = await pane(100)
+      p.root.style.paddingTop = '36px'
+      const pending = p.captureDragLayout()()
+      p.root.style.paddingTop = '7px'
+      const nextOwner = document.createElement('div')
+      nextOwner.style.overflowY = 'auto'
+      document.body.append(nextOwner)
+      cleanups.push(() => nextOwner.remove())
+      if (change === 'disconnect') p.owner.remove()
+      else nextOwner.append(p.root, p.space)
+      p.owner.scrollTop = 250
+      nextOwner.scrollTop = 350
+      await pending
+      expect(p.owner.scrollTop).toBe(250)
+      expect(nextOwner.scrollTop).toBe(350)
+      expect(p.root.style.paddingTop).toBe('7px')
+    }
+  )
+
+  it('does not let an older callback write or clear a newer restoration before its layout patch', async () => {
+    const p = await pane(100)
+    const writes = vi.spyOn(p.owner, 'scrollTop', 'set')
+    const stale = p.captureDragLayout()()
+    p.owner.scrollTop = 250
+    p.root.style.paddingTop = '12px'
+    p.space.style.height = '55px'
+    const restore = p.captureDragLayout()
+    // The old await resumes before this flush; the new await resumes after it. An old
+    // finally must not clear the new hold and allow the window watcher to anchor it.
+    p.source.value++
+    const current = restore()
+    await stale
+    await current
+    expect(writes).not.toHaveBeenCalledWith(100)
+    expect(p.owner.scrollTop).toBe(250)
+    expect(p.root.style.paddingTop).toBe('12px')
+    expect(p.space.style.height).toBe('55px')
+    expect(p.owner.classList.contains('abele-timeline__scroll-hold')).toBe(false)
+  })
+
   it('rolls temporary drag compensation and scroll back without retaining a cancellation anchor', async () => {
     const p = await pane(100, undefined, true, 100)
     const restore = p.captureDragLayout()
