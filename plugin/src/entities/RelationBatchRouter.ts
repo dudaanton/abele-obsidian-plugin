@@ -63,21 +63,36 @@ export class RelationBatchRouter {
     onError: (error: unknown) => void = () => {}
   ) {
     const batches = new Map<Subscription, RelationChange[]>()
+    // Bindings stay pre-batch until consumers run. Carry only subscriptions reached by
+    // each rename forward, so later moves/deletes still address the original identity.
+    const aliases = new Map<string, Set<Subscription>>()
+    const rootAliases = new Map<string, Set<Subscription>>()
     for (const sub of this.initial) batches.set(sub, [])
     this.initial.clear()
     for (const change of changes) {
       const affected = new Set(this.paths.get(change.path) ?? [])
       for (const sub of this.paths.get(change.oldPath ?? '') ?? []) affected.add(sub)
+      for (const sub of aliases.get(change.path) ?? []) affected.add(sub)
+      for (const sub of aliases.get(change.oldPath ?? '') ?? []) affected.add(sub)
+      if (change.kind === 'rename') {
+        for (const sub of this.roots.get(change.oldPath ?? '') ?? [])
+          this.add(rootAliases, change.path, sub)
+        for (const sub of rootAliases.get(change.oldPath ?? '') ?? [])
+          this.add(rootAliases, change.path, sub)
+      }
       if (change.kind !== 'delete') {
         try {
-          for (const target of ancestors(change.path))
+          for (const target of ancestors(change.path)) {
             for (const sub of this.roots.get(target) ?? []) affected.add(sub)
+            for (const sub of rootAliases.get(target) ?? []) affected.add(sub)
+          }
           const date = day(change.path)
           if (date) for (const sub of this.days.get(date) ?? []) affected.add(sub)
         } catch (error) {
           onError(error)
         }
       }
+      if (change.kind === 'rename') for (const sub of affected) this.add(aliases, change.path, sub)
       for (const sub of affected) {
         let batch = batches.get(sub)
         if (!batch) batches.set(sub, (batch = []))

@@ -7,11 +7,14 @@ export interface NoteIndexChange {
   path: string
   before?: IndexedNote
   after?: IndexedNote
+  replaced?: boolean
 }
 class VaultNoteIndex extends NoteTypeIndex {
   private readonly events: EventRef[] = []
   private readonly listeners = new Set<(changes: NoteIndexChange[]) => void>()
   private readonly pending = new Set<string>()
+  private readonly identities = new Map<string, TFile>()
+  private readonly deleted = new Set<string>()
   private watching = false
   private closed = false
   references = 0
@@ -61,10 +64,17 @@ class VaultNoteIndex extends NoteTypeIndex {
     )
     this.events.push(
       app.vault.on('delete', (file) => {
-        if (!this.closed && file instanceof TFile) this.pending.add(normalizePath(file.path))
-        else if (!this.closed && file instanceof TFolder) {
+        if (!this.closed && file instanceof TFile) {
+          const path = normalizePath(file.path)
+          this.pending.add(path)
+          this.deleted.add(path)
+        } else if (!this.closed && file instanceof TFolder) {
           const prefix = normalizePath(file.path) + '/'
-          for (const path of this.notes.keys()) if (path.startsWith(prefix)) this.pending.add(path)
+          for (const path of this.notes.keys())
+            if (path.startsWith(prefix)) {
+              this.pending.add(path)
+              this.deleted.add(path)
+            }
         }
       })
     )
@@ -91,14 +101,21 @@ class VaultNoteIndex extends NoteTypeIndex {
 
   private read(path: string): NoteIndexChange {
     const file = this.app.vault.getAbstractFileByPath(path)
-    if (!(file instanceof TFile) || file.extension !== 'md')
+    if (!(file instanceof TFile) || file.extension !== 'md') {
+      this.identities.delete(path)
+      this.deleted.delete(path)
       return { path, before: this.remove(path) }
+    }
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter
     const value = fm?.due ?? fm?.date ?? fm?.created
     const date = value ? dayjs(value, DATE_FORMAT) : null
     const after = { path, type: fm?.type, day: date?.isValid() ? date.format(DATE_FORMAT) : null }
+    const identity = this.identities.get(path)
+    const replaced = !!identity && (identity !== file || this.deleted.has(path))
     const before = this.upsert(after)
-    return { path, before, after }
+    this.identities.set(path, file)
+    this.deleted.delete(path)
+    return { path, before, after, replaced }
   }
 
   subscribe(listener: (changes: NoteIndexChange[]) => void): () => void {
@@ -116,7 +133,8 @@ class VaultNoteIndex extends NoteTypeIndex {
     for (const path of this.pathsOfType(type)) add(path)
     return this.subscribe((changes) => {
       for (const change of changes) {
-        if (change.before?.type === type && change.after?.type !== type) remove(change.path)
+        if (change.before?.type === type && (change.replaced || change.after?.type !== type))
+          remove(change.path)
         if (change.after?.type === type) add(change.path)
       }
     })
@@ -130,6 +148,8 @@ class VaultNoteIndex extends NoteTypeIndex {
     }
     this.listeners.clear()
     this.pending.clear()
+    this.identities.clear()
+    this.deleted.clear()
   }
 }
 
