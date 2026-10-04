@@ -27,6 +27,9 @@ describe.skipIf(!available)('remembered saved-key recipients', () => {
           `(async () => {
         const api = window.__abeleTest
         const config = api.AbeleConfig.getInstance()
+        const store = api.secrets(), keyId = 'sample-approval-key'
+        if (store.get(keyId)) throw Error('Sample protected fixture slot already exists')
+        let ownedKey = false
         const previous = config.ai
         const save = config.saveSettings
         const storageKey = 'abele-key-destinations-v1'
@@ -42,6 +45,8 @@ describe.skipIf(!available)('remembered saved-key recipients', () => {
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
         const cancel = () => document.querySelector('.abele-modal__footer button')?.click()
         try {
+          // Recipient consent validates the current protected value, not just its key identifier.
+          store.set(keyId, 'fake-sample-recipient-value'); ownedKey = true; await store.flush()
           const first = approve(request)
           await wait(300)
           const modal = document.querySelector('.modal.abele-modal')
@@ -79,6 +84,7 @@ describe.skipIf(!available)('remembered saved-key recipients', () => {
           config.ai = previous
           config.saveSettings = save
           app.saveLocalStorage(storageKey, local)
+          if (ownedKey) { store.remove(keyId); await store.flush() }
         }
       })()`,
           60_000
