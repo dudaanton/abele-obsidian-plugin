@@ -13,6 +13,12 @@ import { networkDecision } from '@/slides/liveAdapter'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
+import { destinationFixture } from './destinationFixture'
+
+export interface DialogFixtureOptions {
+  /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
+  recipientRows?: boolean
+}
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
 import AiReplyOriginalDialog from '@/components/AiReplyOriginalDialog.vue'
@@ -100,7 +106,7 @@ function mountAlone(component: Component, props: Record<string, unknown> = {}): 
  * way. The icon picker, the list of keys, the MCP server, rewind and a script's form have their
  * own openers; the chat's two dialogs open from the chat.
  */
-const DIALOGS: Record<string, () => void> = {
+const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
   'slide-network': () => {
     const app = GlobalStore.getInstance().app
     const path = 'sample-network-probe.md'
@@ -143,21 +149,17 @@ const DIALOGS: Record<string, () => void> = {
         }],
       },
     }),
-  'key-destinations': () => {
-    const config = AbeleConfig.getInstance()
-    const previous = config.ai
-    config.ai = { ...previous, providers: [
-      { id: 'sample-secure', name: 'Sample secure provider', apiKeyId: 'sample-secure-key', baseUrl: 'https://api.sample.example/v1', models: [] },
-      { id: 'sample-home', name: 'Sample home provider', apiKeyId: 'sample-home-key', baseUrl: 'http://192.168.8.20:1234/v1', models: [] },
-    ] }
+  'key-destinations': (options) => destinationFixture(options?.recipientRows ? 'layout' : 'review', () => {
     const modal = reviewKeyDestinations()
-    modal.onClose = () => { config.ai = previous }
-  },
-  'key-destinations-new': () => {
-    const config = AbeleConfig.getInstance()
-    const previous = config.ai
-    config.ai = { ...previous, providers: [], imageProviders: [], secrets: [], mcpServers: [] }
+    modal.modalEl.dataset.abeleFixture = 'key-destinations'
+    return new Promise<void>((resolve) => {
+      const close = modal.onClose.bind(modal)
+      modal.onClose = () => { try { close() } finally { resolve() } }
+    })
+  }),
+  'key-destinations-new': () => destinationFixture('new', () => {
     const modal = reviewKeyDestinations()
+    modal.modalEl.dataset.abeleFixture = 'key-destinations-new'
     const select = modal.bodyEl.querySelector('select')!
     select.value = 'new'
     select.dispatchEvent(new Event('change', { bubbles: true }))
@@ -166,14 +168,19 @@ const DIALOGS: Record<string, () => void> = {
       input.value = value
       input.dispatchEvent(new Event('input', { bubbles: true }))
     }
-    modal.onClose = () => { config.ai = previous }
-  },
-  'saved-key-request': () => {
-    const config = AbeleConfig.getInstance()
-    const previous = config.ai
-    config.ai = { ...previous, secrets: [{ name: 'Sample key', keyId: 'sample-request-key' }] }
-    void approveScriptKeyRequest({ url: 'https://api.sample.example/data', headers: { Authorization: '${abele_key:Sample key}' } }).catch(() => {}).finally(() => { config.ai = previous })
-  },
+    return new Promise<void>((resolve) => {
+      const close = modal.onClose.bind(modal)
+      modal.onClose = () => { try { close() } finally { resolve() } }
+    })
+  }),
+  'saved-key-request': () => destinationFixture('request', async () => {
+    const completion = approveScriptKeyRequest({ url: 'https://api.sample.example/data', headers: { Authorization: '${abele_key:Sample key}' } })
+    const modal = document.querySelector<HTMLElement>('.modal.abele-modal')
+    if (modal) modal.dataset.abeleFixture = 'saved-key-request'
+    // Cancellation may outlive DOM removal while the production transaction rolls back.
+    // Await its real settlement before the fixture restores or another fixture opens.
+    await completion.catch(() => {})
+  }),
   confirm: () =>
     mountAlone(ConfirmModal, {
       title: 'Delete model',
@@ -365,8 +372,11 @@ const DIALOGS: Record<string, () => void> = {
 export const dialogNames = (): string[] => Object.keys(DIALOGS)
 
 /** Opens one of the plugin's dialogs by name, for the layout probes. Escape closes it. */
-export function openDialog(name: string): void {
+export function openDialog(name: string, options?: DialogFixtureOptions): void | Promise<void> {
   const open = DIALOGS[name]
   if (!open) throw new Error(`No dialog called ${name}`)
-  open()
+  const completion = open(options)
+  // Legacy visual probes can ignore completion; new fixture consumers must await cleanup.
+  if (completion) void completion.catch(() => {})
+  return completion
 }

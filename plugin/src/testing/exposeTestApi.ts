@@ -288,7 +288,7 @@ interface AbeleTestApi {
   /** A script's form, as `form(fields)` shows it; resolves with the answers, or null. */
   showFormModal: typeof showFormModal
   /** Opens one of the plugin's dialogs by name, for the layout probes; see `openDialog.ts`. */
-  openDialog(name: string): void
+  openDialog: typeof openDialog
   /** Every name `openDialog` knows. */
   dialogNames(): string[]
   /** The live-preview state field, read by editor-mode probes on desktop and mobile alike. */
