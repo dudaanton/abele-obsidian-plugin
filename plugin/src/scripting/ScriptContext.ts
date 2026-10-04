@@ -24,6 +24,8 @@ import {
   prepareSecretRequest,
   redactSecrets,
   snapshotSecretRequest,
+  secretRequestInfo,
+  validateSecretBindings,
   type SecretRequest,
 } from '@/ai/tools/secretUtils'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
@@ -467,7 +469,9 @@ export function buildScriptContext(opts: {
         basicAuth: fetchOpts?.basicAuth,
       })
       const method = fetchOpts?.method || 'GET'
+      const bindings = secretRequestInfo(raw).bindings
       await approveScriptKeyRequest(raw, s)
+      validateSecretBindings(raw, bindings)
       const prepared = prepareSecretRequest(raw)
       const response = await withTimeout(
         (signal) =>
@@ -526,7 +530,9 @@ export function buildScriptContext(opts: {
         typeof filenameOrOpts === 'string' ? { filename: filenameOrOpts } : filenameOrOpts
       const { timeout, ...rest } = opts ?? {}
       const raw = snapshotSecretRequest({ url, headers: rest.headers, basicAuth: rest.basicAuth })
+      const bindings = secretRequestInfo(raw).bindings
       await approveScriptKeyRequest(raw, s)
+      validateSecretBindings(raw, bindings)
       return stripPrefix(
         await withTimeout(
           (signal) => call(downloadImageTool, { ...rest, ...raw }, signal),
@@ -558,7 +564,9 @@ export function buildScriptContext(opts: {
         body: rest.body,
         basicAuth: rest.basicAuth,
       })
+      const bindings = secretRequestInfo(raw).bindings
       await approveScriptKeyRequest(raw, s)
+      validateSecretBindings(raw, bindings)
       return stripPrefix(
         await withTimeout(
           (signal) => call(downloadFileTool, { ...rest, ...raw }, signal),

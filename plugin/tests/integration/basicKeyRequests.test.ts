@@ -5,13 +5,20 @@ import { nextTick } from 'vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { ChatService } from '@/ai/ChatService'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { ShellModal } from '@/modal/ShellModal'
 import { useVault } from '../helpers/testEnv'
 import { AbeleConfig, type AbeleSettings } from '@/services/AbeleConfig'
 import { SecretStore, setSecrets, secrets } from '@/secrets/SecretStore'
 import { pluginStoreHost } from '@/secrets/host'
 import { allowKeyRecipient, removeKeyRecipient } from '@/secrets/manualConsent'
 import { allowedHttpOrigins } from '@/secrets/keyTransport'
-import { initializeDestinations, checkRequestDestinations } from '@/secrets/destinations'
+import {
+  initializeDestinations,
+  checkRequestDestinations,
+  destinationAccepted,
+  acceptDestinations,
+} from '@/secrets/destinations'
 import { setRequestGuard, setRequestTransport } from '@/helpers/http'
 import { buildScriptContext } from '@/scripting/ScriptContext'
 import { basicAuth } from '@/calendars/http'
@@ -30,6 +37,26 @@ const name = 'Console password'
 const keyId = 'sample-console-password'
 let disk: string
 let failWrite = false
+let writes = 0
+let beforeWrite: (() => Promise<void>) | undefined
+const pauseWrite = () => {
+  let release!: () => void, started!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const entered = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  beforeWrite = async () => {
+    started()
+    await gate
+  }
+  return { release, entered }
+}
+const modalButton = (text: string) =>
+  [...document.querySelectorAll<HTMLButtonElement>('.modal button')].find(
+    (button) => button.textContent === text
+  )!
 let send: ReturnType<typeof vi.fn>
 const config = () => AbeleConfig.getInstance()
 const ctx = () => buildScriptContext({ params: {}, signal: new AbortController().signal, logs: [] })
@@ -37,6 +64,8 @@ const ctx = () => buildScriptContext({ params: {}, signal: new AbortController()
 beforeEach(async () => {
   const app = useVault([])
   failWrite = false
+  writes = 0
+  beforeWrite = undefined
   config().applySettings(undefined)
   config().ai.providers = []
   config().ai.secrets = [{ name, keyId }]
@@ -46,6 +75,10 @@ beforeEach(async () => {
     manifest: { dir: '.obsidian/plugins/abele' },
     loadData: async () => JSON.parse(disk),
     saveData: async (data: AbeleSettings) => {
+      writes++
+      const pause = beforeWrite
+      beforeWrite = undefined
+      if (pause) await pause()
       if (failWrite) {
         failWrite = false
         throw new Error('Sample storage failure: ' + basicAuth(username, password))
@@ -84,6 +117,210 @@ const literal = (header = basicAuth(username, password), url = origin) =>
   ctx().fetch(url, { headers: { Authorization: header } })
 
 describe('public Basic requests with real configuration persistence', () => {
+  it.each(['tool', 'script'] as const)(
+    'redacts all generated composed Basic material at the transformation boundary for %s HTTPS echoes',
+    async (kind) => {
+      const address = 'https://composed-console.sample.example/stats'
+      await allowKeyRecipient({ address, keyId })
+      const request = {
+        url: address,
+        basicAuth: { username, password: 'prefix-${abele_key:Console password}-suffix' },
+      }
+      const derivedPassword = 'prefix-' + password + '-suffix'
+      const header = basicAuth(username, derivedPassword)
+      send.mockImplementationOnce(async () => ({
+        status: 200,
+        headers: { 'X-Echo': header },
+        text: [header, header.slice(6), username + ':' + derivedPassword].join('|'),
+        arrayBuffer: new ArrayBuffer(0),
+      }))
+      const text =
+        kind === 'tool'
+          ? (
+              await createAgentTools()
+                .find((tool) => tool.name === 'fetch')!
+                .execute('sample-composed', request)
+            ).content[0].text!
+          : JSON.stringify(await ctx().fetch(address, { basicAuth: request.basicAuth }))
+      expect(
+        [password, derivedPassword, header, header.slice(6), username + ':' + derivedPassword].some(
+          (value) => text.includes(value)
+        )
+      ).toBe(false)
+      expect(send).toHaveBeenCalledTimes(1)
+    }
+  )
+  it.each(['Cancel', 'close', 'caller abort'] as const)(
+    'rolls back deferred script consent after %s, without changing the caller signal on modal close',
+    async (action) => {
+      const address = 'https://cancel-console.sample.example/stats'
+      const caller = new AbortController()
+      const pause = pauseWrite()
+      const opened = vi.spyOn(ShellModal.prototype, 'open')
+      const work = buildScriptContext({ params: {}, signal: caller.signal, logs: [] }).fetch(
+        address,
+        { basicAuth: params().basicAuth }
+      )
+      const rejected = expect(work).rejects.toThrow()
+      try {
+        await vi.waitFor(() => expect(document.querySelector('.modal')).not.toBeNull())
+        modalButton('Allow address and send').click()
+        await pause.entered
+        if (action === 'Cancel') modalButton('Cancel').click()
+        else if (action === 'caller abort') caller.abort()
+        else (opened.mock.contexts[0] as ShellModal).close()
+        expect(caller.signal.aborted).toBe(action === 'caller abort')
+        pause.release()
+        await rejected
+        await vi.waitFor(() => expect(config().ai.secrets[0].allowedOrigins ?? []).toEqual([]))
+        expect(JSON.parse(disk).ai.secrets[0].allowedOrigins ?? []).toEqual([])
+        expect(
+          destinationAccepted({ keyId, name, origin: 'https://cancel-console.sample.example' })
+        ).toBe(false)
+        expect(send).not.toHaveBeenCalled()
+        expect(document.querySelector('.modal')).toBeNull()
+      } finally {
+        pause.release()
+      }
+    }
+  )
+  it('disables duplicate script submissions throughout the deferred real save', async () => {
+    const pause = pauseWrite()
+    const work = ctx().fetch('https://duplicate-console.sample.example/stats', {
+      basicAuth: params().basicAuth,
+    })
+    try {
+      await vi.waitFor(() => expect(document.querySelector('.modal')).not.toBeNull())
+      const button = modalButton('Allow address and send')
+      button.click()
+      await pause.entered
+      const disabled = button.disabled
+      button.click()
+      pause.release()
+      await work
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(disabled).toBe(true)
+      expect(writes).toBe(1)
+    } finally {
+      pause.release()
+    }
+  })
+  it.each([
+    ['script', 'save'],
+    ['tool', 'save'],
+    ['script', 'grant'],
+    ['tool', 'grant'],
+    ['script', 'queue'],
+    ['tool', 'queue'],
+  ] as const)(
+    'rejects a two-key %s rebinding during %s and undoes owned grants while preserving independent ones',
+    async (entry, phase) => {
+      const address = 'https://two-key-console.sample.example/stats'
+      const recipient = new URL(address).origin
+      const otherName = 'Other console password',
+        otherId = 'sample-other-console',
+        replacementId = 'sample-rebound-console'
+      secrets().set(otherId, 'fake-other-console-value')
+      secrets().set(replacementId, 'fake-rebound-console-value')
+      config().ai.secrets.push({ id: 'sample-other-record', name: otherName, keyId: otherId })
+      const request = {
+        url: address,
+        basicAuth: {
+          username,
+          password: '${abele_key:Console password}:${abele_key:Other console password}',
+        },
+      }
+      const pause = pauseWrite()
+      const unrelated =
+        phase === 'queue'
+          ? allowKeyRecipient({ keyId, address: 'https://independent-console.sample.example' })
+          : undefined
+      if (unrelated) await pause.entered
+      let view: ReturnType<typeof mount> | undefined
+      let work: Promise<unknown> | undefined
+      let rejected: Promise<unknown> | undefined
+      try {
+        if (entry === 'script') {
+          work = ctx().fetch(address, { basicAuth: request.basicAuth })
+          rejected = expect(work).rejects.toThrow()
+          await vi.waitFor(() => expect(document.querySelector('.modal')).not.toBeNull())
+          modalButton('Allow address and send').click()
+        } else {
+          vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+            value: undefined,
+          } as never)
+          view = mount(AiToolApproval, {
+            props: {
+              message: {
+                id: 'sample-multi-call',
+                role: 'tool-call',
+                content: '',
+                timestamp: 1,
+                toolName: 'fetch',
+                toolParams: request,
+                toolStatus: 'pending',
+              } as never,
+            },
+          })
+          view
+            .findAllComponents(Button)
+            .find((button) => button.props('text') === 'Allow this address for these keys')!
+            .vm.$emit('click')
+        }
+        await pause.entered
+        const rebind = () => {
+          config().ai.secrets[1].keyId = replacementId
+          config().ai.secrets[0].allowedOrigins = [
+            ...(config().ai.secrets[0].allowedOrigins ?? []),
+            'https://independent-console.sample.example',
+          ]
+          acceptDestinations([
+            { keyId, name, origin: 'https://independent-console.sample.example' },
+          ])
+        }
+        if (phase === 'save' || phase === 'queue') rebind()
+        else {
+          const app = GlobalStore.getInstance().app
+          const save = app.saveLocalStorage.bind(app)
+          let fired = false
+          vi.spyOn(app, 'saveLocalStorage').mockImplementation((storageKey, value) => {
+            save(storageKey, value)
+            if (
+              !fired &&
+              storageKey === 'abele-key-destinations-v1' &&
+              (value as Record<string, string[]>)[keyId]?.includes(recipient)
+            ) {
+              fired = true
+              rebind()
+            }
+          })
+        }
+        pause.release()
+        await unrelated
+        if (entry === 'script') {
+          await vi.waitFor(() =>
+            expect(document.querySelector('.modal')!.textContent).toContain('Could not save')
+          )
+          modalButton('Cancel').click()
+          await rejected
+        } else await vi.waitFor(() => expect(view!.text()).toContain('Could not save'))
+        const saved = JSON.parse(disk).ai.secrets
+        expect(saved[0].allowedOrigins).not.toContain(recipient)
+        expect(saved[0].allowedOrigins).toContain('https://independent-console.sample.example')
+        expect(saved[1].allowedOrigins ?? []).not.toContain(recipient)
+        for (const id of [keyId, otherId, replacementId])
+          expect(destinationAccepted({ keyId: id, name, origin: recipient })).toBe(false)
+        expect(
+          destinationAccepted({ keyId, name, origin: 'https://independent-console.sample.example' })
+        ).toBe(true)
+        expect(secrets().get(replacementId) === 'fake-rebound-console-value').toBe(true)
+        expect(send).not.toHaveBeenCalled()
+      } finally {
+        pause.release()
+        view?.unmount()
+      }
+    }
+  )
   it('retries the unchanged encoded header after save/readback, without a duplicate saved secret', async () => {
     await expect(literal()).rejects.toThrow()
     await allowKeyRecipient({ address: origin, keyId })

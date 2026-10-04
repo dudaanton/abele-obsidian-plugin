@@ -104,6 +104,32 @@ describe('manual recipient form in an empty review', () => {
       modal.close()
     }
   })
+  it('warns beside the imported named HTTP permission action with a reopened blank form', async () => {
+    const origin = 'http://192.168.84.26:8197'
+    secrets().set('sample-imported-password', 'fake-imported-password')
+    config().ai.secrets = [
+      { name: 'Imported sample', keyId: 'sample-imported-password', allowedOrigins: [origin] },
+    ]
+    const modal = reviewKeyDestinations()
+    try {
+      expect(
+        modal.bodyEl.querySelector<HTMLInputElement>('input[aria-label="Recipient address"]')!.value
+      ).toBe('')
+      expect(modal.bodyEl.querySelector<HTMLSelectElement>('select')!.value).toBe('')
+      const row = modal.bodyEl.querySelector('[data-key-destination]')!
+      expect(row.textContent).toContain(origin)
+      expect(row.textContent).toContain('Unencrypted: anyone on the network path can read the key.')
+      const allow = [...row.querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) => button.textContent === 'Allow unencrypted HTTP'
+      )!
+      expect(allow).toBeDefined()
+      expect(allowedHttpOrigins()).toEqual([])
+      allow.click()
+      await vi.waitFor(() => expect(allowedHttpOrigins()).toEqual([origin]))
+    } finally {
+      modal.close()
+    }
+  })
   it('close without approving never writes a key or permission', () => {
     const modal = reviewKeyDestinations()
     selectNew(modal.bodyEl)

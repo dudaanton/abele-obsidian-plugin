@@ -57,10 +57,21 @@ vi.mock('@/ai/tools/secretUtils', () => ({
   snapshotSecretRequest: (request: unknown) => request,
   secretRequestInfo: () => ({
     names: ['Sample key'],
+    bindings: [{ name: 'Sample key', keyId: 'sample-request-key' }],
     origin: 'https://api.sample.example',
     missing: state.missing,
   }),
-  allowSecretOrigin: (...args: unknown[]) => state.allowSecret(...args),
+  allowSecretRequestOrigins: async (
+    _request: unknown,
+    bindings: { name: string; keyId: string }[],
+    signal: AbortSignal,
+    _validate: unknown,
+    committed: () => void
+  ) => {
+    for (const binding of bindings)
+      state.allowSecret(binding.name, 'https://api.sample.example', signal)
+    committed()
+  },
 }))
 // Only Setting's text and button surface is needed here; Modal and the shared shell stay real.
 vi.mock('obsidian', async (original) => {
@@ -199,9 +210,13 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
       expect(footer().querySelector('.mod-cta')).not.toBeNull()
       click(missing ? 'Allow address and send' : 'Send once')
       await approval
-      expect(state.allowSecret.mock.calls).toEqual(
-        missing ? [['Sample key', 'https://api.sample.example', undefined]] : []
-      )
+      if (missing)
+        expect(state.allowSecret).toHaveBeenCalledWith(
+          'Sample key',
+          'https://api.sample.example',
+          expect.any(AbortSignal)
+        )
+      else expect(state.allowSecret).not.toHaveBeenCalled()
       expect(document.querySelector('.modal')).toBeNull()
     }
   )

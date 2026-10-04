@@ -8,7 +8,7 @@ import {
 } from '@/secrets/destinations'
 import { httpOrigin } from '@/secrets/DestinationPolicy'
 import { encodeBasicCredentials } from '@/secrets/basicAuth'
-import { allowKeyRecipient } from '@/secrets/manualConsent'
+import { allowNamedKeyRecipients, type NamedKeyBinding } from '@/secrets/manualConsent'
 import { checkKeyTransport } from '@/secrets/keyTransport'
 
 const PLACEHOLDER = /\$\{abele_key:([^}]+)\}/g
@@ -100,7 +100,38 @@ export function secretRequestInfo(request: SecretRequest) {
 export function allowSecretOrigin(name: string, url: string, signal?: AbortSignal): Promise<void> {
   // Unencrypted transport still requires the warning and explicit action in destination review.
   checkKeyTransport(url)
-  return allowKeyRecipient({ keyId: named(name).keyId, address: url }, signal)
+  return allowNamedKeyRecipients([{ name, keyId: named(name).keyId }], url, signal)
+}
+
+export function validateSecretBindings(request: SecretRequest, expected: NamedKeyBinding[]): void {
+  if (JSON.stringify(secretRequestInfo(request).bindings) !== JSON.stringify(expected))
+    throw new Error('The saved key binding changed; review the request again')
+}
+
+/** Freeze all named identities before entering the persistence queue, and approve them atomically. */
+export function allowSecretRequestOrigins(
+  request: SecretRequest,
+  bindings: NamedKeyBinding[],
+  signal?: AbortSignal,
+  validateRequest?: () => void,
+  onCommitted?: () => void
+): Promise<void> {
+  const fixed = snapshotSecretRequest(request)
+  const captured = bindings.map((binding) => ({ ...binding }))
+  const origin = httpOrigin(fixed.url)
+  if (!origin) throw new Error('A saved key requires an HTTP(S) recipient')
+  checkKeyTransport(origin)
+  validateSecretBindings(fixed, captured)
+  return allowNamedKeyRecipients(
+    captured,
+    origin,
+    signal,
+    () => {
+      validateSecretBindings(fixed, captured)
+      validateRequest?.()
+    },
+    onCommitted
+  )
 }
 
 export function prepareSecretRequest(
@@ -128,11 +159,15 @@ export function prepareSecretRequest(
   const headers = Object.fromEntries(
     Object.entries(request.headers ?? {}).map(([k, v]) => [k, fill(v)])
   )
-  if (request.basicAuth)
-    headers.Authorization = encodeBasicCredentials(
-      request.basicAuth.username,
-      fill(request.basicAuth.password)
-    )
+  const derived: string[] = []
+  if (request.basicAuth) {
+    const password = fill(request.basicAuth.password)
+    const credentials = `${request.basicAuth.username}:${password}`
+    const header = encodeBasicCredentials(request.basicAuth.username, password)
+    headers.Authorization = header
+    // Transformation output must be tracked even when several placeholders compose a password.
+    derived.push(password, credentials, header, header.slice(6))
+  }
   const prepared = {
     url,
     headers,
@@ -140,7 +175,9 @@ export function prepareSecretRequest(
   }
   return {
     ...prepared,
-    secretValues: [...new Set([...values.values(), ...checkRequestDestinations(prepared, config)])],
+    secretValues: [
+      ...new Set([...values.values(), ...derived, ...checkRequestDestinations(prepared, config)]),
+    ],
   }
 }
 

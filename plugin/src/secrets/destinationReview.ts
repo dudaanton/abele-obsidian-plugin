@@ -187,27 +187,36 @@ export function reviewKeyDestinations(): ShellModal {
     for (const pair of pairs) {
       const row = modal.bodyEl.createDiv({ attr: { 'data-key-destination': 'true' } })
       let allowed = destinationAccepted(pair)
+      let blockedTransport = false
+      const unencrypted = canAllowHttp(pair.origin)
       try {
         checkKeyTransport(pair.origin)
       } catch {
         allowed = false
+        blockedTransport = true
       }
       const setting = new Setting(row)
         .setName(pair.name || 'Saved key')
         .setDesc(
-          `${pair.origin} — ${allowed ? 'Allowed on this device' : 'Needs confirmation on this device'}`
+          `${pair.origin} — ${allowed ? 'Allowed on this device' : 'Needs confirmation on this device'}${unencrypted ? ' — Unencrypted: anyone on the network path can read the key.' : ''}`
         )
-      if (!allowed)
+      if (blockedTransport && !unencrypted)
+        setting.setDesc(
+          pair.origin + ' — Public HTTP cannot receive keys. Change this address to HTTPS.'
+        )
+      else if (!allowed)
         setting.addButton((b) =>
-          b.setButtonText('Allow').onClick(() => {
-            run(
-              () =>
-                allowKeyRecipient({ keyId: pair.keyId, address: pair.origin }, controller.signal),
-              () => {
-                status = `Allowed ${pair.name} → ${pair.origin}. Retry the original script.`
-              }
-            )
-          })
+          b
+            .setButtonText(unencrypted ? 'Allow unencrypted HTTP' : 'Allow on this device')
+            .onClick(() => {
+              run(
+                () =>
+                  allowKeyRecipient({ keyId: pair.keyId, address: pair.origin }, controller.signal),
+                () => {
+                  status = `Allowed ${pair.name} → ${pair.origin}. Retry the original script.`
+                }
+              )
+            })
         )
       setting.addButton((b) =>
         b.setButtonText('Remove key permission').onClick(() => {

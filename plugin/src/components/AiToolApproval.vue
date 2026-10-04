@@ -101,6 +101,7 @@
       <Button
         v-if="keyInfo.missing.length"
         text="Allow this address for these keys"
+        :disabled="keyApprovalBusy"
         @click="allowKeyAddress"
       />
     </div>
@@ -122,17 +123,20 @@
     <div class="abele-tool-approval__actions">
       <Button
         :text="keyInfo && !keyInfo.missing.length ? 'Send once' : 'Approve'"
+        :disabled="keyApprovalBusy"
         @click="approve"
       />
       <Button
         v-if="canApproveAllWrites"
         text="Always allow writes"
+        :disabled="keyApprovalBusy"
         tooltip="Stop asking about writes inside the scope. Anything outside it still asks."
         @click="approveAllWrites"
       />
       <Button
         v-if="canAllowAll"
         text="Always allow"
+        :disabled="keyApprovalBusy"
         :tooltip="`Stop asking about ${message.toolName}. Every other tool still asks.`"
         @click="allowAll"
       />
@@ -143,12 +147,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import {
   secretNames,
   secretRequestInfo,
   secretRequestForTool,
-  allowSecretOrigin,
+  allowSecretRequestOrigins,
 } from '@/ai/tools/secretUtils'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
@@ -197,18 +201,52 @@ const keyInfo = computed(() => {
     return null
   }
 })
+const keyApprovalBusy = ref(false)
+let keyApprovalController: AbortController | null = null
+let unmounted = false
+onUnmounted(() => {
+  unmounted = true
+  keyApprovalController?.abort()
+})
+watch(
+  () => props.message.toolStatus,
+  (status) => {
+    if (status !== 'pending') keyApprovalController?.abort()
+  }
+)
 const allowKeyAddress = async () => {
-  const request = secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
-  if (!request) return
-  const binding = JSON.stringify(request)
+  if (keyApprovalBusy.value) return
   try {
+    const request = secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
+    if (!request) return
+    const binding = JSON.stringify(request)
     const info = secretRequestInfo(request)
-    for (const name of info.missing) await allowSecretOrigin(name, info.origin)
-    if (JSON.stringify(secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)) !== binding)
-      throw new Error('The request changed')
-    keyRevision.value++
+    const controller = new AbortController()
+    keyApprovalController = controller
+    keyApprovalBusy.value = true
+    await allowSecretRequestOrigins(
+      request,
+      info.bindings,
+      controller.signal,
+      () => {
+        if (
+          JSON.stringify(
+            secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
+          ) !== binding
+        )
+          throw new Error('The request changed')
+      },
+      () => {
+        keyRevision.value++
+      }
+    )
   } catch {
-    parseError.value = 'Could not save key permission. Review the current request and key destinations, then retry.'
+    if (!unmounted)
+      parseError.value =
+        'Could not save key permission. Review the current request and key destinations, then retry.'
+  } finally {
+    keyApprovalController = null
+    if (!unmounted) keyApprovalBusy.value = false
   }
 }
 
@@ -347,6 +385,7 @@ watch(
 const parseError = ref('')
 
 const approve = () => {
+  if (keyApprovalBusy.value) return
   if (isEditing.value) {
     try {
       const modified = JSON.parse(editedArgs.value)
@@ -408,6 +447,7 @@ const allowAll = () => {
 }
 
 const reject = () => {
+  keyApprovalController?.abort()
   session.value?.rejectToolCall('User rejected this action')
 }
 

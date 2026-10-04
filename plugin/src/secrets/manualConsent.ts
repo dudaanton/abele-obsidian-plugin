@@ -81,6 +81,126 @@ export function allowKeyRecipient(
   return work
 }
 
+export interface NamedKeyBinding {
+  name: string
+  keyId: string
+}
+
+/** A named request is one decision, not independent grants resolved again between saves. */
+export function allowNamedKeyRecipients(
+  bindings: NamedKeyBinding[],
+  address: string,
+  signal?: AbortSignal,
+  validateRequest?: () => void,
+  onCommitted?: () => void
+): Promise<void> {
+  const captured = bindings.map(({ name, keyId }) => ({ name, keyId }))
+  const work = saving.then(async () => {
+    const config = AbeleConfig.getInstance()
+    const origin = recipientOrigin(address)
+    const validate = () => {
+      signal?.throwIfAborted()
+      requireReadableSettings(config)
+      checkKeyTransport(origin)
+      for (const binding of captured) {
+        const current = config.ai.secrets.find((key) => key.name === binding.name)
+        if (
+          !current ||
+          current.keyId !== binding.keyId ||
+          binding.keyId.startsWith('abele-store-key')
+        )
+          throw new ConsentError('changed')
+        if (!secrets().get(binding.keyId)) throw new ConsentError('key')
+      }
+      validateRequest?.()
+    }
+    validate()
+    initializeDestinations(config)
+    validate()
+    const records = captured.map((binding) => {
+      const previous = config.ai.secrets.find(
+        (key) => key.name === binding.name && key.keyId === binding.keyId
+      )!
+      const added = !(previous.allowedOrigins ?? []).includes(origin)
+      const next = added
+        ? { ...previous, allowedOrigins: [...(previous.allowedOrigins ?? []), origin] }
+        : previous
+      const destination = { ...binding, origin }
+      return {
+        binding,
+        previous,
+        next,
+        added,
+        destination,
+        wasAccepted: destinationAccepted(destination),
+        id: previous.id,
+      }
+    })
+    const changes = new Map(records.map((record) => [record.previous, record.next]))
+    const owned: (typeof records)[number]['destination'][] = []
+    config.ai = { ...config.ai, secrets: config.ai.secrets.map((key) => changes.get(key) ?? key) }
+    try {
+      await config.saveSettings()
+      validate()
+      for (const record of records) {
+        validate()
+        if (!destinationAccepted(record.destination)) {
+          owned.push(record.destination)
+          acceptDestinations([record.destination])
+        }
+      }
+      validate()
+      onCommitted?.()
+    } catch (error) {
+      // Local grants made independently during our save belong to that other action.
+      const independent = new Set(
+        records
+          .filter(
+            (record) =>
+              !record.wasAccepted &&
+              !owned.some((grant) => grant.keyId === record.binding.keyId) &&
+              destinationAccepted(record.destination)
+          )
+          .map((record) => record.binding.keyId)
+      )
+      for (const grant of owned.reverse()) {
+        try {
+          forgetDestination(grant)
+        } catch {
+          /* Continue independent metadata cleanup. */
+        }
+      }
+      config.ai = {
+        ...config.ai,
+        secrets: config.ai.secrets.map((key) => {
+          const record = records.find(
+            (record) =>
+              key === record.next ||
+              (record.id
+                ? key.id === record.id
+                : key.name === record.binding.name && key.keyId === record.binding.keyId)
+          )
+          if (!record?.added || independent.has(record.binding.keyId)) return key
+          // A replacement explicitly granted by another editor is not ours to revoke.
+          if (
+            key.keyId !== record.binding.keyId &&
+            destinationAccepted({ keyId: key.keyId, name: key.name, origin })
+          )
+            return key
+          return {
+            ...key,
+            allowedOrigins: (key.allowedOrigins ?? []).filter((entry) => entry !== origin),
+          }
+        }),
+      }
+      await config.saveSettings().catch(() => {})
+      throw error instanceof ConsentError ? error : new ConsentError('persistence')
+    }
+  })
+  saving = work.catch(() => {})
+  return work
+}
+
 export function removeKeyRecipient(
   keyId: string,
   address: string,
