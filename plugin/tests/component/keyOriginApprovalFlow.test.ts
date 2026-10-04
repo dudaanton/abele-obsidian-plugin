@@ -356,6 +356,33 @@ describe('trusting the current saved-key origin', () => {
     expect(session.toolModes.value).toEqual({ fetch: 'ask' })
   })
 
+  it('does not route a stale trust button into a different chat with the same provider call ID', async () => {
+    await start(call('first'))
+    const stale = button('Allow this address for these keys')
+    const other = makeSession()
+    planned = [call('first')]
+    await other.sendMessage('Use another sample request')
+    active.value = other
+    stale.element.click()
+    await flushPromises()
+    expect(executed).toEqual([])
+    expect(session.pendingToolCalls.value[0].id).toBe('first')
+    expect(other.pendingToolCalls.value[0].id).toBe('first')
+    expect(needsSecretApproval('fetch', request)).toBe(true)
+  })
+
+  it('does not consent to a replacement queue head whose displayed arguments are stale', async () => {
+    await start(call('first'))
+    session.pendingToolCalls.value = [
+      { ...call('first'), arguments: { ...request, body: 'changed request' } },
+    ]
+    await button('Allow this address for these keys').trigger('click')
+    await flushPromises()
+    expect(executed).toEqual([])
+    expect(session.pendingToolCalls.value[0].id).toBe('first')
+    expect(needsSecretApproval('fetch', request)).toBe(true)
+  })
+
   it('waits for persistence and never approves a different chat after a tab switch', async () => {
     const saving = deferred()
     vi.mocked(AbeleConfig.getInstance().saveSettings).mockReturnValue(saving.promise)

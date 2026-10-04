@@ -219,9 +219,16 @@ watch(
 const allowKeyAddress = async () => {
   const s = session.value
   const tc = s?.pendingToolCalls?.value[0]
+  const messageId = props.message.id
   if (
     keyApprovalBusy.value ||
-    (tc && (tc.id !== props.message.toolCallId || tc.name !== props.message.toolName))
+    (tc &&
+      (tc.id !== props.message.toolCallId ||
+        tc.name !== props.message.toolName ||
+        JSON.stringify(tc.arguments) !== JSON.stringify(params.value) ||
+        !s?.messages.value.some(
+          (message) => message.id === messageId && message.toolCallId === tc.id
+        )))
   )
     return
   const name = props.message.toolName ?? ''
@@ -267,6 +274,7 @@ const allowKeyAddress = async () => {
       session.value === s &&
       s.pendingToolCalls.value[0] === tc &&
       tc.name === name &&
+      props.message.id === messageId &&
       props.message.toolCallId === tc.id &&
       props.message.toolName === name &&
       JSON.stringify(tc.arguments) === originalArgs &&
