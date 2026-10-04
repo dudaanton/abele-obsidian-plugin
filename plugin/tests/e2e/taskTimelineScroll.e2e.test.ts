@@ -14,6 +14,7 @@ import { shotDir } from './helpers/shots'
 import { timelineStyleReference } from './helpers/timelineStyleReference'
 import { PIXEL_PROBE } from './helpers/stablePixels'
 import { TIMELINE_POSITION_PROBE } from './helpers/timelinePosition'
+import { timelineStructuralCss } from './contracts/timelineStructuralCss'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -47,6 +48,7 @@ interface Probe {
   appearanceCoordinates?: { x: number; y: number; before: number[]; after: number[] }[]
   appearanceRaster?: { pixelWidth: number; crop: number[]; devicePixelRatio: number }[]
   appearanceCanary?: number
+  appearancePositionCanary?: number[][]
   appearanceRects?: number[][]
   emptySpace?: number
   restoredHistory?: boolean
@@ -268,7 +270,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
           const sheet = [...document.querySelectorAll('style')].find(s => s.textContent.includes('.abele-timeline__date-block'))
           if (!sheet) throw Error('timeline stylesheet not found')
           const current = sheet.textContent
-          const retained = [...sheet.sheet.cssRules].filter(r => r.selectorText === '.abele-timeline__history' || r.selectorText === 'body.is-phone .workspace-split.mod-root .abele-timeline-sidebar').map(r => r.cssText).join('\n')
+          const structuralCss = ${timelineStructuralCss.toString()}
+          const retained = structuralCss(sheet.sheet.cssRules)
           try {
             sheet.textContent = fs.readFileSync(${JSON.stringify(referenceCss)}, 'utf8') + '\n' + retained
             const before = await capture('-before')
@@ -287,6 +290,11 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
             sheet.textContent += '\n.abele-timeline__tasks { transform: translateX(1px) !important; }'
             const canary = await capture('-canary')
             report.appearanceCanary = pixelDifference(after, canary).count
+            // Independent positive geometry control: moving the original block by one pixel
+            // must be visible to the exact position contract even if its cropped raster matches.
+            sheet.textContent = current + '\n.abele-timeline__date-block { transform: translateX(1px) !important; }'
+            const positionCanary = await capture('-position-canary')
+            report.appearancePositionCanary = [after.rect, positionCanary.rect]
           } finally { sheet.textContent = current }
           await capture('')
         } else fs.writeFileSync(path, (await capturePage()).toPNG())
@@ -662,6 +670,11 @@ describe.skipIf(!available)('task timeline scrolling', () => {
             expect(p.appearanceRects![1]).toEqual(p.appearanceRects![0])
             expect(p.appearancePixels).toBe(0)
             expect(p.appearanceCanary).toBeGreaterThan(0)
+            expect(p.appearancePositionCanary).toHaveLength(2)
+            expect(p.appearancePositionCanary![1][0] - p.appearancePositionCanary![0][0]).toBe(1)
+            expect(p.appearancePositionCanary![1].slice(1)).toEqual(
+              p.appearancePositionCanary![0].slice(1)
+            )
           }
         }
       )
