@@ -26,6 +26,7 @@ import {
   historyNoteText,
 } from '../fixtures/history/historyNotes'
 import { shotDir } from './helpers/shots'
+import { nativeGesture } from '../helpers/nativeGesture'
 
 targets('desktop', 'phone')
 
@@ -157,6 +158,9 @@ interface Perf {
 }
 
 interface Phone {
+  tapError?: string
+  tapAcknowledged?: boolean
+  contemporaries?: string[]
   error?: string
   phone?: boolean
   over?: string[]
@@ -397,14 +401,21 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         if (s) {
           const [x, y] = centre(root, s)
           // A finger on a phone; a touch pointer where there is none.
-          // The host's answer can be lost on the way back while the tap itself lands: the pick
-          // is what is checked.
-          if (host) await host.tap(x, y).catch((e) => (report.tapError = String((e && e.message) || e)))
-          else await press(root, x, y, 'touch')
+          // Reply loss leaves delivery unknown. Preserve the transport failure, never replay.
+          if (host) {
+            try {
+              const reply = await (${nativeGesture.toString()})(() => host.tap(x, y))
+              report.tapAcknowledged = reply.ok
+            } catch (e) {
+              report.tapError = String((e && e.message) || e)
+              throw e
+            }
+          } else await press(root, x, y, 'touch')
           await until(() => panel(root), 3000)
           await wait(300)
           report.picked = panel(root)?.dataset.selected
-          report.rows = panelRows(root).length
+          report.contemporaries = panelRows(root)
+          report.rows = report.contemporaries.length
           report.over = [...report.over, ...overEdge(root)]
           report.shots.push(await picture('timeline-phone-contemporaries.png'))
         }
@@ -488,12 +499,18 @@ describe.skipIf(!available)('the history timeline of a base', () => {
   })
 
   it('on a phone: nothing past the edge, a tap picks, two fingers zoom', () => {
+    if (phone.tapError) throw new Error(phone.tapError)
     expect(phone.error).toBeUndefined()
+    if (onPhone()) expect(phone.tapAcknowledged).toBe(true)
     expect(phone.phone).toBe(true)
     expect(phone.over).toEqual([])
     expect(phone.canvas?.[0] ?? Infinity).toBeLessThanOrEqual(PHONE.width)
     expect(phone.picked).toBe(`${FOLDER}/Notes/Шекспир.md`)
     expect(phone.rows ?? 0).toBeGreaterThan(3)
+    expect(phone.contemporaries).toEqual(
+      expect.arrayContaining(['Галилей 52 years', 'Сервантес 52 years', 'Кеплер 45 years'])
+    )
+    expect(phone.contemporaries?.some((r) => r.startsWith('Данте'))).toBe(false)
     const [a, b] = phone.ppy ?? [1, 1]
     expect(b).toBeGreaterThan(a * 1.3)
   })
