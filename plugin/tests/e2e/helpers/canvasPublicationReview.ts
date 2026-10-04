@@ -11,7 +11,7 @@ export const PUBLICATION_PRELUDE = `
   const tools = Object.fromEntries(window.__abeleTest.createAgentTools().map(tool => [tool.name,tool]))
   const read = async () => JSON.parse((await tools.canvas_read.execute('sample-read',{path:fixture.path,detail:'full'},undefined,ctx)).content[0].text)
   const modal = () => document.querySelector('.abele-canvas-publication-review')
-  const retained = () => JSON.stringify({draft:fixture.session.draft,evidence:fixture.session.publicationEvidence,baseline:fixture.session.committed,history:fixture.session.history,generation:fixture.session.generation})
+  const retained = () => JSON.stringify({draft:fixture.session.draft,evidence:fixture.session.publicationEvidence,baseline:fixture.session.committed,history:fixture.session.history,generation:fixture.session.generation});
 `
 
 export const PUBLICATION_SETUP = `

@@ -20,7 +20,8 @@ targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi(),
   SHOTS = shotDir('canvas-publication-review'),
   mobile = process.env.CANVAS_PUBLICATION_MOBILE === '1'
-const run = <T>(body: string): T => evalAsync<T>(`(async()=>{${body}})()`)
+const run = <T>(body: string): T =>
+  evalAsync<T>(`(async()=>JSON.stringify(await(async()=>{${body}})()))()`)
 const inside = <T>(body: string): T => run<T>(`${PUBLICATION_PRELUDE}${body}`)
 const press = async (selector: string) => {
   const point = inside<{ x: number; y: number }>(`

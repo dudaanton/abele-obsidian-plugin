@@ -192,7 +192,8 @@ describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', ()
 
 describe('Canvas publication review focus inventory', () => {
   it('keeps local review and affirmative confirmation rings inside their clipping ancestors', () => {
-    const run = <T>(body: string): T => evalAsync<T>(`(async () => { ${body} })()`)
+    const run = <T>(body: string): T =>
+      evalAsync<T>(`(async () => JSON.stringify(await (async () => { ${body} })()))()`)
     run(PUBLICATION_SETUP)
     try {
       run(publicationFault('persisted'))
