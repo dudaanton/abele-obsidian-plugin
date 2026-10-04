@@ -1,4 +1,5 @@
 import { Setting, type ButtonComponent } from 'obsidian'
+import './destinationReview.css'
 import {
   allowKeyRecipient,
   keyConsentError,
@@ -200,9 +201,6 @@ export function reviewKeyDestinations(): ShellModal {
         .setDesc(
           `${pair.origin} — ${allowed ? 'Allowed on this device' : 'Needs confirmation on this device'}${unencrypted ? ' — Unencrypted: anyone on the network path can read the key.' : ''}`
         )
-      // Confirmation and removal stay beside this recipient, including on narrow screens.
-      // Native buttons must wrap rather than push the first control and its ring off-screen.
-      setting.controlEl.style.flexWrap = 'wrap'
       if (blockedTransport && !unencrypted)
         setting.setDesc(
           pair.origin + ' — Public HTTP cannot receive keys. Change this address to HTTPS.'

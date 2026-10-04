@@ -125,7 +125,11 @@ describe('manual recipient form in an empty review', () => {
         (button) => button.textContent === 'Allow unencrypted HTTP'
       )!
       expect(allow).toBeDefined()
-      expect(row.querySelector<HTMLElement>('.setting-item-control')!.style.flexWrap).toBe('wrap')
+      expect(
+        [...row.querySelectorAll('.setting-item-control button')].map(
+          (button) => button.textContent
+        )
+      ).toEqual(['Allow unencrypted HTTP', 'Remove key permission'])
       expect(allowedHttpOrigins()).toEqual([])
       allow.click()
       await vi.waitFor(() => expect(allowedHttpOrigins()).toEqual([origin]))
