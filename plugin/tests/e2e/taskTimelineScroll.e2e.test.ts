@@ -64,7 +64,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
   ${PIXEL_PROBE}
   ${TIMELINE_POSITION_PROBE}
   const wait = ms => new Promise(r => setTimeout(r, ms))
-  const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready: ' + condition) }
+  let uiState = () => null
+  const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready: ' + condition + '; state=' + JSON.stringify(uiState())) }
   const createTask = async (path, text) => {
     const file = await app.vault.create(path, text)
     // The native adapter resolves a write before metadata and the task store see it.
@@ -159,6 +160,11 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     const blocks = () => [...root.querySelectorAll('.abele-timeline__date-block')]
     const dates = () => blocks().map(x => x.dataset.abeleAnchor)
     const strip = () => root.querySelector('.abele-timeline__history')
+    uiState = () => ({today:day(0),dates:dates(),history:strip()?.textContent.trim(),
+      viewport:[scroller.clientWidth,scroller.clientHeight],label,
+      fixtureDates:[...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.values()]
+        .filter(task=>task.taskPath.startsWith(folder+'/')&&!task.completedAt)
+        .reduce((counts,task)=>{const key=task.date?.format('YYYY-MM-DD')??'none';counts[key]=(counts[key]??0)+1;return counts},{})})
     const revealClick = async () => {
       const el = strip()
       const expanded = el.getAttribute('aria-expanded')
@@ -302,7 +308,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.shots.push(path)
     }
     yield 'initial dates and unchanged appearance'
-    await until(() => dates().length === ${short ? 1 : 20} && strip()?.textContent.includes(${short ? "'2 unfinished'" : "'90 unfinished'"}))
+    await until(() => dates().length === ${short ? 1 : 20} && strip()?.textContent.includes(${short ? "'2 unfinished'" : "'90 unfinished'"}), 'initial fixture dates and unfinished count')
     report.initial = dates()
     report.summary = strip()?.textContent.trim() ?? null
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
