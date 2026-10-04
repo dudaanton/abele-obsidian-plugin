@@ -40,6 +40,13 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { sampleDocx } from '../fixtures/docx/sampleDocx'
+import {
+  recipientRowFailures,
+  RECIPIENT_ROWS,
+  type RecipientLayoutReport,
+  type RecipientAction,
+} from '../helpers/keyDestinationLayout'
+import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
 const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
@@ -118,6 +125,12 @@ interface Screen {
 }
 
 type Report = Record<string, Screen>
+
+type RecipientScreen = Screen &
+  RecipientLayoutReport & {
+    pinnedActions: string[]
+    primary: RecipientAction & { pinned: boolean; summary: string }
+  }
 
 const probeScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -246,6 +259,8 @@ const probeScript = `(async () => {
     fs.writeFileSync(path, img.toPNG())
     return path
   }
+
+  ${recipientLayoutProbe}
 
   const report = {}
   const screen = async (label, root, body) => {
@@ -873,6 +888,7 @@ const probeScript = `(async () => {
     report.__dialogs = window.__abeleTest.dialogNames()
     for (const dialogName of report.__dialogs) {
       const label = 'dialog ' + dialogName
+      const restoreRecipients = dialogName === 'key-destinations' ? recipientFixture() : null
       try {
         window.__abeleTest.openDialog(dialogName)
         if (!(await until(() => document.querySelector('.modal.abele-modal'), 5000))) throw new Error('did not open')
@@ -895,6 +911,11 @@ const probeScript = `(async () => {
         if (dialogName === 'key-destinations' || dialogName === 'saved-key-request') {
           report[label].pinnedActions = footer ? [...footer.querySelectorAll('button')].map(b => b.textContent.trim()) : []
           report[label].bodyActions = [...modal.querySelectorAll('.abele-modal__body button')].map(b => b.textContent.trim())
+        }
+        if (dialogName === 'key-destinations') {
+          Object.assign(report[label], await recipientActions(modal))
+          report[label].shot = await shoot(label)
+          Object.assign(report[label], measure(modal, modal.querySelector('.abele-modal__body')))
         }
         report[label].hidden = footer
           ? [...footer.querySelectorAll('button')]
@@ -975,6 +996,7 @@ const probeScript = `(async () => {
         report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
       } finally {
         await closeDialog()
+        restoreRecipients?.()
       }
     }
 
@@ -1186,6 +1208,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       ([label, s]) => `  ${label.padEnd(20)} ${s.shot || s.error}`
     )
     console.info(`\n  vault ...................... ${activeVaultName()}\n${lines.join('\n')}\n`)
+    console.info('recipient action measurements', JSON.stringify(report['dialog key-destinations']))
   }, 480_000)
 
   afterAll(async () => {
@@ -1282,17 +1305,37 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(d?.hidden ?? ['no report']).toEqual([])
   })
 
-  it.each([
-    ['key-destinations', ['Allow on this device', 'Allow unencrypted HTTP']],
-    ['saved-key-request', ['Cancel', 'Allow address and send']],
-  ])('%s: approval actions are in the pinned footer, not the scrolling body', (name, actions) => {
-    const dialog = report['dialog ' + name] as Screen & {
-      pinnedActions?: string[]
-      bodyActions?: string[]
-    }
-    expect(dialog?.pinnedActions).toEqual(actions)
-    expect(dialog?.bodyActions).toEqual([])
+  it('key-destinations: every body action stays paired with its visible recipient and warning', () => {
+    const dialog = report['dialog key-destinations'] as RecipientScreen
+    expect(recipientRowFailures(dialog, RECIPIENT_ROWS)).toEqual([])
+    expect(dialog.primary.text).toBe('Allow key and address')
+    expect(dialog.primary.pinned).toBe(true)
+    expect(dialog.primary.focused).toBe(true)
+    expect(dialog.primary.reachable).toBe(true)
+    expect(dialog.primary.inViewport).toBe(true)
+    expect(dialog.primary.contextVisible).toBe(true)
+    expect(dialog.primary.clipped).toEqual([])
+    expect(dialog.primary.summary).toContain('Sample primary key → https://primary.sample.example')
   })
+
+  it('key-destinations: one primary action is pinned and every body action belongs to a recipient row', () => {
+    const dialog = report['dialog key-destinations'] as RecipientScreen
+    expect(dialog.pinnedActions).toEqual(['Allow key and address'])
+    expect(dialog.bodyActions).toEqual(RECIPIENT_ROWS.flatMap((row) => row.actions))
+    expect(dialog.unpairedActions).toEqual([])
+  })
+
+  it.each([['saved-key-request', ['Cancel', 'Allow address and send']]])(
+    '%s: approval actions are in the pinned footer, not the scrolling body',
+    (name, actions) => {
+      const dialog = report['dialog ' + name] as Screen & {
+        pinnedActions?: string[]
+        bodyActions?: string[]
+      }
+      expect(dialog?.pinnedActions).toEqual(actions)
+      expect(dialog?.bodyActions).toEqual([])
+    }
+  )
 
   it('focusing an offscreen tab brings its whole focus ring into the scrolling strip', () => {
     const cases = Object.values(report).flatMap((screen) => screen.tabFocus ?? [])
@@ -1442,7 +1485,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   })
 
   it('the main-tab timeline keeps its calendar below native navigation', () => {
-    const screen = report['timeline main tab'] as Screen & { calendarGap?: number; scrollHeight?: number }
+    const screen = report['timeline main tab'] as Screen & {
+      calendarGap?: number
+      scrollHeight?: number
+    }
     expect(screen?.error).toBe('')
     expect(screen.calendarGap).toBeGreaterThanOrEqual(0)
     expect(screen.scrollHeight).toBeGreaterThan(0)
