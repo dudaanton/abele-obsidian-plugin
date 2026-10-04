@@ -8,7 +8,7 @@ import { Transaction } from './Transaction'
 import { TimeEntry } from './TimeEntry'
 import { Log } from './Log'
 import { Note } from './Note'
-import { markRaw, reactive, shallowRef } from 'vue'
+import { markRaw, reactive, shallowRef, toRaw } from 'vue'
 import { Journal } from './Journal'
 import { acquireVaultNoteIndex } from './vaultNoteIndex'
 import { acquireVaultRelationBatches } from './vaultRelationBatches'
@@ -18,6 +18,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 
 export class NoteRelations {
   public filePath: string
+  private readonly rootIdentity?: TFile
 
   /**
    * The journal and day live in refs of their own: they are set by the vault's events, which
@@ -64,6 +65,8 @@ export class NoteRelations {
 
   constructor(filePath: string) {
     this.filePath = normalizePath(filePath)
+    const root = GlobalStore.getInstance().app.vault.getAbstractFileByPath(this.filePath)
+    this.rootIdentity = root instanceof TFile ? toRaw(root) : undefined
 
     this.tellJournal()
     this.findRelations(this.filePath)
@@ -537,14 +540,19 @@ export class NoteRelations {
   }
 
   private refreshRouting(): void {
-    this.routing?.update(this.filePath, this.journalDate?.format(DATE_FORMAT) ?? null, [
+    this.routing?.update(
       this.filePath,
-      ...this.tasks.keys(),
-      ...this.transactions.keys(),
-      ...this.timeEntries.keys(),
-      ...this.logs.keys(),
-      ...this.notes.keys(),
-    ])
+      this.journalDate?.format(DATE_FORMAT) ?? null,
+      [
+        this.filePath,
+        ...this.tasks.keys(),
+        ...this.transactions.keys(),
+        ...this.timeEntries.keys(),
+        ...this.logs.keys(),
+        ...this.notes.keys(),
+      ],
+      toRaw(this.rootIdentity)
+    )
   }
 
   private applyChanges(changes: RelationChange[]): void {
@@ -557,12 +565,12 @@ export class NoteRelations {
     // A folder notification can enumerate children before this summary's own note. Apply
     // its complete rename chain first, so children are judged against the final root path.
     const ownMoves = new Set<RelationChange>()
-    for (;;) {
-      const move = changes.find(
-        (change) =>
-          change.kind === 'rename' && change.oldPath === this.filePath && !ownMoves.has(change)
-      )
-      if (!move) break
+    const owns = (change: RelationChange, path: string | undefined) =>
+      change.identity !== undefined && this.rootIdentity !== undefined
+        ? change.identity === toRaw(this.rootIdentity)
+        : path === this.filePath
+    for (const move of changes) {
+      if (move.kind !== 'rename' || !owns(move, move.oldPath)) continue
       this.filePath = move.path
       ownMoves.add(move)
     }
@@ -573,7 +581,7 @@ export class NoteRelations {
       try {
         const { path, oldPath } = change
         if (change.kind === 'delete') {
-          if (path === this.filePath) {
+          if (owns(change, path)) {
             this.cleanup()
             return
           }

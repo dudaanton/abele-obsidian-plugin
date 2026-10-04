@@ -3,10 +3,13 @@ export interface RelationChange {
   kind: 'changed' | 'rename' | 'delete'
   path: string
   oldPath?: string
+  /** Opaque storage identity, supplied by the adapter; paths may be reused. */
+  identity?: unknown
 }
 interface Subscription {
   root: string
   day: string | null
+  identity?: unknown
   paths: Set<string>
   apply: (changes: RelationChange[]) => void
 }
@@ -34,16 +37,16 @@ export class RelationBatchRouter {
   watchedPaths(): Iterable<string> {
     return this.paths.keys()
   }
-
   subscribe(apply: Subscription['apply']) {
     const sub: Subscription = { root: '', day: null, paths: new Set(), apply }
     this.subscriptions.add(sub)
     this.initial.add(sub)
     return {
-      update: (root: string, day: string | null, paths: Iterable<string>) => {
+      update: (root: string, day: string | null, paths: Iterable<string>, identity?: unknown) => {
         this.unbind(sub)
         sub.root = root
         sub.day = day
+        sub.identity = identity
         sub.paths = new Set(paths)
         this.add(this.roots, root, sub)
         for (const path of sub.paths) this.add(this.paths, path, sub)
@@ -63,36 +66,51 @@ export class RelationBatchRouter {
     onError: (error: unknown) => void = () => {}
   ) {
     const batches = new Map<Subscription, RelationChange[]>()
-    // Bindings stay pre-batch until consumers run. Carry only subscriptions reached by
-    // each rename forward, so later moves/deletes still address the original identity.
-    const aliases = new Map<string, Set<Subscription>>()
-    const rootAliases = new Map<string, Set<Subscription>>()
+    const roots = new Map<string, Set<Subscription>>()
+    const paths = new Map<string, Set<Subscription>>()
+    const reached = new Map<RelationChange, Set<Subscription>>()
+    const empty = new Set<Subscription>()
+    const lookup = (
+      overlay: Map<string, Set<Subscription>>,
+      original: Map<string, Set<Subscription>>,
+      key: string
+    ) => overlay.get(key) ?? original.get(key) ?? empty
+    // Resolve ordered identity transitions first: metadata/ancestry supplied below describes
+    // the final vault, even when its notification occupied an earlier position in the batch.
+    for (const change of changes) {
+      const source = change.kind === 'rename' ? (change.oldPath ?? change.path) : change.path
+      const owners = lookup(paths, this.paths, source)
+      const rootOwners = lookup(roots, this.roots, source)
+      const matches = (sub: Subscription) =>
+        !rootOwners.has(sub) ||
+        change.identity === undefined ||
+        sub.identity === undefined ||
+        sub.identity === change.identity
+      const affected = new Set([...owners].filter(matches))
+      reached.set(change, affected)
+      if (change.kind === 'changed') continue
+      const movingRoots = new Set([...rootOwners].filter(matches))
+      paths.set(source, new Set([...owners].filter((sub) => !affected.has(sub))))
+      roots.set(source, new Set([...rootOwners].filter((sub) => !movingRoots.has(sub))))
+      if (change.kind === 'rename') {
+        paths.set(change.path, new Set([...lookup(paths, this.paths, change.path), ...affected]))
+        roots.set(change.path, new Set([...lookup(roots, this.roots, change.path), ...movingRoots]))
+      }
+    }
     for (const sub of this.initial) batches.set(sub, [])
     this.initial.clear()
     for (const change of changes) {
-      const affected = new Set(this.paths.get(change.path) ?? [])
-      for (const sub of this.paths.get(change.oldPath ?? '') ?? []) affected.add(sub)
-      for (const sub of aliases.get(change.path) ?? []) affected.add(sub)
-      for (const sub of aliases.get(change.oldPath ?? '') ?? []) affected.add(sub)
-      if (change.kind === 'rename') {
-        for (const sub of this.roots.get(change.oldPath ?? '') ?? [])
-          this.add(rootAliases, change.path, sub)
-        for (const sub of rootAliases.get(change.oldPath ?? '') ?? [])
-          this.add(rootAliases, change.path, sub)
-      }
+      const affected = reached.get(change)!
       if (change.kind !== 'delete') {
         try {
-          for (const target of ancestors(change.path)) {
-            for (const sub of this.roots.get(target) ?? []) affected.add(sub)
-            for (const sub of rootAliases.get(target) ?? []) affected.add(sub)
-          }
+          for (const target of ancestors(change.path))
+            for (const sub of lookup(roots, this.roots, target)) affected.add(sub)
           const date = day(change.path)
           if (date) for (const sub of this.days.get(date) ?? []) affected.add(sub)
         } catch (error) {
           onError(error)
         }
       }
-      if (change.kind === 'rename') for (const sub of affected) this.add(aliases, change.path, sub)
       for (const sub of affected) {
         let batch = batches.get(sub)
         if (!batch) batches.set(sub, (batch = []))
