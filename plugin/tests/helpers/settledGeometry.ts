@@ -4,7 +4,8 @@ export async function settledGeometry<T>(
   pause: () => Promise<void>,
   now: () => number,
   timeoutMs = 10000,
-  quietMs = 400
+  quietMs = 400,
+  ready?: (sample: T) => boolean
 ): Promise<T> {
   const deadline = now() + timeoutMs
   let previous = ''
@@ -16,9 +17,9 @@ export async function settledGeometry<T>(
     if (next !== previous) {
       previous = next
       since = now()
-    } else if (now() - since >= quietMs) return sample
+    } else if (now() - since >= quietMs && (!ready || ready(sample))) return sample
     if (now() >= deadline) break
     await pause()
   } while (now() <= deadline)
-  throw new Error('Geometry did not settle: ' + JSON.stringify(sample))
+  throw new Error('Geometry did not settle or satisfy its prerequisite: ' + JSON.stringify(sample))
 }
