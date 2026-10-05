@@ -48,6 +48,13 @@ import {
   type RecipientAction,
 } from '../helpers/keyDestinationLayout'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
+import {
+  PUBLICATION_SETUP,
+  PUBLICATION_PRELUDE,
+  PUBLICATION_CLEANUP,
+  publicationFault,
+} from './helpers/canvasPublicationReview'
+const CANVAS_SCREENS = ['canvas publication review', 'canvas publication confirmation']
 const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
@@ -1010,6 +1017,46 @@ const probeScript = `(async () => {
       }
     }
 
+    // Canvas-only inventory through the existing registered action; no shared dialog API fixture.
+    await (async () => { ${PUBLICATION_SETUP} })()
+    try {
+      await (async () => { ${publicationFault('persisted')} })()
+      await (async () => {
+        ${PUBLICATION_PRELUDE}
+        const action=fixture.view.containerEl.querySelector('[aria-label="Recover failed canvas change"]')
+        if(!action)throw Error('Canvas recovery action missing from inventory')
+        action.click()
+        await until(()=>modal(), 'inventory-review')
+        for(const label of ${JSON.stringify(CANVAS_SCREENS)}){
+          if(label==='canvas publication confirmation'){
+            const button=[...modal().querySelectorAll('button')].find(el=>el.textContent==='Discard local pending copy…')
+            if(!button)throw Error('Canvas confirmation action missing')
+            button.click();await until(()=>modal()?.textContent.includes('does not undo'), 'inventory-confirmation')
+          }
+          const root=modal()
+          if(root!==fixture.view.publicationReviewModal?.modalEl)throw Error('Canvas inventory owner changed')
+          await screen(label,root,root.querySelector('.abele-modal__body'))
+          const bounds=root.getBoundingClientRect()
+          report[label].edges=[Math.round(bounds.top),Math.round(bounds.bottom)]
+          report[label].hidden=[...root.querySelectorAll('.abele-modal__footer button')].filter(el=>{
+            const r=el.getBoundingClientRect();return r.width>0&&(r.top<0||r.bottom>innerHeight)
+          }).map(el=>el.textContent.trim())
+          report[label].clipped=[]
+          for(const field of root.querySelectorAll('button,summary')){
+            field.focus();for(const cut of ringClipped(field))report[label].clipped.push(name(field)+': '+cut);field.blur()
+          }
+          report[label].retained=retained()===fixture.retained
+          report[label].sourceSame=await app.vault.read(fixture.file)===fixture.before
+          report[label].process=fixture.processCalls;report[label].ack=fixture.ackCalls;report[label].undo=fixture.session.history.undo
+          report[label].baselineLabel=root.querySelector('[data-review="baseline"]')?.parentElement.querySelector('summary')?.textContent??null
+        }
+      })()
+    } catch(error) {
+      for(const label of ${JSON.stringify(CANVAS_SCREENS)})if(!report[label])report[label]={over:[],scrollers:[],capped:[],stranded:[],clipped:[],fill:0,shot:'',error:String(error?.message??error)}
+    } finally {
+      await (async () => { ${PUBLICATION_CLEANUP} })()
+    }
+
     // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
     // native floating view header must be above its calendar, not painted over the first week.
     const timelineLeaf = app.workspace.getLeaf('tab')
@@ -1267,6 +1314,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'timeline main tab',
     'map location',
     'word document',
+    ...CANVAS_SCREENS,
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -1302,18 +1350,46 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   type Dialog = Screen & { edges?: [number, number]; hidden?: string[] }
 
-  it.each(DIALOGS)('%s: nothing past the edge, one scroller, and no ring cut', (label) => {
-    expect(report[label]?.over ?? ['no report']).toEqual([])
-    expect(report[label]?.scrollers.length ?? 9).toBeLessThanOrEqual(1)
-    expect(report[label]?.clipped ?? ['no report']).toEqual([])
-  })
+  it.each([...DIALOGS, ...CANVAS_SCREENS])(
+    '%s: nothing past the edge, one scroller, and no ring cut',
+    (label) => {
+      expect(report[label]?.over ?? ['no report']).toEqual([])
+      expect(report[label]?.scrollers.length ?? 9).toBeLessThanOrEqual(1)
+      expect(report[label]?.clipped ?? ['no report']).toEqual([])
+    }
+  )
 
-  it.each(DIALOGS)('%s: the whole dialog is on the screen, its buttons in sight', (label) => {
-    const d = report[label] as Dialog
-    expect(d?.edges?.[0] ?? -1).toBeGreaterThanOrEqual(0)
-    expect(d?.edges?.[1] ?? 9999).toBeLessThanOrEqual(PHONE.height)
-    expect(d?.hidden ?? ['no report']).toEqual([])
-  })
+  it.each([...DIALOGS, ...CANVAS_SCREENS])(
+    '%s: the whole dialog is on the screen, its buttons in sight',
+    (label) => {
+      const d = report[label] as Dialog
+      expect(d?.edges?.[0] ?? -1).toBeGreaterThanOrEqual(0)
+      expect(d?.edges?.[1] ?? 9999).toBeLessThanOrEqual(PHONE.height)
+      expect(d?.hidden ?? ['no report']).toEqual([])
+    }
+  )
+
+  it.each(CANVAS_SCREENS)(
+    '%s: review and confirmation preserve source, pending work and history',
+    (label) => {
+      const screen = report[label] as Screen & {
+        retained: boolean
+        sourceSame: boolean
+        process: number
+        ack: number
+        undo: number
+        baselineLabel: string | null
+      }
+      expect(screen.error).toBe('')
+      expect(screen.retained).toBe(true)
+      expect(screen.sourceSame).toBe(true)
+      expect(screen.process).toBe(0)
+      expect(screen.ack).toBe(0)
+      expect(screen.undo).toBe(0)
+      if (label === 'canvas publication review')
+        expect(screen.baselineLabel).toBe('Original baseline (historical)')
+    }
+  )
 
   it('key-destinations: every body action stays paired with its visible recipient and warning', () => {
     const dialog = report['dialog key-destinations'] as RecipientScreen
