@@ -15,6 +15,7 @@ import { shotDir } from './helpers/shots'
 import { onPhone, targets } from './helpers/target'
 import { manualKeyConsentProbe } from '../helpers/manualKeyConsentProbe'
 import { stagedNativeControl } from '../helpers/stagedNativeControl'
+import { nativeControlFrame } from '../helpers/nativeControlFrame'
 
 targets('desktop', 'phone')
 const shots = shotDir('abele-manual-key-consent')
@@ -74,7 +75,7 @@ describe.skipIf(!available).each(modes)(
         console.info('manual consent installed development identity', JSON.stringify(identity))
         const status = physical ? JSON.parse(driver(['status'])) : null
         const screen = status?.screen ?? status?.driver?.screen
-        const nativeFrame = screen ? { width: screen.width, height: screen.height } : null
+        const nativeFrame = physical ? nativeControlFrame(screen) : null
         for (const control of controls) {
           let geometry
           if (physical && control.kind === 'editable') {
