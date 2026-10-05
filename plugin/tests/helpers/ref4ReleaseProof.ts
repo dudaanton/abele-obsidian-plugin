@@ -164,3 +164,222 @@ export function nativeWebViewFrame(source: string): RectProof {
   if (frames.length !== 1) throw new Error('native WebView frame is absent or ambiguous')
   return frames[0]
 }
+
+export interface SelectionReaderOwner {
+  id: string
+  view: {
+    file?: { path: string }
+    model: { status: string }
+    reading?: object
+    engine: { renderer: HTMLElement & { getContents(): { doc: Document }[] } }
+    containerEl: HTMLElement
+  }
+}
+export interface SelectionCapture {
+  leaf: SelectionReaderOwner
+  expectedPath: string
+  view: SelectionReaderOwner['view']
+  session: object
+  engine: SelectionReaderOwner['view']['engine']
+  renderer: SelectionReaderOwner['view']['engine']['renderer']
+  doc: Document
+  frame: HTMLIFrameElement
+  frameWindow: Window
+  text: Text
+  paragraph: HTMLElement
+  word: string
+  start: number
+  end: number
+  local: { x: number; y: number }
+  css: { x: number; y: number }
+}
+export interface LiveSelectionObservation {
+  owner: string
+  path: string
+  ready: boolean
+  initialSelection: string
+  caretHit: boolean
+  rootHit: boolean
+  obstructed: boolean
+  signature: string
+  identities: Record<
+    'leaf' | 'view' | 'session' | 'engine' | 'renderer' | 'document' | 'frame' | 'window' | 'word',
+    boolean
+  >
+  wordRect: RectProof | null
+  notices: { rect: RectProof; intersects: boolean }[]
+}
+
+/** Self-contained: this exact function runs in the app and in caller fault tests. */
+export function observeSelectionDelivery(
+  captured: SelectionCapture,
+  active: SelectionReaderOwner | undefined,
+  root: Window
+): LiveSelectionObservation {
+  const view = captured.leaf.view
+  const renderer = view.engine.renderer
+  const doc = renderer.getContents()[0]?.doc
+  const win = doc?.defaultView
+  const frame = win?.frameElement as HTMLIFrameElement | null
+  if (!doc || !win || !frame) throw new Error('current reader document/frame unavailable')
+  const rect = (r: DOMRect): RectProof => ({ x: r.x, y: r.y, width: r.width, height: r.height })
+  const box = frame.getBoundingClientRect(),
+    vv = root.visualViewport
+  if (!vv) throw new Error('current visual viewport unavailable')
+  const geometry = {
+    iframe: rect(box),
+    border: { x: frame.clientLeft, y: frame.clientTop },
+    scale: { x: box.width / frame.offsetWidth, y: box.height / frame.offsetHeight },
+    viewport: { width: root.innerWidth, height: root.innerHeight },
+    visual: {
+      width: vv.width,
+      height: vv.height,
+      offsetLeft: vv.offsetLeft,
+      offsetTop: vv.offsetTop,
+    },
+    visualScale: vv.scale,
+    transform: root.getComputedStyle(frame).transform,
+    reader: rect(renderer.getBoundingClientRect()),
+  }
+  const wordSame =
+    doc === captured.doc &&
+    doc.contains(captured.text) &&
+    captured.text.parentElement === captured.paragraph &&
+    captured.text.data.slice(captured.start, captured.end) === captured.word
+  let wordRect: RectProof | null = null
+  if (wordSame) {
+    const range = doc.createRange()
+    range.setStart(captured.text, captured.start)
+    range.setEnd(captured.text, captured.end)
+    const boxes = range.getClientRects()
+    if (boxes.length === 1) wordRect = rect(boxes[0])
+  }
+  const caret = doc.caretRangeFromPoint(captured.local.x, captured.local.y)
+  const hit = root.document.elementFromPoint(captured.css.x, captured.css.y)
+  let rootHit = hit === (view.engine as unknown) || hit === renderer || hit === frame
+  let node: Element = frame
+  for (;;) {
+    const host = (node.getRootNode() as ShadowRoot).host
+    if (!host) break
+    rootHit ||= hit === host
+    node = host
+  }
+  const notices = [...root.document.querySelectorAll('.notice')].map((el) => {
+    const r = el.getBoundingClientRect()
+    return {
+      rect: rect(r),
+      intersects:
+        captured.css.x >= r.left &&
+        captured.css.x <= r.right &&
+        captured.css.y >= r.top &&
+        captured.css.y <= r.bottom,
+    }
+  })
+  return {
+    owner: active?.id ?? '',
+    // Observe exact equality without exporting an unexpected foreign path or selected text.
+    path:
+      active?.view.file?.path === captured.expectedPath
+        ? captured.expectedPath
+        : '<different-path>',
+    ready:
+      active === captured.leaf &&
+      view.model.status === 'ready' &&
+      !!view.reading &&
+      view.containerEl.isConnected &&
+      frame.isConnected,
+    initialSelection: String(doc.getSelection()).trim() ? '[nonempty]' : '',
+    caretHit:
+      !!caret &&
+      caret.startContainer === captured.text &&
+      caret.startOffset >= captured.start &&
+      caret.startOffset <= captured.end,
+    rootHit: !!hit && rootHit,
+    obstructed: notices.some((n) => n.intersects),
+    signature: JSON.stringify(geometry),
+    identities: {
+      leaf: active === captured.leaf,
+      view: view === captured.view,
+      session: view.reading === captured.session,
+      engine: view.engine === captured.engine,
+      renderer: renderer === captured.renderer,
+      document: doc === captured.doc,
+      frame: frame === captured.frame,
+      window: win === captured.frameWindow,
+      word: wordSame,
+    },
+    wordRect,
+    notices,
+  }
+}
+
+/** The actual E2E delivery caller. The live observation is last, never a cached flag bundle. */
+export async function dispatchSelectionHold(
+  captured: SelectionPointProof & { wordRect: RectProof },
+  observe: () => Promise<LiveSelectionObservation>,
+  hold: (point: { x: number; y: number }, live: LiveSelectionObservation) => void
+): Promise<void> {
+  const live = await observe()
+  const identityKeys = [
+    'leaf',
+    'view',
+    'session',
+    'engine',
+    'renderer',
+    'document',
+    'frame',
+    'window',
+    'word',
+  ] as const
+  if (!live.identities || identityKeys.some((key) => live.identities[key] !== true))
+    throw new Error('native-selection captured owner/session/document/word identity changed')
+  if (JSON.stringify(live.wordRect) !== JSON.stringify(captured.wordRect))
+    throw new Error('native-selection measured word moved')
+  const point = requireSelectionPoint({
+    ...captured,
+    owner: live.owner,
+    path: live.path,
+    ready: live.ready,
+    initialSelection: live.initialSelection,
+    caretHit: live.caretHit,
+    rootHit: live.rootHit,
+    obstructed: live.obstructed,
+    liveSignature: live.signature,
+  })
+  hold(point, live)
+}
+
+/** A separately measured public cleanup control, not a fabricated word-selection proof. */
+export function nativeCleanupPoint(
+  css: { x: number; y: number },
+  visual: SelectionPointProof['visual'],
+  frame: RectProof
+): { x: number; y: number } {
+  if (
+    ![
+      css.x,
+      css.y,
+      visual.width,
+      visual.height,
+      visual.offsetLeft,
+      visual.offsetTop,
+      frame.x,
+      frame.y,
+      frame.width,
+      frame.height,
+    ].every(Number.isFinite) ||
+    visual.width <= 0 ||
+    visual.height <= 0 ||
+    frame.width <= 0 ||
+    frame.height <= 0 ||
+    css.x < visual.offsetLeft ||
+    css.y < visual.offsetTop ||
+    css.x >= visual.offsetLeft + visual.width ||
+    css.y >= visual.offsetTop + visual.height
+  )
+    throw new Error('public selection-cleanup point is outside the measured viewport')
+  return {
+    x: frame.x + ((css.x - visual.offsetLeft) * frame.width) / visual.width,
+    y: frame.y + ((css.y - visual.offsetTop) * frame.height) / visual.height,
+  }
+}

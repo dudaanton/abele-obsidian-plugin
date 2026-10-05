@@ -17,13 +17,19 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { driver, longPress, screenshot, tap } from './helpers/phone'
+import { driver, screenshot } from './helpers/phone'
 import {
   nativeWebViewFrame,
   requireSelectionPoint,
+  observeSelectionDelivery,
+  dispatchSelectionHold,
+  nativeCleanupPoint,
+  type LiveSelectionObservation,
+  type RectProof,
   type SelectionPointProof,
 } from '../helpers/ref4ReleaseProof'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { buildLatvianEpub } from '../fixtures/books/latvianBook'
 import { shotDir } from './helpers/shots'
@@ -34,6 +40,8 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader selection place e2e'
 const BOOK = `${DIR}/lv.epub`
 const SHOTS = shotDir('abele-phone')
+const nativeMenu = (source: string) =>
+  /(?:Menu|MenuItem),|label: '(?:Copy|Look Up|Translate)'/.test(source)
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -42,6 +50,7 @@ const PRELUDE = `
     while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
     return null
   }
+  const observeDelivery = ${observeSelectionDelivery.toString()}
   const cfg = window.__abeleTest.AbeleConfig.getInstance()
   const setReader = async (patch) => { cfg.reader = { ...cfg.reader, ...patch }; await cfg.saveSettings() }
   const view = () => window.__abeleSelectionPlace?.view
@@ -64,7 +73,6 @@ const PRELUDE = `
       viewport:{width:innerWidth,height:innerHeight},visual:{width:vv.width,height:vv.height,offsetLeft:vv.offsetLeft,offsetTop:vv.offsetTop},
       visualScale:vv.scale,transform:getComputedStyle(frame).transform,reader:rect(view().engine.renderer.getBoundingClientRect()) }
   }
-  const signature = () => JSON.stringify([window.__abeleSelectionPlace.id,view().file?.path,geometry()])
   const owner = () => ({owner:app.workspace.activeLeaf?.id,path:app.workspace.activeLeaf?.view.file?.path,
     ready:app.workspace.activeLeaf===window.__abeleSelectionPlace && view().model.status==='ready' && !!view().reading && view().containerEl.isConnected})
   /** Every whole word on the page shown, with its measured box in the page's coordinates. */
@@ -168,6 +176,35 @@ describe.skipIf(!available)('a word is selected where it is drawn', () => {
       })()`,
       60_000
     )
+    if (onPhone()) {
+      const boundary = evalJson<{
+        folderAbsent: boolean
+        leaves: number
+        globalsAbsent: boolean
+        readerRestored: boolean
+      }>(`({
+        folderAbsent:!app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}),
+        leaves:app.workspace.getLeavesOfType('abele-book').filter(l=>l.view.file?.path===${JSON.stringify(BOOK)}).length,
+        globalsAbsent:!window.__abeleSelectionPlace&&!window.__abeleSelectionProbe,
+        readerRestored:JSON.stringify(window.__abeleTest.AbeleConfig.getInstance().reader)===${JSON.stringify(JSON.stringify(savedReader))}
+      })`)
+      const menuPresent = nativeMenu(driver(['source']))
+      writeFileSync(
+        join(SHOTS, 'selection-final-boundary.json'),
+        JSON.stringify({ ...boundary, nativeMenuPresent: menuPresent }, null, 2)
+      )
+      screenshot(`${SHOTS}/selection-place-final-boundary.png`)
+      expect(
+        { ...boundary, nativeMenuPresent: menuPresent },
+        'ordinary teardown boundary before wrapper drop'
+      ).toEqual({
+        folderAbsent: true,
+        leaves: 0,
+        globalsAbsent: true,
+        readerRestored: true,
+        nativeMenuPresent: false,
+      })
+    }
   }, 90_000)
 
   it('measures every word where a touch finds it, once the page has settled', async () => {
@@ -197,8 +234,29 @@ describe.skipIf(!available)('a word is selected where it is drawn', () => {
 
   it('selects the word a finger holds, with its selection over that word (phone)', async () => {
     if (!onPhone()) return
+    const build = process.env.ABELE_PHONE_BUILD
+    if (!build) throw Error('native validation requires the assigned phone build')
+    const expectedHash = createHash('sha256')
+      .update(readFileSync(join(build, 'main.js')))
+      .digest('hex')
+    const identity = await run<{ hash: string; bytes: number; loaded: boolean; error?: string }>(`
+      const bytes=await app.vault.adapter.readBinary('.obsidian/plugins/abele/main.js')
+      const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('')
+      return JSON.stringify({hash,bytes:bytes.byteLength,loaded:!!app.plugins.plugins.abele?._loaded&&!!window.__abeleTest})
+    `)
+    writeFileSync(
+      join(SHOTS, 'selection-runtime-identity.json'),
+      JSON.stringify({ expectedHash, ...identity }, null, 2)
+    )
+    expect(identity.error).toBeUndefined()
+    expect(identity.hash).toBe(expectedHash)
+    expect(identity.loaded).toBe(true)
     const pick = await run<
-      Omit<SelectionPointProof, 'nativeFrame' | 'liveSignature'> & { error?: string; word: string }
+      Omit<SelectionPointProof, 'nativeFrame' | 'liveSignature'> & {
+        error?: string
+        word: string
+        wordRect: RectProof
+      }
     >(`
       if (!view()) { await openBook(); await wait(2500) }
       // A word whose measured middle a touch finds inside another word, if the page has one:
@@ -237,47 +295,69 @@ describe.skipIf(!available)('a word is selected where it is drawn', () => {
         }
         doc.addEventListener(type,handler,true);handlers.push([type,handler])
       }
-      window.__abeleSelectionProbe={doc,w,events,dispose:() => handlers.forEach(([type,handler]) => doc.removeEventListener(type,handler,true))}
+      const leaf=window.__abeleSelectionPlace, v=leaf.view
+      const capture={leaf,expectedPath:${JSON.stringify(BOOK)},view:v,session:v.reading,engine:v.engine,renderer:v.engine.renderer,
+        doc,frame:doc.defaultView.frameElement,frameWindow:doc.defaultView,text:w.text,paragraph:w.text.parentElement,
+        word:w.word,start:w.start,end:w.end,local,css}
+      window.__abeleSelectionProbe={doc,w,capture,events,dispose:() => handlers.forEach(([type,handler]) => doc.removeEventListener(type,handler,true))}
       return JSON.stringify({...owner(),...g,word:w.word,wordRect:rect(w.r),local,css,notices,
-        expectedOwner:window.__abeleSelectionPlace.id,expectedPath:${JSON.stringify(BOOK)},signature:signature(),
+        expectedOwner:window.__abeleSelectionPlace.id,expectedPath:${JSON.stringify(BOOK)},signature:JSON.stringify(g),
         initialSelection:String(doc.getSelection()),caretHit:!!caret&&caret.startContainer===w.text&&caret.startOffset>=w.start&&caret.startOffset<=w.end,
         rootHit:!!hit&&(hit===view().engine||view().containerEl.contains(hit)),obstructed:notices.some(n=>n.intersects)})
     `)
     const evidence: Record<string, unknown> = {
       pick,
       actionCount: 0,
-      cleanupAction: 'one ordinary tap at the held word after result capture',
+      identity,
+      cleanupAction:
+        'CLEANUP: one native tap on the owned public Clear the selection control; verify connected selection/menu, then ordinary owned-leaf teardown and boundary observation; no fallback or retry',
     }
     const save = () =>
       writeFileSync(join(SHOTS, 'selection-delivery.json'), JSON.stringify(evidence, null, 2))
     save()
     expect(pick.error).toBeUndefined()
-    const nativeMenu = (source: string) =>
-      /(?:Menu|MenuItem),|label: '(?:Copy|Look Up|Translate)'/.test(source)
     const nativeSource = driver(['source'])
     expect(nativeMenu(nativeSource), 'no pre-existing native selection menu').toBe(false)
     const nativeFrame = nativeWebViewFrame(nativeSource)
     const status = JSON.parse(driver(['status'])) as { screen?: unknown }
     evidence.screen = status.screen
-    const live = await run<{ signature: string; error?: string }>(
-      `return JSON.stringify({signature:signature()})`
-    )
-    const point = requireSelectionPoint({ ...pick, nativeFrame, liveSignature: live.signature })
+    const point = requireSelectionPoint({ ...pick, nativeFrame, liveSignature: pick.signature })
     evidence.nativeFrame = nativeFrame
     evidence.nativePoint = point
     save()
     screenshot(`${SHOTS}/selection-place-before.png`)
-    const atDelivery = await run<{ signature: string }>(
-      `return JSON.stringify({signature:signature()})`
-    )
-    requireSelectionPoint({ ...pick, nativeFrame, liveSignature: atDelivery.signature })
+    const deliverySource = driver(['source']),
+      deliveryFrame = nativeWebViewFrame(deliverySource)
+    evidence.nativeAtDelivery = { frame: deliveryFrame, menuPresent: nativeMenu(deliverySource) }
+    save()
+    expect(deliveryFrame, 'native frame did not change after capture').toEqual(nativeFrame)
+    expect(nativeMenu(deliverySource), 'no native menu interposed before delivery').toBe(false)
     let held = false
     try {
-      held = true
-      evidence.actionCount = 1
-      save()
-      longPress(point.x, point.y) // Exactly one attempt; a missing acknowledgement is never replayed.
-      evidence.acknowledged = true
+      await dispatchSelectionHold(
+        { ...pick, nativeFrame, liveSignature: pick.signature },
+        async () => {
+          const live = await run<LiveSelectionObservation>(
+            `return JSON.stringify(observeDelivery(window.__abeleSelectionProbe.capture,app.workspace.activeLeaf,window))`
+          )
+          evidence.atDelivery = live
+          return live
+        },
+        (point, live) => {
+          evidence.atDelivery = live
+          held = true
+          evidence.actionCount = 1
+          save()
+          // Same ordinary driver route, but retain the explicit acknowledgement, not just exit 0.
+          const reply = JSON.parse(driver(['longpress', String(point.x), String(point.y)])) as {
+            ok?: boolean
+          }
+          evidence.nativeAcknowledgement = { ok: reply.ok }
+          evidence.acknowledged = reply.ok === true
+          save()
+          expect(reply.ok, 'one native hold explicitly acknowledged').toBe(true)
+        }
+      )
       screenshot(`${SHOTS}/selection-place-held.png`)
       const r = await run<{
         error?: string
@@ -315,32 +395,105 @@ describe.skipIf(!available)('a word is selected where it is drawn', () => {
       expect(r.dx, 'the selection box starts where the word does').toBeLessThanOrEqual(1)
       expect(r.unroundedDx).toBeGreaterThanOrEqual(0)
       expect(r.unroundedDx).toBeLessThanOrEqual(1)
+    } catch (error) {
+      evidence.primaryError = String(error)
+      save()
+      throw error
     } finally {
       if (held) {
-        const boundary = await run<{ ready: boolean; owner: string; signature: string }>(
-          `return JSON.stringify({...owner(),signature:signature()})`
-        )
-        evidence.preCleanup = boundary
-        save()
-        expect(boundary.ready, 'owned selection cleanup target remains ready').toBe(true)
-        expect(boundary.owner, 'no guessed cleanup owner').toBe(pick.owner)
-        expect(boundary.signature, 'no guessed cleanup point').toBe(pick.signature)
-        // Public native tap only AFTER the result was captured. Never script a selection clear.
-        tap(point.x, point.y)
-        const cleanup = await run<{ empty: boolean }>(`
-          const doc=window.__abeleSelectionProbe.doc
-          const empty=!!await until(() => !String(doc.getSelection()).trim(),5000)
-          window.__abeleSelectionProbe.dispose();delete window.__abeleSelectionProbe
-          return JSON.stringify({empty})
+        let cleanupError: string | undefined
+        try {
+          if (evidence.acknowledged === true) {
+            const cleanupSource = driver(['source'])
+            const cleanupFrame = nativeWebViewFrame(cleanupSource)
+            const target = await run<{
+              error?: string
+              owned: boolean
+              hit: boolean
+              css: { x: number; y: number }
+              visual: SelectionPointProof['visual']
+              rect: RectProof
+            }>(`
+              const probe=window.__abeleSelectionProbe, live=observeDelivery(probe.capture,app.workspace.activeLeaf,window)
+              const control=view().containerEl.querySelector('.abele-book-selection__actions svg.lucide-x')?.closest('.abele-obsidian-icon')
+              if (!control || view().model.active || !view().model.selection) throw Error('owned public selection-dismiss control unavailable')
+              const r=control.getBoundingClientRect(), css={x:r.left+r.width/2,y:r.top+r.height/2}, top=document.elementFromPoint(css.x,css.y)
+              return JSON.stringify({owned:live.ready&&live.owner===${JSON.stringify(pick.owner)}&&live.path===${JSON.stringify(BOOK)}&&Object.values(live.identities).every(Boolean),
+                hit:control.isConnected&&r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&(top===control||control.contains(top)),
+                css,rect:rect(r),visual:geometry().visual})
+            `)
+            evidence.cleanupTarget = {
+              ...target,
+              nativeFrame: cleanupFrame,
+              nativeMenuBefore: nativeMenu(cleanupSource),
+            }
+            save()
+            expect(target.error).toBeUndefined()
+            expect(target.owned, 'fresh exact owned cleanup session/document').toBe(true)
+            expect(target.hit, 'public cleanup control is the actual unobstructed hit').toBe(true)
+            const cleanupPoint = nativeCleanupPoint(target.css, target.visual, cleanupFrame)
+            evidence.cleanupNativePoint = cleanupPoint
+            evidence.cleanupActionCount = 1
+            save()
+            // Ordinary public control, only AFTER primary proof; never script a selection clear.
+            const reply = JSON.parse(
+              driver(['tap', String(cleanupPoint.x), String(cleanupPoint.y)])
+            ) as { ok?: boolean }
+            evidence.cleanupAcknowledgement = { ok: reply.ok }
+            evidence.cleanupAcknowledged = reply.ok === true
+            save()
+            expect(reply.ok, 'one ordinary cleanup input explicitly acknowledged').toBe(true)
+          } else
+            evidence.cleanupStopped = 'hold acknowledgement unknown; no cleanup input or replay'
+        } catch (error) {
+          cleanupError = String(error)
+        }
+        // Both observations and assertions run even when the action or one cleanup fact fails.
+        const cleanup = await run<{
+          error?: string
+          currentOwnedDocument: boolean
+          empty: boolean
+          toolbarAbsent: boolean
+          modelEmpty: boolean
+        }>(`
+          const probe=window.__abeleSelectionProbe
+          const current=()=>view()?.engine.renderer.getContents()[0]?.doc
+          const owned=()=>app.workspace.activeLeaf===probe.capture.leaf&&view()===probe.capture.view&&view().file?.path===${JSON.stringify(BOOK)}&&
+            view().reading===probe.capture.session&&current()===probe.capture.doc&&current().defaultView===probe.capture.frameWindow&&current().defaultView.frameElement===probe.capture.frame&&probe.capture.frame.isConnected
+          const empty=!!await until(()=>owned()&&!String(current().getSelection()).trim()&&!view().model.selection&&!view().containerEl.querySelector('.abele-book-selection'),5000)
+          const out={currentOwnedDocument:owned(),empty,toolbarAbsent:!view().containerEl.querySelector('.abele-book-selection'),modelEmpty:!view().model.selection}
+          probe.dispose();delete window.__abeleSelectionProbe
+          return JSON.stringify(out)
         `)
-        evidence.cleanup = { ...cleanup, nativeMenuPresent: nativeMenu(driver(['source'])) }
+        let menuPresent: boolean | undefined, menuError: string | undefined
+        try {
+          menuPresent = nativeMenu(driver(['source']))
+        } catch (error) {
+          menuError = String(error)
+        }
+        evidence.cleanup = {
+          ...cleanup,
+          nativeMenuPresent: menuPresent,
+          nativeMenuObservationError: menuError,
+          actionError: cleanupError,
+        }
         save()
         screenshot(`${SHOTS}/selection-place-cleanup.png`)
-        expect(cleanup.empty, 'owned native selection dismissed').toBe(true)
-        expect(
-          (evidence.cleanup as { nativeMenuPresent: boolean }).nativeMenuPresent,
-          'owned native menu dismissed before release'
-        ).toBe(false)
+        expect
+          .soft(cleanupError, 'ordinary cleanup input acknowledged without guessing/replay')
+          .toBeUndefined()
+        expect.soft(cleanup.error).toBeUndefined()
+        expect
+          .soft(
+            cleanup.currentOwnedDocument,
+            'selection absence belongs to the current connected owned document'
+          )
+          .toBe(true)
+        expect.soft(cleanup.empty, 'owned native selection dismissed').toBe(true)
+        expect.soft(cleanup.toolbarAbsent, 'owned selection toolbar dismissed').toBe(true)
+        expect.soft(cleanup.modelEmpty).toBe(true)
+        expect.soft(menuError, 'native menu independently observed').toBeUndefined()
+        expect.soft(menuPresent, 'owned native menu dismissed before release').toBe(false)
       }
     }
   }, 120_000)
