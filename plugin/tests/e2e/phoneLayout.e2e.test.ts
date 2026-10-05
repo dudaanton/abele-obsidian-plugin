@@ -1017,6 +1017,25 @@ const probeScript = `(async () => {
       }
     }
 
+    // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
+    // native floating view header must be above its calendar, not painted over the first week.
+    const timelineLeaf = app.workspace.getLeaf('tab')
+    try {
+      await timelineLeaf.setViewState({ type: 'abele-timeline-sidebar-view', active: true })
+      app.workspace.setActiveLeaf(timelineLeaf, { focus: true })
+      const timeline = await until(() => timelineLeaf.view.containerEl.querySelector('.abele-timeline-sidebar'), 5000)
+      const root = timelineLeaf.view.containerEl.querySelector('.abele-timeline-sidebar')
+      const calendar = root?.querySelector('.abele-calendar')
+      const header = timelineLeaf.view.containerEl.querySelector('.view-header')
+      if (timeline && calendar && header) {
+        await screen('timeline main tab', root, root)
+        report['timeline main tab'].calendarGap = Math.round(calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom)
+        report['timeline main tab'].scrollHeight = root.clientHeight
+      } else report['timeline main tab'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no main-tab calendar or view header' }
+    } finally {
+      timelineLeaf.detach()
+    }
+
     // Canvas-only inventory through the existing registered action; no shared dialog API fixture.
     await (async () => { ${PUBLICATION_SETUP} })()
     try {
@@ -1057,25 +1076,6 @@ const probeScript = `(async () => {
       for(const label of ${JSON.stringify(CANVAS_SCREENS)})if(!report[label])report[label]={over:[],scrollers:[],capped:[],stranded:[],clipped:[],fill:0,shot:'',error:String(error?.message??error)}
     } finally {
       await (async () => { ${PUBLICATION_CLEANUP} })()
-    }
-
-    // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
-    // native floating view header must be above its calendar, not painted over the first week.
-    const timelineLeaf = app.workspace.getLeaf('tab')
-    try {
-      await timelineLeaf.setViewState({ type: 'abele-timeline-sidebar-view', active: true })
-      app.workspace.setActiveLeaf(timelineLeaf, { focus: true })
-      const timeline = await until(() => timelineLeaf.view.containerEl.querySelector('.abele-timeline-sidebar'), 5000)
-      const root = timelineLeaf.view.containerEl.querySelector('.abele-timeline-sidebar')
-      const calendar = root?.querySelector('.abele-calendar')
-      const header = timelineLeaf.view.containerEl.querySelector('.view-header')
-      if (timeline && calendar && header) {
-        await screen('timeline main tab', root, root)
-        report['timeline main tab'].calendarGap = Math.round(calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom)
-        report['timeline main tab'].scrollHeight = root.clientHeight
-      } else report['timeline main tab'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no main-tab calendar or view header' }
-    } finally {
-      timelineLeaf.detach()
     }
 
     // A changelog is a tab, not a sheet; its Notice is transient, not a modal. The final
