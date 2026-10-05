@@ -77,6 +77,12 @@ const probe = (label: string) => String.raw`(async () => {
   const anchor = (kind, path) => [...root().querySelectorAll('[data-abele-anchor]')]
     .find(el => el.getAttribute('data-abele-anchor') === kind + ':' + path)
   try {
+    const manifest = app.plugins.plugins.abele.manifest
+    const bytes = new TextEncoder().encode(await app.vault.adapter.read(manifest.dir+'/main.js'))
+    const digest = await crypto.subtle.digest('SHA-256',bytes)
+    report.runtime = {version:manifest.version,bytes:bytes.length,
+      sha256:[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join(''),
+      generation:performance.timeOrigin,testApi:!!window.__abeleTest}
     await frame()
     config.rememberNotePlaces = false
     await app.vault.createFolder(folder)
@@ -371,7 +377,11 @@ async function check(label: string) {
   if (raw.startsWith('Error:')) throw new Error(raw)
   const report = JSON.parse(raw)
   console.info(JSON.stringify(report.pagingDiagnostics))
-  const { pagingDiagnostics, cleanup, ...outcomes } = report
+  const { pagingDiagnostics, cleanup, runtime, ...outcomes } = report
+  console.info('relation runtime '+JSON.stringify(runtime))
+  expect(runtime.testApi).toBe(true)
+  expect(runtime.bytes).toBeGreaterThan(0)
+  expect(runtime.sha256).toMatch(/^[a-f0-9]{64}$/)
   expect(cleanup.activeLeaf).toBe(cleanup.expectedActive)
   for (const key of [
     'panesRestored',
