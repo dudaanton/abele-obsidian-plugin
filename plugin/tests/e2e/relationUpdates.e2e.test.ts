@@ -34,6 +34,7 @@ const probe = (label: string) => String.raw`(async () => {
   const report = {}
   const pagingDiagnostics = []
   let pagingState = () => null
+  let physicalState = () => null
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async (fn, label) => {
     const deadline = Date.now() + 15000
@@ -43,7 +44,7 @@ const probe = (label: string) => String.raw`(async () => {
       await wait(50)
     }
     const detail = label.includes('tail page') || label.includes('reading place') || label.includes('root owner')
-      ? '; paging=' + JSON.stringify(pagingState()) + '; prior=' + JSON.stringify(pagingDiagnostics)
+      ? '; paging=' + JSON.stringify(pagingState()) + '; physical=' + JSON.stringify(physicalState()) + '; prior=' + JSON.stringify(pagingDiagnostics)
       : ''
     throw Error('not ready: ' + label + detail)
   }
@@ -208,6 +209,7 @@ const probe = (label: string) => String.raw`(async () => {
         ids:rows().map(row=>row.getAttribute('data-message-id')),
         firstVisible:visible?.getAttribute('data-message-id'),offset:visible&&rect ? visible.getBoundingClientRect().top-rect.top : null}
     }
+    physicalState = ownerState
     await until(() => rows().length === 30, 'initial tail page')
     if (app.isMobile) {
       // Deliberate ordinary expanded-drawer fixture: mounted/active root is not physical visibility.
@@ -221,9 +223,10 @@ const probe = (label: string) => String.raw`(async () => {
       // Public fixture dismissal, not closing either pane or changing product routing.
       app.workspace.leftSplit.collapse()
       app.workspace.rightSplit.collapse()
-      await app.workspace.revealLeaf(pagingOwner)
-      app.workspace.setActiveLeaf(pagingOwner, {focus:true})
     }
+    // Public reveal/focus belongs to the same owner on desktop too, not a prior note leaf.
+    await app.workspace.revealLeaf(pagingOwner)
+    app.workspace.setActiveLeaf(pagingOwner, {focus:true})
     await until(() => visibleRoot(ownerState()), 'same root owner visible after public dismissal')
     await frame()
     const rootBeforeInput = ownerState()
@@ -289,6 +292,9 @@ const probe = (label: string) => String.raw`(async () => {
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
       } else await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseWheel',x,y,deltaX:0,deltaY:-180})
     }
+    // Input acknowledgement can precede DOM delivery (notably desktop wheel input).
+    // Observe the one queued gesture before removing its listener; never resend it.
+    await until(() => nativeEvents.some(e=>e.trusted&&e.inside), 'native input delivery')
     } finally {
       for(const kind of nativeKinds) document.removeEventListener(kind,captureNative,true)
     }
