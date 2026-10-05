@@ -1035,7 +1035,9 @@ const probeScript = `(async () => {
           }
           const root=modal()
           if(root!==fixture.view.publicationReviewModal?.modalEl)throw Error('Canvas inventory owner changed')
-          await screen(label,root,root.querySelector('.abele-modal__body'))
+          const captureLabel=label+'-'+Date.now()+'-'+Math.random().toString(16).slice(2,10)
+          await screen(captureLabel,root,root.querySelector('.abele-modal__body'))
+          report[label]=report[captureLabel];delete report[captureLabel]
           const bounds=root.getBoundingClientRect()
           report[label].edges=[Math.round(bounds.top),Math.round(bounds.bottom)]
           report[label].hidden=[...root.querySelectorAll('.abele-modal__footer button')].filter(el=>{
