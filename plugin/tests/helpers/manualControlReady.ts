@@ -4,6 +4,8 @@ export interface ManualControlWitness {
   focused: boolean
   nativeKeyboard: number
   fullHeight: number
+  baselineInnerHeight: number
+  baselineVisualHeight: number
   innerHeight: number
   visualTop: number
   visualHeight: number
@@ -20,8 +22,8 @@ export function manualControlReady(sample: ManualControlWitness): boolean {
   const keyboard = Math.max(
     0,
     sample.nativeKeyboard,
-    sample.fullHeight - sample.innerHeight,
-    sample.fullHeight - sample.visualTop - sample.visualHeight
+    sample.baselineInnerHeight - sample.innerHeight,
+    sample.baselineVisualHeight - sample.visualHeight
   )
   return sample.acknowledged && sample.initialTarget && sample.trustedFocus && keyboard > 0
 }

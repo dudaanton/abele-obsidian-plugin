@@ -8,6 +8,8 @@ const witness = (extra: Partial<ManualControlWitness> = {}): ManualControlWitnes
   focused: true,
   nativeKeyboard: 0,
   fullHeight: 844,
+  baselineInnerHeight: 844,
+  baselineVisualHeight: 844,
   innerHeight: 844,
   visualTop: 0,
   visualHeight: 844,

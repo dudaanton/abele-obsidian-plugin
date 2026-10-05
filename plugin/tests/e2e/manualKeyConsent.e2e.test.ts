@@ -35,15 +35,8 @@ describe.skipIf(!available).each(modes)(
     it('saves a protected key, approves just its recipient and retries the unchanged literal script', async () => {
       const physical = onPhone()
       let desktopSize: [number, number] | undefined
-      if (mode === 'emulated') {
-        desktopSize = evalJson<[number, number]>(
-          `require('@electron/remote').getCurrentWindow().getContentSize()`
-        )
-        await reloadApp('app.emulateMobile(true)')
-        evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
-      }
       const token = 'sample-consent-' + Date.now()
-      const deadline = Date.now() + 90_000
+      let deadline = Date.now() + 90_000
       const allowance = () => {
         const remaining = deadline - Date.now()
         if (remaining <= 0) throw new Error('Sample consent probe exceeded its existing allowance')
@@ -57,8 +50,32 @@ describe.skipIf(!available).each(modes)(
       const invoke = async (action: string) => JSON.parse(await evalLong(code(action), allowance()))
       let report: Record<string, any> | undefined
       let failure: unknown
+      let hasFailure = false
+      const secondaryFailures: Array<{ stage: string; message: string }> = []
+      const cleanupStage = async (stage: string, run: () => unknown | Promise<unknown>) => {
+        try {
+          await run()
+        } catch (error) {
+          if (!hasFailure) {
+            failure = error
+            hasFailure = true
+          } else
+            secondaryFailures.push({
+              stage,
+              message: error instanceof Error ? error.message : String(error),
+            })
+        }
+      }
       let cleanup: Record<string, boolean | number> | undefined
       try {
+        if (mode === 'emulated') {
+          desktopSize = evalJson<[number, number]>(
+            `require('@electron/remote').getCurrentWindow().getContentSize()`
+          )
+          await reloadApp('app.emulateMobile(true)')
+          evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
+          deadline = Date.now() + 90_000
+        }
         const controls = JSON.parse(
           await evalLong(manualKeyConsentProbe(shots, token, physical), allowance())
         ) as Control[]
@@ -108,9 +125,10 @@ describe.skipIf(!available).each(modes)(
         console.info(formShot, allowedShot)
       } catch (error) {
         failure = error
+        hasFailure = true
         throw error
       } finally {
-        try {
+        await cleanupStage('browser', async () => {
           const raw = await evalLong(
             `(async()=>{
           const s=window.__sampleManualConsent
@@ -120,18 +138,23 @@ describe.skipIf(!available).each(modes)(
           )
           cleanup = JSON.parse(raw)
           console.info('manual consent exact cleanup', JSON.stringify(cleanup))
-        } catch (error) {
-          if (failure) console.warn('Manual consent cleanup failed after primary error', error)
-          else failure = error
-        }
+        })
         if (desktopSize) {
-          evalRaw(
-            `require('@electron/remote').getCurrentWindow().setContentSize(${desktopSize[0]},${desktopSize[1]})`
+          const size = desktopSize
+          await cleanupStage('resize', () =>
+            evalRaw(
+              `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
+            )
           )
-          await reloadApp('app.emulateMobile(false)')
+          await cleanupStage('reload', () => reloadApp('app.emulateMobile(false)'))
         }
+        if (secondaryFailures.length)
+          console.warn(
+            'Manual consent secondary cleanup failures',
+            JSON.stringify(secondaryFailures)
+          )
       }
-      if (failure) throw failure
+      if (hasFailure) throw failure
       expect(cleanup).not.toBeNull()
       for (const key of [
         'aiRestored',
