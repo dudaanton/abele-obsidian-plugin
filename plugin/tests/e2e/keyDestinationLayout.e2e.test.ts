@@ -87,6 +87,7 @@ describe('native recipient action layout', () => {
       expect(isObsidianRunning() && hasTestApi()).toBe(true)
       const raw = await evalLong(
         `(async () => {
+      ${recipientLayoutProbe}
       const api = window.__abeleTest, original = api.openDialog, store = api.secrets(), get = store.get
       const config = api.AbeleConfig.getInstance(), ai = config.ai
       const state = () => JSON.stringify({ ai: config.ai, firefly: config.fireflyBaseUrl, calendars: config.calendars, local: ['abele-key-destinations-v1', 'abele-key-http-origins-v1'].map(key => app.loadLocalStorage(key)) })
@@ -100,17 +101,28 @@ describe('native recipient action layout', () => {
         result.wrapperRestored = api.openDialog === installed
       } finally { api.openDialog = original; store.get = get }
       result.stateRestored = state() === before && config.ai === ai
+      const ordinary = { error: '', cleanupErrors: [] }
+      let ordinaryModal, openingError
+      const priorModal = document.querySelector('.modal[data-abele-fixture="key-destinations"]')
       try {
         completion = api.openDialog('key-destinations')
+        completion?.catch(error => { openingError = error })
         const deadline = Date.now() + 5000
-        while (!document.querySelector('.modal[data-abele-fixture="key-destinations"]')) { if (Date.now() > deadline) throw Error('ordinary review missing'); await new Promise(resolve => setTimeout(resolve, 50)) }
-        const modal = document.querySelector('.modal[data-abele-fixture="key-destinations"]')
+        while (!openingError && (!document.querySelector('.modal[data-abele-fixture="key-destinations"]') || document.querySelector('.modal[data-abele-fixture="key-destinations"]') === priorModal)) { if (Date.now() > deadline) throw Error('ordinary review missing'); await new Promise(resolve => setTimeout(resolve, 50)) }
+        if (openingError) throw openingError
+        const modal = ordinaryModal = document.querySelector('.modal[data-abele-fixture="key-destinations"]')
         result.ordinaryActions = [...modal.querySelectorAll('.abele-modal__body button')].map(button => button.textContent.trim())
         const path = ${JSON.stringify(shots)} + '/fault-' + ${JSON.stringify(fault)} + '.png'
         if (window.__e2eHost) result.faultShot = await window.__e2eHost.shot(path)
         else { const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage(); require('fs').writeFileSync(path, image.toPNG()); result.faultShot = path }
-        modal.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape',code:'Escape',keyCode:27,bubbles:true }))
-      } finally { if (completion) await completion }
+      } catch (error) { ordinary.error = recipientError(error) }
+      finally {
+        await cleanupRecipientConsumer(ordinary, async () => {
+          ordinaryModal?.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape',code:'Escape',keyCode:27,bubbles:true }))
+        }, null, completion)
+      }
+      result.ordinaryError = ordinary.error
+      result.ordinaryCleanupErrors = ordinary.cleanupErrors
       result.finalStateRestored = state() === before && config.ai === ai
       return result
     })()`,
@@ -127,6 +139,8 @@ describe('native recipient action layout', () => {
       expect(result.stateRestored).toBe(true)
       expect(result.ordinaryActions).toEqual(['Allow on this device', 'Allow unencrypted HTTP'])
       expect(result.finalStateRestored).toBe(true)
+      expect(result.ordinaryError).toBe('')
+      expect(result.ordinaryCleanupErrors).toEqual([])
       expect(result.faultShot).not.toMatch(/^no picture:/)
     },
     90_000

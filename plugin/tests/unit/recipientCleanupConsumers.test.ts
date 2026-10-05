@@ -39,7 +39,7 @@ const setup = () => {
   const api: Record<string, any> = { AbeleConfig: { getInstance: () => config } }
   Object.assign(window, { __abeleTest: api })
   Object.assign(globalThis, { app })
-  return { ai, config, api }
+  return { ai, config, api, stores }
 }
 const modal = (name: string) => {
   const root = document.createElement('div')
@@ -59,6 +59,143 @@ afterEach(() => {
   delete (globalThis as any).app
   delete (window as any).__abeleTest
   for (const key of Object.keys(currentReport)) delete currentReport[key]
+})
+
+// Expand the exact native eval template, including its ordinary-review finalizer.
+const nativeTemplate = () => {
+  const file = readFileSync('tests/e2e/keyDestinationLayout.e2e.test.ts', 'utf8')
+  const start = file.indexOf('`(async () => {', file.indexOf("describe('native recipient"))
+  const end = file.indexOf('})()`', start) + 5
+  return new Function(
+    'fault',
+    'shots',
+    'recipientLayoutScript',
+    'recipientLayoutProbe',
+    'return ' + file.slice(start, end)
+  )(
+    'opening-refusal',
+    '/unused',
+    () => 'Promise.resolve({error:"Sample opening refusal",cleanupErrors:[]})',
+    recipientLayoutProbe
+  ) as string
+}
+
+describe('actual ordinary native guard finalization', () => {
+  it.each(['sample-unrelated', 'key-destinations'])(
+    'observes ordinary opening refusal without closing prior %s modal',
+    async (name) => {
+      const { api, ai, config } = setup()
+      const unrelated = modal(name)
+      let escaped = false
+      unrelated.addEventListener('keydown', () => {
+        escaped = true
+      })
+      api.secrets = () => ({ get: () => undefined })
+      const original = () => Promise.reject(Error('Sample ordinary refusal'))
+      api.openDialog = original
+      const result = await new Function('return ' + nativeTemplate())()
+      expect(result.ordinaryError).toBe('Sample ordinary refusal')
+      expect(result.ordinaryCleanupErrors).toEqual([
+        { stage: 'completion', message: 'Sample ordinary refusal' },
+      ])
+      expect(escaped).toBe(false)
+      expect(unrelated.isConnected).toBe(true)
+      expect(config.ai).toBe(ai)
+      expect(api.openDialog).toBe(original)
+    }
+  )
+  it.each([
+    ['capture', ''],
+    ['write', ''],
+    ['capture', 'close'],
+    ['write', 'completion'],
+    ['', 'close'],
+    ['', 'completion'],
+  ])('closes and drains ordinary capture=%s cleanup=%s failures', async (failure, secondary) => {
+    const { api, ai, config, stores } = setup()
+    const calendars = config.calendars
+    const before = JSON.stringify(config)
+    stores.set('abele-key-destinations-v1', { sample: 'original' })
+    const local = stores.get('abele-key-destinations-v1')
+    api.secrets = () => ({ get: () => undefined })
+    let closed = false
+    let owned: HTMLElement | undefined
+    let openings = 0
+    const original = () => {
+      const first = openings++ === 0
+      owned = modal('key-destinations')
+      config.ai = { secrets: ['synthetic'], providers: [] }
+      stores.set('abele-key-destinations-v1', { sample: 'temporary' })
+      if (first && secondary === 'close') {
+        const dispatch = owned.dispatchEvent.bind(owned)
+        let dispatching = false
+        owned.dispatchEvent = (event) => {
+          if (dispatching) return dispatch(event)
+          dispatching = true
+          try {
+            dispatch(event)
+          } finally {
+            dispatching = false
+          }
+          throw Error('Sample close failure')
+        }
+      }
+      return new Promise<void>((resolve, reject) =>
+        owned!.addEventListener('keydown', () => {
+          closed = true
+          owned!.remove()
+          queueMicrotask(() => {
+            config.ai = ai
+            stores.set('abele-key-destinations-v1', local)
+            if (first && secondary === 'completion') reject(Error('Sample completion failure'))
+            else resolve()
+          })
+        })
+      )
+    }
+    api.openDialog = original
+    const requireMock = (name: string) =>
+      name === 'fs'
+        ? {
+            writeFileSync: () => {
+              if (failure === 'write') throw Error('Sample write failure')
+            },
+          }
+        : {
+            getCurrentWindow: () => ({
+              webContents: {
+                capturePage: async () => {
+                  if (failure === 'capture') throw Error('Sample capture failure')
+                  return { toPNG: () => new Uint8Array() }
+                },
+              },
+            }),
+          }
+    const pending = new Function('require', 'return ' + nativeTemplate())(
+      requireMock
+    ) as Promise<any>
+    // Do not await a stranded consumer: inspect the actual close boundary after its microtasks.
+    for (let i = 0; i < 40; i++) await Promise.resolve()
+    const closedByConsumer = closed
+    if (!closed) owned?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    const result = await pending.catch((error) => ({ ordinaryError: error.message }))
+    expect(closedByConsumer).toBe(true)
+    if (failure) expect(result.ordinaryError).toBe('Sample ' + failure + ' failure')
+    else expect(result.ordinaryError).toContain('Recipient cleanup failed:')
+    expect(result.ordinaryCleanupErrors).toEqual(
+      secondary ? [{ stage: secondary, message: 'Sample ' + secondary + ' failure' }] : []
+    )
+    expect(config.ai).toBe(ai)
+    expect(config.calendars).toBe(calendars)
+    expect(JSON.stringify(config)).toBe(before)
+    expect(stores.get('abele-key-destinations-v1')).toBe(local)
+    expect(api.openDialog).toBe(original)
+    expect(document.querySelector('.modal[data-abele-fixture]')).toBeNull()
+    const next = api.openDialog('key-destinations')
+    owned?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await next
+    expect(config.ai).toBe(ai)
+  })
 })
 
 describe('actual recipient cleanup consumers', () => {
