@@ -42,7 +42,7 @@ const probe = (label: string) => String.raw`(async () => {
       if (result) return result
       await wait(50)
     }
-    const detail = label.includes('tail page') || label.includes('reading place')
+    const detail = label.includes('tail page') || label.includes('reading place') || label.includes('root owner')
       ? '; paging=' + JSON.stringify(pagingState()) + '; prior=' + JSON.stringify(pagingDiagnostics)
       : ''
     throw Error('not ready: ' + label + detail)
@@ -217,6 +217,15 @@ const probe = (label: string) => String.raw`(async () => {
       pagingDiagnostics.push({phase:'expanded drawer before dismissal',...ownerState()})
       await shoot('chat-expanded-drawer')
     }
+    if (app.isMobile) {
+      // Public fixture dismissal, not closing either pane or changing product routing.
+      app.workspace.leftSplit.collapse()
+      app.workspace.rightSplit.collapse()
+      await app.workspace.revealLeaf(pagingOwner)
+      app.workspace.setActiveLeaf(pagingOwner, {focus:true})
+    }
+    await until(() => visibleRoot(ownerState()), 'same root owner visible after public dismissal')
+    await frame()
     const rootBeforeInput = ownerState()
     if (!visibleRoot(rootBeforeInput)) throw Error('root visibility prerequisite: '+JSON.stringify(rootBeforeInput))
     pagingDiagnostics.push({phase:'visible root prerequisite',...rootBeforeInput})
