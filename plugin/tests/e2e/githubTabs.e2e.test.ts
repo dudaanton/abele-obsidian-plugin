@@ -34,6 +34,11 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { BASE_SHA, HEAD_SHA, LATE_COMMENT, diffHash } from './helpers/fakeGithubRepo'
+import { parseSnippet } from '../../src/github/snippetBlock'
+import { requireSnippetPrerequisites } from '../helpers/ref4ReleaseProof'
+import { shotDir } from './helpers/shots'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const NOTE = 'Abele GitHub insert probe.md'
 const available = isObsidianRunning() && hasTestApi()
@@ -248,6 +253,13 @@ describe.skipIf(!available)('a GitHub tab', () => {
       link?: boolean
       card?: boolean
       cardCode?: string
+      fenceReady?: boolean
+      editor?: string
+      savedAtFence?: string
+      saved?: string
+      mode?: string
+      visible?: boolean
+      readingRect?: unknown
     }>(`(async () => {
       ${PRELUDE}
       ${CLICK_NUMBER}
@@ -276,12 +288,27 @@ describe.skipIf(!available)('a GitHub tab', () => {
         report.link = !!(await until(() => note.view.editor.getValue().includes('src/app.ts:5]('), 10000))
 
         press(root, 'Insert with code')
-        await until(() => note.view.editor.getValue().includes('abele-github'), 10000)
+        report.fenceReady = !!await until(() => note.view.editor.getValue().includes('abele-github'), 10000)
+        report.editor = note.view.editor.getValue()
+        report.savedAtFence = await app.vault.read(file)
+        if (!report.fenceReady) throw Error('snippet fence insertion did not complete')
         leaf.detach()
+        // The normal mode transition, not a forced flush or a second file write, saves the editor.
         await note.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: 'preview' } })
+        await until(async () => (await app.vault.read(file)) === report.editor, 10000)
+        report.saved = await app.vault.read(file)
+        report.mode = note.view.getMode()
+        const reading = await until(() => {
+          const el=note.view.containerEl.querySelector('.markdown-reading-view'), r=el?.getBoundingClientRect()
+          return el?.isConnected && r.width>0 && r.height>0 && r.right>0 && r.left<innerWidth && r.bottom>0 && r.top<innerHeight && el
+        }, 10000)
+        report.visible = !!reading
+        report.readingRect = reading?.getBoundingClientRect().toJSON()
         const card = await until(() => note.view.containerEl.querySelector('.markdown-reading-view .abele-github-snippet .cm-content'), 10000)
         report.card = !!card
         report.cardCode = card ? card.textContent : ''
+        const wc = require('@electron/remote').getCurrentWebContents()
+        require('fs').writeFileSync(${JSON.stringify(join(shotDir('github-insertion'), 'reading-card.png'))}, (await wc.capturePage()).toPNG())
       } catch (e) {
         report.error = String(e && e.message || e)
       } finally {
@@ -289,7 +316,26 @@ describe.skipIf(!available)('a GitHub tab', () => {
       }
       return report
     })()`)
+    const fence = '`'.repeat(3)
+    const source = r.saved?.split(fence + 'abele-github\n')[1]?.split('\n' + fence)[0]
+    const parsed = source === undefined ? null : parseSnippet(source)
+    writeFileSync(
+      join(shotDir('github-insertion'), 'prerequisites.json'),
+      JSON.stringify({ ...r, parsed }, null, 2)
+    )
     expect(r.error).toBeUndefined()
+    requireSnippetPrerequisites({
+      fenceReady: !!r.fenceReady,
+      editor: r.editor ?? '',
+      saved: r.saved ?? '',
+      parsed,
+      mode: r.mode ?? '',
+      visible: !!r.visible,
+      code: '  const widgets = loadWidgets(count)',
+      start: 5,
+    })
+    expect(parsed?.kind).toBe('code')
+    expect(parsed?.lang).toBe('ts')
     // The server's own origin, scheme and port included: the link opens outside Obsidian too.
     expect(r.copied).toBe(
       `[acme/widgets@1a2b3c4 · src/app.ts:5](${gh.web}/blob/${HEAD_SHA}/src/app.ts#L5)`
