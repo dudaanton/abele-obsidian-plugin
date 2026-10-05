@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { rootChatOwnerVisible } from './contracts/rootChatOwner'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -24,6 +25,11 @@ const probe = (label: string) => String.raw`(async () => {
   const previousTab = chats.activeTabId.value
   const sidebarLeaves = new Set(app.workspace.getLeavesOfType('abele-ai-sidebar-view'))
   const rightCollapsed = app.workspace.rightSplit.collapsed
+  const leftCollapsed = app.workspace.leftSplit.collapsed
+  const previousTabs = [...chats.tabOrder.value]
+  const keyboardHeight = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height')) || 0
+  const previousKeyboard = keyboardHeight()
+  const previousFocus = document.activeElement
   let leaf, tracked, releaseRead, session
   const report = {}
   const pagingDiagnostics = []
@@ -159,6 +165,12 @@ const probe = (label: string) => String.raw`(async () => {
     const messages = n => Array.from({ length: n }, (_, i) => ({ id: 'sample-' + i, role: 'user',
       content: 'Sample message ' + i, timestamp: Date.now() }))
     session.messages.value = messages(80)
+    // Establish the intended ROOT owner explicitly, never substitute a visible mirror.
+    let intendedRoot = app.workspace.getLeavesOfType('abele-ai-sidebar-view').find(p => p.getRoot() === app.workspace.rootSplit)
+    if (!intendedRoot) {
+      intendedRoot = app.workspace.getLeaf('tab')
+      await intendedRoot.setViewState({ type: 'abele-ai-sidebar-view', active: false })
+    }
     await chats.revealSidebar({ focus: false })
     // A retained second pane must not be mistaken for extra rows in the paging owner.
     // Exercise that layout explicitly rather than relying on the pool's previous workspace.
@@ -166,7 +178,25 @@ const probe = (label: string) => String.raw`(async () => {
     await secondChatPane.setViewState({ type: 'abele-ai-sidebar-view', active: false })
     await chats.revealSidebar({ focus: false })
     const pagingOwner = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
-    if (!pagingOwner) throw Error('paging owner was not revealed')
+    if (!pagingOwner || pagingOwner !== intendedRoot) throw Error('selected paging owner is not the intended root')
+    const visibleRoot = ${rootChatOwnerVisible.toString()}
+    const ownerState = () => {
+      const el = pager(), r = el.getBoundingClientRect(), vp = visualViewport
+      const viewport = {left:vp?.offsetLeft??0,top:vp?.offsetTop??0,
+        right:(vp?.offsetLeft??0)+(vp?.width??innerWidth),
+        bottom:Math.min((vp?.offsetTop??0)+(vp?.height??innerHeight),innerHeight-keyboardHeight())}
+      const x=Math.round(r.left+r.width/2), y=Math.round(r.top+r.height/4)
+      const endY=Math.round(Math.min(r.bottom-8,y+Math.min(160,r.height/2)))
+      const points=[[x,y],[x,endY]], hits=points.map(([x,y])=>document.elementFromPoint(x,y))
+      return {intendedOwner:intendedRoot.id,owner:pagingOwner.id,
+        root:pagingOwner.getRoot()===app.workspace.rootSplit?'root':'other',activeLeaf:app.workspace.activeLeaf?.id,
+        activeTab:chats.activeTabId.value,session:session.id,secondPane:secondChatPane.id,
+        connectedPaneIds:app.workspace.getLeavesOfType('abele-ai-sidebar-view').filter(p=>p.view.containerEl.isConnected).map(p=>p.id),
+        rect:r.toJSON(),viewport,points,hitInside:hits.map(hit=>!!hit&&el.contains(hit)),
+        hitTargets:hits.map(hit=>hit?{tag:hit.tagName,classes:String(hit.className)}:null),keyboard:keyboardHeight(),
+        drawers:{leftCollapsed:app.workspace.leftSplit.collapsed,rightCollapsed:app.workspace.rightSplit.collapsed},
+        focused:document.activeElement?.tagName}
+    }
     const rows = () => [...pagingOwner.view.containerEl.querySelectorAll('.abele-ai-chat [data-message-id]')]
     const pager = () => pagingOwner.view.containerEl.querySelector('.abele-ai-chat__messages')
     pagingState = () => {
@@ -179,6 +209,17 @@ const probe = (label: string) => String.raw`(async () => {
         firstVisible:visible?.getAttribute('data-message-id'),offset:visible&&rect ? visible.getBoundingClientRect().top-rect.top : null}
     }
     await until(() => rows().length === 30, 'initial tail page')
+    if (app.isMobile) {
+      // Deliberate ordinary expanded-drawer fixture: mounted/active root is not physical visibility.
+      app.workspace.rightSplit.expand()
+      await app.workspace.revealLeaf(pagingOwner)
+      await until(() => ownerState().rect.left < 0, 'expanded drawer hides root')
+      pagingDiagnostics.push({phase:'expanded drawer before dismissal',...ownerState()})
+      await shoot('chat-expanded-drawer')
+    }
+    const rootBeforeInput = ownerState()
+    if (!visibleRoot(rootBeforeInput)) throw Error('root visibility prerequisite: '+JSON.stringify(rootBeforeInput))
+    pagingDiagnostics.push({phase:'visible root prerequisite',...rootBeforeInput})
     // Switching tabs resets the page. Leaving it at its end avoids restoring an older place.
     if (!previousTab) throw Error('no original chat tab')
     // Row mounting precedes the native scroll-to-end/layout work. Observe its real tail
@@ -210,6 +251,8 @@ const probe = (label: string) => String.raw`(async () => {
     // switching away/back must restore it, not satisfy the tail reset case by erasing it.
     await until(() => pagingState().gap <= 1, 'appended tail page')
     await frame()
+    const nativeOwner = ownerState()
+    if (!visibleRoot(nativeOwner)) throw Error('native owner lost visibility: '+JSON.stringify(nativeOwner))
     const box = pager().getBoundingClientRect(), x = Math.round(box.left+box.width/2)
     // The keyboard may leave a short messages viewport. Keep the whole single native
     // gesture in its scroll owner; a fixed160px move from the midpoint can land on input.
@@ -218,8 +261,17 @@ const probe = (label: string) => String.raw`(async () => {
       const hit=document.elementFromPoint(x,at)
       if(!hit||!pager().contains(hit)) throw Error('non-tail gesture point is outside owner: '+JSON.stringify({x,at,box:box.toJSON(),hit:hit?.className}))
     }
-    pagingDiagnostics.push({phase:'non-tail native gesture',start:[x,y],end:[x,endY],owner:pagingOwner.id})
-    if (window.__e2eHost) await window.__e2eHost.swipe(x,y,x,endY,{velocity:160})
+    const nativeEvents = []
+    const captureNative = event => {
+      const point=event.touches?.[0]??event.changedTouches?.[0]??event
+      nativeEvents.push({type:event.type,trusted:event.isTrusted,inside:pager().contains(event.target),
+        x:point.clientX,y:point.clientY,owner:pagingOwner.id,activeLeaf:app.workspace.activeLeaf?.id,activeTab:chats.activeTabId.value})
+    }
+    const nativeKinds=['pointerdown','pointerup','touchstart','touchmove','touchend','wheel']
+    for(const kind of nativeKinds) document.addEventListener(kind,captureNative,{capture:true,passive:true})
+    let acknowledgement
+    try {
+    if (window.__e2eHost) acknowledgement = await window.__e2eHost.swipe(x,y,x,endY,{velocity:160})
     else {
       const cdp=require('@electron/remote').getCurrentWebContents().debugger
       if(app.isMobile) {
@@ -228,6 +280,12 @@ const probe = (label: string) => String.raw`(async () => {
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
       } else await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseWheel',x,y,deltaX:0,deltaY:-180})
     }
+    } finally {
+      for(const kind of nativeKinds) document.removeEventListener(kind,captureNative,true)
+    }
+    pagingDiagnostics.push({phase:'non-tail native gesture',start:[x,y],end:[x,endY],...nativeOwner,acknowledgement,nativeEvents})
+    report.nativeOwnerDelivered=nativeEvents.some(e=>e.trusted&&e.inside&&e.owner===intendedRoot.id&&e.activeLeaf===intendedRoot.id&&e.activeTab===session.id)
+    if(!report.nativeOwnerDelivered) throw Error('native gesture did not reach intended root: '+JSON.stringify(nativeEvents))
     await until(() => pagingState().gap > 60, 'non-tail reading place')
     // Returning can legitimately reveal older history; require the complete prior window
     // as an unchanged suffix, plus the same visible message/offset, not fewer rendered rows.
@@ -264,18 +322,32 @@ const probe = (label: string) => String.raw`(async () => {
     app.vault.cachedRead = cachedRead
     tracked?.cleanup()
     if (session) await chats.deleteChat(session.id)
+    for (const id of [...chats.tabOrder.value]) if (!previousTabs.includes(id) && chats.getSession(id)) await chats.closeTab(id)
     if (previousTab) chats.switchTab(previousTab)
     for (const sidebar of app.workspace.getLeavesOfType('abele-ai-sidebar-view')) {
       if (!sidebarLeaves.has(sidebar)) sidebar.detach()
     }
     if (rightCollapsed) app.workspace.rightSplit.collapse()
+    else app.workspace.rightSplit.expand()
+    if (leftCollapsed) app.workspace.leftSplit.collapse()
+    else app.workspace.leftSplit.expand()
     if (leaf === previousLeaf && previousView) await leaf.setViewState(previousView)
     else leaf?.detach()
-    if (previousLeaf) app.workspace.setActiveLeaf(previousLeaf, { focus: true })
+    if (previousLeaf) app.workspace.setActiveLeaf(previousLeaf, { focus: false })
+    if (!previousKeyboard && keyboardHeight()) {
+      document.activeElement?.blur()
+      await until(() => !keyboardHeight(), 'original keyboard state')
+    } else if (previousKeyboard && previousFocus?.isConnected) previousFocus.focus({preventScroll:true})
     config.journals = previousJournals
     config.rememberNotePlaces = previousRemember
     const scratch = app.vault.getAbstractFileByPath(folder)
     if (scratch) await app.vault.delete(scratch, true)
+    report.cleanup={activeLeaf:app.workspace.activeLeaf?.id,expectedActive:previousLeaf?.id,
+      panesRestored:app.workspace.getLeavesOfType('abele-ai-sidebar-view').length===sidebarLeaves.size,
+      tabsRestored:JSON.stringify([...chats.tabOrder.value])===JSON.stringify(previousTabs),
+      drawersRestored:app.workspace.rightSplit.collapsed===rightCollapsed&&app.workspace.leftSplit.collapsed===leftCollapsed,
+      keyboardRestored:keyboardHeight()===previousKeyboard,fixtureRemoved:!app.vault.getAbstractFileByPath(folder)}
+    console.info('relation fixture cleanup '+JSON.stringify(report.cleanup))
   }
 })()`
 
@@ -284,7 +356,16 @@ async function check(label: string) {
   if (raw.startsWith('Error:')) throw new Error(raw)
   const report = JSON.parse(raw)
   console.info(JSON.stringify(report.pagingDiagnostics))
-  const { pagingDiagnostics, ...outcomes } = report
+  const { pagingDiagnostics, cleanup, ...outcomes } = report
+  expect(cleanup.activeLeaf).toBe(cleanup.expectedActive)
+  for (const key of [
+    'panesRestored',
+    'tabsRestored',
+    'drawersRestored',
+    'keyboardRestored',
+    'fixtureRemoved',
+  ])
+    expect(cleanup[key]).toBe(true)
   const beforeReset = pagingDiagnostics.find(
     (entry: { phase: string }) => entry.phase === 'before reset switch'
   )
@@ -301,6 +382,7 @@ async function check(label: string) {
     resetHeld: true,
     shrinkHeld: true,
     nonTailRestored: true,
+    nativeOwnerDelivered: true,
   })
 }
 
