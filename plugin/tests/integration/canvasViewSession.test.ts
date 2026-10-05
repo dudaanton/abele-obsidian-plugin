@@ -201,6 +201,10 @@ describe('Abele canvas leaf session lifecycle', () => {
       )
       const modal = document.querySelector('.abele-canvas-publication-review')!
       expect(modal.textContent).toContain('Current persisted source')
+      expect([...modal.querySelectorAll('summary')].at(-1)?.textContent).toBe(
+        'Original baseline (historical)'
+      )
+      expect(modal.textContent).toContain('1 node, 0 connections.')
       expect(modal.querySelector('[data-review="source"]')?.textContent).toBe(before)
       expect(modal.querySelector('[data-review="proposed"]')?.textContent).toContain(
         'Retained pending copy'

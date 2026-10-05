@@ -34,7 +34,7 @@ export class CanvasPublicationReviewModal extends ShellModal {
     pre.setAttribute('data-review', kind)
     if (graph)
       this.bodyEl.createEl('p', {
-        text: `${graph.nodes.length} nodes, ${graph.edges.length} connections. Preview: ${
+        text: `${graph.nodes.length} node${graph.nodes.length === 1 ? '' : 's'}, ${graph.edges.length} connection${graph.edges.length === 1 ? '' : 's'}. Preview: ${
           graph.nodes
             .slice(0, 3)
             .map((node) => labelOf(node).slice(0, 120))
@@ -66,7 +66,7 @@ export class CanvasPublicationReviewModal extends ShellModal {
       this.review.evidence.proposed
     )
     this.section(
-      'Original baseline of this attempt — historical evidence',
+      'Original baseline (historical)',
       JSON.stringify(this.review.evidence.baseline, null, 2),
       'baseline',
       this.review.evidence.baseline.graph
