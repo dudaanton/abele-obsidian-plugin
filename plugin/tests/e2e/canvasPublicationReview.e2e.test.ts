@@ -3,7 +3,15 @@ import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { evalAsync, realClick } from './helpers/githubLive'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalJsonIdempotent,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { screenshot, tap } from './helpers/phone'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
@@ -151,9 +159,10 @@ const shoot = async (name: string) => {
   while (Date.now() < deadline) {
     let job: { done?: boolean; stage?: string; error?: string } | null
     try {
-      job = run(
-        `const f=window.__canvasPublicationReviewFixture;return f?.captures[${JSON.stringify(id)}]??null`,
-        Math.min(5_000, deadline - Date.now())
+      // Read only the acknowledged job result, never relaunch its capture/PNG/write producer.
+      job = evalJsonIdempotent(
+        `(window.__canvasPublicationReviewFixture?.captures[${JSON.stringify(id)}])??null`,
+        Math.min(5_000, Math.max(1, Math.floor((deadline - Date.now()) / 3)))
       )
     } catch (cause) {
       throw new CanvasProbeError('capture-reply-unknown', cause)
@@ -223,10 +232,11 @@ describe('supported local exit for unsettled Canvas publication', () => {
     run(PUBLICATION_SETUP)
     owned = true
   })
-  afterEach(() => {
+  afterEach(async () => {
     if (!owned) return
     try {
-      run(PUBLICATION_CASE_CLEANUP)
+      // Shared long-job launch is keyed before transport: cleanup executes once, result reads are readonly.
+      await evalLong(`(async()=>{${PUBLICATION_CASE_CLEANUP}})()`, 45_000)
       record('case-cleanup', { restored: true })
     } catch (error) {
       record('case-cleanup-failed', errorData(error))
@@ -235,7 +245,7 @@ describe('supported local exit for unsettled Canvas publication', () => {
   })
   afterAll(async () => {
     if (owned) {
-      const cleanup = run(PUBLICATION_CLEANUP)
+      const cleanup = JSON.parse(await evalLong(`(async()=>{${PUBLICATION_CLEANUP}})()`, 45_000))
       record('fixture-cleanup', cleanup)
       console.info('Canvas fixture cleanup:', cleanup)
     }
