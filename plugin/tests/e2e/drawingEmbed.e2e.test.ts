@@ -22,6 +22,10 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { shotDir } from './helpers/shots'
 import { WAIT_PRELUDE } from './helpers/wait'
+import { requireSameEmbedGeometry, type EmbedProof } from '../helpers/ref4ReleaseProof'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { drawingSvg, parseDrawingSvg } from '../../src/drawing/drawingFile'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele drawing embed e2e'
@@ -49,7 +53,7 @@ const PRELUDE = `
   const touch = (type, points) =>
     cdp.sendCommand('Input.dispatchTouchEvent', { type, touchPoints: points.map(([x, y], id) => ({ x: Math.round(x), y: Math.round(y), id })) })
   const read = async (path) => { const f = app.vault.getAbstractFileByPath(path); return f ? app.vault.read(f) : null }
-  const views = () => app.workspace.getLeavesOfType('abele-drawing').map((l) => l.view)
+  const views = () => app.workspace.getLeavesOfType('abele-drawing').map((l) => l.view).filter(v => v.file?.path.startsWith(DIR + '/'))
   const shoot = async (name) => {
     const img = await Promise.race([wc.capturePage(), wait(8000).then(() => null)])
     if (img) { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/drawing-embed-' + name + '.png', img.toPNG()) }
@@ -64,11 +68,19 @@ const PRELUDE = `
     for (let i = 0; i < bmp.length; i += 4) if (bmp[i] + bmp[i + 1] + bmp[i + 2] < 300) n++
     return n
   }
-  const note = async (name, text, mode) => {
+  const measuredInk = async (el, leaf, paper) => {
+    const rect = r => ({ x:r.x, y:r.y, width:r.width, height:r.height })
+    const r=el.getBoundingClientRect()
+    const crop={x:Math.round(r.left)+1,y:Math.round(r.top)+1,width:Math.round(r.width)-2,height:Math.round(r.height)-2}
+    const image=await wc.capturePage(crop), bitmap=image.toBitmap()
+    let count=0;for(let i=0;i<bitmap.length;i+=4)if(bitmap[i]+bitmap[i+1]+bitmap[i+2]<300)count++
+    return { ink:count, geometry:{paneId:leaf.id,rect:rect(r),imageRect:rect(el.querySelector('img').getBoundingClientRect()),crop,paper,dpr:devicePixelRatio,bitmapBytes:bitmap.length} }
+  }
+  const note = async (name, text, mode, pane = 'tab') => {
     const path = DIR + '/' + name + '.md'
     const old = app.vault.getAbstractFileByPath(path)
     if (old) await app.vault.modify(old, text); else await app.vault.create(path, text)
-    const leaf = app.workspace.getLeaf('tab')
+    const leaf = app.workspace.getLeaf(pane)
     await leaf.setViewState({ type: 'markdown', state: { file: path, mode, source: false }, active: true })
     if (!await until(() => leaf.view.file?.path === path && leaf.view.getMode() === mode))
       throw new Error('note did not open in the requested mode')
@@ -76,8 +88,9 @@ const PRELUDE = `
   }
   const boxes = (leaf) => [...leaf.view.containerEl.querySelectorAll(leaf.view.getMode() === 'preview' ? '.markdown-reading-view .abele-drawing-embed' : '.markdown-source-view .abele-drawing-embed')]
   const closeAll = async () => {
-    for (const type of ['abele-drawing', 'markdown']) for (const leaf of app.workspace.getLeavesOfType(type)) leaf.detach()
-    if (!await until(() => ['abele-drawing', 'markdown'].every(type => !app.workspace.getLeavesOfType(type).length)))
+    for (const type of ['abele-drawing', 'markdown']) for (const leaf of app.workspace.getLeavesOfType(type))
+      if (leaf.view.file?.path.startsWith(DIR + '/')) leaf.detach()
+    if (!await until(() => ['abele-drawing', 'markdown'].every(type => !app.workspace.getLeavesOfType(type).some(leaf => leaf.view.file?.path.startsWith(DIR + '/')))))
       throw new Error('drawing and note tabs did not close')
   }
   const pictureReady = async (box) => {
@@ -126,7 +139,8 @@ describe.skipIf(!available)('a drawing in a note', () => {
   afterAll(async () => {
     evalRaw(
       `(async () => {
-        for (const type of ['abele-drawing', 'markdown']) for (const leaf of app.workspace.getLeavesOfType(type)) leaf.detach()
+        for (const type of ['abele-drawing', 'markdown']) for (const leaf of app.workspace.getLeavesOfType(type))
+          if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR + '/')})) leaf.detach()
         await new Promise((r) => setTimeout(r, 2500))
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
@@ -171,41 +185,71 @@ describe.skipIf(!available)('a drawing in a note', () => {
       error?: string
       live?: { ink: number; w: number; h: number; room: number; paper: number; native: number }
       after?: { ink: number; src: boolean }
+      geometryBefore?: EmbedProof
+      geometryAfter?: EmbedProof
+      repeat?: { ink: number; geometry: EmbedProof }
+      savedBefore?: string
+      savedAfter?: string
       reading?: { ink: number; w: number }
     }>(`
       await closeAll()
-      const path = window.__embedDrawing
-      const file = app.vault.getAbstractFileByPath(path)
-      const paper = Number(/viewBox="[-\\d.]+ [-\\d.]+ ([\\d.]+)/.exec(await read(path))[1])
-      const leaf = await note('Plain', '# Plain\\n\\n![[' + file.name + ']]\\n\\nAfter.\\n', 'source')
-      const box = await until(() => boxes(leaf).find((b) => b.querySelector('img')?.complete && b.clientWidth), 8000)
+      // This diagonal establishes the entire paper; the later zigzag stays inside it.
+      const file = await app.vault.create(DIR + '/sample-paired.svg', ${JSON.stringify(drawingSvg({ items: [{ id: 'sample-first', type: 'stroke', tool: 'pen', color: 'black', size: 2.4, points: [80, 110, 0.5, 390, 400, 0.5] }] }))})
+      const path = file.path
+      const savedBefore = await read(path)
+      const paper = Number(/viewBox="[-\\d.]+ [-\\d.]+ ([\\d.]+)/.exec(savedBefore)[1])
+      const drawingLeaf = app.workspace.getLeaf('tab')
+      await drawingLeaf.openFile(file)
+      const view = await until(() => views().find((v) => v.file?.path === path && v.session?.surface.width), 8000)
+      await drawingReady(view)
+      // Put the note beside the drawing BEFORE either ink-area measurement.
+      const noteLeaf = await note('Plain', '# Plain\\n\\n![[' + file.name + ']]\\n\\nAfter.\\n', 'source', 'split')
+      const box = await until(() => boxes(noteLeaf).find((b) => b.querySelector('img')?.complete && b.clientWidth), 8000)
       await pictureReady(box)
+      let signature=''
+      if (!await until(() => { const now=JSON.stringify(box.getBoundingClientRect().toJSON());const same=now===signature;signature=now;return same })) throw Error('paired geometry not ready')
       // Obsidian's own picture of the file is not what shows.
-      const native = [...leaf.view.containerEl.querySelectorAll('.internal-embed img')].filter((i) => !i.closest('.abele-drawing-embed') && i.getBoundingClientRect().height > 0).length
-      const live = box && { ink: await ink(box), w: box.clientWidth, h: box.clientHeight, room: leaf.view.containerEl.querySelector('.cm-content').clientWidth, paper, native }
+      const native = [...noteLeaf.view.containerEl.querySelectorAll('.internal-embed img')].filter((i) => !i.closest('.abele-drawing-embed') && i.getBoundingClientRect().height > 0).length
+      const measuredBefore = await measuredInk(box, noteLeaf, /viewBox="([^"]+)"/.exec(savedBefore)[1])
+      const repeat = await measuredInk(box, noteLeaf, /viewBox="([^"]+)"/.exec(await read(path))[1])
+      const live = box && { ink: measuredBefore.ink, w: box.clientWidth, h: box.clientHeight, room: noteLeaf.view.containerEl.querySelector('.cm-content').clientWidth, paper, native }
       await shoot('plain-live')
       // A stroke drawn with the note open beside the drawing shows in the note.
       const src = box.querySelector('img').src
-      await app.workspace.getLeaf('split').openFile(file)
-      const view = await until(() => views().find((v) => v.file?.path === path && v.session?.surface.width), 8000)
-      await drawingReady(view)
+      app.workspace.setActiveLeaf(drawingLeaf, { focus:false })
       view.contentEl.querySelector('.abele-drawing-bar__mode').click()
       if (!await until(() => view.model.on)) throw new Error('drawing mode did not turn on')
-      const b = view.session.surface.el.getBoundingClientRect()
-      await stroke([[b.left + 60, b.top + 300], [b.left + 300, b.top + 330], [b.left + 60, b.top + 360], [b.left + 300, b.top + 390]])
-      const moved = await until(() => { const now = boxes(leaf)[0]; return now && now.querySelector('img').src !== src && now }, 8000)
+      const b = view.session.surface.el.getBoundingClientRect(), camera=view.session.camera
+      const points=[[90,280],[340,310],[100,350],[340,390]]
+      await stroke(points.map(([x,y]) => [b.left+(x-camera.x)*camera.zoom,b.top+(y-camera.y)*camera.zoom]))
+      const savedAfter = await until(async () => { const text=await read(path);const data=JSON.parse(/<metadata id="abele-drawing">([\\s\\S]*?)<\\/metadata>/.exec(text)[1]);return data.items.length===2&&text }, 8000)
+      if (!savedAfter) throw Error('new stroke not saved')
+      const moved = await until(() => { const now = boxes(noteLeaf)[0]; return now && now.querySelector('img').src !== src && now }, 8000)
       await pictureReady(moved)
-      const after = { ink: moved ? await ink(moved) : 0, src: !!moved }
+      const measuredAfter = await measuredInk(moved, noteLeaf, /viewBox="([^"]+)"/.exec(savedAfter)[1])
+      const after = { ink: measuredAfter.ink, src: !!moved }
       await shoot('plain-live-after')
       view.leaf.detach()
-      await leaf.setViewState({ type: 'markdown', state: { file: leaf.view.file.path, mode: 'preview' } })
-      const rb = await until(() => boxes(leaf).find((b) => b.querySelector('img')?.complete && b.clientWidth), 8000)
+      await noteLeaf.setViewState({ type: 'markdown', state: { file: noteLeaf.view.file.path, mode: 'preview' } })
+      const rb = await until(() => boxes(noteLeaf).find((b) => b.querySelector('img')?.complete && b.clientWidth), 8000)
       await pictureReady(rb)
       const reading = rb && { ink: await ink(rb), w: rb.clientWidth }
       await shoot('plain-reading')
-      return { live, after, reading }
+      return { live, after, reading, savedBefore, savedAfter, repeat, geometryBefore:measuredBefore.geometry, geometryAfter:measuredAfter.geometry }
     `)
+    writeFileSync(join(SHOTS, 'drawing-geometry-proof.json'), JSON.stringify(r, null, 2))
     expect(r.error).toBeUndefined()
+    requireSameEmbedGeometry(r.geometryBefore!, r.geometryAfter!)
+    requireSameEmbedGeometry(r.geometryBefore!, r.repeat!.geometry)
+    // An unchanged rendered image must not satisfy the positive-change predicate.
+    expect(r.repeat!.ink > r.live!.ink * 1.3).toBe(false)
+    const before = parseDrawingSvg(r.savedBefore!)!
+    const after = parseDrawingSvg(r.savedAfter!)!
+    expect(before.items).toHaveLength(1)
+    expect(after.items).toHaveLength(2)
+    expect(after.items[0]).toEqual(before.items[0])
+    expect(after.items[1].type).toBe('stroke')
+    expect(after.items[1].id).not.toBe(before.items[0].id)
     expect(r.live?.native).toBe(0)
     expect(r.live!.ink).toBeGreaterThan(100)
     // At the drawing's own size, not blown up to the note's width.
