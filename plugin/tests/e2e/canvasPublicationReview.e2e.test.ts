@@ -66,7 +66,11 @@ const errorData = (error: unknown): unknown =>
 const run = <T>(body: string, timeout = 45_000): T =>
   evalAsync<T>(`(async()=>JSON.stringify(await(async()=>{${body}})()))()`, timeout)
 const inside = <T>(body: string): T => run<T>(`${PUBLICATION_PRELUDE}${body}`)
-const observe = () => run(`${PUBLICATION_DIAGNOSTICS} return snapshot(null)`, 5_000)
+const observe = () =>
+  evalJsonIdempotent(
+    `(()=>{${PUBLICATION_DIAGNOSTICS} return snapshot(null)})()`,
+    Math.floor(5_000 / 3)
+  )
 
 const press = async (selector: string, label: string) => {
   record('control-preparation', { label, selector })
