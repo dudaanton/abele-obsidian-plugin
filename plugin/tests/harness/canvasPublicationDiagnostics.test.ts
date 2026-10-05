@@ -25,6 +25,53 @@ describe('Canvas publication probe phase boundaries', () => {
     expect(script).toContain('selector')
     expect(script).toContain('hittability')
   })
+  it('prepares the live owned modal selector in the same browser namespace as the dedicated suite', async () => {
+    const root = document.createElement('div'),
+      summary = document.createElement('summary')
+    root.className = 'abele-canvas-publication-review'
+    summary.textContent = 'Sample disclosure'
+    root.append(summary)
+    document.body.append(root)
+    Object.assign(root, { getAnimations: () => [] })
+    vi.spyOn(summary, 'getBoundingClientRect').mockReturnValue({
+      left: 20,
+      top: 20,
+      right: 120,
+      bottom: 60,
+      width: 100,
+      height: 40,
+      x: 20,
+      y: 20,
+      toJSON: () => ({}),
+    })
+    const hit = vi.spyOn(document, 'elementFromPoint').mockReturnValue(summary),
+      win = window as unknown as { __canvasPublicationReviewFixture?: unknown }
+    win.__canvasPublicationReviewFixture = {
+      ids: new WeakMap(),
+      nextId: 0,
+      events: [],
+      captures: {},
+      view: { publicationReviewModal: { modalEl: root }, containerEl: root },
+    }
+    vi.useFakeTimers()
+    try {
+      const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
+        body: string
+      ) => () => Promise<{ ready: boolean; phase: string | null }>
+      const preparing = new AsyncFunction(
+        publicationControlPreparation('modal()?.querySelector("summary")', 'sample disclosure')
+      )()
+      const resultPromise = expect(preparing).resolves.toMatchObject({ ready: true, phase: null })
+      await vi.runAllTimersAsync()
+      await resultPromise
+    } finally {
+      vi.useRealTimers()
+      hit.mockRestore()
+      root.remove()
+      delete win.__canvasPublicationReviewFixture
+    }
+  })
+
   it.each(['missing', 'blocked'] as const)(
     'returns a distinct browser %s failure without dispatch',
     async (kind) => {

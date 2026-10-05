@@ -178,6 +178,7 @@ export const PUBLICATION_DIAGNOSTICS = `
 export function publicationControlPreparation(selector: string, label: string): string {
   return `
     ${PUBLICATION_DIAGNOSTICS}
+    const modal=()=>document.querySelector('.abele-canvas-publication-review')
     const canvasControlFailure=${canvasControlFailure.toString()}
     const pause=()=>new Promise(resolve=>setTimeout(resolve,50))
     let last=null,previous=null
