@@ -18,6 +18,8 @@ import { shotDir } from './helpers/shots'
 import {
   CanvasProbeError,
   canvasDispatchOnce,
+  canvasCapturePhoneOnce,
+  canvasObserveCaptureJob,
   type CanvasControlState,
 } from './helpers/canvasPublicationDiagnostics'
 import {
@@ -124,11 +126,7 @@ const shoot = async (name: string) => {
     path = `${SHOTS}/${id}.png`
   record('capture-issued', { id, path })
   if (onPhone()) {
-    try {
-      screenshot(path)
-    } catch (cause) {
-      throw new CanvasProbeError('capture-reply-unknown', cause, observe())
-    }
+    await canvasCapturePhoneOnce(path, screenshot, observe)
     record('capture-completed', { id, path })
     return
   }
@@ -160,36 +158,21 @@ const shoot = async (name: string) => {
     }
     throw new CanvasProbeError('capture-launch-unknown', cause, snapshot, diagnosticError)
   }
-  while (Date.now() < deadline) {
-    let job: { done?: boolean; stage?: string; error?: string } | null
-    try {
-      // Read only the acknowledged job result, never relaunch its capture/PNG/write producer.
-      job = evalJsonIdempotent(
+  const job = await canvasObserveCaptureJob({
+    deadline,
+    now: () => Date.now(),
+    // Query only this acknowledged producer. Its capture/PNG/write body is never relaunched.
+    read: (allowance) =>
+      evalJsonIdempotent(
         `(window.__canvasPublicationReviewFixture?.captures[${JSON.stringify(id)}])??null`,
-        Math.min(5_000, Math.max(1, Math.floor((deadline - Date.now()) / 3)))
-      )
-    } catch (cause) {
-      throw new CanvasProbeError('capture-reply-unknown', cause)
-    }
-    if (job?.done) {
-      record('capture-result', { id, job })
-      if (job.error)
-        throw new CanvasProbeError(
-          job.stage as 'capture-await' | 'capture-png' | 'capture-write',
-          new Error(job.error),
-          job
-        )
-      expect(job.stage).toBe('completed')
-      record('capture-completed', { id, path })
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new CanvasProbeError(
-    'capture-await',
-    new Error('One capture did not complete within the existing 45-second ceiling'),
-    observe()
-  )
+        allowance
+      ),
+    pause: () => new Promise((resolve) => setTimeout(resolve, 50)),
+    observe,
+    result: (job) => record('capture-result', { id, job }),
+  })
+  expect(job.stage).toBe('completed')
+  record('capture-completed', { id, path })
 }
 const measure = () => {
   const result = run<{
