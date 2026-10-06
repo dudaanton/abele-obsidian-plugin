@@ -1,5 +1,5 @@
 /** Host registry: TFile identity survives rename; cameras and selection remain leaf-local. */
-import { TFile, type App, type EventRef } from 'obsidian'
+import { TFile, type App, type EventRef, type Plugin } from 'obsidian'
 import { nanoid } from 'nanoid'
 import { CanvasSession, type GraphTransform } from './core/session'
 import type { GraphSnapshot } from './core/service'
@@ -213,7 +213,16 @@ export class CanvasDocumentRegistry {
   private readonly opening = new Map<TFile, number>()
   private vaultRefs: EventRef[] = []
   private workspaceRef: EventRef | null = null
+  private closed = false
   constructor(private readonly app: App) {}
+  registerLifecycle(plugin: Pick<Plugin, 'register'>): void {
+    plugin.register(() => {
+      // Unload must detach observers even when pending work prevents ordinary disposal.
+      this.closed = true
+      this.stopListening()
+      if (registries.get(this.app) === this) registries.delete(this.app)
+    })
+  }
   find(file: TFile): CanvasDocument | undefined {
     return this.documents.get(file)
   }
@@ -298,7 +307,7 @@ export class CanvasDocumentRegistry {
     })
   }
   private listen(): void {
-    if (this.vaultRefs.length) return
+    if (this.closed || this.vaultRefs.length) return
     const observe = (file: unknown) => {
       if (file instanceof TFile && (this.documents.has(file) || this.opening.has(file)))
         void this.reload(file)
@@ -328,6 +337,9 @@ export class CanvasDocumentRegistry {
   }
   private stopIfIdle(): void {
     if (this.documents.size || this.opening.size) return
+    this.stopListening()
+  }
+  private stopListening(): void {
     for (const ref of this.vaultRefs) this.app.vault.offref(ref)
     this.vaultRefs = []
     if (this.workspaceRef) this.app.workspace.offref(this.workspaceRef)

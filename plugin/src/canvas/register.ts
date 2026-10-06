@@ -4,10 +4,12 @@ import { AbeleConfig } from '../services/AbeleConfig'
 import { CanvasView } from './CanvasView'
 import { adoptCanvasLeaves, CANVAS_VIEW_TYPE, openCanvas } from './opening'
 import { canvasEmbedProcessor, canvasEmbedsInEditor } from './embed'
+import { canvasDocuments } from './documentRegistry'
 import './viewer.css'
 
 export function registerCanvas(plugin: Plugin): void {
   const { app } = plugin
+  canvasDocuments(app).registerLifecycle(plugin)
   plugin.registerView(CANVAS_VIEW_TYPE, (leaf) => new CanvasView(leaf))
   let pending = 0,
     adopting = false
