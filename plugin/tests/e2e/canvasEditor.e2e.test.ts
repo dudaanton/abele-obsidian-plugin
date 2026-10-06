@@ -43,8 +43,12 @@ const press = async (expression: string, corner = false) => {
 }
 const click = (label: string) => press(`button(${JSON.stringify(label)})`)
 const type = async (text: string) => {
-  if (onPhone()) typeText(text)
-  else
+  if (onPhone()) {
+    // DOM focus precedes the native keyboard's opening animation. Typing during that
+    // transition can hit the wrong first key; wait, never replay the submitted text.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    typeText(text)
+  } else
     await withNativeInput(() =>
       run(`
     const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
