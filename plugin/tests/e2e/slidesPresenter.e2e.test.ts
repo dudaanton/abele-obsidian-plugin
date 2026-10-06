@@ -184,10 +184,12 @@ describe.skipIf(!available)('shared presenter show', () => {
       await view.viewer.go(0)
       const tap=async(el)=>{
         const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2
+        const hit=document.elementFromPoint(x,y)?.outerHTML
         if(window.__e2eHost)await window.__e2eHost.tap(x,y)
         else {const cdp=require('@electron/remote').getCurrentWebContents().debugger;
           await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:0}]});
           await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})}
+        return {box:b.toJSON(),hit,target:el.outerHTML}
       }
       await wait(350)
       await picture('phone-deck-entry')
@@ -219,8 +221,10 @@ describe.skipIf(!available)('shared presenter show', () => {
             r.landscapeShot=await picture('phone-presenter-landscape')
           } finally {await ${RESTORE_PHONE_SCRIPT}}
         }
-        await tap([...p.root.querySelectorAll('button')].find(b=>b.textContent==='End show'))
-        r.restored=!view.presenter && !view.viewer.root.hidden && !document.querySelector('.abele-presenter')
+        r.endTap=await tap([...p.root.querySelectorAll('button')].find(b=>b.textContent==='End show'))
+        // CDP acknowledges touchEnd before the resulting click tears the presenter down.
+        r.restored=await until(()=>!view.presenter && !view.viewer.root.hidden && !document.querySelector('.abele-presenter'))
+        r.afterEnd={presenter:!!view.presenter,viewerHidden:view.viewer.root.hidden,presenters:document.querySelectorAll('.abele-presenter').length}
         await view.viewer.present(false)
         const vp=view.viewer.viewport.getBoundingClientRect(),x=vp.left+vp.width/2,y=vp.bottom-30
         if(window.__e2eHost)await window.__e2eHost.longPress(x,y)
@@ -242,7 +246,7 @@ describe.skipIf(!available)('shared presenter show', () => {
     expect(r.popouts).toBe(1)
     expect(r.timer).toBe(true)
     expect(r.paged, JSON.stringify(r)).toBe(true)
-    expect(r.restored).toBe(true)
+    expect(r.restored, JSON.stringify(r)).toBe(true)
     expect(r.longPress, JSON.stringify(r)).toBe(true)
     if (onPhone()) expect(r.landscape, JSON.stringify(r)).toBe(true)
   })
