@@ -1,7 +1,14 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import { verifySyncFixture } from './scripts/verify-sync-inputs.mjs'
+import { missingServerTests } from './scripts/server-test-fixtures.mjs'
+
+const skippedServerTests = missingServerTests()
+if (skippedServerTests.length)
+  console.log(
+    `Skipping ${skippedServerTests.length} server-backed test files: fixture variables absent; run npm run test:server (see docs/Testing.md).`
+  )
 
 const fixture = process.env.ABELE_SYNC_DIR ? verifySyncFixture(process.env.ABELE_SYNC_DIR) : null
 const missingFixture = path.resolve(__dirname, 'tests/helpers/missingSyncFixture.ts')
@@ -62,6 +69,8 @@ export default defineConfig({
       // these assert what reaches the DOM and in what order, never how it looks.
       'tests/component/**/*.test.ts',
     ],
+    // Skip before collection: these files import server modules unavailable without a fixture.
+    exclude: [...configDefaults.exclude, ...skippedServerTests],
     // Fails the test that leaves a delayed settings or chat write behind — see the file.
     setupFiles: ['tests/setup/pendingWrites.ts'],
     reporters: 'default',

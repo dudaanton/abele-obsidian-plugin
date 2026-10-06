@@ -6,6 +6,7 @@ Three execution tiers: fast checks, bundle size, and live end-to-end. All comman
 | Command | Tier | Needs Obsidian | Runs on commit | Runs in CI |
 |---|---|---|---|---|
 | `npm test` | unit + integration + component + harness (including complexity) | no | yes | yes |
+| `npm run test:server` | server-backed integration files | no | no | no |
 | `npm run test:size` | bundle size | no | no | yes |
 | `npm run test:perf` | filtered complexity checks, same fast config | no | via `npm test` | via `npm test` |
 | `npm run test:e2e` | end-to-end | yes | no | no |
@@ -14,6 +15,13 @@ Three execution tiers: fast checks, bundle size, and live end-to-end. All comman
 
 `npm run test:watch` re-runs the fast tier on change. `test:all` runs each execution tier once;
 `test:perf` is a convenience filter, not a second configuration or an additional gate.
+
+Without fixture variables, `npm test` skips only the server-backed files before collection,
+with one message pointing to `npm run test:server`; explicitly supplied fixtures still undergo
+all existing revision/checksum checks and run the same assertions.
+`npm run test:server -- <sync-repository>` builds the exact pinned clean-archive fixture and
+runs those files with all four fixture variables set automatically (omit the repository to
+reuse a verified matching fixture from `.scratch/sync-inputs/` or `ABELE_SYNC_DIR`).
 
 **Do not touch Obsidian while the e2e tier runs.** There is one app and one CLI; a stray
 `obsidian eval` — opening settings, resizing a window — races the probe the tests are waiting

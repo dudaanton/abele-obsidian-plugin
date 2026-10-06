@@ -30,7 +30,8 @@
     "pretypes": "node scripts/verify-sync-inputs.mjs",
     "pretest:e2e": "node scripts/verify-sync-inputs.mjs",
     "pretest:size": "node scripts/verify-sync-inputs.mjs",
-    "pretest": "node scripts/verify-sync-inputs.mjs"
+    "pretest": "node scripts/verify-sync-inputs.mjs",
+    "test:server": "node scripts/test-server.mjs"
   },
   "keywords": [],
   "author": "",
