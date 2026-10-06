@@ -136,7 +136,7 @@ function migrateToolModes(): void {
       registry.update(agent.id, { toolModes: agent.toolModes })
     }
   }
-  config.ai = { ...config.ai, toolModes: moved.toolModes }
+  config.ai = { ...config.ai, toolModes: moved.toolModes, mcpLegacyToolMap: moved.mcpLegacyToolMap }
 }
 
 function remove(id: string): void {

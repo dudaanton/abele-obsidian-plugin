@@ -28,6 +28,16 @@ export interface McpServer {
   fetchedAt?: string
 }
 
+/** The legacy alias ownership frozen at upgrade, including collisions. */
+export type McpLegacyToolMap = Record<
+  string,
+  Array<{
+    serverId: string
+    toolName: string
+    serverName: string
+  }>
+>
+
 export interface McpToolSnapshot {
   name: string
   title?: string

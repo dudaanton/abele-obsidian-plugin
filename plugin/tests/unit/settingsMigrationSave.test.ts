@@ -20,6 +20,7 @@ import {
   MAP_TOOL_MODES,
 } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
+import { createMcpServer } from '@/ai/mcp/types'
 import { useVault } from '../helpers/testEnv'
 
 interface FakePlugin {
@@ -46,6 +47,30 @@ beforeEach(() => {
 })
 
 describe('loading settings that still need migrating', () => {
+  it('persists legacy MCP ownership once, even when only closed chats contain legacy modes', async () => {
+    const original = createMcpServer({
+      id: 'original',
+      name: 'Archive',
+      tools: [{ name: 'echo', description: '', inputSchema: {} }],
+    })
+    install({ ai: { ...DEFAULT_AI_SETTINGS, mcpServers: [original] } })
+    const config = AbeleConfig.getInstance()
+    await config.loadSettings()
+    expect(saved).toHaveLength(1)
+    expect((saved[0].ai as typeof config.ai).mcpLegacyToolMap).toEqual({
+      mcp_archive_echo: [{ serverId: 'original', serverName: 'Archive', toolName: 'echo' }],
+    })
+    const stored = structuredClone(saved[0])
+    const ai = stored.ai as typeof config.ai
+    ai.mcpServers![0].name = 'Renamed'
+    ai.mcpServers!.push(createMcpServer({ ...original, id: 'replacement' }))
+    install(stored)
+    await config.loadSettings()
+    expect(saved).toEqual([])
+    expect(config.ai.mcpLegacyToolMap?.mcp_archive_echo.map((tool) => tool.serverId)).toEqual([
+      'original',
+    ])
+  })
   it('persists a GitHub connection using the existing secret slot without copying the token', async () => {
     install({
       github: { enabled: true, server: 'https://git.example.test', keyId: 'existing-key' },
@@ -167,6 +192,7 @@ describe('loading settings with nothing to migrate', () => {
         ],
         defaultAgentId: 'a1',
         commentAgentId: 'c1',
+        mcpLegacyToolMap: {}, // Already captured at upgrade, even without connected servers.
       },
     })
 

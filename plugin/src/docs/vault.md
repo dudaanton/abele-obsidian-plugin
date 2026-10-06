@@ -929,9 +929,14 @@ descriptions and parameter schemas, as the server gave them. Nothing is written 
 MCP entries in `ai.toolModes`, each agent's `toolModes`, and saved chat overrides use
 `mcp:` followed by the JSON pair `[server.id, originalToolName]`. Provider-facing names are
 only aliases, not permission keys. Renaming a server keeps these entries unchanged; settings
-transfer carries the identities and mode maps. Legacy `mcp_<server>_<tool>` entries migrate
-only when exactly one saved server/tool pair matches. Ambiguous matches become `ask`, unmatched
-entries are removed, and one notice lists the choices to set again.
+transfer carries the identities and mode maps. At upgrade, `ai.mcpLegacyToolMap` freezes each
+legacy `mcp_<server>_<tool>` alias's owners as `{ serverId, toolName, serverName }` records.
+Closed legacy chats use that snapshot when later opened, never the server labels at that time.
+The snapshot travels with AI general settings but never replaces one already established in
+the receiving vault. A legacy mode migrates only for a unique recorded owner still present;
+ambiguous or removed owners become `ask`. Unmatched aliases are retained as dormant `ask`
+entries under `mcp:unresolved:` followed by their JSON-encoded alias. One notice lists the
+choices to set again, and the migrated chat is saved so the notice does not repeat.
 
 ## Screenshots
 

@@ -90,7 +90,8 @@ describe('renaming a server', () => {
       agents: [createAgent({ toolModes: { [mcpPermissionKey('a', 'x')]: 'ask' } })],
       mcpServers: [createMcpServer({ id: 'a', name: 'A' })],
     }
-    ai.mcpServers[0].name = 'a'
-    expect(migrateMcpPermissions(ai).ai).toBe(ai)
+    const migrated = migrateMcpPermissions(ai).ai
+    migrated.mcpServers![0].name = 'a'
+    expect(migrateMcpPermissions(migrated).ai).toBe(migrated)
   })
 })

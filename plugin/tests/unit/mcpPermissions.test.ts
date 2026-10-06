@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMcpServer } from '@/ai/mcp/types'
 import { createMcpTools } from '@/ai/mcp/tools'
-import { mcpPermissionKey, migrateMcpModes, migrateMcpPermissions } from '@/ai/mcp/permissions'
+import {
+  mcpPermissionKey,
+  migrateMcpModes,
+  migrateMcpPermissions,
+  unresolvedMcpPermissionKey,
+} from '@/ai/mcp/permissions'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -112,6 +117,7 @@ describe('legacy permissions', () => {
     expect(result.modes).toEqual({
       [mcpPermissionKey('a', 'part_echo')]: 'ask',
       [mcpPermissionKey('b', 'echo')]: 'ask',
+      [unresolvedMcpPermissionKey('mcp_removed_echo')]: 'ask',
     })
     expect(result.reset).toEqual(
       expect.arrayContaining(['One / part_echo', 'One_part / echo', 'mcp_removed_echo'])

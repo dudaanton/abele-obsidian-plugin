@@ -2261,7 +2261,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         : {}
     let migrated = false
     if (overrides.toolModes) {
-      const result = migrateMcpModes(overrides.toolModes, config.mcpServers)
+      const result = migrateMcpModes(
+        overrides.toolModes,
+        config.mcpServers,
+        config.mcpLegacyToolMap ?? {}
+      )
       overrides.toolModes = result.modes
       migrated = result.changed
       notifyMcpPermissionReset(result.reset)

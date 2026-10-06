@@ -72,6 +72,7 @@ function settingsWith(headerButtons: HeaderButtonDefinition[]) {
       ],
       defaultAgentId: 'a1',
       commentAgentId: 'c1',
+      mcpLegacyToolMap: {},
     },
   }
 }

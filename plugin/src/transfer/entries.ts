@@ -93,7 +93,12 @@ const aiBlock = (
   label,
   read: (settings) => pick(ai(settings) as unknown as Record<string, unknown>, keys),
   write: (settings, data) => {
-    settings.ai = { ...ai(settings), ...pick(data, keys) }
+    const incoming = pick(data, keys)
+    // A vault's upgrade-time ownership is immutable: an imported alias map must not
+    // reinterpret its still-closed chats. It travels only into settings lacking a snapshot.
+    if ('mcpLegacyToolMap' in incoming && ai(settings).mcpLegacyToolMap !== undefined)
+      incoming.mcpLegacyToolMap = ai(settings).mcpLegacyToolMap
+    settings.ai = { ...ai(settings), ...incoming }
   },
   ...extra,
 })
@@ -132,6 +137,7 @@ export const SECTIONS: Section[] = [
       'autoRetry',
       'permissionMode',
       'toolModes', // Includes identity-based MCP keys; do not rewrite these as provider aliases.
+      'mcpLegacyToolMap', // Frozen ownership needed when old chats are migrated after transfer.
       'defaultScope',
       'defaultFullVaultAccess',
       'chatFolder',

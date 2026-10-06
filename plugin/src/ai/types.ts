@@ -5,7 +5,7 @@ import type { TFile } from 'obsidian'
 import type { DraftImports } from './draftImports'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
 import type { MapBlock } from '@/helpers/mapConfig'
-import type { McpServer } from './mcp/types'
+import type { McpServer, McpLegacyToolMap } from './mcp/types'
 import type { StartupScript } from '@/scripting/types'
 
 /**
@@ -260,6 +260,8 @@ export interface AiSettings {
   autoRetry?: RetrySettings
   /** MCP servers reached over HTTP, whose tools agents can be given. See `ai/mcp/`. */
   mcpServers?: McpServer[]
+  /** Frozen upgrade-time alias ownership for legacy chats that have not yet been opened. */
+  mcpLegacyToolMap?: McpLegacyToolMap
   /** @deprecated migrated to imageProviders */
   openRouterApiKey?: string
   /** @deprecated migrated to imageProviders */

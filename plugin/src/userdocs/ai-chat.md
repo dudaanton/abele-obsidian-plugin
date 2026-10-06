@@ -298,8 +298,10 @@ the agents that need it.
 Renaming a server keeps its permissions, separate from every other server. When upgrading
 older permissions, Abele keeps a choice only if it can identify exactly one tool. If a saved
 name could mean several tools, those tools ask before running, and one notice lists what to
-set again in **Access**. Permissions for tools no longer in the saved lists are removed.
-These choices travel with settings transfer.
+set again in **Access**. Abele remembers which servers owned the old names at upgrade, so
+opening an old chat after a rename cannot give its permissions to a newly connected server.
+Choices that cannot be matched safely are kept at Ask and listed in the notice, not made
+automatic. These choices travel with settings transfer.
 
 ## Skills and prompts
 

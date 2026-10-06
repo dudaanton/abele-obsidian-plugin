@@ -154,7 +154,9 @@ fetched from the server, and it is what agents are told — fetching again is do
 settings, where the person sees the new list. Tools are offered as `mcp_<server>_<tool>` aliases,
 with collision suffixes when needed. In `toolModes` their keys are `mcp:` plus the JSON pair
 `[server.id, originalToolName]`, independent of the server's label. They are off for an agent
-until given; see the tools section.
+until given; see the tools section. `ai.mcpLegacyToolMap` is the frozen upgrade-time ownership
+of legacy aliases, used to migrate old chat permissions when those chats are opened later.
+Renames and newly connected servers do not change that snapshot.
 
 ## Editor syntax highlighting
 

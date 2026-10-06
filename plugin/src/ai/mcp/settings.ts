@@ -38,7 +38,7 @@ export function notifyMcpPermissionReset(reset: string[]): void {
   if (!reset.length) return
   new Notice(
     'Some saved MCP permissions could not be matched safely. Matched tools now ask before running. ' +
-      'Set these permissions again in agent Access settings:\n' +
+      'Review these choices in agent Access settings or the chat permissions:\n' +
       reset.join('\n'),
     0
   )
