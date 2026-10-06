@@ -8,7 +8,8 @@ import { templateReviewSource } from '@/templates/TemplateTrust'
 
 /** Explicitly approved fixture, for tests of what happens after template confirmation. */
 export async function confirmTemplate(template: UserTemplate) {
-  const text = templateReviewSource(template, await template.getContent())
+  const content = await template.getContent()
+  const text = templateReviewSource(template, content, await template.getBody(content))
   ScriptTrust.forTemplates().confirm({ path: template.file.path, hash: await sha256(text), text })
 }
 

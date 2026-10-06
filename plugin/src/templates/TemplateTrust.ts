@@ -8,19 +8,25 @@ import type { UserTemplate } from './UserTemplate'
 /** Once per version and session, just like the notice for waiting scripts. */
 const announced = new WeakMap<ScriptTrust, Set<string>>()
 
-/**
- * Reuse script approvals and review, but always require an explicit local confirmation.
- * Include the indexed execution settings in what is reviewed and hashed: metadata can lag
- * the file's text, and an approval must cover the exact settings used as well as all its text.
- */
-export function templateReviewSource(template: UserTemplate, text: string): string {
+export type TemplateExecutionSettings = Pick<
+  UserTemplate,
+  'templateFor' | 'callbacks' | 'targetFolder' | 'targetName' | 'targetProperties'
+>
+
+/** Review and hash the exact prepared body and settings that this application will consume. */
+export function templateReviewSource(
+  template: TemplateExecutionSettings,
+  text: string,
+  body: string
+): string {
   const settings = {
+    template_for: template.templateFor,
     callbacks: template.callbacks,
     target_folder: template.targetFolder,
     target_name: template.targetName,
     target_properties: template.targetProperties,
   }
-  return `Template execution settings:\n${JSON.stringify(settings, null, 2)}\n\nFull template:\n${text}`
+  return `Template execution settings:\n${JSON.stringify(settings, null, 2)}\n\nPrepared template body:\n${body}\n\nFull template:\n${text}`
 }
 
 export async function allowTemplateExecution(
@@ -64,18 +70,27 @@ export async function allowTemplateExecution(
   return false
 }
 
-/** One read and one verdict for every executable part of a template application. */
+/** Capture and check once at application time; every executable part consumes this snapshot. */
 export async function prepareTemplate(template: UserTemplate) {
   const text = await template.getContent()
   const body = await template.getBody(text)
+  // The indexed template can outlive its file version or change while a plugin call awaits.
+  // Never grant its later fields the verdict of the snapshot reviewed here.
+  const settings: TemplateExecutionSettings = {
+    templateFor: template.templateFor,
+    callbacks: [...template.callbacks],
+    targetFolder: template.targetFolder,
+    targetName: template.targetName,
+    targetProperties: template.targetProperties.map((prop) => ({ ...prop })),
+  }
   const sources = [
     body,
-    template.targetFolder,
-    template.targetName,
-    ...template.targetProperties.map((prop) => prop.value),
+    settings.targetFolder,
+    settings.targetName,
+    ...settings.targetProperties.map((prop) => prop.value),
   ]
   const executable =
-    template.callbacks.length > 0 ||
+    settings.callbacks.length > 0 ||
     sources.some(
       (source) =>
         source &&
@@ -84,8 +99,8 @@ export async function prepareTemplate(template: UserTemplate) {
   const allowed = await allowTemplateExecution(
     template.file.path,
     template.name,
-    templateReviewSource(template, text),
+    templateReviewSource(settings, text, body),
     executable
   )
-  return { body, allowed }
+  return { body, allowed, settings }
 }

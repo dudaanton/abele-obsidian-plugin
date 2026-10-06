@@ -6,7 +6,7 @@ import { parseTemplateVariables, applyTemplateVariables, TemplateVariable } from
 import { getAvailablePath, getEditorForFile } from '@/helpers/vaultUtils'
 import { getFolderFromPath } from '@/helpers/pathsHelpers'
 import { ensureVaultFolder } from '@/helpers/vaultFolders'
-import { prepareTemplate } from './TemplateTrust'
+import { prepareTemplate, type TemplateExecutionSettings } from './TemplateTrust'
 
 /** Wrap value in quotes if it contains a colon (breaks YAML), but leave wikilinks and arrays as-is */
 function escapeFrontmatterValue(value: string): string {
@@ -153,23 +153,23 @@ export class TemplateService {
   ): Promise<TFile> {
     signal?.throwIfAborted()
     // One snapshot and approval for body, properties, paths and callbacks.
-    const { body, allowed } = await prepareTemplate(template)
+    const { body, allowed, settings } = await prepareTemplate(template)
 
     // Parse and apply variables
     const { variables } = parseTemplateVariables(body)
     let content = await applyTemplateVariables(body, variables, userValues, allowed)
 
     // Apply target properties (template_prop_* -> frontmatter)
-    content = await this.applyTargetProperties(content, template, variables, userValues, allowed)
+    content = await this.applyTargetProperties(content, settings, variables, userValues, allowed)
 
     // Determine target path
-    const targetPath = await this.resolveTargetPath(template, userValues, allowed)
+    const targetPath = await this.resolveTargetPath(settings, userValues, allowed)
 
     // Create file
     const file = await this.createFileWithPath(targetPath, content, signal)
 
     // Execute callbacks
-    if (allowed) await this.executeCallbacks(template.callbacks, signal)
+    if (allowed) await this.executeCallbacks(settings.callbacks, signal)
 
     return file
   }
@@ -184,15 +184,15 @@ export class TemplateService {
   ): Promise<void> {
     const { app } = GlobalStore.getInstance()
 
-    const { body, allowed } = await prepareTemplate(template)
+    const { body, allowed, settings } = await prepareTemplate(template)
     const { variables } = parseTemplateVariables(body)
     let content = await applyTemplateVariables(body, variables, userValues, allowed)
 
     // Apply target properties
-    content = await this.applyTargetProperties(content, template, variables, userValues, allowed)
+    content = await this.applyTargetProperties(content, settings, variables, userValues, allowed)
 
     await app.vault.modify(targetFile, content)
-    if (allowed) await this.executeCallbacks(template.callbacks)
+    if (allowed) await this.executeCallbacks(settings.callbacks)
   }
 
   /**
@@ -202,11 +202,11 @@ export class TemplateService {
     template: UserTemplate,
     userValues: Map<string, string>
   ): Promise<string> {
-    const { body, allowed } = await prepareTemplate(template)
+    const { body, allowed, settings } = await prepareTemplate(template)
     const { variables } = parseTemplateVariables(body)
     const content = await applyTemplateVariables(body, variables, userValues, allowed)
 
-    if (allowed) await this.executeCallbacks(template.callbacks)
+    if (allowed) await this.executeCallbacks(settings.callbacks)
 
     return content
   }
@@ -220,11 +220,11 @@ export class TemplateService {
     const defaultTemplate = this.getDefaultTemplate()
     if (!defaultTemplate) return false
 
-    const { body, allowed } = await prepareTemplate(defaultTemplate)
+    const { body, allowed, settings } = await prepareTemplate(defaultTemplate)
     const { variables, userVariables } = parseTemplateVariables(body)
 
     // Automatic application cannot ask for input, including in target-only properties.
-    const hasPropertyInput = defaultTemplate.targetProperties.some(
+    const hasPropertyInput = settings.targetProperties.some(
       (prop) => parseTemplateVariables(prop.value).userVariables.length > 0
     )
     if (userVariables.length > 0 || hasPropertyInput) {
@@ -235,13 +235,7 @@ export class TemplateService {
     let content = await applyTemplateVariables(body, variables, new Map(), allowed)
 
     // Apply target properties
-    content = await this.applyTargetProperties(
-      content,
-      defaultTemplate,
-      variables,
-      new Map(),
-      allowed
-    )
+    content = await this.applyTargetProperties(content, settings, variables, new Map(), allowed)
 
     const { app: vaultApp } = GlobalStore.getInstance()
     if (onlyIfEmpty) {
@@ -257,7 +251,7 @@ export class TemplateService {
       await vaultApp.vault.modify(file, content)
     }
 
-    if (allowed) await this.executeCallbacks(defaultTemplate.callbacks)
+    if (allowed) await this.executeCallbacks(settings.callbacks)
 
     return true
   }
@@ -268,7 +262,7 @@ export class TemplateService {
    */
   private async applyTargetProperties(
     content: string,
-    template: UserTemplate,
+    template: TemplateExecutionSettings,
     variables: TemplateVariable[],
     userValues: Map<string, string>,
     allowed: boolean
@@ -325,7 +319,7 @@ export class TemplateService {
    * Resolve target path for new note
    */
   private async resolveTargetPath(
-    template: UserTemplate,
+    template: TemplateExecutionSettings,
     userValues: Map<string, string>,
     allowed: boolean
   ): Promise<string> {

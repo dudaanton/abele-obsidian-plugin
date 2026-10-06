@@ -63,8 +63,12 @@ Until you confirm it, the note is still made, but its commands do not run. Plugi
 keep the text you supplied without calling the plugin. This also applies when an agent, a
 script or the default template uses it automatically: nothing stops to ask you.
 
-A notice offers **Review**. It opens the same review dialog as scripts: read the template and
-its execution settings, or the changes since your last confirmation. **Confirm** enables this
+A notice offers **Review**. It opens the same review dialog as scripts: read the template,
+the prepared body and its execution settings, or the changes since your last confirmation.
+Confirmation covers the body and settings actually used when you apply it, including
+`template_for`, which becomes the new note's `type`. If these change while a form is open or
+while Obsidian is updating its template information, the changed version needs confirmation too.
+**Confirm** enables this
 version on this device. Use the template again afterwards; confirmation does not repeat the
 work that was skipped. **Not now** leaves its commands waiting and keeps the notice available
 so you can review it later. Confirmations stay on this

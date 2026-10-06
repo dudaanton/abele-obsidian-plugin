@@ -88,7 +88,7 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
           }
 
           // Resolve target property values with transaction data
-          for (const tp of template.targetProperties) {
+          for (const tp of prepared.settings.targetProperties) {
             const resolved = renderTemplate(tp.value, data)
             body = this.setFrontmatterProp(body, tp.name, resolved)
           }

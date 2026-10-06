@@ -8,7 +8,9 @@ import { createApplyTemplateTool } from '@/ai/tools/TemplateTool'
 import { applyTemplateVariables, parseTemplateVariables } from '@/templates/TemplateParser'
 import { UserTemplate } from '@/templates/UserTemplate'
 import { TransactionNoteTemplate } from '@/templates/TransactionNoteTemplate'
-import { templateHarness } from '../helpers/templateHarness'
+import { confirmTemplate, templateHarness } from '../helpers/templateHarness'
+import { useTemplates } from '@/composables/useTemplates'
+import * as vaultUtils from '@/helpers/vaultUtils'
 
 const review = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true))
 vi.mock('@/scripting/reviewScript', () => ({ reviewScript: review }))
@@ -151,6 +153,133 @@ describe('template execution trust', () => {
     await service().createNoteFromTemplate(changed, new Map())
     expect(env.commands.executeCommandById).not.toHaveBeenCalled()
     expect(Notice.shown).toHaveLength(2)
+  })
+
+  it('rechecks the applied type when metadata catches up, but reuses an unchanged confirmation', async () => {
+    const env = templateHarness()
+    // The file already changed, but the metadata still supplies the previous output type.
+    const source =
+      '---\ntype: template\ntemplate_for: article\ncallbacks: command:sample:mark\n---\nBody'
+    const properties = { template_for: 'draft', callbacks: 'command:sample:mark' }
+    const template = await env.template(source, properties)
+    await service().createNoteFromTemplate(template, new Map())
+    await reviewNotice()
+    const unchanged = await service().createNoteFromTemplate(template, new Map())
+    expect(await env.app.vault.read(unchanged)).toContain('type: draft')
+    expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
+    expect(Notice.shown).toHaveLength(1)
+
+    env.app.setFrontmatter(template.file.path, {
+      type: 'template',
+      ...properties,
+      template_for: 'article',
+    })
+    const updated = UserTemplate.fromFile(template.file)!
+    const changed = await service().createNoteFromTemplate(updated, new Map())
+    expect(await env.app.vault.read(changed)).toContain('type: article')
+    expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
+    expect(Notice.shown).toHaveLength(2)
+    expect(review.mock.calls[0][1]).toMatchObject({
+      template: { source: expect.stringContaining('Prepared template body:\n---\ntype: draft') },
+    })
+  })
+
+  it('checks the retained template type when the file is restored while its input form is open', async () => {
+    const env = templateHarness()
+    const method = vi.fn(async () => 'unreviewed result')
+    Object.assign(env.app, { plugins: { plugins: { 'sample-transformer': { convert: method } } } })
+    vi.spyOn(vaultUtils, 'openFile').mockResolvedValue(undefined)
+    const original =
+      '---\ntype: template\ntemplate_for: draft\ncallbacks: command:sample:mark\ntarget_name: Sample output\n---\nBody'
+    const properties = {
+      template_for: 'draft',
+      callbacks: 'command:sample:mark',
+      target_name: 'Sample output',
+    }
+    const template = await env.template(original, properties)
+    await confirmTemplate(template)
+    const injectedType = '{{sample-transformer;convert;Topic}}'
+    await env.app.vault.modify(
+      template.file,
+      original.replace('template_for: draft', `template_for: "${injectedType}"`)
+    )
+    env.app.setFrontmatter(template.file.path, {
+      type: 'template',
+      ...properties,
+      template_for: injectedType,
+    })
+    const flow = useTemplates()
+    await flow.startCreateFlowWithTemplate(template.file.path)
+    expect(flow.isVariablesModalOpen.value).toBe(true)
+    expect(flow.selectedTemplate.value?.templateFor).toBe(injectedType)
+    await env.app.vault.modify(template.file, original)
+    env.app.setFrontmatter(template.file.path, { type: 'template', ...properties })
+    await flow.onVariablesConfirmed(new Map([['Topic', 'safe']]))
+    expect(method).not.toHaveBeenCalled()
+    expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+    expect(await env.app.vault.read(env.app.vault.getFileByPath('Sample output.md')!)).toContain(
+      'type: safe'
+    )
+    expect(Notice.shown).toHaveLength(1)
+  })
+
+  it.each(['create', 'replace', 'insert'] as const)(
+    'checks the actual prepared body, not just file text, before %s',
+    async (action) => {
+      const env = templateHarness([{ path: 'target.md' }])
+      const method = vi.fn(async () => 'unreviewed result')
+      Object.assign(env.app, { plugins: { plugins: { sample: { convert: method } } } })
+      const template = await env.template('Body', { callbacks: 'command:sample:mark' })
+      await confirmTemplate(template)
+      // A body transformation can inject executable variables without editing the source file.
+      const read = vi.spyOn(template, 'getContent')
+      const prepare = vi
+        .spyOn(template, 'getBody')
+        .mockResolvedValue('Prepared {{sample;convert;Topic}}')
+      const values = new Map([['Topic', 'safe']])
+      let text: string
+      if (action === 'create') {
+        const file = await service().createNoteFromTemplate(template, values)
+        text = await env.app.vault.read(file)
+      } else if (action === 'replace') {
+        const file = env.app.vault.getFileByPath('target.md')!
+        await service().replaceNoteWithTemplate(template, file, values)
+        text = await env.app.vault.read(file)
+      } else {
+        text = await service().insertTemplateAtCursor(template, values)
+      }
+      expect(method).not.toHaveBeenCalled()
+      expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+      expect(text).toBe('Prepared safe')
+      expect(read).toHaveBeenCalledOnce()
+      expect(prepare).toHaveBeenCalledExactlyOnceWith('Body')
+      expect(Notice.shown).toHaveLength(1)
+    }
+  )
+
+  it('executes only the checked settings snapshot if the indexed object changes during application', async () => {
+    const env = templateHarness()
+    const method = vi.fn(async () => 'resolved')
+    const unreviewed = vi.fn(async () => 'unreviewed result')
+    const template = await env.template('{{sample;convert;Topic}}', {
+      callbacks: 'command:sample:mark',
+      template_for_topic: 'original',
+      target_name: 'Sample output',
+      target_folder: 'Output',
+    })
+    Object.assign(env.app, { plugins: { plugins: { sample: { convert: method, unreviewed } } } })
+    await confirmTemplate(template)
+    method.mockImplementationOnce(async () => {
+      template.callbacks.push('sample:unreviewed')
+      template.targetProperties[0].value = '{{sample;unreviewed;Topic}}'
+      Object.assign(template, { targetName: '{{sample;unreviewed;Topic}}', targetFolder: 'Other' })
+      return 'resolved'
+    })
+    const file = await service().createNoteFromTemplate(template, new Map([['Topic', 'safe']]))
+    expect(unreviewed).not.toHaveBeenCalled()
+    expect(file.path).toBe('Output/Sample output.md')
+    expect(await env.app.vault.read(file)).toContain('topic: original')
+    expect(env.commands.executeCommandById.mock.calls).toEqual([['sample:mark']])
   })
 
   it('persists approvals only in device-local storage and rereads them on reload', async () => {
