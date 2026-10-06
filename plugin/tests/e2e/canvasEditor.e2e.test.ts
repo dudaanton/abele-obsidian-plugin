@@ -59,7 +59,9 @@ const type = async (text: string) => {
     if (text === '\b') typeText(text)
     else {
       driver(['type', text, '--via', 'keys'])
-      await until(`document.activeElement?.value === ${JSON.stringify(expected)}`)
+      await expect
+        .poll(() => run<string>('return document.activeElement?.value'), { timeout: 10_000 })
+        .toBe(expected)
     }
   } else
     await withNativeInput(() =>
