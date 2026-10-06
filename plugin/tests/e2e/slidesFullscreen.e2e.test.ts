@@ -162,4 +162,48 @@ describe.skipIf(!available)('fullscreen show without permanent chrome', () => {
     )
     verify(await probe('emulated-phone'), true)
   })
+  it('ends a mobile show when another tab or file becomes active', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{${PRELUDE}
+      if(!mobile)throw Error('mobile layout required')
+      const path='sample-navigation-note.md'
+      if(app.vault.getAbstractFileByPath(path))throw Error('sample fixture already exists')
+      const file=await app.vault.create(path,'# Sample destination')
+      const before=status?(await status.getInfo()).visible:null
+      let other
+      try {
+        app.workspace.setActiveLeaf(leaf,{focus:true})
+        await v.present(false);await wait(200)
+        const hiddenOnTab=status?(await status.getInfo()).visible===false:true
+        other=app.workspace.getLeaf('tab');await other.openFile(file)
+        const tabEnded=await until(()=>v.root.parentElement===leaf.view.contentEl && !v.root.classList.contains('abele-deck-presenting'))
+        await wait(200)
+        const tabRestored=status?(await status.getInfo()).visible===before:true
+        other.detach();other=null
+        app.workspace.setActiveLeaf(leaf,{focus:true})
+        await v.present(false);await wait(200)
+        const hiddenOnFile=status?(await status.getInfo()).visible===false:true
+        await leaf.openFile(file)
+        const fileEnded=await until(()=>!v.root.isConnected && !v.root.classList.contains('abele-deck-presenting'))
+        await wait(200)
+        const fileRestored=status?(await status.getInfo()).visible===before:true
+        return JSON.stringify({hiddenOnTab,tabEnded,tabRestored,hiddenOnFile,fileEnded,fileRestored,type:leaf.view.getViewType()})
+      } finally {
+        v.exitPresenting();other?.detach()
+        await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(PATH)}))
+        await app.vault.delete(file)
+      }
+    })()`)
+    )
+    for (const key of [
+      'hiddenOnTab',
+      'tabEnded',
+      'tabRestored',
+      'hiddenOnFile',
+      'fileEnded',
+      'fileRestored',
+    ])
+      expect(result[key], JSON.stringify(result)).toBe(true)
+    expect(result.type).toBe('markdown')
+  })
 })

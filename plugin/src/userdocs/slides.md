@@ -183,7 +183,9 @@ on desktop or tap an empty slide area on a phone. They fade away a couple of sec
 you leave the strip or stop tapping. Moving the pointer over the slide does not reveal them.
 Tab also reveals the controls for keyboard access. The controls overlay the slide without
 moving it and stay clear of the phone's safe areas. **Exit** or Escape returns to the same
-deck tab. Use it when you want a single-screen show.
+deck tab. On a phone, switching tabs, opening another file or navigating to another panel
+also ends the show and restores the system status bar. Use Play when you want a single-screen
+show.
 
 ## Present with notes
 

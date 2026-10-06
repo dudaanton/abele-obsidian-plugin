@@ -101,6 +101,28 @@ export class DeckView extends FileView {
 
   async onOpen(): Promise<void> {
     this.ensureViewer()
+    if (!Platform.isMobile) return
+    // The body overlay outlives its tab's DOM visibility. Release it when navigation
+    // leaves this view, not only when Obsidian eventually unloads the file or tab.
+    const end = () => {
+      this.show?.end()
+      this.viewer?.exitPresenting()
+    }
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', (leaf) => {
+        if (leaf !== this.leaf) end()
+      })
+    )
+    this.registerEvent(
+      this.app.workspace.on('layout-change', () => {
+        if (
+          this.leaf.view !== this ||
+          !this.containerEl.isConnected ||
+          this.containerEl.offsetParent === null
+        )
+          end()
+      })
+    )
   }
   async onClose(): Promise<void> {
     this.follower.stop()
