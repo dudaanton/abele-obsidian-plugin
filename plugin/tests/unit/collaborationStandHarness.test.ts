@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { it, expect } from 'vitest'
-import { assembleDisposableCollaborationApp } from '../e2e/helpers/collaborationStandHarness'
-it('enables group contracts only in an exact owned disposable assembly with actual certified worker calls', () => {
-  const source = 'registerScopedFence(app);\nregisterCapabilityRoutes(app);',
-    built = assembleDisposableCollaborationApp(source)
-  expect(built).toContain('group:true')
-  expect(built).toContain('prepareGroupBootstrap')
-  expect(built).toContain('processGroupDirtyPage')
-  expect(built).toContain('x-disposable-owner')
-  expect(() => assembleDisposableCollaborationApp('different source')).toThrow(/assembly/)
+import { agentStandStartScript, standPreparationPath } from '../e2e/helpers/agentStandHarness'
+it('uses the deployable group worker and real owner preparation instead of a disposable assembly', () => {
+  const built = agentStandStartScript('/sample/verified-archive')
+  expect(built).toContain('ABELE_SCOPED_SHARING')
+  expect(standPreparationPath('sample-vault', 'sample-grant')).toBe(
+    '/v1/vaults/sample-vault/grants/sample-grant/prepare'
+  )
+  expect(standPreparationPath('sample-vault')).toBe('/v1/vaults/sample-vault/grants/groups/prepare')
+  expect(built).not.toContain('x-disposable-owner')
+  expect(() => agentStandStartScript('different source')).toThrow(/archive/)
 })

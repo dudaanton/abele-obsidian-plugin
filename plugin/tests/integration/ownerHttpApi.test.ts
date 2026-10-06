@@ -4,6 +4,10 @@ import { scopedApiServer } from '../helpers/scopedApiServer'
 import { OwnerFolderHttpPort } from '@/sync/sharing/ownerHttp'
 import { FolderSharingFlow } from '@/sync/sharing/folderSharing'
 import { SyncClient, sha256 } from '@abele/sync-core'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { spawnCollaborationStandServer } from '../e2e/helpers/collaborationStandHarness'
 let server: Awaited<ReturnType<typeof scopedApiServer>> | undefined
 afterEach(async () => {
   await server?.close()
@@ -29,6 +33,34 @@ async function setup() {
   return { vaultId, deviceToken, client }
 }
 describe('real disposable folder-management HTTP adapters', () => {
+  it('starts unchanged deployment server modules and uses actual owner-authenticated preparation routes', async () => {
+    const scratch = fileURLToPath(new URL('../../../.scratch/', import.meta.url))
+    mkdirSync(scratch, { recursive: true })
+    const work = mkdtempSync(join(scratch, 'stand-harness-smoke-'))
+    let stand: Awaited<ReturnType<typeof spawnCollaborationStandServer>> | undefined
+    try {
+      stand = await spawnCollaborationStandServer(
+        process.env.ABELE_SCOPED_API_FIXTURE!,
+        '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba',
+        work
+      )
+      const caps = await (await fetch(stand.url + '/v1/capabilities')).json()
+      expect(caps.scoped.enabled).toBe(true)
+      expect(caps.scoped.modes).toMatchObject({ folder: true, group: true })
+      await expect(
+        stand.prepare('invented-invalid-token', 'sample-vault', 'sample-grant')
+      ).rejects.toThrow('preparation refused: 401')
+      await expect(stand.prepareGroup('invented-invalid-token', 'sample-vault')).rejects.toThrow(
+        'preparation refused: 401'
+      )
+      expect((await fetch(stand.url + '/__disposable/prepare', { method: 'POST' })).status).toBe(
+        404
+      )
+    } finally {
+      await stand?.stop()
+      rmSync(work, { recursive: true, force: true })
+    }
+  }, 45000)
   it('uses paged stable personal preview and real owner login/grant/key handlers', async () => {
     const { vaultId, deviceToken } = await setup()
     const api = new OwnerFolderHttpPort({

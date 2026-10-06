@@ -2,9 +2,11 @@
 
 This test/harness slice uses exact committed core/protocol/server/CLI archive
 `80bc7c666ac54cc186696ebdaaccd2d9e7a735ba`. It never activates the shared or production server.
-The original closed capability/management fence is checked before an owned disposable group
-assembly listens. Its explicit owner-only preparation call and background worker invoke the
-real archived bootstrap/dirty-page services; no SQL membership/origin/generation edits are used.
+The production-default closed capability/management fence is checked before an owned disposable
+server listens with `ABELE_SCOPED_SHARING=on`. The archive's `buildApp`, capability routes,
+owner-authenticated preparation endpoints and persisted group maintenance run unchanged.
+No compiled server rewriting, synthetic preparation endpoints or SQL membership/origin/
+generation edits are used. Native acceptance of this updated recipe is still manager-run.
 
 ## Actors and paths
 

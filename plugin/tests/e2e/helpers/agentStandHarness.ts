@@ -1,7 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { createRequire } from 'node:module'
+import { writeFileSync } from 'node:fs'
+import { join, isAbsolute } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { verifySyncFixture } from '../../../scripts/verify-sync-inputs.mjs'
@@ -19,82 +18,39 @@ export function requireAgentImageGate(step: string): never {
       ': reviewed sponsored/native HTTP API, owner hooks and native cache/paste evidence required'
   )
 }
-/** ONLY an owned disposable test assembly. The unchanged production buildApp is checked closed
- * before this assembly listens. Contract advertisement does not claim extras/native implementation.
- */
-export function assembleDisposableAgentApp(source: string) {
-  for (const line of ['registerScopedFence(app);', 'registerCapabilityRoutes(app);'])
-    if (source.split(line).length !== 2) throw new Error('Reviewed dormant server assembly changed')
-  return source
-    .replace(
-      'registerScopedFence(app);',
-      `/* disposable test fixture contract only; production activation unchanged */\napp.post('/__disposable/prepare',async(req,reply)=>{if(req.headers['x-disposable-owner']!==process.env.ABELE_DISPOSABLE_NONCE)return reply.code(403).send({error:'forbidden'});const b=req.body;return prepareFolderAdmissions({...deps,pepper:deps.config.tokenPepper,accountTokenTtlMs:deps.config.accountTokenTtlMs},b.token,b.vaultId,b.grantId)});`
-    )
-    .replace(
-      'registerCapabilityRoutes(app);',
-      `app.get('/v1/capabilities',async(_request,reply)=>reply.header('cache-control','no-store').send({protocol_version:1,device:true,scoped:{enabled:true,protocol_version:4,modes:{folder:true,group:false},features:Object.fromEntries(['common_read_profile','version_filtered_history','materialized_snapshots','grant_local_feed','authorized_merge','sponsored_extras','native_creates','script_policy','settings_exclusion'].map(k=>[k,true])),limits:{max_live_grants:64,max_operations:32,max_prepared_note_bytes:8388608,max_page_items:1000,max_snapshots:2,snapshot_lifetime_seconds:300}}}));`
-    )
+/** Entry script only. Every server module is imported unchanged from the verified archive. */
+export function agentStandStartScript(root: string): string {
+  if (!isAbsolute(root)) throw new Error('Verified archive requires an absolute root')
+  const module = (file: string) =>
+    JSON.stringify(pathToFileURL(join(root, 'packages/server/dist', file)).href)
+  return `import {buildApp} from ${module('api/app.js')};import {createDb} from ${module('db/connect.js')};import {runMigrations} from ${module('db/migrate.js')};import {loadConfig} from ${module('config.js')};import {BlobStore} from ${module('blobs/store.js')};import {EventHub} from ${module('events/hub.js')};
+ const config=loadConfig({...process.env,ABELE_SCOPED_SHARING:'off'}),h=createDb(config.databaseUrl);await runMigrations(h.db);const deps={config,db:h.db,dialect:h.dialect,store:new BlobStore(config.blobDir,config.masterKey),hub:new EventHub()};
+ const closed=await buildApp(deps);const caps=(await closed.inject({method:'GET',url:'/v1/capabilities'})).json();const denial=await closed.inject({method:'GET',url:'/v1/vaults/sample/grants'});if(caps.scoped.enabled!==false||denial.statusCode!==503)throw new Error('Production default fence changed');await closed.close();
+ const enabled=loadConfig({...process.env,ABELE_SCOPED_SHARING:'on'});const app=await buildApp({...deps,config:enabled});await app.listen({host:'127.0.0.1',port:0});enabled.publicUrl='http://127.0.0.1:'+app.server.address().port;const active=(await app.inject({method:'GET',url:'/v1/capabilities'})).json();if(active.scoped.enabled!==true||active.scoped.modes.group!==true)throw new Error('Deployment sharing capabilities unavailable');console.log(JSON.stringify({url:app.server.address().port,closedFence:true}));let stopping=false;for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{if(stopping)return;stopping=true;void app.close().then(()=>h.close())});`
 }
-function imports(source: string, original: string, root: string) {
-  const req = createRequire(join(root, 'packages/server/package.json'))
-  return source.replace(
-    /from ['"]([^'"]+)['"]/g,
-    (_all, spec: string) =>
-      'from ' +
-      JSON.stringify(
-        spec.startsWith('.')
-          ? new URL(spec, pathToFileURL(original)).href
-          : pathToFileURL(req.resolve(spec)).href
-      )
+export function standPreparationPath(vaultId: string, grantId?: string): string {
+  return (
+    '/v1/vaults/' +
+    encodeURIComponent(vaultId) +
+    '/grants/' +
+    (grantId ? encodeURIComponent(grantId) + '/prepare' : 'groups/prepare')
   )
 }
 function ended(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
   return new Promise((resolve) => child.once('exit', () => resolve()))
 }
-export async function spawnAgentStandServer(
-  root: string,
-  commit: string,
-  work: string,
-  options: { assembly?: (source: string) => string; extraImports?: string[] } = {}
-) {
+export async function spawnAgentStandServer(root: string, commit: string, work: string) {
   verifySyncFixture(root, commit)
-  const appPath = join(root, 'packages/server/dist/api/app.js'),
-    appSource = readFileSync(appPath, 'utf8')
-  writeFileSync(
-    join(work, 'disposable-app.mjs'),
-    `import {prepareFolderAdmissions} from ${JSON.stringify(pathToFileURL(join(root, 'packages/server/dist/scoped/admissions.js')).href)};\n` +
-      (options.extraImports ?? [])
-        .map(
-          (file) =>
-            `import * as groupModule${file.includes('bootstrap') ? 'Bootstrap' : 'Worker'} from ${JSON.stringify(pathToFileURL(join(root, 'packages/server/dist', file)).href)};\n`
-        )
-        .join('') +
-      (options.extraImports?.length
-        ? 'const {prepareGroupBootstrap}=groupModuleBootstrap;const {processGroupDirtyPage}=groupModuleWorker;\n'
-        : '') +
-      imports((options.assembly ?? assembleDisposableAgentApp)(appSource), appPath, root)
-  )
-  const module = (file: string) =>
-    JSON.stringify(pathToFileURL(join(root, 'packages/server/dist', file)).href)
-  // Real migrations/auth/blob/route services, no SQL row edits. Folder preparation is an explicit
-  // fixture-only operator call because the dormant server has no production preparation worker.
-  writeFileSync(
-    join(work, 'start.mjs'),
-    `import {buildApp as dormant} from ${module('api/app.js')};import {buildApp} from './disposable-app.mjs';import {createDb} from ${module('db/connect.js')};import {runMigrations} from ${module('db/migrate.js')};import {loadConfig} from ${module('config.js')};import {BlobStore} from ${module('blobs/store.js')};import {EventHub} from ${module('events/hub.js')};import {prepareFolderAdmissions} from ${module('scoped/admissions.js')};
- const config=loadConfig(process.env),h=createDb(config.databaseUrl);await runMigrations(h.db);const deps={config,db:h.db,dialect:h.dialect,store:new BlobStore(config.blobDir,config.masterKey),hub:new EventHub()};
- const closed=await dormant(deps);const caps=(await closed.inject({method:'GET',url:'/v1/capabilities'})).json();const denial=await closed.inject({method:'GET',url:'/v1/vaults/sample/grants'});if(caps.scoped.enabled!==false||denial.statusCode!==503)throw new Error('Production fence changed');await closed.close();
- const app=await buildApp(deps);await app.listen({host:'127.0.0.1',port:0});config.publicUrl='http://127.0.0.1:'+app.server.address().port;console.log(JSON.stringify({url:app.server.address().port,closedFence:true}));let stopping=false;for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{if(stopping)return;stopping=true;void app.close().then(()=>h.close())});`
-  )
-  const nonce = randomBytes(32).toString('hex'),
-    env = {
-      ...process.env,
-      ABELE_DATABASE_URL: 'sqlite://' + join(work, 'server.sqlite'),
-      ABELE_BLOB_DIR: join(work, 'blobs'),
-      ABELE_MASTER_KEY: randomBytes(32).toString('hex'),
-      ABELE_TOKEN_PEPPER: randomBytes(16).toString('hex'),
-      ABELE_DISPOSABLE_NONCE: nonce,
-    }
+  writeFileSync(join(work, 'start.mjs'), agentStandStartScript(root))
+  const env = {
+    ...process.env,
+    ABELE_SCOPED_SHARING: 'on',
+    ABELE_DATABASE_URL: 'sqlite://' + join(work, 'server.sqlite'),
+    ABELE_BLOB_DIR: join(work, 'blobs'),
+    ABELE_MASTER_KEY: randomBytes(32).toString('hex'),
+    ABELE_TOKEN_PEPPER: randomBytes(16).toString('hex'),
+  }
   const child = spawn(process.execPath, [join(work, 'start.mjs')], {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -127,7 +83,7 @@ export async function spawnAgentStandServer(
             resolve('http://127.0.0.1:' + line.url)
           }
         } catch {
-          /* Readiness JSON may be split across stdout chunks. */
+          /* Readiness JSON may arrive in chunks. */
         }
       })
       child.once('exit', () => {
@@ -136,32 +92,25 @@ export async function spawnAgentStandServer(
       })
       child.stderr?.on('data', () => {})
     })
+    const prepare = async (token: string, vaultId: string, grantId?: string) => {
+      // Bounded pages, real fresh owner authority. Failure never repeats creation or renews a lease.
+      for (let page = 0; page < 100; page++) {
+        const res = await globalThis.fetch(url + standPreparationPath(vaultId, grantId), {
+          method: 'POST',
+          headers: { authorization: 'Bearer ' + token, 'x-abele-scoped-version': '4' },
+        })
+        if (!res.ok) throw new Error('Stand preparation refused: ' + res.status)
+        const result = (await res.json()) as { state?: string; ready?: boolean }
+        if (grantId ? result.state === 'active' : result.ready === true) return result
+      }
+      throw new Error('Stand preparation page bound reached')
+    }
     return {
       url,
       stop,
-      async prepare(token: string, vaultId: string, grantId: string) {
-        const res = await globalThis.fetch(url + '/__disposable/prepare', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-disposable-owner': nonce },
-          body: JSON.stringify({ token, vaultId, grantId }),
-        })
-        if (!res.ok) {
-          const body = (await res.json()) as { error?: { code?: string; message?: string } }
-          throw new Error(
-            'Disposable folder preparation failed: ' + res.status + ' ' + JSON.stringify(body.error)
-          )
-        }
-        return res.json()
-      },
-      async prepareGroup(token: string, vaultId: string) {
-        const res = await globalThis.fetch(url + '/__disposable/prepare-group', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-disposable-owner': nonce },
-          body: JSON.stringify({ token, vaultId }),
-        })
-        if (!res.ok) throw new Error('Disposable group preparation refused: ' + res.status)
-        return res.json()
-      },
+      prepare: (token: string, vaultId: string, grantId: string) =>
+        prepare(token, vaultId, grantId),
+      prepareGroup: (token: string, vaultId: string) => prepare(token, vaultId),
       createAccount(email: string, password: string) {
         const done = spawnSync(
           process.execPath,
@@ -179,9 +128,9 @@ export async function spawnAgentStandServer(
           throw new Error('Disposable account creation failed')
       },
     }
-  } catch (e) {
+  } catch (error) {
     await stop()
-    throw e
+    throw error
   }
 }
 export function agentCommand(root: string, dir: string, args: string[], token?: string) {
