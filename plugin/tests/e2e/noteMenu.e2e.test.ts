@@ -20,9 +20,9 @@ const script = `(async () => {
   const layout = app.workspace.getLayout()
   const activeTab = svc.activeTabId.value
   const wait = ms => new Promise(r => setTimeout(r, ms))
-  const until = async fn => {
+  const until = async (fn, stage) => {
     for (let i = 0; i < 80; i++) { if (fn()) return; await wait(100) }
-    throw new Error('Timed out waiting for the note menu probe')
+    throw new Error('Timed out waiting for the note menu probe: ' + stage)
   }
   const report = { menus: [] }
   const folder = 'sample-menu-fixture'
@@ -76,11 +76,14 @@ const script = `(async () => {
     await svc.revealSidebar()
     const session = svc.getSessionByFile(chatPath)
     svc.pendingInput.value = { text: 'Existing draft', tabId: session.id }
-    await until(() => inputText().includes('Existing draft'))
+    await until(() => inputText().includes('Existing draft'), 'initial draft')
     app.workspace.rightSplit.collapse()
+    await app.workspace.revealLeaf(leaf)
     app.workspace.setActiveLeaf(leaf, { focus: true })
+    await until(() => app.workspace.leftSplit.collapsed && app.workspace.rightSplit.collapsed &&
+      app.workspace.getMostRecentLeaf(app.workspace.rootSplit) === leaf, 'note context after drawer dismissal')
     app.commands.executeCommandById('abele:open-quick-menu')
-    await until(() => menuTitles().includes('Attach to a chat'))
+    await until(() => menuTitles().includes('Attach to a chat'), 'quick menu')
     report.quick = menuTitles().filter(t => ${JSON.stringify(TITLES)}.includes(t))
     await wait(300)
     const remote = require('@electron/remote')
@@ -88,23 +91,30 @@ const script = `(async () => {
     require('fs').writeFileSync(${JSON.stringify(shots)} + (app.isMobile ? '/mobile.png' : '/desktop.png'), image.toPNG())
     const item = [...document.querySelectorAll('.menu-item')].find(e => e.querySelector('.menu-item-title')?.textContent.trim() === 'Attach to a chat')
     item.click()
-    await until(() => document.querySelector('.prompt-input'))
+    await until(() => document.querySelector('.prompt-input'), 'chat picker')
     const input = document.querySelector('.prompt-input')
     input.value = 'Sample menu chat'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await wait(400)
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }))
-    await until(() => inputText().includes('[[sample-note]]'))
+    await until(() => inputText().includes('[[sample-note]]'), 'inserted note link')
     report.draft = inputText()
     report.scope = session.scopeResolver.isInScope(notePath)
     report.attached = session.touched.value.map(n => n.path)
-    report.activeNote = app.workspace.getMostRecentLeaf(app.workspace.rootSplit)?.view?.file?.path
+    // On mobile the most-recent leaf can be the drawer just revealed. The guarantee is
+    // the originating main tab remaining selected, not which pane received the last focus.
+    report.activeNote = leaf.view.file?.path
+    report.noteInFront = leaf.getRoot() === app.workspace.rootSplit && leaf.parent?.children[leaf.parent.currentTab] === leaf
   } catch (e) {
     report.error = String(e?.message || e)
     report.inputAtError = inputText()
     report.promptAtError = document.querySelector('.prompt')?.textContent
     report.pendingAtError = svc.pendingInput.value
     report.chatAtError = svc.activeSession.value?.currentChatFile.value?.path
+    report.menuAtError = menuTitles()
+    report.activeAtError = app.workspace.activeLeaf?.view?.getViewType()
+    report.drawersAtError = { left: app.workspace.leftSplit.collapsed, right: app.workspace.rightSplit.collapsed }
+    report.noteAtError = { root: leaf?.getRoot() === app.workspace.rootSplit, file: leaf?.view?.file?.path }
   }
   finally {
     escape()
@@ -128,6 +138,7 @@ interface Report {
   scope: boolean
   attached: string[]
   activeNote: string
+  noteInFront: boolean
 }
 const available = isObsidianRunning() && hasTestApi()
 
@@ -176,6 +187,7 @@ describe.skipIf(!available)('note actions in the app', () => {
       expect(report.scope).toBe(true)
       expect(report.attached).toEqual([])
       expect(report.activeNote).toBe('sample-menu-fixture/sample-note.md')
+      expect(report.noteInFront).toBe(true)
     }
   })
 })

@@ -40,7 +40,15 @@ beforeAll(async () => {
 })
 afterAll(async () => {
   if (!available) return
-  if (emulated) await reloadApp('app.emulateMobile(false)')
+  if (emulated) {
+    // Close the mobile fixture before saving/leaving its separate layout, not only after
+    // desktop restoration. Otherwise the saved mobile layout resurrects this deck next time.
+    evalRaw(`(() => {
+      for (const leaf of app.workspace.getLeavesOfType('abele-deck')) if (leaf.view.file?.path === ${JSON.stringify(PATH)}) leaf.detach()
+      return 'closed'
+    })()`)
+    await reloadApp('app.emulateMobile(false)')
+  }
   evalRaw(`(async()=>{
     for(const leaf of app.workspace.getLeavesOfType('abele-deck'))if(leaf.view.file?.path===${JSON.stringify(PATH)})leaf.detach()
     const file=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(file)await app.vault.delete(file)
