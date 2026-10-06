@@ -104,7 +104,7 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         const data = dir + '/data.json', cache = dir + '/calendars-cache.json'
         window.__sampleCompletionE2E = {
           calendars: JSON.stringify(config.calendars), marks: JSON.stringify(config.calendarCompletion ?? {}),
-          secret: app.secretStorage.getSecret, layout: app.workspace.getLayout(),
+          secret: app.secretStorage.getSecret, layout: app.workspace.getLayout(), journals: config.journals,
           data, dataText: await adapter.exists(data) ? await adapter.read(data) : null,
           cache, cacheText: await adapter.exists(cache) ? await adapter.read(cache) : null,
         }
@@ -119,6 +119,44 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         const done = () => service.state.events['sample-feed'].map((e) => service.isDone(e))
         await t.plugin.activateView('abele-timeline-sidebar-view')
         const timeline = await until(() => document.querySelector('.abele-timeline-sidebar'))
+        // The sidebar intentionally starts today. Past occurrences are shown in daily
+        // notes, where they must remain ordinary history rather than overdue work.
+        if (!app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)})) await app.vault.createFolder(${JSON.stringify(FOLDER)})
+        config.journals = [...config.journals, new t.Journal({ id: 'sample-completion-daily', name: 'Sample daily',
+          type: 'sample-completion-daily', isDefault: true, recurrence: 'daily' })]
+        const dailyFile = await app.vault.create(${JSON.stringify(FOLDER + '/2001-01-02.md')}, '---\\ntype: sample-completion-daily\\n---\\nSample past day.\\n')
+        await until(() => app.metadataCache.getFileCache(dailyFile), 'daily note metadata')
+        const pastEvent = { ...events[0], id: 'sample-feed:sample-past:once', uid: 'sample-past', recurrenceId: null,
+          title: 'Sample past meeting', start: new Date(2001, 0, 2, 9).getTime(), end: new Date(2001, 0, 2, 10).getTime() }
+        service.state.events['sample-feed'] = [pastEvent, ...events]
+        service.state.version++
+        const mainBeforePast = app.workspace.getMostRecentLeaf(app.workspace.rootSplit)
+        if (mainBeforePast) app.workspace.setActiveLeaf(mainBeforePast, { focus: false })
+        const dailyLeaf = app.workspace.getLeaf('tab')
+        await dailyLeaf.openFile(dailyFile, { state: { mode: 'source', source: false } })
+        await app.workspace.revealLeaf(dailyLeaf)
+        app.workspace.setActiveLeaf(dailyLeaf, { focus: true })
+        const daily = await until(() => dailyLeaf.view.containerEl.querySelector('.abele-footer-view .abele-timeline'), 'past daily timeline')
+        const history = await until(() => daily.querySelector('.abele-timeline__history'), 'past daily history')
+        if (!history.textContent.includes('0 unfinished')) throw Error('Past occurrence counted as unfinished')
+        if (history.getAttribute('aria-expanded') !== 'true') history.click()
+        const pastRow = await until(() => daily.querySelector('[data-timeline-item="event:' + pastEvent.id + '"]'), 'past daily row')
+        if (pastRow.hasAttribute('data-task')) throw Error('Past occurrence marked as a pending task')
+        if (pastRow.closest('.abele-timeline__date-block').querySelector('.abele-timeline__date-indicator_overdue'))
+          throw Error('Event-only past date shown as overdue')
+        pastRow.scrollIntoView({ block: 'center' })
+        await wait(300)
+        await shot(${JSON.stringify(profile.replaceAll(' ', '-'))} + '-past-neutral')
+        pastRow.querySelector('input[type=checkbox]').click()
+        await until(() => service.isDone(pastEvent) && !daily.contains(pastRow), 'hide marked past event')
+        daily.querySelector('.abele-timeline__completed-toggle').click()
+        const pastChecked = await until(() => daily.querySelector('[data-timeline-item="event:' + pastEvent.id + '"] input:checked'), 'show marked past event')
+        pastChecked.click()
+        await until(() => !service.isDone(pastEvent))
+        service.state.events['sample-feed'] = events
+        service.state.version++
+        dailyLeaf.detach()
+        await t.plugin.activateView('abele-timeline-sidebar-view')
         const row = await until(() => timeline.querySelector('[data-timeline-item="event:' + events[0].id + '"]'))
         row.scrollIntoView({ block: 'center' })
         await wait(300)
@@ -183,6 +221,7 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         if (!saved) return { restored: false }
         const config = window.__abeleTest.AbeleConfig.getInstance(), adapter = app.vault.adapter
         config.calendars = JSON.parse(saved.calendars); config.calendarCompletion = JSON.parse(saved.marks)
+        config.journals = saved.journals
         app.secretStorage.getSecret = saved.secret
         config.version.value++
         await window.__abeleTest.calendars().refreshChanged()
