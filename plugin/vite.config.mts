@@ -9,6 +9,7 @@ import { build as esbuild } from 'esbuild'
 import { createRequire } from 'node:module'
 import { EVAL_START_INTRO } from './src/helpers/loadMarks'
 import { assertNoTestingModules } from './scripts/production-test-guard.mjs'
+import { testSharingBuildPlugin } from './scripts/test-sharing-build.mjs'
 
 /**
  * Carry MapLibre's three ESM assets in the single plugin file. The main and worker assets
@@ -75,7 +76,9 @@ export default defineConfig(async ({ mode }) => {
         setimmediate: path.resolve(__dirname, 'src/shims/setimmediate.ts'),
       },
     },
+    define: { __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test') },
     plugins: [
+      testSharingBuildPlugin(mode),
       vue(),
       maplibreAssetsPlugin(prod),
       {

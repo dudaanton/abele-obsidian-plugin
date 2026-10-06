@@ -1499,7 +1499,12 @@ foreground and not busy when its read completes; closing or answering invalidate
 Questions stay pending while an editor, editable field or link suggestion has focus. Leaving
 editing wakes presentation; sync never blurs the editor or interrupts input to show a question.
 **Keep private** remembers a refusal for that file/audience.
-The production activation fence remains disabled.
+The production activation fence remains disabled. Only `npm run build:test` uses the dedicated
+`sharing-test` build mode to substitute owner-sharing/publication gates at compile time.
+Source flags remain false. Production validates those source declarations and rejects any test
+sharing activation module in its rendered graph. Test HTTPS stand activation still requires
+an owned isolated fixture context and bound device; it does not bypass server activation or
+credential/visibility checks.
 
 ## Disabled group wizard, initial batch and Books profile
 

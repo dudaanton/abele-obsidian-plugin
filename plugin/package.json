@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite preview",
     "build": "tsc -noEmit -skipLibCheck && vite build",
-    "build:test": "tsc -noEmit -skipLibCheck && vite build --mode development",
+    "build:test": "tsc -noEmit -skipLibCheck && vite build --mode sharing-test",
     "types": "tsc -noEmit -skipLibCheck",
     "test": "vitest run",
     "test:key-destinations": "vitest run tests/unit/keyDestinationSecurity.test.ts tests/unit/keyHttpSecurity.test.ts tests/unit/localProviderTransport.test.ts tests/unit/savedKeyRequests.test.ts tests/component/securityDialogs.test.ts tests/component/manualKeyConsentDialog.test.ts tests/integration/scriptKeyApproval.test.ts tests/integration/manualKeyConsent.test.ts tests/harness/keyDestinationRouting.test.ts tests/unit/basicAuth.test.ts tests/integration/basicKeyRequests.test.ts tests/component/toolApproval.test.ts tests/integration/secretsListBoundary.test.ts",

@@ -5,20 +5,19 @@ import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { NativeOwnerPublication } from '@/sync/publication/nativeOwnerPublication'
 import type { SyncServiceDeps } from '@/sync/environment'
 import type { SnapshotBinding } from '@/sync/publication/LinkSnapshotStore'
+import { fixtureSharingIssuerAllowed } from './testSharingBuild'
 const state = new WeakMap<
   App,
   { close: () => Promise<void>; runtime: () => NativeOwnerPublication | null }
 >()
-/** Disposable loopback + protected isolated context only. Not a setting/env activation bypass. */
+/** Owned isolated context only. Remote HTTPS requires the explicit compile-time test build. */
 export async function enableOwnerPublicationFixture(app: App, grants: string[]): Promise<boolean> {
   if (state.has(app)) throw new Error('Owner fixture already installed')
   const svc = SyncService.getInstance(),
     c = svc.connection.value,
-    u = new URL(c.serverUrl),
     backup = app.loadLocalStorage('task14-isolated-fixture') as { root?: string } | null
   if (
-    u.protocol !== 'http:' ||
-    !['127.0.0.1', 'localhost'].includes(u.hostname) ||
+    !fixtureSharingIssuerAllowed(c.serverUrl) ||
     !backup ||
     backup.root !== 'Agents' ||
     !c.vaultId ||
@@ -26,7 +25,7 @@ export async function enableOwnerPublicationFixture(app: App, grants: string[]):
     !grants.length ||
     grants.length > 16
   )
-    throw new Error('Owner publication activation is restricted to owned isolated loopback fixture')
+    throw new Error('Owner publication activation is restricted to an owned isolated fixture and its build issuer')
   const id = crypto.randomUUID(),
     name = 'abele-owner-fixture-' + id,
     binding: SnapshotBinding = {
