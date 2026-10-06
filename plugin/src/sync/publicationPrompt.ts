@@ -12,9 +12,11 @@ export class PublicationPrompt {
   readonly busy = ref(false)
   readonly error = ref('')
   private host: PublicationPromptHost | null = null
+  private reviewRequest = 0
   private readonly shown = new Set<string>()
   constructor(private readonly visible: () => boolean) {}
   attach(host: PublicationPromptHost): () => void {
+    this.reviewRequest++
     this.host = host
     return () => {
       if (this.host !== host) return
@@ -56,22 +58,30 @@ export class PublicationPrompt {
   async open(question: ExistingPublicationQuestion) {
     const host = this.host
     if (!host || !this.visible() || this.busy.value) return
+    const request = ++this.reviewRequest
     try {
       const epoch = host.questionEpoch?.()
       const result = await host.questions()
-      if (host !== this.host) return
+      if (
+        host !== this.host ||
+        request !== this.reviewRequest ||
+        !this.visible() ||
+        this.busy.value
+      )
+        return
       const pending = epoch === host.questionEpoch?.() ? result : []
       this.pending.value = pending
       const fresh = pending.find((q) => q.exposureKey === question.exposureKey)
       if (fresh) this.ask(fresh)
     } catch {
-      if (host === this.host) {
+      if (host === this.host && request === this.reviewRequest && !this.busy.value) {
         this.pending.value = []
         this.close()
       }
     }
   }
   private ask(question: ExistingPublicationQuestion) {
+    this.reviewRequest++
     this.shown.add(question.exposureKey)
     this.error.value = ''
     this.asking.value = question
@@ -80,6 +90,7 @@ export class PublicationPrompt {
     const question = this.asking.value,
       host = this.host
     if (!question || !host || this.busy.value) return
+    this.reviewRequest++
     this.busy.value = true
     try {
       const answered = await host.answer(question, accepted)
@@ -98,6 +109,7 @@ export class PublicationPrompt {
     if (host === this.host) await this.refresh()
   }
   close() {
+    this.reviewRequest++
     this.asking.value = null
     this.error.value = ''
   }

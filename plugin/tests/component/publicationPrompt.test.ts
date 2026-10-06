@@ -74,6 +74,9 @@ function setup(visible = true) {
     prompt,
     wrapper,
     detach,
+    setVisible: (value: boolean) => {
+      front = value
+    },
     foreground: () => {
       front = true
       return prompt.foreground()
@@ -163,6 +166,100 @@ describe('existing-private publication prompt and real dialog content', () => {
       s.wrapper.unmount()
     }
   )
+  it('does not show or mark a Review while backgrounded during its read', async () => {
+    const s = setup(false)
+    await s.prompt.refresh()
+    s.setVisible(true)
+    let finish!: (questions: ExistingPublicationQuestion[]) => void
+    s.host.questions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      })
+    )
+    const review = s.prompt.open(question)
+    s.setVisible(false)
+    finish([question])
+    await review
+    expect(s.prompt.asking.value).toBeNull()
+    await s.foreground()
+    await nextTick()
+    expect(s.wrapper.find('[role="dialog"]').exists()).toBe(true) // It was not marked shown in the background.
+    s.detach()
+    s.wrapper.unmount()
+  })
+  it('a delayed Review cannot replace the question whose answer is busy', async () => {
+    const s = setup()
+    await s.prompt.refresh()
+    const other = { ...question, exposureKey: 'd'.repeat(64) }
+    let finishReview!: (questions: ExistingPublicationQuestion[]) => void,
+      finishAnswer!: (answered: boolean) => void
+    s.host.questions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishReview = resolve
+      })
+    )
+    const review = s.prompt.open(other)
+    s.host.answer.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishAnswer = resolve
+      })
+    )
+    const answer = s.prompt.answer(true)
+    finishReview([question, other])
+    await review
+    expect(s.prompt.busy.value).toBe(true)
+    expect(s.prompt.asking.value?.exposureKey).toBe(question.exposureKey)
+    finishAnswer(false)
+    await answer
+    s.detach()
+    s.wrapper.unmount()
+  })
+  it('only the latest outstanding Review may show its question', async () => {
+    const s = setup(false)
+    await s.prompt.refresh()
+    s.setVisible(true)
+    const other = { ...question, exposureKey: 'd'.repeat(64) }
+    let first!: (questions: ExistingPublicationQuestion[]) => void,
+      second!: (questions: ExistingPublicationQuestion[]) => void
+    s.host.questions
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          first = resolve
+        })
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          second = resolve
+        })
+      )
+    const a = s.prompt.open(question),
+      b = s.prompt.open(other)
+    second([question, other])
+    await b
+    first([question, other])
+    await a
+    expect(s.prompt.asking.value?.exposureKey).toBe(other.exposureKey)
+    s.detach()
+    s.wrapper.unmount()
+  })
+  it('closing invalidates an outstanding Review before its result can reopen the dialog', async () => {
+    const s = setup(false)
+    await s.prompt.refresh()
+    s.setVisible(true)
+    let finish!: (questions: ExistingPublicationQuestion[]) => void
+    s.host.questions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      })
+    )
+    const review = s.prompt.open(question)
+    s.prompt.close()
+    finish([question])
+    await review
+    expect(s.prompt.asking.value).toBeNull()
+    s.detach()
+    s.wrapper.unmount()
+  })
   it('revalidates a background question before showing it in the foreground', async () => {
     const s = setup(false)
     await s.prompt.refresh()
