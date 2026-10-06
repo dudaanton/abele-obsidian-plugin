@@ -4,14 +4,32 @@ import { createHash } from 'node:crypto'
 
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
 const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+const artifacts = JSON.parse(readFileSync('vendor/node/integrity.json', 'utf8')) as Array<{
+  name: string
+  filename: string
+  version: string
+  integrity: string
+}>
+const registryExclusions = new Set(artifacts.map((artifact) => artifact.name))
 
 describe('reproducible dependency sources', () => {
+  it('excludes exactly the vendored node dependency set from registry checks', () => {
+    const vendoredDependencies = Object.entries(manifest.dependencies)
+      .filter(([, source]) => typeof source === 'string' && source.startsWith('file:vendor/node/'))
+      .map(([name]) => name)
+      .sort()
+    expect([...registryExclusions].sort()).toEqual(vendoredDependencies)
+    expect([...registryExclusions].sort()).toEqual([
+      '@abele/channel-client',
+      '@abele/channel-protocol',
+      '@abele/node-client',
+      '@abele/node-protocol',
+    ])
+  })
   for (const group of ['dependencies', 'devDependencies']) {
-    // BUG: the registry-only guarantee no longer holds for the four vendored node artifacts.
-    // Retain it explicitly; the stronger source/integrity check below covers every dependency.
-    const registryOnly = group === 'dependencies' ? it.fails : it
-    registryOnly(`pins every ${group} entry to its locked registry release`, () => {
+    it(`pins every ${group} entry to its locked registry release`, () => {
       for (const [name, version] of Object.entries(manifest[group])) {
+        if (registryExclusions.has(name)) continue
         expect(version, name).toMatch(/^\d+\.\d+\.\d+$/)
         const installed = lock.packages[`node_modules/${name}`]
         expect(installed.version, name).toBe(version)
@@ -21,12 +39,6 @@ describe('reproducible dependency sources', () => {
     })
   }
   it('pins all registry dependencies and exact vendored node tarballs to their actual bytes', () => {
-    const artifacts = JSON.parse(readFileSync('vendor/node/integrity.json', 'utf8')) as Array<{
-      name: string
-      filename: string
-      version: string
-      integrity: string
-    }>
     expect(artifacts.map((a) => a.name).sort()).toEqual([
       '@abele/channel-client',
       '@abele/channel-protocol',
