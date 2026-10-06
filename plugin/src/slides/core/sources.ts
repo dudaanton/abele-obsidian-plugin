@@ -24,6 +24,8 @@ export function noteSources(source: string): SlideSource[] {
     definitions.set(referenceKey(m[1]), m[2])
   const links: { index: number; source: SlideSource }[] = []
   const occupied: [number, number][] = []
+  for (const image of text.matchAll(/!\[[^\]\n]*\]\[[^\]\n]*\]|!\[\[[^\]\n]+\]\]/g))
+    occupied.push([image.index, image.index + image[0].length])
   for (const token of markdownLinkTargets(text)) {
     const closeLabel = text.lastIndexOf(']', token.start)
     if (text[closeLabel + 1] !== '(' || text[token.labelStart - 1] === '!') continue

@@ -47,6 +47,16 @@ describe('derived sources slide', () => {
       'https://example.test/auto',
     ])
   })
+  it('does not collect reference images or unused reference definitions', () => {
+    const deck = presentationDeck(
+      parseDeck(
+        '# Sample\n\n> [!notes]\n> ![Chart][image]\n> ![[Sample image.png]]\n>\n> [image]: https://example.test/chart.png\n> [unused]: https://example.test/unused'
+      )
+    )
+    expect(deck.slides).toHaveLength(1)
+    expect(deck.slides[0].sources).toEqual([])
+  })
+
   it('adds no final slide when notes have no links and escapes collected titles', () => {
     expect(presentationDeck(parseDeck('# Plain\n> [!notes]\n> Reminder')).slides).toHaveLength(1)
     const deck = presentationDeck(
