@@ -35,6 +35,8 @@ interface Report {
   /** The person's messages in the conversation, in order. */
   bubbles: string[]
   streamingAfter: boolean
+  attachmentsWhileAnswering: string[]
+  deliveredParts: { type: string; text?: string; image_url?: { url: string } }[]
   error: string
 }
 
@@ -52,7 +54,10 @@ const script = `(async () => {
   const chats = window.__abeleTest.ChatService.getInstance()
   const CHAT = ${JSON.stringify(CHAT)}
   const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
-  const report = { requests: [], queuedWhileAnswering: [], queuedAfter: [], bubbles: [], streamingAfter: true, error: '' }
+  const report = { requests: [], queuedWhileAnswering: [], queuedAfter: [], bubbles: [], streamingAfter: true, attachmentsWhileAnswering: [], deliveredParts: [], error: '' }
+  const mediaFolder = 'Queued media probe'
+  const mediaPaths = [mediaFolder + '/sample-note.md', mediaFolder + '/sample-file.txt', mediaFolder + '/sample-image.png']
+  let mediaCreated = false
   const createdDirs = []
   const realFetch = window.fetch
 
@@ -86,6 +91,7 @@ const script = `(async () => {
     const last = body.messages[body.messages.length - 1]
     const content = typeof last.content === 'string' ? last.content : (last.content || []).map((p) => p.text || '').join('')
     report.requests.push({ role: last.role, text: content })
+    if (report.requests.length === 3) report.deliveredParts = last.content
     const chunks = answers[report.requests.length - 1] || [text('Got it.'), text('', 'stop')]
     return new Response(sse(chunks, report.requests.length === 2 ? 400 : 20), {
       status: 200,
@@ -96,6 +102,15 @@ const script = `(async () => {
   let session = null
   const checkSession = () => { if (session?.error.value) throw new Error(session.error.value) }
   try {
+    if (app.vault.getAbstractFileByPath(mediaFolder)) throw new Error('probe folder already exists')
+    await app.vault.createFolder(mediaFolder)
+    mediaCreated = true
+    await app.vault.create(mediaPaths[0], 'Sample note body')
+    await app.vault.create(mediaPaths[1], 'Sample file body')
+    const canvas = document.createElement('canvas')
+    canvas.width = 8; canvas.height = 8
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+    await app.vault.createBinary(mediaPaths[2], await blob.arrayBuffer())
     for (const dir of ['AI', 'AI/Chats']) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); createdDirs.unshift(dir) }
     }
@@ -132,11 +147,15 @@ const script = `(async () => {
       .filter((c) => c && c.field.getClientRects().length)
       .at(-1)
     if (!input) throw new Error('no chat input on screen')
+    chats.pendingInput.value = { text: '', tabId: session.id, attachments: mediaPaths }
+    if (!(await until(() => document.querySelectorAll('.abele-chat-input__attachment').length === 3, 3000)))
+      throw new Error('pending attachments did not reach the composer')
     input.focus()
     input.set(${JSON.stringify(QUEUED)})
     input.keyTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, shiftKey: true, bubbles: true, cancelable: true }))
     await wait(50)
     report.queuedWhileAnswering = session.queuedMessages.value.map((q) => q.content)
+    report.attachmentsWhileAnswering = session.queuedMessages.value[0]?.attachments || []
 
     await refused
     checkSession()
@@ -156,6 +175,10 @@ const script = `(async () => {
       }
       const f = app.vault.getAbstractFileByPath(CHAT)
       if (f) await app.vault.delete(f)
+      if (mediaCreated) {
+        const folder = app.vault.getAbstractFileByPath(mediaFolder)
+        if (folder) await app.vault.delete(folder, true)
+      }
       for (const dir of createdDirs) {
         const d = app.vault.getAbstractFileByPath(dir)
         if (d && d.children && !d.children.length) await app.vault.delete(d, true)
@@ -187,6 +210,28 @@ describe.runIf(available)('a message typed while the agent answers', () => {
 
   it('waited above the input while the agent was answering', () => {
     expect(report.queuedWhileAnswering).toEqual([QUEUED])
+  })
+
+  it('kept media in the queue and delivered note, file and image content to the model', () => {
+    expect(report.attachmentsWhileAnswering).toEqual([
+      'Queued media probe/sample-note.md',
+      'Queued media probe/sample-file.txt',
+      'Queued media probe/sample-image.png',
+    ])
+    expect(report.deliveredParts).toContainEqual({
+      type: 'text',
+      text: '--- sample-note.md ---\nSample note body',
+    })
+    expect(report.deliveredParts).toContainEqual({
+      type: 'text',
+      text: '--- sample-file.txt ---\nSample file body',
+    })
+    expect(
+      report.deliveredParts.some(
+        (part) =>
+          part.type === 'image_url' && part.image_url?.url.startsWith('data:image/png;base64,')
+      )
+    ).toBe(true)
   })
 
   it('went out on a turn of its own once the answer ended', () => {

@@ -460,6 +460,26 @@ const probeScript = `(async () => {
       await until(() => chat.querySelector('.abele-chat-picture img'), 5000)
       await wait(300)
       await screen('chat attachment', chat, chat)
+      const deferredSession = window.__abeleTest.ChatService.getInstance().activeSession.value
+      const wasStreaming = deferredSession.isStreaming.value
+      const hadFile = !!deferredSession.currentChatFile.value
+      try {
+        deferredSession.isStreaming.value = true
+        await deferredSession.sendMessage('Describe the attached sample picture', [path])
+        await wait(300)
+        // The conversation scrolls above the composer, not through its attachment controls.
+        await screen('chat deferred media', chat, chat.querySelector('.abele-ai-chat__messages'))
+        report['chat deferred media'].attach = !!chat.querySelector('.lucide-paperclip')
+        report['chat deferred media'].voice = !!chat.querySelector('.lucide-mic')
+        report['chat deferred media'].edit = !!chat.querySelector('.abele-ai-chat__queued-edit')
+        report['chat deferred media'].attachment = chat.querySelector('.abele-ai-chat__queued-item')?.textContent.includes('sample-image.png')
+      } finally {
+        deferredSession.takeQueuedMessages()
+        deferredSession.isStreaming.value = wasStreaming
+        await deferredSession.flush()
+        if (!hadFile && deferredSession.currentChatFile.value)
+          SEEDED.push(deferredSession.currentChatFile.value.path)
+      }
       chat.querySelector('.abele-chat-picture img').click()
       await until(() => document.querySelector('.abele-gallery-viewer'), 5000)
       await wait(300)
@@ -1289,6 +1309,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   const screens = [
     'chat',
     'chat attachment',
+    'chat deferred media',
     'chat image preview',
     'setup scope',
     'setup skills',
@@ -1336,6 +1357,19 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s === 'mcp server' ||
       s === 'rewind'
   )
+
+  it('deferred media keeps attachment, dictation and editing controls available on a phone', () => {
+    const screen = report['chat deferred media'] as Screen & {
+      attach: boolean
+      voice: boolean
+      edit: boolean
+      attachment: boolean
+    }
+    expect(screen?.attach).toBe(true)
+    expect(screen?.voice).toBe(true)
+    expect(screen?.edit).toBe(true)
+    expect(screen?.attachment).toBe(true)
+  })
 
   it('Word documents fit the phone layout and offer no hand editing', () => {
     const screen = report['word document'] as Screen & { handEditing?: boolean }
