@@ -637,8 +637,8 @@ export class NativeOwnerPublication {
     )
       return null
     const o = await this.exactCache(sponsor.path, sponsor.sha)
+    if (!o) return undefined
     if (
-      !o ||
       !o.facts.some(
         (f) =>
           f.resolution === 'resolved' &&
@@ -664,10 +664,10 @@ export class NativeOwnerPublication {
       )
     }
     try {
-      if (!(await unchanged())) return null
+      if (!(await unchanged())) return undefined
       const view = await this.assets.visibility(grantId, target.fileId),
         proof = await this.assets.sponsorProof(grantId, sponsor.fileId)
-      if (proof.versionId !== sponsor.versionId || !(await unchanged())) return null
+      if (proof.versionId !== sponsor.versionId || !(await unchanged())) return undefined
       this.check()
       return {
         binding: this.options.binding,
@@ -698,9 +698,19 @@ export class NativeOwnerPublication {
   async refreshPublication() {
     this.check()
     await this.intents.retrySettled()
-    await this.confirmation.refresh(
-      (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
-    )
+    const candidates = (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
+    const remaining = await this.confirmation.refresh(candidates)
+    const key = (c: ExistingPrivateCandidate) => JSON.stringify([c.sponsorId, c.targetId])
+    const keep = new Set(remaining.map(key)),
+      consumed = new Set(candidates.filter((c) => !keep.has(key(c))).map(key))
+    if (consumed.size)
+      await this.queue(async () => {
+        const current = (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
+        await this.persisted(
+          'existing-candidates',
+          current.filter((c) => !consumed.has(key(c)))
+        )
+      })
   }
   readonly hooks: OwnerPushHooks & { onPersonalNoteApplied: PersonalNoteHook } = {
     onPersonalNoteApplied: async (event, bytes) => {
@@ -892,17 +902,25 @@ export class NativeOwnerPublication {
         const baseline = await this.snapshots.get(item.fileId)
         const renames = await this.snapshots.renames()
         const targets = existingPrivateTargets(baseline, local?.[item.handle] ?? [], renames.items)
-        const pending = (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
-        for (const target of targets) {
-          if (!pending.some((c) => c.sponsorId === item.fileId && c.targetId === target.targetId))
-            pending.push({
-              sponsorId: item.fileId,
-              targetId: target.targetId!,
-              targetPath: target.resolvedPath!,
-            })
-        }
         // Preserve questions BEFORE replacing the immutable last-synced baseline.
-        if (targets.length) await this.persisted('existing-candidates', pending)
+        if (targets.length)
+          await this.queue(async () => {
+            const pending =
+              (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
+            for (const target of targets) {
+              if (
+                target.targetId &&
+                target.resolvedPath &&
+                !pending.some((c) => c.sponsorId === item.fileId && c.targetId === target.targetId)
+              )
+                pending.push({
+                  sponsorId: item.fileId,
+                  targetId: target.targetId,
+                  targetPath: target.resolvedPath,
+                })
+            }
+            await this.persisted('existing-candidates', pending)
+          })
         const o = await this.exactCache(item.path, item.sha)
         if (o) {
           await this.snapshots.settle({

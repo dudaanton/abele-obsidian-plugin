@@ -192,6 +192,27 @@ describe('existing-private confirmation coordinator', () => {
       expect((await s.store.existing(binding))[0].completed).toBe(true)
     }
   )
+  it('refreshes pending dialog freshness for an explicit review without forgetting the decision identity', async () => {
+    const s = setup()
+    await s.coordinator.refresh(s.candidates)
+    const [old] = await s.coordinator.questions()
+    s.observation.target.versionId = 'private-v2'
+    await s.coordinator.refresh([])
+    const [fresh] = await s.coordinator.questions()
+    expect(fresh.exposureKey).toBe(old.exposureKey)
+    expect(fresh.fingerprint).not.toBe(old.fingerprint)
+    expect(await s.coordinator.answer(old, true)).toBe(false)
+    expect(await s.coordinator.answer(fresh, true)).toBe(true)
+  })
+  it('consumes durable questions and known non-audiences, retaining only unavailable observations', async () => {
+    const s = setup()
+    s.port.observe.mockResolvedValueOnce(undefined as any)
+    expect(await s.coordinator.refresh(s.candidates)).toEqual(s.candidates)
+    s.port.observe.mockResolvedValueOnce(null as any)
+    expect(await s.coordinator.refresh(s.candidates)).toEqual([])
+    expect(await s.coordinator.refresh(s.candidates)).toEqual([])
+    expect(await s.coordinator.questions()).toHaveLength(1)
+  })
   it('rechecks after approval persistence and before transport', async () => {
     const s = setup()
     await s.coordinator.refresh(s.candidates)

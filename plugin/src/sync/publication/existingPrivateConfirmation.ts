@@ -57,7 +57,7 @@ export interface ExistingConfirmationPort {
   observe(
     candidate: ExistingPrivateCandidate,
     grantId: string
-  ): Promise<ExistingPublicationObservation | null>
+  ): Promise<ExistingPublicationObservation | null | undefined>
   add(request: OwnerAdd): Promise<unknown>
   held(): boolean
 }
@@ -80,20 +80,37 @@ export class ExistingPrivateConfirmation {
       (d) => d.state === 'pending' && !d.completed
     )
   }
-  refresh(candidates: ExistingPrivateCandidate[]): Promise<void> {
+  refresh(candidates: ExistingPrivateCandidate[]): Promise<ExistingPrivateCandidate[]> {
     return this.serial(async () => {
-      if (!this.port.held()) return
-      for (const c of candidates)
+      if (!this.port.held()) return candidates
+      const pending = (await this.questions()).map((q) => ({
+        sponsorId: q.observation.sponsor.fileId,
+        targetId: q.observation.target.fileId,
+        targetPath: q.observation.target.path,
+      }))
+      const work = new Map(
+        [...candidates, ...pending].map((c) => [JSON.stringify([c.sponsorId, c.targetId]), c])
+      )
+      const waiting = new Set<string>()
+      for (const [id, c] of work)
         for (const grantId of this.grants) {
           const key = await existingExposureKey(this.binding, c.targetId, grantId)
-          if (await this.store.getExisting(key)) continue
+          const previous = await this.store.getExisting(key)
+          if (previous && previous.state !== 'pending') continue
           const observation = await this.port.observe(c, grantId)
-          if (!observation || !this.port.held()) continue
-          const q = await existingPublicationQuestion(observation)
+          if (!this.port.held()) return candidates
+          // Undefined is unavailable evidence; null is a known no-question result.
+          if (observation === undefined) {
+            waiting.add(id)
+            continue
+          }
+          const q = observation && (await existingPublicationQuestion(observation))
           if (q?.exposureKey === key) await this.store.rememberExisting({ ...q, state: 'pending' })
+          else if (previous) await this.store.rememberExisting({ ...previous, completed: true })
         }
       for (const d of await this.store.existing(this.binding))
         if (d.state === 'approved' && !d.completed) await this.deliver(d)
+      return candidates.filter((c) => waiting.has(JSON.stringify([c.sponsorId, c.targetId])))
     })
   }
   private current(q: ExistingPublicationQuestion) {

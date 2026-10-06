@@ -2,7 +2,9 @@
 import { afterEach, describe, it, expect } from 'vitest'
 import { scopedApiServer } from '../helpers/scopedApiServer'
 import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
-import { SyncClient, createScopedClient, sha256 } from '@abele/sync-core'
+import { SyncClient, createScopedClient, sha256, MemoryStateStore } from '@abele/sync-core'
+import { ExistingPrivateConfirmation } from '@/sync/publication/existingPrivateConfirmation'
+import { PublicationDecisionStore } from '@/sync/publication/publicationDecision'
 let s: Awaited<ReturnType<typeof scopedApiServer>> | undefined
 afterEach(async () => {
   await s?.close()
@@ -82,6 +84,114 @@ async function setup() {
   }
 }
 describe('real reviewed sponsored wire and intrinsic-evidence boundary', () => {
+  it('keeps actual personal commits moving while pending and replays one consented operation after a lost reply', async () => {
+    const f = await setup(),
+      source = '[[sample-image.png]]',
+      bytes = new TextEncoder().encode(source),
+      sha = await sha256(bytes)
+    await f.client.putBlob(sha, bytes)
+    await f.client.commit([
+      {
+        op: 'modify',
+        file_id: f.note.file_id,
+        base_version_id: f.note.version_id,
+        sha,
+        size: bytes.length,
+        mtime: 2,
+      },
+    ])
+    const binding = {
+      localVault: 'sample-local',
+      issuer: 'http://127.0.0.1',
+      vaultId: f.vaultId,
+      principal: f.deviceId,
+      facet: 'personal' as const,
+      grantId: null,
+    }
+    const store = new PublicationDecisionStore(new MemoryStateStore())
+    let lose = true
+    const requests: unknown[] = []
+    const port = {
+      held: () => true,
+      observe: async () => {
+        const items = (await f.client.manifest(null)).items
+        const target = items.find((i) => i.file_id === f.asset.file_id)!,
+          note = items.find((i) => i.file_id === f.note.file_id)!
+        const view = await f.owner.visibility(f.grantId, target.file_id),
+          sponsor = await f.owner.sponsorProof(f.grantId, note.file_id)
+        return {
+          binding,
+          target: {
+            fileId: target.file_id,
+            versionId: target.version_id,
+            sha: target.sha!,
+            path: target.path,
+            eligible: true,
+          },
+          sponsor: { ...sponsor, path: note.path },
+          audience: {
+            grantId: f.grantId,
+            label: view.label,
+            active: true,
+            alreadyShared: view.visible,
+            revision: view.revision,
+            withdrawalGeneration: view.withdrawalGeneration,
+          },
+          linked: new TextDecoder().decode(await f.client.getBlob(note.sha!)).includes(source),
+        }
+      },
+      add: async (request: Parameters<typeof f.owner.add>[0]) => {
+        requests.push(structuredClone(request))
+        const result = await f.owner.add(request)
+        if (lose) {
+          lose = false
+          throw new Error('Successful add reply lost')
+        }
+        return result
+      },
+    }
+    const make = () => new ExistingPrivateConfirmation(store, binding, [f.grantId], port),
+      coordinator = make()
+    await coordinator.refresh([
+      { sponsorId: f.note.file_id, targetId: f.asset.file_id, targetPath: f.asset.path },
+    ])
+    const [question] = await coordinator.questions()
+    const ordinary = new TextEncoder().encode('ordinary personal work'),
+      ordinarySha = await sha256(ordinary)
+    await f.client.putBlob(ordinarySha, ordinary)
+    await f.client.commit([
+      {
+        op: 'create',
+        path: 'Private/ordinary.md',
+        sha: ordinarySha,
+        size: ordinary.length,
+        mtime: 3,
+      },
+      {
+        op: 'modify',
+        file_id: f.asset.file_id,
+        base_version_id: f.asset.version_id,
+        sha: ordinarySha,
+        size: ordinary.length,
+        mtime: 3,
+      },
+    ])
+    expect(
+      (await f.client.manifest(null)).items.some((i) => i.path === 'Private/ordinary.md')
+    ).toBe(true)
+    expect((await f.owner.visibility(f.grantId, f.asset.file_id)).visible).toBe(false)
+    expect(requests).toHaveLength(0)
+    expect(await coordinator.answer(question, true)).toBe(false)
+    await coordinator.refresh([])
+    const [fresh] = await coordinator.questions()
+    await expect(coordinator.answer(fresh, true)).rejects.toThrow('Successful add reply lost')
+    await make().refresh([])
+    expect(requests).toHaveLength(2)
+    expect(requests[1]).toEqual(requests[0])
+    expect(
+      (await f.owner.read(f.grantId)).entries.filter((e) => e.target.fileId === f.asset.file_id)
+    ).toHaveLength(1)
+  })
   it('an owner device can read audience labels and target visibility without a fresh account sign-in', async () => {
     const f = await setup()
     expect(await f.owner.visibility(f.grantId, f.asset.file_id)).toMatchObject({
