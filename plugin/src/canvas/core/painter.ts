@@ -334,7 +334,7 @@ export function paintCanvas(
     ctx.rect(box.x, box.y, box.width, box.height)
     ctx.clip()
     const text = assets.contents?.get(node.id) ?? labelOf(node),
-      lines = textLines(text, box.width, metrics)
+      lines = text ? textLines(text, box.width, metrics) : []
     let y = box.y
     ctx.fillStyle = theme.text
     ctx.textBaseline = 'alphabetic'
@@ -350,7 +350,11 @@ export function paintCanvas(
       y += line.size * theme.lineHeight
     }
     for (const image of assets.images?.get(node.id) ?? []) {
-      const scale = Math.min(1, box.width / image.width),
+      const scale = Math.min(
+          1,
+          box.width / image.width,
+          node.type === 'file' && !text ? box.height / image.height : Infinity
+        ),
         width = image.width * scale,
         height = image.height * scale
       if (y + height > box.y + box.height)

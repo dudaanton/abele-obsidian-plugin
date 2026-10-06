@@ -130,6 +130,32 @@ describe('the shared canvas picture plan', () => {
       true
     )
   })
+  it('fits a direct image attachment in both dimensions without a phantom empty text line', () => {
+    const node = {
+      id: 'image',
+      type: 'file' as const,
+      file: 'sample-image.png',
+      x: 0,
+      y: 0,
+      width: 180,
+      height: 90,
+    }
+    const image = { source: {} as CanvasImageSource, width: 120, height: 60 }
+    const { ctx, calls } = context()
+    const result = paintCanvas(
+      ctx,
+      { nodes: [node], edges: [] },
+      { x: -24, y: -24, width: 228, height: 138 },
+      theme,
+      { contents: new Map([['image', '']]), images: new Map([['image', [image]]]) }
+    )
+    const box = contentBox(node),
+      draw = calls.find((call) => call.name === 'drawImage')!.args
+    expect(draw[2]).toBe(box.y)
+    expect(Number(draw[3])).toBeLessThanOrEqual(box.width)
+    expect(Number(draw[4])).toBeLessThanOrEqual(box.height)
+    expect(result.warnings.filter((w) => w.code === 'clipped-image')).toEqual([])
+  })
   it.each(SHAPES)('fits long %s labels into the actual inner content box', (shape) => {
     const graph = editCanvas(emptyCanvas(), [
       {
