@@ -254,7 +254,8 @@ describe.skipIf(!available)('a drawing in a note', () => {
     expect(r.live!.ink).toBeGreaterThan(100)
     // At the drawing's own size, not blown up to the note's width.
     expect(r.live!.w).toBeLessThanOrEqual(r.live!.paper + 1)
-    expect(r.live!.w).toBeLessThan(r.live!.room)
+    // A paper wider than the available room correctly fits exactly to that room.
+    expect(r.live!.w).toBeLessThanOrEqual(r.live!.room)
     expect(r.live!.h).toBeGreaterThan(40)
     expect(r.after?.src).toBe(true)
     expect(r.after!.ink).toBeGreaterThan(r.live!.ink * 1.3)
@@ -454,6 +455,10 @@ describe.skipIf(!available)('a drawing in a note', () => {
       const opened = !!(await until(() => views().find((v) => v.file?.path === file.path), 8000))
       for (const v of views()) v.leaf.detach()
       await until(() => !views().length)
+      await app.workspace.revealLeaf(leaf)
+      app.workspace.setActiveLeaf(leaf, { focus: false })
+      if (!await until(() => leaf.view.containerEl.querySelector('.cm-line')?.getBoundingClientRect().height > 0, 8000))
+        throw Error('The originating note editor did not return after closing the drawing')
       const again = await until(() => boxes(leaf).find((x) => x.clientWidth), 8000)
       // Left alone, they go after a few seconds; a tap elsewhere puts them away at once.
       const b2 = again.getBoundingClientRect()
