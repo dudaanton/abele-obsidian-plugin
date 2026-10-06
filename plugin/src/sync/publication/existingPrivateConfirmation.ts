@@ -181,7 +181,8 @@ export class ExistingPrivateConfirmation {
     )
       throw new Error('Stored existing-private request differs from its approved observation')
     const current = await this.current(d)
-    if (!this.port.held()) return
+    // Absence of evidence is not cancellation: keep the approved request for indexing/retry.
+    if (!this.port.held() || current === undefined) return
     // A lost successful reply may have made the target visible and advanced revision.
     // Retry ONLY the stored request, never mint a new operation or repeat baseline novelty.
     const valid =

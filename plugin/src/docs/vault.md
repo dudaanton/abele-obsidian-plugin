@@ -1474,7 +1474,9 @@ advances it. A merge compares the submitted local facts, not received links in t
 An unknown baseline never proposes publication questions. Until a real baseline is settled,
 local edits still sync personally, but their links cannot be certified as new owner additions.
 A confirmed existing-private decision stores its exact add request and stable intent ID before
-HTTP; a lost reply retries that request, not another publication. Target/link/sponsor checks and
+HTTP; a lost reply retries that request, not another publication. Temporarily unavailable
+cache evidence retains the approved request for a later retry; it is not completion or refusal.
+Target/link/sponsor checks and
 owner-device audience visibility are re-read outside the personal settlement transaction.
 Short links are resolved again against the current namespace and stable ledger identity before
 showing or answering a question and immediately before transport. File namespace changes

@@ -280,6 +280,57 @@ it('never retries an unsent approval after the unchanged short link resolves to 
     f.close()
   }
 })
+it('keeps an unsent approval through restart without cache evidence, then sends its exact request after indexing', async () => {
+  const f = await fixture()
+  try {
+    await f.local(link)
+    await f.runtime().refreshPublication()
+    const [q] = await f.runtime().confirmation.questions()
+    f.ports().add.mockRejectedValueOnce(new Error('Transport failed before sending'))
+    await expect(f.runtime().confirmation.answer(q, true)).rejects.toThrow('before sending')
+    const stored = await (f.runtime().confirmation as any).store.getExisting(q.exposureKey)
+    await f.reopen() // No in-memory observations survive; source/target bytes and versions do.
+    await f.runtime().refreshPublication()
+    const waiting = await (f.runtime().confirmation as any).store.getExisting(q.exposureKey)
+    expect(waiting.state).toBe('approved')
+    expect(waiting.completed).not.toBe(true)
+    expect(waiting.request).toEqual(stored.request)
+    expect(f.ports().add).not.toHaveBeenCalled()
+    await f.changed(link)
+    await f.runtime().refreshPublication()
+    expect(f.ports().add).toHaveBeenCalledExactlyOnceWith(stored.request)
+    expect(await (f.runtime().confirmation as any).store.getExisting(q.exposureKey)).toMatchObject({
+      completed: true,
+    })
+  } finally {
+    f.close()
+  }
+})
+it('keeps approval pending when evidence disappears between persistence and the first send', async () => {
+  const f = await fixture()
+  try {
+    await f.local(link)
+    await f.runtime().refreshPublication()
+    const [q] = await f.runtime().confirmation.questions()
+    const store = (f.runtime().confirmation as any).store,
+      remember = store.rememberExisting.bind(store)
+    vi.spyOn(store, 'rememberExisting').mockImplementation(async (decision: any) => {
+      await remember(decision)
+      if (decision.state === 'approved' && !decision.completed)
+        (f.runtime() as any).observations.clear()
+    })
+    expect(await f.runtime().confirmation.answer(q, true)).toBe(true)
+    const waiting = await store.getExisting(q.exposureKey)
+    expect(waiting.completed).not.toBe(true)
+    expect(waiting.state).toBe('approved')
+    expect(f.ports().add).not.toHaveBeenCalled()
+    await f.changed(link)
+    await f.runtime().refreshPublication()
+    expect(f.ports().add).toHaveBeenCalledExactlyOnceWith(waiting.request)
+  } finally {
+    f.close()
+  }
+})
 it('a pulled private link with late indexing never prompts after an unrelated body edit', async () => {
   const f = await fixture(true)
   try {
