@@ -46,8 +46,18 @@ function ownership(win: object, bridge: StatusBarBridge): ChromeOwnership {
       if (baseline === undefined) return
       if (baseline && changed) {
         hidden = false
-        await bridge.show()
-        changed = false
+        // Exit/destroy may be the last update ever. Retry a transient rejection once,
+        // but never reveal chrome over a new owner that entered during the request.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            await bridge.show()
+            changed = false
+            break
+          } catch (error) {
+            if (owners.size) break
+            if (attempt === 1) throw error
+          }
+        }
       }
       // A new viewer may have entered while native restoration was already in flight.
       // Keep the original baseline and hide again before releasing the shared queue.

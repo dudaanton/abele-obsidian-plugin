@@ -142,6 +142,53 @@ describe('native mobile presentation chrome', () => {
     expect(statusBar.show).toHaveBeenCalledTimes(2)
   })
 
+  it('restores chrome after one rejected show without another ownership update', async () => {
+    const { host, statusBar, visible } = make()
+    await host.enter()
+    statusBar.show.mockRejectedValueOnce(new Error('temporarily unavailable'))
+    await host.exit()
+    expect(visible()).toBe(true)
+    expect(statusBar.show).toHaveBeenCalledTimes(2)
+  })
+
+  it('bounds retries and retains the baseline after persistent restoration failure', async () => {
+    const { host, statusBar, visible } = make()
+    await host.enter()
+    const restore = statusBar.show.getMockImplementation()!
+    statusBar.show.mockRejectedValue(new Error('unavailable'))
+    await host.exit()
+    expect(statusBar.show).toHaveBeenCalledTimes(2)
+    expect(visible()).toBe(false)
+    statusBar.show.mockImplementation(restore)
+    await host.exit()
+    expect(visible()).toBe(true)
+    expect(statusBar.show).toHaveBeenCalledTimes(3)
+    expect(statusBar.getInfo).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a rejected restoration over an incoming owner', async () => {
+    const { host: first, statusBar, win, visible } = make()
+    const second = mobilePresentation(win)
+    let reject!: (error: Error) => void
+    statusBar.show.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, fail) => {
+          reject = fail
+        })
+    )
+    await first.enter()
+    const exiting = first.exit()
+    await vi.waitFor(() => expect(statusBar.show).toHaveBeenCalledTimes(1))
+    const entering = second.enter()
+    reject(new Error('late restoration rejection'))
+    await Promise.all([exiting, entering])
+    expect(statusBar.show).toHaveBeenCalledTimes(1)
+    expect(visible()).toBe(false)
+    expect(statusBar.hide).toHaveBeenCalledTimes(2)
+    await second.exit()
+    expect(visible()).toBe(true)
+  })
+
   it('hides the native status bar during Play and restores its previous visibility', async () => {
     const { host, statusBar } = make()
     await host.enter()
