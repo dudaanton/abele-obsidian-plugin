@@ -30,7 +30,7 @@ export function deckSlide(value: unknown, count: number): number {
 }
 
 const authoringRules =
-  ' One idea/slide; at most ~40 body words, 5 bullets, tables 5 data rows × 3 columns with short cells. Long explanations go in > [!notes] or another slide. No body links/URLs: put source links in > [!notes] (automatic Sources slide). Use built-in layouts; no deck CSS, colours or fonts unless requested.'
+  ' One idea/slide; at most ~40 body words, 5 bullets, tables 5 data rows × 3 columns with short cells. Long explanations go in > [!notes] or another slide. No body links/URLs: put source links in > [!notes] (automatic Sources slide). Use section for one-line statements and other built-in layouts; no deck CSS, colours or fonts unless requested.'
 
 const pathProperty = {
   type: 'string',

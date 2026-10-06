@@ -102,6 +102,14 @@ describe('portable slide changes', () => {
 })
 
 describe('deck tools and read-before-write', () => {
+  it.each(['deck_create', 'deck_edit'])(
+    '%s recommends the section layout for one-line statements',
+    (name) => {
+      expect(createDeckTools().find((tool) => tool.name === name)!.description).toContain(
+        'Use section for one-line statements'
+      )
+    }
+  )
   beforeEach(() =>
     useVault([
       { path: 'Decks/sample.md', content: SOURCE },
