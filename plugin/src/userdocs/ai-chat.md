@@ -96,7 +96,11 @@ of the chat that called it, not whichever tab is selected or started most recent
 
 Up to 20 chats can be open at once, as tabs. Every chat is saved as a file in the chat folder
 (`AI/Chats` by default), so it survives a restart and can be found again in the history. When a
-chat grows too long for the model, it is compacted by itself.
+chat approaches 90% of the model's configured context window, older messages are summarized
+automatically. This is checked before each model request, including between tool steps in one
+long run. The latest tool calls, their results and any newly queued message stay intact so the
+agent can continue. Results not yet included in reported usage are estimated; if the provider
+returns no usage, the text of the context is estimated instead.
 
 ## Finding words in chats
 

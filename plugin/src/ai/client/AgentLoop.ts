@@ -44,6 +44,9 @@ export interface AgentLoopOptions {
    * instead of waiting for the whole turn to finish.
    */
   beforeIteration?: () => Promise<Message[]> | Message[]
+  /** Projects the next request at a safe boundary, after the complete tool batch and injections.
+   * The returned context may be compacted; the result still holds the full accumulated history. */
+  prepareMessages?: (messages: Message[]) => Promise<Message[]>
 }
 
 type Listener = (event: AgentEvent) => void
@@ -122,12 +125,13 @@ export class AgentLoop {
           if (injected.length) messages.push(...injected)
         }
 
+        const context = opts.prepareMessages ? await opts.prepareMessages(messages) : messages
         if (signal.aborted) break
         // Stream LLM response
         const assistantMsg = await this.streamTurn(
           opts.model,
           opts.systemPrompt,
-          messages,
+          context,
           opts.getTools?.() ?? opts.tools,
           { ...opts.streamOptions, signal }
         )

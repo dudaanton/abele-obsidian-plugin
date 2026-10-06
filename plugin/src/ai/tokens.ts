@@ -8,7 +8,7 @@
  * priced by what such a piece usually costs — a common Latin word is one token, a long one
  * about one per four letters, digits three to a token, other scripts about one per two and a
  * half letters. English prose comes out near the usual four characters a token. It is good for
- * comparing one form of a result with another, which is all it is used for; it is not a bill.
+ * comparing result sizes and estimating context growth for compaction; it is not a bill.
  */
 
 const PIECE = /'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+/gu

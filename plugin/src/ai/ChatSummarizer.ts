@@ -7,6 +7,7 @@ import { ChatStorage } from './ChatStorage'
 import { requestSummary } from './ChatDigest'
 import { conversationLines } from './chatText'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from './types'
+import { estimateTokens } from './tokens'
 
 /**
  * The slice of a chat the summarizer touches.
@@ -37,7 +38,7 @@ export interface SummarizerHost {
   /** Whether there is any conversation to compact. */
   hasInternalMessages(): boolean
   /** Records the summary as a visible divider and as an internal marker in one step. */
-  applyCompactSummary(summary: string): void
+  applyCompactSummary(summary: string, retained?: Message[]): void
   backgroundSignal(): AbortSignal
   save(): Promise<void>
   /** Asks for a write soon, riding along with whatever the chat writes next. */
@@ -246,12 +247,17 @@ export class ChatSummarizer {
 
   /** Replaces the conversation history with a summary of it. */
   async compact(): Promise<void> {
+    return this.compactHistory(this.host.messagesForModel(), [], false)
+  }
+
+  private async compactHistory(
+    messages: Message[],
+    retained: Message[],
+    atIterationBoundary: boolean,
+    turnSignal?: AbortSignal
+  ): Promise<void> {
     if (!this.host.hasInternalMessages()) return
-    if (
-      this.host.isStreaming.value ||
-      this.host.isCompacting.value ||
-      this.host.isGeneratingTitle.value
-    ) {
+    if ((this.host.isStreaming.value && !atIterationBoundary) || this.host.isCompacting.value) {
       return
     }
 
@@ -263,7 +269,7 @@ export class ChatSummarizer {
       const model = this.host.auxiliaryModel()
       const client = new OpenAIClient()
 
-      const msgsText = this.renderForSummary(this.host.messagesForModel())
+      const msgsText = this.renderForSummary(messages)
       if (!msgsText) return
 
       const compactPrompt = (
@@ -275,7 +281,8 @@ export class ChatSummarizer {
       ]
 
       let summary = ''
-      const signal = this.host.backgroundSignal()
+      const background = this.host.backgroundSignal()
+      const signal = turnSignal ? AbortSignal.any([background, turnSignal]) : background
       for await (const event of client.stream(
         model,
         ChatSummarizer.COMPACT_SYSTEM_PROMPT,
@@ -291,9 +298,10 @@ export class ChatSummarizer {
       summary = summary.trim()
       if (!summary) return
 
-      this.host.applyCompactSummary(summary)
+      this.host.applyCompactSummary(summary, retained)
       await this.host.save()
     } catch (err: unknown) {
+      if (turnSignal?.aborted) return
       console.error('[Abele] compact error:', err)
       const msg = err instanceof Error ? err.message : String(err)
       this.host.error.value = `Compact failed: ${msg}`
@@ -302,31 +310,74 @@ export class ChatSummarizer {
     }
   }
 
-  /**
-   * Compacts once the last reported usage crosses 90% of the model's context window.
-   *
-   * Reads usage rather than estimating it: the number the provider returned is the only one
-   * that matches what the next request will actually cost.
-   */
-  async autoCompactIfNeeded(): Promise<void> {
+  /** Checks the next context, including results added since the last reported request.
+   * Without provider usage, estimate the text, system prompt and tool definitions instead.
+   * Only the loop itself may compact while streaming, between completed tool batches. */
+  async autoCompactIfNeeded(
+    options: { atIterationBoundary?: boolean; systemPrompt?: string; signal?: AbortSignal } = {}
+  ): Promise<void> {
     try {
       if (this.host.pendingToolCalls.value.length > 0) return
-
       const model = this.host.activeModel()
       if (!model?.contextWindow) return
+      const messages = this.host.messagesForModel()
+      const lastAssistant = messages.findLastIndex((m) => m.role === 'assistant')
+      const assistant = messages[lastAssistant]
+      const marker = messages.findLastIndex(
+        (m) => m.role === 'system' && m.content.startsWith(ChatSummarizer.COMPACT_MARKER)
+      )
+      // A retained reply's usage describes the old context, not the summary plus its tail.
+      const usage =
+        assistant?.role === 'assistant' &&
+        (marker < 0 || assistant.chatMessageId !== messages[marker].chatMessageId)
+          ? assistant.usage.totalTokens
+          : 0
+      const tokens =
+        usage > 0
+          ? usage + this.contextTokens(messages.slice(lastAssistant + 1))
+          : this.contextTokens(messages) +
+            estimateTokens(options.systemPrompt ?? '') +
+            estimateTokens(JSON.stringify(this.host.toolDefs()))
+      if (tokens < model.contextWindow * ChatSummarizer.AUTO_COMPACT_THRESHOLD) return
 
-      const lastAssistant = [...this.host.messages.value]
-        .reverse()
-        .find((m) => m.role === 'assistant' && m.usage)
-      if (!lastAssistant?.usage) return
-
-      const threshold = model.contextWindow * ChatSummarizer.AUTO_COMPACT_THRESHOLD
-      if (lastAssistant.usage.total >= threshold && this.host.messagesForModel().length > 2) {
-        await this.compact()
+      let retainFrom = messages.length
+      if (options.atIterationBoundary) {
+        if (assistant?.role === 'assistant' && assistant.content.some((b) => b.type === 'toolCall'))
+          retainFrom = lastAssistant
+        const nextUser = messages.findIndex((m, i) => i > lastAssistant && m.role === 'user')
+        if (nextUser >= 0) retainFrom = Math.min(retainFrom, nextUser)
       }
+      const older = messages.slice(0, retainFrom)
+      // A summary alone cannot get any shorter by summarizing it again. A single large
+      // in-flight result stays intact until the model has consumed it.
+      if (!older.some((m) => m.role !== 'system') || messages.length <= 2) return
+      await this.compactHistory(
+        older,
+        messages.slice(retainFrom),
+        !!options.atIterationBoundary,
+        options.signal
+      )
     } catch {
       // Auto-compact is best-effort
     }
+  }
+
+  private contextTokens(messages: Message[]): number {
+    return messages.reduce((total, message) => {
+      const content =
+        typeof message.content === 'string'
+          ? message.content
+          : message.content
+              .map((part) => {
+                if (part.type === 'text') return part.text
+                if (part.type === 'thinking') return part.thinking
+                if (part.type === 'toolCall') return part.name + JSON.stringify(part.arguments)
+                // Do not count base64 or a file URL as text tokens. Image pricing is model-specific.
+                return ''
+              })
+              .join('\n')
+      return total + 4 + estimateTokens(content)
+    }, 0)
   }
 
   /**
@@ -341,6 +392,7 @@ export class ChatSummarizer {
 
     return messages
       .map((m) => {
+        if (m.role === 'system') return `[system]: ${cut(m.content)}`
         if (m.role === 'user') {
           // A turn with attachments carries its content as parts rather than a string, so the
           // text has to be read out of them — interpolating the array would hand the model

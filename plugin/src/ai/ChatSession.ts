@@ -213,6 +213,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   private agentLoop: AgentLoop | null = null
   private turnAbortController: AbortController | null = null
+  private turnAborted = false
   private unsubscribe: (() => void) | null = null
   private streamStartTime = 0
   private allInternalMessages: Message[] = []
@@ -804,7 +805,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * Records a compaction summary in both places it has to appear: as a divider the user sees,
    * and as an internal system marker that `getMessagesForModel` truncates the history at.
    */
-  applyCompactSummary(summary: string): void {
+  applyCompactSummary(summary: string, retained: Message[] = []): void {
     // What was read before the summary is out of the model's sight from here on.
     this.readGuard.settle()
     const divider: ChatMessage = {
@@ -822,6 +823,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       timestamp: Date.now(),
       chatMessageId: divider.id,
     })
+    // Keep the unfinished exchange verbatim after the marker. Link these copies to the
+    // divider, so rewinding before it sees the original exchange once, not twice.
+    this.allInternalMessages.push(
+      ...retained.map((message) => ({ ...message, chatMessageId: divider.id }))
+    )
   }
 
   backgroundSignal(): AbortSignal {
@@ -1407,6 +1413,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private async runAgentLoopOnce(): Promise<void> {
     const controller = new AbortController()
     this.turnAbortController = controller
+    this.turnAborted = false
     const generation = this.generation
     this.isStreaming.value = true
     this.streamingContent.value = ''
@@ -1445,9 +1452,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       })
 
       const toSend = this.getMessagesForModel()
+      let committed = toSend.length
+      const checkpoint = (messages: Message[]) => {
+        const added = messages.slice(committed)
+        this.linkInternalMessages(added)
+        this.allInternalMessages.push(...added)
+        committed = messages.length
+      }
+      const systemPrompt = await this.chatService.getSystemPrompt(this)
       const result = await this.agentLoop.run({
         model,
-        systemPrompt: await this.chatService.getSystemPrompt(this),
+        systemPrompt,
         tools,
         getTools: () => this.getTools(),
         messages: toSend,
@@ -1456,6 +1471,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           signal: controller.signal,
         },
         beforeIteration: () => this.takeQueued(),
+        prepareMessages: async (messages) => {
+          if (this.destroyed || generation !== this.generation || controller.signal.aborted)
+            return messages
+          // The loop has completed all calls and their injected messages. Publish them
+          // before summarizing, not only when the entire agent turn eventually ends.
+          checkpoint(messages)
+          await this.summarizer.autoCompactIfNeeded({
+            atIterationBoundary: true,
+            systemPrompt,
+            signal: controller.signal,
+          })
+          return this.getMessagesForModel()
+        },
         beforeToolCall: async (toolName, _id, args) => {
           // Refused before anyone is asked: approving a write that cannot run wastes a click.
           const refused = await this.readGuard.check(toolName, args)
@@ -1480,10 +1508,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       })
 
       if (this.destroyed || generation !== this.generation) return
-      // Append only new messages to the full history
-      const newMsgs = result.messages.slice(toSend.length)
-      this.linkInternalMessages(newMsgs)
-      this.allInternalMessages.push(...newMsgs)
+      // Requests may have used compacted context; the loop result remains the full history.
+      checkpoint(result.messages)
 
       if (result.pausedAt?.length) {
         this.pendingToolCalls.value = result.pausedAt
@@ -1826,6 +1852,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       this.mirrorNoteLinks()
     }
 
+    if (this.turnAborted) return
     if (sequential) {
       await this.summarizer.autoCompactIfNeeded()
     } else {
@@ -2125,6 +2152,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   abort(): void {
+    this.turnAborted = true
     this.cancelAutoRetry()
     this.abortQuestions()
     this.turnAbortController?.abort()

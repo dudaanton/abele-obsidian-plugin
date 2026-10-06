@@ -62,6 +62,9 @@ function buildHost(overrides: Partial<SummarizerHost> = {}) {
       { role: 'user', content: 'question', timestamp: 1 },
       { role: 'user', content: 'another', timestamp: 2 },
       { role: 'user', content: 'third', timestamp: 3 },
+      ...(overrides.messages?.value ?? [])
+        .filter((m) => m.role === 'assistant' && m.usage)
+        .map((m) => modelAssistant(m.usage!.total)),
     ],
     toolDefs: () => [],
     hasInternalMessages: () => true,
@@ -84,6 +87,17 @@ function assistantMessage(total: number): ChatMessage {
     content: 'answer',
     timestamp: 1,
     usage: { input: total, output: 0, total },
+  }
+}
+
+function modelAssistant(total: number): Message {
+  return {
+    role: 'assistant',
+    content: [{ type: 'text', text: 'answer' }],
+    model: MODEL.id,
+    usage: { input: total, output: 0, totalTokens: total, cacheRead: 0, cacheWrite: 0 },
+    stopReason: 'stop',
+    timestamp: 4,
   }
 }
 
@@ -277,6 +291,56 @@ describe('the transcript a summary is made from', () => {
 })
 
 describe('ChatSummarizer.autoCompactIfNeeded', () => {
+  it('can compact while a title request is still running', async () => {
+    nextResponse = 'summary'
+    const { host, applied } = buildHost({
+      messages: ref([assistantMessage(950)]),
+      isGeneratingTitle: ref(true),
+    })
+    await new ChatSummarizer(host).autoCompactIfNeeded()
+    expect(applied).toEqual(['summary'])
+  })
+
+  it('includes the preceding summary when compacting again', async () => {
+    nextResponse = 'updated summary'
+    const { host, applied } = buildHost({
+      messagesForModel: () => [
+        {
+          role: 'system',
+          content: '[Conversation compacted]\n\nKeep the sample goal.',
+          timestamp: 1,
+          chatMessageId: 'divider',
+        },
+        { role: 'user', content: 'Continue', timestamp: 2 },
+        modelAssistant(950),
+      ],
+    })
+    await new ChatSummarizer(host).autoCompactIfNeeded()
+    expect(applied).toEqual(['updated summary'])
+    expect(JSON.stringify(calls[0].messages)).toContain('Keep the sample goal.')
+  })
+
+  it('does not reuse usage from a reply omitted by a previous compaction', async () => {
+    nextResponse = 'summary'
+    const { host, applied } = buildHost({
+      messages: ref([assistantMessage(999)]),
+      messagesForModel: () => [
+        { role: 'system', content: '[Conversation compacted]\n\nSample summary', timestamp: 1 },
+        { role: 'user', content: 'Next question', timestamp: 2 },
+        modelAssistant(0),
+      ],
+    })
+    await new ChatSummarizer(host).autoCompactIfNeeded()
+    expect(applied).toEqual([])
+  })
+
+  it('counts prompt and tool definitions when usage is missing', async () => {
+    nextResponse = 'summary'
+    const { host, applied } = buildHost()
+    await new ChatSummarizer(host).autoCompactIfNeeded({ systemPrompt: 'sample '.repeat(1000) })
+    expect(applied).toEqual(['summary'])
+  })
+
   it('compacts once reported usage crosses 90% of the context window', async () => {
     nextResponse = 'summary'
     const { host, applied } = buildHost({ messages: ref([assistantMessage(950)]) })
@@ -487,6 +551,7 @@ describe('location results in helper-model requests', () => {
           timestamp: 3,
           isError: false,
         },
+        modelAssistant(950),
       ]
       const before = structuredClone(messages)
       const helper: ModelConfig = {

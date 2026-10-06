@@ -501,6 +501,13 @@ contiguous reads cover the full current file the range is absent. That is what l
 seen a file as it is now (see the tools section). It travels with the message, so it is gone once
 that message is compacted away or left on another branch.
 
+Automatic compaction can run between model requests within a tool loop. The summary marker is
+followed by copies of the latest complete tool-call exchange and its injected messages, or the
+new user messages waiting for a reply. These retained `int` records keep their content, `reads`
+and `stored` data, but their `chatMessageId` names the compaction divider. Older records remain
+in the log for earlier branches: selecting a branch before the divider does not include the
+retained copies. Only the summary and its following records are sent on the compacted branch.
+
 What a chat's tools changed in the vault is not in the chat file. It is kept in the plugin's
 folder, under `rewind/`, one folder per chat named by the id of its first message: `log.json`
 lists every change with the user message whose turn made it, the text a file had before (or
