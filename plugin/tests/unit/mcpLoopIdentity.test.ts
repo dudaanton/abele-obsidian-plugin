@@ -7,6 +7,7 @@ import { mcpPermissionKey } from '@/ai/mcp/permissions'
 const tool = (id: string, name = 'mcp_archive_echo'): AgentTool => ({
   name,
   permissionKey: mcpPermissionKey(id, 'echo'),
+  destinationKey: JSON.stringify(['http', 'https://sample.example/mcp']),
   label: 'Echo',
   description: '',
   parameters: {},
@@ -63,6 +64,38 @@ describe('MCP identities at the model request boundary', () => {
     )
     expect(tools[0].execute).not.toHaveBeenCalled()
   })
+
+  it.each(['response', 'approval'])(
+    'refuses a destination change during %s while retaining the same tool identity',
+    async (when) => {
+      const original = tool('a')
+      const moved = {
+        ...tool('a'),
+        destinationKey: JSON.stringify(['http', 'https://replacement.example/mcp']),
+      }
+      let current = [original]
+      streamCalls(
+        [call('first')],
+        when === 'response'
+          ? () => {
+              current = [moved]
+            }
+          : undefined
+      )
+      const result = await run(
+        () => current,
+        async () => {
+          if (when === 'approval') current = [moved]
+        }
+      )
+      expect(original.execute).not.toHaveBeenCalled()
+      expect(moved.execute).not.toHaveBeenCalled()
+      expect(result.messages.find((m) => m.role === 'toolResult')).toMatchObject({
+        isError: true,
+        content: [{ type: 'text', text: expect.stringContaining('destination changed') }],
+      })
+    }
+  )
 
   it('does not bind an unoffered MCP alias to a server added while the model answered', async () => {
     const replacement = tool('b')

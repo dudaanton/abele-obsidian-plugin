@@ -15,6 +15,7 @@ export interface ThinkingContent {
 export interface ToolCallContent {
   /** Pinned from the request's tool list, never supplied by the provider. */
   permissionKey?: string
+  destinationKey?: string
   type: 'toolCall'
   id: string
   name: string
@@ -140,6 +141,8 @@ export interface ToolDefinition {
 export interface AgentTool extends ToolDefinition {
   /** Stable permission identity when the provider-facing name is only an alias. */
   permissionKey?: string
+  /** Execution destination retained separately from saved per-agent permissions. */
+  destinationKey?: string
   label: string
   /** The group the settings show it in, for tools that bring their own (an MCP server's). */
   category?: string

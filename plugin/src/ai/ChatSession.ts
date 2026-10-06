@@ -1058,6 +1058,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           const refused = await this.readGuard.check(tool.name, params)
           if (refused) throw new Error(refused)
           signal?.throwIfAborted()
+          const identityRefusal = pendingMcpToolRefusal(
+            tool,
+            AbeleConfig.getInstance().ai.mcpServers
+          )
+          if (identityRefusal) throw new Error(identityRefusal)
           const result = await tool.execute(id, invocationParams, signal, ctx)
           await this.readGuard.record(tool.name, params, result)
           // After the guard, which has to see a file's text as the tool gave it.
@@ -1540,6 +1545,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           ...tc,
           permissionKey:
             tc.permissionKey ?? tools.find((tool) => tool.name === tc.name)?.permissionKey,
+          destinationKey:
+            tc.destinationKey ?? tools.find((tool) => tool.name === tc.name)?.destinationKey,
         }))
         await this.processAllPendingToolCalls()
       }
@@ -1685,7 +1692,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const tools = this.getTools()
     const tool = tools.find((t) => t.name === tc.name)
     const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
-    if (identityRefusal || (tc.permissionKey && tool?.permissionKey !== tc.permissionKey)) {
+    if (
+      identityRefusal ||
+      (tc.permissionKey &&
+        (tool?.permissionKey !== tc.permissionKey || tool?.destinationKey !== tc.destinationKey))
+    ) {
       this.recordRefusal(
         tc,
         identityRefusal || 'The MCP tool changed or no longer exists. Ask for a new tool call.'
@@ -2669,6 +2680,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
               name: tc.name,
               arguments: tc.arguments,
               permissionKey: tc.permissionKey,
+              destinationKey: tc.destinationKey,
             }))
           : undefined,
       activeLeafId: this.activeLeafId || undefined,
@@ -2857,6 +2869,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         name: tc.name,
         arguments: tc.arguments,
         permissionKey: tc.permissionKey,
+        destinationKey: tc.destinationKey,
       }))
     }
 

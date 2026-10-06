@@ -17,9 +17,13 @@ export const mcpCategory = (server: McpServer): string => `MCP · ${server.name 
 /** Every tool of every server that is on, in the order the servers and their lists give. */
 export function createMcpTools(servers: McpServer[] | undefined): AgentTool[] {
   const tools: AgentTool[] = []
-  for (const { server, snapshot, name, permissionKey } of mcpToolBindings(servers)) {
+  for (const { server, snapshot, name, permissionKey, destinationKey } of mcpToolBindings(
+    servers
+  )) {
     if (!server.enabled || !server.url) continue
-    tools.push({ ...createMcpTool(server, snapshot, name), permissionKey })
+    // Do not let an in-place settings edit retarget a tool closure across an await.
+    const endpoint = { ...server, headers: { ...server.headers } }
+    tools.push({ ...createMcpTool(endpoint, snapshot, name), permissionKey, destinationKey })
   }
   return tools
 }

@@ -12,7 +12,7 @@ import type { AgentTool, Message, ToolCallContent } from '@/ai/client'
 import { initializeDestinations } from '@/secrets/destinations'
 import { needsSecretApproval } from '@/ai/tools/secretUtils'
 import * as secretUtils from '@/ai/tools/secretUtils'
-import { mcpPermissionKey } from '@/ai/mcp/permissions'
+import { mcpPermissionKey, mcpDestinationKey } from '@/ai/mcp/permissions'
 import { createMcpServer } from '@/ai/mcp/types'
 import { acceptDestinations } from '@/secrets/destinations'
 import { setSecrets } from '@/secrets/SecretStore'
@@ -195,6 +195,7 @@ const mcp = () => {
     {
       name,
       permissionKey: mcpPermissionKey('sample-server', 'read'),
+      destinationKey: mcpDestinationKey(config.ai.mcpServers[0]),
       label: 'Sample MCP',
       description: 'Synthetic MCP tool; no transport',
       parameters: {},

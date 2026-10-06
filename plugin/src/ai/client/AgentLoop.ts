@@ -166,6 +166,7 @@ export class AgentLoop {
           tc.permissionKey =
             requestTools.find((tool) => tool.name === tc.name)?.permissionKey ??
             (tc.name.startsWith('mcp_') ? `unresolved:${tc.name}` : undefined)
+          tc.destinationKey = requestTools.find((tool) => tool.name === tc.name)?.destinationKey
         }
 
         // Execute tools sequentially
@@ -331,12 +332,17 @@ export class AgentLoop {
       return result
     }
 
-    const changedIdentity = () =>
-      tc.permissionKey !== undefined &&
-      (getTools ? getTools().find((candidate) => candidate.name === tc.name) : tool)
-        ?.permissionKey !== tc.permissionKey
-    if (changedIdentity())
-      return makeResult('The MCP tool changed or no longer exists. Ask for a new tool call.', true)
+    const identityRefusal = (): string | null => {
+      if (tc.permissionKey === undefined) return null
+      const current = getTools ? getTools().find((candidate) => candidate.name === tc.name) : tool
+      if (!current || current.permissionKey !== tc.permissionKey)
+        return 'The MCP tool changed or no longer exists. Ask for a new tool call.'
+      if (current.destinationKey !== tc.destinationKey)
+        return 'The MCP destination changed. Ask for a new tool call.'
+      return null
+    }
+    const refusedBeforeApproval = identityRefusal()
+    if (refusedBeforeApproval) return makeResult(refusedBeforeApproval, true)
 
     let args = tc.arguments
 
@@ -380,8 +386,8 @@ export class AgentLoop {
       }
     }
 
-    if (changedIdentity())
-      return makeResult('The MCP tool changed or no longer exists. Ask for a new tool call.', true)
+    const refusedAfterApproval = identityRefusal()
+    if (refusedAfterApproval) return makeResult(refusedAfterApproval, true)
 
     // Execute
     this.emit({ type: 'tool_start', toolCallId: tc.id, toolName: tc.name, args })

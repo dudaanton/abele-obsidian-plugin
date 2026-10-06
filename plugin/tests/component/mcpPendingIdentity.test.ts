@@ -11,7 +11,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createMcpServer } from '@/ai/mcp/types'
 import { McpService } from '@/ai/mcp/McpService'
-import { mcpPermissionKey } from '@/ai/mcp/permissions'
+import { mcpPermissionKey, mcpDestinationKey } from '@/ai/mcp/permissions'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
@@ -108,6 +108,29 @@ const click = async (label: string) => {
 
 describe('pending MCP call identity', () => {
   it.each(['Approve', 'Always allow'])(
+    'refuses a changed destination before %s without changing permissions',
+    async (label) => {
+      await showPending()
+      AbeleConfig.getInstance().ai.mcpServers![0].url = 'https://replacement.example/mcp'
+      await click(label)
+      expect(execute).not.toHaveBeenCalled()
+      expect(session.toolModes.value[mcpPermissionKey('original', 'echo')]).toBe('ask')
+      const message = session.messages.value.find((m) => m.toolCallId === 'call-1')!
+      expect(message.toolStatus).toBe('rejected')
+      expect(message.toolResult).toMatch(/destination.*changed/i)
+    }
+  )
+
+  it('also refuses a changed endpoint path on the same host', async () => {
+    await showPending()
+    AbeleConfig.getInstance().ai.mcpServers![0].url = 'https://sample.example/other-mcp'
+    await click('Approve')
+    expect(execute).not.toHaveBeenCalled()
+    expect(session.messages.value.find((m) => m.toolCallId === 'call-1')?.toolStatus).toBe(
+      'rejected'
+    )
+  })
+  it.each(['Approve', 'Always allow'])(
     'refuses alias reassignment before %s without granting or executing the replacement',
     async (label) => {
       await showPending()
@@ -141,6 +164,9 @@ describe('pending MCP call identity', () => {
     expect(stored.metadata?.pendingToolCalls?.[0].permissionKey).toBe(
       mcpPermissionKey('original', 'echo')
     )
+    expect(stored.metadata?.pendingToolCalls?.[0].destinationKey).toBe(
+      mcpDestinationKey(server('original', 'Archive'))
+    )
     AbeleConfig.getInstance().ai.mcpServers![0].name = 'Renamed'
     AbeleConfig.getInstance().ai.mcpServers!.push(server('replacement', 'Archive'))
     await session.load(file)
@@ -152,6 +178,31 @@ describe('pending MCP call identity', () => {
     expect(session.toolModes.value[mcpPermissionKey('replacement', 'echo')]).toBe('ask')
     expect(session.messages.value.find((m) => m.toolCallId === 'call-1')?.toolResult).toContain(
       'MCP tool changed'
+    )
+  })
+
+  it('refuses destination changes after a saved pending call is reopened', async () => {
+    vi.mocked(session.save).mockRestore()
+    await showPending()
+    const file = session.currentChatFile.value!
+    AbeleConfig.getInstance().ai.mcpServers![0].url = 'https://replacement.example/mcp'
+    await session.load(file)
+    await session.approveToolCall(undefined, true, 'call-1')
+    expect(execute).not.toHaveBeenCalled()
+    expect(session.toolModes.value[mcpPermissionKey('original', 'echo')]).toBe('ask')
+    expect(session.messages.value.find((m) => m.toolCallId === 'call-1')?.toolResult).toMatch(
+      /destination.*changed/i
+    )
+  })
+
+  it('refuses older pending calls that recorded a tool identity but no destination', async () => {
+    await showPending()
+    delete session.pendingToolCalls.value[0].destinationKey
+    await click('Always allow')
+    expect(execute).not.toHaveBeenCalled()
+    expect(session.toolModes.value[mcpPermissionKey('original', 'echo')]).toBe('ask')
+    expect(session.messages.value.find((m) => m.toolCallId === 'call-1')?.toolStatus).toBe(
+      'rejected'
     )
   })
 

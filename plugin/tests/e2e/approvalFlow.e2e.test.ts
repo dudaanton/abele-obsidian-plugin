@@ -106,7 +106,7 @@ export const approvalScript = (screen: string) => `(async () => {
     const registered = session.getTools()
     const ls = registered.find(t => t.name === 'ls'), fetch = registered.find(t => t.name === 'fetch')
     if (!ls || !fetch) throw Error('registered scoped tools missing')
-    const synthetic = name => ({ name, permissionKey: name === 'mcp_sample_read' ? 'mcp:' + JSON.stringify(['sample-mcp', 'read']) : undefined, label: name, description: 'Synthetic sample; no transport or credential access', parameters: {}, execute: async (id) => {
+    const synthetic = name => ({ name, permissionKey: name === 'mcp_sample_read' ? 'mcp:' + JSON.stringify(['sample-mcp', 'read']) : undefined, destinationKey: name === 'mcp_sample_read' ? JSON.stringify(['http', 'https://mcp.sample.example/rpc']) : undefined, label: name, description: 'Synthetic sample; no transport or credential access', parameters: {}, execute: async (id) => {
       report.executed.push(id); await wait(100); return { content: [{ type: 'text', text: 'done' }] }
     } })
     session.getTools = () => [ls, synthetic('eval_js'), synthetic('mcp_sample_read'), { ...fetch, execute: async (...args) => { report.executed.push(args[0]); return fetch.execute(...args) } }]

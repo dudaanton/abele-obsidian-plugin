@@ -6,6 +6,10 @@ import { mcpToolName, isMcpToolName } from './names'
 export const mcpPermissionKey = (serverId: string, toolName: string): string =>
   `mcp:${JSON.stringify([serverId, toolName])}`
 
+/** HTTP is the only supported transport. Retain the entire endpoint, not just its origin. */
+export const mcpDestinationKey = (server: Pick<McpServer, 'url'>): string =>
+  JSON.stringify(['http', server.url])
+
 /** Allocate unique provider aliases, reserving ordinary names before adding collision suffixes. */
 export function mcpToolBindings(servers: McpServer[] = []) {
   const pairs = new Map<
@@ -35,7 +39,7 @@ export function mcpToolBindings(servers: McpServer[] = []) {
       } while (reserved.has(name) || taken.has(name))
     }
     taken.add(name)
-    return { ...pair, name, permissionKey }
+    return { ...pair, name, permissionKey, destinationKey: mcpDestinationKey(pair.server) }
   })
 }
 
@@ -94,17 +98,22 @@ export function migrateMcpModes(
 
 /** A pending alias may not select a different tool, even if the replacement is enabled. */
 export function pendingMcpToolRefusal(
-  call: { name: string; permissionKey?: string },
+  call: { name: string; permissionKey?: string; destinationKey?: string },
   servers: McpServer[] = []
 ): string | null {
   if (!isMcpToolName(call.name)) return null
   const binding = mcpToolBindings(servers).find((item) => item.name === call.name)
-  return call.permissionKey &&
-    binding?.permissionKey === call.permissionKey &&
-    binding.server.enabled &&
-    binding.server.url
-    ? null
-    : 'The MCP tool changed or no longer exists. Ask for a new tool call.'
+  if (
+    !call.permissionKey ||
+    !binding ||
+    binding.permissionKey !== call.permissionKey ||
+    !binding.server.enabled ||
+    !binding.server.url
+  )
+    return 'The MCP tool changed or no longer exists. Ask for a new tool call.'
+  if (!call.destinationKey || binding.destinationKey !== call.destinationKey)
+    return 'The MCP destination changed or was not recorded. Ask for a new tool call.'
+  return null
 }
 
 /** Fold defaults and every agent together so the adapter can show one migration notice. */

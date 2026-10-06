@@ -694,6 +694,7 @@ export interface ChatMetadata {
     name: string
     arguments: Record<string, unknown>
     permissionKey?: string
+    destinationKey?: string
   }>
   permissionMode?: PermissionMode
   toolModes?: Record<string, ToolMode>

@@ -938,10 +938,11 @@ ambiguous or removed owners become `ask`. Unmatched aliases are retained as dorm
 entries under `mcp:unresolved:` followed by their JSON-encoded alias. One notice lists the
 choices to set again, and the migrated chat is saved so the notice does not repeat.
 
-Saved pending MCP calls also carry `permissionKey`, pinned from the tool list offered in
-the model request. Approval and execution require the current alias to still select that
-identity. Missing identities in older pending calls, removed tools and reassigned aliases
-are refused with a request for a fresh call; they never select a replacement server.
+Saved pending MCP calls also carry `permissionKey` and `destinationKey`, pinned from the tool
+list offered in the model request. The destination is the JSON pair `["http", fullEndpointUrl]`
+(HTTP is the only supported MCP transport); saved agent modes still use the server/tool identity.
+Approval and execution require the current alias to select the same tool and exact endpoint. Missing tool or destination identities in older pending calls, removed tools, reassigned
+aliases and changed endpoint URLs are refused with a request for a fresh call; they never select a replacement server.
 
 ## Screenshots
 

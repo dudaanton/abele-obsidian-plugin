@@ -304,9 +304,10 @@ Choices that cannot be matched safely are kept at Ask and listed in the notice, 
 automatic. These choices travel with settings transfer.
 
 A pending tool call belongs to the exact server and tool it originally requested. If a
-rename or changed tool list makes its name point somewhere else, approving it is refused
+rename, changed tool list or changed server address makes it point somewhere else, approving it is refused
 with a message asking for a fresh call. This also applies to older pending calls without
-a recorded identity; **Always allow** never grants a replacement server permission.
+a recorded tool and destination identity; **Always allow** never grants a replacement server or
+changed destination permission.
 
 ## Skills and prompts
 
