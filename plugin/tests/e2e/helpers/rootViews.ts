@@ -9,7 +9,7 @@ export interface RootView {
 export function snapshotRootViews(): RootView[] {
   return evalJsonIdempotent<RootView[]>(`(() => {
     const leaves = []
-    app.workspace.iterateRootLeaves(leaf => leaves.push({ id: leaf.id, type: leaf.view.getViewType() }))
+    app.workspace.iterateRootLeaves(leaf => { leaves.push({ id: leaf.id, type: leaf.view.getViewType() }) })
     return leaves
   })()`)
 }
@@ -19,7 +19,7 @@ export function assertNoLeakedRootViews(before: RootView[]): void {
     const before = ${JSON.stringify(before)}
     const leaked = []
     const leaves = []
-    app.workspace.iterateRootLeaves(leaf => leaves.push(leaf))
+    app.workspace.iterateRootLeaves(leaf => { leaves.push(leaf) })
     for (const leaf of leaves) {
       const type = leaf.view.getViewType()
       if (!type.startsWith('abele-') || before.some(old => old.id === leaf.id && old.type === type)) continue

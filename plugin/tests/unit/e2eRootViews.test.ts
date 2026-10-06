@@ -18,9 +18,11 @@ describe('per-file root view ownership', () => {
     const note = leaf('old-note', 'markdown')
     const leaves = [existing, note]
     vi.stubGlobal('app', {
-      workspace: { iterateRootLeaves: (visit: (l: unknown) => void) => leaves.forEach(visit) },
+      // Obsidian stops traversal when a callback returns a truthy value.
+      workspace: { iterateRootLeaves: (visit: (l: unknown) => unknown) => leaves.some(visit) },
     })
     const before = snapshotRootViews()
+    expect(before).toHaveLength(2)
     const added = leaf('new-panel', 'abele-script-runs-view')
     const second = leaf('second-panel', 'abele-ai-sidebar-view')
     // Detaching mutates the workspace's live sibling array.
