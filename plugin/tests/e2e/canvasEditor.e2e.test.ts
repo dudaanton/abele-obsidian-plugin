@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -56,7 +56,12 @@ const type = async (text: string) => {
     await withNativeInput(() =>
       run(`
     const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
-    try {await cdp.sendCommand('Input.insertText',{text:${JSON.stringify(text)}})}finally {if(owned)cdp.detach()}return true
+    try {
+      if(${JSON.stringify(text)}==='\\b') {
+        await cdp.sendCommand('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8,nativeVirtualKeyCode:8})
+        await cdp.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8,nativeVirtualKeyCode:8})
+      } else await cdp.sendCommand('Input.insertText',{text:${JSON.stringify(text)}})
+    }finally {if(owned)cdp.detach()}return true
   `)
     )
 }
@@ -98,6 +103,13 @@ const reopen = async () => {
 }
 
 describe.skipIf(!available)('human canvas creation and editing with real input', () => {
+  let creationStarted = false
+  let created = false
+  beforeEach(() => {
+    // A hook failure cannot be swallowed by the expected-failure native-handoff case.
+    if (creationStarted)
+      expect(created, 'Canvas creation failed; dependent edits cannot run').toBe(true)
+  })
   beforeAll(() => {
     run(`
       if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
@@ -123,10 +135,16 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
   }, 120_000)
 
   it('creates an empty canvas from the palette and completes a card with keyboard input', async () => {
+    creationStarted = true
     // Navigation opens the palette; creation itself is chosen with real input.
     run("app.commands.executeCommandById('command-palette:open');return true")
     await press('document.querySelector(".prompt-input")')
+    // Select the query, then delete through the native keyboard; never assign the DOM value.
+    run('document.querySelector(".prompt-input").select();return true')
+    await type('\b')
+    await until('document.querySelector(".prompt-input")?.value === ""')
     await type('new canvas')
+    await until('document.querySelector(".prompt-input")?.value === "new canvas"')
     shot('creation-palette')
     const command =
       '[...document.querySelectorAll(".suggestion-item")].find(el=>/Abele.*New canvas/i.test(el.textContent))'
@@ -155,6 +173,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       focused: true,
       empty: true,
     })
+    created = true
   }, 120_000)
 
   it('inserts a note through the native picker, selects a card by pointer, and deletes/undoes/redoes', async () => {
