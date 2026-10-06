@@ -10,6 +10,15 @@ import { migrateAgents } from '@/ai/agents/migration'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { subAgentRefusal } from '@/ai/SubAgentRunner'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { ChatSession } from '@/ai/ChatSession'
+import { ChatService } from '@/ai/ChatService'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { AgentLoop } from '@/ai/client/AgentLoop'
+import type { AgentTool } from '@/ai/client'
+import { useVault } from '../helpers/testEnv'
+import { destroyChatsAfterEach } from '../helpers/chatTeardown'
+
+destroyChatsAfterEach()
 
 const delivery = vi.hoisted(() => vi.fn())
 vi.mock('@/canvas/exportAdapter', () => ({
@@ -80,6 +89,73 @@ it('returns the captured revision, scopes assets, and adds only a successfully c
     call({ path: 'sample.canvas', output: 'failed.png', format: 'png' })
   ).rejects.toThrow()
   expect(scope.isInScope('failed.png')).toBe(false)
+})
+it('dispatches an approved export through the owning chat and keeps Off unavailable', async () => {
+  useVault([])
+  const config = AbeleConfig.getInstance()
+  config.ai = {
+    ...DEFAULT_AI_SETTINGS,
+    agents: [],
+    defaultAgentId: '',
+    providers: [
+      {
+        id: 'sample-provider',
+        name: 'Sample',
+        baseUrl: 'https://example.invalid/v1',
+        apiKeyId: '',
+        models: [
+          {
+            id: 'sample-model',
+            name: 'Sample',
+            contextWindow: 10000,
+            maxTokens: 100,
+            supportsReasoning: false,
+          },
+        ],
+      },
+    ],
+  }
+  const registry = AgentRegistry.getInstance()
+  const agent = registry.create({
+    name: 'Sample export helper',
+    providerId: 'sample-provider',
+    modelId: 'sample-model',
+    permissionMode: 'allow-all',
+    toolModes: { canvas_export: 'ask' },
+  })
+  registry.setDefault(agent.id)
+  const session = new ChatSession(ChatService.getInstance())
+  vi.spyOn(session, 'save').mockResolvedValue(undefined)
+  vi.spyOn(AgentLoop.prototype, 'run').mockImplementation(async (options) => ({
+    messages: options.messages,
+  }))
+  vi.spyOn(ChatService.getInstance(), 'getSystemPrompt').mockResolvedValue('')
+  const summarizer = (
+    session as unknown as {
+      summarizer: { generateTitle(): Promise<void>; autoCompactIfNeeded(): Promise<void> }
+    }
+  ).summarizer
+  vi.spyOn(summarizer, 'generateTitle').mockResolvedValue(undefined)
+  vi.spyOn(summarizer, 'autoCompactIfNeeded').mockResolvedValue(undefined)
+  session.scopeResolver.setFullVaultAccess(false)
+  session.scopeResolver.entries.value = [{ type: 'file', path: 'sample.canvas' }]
+  const args = { path: 'sample.canvas', output: 'sample.pdf', format: 'pdf' }
+  expect(session.needsApproval('canvas_export', args)).toBe(true)
+  expect(delivery).not.toHaveBeenCalled()
+  session.pendingToolCalls.value = [
+    { type: 'toolCall', id: 'sample-approved', name: 'canvas_export', arguments: args },
+  ]
+  await session.approveToolCall()
+  expect(delivery).toHaveBeenCalledOnce()
+  expect(delivery.mock.calls[0][1].inScope('outside.md')).toBe(false)
+  expect(session.scopeResolver.isInScope('sample.pdf')).toBe(true)
+  session.toolModes.value.canvas_export = 'off'
+  expect(
+    (session as unknown as { getTools(): AgentTool[] })
+      .getTools()
+      .some((tool) => tool.name === 'canvas_export')
+  ).toBe(false)
+  session.destroy()
 })
 it('refuses an unauthorized source before export and never offers viewport or step arguments', async () => {
   await expect(
