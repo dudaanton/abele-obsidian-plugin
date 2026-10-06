@@ -194,6 +194,7 @@ const mcp = () => {
   vi.mocked((session as unknown as { getTools(): AgentTool[] }).getTools).mockReturnValue([
     {
       name,
+      permissionKey: mcpPermissionKey('sample-server', 'read'),
       label: 'Sample MCP',
       description: 'Synthetic MCP tool; no transport',
       parameters: {},

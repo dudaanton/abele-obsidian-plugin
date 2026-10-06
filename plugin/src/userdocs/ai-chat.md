@@ -303,6 +303,11 @@ opening an old chat after a rename cannot give its permissions to a newly connec
 Choices that cannot be matched safely are kept at Ask and listed in the notice, not made
 automatic. These choices travel with settings transfer.
 
+A pending tool call belongs to the exact server and tool it originally requested. If a
+rename or changed tool list makes its name point somewhere else, approving it is refused
+with a message asking for a fresh call. This also applies to older pending calls without
+a recorded identity; **Always allow** never grants a replacement server permission.
+
 ## Skills and prompts
 
 A **skill** is a note with `type: abele-skill` that teaches an agent how to do something. The

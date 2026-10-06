@@ -29,7 +29,8 @@ export interface AgentLoopOptions {
   beforeToolCall?: (
     toolName: string,
     toolCallId: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    permissionKey?: string
   ) => Promise<{
     block?: boolean
     pause?: boolean
@@ -128,11 +129,12 @@ export class AgentLoop {
         const context = opts.prepareMessages ? await opts.prepareMessages(messages) : messages
         if (signal.aborted) break
         // Stream LLM response
+        const requestTools = opts.getTools?.() ?? opts.tools
         const assistantMsg = await this.streamTurn(
           opts.model,
           opts.systemPrompt,
           context,
-          opts.getTools?.() ?? opts.tools,
+          requestTools,
           { ...opts.streamOptions, signal }
         )
 
@@ -159,6 +161,12 @@ export class AgentLoop {
           (b): b is ToolCallContent => b.type === 'toolCall'
         )
         if (toolCalls.length === 0) break
+        for (const tc of toolCalls) {
+          // Bind the entire response before executing or pausing any call, including its tail.
+          tc.permissionKey =
+            requestTools.find((tool) => tool.name === tc.name)?.permissionKey ??
+            (tc.name.startsWith('mcp_') ? `unresolved:${tc.name}` : undefined)
+        }
 
         // Execute tools sequentially
         for (let ti = 0; ti < toolCalls.length; ti++) {
@@ -166,7 +174,13 @@ export class AgentLoop {
 
           const tc = toolCalls[ti]
           const tool = (opts.getTools?.() ?? opts.tools).find((t) => t.name === tc.name)
-          const resultMsg = await this.executeTool(tool, tc, opts.beforeToolCall, signal)
+          const resultMsg = await this.executeTool(
+            tool,
+            tc,
+            opts.beforeToolCall,
+            signal,
+            opts.getTools
+          )
 
           if (!resultMsg) {
             // beforeToolCall requested pause — store remaining tool calls
@@ -292,7 +306,8 @@ export class AgentLoop {
     tool: AgentTool | undefined,
     tc: ToolCallContent,
     beforeToolCall: AgentLoopOptions['beforeToolCall'],
-    signal: AbortSignal
+    signal: AbortSignal,
+    getTools?: () => AgentTool[]
   ): Promise<ToolResultMessage | null> {
     const makeResult = (content: string, isError: boolean): ToolResultMessage => ({
       role: 'toolResult',
@@ -316,12 +331,22 @@ export class AgentLoop {
       return result
     }
 
+    const changedIdentity = () =>
+      tc.permissionKey !== undefined &&
+      (getTools ? getTools().find((candidate) => candidate.name === tc.name) : tool)
+        ?.permissionKey !== tc.permissionKey
+    if (changedIdentity())
+      return makeResult('The MCP tool changed or no longer exists. Ask for a new tool call.', true)
+
     let args = tc.arguments
 
     // beforeToolCall hook
     if (beforeToolCall) {
       try {
-        const hookResult = await beforeToolCall(tc.name, tc.id, args)
+        const hookResult =
+          tc.permissionKey === undefined
+            ? await beforeToolCall(tc.name, tc.id, args)
+            : await beforeToolCall(tc.name, tc.id, args, tc.permissionKey)
         if (hookResult) {
           if (hookResult.pause) {
             return null // Signal caller to pause
@@ -354,6 +379,9 @@ export class AgentLoop {
         return result
       }
     }
+
+    if (changedIdentity())
+      return makeResult('The MCP tool changed or no longer exists. Ask for a new tool call.', true)
 
     // Execute
     this.emit({ type: 'tool_start', toolCallId: tc.id, toolName: tc.name, args })

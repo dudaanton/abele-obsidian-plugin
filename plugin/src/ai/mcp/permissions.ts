@@ -92,6 +92,21 @@ export function migrateMcpModes(
   return { modes: changed ? next : modes, changed, reset: [...reset] }
 }
 
+/** A pending alias may not select a different tool, even if the replacement is enabled. */
+export function pendingMcpToolRefusal(
+  call: { name: string; permissionKey?: string },
+  servers: McpServer[] = []
+): string | null {
+  if (!isMcpToolName(call.name)) return null
+  const binding = mcpToolBindings(servers).find((item) => item.name === call.name)
+  return call.permissionKey &&
+    binding?.permissionKey === call.permissionKey &&
+    binding.server.enabled &&
+    binding.server.url
+    ? null
+    : 'The MCP tool changed or no longer exists. Ask for a new tool call.'
+}
+
 /** Fold defaults and every agent together so the adapter can show one migration notice. */
 export function migrateMcpPermissions(ai: AiSettings) {
   const reset = new Set<string>()

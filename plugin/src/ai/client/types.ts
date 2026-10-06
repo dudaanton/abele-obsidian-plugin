@@ -13,6 +13,8 @@ export interface ThinkingContent {
 }
 
 export interface ToolCallContent {
+  /** Pinned from the request's tool list, never supplied by the provider. */
+  permissionKey?: string
   type: 'toolCall'
   id: string
   name: string

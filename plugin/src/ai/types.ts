@@ -689,7 +689,12 @@ export interface ChatMetadata {
   modelId: string
   created: string
   title?: string
-  pendingToolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
+  pendingToolCalls?: Array<{
+    id: string
+    name: string
+    arguments: Record<string, unknown>
+    permissionKey?: string
+  }>
   permissionMode?: PermissionMode
   toolModes?: Record<string, ToolMode>
   // Legacy fields for backwards compatibility (read-only during migration)

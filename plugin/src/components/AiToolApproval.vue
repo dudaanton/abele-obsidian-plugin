@@ -429,17 +429,21 @@ const parseError = ref('')
 
 const approve = () => {
   if (keyApprovalBusy.value) return
+  if (props.message.toolName?.startsWith('mcp_') && !props.message.toolCallId) {
+    parseError.value = 'This MCP call has no recorded identity. Ask for a new tool call.'
+    return
+  }
   if (isEditing.value) {
     try {
       const modified = JSON.parse(editedArgs.value)
       parseError.value = ''
-      session.value?.approveToolCall(modified)
+      session.value?.approveToolCall(modified, false, props.message.toolCallId)
     } catch (err: unknown) {
       parseError.value = `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`
       return
     }
   } else {
-    session.value?.approveToolCall()
+    session.value?.approveToolCall(undefined, false, props.message.toolCallId)
   }
 }
 
@@ -478,14 +482,22 @@ const canAllowAll = computed(() => {
   if (!name || keyRequest.value) return false
   const s = session.value
   if (!s) return false
-  return s.getToolMode(name) === 'ask'
+  return s.getToolMode(name, props.message.toolCallId) === 'ask'
 })
 
 const allowAll = () => {
   const s = session.value
   const name = props.message.toolName
   if (!s || !name) return
-  s.toolModes.value = { ...s.toolModes.value, [s.getToolPermissionKey(name)]: 'auto' }
+  if (name.startsWith('mcp_')) {
+    if (!props.message.toolCallId) {
+      parseError.value = 'This MCP call has no recorded identity. Ask for a new tool call.'
+      return
+    }
+    void s.approveToolCall(undefined, true, props.message.toolCallId)
+    return
+  }
+  s.toolModes.value = { ...s.toolModes.value, [name]: 'auto' }
   s.approveToolCall()
 }
 

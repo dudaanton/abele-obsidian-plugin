@@ -50,7 +50,12 @@ import {
   type InterceptorChoice,
   type InterceptorHost,
 } from './ChatInterceptor'
-import { toolPermissionKey, migrateMcpModes } from './mcp/permissions'
+import {
+  toolPermissionKey,
+  migrateMcpModes,
+  pendingMcpToolRefusal,
+  unresolvedMcpPermissionKey,
+} from './mcp/permissions'
 import { notifyMcpPermissionReset } from './mcp/settings'
 import { AgentRegistry } from './agents/AgentRegistry'
 import {
@@ -910,12 +915,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return this.summarizer.compact()
   }
 
-  getToolPermissionKey(toolName: string): string {
+  getToolPermissionKey(toolName: string, toolCallId?: string): string {
+    if (toolCallId && toolName.startsWith('mcp_')) {
+      const call = this.pendingToolCalls.value.find(
+        (tc) => tc.id === toolCallId && tc.name === toolName
+      )
+      return call?.permissionKey ?? unresolvedMcpPermissionKey(toolName)
+    }
     return toolPermissionKey(toolName, AbeleConfig.getInstance().ai.mcpServers)
   }
 
-  getToolMode(toolName: string): ToolMode {
-    return this.toolModes.value[this.getToolPermissionKey(toolName)] ?? 'off'
+  getToolMode(toolName: string, toolCallId?: string): ToolMode {
+    return this.toolModes.value[this.getToolPermissionKey(toolName, toolCallId)] ?? 'off'
   }
 
   // ── Tools with session scope ────────────────────────────────────
@@ -1100,7 +1111,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return path && !this.scopeResolver.isInScope(path) ? path : null
   }
 
-  needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
+  needsApproval(toolName: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
     if (needsSecretApproval(toolName, args)) return true
     const mode = this.permissionMode.value
 
@@ -1149,7 +1160,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
 
     // Feature tools: governed by toolModes
-    return this.getToolMode(toolName) !== 'auto'
+    return (
+      (permissionKey ? this.toolModes.value[permissionKey] : this.getToolMode(toolName)) !== 'auto'
+    )
   }
 
   // ── Event handling ───────────────────────────��──────────────────
@@ -1495,11 +1508,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           })
           return this.getMessagesForModel()
         },
-        beforeToolCall: async (toolName, _id, args) => {
+        beforeToolCall: async (toolName, _id, args, permissionKey) => {
           // Refused before anyone is asked: approving a write that cannot run wastes a click.
           const refused = await this.readGuard.check(toolName, args)
           if (refused) return { block: true, reason: refused }
-          if (!this.needsApproval(toolName, args)) return
+          if (!this.needsApproval(toolName, args, permissionKey)) return
 
           // A run has nobody to ask, so a tool that would need approval is refused with a
           // reason the agent can read and work around, rather than hanging forever.
@@ -1523,7 +1536,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       checkpoint(result.messages)
 
       if (result.pausedAt?.length) {
-        this.pendingToolCalls.value = result.pausedAt
+        this.pendingToolCalls.value = result.pausedAt.map((tc) => ({
+          ...tc,
+          permissionKey:
+            tc.permissionKey ?? tools.find((tool) => tool.name === tc.name)?.permissionKey,
+        }))
         await this.processAllPendingToolCalls()
       }
     } catch (err: unknown) {
@@ -1568,7 +1585,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       while (this.pendingToolCalls.value.length > 0) {
         const tc = this.pendingToolCalls.value[0]
 
-        if (!head && this.needsApproval(tc.name, tc.arguments)) {
+        const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
+        if (identityRefusal) {
+          this.ensurePendingToolCallMessage(tc)
+          this.recordRefusal(tc, identityRefusal)
+          head = undefined
+          continue
+        }
+
+        if (!head && this.needsApproval(tc.name, tc.arguments, tc.permissionKey)) {
           // The interceptor script may answer for the person: the same question, decided once.
           const gen = this.generation
           let decided = await this.policyFor(tc.id, tc.name, tc.arguments)
@@ -1659,6 +1684,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     const tools = this.getTools()
     const tool = tools.find((t) => t.name === tc.name)
+    const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
+    if (identityRefusal || (tc.permissionKey && tool?.permissionKey !== tc.permissionKey)) {
+      this.recordRefusal(
+        tc,
+        identityRefusal || 'The MCP tool changed or no longer exists. Ask for a new tool call.'
+      )
+      return
+    }
     const args = modifiedArgs || tc.arguments
 
     if (!tool) {
@@ -2012,20 +2045,33 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.markDirty()
   }
 
-  async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
+  async approveToolCall(
+    modifiedArgs?: Record<string, unknown>,
+    alwaysAllow = false,
+    expectedCallId?: string
+  ): Promise<void> {
     if (this.isStreaming.value || this.isExecutingTool.value || this.isCompacting.value) return
     const tc = this.pendingToolCalls.value[0]
-    if (!tc) return
+    if (!tc || (expectedCallId !== undefined && tc.id !== expectedCallId)) return
 
-    this.updateChatMessage(
-      (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
-      (m) => ({ ...m, toolStatus: 'approved' as const })
-    )
-
-    this.widenScopeFor(tc.name, modifiedArgs || tc.arguments)
+    const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
+    if (identityRefusal) {
+      this.ensurePendingToolCallMessage(tc)
+      this.recordRefusal(tc, identityRefusal)
+    } else {
+      if (alwaysAllow) {
+        const key = tc.permissionKey ?? tc.name
+        this.toolModes.value = { ...this.toolModes.value, [key]: 'auto' }
+      }
+      this.updateChatMessage(
+        (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
+        (m) => ({ ...m, toolStatus: 'approved' as const })
+      )
+      this.widenScopeFor(tc.name, modifiedArgs || tc.arguments)
+    }
 
     try {
-      await this.processAllPendingToolCalls({ args: modifiedArgs })
+      await this.processAllPendingToolCalls(identityRefusal ? undefined : { args: modifiedArgs })
       this.markDirty()
     } finally {
       this.endTurnPolicy()
@@ -2064,7 +2110,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (m) => m.toolCallId === tc.id && m.toolStatus === 'pending'
     )
     this.updateChatMessage(
-      (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
+      (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
       (m) => ({ ...m, toolResult: reasonText, toolStatus: 'rejected' as const })
     )
 
@@ -2622,6 +2668,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
               id: tc.id,
               name: tc.name,
               arguments: tc.arguments,
+              permissionKey: tc.permissionKey,
             }))
           : undefined,
       activeLeafId: this.activeLeafId || undefined,
@@ -2809,6 +2856,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         id: tc.id,
         name: tc.name,
         arguments: tc.arguments,
+        permissionKey: tc.permissionKey,
       }))
     }
 

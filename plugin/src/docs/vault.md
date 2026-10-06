@@ -938,6 +938,11 @@ ambiguous or removed owners become `ask`. Unmatched aliases are retained as dorm
 entries under `mcp:unresolved:` followed by their JSON-encoded alias. One notice lists the
 choices to set again, and the migrated chat is saved so the notice does not repeat.
 
+Saved pending MCP calls also carry `permissionKey`, pinned from the tool list offered in
+the model request. Approval and execution require the current alias to still select that
+identity. Missing identities in older pending calls, removed tools and reassigned aliases
+are refused with a request for a fresh call; they never select a replacement server.
+
 ## Screenshots
 
 Every picture the `screenshot` tool takes — of a note, or of the visible part of a script view —

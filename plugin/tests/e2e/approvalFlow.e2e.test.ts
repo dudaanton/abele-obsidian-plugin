@@ -106,7 +106,7 @@ export const approvalScript = (screen: string) => `(async () => {
     const registered = session.getTools()
     const ls = registered.find(t => t.name === 'ls'), fetch = registered.find(t => t.name === 'fetch')
     if (!ls || !fetch) throw Error('registered scoped tools missing')
-    const synthetic = name => ({ name, label: name, description: 'Synthetic sample; no transport or credential access', parameters: {}, execute: async (id) => {
+    const synthetic = name => ({ name, permissionKey: name === 'mcp_sample_read' ? 'mcp:' + JSON.stringify(['sample-mcp', 'read']) : undefined, label: name, description: 'Synthetic sample; no transport or credential access', parameters: {}, execute: async (id) => {
       report.executed.push(id); await wait(100); return { content: [{ type: 'text', text: 'done' }] }
     } })
     session.getTools = () => [ls, synthetic('eval_js'), synthetic('mcp_sample_read'), { ...fetch, execute: async (...args) => { report.executed.push(args[0]); return fetch.execute(...args) } }]
@@ -154,7 +154,7 @@ export const approvalScript = (screen: string) => `(async () => {
     await wait(100)
 
     config.ai.mcpServers = [{ id: 'sample-mcp', name: 'Sample', url: 'https://mcp.sample.example/rpc', enabled: true, keyId: '', headers: { Authorization: '\${abele_key:sample}' }, tools: [{ name: 'read', description: 'Synthetic MCP', inputSchema: {} }] }]
-    session.toolModes.value = { ...session.toolModes.value, mcp_sample_read: 'auto' }
+    session.toolModes.value = { ...session.toolModes.value, ['mcp:' + JSON.stringify(['sample-mcp', 'read'])]: 'auto' }
     await config.saveSettings()
     await start('mcp', [toolCall('mcp-first', 'mcp_sample_read', { query: 'sample' })])
     let entered = false
