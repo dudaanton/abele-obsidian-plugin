@@ -85,6 +85,31 @@ export async function reloadAs(vault: TestVault, mobile: boolean): Promise<void>
     )
     await delay(4000)
     await waitFor('the plugin to be back after the reload', () => hasTestApi(vault), 60_000)
+    if (mobile) {
+      // Desktop emulation has no iOS HTTP bridge, and the plugin's mobile module loader
+      // hides Electron. Inject this window's real native host through the CLI loader while
+      // keeping mobile UI/lifecycle flags and production's unsupported-runtime refusal.
+      // This remains desktop layout/lifecycle evidence, never native phone HTTP evidence.
+      vault.evalAwait(
+        `(async () => {
+        const api = window.__abeleTest, svc = api.SyncService.getInstance()
+        const remote = require('@electron/remote'), buffer = require('node:buffer').Buffer
+        const host = {
+          session: remote.getCurrentWebContents().session,
+          bytes: bytes => new Uint8Array(remote.require('node:buffer').Buffer.from(bytes)),
+          body: bytes => buffer.from(bytes),
+          controller: () => new (remote.getGlobal('AbortController'))()
+        }
+        await svc.serialise(async () => {
+          await svc.runner.teardown()
+          svc.deps.fetch = api.desktopTransport(undefined, host)
+          await svc.runner.reconcile()
+        })
+        return 'ok'
+      })()`,
+        30_000
+      )
+    }
     vault.evalRaw(`(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`, 20_000)
   } finally {
     releaseReloadLock()

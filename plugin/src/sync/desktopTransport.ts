@@ -1,11 +1,14 @@
 import { Platform } from 'obsidian'
 import type { RequestUrlFn } from './transport'
 import { fetchViaRequestUrl } from './transport'
-import { sessionAwareNet, type SessionFetch } from './desktopNet'
+import { sessionAwareNet, type SessionFetch, type SessionNet } from './desktopNet'
 
-/** Session-aware native networking without browser CORS or automatic redirects. */
-export function desktopTransport(session?: SessionFetch): typeof fetch {
-  return fetchViaRequestUrl((input, signal) => desktopRequest(input, signal, session))
+/** Session-aware native networking without browser CORS or automatic redirects.
+ * An explicit native host is a trusted dependency for desktop layout emulation, whose plugin
+ * module loader hides Electron. Production supplies none and keeps its desktop-only guard.
+ */
+export function desktopTransport(session?: SessionFetch, host?: SessionNet): typeof fetch {
+  return fetchViaRequestUrl((input, signal) => desktopRequest(input, signal, session, host))
 }
 
 function abortError(signal?: AbortSignal | null): Error {
@@ -17,9 +20,10 @@ function abortError(signal?: AbortSignal | null): Error {
 const desktopRequest = async (
   input: Parameters<RequestUrlFn>[0],
   signal?: AbortSignal | null,
-  session?: SessionFetch
+  session?: SessionFetch,
+  host?: SessionNet
 ): ReturnType<RequestUrlFn> => {
-  if (!Platform.isDesktop) throw new Error('native desktop sync transport is unavailable')
+  if (!host && !Platform.isDesktop) throw new Error('native desktop sync transport is unavailable')
   if (signal?.aborted) throw abortError(signal)
   const url = new URL(input.url)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
@@ -28,7 +32,7 @@ const desktopRequest = async (
   if (url.username || url.password) {
     throw new TypeError('sync transport refuses credentials in a URL')
   }
-  const native = sessionAwareNet(session)
+  const native = host ?? sessionAwareNet(session)
   const controller = native.controller()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })

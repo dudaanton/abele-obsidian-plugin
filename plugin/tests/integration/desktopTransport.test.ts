@@ -3,6 +3,7 @@ import { createServer, type Server, type RequestListener } from 'node:http'
 import { once } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { transportOf } from '@/sync/environment'
+import { desktopTransport } from '@/sync/desktopTransport'
 import * as obsidian from 'obsidian'
 
 vi.mock('@/sync/desktopNet', () => ({
@@ -48,6 +49,31 @@ afterEach(async () => {
 })
 
 describe('production desktop credential transport', () => {
+  it('uses an explicit native host for desktop layout emulation without opening production mobile transport', async () => {
+    const source = await listen((_req, res) => res.end('sample native response'))
+    const original = { ...obsidian.Platform }
+    vi.stubGlobal('window', {})
+    Object.assign(obsidian.Platform, { isDesktop: false, isMobile: true })
+    try {
+      expect(() => transportOf({})).toThrow(/unsupported/)
+      await expect(desktopTransport()(source)).rejects.toThrow(/unavailable/)
+      const host = {
+        session: { fetch: globalThis.fetch },
+        bytes: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+        body: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+        controller: () => new AbortController(),
+      }
+      const fetch = desktopTransport(undefined, host)
+      expect(await (await fetch(source)).text()).toBe('sample native response')
+      expect(obsidian.Platform.isDesktop).toBe(false)
+      expect(obsidian.Platform.isMobile).toBe(true)
+      expect(() => transportOf({})).toThrow(/unsupported/)
+    } finally {
+      Object.assign(obsidian.Platform, original)
+      vi.unstubAllGlobals()
+    }
+  })
+
   it.each([301, 307, 308])(
     'does not use the auto-following API for %s or contact the second listener',
     async (status) => {
