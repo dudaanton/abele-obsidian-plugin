@@ -533,6 +533,29 @@ async function runProbe(footer: boolean, short = false): Promise<Probe> {
   }
 }
 
+// These synthetic folders may survive an interrupted phone run. Always start fresh;
+// reusing a partial folder bypasses fixture creation and cannot test timeline behaviour.
+async function removeFixtures(): Promise<void> {
+  for (const dir of [FOLDER, FOLDER + ' short']) {
+    const paths = evalJson<string[]>(
+      `app.vault.getFiles().filter(file => file.path.startsWith(${JSON.stringify(dir + '/')})).map(file => file.path)`
+    )
+    for (let i = 0; i < paths.length; i += 24) {
+      console.info(`Timeline cleanup ${dir}: ${i}/${paths.length} files`)
+      const raw = await evalLong(
+        `(async () => { for (const path of ${JSON.stringify(paths.slice(i, i + 24))}) { const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file, true) } return 'removed' })()`,
+        60_000
+      )
+      if (raw.startsWith('Error:')) throw new Error(raw)
+    }
+    const raw = await evalLong(
+      `(async () => { const dir = app.vault.getAbstractFileByPath(${JSON.stringify(dir)}); if (dir) await app.vault.delete(dir, true); return 'removed folder' })()`,
+      60_000
+    )
+    if (raw.startsWith('Error:')) throw new Error(raw)
+  }
+}
+
 describe.skipIf(!available)('task timeline scrolling', () => {
   let desktop: Probe[] = [],
     mobile: Probe[] = []
@@ -546,6 +569,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         `JSON.stringify({ size: window.__e2eHost ? [] : require('@electron/remote').getCurrentWindow().getContentSize(), layout: app.workspace.getLayout() })`
       )
     )
+    await removeFixtures()
     if (!onPhone()) {
       runCli(['dev:debug', 'on'], 30000)
       for (const footer of [false, true]) {
@@ -566,24 +590,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
   afterAll(async () => {
     if (!available) return
     try {
-      for (const dir of [FOLDER, FOLDER + ' short']) {
-        const paths = evalJson<string[]>(
-          `app.vault.getFiles().filter(file => file.path.startsWith(${JSON.stringify(dir + '/')})).map(file => file.path)`
-        )
-        for (let i = 0; i < paths.length; i += 24) {
-          console.info(`Timeline cleanup ${dir}: ${i}/${paths.length} files`)
-          const raw = await evalLong(
-            `(async () => { for (const path of ${JSON.stringify(paths.slice(i, i + 24))}) { const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file, true) } return 'removed' })()`,
-            60_000
-          )
-          if (raw.startsWith('Error:')) throw new Error(raw)
-        }
-        const raw = await evalLong(
-          `(async () => { const dir = app.vault.getAbstractFileByPath(${JSON.stringify(dir)}); if (dir) await app.vault.delete(dir, true); return 'removed folder' })()`,
-          60_000
-        )
-        if (raw.startsWith('Error:')) throw new Error(raw)
-      }
+      await removeFixtures()
     } finally {
       if (state) {
         if (!onPhone()) {
