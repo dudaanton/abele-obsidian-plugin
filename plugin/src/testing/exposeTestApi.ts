@@ -13,6 +13,7 @@ import { eink, setEink } from '@/reader/eink'
 import { setZen, zen } from '@/reader/zen'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
+import { NodeService } from '@/node/NodeService'
 import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
@@ -162,6 +163,7 @@ interface AbeleTestApi {
   }
   ScopeResolver: typeof ScopeResolver
   ChatService: typeof ChatService
+  NodeService: typeof NodeService
   ChatStorage: typeof ChatStorage
   /** The words of every chat, for timing a search across them. */
   ChatSearchIndex: typeof ChatSearchIndex
@@ -707,6 +709,7 @@ export function exposeTestApi(plugin: Plugin): void {
     setKeyboardDiagnostics,
     ScopeResolver,
     ChatService,
+    NodeService,
     ChatStorage,
     ChatSearchIndex,
     CommentService,

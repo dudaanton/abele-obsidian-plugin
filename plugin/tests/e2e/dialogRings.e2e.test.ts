@@ -154,6 +154,18 @@ const script = `(async () => {
     cuts.push({ screen: 'secrets list', field: '-', by: ['dialog did not open'] })
   }
 
+  app.setting.open()
+  app.setting.openTabById('abele')
+  const settingsDoc = app.setting.activeTab.containerEl.ownerDocument
+  if (await until(() => settingsDoc.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)) {
+    ;[...settingsDoc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Nodes')?.click()
+    if (await until(() => settingsDoc.querySelector('input[aria-label="Node URL"]'), 5000)) {
+      await wait(400)
+      measureAll('settings nodes', app.setting.activeTab.containerEl)
+    } else cuts.push({ screen: 'settings nodes', field: '-', by: ['fields did not open'] })
+  } else cuts.push({ screen: 'settings nodes', field: '-', by: ['settings did not open'] })
+  app.setting.close()
+
   // Every other dialog of the plugin, in the dialog shell, opened by name.
   for (const dialogName of window.__abeleTest.dialogNames()) {
     window.__abeleTest.openDialog(dialogName)

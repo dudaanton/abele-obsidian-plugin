@@ -722,6 +722,75 @@ const probeScript = `(async () => {
       report['link write'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'write preview did not open' }
     }
 
+    // Run after the existing settings inventory: native settings retain their active page.
+    // Node presentation fixtures need no listener, token or execution to measure their layout.
+    const nodeScreens = async () => {
+      const chats = window.__abeleTest.ChatService.getInstance()
+      const nodes = window.__abeleTest.NodeService.getInstance()
+      const active = chats.activeTabId.value
+      const wasNodes = nodes.nodes.value
+      const registration = { id: 'layout-node', label: 'Sample local node with a longer label', url: 'http://127.0.0.1:7777', expectedNodeId: 'layout-node' }
+      const reference = { kind: 'node-session', nodeId: 'layout-node', registrationId: 'layout-node', sessionId: 'layout-session', title: 'Sample node session' }
+      const connection = { state: { value: 'connected' }, error: { value: '' }, connect: async () => {}, destroy: () => {} }
+      const presenter = {
+        id: 'layout-node-tab', reference, capabilities: { branches: false, rewind: false, editHistory: false, attachments: false, vaultResources: false },
+        label: { value: reference.title }, state: { value: 'needs-attention' }, error: { value: '' }, isStreaming: { value: false }, connection,
+        draft: { value: { text: '', attachments: [] } }, queued: { value: [{ id: 'queued', text: 'Sample queued follow-up' }] }, rejected: { value: [] },
+        messages: { value: [{ id: 'user', role: 'user', content: 'Sample request', timestamp: 0 }, { id: 'reply', role: 'assistant', content: 'Sample streamed answer', timestamp: 0 }] },
+        projection: { value: { artifacts: [], unknown: [], prompts: [{ prompt_id: 'sample-prompt', state: 'pending', choice: null }] } },
+        send: async () => {}, answer: async () => {}, openResource: () => {}, destroy: () => {},
+      }
+      try {
+        chats.nodeSessions.set(presenter.id, presenter)
+        chats.tabOrder.value = [...chats.tabOrder.value, presenter.id]
+        chats.activeTabId.value = presenter.id
+        await chats.revealSidebar({ focus: false })
+        await until(() => {
+          const box = document.querySelector('.abele-node-chat')?.getBoundingClientRect()
+          return box && box.width > 0 && box.left >= -1 && box.left < window.innerWidth
+        }, 5000)
+        await wait(400)
+        const nodeChat = document.querySelector('.abele-node-chat')
+        await screen('node chat', nodeChat, nodeChat.querySelector('.abele-ai-chat__messages'))
+        nodes.nodes.value = [...wasNodes, registration]
+        nodes.connections.set(registration.id, { ...connection, client: { listSessions: async () => [{ title: 'Sample existing fake session', session_id: 'layout-session' }] }, state: { value: 'offline' }, error: { value: 'Connection unavailable' } })
+        app.setting.open()
+        app.setting.openTabById('abele')
+        await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)
+        ;[...document.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Nodes')?.click()
+        await until(() => document.querySelector('input[aria-label="Node URL"]'), 5000)
+        const modal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
+        const cuts = []
+        for (const field of modal.querySelectorAll('input, button')) {
+          if (!field.getBoundingClientRect().width) continue
+          field.focus()
+          for (const cut of ringClipped(field)) cuts.push(name(field) + ': ' + cut)
+          field.blur()
+        }
+        await screen('settings nodes', modal, modal.querySelector('.vertical-tab-content'))
+        report['settings nodes'].clipped = cuts
+        const settingsScroll = modal.querySelector('.vertical-tab-content')
+        if (settingsScroll) settingsScroll.scrollTop = 0
+        await wait(200)
+        await screen('settings nodes overview', modal, settingsScroll)
+        ;[...modal.querySelectorAll('button')].find(button => button.textContent.trim() === 'Open session')?.click()
+        await until(() => document.querySelector('.prompt .suggestion-item'), 5000)
+        await wait(300)
+        const picker = document.querySelector('.prompt')
+        await screen('node session picker', picker, picker)
+        await closeDialog()
+      } finally {
+        document.querySelector('.modal-setting-back-button')?.click()
+        await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 3000)
+        app.setting.close()
+        nodes.nodes.value = wasNodes
+        nodes.connections.delete(registration.id)
+        chats.nodeSessions.delete(presenter.id)
+        chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== presenter.id)
+        chats.activeTabId.value = active
+      }
+    }
+
     // The MCP settings as a phone shows them: the tab with the seeded server, then its dialog.
     try {
       app.setting.open()
@@ -1048,6 +1117,7 @@ const probeScript = `(async () => {
 
     // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
     // native floating view header must be above its calendar, not painted over the first week.
+    await nodeScreens()
     const timelineLeaf = app.workspace.getLeaf('tab')
     try {
       await timelineLeaf.setViewState({ type: 'abele-timeline-sidebar-view', active: true })
@@ -1364,6 +1434,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   const screens = [
     'chat',
+    'node chat',
+    'settings nodes',
+    'settings nodes overview',
+    'node session picker',
     'chat attachment',
     'chat deferred media',
     'chat image preview',
@@ -1582,7 +1656,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
    * the list, so its list stops a field's height above the bottom by design. Only the count of
    * scrollers is asked of it.
    */
-  const prompts = new Set(['note picker', 'chat picker', 'canvas file picker'])
+  const prompts = new Set(['note picker', 'chat picker', 'canvas file picker', 'node session picker'])
 
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
     // A settings page's prompt editors are fields that scroll their own text, by design.
