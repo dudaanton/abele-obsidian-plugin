@@ -1176,6 +1176,11 @@ const probeScript = `(async () => {
         report['canvas group'].clipped=[]
         for(const field of root.querySelectorAll('button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas group'].clipped.push(...ringClipped(field));field.blur()}
         root.querySelector('[aria-label="Toggle multiple selection"]').click()
+        leaf.view.containerEl.querySelector('[aria-label="Export diagram picture"]').click()
+        await until(()=>document.querySelector('.menu'),5000)
+        await screen('canvas export menu',document.querySelector('.menu'))
+        document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
+        await wait(200)
         root.querySelector('[aria-label="Add note or attachment"]').click()
         await until(()=>document.querySelector('.prompt'),5000)
         await screen('canvas file picker',document.querySelector('.prompt'))
@@ -1512,6 +1517,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas editor',
     'canvas selection',
     'canvas group',
+    'canvas export menu',
     'canvas file picker',
     'canvas link input',
     'canvas text draft',
