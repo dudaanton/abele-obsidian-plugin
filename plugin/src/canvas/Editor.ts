@@ -182,6 +182,7 @@ export class CanvasEditor {
       document.state.native ||
       document.error ||
       document.session.conflict ||
+      (document.session.dirty && !document.draftPath) ||
       document.recovery ||
       this.waiting ||
       document.session.busy
@@ -375,6 +376,7 @@ export class CanvasEditor {
       document.state.native ||
       !!session?.busy ||
       !!session?.conflict ||
+      (!!session?.dirty && !document.draftPath) ||
       !!document.recovery ||
       !!session?.publicationOutcome
     this.buttons.get('Open selected card').disabled =

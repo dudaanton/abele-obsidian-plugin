@@ -193,6 +193,59 @@ describe('human canvas editor', () => {
     expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
   })
 
+  it.each(['undo', 'redo'] as const)(
+    'does not turn a failed %s preview into a human text draft',
+    async (direction) => {
+      const s = setup()
+      s.button('Add text card').click()
+      s.input('First saved text')
+      s.button('Save text').click()
+      await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+      s.button('Edit card text').click()
+      s.input('Second saved text')
+      s.button('Save text').click()
+      await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+      if (direction === 'redo') {
+        s.button('Undo canvas change').click()
+        await vi.waitFor(() => expect(s.document.session.history.redo).toBe(1))
+      }
+      const token =
+        direction === 'undo' ? s.document.session.prepareUndo() : s.document.session.prepareRedo()
+      s.document.session.reject(token)
+      s.document.notify()
+      const draft = s.document.session.draft,
+        history = s.document.session.history,
+        generation = s.document.session.generation
+      s.publish.mockClear()
+      expect(s.document.draftPath).toBeNull()
+      expect(s.button('Edit card text').disabled).toBe(true)
+      // The handler must also refuse a stale/programmatic activation, independently of the DOM flag.
+      s.button('Edit card text').disabled = false
+      s.button('Edit card text').click()
+      expect(s.document.session.generation).toBe(generation)
+      expect(s.document.session.draft).toEqual(draft)
+      expect(s.document.draftPath).toBeNull()
+      expect(s.document.session.history).toEqual(history)
+      expect(s.publish).not.toHaveBeenCalled()
+    }
+  )
+
+  it('still lets a retained human text draft be edited and completed', async () => {
+    const s = setup()
+    s.publish.mockRejectedValueOnce(new Error('Sample storage unavailable'))
+    s.button('Add text card').click()
+    s.input('Pending human text')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.button('Retry save').disabled).toBe(false))
+    expect(s.button('Edit card text').disabled).toBe(false)
+    s.button('Edit card text').click()
+    s.input('Revised human text')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.document.session.committed.graph.nodes[0].text).toBe('Revised human text')
+    expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
+  })
+
   it('explicitly retains active text before native handoff, without silently saving it', async () => {
     const s = setup()
     s.button('Add text card').click()
