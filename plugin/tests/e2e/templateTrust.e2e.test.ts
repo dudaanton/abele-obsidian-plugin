@@ -79,6 +79,14 @@ describe.skipIf(!available)('template confirmation in the live vault', () => {
         await until(() => !dialog())
         report.waiting = await apply()
         report.afterDeclined = [report.commands, report.methods]
+        report.reviewStillAvailable = !!notice()?.querySelector('button')
+        notice().querySelector('button').click()
+        await until(dialog)
+        press('Confirm')
+        await until(() => !notice())
+        report.afterDeferredReview = [report.commands, report.methods]
+        await apply()
+        report.afterDeferredUse = [report.commands, report.methods]
         return report
       } finally {
         if (dialog()?.querySelector('.modal-title')?.textContent.includes('Sample trust template')) press('Not now')
@@ -108,5 +116,8 @@ describe.skipIf(!available)('template confirmation in the live vault', () => {
     expect(report.diff).toContain('Changed sample body')
     expect(report.waiting.text).toContain('safe')
     expect(report.afterDeclined).toEqual([1, 1])
+    expect(report.reviewStillAvailable).toBe(true)
+    expect(report.afterDeferredReview).toEqual([1, 1])
+    expect(report.afterDeferredUse).toEqual([2, 2])
   }, 90_000)
 })

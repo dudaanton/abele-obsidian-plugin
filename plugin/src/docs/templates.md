@@ -34,7 +34,8 @@ are skipped; plugin-method fields use the supplied text without calling the meth
 script and automatic calls never wait for a confirmation dialog. A persistent notice, once per
 version per session, offers **Review**. Review shows the full template and execution settings,
 or changes against the last confirmed version. **Confirm** enables future applications on
-this device; it does not replay the skipped work. **Not now** leaves it waiting. Default
+this device; it does not replay the skipped work. **Not now** leaves it waiting and keeps the
+notice available for later review. Default
 templates that need input still retain their existing automatic-input restriction.
 
 Approvals live only in vault-scoped device-local storage, not settings or synced files, and

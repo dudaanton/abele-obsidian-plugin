@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Notice } from 'obsidian'
 import { TemplateService } from '@/templates/TemplateService'
 import { ScriptTrust, TEMPLATE_TRUST_KEY, noteLocalScriptWrite } from '@/scripting/ScriptTrust'
@@ -18,6 +18,8 @@ beforeEach(() => {
   Notice.shown.length = 0
   review.mockReset().mockResolvedValue(true)
 })
+
+afterEach(() => vi.restoreAllMocks())
 
 const service = () => TemplateService.getInstance()
 const reviewNotice = async () => {
@@ -213,7 +215,8 @@ describe('template execution trust', () => {
     expect(method).toHaveBeenCalledOnce()
   })
 
-  it('leaving review waiting preserves the note and runs nothing', async () => {
+  it('leaving review waiting preserves the note and lets the same notice review it later', async () => {
+    const hide = vi.spyOn(Notice.prototype, 'hide')
     const env = templateHarness()
     const template = await env.template('Body', { callbacks: 'command:sample:run' })
     review.mockResolvedValue(false)
@@ -222,5 +225,12 @@ describe('template execution trust', () => {
     await service().createNoteFromTemplate(template, new Map())
     expect(await env.app.vault.read(file)).toBe('Body')
     expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+    expect(hide).not.toHaveBeenCalled()
+    review.mockResolvedValue(true)
+    await reviewNotice()
+    expect(hide).toHaveBeenCalledOnce()
+    expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+    await service().createNoteFromTemplate(template, new Map())
+    expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
   })
 })

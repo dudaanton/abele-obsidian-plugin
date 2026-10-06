@@ -48,14 +48,16 @@ export async function allowTemplateExecution(
   )
   const notice = new Notice(fragment, 0)
   button.addEventListener('click', () => {
-    notice.hide()
     // Review exactly the held-back snapshot, never approve whatever arrived during the dialog.
     void reviewScript(GlobalStore.getInstance().app, {
       template: { path, name, source },
       previous: trust.lastConfirmed(path),
     })
       .then((yes) => {
-        if (yes) trust.confirm({ path, hash, text: source })
+        if (yes) {
+          trust.confirm({ path, hash, text: source })
+          notice.hide()
+        }
       })
       .catch((error) => console.error('Could not review template', error))
   })

@@ -66,7 +66,8 @@ script or the default template uses it automatically: nothing stops to ask you.
 A notice offers **Review**. It opens the same review dialog as scripts: read the template and
 its execution settings, or the changes since your last confirmation. **Confirm** enables this
 version on this device. Use the template again afterwards; confirmation does not repeat the
-work that was skipped. **Not now** leaves its commands waiting. Confirmations stay on this
+work that was skipped. **Not now** leaves its commands waiting and keeps the notice available
+so you can review it later. Confirmations stay on this
 device and do not travel through sync or settings transfer. The script confirmation setting
 does not turn off template confirmation.
 
