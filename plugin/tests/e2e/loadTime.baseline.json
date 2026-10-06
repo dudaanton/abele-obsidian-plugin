@@ -27,26 +27,26 @@
   },
   "builds": {
     "development": {
-      "recorded": "2026-09-27",
-      "mainJsBytes": 29884030,
-      "yardstickMs": 31.2,
+      "recorded": "2026-10-06",
+      "mainJsBytes": 46261450,
+      "yardstickMs": 31.5,
       "bare": {
-        "readCompileMs": 85.6,
-        "modulesMs": 19,
-        "onloadMs": 165.2,
-        "layoutMs": 165.2,
-        "enableMs": 284.6,
-        "firstFrameMs": 290.4,
-        "settledMs": 290.4
+        "readCompileMs": 145,
+        "modulesMs": 26.1,
+        "onloadMs": 190.6,
+        "layoutMs": 190.6,
+        "enableMs": 382.2,
+        "firstFrameMs": 390.5,
+        "settledMs": 390.5
       },
       "workspace": {
-        "readCompileMs": 86.6,
-        "modulesMs": 19.5,
-        "onloadMs": 121.4,
-        "layoutMs": 121.4,
-        "enableMs": 489.9,
-        "firstFrameMs": 504.5,
-        "settledMs": 504.5
+        "readCompileMs": 146.1,
+        "modulesMs": 26.1,
+        "onloadMs": 136.4,
+        "layoutMs": 136.4,
+        "enableMs": 602.7,
+        "firstFrameMs": 619.4,
+        "settledMs": 619.4
       }
     },
     "production": {
