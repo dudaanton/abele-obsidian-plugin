@@ -34,6 +34,9 @@ vi.mock('obsidian', async (original) => {
     },
   }
 })
+vi.mock('@/canvas/editorControls', () => ({
+  hostCanvasEditor: vi.fn(() => ({ refresh: vi.fn(), destroy: vi.fn() })),
+}))
 vi.mock('@/canvas/adapter', () => ({
   hostCanvasViewer: vi.fn(() => {
     const viewer = {

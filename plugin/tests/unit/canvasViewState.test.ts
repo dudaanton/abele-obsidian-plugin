@@ -5,6 +5,10 @@ import { TFile, type App } from 'obsidian'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { canvasDocuments } from '@/canvas/documentRegistry'
 
+vi.mock('@/canvas/editorControls', () => ({
+  hostCanvasEditor: vi.fn(() => ({ refresh: vi.fn(), destroy: vi.fn() })),
+}))
+
 it.each(['', '{}'])(
   'loads the untouched native empty state %j without hiding nonempty malformed data',
   async (initialBytes) => {

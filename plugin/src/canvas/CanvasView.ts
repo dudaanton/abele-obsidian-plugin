@@ -20,10 +20,13 @@ import type { CanvasDocument, CanvasDocumentLease } from './documentRegistry'
 import { stepsOf } from './core/steps'
 import { canvasPicture } from './pictureAdapter'
 import type { CanvasViewer } from './Viewer'
+import type { CanvasEditor } from './Editor'
+import { hostCanvasEditor } from './editorControls'
 
-/** Read-only surface on a shared session; no save hook ever publishes a transient preview. */
+/** Shared human editor; no view save hook ever publishes a transient preview. */
 export class CanvasView extends FileView {
   viewer: CanvasViewer | null = null
+  editor: CanvasEditor | null = null
   private refreshToken = 0
   private loaded = false
   private renderedGeneration: number | null = null
@@ -89,12 +92,14 @@ export class CanvasView extends FileView {
     this.contentEl.addClass('abele-canvas-view')
     this.viewer = hostCanvasViewer(this.app, this.contentEl, () => this.file?.path ?? '')
     this.addAction('panel-top', 'Open in Obsidian Canvas', () => {
-      if (this.file) void nativeCanvas(this.leaf, this.file)
+      void this.openNative()
     })
     this.addAction('image-down', 'Export diagram picture', (e) => this.exportMenu(e))
     this.addAction('rotate-ccw', 'Recover failed canvas change', (e) => void this.recoveryMenu(e))
-    if (this.documentLease) this.renderDocument(this.documentLease.document)
-    else if (this.attachmentError) this.viewer.status.setText(this.attachmentError)
+    if (this.documentLease) {
+      this.attachEditor()
+      this.renderDocument(this.documentLease.document)
+    } else if (this.attachmentError) this.viewer.status.setText(this.attachmentError)
   }
   async onLoadFile(file: TFile): Promise<void> {
     if (this.closed) return
@@ -116,6 +121,8 @@ export class CanvasView extends FileView {
       else {
         this.documentLease = lease
         this.attachmentError = null
+        this.attachEditor()
+        this.renderDocument(lease.document)
       }
     } catch (error) {
       if (token === this.refreshToken && !this.closed && this.requestedFile === file) {
@@ -141,7 +148,28 @@ export class CanvasView extends FileView {
     this.viewer = null
     await super.onClose()
   }
+  private attachEditor(): void {
+    if (this.viewer && !this.editor)
+      this.editor = hostCanvasEditor(
+        this.app,
+        this.viewer,
+        () => this.documentLease?.document ?? null
+      )
+  }
+  private async openNative(): Promise<void> {
+    const file = this.file,
+      epoch = this.refreshToken
+    try {
+      if (this.editor && !(await this.editor.prepareNative())) return
+      if (file && this.file === file && epoch === this.refreshToken && !this.closed)
+        await nativeCanvas(this.leaf, file)
+    } catch (error) {
+      new Notice(`Native Canvas handoff did not complete: ${String(error)}`)
+    }
+  }
   private releaseDocument(): void {
+    this.editor?.destroy()
+    this.editor = null
     this.reviewRequest++
     this.publicationReviewModal?.close()
     this.publicationReviewModal = null
@@ -160,6 +188,7 @@ export class CanvasView extends FileView {
       this.loaded = true
       this.renderedGeneration = document.session.generation
     }
+    this.editor?.refresh()
     this.place()
     const state = document.state
     if (document.session.publicationOutcome)

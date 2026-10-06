@@ -38,6 +38,12 @@ export class CanvasViewer {
   camera: Camera = { x: 0, y: 0, zoom: 1 }
   step: number | null = null
   graph: CanvasGraph = emptyCanvas()
+  selection: ReadonlySet<string> = new Set()
+  onSelect?: (node: CanvasNode | null) => void
+  onEditorKey?: (event: KeyboardEvent) => boolean
+  openNode(node: CanvasNode): void {
+    this.ports.openNode(node)
+  }
   private steps: CanvasStep[] = []
   private readonly off: (() => void)[] = []
   private readonly resize: ResizeObserver
@@ -280,19 +286,20 @@ export class CanvasViewer {
       -this.camera.x * ratio * this.camera.zoom,
       -this.camera.y * ratio * this.camera.zoom
     )
-    const theme = this.ports.theme()
+    const theme = this.ports.theme(),
+      highlight = new Set([...scene.highlight, ...this.selection])
     const live = this.ports.cards.sync(
       scene.graph,
       this.camera,
       width,
       height,
-      scene.highlight,
+      highlight,
       this.assets,
       theme
     )
     paintCanvas(ctx, scene.graph, region, theme, {
       ...withoutLiveCardAssets(this.assets, live),
-      highlight: scene.highlight,
+      highlight,
       lint: false,
       skipCards: true,
     })
@@ -326,6 +333,7 @@ export class CanvasViewer {
       (e.key === ' ' && target?.closest('button'))
     )
       return
+    if (this.onEditorKey?.(e)) return
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') this.advance(1)
     else if (e.key === 'ArrowLeft' || e.key === 'PageUp') this.advance(-1)
     else if (e.key === 'Home') this.go(this.steps.length ? 1 : null)
@@ -412,7 +420,8 @@ export class CanvasViewer {
         (n) =>
           n.type !== 'group' && x >= n.x && x <= n.x + n.width && y >= n.y && y <= n.y + n.height
       )
-    if (node && (node.type === 'file' || node.type === 'link')) this.ports.openNode(node)
+    if (this.onSelect && this.step === null) this.onSelect(node ?? null)
+    else if (node && (node.type === 'file' || node.type === 'link')) this.ports.openNode(node)
     else if (this.step !== null) this.advance(1)
   }
   private wheel(e: WheelEvent): void {

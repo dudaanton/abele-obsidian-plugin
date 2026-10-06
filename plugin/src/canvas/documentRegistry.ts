@@ -46,6 +46,10 @@ export class CanvasDocument {
   readonly incarnation = `${incarnationNamespace}-${++nextIncarnation}`
   private failedProposal: FailedProposal | null = null
   private nextProposal = 0
+  private humanDraftPath: string | null = null
+  get draftPath(): string | null {
+    return this.session.dirty ? this.humanDraftPath : null
+  }
   readonly owners = new Map<object, Listener>()
   writer = false
   operations = 0
@@ -123,6 +127,7 @@ export class CanvasDocument {
   }
   clearRecovery(): void {
     this.failedProposal = null
+    if (!this.session.dirty) this.humanDraftPath = null
   }
   reapplyProposal(id: string): void {
     const proposal = this.requireRecovery(id)
@@ -140,8 +145,8 @@ export class CanvasDocument {
     this.writer = true
     this.notify()
   }
-  releaseWriter(): void {
-    if (this.session.dirty || this.session.busy)
+  releaseWriter(retainPending = false): void {
+    if ((!retainPending && this.session.dirty) || this.session.busy)
       throw new Error(
         'Pending canvas draft must be published or explicitly discarded before releasing the writer'
       )
@@ -154,6 +159,7 @@ export class CanvasDocument {
         'Native Canvas is active; settle its pending work before acquiring the Abele writer'
       )
     this.session.beginDraft()
+    this.humanDraftPath ??= this.file.path
     this.clearRecovery()
     this.writer = true
     this.notify()
@@ -170,6 +176,7 @@ export class CanvasDocument {
   }
   discardDraft(): void {
     this.session.discardDraft()
+    this.humanDraftPath = null
     this.clearRecovery()
     this.notify()
   }

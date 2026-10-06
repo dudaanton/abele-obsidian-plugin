@@ -74,6 +74,64 @@ function native() {
 }
 
 describe('shared canvas document storage', () => {
+  it('blocks publication of human text begun before a canvas rename, retaining it without writing', async () => {
+    const lease = await open()
+    lease.document.beginDraft()
+    lease.document.updateDraft(edit('Pending before rename'))
+    lease.document.finishDraft()
+    await app.vault.rename(file, 'sample-renamed.canvas')
+    app.emit('vault', 'rename', file, path)
+    await canvasDocuments(host).flush(file)
+    const process = vi.spyOn(app.vault, 'process')
+    await expect(store.publishDraft(file)).rejects.toThrow(/renamed/i)
+    expect(process).not.toHaveBeenCalled()
+    expect(parseCanvas(await bytes())).toEqual(initial)
+    expect(lease.document.session.graph.nodes[0].text).toBe('Pending before rename')
+    expect(lease.document.session.history.undo).toBe(0)
+  })
+
+  it('retains known-unwritten human text across close/reopen and retries only without source changes', async () => {
+    const lease = await open(),
+      second = await open()
+    lease.document.beginDraft()
+    lease.document.updateDraft(edit('Human final text'))
+    lease.document.finishDraft()
+    vi.spyOn(app.vault, 'process').mockRejectedValueOnce(new Error('Sample disk unavailable'))
+    await expect(store.publishDraft(file)).rejects.toThrow('Sample disk unavailable')
+    expect(second.document.session.graph.nodes[0].text).toBe('Human final text')
+    expect(second.document.recovery).toBeNull()
+    expect(second.document.session.publicationOutcome).toBeNull()
+    lease.release()
+    second.release()
+    const reopened = await open()
+    expect(reopened.document).toBe(lease.document)
+    await store.publishDraft(file)
+    expect(reopened.document.session.history.undo).toBe(1)
+    expect(parseCanvas(await bytes()).nodes[0].text).toBe('Human final text')
+    reopened.document.beginDraft()
+    reopened.document.updateDraft(edit('Later human text'))
+    reopened.document.finishDraft()
+    await external('External text')
+    await expect(store.publishDraft(file)).rejects.toThrow(/conflict/i)
+    expect(parseCanvas(await bytes()).nodes[0].text).toBe('External text')
+    expect(reopened.document.session.graph.nodes[0].text).toBe('Later human text')
+  })
+
+  it('requires explicit retention before native handoff and never cancels native saves during human publication', async () => {
+    const lease = await open()
+    lease.document.beginDraft()
+    lease.document.updateDraft(edit('Kept human text'))
+    expect(() => lease.document.releaseWriter(true)).toThrow(/pending|draft/i)
+    lease.document.finishDraft()
+    expect(() => lease.document.releaseWriter()).toThrow(/pending|draft/i)
+    lease.document.releaseWriter(true)
+    const view = native()
+    await expect(store.publishDraft(file)).rejects.toThrow(/native|overlap/i)
+    expect(view.cancel).not.toHaveBeenCalled()
+    expect(lease.document.session.graph.nodes[0].text).toBe('Kept human text')
+    expect(await bytes()).toBe(serializeCanvas(initial))
+  })
+
   it.each([
     'persisted-rejection',
     'transform-returned-rejection',

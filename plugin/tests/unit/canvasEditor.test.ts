@@ -1,0 +1,217 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CanvasEditor } from '@/canvas/Editor'
+import { CanvasViewer } from '@/canvas/Viewer'
+import { CanvasDocument } from '@/canvas/documentRegistry'
+import { emptyCanvas } from '@/canvas/core/model'
+import { TFile } from 'obsidian'
+
+const cleanups: (() => void)[] = []
+afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
+function setup() {
+  const el = document.createElement('div')
+  document.body.append(el)
+  const openNode = vi.fn()
+  const viewer = new CanvasViewer(el, {
+    theme: () => ({
+      paper: 'white',
+      card: 'white',
+      text: 'black',
+      border: 'gray',
+      accent: 'blue',
+      muted: 'gray',
+      font: 'sans-serif',
+      size: 16,
+      lineHeight: 1.4,
+      presets: [],
+    }),
+    assets: async () => ({}),
+    cards: { sync: () => new Set(), destroy: () => {} },
+    openNode,
+  })
+  const file = Object.assign(new TFile(), { path: 'sample.canvas' })
+  let documentState: CanvasDocument
+  const snapshot = { graph: emptyCanvas(), revision: 'initial' }
+  documentState = new CanvasDocument(
+    file,
+    snapshot,
+    async () => snapshot,
+    () => false,
+    () => {}
+  )
+  const publish = vi.fn(async () => {
+    const session = documentState.session,
+      token = session.prepareDraft()
+    const graph = session.apply(token, session.committed)
+    session.acknowledge(token, { graph, revision: `saved-${session.generation}` })
+    documentState.clearRecovery()
+    documentState.notify()
+  })
+  const editor = new CanvasEditor(viewer, {
+    document: () => documentState,
+    publish,
+    history: vi.fn(async (direction) => {
+      const session = documentState.session,
+        token = direction === 'undo' ? session.prepareUndo() : session.prepareRedo()
+      const graph = session.apply(token, session.committed)
+      session.acknowledge(token, { graph, revision: `history-${session.generation}` })
+      documentState.notify()
+    }),
+    pickFile: async () => 'sample-note.md',
+    pickLink: async () => 'https://sample.example',
+    confirmDiscard: async () => true,
+    handoffChoice: async () => 'retain',
+    notice: vi.fn(),
+  })
+  documentState.owners.set(editor, (current) => {
+    viewer.load(current.session.graph)
+    editor.refresh()
+  })
+  documentState.notify()
+  const button = (label: string) => el.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+  const field = () => el.querySelector<HTMLTextAreaElement>('textarea')!
+  const input = (text: string) => {
+    field().value = text
+    field().dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  cleanups.push(() => {
+    editor.destroy()
+    viewer.destroy()
+    el.remove()
+  })
+  return { el, viewer, editor, document: documentState, publish, button, field, input, openNode }
+}
+
+describe('human canvas editor', () => {
+  it('creates a text card and publishes completed text once, never its composition', async () => {
+    const s = setup()
+    s.button('Add text card').click()
+    expect(s.field()).not.toBeNull()
+    expect(document.activeElement).toBe(s.field())
+    s.field().dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    s.input('A composing card')
+    s.button('Save text').click()
+    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.document.session.committed.graph.nodes).toHaveLength(0)
+    expect(s.document.session.graph.nodes[0].text).toBe('A composing card')
+    s.field().dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    s.input('Final card')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.publish).toHaveBeenCalledOnce()
+    expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
+    expect(s.document.session.graph.nodes[0].text).toBe('Final card')
+  })
+
+  it('does not steal shortcuts or arrow keys from the text input', () => {
+    const s = setup()
+    s.button('Add text card').click()
+    for (const key of ['ArrowRight', 'Delete', 'Escape', 'z']) {
+      const event = new KeyboardEvent('keydown', {
+        key,
+        ctrlKey: key === 'z',
+        bubbles: true,
+        cancelable: true,
+      })
+      s.field().dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    expect(s.document.session.draft?.active).toBe(true)
+    expect(s.document.session.graph.nodes).toHaveLength(1)
+  })
+
+  it('inserts files and links through pickers; tapping selects, opening is a separate action', async () => {
+    const s = setup()
+    s.button('Add note or attachment').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(1))
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    const note = s.document.session.graph.nodes[0]
+    s.viewer.setCamera({ x: note.x, y: note.y, zoom: 1 })
+    for (const type of ['pointerdown', 'pointerup'])
+      s.viewer.stage.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          pointerType: 'touch',
+          clientX: 40,
+          clientY: 40,
+          bubbles: true,
+        })
+      )
+    expect(s.openNode).not.toHaveBeenCalled()
+    expect(s.button('Edit card text').disabled).toBe(true)
+    s.button('Open selected card').click()
+    expect(s.openNode).toHaveBeenCalledWith(note)
+    s.button('Add link').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(2))
+    expect(s.document.session.graph.nodes[1].url).toBe('https://sample.example')
+  })
+
+  it('deletes and undoes through the shared history', async () => {
+    const s = setup()
+    s.button('Add text card').click()
+    s.input('Keep through history')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    s.button('Delete selected card').click()
+    await vi.waitFor(() => expect(s.document.session.committed.graph.nodes).toHaveLength(0))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() =>
+      expect(s.document.session.graph.nodes[0]?.text).toBe('Keep through history')
+    )
+    s.button('Redo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(0))
+  })
+
+  it('retains failed text visibly, offers retry only on unchanged baseline and discards locally', async () => {
+    const s = setup()
+    s.publish.mockRejectedValueOnce(new Error('Sample storage unavailable'))
+    s.button('Add text card').click()
+    s.input('Unsaved card')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.button('Retry save').disabled).toBe(false))
+    expect(s.el.textContent).toMatch(/not saved|unsaved/i)
+    expect(s.document.session.graph.nodes[0].text).toBe('Unsaved card')
+    expect(s.document.session.history.undo).toBe(0)
+    s.document.observe({ graph: emptyCanvas(), revision: 'external' })
+    expect(s.button('Retry save').disabled).toBe(true)
+    s.button('Discard local draft').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.document.session.committed.revision).toBe('external')
+    expect(s.publish).toHaveBeenCalledOnce()
+  })
+
+  it('does not publish a failed undo preview as a new text command through Retry save', async () => {
+    const s = setup()
+    s.button('Add text card').click()
+    s.input('Saved card')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    const token = s.document.session.prepareUndo()
+    s.document.session.reject(token)
+    s.document.notify()
+    expect(s.button('Retry save').disabled).toBe(true)
+    expect(s.el.textContent).toMatch(/history.*discard|discard.*history/i)
+    expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
+  })
+
+  it('explicitly retains active text before native handoff, without silently saving it', async () => {
+    const s = setup()
+    s.button('Add text card').click()
+    s.input('Retained for later')
+    expect(await s.editor.prepareNative()).toBe(true)
+    expect(s.document.session.draft?.active).toBe(false)
+    expect(s.document.session.graph.nodes[0].text).toBe('Retained for later')
+    expect(s.document.writer).toBe(false)
+    expect(s.publish).not.toHaveBeenCalled()
+  })
+
+  it('refuses a second leaf editing the active human draft and retains it on close', () => {
+    const s = setup()
+    s.button('Add text card').click()
+    s.input('Active draft')
+    expect(() => s.document.beginDraft()).toThrow(/busy/i)
+    s.editor.destroy()
+    expect(s.document.session.draft?.active).toBe(false)
+    expect(s.document.session.graph.nodes[0].text).toBe('Active draft')
+    expect(s.publish).not.toHaveBeenCalled()
+  })
+})

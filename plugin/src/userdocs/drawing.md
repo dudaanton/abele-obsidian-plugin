@@ -144,8 +144,36 @@ steps default to Ask. Reading and inspecting pictures default to On, within the 
 viewer by default; **Settings → Abele → Other → Open canvases in Abele** chooses the default.
 **Open in Obsidian Canvas** in the viewer's header returns that tab to the native editor and
 keeps it there. A file's context menu offers **Open in Abele** to return to the viewer. The
-viewer is read-only: moving or resizing cards still happens in native Canvas or through the
-agent. Viewing, panning and playing steps never save changes into the diagram.
+viewer now lets you create and edit cards by hand. Moving or resizing cards still happens in
+native Canvas or through the agent. Viewing, panning and playing steps never save changes into
+the diagram.
+
+**New Abele canvas** in the command palette or a folder's menu creates an empty diagram. Its
+bar offers **Text**, **File** (an Obsidian picker for a note or attachment), and **Link** (a web
+address). New cards appear near the centre of the current view. Tap a card to select it; **Edit
+text** edits a text card, while **Open** opens a linked note, attachment or web page separately.
+Editing a text card never edits the contents of a linked note.
+
+**Save text** completes one change, including creating a new text card. Until then, typing and
+IME composition are drafts, not writes. **Keep draft** leaves the text unsaved in this running
+session. **Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
+changes. Outside a text field, Delete/Backspace deletes a selected card, Enter edits its text,
+and Ctrl or ⌘+Z / Shift+Z undo and redo. Inside fields those keys belong to the text input.
+Two Abele tabs share the same content and history, but keep their own selection and camera;
+an active text edit prevents another tab or agent from publishing over it.
+
+A failed save keeps the text visible and explicitly marked unsaved. **Retry save** is available
+only when the write is known not to have happened and the original source is unchanged. Source
+changes or renaming the canvas block retry; there is no whole-draft overwrite of newer content.
+**Discard draft…** asks before forgetting only local unsaved work, without restoring the file.
+Closing and reopening retains pending work in memory, not across a plugin reload or crash.
+
+Returning to **Open in Obsidian Canvas** with pending work asks you to stay, explicitly retain
+it in memory while opening the saved source, or discard it. Retaining does not save the draft;
+native changes (even a formatting-only save) can block retry. A failed Undo/Redo leaves a
+local history preview: explicitly discard that preview before trying Undo/Redo again, rather
+than saving it as a new text change. Failed agent proposals and uncertain writes still use the
+separate recovery/review action below for discard. No native pending save is silently cancelled.
 
 Use **Play**, then the arrow buttons, Right/Left or Space to move through steps. On a phone,
 swipe horizontally on the diagram or tap an empty area to go forward. **All** or Escape shows
@@ -153,7 +181,8 @@ the complete diagram; **Fit** frames it again. Drag to pan and pinch to zoom; Ct
 the wheel also zooms. Each step reveals more of the diagram, highlights the important parts,
 and puts its explanation below the picture. Longer explanations scroll above the phone's
 navigation. Going backwards hides later cards again. A linked note shows its live content;
-tap it to open the note. A linked sub-diagram opens its own viewer.
+select it and use **Open** to open the note. During a walkthrough, tapping a linked card opens
+it directly. A linked sub-diagram opens its own viewer.
 
 ### A canvas change that did not finish
 
@@ -170,8 +199,8 @@ write or restore any file contents, or add the missing acknowledgment/history en
 may already contain the change; matching contents do not establish that the attempt succeeded.
 
 After discarding, reread the current diagram. Ask for any still-desired difference as a new
-ordinary edit, not replay of the old attempt. This is not a human editor or automatic agent
-settlement, and retained work does not survive a plugin reload or crash.
+ordinary edit, not replay of the old attempt. This review is not automatic settlement,
+and retained work does not survive a plugin reload or crash.
 
 ## A diagram inside a note
 

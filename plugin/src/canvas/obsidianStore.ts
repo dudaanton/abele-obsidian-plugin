@@ -338,7 +338,8 @@ export class ObsidianCanvasStore implements GraphStore {
     )
   }
   publishDraft(file: TFile, signal?: AbortSignal): Promise<CanvasWriteResult> {
-    return this.publish(file, file.path, undefined, 'draft', undefined, signal)
+    const path = canvasDocuments(this.app).find(file)?.draftPath ?? file.path
+    return this.publish(file, path, undefined, 'draft', undefined, signal)
   }
   undo(key: string, revision: string, signal?: AbortSignal): Promise<CanvasWriteResult> {
     return this.publish(this.file(key), key, revision, 'undo', undefined, signal)

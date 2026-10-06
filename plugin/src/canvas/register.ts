@@ -1,10 +1,11 @@
 import { ViewPlugin } from '@codemirror/view'
-import { editorInfoField, Notice, TFile, type Plugin } from 'obsidian'
+import { editorInfoField, Notice, TFile, TFolder, type Plugin } from 'obsidian'
 import { AbeleConfig } from '../services/AbeleConfig'
 import { CanvasView } from './CanvasView'
 import { adoptCanvasLeaves, CANVAS_VIEW_TYPE, openCanvas } from './opening'
 import { canvasEmbedProcessor, canvasEmbedsInEditor } from './embed'
 import { canvasDocuments } from './documentRegistry'
+import { newCanvas } from './editorControls'
 import './viewer.css'
 
 export function registerCanvas(plugin: Plugin): void {
@@ -57,6 +58,23 @@ export function registerCanvas(plugin: Plugin): void {
           .setIcon('workflow')
           .onClick(() => void openCanvas(app, file))
       )
+    })
+  )
+  plugin.addCommand({
+    id: 'new-canvas',
+    name: 'New Abele canvas',
+    icon: 'workflow',
+    callback: () => void newCanvas(app),
+  })
+  plugin.registerEvent(
+    app.workspace.on('file-menu', (menu, file) => {
+      if (file instanceof TFolder)
+        menu.addItem((item) =>
+          item
+            .setTitle('New Abele canvas')
+            .setIcon('workflow')
+            .onClick(() => void newCanvas(app, file))
+        )
     })
   )
   plugin.addCommand({

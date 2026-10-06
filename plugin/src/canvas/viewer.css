@@ -97,6 +97,19 @@
 .abele-canvas-embed-status:empty {
   display: none;
 }
+.abele-canvas-text-editor {
+  flex-shrink: 0;
+  padding: var(--size-4-2) var(--size-4-3);
+}
+.abele-canvas-text-editor textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+.abele-canvas-text-editor[hidden],
+.abele-canvas-editor-controls button[hidden] {
+  display: none;
+}
 /* Native children can arrive after our processor. A class, not the overridden hidden attribute. */
 .internal-embed.abele-canvas-embed-source > :not(.abele-canvas-embed) {
   display: none !important;
