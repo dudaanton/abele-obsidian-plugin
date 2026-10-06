@@ -60,9 +60,17 @@ Add them in **Settings → Abele → Calendars**, each with a name and a colour,
   calendars; pick one or keep them all.
 
 Events show in the month calendar as a short bar in the calendar's colour, in the timeline from
-today on among the tasks of each day, and in a daily note beside that day's tasks. An event has
-no checkbox. Click it for **Create meeting note**, which makes a note about it tied to that day
-and opens it; choosing it again opens the same note.
+today on among the tasks of each day, and in a daily note beside that day's tasks. Past events
+are ordinary history: leaving their checkbox empty does not make them overdue or count them
+as unfinished tasks. The checkbox is optional, for closing an occurrence early. Checking it
+marks only that occurrence done; **Hide completed** hides it in the timeline and calendar
+Base views. Unchecked events remain visible, including past ones in daily notes under **Past
+days**. Uncheck it or choose **Mark undone** to reopen it. The mark is kept in Abele settings
+and travels when those settings are transferred or synced. Nothing is changed in the external
+calendar.
+
+Click an event for **Create meeting note**, which makes a note about it tied to that day and
+opens it; choosing it again opens the same note.
 
 Calendars are read when Obsidian starts, every half hour by default, and with **Read now**. The
 last copy is kept on the device, so the events still show without a network. The link and the

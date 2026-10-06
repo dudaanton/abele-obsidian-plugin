@@ -2,7 +2,7 @@
   <div
     class="abele-calendar-event"
     :class="[`abele-calendar-event_color-${feed.color}`, { 'is-checked': done }]"
-    :data-task="done ? 'x' : ' '"
+    :data-task="done ? 'x' : undefined"
     role="button"
     tabindex="0"
     :aria-label="`${event.title}, ${timeText}, from ${calendarName}`"

@@ -42,9 +42,15 @@
         @keydown.enter.prevent="togglePast"
         @keydown.space.prevent="togglePast"
       >
-        <div class="abele-timeline__date-indicator abele-timeline__date-indicator_overdue">
+        <div
+          class="abele-timeline__date-indicator"
+          :class="{ 'abele-timeline__date-indicator_overdue': pastHasTasks }"
+        >
           <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
             <ObsidianIcon icon="flame" no-hover />
+          </div>
+          <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
+            <ObsidianIcon icon="calendar" no-hover />
           </div>
         </div>
         <span
@@ -62,7 +68,10 @@
         >
           <div
             class="abele-timeline__date-indicator"
-            :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
+            :class="{
+              'abele-timeline__date-indicator_overdue':
+                dayjs(date).isBefore(now, 'day') && dateItems.some((item) => !!item.task),
+            }"
           >
             <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
               <ObsidianIcon icon="flame" no-hover />
@@ -281,15 +290,14 @@ const visible = computed(() => {
   }
   return [...window].sort(([a], [b]) => a.localeCompare(b))
 })
+// Past events are history, not overdue work. Keep the existing indication for task days.
+const pastHasTasks = computed(() =>
+  past.value.some(([, items]) => items.some((item) => !!item.task))
+)
 const pastUnfinished = computed(() => {
   const keys = new Set<string>()
   for (const [, items] of past.value)
-    for (const item of items)
-      if (
-        (item.task && !item.task.completedAt) ||
-        (item.shown && !calendars().isDone(item.shown.event))
-      )
-        keys.add(item.key)
+    for (const item of items) if (item.task && !item.task.completedAt) keys.add(item.key)
   return keys.size
 })
 const historyEl = ref<HTMLElement | null>(null)
