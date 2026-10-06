@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { tap, driver, screenshot } from './helpers/phone'
+import { tap, typeText, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 
@@ -48,12 +48,10 @@ const press = async (expression: string, corner = false) => {
 const click = (label: string) => press(`button(${JSON.stringify(label)})`)
 const type = async (text: string) => {
   if (onPhone()) {
-    // DOM focus precedes the native keyboard's opening animation. Typing during that
-    // transition can hit the wrong first key; wait, never replay the submitted text.
+    // DOM focus precedes the native keyboard's opening animation. Wait before
+    // submitting text through the standard driver; never replay submitted input.
     await new Promise((resolve) => setTimeout(resolve, 500))
-    // Use the driver's focused-field keyboard path, not its key-by-key fallback,
-    // which can mis-type a capital letter in a web view.
-    driver(['type', text, '--via', 'focus'])
+    typeText(text)
   } else
     await withNativeInput(() =>
       run(`
