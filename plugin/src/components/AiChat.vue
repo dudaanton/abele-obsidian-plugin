@@ -229,7 +229,18 @@
         <div v-if="queuedMessages.length" class="abele-ai-chat__queued">
           <div v-for="q in queuedMessages" :key="q.id" class="abele-ai-chat__queued-item">
             <Icon icon="clock" no-hover class="abele-ai-chat__queued-icon" />
-            <span class="abele-ai-chat__queued-text">{{ q.content }}</span>
+            <span class="abele-ai-chat__queued-text">
+              {{ q.content }}
+              <span v-if="q.attachments?.length">
+                {{ q.attachments.map((path) => path.split('/').pop()).join(', ') }}
+              </span>
+            </span>
+            <Icon
+              icon="pencil"
+              tooltip="Edit queued message"
+              class="abele-ai-chat__queued-edit"
+              @click="onEditQueued(q.id)"
+            />
             <Icon
               icon="x"
               tooltip="Remove from the queue"
@@ -1954,6 +1965,25 @@ const onAbort = () => {
 const queuedMessages = computed(() => session.value?.queuedMessages.value ?? [])
 
 const onRemoveQueued = (id: string) => session.value?.removeQueuedMessage(id)
+
+const onEditQueued = (id: string) => {
+  const s = session.value
+  const input = chatInput.value
+  const queued = s?.queuedMessages.value.find((q) => q.id === id)
+  if (!s || !input || !queued) return
+  const draft = input.takeDraft()
+  input.putDraft({
+    text: [queued.content, draft.text].filter(Boolean).join('\n'),
+    attachments: [
+      ...draft.attachments,
+      ...filesOf(queued.attachments).filter(
+        (file) => !draft.attachments.some((a) => a.path === file.path)
+      ),
+    ],
+  })
+  s.removeQueuedMessage(id)
+  void nextTick(focusComposer)
+}
 
 const hasFallbackModel = computed(() => session.value?.hasFallbackModel ?? false)
 

@@ -82,6 +82,16 @@
            keeps its focus through the tap, so the keyboard stays up and the composer does not
            move out from under the finger before the click lands (see fieldFocus.ts). -->
       <div class="abele-chat-input__toolbar-right" @mousedown.prevent>
+        <template v-if="!isBusy && !importing">
+          <Icon icon="paperclip" with-bg tooltip="Attach a file" @click="showAttachMenu" />
+          <Icon
+            icon="mic"
+            with-bg
+            :tooltip="voiceOpen ? 'Close voice input' : 'Dictate a message'"
+            :class="{ 'abele-chat-input__mic_open': voiceOpen }"
+            @click="voiceOpen = !voiceOpen"
+          />
+        </template>
         <template v-if="isStreaming">
           <Icon
             v-if="text.trim() || attachments.length"
@@ -104,14 +114,6 @@
           <div v-if="scopeLabel" class="abele-chat-input__scope-badge" @click="emit('openScope')">
             {{ scopeLabel }}
           </div>
-          <Icon icon="paperclip" with-bg @click="showAttachMenu" />
-          <Icon
-            icon="mic"
-            with-bg
-            :tooltip="voiceOpen ? 'Close voice input' : 'Dictate a message'"
-            :class="{ 'abele-chat-input__mic_open': voiceOpen }"
-            @click="voiceOpen = !voiceOpen"
-          />
           <!-- Only over a comment, which is a place in a note as much as it is a chat: the
                words are kept and nothing is asked of anybody. -->
           <Icon

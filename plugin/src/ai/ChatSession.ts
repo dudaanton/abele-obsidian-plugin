@@ -1770,8 +1770,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (this.isBusy) {
       this.queuedMessages.value = [
         ...this.queuedMessages.value,
-        { id: nanoid(), content, attachments: attachments?.length ? attachments : undefined },
+        { id: nanoid(), content, attachments: attachments?.length ? [...attachments] : undefined },
       ]
+      await this.save()
       return
     }
 
@@ -1996,11 +1997,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   takeQueuedMessages(): QueuedMessage[] {
     const queued = this.queuedMessages.value
     this.queuedMessages.value = []
+    if (queued.length) this.markDirty()
     return queued
   }
 
   removeQueuedMessage(id: string): void {
     this.queuedMessages.value = this.queuedMessages.value.filter((m) => m.id !== id)
+    this.markDirty()
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
@@ -2169,6 +2172,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // Stay busy until the old loop has committed its partial history and released its tools.
     // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —
     // the chat hands it back to the input rather than dropping it.
+    if (this.queuedMessages.value.length && !this.destroyed) this.markDirty()
     this.queuedMessages.value = []
   }
 
@@ -2178,8 +2182,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.draft.value.imports?.retire()
     this.draft.value = { text: '', attachments: [] }
     this.conversationVersion.value++
-    this.queuedMessages.value = []
     await this.save()
+    this.queuedMessages.value = []
     await this.rewindLog?.flush()
     this.rewindLog = null
     this.log.forget()
@@ -2570,6 +2574,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
+      queuedMessages: this.queuedMessages.value.length
+        ? this.queuedMessages.value.map((q) => ({ ...q, attachments: q.attachments?.slice() }))
+        : undefined,
       agentId: this.agentId.value || undefined,
       revealedToolGroups: this.toolDiscovery.revealed.length
         ? this.toolDiscovery.revealed
@@ -2622,7 +2629,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private async writeNow(): Promise<void> {
     // Nothing to write and nowhere to write it: a tab nobody has typed into yet. Once a file
     // exists — a comment's, written before its first turn — a meta change is worth a save.
-    if (this.allChatMessages.length === 0 && !this.currentChatFile.value) return
+    if (
+      this.allChatMessages.length === 0 &&
+      !this.queuedMessages.value.length &&
+      !this.currentChatFile.value
+    )
+      return
 
     const snapshot = this.snapshot()
     const plan = this.log.plan(snapshot)
@@ -2738,6 +2750,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.messageComments.value = result.metadata?.comments ?? []
     this.recap.value = result.metadata?.recap ?? ''
     this.summary.value = result.metadata?.summary ?? ''
+    // A reload stops the old turn. Keep its queue visible for explicit editing/resending,
+    // rather than starting a model request merely because the chat was opened.
+    this.queuedMessages.value = result.metadata?.queuedMessages ?? []
 
     // Migrate old flat format → tree format once
     const needsMigration =

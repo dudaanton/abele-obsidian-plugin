@@ -660,6 +660,8 @@ export interface MessageComment {
 
 export interface ChatMetadata {
   type: 'abele-chat'
+  /** Unsent messages; attachments are vault paths, just like ordinary chat bubbles. */
+  queuedMessages?: QueuedMessage[]
   /** Which agent the chat runs on. Absent in chats saved before agents existed. */
   agentId?: string
   /** Optional tool groups revealed for this conversation, in append order. */

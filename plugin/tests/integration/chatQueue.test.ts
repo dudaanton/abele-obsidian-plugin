@@ -9,7 +9,7 @@
  * The agent loop is faked because none of this is about a model. What matters is which
  * messages the loop is handed and when, so the fake is written as a script of iterations.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { ChatSession } from '@/ai/ChatSession'
@@ -81,6 +81,8 @@ beforeEach(() => {
   vi.spyOn(ChatService.getInstance(), 'getSystemPrompt').mockResolvedValue('')
 })
 
+afterEach(() => session.destroy())
+
 /** What the person sees in the conversation. */
 const bubbles = () =>
   session.allMessages.value.filter((m) => m.role === 'user').map((m) => m.content)
@@ -114,6 +116,36 @@ describe('sending while the agent is working', () => {
     await session.sendMessage('summarise these notes')
 
     expect(seen).toEqual([[], ['and also check the dates'], []])
+  })
+
+  it('delivers queued images, files and notes exactly like an ordinary message', async () => {
+    useVault([
+      { path: 'sample-image.png', content: 'Sample image' },
+      { path: 'sample-file.txt', content: 'Sample file body' },
+      { path: 'sample-note.md', content: 'Sample note body' },
+    ])
+    const attachments = ['sample-image.png', 'sample-file.txt', 'sample-note.md']
+    let ordinary: Message | undefined
+    vi.spyOn(AgentLoop.prototype, 'run').mockImplementation(async (opts) => {
+      ordinary = opts.messages.at(-1)
+      return { messages: [...opts.messages, reply('done')] }
+    })
+    await session.sendMessage('Describe these', attachments)
+    let deferred: Message | undefined
+    fakeLoop((injected, iteration) => {
+      if (iteration === 1) void session.sendMessage('Describe these', attachments)
+      else deferred = injected[0]
+      return iteration < 2
+    })
+    await session.sendMessage('Start a turn')
+    expect(deferred?.content).toEqual(ordinary?.content)
+    expect(deferred?.reads?.map(({ path, hash, via }) => ({ path, hash, via }))).toEqual(
+      ordinary?.reads?.map(({ path, hash, via }) => ({ path, hash, via }))
+    )
+    expect(
+      session.allMessages.value.find((m) => m.id === deferred?.chatMessageId)?.attachments
+    ).toEqual(attachments)
+    expect(session.queuedMessages.value).toEqual([])
   })
 
   it('joins the conversation when it goes in, in the order it was sent', async () => {

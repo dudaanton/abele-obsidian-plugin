@@ -469,6 +469,14 @@ use the file's creation time when neither a first turn nor a stored creation dat
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 
+Unsent messages waiting behind an active turn are stored in the chat metadata as
+`queuedMessages`: each has an `id`, `content`, and optional `attachments` containing vault
+paths, exactly as in a normal user bubble. Imported media stays in the ordinary attachment
+folder, never as binary data in settings. Enqueuing saves immediately; consumption, editing
+and cancellation update the chat's queue. Reopening restores the queue without starting a
+request; the user can return a message to the composer and send it again. Cancelling a queued
+message removes only its reference, not the referenced vault file.
+
 A `current_location` tool answer contains personal coordinates, accuracy, acquisition time and
 the answering platform. Like other tool answers it is sent to the model and retained in the
 chat file; it is not saved as a note property or a global location setting. Background recap

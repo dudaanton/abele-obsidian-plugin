@@ -80,6 +80,15 @@ its pending attachments stay with the conversation.
 Opening another conversation in the same tab cancels the old conversation's pending imports;
 they never appear in the new conversation.
 
+While the agent is answering, the paperclip and microphone remain available. Sending puts
+your message, with its attachments and any dictated words, in the waiting queue. The agent
+receives it at its next step, or on a new turn when the current answer ends. The clock row
+shows the text and attachment names; its pencil returns them to the composer for editing,
+and its cross cancels that message without deleting any files. **Stop** returns queued text
+and attachments to your draft. Waiting messages are saved with the chat, using references
+to files in the vault. After a reload they stay visible: use the pencil and send again when
+you are ready; opening the chat does not start them automatically.
+
 Commands typed in the message box:
 
 | Command         | What it does                                        |
