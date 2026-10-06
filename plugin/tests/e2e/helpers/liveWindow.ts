@@ -25,7 +25,14 @@ import { installPhoneHost } from './phone'
 import { RESTORE_PHONE_SCRIPT } from './phoneState'
 import { assertNoLeakedRootViews, snapshotRootViews, type RootView } from './rootViews'
 
+import {
+  assertNoLeakedSavedRootViews,
+  snapshotSavedRootViews,
+  type SavedRootViews,
+} from './savedRootViews'
+
 let rootViews: RootView[] | undefined
+let savedRootViews: SavedRootViews | undefined
 
 const cleanPhone = async () => {
   if (!onPhone()) return
@@ -54,6 +61,7 @@ beforeAll(async () => {
   // Nothing measured in a window that is not drawn means anything.
   assertWindowDrawn()
   rootViews = snapshotRootViews()
+  savedRootViews = await snapshotSavedRootViews()
 }, 150_000)
 
 // Stack hook ordering keeps this boundary outside every file's fixture teardown.
@@ -65,7 +73,18 @@ afterAll(async () => {
     notesInEditor()
   } finally {
     try {
-      if (rootViews) assertNoLeakedRootViews(rootViews)
+      const failures: unknown[] = []
+      try {
+        if (rootViews) assertNoLeakedRootViews(rootViews)
+      } catch (error) {
+        failures.push(error)
+      }
+      try {
+        if (savedRootViews) await assertNoLeakedSavedRootViews(savedRootViews)
+      } catch (error) {
+        failures.push(error)
+      }
+      if (failures.length) throw new AggregateError(failures, failures.map(String).join('\n'))
     } finally {
       await cleanPhone()
     }
