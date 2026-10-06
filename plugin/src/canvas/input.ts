@@ -117,6 +117,12 @@ export class CanvasInput implements CanvasViewerInput {
       return
     }
     if (!g.active) {
+      // Selection alone does not reserve a writer. Refuse a scene changed since pointer-down
+      // before deriving resize coordinates from that old scene against a newer baseline.
+      if (canvasFingerprint(this.viewer.graph) !== canvasFingerprint(g.graph)) {
+        this.cancel()
+        return
+      }
       if (!this.ports.begin()) {
         this.cancel()
         return

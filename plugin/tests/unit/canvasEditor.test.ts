@@ -254,6 +254,20 @@ describe('human canvas geometry', () => {
     expect(s.document.session.dirty).toBe(false)
     expect(s.publish).not.toHaveBeenCalled()
   })
+  it('refuses stale geometry when the source changes before the drag threshold', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    const external = cards()
+    external.nodes[0].width = 400
+    external.nodes[0].text = 'External content'
+    s.document.observe({ graph: external, revision: 'external' })
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.document.session.graph).toEqual(external)
+    expect(s.document.session.dirty).toBe(false)
+  })
   it('refuses geometry publication if source changes during the gesture', () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
