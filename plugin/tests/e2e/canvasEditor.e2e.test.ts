@@ -28,7 +28,11 @@ const until = async (expression: string) => {
 const press = async (expression: string, corner = false) => {
   const geometry = `const el=${expression};if(!el)return null;const r=el.getBoundingClientRect();
     if(!r.width||!r.height||r.left<0||r.top<0||r.right>innerWidth||r.bottom>innerHeight)return null;
-    return [Math.round(r.left+${corner ? '10' : 'r.width/2'}),Math.round(r.top+${corner ? '10' : 'r.height/2'})]`
+    const x=Math.round(r.left+${corner ? '10' : 'r.width/2'}),y=Math.round(r.top+${corner ? '10' : 'r.height/2'}),hit=document.elementFromPoint(x,y);
+    // Notices cover the mobile header after a failed save. Wait for a genuinely reachable
+    // action rather than tapping the Notice. Card frames intentionally pass input to the stage.
+    if(!el.contains(hit)&&!(el.matches('.abele-canvas-card-frame')&&el.closest('.abele-canvas-stage')?.contains(hit)))return null;
+    return [x,y]`
   await expect.poll(() => run<number[] | null>(geometry), { timeout: 10_000 }).not.toBeNull()
   const [x, y] = run<number[]>(geometry)
   if (onPhone()) tap(x, y)
