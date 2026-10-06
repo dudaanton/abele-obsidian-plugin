@@ -5,6 +5,14 @@ export interface PublicationPromptHost {
   questions(): Promise<ExistingPublicationQuestion[]>
   answer(question: ExistingPublicationQuestion, accepted: boolean): Promise<boolean>
 }
+/** UI activity only, never link authorship or recorded input. Covers desktop and mobile editors. */
+export function publicationEditorIdle(doc: Document): boolean {
+  return (
+    !doc.activeElement?.closest(
+      'input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"], .cm-editor'
+    ) && !doc.querySelector('.suggestion-container:not([hidden])')
+  )
+}
 /** Foreground-only presentation. Dismissal is not refusal and never reopens on every save. */
 export class PublicationPrompt {
   readonly pending = ref<ExistingPublicationQuestion[]>([])
@@ -14,7 +22,10 @@ export class PublicationPrompt {
   private host: PublicationPromptHost | null = null
   private reviewRequest = 0
   private readonly shown = new Set<string>()
-  constructor(private readonly visible: () => boolean) {}
+  constructor(
+    private readonly visible: () => boolean,
+    private readonly canAsk: () => boolean = () => true
+  ) {}
   attach(host: PublicationPromptHost): () => void {
     this.reviewRequest++
     this.host = host
@@ -50,14 +61,14 @@ export class PublicationPrompt {
     }
   }
   private show() {
-    if (!this.visible() || this.asking.value || this.busy.value) return
+    if (!this.visible() || !this.canAsk() || this.asking.value || this.busy.value) return
     const next = this.pending.value.find((q) => !this.shown.has(q.exposureKey))
     if (next) this.ask(next)
   }
   /** Explicit review also revalidates, rather than showing the tab's cached question. */
   async open(question: ExistingPublicationQuestion) {
     const host = this.host
-    if (!host || !this.visible() || this.busy.value) return
+    if (!host || !this.visible() || !this.canAsk() || this.busy.value) return
     const request = ++this.reviewRequest
     try {
       const epoch = host.questionEpoch?.()
@@ -66,6 +77,7 @@ export class PublicationPrompt {
         host !== this.host ||
         request !== this.reviewRequest ||
         !this.visible() ||
+        !this.canAsk() ||
         this.busy.value
       )
         return

@@ -1489,6 +1489,8 @@ checked; the presenter also checks that epoch after its await, before using the 
 Closing the dialog leaves the question pending without reopening it on every save; **Review**
 in the Sync tab opens it explicitly. A delayed Review must still be the latest request,
 foreground and not busy when its read completes; closing or answering invalidates older reads.
+Questions stay pending while an editor, editable field or link suggestion has focus. Leaving
+editing wakes presentation; sync never blurs the editor or interrupts input to show a question.
 **Keep private** remembers a refusal for that file/audience.
 The production activation fence remains disabled.
 

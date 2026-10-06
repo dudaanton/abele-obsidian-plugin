@@ -515,6 +515,13 @@ export class SyncService {
     const plugin = this.plugin
     if (plugin === null || this.watchingVisibility) return
     this.watchingVisibility = true
+    if (typeof document !== 'undefined')
+      plugin.registerDomEvent(document, 'focusout', () => {
+        // The blur fires before activeElement moves. Never move focus out of an editor ourselves.
+        queueMicrotask(() => {
+          void this.publicationPrompt.foreground()
+        })
+      })
     watchTheFront(plugin, Platform.isMobile, {
       held: () => {
         this.heldPrompt.foreground()

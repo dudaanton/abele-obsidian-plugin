@@ -1,4 +1,4 @@
-import type { App } from 'obsidian'
+import { MarkdownView, type App } from 'obsidian'
 import { toRaw } from 'vue'
 import type { VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
@@ -9,7 +9,7 @@ import { EngineRunner } from './engineRunner'
 import { Enrolment } from './enrolment'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { HeldDeletesPrompt } from './heldDeletes'
-import { PublicationPrompt } from './publicationPrompt'
+import { PublicationPrompt, publicationEditorIdle } from './publicationPrompt'
 import { askJoin, type JoinQuestion } from './join'
 import { finishJoin } from './joinState'
 import { ownSettingsPath, settingsArrived, settingsMeaning } from './ownSettings'
@@ -182,7 +182,12 @@ export function wireParts(host: PartsHost): ServiceParts {
     runner,
     enrolment,
     heldPrompt,
-    publicationPrompt: new PublicationPrompt(visible),
+    publicationPrompt: new PublicationPrompt(
+      visible,
+      () =>
+        !host.app()?.workspace.getActiveViewOfType(MarkdownView)?.editor.hasFocus() &&
+        (typeof document === 'undefined' || publicationEditorIdle(document))
+    ),
     settingsPrompt,
     codePrompt,
     joinQuestion,

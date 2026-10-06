@@ -2,7 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, nextTick } from 'vue'
 import { describe, it, expect, vi } from 'vitest'
 import PublicationConfirmModal from '@/components/sync/PublicationConfirmModal.vue'
-import { PublicationPrompt } from '@/sync/publicationPrompt'
+import { PublicationPrompt, publicationEditorIdle } from '@/sync/publicationPrompt'
 import type { ExistingPublicationQuestion } from '@/sync/publication/publicationDecision'
 const question: ExistingPublicationQuestion = {
   exposureKey: 'a'.repeat(64),
@@ -42,7 +42,7 @@ const question: ExistingPublicationQuestion = {
     linked: true,
   },
 }
-function setup(visible = true) {
+function setup(visible = true, canAsk: () => boolean = () => true) {
   let front = visible,
     pending = [question]
   const host = {
@@ -52,7 +52,7 @@ function setup(visible = true) {
       return true
     }),
   }
-  const prompt = new PublicationPrompt(() => front)
+  const prompt = new PublicationPrompt(() => front, canAsk)
   const detach = prompt.attach(host)
   const view = defineComponent({
     setup: () => () =>
@@ -84,6 +84,49 @@ function setup(visible = true) {
   }
 }
 describe('existing-private publication prompt and real dialog content', () => {
+  it('keeps a question pending without stealing focus from a typing editor', async () => {
+    const editor = document.createElement('div')
+    editor.contentEditable = 'true'
+    editor.setAttribute('contenteditable', 'true')
+    editor.tabIndex = 0
+    editor.className = 'cm-content'
+    document.body.appendChild(editor)
+    editor.focus()
+    const s = setup(true, () => publicationEditorIdle(document))
+    await s.prompt.refresh()
+    await s.foreground()
+    await nextTick()
+    expect(document.activeElement).toBe(editor)
+    expect(s.prompt.asking.value).toBeNull()
+    expect(s.prompt.pending.value).toHaveLength(1)
+    editor.blur()
+    await s.foreground()
+    await nextTick()
+    expect(s.wrapper.find('[role="dialog"]').exists()).toBe(true)
+    s.detach()
+    s.wrapper.unmount()
+    editor.remove()
+  })
+  it('rechecks editor focus when Review finishes its network read', async () => {
+    const editor = document.createElement('textarea')
+    document.body.appendChild(editor)
+    const s = setup(true, () => publicationEditorIdle(document))
+    let finish!: (questions: ExistingPublicationQuestion[]) => void
+    s.host.questions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      })
+    )
+    const review = s.prompt.open(question)
+    editor.focus()
+    finish([question])
+    await review
+    expect(s.prompt.asking.value).toBeNull()
+    expect(document.activeElement).toBe(editor)
+    s.detach()
+    s.wrapper.unmount()
+    editor.remove()
+  })
   it('shows the exact path, audience and sponsor once, and closing leaves pending across saves', async () => {
     const s = setup()
     await s.prompt.refresh()
