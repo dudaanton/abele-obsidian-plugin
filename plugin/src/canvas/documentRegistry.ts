@@ -1,8 +1,9 @@
 /** Host registry: TFile identity survives rename; cameras and selection remain leaf-local. */
-import { TFile, type App, type EventRef, type Plugin } from 'obsidian'
+import { TFile, TFolder, type App, type EventRef, type Plugin } from 'obsidian'
 import { nanoid } from 'nanoid'
 import { CanvasSession, type GraphTransform } from './core/session'
 import type { GraphSnapshot } from './core/service'
+import type { CanvasReferenceRename } from './core/references'
 
 export type CanvasRecoveryAction = 'retry' | 'reapply' | 'discard'
 export type CanvasWriteTool = 'canvas_edit' | 'canvas_layout' | 'canvas_steps'
@@ -47,6 +48,21 @@ export class CanvasDocument {
   private failedProposal: FailedProposal | null = null
   private nextProposal = 0
   private humanDraftPath: string | null = null
+  private referenceRenames: CanvasReferenceRename[] = []
+  private referenceRewriteSafe = true
+  get referencesPending(): boolean {
+    return this.referenceRenames.length > 0
+  }
+  renameReference(before: string, after: string): void {
+    if (!this.session.referencesPath(before, false, this.file.path) && !this.referencesPending)
+      return
+    this.referenceRewriteSafe &&= !this.session.referencesPath(before, true, this.file.path)
+    this.referenceRenames.push({ before, after })
+    this.session.invalidateReferences()
+    // The retained graph is safe to reconcile; an arbitrary captured planner is not.
+    this.failedProposal = null
+    this.notify()
+  }
   get draftPath(): string | null {
     return this.session.dirty ? this.humanDraftPath : null
   }
@@ -69,7 +85,10 @@ export class CanvasDocument {
       generation: this.session.generation,
       dirty: this.session.dirty,
       busy: this.session.busy,
-      conflict: this.session.conflict || (this.native() && (this.writer || this.session.dirty)),
+      conflict:
+        this.referencesPending ||
+        this.session.conflict ||
+        (this.native() && (this.writer || this.session.dirty)),
       writer: this.writer,
       native: this.native(),
       error: this.error,
@@ -154,6 +173,8 @@ export class CanvasDocument {
     this.notify()
   }
   beginDraft(): void {
+    if (this.referencesPending)
+      throw new Error('Canvas references changed on rename; wait for the native rewrite')
     if (this.native())
       throw new Error(
         'Native Canvas is active; settle its pending work before acquiring the Abele writer'
@@ -186,6 +207,22 @@ export class CanvasDocument {
     this.notify()
   }
   observe(snapshot: GraphSnapshot): void {
+    if (this.referencesPending) {
+      if (
+        this.referenceRewriteSafe &&
+        this.session.reconcileReferences(snapshot, this.referenceRenames)
+      ) {
+        this.referenceRenames = []
+        this.referenceRewriteSafe = true
+        this.error = null
+        this.notify()
+        return
+      }
+      // The host has not rewritten source yet. Do not unblock a write of the old paths.
+      if (snapshot.revision === this.session.committed.revision) return
+      this.referenceRenames = []
+      this.referenceRewriteSafe = true
+    }
     const owned = this.recovery ? this.failedProposal : null
     this.session.externalChanged(snapshot)
     if (owned) owned.generation = this.session.generation
@@ -221,6 +258,7 @@ export class CanvasDocumentRegistry {
   private vaultRefs: EventRef[] = []
   private workspaceRef: EventRef | null = null
   private closed = false
+  renameGeneration = 0
   constructor(private readonly app: App) {}
   registerLifecycle(plugin: Pick<Plugin, 'register'>): void {
     plugin.register(() => {
@@ -244,6 +282,7 @@ export class CanvasDocumentRegistry {
     }
   }
   async serial<T>(identity: TFile | string, action: () => Promise<T>): Promise<T> {
+    this.listen() // Closed-canvas agent transactions also need the rename boundary.
     const previous = this.queues.get(identity) ?? Promise.resolve()
     const current = previous.catch(() => {}).then(action)
     this.queues.set(identity, current)
@@ -251,6 +290,7 @@ export class CanvasDocumentRegistry {
       return await current
     } finally {
       if (this.queues.get(identity) === current) this.queues.delete(identity)
+      this.stopIfIdle()
     }
   }
   async flush(file: TFile): Promise<void> {
@@ -321,7 +361,16 @@ export class CanvasDocumentRegistry {
     }
     this.vaultRefs = [
       this.app.vault.on('modify', observe),
-      this.app.vault.on('rename', observe),
+      this.app.vault.on('rename', (file, oldPath) => {
+        this.renameGeneration++
+        if (file instanceof TFile || file instanceof TFolder) {
+          for (const document of this.documents.values()) {
+            document.renameReference(oldPath, file.path)
+            void this.reload(document.file)
+          }
+        }
+        observe(file)
+      }),
       this.app.vault.on('delete', observe),
     ]
     this.workspaceRef =
@@ -343,7 +392,7 @@ export class CanvasDocumentRegistry {
     this.stopIfIdle()
   }
   private stopIfIdle(): void {
-    if (this.documents.size || this.opening.size) return
+    if (this.documents.size || this.opening.size || this.queues.size) return
     this.stopListening()
   }
   private stopListening(): void {

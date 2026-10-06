@@ -171,6 +171,17 @@ changes or renaming the canvas block retry; there is no whole-draft overwrite of
 **Discard draft…** asks before forgetting only local unsaved work, without restoring the file.
 Closing and reopening retains pending work in memory, not across a plugin reload or crash.
 
+Renaming or moving linked notes, images, drawings, or their folders uses Obsidian's own link
+updates, including group backgrounds. Abele waits for those updates before saving pending
+work. If only standard file references changed, pending cards and Undo/Redo follow the new
+paths, including cards previously deleted from the diagram. Unknown extension data is left
+untouched. A concurrent content change or a rewritten text link can instead block the old
+operation: pending work stays visible, but cannot overwrite the current source. Discard the
+local draft only if you no longer need it, then make a fresh edit from the updated diagram.
+A failed agent planner captured before a rename is not reapplied automatically. Moving the
+canvas itself still blocks a draft begun at its old location; pictures and relative links
+refresh against the new location.
+
 Returning to **Open in Obsidian Canvas** with pending work asks you to stay, explicitly retain
 it in memory while opening the saved source, or discard it. Retaining does not save the draft;
 native changes (even a formatting-only save) can block retry. A failed Undo/Redo leaves a

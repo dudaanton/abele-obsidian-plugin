@@ -261,7 +261,10 @@ export class ObsidianCanvasStore implements GraphStore {
               : {}),
           },
         }
-      : { graph: cloneCanvas(stored.graph), revision: stored.revision }
+      : {
+          graph: cloneCanvas(stored.graph),
+          revision: `${stored.revision}:rename-${canvasDocuments(this.app).renameGeneration}`,
+        }
   }
   private async capture(
     file: TFile
@@ -359,7 +362,8 @@ export class ObsidianCanvasStore implements GraphStore {
   ): Promise<CanvasWriteResult> {
     const registry = canvasDocuments(this.app)
     return registry.serial(file, async () => {
-      const release = registry.retain(file)
+      const release = registry.retain(file),
+        renameGeneration = registry.renameGeneration
       let token: PreparedCanvasTransaction | undefined, document: CanvasDocument | undefined
       let recovered: ReturnType<CanvasDocument['requireRecovery']> | undefined
       let nativePublication:
@@ -395,6 +399,10 @@ export class ObsidianCanvasStore implements GraphStore {
             }
           }
         }
+        if (document?.referencesPending)
+          throw new Error(
+            'Canvas references changed on rename; wait for the native rewrite. Pending work is retained'
+          )
         const view = snapshot.views[0]
         if (
           view &&
@@ -425,6 +433,10 @@ export class ObsidianCanvasStore implements GraphStore {
           signal?.throwIfAborted()
           if (file.path !== path || this.app.vault.getAbstractFileByPath(path) !== file)
             throw new Error('Canvas renamed during publication; reread its current path')
+          if (registry.renameGeneration !== renameGeneration)
+            throw new Error(
+              'Vault references changed on rename during publication; reread the canvas'
+            )
           if (current !== snapshot.bytes) throw new Error(CANVAS_CONFLICT)
           const currentViews = this.views(file)
           if (
@@ -540,7 +552,7 @@ export class ObsidianCanvasStore implements GraphStore {
           try {
             document.session.reject(token)
             // Never relabel a newer human draft as agent-owned recovery work.
-            if (!existing || stillOwned) {
+            if (registry.renameGeneration === renameGeneration && (!existing || stillOwned)) {
               const failedOwner = recovered?.owner ?? owner,
                 failedTransform = recovered?.transform ?? transform
               if (failedOwner && failedTransform)

@@ -1,6 +1,12 @@
 /** Portable document state. Hosts publish at their atomic storage boundary, then acknowledge. */
 import { cloneCanvas, type CanvasGraph, type CanvasNode, type CanvasEdge } from './model'
 import type { GraphSnapshot } from './service'
+import {
+  nodeReferencesPath,
+  renameCanvasReferences,
+  renameCanvasNodeReferences,
+  type CanvasReferenceRename,
+} from './references'
 
 export type GraphTransform = (graph: CanvasGraph) => CanvasGraph
 export type CanvasPublicationOutcome = 'unknown' | 'written-acknowledgment-pending'
@@ -229,6 +235,59 @@ export class CanvasSession {
   }
   get history(): { undo: number; redo: number } {
     return { undo: this.undoJournal.length, redo: this.redoJournal.length }
+  }
+
+  /** Include deleted cards in history: undo must not bring their old paths back. */
+  referencesPath(path: string, textOnly = false, source = ''): boolean {
+    const matches = (node: CanvasNode | undefined) =>
+      node && (!textOnly || node.type === 'text') && nodeReferencesPath(node, path, source)
+    return (
+      [this.baseline.graph, this.preview?.graph, this.prepared?.after].some((graph) =>
+        graph?.nodes.some(matches)
+      ) ||
+      [...this.undoJournal, ...this.redoJournal].some((patch) =>
+        patch.nodes.changes.some((change) => [change.before, change.after].some(matches))
+      )
+    )
+  }
+  invalidateReferences(): void {
+    this.version++ // Revoke prepared writes and delayed approvals immediately, before native rewriting.
+  }
+  /** Rebase only a proven reference-only native rewrite, never an external content edit. */
+  reconcileReferences(snapshot: GraphSnapshot, renames: readonly CanvasReferenceRename[]): boolean {
+    if (
+      this.publishing ||
+      this.unsettledPublication ||
+      this.conflicted ||
+      !equal(renameCanvasReferences(this.baseline.graph, renames), snapshot.graph)
+    )
+      return false
+    const previous = this.baseline.revision
+    if (this.preview && this.preview.baseRevision !== previous) return false
+    const patchReferences = (patch: GraphPatch): GraphPatch => ({
+      ...patch,
+      nodes: {
+        ...patch.nodes,
+        changes: patch.nodes.changes.map((change) => ({
+          ...change,
+          before: change.before && renames.reduce(renameCanvasNodeReferences, change.before),
+          after: change.after && renames.reduce(renameCanvasNodeReferences, change.after),
+        })),
+      },
+    })
+    if (this.preview)
+      this.preview = {
+        ...this.preview,
+        graph: renameCanvasReferences(this.preview.graph, renames),
+        baseRevision: snapshot.revision,
+      }
+    this.undoJournal = this.undoJournal.map(patchReferences)
+    this.redoJournal = this.redoJournal.map(patchReferences)
+    if (this.journalRevision === previous) this.journalRevision = snapshot.revision
+    this.baseline = copySnapshot(snapshot)
+    this.prepared = null
+    this.version++
+    return true
   }
 
   beginDraft(): void {
