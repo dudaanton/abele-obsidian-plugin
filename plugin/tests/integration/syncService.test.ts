@@ -49,8 +49,9 @@ let service: SyncService
 /** The plugin's secret store, on this device's keychain, as `onload` installs it. */
 let secretStore: SecretStore
 let indexedDB: IDBFactory
-/** Every listener `registerDomEvent` was handed, so a test can fire one. */
+/** Visibility listeners only: editor blur is a separate event, not a phone lifecycle signal. */
 let domEvents: (() => void)[] = []
+let editorBlurEvents: (() => void)[] = []
 /** How many sockets the service opened; a phone must open none. */
 let socketsOpened = 0
 /** Flipped by a test to make every request fail the way a lost network does. */
@@ -60,8 +61,9 @@ let settingsArrived = 0
 
 const plugin = {
   manifest: { id: 'abele' },
-  registerDomEvent: (_el: unknown, _type: string, cb: () => void) => {
-    domEvents.push(cb)
+  registerDomEvent: (_el: unknown, type: string, cb: () => void) => {
+    if (type === 'focusout') editorBlurEvents.push(cb)
+    else domEvents.push(cb)
   },
   loadData: () => Promise.resolve({}),
   saveData: () => Promise.resolve(),
@@ -84,6 +86,7 @@ beforeEach(async () => {
   server = await syncServer()
   indexedDB = new IDBFactory()
   domEvents = []
+  editorBlurEvents = []
   socketsOpened = 0
   offline = false
   settingsArrived = 0
@@ -2072,6 +2075,7 @@ describe('SyncService — a phone', () => {
 
     expect(socketsOpened).toBe(0)
     expect(domEvents).toHaveLength(1)
+    expect(editorBlurEvents).toHaveLength(1)
 
     await seed(other, [await create(other, 'Phone.md', 'read on the train')])
     // No socket tells a phone, and its clock is a minute away.
