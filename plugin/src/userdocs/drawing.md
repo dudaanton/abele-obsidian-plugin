@@ -148,7 +148,8 @@ viewer now lets you create and edit cards by hand. Moving or resizing cards stil
 native Canvas or through the agent. Viewing, panning and playing steps never save changes into
 the diagram.
 
-**New Abele canvas** in the command palette or a folder's menu creates an empty diagram. Its
+Abele's **New canvas** in the command palette, or **New Abele canvas** in a folder's menu,
+creates an empty diagram. Its
 bar offers **Text**, **File** (an Obsidian picker for a note or attachment), and **Link** (a web
 address). New cards appear near the centre of the current view. Tap a card to select it; **Edit
 text** edits a text card, while **Open** opens a linked note, attachment or web page separately.

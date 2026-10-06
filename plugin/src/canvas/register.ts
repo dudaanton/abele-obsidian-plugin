@@ -62,7 +62,7 @@ export function registerCanvas(plugin: Plugin): void {
   )
   plugin.addCommand({
     id: 'new-canvas',
-    name: 'New Abele canvas',
+    name: 'New canvas',
     icon: 'workflow',
     callback: () => void newCanvas(app),
   })

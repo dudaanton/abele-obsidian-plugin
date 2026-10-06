@@ -73,9 +73,11 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       // Navigation opens the palette; creation itself is chosen with real input.
       app.commands.executeCommandById('command-palette:open')
       await until(()=>document.querySelector('.prompt-input'),'palette')
-      await tap(document.querySelector('.prompt-input'));await type('New Abele canvas')
-      await until(()=>[...document.querySelectorAll('.suggestion-item')].some(el=>el.textContent.includes('New Abele canvas')),'creation command')
-      await tap([...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes('New Abele canvas')))
+      await tap(document.querySelector('.prompt-input'));await type('New canvas')
+      await shot('creation-palette')
+      try { await until(()=>[...document.querySelectorAll('.suggestion-item')].some(el=>/Abele.*New canvas/i.test(el.textContent)),'creation command') }
+      catch(error) { throw Error('Creation palette: '+JSON.stringify({input:document.querySelector('.prompt-input')?.value,choices:[...document.querySelectorAll('.suggestion-item')].map(el=>el.textContent)})) }
+      await tap([...document.querySelectorAll('.suggestion-item')].find(el=>/Abele.*New canvas/i.test(el.textContent)))
       await until(()=>document.querySelector('[aria-label="Canvas name"]'),'name field')
       await tap(document.querySelector('[aria-label="Canvas name"]'));await type('Sample diagram')
       await tap([...document.querySelectorAll('.abele-canvas-input button')].find(el=>el.textContent==='Create'))
