@@ -9,6 +9,18 @@ Note frontmatter reads use `js-yaml` 4's default schema. An unquoted time such a
 `0755` are decimal (`755`), not legacy octal. Quote a numeric-looking value when its
 exact text, including leading zeros, matters.
 
+## Device-local template approvals
+
+`abele-template-trust` in Obsidian's vault-scoped local storage holds template confirmations.
+It uses the same trust-state schema as scripts: content SHA-256 hashes and the last reviewed
+text per path (text is omitted above 100,000 characters). For user note templates, that text
+includes the full file and the indexed callbacks, path fields and target properties used at
+application time, so lagging metadata cannot run unreviewed settings. Prompt templates keep
+the full file text. These are explicit approvals only: existing templates, local writes and
+agent writes are not implicitly trusted. No vault sidecar or setting is added. Records are
+not synced or included in settings transfer, and the optional script-trust switch does not
+control template approvals. Notice deduplication is session memory only.
+
 ## ZIP archives
 
 Agent `zip` stores an ordinary binary `.zip` file at the explicitly requested new path, creating

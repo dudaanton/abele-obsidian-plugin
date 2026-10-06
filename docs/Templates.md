@@ -123,7 +123,9 @@ Defaults pre-fill the form but can be overridden by the user. `initialValues` (e
 {{ plugin_id;method_name;Label text }}
 ```
 
-Calls `app.plugins.plugins[plugin_id][method_name](userInput)` and inserts the result.
+Calls `app.plugins.plugins[plugin_id][method_name](userInput)` and inserts the result,
+only after this template version has been confirmed on this device. Without confirmation,
+the field inserts the supplied text without calling the method.
 
 ## Target Note Properties
 
@@ -206,6 +208,19 @@ callbacks: "command:daily-notes:create;command:templater:insert"
 ```
 
 Format: `command:<command-id>` separated by `;`
+
+Templates with callbacks or plugin-method placeholders require explicit confirmation on each
+device, using the same Review dialog as scripts. Approval covers the full template text and
+the execution settings used; an edit requires confirmation again. Existing templates and
+local or agent writes are not automatically approved, and the script confirmation setting
+does not disable this check.
+
+Until confirmed, ordinary content is applied and notes are still created, but callbacks are
+skipped and plugin-method fields retain the supplied text. A persistent notice offers
+**Review**, once per version per session. **Confirm** enables future uses on this device,
+without replaying the skipped work; **Not now** leaves it waiting. Automatic defaults, scripts
+and agents do not wait for the dialog. Confirmations do not sync or travel in settings
+transfer. Templates with no executable features need no confirmation.
 
 Commands run sequentially via `app.commands.executeCommandById()`.
 

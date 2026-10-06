@@ -34,6 +34,7 @@ into folders in the picker, and `order` sorts them within one.
 | `{{ status::select(Draft,Done) }}` | A drop-down |
 | `{{ tags::list }}`, `{{ links::wiki_list }}` | A list of words, or of notes |
 | `{{ title::default(Untitled) }}` | Any field with a starting value |
+| `{{ plugin-id;method-name;Label }}` | A field whose text is passed to a plugin method, after confirmation |
 
 With text selected when you run a template, the selection fills the first field.
 
@@ -51,6 +52,23 @@ The note's `type` is taken from `template_for`.
 - **Create note in group**: a new note that already belongs to the current one.
 
 `callbacks: "command:<id>;command:<id>"` in a template runs those commands after the note is made.
+
+## Confirming commands in a template
+
+A template with command callbacks or plugin-method placeholders needs your confirmation once
+on each device. Ordinary templates keep working without a confirmation. Editing a template
+with commands makes it wait for confirmation again — even if an agent made the edit.
+
+Until you confirm it, the note is still made, but its commands do not run. Plugin-method fields
+keep the text you supplied without calling the plugin. This also applies when an agent, a
+script or the default template uses it automatically: nothing stops to ask you.
+
+A notice offers **Review**. It opens the same review dialog as scripts: read the template and
+its execution settings, or the changes since your last confirmation. **Confirm** enables this
+version on this device. Use the template again afterwards; confirmation does not repeat the
+work that was skipped. **Not now** leaves its commands waiting. Confirmations stay on this
+device and do not travel through sync or settings transfer. The script confirmation setting
+does not turn off template confirmation.
 
 ## The default template
 

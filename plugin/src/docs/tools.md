@@ -760,6 +760,11 @@ and remove items themselves in the agent's settings, under Memory.
 
 `list_templates`, `apply_template`, `skill`.
 
+`apply_template` still creates a note when the template's commands or plugin-method fields
+are not confirmed on this device: callbacks are skipped and method fields use the supplied
+text. Only the person can confirm through the Review notice; agents cannot approve templates.
+See `templates` for the content-bound, device-local confirmation rules.
+
 `skill` offers only notes in `ai.skillsFolder` or the caller's scope, narrowed by the agent's
 selection. Loading another asks before that call. A foreign note with the same skill name
 cannot stand in for an offered skill; the loader resolves from the offered candidates first.

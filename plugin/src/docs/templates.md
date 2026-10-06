@@ -14,6 +14,32 @@ produces a note with the token still in it. User templates accept both `{{date:Y
 `{{date.format('YYYY')}}` for the current local date; old path/data templates continue to use
 `{{date:YYYY}}` with their supplied date. The two contexts need not refer to the same day.
 
+## Commands and device-local confirmation
+
+Two user-template features execute code: `callbacks: "command:<id>;command:<id>"`
+runs Obsidian commands (including other plugins' commands), and
+`{{plugin-id;method-name;Label}}` calls a plugin method with the field's text. Plugin-method
+placeholders can occur in the body, `target_folder`, `target_name` or any `template_for_*`
+property. Prompt templates and transaction template bodies use the same method gate.
+
+A template using either feature needs explicit confirmation on each device. It reuses the
+script trust records and review dialog, but is always checked: the optional foreign-script
+switch, existing files, local edits and agent writes do not approve templates. Approval covers
+the complete file text and the indexed execution settings actually used (metadata can lag a
+file edit). A changed version waits again. A byte-identical copy can reuse its approval, just
+as a renamed script can.
+
+Unconfirmed templates still render ordinary content and create/replace/insert notes. Commands
+are skipped; plugin-method fields use the supplied text without calling the method. Agent,
+script and automatic calls never wait for a confirmation dialog. A persistent notice, once per
+version per session, offers **Review**. Review shows the full template and execution settings,
+or changes against the last confirmed version. **Confirm** enables future applications on
+this device; it does not replay the skipped work. **Not now** leaves it waiting. Default
+templates that need input still retain their existing automatic-input restriction.
+
+Approvals live only in vault-scoped device-local storage, not settings or synced files, and
+are excluded from settings transfer. Templates with no commands or plugin calls do not ask.
+
 ## Using them
 
 `list_templates` says what the vault has; `apply_template` runs one. From the palette:
