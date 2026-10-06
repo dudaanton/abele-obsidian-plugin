@@ -264,8 +264,9 @@ vector shapes. PDF is one page with a high-quality JPEG image, not selectable te
 diagram may have small text: keep the canvas embed or export a closer current view for detail.
 Missing or oversized images are omitted and reported in the completion message. Each image is
 limited to 8 MiB, the combined encoded images to 16 MiB and the combined decoded images to
-16 million pixels. Images whose dimensions cannot be safely checked, such as AVIF or SVG
-containing other images, are also reported as unavailable; plain vector SVG drawings work.
+16 million pixels. Animated PNG/GIF/WebP, AVIF, and SVG containing other images or filters
+are also reported as unavailable because their decoded memory cannot be safely bounded;
+plain vector SVG drawings and static PNG/GIF/WebP work.
 Remote images are never fetched.
 
 The agent has the same whole-canvas export, with its own Ask permission and access only to

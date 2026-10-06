@@ -225,7 +225,10 @@ function svgDimensions(bytes: Uint8Array, doc: Document) {
     'image/svg+xml'
   )
   const root = xml.documentElement
-  if (root.localName !== 'svg' || xml.querySelector('parsererror, image, foreignObject, use'))
+  if (
+    root.localName !== 'svg' ||
+    xml.querySelector('parsererror, image, foreignObject, use, filter')
+  )
     return null
   const view = root
     .getAttribute('viewBox')

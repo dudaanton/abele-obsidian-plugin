@@ -292,7 +292,8 @@ must be in scope. New diagrams join scope after creation, like `create`.
   PDF is one JPEG-backed page, without selectable text. Unicode is painted into the image.
   Raster allocation is bounded to 4096×4096; each image is limited to 8 MiB encoded,
   all images to 16 MiB encoded and 16 million decoded pixels. Assets without bounded dimensions
-  (including AVIF and SVG with nested assets) are omitted with warnings, never fetched remotely.
+  (including AVIF, animated PNG/GIF/WebP, and SVG with nested assets or filters) are omitted
+  with warnings, never fetched remotely.
   Cancellation before final delivery leaves no final output. A temporary output is cleaned up
   on failure where possible; this does not add canvas recovery or a second source file.
 - `look_at_canvas(path, {step?,node?,region?,maxSide?})`: a PNG plus warnings, all of it or one crop.

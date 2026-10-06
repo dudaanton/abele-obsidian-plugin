@@ -83,7 +83,7 @@ export async function exportCanvas(
       const partial = app.vault.getAbstractFileByPath(staging)
       if (partial instanceof TFile) {
         try {
-          await app.vault.delete(partial, true)
+          await app.fileManager.trashFile(partial)
         } catch {
           /* The final output is still absent. */
         }

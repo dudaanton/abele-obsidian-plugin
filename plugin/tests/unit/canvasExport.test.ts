@@ -61,6 +61,63 @@ describe('whole canvas export planning and raster PDF', () => {
     expect(text).not.toMatch(/\/JavaScript|\/OpenAction|\/Launch/)
     expect(() => imagePagePdf(jpeg, 0, 600)).toThrow()
   })
+  it('refuses animated raster assets whose frames can exceed a single-image decode budget', () => {
+    const png = new Uint8Array(44)
+    png.set([137, 80, 78, 71, 13, 10, 26, 10])
+    png.set([73, 72, 68, 82], 12)
+    const data = new DataView(png.buffer)
+    data.setUint32(8, 13)
+    data.setUint32(16, 20)
+    data.setUint32(20, 20)
+    data.setUint32(33, 8)
+    png.set([97, 99, 84, 76], 37)
+    expect(imageDimensions(png, 'png')).toBeNull()
+    const webp = new Uint8Array(30)
+    webp.set(new TextEncoder().encode('RIFF'), 0)
+    webp.set(new TextEncoder().encode('WEBPVP8X'), 8)
+    webp[20] = 2
+    expect(imageDimensions(webp, 'webp')).toBeNull()
+    const gif = new Uint8Array([
+      ...new TextEncoder().encode('GIF89a'),
+      20,
+      0,
+      20,
+      0,
+      0,
+      0,
+      0,
+      44,
+      0,
+      0,
+      0,
+      0,
+      20,
+      0,
+      20,
+      0,
+      0,
+      2,
+      1,
+      0,
+      0,
+      44,
+      0,
+      0,
+      0,
+      0,
+      20,
+      0,
+      20,
+      0,
+      0,
+      2,
+      1,
+      0,
+      0,
+      59,
+    ])
+    expect(imageDimensions(gif, 'gif')).toBeNull()
+  })
   it('checks image dimensions before allowing a compressed large image to decode', () => {
     const png = new Uint8Array(24)
     png.set([137, 80, 78, 71, 13, 10, 26, 10])

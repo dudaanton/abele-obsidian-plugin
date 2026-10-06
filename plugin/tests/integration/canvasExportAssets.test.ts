@@ -68,6 +68,20 @@ describe('bounded whole-canvas asset loading', () => {
     expect(assets.warnings[0].code).toBe('missing-file')
     expect(app.vault.readBinary).not.toHaveBeenCalled()
   })
+  it('does not let SVG filter surfaces bypass the decoded-image budget', async () => {
+    await app.vault.create('sample-effects.svg', 'Sample vector')
+    vi.mocked(app.vault.readBinary).mockResolvedValue(
+      new TextEncoder().encode(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><filter id="effect" width="100000" height="100000"><feGaussianBlur stdDeviation="10"/></filter><path filter="url(#effect)" d="M0 0 L20 20"/></svg>'
+      ).buffer
+    )
+    const assets = await load({
+      ...graph,
+      nodes: [{ ...graph.nodes[0], file: 'sample-effects.svg' }],
+    })
+    expect(createImage).not.toHaveBeenCalled()
+    expect(assets.warnings[0].message).toMatch(/dimensions/)
+  })
   it('bounds cumulative decoded assets and releases loaded images and blob URLs', async () => {
     const url = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sample')
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})

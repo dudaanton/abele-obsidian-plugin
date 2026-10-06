@@ -42,10 +42,40 @@ export function imageDimensions(
       bytes[0] === 137 &&
       ascii(1, 4) === 'PNG' &&
       ascii(12, 16) === 'IHDR'
-    )
+    ) {
+      // Animation can retain many full decoded frames, beyond the single-surface budget.
+      for (let offset = 8; offset + 8 <= bytes.length; ) {
+        if (ascii(offset + 4, offset + 8) === 'acTL') return null
+        offset += view.getUint32(offset) + 12
+      }
       return { width: view.getUint32(16), height: view.getUint32(20) }
-    if (extension === 'gif' && ascii(0, 3) === 'GIF')
+    }
+    if (extension === 'gif' && ascii(0, 3) === 'GIF') {
+      let offset = 13 + (bytes[10] & 128 ? 3 * (1 << ((bytes[10] & 7) + 1)) : 0),
+        frames = 0
+      const blocks = () => {
+        while (offset < bytes.length) {
+          const size = bytes[offset++]
+          if (!size) return
+          offset += size
+        }
+      }
+      while (offset < bytes.length) {
+        const kind = bytes[offset++]
+        if (kind === 59) break
+        if (kind === 33) {
+          offset++
+          blocks()
+        } else if (kind === 44) {
+          if (++frames > 1) return null
+          const flags = bytes[offset + 8]
+          offset += 9 + (flags & 128 ? 3 * (1 << ((flags & 7) + 1)) : 0)
+          offset++ // LZW minimum code size, followed by data sub-blocks.
+          blocks()
+        } else return null
+      }
       return { width: view.getUint16(6, true), height: view.getUint16(8, true) }
+    }
     if (extension === 'bmp' && ascii(0, 2) === 'BM')
       return { width: Math.abs(view.getInt32(18, true)), height: Math.abs(view.getInt32(22, true)) }
     if (/^jpe?g$/i.test(extension) && bytes[0] === 255 && bytes[1] === 216) {
@@ -65,6 +95,7 @@ export function imageDimensions(
     }
     if (extension === 'webp' && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') {
       const kind = ascii(12, 16)
+      if (kind === 'VP8X' && bytes[20] & 2) return null
       if (kind === 'VP8X')
         return {
           width: 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16),
