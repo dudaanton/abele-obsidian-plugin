@@ -7,11 +7,13 @@ import {
   nodeSchema,
   parentsOf,
   recordParent,
+  recordParents,
   SHAPES,
   type CanvasGraph,
   type CanvasEdge,
   type CanvasNode,
 } from './model'
+import { moveIds } from './selection'
 
 const id = z.string().min(1),
   object = z.record(z.string(), z.unknown())
@@ -39,6 +41,14 @@ export const operationSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('add_node'), node: inputNodeSchema }).strict(),
   z.object({ op: z.literal('update'), id, patch: object }).strict(),
   z.object({ op: z.literal('remove'), id }).strict(),
+  z
+    .object({
+      op: z.literal('move'),
+      ids: z.array(id).min(1),
+      dx: z.number().finite(),
+      dy: z.number().finite(),
+    })
+    .strict(),
   z.object({ op: z.literal('connect'), edge: edgeSchema }).strict(),
   z
     .object({ op: z.literal('group'), id, label: z.string().optional(), ids: z.array(id).min(1) })
@@ -150,6 +160,17 @@ export function editCanvas(
         recordParent(added, n.parent ?? null, graph)
         if (n.x === undefined && !near) needsLayout = true
         if (n.parent || type === 'group') parentsOf(graph)
+      } else if (op.op === 'move') {
+        for (const id of op.ids) known(id, nodes)
+        const parents = parentsOf(graph),
+          moving = moveIds(graph, new Set(op.ids))
+        for (const node of graph.nodes)
+          if (moving.has(node.id)) {
+            node.x += op.dx
+            node.y += op.dy
+          }
+        // Update anchors only after all descendants moved. Never resolve a half-moved group.
+        if (graph.nodes.some((node) => node.type === 'group')) recordParents(graph, parents)
       } else if (op.op === 'connect') {
         unique(elements, op.edge.id)
         known(op.edge.fromNode, nodes)

@@ -260,8 +260,9 @@ must be in scope. New diagrams join scope after creation, like `create`.
 - `canvas_edit(path, {revision, ops})`: provide the revision returned by `canvas_read` or the
   last successful canvas write. A stale revision refuses the entire write with a reread message,
   including unsaved native changes and changes arriving at the final storage boundary. sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
-  {id,patch}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
-  {id,collapsed}`, and `style {id,styleAttributes}`. Add group/node ids before connecting to them.
+  {id,patch}`, `move {ids,dx,dy}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
+  {id,collapsed}`, and `style {id,styleAttributes}`. Move translates selected nodes and group
+  descendants once, even when a child is also selected, preserving group membership. Add group/node ids before connecting to them.
   New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`
   instead of erasing their other fields. An error names the failing op index (from zero), and may
   suggest a similar id. Removing a group promotes children; removing a node removes incident edges.

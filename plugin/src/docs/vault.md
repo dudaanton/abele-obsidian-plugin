@@ -131,6 +131,12 @@ not undo a write, acknowledge matching bytes, reconstruct missing history, or sa
 Any desired change afterward is a new ordinary edit from a fresh read. No reload/crash durability
 or automatic uncertain replay is provided.
 
+Human selection and drag/resize previews are transient and never stored as canvas fields.
+A completed gesture publishes one ordinary transaction in the existing shared history.
+Group movement translates descendants once and refreshes the existing parent geometry anchors
+only after the entire translation. Group/ungroup use the same ordinary group nodes and hierarchy
+hints as agent edits. Resizing changes the standard node geometry, not linked file contents.
+
 ## Device-local key destinations
 
 Obsidian's vault-scoped local storage holds `abele-key-destinations-v1`: key identifiers and
