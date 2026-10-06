@@ -36,6 +36,8 @@ import { defaultSyncSettings } from '@/sync/settings'
 import { emptyConnection, type DeviceConnection } from '@/sync/connection'
 import { PLAIN_HTTP_REFUSED, type ChangeItem } from '@abele/sync-protocol'
 import { useVault } from '../helpers/testEnv'
+import { publicationQuestion } from '../helpers/publicationQuestion'
+import type { ExistingPublicationQuestion } from '@/sync/publication/publicationDecision'
 
 /** Obsidian's own widgets need a real app to construct; what they hold is tested elsewhere. */
 const STUBS = { Search: true, Dropdown: true }
@@ -92,6 +94,7 @@ const service = {
   answerJoin: vi.fn(),
   heldPrompt: { held: ref<{ path: string; fileId: string }[]>([]), decided: ref(null) },
   codePrompt: { staged: ref([]), ask: vi.fn() },
+  publicationPrompt: { pending: ref<ExistingPublicationQuestion[]>([]), open: vi.fn() },
   settingsPrompt: {
     staged: ref<ChangeItem[]>([]),
     names: ref<Record<string, string>>({}),
@@ -151,6 +154,7 @@ beforeEach(() => {
 
   service.connected = false
   service.heldPrompt.held.value = []
+  service.publicationPrompt.pending.value = []
   service.settingsPrompt.staged.value = []
   service.listDevices.mockResolvedValue(null)
   service.status.value = { ...DISCONNECTED_STATUS }
@@ -171,6 +175,18 @@ afterEach(() => {
   AbeleConfig.getInstance().destroy()
   vi.restoreAllMocks()
   vi.clearAllMocks()
+})
+
+it('reopens a pending private-file question only through the explicit Review action', async () => {
+  connect()
+  service.publicationPrompt.pending.value = [publicationQuestion]
+  const screen = open(SyncSettings)
+  expect(headings(screen)).toContain('Linked private files')
+  expect(screen.text()).toContain(publicationQuestion.observation.target.path)
+  expect(screen.text()).toContain(publicationQuestion.observation.audience.label)
+  await buttonNamed(screen, 'Review')!.trigger('click')
+  expect(service.publicationPrompt.open).toHaveBeenCalledExactlyOnceWith(publicationQuestion)
+  screen.unmount()
 })
 
 /** Puts the service into the state of a device that has been set up. */
