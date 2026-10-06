@@ -22,6 +22,10 @@ import { canvasPicture } from './pictureAdapter'
 import type { CanvasViewer } from './Viewer'
 import type { CanvasEditor } from './Editor'
 import { hostCanvasEditor } from './editorControls'
+import { exportCanvas } from './exportAdapter'
+import type { CanvasExportFormat } from './core/export'
+import { pickAnyFile } from '../helpers/suggesters/VaultFilePicker'
+import { isChatLog } from '../ai/chatText'
 
 /** Shared human editor; no view save hook ever publishes a transient preview. */
 export class CanvasView extends FileView {
@@ -37,6 +41,8 @@ export class CanvasView extends FileView {
   private reviewRequest = 0
   private attachmentError: string | null = null
   private pending: Record<string, unknown> | null = null
+  private exportController: AbortController | null = null
+  private lastExport: TFile | null = null
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.scope = new Scope(this.app.scope)
@@ -175,6 +181,9 @@ export class CanvasView extends FileView {
     }
   }
   private releaseDocument(): void {
+    this.exportController?.abort()
+    this.exportController = null
+    this.lastExport = null
     this.editor?.destroy()
     this.editor = null
     this.reviewRequest++
@@ -327,6 +336,22 @@ export class CanvasView extends FileView {
   }
   private exportMenu(e: MouseEvent): void {
     const menu = new Menu()
+    if (this.exportController)
+      menu.addItem((item) =>
+        item.setTitle('Cancel whole-canvas export').onClick(() => this.exportController?.abort())
+      )
+    for (const format of ['png', 'svg', 'pdf'] as const)
+      menu.addItem((item) =>
+        item
+          .setTitle(`Export whole canvas as ${format.toUpperCase()}`)
+          .setDisabled(!!this.exportController)
+          .onClick(() => void this.exportWhole(format))
+      )
+    if (this.lastExport)
+      menu.addItem((item) =>
+        item.setTitle('Insert exported file into note…').onClick(() => void this.insertExport())
+      )
+    menu.addSeparator()
     for (const format of ['png', 'svg'] as const) {
       menu.addItem((item) =>
         item
@@ -340,6 +365,64 @@ export class CanvasView extends FileView {
       )
     }
     menu.showAtMouseEvent(e)
+  }
+  async exportWhole(format: CanvasExportFormat): Promise<TFile | null> {
+    const file = this.file,
+      epoch = this.refreshToken
+    if (!file || this.closed || this.exportController) return null
+    const controller = new AbortController()
+    this.exportController = controller
+    try {
+      const output = await this.app.fileManager.getAvailablePathForAttachment(
+        `${file.basename} whole.${format}`,
+        file.path
+      )
+      controller.signal.throwIfAborted()
+      const result = await exportCanvas(this.app, {
+        path: file.path,
+        output,
+        format,
+        inScope: () => true,
+        signal: controller.signal,
+      })
+      if (!this.closed && this.file === file && epoch === this.refreshToken)
+        this.lastExport = result.file
+      new Notice(
+        `Saved whole canvas: ${result.file.path}${result.warnings.length ? ` (${result.warnings.length} warnings; ${result.warnings.map((w) => w.message).join('; ')})` : ''}`
+      )
+      return result.file
+    } catch (error) {
+      new Notice(
+        controller.signal.aborted
+          ? 'Whole-canvas export cancelled'
+          : `Whole-canvas export failed: ${String(error)}`
+      )
+      return null
+    } finally {
+      if (this.exportController === controller) this.exportController = null
+    }
+  }
+  /** Append an ordinary attachment embed; process preserves edits made while the picker was open. */
+  async insertExport(): Promise<void> {
+    const attachment = this.lastExport
+    if (!attachment) return
+    try {
+      const note = await pickAnyFile(
+        this.app,
+        (file) => file.extension === 'md' && !isChatLog(file.path)
+      )
+      if (!note || this.closed || this.lastExport !== attachment) return
+      if (this.app.vault.getAbstractFileByPath(attachment.path) !== attachment)
+        throw new Error('Exported attachment is no longer available')
+      const link = this.app.fileManager.generateMarkdownLink(attachment, note.path)
+      await this.app.vault.process(
+        note,
+        (text) => `${text}${text.endsWith('\n') ? '\n' : '\n\n'}!${link}\n`
+      )
+      new Notice('Export inserted at the end of the note')
+    } catch (error) {
+      new Notice(`Export could not be inserted: ${String(error)}`)
+    }
   }
   /** SVG is a self-contained image document, not a second editable canvas format. */
   async exportPicture(format: 'png' | 'svg', each: boolean): Promise<TFile[]> {

@@ -245,10 +245,32 @@ at the named step (the first step when no step is named). Pictures follow change
 source. Scrolling the surrounding note is still the note's gesture, not canvas panning.
 Without Abele, Obsidian can still open and embed the ordinary canvas, without the walkthrough.
 
-The picture action in the viewer's header exports the current diagram view, or every step,
-as PNG or SVG into the vault's ordinary attachments folder. SVG is a self-contained picture
-with embedded PNG pixels, not editable vector shapes. PDF export and human drawing tools on
-these diagrams are not available yet. SVG drawings retain their existing pen tools and export.
+The picture action in the viewer's header offers **Export whole canvas as PNG**, **SVG** or
+**PDF**. These include the complete diagram even while you are zoomed into one card or viewing
+only the first walkthrough step. Current-view and each-step PNG/SVG exports remain available.
+Exports capture the current shared content once, including pending cards, without saving drafts
+or changing the canvas. They use the current Obsidian theme and the same picture renderer as
+canvas embeds and agent pictures: note text, shapes, connections and local image attachments.
+Interactive note widgets are painted as static content, not copied as running code.
+
+Each export is a new file in the ordinary attachments folder; an existing file is never
+replaced. Open the picture menu again during a long export to **Cancel whole-canvas export**;
+closing or switching away from the canvas also cancels it before delivery. After success,
+**Insert exported file into note…** opens Obsidian's note picker and appends a normal embed at
+the end of the chosen note. The export is a snapshot, not a live link to later canvas changes.
+
+PNG and SVG use at most 4096 pixels on the longer side. SVG contains PNG pixels, not editable
+vector shapes. PDF is one page with a high-quality JPEG image, not selectable text. A very large
+diagram may have small text: keep the canvas embed or export a closer current view for detail.
+Missing or oversized images are omitted and reported in the completion message. Each image is
+limited to 8 MiB, the combined encoded images to 16 MiB and the combined decoded images to
+16 million pixels. Images whose dimensions cannot be safely checked, such as AVIF or SVG
+containing other images, are also reported as unavailable; plain vector SVG drawings work.
+Remote images are never fetched.
+
+The agent has the same whole-canvas export, with its own Ask permission and access only to
+notes and images in the chat's scope. Human drawing tools on structured diagrams are not
+available yet. SVG drawings retain their existing pen tools and export.
 
 ## Where it is kept
 

@@ -13,6 +13,7 @@ import {
 } from './core/painter'
 import { defaultMetrics, type TextMetricsPort } from './core/scene'
 import { labelOf, type CanvasGraph, type Rect } from './core/model'
+import { EXPORT_LIMITS, imageDimensions } from './core/export'
 
 export function canvasTheme(doc: Document): CanvasTheme {
   const css = doc.defaultView.getComputedStyle(doc.body)
@@ -68,8 +69,17 @@ export async function canvasAssets(
   sourcePath: string,
   inScope: (path: string) => boolean,
   doc: Document,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  bounded = false
 ) {
+  let decodedPixels = 0,
+    encodedBytes = 0
+  const urls: string[] = []
+  const release = () => {
+    for (const list of images.values())
+      for (const image of list) (image.source as HTMLImageElement).src = ''
+    for (const url of urls) URL.revokeObjectURL(url)
+  }
   const contents = new Map<string, string>(),
     images = new Map<string, ImageAsset[]>(),
     warnings: { code: string; ids: string[]; message: string }[] = []
@@ -85,6 +95,38 @@ export async function canvasAssets(
     }
     signal?.throwIfAborted()
     try {
+      let source = vaultUrl(app, file)
+      if (bounded) {
+        if (file.stat.size > EXPORT_LIMITS.assetBytes)
+          throw new Error('Image exceeds the export byte limit')
+        const bytes = new Uint8Array(await app.vault.readBinary(file))
+        signal?.throwIfAborted()
+        if (
+          bytes.length > EXPORT_LIMITS.assetBytes ||
+          encodedBytes + bytes.length > EXPORT_LIMITS.totalAssetBytes
+        )
+          throw new Error('Image exceeds the export byte limit')
+        encodedBytes += bytes.length
+        const size =
+          file.extension.toLowerCase() === 'svg'
+            ? svgDimensions(bytes, doc)
+            : imageDimensions(bytes, file.extension.toLowerCase())
+        if (!size || ![size.width, size.height].every((v) => Number.isFinite(v) && v > 0))
+          throw new Error('Image dimensions cannot be bounded for export')
+        const pixels = size.width * size.height
+        if (decodedPixels + pixels > EXPORT_LIMITS.decodedPixels)
+          throw new Error('Image exceeds the export decoded-memory limit')
+        decodedPixels += pixels
+        source = URL.createObjectURL(
+          new Blob([bytes], {
+            type:
+              file.extension.toLowerCase() === 'svg'
+                ? 'image/svg+xml'
+                : `image/${file.extension.toLowerCase()}`,
+          })
+        )
+        urls.push(source)
+      }
       const image = doc.win.createEl('img')
       await new Promise<void>((resolve, reject) => {
         const finish = (error?: Error) => {
@@ -92,6 +134,7 @@ export async function canvasAssets(
           image.onload = null
           image.onerror = null
           signal?.removeEventListener('abort', abort)
+          if (error) image.src = ''
           error ? reject(error) : resolve()
         }
         const abort = () => {
@@ -102,7 +145,7 @@ export async function canvasAssets(
         image.onload = () => finish()
         image.onerror = () => finish(new Error('Local image could not be drawn'))
         signal?.addEventListener('abort', abort, { once: true })
-        image.src = vaultUrl(app, file)
+        image.src = source
       })
       const list = images.get(node) ?? []
       list.push({ source: image, width: image.naturalWidth, height: image.naturalHeight })
@@ -116,53 +159,87 @@ export async function canvasAssets(
       })
     }
   }
-  for (const node of graph.nodes) {
-    signal?.throwIfAborted()
-    let text = labelOf(node),
-      relative = sourcePath
-    if (node.type === 'file' && node.file) {
-      if (!inScope(node.file)) text = '[Note content outside scope]'
-      else {
-        const file = app.vault.getAbstractFileByPath(node.file)
-        if (!(file instanceof TFile)) {
-          text = '[Missing file]'
+  try {
+    for (const node of graph.nodes) {
+      signal?.throwIfAborted()
+      let text = labelOf(node),
+        relative = sourcePath
+      if (node.type === 'file' && node.file) {
+        if (!inScope(node.file)) {
+          text = '[Note content outside scope]'
           warnings.push({
-            code: 'missing-file',
+            code: 'outside-scope',
             ids: [node.id],
-            message: `${node.id}: linked file is missing`,
+            message: `${node.id}: linked file content is outside scope`,
           })
-        } else if (IMAGE.test(file.extension)) {
-          text = ''
-          await load(node.id, file.path, sourcePath)
-        } else if (file.extension === 'md') {
-          text = notePart(await app.vault.read(file), node.subpath)
-          relative = file.path
+        } else {
+          const file = app.vault.getAbstractFileByPath(node.file)
+          if (!(file instanceof TFile)) {
+            text = '[Missing file]'
+            warnings.push({
+              code: 'missing-file',
+              ids: [node.id],
+              message: `${node.id}: linked file is missing`,
+            })
+          } else if (IMAGE.test(file.extension)) {
+            text = ''
+            await load(node.id, file.path, sourcePath)
+          } else if (file.extension === 'md') {
+            text = notePart(await app.vault.read(file), node.subpath)
+            relative = file.path
+          } else
+            text = `${file.name}${file.extension === 'canvas' ? '\nSub-diagram (open for detail)' : ''}`
+        }
+      }
+      contents.set(node.id, text)
+      for (const match of text.matchAll(/!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g))
+        await load(node.id, match[1].split('#')[0], relative)
+      for (const match of text.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
+        const path = match[1].replace(/^<|>$/g, '')
+        if (!/^[a-z]+:/i.test(path)) {
+          let decoded = path
+          try {
+            decoded = decodeURIComponent(path)
+          } catch {
+            /* A literal percent sign is valid in vault filenames. */
+          }
+          await load(node.id, decoded, relative)
         } else
-          text = `${file.name}${file.extension === 'canvas' ? '\nSub-diagram (open for detail)' : ''}`
+          warnings.push({
+            code: 'remote-image',
+            ids: [node.id],
+            message: `${node.id}: remote images are not fetched for a canvas picture`,
+          })
       }
     }
-    contents.set(node.id, text)
-    for (const match of text.matchAll(/!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g))
-      await load(node.id, match[1].split('#')[0], relative)
-    for (const match of text.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
-      const path = match[1].replace(/^<|>$/g, '')
-      if (!/^[a-z]+:/i.test(path)) {
-        let decoded = path
-        try {
-          decoded = decodeURIComponent(path)
-        } catch {
-          /* A literal percent sign is valid in vault filenames. */
-        }
-        await load(node.id, decoded, relative)
-      } else
-        warnings.push({
-          code: 'remote-image',
-          ids: [node.id],
-          message: `${node.id}: remote images are not fetched for a canvas picture`,
-        })
-    }
+    return { contents, images, warnings, release }
+  } catch (error) {
+    release()
+    throw error
   }
-  return { contents, images, warnings }
+}
+/** Pure vector SVG drawings remain available; nested assets cannot bypass the decode budget. */
+function svgDimensions(bytes: Uint8Array, doc: Document) {
+  const xml = new doc.defaultView.DOMParser().parseFromString(
+    new TextDecoder().decode(bytes),
+    'image/svg+xml'
+  )
+  const root = xml.documentElement
+  if (root.localName !== 'svg' || xml.querySelector('parsererror, image, foreignObject, use'))
+    return null
+  const view = root
+    .getAttribute('viewBox')
+    ?.trim()
+    .split(/[\s,]+/)
+    .map(Number)
+  const number = (name: string) => {
+    const value = root.getAttribute(name) ?? ''
+    return /^\d+(?:\.\d+)?(?:px)?$/.test(value) ? parseFloat(value) : undefined
+  }
+  return {
+    width: number('width') ?? view?.[2] ?? 300,
+    height: number('height') ?? view?.[3] ?? 150,
+  }
 }
 export async function canvasRegionAssets(
   app: App,
@@ -171,17 +248,24 @@ export async function canvasRegionAssets(
   inScope: (path: string) => boolean,
   doc: Document,
   region: Rect,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  bounded = false
 ) {
   const nodes = canvasVisibility(graph, region).visible
-  return canvasAssets(app, { ...graph, nodes }, path, inScope, doc, signal)
+  return canvasAssets(app, { ...graph, nodes }, path, inScope, doc, signal, bounded)
 }
 
 export async function canvasPicture(
   app: App,
   graph: CanvasGraph,
   path: string,
-  options: { region?: Rect; node?: string; step?: number; maxSide?: number },
+  options: {
+    region?: Rect
+    node?: string
+    step?: number
+    maxSide?: number
+    boundedAssets?: boolean
+  },
   inScope: (path: string) => boolean,
   signal?: AbortSignal
 ) {
@@ -203,23 +287,36 @@ export async function canvasPicture(
   canvas.width = Math.max(1, Math.round(region.width * scale))
   canvas.height = Math.max(1, Math.round(region.height * scale))
   ctx.setTransform(scale, 0, 0, scale, -region.x * scale, -region.y * scale)
-  const assets = await canvasRegionAssets(app, graph, path, inScope, doc, region, signal)
-  signal?.throwIfAborted()
-  const theme = canvasTheme(doc)
-  const result = paintCanvas(ctx, graph, region, theme, {
-    ...assets,
-    highlight: playback?.highlight,
-    diagnosticGraph: source,
-  })
-  return {
-    canvas,
+  const assets = await canvasRegionAssets(
+    app,
+    graph,
+    path,
+    inScope,
+    doc,
     region,
-    warnings: [
-      ...result.warnings,
-      ...assets.warnings,
-      ...textResolutionWarnings(scale, theme.size),
-    ],
-    visible: result.visible,
-    say: playback?.say,
+    signal,
+    options.boundedAssets
+  )
+  try {
+    signal?.throwIfAborted()
+    const theme = canvasTheme(doc)
+    const result = paintCanvas(ctx, graph, region, theme, {
+      ...assets,
+      highlight: playback?.highlight,
+      diagnosticGraph: source,
+    })
+    return {
+      canvas,
+      region,
+      warnings: [
+        ...result.warnings,
+        ...assets.warnings,
+        ...textResolutionWarnings(scale, theme.size),
+      ],
+      visible: result.visible,
+      say: playback?.say,
+    }
+  } finally {
+    assets.release()
   }
 }

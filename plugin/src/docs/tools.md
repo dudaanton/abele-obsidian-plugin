@@ -236,9 +236,9 @@ not rebuilt. No tracked-change or comment authoring, nested-table editing or pag
 
 ## Canvas diagrams
 
-`canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, `canvas_steps`, and `look_at_canvas` have their own
+`canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, `canvas_steps`, `canvas_export`, and `look_at_canvas` have their own
 per-agent Off/Ask/On modes. Reading and pictures default to On; creation, semantic editing and
-layout and walkthrough authoring default to Ask, independently of general file-write permissions. Existing-diagram calls
+layout, walkthrough authoring and exporting default to Ask, independently of general file-write permissions. Existing-diagram calls
 must be in scope. New diagrams join scope after creation, like `create`.
 
 - `canvas_read(path, {detail?, region?, step?})`: `step` is a one-based playback number, filtering
@@ -281,6 +281,20 @@ must be in scope. New diagrams join scope after creation, like `create`.
   reveals accumulate, backwards navigation recomputes them. Connections appear when both
   endpoints are visible. Highlights never reveal hidden content. An id focus frames that node
   or edge; a region gives exact framing; otherwise frame revealed content. `say` is plain text.
+- `canvas_export(path, {output,format,maxSide?})`: captures the complete current revision and
+  creates a new attachment, independent of camera or walkthrough step. `format` is `png`, `svg`
+  or `pdf`; `output` is an exact safe vault-relative path with that extension and an existing
+  parent folder. Existing outputs are refused, including a collision during rendering. The
+  tool's own permission authorizes creation of this output; successful output joins scope.
+  Source and local assets must be in scope. Returns output `path`, `source`, captured `revision`,
+  world `region`, pixel dimensions, `visible` ids and warnings. It never saves pending drafts.
+  maxSide defaults to 4096 (integer 64–4096). SVG embeds PNG pixels, not editable vectors;
+  PDF is one JPEG-backed page, without selectable text. Unicode is painted into the image.
+  Raster allocation is bounded to 4096×4096; each image is limited to 8 MiB encoded,
+  all images to 16 MiB encoded and 16 million decoded pixels. Assets without bounded dimensions
+  (including AVIF and SVG with nested assets) are omitted with warnings, never fetched remotely.
+  Cancellation before final delivery leaves no final output. A temporary output is cleaned up
+  on failure where possible; this does not add canvas recovery or a second source file.
 - `look_at_canvas(path, {step?,node?,region?,maxSide?})`: a PNG plus warnings, all of it or one crop.
   `step` uses one-based cumulative reveal, highlights and camera focus, and returns `say`.
   An explicit node/region crop overrides the step camera, but never exposes hidden content.

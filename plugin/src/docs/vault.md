@@ -117,9 +117,15 @@ that tab native until reopened in Abele. A view switch never writes the diagram.
 editor and stored version differ, adoption waits for native saving/reloading rather than deciding
 which version to overwrite; pending edits remain in their native tab. Camera and selected step live only in the workspace
 leaf state, not the `.canvas` file. `![[sample.canvas#step=N]]` and `#node=id` embeds store only
-that link in the note; their pictures are transient. User PNG/SVG exports go to the ordinary
-attachments folder, never beside the canvas as a sidecar. SVG exports contain a self-contained
-PNG picture, not editable vector paths. `look_at_canvas` creates no export file, cache note or
+that link in the note; their pictures are transient. User whole-canvas PNG/SVG/PDF exports go
+into the ordinary attachments folder as new files; current-view and step PNG/SVG exports remain
+available. `canvas_export` creates the exact new output path supplied by the agent. Neither
+changes the canvas source. SVG embeds PNG pixels, not editable vector paths; PDF stores one
+JPEG-backed page, without scripts or selectable text. Output is encoded completely and staged
+in a temporary attachment before final delivery; cancellation/failure cleans up that temporary
+file where possible, never publishes an incomplete final picture. This is not canvas recovery
+or an editable sidecar. Inserting an export appends an ordinary attachment embed to a picked
+note, preserving its existing bytes. `look_at_canvas` creates no export file, cache note or
 diagram attachment: its PNG is an agent-message image. Source notes and local images are read only within scope.
 
 Uncertain publication and confirmed-writing/local-acknowledgment-pending work is retained only

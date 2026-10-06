@@ -40,6 +40,7 @@ const SCOPED = [
   'canvas_edit',
   'canvas_layout',
   'canvas_steps',
+  'canvas_export',
   'look_at_canvas',
   'ls',
   'find',

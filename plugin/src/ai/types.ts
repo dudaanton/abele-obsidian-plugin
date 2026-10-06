@@ -445,6 +445,7 @@ export const CANVAS_TOOL_MODES: Record<string, ToolMode> = {
   canvas_edit: 'ask',
   canvas_layout: 'ask',
   canvas_steps: 'ask',
+  canvas_export: 'ask',
 }
 
 /** Personal device data: ask before every request unless the person chooses another mode. */

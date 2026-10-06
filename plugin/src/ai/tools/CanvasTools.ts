@@ -19,6 +19,7 @@ import { serializeCanvas } from '@/canvas/core/model'
 import { lintCanvas } from '@/canvas/core/lint'
 import { bundledMermaid } from '@/canvas/mermaidAdapter'
 import { canvasPicture, hostMetrics } from '@/canvas/pictureAdapter'
+import { exportCanvas, exportPath } from '@/canvas/exportAdapter'
 
 const path = z.string().describe('Exact vault-relative .canvas path')
 const revision = z
@@ -302,6 +303,37 @@ export function createCanvasTools(): AgentTool[] {
             path: key,
             diff: { old: serializeCanvas(result.before), new: serializeCanvas(result.after) },
           },
+        }
+      }
+    ),
+    definition(
+      'canvas_export',
+      'Export whole canvas',
+      'Export a captured complete canvas revision to a new PNG, raster-backed SVG, or single-page raster PDF. Independent of camera and walkthrough step. Local note and image assets are read only within scope; missing or oversized assets produce warnings. maxSide defaults 4096 (64–4096). Output is an exact new vault-relative attachment path with matching extension; existing files are never overwritten. Does not save drafts or change the source. Own Ask permission authorizes creating this output; success adds it to chat scope. Returns captured revision, bounds, dimensions and warnings. SVG contains PNG pixels, not editable vectors; PDF contains a JPEG image, not selectable text.',
+      z
+        .object({
+          path,
+          output: z.string(),
+          format: z.enum(['png', 'svg', 'pdf']),
+          maxSide: z.number().int().min(64).max(4096).default(4096),
+        })
+        .strict(),
+      async (params, signal, ctx) => {
+        const key = scoped(params.path, ctx),
+          output = exportPath(params.output, params.format)
+        guardChatWrite(output)
+        const result = await exportCanvas(GlobalStore.getInstance().app, {
+          ...params,
+          path: key,
+          output,
+          inScope: (path) => scopeOf(ctx).isInScope(path),
+          signal,
+        })
+        scopeOf(ctx).addFile(result.file.path)
+        const { file, ...details } = result
+        return {
+          ...answer({ path: file.path, source: key, ...details }),
+          details: { path: file.path },
         }
       }
     ),
