@@ -1,7 +1,7 @@
 <template>
   <Section
     title="Nodes"
-    desc="Connect this device to a local AbeleNode daemon. This stage offers non-executing fake sessions only. Connections, tokens and history caches stay on this device and are not transferred with settings."
+    desc="Connect this device to a local AbeleNode daemon. Choose projects and isolated workspaces, run Claude Code when available, or open non-executing fake sessions. Connections, tokens and history caches stay on this device and are not transferred with settings."
   >
     <Setting
       v-for="node in service.nodes.value"
@@ -12,7 +12,7 @@
       <Button text="Check" tooltip="Check this device's node connection" @click="check(node.id)" />
       <Button
         text="Open session"
-        tooltip="Create or pick a non-executing fake session"
+        tooltip="Pick a session or manage projects and workspaces"
         @click="open(node)"
       />
       <Button

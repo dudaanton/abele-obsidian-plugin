@@ -1,6 +1,14 @@
 import { expect, it } from 'vitest'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  copyFileSync,
+  chmodSync,
+  writeFileSync,
+  readFileSync,
+} from 'node:fs'
 import { resolve } from 'node:path'
 import { createServer } from 'node:http'
 import { evalRaw, reloadPlugin } from './helpers/obsidianCli'
@@ -19,12 +27,40 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI for node live acceptance')
   mkdirSync('../.scratch', { recursive: true })
   const dir = mkdtempSync(resolve('../.scratch/n-'))
+  const fakeClaude = resolve(dir, 'fixture-claude.mjs')
+  copyFileSync(resolve('tests/fixtures/nodeClaude.mjs'), fakeClaude)
+  chmodSync(fakeClaude, 0o700)
+  const env = { ...process.env, ABELE_CLAUDE_PATH: fakeClaude }
+  const projectsRoot = mkdtempSync('/tmp/abele-node-ui-')
+  const projectPaths = ['one', 'two'].map((name) => resolve(projectsRoot, name))
+  for (const path of projectPaths) {
+    mkdirSync(path)
+    const git = (args: string[]) => {
+      const result = spawnSync('/usr/bin/git', args, { cwd: path, encoding: 'utf8' })
+      if (result.status) throw new Error(result.stderr)
+    }
+    git(['init', '--initial-branch=main'])
+    writeFileSync(resolve(path, 'sample.txt'), 'before\n')
+    git(['add', 'sample.txt'])
+    git([
+      '-c',
+      'user.name=Sample',
+      '-c',
+      'user.email=sample@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'sample',
+    ])
+  }
   let child: ChildProcess | undefined
   let port = 0
   let registrationId = ''
   const start = async () => {
     child = spawn(process.execPath, [cli, 'start', '--state-dir', dir, '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env,
     })
     let output = '',
       errors = ''
@@ -55,7 +91,7 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
     const credential = spawnSync(
       process.execPath,
       [cli, 'token', 'create', 'sample-desktop', '--state-dir', dir],
-      { encoding: 'utf8' }
+      { encoding: 'utf8', env }
     )
     expect(credential.status, credential.stderr).toBe(0)
     const { token } = JSON.parse(credential.stdout)
@@ -165,6 +201,64 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
       prompt: 'allow',
       controls: [],
     })
+    for (let i = 0; i < projectPaths.length; i++) {
+      evalAsync(`(async () => {
+        ${PRELUDE}
+        const press = text => [...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === text).click();
+        const fill = (label, value) => { const field = document.querySelector('input[aria-label="' + label + '"]'); field.value = value; field.dispatchEvent(new Event('input', {bubbles:true})) };
+        [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === 'Projects and workspaces').click();
+        await until(() => document.querySelector('.abele-node-workspaces'));
+        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Refresh').disabled);
+        const registration = [...document.querySelectorAll('.abele-node-workspaces details')].find(d => d.querySelector('summary')?.textContent === 'Register a project');
+        registration.open = true;
+        fill('Project path', ${JSON.stringify(projectPaths[i])});
+        registration.querySelector('.checkbox-container').click();
+        await wait(100); press('Register project');
+        await until(() => document.querySelector('select[aria-label="Project"] option:checked')?.textContent.includes(${JSON.stringify(projectPaths[i])}));
+        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Create workspace').disabled);
+        press('Create workspace');
+        await until(() => { const selected = document.querySelector('select[aria-label="Workspace"] option:checked')?.textContent; return selected?.includes('abele/') && selected.includes('ready') });
+        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Start session in workspace').disabled);
+        fill('Node session title', 'Sample coding task ${i + 1}');
+        await wait(100); press('Start session in workspace');
+        await until(() => !document.querySelector('.abele-node-workspaces') && document.querySelector('.abele-node-chat')?.textContent.includes('Claude Code'));
+        const presenter = chats.getNodeSession(chats.activeTabId.value);
+        const send = text => { const field = document.querySelector('.abele-node-chat textarea'); field.value = text; field.dispatchEvent(new Event('input', {bubbles:true})); field.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true})) };
+        send(${JSON.stringify(i === 0 ? 'edit' : 'deny')});
+        await until(() => presenter.projection.value.prompts.some(p => p.state === 'pending'));
+        ${i === 0 ? "send('followup'); await until(() => presenter.projection.value.queuedInputs.length === 1);" : ''}
+        return JSON.stringify(true)
+      })()`)
+      reloadPlugin()
+      const result = evalAsync<{
+        provider: string
+        prompt: string
+        diff: string
+        evidenceCollapsed: boolean
+      }>(`(async () => {
+        ${PRELUDE}
+        await until(() => chats.getNodeSession(chats.activeTabId.value)?.projection.value.prompts.some(p => p.state === 'pending'));
+        const presenter = chats.getNodeSession(chats.activeTabId.value);
+        await until(() => [...document.querySelectorAll('.abele-node-chat button')].some(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')} && !b.disabled));
+        [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')}).click();
+        await until(() => presenter.messages.value.some(m => m.content === ${JSON.stringify(i === 0 ? '**Finished:** followup' : '**Finished:** deny')}));
+        [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === 'Projects and workspaces').click();
+        await until(() => document.querySelector('.abele-node-workspaces'));
+        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Preview status and diff').disabled);
+        [...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Preview status and diff').click();
+        await until(() => document.querySelector('.abele-node-workspaces details[open] pre'));
+        const diff = [...document.querySelectorAll('.abele-node-workspaces details[open] pre')].map(p => p.textContent).join('');
+        document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
+        const rawControls = [...document.querySelectorAll('.abele-node-chat button')].filter(b => b.textContent.trim() === 'Read stored record');
+        return JSON.stringify({ provider: presenter.provider.value, prompt: presenter.projection.value.prompts[0].choice, diff, evidenceCollapsed: rawControls.length > 0 && rawControls.every(b => b.closest('details') && !b.closest('details').open) })
+      })()`)
+      expect(result.evidenceCollapsed).toBe(true)
+      expect(result.provider).toBe('claude')
+      expect(result.prompt).toBe(i === 0 ? 'allow' : 'deny')
+      if (i === 0) expect(result.diff).toContain('+after')
+      else expect(result.diff).toBe('No tracked changes')
+      expect(readFileSync(resolve(projectPaths[i], 'sample.txt'), 'utf8')).toBe('before\n')
+    }
   } finally {
     try {
       evalAsync(`(async () => {
@@ -179,6 +273,7 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
     } finally {
       await stop()
       rmSync(dir, { recursive: true, force: true })
+      rmSync(projectsRoot, { recursive: true, force: true })
     }
   }
-}, 120000)
+}, 180000)

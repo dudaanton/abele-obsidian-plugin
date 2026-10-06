@@ -26,26 +26,61 @@ settings. Model-list fetching, image generation and voice input keep their separ
 **Settings → Abele → Nodes** connects this device to a local AbeleNode daemon. Create a
 separate installation token with `abele-node token create`, then paste it beside the node's
 label and loopback URL. The token stays only in this device's keychain, even with the synced
-key store unlocked. Remote addresses, phone connections and real agent execution are not
-available in this stage.
+key store unlocked. Remote addresses and phone connections are not available yet; the local
+node can run Claude Code when its installed CLI is available.
 
 After adding a node, the chat's **+** menu offers **Local chat** and **Session on…** for each
-node. Pick an existing session or create a **fake session (non-executing)**. It uses the same
+node. Pick an existing session, create a **fake session (non-executing)**, or open **Projects
+and workspaces…**. Register an existing absolute path on the node, choose whether you trust
+it for execution, and create a managed workspace from a branch or commit. Git provisioning
+is a durable job: its state and phase remain visible after restarting. A coding session can
+start only in a ready, unused managed workspace. Choose **Claude Code** or **Fake** and a
+session title; an attached session can be reopened instead of starting another one. It uses the same
 chat tabs, message renderer and composer, but never runs the plugin's agents or vault tools.
 It accepts text only; local slash commands, attachments, history editing, branches and rewind
 are not offered. Node file links never open a coincidentally named vault file; file browsing
-will arrive in a later stage. **Read stored output** displays artifact-backed text.
+will arrive in a later stage. **Projects and workspaces** is also available from a node chat.
+Its read-only preview lists changed and untracked paths and shows the current unified diff
+of tracked staged/unstaged changes against HEAD. Untracked contents are not included, and
+the preview is not an immutable snapshot. Refresh it to review newer work.
+
+Claude assistant text renders as Markdown; tool rows show the name and a short argument
+summary. Click the tool icon to expand arguments and results. Successful Edit calls show
+before/after snippets, Write calls show supplied content, nested work is grouped and thinking
+is collapsed. These are provider-reported operations, not immutable file snapshots; review
+the workspace diff too. Empty thinking is labelled honestly. Large normalized output is
+loaded through authorized artifact reads and cached locally. **Read stored output** exposes
+other retained content; raw provider evidence stays collapsed under **Other journal records
+and provider evidence**, with **Read stored record** for each artifact. Individual outputs
+above 1 MiB are not rendered inline.
 
 The status distinguishes **Offline**, **Queued**, **Accepted**, **Running** and **Needs
 attention**. After connecting once, messages sent offline are kept on this device and replayed
 with the same operation identity on reconnect. Unknown acceptance stays queued rather than
-silently being resent as a new message. Pending permissions show **Allow** and **Deny** and
-can only be answered while connected. **Ask for permission** pauses the next fake turn for a
-sample decision; this fixture is non-executing.
+silently being resent as a new message. Node-accepted follow-ups are listed separately from
+this device's unsent outbox, with **Cancel queued input**. **Interrupt turn** targets the
+active run, not a later resumed run. Steering and interactive questions are explicitly not
+supported yet. Ordinary follow-ups use the node's saved native session identity to resume
+Claude; an interrupted/unknown input is never automatically rerun.
+
+Claude permission cards show the tool, original arguments, expiry and **Approve / Deny**.
+Approvals apply only to that exact action; no argument editing or permanent allow is offered.
+Cards survive reopening/reload from the journal, including resolved/expired decisions.
+A saved decision and its delivery to the provider are separate facts. Answer only while
+connected. User Claude settings may allow a tool without asking the node: such calls are
+labelled **Allowed by your Claude settings**, not as node approvals. Repository Claude
+permissions are off by default; a trusted project can explicitly enable them in the workspace
+dialog. The effective provider configuration and availability are shown there.
+**Ask for permission** pauses only a fake turn for a sample Allow/Deny decision; nothing executes.
 Closing a tab does not stop the node session; reopening or reloading the plugin restores its
 history. Daemon journals own the history; the plugin keeps a device-local transactional cache,
 not a Markdown chat file. Removing a connection does not delete node history or revoke its
 token, and reconnecting with another token uses a fresh local cache.
+**Detach session** releases an idle workspace lease without deleting history; it refuses
+running/queued work. **Remove unused workspace** requires a clean managed worktree (including
+untracked/ignored files) and retains its branch. **Unregister project** retains the original
+checkout and requires removing its managed workspaces first. Git initialization, merging,
+pushing, editing files and automatic repair of jobs needing attention are not offered here.
 
 ## Offering tools by group
 

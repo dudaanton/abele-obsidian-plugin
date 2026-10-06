@@ -20,6 +20,8 @@ export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
 }
+import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
+import { nodeWorkspaceFixture } from './nodeWorkspaceFixture'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
 import AiReplyOriginalDialog from '@/components/AiReplyOriginalDialog.vue'
@@ -108,6 +110,7 @@ function mountAlone(component: Component, props: Record<string, unknown> = {}): 
  * own openers; the chat's two dialogs open from the chat.
  */
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'template-review': () => {
     void reviewScript(GlobalStore.getInstance().app, {
       template: {
@@ -160,48 +163,71 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
         role: 'assistant',
         timestamp: 1,
         content: 'A bright lamp glows.',
-        revisions: [{
-          proposal: 'sample-proposal',
-          before: 'A **small lantern** glows beside the garden path.',
-          after: 'A bright lamp glows.',
-          author: 'Sample editor',
-          at: 1,
-          highlights: [],
-        }],
+        revisions: [
+          {
+            proposal: 'sample-proposal',
+            before: 'A **small lantern** glows beside the garden path.',
+            after: 'A bright lamp glows.',
+            author: 'Sample editor',
+            at: 1,
+            highlights: [],
+          },
+        ],
       },
     }),
-  'key-destinations': (options) => destinationFixture(options?.recipientRows ? 'layout' : 'review', () => {
-    const modal = reviewKeyDestinations()
-    modal.modalEl.dataset.abeleFixture = 'key-destinations'
-    return new Promise<void>((resolve) => {
-      const close = modal.onClose.bind(modal)
-      modal.onClose = () => { try { close() } finally { resolve() } }
-    })
-  }),
-  'key-destinations-new': () => destinationFixture('new', () => {
-    const modal = reviewKeyDestinations()
-    modal.modalEl.dataset.abeleFixture = 'key-destinations-new'
-    const select = modal.bodyEl.querySelector('select')!
-    select.value = 'new'
-    select.dispatchEvent(new Event('change', { bubbles: true }))
-    for (const [label, value] of [['Recipient address', 'http://192.168.42.12:8123/status'], ['New key name', 'Sample local key']]) {
-      const input = modal.bodyEl.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
-      input.value = value
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    }
-    return new Promise<void>((resolve) => {
-      const close = modal.onClose.bind(modal)
-      modal.onClose = () => { try { close() } finally { resolve() } }
-    })
-  }),
-  'saved-key-request': () => destinationFixture('request', async () => {
-    const completion = approveScriptKeyRequest({ url: 'https://api.sample.example/data', headers: { Authorization: '${abele_key:Sample key}' } })
-    const modal = document.querySelector<HTMLElement>('.modal.abele-modal')
-    if (modal) modal.dataset.abeleFixture = 'saved-key-request'
-    // Cancellation may outlive DOM removal while the production transaction rolls back.
-    // Await its real settlement before the fixture restores or another fixture opens.
-    await completion.catch(() => {})
-  }),
+  'key-destinations': (options) =>
+    destinationFixture(options?.recipientRows ? 'layout' : 'review', () => {
+      const modal = reviewKeyDestinations()
+      modal.modalEl.dataset.abeleFixture = 'key-destinations'
+      return new Promise<void>((resolve) => {
+        const close = modal.onClose.bind(modal)
+        modal.onClose = () => {
+          try {
+            close()
+          } finally {
+            resolve()
+          }
+        }
+      })
+    }),
+  'key-destinations-new': () =>
+    destinationFixture('new', () => {
+      const modal = reviewKeyDestinations()
+      modal.modalEl.dataset.abeleFixture = 'key-destinations-new'
+      const select = modal.bodyEl.querySelector('select')!
+      select.value = 'new'
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+      for (const [label, value] of [
+        ['Recipient address', 'http://192.168.42.12:8123/status'],
+        ['New key name', 'Sample local key'],
+      ]) {
+        const input = modal.bodyEl.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
+        input.value = value
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      return new Promise<void>((resolve) => {
+        const close = modal.onClose.bind(modal)
+        modal.onClose = () => {
+          try {
+            close()
+          } finally {
+            resolve()
+          }
+        }
+      })
+    }),
+  'saved-key-request': () =>
+    destinationFixture('request', async () => {
+      const completion = approveScriptKeyRequest({
+        url: 'https://api.sample.example/data',
+        headers: { Authorization: '${abele_key:Sample key}' },
+      })
+      const modal = document.querySelector<HTMLElement>('.modal.abele-modal')
+      if (modal) modal.dataset.abeleFixture = 'saved-key-request'
+      // Cancellation may outlive DOM removal while the production transaction rolls back.
+      // Await its real settlement before the fixture restores or another fixture opens.
+      await completion.catch(() => {})
+    }),
   confirm: () =>
     mountAlone(ConfirmModal, {
       title: 'Delete model',
@@ -277,7 +303,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       original = config.github
     const save = config.saveSettings
     // Touching Off/Ask/On in a layout fixture must never write its sample data to disk.
-    config.saveSettings = async () => { config.version.value++ }
+    config.saveSettings = async () => {
+      config.version.value++
+    }
     config.github = githubSettingsFrom({
       connections: Array.from({ length: 6 }, (_, i) => ({
         id: `sample-${i}`,
@@ -317,7 +345,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     const config = AbeleConfig.getInstance()
     const original = config.github
     const save = config.saveSettings
-    config.saveSettings = async () => { config.version.value++ }
+    config.saveSettings = async () => {
+      config.version.value++
+    }
     config.github = githubSettingsFrom({
       enabled: true,
       connections: Array.from({ length: 8 }, (_, i) => ({

@@ -24,6 +24,15 @@ const e = (seq: number, type: string, data: unknown): JournalEvent => ({
   at: '2025-01-01T00:00:00.000Z',
 })
 
+it('keeps raw provider evidence collapsed instead of creating dozens of transcript artifact buttons', () => {
+  const projected = reduceTranscript([
+    e(1, 'claude.raw', { run_id: 'r', artifact_id: 'raw', size: 9000 }),
+    e(2, 'claude.message.final', { run_id: 'r', artifact_id: 'normalized', size: 9000 }),
+  ])
+  expect(projected.artifacts.map((a) => a.artifactId)).toEqual(['normalized'])
+  expect(projected.unknown).toHaveLength(2)
+})
+
 it('reconciles block finals without duplication, scopes native IDs to runs and keeps child work grouped', () => {
   const projection = reduceTranscript([
     e(1, 'run.started', { run_id: 'r' }),

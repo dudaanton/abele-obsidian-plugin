@@ -53,7 +53,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     }
     if (event.type.startsWith('claude.') && (data.artifact_id || data.late)) {
       unknown.push(event)
-      if (text('artifact_id'))
+      if (text('artifact_id') && !['claude.raw', 'claude.unknown'].includes(event.type))
         artifacts.push({
           messageId: `event:${event.seq}`,
           artifactId: text('artifact_id'),

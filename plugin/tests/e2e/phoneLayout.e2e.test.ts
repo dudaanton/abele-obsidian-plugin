@@ -74,6 +74,7 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'node-workspaces',
   'template-review',
   'template-review-change',
   'slide-network',
@@ -745,7 +746,7 @@ const probeScript = `(async () => {
         label: { value: reference.title }, state: { value: 'needs-attention' }, error: { value: '' }, isStreaming: { value: false }, connection,
         draft: { value: { text: '', attachments: [] } }, queued: { value: [{ id: 'queued', text: 'Sample queued follow-up' }] }, rejected: { value: [] },
         messages: { value: [{ id: 'user', role: 'user', content: 'Sample request', timestamp: 0 }, { id: 'reply', role: 'assistant', content: 'Sample streamed answer', timestamp: 0 }] },
-        projection: { value: { artifacts: [], unknown: [], prompts: [{ prompt_id: 'sample-prompt', state: 'pending', choice: null }] } },
+        projection: { value: { artifacts: [], unknown: [], prompts: [{ prompt_id: 'sample-prompt', state: 'pending', expires_at: 1999999999999, choice: null }] } },
         send: async () => {}, answer: async () => {}, openResource: () => {}, destroy: () => {},
       }
       try {
@@ -760,6 +761,22 @@ const probeScript = `(async () => {
         await wait(400)
         const nodeChat = document.querySelector('.abele-node-chat')
         await screen('node chat', nodeChat, nodeChat.querySelector('.abele-ai-chat__messages'))
+        const claude = { ...presenter, id: 'layout-claude-tab', provider: { value: 'claude' }, nativeSessionId: { value: 'sample-native-session' }, workspaceId: { value: 'sample-workspace' },
+          messages: { value: [{ id: 'assistant', role: 'assistant', content: '**Completed:** a sample edit.\\n\\n- One changed path', thinking: 'Sample exposed reasoning.', timestamp: 0 }, { id: 'tool', role: 'tool-call', content: '', toolName: 'Edit', toolParams: { file_path: 'src/sample-file.txt', old_string: 'before', new_string: 'after' }, toolResult: 'Edited sample file', toolStatus: 'approved', toolDiff: { old: 'before', new: 'after' }, timestamp: 0 }] },
+          projection: { value: { activeRuns: ['sample-run'], queuedInputs: [{ id: 'followup', text: 'Sample queued follow-up' }], artifacts: [], unknown: [], children: { tool: [{ id: 'child', role: 'assistant', content: 'Sample nested work', timestamp: 0 }] }, prompts: [{ prompt_id: 'sample-permission', state: 'pending', tool_name: 'Bash', input: { command: 'printf sample > sample-new-file.txt', description: 'Write a disposable sample file' }, expires_at: 1999999999999, choice: null }] } }, interrupt: async () => {}, cancelInput: async () => {} }
+        chats.nodeSessions.set(claude.id, claude)
+        chats.tabOrder.value = [...chats.tabOrder.value, claude.id]
+        chats.activeTabId.value = claude.id
+        await wait(400)
+        const claudeChat = document.querySelector('.abele-node-chat')
+        await screen('node claude chat', claudeChat, claudeChat.querySelector('.abele-ai-chat__messages'))
+        const transcriptScroll = claudeChat.querySelector('.abele-ai-chat__messages')
+        transcriptScroll.scrollTop = transcriptScroll.scrollHeight
+        await wait(200)
+        await screen('node claude permission', claudeChat, transcriptScroll)
+        chats.nodeSessions.delete(claude.id)
+        chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== claude.id)
+        chats.activeTabId.value = presenter.id
         nodes.nodes.value = [...wasNodes, registration]
         nodes.connections.set(registration.id, { ...connection, client: { listSessions: async () => [{ title: 'Sample existing fake session', session_id: 'layout-session' }] }, state: { value: 'offline' }, error: { value: 'Connection unavailable' } })
         app.setting.open()
@@ -1065,6 +1082,17 @@ const probeScript = `(async () => {
               .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.top < 0 || r.bottom > window.innerHeight) })
               .map((b) => b.textContent.trim())
           : []
+        if (dialogName === 'node-workspaces') {
+          for (const details of modal.querySelectorAll('details')) details.open = true
+          const registration = [...modal.querySelectorAll('summary')].find(s => s.textContent.trim() === 'Register a project')
+          registration?.scrollIntoView({ block: 'start' })
+          await wait(200)
+          await screen('node workspace registration', modal, modal.querySelector('.abele-modal__body'))
+          const permissions = [...modal.querySelectorAll('summary')].find(s => s.textContent.trim() === 'Claude permission settings')
+          permissions?.scrollIntoView({ block: 'start' })
+          await wait(200)
+          await screen('node workspace permissions', modal, modal.querySelector('.abele-modal__body'))
+        }
         const clipped = []
         for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"]')) {
           const cs = getComputedStyle(f)
@@ -1074,6 +1102,15 @@ const probeScript = `(async () => {
           f.blur()
         }
         report[label].clipped = clipped
+        if (dialogName === 'node-workspaces') {
+          const preview = [...modal.querySelectorAll('summary')].find(s => s.textContent.trim() === 'Read-only status and HEAD diff')
+          preview?.scrollIntoView({ block: 'start' })
+          await wait(200)
+          await screen('node workspace preview', modal, modal.querySelector('.abele-modal__body'))
+          modal.querySelector('input[aria-label="Node session title"]')?.scrollIntoView({ block: 'start' })
+          await wait(200)
+          await screen('node workspace actions', modal, modal.querySelector('.abele-modal__body'))
+        }
         // The agent editor's interceptor, a script chosen and a pattern that does not compile
         // typed into its field: the picker, the field and the line saying why it was not kept.
         if (dialogName === 'agent-editor') {
@@ -1543,6 +1580,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   const screens = [
     'chat',
     'node chat',
+    'node claude chat',
+    'node claude permission',
+    'node workspace preview',
+    'node workspace actions',
+    'node workspace registration',
+    'node workspace permissions',
     'settings nodes',
     'settings nodes overview',
     'settings selection book',

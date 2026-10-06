@@ -177,6 +177,8 @@ const script = `(async () => {
     if (await until(() => document.querySelector('.modal.abele-modal'), 5000)) {
       await wait(300)
       const modal = document.querySelector('.modal.abele-modal')
+      // Node registration and permission opt-in are disclosures, not separate tabs.
+      if (dialogName === 'node-workspaces') for (const details of modal.querySelectorAll('details')) details.open = true
       measureAll('dialog ' + dialogName, modal)
       // A dialog with tabs, the agent editor's among them, is measured tab by tab.
       for (const tab of [...modal.querySelectorAll('.abele-tabs__tab')].slice(1)) {
