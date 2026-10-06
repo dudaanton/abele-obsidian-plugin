@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 import { runInNewContext } from 'node:vm'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { paragraph, sampleDocx } from '../fixtures/docx/sampleDocx'
 
 let code: string
@@ -41,9 +41,10 @@ beforeAll(async () => {
   code = stdout
 }, 60_000)
 
-function browserBundle(nativePromise = true, nodeStreams = false) {
+function browserBundle(nativePromise = true, nodeStreams = false, imports = vi.fn()) {
   const module = { exports: {} as any }
-  // No process, Buffer, require or host immediate APIs: exercise the mobile scheduler path.
+  // The mobile loader exposes require but rejects Node imports; no process, Buffer or
+  // host immediate APIs. A caught import still produces an Obsidian notice.
   runInNewContext(`const window = globalThis; ${code}`, {
     module,
     exports: module.exports,
@@ -58,12 +59,23 @@ function browserBundle(nativePromise = true, nodeStreams = false) {
     ArrayBuffer,
     TextEncoder,
     TextDecoder,
-    ...(nodeStreams ? { require: createRequire(import.meta.url), Buffer } : {}),
+    require: (id: string) => {
+      imports(id)
+      if (id === 'obsidian') return { Platform: { isMobile: !nodeStreams } }
+      if (!nodeStreams) throw new Error('Forbidden Node import: ' + id)
+      return createRequire(import.meta.url)(id)
+    },
+    ...(nodeStreams ? { Buffer } : {}),
   })
   return module.exports
 }
 
 describe('production ZIP dependency aliases', () => {
+  it('does not probe a forbidden Node stream import on mobile', () => {
+    const imports = vi.fn()
+    browserBundle(true, false, imports)
+    expect(imports).not.toHaveBeenCalledWith('stream')
+  })
   it.each([true, false])(
     'compresses and reads async ZIP streams (native Promise: %s)',
     async (native) => {

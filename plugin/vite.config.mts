@@ -78,6 +78,16 @@ export default defineConfig(async ({ mode }) => {
       vue(),
       maplibreAssetsPlugin(prod),
       {
+        name: 'abele-optional-node-streams',
+        load(id: string) {
+          if (id !== path.resolve(__dirname, 'node_modules/jszip/lib/readable-stream-browser.js'))
+            return null
+          // Obsidian's mobile require emits a notice even when JSZip catches its error.
+          // Keep desktop Node streams, but never attempt that forbidden import on mobile.
+          return `const { Platform } = require('obsidian'); module.exports = Platform.isMobile ? {} : require('stream')`
+        },
+      },
+      {
         name: 'abele-changelog',
         resolveId(id: string) {
           return id === 'virtual:abele-changelog' ? '\0virtual:abele-changelog' : null
