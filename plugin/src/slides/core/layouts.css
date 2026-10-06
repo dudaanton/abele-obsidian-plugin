@@ -62,6 +62,9 @@
   /* Logical pixels: the viewer scales this entire canvas uniformly, including on phones. */
   font-size: calc(var(--font-text-size, 16px) * 1.75);
   line-height: 1.35;
+  letter-spacing: 0;
+  /* Keep native theme-font glyph spacing when this scaled canvas is rasterized as SVG. */
+  text-rendering: geometricPrecision;
 }
 
 .abele-slide[hidden],
@@ -134,6 +137,8 @@
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
+  letter-spacing: 0;
+  text-rendering: inherit;
   /* Empty foreground space must not cover a background video's native controls. */
   pointer-events: none;
 }
@@ -169,6 +174,28 @@
 
 .abele-slide-content p {
   margin-block: 0 0.75em;
+}
+
+.abele-slide-content p,
+.abele-slide-content li,
+.abele-slide-content table,
+.abele-slide-content th,
+.abele-slide-content td {
+  letter-spacing: 0;
+}
+
+.abele-slide-content-heading {
+  pointer-events: auto;
+}
+
+.abele-slide-content-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.abele-slide-short-body .abele-slide-content-body {
+  justify-content: center;
 }
 
 .abele-slide-content ul,
@@ -251,7 +278,7 @@
 }
 
 .abele-slide[data-generated='sources'] .abele-slide-region {
-  font-size: 18px;
+  font-size: inherit;
   overflow-wrap: anywhere;
 }
 
@@ -261,11 +288,12 @@
 }
 
 .abele-slide[data-generated='sources'] h1 {
-  font-size: 2.4em;
+  font-size: 1.7em;
   column-span: all;
 }
 
 .abele-slide[data-generated='sources'] h3 {
+  font-size: calc(var(--font-text-size, 16px) * 1.5);
   margin-block: 0.6em 0.2em;
   break-after: avoid;
 }
@@ -273,6 +301,10 @@
 .abele-slide[data-generated='sources'] ul {
   margin-bottom: 0.4em;
   break-inside: avoid;
+}
+
+.abele-slide[data-generated='sources'] li {
+  margin-block: 0.1em;
 }
 
 .abele-slide-region {

@@ -12,6 +12,7 @@ import type {
 import { expandCssImports } from './cssImports'
 import { staticHtml } from './staticHtml'
 import { presentationDeck } from './sources'
+import { prepareContentBody, alignShortContentBody } from './contentLayout'
 import { Presentation } from './Presentation'
 import { fitSlide, slideForGesture, slideForKey, type Navigation, type Point } from './navigation'
 
@@ -214,7 +215,10 @@ export class DeckViewer {
         { includeRoot: true }
       )
     })()
-    this.ready = Promise.all([render, styles]).then(() => {})
+    this.ready = Promise.all([render, styles]).then(() => {
+      if (this.closed || revision !== this.revision) return
+      for (const entry of this.slides.values()) alignShortContentBody(entry.element)
+    })
     return this.ready
   }
 
@@ -324,7 +328,10 @@ export class DeckViewer {
     return Promise.all(wanted.map((i) => this.slides.get(i)!.ready)).then(() => {
       if (this.closed) return
       const active = this.slides.get(this.index)
-      if (active) return this.activate(active)
+      if (active) {
+        alignShortContentBody(active.element)
+        return this.activate(active)
+      }
     })
   }
 
@@ -340,11 +347,10 @@ export class DeckViewer {
       slide.settings.attributes.transition ?? this.deck?.settings.properties.transition
     if (transition === 'fade' || transition === 'slide') element.dataset.transition = transition
     if (slide.settings.layout === 'grid') {
+      const cells = slide.regions.filter((r) => r.name === 'cell').length
       element.style.setProperty(
         '--deck-columns',
-        String(
-          Math.max(1, Math.ceil(Math.sqrt(slide.regions.filter((r) => r.name === 'cell').length)))
-        )
+        String(Math.max(1, cells <= 3 ? cells : Math.ceil(Math.sqrt(cells))))
       )
     }
     element.hidden = index !== this.index
@@ -382,6 +388,7 @@ export class DeckViewer {
       if (entry.gone) return
       this.publishSteps()
       this.applySteps()
+      alignShortContentBody(element)
       if (!element.hidden) void this.activate(entry)
       else this.pause(entry)
     })
@@ -422,6 +429,20 @@ export class DeckViewer {
       })
     ).then(() => {
       if (!entry.gone) {
+        if (
+          slide.settings.layout === 'content' &&
+          !slide.generated &&
+          slide.regions.every((r) => r.blocks.every((b) => b.type === 'markdown'))
+        ) {
+          const body = prepareContentBody(element)
+          if (body) {
+            const resize = new ResizeObserver(() => alignShortContentBody(element))
+            resize.observe(body)
+            for (const block of Array.from(body.children)) resize.observe(block)
+            entry.cleanups.push(() => resize.disconnect())
+            alignShortContentBody(element)
+          }
+        }
         this.publishSteps()
         this.applySteps()
         if (!element.hidden) void this.activate(entry)

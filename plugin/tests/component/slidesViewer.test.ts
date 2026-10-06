@@ -30,6 +30,24 @@ const made = (source: string, renderer?: BlockRenderer) => {
 }
 
 describe('bounded deck rendering', () => {
+  it.each([
+    [1, 1],
+    [2, 2],
+    [3, 3],
+    [4, 2],
+    [5, 3],
+  ])('uses %i grid cells in %i columns', async (cells, columns) => {
+    const { viewer, load } = made(
+      '::slide{layout=grid}::\n# Sample grid\n' +
+        Array.from({ length: cells }, () => '::cell::\nShort insight').join('\n')
+    )
+    await load()
+    expect(
+      viewer.viewport
+        .querySelector<HTMLElement>('.abele-slide')!
+        .style.getPropertyValue('--deck-columns')
+    ).toBe(String(columns))
+  })
   it('renders a muted source count and an automatic final slide without exposing note prose', async () => {
     const { viewer, host, load } = made(
       '# Topic\nBody\n\n> [!notes]\n> Private reminder\n> [Report](https://example.test/report)'

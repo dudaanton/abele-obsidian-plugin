@@ -117,6 +117,53 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
     expect(result.instruction).toContain('Fix authoring warnings or explain')
   })
   for (const theme of ['light', 'dark']) {
+    it(`centers only short text bodies and wraps readable sources in ${theme}`, async () => {
+      const longUrl = 'https://example.test/reference/' + 'sample-segment-'.repeat(18)
+      const source = `---\ntype: presentation\n---\n## A focused statement\nA single useful idea\n\n> [!notes]\n> <${longUrl}>\n\n---\n## Several useful points\n${'- A useful point\n'.repeat(6)}`
+      const result = JSON.parse(
+        await evalLong(`(async()=>{
+        const path=${JSON.stringify(DIR + '/short-content.md')},file=await app.vault.create(path,${JSON.stringify(source)}),leaf=app.workspace.getLeaf('tab')
+        const original={light:document.body.classList.contains('theme-light'),dark:document.body.classList.contains('theme-dark')}
+        const scope=new window.__abeleTest.ScopeResolver();scope.addFile(path)
+        const ctx={scope,interactive:true},tools=window.__abeleTest.createAgentTools()
+        try {
+          document.body.classList.toggle('theme-light',${JSON.stringify(theme)}==='light');document.body.classList.toggle('theme-dark',${JSON.stringify(theme)}==='dark')
+          await leaf.openFile(file);const v=leaf.view.viewer;await v.ready
+          const active=()=>v.viewport.querySelector('.abele-slide:not([hidden])')
+          const shot=async(slide,name)=>{
+            const picture=await tools.find(t=>t.name==='screenshot').execute('sample-picture',{path,slide},undefined,ctx)
+            const saved=picture.content[0].text.split('\\n')[0].replace('Screenshot saved: ','');const f=app.vault.getAbstractFileByPath(saved)
+            try { const fs=require('fs');fs.writeFileSync(${JSON.stringify(SHOTS)}+'/'+${JSON.stringify(theme)}+'-'+name+'.png',Buffer.from(await app.vault.readBinary(f))) }
+            finally { await app.vault.delete(f) }
+          }
+          const s=active(),body=s.querySelector('.abele-slide-content-body'),b=body.getBoundingClientRect(),text=body.firstElementChild.getBoundingClientRect(),scale=s.getBoundingClientRect().width/1280
+          const short={centered:s.classList.contains('abele-slide-short-body'),error:Math.abs((text.top+text.bottom)/2-(b.top+b.bottom)/2)/scale,heading:s.querySelector('.abele-slide-content-heading h2').getBoundingClientRect().top<s.getBoundingClientRect().top+100*scale}
+          await shot(1,'short-content')
+          await v.go(1);const dense=active().classList.contains('abele-slide-short-body')
+          await v.go(2);const sourceSlide=active(),li=sourceSlide.querySelector('li'),h3=sourceSlide.querySelector('h3')
+          const sources={entry:parseFloat(getComputedStyle(li).fontSize),heading:parseFloat(getComputedStyle(h3).fontSize),width:li.scrollWidth,available:li.clientWidth}
+          const report=JSON.parse((await tools.find(t=>t.name==='deck_check').execute('sample-check',{path,slide:3},undefined,ctx)).content[0].text)
+          await shot(3,'long-sources')
+          return JSON.stringify({short,dense,sources,issues:report.slides[0].issues,unchanged:await app.vault.read(file)===${JSON.stringify(source)}})
+        } finally {
+          leaf.detach();await app.vault.delete(file)
+          document.body.classList.toggle('theme-light',original.light);document.body.classList.toggle('theme-dark',original.dark)
+        }
+      })()`)
+      )
+      expect(result.short.centered).toBe(true)
+      expect(result.short.error).toBeLessThan(2)
+      expect(result.short.heading).toBe(true)
+      expect(result.dense).toBe(false)
+      expect(result.sources.entry).toBeGreaterThanOrEqual(28)
+      expect(result.sources.heading).toBeGreaterThanOrEqual(24)
+      expect(result.sources.heading).toBeLessThan(result.sources.entry)
+      expect(result.sources.width).toBeLessThanOrEqual(result.sources.available + 1)
+      expect(result.issues.filter((issue: { kind: string }) => issue.kind === 'overflow')).toEqual(
+        []
+      )
+      expect(result.unchanged).toBe(true)
+    })
     it(`renders every layout at logical size in ${theme}, with theme colours and sources`, async () => {
       const result = JSON.parse(
         await evalLong(`(async()=>{
@@ -143,6 +190,10 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
               table:!th||(parseFloat(getComputedStyle(th).paddingTop)>=10&&getComputedStyle(th).backgroundColor!=='rgba(0, 0, 0, 0)'),
               quote:!quote||parseFloat(getComputedStyle(quote).borderLeftWidth)>=4,
               listIndent:[...slide.querySelectorAll('li')].every(li=>parseFloat(getComputedStyle(li).marginInlineStart)===0),
+              tracking:[...slide.querySelectorAll('p,li,table,th,td')].every(el=>getComputedStyle(el).letterSpacing==='normal'||parseFloat(getComputedStyle(el).letterSpacing)===0),
+              rendering:getComputedStyle(slide.querySelector('p,li')||slide).textRendering,
+              entry:measure(slide.querySelector('li')),
+              cells:[...slide.querySelectorAll('.abele-slide-region-cell')].map(el=>{const b=el.getBoundingClientRect();return {top:b.top,left:b.left,right:b.right}}),
               marker:slide.querySelector('.abele-slide-sources-marker')?.textContent??'',
               private:slide.textContent.includes('Private detail')}
             const picture=await tools.find(t=>t.name==='screenshot').execute('sample-picture',{path:${JSON.stringify(PATH)},slide:index+1},undefined,ctx)
@@ -176,11 +227,22 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
         expect(slide.table).toBe(true)
         expect(slide.quote).toBe(true)
         expect(slide.listIndent).toBe(true)
+        expect(slide.tracking).toBe(true)
+        expect(slide.rendering).toBe('geometricprecision')
         expect(slide.private).toBe(false)
       }
       expect(result.results[2].h2).toBeGreaterThan(result.results[2].h3)
       expect(result.results[2].h3).toBeGreaterThan(result.results[2].body)
       expect(result.results[2].marker).toBe('Sources: 1')
+      expect(result.results[4].cells).toHaveLength(3)
+      expect(
+        result.results[4].cells.every(
+          (cell: { top: number }) => Math.abs(cell.top - result.results[4].cells[0].top) < 1
+        )
+      ).toBe(true)
+      expect(result.results[7].entry).toBeGreaterThanOrEqual(28)
+      expect(result.results[7].h3).toBeGreaterThanOrEqual(24)
+      expect(result.results[7].h3).toBeLessThan(result.results[7].entry)
       expect(
         result.report.slides
           .flatMap((s: { issues: { kind: string }[] }) => s.issues)

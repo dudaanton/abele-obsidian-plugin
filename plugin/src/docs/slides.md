@@ -10,7 +10,7 @@ Set frontmatter `type: presentation` to open the note as a deck. `aspect` is `16
 1280×720), `4:3` (960×720), or `9:16` (720×1280). The canvas scales uniformly to fit the tab or
 presentation window; it does not reflow to phone width. `theme: default` uses Obsidian's theme;
 a `theme: "[[sample-theme.css]]"` value loads a vault CSS file. The default slide type scale is
-about 28 logical pixels for body text, with larger, tightly spaced headings, theme-accent
+about 28 logical pixels for body text with normal tracking, with larger, tightly spaced headings, theme-accent
 subheadings/emphasis, padded tables and accent-bordered quotes. Title, section and quote layouts
 have their own hierarchy. All fonts and colours come from Obsidian; deck CSS/theme files override.
 
@@ -25,7 +25,9 @@ The first nonblank line of a slide may be `::slide{layout=split bg="[[sample-ima
 dim=0.4 fit=cover class="sample-layout" autoplay}::` (write the whole marker on one line).
 Layouts: `title`, `section`, `content` (default), `split`, `grid`, `image`, `quote`. In `split`,
 text before regions is the shared heading; use standalone `::left::` and `::right::` lines.
-In `grid`, use `::cell::` for each cell. `image` puts its embedded image or video behind its
+In `grid`, use `::cell::` for each cell: up to three cells share one row; four use a 2×2 grid.
+Content headings stay at the top. A plain-text content body using less than a third of the remaining
+height is vertically centered below its heading; longer bodies, tables, code and embeds stay top-aligned. `image` puts its embedded image or video behind its
 caption. Reading mode labels actual slide markers and separators with a thin slide divider.
 
 Pictures, video, audio, note embeds, drawings, galleries, diagrams, charts and maps use the
@@ -50,7 +52,9 @@ reference links, `[[Sample reference|Short label]]` or `<https://example.test/re
 are collected into an automatic final **Sources** slide, grouped by slide number/title, and the
 original slide shows a small muted **Sources: N** marker. Repeated targets within one slide count
 once; images and code examples are not sources. Notes still show the links to the presenter.
-The appendix is a derived part of the portable audience model, not written into the note.
+The appendix uses the slide body size for entries and a slightly smaller size for slide-title
+headings; long addresses wrap within its columns. It is a derived part of the portable audience
+model, not written into the note.
 `deck_read`/`deck_edit` number authored slides only; `deck_check`, `screenshot` and `present`
 also include the final rendered appendix. Do not try to edit it: edit its originating notes.
 The appendix is exempt from body-density warnings, but still checked for overflow; a long
@@ -168,7 +172,8 @@ This is the presentation-authoring skill, available without a vault skill instal
    Keep body text to about 40 words, at most 5 bullets, and tables to 5 data rows × 3 columns
    with short cells. Put long explanations in `> [!notes]` or on another slide, not tiny text.
    No links/URLs in the slide body: put source links in `> [!notes]` for the automatic appendix.
-   Choose a built-in layout for each idea; do not write deck CSS, colours or fonts unless asked. Reuse in-scope pictures/drawings and their
+   Choose `layout=section` for one-line statements and another built-in layout for each other
+   idea; do not write deck CSS, colours or fonts unless asked. Reuse in-scope pictures/drawings and their
    existing embed syntax. A screenshot is not a substitute for checking the facts.
 3. Use `deck_create` for a new note, or `deck_read` before `deck_edit` on an existing deck.
    For a large deck follow each `nextOffset` with `deck_read.offset` until it is `null`;

@@ -50,7 +50,10 @@ A settings line is optional and goes at the very top of its slide:
 `quote`. Title, section and quote center their content. The default style uses large slide
 text and a clear heading hierarchy, with your theme's accent for subheadings and emphasis,
 comfortable tables and bordered quotations. Title slides have a larger heading and muted subtitle. Split uses the `::left::` and
-`::right::` lines for columns. Grid uses one `::cell::` line for each cell. Image fills the
+`::right::` lines for columns. Grid uses one `::cell::` line for each cell: up to three cells
+sit in one row, and four make a 2×2 grid. For a one-line statement, choose `section`. Content
+keeps its heading at the top and centers a short text body below it; longer text, tables,
+code and pictures remain top-aligned. Image fills the
 slide with its embedded image or video and leaves the text as a caption.
 
 The slide is a fixed canvas, scaled to fit rather than reflowed. `aspect: '16:9'` is the
@@ -87,7 +90,8 @@ The deck automatically adds a final **Sources** slide, grouped by slide title, a
 **Sources: N** label on each slide with references. Notes still show these links. Repeated
 links on the same slide count once; pictures and code examples are not collected. Use ordinary
 Markdown links (including reference links), note links or angle-bracket web links in notes.
-The last slide is not written into your note: change the references in the original notes
+Source entries use the same readable size as slide body text, with slightly smaller grouping
+headings; long addresses wrap. The last slide is not written into your note: change the references in the original notes
 rather than trying to edit the generated slide. A very long source list may overflow;
 check the final slide too.
 
