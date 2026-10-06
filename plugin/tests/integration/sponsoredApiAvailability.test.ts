@@ -6,7 +6,7 @@ import { scopedApiServer } from '../helpers/scopedApiServer'
 import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
 import { SyncClient, sha256 } from '@abele/sync-core'
 import { SCOPED_VERSION_HEADER } from '@abele/sync-protocol'
-const currentCommit = '5cd9207bdf676cf19097b374c0a623e7909aa25a'
+const currentCommit = '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba'
 function sponsoredPaths(vault: string, grant: string, note: string) {
   const owner = '/v1/vaults/' + vault + '/grants/' + grant + '/assets',
     scoped = '/v1/scoped/vaults/' + vault + '/grants/' + grant

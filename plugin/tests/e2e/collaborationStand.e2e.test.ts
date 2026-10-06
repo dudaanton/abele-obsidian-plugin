@@ -25,7 +25,7 @@ import {
   type CollaborationPeer,
 } from './helpers/collaborationPeers'
 import { pasteNativeImage } from './helpers/nativePaste'
-const COMMIT = '5cd9207bdf676cf19097b374c0a623e7909aa25a',
+const COMMIT = '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba',
   ROOT = 'Agents/Проект примера.md',
   NOTE = 'Agents/Разрозненные/Общая заметка.md',
   PRIVATE = 'Agents/Личное/Закрытая заметка.md',
