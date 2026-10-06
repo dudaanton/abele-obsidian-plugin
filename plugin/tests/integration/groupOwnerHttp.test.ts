@@ -51,7 +51,8 @@ describe('strict owner group management HTTP', () => {
       rootId: item.file_id,
       rootVersion: item.version_id,
       role: 'editor',
-      state: 'preparing',
+      state: 'active',
+      preparation: { ok: true, state: 'active' },
     })
     await expect(
       port.createGroup(session, {

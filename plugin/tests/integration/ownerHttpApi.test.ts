@@ -44,7 +44,7 @@ describe('real disposable folder-management HTTP adapters', () => {
         '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba',
         work
       )
-      const caps = await (await fetch(stand.url + '/v1/capabilities')).json()
+      const caps = await (await globalThis.fetch(stand.url + '/v1/capabilities')).json()
       expect(caps.scoped.enabled).toBe(true)
       expect(caps.scoped.modes).toMatchObject({ folder: true, group: true })
       await expect(
@@ -53,9 +53,9 @@ describe('real disposable folder-management HTTP adapters', () => {
       await expect(stand.prepareGroup('invented-invalid-token', 'sample-vault')).rejects.toThrow(
         'preparation refused: 401'
       )
-      expect((await fetch(stand.url + '/__disposable/prepare', { method: 'POST' })).status).toBe(
-        404
-      )
+      expect(
+        (await globalThis.fetch(stand.url + '/__disposable/prepare', { method: 'POST' })).status
+      ).toBe(404)
     } finally {
       await stand?.stop()
       rmSync(work, { recursive: true, force: true })
