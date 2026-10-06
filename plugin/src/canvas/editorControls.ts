@@ -94,10 +94,15 @@ export function hostCanvasEditor(
     history: async (direction) => {
       const document = requireDocument(),
         file = document.file,
-        path = file.path
+        path = file.path,
+        generation = document.session.generation
       const snapshot = await store.snapshotFile(file)
-      if (current() !== document || file.path !== path)
-        throw new Error('Canvas changed; history was not applied')
+      if (
+        current() !== document ||
+        file.path !== path ||
+        document.session.generation !== generation
+      )
+        throw new Error('Canvas changed; try again. History was not applied')
       return direction === 'undo'
         ? store.undo(path, snapshot.revision)
         : store.redo(path, snapshot.revision)
