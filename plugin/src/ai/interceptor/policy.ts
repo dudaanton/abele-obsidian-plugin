@@ -11,6 +11,9 @@ import { waitForScript } from '@/scripting/abort'
 /** A call as the script sees it: a copy, so changing it changes nothing. */
 export interface PolicyCall {
   name: string
+  /** MCP identities pinned by the model request, not resolved from the current alias. */
+  permissionKey?: string
+  destinationKey?: string
   args: Record<string, unknown>
   /** The call reaches outside the chat's scope. Only a function may approve that. */
   outOfScope: boolean
@@ -49,8 +52,40 @@ function copyArgs(args: Record<string, unknown>): Record<string, unknown> {
 export function toolPolicy(
   spec: ToolPolicySpec,
   scriptName: string,
-  cancellation?: { signal: AbortSignal; onTimeout: () => void }
+  cancellation?: { signal: AbortSignal; onTimeout: () => void },
+  tools: ReadonlyArray<{ name: string; permissionKey?: string; destinationKey?: string }> = []
 ): ToolPolicy {
+  const identityOf = (
+    tool: Pick<PolicyCall, 'name' | 'permissionKey' | 'destinationKey'>,
+    includeDestination = true
+  ): string | undefined => {
+    if (!tool.name.startsWith('mcp_')) return tool.name
+    if (!includeDestination) return tool.permissionKey
+    return tool.permissionKey && tool.destinationKey
+      ? JSON.stringify([tool.permissionKey, tool.destinationKey])
+      : undefined
+  }
+  const bind = (names: string[], includeDestination = true): Set<string> =>
+    new Set(
+      names.flatMap((name) => {
+        if (!name.startsWith('mcp_') && !name.startsWith('mcp:')) return [name]
+        const tool = tools.find((entry) => entry.name === name || entry.permissionKey === name)
+        const identity = tool && identityOf(tool, includeDestination)
+        return identity ? [identity] : []
+      })
+    )
+  // Resolve static MCP lists once, before a rename can give an alias to another server.
+  const approved = Array.isArray(spec.approve) ? bind(spec.approve) : new Set<string>()
+  // A denial stays with its server/tool even if that server's endpoint is edited.
+  const denied = bind(spec.deny, false)
+  // An unresolved denial must not vanish beneath approve:true; only known owners can be rebound.
+  const unresolvedDenied = new Set(
+    spec.deny.filter(
+      (name) =>
+        (name.startsWith('mcp_') || name.startsWith('mcp:')) &&
+        !tools.some((entry) => entry.name === name || entry.permissionKey === name)
+    )
+  )
   const refused: PolicyDecision = {
     kind: 'deny',
     reason: `Refused by the interceptor script "${scriptName}"`,
@@ -59,30 +94,36 @@ export function toolPolicy(
   return {
     async decide(call) {
       if (cancellation?.signal.aborted) return ASK
-      if (spec.deny.includes(call.name)) return refused
+      const identity = identityOf(call)
+      const deniedIdentity = identityOf(call, false)
+      if (
+        (deniedIdentity && denied.has(deniedIdentity)) ||
+        unresolvedDenied.has(call.name) ||
+        (call.permissionKey && unresolvedDenied.has(call.permissionKey))
+      )
+        return refused
 
       const approve = spec.approve
       if (typeof approve !== 'function') {
         // A blanket answer never reaches outside the scope: the person approving by hand is
         // what adds a path to it, and a list of tool names says nothing about paths.
         if (call.outOfScope) return ASK
-        if (approve === true || approve.includes(call.name)) return { kind: 'approve' }
+        if (approve === true || (identity && approved.has(identity))) return { kind: 'approve' }
         return ASK
       }
 
       let timer = 0
       try {
-        const decide = () => Promise.race([
-          Promise.resolve().then(() =>
-            approve({ name: call.name, args: copyArgs(call.args), outOfScope: call.outOfScope })
-          ),
-          new Promise<'timeout'>((resolve) => {
-            timer = window.setTimeout(() => {
-              resolve('timeout')
-              cancellation?.onTimeout()
-            }, POLICY_DECISION_MS)
-          }),
-        ])
+        const decide = () =>
+          Promise.race([
+            Promise.resolve().then(() => approve({ ...call, args: copyArgs(call.args) })),
+            new Promise<'timeout'>((resolve) => {
+              timer = window.setTimeout(() => {
+                resolve('timeout')
+                cancellation?.onTimeout()
+              }, POLICY_DECISION_MS)
+            }),
+          ])
         const answer = await (cancellation ? waitForScript(decide, cancellation.signal) : decide())
         if (answer === true) return { kind: 'approve' }
         if (answer === false) return refused

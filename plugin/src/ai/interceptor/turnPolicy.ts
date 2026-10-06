@@ -12,9 +12,12 @@
  */
 import type { PolicyDecision, ToolPolicy } from './policy'
 
+const identityOf = (permissionKey?: string, destinationKey?: string): string =>
+  JSON.stringify([permissionKey ?? '', destinationKey ?? ''])
+
 export class TurnPolicy {
   private policy: ToolPolicy | null = null
-  private decided = new Map<string, Promise<PolicyDecision>>()
+  private decided = new Map<string, { identity: string; answer: Promise<PolicyDecision> }>()
 
   set(policy: ToolPolicy | undefined): void {
     this.policy = policy ?? null
@@ -30,26 +33,43 @@ export class TurnPolicy {
   }
 
   /** Read a decision already made for this call; never invoke policy for an automatic call. */
-  async isApproved(id: string): Promise<boolean> {
+  async isApproved(id: string, permissionKey?: string, destinationKey?: string): Promise<boolean> {
     const decisions = this.decided
-    const answer = await decisions.get(id)
-    // Stop/reset or a new turn invalidates approvals, including while this await settles.
-    return this.decided === decisions && this.active && answer?.kind === 'approve'
+    const record = decisions.get(id)
+    if (!record || record.identity !== identityOf(permissionKey, destinationKey)) return false
+    const answer = await record.answer
+    // Stop/reset, a new turn or a reused call id invalidates an approval while its await settles.
+    return (
+      this.decided === decisions &&
+      decisions.get(id) === record &&
+      this.active &&
+      answer.kind === 'approve'
+    )
   }
 
   decide(
     id: string,
     name: string,
     args: Record<string, unknown>,
-    outOfScope: boolean
+    outOfScope: boolean,
+    permissionKey?: string,
+    destinationKey?: string
   ): Promise<PolicyDecision> {
     const policy = this.policy
     if (!policy) return Promise.resolve({ kind: 'ask' })
-    let answer = this.decided.get(id)
-    if (!answer) {
-      answer = policy.decide({ name, args, outOfScope })
-      this.decided.set(id, answer)
+    const identity = identityOf(permissionKey, destinationKey)
+    let record = this.decided.get(id)
+    if (!record || record.identity !== identity) {
+      const answer = policy.decide({
+        name,
+        args,
+        outOfScope,
+        ...(permissionKey === undefined ? {} : { permissionKey }),
+        ...(destinationKey === undefined ? {} : { destinationKey }),
+      })
+      record = { identity, answer }
+      this.decided.set(id, record)
     }
-    return answer
+    return record.answer
   }
 }

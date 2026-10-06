@@ -11,6 +11,8 @@ import type { ParsedScript } from '@/scripting/types'
 import { readInterceptResult, type InterceptResult } from './result'
 import { toolPolicy, type ToolPolicy } from './policy'
 import type { InterceptInput } from './context'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { mcpToolBindings } from '../mcp/permissions'
 
 export type InterceptOutcome =
   | {
@@ -57,6 +59,10 @@ export async function runInterceptorScript(
   const controller = new AbortController()
   const runSignal = AbortSignal.any([signal, controller.signal])
   if (runSignal.aborted) return { kind: 'stopped' }
+  // Freeze alias ownership and destination before waiting for the script or its index.
+  const policyTools = mcpToolBindings(AbeleConfig.getInstance().ai.mcpServers).filter(
+    ({ server }) => server.enabled && server.url
+  )
 
   let seconds = INTERCEPTOR_DEFAULT_SECONDS
   let timedOut = false
@@ -116,10 +122,19 @@ export async function runInterceptorScript(
     return {
       ...rest,
       ...(rewriteRequested ? { rewriteRequested: true } : {}),
-      ...(policy ? { policy: toolPolicy(policy, name, {
-        signal: runSignal,
-        onTimeout: () => controller.abort(),
-      }) } : {}),
+      ...(policy
+        ? {
+            policy: toolPolicy(
+              policy,
+              name,
+              {
+                signal: runSignal,
+                onTimeout: () => controller.abort(),
+              },
+              policyTools
+            ),
+          }
+        : {}),
     }
   } catch (err) {
     if (timedOut) {

@@ -30,7 +30,8 @@ export interface AgentLoopOptions {
     toolName: string,
     toolCallId: string,
     args: Record<string, unknown>,
-    permissionKey?: string
+    permissionKey?: string,
+    destinationKey?: string
   ) => Promise<{
     block?: boolean
     pause?: boolean
@@ -352,7 +353,7 @@ export class AgentLoop {
         const hookResult =
           tc.permissionKey === undefined
             ? await beforeToolCall(tc.name, tc.id, args)
-            : await beforeToolCall(tc.name, tc.id, args, tc.permissionKey)
+            : await beforeToolCall(tc.name, tc.id, args, tc.permissionKey, tc.destinationKey)
         if (hookResult) {
           if (hookResult.pause) {
             return null // Signal caller to pause

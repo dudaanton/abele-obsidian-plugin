@@ -1047,7 +1047,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           },
           skillCeiling: this.skillCeiling,
           interactive: this.kind !== 'run',
-          approved: callerCtx?.approved === true || (await this.turnPolicy.isApproved(id)),
+          approved:
+            callerCtx?.approved === true ||
+            (await this.turnPolicy.isApproved(id, tool.permissionKey, tool.destinationKey)),
         }
         // Everything the call changes in the vault is remembered, so the turn can be taken back.
         // A delegated run records nothing of its own: the chat's `delegate` call is open for as
@@ -1513,7 +1515,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           })
           return this.getMessagesForModel()
         },
-        beforeToolCall: async (toolName, _id, args, permissionKey) => {
+        beforeToolCall: async (toolName, _id, args, permissionKey, destinationKey) => {
           // Refused before anyone is asked: approving a write that cannot run wastes a click.
           const refused = await this.readGuard.check(toolName, args)
           if (refused) return { block: true, reason: refused }
@@ -1524,7 +1526,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           if (this.kind === 'run') {
             return { block: true, reason: this.refusalReason(toolName, args) }
           }
-          const decided = await this.policyFor(_id, toolName, args)
+          const decided = await this.policyFor(_id, toolName, args, permissionKey, destinationKey)
           // Stopped while the script decided: ask, which a stopped turn never gets to.
           if (!this.turnPolicy.active) return { pause: true }
           if (decided.kind === 'deny') return { block: true, reason: decided.reason }
@@ -1603,7 +1605,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         if (!head && this.needsApproval(tc.name, tc.arguments, tc.permissionKey)) {
           // The interceptor script may answer for the person: the same question, decided once.
           const gen = this.generation
-          let decided = await this.policyFor(tc.id, tc.name, tc.arguments)
+          let decided = await this.policyFor(
+            tc.id,
+            tc.name,
+            tc.arguments,
+            tc.permissionKey,
+            tc.destinationKey
+          )
           // Stopped or cleared while the script decided: its answer no longer holds.
           if (gen !== this.generation || !this.turnPolicy.active) decided = { kind: 'ask' }
           if (decided.kind === 'deny') {
@@ -2146,9 +2154,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   /** What the interceptor script said about a call that would ask; `ask` when it said nothing. */
-  private policyFor(id: string, name: string, args: Record<string, unknown> | undefined) {
+  private policyFor(
+    id: string,
+    name: string,
+    args: Record<string, unknown> | undefined,
+    permissionKey?: string,
+    destinationKey?: string
+  ) {
     if (needsSecretApproval(name, args)) return Promise.resolve({ kind: 'ask' as const })
-    return this.turnPolicy.decide(id, name, args ?? {}, !!this.outOfScopePath(name, args))
+    return this.turnPolicy.decide(
+      id,
+      name,
+      args ?? {},
+      !!this.outOfScopePath(name, args),
+      permissionKey,
+      destinationKey
+    )
   }
 
   /** The turn is over once nothing is left to answer; the script's say ends with it. */

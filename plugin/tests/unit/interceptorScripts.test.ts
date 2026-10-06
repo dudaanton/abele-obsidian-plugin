@@ -19,6 +19,8 @@ import { buildInterceptInput, type InterceptInput } from '@/ai/interceptor/conte
 import { useVault } from '../helpers/testEnv'
 import { flushPromises } from '@vue/test-utils'
 import type { TFile } from 'obsidian'
+import { createMcpServer } from '@/ai/mcp/types'
+import { mcpToolBindings, mcpPermissionKey } from '@/ai/mcp/permissions'
 
 const review = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true))
 vi.mock('@/scripting/reviewScript', () => ({ reviewScript: review }))
@@ -101,6 +103,45 @@ describe('an interceptor script in the index', () => {
 })
 
 describe('running an interceptor script', () => {
+  it('captures MCP list identities before waiting for the script, not from changed settings on return', async () => {
+    await setup([{ path: 'Scripts/guard.js', content: header('Guard') + 'return' }])
+    const original = createMcpServer({
+      id: 'original',
+      name: 'Archive',
+      url: 'https://sample.example/mcp',
+      tools: [{ name: 'echo', description: '', inputSchema: {} }],
+    })
+    const config = AbeleConfig.getInstance()
+    config.ai.mcpServers = [original]
+    const destinationKey = mcpToolBindings([original])[0].destinationKey
+    vi.spyOn(ScriptService.getInstance(), 'intercept').mockImplementation(async () => {
+      original.name = 'Renamed'
+      config.ai.mcpServers!.push(
+        createMcpServer({ ...original, id: 'replacement', name: 'Archive' })
+      )
+      return { approve: ['mcp_archive_echo'] }
+    })
+    const out = await runInterceptorScript('Guard', input, new AbortController().signal)
+    if (out.kind !== 'send' || !out.policy) throw new Error('Expected a script policy')
+    expect(
+      await out.policy.decide({
+        name: 'mcp_renamed_echo',
+        args: {},
+        outOfScope: false,
+        permissionKey: mcpPermissionKey('original', 'echo'),
+        destinationKey,
+      })
+    ).toEqual({ kind: 'approve' })
+    expect(
+      await out.policy.decide({
+        name: 'mcp_archive_echo',
+        args: {},
+        outOfScope: false,
+        permissionKey: mcpPermissionKey('replacement', 'echo'),
+        destinationKey,
+      })
+    ).toEqual({ kind: 'ask' })
+  })
   it('shows it the message and the chat, and reads what it returns', async () => {
     await setup([
       {

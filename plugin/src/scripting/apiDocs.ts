@@ -517,6 +517,14 @@ to ask the person as usual (within 5 seconds, or the person is asked). \`deny: [
 those tools. Only a function can approve a call outside the chat's scope. The say ends with the
 turn, or when another message joins it. A tool switched off is never offered, whatever this says.
 
+For MCP calls, \`call\` also includes \`permissionKey\` (the pinned server/tool identity) and
+\`destinationKey\` (the pinned HTTP endpoint). Prefer these to the mutable provider alias
+\`name\` in decision functions. Static MCP names in approval/denial lists are bound once to
+the owners present when the script starts. Approval follows that exact tool and endpoint,
+including across compaction, never a replacement server reusing its alias. Denial follows the
+original server/tool even if its endpoint changes; unresolved denials remain restrictive.
+An unknown MCP approval name cannot authorize a server connected later.
+
 With **Reply only** on, the same read-only \`message\` and \`chat\` snapshots are supplied, but the
 message and its attachments are sent to the main agent immediately and unchanged. Return
 \`{ reply: 'text' }\` to add an asynchronous interceptor answer under that person's message,

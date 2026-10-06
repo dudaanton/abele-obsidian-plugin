@@ -239,6 +239,12 @@ it yourself, or `{ hold: 'why' }` to keep it back as a draft. Beside a send, `ap
 `deny` answer for you on the actions the agent takes for that message: `approve: ['edit']`,
 `approve: true`, or a function that looks at each one. The full list is in the script reference.
 
+Named MCP approvals belong to the server, tool and address present when the script starts,
+not to a name that another server may later reuse. They stay with that identity even if the
+chat compacts its history. A changed address needs a fresh approval. Named denials still
+follow their original server and tool. Decision functions also receive the pinned tool and
+destination identities; see the script reference for those fields.
+
 Turn on **Reply only** in either settings screen to send the message unchanged to the main agent
 at once while the script runs alongside it. Return `{ reply: 'text' }` to show a side answer
 under the message, or nothing to stay silent. Rewrites, holds and tool approvals are ignored
