@@ -72,7 +72,8 @@ import McpServerModal from './McpServerModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { McpService } from '@/ai/mcp/McpService'
-import { mcpKeyId, renameServerTools } from '@/ai/mcp/settings'
+import { mcpKeyId, notifyMcpPermissionReset } from '@/ai/mcp/settings'
+import { migrateMcpPermissions } from '@/ai/mcp/permissions'
 import { createMcpServer, type McpServer } from '@/ai/mcp/types'
 import { secrets } from '@/secrets/SecretStore'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
@@ -115,16 +116,18 @@ function save(server: McpServer, token?: string | null): void {
 
   const at = servers.value.findIndex((s) => s.id === next.id)
   const before = at === -1 ? null : servers.value[at]
-  if (before && before.name !== next.name) moveToolModes(before.name, next.name)
+  if (before && before.name !== next.name) migrateToolModes()
 
   if (at === -1) servers.value = [...servers.value, next]
   else servers.value = servers.value.map((s, i) => (i === at ? next : s))
   persist()
 }
 
-/** Renaming a server renames its tools; what each agent chose about them goes along. */
-function moveToolModes(from: string, to: string): void {
-  const moved = renameServerTools(config.ai, from || '', to)
+/** Resolve legacy aliases before a label changes; identity permissions stay untouched. */
+function migrateToolModes(): void {
+  const result = migrateMcpPermissions(config.ai)
+  notifyMcpPermissionReset(result.reset)
+  const moved = result.ai
   if (moved === config.ai) return
   const registry = AgentRegistry.getInstance()
   for (const agent of moved.agents) {

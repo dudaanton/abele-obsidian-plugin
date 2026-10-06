@@ -275,11 +275,14 @@ export class AgentRegistry {
    * Core tools are never filtered here — they stay available to every agent and are governed
    * by `permissionMode` and workspace scope at call time instead.
    */
-  filterTools<T extends { name: string }>(agent: AgentDefinition, tools: T[]): T[] {
+  filterTools<T extends { name: string; permissionKey?: string }>(
+    agent: AgentDefinition,
+    tools: T[]
+  ): T[] {
     return tools.filter((tool) => {
       if (tool.name === 'delegate' && agent.maxDelegateDepth <= 0) return false
       if (CORE_TOOLS.has(tool.name)) return true
-      return (agent.toolModes[tool.name] ?? 'off') !== 'off'
+      return (agent.toolModes[tool.permissionKey ?? tool.name] ?? 'off') !== 'off'
     })
   }
 

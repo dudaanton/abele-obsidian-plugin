@@ -64,9 +64,9 @@
           <span v-else-if="isCore(tool.name)" class="abele-tool-modes__core">always on</span>
           <Dropdown
             v-else
-            :model-value="getMode(tool.name)"
+            :model-value="getMode(tool.permissionKey ?? tool.name)"
             :options="modeOptions"
-            @update:model-value="setMode(tool.name, $event as ToolMode)"
+            @update:model-value="setMode(tool.permissionKey ?? tool.name, $event as ToolMode)"
           />
         </Setting>
 
@@ -170,6 +170,7 @@ const emitDescUpdate = (name: string, value: string) => {
 
 interface ToolEntry {
   name: string
+  permissionKey?: string
   label: string
 }
 
@@ -180,12 +181,13 @@ interface ToolGroup {
   mcp: boolean
 }
 
-const serverInUse = (group: ToolGroup) => group.tools.some((t) => getMode(t.name) !== 'off')
+const serverInUse = (group: ToolGroup) =>
+  group.tools.some((t) => getMode(t.permissionKey ?? t.name) !== 'off')
 
 /** On gives every tool at Ask — never Auto by one tap; off takes them all away. */
 const toggleServer = (group: ToolGroup) => {
   const mode: ToolMode = serverInUse(group) ? 'off' : 'ask'
-  for (const tool of group.tools) setMode(tool.name, mode)
+  for (const tool of group.tools) setMode(tool.permissionKey ?? tool.name, mode)
 }
 
 /** The tools of a group a mode applies to: core tools are always on and have none. */
@@ -195,12 +197,15 @@ const allTools = computed(() => visibleGroups.value.flatMap(optionalOf))
 
 /** The mode every one of these tools is at, or null when they differ. */
 const sharedMode = (tools: ToolEntry[]): ToolMode | null => {
-  const modes = new Set(tools.map((t) => getMode(t.name)))
+  const modes = new Set(tools.map((t) => getMode(t.permissionKey ?? t.name)))
   return modes.size === 1 ? [...modes][0] : null
 }
 
 const setAll = (tools: ToolEntry[], mode: string) => {
-  emit('updateMany', Object.fromEntries(tools.map((t) => [t.name, mode as ToolMode])))
+  emit(
+    'updateMany',
+    Object.fromEntries(tools.map((t) => [t.permissionKey ?? t.name, mode as ToolMode]))
+  )
 }
 
 const visibleGroups = computed<ToolGroup[]>(() => {
@@ -211,7 +216,9 @@ const visibleGroups = computed<ToolGroup[]>(() => {
     // In descriptions-only mode every tool has a description worth editing, core included.
     if (!props.descriptionsOnly && !showAll.value && isCore(tool.name)) continue
     if (!groups.has(tool.category)) groups.set(tool.category, [])
-    groups.get(tool.category).push({ name: tool.name, label: tool.label })
+    groups
+      .get(tool.category)
+      .push({ name: tool.name, permissionKey: tool.permissionKey, label: tool.label })
   }
 
   return Array.from(groups.entries()).map(([category, tools]) => ({

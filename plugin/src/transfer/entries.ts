@@ -131,7 +131,7 @@ export const SECTIONS: Section[] = [
       'requestTimeoutSeconds',
       'autoRetry',
       'permissionMode',
-      'toolModes',
+      'toolModes', // Includes identity-based MCP keys; do not rewrite these as provider aliases.
       'defaultScope',
       'defaultFullVaultAccess',
       'chatFolder',
@@ -164,7 +164,8 @@ export const SECTIONS: Section[] = [
     'imageProviders',
     (p: Identified & { apiKeyId?: string }) => (p.apiKeyId ? [p.apiKeyId] : [])
   ),
-  // Whole agent definitions travel, including toolDiscovery, interceptorReplyOnly and the other review settings.
+  // Whole agent definitions travel, including identity-based MCP toolModes, toolDiscovery,
+  // interceptorReplyOnly and the other review settings.
   aiList('ai-agents', 'Agents', 'agents'),
   // Each server travels with the tools it was last seen offering, so the other device tells
   // its agents the same thing without fetching first. There is no command to carry: servers are

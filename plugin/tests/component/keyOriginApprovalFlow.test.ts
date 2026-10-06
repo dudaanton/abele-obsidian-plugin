@@ -12,6 +12,7 @@ import type { AgentTool, Message, ToolCallContent } from '@/ai/client'
 import { initializeDestinations } from '@/secrets/destinations'
 import { needsSecretApproval } from '@/ai/tools/secretUtils'
 import * as secretUtils from '@/ai/tools/secretUtils'
+import { mcpPermissionKey } from '@/ai/mcp/permissions'
 import { createMcpServer } from '@/ai/mcp/types'
 import { acceptDestinations } from '@/secrets/destinations'
 import { setSecrets } from '@/secrets/SecretStore'
@@ -181,6 +182,7 @@ const mcp = () => {
   ])
   config.ai.mcpServers = [
     createMcpServer({
+      id: 'sample-server',
       name: 'Sample',
       url: request.url,
       headers: { ...request.headers },
@@ -188,7 +190,7 @@ const mcp = () => {
     }),
   ]
   const name = 'mcp_sample_read'
-  session.toolModes.value = { [name]: 'auto' }
+  session.toolModes.value = { [mcpPermissionKey('sample-server', 'read')]: 'auto' }
   vi.mocked((session as unknown as { getTools(): AgentTool[] }).getTools).mockReturnValue([
     {
       name,

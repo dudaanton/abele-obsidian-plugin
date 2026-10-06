@@ -151,8 +151,10 @@ headers, tools, fetchedAt }`. `url` is the server's MCP endpoint, reached over H
 names the keychain slot of a token sent as `Authorization: Bearer`; `headers` are sent as
 written, a value naming a stored key as `${abele_key:name}`. `tools` is the list as it was last
 fetched from the server, and it is what agents are told — fetching again is done in the
-settings, where the person sees the new list. The tools themselves are `mcp_<server>_<tool>` in
-`toolModes`, off for an agent until given; see the tools section.
+settings, where the person sees the new list. Tools are offered as `mcp_<server>_<tool>` aliases,
+with collision suffixes when needed. In `toolModes` their keys are `mcp:` plus the JSON pair
+`[server.id, originalToolName]`, independent of the server's label. They are off for an agent
+until given; see the tools section.
 
 ## Editor syntax highlighting
 

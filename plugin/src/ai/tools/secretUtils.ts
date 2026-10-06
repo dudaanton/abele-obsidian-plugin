@@ -1,5 +1,5 @@
 import { secrets } from '@/secrets/SecretStore'
-import { mcpToolName } from '@/ai/mcp/names'
+import { mcpToolBindings } from '@/ai/mcp/permissions'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   checkKeyDestination,
@@ -23,9 +23,9 @@ export function secretRequestForTool(tool: string, args: unknown): SecretRequest
   if (KEY_TOOLS.has(tool))
     return args && typeof args === 'object' ? snapshotSecretRequest(args as SecretRequest) : null
   if (tool.startsWith('mcp_')) {
-    const server = AbeleConfig.getInstance().ai?.mcpServers?.find((s) =>
-      s.tools.some((t) => mcpToolName(s.name, t.name) === tool)
-    )
+    const server = mcpToolBindings(AbeleConfig.getInstance().ai?.mcpServers).find(
+      (binding) => binding.name === tool
+    )?.server
     if (server) return snapshotSecretRequest({ url: server.url, headers: server.headers })
   }
   return null

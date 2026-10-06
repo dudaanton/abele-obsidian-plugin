@@ -8,7 +8,7 @@
  */
 import type { AgentTool, AgentToolResult, UserContentPart } from '../client'
 import { McpService } from './McpService'
-import { mcpToolName } from './names'
+import { mcpToolBindings } from './permissions'
 import type { McpCallResult, McpServer, McpToolSnapshot } from './types'
 
 /** The group a server's tools are shown under in the tool settings. */
@@ -17,17 +17,9 @@ export const mcpCategory = (server: McpServer): string => `MCP · ${server.name 
 /** Every tool of every server that is on, in the order the servers and their lists give. */
 export function createMcpTools(servers: McpServer[] | undefined): AgentTool[] {
   const tools: AgentTool[] = []
-  const taken = new Set<string>()
-  for (const server of servers ?? []) {
+  for (const { server, snapshot, name, permissionKey } of mcpToolBindings(servers)) {
     if (!server.enabled || !server.url) continue
-    for (const snapshot of server.tools ?? []) {
-      const name = mcpToolName(server.name || server.id, snapshot.name)
-      // Two tools that clean up to one name: the first keeps it, rather than one silently
-      // answering for the other.
-      if (taken.has(name)) continue
-      taken.add(name)
-      tools.push(createMcpTool(server, snapshot, name))
-    }
+    tools.push({ ...createMcpTool(server, snapshot, name), permissionKey })
   }
   return tools
 }

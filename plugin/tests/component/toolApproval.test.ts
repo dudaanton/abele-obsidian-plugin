@@ -239,6 +239,7 @@ function sessionIn(mode: PermissionMode, toolMode: ToolMode = 'off') {
     value: {
       permissionMode,
       getToolMode: () => toolMode,
+      getToolPermissionKey: (name: string) => name,
       toolModes,
       approveToolCall: () => approvals.push('approved'),
       rejectToolCall: () => approvals.push('rejected'),

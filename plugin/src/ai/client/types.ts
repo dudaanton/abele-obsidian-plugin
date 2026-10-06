@@ -136,6 +136,8 @@ export interface ToolDefinition {
 }
 
 export interface AgentTool extends ToolDefinition {
+  /** Stable permission identity when the provider-facing name is only an alias. */
+  permissionKey?: string
   label: string
   /** The group the settings show it in, for tools that bring their own (an MCP server's). */
   category?: string

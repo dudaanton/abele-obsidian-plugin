@@ -50,6 +50,8 @@ import {
   type InterceptorChoice,
   type InterceptorHost,
 } from './ChatInterceptor'
+import { toolPermissionKey, migrateMcpModes } from './mcp/permissions'
+import { notifyMcpPermissionReset } from './mcp/settings'
 import { AgentRegistry } from './agents/AgentRegistry'
 import {
   normaliseContextDepth,
@@ -908,8 +910,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return this.summarizer.compact()
   }
 
+  getToolPermissionKey(toolName: string): string {
+    return toolPermissionKey(toolName, AbeleConfig.getInstance().ai.mcpServers)
+  }
+
   getToolMode(toolName: string): ToolMode {
-    return this.toolModes.value[toolName] ?? 'off'
+    return this.toolModes.value[this.getToolPermissionKey(toolName)] ?? 'off'
   }
 
   // ── Tools with session scope ────────────────────────────────────
@@ -2235,7 +2241,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * turning them live would silently change how an old conversation behaves when reopened,
    * which is exactly the surprise this design is meant to avoid.
    */
-  private restoreAgentBinding(metadata: ChatMetadata | null | undefined): void {
+  private restoreAgentBinding(metadata: ChatMetadata | null | undefined): boolean {
     const registry = AgentRegistry.getInstance()
     const config = AbeleConfig.getInstance().ai
 
@@ -2248,14 +2254,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       )
     }
 
-    if (metadata?.overrides) {
-      this.overrides.value = { ...metadata.overrides }
-      this.syncScopeFromAgent()
-      return
+    const overrides = metadata?.overrides
+      ? { ...metadata.overrides }
+      : metadata
+        ? this.legacyOverrides(metadata, config)
+        : {}
+    let migrated = false
+    if (overrides.toolModes) {
+      const result = migrateMcpModes(overrides.toolModes, config.mcpServers)
+      overrides.toolModes = result.modes
+      migrated = result.changed
+      notifyMcpPermissionReset(result.reset)
     }
-
-    this.overrides.value = metadata ? this.legacyOverrides(metadata, config) : {}
+    this.overrides.value = overrides
     this.syncScopeFromAgent()
+    return migrated
   }
 
   /**
@@ -2778,7 +2791,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
-    this.restoreAgentBinding(result.metadata)
+    const permissionsMigrated = this.restoreAgentBinding(result.metadata)
     this.toolDiscovery = new ToolDiscovery(result.metadata?.revealedToolGroups)
 
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
@@ -2799,7 +2812,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // anything not yet put back is written out as absent: run earlier it filed the chat under
     // the default agent, dropped the overrides it was saved with, and forgot the tool call it
     // was waiting on approval for.
-    if (needsMigration) {
+    if (needsMigration || permissionsMigrated) {
       await this.save()
     }
   }

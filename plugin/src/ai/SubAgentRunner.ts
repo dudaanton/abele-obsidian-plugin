@@ -10,6 +10,8 @@ import { ReadGuard, withReadGuard } from './readGuard'
 import { ResultStore, withResultStore } from './resultStore'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from './agents/AgentRegistry'
+import { toolPermissionKey } from './mcp/permissions'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 export interface SubAgentTask {
   systemPrompt: string
@@ -68,7 +70,8 @@ export function subAgentRefusal(
   toolName: string,
   args: Record<string, unknown>,
   agent: AgentDefinition,
-  scope: ScopeResolver
+  scope: ScopeResolver,
+  permissionKey = toolPermissionKey(toolName, AbeleConfig.getInstance().ai.mcpServers)
 ): string | null {
   if (needsSecretApproval(toolName, args)) return 'Saved-key requests require interactive approval'
   if (toolName === 'delegate') return 'Script-started agents cannot delegate'
@@ -91,7 +94,7 @@ export function subAgentRefusal(
       ? null
       : `${toolName} needs approval (permission mode: ${agent.permissionMode})`
   }
-  const mode = agent.toolModes[toolName] ?? 'off'
+  const mode = agent.toolModes[permissionKey] ?? 'off'
   return mode === 'auto'
     ? null
     : mode === 'off'
@@ -139,7 +142,13 @@ export async function runSubAgent(
     streamOptions: { signal: task.signal },
     beforeToolCall: async (name, _id, args) => {
       if (task.signal?.aborted) return { block: true, reason: 'Aborted' }
-      const reason = subAgentRefusal(name, args, agent, scope)
+      const reason = subAgentRefusal(
+        name,
+        args,
+        agent,
+        scope,
+        task.tools.find((t) => t.name === name)?.permissionKey
+      )
       if (reason) return { block: true, reason }
     },
   })

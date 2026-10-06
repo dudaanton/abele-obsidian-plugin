@@ -485,7 +485,7 @@ const allowAll = () => {
   const s = session.value
   const name = props.message.toolName
   if (!s || !name) return
-  s.toolModes.value = { ...s.toolModes.value, [name]: 'auto' }
+  s.toolModes.value = { ...s.toolModes.value, [s.getToolPermissionKey(name)]: 'auto' }
   s.approveToolCall()
 }
 

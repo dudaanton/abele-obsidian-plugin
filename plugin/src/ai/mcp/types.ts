@@ -6,7 +6,7 @@
  */
 export interface McpServer {
   id: string
-  /** What the person calls it, and the middle of every tool name: `mcp_<name>_<tool>`. */
+  /** Display label and the middle of each provider alias, never the permission identity. */
   name: string
   /** The server's MCP endpoint, e.g. `https://example.com/mcp`. */
   url: string

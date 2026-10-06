@@ -3,6 +3,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { SettingsEdits, settingsSnapshot } from './settingsEdits'
 import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { nanoid } from 'nanoid'
+import { migrateMcpPermissions } from '@/ai/mcp/permissions'
+import { notifyMcpPermissionReset } from '@/ai/mcp/settings'
 import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
 import { AiSettings, DEFAULT_AI_SETTINGS, ImageProvider, migrateOldPermissions } from '@/ai/types'
@@ -670,6 +672,10 @@ export class AbeleConfig {
     ) {
       this.ai.toolModes = migrateOldPermissions(null, settings.ai as any)
     }
+    const mcpPermissions = migrateMcpPermissions(this.ai)
+    this.ai = mcpPermissions.ai
+    migrated ||= mcpPermissions.changed
+    notifyMcpPermissionReset(mcpPermissions.reset)
     // Migrate image generation settings to imageProviders
     if (settings?.ai && !settings.ai.imageProviders) {
       const old = settings.ai as any

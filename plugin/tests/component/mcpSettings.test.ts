@@ -15,6 +15,7 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { McpService } from '@/ai/mcp/McpService'
 import { createMcpServer, type McpToolSnapshot } from '@/ai/mcp/types'
 import { mcpKeyId } from '@/ai/mcp/settings'
+import { mcpPermissionKey } from '@/ai/mcp/permissions'
 import { secrets } from '@/secrets/SecretStore'
 import { useVault } from '../helpers/testEnv'
 
@@ -204,7 +205,9 @@ describe('renaming one', () => {
     await field(view, 'Name').find('input').setValue('Docs')
     await buttonNamed(view, 'Save').trigger('click')
 
-    expect(registry.get(agent.id)?.toolModes).toMatchObject({ mcp_docs_lookup: 'ask' })
+    expect(registry.get(agent.id)?.toolModes).toMatchObject({
+      [mcpPermissionKey('a', 'lookup')]: 'ask',
+    })
     expect(registry.get(agent.id)?.toolModes.mcp_context_lookup).toBeUndefined()
   })
 })
@@ -236,13 +239,16 @@ describe('giving an agent a server', () => {
     await row.find('.checkbox-container').trigger('click')
 
     expect(view.emitted('update')?.sort()).toEqual([
-      ['mcp_context_fetch_page', 'ask'],
-      ['mcp_context_lookup', 'ask'],
+      [mcpPermissionKey('a', 'fetch_page'), 'ask'],
+      [mcpPermissionKey('a', 'lookup'), 'ask'],
     ])
   })
 
   it('takes them all away again', async () => {
-    const view = mountModes({ mcp_context_lookup: 'auto', mcp_context_fetch_page: 'off' })
+    const view = mountModes({
+      [mcpPermissionKey('a', 'lookup')]: 'auto',
+      [mcpPermissionKey('a', 'fetch_page')]: 'off',
+    })
     const row = view
       .findAll('.setting-item')
       .find((r) => r.find('.setting-item-name').text() === 'Use this server')!
@@ -251,8 +257,8 @@ describe('giving an agent a server', () => {
     await row.find('.checkbox-container').trigger('click')
 
     expect(view.emitted('update')?.sort()).toEqual([
-      ['mcp_context_fetch_page', 'off'],
-      ['mcp_context_lookup', 'off'],
+      [mcpPermissionKey('a', 'fetch_page'), 'off'],
+      [mcpPermissionKey('a', 'lookup'), 'off'],
     ])
   })
 

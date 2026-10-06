@@ -295,6 +295,12 @@ A server's tools are off for every agent until you switch the server on in the a
 automatic. Every tool description costs tokens in each request, so give a large server only to
 the agents that need it.
 
+Renaming a server keeps its permissions, separate from every other server. When upgrading
+older permissions, Abele keeps a choice only if it can identify exactly one tool. If a saved
+name could mean several tools, those tools ask before running, and one notice lists what to
+set again in **Access**. Permissions for tools no longer in the saved lists are removed.
+These choices travel with settings transfer.
+
 ## Skills and prompts
 
 A **skill** is a note with `type: abele-skill` that teaches an agent how to do something. The

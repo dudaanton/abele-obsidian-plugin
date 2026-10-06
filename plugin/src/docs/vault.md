@@ -926,6 +926,13 @@ each server's address, the headers sent to it, the name of the keychain slot hol
 (never the token), and a copy of its tool list from the last time it was fetched — names,
 descriptions and parameter schemas, as the server gave them. Nothing is written into the vault.
 
+MCP entries in `ai.toolModes`, each agent's `toolModes`, and saved chat overrides use
+`mcp:` followed by the JSON pair `[server.id, originalToolName]`. Provider-facing names are
+only aliases, not permission keys. Renaming a server keeps these entries unchanged; settings
+transfer carries the identities and mode maps. Legacy `mcp_<server>_<tool>` entries migrate
+only when exactly one saved server/tool pair matches. Ambiguous matches become `ask`, unmatched
+entries are removed, and one notice lists the choices to set again.
+
 ## Screenshots
 
 Every picture the `screenshot` tool takes — of a note, or of the visible part of a script view —

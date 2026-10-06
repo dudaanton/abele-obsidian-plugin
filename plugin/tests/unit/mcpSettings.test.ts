@@ -3,13 +3,8 @@
  * standing in every tool name, and a rename that takes the agents' tool modes along.
  */
 import { describe, it, expect } from 'vitest'
-import {
-  formatHeaders,
-  parseHeaders,
-  renameServerTools,
-  nameClash,
-  mcpKeyId,
-} from '@/ai/mcp/settings'
+import { formatHeaders, parseHeaders, nameClash, mcpKeyId } from '@/ai/mcp/settings'
+import { mcpPermissionKey, migrateMcpPermissions } from '@/ai/mcp/permissions'
 import { createMcpServer } from '@/ai/mcp/types'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
@@ -51,7 +46,7 @@ describe('a server name', () => {
 })
 
 describe('renaming a server', () => {
-  it('moves every agent’s and the default tool modes to the new names', () => {
+  it('keeps every agent’s and the default tool modes under identity keys after a rename', () => {
     const agent = createAgent({
       toolModes: { mcp_old_echo: 'ask', mcp_old_add: 'auto', mcp_other_x: 'ask', fetch: 'ask' },
     })
@@ -59,23 +54,43 @@ describe('renaming a server', () => {
       ...DEFAULT_AI_SETTINGS,
       toolModes: { mcp_old_echo: 'ask' as const },
       agents: [agent],
+      mcpServers: [
+        createMcpServer({
+          id: 'a',
+          name: 'Old',
+          tools: [
+            { name: 'echo', description: '', inputSchema: {} },
+            { name: 'add', description: '', inputSchema: {} },
+          ],
+        }),
+        createMcpServer({
+          id: 'b',
+          name: 'Other',
+          tools: [{ name: 'x', description: '', inputSchema: {} }],
+        }),
+      ],
     }
 
-    const next = renameServerTools(ai, 'Old', 'New')
+    const next = migrateMcpPermissions(ai).ai
+    next.mcpServers![0].name = 'New'
 
     expect(next.agents[0].toolModes).toMatchObject({
-      mcp_new_echo: 'ask',
-      mcp_new_add: 'auto',
-      mcp_other_x: 'ask',
+      [mcpPermissionKey('a', 'echo')]: 'ask',
+      [mcpPermissionKey('a', 'add')]: 'auto',
+      [mcpPermissionKey('b', 'x')]: 'ask',
       fetch: 'ask',
     })
     expect(next.agents[0].toolModes.mcp_old_echo).toBeUndefined()
-    expect(next.toolModes).toEqual({ mcp_new_echo: 'ask' })
+    expect(next.toolModes).toEqual({ [mcpPermissionKey('a', 'echo')]: 'ask' })
   })
 
   it('changes nothing when the name gives the same tool names', () => {
-    const ai = { ...DEFAULT_AI_SETTINGS, agents: [createAgent({ toolModes: { mcp_a_x: 'ask' } })] }
-
-    expect(renameServerTools(ai, 'A', 'a')).toBe(ai)
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ toolModes: { [mcpPermissionKey('a', 'x')]: 'ask' } })],
+      mcpServers: [createMcpServer({ id: 'a', name: 'A' })],
+    }
+    ai.mcpServers[0].name = 'a'
+    expect(migrateMcpPermissions(ai).ai).toBe(ai)
   })
 })

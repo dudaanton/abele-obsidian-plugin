@@ -3,7 +3,8 @@
  *
  * Providers accept `[a-zA-Z0-9_-]` and at most 64 characters in a tool name, and a server may
  * call its tools anything. The server part is lower-cased so a name typed as "GitHub" or
- * "github" gives the same tools — the name is also what an agent's tool modes are kept under.
+ * "github" gives the same aliases. Permissions use server identity and the real tool name;
+ * aliases that collide are disambiguated when the configured tool list is built.
  */
 const LIMIT = 64
 export const MCP_PREFIX = 'mcp_'

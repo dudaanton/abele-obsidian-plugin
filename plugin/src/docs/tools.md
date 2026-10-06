@@ -782,7 +782,10 @@ syntax both have details that cannot be guessed.
 settings (AI → MCP). They are not the plugin's own: each server names and describes its tools,
 and the description ends by saying which server it belongs to. `<server>` is the server's name
 in the settings, lower-cased, with anything other than letters, digits, `_` and `-` turned into
-`_`; a name too long for 64 characters is cut and ends in a short hash.
+`_`; a name too long for 64 characters is cut and ends in a short hash. If aliases collide,
+a numeric suffix keeps every distinct server/tool pair available. Permissions are stored by
+server identity and the tool's original name, not these aliases, so a server rename keeps its
+own permissions and cannot move them to a similarly named server.
 
 - Only servers reached over HTTP. Nothing is ever started on the person's computer, so these
   work the same on a phone.

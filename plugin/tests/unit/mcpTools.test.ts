@@ -10,7 +10,9 @@ import { createAgentTools, getToolRegistry } from '@/ai/tools'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { createAgent } from '@/ai/agents/types'
 import { mcpToolName } from '@/ai/mcp/names'
+import { mcpPermissionKey } from '@/ai/mcp/permissions'
 import { McpService } from '@/ai/mcp/McpService'
+import { createMcpTools } from '@/ai/mcp/tools'
 import { createMcpServer, type McpServer } from '@/ai/mcp/types'
 import { startMcpTestServer, nodeRequestUrl, type McpTestServer } from '../helpers/mcpTestServer'
 import { useVault } from '../helpers/testEnv'
@@ -52,6 +54,25 @@ const tool = (name: string) => {
 }
 
 describe('tool names', () => {
+  it('does not drop a distinct tool when two server/tool boundaries give the same name', () => {
+    const servers = [
+      createMcpServer({
+        id: 'a',
+        name: 'One',
+        url: 'https://sample.example/mcp',
+        tools: [{ name: 'part_echo', description: '', inputSchema: {} }],
+      }),
+      createMcpServer({
+        id: 'b',
+        name: 'One_part',
+        url: 'https://sample.example/mcp',
+        tools: [{ name: 'echo', description: '', inputSchema: {} }],
+      }),
+    ]
+    const tools = createMcpTools(servers)
+    expect(tools).toHaveLength(2)
+    expect(tools[0].name).not.toBe(tools[1].name)
+  })
   it('put the server between mcp and the tool, in characters every provider accepts', () => {
     expect(mcpToolName('Test', 'echo')).toBe('mcp_test_echo')
     expect(mcpToolName('My Server!', 'get.weather')).toBe('mcp_my_server_get_weather')
@@ -112,7 +133,7 @@ describe('the tools an agent is offered', () => {
     const registry = AgentRegistry.getInstance()
     const plain = createAgent()
     const given = createAgent({
-      toolModes: { mcp_test_echo: 'ask' as ToolMode },
+      toolModes: { [mcpPermissionKey('srv1', 'echo')]: 'ask' as ToolMode },
     })
 
     const offered = (agent: typeof plain) =>
@@ -166,7 +187,13 @@ describe('calling one', () => {
     app.secretStorage.setSecret('abele-secret-extra', 'value-9')
     AbeleConfig.getInstance().ai = {
       ...DEFAULT_AI_SETTINGS,
-      secrets: [{ name: 'extra', keyId: 'abele-secret-extra', allowedOrigins: [new URL(server.url).origin] }],
+      secrets: [
+        {
+          name: 'extra',
+          keyId: 'abele-secret-extra',
+          allowedOrigins: [new URL(server.url).origin],
+        },
+      ],
     }
     const configured = createMcpServer({
       id: 'srv1',

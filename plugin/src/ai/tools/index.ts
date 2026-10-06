@@ -65,6 +65,7 @@ import {
 
 export interface ToolInfo {
   name: string
+  permissionKey?: string
   label: string
   category: string
   /** What the tool says of itself: the default the settings screen shows and edits from. */
@@ -175,6 +176,7 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     const info = TOOL_CATEGORIES[t.name]
     result.push({
       name: t.name,
+      permissionKey: t.permissionKey,
       label: info?.label || labels[t.name] || t.name,
       category:
         info?.category || t.category || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
