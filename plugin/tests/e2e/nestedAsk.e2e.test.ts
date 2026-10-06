@@ -66,6 +66,7 @@ const script = `(async () => {
   const report = { levels: [], backTo: '', markedQuote: '', markerIds: '', reopened: '', leftBehind: [], shots: [], error: '' }
   const made = []
   const createdDirs = []
+  let mainChat
 
   const shoot = async (label) => {
     await wait(300)
@@ -75,9 +76,11 @@ const script = `(async () => {
     report.shots.push(path)
   }
 
-  const row = (id) => document.querySelector('.abele-ai-chat [data-message-id="' + id + '"]')
+  const panel = () => app.workspace.getLeavesOfType('abele-ai-sidebar-view')
+    .find(l => l.getRoot() === app.workspace.rightSplit || l.getRoot() === app.workspace.leftSplit)?.view.containerEl
+  const row = (id) => panel()?.querySelector('.abele-ai-chat [data-message-id="' + id + '"]')
   const trail = () =>
-    [...document.querySelectorAll('.abele-ai-chat .abele-breadcrumbs__item')].map((el) => el.textContent.trim())
+    [...panel()?.querySelectorAll('.abele-ai-chat .abele-breadcrumbs__item') ?? []].map((el) => el.textContent.trim())
 
   /** Selects the words in a rendered message and presses "Ask here" in its action row. */
   const askOn = async (messageId, words) => {
@@ -140,6 +143,9 @@ const script = `(async () => {
   }
 
   try {
+    // Keep another copy of the chat visible, as a user can in a main-area tab.
+    mainChat = app.workspace.getLeaf('tab')
+    await mainChat.setViewState({ type: 'abele-ai-sidebar-view', active: true })
     for (const dir of ['AI', 'AI/Chats']) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); createdDirs.unshift(dir) }
     }
@@ -168,9 +174,9 @@ const script = `(async () => {
 
     const third = await askOn(secondLine, 'sleeping car')
     // Four levels fold to the root, an ellipsis, the parent and this one; the ellipsis opens them.
-    await until(() => document.querySelector('.abele-ai-chat .abele-breadcrumbs__more'), 5000)
+    await until(() => panel()?.querySelector('.abele-ai-chat .abele-breadcrumbs__more'), 5000)
     const folded = trail()
-    const more = document.querySelector('.abele-ai-chat .abele-breadcrumbs__more')
+    const more = panel()?.querySelector('.abele-ai-chat .abele-breadcrumbs__more')
     if (!more) throw new Error('a trail of four levels did not fold')
     more.click()
     report.levels.push(await level(third, 4))
@@ -180,7 +186,7 @@ const script = `(async () => {
     for (const l of report.levels) l.listed = await listed(l.id)
 
     // Back up one level through the opened trail: chat, first, second, third — the third item.
-    const crumbs = [...document.querySelectorAll('.abele-ai-chat .abele-breadcrumbs__item')]
+    const crumbs = [...panel().querySelectorAll('.abele-ai-chat .abele-breadcrumbs__item')]
     crumbs[2].click()
     await until(() => chats.activeSession.value && chats.activeSession.value.commentId === second.commentId, 5000)
     report.backTo = chats.activeSession.value ? chats.activeSession.value.commentId : ''
@@ -199,6 +205,7 @@ const script = `(async () => {
   } catch (e) {
     report.error = String((e && e.message) || e)
   } finally {
+    mainChat?.detach()
     try {
       const chat = chats.getSessionByFile(CHAT)
       if (chat) await chats.deleteChat(chat.id)
