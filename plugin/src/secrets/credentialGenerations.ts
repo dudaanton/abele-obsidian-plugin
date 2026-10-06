@@ -11,6 +11,19 @@ export function sourceHash(text: string): string {
   return (h >>> 0).toString(36)
 }
 
+function generationKey(id: string): string {
+  const legacy = keychainId('abele-calendar-generation', id)
+  if (legacy.length <= 64) return legacy
+  // FNV-1a 128 keeps long slot names bounded without changing existing short slots.
+  let hash = 0x6c62272e07bb014262b821756295c58dn
+  for (let i = 0; i < id.length; i++) {
+    hash ^= BigInt(id.charCodeAt(i))
+    hash = BigInt.asUintN(128, hash * 0x1000000000000000000013bn)
+  }
+  // A separate namespace cannot alias a literal short id containing the hash text.
+  return keychainId('abele-calendar-clock', hash.toString(16).padStart(32, '0'))
+}
+
 /** Only the counter leaves the keychain. Detects edits made while the plugin was not running. */
 export class CredentialGenerations {
   constructor(
@@ -20,10 +33,12 @@ export class CredentialGenerations {
 
   get(id: string, value: string): number {
     if (!id) return 0
-    const key = keychainId('abele-calendar-generation', id)
+    const key = generationKey(id)
+    // An unavailable keychain is not malformed metadata; let the calendar use its local clock.
+    const stored = this.keychain.getSecret(key)
     let previous: { checksum?: string; generation?: number } = {}
     try {
-      previous = JSON.parse(this.keychain.getSecret(key) ?? '{}') ?? {}
+      previous = JSON.parse(stored ?? '{}') ?? {}
     } catch {
       /* repair malformed local metadata */
     }

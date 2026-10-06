@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CalendarService } from '@/calendars/CalendarService'
 import { CredentialGenerations } from '@/secrets/credentialGenerations'
 import { newFeed } from '@/calendars/settings'
+import { isKeychainId } from '@/secrets/keychainId'
 
 const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n'
 describe('calendar cache credential generations', () => {
@@ -20,6 +21,110 @@ describe('calendar cache credential generations', () => {
     expect(new CredentialGenerations(keychain, () => 0).get('sample-key', 'sample-secret')).toBe(1)
     expect(first.get('sample-key', 'changed-secret')).toBe(2)
     expect(first.get('sample-key', '')).toBe(3)
+  })
+
+  it('uses bounded, stable and distinct generation slots for every accepted credential id length', () => {
+    const values = new Map<string, string>()
+    const written: string[] = []
+    const keychain = {
+      getSecret: (id: string) => values.get(id) ?? null,
+      setSecret: (id: string, value: string) => {
+        expect(isKeychainId(id)).toBe(true)
+        written.push(id)
+        values.set(id, value)
+      },
+    }
+    const ids = [
+      ...Array.from({ length: 64 }, (_, i) => 'x'.repeat(i + 1)),
+      'sample-'.padEnd(64, 'a'),
+      'sample-'.padEnd(63, 'a') + 'b',
+      '0-'.repeat(32),
+    ]
+    expect(ids.every(isKeychainId)).toBe(true)
+    for (const id of ids)
+      expect(new CredentialGenerations(keychain, () => 0).get(id, 'first')).toBe(1)
+    const firstSlots = [...written]
+    expect(new Set(firstSlots).size).toBe(ids.length)
+    written.length = 0
+    for (const id of ids)
+      expect(new CredentialGenerations(keychain, () => 0).get(id, 'second')).toBe(2)
+    expect(written).toEqual(firstSlots)
+    expect(firstSlots[0]).toBe('abele-calendar-generation-x')
+  })
+
+  it.each(['getSecret', 'setSecret'] as const)(
+    'continues refreshing and detects credential edits when generation %s fails',
+    async (failure) => {
+      const feed = { ...newFeed([]), id: 'sample-failure', keyId: 'sample-key' }
+      let secret = 'https://sample.invalid/first.ics',
+        seed = 0,
+        kept = ''
+      const keychain = {
+        getSecret: () => null,
+        setSecret: () => {},
+      }
+      vi.spyOn(keychain, failure).mockImplementation(() => {
+        throw new Error('Sample keychain unavailable')
+      })
+      const request = vi.fn(async () => ({ status: 200, text: ics, headers: {} }))
+      const service = new CalendarService({
+        storage: {
+          read: async () => kept,
+          write: async (text) => {
+            kept = text
+          },
+        },
+        settings: () => ({ refreshMinutes: 30, feeds: [feed] }),
+        secret: () => secret,
+        credentialGeneration: (id) =>
+          new CredentialGenerations(keychain, () => ++seed * 100).get(id, secret),
+        request,
+      })
+      await expect(service.refresh()).resolves.toBeUndefined()
+      expect(request).toHaveBeenCalledOnce()
+      expect(service.state.events[feed.id]).toEqual([])
+      expect(service.state.status[feed.id]).toMatchObject({ reading: false, error: null })
+      const first = JSON.parse(kept).feeds[feed.id].fingerprint
+      await service.refreshChanged()
+      expect(request).toHaveBeenCalledOnce()
+      secret = 'https://sample.invalid/second.ics'
+      await service.refreshChanged()
+      expect(request).toHaveBeenCalledTimes(2)
+      expect(JSON.parse(kept).feeds[feed.id].fingerprint).not.toBe(first)
+      expect(kept).not.toMatch(/first\.ics|second\.ics|checksum/)
+    }
+  )
+
+  it('reports an unavailable credential per feed without blocking other feeds or later refreshes', async () => {
+    const feeds = ['sample-key', 'other-key'].map((keyId) => ({ ...newFeed([]), id: keyId, keyId }))
+    let unavailable = true
+    const secret = (id: string) => {
+      if (id === 'sample-key' && unavailable) throw new Error('Sample keychain unavailable')
+      return `https://sample.invalid/${id}.ics`
+    }
+    const request = vi.fn(async () => ({ status: 200, text: ics, headers: {} }))
+    const service = new CalendarService({
+      storage: null,
+      settings: () => ({ refreshMinutes: 30, feeds }),
+      secret,
+      credentialGeneration: (id) => {
+        secret(id)
+        return 100
+      },
+      request,
+    })
+    await expect(service.refresh()).resolves.toBeUndefined()
+    expect(service.state.status['sample-key']).toMatchObject({
+      reading: false,
+      error: 'Sample keychain unavailable',
+    })
+    expect(service.state.events['other-key']).toEqual([])
+    expect(request).toHaveBeenCalledOnce()
+    unavailable = false
+    await service.refreshChanged()
+    expect(service.state.events['sample-key']).toEqual([])
+    expect(service.state.status['sample-key'].error).toBeNull()
+    expect(request).toHaveBeenCalledTimes(2)
   })
 
   it('does not reuse a copied cache clock when generation metadata is absent on another device', () => {

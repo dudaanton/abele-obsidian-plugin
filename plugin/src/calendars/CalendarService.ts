@@ -116,11 +116,25 @@ export class CalendarService {
 
   private fingerprint(feed: CalendarFeed): string {
     const id = feed.keyId
-    let generation = this.deps.credentialGeneration?.(id)
+    let generation: number | undefined
+    try {
+      generation = this.deps.credentialGeneration?.(id)
+    } catch {
+      // Generation metadata is optional; a keychain failure must not prevent a feed read.
+    }
     if (generation === undefined) {
-      const value = id ? this.deps.secret(id) : ''
+      let value = ''
+      try {
+        value = id ? this.deps.secret(id) : ''
+      } catch {
+        // The actual feed read reports unavailable credentials through its normal error handling.
+      }
       const previous = this.credentials.get(id)
-      generation = previous?.value === value ? previous.generation : (previous?.generation ?? 0) + 1
+      // A failed persistent clock must not reuse a copied cache's generation after restart.
+      const initial =
+        previous?.generation ??
+        (this.deps.credentialGeneration ? Math.floor(Math.random() * 2 ** 48) : 0)
+      generation = previous?.value === value ? previous.generation : initial + 1
       this.credentials.set(id, { value, generation })
     }
     return sourceHash(
