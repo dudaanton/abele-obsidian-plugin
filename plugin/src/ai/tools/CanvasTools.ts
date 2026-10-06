@@ -214,7 +214,8 @@ export function createCanvasTools(): AgentTool[] {
         const key = scoped(params.path, ctx)
         guardChatWrite(key)
         if ('recovery' in params) return recoverProposal('canvas_edit', key, params, signal, ctx)
-        const operations = structuredClone(params.ops)
+        // Tool arguments are JSON; approval queues can wrap retained patch fields in Vue proxies.
+        const operations = JSON.parse(JSON.stringify(params.ops)) as typeof params.ops
         const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
           key,
           params.revision,

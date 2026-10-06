@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TFile } from 'obsidian'
+import { isReactive, ref } from 'vue'
 import { createCanvasTools } from '@/ai/tools/CanvasTools'
 import { createAgentTools, getToolRegistry } from '@/ai/tools'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -210,6 +211,25 @@ describe('agent canvas tools and permissions', () => {
     await expect(call('canvas_create', { path: 'sample.canvas', from: { graph } })).rejects.toThrow(
       /exists/i
     )
+  })
+  it('applies an approved edit with nested patches from a deep reactive tool-call queue', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const read = await call('canvas_read', { path: 'sample.canvas' })
+    const pendingToolCalls = ref([
+      {
+        name: 'canvas_edit',
+        args: {
+          path: 'sample.canvas',
+          revision: JSON.parse(read.content[0].text).revision,
+          ops: [{ op: 'update', id: 'alpha', patch: { styleAttributes: { shape: 'ellipse' } } }],
+        },
+      },
+    ])
+    const approved = pendingToolCalls.value[0]
+    expect(isReactive(approved.args.ops[0].patch.styleAttributes)).toBe(true)
+    await call(approved.name, approved.args)
+    const data = await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')
+    expect(data.nodes.find((node) => node.id === 'alpha')?.styleAttributes?.shape).toBe('ellipse')
   })
   it('reads and paints only scope-authorized note assets; refuses out-of-scope diagram changes', async () => {
     await call('canvas_create', { path: 'sample.canvas', from: { graph } })
