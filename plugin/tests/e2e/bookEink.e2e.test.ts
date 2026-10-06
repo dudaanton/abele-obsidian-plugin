@@ -298,6 +298,8 @@ describe.skipIf(!available)('e-ink mode', () => {
     expect(r.tapped).toBe(true)
     expect(r.during).toBe(true)
     expect(r.lifted).toBe(true)
+    // Close the phone's reader while its own saved layout is still active.
+    run(`for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach(); return {}`)
     await reload('app.emulateMobile(false)')
   }, 180_000)
 })

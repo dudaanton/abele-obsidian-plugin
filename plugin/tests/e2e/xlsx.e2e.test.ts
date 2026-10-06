@@ -33,6 +33,9 @@ describe.skipIf(!available)('workbook view', () => {
     )
   })
   afterAll(async () => {
+    evalRaw(
+      `(() => { for (const leaf of app.workspace.getLeavesOfType('abele-workbook')) if (leaf.view.file?.path === ${JSON.stringify(PATH)}) leaf.detach(); return true })()`
+    )
     if (!onPhone()) {
       evalRaw(
         `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`

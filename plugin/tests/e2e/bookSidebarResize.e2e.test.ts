@@ -130,6 +130,9 @@ describe.skipIf(!available)('reader navigation split', () => {
     })()`)
   })
   afterAll(async () => {
+    evalRaw(
+      `(() => { for (const leaf of app.workspace.getLeavesOfType('abele-book')) if (leaf.view.file?.path === ${JSON.stringify(BOOK)}) leaf.detach(); return 'ok' })()`
+    )
     if (!onPhone()) await reloadApp('app.emulateMobile(false)')
     evalRaw(`(async () => {
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) if (leaf.view.file?.path === ${JSON.stringify(BOOK)}) leaf.detach()

@@ -183,6 +183,9 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
   }, 90_000)
 
   afterAll(async () => {
+    evalRaw(
+      `(() => { for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach(); return 'ok' })()`
+    )
     if (evalJson<boolean>('app.isMobile')) {
       if (size[0]) await setWindowSize(size[0], size[1])
       await reload('app.emulateMobile(false)')

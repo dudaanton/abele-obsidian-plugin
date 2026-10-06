@@ -178,6 +178,9 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
         expect(result.button).toBeLessThanOrEqual(result.viewport)
         runCli(['dev:screenshot', `path=${process.cwd()}/build/book-library-mobile.png`])
       } finally {
+        run(
+          `for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach(); return true`
+        )
         await reloadApp('app.emulateMobile(false)')
         evalRaw(
           `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]}); return 'ok' })()`

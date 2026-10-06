@@ -152,6 +152,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!available) return
+  evalRaw(
+    `(() => { for (const leaf of app.workspace.getLeavesOfType('abele-deck')) if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)} + '/')) leaf.detach(); return true })()`
+  )
   if (emulated) await reloadApp('app.emulateMobile(false)')
   evalRaw(`(async () => {
     for(const leaf of app.workspace.getLeavesOfType('abele-deck')) if(leaf.view.file?.path.startsWith(${JSON.stringify(DIR)}+'/')) leaf.detach()

@@ -68,6 +68,10 @@ describe.skipIf(!available)('book overlay reflow', () => {
   })
 
   afterAll(async () => {
+    // Each device layout owns its tabs; close the phone fixture before switching away.
+    evalRaw(
+      `(() => { for (const leaf of app.workspace.getLeavesOfType('abele-book')) if (leaf.view.file?.path === ${JSON.stringify(BOOK)}) leaf.detach(); return 'ok' })()`
+    )
     if (!onPhone()) await reloadApp('app.emulateMobile(false)')
     evalRaw(`(async () => {
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) if (leaf.view.file?.path === ${JSON.stringify(BOOK)}) leaf.detach()
@@ -160,12 +164,16 @@ describe.skipIf(!available)('book overlay reflow', () => {
       v.model.panel=false
       await check('sidebar closed', () => !v.contentEl.querySelector('.abele-book-reader__panel'))
       ${!onPhone() ? `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '430, 844' : '1100, 860'}); await check('resized', () => innerWidth === ${mobile ? 430 : 1100} && innerHeight === ${mobile ? 844 : 860})` : ''}
-      ${!onPhone() && !mobile ? `for (const zoom of [0.9, 1.1, 1]) {
+      ${
+        !onPhone() && !mobile
+          ? `for (const zoom of [0.9, 1.1, 1]) {
         const wc = require('@electron/remote').getCurrentWebContents()
         const width = innerWidth * wc.getZoomFactor() / zoom
         wc.setZoomFactor(zoom)
         await check('zoom '+zoom, () => Math.abs(wc.getZoomFactor() - zoom) < 0.001 && Math.abs(innerWidth - width) < 2)
-      }` : ''}
+      }`
+          : ''
+      }
       const fontSize = () => parseFloat(doc.defaultView.getComputedStyle(p).fontSize)
       const originalSize = fontSize()
       cfg.reader={...cfg.reader,font:'sans',fontSize:120}; await cfg.saveSettings()

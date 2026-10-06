@@ -71,7 +71,7 @@ describe.skipIf(!available)('editor syntax highlighting', () => {
   let setting: boolean | null
   let previous: unknown
   beforeAll(() => {
-    previous = evalJson('app.workspace.activeLeaf?.getViewState() ?? null')
+    previous = evalJson('app.workspace.getLayout()')
     setting = evalJson('window.__abeleTest.AbeleConfig.getInstance().editorSyntaxHighlight ?? null')
     evalAsync(`(async () => {
       const config = window.__abeleTest.AbeleConfig.getInstance()
@@ -85,13 +85,18 @@ describe.skipIf(!available)('editor syntax highlighting', () => {
     })()`)
   })
   afterAll(async () => {
-    if (!onPhone()) await reloadApp('emulateDesktop')
+    evalAsync(`(async () => {
+      for (const leaf of app.workspace.getLeavesOfType('markdown')) if (leaf.view.file?.path === ${JSON.stringify(NOTE)}) leaf.detach()
+      return { ok: true }
+    })()`)
+    if (!onPhone()) await reloadApp('app.emulateMobile(false)')
     evalAsync(`(async () => {
       const config = window.__abeleTest.AbeleConfig.getInstance()
       config.editorSyntaxHighlight = ${JSON.stringify(setting ?? true)}
       await config.saveSettings()
       const saved = ${JSON.stringify(previous)}
-      if (saved) await app.workspace.getLeaf(false).setViewState(saved)
+      // Restore each view to its original split, not the current main-area leaf.
+      if (saved) await app.workspace.changeLayout(saved)
       const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
       if (file) await app.vault.delete(file)
       return { ok: true }
@@ -336,7 +341,7 @@ describe.skipIf(!available)('editor syntax highlighting', () => {
   })
 
   it.skipIf(onPhone())('highlights in phone emulation', async () => {
-    await reloadApp('emulateMobile')
+    await reloadApp('app.emulateMobile(true)')
     checkEditor(false)
   })
 
