@@ -128,7 +128,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     // Navigation opens the palette; creation itself is chosen with real input.
     run("app.commands.executeCommandById('command-palette:open');return true")
     await press('document.querySelector(".prompt-input")')
-    await type('New canvas')
+    await type('new canvas')
     shot('creation-palette')
     const command =
       '[...document.querySelectorAll(".suggestion-item")].find(el=>/Abele.*New canvas/i.test(el.textContent))'
