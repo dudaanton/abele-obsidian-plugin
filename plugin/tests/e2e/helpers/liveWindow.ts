@@ -65,30 +65,32 @@ beforeAll(async () => {
 }, 150_000)
 
 // Stack hook ordering keeps this boundary outside every file's fixture teardown.
-// Finally restores state even when idempotent window cleanup itself fails.
+// Each cleanup is attempted even after another failed; no finally masks its diagnosis.
 afterAll(async () => {
   if (!available) return
+  const failures: unknown[] = []
   try {
     closeStrayWindows()
     notesInEditor()
-  } finally {
-    try {
-      const failures: unknown[] = []
-      try {
-        if (rootViews) assertNoLeakedRootViews(rootViews)
-      } catch (error) {
-        failures.push(error)
-      }
-      try {
-        if (savedRootViews) await assertNoLeakedSavedRootViews(savedRootViews)
-      } catch (error) {
-        failures.push(error)
-      }
-      if (failures.length) throw new AggregateError(failures, failures.map(String).join('\n'))
-    } finally {
-      await cleanPhone()
-    }
+  } catch (error) {
+    failures.push(error)
   }
+  try {
+    if (rootViews) assertNoLeakedRootViews(rootViews)
+  } catch (error) {
+    failures.push(error)
+  }
+  try {
+    if (savedRootViews) await assertNoLeakedSavedRootViews(savedRootViews)
+  } catch (error) {
+    failures.push(error)
+  }
+  try {
+    await cleanPhone()
+  } catch (error) {
+    failures.push(error)
+  }
+  if (failures.length) throw new AggregateError(failures, failures.map(String).join('\n'))
 }, 90_000)
 
 /**
