@@ -35,6 +35,8 @@ interface Road {
   inPanel: boolean
   /** Leaves anywhere that hold the chat file. */
   chatLeaves: number
+  /** The user's main-area chat view was neither moved, replaced nor closed. */
+  mainChatKept: boolean
 }
 
 type Roads =
@@ -66,6 +68,7 @@ const script = `(async () => {
   const svc = T.ChatService.getInstance()
   const storage = T.ChatStorage.getInstance()
   const tabs = []
+  let mainChat
 
   const cfg = T.AbeleConfig.getInstance().ai
   const base = cfg.chatFolder.replace(/\\/?\\{\\{.*$/, '').replace(/\\/$/, '')
@@ -125,8 +128,10 @@ const script = `(async () => {
       active: describeLeaf(app.workspace.activeLeaf),
       tabsBefore,
       tabsAfter: attached.size,
-      inPanel: !!svc.getSessionByFile(chatPath),
+      inPanel: !!svc.getSessionByFile(chatPath) && app.workspace.getLeavesOfType('abele-ai-sidebar-view')
+        .some(l => l.getRoot() === app.workspace.rightSplit || l.getRoot() === app.workspace.leftSplit),
       chatLeaves: chatLeaves(),
+      mainChatKept: attached.has(mainChat) && mainChat.view.getViewType() === 'abele-ai-sidebar-view',
     }
   }
   const tryRoad = async (name, mode, act) => {
@@ -185,6 +190,9 @@ const script = `(async () => {
   }
 
   try {
+    // A user may also keep a chat view in a main-area tab. File opens still belong to the sidebar.
+    mainChat = app.workspace.getLeaf('tab')
+    await mainChat.setViewState({ type: 'abele-ai-sidebar-view', active: true })
     // ── seed ──
     let dir = ''
     for (const part of base.split('/')) {
@@ -220,7 +228,8 @@ const script = `(async () => {
     await tryRoad('attached', 'source', async () => {
       await svc.openChatFile(host)
       await svc.revealSidebar()
-      const panel = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
+      const panel = app.workspace.getLeavesOfType('abele-ai-sidebar-view')
+        .find(l => l.getRoot() === app.workspace.rightSplit || l.getRoot() === app.workspace.leftSplit)
       const chip = () => panel?.view.containerEl.querySelector('.abele-chat-msg__attachment-chip')
       if (!(await until(() => chip()))) throw new Error('no attached chat in the message')
       app.workspace.setActiveLeaf(panel, { focus: true })
@@ -231,6 +240,7 @@ const script = `(async () => {
   } finally {
     await closeChats()
     for (const l of tabs) l.detach()
+    mainChat?.detach()
     for (const path of created) {
       const f = app.vault.getAbstractFileByPath(path)
       if (f) await app.vault.delete(f)
@@ -266,6 +276,7 @@ const untouched = (
   expect(r.tabsAfter).toBe(r.tabsBefore)
   expect(r.inPanel).toBe(true)
   expect(r.chatLeaves).toBe(0)
+  expect(r.mainChatKept).toBe(true)
 }
 
 describe.skipIf(!available)('opening a chat file the ways Obsidian opens files, in the app', () => {

@@ -66,6 +66,34 @@ describe('revealing a sidebar panel', () => {
     expect(f.leftSplit.expand).not.toHaveBeenCalled()
   })
 
+  it('reveals the sidebar copy rather than a main-area view of the same type', async () => {
+    const f = fakeApp({ revealOpens: false, existing: true })
+    const mainLeaf = { getRoot: () => ({}) }
+    f.workspace.getLeavesOfType = () => [mainLeaf, f.leaf] as never
+    await revealSidebarView(f.app, 'some-view')
+    expect(f.workspace.revealLeaf).toHaveBeenCalledWith(f.leaf)
+    expect(f.leaf.setViewState).not.toHaveBeenCalled()
+  })
+
+  it('creates a sidebar copy when only a main-area view exists, leaving that tab alone', async () => {
+    const f = fakeApp({ revealOpens: false })
+    const mainLeaf = { getRoot: () => ({}), setViewState: vi.fn() }
+    f.workspace.getLeavesOfType = () => [mainLeaf] as never
+    await revealSidebarView(f.app, 'some-view')
+    expect(f.workspace.revealLeaf).toHaveBeenCalledWith(f.leaf)
+    expect(f.leaf.setViewState).toHaveBeenCalledWith({ type: 'some-view', active: true })
+    expect(mainLeaf.setViewState).not.toHaveBeenCalled()
+  })
+
+  it('reuses a left-sidebar view rather than creating another on the right', async () => {
+    const f = fakeApp({ revealOpens: false, existing: true })
+    f.leaf.getRoot = () => f.leftSplit as never
+    await revealSidebarView(f.app, 'some-view')
+    expect(f.workspace.revealLeaf).toHaveBeenCalledWith(f.leaf)
+    expect(f.leftSplit.expand).toHaveBeenCalled()
+    expect(f.leaf.setViewState).not.toHaveBeenCalled()
+  })
+
   it('on a phone, opens again a drawer that hid itself while counting as open', async () => {
     const f = fakeApp({ revealOpens: true, existing: true })
     // A drawer that was closing when the reveal came: open by its flag, hidden on screen.

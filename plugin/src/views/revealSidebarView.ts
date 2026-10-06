@@ -20,7 +20,14 @@ const onScreen = (split: WorkspaceSidedock) =>
  */
 export async function revealSidebarView(app: App, viewType: string): Promise<void> {
   const { workspace } = app
-  let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(viewType)[0] ?? null
+  // A user can also keep this view in a main tab or a popout. A sidebar reveal must not
+  // select that tab, nor move or close it; reuse only a copy in one of the sidedocks.
+  let leaf: WorkspaceLeaf | null =
+    workspace
+      .getLeavesOfType(viewType)
+      .find(
+        (leaf) => leaf.getRoot() === workspace.rightSplit || leaf.getRoot() === workspace.leftSplit
+      ) ?? null
 
   if (!leaf) {
     leaf = workspace.getRightLeaf(false)

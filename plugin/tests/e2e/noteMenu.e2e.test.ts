@@ -29,6 +29,7 @@ const script = `(async () => {
   const notePath = folder + '/sample-note.md'
   const chatPath = folder + '/sample-chat.abchat'
   let leaf
+  let mainChat
   let created = false
   let temporaryTab = null
   const escape = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }))
@@ -43,6 +44,8 @@ const script = `(async () => {
     } }
   }
   try {
+    mainChat = app.workspace.getLeaf('tab')
+    await mainChat.setViewState({ type: 'abele-ai-sidebar-view', active: true })
     if (app.vault.getAbstractFileByPath(folder)) throw new Error('Fixture folder already exists')
     cfg.enabled = true
     await app.vault.createFolder(folder)
@@ -121,6 +124,7 @@ const script = `(async () => {
     if (temporaryTab && svc.tabOrder.value.includes(temporaryTab)) await svc.closeTab(temporaryTab)
     if (activeTab && svc.tabOrder.value.includes(activeTab)) svc.switchTab(activeTab)
     if (leaf) leaf.detach()
+    mainChat?.detach()
     const fixture = app.vault.getAbstractFileByPath(folder)
     if (created && fixture) await app.vault.delete(fixture, true)
     cfg.enabled = enabled
