@@ -100,6 +100,26 @@ describe('a present but malformed synced store', () => {
   })
 })
 
+describe('device-local node credentials', () => {
+  it('does not record a local token in an unlocked synced store or carry it to another device', async () => {
+    const on = shared()
+    const local = device(on)
+    await local.store.enable('sample-passphrase', FAST)
+    const writes = local.writes
+    local.store.setLocal('abele-node-sample', 'sample-token')
+    await local.store.flush()
+    expect(local.store.getLocal('abele-node-sample')).toBe('sample-token')
+    expect(local.store.contents()).toEqual([])
+    expect(local.writes).toBe(writes)
+    const remote = device(on)
+    await remote.store.load()
+    await remote.store.unlock('sample-passphrase')
+    expect(remote.store.getLocal('abele-node-sample')).toBe('')
+    local.store.forgetLocal('abele-node-sample')
+    expect(local.store.getLocal('abele-node-sample')).toBe('')
+  })
+})
+
 describe('turning the store on', () => {
   it('forgetting a deleted connection locally does not revoke a shared token on other devices', async () => {
     const on = shared()

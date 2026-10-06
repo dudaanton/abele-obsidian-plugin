@@ -34,10 +34,12 @@
       "tests",
       "tsconfig.json",
       "version-bump.mjs",
+      "vendor",
       "vite.config.mts",
       "vitest.config.ts",
       "vitest.e2e.config.ts",
       "vitest.measure.config.ts",
+      "vitest.node.config.ts",
       "vitest.perf.config.ts",
       "vitest.size.config.ts",
       "watch.sh"
@@ -50,7 +52,12 @@
   "allow": {
     "large": ["assets/abele_preview.jpg"],
     "images": ["assets/**", "docs/**", "plugin/tests/fixtures/**"],
-    "junk": [],
+    "junk": [
+      "plugin/vendor/node/abele-channel-protocol-0.0.0.tgz",
+      "plugin/vendor/node/abele-node-protocol-0.0.0.tgz",
+      "plugin/vendor/node/abele-channel-client-0.0.0.tgz",
+      "plugin/vendor/node/abele-node-client-0.0.0.tgz"
+    ],
     "homePaths": []
   }
 }

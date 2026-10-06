@@ -97,6 +97,17 @@ export class SecretStore {
     return this.host.keychain().getSecret(id) ?? ''
   }
 
+  /** Installation credentials bypass the synced secret catalog, even when it is unlocked. */
+  getLocal(id: string): string {
+    return this.host.keychain().getSecret(id) ?? ''
+  }
+
+  setLocal(id: string, value: string): void {
+    if (value) this.host.keychain().setSecret(id, value)
+    else this.forget(id)
+    this.version.value++
+  }
+
   /** A device-local credential clock; neither its verifier nor the keychain leaves this service. */
   credentialGeneration(id: string): number {
     return new CredentialGenerations(this.host.keychain()).get(id, this.get(id))

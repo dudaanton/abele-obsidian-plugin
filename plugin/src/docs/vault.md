@@ -26,6 +26,25 @@ in settings transfer, and the optional script-trust switch does not control temp
 Notice deduplication is session memory only and lasts only while a review notice is connected;
 a dismissed notice can be shown again on the next blocked application.
 
+## Node sessions (device-local)
+
+Node history is owned by the daemon journal, not vault Markdown or `.abchat` files. The
+plugin never runs local tools for a node tab. Obsidian's vault-scoped local storage holds
+`abele-node-installation` (local namespace UUID), `abele-node-registry` (installation
+registration id, label, loopback URL and pinned node identity), and the discriminated
+local-chat/node-session layout in `abele-agent-tabs`. None of these travel in settings
+transfer or `data.json`. Tokens use device-local keychain slots `abele-node-<registration id>`
+and bypass the synced secret catalog even when it is unlocked.
+
+Each enrollment uses its own IndexedDB database `abele-node-<local namespace>-<registration id>`,
+version 1, object store `client`. Its `state` record holds pinned node/installation identity,
+stream cursors, cached journal events, immutable operation outbox entries and durable receipts.
+Events and cursors commit together before acknowledgment; the outbox commits before sending
+and is removed only alongside a durable result. Unknown valid journal records remain cached.
+Removing a connection forgets only its local preference and token; it neither deletes daemon
+history nor revokes the daemon credential. Retained caches are installation-local, not encrypted
+at rest, and are not canonical history. Re-enrollment uses a fresh cache namespace.
+
 ## ZIP archives
 
 Agent `zip` stores an ordinary binary `.zip` file at the explicitly requested new path, creating

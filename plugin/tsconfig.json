@@ -11,7 +11,11 @@
     "allowSyntheticDefaultImports": true,
     "lib": ["DOM", "ESNext"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@abele/channel-protocol": ["./node_modules/@abele/channel-protocol/dist/index.d.ts"],
+      "@abele/node-protocol": ["./node_modules/@abele/node-protocol/dist/index.d.ts"],
+      "@abele/channel-client": ["./node_modules/@abele/channel-client/dist/index.d.ts"],
+      "@abele/node-client": ["./node_modules/@abele/node-client/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue"]

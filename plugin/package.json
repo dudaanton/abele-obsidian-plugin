@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:key-destinations": "vitest run tests/unit/keyDestinationSecurity.test.ts tests/unit/keyHttpSecurity.test.ts tests/unit/localProviderTransport.test.ts tests/unit/savedKeyRequests.test.ts tests/component/securityDialogs.test.ts tests/component/manualKeyConsentDialog.test.ts tests/integration/scriptKeyApproval.test.ts tests/integration/manualKeyConsent.test.ts tests/harness/keyDestinationRouting.test.ts tests/unit/basicAuth.test.ts tests/integration/basicKeyRequests.test.ts tests/component/toolApproval.test.ts tests/integration/secretsListBoundary.test.ts",
     "test:watch": "vitest",
+    "test:node": "vitest run --config vitest.node.config.ts",
     "test:perf": "vitest run .perf.test.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:e2e:phone": "E2E_TARGET=phone vitest run --config vitest.e2e.config.ts",
@@ -46,6 +47,7 @@
     "eslint-plugin-obsidianmd": "0.4.2",
     "eslint-plugin-prettier": "5.5.6",
     "eslint-plugin-vue": "10.10.0",
+    "fake-indexeddb": "6.2.5",
     "happy-dom": "20.11.6",
     "obsidian": "1.13.1",
     "prettier": "3.6.2",
@@ -58,6 +60,10 @@
     "vue-tsc": "2.2.12"
   },
   "dependencies": {
+    "@abele/channel-client": "file:vendor/node/abele-channel-client-0.0.0.tgz",
+    "@abele/channel-protocol": "file:vendor/node/abele-channel-protocol-0.0.0.tgz",
+    "@abele/node-client": "file:vendor/node/abele-node-client-0.0.0.tgz",
+    "@abele/node-protocol": "file:vendor/node/abele-node-protocol-0.0.0.tgz",
     "@codemirror/lang-css": "6.3.1",
     "@codemirror/lang-html": "6.4.11",
     "@codemirror/lang-javascript": "6.2.5",
