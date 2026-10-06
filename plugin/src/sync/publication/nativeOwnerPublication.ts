@@ -195,6 +195,7 @@ export class NativeOwnerPublication {
         observe: (c, grantId) => this.existingObservation(c, grantId),
         add: (request) => this.addExisting(request),
         held: () => this.enabled() && this.live && options.held(),
+        questionEpoch: () => this.resolutionEpoch,
       }
     )
     this.intents = new PublicationIntents(
@@ -311,6 +312,7 @@ export class NativeOwnerPublication {
     } else throw new Error('Native owner evidence missing; recovery required')
     const app = this.options.app
     const changed = app.metadataCache.on('changed', (file, data, cache) => {
+      this.resolutionEpoch++
       const path = file.path,
         source = String(data),
         snapshot = copy(cache)

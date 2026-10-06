@@ -68,6 +68,8 @@ export interface ExistingConfirmationPort {
   ): Promise<ExistingPublicationObservation | null | undefined>
   add(request: OwnerAdd): Promise<unknown>
   held(): boolean
+  /** In-memory namespace/evidence invalidation, not a persisted decision identity. */
+  questionEpoch?(): number
 }
 /** A separate queue: never awaited by personal settlement, never an upload hold. */
 export class ExistingPrivateConfirmation {
@@ -83,7 +85,11 @@ export class ExistingPrivateConfirmation {
     this.tail = next.catch(() => {})
     return next
   }
+  questionEpoch(): number {
+    return this.port.questionEpoch?.() ?? 0
+  }
   async questions(): Promise<ExistingPublicationQuestion[]> {
+    const epoch = this.questionEpoch()
     const questions: ExistingPublicationQuestion[] = []
     for (const d of await this.store.existing(this.binding)) {
       if (d.state !== 'pending' || d.completed || !this.port.held()) continue
@@ -96,7 +102,7 @@ export class ExistingPrivateConfirmation {
       )
         questions.push(fresh)
     }
-    return questions
+    return this.port.held() && epoch === this.questionEpoch() ? questions : []
   }
   refresh(candidates: ExistingPrivateCandidate[]): Promise<ExistingPrivateCandidate[]> {
     return this.serial(async () => {

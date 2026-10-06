@@ -2,6 +2,8 @@
 import { it, expect, vi } from 'vitest'
 import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { NativeOwnerPublication } from '@/sync/publication/nativeOwnerPublication'
+import { existingPublicationQuestion } from '@/sync/publication/publicationDecision'
+import { PublicationPrompt } from '@/sync/publicationPrompt'
 import { buildFakeVault } from '../helpers/fakeVault'
 const link = '[[private.png]]'
 async function fixture(receivedLink = false, delayedPull = false) {
@@ -290,6 +292,59 @@ it('a delayed base callback cannot overwrite a newer settled version', async () 
     f.close()
   }
 })
+it.each(['refresh', 'review'] as const)(
+  'drops an early validated question before %s display if a later HTTP check spans a rename',
+  async (mode) => {
+    const f = await fixture()
+    try {
+      await f.local(link)
+      await f.runtime().refreshPublication()
+      const coordinator = f.runtime().confirmation
+      const [first] = await coordinator.questions()
+      const second = (await existingPublicationQuestion({
+        ...first.observation,
+        audience: { ...first.observation.audience, grantId: 'sample-second-grant' },
+      }))!
+      await (coordinator as any).store.rememberExisting({ ...second, state: 'pending' })
+      let enter!: () => void, release!: () => void
+      const started = new Promise<void>((resolve) => {
+          enter = resolve
+        }),
+        delayed = new Promise<void>((resolve) => {
+          release = resolve
+        })
+      f.ports().visibility.mockImplementation(async (grantId: string) => {
+        if (grantId === 'sample-second-grant') {
+          enter()
+          await delayed
+        }
+        return {
+          grantId,
+          label: 'Sample audience',
+          targetFileId: f.target.fileId,
+          visible: false,
+          targetVersionId: null,
+          scopeRevision: 1,
+          revision: 0,
+          withdrawalGeneration: 0,
+        }
+      })
+      const prompt = new PublicationPrompt(() => true),
+        detach = prompt.attach(coordinator)
+      const showing = mode === 'refresh' ? prompt.refresh() : prompt.open(first)
+      await started
+      await f.shadow()
+      release()
+      await showing
+      expect(prompt.asking.value).toBeNull()
+      expect(prompt.pending.value).toEqual([])
+      expect(f.ports().add).not.toHaveBeenCalled()
+      detach()
+    } finally {
+      f.close()
+    }
+  }
+)
 it('re-resolves before proposing a question when a sibling rename shadows the short link', async () => {
   const f = await fixture()
   try {

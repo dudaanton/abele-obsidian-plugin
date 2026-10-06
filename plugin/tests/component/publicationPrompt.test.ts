@@ -146,6 +146,23 @@ describe('existing-private publication prompt and real dialog content', () => {
     s.detach()
     s.wrapper.unmount()
   })
+  it.each(['refresh', 'review'] as const)(
+    'drops an epoch-invalid result before %s can ask',
+    async (mode) => {
+      const s = setup()
+      let epoch = 0
+      ;(s.host as any).questionEpoch = () => epoch
+      s.host.questions.mockImplementation(async () => {
+        epoch++
+        return [question]
+      })
+      if (mode === 'refresh') await s.prompt.refresh()
+      else await s.prompt.open(question)
+      expect(s.prompt.asking.value).toBeNull()
+      s.detach()
+      s.wrapper.unmount()
+    }
+  )
   it('revalidates a background question before showing it in the foreground', async () => {
     const s = setup(false)
     await s.prompt.refresh()

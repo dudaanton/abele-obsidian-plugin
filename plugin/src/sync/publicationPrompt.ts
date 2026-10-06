@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import type { ExistingPublicationQuestion } from './publication/publicationDecision'
 export interface PublicationPromptHost {
+  questionEpoch?(): number
   questions(): Promise<ExistingPublicationQuestion[]>
   answer(question: ExistingPublicationQuestion, accepted: boolean): Promise<boolean>
 }
@@ -25,8 +26,10 @@ export class PublicationPrompt {
   async refresh() {
     const host = this.host
     if (!host) return
-    const pending = await host.questions()
+    const epoch = host.questionEpoch?.()
+    const result = await host.questions()
     if (host !== this.host) return
+    const pending = epoch === host.questionEpoch?.() ? result : []
     this.pending.value = pending
     const asking = this.asking.value
     if (asking && !pending.some((q) => q.exposureKey === asking.exposureKey)) this.close()
@@ -54,8 +57,10 @@ export class PublicationPrompt {
     const host = this.host
     if (!host || !this.visible() || this.busy.value) return
     try {
-      const pending = await host.questions()
+      const epoch = host.questionEpoch?.()
+      const result = await host.questions()
       if (host !== this.host) return
+      const pending = epoch === host.questionEpoch?.() ? result : []
       this.pending.value = pending
       const fresh = pending.find((q) => q.exposureKey === question.exposureKey)
       if (fresh) this.ask(fresh)
