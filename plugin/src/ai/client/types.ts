@@ -177,6 +177,8 @@ export interface ModelConfig {
   name: string
   baseUrl: string
   apiKey: string
+  /** Seconds to connect or wait for the next response chunk. Defaults to 60. */
+  requestTimeoutSeconds?: number
   /** A stored key is held until its destination is approved on this device. */
   keyError?: string
   contextWindow: number

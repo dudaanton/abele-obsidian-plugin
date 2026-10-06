@@ -15,6 +15,16 @@
           @click="reviewKeyDestinations"
         />
       </Setting>
+      <Setting
+        name="Request timeout (seconds)"
+        desc="Wait for the model to connect or send the next response chunk, not for the whole answer. 1–3600 seconds; empty restores 60. Applies to all chat and background models."
+      >
+        <Input
+          :model-value="String(modelRequestTimeout)"
+          placeholder="60"
+          @update:model-value="setRequestTimeout($event)"
+        />
+      </Setting>
       <Section title="Providers">
         <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">
           <div class="abele-ai-provider__header">
@@ -674,6 +684,7 @@ import { OpenAIClient } from '@/ai/client'
 import type { RemoteModel } from '@/ai/client'
 import type { AiProvider, AiModelConfig, AiPrompts, AiSecret } from '@/ai/types'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { requestTimeoutSeconds, MAX_REQUEST_TIMEOUT_SECONDS } from '@/ai/requestTimeout'
 
 /** Written out in script: nested moustaches in the template confuse the Vue parser. */
 const NAME_TOKEN = '{{name}}'
@@ -744,6 +755,14 @@ const secrets = ref(secretRows(config.ai.secrets || []))
 const secretValueInputs = reactive<Record<string, string>>({})
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
 const sequentialAuxiliary = ref(config.ai.sequentialAuxiliary)
+const modelRequestTimeout = ref(requestTimeoutSeconds(config.ai.requestTimeoutSeconds))
+
+const setRequestTimeout = (value: string) => {
+  const seconds = value.trim() === '' ? requestTimeoutSeconds(undefined) : Number(value)
+  if (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_REQUEST_TIMEOUT_SECONDS) return
+  modelRequestTimeout.value = seconds
+  save()
+}
 const prompts = ref<Partial<AiPrompts>>(
   config.ai.prompts ? JSON.parse(JSON.stringify(config.ai.prompts)) : {}
 )
@@ -827,6 +846,7 @@ const applyFields = () => {
     providers: JSON.parse(JSON.stringify(providers.value)),
     auxiliaryModelId: auxiliaryModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
+    requestTimeoutSeconds: modelRequestTimeout.value,
     chatFolder: chatFolder.value,
     rewindLimitMb: rewindLimitMb.value,
     commentAgentId: commentAgentId.value,
@@ -847,6 +867,7 @@ watch(config.version, () => {
   providers.value = JSON.parse(JSON.stringify(config.ai.providers))
   auxiliaryModelId.value = config.ai.auxiliaryModelId
   sequentialAuxiliary.value = config.ai.sequentialAuxiliary
+  modelRequestTimeout.value = requestTimeoutSeconds(config.ai.requestTimeoutSeconds)
   chatFolder.value = config.ai.chatFolder
   rewindLimitMb.value = config.ai.rewindLimitMb ?? DEFAULT_REWIND_LIMIT_MB
   commentAgentId.value = config.ai.commentAgentId ?? ''

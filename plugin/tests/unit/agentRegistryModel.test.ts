@@ -60,6 +60,7 @@ describe('AgentRegistry.resolveModel', () => {
       id: 'o3',
       name: 'o3',
       baseUrl: 'https://api.openai.com/v1',
+      requestTimeoutSeconds: 60,
       apiKey: 'sk-test',
       contextWindow: 200000,
       maxTokens: 8192,

@@ -186,6 +186,7 @@ export class AgentRegistry {
       id: found.model.id,
       name: found.model.name,
       baseUrl: found.provider.baseUrl,
+      requestTimeoutSeconds: AbeleConfig.getInstance().ai.requestTimeoutSeconds,
       ...providerKey(found.provider.apiKeyId, found.provider.baseUrl, AbeleConfig.getInstance()),
       contextWindow: found.model.contextWindow,
       maxTokens: found.model.maxTokens,

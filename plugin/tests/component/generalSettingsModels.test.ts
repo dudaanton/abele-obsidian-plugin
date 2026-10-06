@@ -4,15 +4,52 @@ import GeneralSettings from '@/components/settings/ai/GeneralSettings.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Setting from '@/components/obsidian/Setting.vue'
+import Input from '@/components/obsidian/Input.vue'
 import { OpenAIClient } from '@/ai/client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { useVault } from '../helpers/testEnv'
+import { FakeSettings } from '../helpers/fakeSettings'
 
 let screen: ReturnType<typeof mount> | null = null
 afterEach(() => {
   screen?.unmount()
   screen = null
   vi.restoreAllMocks()
+  AbeleConfig.getInstance().destroy()
+})
+
+it('saves a timeout in seconds, rejects invalid values and follows incoming settings', async () => {
+  useVault([])
+  const config = AbeleConfig.getInstance()
+  config.destroy()
+  config.applySettings(undefined)
+  config.ai.enabled = true
+  vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
+  screen = mount(GeneralSettings, {
+    global: { stubs: { Input: true, Dropdown: true, Search: true } },
+  })
+  const setting = screen
+    .findAllComponents(Setting)
+    .find((item) => item.props('name') === 'Request timeout (seconds)')!
+  expect(setting).toBeDefined()
+  const input = setting.findComponent(Input)
+  expect(input.props('modelValue')).toBe('60')
+  await input.vm.$emit('update:model-value', '180')
+  expect(config.ai.requestTimeoutSeconds).toBe(180)
+  for (const value of ['0', '-1', 'Infinity', 'not a number', '3601']) {
+    await input.vm.$emit('update:model-value', value)
+    expect(config.ai.requestTimeoutSeconds).toBe(180)
+  }
+  await input.vm.$emit('update:model-value', '')
+  expect(config.ai.requestTimeoutSeconds).toBe(60)
+  const disk = new FakeSettings()
+  config.init(disk as never)
+  const incoming = config.exportSettings()
+  incoming.ai = { ...incoming.ai!, requestTimeoutSeconds: 240 }
+  disk.stored = incoming
+  await config.reloadSettings()
+  await flushPromises()
+  expect(input.props('modelValue')).toBe('240')
 })
 
 it('saves the whole provider/model key selected for background work', async () => {

@@ -1,3 +1,4 @@
+import { DEFAULT_REQUEST_TIMEOUT_SECONDS } from './requestTimeout'
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
 import type { ReplyHighlight, ReplyProposal, ReplyRevision } from './replyAnnotations'
 import type { TFile } from 'obsidian'
@@ -202,6 +203,8 @@ export interface AiSettings {
   activeModelId: string
   auxiliaryModelId: string
   sequentialAuxiliary: boolean
+  /** Seconds to connect or wait for the next response chunk; not a total-turn limit. */
+  requestTimeoutSeconds?: number
   permissionMode: PermissionMode
   toolModes: Record<string, ToolMode>
   scriptsEnabled: boolean
@@ -461,6 +464,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   activeModelId: '',
   auxiliaryModelId: '',
   sequentialAuxiliary: false,
+  requestTimeoutSeconds: DEFAULT_REQUEST_TIMEOUT_SECONDS,
   permissionMode: 'confirm-all',
   toolModes: {
     web_search: 'auto',

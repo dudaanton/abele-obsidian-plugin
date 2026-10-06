@@ -1,4 +1,5 @@
 import { request as requestUrl, withDeadline, readTextLimited, checkRequest } from '@/helpers/http'
+import { requestTimeoutSeconds } from '@/ai/requestTimeout'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import type {
   AssistantMessage,
@@ -144,6 +145,7 @@ export class OpenAIClient {
       timestamp: Date.now(),
     }
 
+    const timeoutMs = requestTimeoutSeconds(model.requestTimeoutSeconds) * 1000
     const connection = new AbortController()
     const signal = options.signal ? AbortSignal.any([options.signal, connection.signal]) : connection.signal
     let currentBlock: (AssistantContentBlock & { partialArgs?: string }) | null = null
@@ -167,14 +169,14 @@ export class OpenAIClient {
         },
         body: JSON.stringify(body),
         signal,
-      }), 60_000, () => connection.abort())
+      }), timeoutMs, () => connection.abort())
       if (!response.ok) {
-        const errorText = await withDeadline(readTextLimited(response, 64 * 1024), 60_000, () => connection.abort()).catch(() => 'Unreadable or oversized error response')
+        const errorText = await withDeadline(readTextLimited(response, 64 * 1024), timeoutMs, () => connection.abort()).catch(() => 'Unreadable or oversized error response')
         throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
       if (!response.body) throw new Error('No response body')
 
-      for await (const chunk of this.parseSSE(response.body, signal)) {
+      for await (const chunk of this.parseSSE(response.body, signal, timeoutMs)) {
         if (!chunk || typeof chunk !== 'object') continue
 
         // Track usage
@@ -616,7 +618,8 @@ export class OpenAIClient {
    */
   private async *parseSSE(
     body: ReadableStream<Uint8Array>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    timeoutMs = requestTimeoutSeconds(undefined) * 1000
   ): AsyncGenerator<StreamChunk> {
     const reader = body.getReader()
     const decoder = new TextDecoder()
@@ -629,7 +632,7 @@ export class OpenAIClient {
       while (true) {
         signal?.throwIfAborted()
 
-        const { done, value } = await withDeadline(reader.read(), 60_000, () => { void reader.cancel().catch(() => {}) })
+        const { done, value } = await withDeadline(reader.read(), timeoutMs, () => { void reader.cancel().catch(() => {}) })
         if (done) break
         bytes += value.byteLength
         if (bytes > 20 * 1024 * 1024) throw new Error('Chat response too large')

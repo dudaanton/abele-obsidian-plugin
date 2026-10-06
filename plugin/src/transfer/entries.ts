@@ -128,6 +128,7 @@ export const SECTIONS: Section[] = [
       'activeModelId',
       'auxiliaryModelId',
       'sequentialAuxiliary',
+      'requestTimeoutSeconds',
       'autoRetry',
       'permissionMode',
       'toolModes',

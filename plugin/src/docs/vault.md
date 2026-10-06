@@ -644,6 +644,15 @@ records. Unsaved new records acquire an identity before editing. Settings transf
 each saved-key record separately by this identity, and `ai.autoRetry` travels in AI general
 settings. Incoming settings cannot move an open key editor onto another record.
 
+## Model request timeout
+
+`ai.requestTimeoutSeconds` stores the shared chat-model timeout in seconds, defaulting to 60.
+Values from 1 to 3600 are accepted; absent or invalid values use 60. It limits connection wait,
+error-body reading and each idle wait for a streamed chunk, not the whole response. It applies
+to all OpenAI-compatible chat models, including background, review, fallback and delegated
+requests, and travels in the AI general settings section. Other request types keep their own
+limits.
+
 ## Background model settings
 
 The shared `ai.auxiliaryModelId` setting stores `providerId::modelId` for new background-model

@@ -11,6 +11,16 @@ Chats with AI models that can read and change your notes, inside limits you set.
 4. On the **Agents** tab, open the `Default` agent and give it that model.
 5. Open the chat with **Show AI chat sidebar**, or the robot in the ribbon.
 
+### Waiting for slow models
+
+On the **General** tab, **Request timeout (seconds)** sets how long Abele waits for a model
+connection or the next response chunk. It defaults to **60**; use a higher value for slow local
+models. Values from **1 to 3600** seconds are accepted; clearing the field restores 60.
+It is an idle timeout, not a limit on the whole answer: a model can keep answering longer as
+long as each chunk arrives in time. The same setting applies to all providers, fallback and
+delegated models, review responses, chat titles and compaction. It travels with **AI general**
+settings. Model-list fetching, image generation and voice input keep their separate timeouts.
+
 ## Offering tools by group
 
 Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.

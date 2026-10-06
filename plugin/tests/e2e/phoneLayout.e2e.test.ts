@@ -838,6 +838,13 @@ const probeScript = `(async () => {
           const settingsModal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
           const header = settingsModal?.querySelector('.modal-header')
           const settingsScroll = settingsModal?.querySelector('.vertical-tab-content')
+          const timeoutRow = [...document.querySelectorAll('.abele-settings__ai .setting-item')]
+            .find((row) => row.querySelector('.setting-item-name')?.textContent === 'Request timeout (seconds)')
+          if (timeoutRow?.querySelector('input') && settingsModal && settingsScroll) {
+            timeoutRow.scrollIntoView({ block: 'center' })
+            await wait(400)
+            await screen('settings ai timeout', settingsModal, settingsScroll)
+          }
           if (intro && header && settingsScroll) {
             settingsScroll.scrollTop += intro.getBoundingClientRect().top - header.getBoundingClientRect().bottom + 12
             await wait(400)
@@ -1303,6 +1310,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'link write',
     'secrets list',
     'settings ai keys',
+    'settings ai timeout',
     'settings ai secrets scroll',
     'settings finance keys',
     'settings mcp',
