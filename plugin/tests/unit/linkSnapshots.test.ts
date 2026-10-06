@@ -102,7 +102,7 @@ describe('existing-private version comparison', () => {
         c.facts,
         []
       )
-    ).toEqual(c.facts)
+    ).toEqual([])
   })
 })
 describe('durable exact-version link snapshots', () => {

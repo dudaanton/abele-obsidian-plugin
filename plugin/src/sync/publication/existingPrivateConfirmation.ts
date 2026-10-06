@@ -21,7 +21,9 @@ export function existingPrivateTargets(
   local: LinkFact[],
   renames: KnownRename[]
 ): LinkFact[] {
-  const old = baseline.kind === 'complete' ? baseline.facts : []
+  // Unknown is not an empty owner-authored base: it may contain received links.
+  if (baseline.kind !== 'complete') return []
+  const old = baseline.facts
   const spellings = new Set(old.map((f) => normalizedSpelling(f.spelling)))
   const ids = new Set(old.flatMap((f) => (f.targetId ? [f.targetId] : [])))
   const paths = new Set(
