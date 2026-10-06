@@ -1,11 +1,20 @@
 import { afterEach, expect, it } from 'vitest'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  copyFileSync,
+  chmodSync,
+  writeFileSync,
+  readFileSync,
+} from 'node:fs'
 import { resolve } from 'node:path'
 import { IDBFactory } from 'fake-indexeddb'
 import { NodeClient } from '@abele/node-client'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
+import { NodeWorkspaceModel } from '@/node/NodeWorkspaceModel'
 
 const cli = process.env.ABELE_NODE_CLI
 if (!cli)
@@ -25,6 +34,7 @@ async function eventually(test: () => Promise<boolean>) {
 async function start(dir: string) {
   const child = spawn(process.execPath, [cli!, 'start', '--state-dir', dir, '--port', '0'], {
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, ABELE_CLAUDE_PATH: resolve(dir, 'fixture-claude.mjs') },
   })
   children.push(child)
   let output = '',
@@ -66,11 +76,16 @@ it('persists offline outbox, replay/cursor, approval and renderer history across
   mkdirSync('../.scratch', { recursive: true })
   const dir = mkdtempSync(resolve('../.scratch/n-'))
   dirs.push(dir)
+  copyFileSync(resolve('tests/fixtures/nodeClaude.mjs'), resolve(dir, 'fixture-claude.mjs'))
+  chmodSync(resolve(dir, 'fixture-claude.mjs'), 0o700)
   const enroll = (label: string) => {
     const created = spawnSync(
       process.execPath,
       [cli!, 'token', 'create', label, '--state-dir', dir],
-      { encoding: 'utf8' }
+      {
+        encoding: 'utf8',
+        env: { ...process.env, ABELE_CLAUDE_PATH: resolve(dir, 'fixture-claude.mjs') },
+      }
     )
     expect(created.status, created.stderr).toBe(0)
     return JSON.parse(created.stdout) as { token: string }
@@ -149,4 +164,176 @@ it('persists offline outbox, replay/cursor, approval and renderer history across
     error: 'not_found',
     input: { sessionId: 'missing-session', text: 'Sample offline rejection' },
   })
+}, 20000)
+
+it('provisions two projects, renders gated fake CLI edits, reloads approvals, queues and resumes after daemon restart', async () => {
+  const dir = mkdtempSync('/tmp/abele-plugin-node-')
+  dirs.push(dir)
+  copyFileSync(resolve('tests/fixtures/nodeClaude.mjs'), resolve(dir, 'fixture-claude.mjs'))
+  chmodSync(resolve(dir, 'fixture-claude.mjs'), 0o700)
+  const tokenResult = spawnSync(
+    process.execPath,
+    [cli!, 'token', 'create', 'sample-workspace-client', '--state-dir', dir],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, ABELE_CLAUDE_PATH: resolve(dir, 'fixture-claude.mjs') },
+    }
+  )
+  expect(tokenResult.status, tokenResult.stderr).toBe(0)
+  const { token } = JSON.parse(tokenResult.stdout)
+  let daemon = await start(dir)
+  const factory = new IDBFactory()
+  const make = () => {
+    const store = new NodeClientStore('sample-workspace-client', factory)
+    stores.push(store)
+    const client = new NodeClient(
+      {
+        url: `ws://127.0.0.1:${daemon.port}/channel`,
+        profile: 'local-token-v1',
+        token,
+        expected_node_id: daemon.node_id,
+      },
+      store
+    )
+    clients.push(client)
+    return client
+  }
+  let client = make()
+  await client.connect()
+  const projects = []
+  for (const name of ['one', 'two']) {
+    const path = resolve(dir, name)
+    mkdirSync(path)
+    const git = (args: string[]) => {
+      const result = spawnSync('/usr/bin/git', args, { cwd: path, encoding: 'utf8' })
+      expect(result.status, result.stderr).toBe(0)
+      return result.stdout
+    }
+    git(['init', '--initial-branch=main'])
+    writeFileSync(resolve(path, 'sample.txt'), 'before\n')
+    git(['add', 'sample.txt'])
+    git([
+      '-c',
+      'user.name=Sample',
+      '-c',
+      'user.email=sample@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'sample',
+    ])
+    projects.push(await client.registerProject(path, 'trusted'))
+  }
+  const model = new NodeWorkspaceModel(client)
+  await model.load()
+  expect(model.projects.value).toHaveLength(2)
+  const sessions = []
+  for (const project of projects) {
+    model.projectId.value = project.project_id
+    await model.createWorkspace('HEAD')
+    await eventually(
+      async () => (await client.getJob(model.reservation.value!.job_id)).state === 'succeeded'
+    )
+    await model.load()
+    sessions.push(await model.startSession('Sample task', 'claude'))
+  }
+  const session = sessions[0]
+  await client.subscribe(session.session_id)
+  await client.send(session.session_id, 'edit', await client.cursor(session.session_id))
+  await eventually(async () =>
+    (await client.prompts(session.session_id)).some((p) => p.state === 'pending')
+  )
+  await client.send(session.session_id, 'followup', await client.cursor(session.session_id))
+  await eventually(
+    async () => reduceTranscript(await client.history(session.session_id)).queuedInputs.length === 1
+  )
+  await client.disconnect()
+  client = make()
+  await client.connect()
+  await client.subscribe(session.session_id)
+  await eventually(async () =>
+    reduceTranscript(await client.history(session.session_id)).prompts.some(
+      (p) => p.state === 'pending'
+    )
+  )
+  const prompt = reduceTranscript(await client.history(session.session_id)).prompts.find(
+    (p) => p.state === 'pending'
+  )!
+  expect(prompt).toMatchObject({ tool_name: 'Edit', input: { file_path: 'sample.txt' } })
+  await client.answerPrompt(prompt, 'allow')
+  await eventually(async () =>
+    reduceTranscript(await client.history(session.session_id)).messages.some(
+      (m) => m.content === '**Finished:** followup'
+    )
+  )
+  const projected = reduceTranscript(await client.history(session.session_id))
+  expect(projected.messages.find((m) => m.toolName === 'Edit')?.toolDiff).toEqual({
+    old: 'before\n',
+    new: 'after\n',
+  })
+  const native = (await client.getSession(session.session_id)).native_session_id
+  await client.subscribe(sessions[1].session_id)
+  await client.send(sessions[1].session_id, 'deny', 0)
+  await eventually(async () =>
+    (await client.prompts(sessions[1].session_id)).some((p) => p.state === 'pending')
+  )
+  await client.answerPrompt((await client.prompts(sessions[1].session_id))[0], 'deny')
+  await eventually(
+    async () => reduceTranscript(await client.history(sessions[1].session_id)).state === 'idle'
+  )
+  const denied = reduceTranscript(await client.history(sessions[1].session_id)).messages.find(
+    (m) => m.toolName === 'Edit'
+  )!
+  expect(denied.toolStatus).toBe('rejected')
+  expect(denied.toolDiff).toBeUndefined()
+  await client.disconnect()
+  await stop(daemon.child)
+  daemon = await start(dir)
+  client = make()
+  await client.connect()
+  await client.subscribe(session.session_id)
+  await client.send(session.session_id, 'resumed', await client.cursor(session.session_id))
+  await eventually(async () =>
+    reduceTranscript(await client.history(session.session_id)).messages.some(
+      (m) => m.content === '**Finished:** resumed'
+    )
+  )
+  expect((await client.getSession(session.session_id)).native_session_id).toBe(native)
+  model.workspaceId.value = session.workspace_id!
+  // The old model is deliberately replaced after reconnect, just as a plugin reload replaces it.
+  const review = new NodeWorkspaceModel(client)
+  review.workspaceId.value = session.workspace_id!
+  await review.load()
+  await review.preview()
+  expect(review.diff.value?.diff).toContain('+after')
+  for (const project of projects) {
+    expect(readFileSync(resolve(project.root_path, 'sample.txt'), 'utf8')).toBe('before\n')
+    expect(
+      spawnSync('/usr/bin/git', ['branch', '--show-current'], {
+        cwd: project.root_path,
+        encoding: 'utf8',
+      }).stdout.trim()
+    ).toBe('main')
+    expect(
+      spawnSync('/usr/bin/git', ['status', '--porcelain'], {
+        cwd: project.root_path,
+        encoding: 'utf8',
+      }).stdout
+    ).toBe('')
+  }
+  const unused = await client.createWorkspace(projects[0].project_id)
+  await eventually(async () => (await client.getJob(unused.job_id)).state === 'succeeded')
+  const removal = await client.removeWorkspace(unused.workspace_id)
+  await eventually(async () => (await client.getJob(removal.job_id)).state === 'succeeded')
+  expect((await client.getWorkspace(unused.workspace_id)).state).toBe('removed')
+  const workspace = await client.getWorkspace(session.workspace_id!)
+  expect(
+    JSON.parse(
+      readFileSync(resolve(workspace.path, 'fixture-turns.jsonl'), 'utf8')
+        .trim()
+        .split('\n')
+        .at(-1)!
+    )
+  ).toMatchObject({ text: 'resumed', resume: native })
 }, 20000)
