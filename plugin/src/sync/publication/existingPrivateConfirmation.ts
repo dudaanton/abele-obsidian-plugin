@@ -78,18 +78,30 @@ export class ExistingPrivateConfirmation {
     return next
   }
   async questions(): Promise<ExistingPublicationQuestion[]> {
-    return (await this.store.existing(this.binding)).filter(
-      (d) => d.state === 'pending' && !d.completed
-    )
+    const questions: ExistingPublicationQuestion[] = []
+    for (const d of await this.store.existing(this.binding)) {
+      if (d.state !== 'pending' || d.completed || !this.port.held()) continue
+      const current = await this.current(d)
+      const fresh = current && (await existingPublicationQuestion(current))
+      if (
+        this.port.held() &&
+        fresh?.exposureKey === d.exposureKey &&
+        fresh.fingerprint === d.fingerprint
+      )
+        questions.push(fresh)
+    }
+    return questions
   }
   refresh(candidates: ExistingPrivateCandidate[]): Promise<ExistingPrivateCandidate[]> {
     return this.serial(async () => {
       if (!this.port.held()) return candidates
-      const pending = (await this.questions()).map((q) => ({
-        sponsorId: q.observation.sponsor.fileId,
-        targetId: q.observation.target.fileId,
-        targetPath: q.observation.target.path,
-      }))
+      const pending = (await this.store.existing(this.binding))
+        .filter((d) => d.state === 'pending' && !d.completed)
+        .map((q) => ({
+          sponsorId: q.observation.sponsor.fileId,
+          targetId: q.observation.target.fileId,
+          targetPath: q.observation.target.path,
+        }))
       const work = new Map(
         [...candidates, ...pending].map((c) => [JSON.stringify([c.sponsorId, c.targetId]), c])
       )

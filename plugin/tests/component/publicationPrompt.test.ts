@@ -76,7 +76,7 @@ function setup(visible = true) {
     detach,
     foreground: () => {
       front = true
-      prompt.foreground()
+      return prompt.foreground()
     },
   }
 }
@@ -94,7 +94,7 @@ describe('existing-private publication prompt and real dialog content', () => {
       .find((b) => b.text() === 'Close')!
       .trigger('click')
     await s.prompt.refresh()
-    s.foreground()
+    await s.foreground()
     await nextTick()
     expect(s.wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(s.prompt.pending.value).toHaveLength(1)
@@ -125,11 +125,11 @@ describe('existing-private publication prompt and real dialog content', () => {
     const s = setup(false)
     await s.prompt.refresh()
     expect(s.prompt.asking.value).toBeNull()
-    s.foreground()
+    await s.foreground()
     await nextTick()
     expect(s.wrapper.find('[role="dialog"]').exists()).toBe(true)
     s.prompt.close()
-    s.foreground()
+    await s.foreground()
     expect(s.prompt.asking.value).toBeNull()
     s.detach()
     s.wrapper.unmount()
@@ -146,6 +146,27 @@ describe('existing-private publication prompt and real dialog content', () => {
     s.detach()
     s.wrapper.unmount()
   })
+  it('revalidates a background question before showing it in the foreground', async () => {
+    const s = setup(false)
+    await s.prompt.refresh()
+    s.host.questions.mockResolvedValue([]) // The short link now resolves elsewhere.
+    await s.foreground()
+    await nextTick()
+    expect(s.prompt.asking.value).toBeNull()
+    expect(s.wrapper.find('[role="dialog"]').exists()).toBe(false)
+    s.detach()
+    s.wrapper.unmount()
+  })
+  it('revalidates a dismissed question before explicit Review shows it again', async () => {
+    const s = setup()
+    await s.prompt.refresh()
+    s.prompt.close()
+    s.host.questions.mockResolvedValue([])
+    await s.prompt.open(question)
+    expect(s.prompt.asking.value).toBeNull()
+    s.detach()
+    s.wrapper.unmount()
+  })
   it('drops a detached runtime question without reopening it from a late refresh', async () => {
     const s = setup()
     await s.prompt.refresh()
@@ -159,7 +180,7 @@ describe('existing-private publication prompt and real dialog content', () => {
     s.detach()
     finish([question])
     await refresh
-    s.foreground()
+    await s.foreground()
     expect(s.prompt.asking.value).toBeNull()
     s.wrapper.unmount()
   })
@@ -169,7 +190,7 @@ describe('existing-private publication prompt and real dialog content', () => {
     s.prompt.close()
     await s.prompt.refresh()
     expect(s.prompt.asking.value).toBeNull()
-    s.prompt.open(s.prompt.pending.value[0])
+    await s.prompt.open(s.prompt.pending.value[0])
     await nextTick()
     expect(s.wrapper.find('[role="dialog"]').exists()).toBe(true)
     await s.prompt.answer(false)

@@ -1476,6 +1476,9 @@ local edits still sync personally, but their links cannot be certified as new ow
 A confirmed existing-private decision stores its exact add request and stable intent ID before
 HTTP; a lost reply retries that request, not another publication. Target/link/sponsor checks and
 owner-device audience visibility are re-read outside the personal settlement transaction.
+Short links are resolved again against the current namespace and stable ledger identity before
+showing or answering a question and immediately before transport. File namespace changes
+invalidate cached resolutions without changing immutable last-synced link facts.
 Closing the dialog leaves the question pending without reopening it on every save; **Review**
 in the Sync tab opens it explicitly. **Keep private** remembers a refusal for that file/audience.
 The production activation fence remains disabled.

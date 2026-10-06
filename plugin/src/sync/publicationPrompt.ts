@@ -30,15 +30,43 @@ export class PublicationPrompt {
     this.pending.value = pending
     const asking = this.asking.value
     if (asking && !pending.some((q) => q.exposureKey === asking.exposureKey)) this.close()
-    this.foreground()
+    this.show()
   }
-  foreground() {
+  async foreground() {
+    if (!this.visible() || this.busy.value) return
+    const host = this.host
+    try {
+      await this.refresh()
+    } catch {
+      if (host === this.host) {
+        this.pending.value = []
+        this.close()
+      }
+    }
+  }
+  private show() {
     if (!this.visible() || this.asking.value || this.busy.value) return
     const next = this.pending.value.find((q) => !this.shown.has(q.exposureKey))
-    if (next) this.open(next)
+    if (next) this.ask(next)
   }
-  /** Explicit review can reopen a dismissed pending question; automatic refresh cannot. */
-  open(question: ExistingPublicationQuestion) {
+  /** Explicit review also revalidates, rather than showing the tab's cached question. */
+  async open(question: ExistingPublicationQuestion) {
+    const host = this.host
+    if (!host || !this.visible() || this.busy.value) return
+    try {
+      const pending = await host.questions()
+      if (host !== this.host) return
+      this.pending.value = pending
+      const fresh = pending.find((q) => q.exposureKey === question.exposureKey)
+      if (fresh) this.ask(fresh)
+    } catch {
+      if (host === this.host) {
+        this.pending.value = []
+        this.close()
+      }
+    }
+  }
+  private ask(question: ExistingPublicationQuestion) {
     this.shown.add(question.exposureKey)
     this.error.value = ''
     this.asking.value = question

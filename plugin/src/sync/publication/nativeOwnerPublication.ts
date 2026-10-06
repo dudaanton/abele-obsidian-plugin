@@ -21,13 +21,17 @@ import {
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
 import { PublicationDecisionStore, type PublicationInput } from './publicationDecision'
 import { SharingHttpError } from '../sharing/sharingHttp'
+import type { OwnerAdd } from '../sharing/sponsoredAssets'
 import { PUBLICATION_ENABLED } from './fence'
-import { observeLinks, type CacheObservation as Observation } from './cacheObservation'
+import { observeLinks, type CacheObservation } from './cacheObservation'
 import {
   existingPrivateTargets,
   ExistingPrivateConfirmation,
   type ExistingPrivateCandidate,
 } from './existingPrivateConfirmation'
+interface Observation extends CacheObservation {
+  resolutionEpoch: number
+}
 interface Paste {
   id: string
   notePath: string
@@ -135,6 +139,7 @@ function project(
 export class NativeOwnerPublication {
   private pastes: Paste[] = []
   private observations = new Map<string, Observation>()
+  private resolutionEpoch = 0
   private work: Promise<void> = Promise.resolve()
   private unhookPaste: (() => void) | null = null
   private remote = new Set<string>()
@@ -173,7 +178,7 @@ export class NativeOwnerPublication {
       options.grants,
       {
         observe: (c, grantId) => this.existingObservation(c, grantId),
-        add: (request) => this.assets.add(request),
+        add: (request) => this.addExisting(request),
         held: () => this.enabled() && this.live && options.held(),
       }
     )
@@ -363,6 +368,7 @@ export class NativeOwnerPublication {
     target.addEventListener('paste', paste, true)
     this.unhookPaste = () => target.removeEventListener('paste', paste, true)
     const create = app.vault.on('create', (file) => {
+      this.resolutionEpoch++
       const path = file.path
       if (path.endsWith('.md') || this.remote.has(path)) return
       void this.queue(async () => {
@@ -379,6 +385,7 @@ export class NativeOwnerPublication {
     })
     this.refs.push({ target: app.vault, ref: create })
     const rename = app.vault.on('rename', (file, from) => {
+      this.resolutionEpoch++ // Invalidate derived resolutions, not immutable last-synced facts.
       const to = file.path
       void this.queue(async () => {
         const entry = (await this.options.state.get(from)) ?? (await this.options.state.get(to))
@@ -387,6 +394,7 @@ export class NativeOwnerPublication {
     })
     this.refs.push({ target: app.vault, ref: rename })
     const deleted = app.vault.on('delete', (file) => {
+      this.resolutionEpoch++
       const path = file.path
       this.deletedTargets.set(path, null)
       void this.queue(async () => {
@@ -470,7 +478,11 @@ export class NativeOwnerPublication {
   }
   private async observe(path: string, source: string, cache: CachedMetadata) {
     this.check()
-    const o = await observeLinks(this.options.app, this.options.state, path, source, cache)
+    const resolutionEpoch = this.resolutionEpoch
+    const o = {
+      ...(await observeLinks(this.options.app, this.options.state, path, source, cache)),
+      resolutionEpoch,
+    }
     this.observations.set(path, o)
     for (const p of this.pastes.filter((p) => !p.done && p.notePath === path)) p.current = copy(o)
     await this.save()
@@ -478,9 +490,24 @@ export class NativeOwnerPublication {
   private async exactCache(path: string, sha: string): Promise<Observation | null> {
     await this.work
     const old = this.observations.get(path)
-    if (old?.sha === sha) return copy(old)
-    // Settlement runs in the personal state transaction: never wait for a future callback.
-    return null
+    // Settlement never waits for a future callback. Existing exact source/cache bytes remain
+    // reusable after a rename, but their derived target identities must be resolved again.
+    if (old?.sha !== sha) return null
+    if (old.resolutionEpoch === this.resolutionEpoch) return copy(old)
+    const resolutionEpoch = this.resolutionEpoch
+    const fresh = {
+      ...(await observeLinks(
+        this.options.app,
+        this.options.state,
+        path,
+        old.source,
+        JSON.parse(old.cacheJson) as CachedMetadata
+      )),
+      resolutionEpoch,
+    }
+    if (resolutionEpoch !== this.resolutionEpoch || this.observations.get(path) !== old) return null
+    this.observations.set(path, fresh)
+    return copy(fresh)
   }
   private attestCache(c: SnapshotCandidate) {
     return [...this.observations.values()].some(
@@ -612,6 +639,40 @@ export class NativeOwnerPublication {
       throw e
     }
   }
+  private async addExisting(request: OwnerAdd) {
+    this.check()
+    const sponsor = await this.options.state.byFileId(request.sponsors[0].fileId)
+    const o = sponsor && (await this.exactCache(sponsor.path, sponsor.sha))
+    const epoch = this.resolutionEpoch
+    const target = await this.options.state.get(request.target.path)
+    if (
+      !sponsor ||
+      !o ||
+      target?.fileId !== request.target.fileId ||
+      target.path !== request.target.path ||
+      target.versionId !== request.target.versionId ||
+      (await sha256(
+        new Uint8Array(await this.options.app.vault.adapter.readBinary(sponsor.path))
+      )) !== o.sha ||
+      (await sha256(
+        new Uint8Array(await this.options.app.vault.adapter.readBinary(target.path))
+      )) !== request.target.sha ||
+      epoch !== this.resolutionEpoch
+    )
+      throw new Error('Publication reference changed or evidence unavailable before transport')
+    // No await between this final live resolution and transport: the reducer's hashing and
+    // durable writes cannot turn an earlier observation into permission for a different link.
+    if (
+      !o.facts.some(
+        (f) =>
+          this.options.app.metadataCache.getFirstLinkpathDest(f.spelling, sponsor.path)?.path ===
+          target.path
+      )
+    )
+      throw new Error('Publication reference changed before transport')
+    this.check()
+    return this.assets.add(request)
+  }
   private async existingObservation(c: ExistingPrivateCandidate, grantId: string) {
     this.check()
     const target = await this.options.state.byFileId(c.targetId),
@@ -638,14 +699,20 @@ export class NativeOwnerPublication {
       return null
     const o = await this.exactCache(sponsor.path, sponsor.sha)
     if (!o) return undefined
-    if (
-      !o.facts.some(
-        (f) =>
-          f.resolution === 'resolved' &&
-          (f.targetId === target.fileId || f.resolvedPath === target.path)
-      )
-    )
-      return null
+    const linkedNow = async () => {
+      const epoch = this.resolutionEpoch
+      for (const fact of o.facts) {
+        const path = this.options.app.metadataCache.getFirstLinkpathDest(
+          fact.spelling,
+          sponsor.path
+        )?.path
+        if (path !== target.path) continue
+        const current = await this.options.state.get(path)
+        if (epoch !== this.resolutionEpoch) return undefined
+        if (current?.fileId === target.fileId) return true
+      }
+      return epoch === this.resolutionEpoch ? false : undefined
+    }
     const unchanged = async () => {
       const t = await this.options.state.byFileId(target.fileId),
         s = await this.options.state.byFileId(sponsor.fileId)
@@ -665,9 +732,13 @@ export class NativeOwnerPublication {
     }
     try {
       if (!(await unchanged())) return undefined
+      const linked = await linkedNow()
+      if (linked !== true) return linked === undefined ? undefined : null
       const view = await this.assets.visibility(grantId, target.fileId),
         proof = await this.assets.sponsorProof(grantId, sponsor.fileId)
       if (proof.versionId !== sponsor.versionId || !(await unchanged())) return undefined
+      const stillLinked = await linkedNow()
+      if (stillLinked !== true) return stillLinked === undefined ? undefined : null
       this.check()
       return {
         binding: this.options.binding,
@@ -764,7 +835,7 @@ export class NativeOwnerPublication {
         if (!('sha' in o.op) || !o.op.sha) continue
         const path =
           o.op.op === 'create' ? o.op.path : (await this.options.state.byFileId(o.op.file_id))?.path
-        const observation = path ? this.observations.get(path) : null
+        const observation = path?.endsWith('.md') ? await this.exactCache(path, o.op.sha) : null
         if (path?.endsWith('.md') && observation?.sha === o.op.sha)
           local[o.handle] = copy(observation.facts)
       }

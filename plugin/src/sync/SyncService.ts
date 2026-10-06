@@ -520,7 +520,7 @@ export class SyncService {
         this.heldPrompt.foreground()
         this.settingsPrompt.foreground()
         this.codePrompt.foreground()
-        this.publicationPrompt.foreground()
+        void this.publicationPrompt.foreground()
       },
       sync: (visible) => {
         if (!this.runner.isRunning() || this.connection.value.paused) return

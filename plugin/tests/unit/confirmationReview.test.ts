@@ -62,18 +62,16 @@ async function fixture(receivedLink = false) {
   let runtime = new NativeOwnerPublication(options)
   const installPorts = () => {
     const assets = (runtime as any).assets
-    const visibility = vi
-      .spyOn(assets, 'visibility')
-      .mockResolvedValue({
-        grantId: 'sample-grant',
-        label: 'Sample audience',
-        targetFileId: target.fileId,
-        visible: false,
-        targetVersionId: null,
-        scopeRevision: 1,
-        revision: 0,
-        withdrawalGeneration: 0,
-      })
+    const visibility = vi.spyOn(assets, 'visibility').mockResolvedValue({
+      grantId: 'sample-grant',
+      label: 'Sample audience',
+      targetFileId: target.fileId,
+      visible: false,
+      targetVersionId: null,
+      scopeRevision: 1,
+      revision: 0,
+      withdrawalGeneration: 0,
+    })
     vi.spyOn(assets, 'sponsorProof').mockImplementation(async () => ({
       fileId: sponsor.fileId,
       versionId: sponsor.versionId,
@@ -152,7 +150,7 @@ async function fixture(receivedLink = false) {
       'sample-request'
     )
   }
-  const shadow = async () => {
+  const shadow = async (notify = true) => {
     const from = 'Other/alternate.png',
       to = 'Shared/private.png'
     const file = await app.vault.create(from, 'alternate file')
@@ -165,7 +163,7 @@ async function fixture(receivedLink = false) {
     })
     await app.fileManager.renameFile(file, to)
     destination = to
-    app.emit('vault', 'rename', file, from)
+    if (notify) app.emit('vault', 'rename', file, from)
     await runtime.flush()
     await state.put({
       ...target,
@@ -198,6 +196,90 @@ async function fixture(receivedLink = false) {
     close: () => runtime.close(),
   }
 }
+it('re-resolves before proposing a question when a sibling rename shadows the short link', async () => {
+  const f = await fixture()
+  try {
+    await f.local(link)
+    await f.shadow()
+    await f.runtime().refreshPublication()
+    expect(await f.runtime().confirmation.questions()).toEqual([])
+    expect(f.ports().add).not.toHaveBeenCalled()
+    expect((f.runtime() as any).observations.get('Shared/board.md').facts[0].targetId).toBe(
+      'sample-shadow'
+    )
+  } finally {
+    f.close()
+  }
+})
+it('re-resolves pending questions and rejects the stale open answer even without a new cache callback', async () => {
+  const f = await fixture()
+  try {
+    await f.local(link)
+    await f.runtime().refreshPublication()
+    const [q] = await f.runtime().confirmation.questions()
+    await f.shadow(false) // The index changes, but no note/rename callback reaches this runtime.
+    expect(await f.runtime().confirmation.questions()).toEqual([])
+    expect(await f.runtime().confirmation.answer(q, true)).toBe(false)
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it('re-resolves again between durable approval and the first send', async () => {
+  const f = await fixture()
+  try {
+    await f.local(link)
+    await f.runtime().refreshPublication()
+    const [q] = await f.runtime().confirmation.questions()
+    const store = (f.runtime().confirmation as any).store,
+      remember = store.rememberExisting.bind(store)
+    vi.spyOn(store, 'rememberExisting').mockImplementation(async (decision: any) => {
+      await remember(decision)
+      if (decision.state === 'approved' && !decision.completed) await f.shadow(false)
+    })
+    expect(await f.runtime().confirmation.answer(q, true)).toBe(true)
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it('checks resolution at the transport boundary even if it changes after the final observation', async () => {
+  const f = await fixture()
+  try {
+    await f.local(link)
+    await f.runtime().refreshPublication()
+    const [q] = await f.runtime().confirmation.questions()
+    const coordinator = f.runtime().confirmation as any,
+      current = coordinator.current.bind(coordinator)
+    let calls = 0
+    vi.spyOn(coordinator, 'current').mockImplementation(async (question: any) => {
+      const observation = await current(question)
+      if (++calls === 2) await f.shadow(false)
+      return observation
+    })
+    await expect(coordinator.answer(q, true)).rejects.toThrow('reference changed')
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it('never retries an unsent approval after the unchanged short link resolves to a different file', async () => {
+  const f = await fixture()
+  try {
+    await f.local(link)
+    await f.runtime().refreshPublication()
+    const [q] = await f.runtime().confirmation.questions()
+    f.ports().add.mockRejectedValueOnce(new Error('Transport failed before sending'))
+    await expect(f.runtime().confirmation.answer(q, true)).rejects.toThrow('before sending')
+    await f.shadow()
+    await f.runtime().refreshPublication()
+    expect(f.ports().add).toHaveBeenCalledTimes(1) // Only the original unsent attempt.
+    const saved = await (f.runtime().confirmation as any).store.getExisting(q.exposureKey)
+    expect(saved).toMatchObject({ state: 'approved', completed: true })
+  } finally {
+    f.close()
+  }
+})
 it('a pulled private link with late indexing never prompts after an unrelated body edit', async () => {
   const f = await fixture(true)
   try {
