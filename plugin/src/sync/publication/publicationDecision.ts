@@ -1,5 +1,5 @@
 import { sha256 } from '@abele/sync-core'
-import type { Sponsor, Target } from '../sharing/sponsoredAssets'
+import type { OwnerAdd, Sponsor, Target } from '../sharing/sponsoredAssets'
 import {
   bindingKey,
   normalizedSpelling,
@@ -31,6 +31,8 @@ export interface ExistingPublicationQuestion {
 }
 export interface ExistingPublicationDecision extends ExistingPublicationQuestion {
   state: ExposureDecision['state']
+  request?: OwnerAdd
+  completed?: boolean
 }
 /** Identity of an answer, independent of bytes, sponsor, generation, or the audience set. */
 export const existingExposureKey = (binding: SnapshotBinding, targetId: string, grantId: string) =>
@@ -76,7 +78,6 @@ export async function existingPublicationQuestion(
     exposureKey,
     t,
     s.fileId,
-    s.versionId,
     s.admissionGeneration,
     a.label,
     a.withdrawalGeneration,

@@ -545,6 +545,15 @@ export class PublicationIntents {
       await this.write(l)
     })
   }
+  async retrySettled(): Promise<void> {
+    this.fence()
+    const ids = await this.serial(async () =>
+      (await this.read()).units
+        .filter((u) => u.settled && u.intents.some((i) => i.state === 'settled'))
+        .map((u) => u.unit.requestId)
+    )
+    for (const id of ids) await this.retry(id)
+  }
   async retry(requestId: string): Promise<void> {
     this.fence()
     return this.serial(async () => {

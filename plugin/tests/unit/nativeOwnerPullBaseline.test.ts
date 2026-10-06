@@ -289,6 +289,146 @@ it('wires vault rename events to stable ledger identity without rewriting the ba
     s.p.close()
   }
 })
+it('settles personal uploads without publication HTTP, then asks and publishes outside the transaction', async () => {
+  const s = await setup()
+  try {
+    await s.p.hooks.onPersonalNoteApplied(s.event, s.bytes)
+    const app = (s.p as any).options.app,
+      assets = (s.p as any).assets
+    const targetBytes = new Uint8Array([1, 2, 3]),
+      targetSha = await sha256(targetBytes)
+    await app.vault.createBinary('Assets/private.png', targetBytes.buffer)
+    await app.vault.adapter.writeBinary('Assets/private.png', targetBytes.buffer)
+    const target = {
+      path: 'Assets/private.png',
+      wirePath: 'Assets/private.png',
+      fileId: 'private-id',
+      versionId: 'private-v1',
+      sha: targetSha,
+      size: 3,
+      mtime: 1,
+    }
+    await s.state.put(target)
+    const source = '[[private.png]]',
+      sha = await sha256(new TextEncoder().encode(source))
+    const note = {
+      path: 'Received.md',
+      wirePath: 'Received.md',
+      fileId: s.event.fileId,
+      versionId: 'note-v3',
+      sha,
+      size: source.length,
+      mtime: 2,
+    }
+    vi.mocked(s.state.byFileId).mockImplementation(async (id) =>
+      id === target.fileId ? target : id === note.fileId ? note : null
+    )
+    await app.vault.modify(app.vault.getAbstractFileByPath(note.path), source)
+    app.metadataCache.getFirstLinkpathDest = () => ({ path: target.path })
+    s.events.get('changed')!({ path: note.path }, source, {
+      links: [
+        {
+          link: 'private.png',
+          original: source,
+          position: { start: { offset: 0 }, end: { offset: source.length } },
+        },
+      ],
+    })
+    await s.p.flush()
+    let transaction = false
+    const visibility = vi.spyOn(assets, 'visibility').mockImplementation(async () => {
+      expect(transaction).toBe(false)
+      return {
+        grantId: 'sample-grant',
+        label: 'Sample audience',
+        targetFileId: target.fileId,
+        visible: false,
+        targetVersionId: null,
+        revision: 0,
+        scopeRevision: 1,
+        withdrawalGeneration: 0,
+      }
+    })
+    vi.spyOn(assets, 'sponsorProof').mockResolvedValue({
+      fileId: note.fileId,
+      versionId: note.versionId,
+      admissionGeneration: 1,
+      inScope: true,
+      intrinsic: true,
+    })
+    const add = vi.spyOn(assets, 'add').mockImplementation(async () => {
+      expect(transaction).toBe(false)
+      return {}
+    })
+    const op = {
+      op: 'update',
+      file_id: note.fileId,
+      base_version_id: s.event.versionId,
+      sha,
+      size: source.length,
+      mtime: 2,
+    }
+    await expect(
+      s.p.hooks.beforeUpload!({
+        operations: [
+          { op, index: 0, handle: 'sample-handle' },
+          {
+            op: { op: 'update', file_id: target.fileId, sha: targetSha },
+            index: 1,
+            handle: 'private-handle',
+          },
+        ],
+        idempotencyKey: 'sample-request',
+      } as any)
+    ).resolves.toBeUndefined()
+    await s.state.transaction(async () => {
+      transaction = true
+      await s.p.hooks.onSettled!(
+        {
+          op,
+          fileId: note.fileId,
+          versionId: note.versionId,
+          path: note.path,
+          sha,
+          handle: 'sample-handle',
+          result: { status: 'applied' },
+        } as any,
+        new TextEncoder().encode(source),
+        'sample-request'
+      )
+      transaction = false
+    })
+    expect(visibility).not.toHaveBeenCalled()
+    expect(add).not.toHaveBeenCalled()
+    await s.p.refreshPublication()
+    const [question] = await s.p.confirmation.questions()
+    expect(question.observation.audience.label).toBe('Sample audience')
+    expect(add).not.toHaveBeenCalled()
+    visibility.mockImplementationOnce(async () => {
+      await app.vault.modify(
+        app.vault.getAbstractFileByPath(note.path),
+        'link removed while HTTP was in flight'
+      )
+      return {
+        grantId: 'sample-grant',
+        label: 'Sample audience',
+        targetFileId: target.fileId,
+        visible: false,
+        targetVersionId: null,
+        revision: 0,
+        scopeRevision: 1,
+        withdrawalGeneration: 0,
+      }
+    })
+    expect(await s.p.confirmation.answer(question, true)).toBe(false)
+    expect(add).not.toHaveBeenCalled()
+    await app.vault.modify(app.vault.getAbstractFileByPath(note.path), source)
+    expect(await s.p.confirmation.answer(question, true)).toBe(true)
+    expect(add).toHaveBeenCalledTimes(1)
+  } finally {
+    s.p.close()
+  }
+})
 it('a mismatched received delivery cannot certify a baseline', async () => {
   const s = await setup()
   try {

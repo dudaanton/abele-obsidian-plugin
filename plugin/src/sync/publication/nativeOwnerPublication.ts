@@ -19,11 +19,13 @@ import {
   type SnapshotCandidate,
 } from './LinkSnapshotStore'
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
-import type { PublicationInput } from './publicationDecision'
+import { PublicationDecisionStore, type PublicationInput } from './publicationDecision'
+import { SharingHttpError } from '../sharing/sharingHttp'
 import { PUBLICATION_ENABLED } from './fence'
 import { observeLinks, type CacheObservation as Observation } from './cacheObservation'
 import {
   existingPrivateTargets,
+  ExistingPrivateConfirmation,
   type ExistingPrivateCandidate,
 } from './existingPrivateConfirmation'
 interface Paste {
@@ -147,6 +149,8 @@ export class NativeOwnerPublication {
   private readonly snapshots: LinkSnapshotStore
   private readonly intents: PublicationIntents
   private readonly assets: SponsoredAssetsHttpPort
+  readonly confirmation: ExistingPrivateConfirmation
+  private readonly deletedTargets = new Map<string, string | null>()
   constructor(private readonly options: Options) {
     this.prefix = 'native-owner-v1:' + JSON.stringify(options.binding) + ':'
     this.snapshots = new LinkSnapshotStore(options.meta, options.binding, (c) =>
@@ -163,6 +167,16 @@ export class NativeOwnerPublication {
         token: options.token,
       },
     })
+    this.confirmation = new ExistingPrivateConfirmation(
+      new PublicationDecisionStore(options.meta),
+      options.binding,
+      options.grants,
+      {
+        observe: (c, grantId) => this.existingObservation(c, grantId),
+        add: (request) => this.assets.add(request),
+        held: () => this.enabled() && this.live && options.held(),
+      }
+    )
     this.intents = new PublicationIntents(
       options.meta,
       options.binding,
@@ -372,6 +386,14 @@ export class NativeOwnerPublication {
       }).catch(() => {})
     })
     this.refs.push({ target: app.vault, ref: rename })
+    const deleted = app.vault.on('delete', (file) => {
+      const path = file.path
+      this.deletedTargets.set(path, null)
+      void this.queue(async () => {
+        this.deletedTargets.set(path, (await this.options.state.get(path))?.fileId ?? null)
+      }).catch(() => {})
+    })
+    this.refs.push({ target: app.vault, ref: deleted })
     const original = this.options.client.commitRaw.bind(this.options.client)
     // Restore the exact method reference to the SAME receiver; never invoke it unbound.
     // eslint-disable-next-line @typescript-eslint/unbound-method -- exact reference is restored to the same client
@@ -589,6 +611,96 @@ export class NativeOwnerPublication {
       if ((e as { code?: string }).code === 'conflict') return { status: 'cas-conflict' as const }
       throw e
     }
+  }
+  private async existingObservation(c: ExistingPrivateCandidate, grantId: string) {
+    this.check()
+    const target = await this.options.state.byFileId(c.targetId),
+      sponsor = await this.options.state.byFileId(c.sponsorId)
+    if (
+      !target ||
+      !sponsor ||
+      !nativeAssetEligible(target.path, this.options.configurationRoots?.())
+    )
+      return null
+    if (this.deletedTargets.has(target.path)) {
+      const oldId = this.deletedTargets.get(target.path)
+      if (!oldId || oldId === target.fileId) return null
+      this.deletedTargets.delete(target.path)
+    }
+    const renames = await this.snapshots.renames()
+    if (
+      renames.items.some(
+        (r) =>
+          r.fileId === target.fileId &&
+          !nativeAssetEligible(r.from, this.options.configurationRoots?.())
+      )
+    )
+      return null
+    const o = await this.exactCache(sponsor.path, sponsor.sha)
+    if (
+      !o ||
+      !o.facts.some(
+        (f) =>
+          f.resolution === 'resolved' &&
+          (f.targetId === target.fileId || f.resolvedPath === target.path)
+      )
+    )
+      return null
+    const unchanged = async () => {
+      const t = await this.options.state.byFileId(target.fileId),
+        s = await this.options.state.byFileId(sponsor.fileId)
+      return (
+        !this.deletedTargets.has(target.path) &&
+        t?.versionId === target.versionId &&
+        t.path === target.path &&
+        s?.versionId === sponsor.versionId &&
+        s.path === sponsor.path &&
+        (await sha256(
+          new Uint8Array(await this.options.app.vault.adapter.readBinary(target.path))
+        )) === target.sha &&
+        (await sha256(
+          new Uint8Array(await this.options.app.vault.adapter.readBinary(sponsor.path))
+        )) === sponsor.sha
+      )
+    }
+    try {
+      if (!(await unchanged())) return null
+      const view = await this.assets.visibility(grantId, target.fileId),
+        proof = await this.assets.sponsorProof(grantId, sponsor.fileId)
+      if (proof.versionId !== sponsor.versionId || !(await unchanged())) return null
+      this.check()
+      return {
+        binding: this.options.binding,
+        target: {
+          fileId: target.fileId,
+          versionId: target.versionId,
+          sha: target.sha,
+          path: target.path,
+          eligible: true,
+        },
+        sponsor: { ...proof, path: sponsor.path },
+        audience: {
+          grantId,
+          label: view.label,
+          active: true,
+          alreadyShared: view.visible,
+          revision: view.revision,
+          withdrawalGeneration: view.withdrawalGeneration,
+        },
+        linked: true,
+      }
+    } catch (error) {
+      if (error instanceof SharingHttpError && error.code === 'not_found') return null
+      throw error
+    }
+  }
+  /** Called after a sync transaction finishes; HTTP and questions never enter settlement. */
+  async refreshPublication() {
+    this.check()
+    await this.intents.retrySettled()
+    await this.confirmation.refresh(
+      (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
+    )
   }
   readonly hooks: OwnerPushHooks & { onPersonalNoteApplied: PersonalNoteHook } = {
     onPersonalNoteApplied: async (event, bytes) => {
@@ -837,7 +949,6 @@ export class NativeOwnerPublication {
       if (JSON.stringify(unit.ops) !== JSON.stringify(wire.ops))
         throw new Error('Native owner receipt body changed')
       await this.intents.settle({ requestId: id, ops: wire.ops, outcomes: project(wire.ops, body) })
-      await this.intents.retry(id)
       p.done = true
       await this.save()
     },

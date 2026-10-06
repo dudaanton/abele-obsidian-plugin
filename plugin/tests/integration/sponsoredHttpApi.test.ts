@@ -82,19 +82,16 @@ async function setup() {
   }
 }
 describe('real reviewed sponsored wire and intrinsic-evidence boundary', () => {
-  it.fails(
-    'BUG: an owner device can read audience labels without a fresh account sign-in',
-    async () => {
-      const f = await setup()
-      const response = await s!.fetch('http://127.0.0.1/v1/vaults/' + f.vaultId + '/grants', {
-        headers: { authorization: 'Bearer ' + f.deviceToken },
-      })
-      expect(response.status).toBe(200)
-      expect(await response.json()).toContainEqual(
-        expect.objectContaining({ id: f.grantId, label: 'Sample assets' })
-      )
-    }
-  )
+  it('an owner device can read audience labels and target visibility without a fresh account sign-in', async () => {
+    const f = await setup()
+    expect(await f.owner.visibility(f.grantId, f.asset.file_id)).toMatchObject({
+      grantId: f.grantId,
+      label: 'Sample assets',
+      targetFileId: f.asset.file_id,
+      visible: false,
+      targetVersionId: null,
+    })
+  })
   it('does not mistake missing extras and missing note proof for binary audience invisibility', async () => {
     const f = await setup(),
       bytes = new Uint8Array([4, 5, 6]),
@@ -121,6 +118,10 @@ describe('real reviewed sponsored wire and intrinsic-evidence boundary', () => {
     await expect(f.owner.sponsorProof(f.grantId, fileId)).rejects.toMatchObject({
       code: 'not_found',
       status: 404,
+    })
+    expect(await f.owner.visibility(f.grantId, fileId)).toMatchObject({
+      visible: true,
+      targetFileId: fileId,
     })
   })
   it('adds/replays/withdraws an owner extra through real wire deltas and never re-adds after withdrawal', async () => {

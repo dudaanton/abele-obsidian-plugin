@@ -199,6 +199,9 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
         // it open for ever (task-8 review, #1).
         if (join !== null && joinFinished(report)) host.joined(join)
         host.synced(report)
+        void Promise.resolve()
+          .then(() => ownerPublication?.settled?.())
+          .catch((error) => board.note(`owner publication is waiting: ${String(error)}`))
       },
       // A run that failed after its pull still wrote what it pulled.
       onFail: (error, kind) => {

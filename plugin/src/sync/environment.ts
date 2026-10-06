@@ -28,6 +28,8 @@ export interface SyncServiceDeps {
   }) => Promise<{
     hooks: OwnerPushHooks & { onPersonalNoteApplied?: PersonalNoteHook }
     beforeRemote?(paths: string[]): void | Promise<void>
+    /** Post-sync work, outside the personal settlement transaction; never holds uploads. */
+    settled?(): void | Promise<void>
     close(): void
   }>
   fetch?: typeof fetch

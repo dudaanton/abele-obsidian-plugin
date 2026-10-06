@@ -5,6 +5,7 @@ import {
   OwnerAssetAddSchema,
   NativeSponsoredCreateSchema,
   IntrinsicSponsorProofSchema,
+  TargetVisibilitySchema,
 } from '@abele/sync-protocol'
 import { z } from 'zod'
 import { SharingHttp, SharingHttpError, type SharingHttpOptions } from './sharingHttp'
@@ -102,6 +103,19 @@ export class SponsoredAssetsHttpPort implements SponsoredAssetPort {
     )
     if (v.grantId !== request.grantId) throw new Error('Sponsored response grant binding differs')
     return v
+  }
+  async visibility(grantId: string, fileId: string) {
+    const c = this.path(grantId, 'personal')
+    const view = TargetVisibilitySchema.parse(
+      await this.http.json(
+        'GET',
+        c.base + '/assets/visibility/' + encodeURIComponent(fileId),
+        c.token
+      )
+    )
+    if (view.grantId !== grantId || view.targetFileId !== fileId)
+      throw new Error('Target visibility response binding differs')
+    return view
   }
   async sponsorProof(grantId: string, fileId: string) {
     const c = this.path(grantId),
