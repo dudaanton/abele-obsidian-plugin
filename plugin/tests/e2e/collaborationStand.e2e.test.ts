@@ -765,8 +765,15 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
         30000
       )
       const renamedPath = ASSETS + '/sample-declined-renamed.png'
+      // Binary rename pairing needs unchanged bytes. Settle the move before replacing all
+      // content, so this tests durable decline for the same identity, not delete/create.
       await cli!.evalAwait(
-        `(async()=>{await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(declinedPath)}),${JSON.stringify(renamedPath)});await app.vault.adapter.writeBinary(${JSON.stringify(renamedPath)},new Uint8Array([80,81,82]).buffer);const f=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});await app.vault.modify(f,(await app.vault.read(f))+'\\nordinary resave after decline\\n');return true})()`
+        `app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(declinedPath)}),${JSON.stringify(renamedPath)}).then(()=>true)`
+      )
+      await ownerSync()
+      expect((await head(renamedPath)).file_id).toBe(declined.file_id)
+      await cli!.evalAwait(
+        `(async()=>{await app.vault.modifyBinary(app.vault.getAbstractFileByPath(${JSON.stringify(renamedPath)}),new Uint8Array([80,81,82]).buffer);const f=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});await app.vault.modify(f,(await app.vault.read(f))+'\\nordinary resave after decline\\n');return true})()`
       )
       await ownerSync()
       await settleGroup()
