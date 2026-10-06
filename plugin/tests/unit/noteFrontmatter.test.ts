@@ -3,9 +3,10 @@ import { TFile } from 'obsidian'
 import parseFrontmatter from '@/helpers/noteFrontmatter'
 import { parseNoteContent } from '@/helpers/notesUtils'
 
-// Captured against front-matter 4.0.2 before replacing it. The extractor's legacy body
-// trimming differs intentionally from the note helper's ordinary-fence spacing contract.
-describe('note frontmatter compatibility', () => {
+// Fence/body cases were captured against front-matter 4.0.2. YAML values now follow
+// js-yaml 4's default schema rather than preserving the legacy YAML 1.1 coercions.
+// Extractor body trimming still differs from the note helper's ordinary-fence spacing.
+describe('note frontmatter extraction and YAML values', () => {
   it.each(['', 'Plain\n---\nkey: value\n---\nBody', '---\nkey: value', '\n---\nkey: value\n---'])(
     'leaves non-frontmatter text unchanged: %j',
     async (text) => {
@@ -43,21 +44,23 @@ describe('note frontmatter compatibility', () => {
   )
 
   it.each([
-    ['012', 10],
-    ['-012', -10],
-    ['0o12', '0o12'],
-    ['08', '08'],
-    ['01.2', '01.2'],
-    ['1_000', 1000],
+    ['012', 12],
+    ['-012', -12],
+    ['0755', 755],
+    ['0o12', 10],
+    ['08', 8],
+    ['01.2', 1.2],
+    ['1_000', '1_000'],
     ['1_', '1_'],
-    ['0b1_0', 2],
-    ['0xF_F', 255],
-    ['0_7', 7],
-    ['1:20', 80],
-    ['1:20:30', 4830],
-    ['1:20.5', 80.5],
-    ['34:7:50:41:12:23:54:41:48:19.478', 343959285737094500],
-    ['1.2_5', 1.25],
+    ['0b1_0', '0b1_0'],
+    ['0xF_F', '0xF_F'],
+    ['0_7', '0_7'],
+    ['12:30', '12:30'],
+    ['1:20', '1:20'],
+    ['1:20:30', '1:20:30'],
+    ['1:20.5', '1:20.5'],
+    ['34:7:50:41:12:23:54:41:48:19.478', '34:7:50:41:12:23:54:41:48:19.478'],
+    ['1.2_5', '1.2_5'],
     ['1e3', 1000],
     ['-.5', '-.5'],
     ['.inf', Infinity],
@@ -66,9 +69,8 @@ describe('note frontmatter compatibility', () => {
     ['on', 'on'],
     ['true', true],
     ['null', null],
-    ['!!int 012', 10],
-    ['!!float 1:20.5', 80.5],
-  ])('preserves legacy YAML scalar %s', (scalar, expected) => {
+    ['!!int 012', 12],
+  ])('uses default YAML 1.2 scalar semantics for %s', (scalar, expected) => {
     expect(
       parseFrontmatter<{ value: unknown }>(`---\nvalue: ${scalar}\n---\nBody`).attributes.value
     ).toEqual(expected)
@@ -78,16 +80,16 @@ describe('note frontmatter compatibility', () => {
     expect(
       parseFrontmatter('---\nbytes: !!binary SGk=\nnested: [2028-03-01]\n---\nBody').attributes
     ).toEqual({
-      bytes: Buffer.from('Hi'),
+      bytes: new Uint8Array([72, 105]),
       nested: [new Date('2028-03-01T00:00:00Z')],
     })
   })
 
-  it('uses ordinary byte arrays without a Node Buffer host', () => {
+  it('uses typed byte arrays without a Node Buffer host', () => {
     vi.stubGlobal('Buffer', undefined)
     try {
       expect(parseFrontmatter('---\nbytes: !!binary SGk=\n---').attributes).toEqual({
-        bytes: [72, 105],
+        bytes: new Uint8Array([72, 105]),
       })
     } finally {
       vi.unstubAllGlobals()
@@ -102,6 +104,12 @@ describe('note frontmatter compatibility', () => {
     ['value: !!map {key: text}', { value: { key: 'text' } }],
     ['value: |\n  !!str key: text', { value: '!!str key: text\n' }],
     ['value: "!!str key: text"', { value: '!!str key: text' }],
+    ['value: !!int 0o12', { value: 10 }],
+    ['value: !!int 12:', { value: { 12: null } }],
+    ['value: &anchor key: text', { value: { key: 'text' } }],
+    ['! key: text', { key: 'text' }],
+    ['!!map\n  !!str key: text', { key: 'text' }],
+    ['list:\n- !!str key: text', { list: [{ key: 'text' }] }],
   ])('keeps valid properties and property-like text: %s', (yaml, attributes) => {
     expect(parseFrontmatter(`---\n${yaml}\n---`).attributes).toEqual(attributes)
   })
@@ -110,12 +118,7 @@ describe('note frontmatter compatibility', () => {
     'key: [unfinished',
     'key: one\nkey: two',
     'key: !!js/function function() {}',
-    'value: !!int 0o12',
-    'value: !!int 12:',
-    'value: &anchor key: text',
-    '! key: text',
-    '!!map\n  !!str key: text',
-    'list:\n- !!str key: text',
+    'value: !!float 1:20.5',
   ])('rejects invalid or unsafe YAML %j', async (yaml) => {
     const text = `---\n${yaml}\n---\nBody`
     expect(() => parseFrontmatter(text)).toThrow()

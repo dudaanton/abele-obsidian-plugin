@@ -4,7 +4,7 @@ export const isCalendarDate = (text: unknown): text is string =>
   typeof text === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(text)
 
 // A companion read for source spelling only. Never use it in place of the note's reader:
-// noteFrontmatter owns value semantics (including YAML 1.1 numbers and nested Dates).
+// noteFrontmatter uses js-yaml's default value semantics, including nested Dates.
 export const timestampTextSchema = DEFAULT_SCHEMA.extend({
   implicit: [
     new Type('tag:yaml.org,2002:timestamp', {

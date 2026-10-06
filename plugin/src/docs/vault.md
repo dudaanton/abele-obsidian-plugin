@@ -4,6 +4,11 @@ The shape of every kind of note the plugin owns: which `type` marks it, which pr
 carries, and where new ones are put. Dates are `YYYY-MM-DD` and times are `HH:mm` unless said
 otherwise; a note that breaks that is a note the plugin will read wrongly.
 
+Note frontmatter reads use `js-yaml` 4's default schema. An unquoted time such as
+`time: 12:30` stays a string through property updates; leading-zero integers such as
+`0755` are decimal (`755`), not legacy octal. Quote a numeric-looking value when its
+exact text, including leading zeros, matters.
+
 ## ZIP archives
 
 Agent `zip` stores an ordinary binary `.zip` file at the explicitly requested new path, creating

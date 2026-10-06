@@ -74,13 +74,13 @@ describe(`calendar dates in ${process.env.TZ ?? 'the local time zone'}`, () => {
     }
   )
 
-  it('does not change the existing YAML reader or nested date values', async () => {
+  it('uses default YAML 1.2 numbers while retaining nested date values', async () => {
     expect(
       await parse(
         `---\noctal: 012\nquoted: '012'\nflag: yes\nnested:\n  day: ${day}\nlist: [${day}]\n---\nBody`
       )
     ).toEqual({
-      octal: 10,
+      octal: 12,
       quoted: '012',
       flag: 'yes',
       nested: { day: new Date(utcMidnight) },

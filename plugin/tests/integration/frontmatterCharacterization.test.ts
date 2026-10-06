@@ -71,7 +71,7 @@ Body`
     })
   })
 
-  it('pins YAML 1.1 octal versus the direct js-yaml reader, booleans, empty values, comments and links', async () => {
+  it('uses default YAML 1.2 numbers, booleans, empty values, comments and links', async () => {
     const yaml = `octal: 012
 quotedNumber: "012"
 yes: yes
@@ -96,7 +96,7 @@ folded: >
   second`
     const parsed = await parse(`---\n${yaml}\n---\nBody`)
     expect(parsed).toEqual({
-      octal: 10,
+      octal: 12,
       quotedNumber: '012',
       yes: 'yes',
       on: 'on',
@@ -163,6 +163,22 @@ folded: >
 })
 
 describe('frontmatter read and write surfaces', () => {
+  it('preserves an unquoted time string when updating an unrelated property', async () => {
+    const env = templateHarness([
+      { path: 'Notes/sample.md', raw: '---\ntime: 12:30\nmode: 0755\n---\n\nBody' },
+    ])
+    await updateNoteFrontmatter('Notes/sample.md', { extra: true })
+    expect(vi.mocked(stringifyYaml).mock.lastCall?.[0]).toMatchObject({
+      time: '12:30',
+      mode: 755,
+      extra: true,
+    })
+    const file = env.app.vault.getFileByPath('Notes/sample.md')!
+    const written = await env.app.vault.read(file)
+    expect(load(getNoteRawFrontmatter(written)!)).toMatchObject({ time: '12:30', mode: 755 })
+    expect(await parse(written)).toMatchObject({ time: '12:30', mode: 755, content: '\nBody' })
+  })
+
   it('cache access returns the cached object unchanged; getNoteData reads disk, not the open editor', async () => {
     const cached = { day: '2028-03-01', list: ['one'], position: { start: 0 } }
     const env = templateHarness([
