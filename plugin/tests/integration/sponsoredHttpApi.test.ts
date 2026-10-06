@@ -76,11 +76,53 @@ async function setup() {
     client,
     accountToken,
     deviceId,
+    deviceToken,
     grantId: grant.id,
     key,
   }
 }
 describe('real reviewed sponsored wire and intrinsic-evidence boundary', () => {
+  it.fails(
+    'BUG: an owner device can read audience labels without a fresh account sign-in',
+    async () => {
+      const f = await setup()
+      const response = await s!.fetch('http://127.0.0.1/v1/vaults/' + f.vaultId + '/grants', {
+        headers: { authorization: 'Bearer ' + f.deviceToken },
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toContainEqual(
+        expect.objectContaining({ id: f.grantId, label: 'Sample assets' })
+      )
+    }
+  )
+  it('does not mistake missing extras and missing note proof for binary audience invisibility', async () => {
+    const f = await setup(),
+      bytes = new Uint8Array([4, 5, 6]),
+      sha = await sha256(bytes)
+    await f.client.putBlob(sha, bytes)
+    const result = await f.client.commit([
+      { op: 'create', path: 'Agents/visible-image.png', sha, size: bytes.length, mtime: 1 },
+    ])
+    const fileId = (result.results[0] as any).file_id
+    await s!.prepareFolder(f.accountToken, f.vaultId, f.grantId)
+    const scoped = await createScopedClient({
+      baseUrl: 'http://127.0.0.1',
+      fetch: s!.fetch,
+      token: f.key.key_token,
+      vaultId: f.vaultId,
+      grantId: f.grantId,
+      principalId: f.key.key_id,
+      principalKind: 'key',
+    })
+    expect((await scoped.openSnapshot()).items.some((i) => i.file_id === fileId)).toBe(true)
+    expect((await f.owner.read(f.grantId)).entries.some((e) => e.target.fileId === fileId)).toBe(
+      false
+    )
+    await expect(f.owner.sponsorProof(f.grantId, fileId)).rejects.toMatchObject({
+      code: 'not_found',
+      status: 404,
+    })
+  })
   it('adds/replays/withdraws an owner extra through real wire deltas and never re-adds after withdrawal', async () => {
     const f = await setup()
     const generation = await s!.intrinsicGeneration(f.grantId, f.note.file_id)

@@ -173,6 +173,18 @@ describe('existing-private decisions separate from dialog freshness', () => {
       )
     ).toBeNull()
   })
+  it('refuses a failed durable pending index instead of losing the question on restart', async () => {
+    const values = new Map<string, string>()
+    const store = new PublicationDecisionStore({
+      getMeta: (k) => values.get(k) ?? null,
+      setMeta: (k, v) => {
+        if (k.endsWith(':index')) return
+        if (v !== null) values.set(k, v)
+      },
+    })
+    const q = (await existingPublicationQuestion(existingObservation()))!
+    await expect(store.rememberExisting({ ...q, state: 'pending' })).rejects.toThrow(/persisted/)
+  })
   it.each(['version', 'withdrawal', 'link', 'target'])(
     'rejects a stale answer after %s changes without requiring baseline novelty',
     async (change) => {

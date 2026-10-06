@@ -1,5 +1,14 @@
 import { sha256 } from '@abele/sync-core'
-import type { OwnerAdd, Sponsor, Target } from '../sharing/sponsoredAssets'
+import type { Sponsor, Target } from '../sharing/sponsoredAssets'
+import {
+  bindingKey,
+  normalizedSpelling,
+  type CompleteSnapshot,
+  type KnownRename,
+  type LinkSnapshot,
+  type SnapshotBinding,
+  type SnapshotMeta,
+} from './LinkSnapshotStore'
 
 export interface ExistingPublicationObservation {
   binding: SnapshotBinding
@@ -22,8 +31,6 @@ export interface ExistingPublicationQuestion {
 }
 export interface ExistingPublicationDecision extends ExistingPublicationQuestion {
   state: ExposureDecision['state']
-  request?: OwnerAdd
-  applied?: boolean
 }
 /** Identity of an answer, independent of bytes, sponsor, generation, or the audience set. */
 export const existingExposureKey = (binding: SnapshotBinding, targetId: string, grantId: string) =>
@@ -51,6 +58,7 @@ export async function existingPublicationQuestion(
     !s.versionId ||
     !s.intrinsic ||
     !s.inScope ||
+    !Number.isSafeInteger(s.admissionGeneration) ||
     s.admissionGeneration < 1 ||
     !a.grantId ||
     !a.label ||
@@ -90,15 +98,6 @@ export async function answerExistingPublication(
     return null
   return { ...fresh, state: accepted ? 'approved' : 'declined' }
 }
-import {
-  bindingKey,
-  normalizedSpelling,
-  type CompleteSnapshot,
-  type KnownRename,
-  type LinkSnapshot,
-  type SnapshotBinding,
-  type SnapshotMeta,
-} from './LinkSnapshotStore'
 export interface LocalNoteBase {
   kind: 'local-create'
   binding: SnapshotBinding
@@ -479,7 +478,10 @@ export class PublicationDecisionStore {
     const keys = raw === null ? [] : (JSON.parse(raw) as string[])
     if (!keys.includes(d.exposureKey)) keys.push(d.exposureKey)
     // Index first: a crash may leave a missing question, never an unindexed send request.
-    await this.meta.setMeta(prefix + 'index', JSON.stringify(keys))
+    const index = JSON.stringify(keys)
+    await this.meta.setMeta(prefix + 'index', index)
+    if ((await this.meta.getMeta(prefix + 'index')) !== index)
+      throw new Error('Existing-private pending index was not persisted')
     const encoded = JSON.stringify(d),
       key = 'existing-publication-decision-v1:' + d.exposureKey
     await this.meta.setMeta(key, encoded)

@@ -1463,6 +1463,15 @@ CAS/withdrawal generations and own-upload proof; no body parser or personal-toke
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports are not an activated scoped engine or owner publication pipeline.
 
+The disabled publication store keeps existing-private decisions (`pending`, `declined`,
+`approved`) in its own device-local IndexedDB, separate from the personal sync ledger.
+A decision is keyed by connection, stable target file identity and one audience, not content,
+version, sponsor or the audience set. The pending question retains a separate freshness
+fingerprint; changed target bytes/identity or withdrawal invalidate an open answer, without
+forgetting a refusal. These records are not transferable settings or publication permission.
+Local settlement retains link candidates before advancing the last-synced baseline; pull only
+advances it. A merge compares the submitted local facts, not received links in the merged body.
+
 ## Disabled group wizard, initial batch and Books profile
 
 The owner group wizard requires a certified exact root/member/anchor preview and fresh owner

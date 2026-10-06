@@ -266,6 +266,29 @@ it.each(['applied', 'merged'])(
     }
   }
 )
+it('wires vault rename events to stable ledger identity without rewriting the baseline', async () => {
+  const s = await setup()
+  try {
+    const app = (s.p as any).options.app
+    await s.state.put({
+      path: 'Assets/private.png',
+      wirePath: 'Assets/private.png',
+      fileId: 'private-id',
+      versionId: 'private-v1',
+      sha: 'a'.repeat(64),
+      size: 1,
+      mtime: 1,
+    })
+    app.emit('vault', 'rename', { path: 'Assets/renamed.png' }, 'Assets/private.png')
+    await s.p.flush()
+    expect(await (s.p as any).snapshots.renames()).toEqual({
+      complete: true,
+      items: [{ fileId: 'private-id', from: 'Assets/private.png', to: 'Assets/renamed.png' }],
+    })
+  } finally {
+    s.p.close()
+  }
+})
 it('a mismatched received delivery cannot certify a baseline', async () => {
   const s = await setup()
   try {
