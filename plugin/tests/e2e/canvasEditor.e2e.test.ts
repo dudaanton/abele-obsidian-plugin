@@ -320,21 +320,22 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
 
   it('retries a known-unwritten human save on the same source and reopens saved content', async () => {
     failSave()
-    await addText('Retryable human text')
+    // Use ordinary words: the native keyboard autocorrects a made-up adjective on space.
+    await addText('Pending human text')
     await until("button('Retry save')&&!button('Retry save').disabled")
     const pending = run<boolean>(
-      "return view().viewer.graph.nodes.some(node=>node.text==='Retryable human text')&&view().contentEl.textContent.includes('not saved')"
+      "return view().viewer.graph.nodes.some(node=>node.text==='Pending human text')&&view().contentEl.textContent.includes('not saved')"
     )
     restoreProcess()
     await click('Retry save')
     await saved()
     const written = run<boolean>(
-      "return (await read()).nodes.some(node=>node.text==='Retryable human text')"
+      "return (await read()).nodes.some(node=>node.text==='Pending human text')"
     )
     run('view().leaf.detach();return true')
     await reopen()
     const reopened = run<boolean>(
-      "return view().viewer.graph.nodes.some(node=>node.text==='Retryable human text')"
+      "return view().viewer.graph.nodes.some(node=>node.text==='Pending human text')"
     )
     expect({ pending, saved: written, reopened }).toEqual({
       pending: true,
