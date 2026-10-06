@@ -54,6 +54,39 @@ const probe = (url: string, name: string) => `(async () => {
   return out
 })()`
 
+describe.skipIf(!available)('MCP permission identities in the app', () => {
+  it('keeps colliding tools separate and retains only their own permissions after a rename', () => {
+    const outcome = evalAsync<{
+      count: number
+      keys: number
+      allowed: string[]
+      renamed: string[]
+    }>(`(async () => {
+      const t = window.__abeleTest
+      const config = t.AbeleConfig.getInstance()
+      const before = config.ai.mcpServers
+      const server = (id, name, tool) => ({ id, name, url: 'https://sample.example/mcp',
+        enabled: true, keyId: '', headers: {}, tools: [{ name: tool, description: '', inputSchema: {} }] })
+      try {
+        config.ai = { ...config.ai, mcpServers: [server('a', 'One', 'part_echo'), server('b', 'One_part', 'echo')] }
+        const tools = () => t.createAgentTools().filter((tool) => tool.name.startsWith('mcp_'))
+        const initial = tools()
+        const key = (id, name) => 'mcp:' + JSON.stringify([id, name])
+        const agent = { toolModes: { [key('a', 'part_echo')]: 'auto', [key('b', 'echo')]: 'off' } }
+        const allowed = () => t.AgentRegistry.getInstance().filterTools(agent, tools()).map((tool) => tool.permissionKey)
+        const out = { count: initial.length, keys: new Set(initial.map((tool) => tool.permissionKey)).size, allowed: allowed() }
+        config.ai.mcpServers[0].name = 'Other'
+        out.renamed = allowed()
+        return out
+      } finally { config.ai = { ...config.ai, mcpServers: before } }
+    })()`)
+    expect(outcome.count).toBe(2)
+    expect(outcome.keys).toBe(2)
+    expect(outcome.allowed).toEqual(['mcp:["a","part_echo"]'])
+    expect(outcome.renamed).toEqual(outcome.allowed)
+  })
+})
+
 for (const shape of [
   { mode: 'modern' as const, sse: false, name: 'modern' },
   { mode: 'legacy' as const, sse: true, name: 'legacy' },
