@@ -76,6 +76,7 @@ function setup() {
       })
     ),
     certified: vi.fn(async () => true),
+    prepare: vi.fn(),
   }
   return {
     port,
@@ -88,6 +89,39 @@ function setup() {
   }
 }
 describe('disabled owner group wizard exact previews', () => {
+  it('keeps group id and revision when preparation fails and retries only its real preparation path', async () => {
+    const s = setup()
+    s.port.create.mockResolvedValue({
+      id: 'sample-grant',
+      rootId: 'sample-root',
+      rootVersion: 'root-v1',
+      role: 'editor',
+      revision: 0,
+      state: 'preparing',
+      preparation: { ok: false, error: { code: 'scope_updating', message: 'try preparation' } },
+    } as any)
+    s.port.prepare
+      .mockRejectedValueOnce(new Error('preparation unavailable'))
+      .mockResolvedValue({
+        id: 'sample-grant',
+        rootId: 'sample-root',
+        rootVersion: 'root-v1',
+        role: 'editor',
+        revision: 0,
+        state: 'active',
+      })
+    const shown = await s.flow.review('sample-root', 'editor', 'Sample')
+    await expect(s.flow.confirm(shown, 'invented-password')).rejects.toThrow(
+      'preparation unavailable'
+    )
+    expect(await s.flow.confirm(shown, 'invented-password')).toMatchObject({
+      id: 'sample-grant',
+      revision: 0,
+      state: 'active',
+    })
+    expect(s.port.create).toHaveBeenCalledTimes(1)
+    expect(s.port.prepare).toHaveBeenCalledTimes(2)
+  })
   it('default fence makes no preview or management request', async () => {
     const s = setup()
     await expect(

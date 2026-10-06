@@ -1,5 +1,6 @@
 import {
   CreateFolderGrantRequestSchema,
+  UpdateFolderGrantRequestSchema,
   IssueFolderKeyRequestSchema,
   LoginResponseSchema,
   ManifestResponseSchema,
@@ -8,6 +9,7 @@ import {
 import { sha256 } from '@abele/sync-core'
 import { SharingHttp, type SharingHttpOptions } from './sharingHttp'
 import { z } from 'zod'
+import { preparationOf } from './grantPreparation'
 import type { GroupGrant, GroupRelation, GroupApprovalReceipt } from './groupSharing'
 import type {
   FolderSharingPort,
@@ -151,7 +153,64 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
       value.acl_revision < 0
     )
       throw new Error('Owner grant response differs from reviewed scope')
-    return { id: value.id, prefix: body.prefix, role: body.role, revision: value.acl_revision }
+    return {
+      id: value.id,
+      prefix: body.prefix,
+      role: body.role,
+      revision: value.acl_revision,
+      ...(typeof value.state === 'string' ? { state: value.state } : {}),
+      preparation: preparationOf(value.preparation),
+    }
+  }
+  async prepare(session: OwnerSession, grant: FolderGrant): Promise<FolderGrant> {
+    const value = z
+      .object({ state: z.enum(['active', 'preparing']), processed: z.number().int().nonnegative() })
+      .parse(
+        await this.http.json(
+          'POST',
+          '/v1/vaults/' +
+            segment(this.options.vaultId) +
+            '/grants/' +
+            segment(grant.id) +
+            '/prepare',
+          this.ownerToken(session)
+        )
+      )
+    return { ...grant, state: value.state, preparation: { ok: true, state: value.state } }
+  }
+  async updateFolder(
+    session: OwnerSession,
+    grant: FolderGrant,
+    input: z.infer<typeof UpdateFolderGrantRequestSchema>
+  ): Promise<FolderGrant> {
+    const body = UpdateFolderGrantRequestSchema.parse(input)
+    const value = (await this.http.json(
+      'PATCH',
+      '/v1/vaults/' + segment(this.options.vaultId) + '/grants/' + segment(grant.id),
+      this.ownerToken(session),
+      body
+    )) as Record<string, unknown>
+    const expectedPrefix = body.prefix ?? grant.prefix,
+      expectedRole = body.role ?? grant.role
+    if (
+      value.id !== grant.id ||
+      value.vault_id !== this.options.vaultId ||
+      value.selector_kind !== 'folder' ||
+      value.folder_prefix !== expectedPrefix ||
+      value.role !== expectedRole ||
+      !Number.isSafeInteger(value.acl_revision) ||
+      Number(value.acl_revision) < body.expected_revision ||
+      typeof value.state !== 'string'
+    )
+      throw new Error('Updated folder grant differs from its bound mutation')
+    return {
+      id: grant.id,
+      prefix: expectedPrefix,
+      role: expectedRole,
+      revision: Number(value.acl_revision),
+      state: value.state,
+      preparation: preparationOf(value.preparation),
+    }
   }
   async issue(
     session: OwnerSession,
@@ -226,6 +285,66 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
       role: body.role,
       revision: Number(r.acl_revision),
       state: r.state,
+      preparation: preparationOf(r.preparation),
+    }
+  }
+  async prepareGroup(session: OwnerSession, grant: GroupGrant): Promise<GroupGrant> {
+    const value = z
+      .object({ ready: z.boolean() })
+      .parse(
+        await this.http.json(
+          'POST',
+          '/v1/vaults/' + segment(this.options.vaultId) + '/grants/groups/prepare',
+          this.ownerToken(session)
+        )
+      )
+    const state = value.ready ? 'active' : 'preparing'
+    return { ...grant, state, preparation: { ok: true, state } }
+  }
+  async updateGroup(
+    session: OwnerSession,
+    grant: GroupGrant,
+    input: {
+      expected_revision: number
+      label?: string
+      role?: 'reader' | 'editor'
+      expires_at?: string | null
+      revoke?: boolean
+    }
+  ): Promise<GroupGrant> {
+    const body = z
+      .object({
+        expected_revision: z.number().int().nonnegative(),
+        label: z.string().min(1).max(200).optional(),
+        role: z.enum(['reader', 'editor']).optional(),
+        expires_at: z.string().datetime().nullable().optional(),
+        revoke: z.boolean().optional(),
+      })
+      .strict()
+      .parse(input)
+    const value = (await this.http.json(
+      'PATCH',
+      '/v1/vaults/' + segment(this.options.vaultId) + '/grants/groups/' + segment(grant.id),
+      this.ownerToken(session),
+      body
+    )) as Record<string, unknown>
+    if (
+      value.id !== grant.id ||
+      value.vault_id !== this.options.vaultId ||
+      value.selector_kind !== 'group' ||
+      value.root_file_id !== grant.rootId ||
+      value.role !== (body.role ?? grant.role) ||
+      !Number.isSafeInteger(value.acl_revision) ||
+      Number(value.acl_revision) < body.expected_revision ||
+      typeof value.state !== 'string'
+    )
+      throw new Error('Updated group grant differs from its bound mutation')
+    return {
+      ...grant,
+      role: body.role ?? grant.role,
+      revision: Number(value.acl_revision),
+      state: value.state,
+      preparation: preparationOf(value.preparation),
     }
   }
   async approveGroup(

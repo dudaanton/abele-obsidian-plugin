@@ -28,6 +28,7 @@ function setup(enabled = true) {
       role: 'editor' as const,
       revision: 1,
     })),
+    prepare: vi.fn(),
     issue: vi.fn(async () => ({
       grantId: 'sample-grant',
       token: 'absk_' + 'a'.repeat(43),
@@ -46,6 +47,32 @@ function setup(enabled = true) {
   }
 }
 describe('disabled owner folder sharing contract', () => {
+  it('retains a committed grant when preparation fails and retries preparation, not creation', async () => {
+    const { flow, port } = setup()
+    port.create.mockResolvedValue({
+      id: 'sample-grant',
+      prefix: 'Agents/',
+      role: 'editor',
+      revision: 1,
+      state: 'preparing',
+      preparation: { ok: false, error: { code: 'scope_updating', message: 'try preparation' } },
+    } as any)
+    port.prepare
+      .mockRejectedValueOnce(new Error('preparation unavailable'))
+      .mockResolvedValue({
+        id: 'sample-grant',
+        prefix: 'Agents/',
+        role: 'editor',
+        revision: 1,
+        state: 'active',
+      })
+    await flow.review('Agents/', 'editor', 'Sample')
+    await expect(flow.confirm('invented-password')).rejects.toThrow('preparation unavailable')
+    expect(port.issue).not.toHaveBeenCalled()
+    expect(await flow.confirm('invented-password')).toMatchObject({ grantId: 'sample-grant' })
+    expect(port.create).toHaveBeenCalledTimes(1)
+    expect(port.prepare).toHaveBeenCalledTimes(2)
+  })
   it('rejects a closed late preview instead of replacing the newly displayed folder', async () => {
     const { flow, port } = setup()
     let finish!: (p: ReturnType<typeof preview>) => void

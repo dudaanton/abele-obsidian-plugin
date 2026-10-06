@@ -1464,6 +1464,10 @@ Owner folder-sharing and publication views remain behind an immutable disabled a
 fence. Folder reviews keep exact paths, require fresh owner-password authentication and expose
 only scoped machine keys. Sponsored/native lists require identity/version, intrinsic sponsors,
 CAS/withdrawal generations and own-upload proof; no body parser or personal-token fallback.
+Grant create/PATCH replies retain the committed id and revision separately from preparation.
+A preparation failure or unfinished bounded page retries the authenticated `/prepare` path,
+not another create/PATCH. The review keeps its saved grant and issues no key/approval until
+preparation is ready. A closed or superseded review cannot adopt a late preparation response.
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports are not an activated scoped engine or owner publication pipeline.
 

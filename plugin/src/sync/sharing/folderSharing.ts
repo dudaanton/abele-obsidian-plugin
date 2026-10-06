@@ -1,5 +1,6 @@
 import { CreateFolderGrantRequestSchema, IssueFolderKeyRequestSchema } from '@abele/sync-protocol'
 import { sha256 } from '@abele/sync-core'
+import type { GrantPreparation } from './grantPreparation'
 export const OWNER_SHARING_ENABLED = false
 export interface FolderPreview {
   /** Opaque UI review identity; the HTTP preview endpoint cannot supply this authority. */
@@ -22,6 +23,8 @@ export interface OwnerSession {
   expiresAt: number
 }
 export interface FolderGrant {
+  state?: string
+  preparation?: GrantPreparation
   id: string
   prefix: string
   role: 'reader' | 'editor'
@@ -40,6 +43,7 @@ export interface FolderSharingPort {
     session: OwnerSession,
     request: { label: string; prefix: string; role: 'reader' | 'editor' }
   ): Promise<FolderGrant>
+  prepare?(session: OwnerSession, grant: FolderGrant): Promise<FolderGrant>
   issue(
     session: OwnerSession,
     grant: FolderGrant,
@@ -161,6 +165,21 @@ export class FolderSharingFlow {
         })
         this.assertCurrent(generation)
         this.grant = created
+      }
+      if (this.grant.state === 'preparing' && this.grant.preparation) {
+        if (!this.port.prepare) throw new Error('Grant preparation must be retried')
+        const prepared = await this.port.prepare(session, copy(this.grant))
+        this.assertCurrent(generation)
+        if (
+          prepared.id !== this.grant.id ||
+          prepared.revision !== this.grant.revision ||
+          prepared.prefix !== this.grant.prefix ||
+          prepared.role !== this.grant.role
+        )
+          throw new Error('Grant preparation identity changed')
+        this.grant = prepared
+        if (prepared.state !== 'active')
+          throw new Error('Grant preparing; retry preparation, not creation')
       }
       const grant = this.grant
       if (

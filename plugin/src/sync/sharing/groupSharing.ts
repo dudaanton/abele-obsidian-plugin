@@ -35,6 +35,7 @@ export interface GroupReview {
   fingerprint: string
 }
 export interface GroupGrant {
+  preparation?: import('./grantPreparation').GrantPreparation
   id: string
   rootId: string
   rootVersion: string
@@ -55,6 +56,7 @@ export interface GroupSharingPort {
     session: OwnerSession,
     input: { label: string; rootId: string; rootVersion: string; role: 'reader' | 'editor' }
   ): Promise<GroupGrant>
+  prepare?(session: OwnerSession, grant: GroupGrant): Promise<GroupGrant>
   certified(grant: GroupGrant): Promise<boolean>
   approve(
     session: OwnerSession,
@@ -181,6 +183,22 @@ export class GroupSharingFlow {
         )
           throw new Error('Group grant differs from reviewed root/rights')
         this.grant = copy(g)
+      }
+      if (this.grant.state === 'preparing' && this.grant.preparation) {
+        if (!this.port.prepare) throw new Error('Group preparation must be retried')
+        const prepared = await this.port.prepare(this.session, copy(this.grant))
+        this.fence(generation)
+        if (
+          prepared.id !== this.grant.id ||
+          prepared.revision !== this.grant.revision ||
+          prepared.rootId !== this.grant.rootId ||
+          prepared.rootVersion !== this.grant.rootVersion ||
+          prepared.role !== this.grant.role
+        )
+          throw new Error('Group preparation identity changed')
+        this.grant = prepared
+        if (prepared.state !== 'active')
+          throw new Error('Group preparing; retry preparation, not creation')
       }
       return copy(this.grant)
     } finally {
