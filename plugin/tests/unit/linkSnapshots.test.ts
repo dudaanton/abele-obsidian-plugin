@@ -5,6 +5,7 @@ import {
   type SnapshotBinding,
 } from '@/sync/publication/LinkSnapshotStore'
 import { sha256 } from '@abele/sync-core'
+import { existingPrivateTargets } from '@/sync/publication/existingPrivateConfirmation'
 import { PUBLICATION_ENABLED, assertPublicationEnabled } from '@/sync/publication/fence'
 const binding: SnapshotBinding = {
   localVault: 'sample-local',
@@ -56,6 +57,54 @@ async function candidate(source = '[[sample.png]]'): Promise<SnapshotCandidate> 
     },
   }
 }
+describe('existing-private version comparison', () => {
+  it('asks for an own new resolved target without link-level provenance', async () => {
+    const c = await candidate(),
+      store = new LinkSnapshotStore(meta(), binding, () => true)
+    const base = await store.settle({
+      ...c,
+      source: '',
+      facts: [],
+      evidence: { ...c.evidence, sourceSha: await sha256(new Uint8Array()) },
+    })
+    expect(existingPrivateTargets(base, c.facts, [])).toEqual(c.facts)
+  })
+  it('never asks for received spellings that later resolve, or an identity-preserving rename', async () => {
+    const c = await candidate(),
+      store = new LinkSnapshotStore(meta(), binding, () => true)
+    const unresolved = {
+      ...c.facts[0],
+      targetId: null,
+      resolvedPath: null,
+      resolution: 'unresolved' as const,
+    }
+    const base = await store.settle({ ...c, facts: [unresolved] })
+    expect(existingPrivateTargets(base, c.facts, [])).toEqual([])
+    const resolvedBase = await store.settle(c)
+    const renamed = { ...c.facts[0], spelling: 'renamed.png', resolvedPath: 'Assets/renamed.png' }
+    expect(existingPrivateTargets(resolvedBase, [renamed], [])).toEqual([])
+    expect(
+      existingPrivateTargets(
+        base,
+        [renamed],
+        [{ fileId: 'sample-asset', from: 'sample.png', to: 'Assets/renamed.png' }]
+      )
+    ).toEqual([])
+  })
+  it('compares only submitted local facts, never the received half of a merge', async () => {
+    const c = await candidate(),
+      store = new LinkSnapshotStore(meta(), binding, () => true)
+    const base = await store.settle(c)
+    expect(existingPrivateTargets(base, c.facts, [])).toEqual([])
+    expect(
+      existingPrivateTargets(
+        { kind: 'unknown', noteId: c.noteId, reason: 'lost cache' },
+        c.facts,
+        []
+      )
+    ).toEqual(c.facts)
+  })
+})
 describe('durable exact-version link snapshots', () => {
   it('is disabled independently of stored facts and accepts only an attested producer', async () => {
     expect(PUBLICATION_ENABLED).toBe(false)

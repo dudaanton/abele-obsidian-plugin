@@ -21,15 +21,11 @@ import {
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
 import type { PublicationInput } from './publicationDecision'
 import { PUBLICATION_ENABLED } from './fence'
-interface Observation {
-  path: string
-  source: string
-  cacheJson: string
-  sha: string
-  cacheSha: string
-  generation: string
-  facts: LinkFact[]
-}
+import { observeLinks, type CacheObservation as Observation } from './cacheObservation'
+import {
+  existingPrivateTargets,
+  type ExistingPrivateCandidate,
+} from './existingPrivateConfirmation'
 interface Paste {
   id: string
   notePath: string
@@ -137,7 +133,6 @@ function project(
 export class NativeOwnerPublication {
   private pastes: Paste[] = []
   private observations = new Map<string, Observation>()
-  private waiters: { path: string; sha: string; resolve: (o: Observation | null) => void }[] = []
   private work: Promise<void> = Promise.resolve()
   private unhookPaste: (() => void) | null = null
   private remote = new Set<string>()
@@ -369,6 +364,14 @@ export class NativeOwnerPublication {
       }).catch(() => {})
     })
     this.refs.push({ target: app.vault, ref: create })
+    const rename = app.vault.on('rename', (file, from) => {
+      const to = file.path
+      void this.queue(async () => {
+        const entry = (await this.options.state.get(from)) ?? (await this.options.state.get(to))
+        if (entry) await this.snapshots.rename(entry.fileId, from, to)
+      }).catch(() => {})
+    })
+    this.refs.push({ target: app.vault, ref: rename })
     const original = this.options.client.commitRaw.bind(this.options.client)
     // Restore the exact method reference to the SAME receiver; never invoke it unbound.
     // eslint-disable-next-line @typescript-eslint/unbound-method -- exact reference is restored to the same client
@@ -445,68 +448,17 @@ export class NativeOwnerPublication {
   }
   private async observe(path: string, source: string, cache: CachedMetadata) {
     this.check()
-    const facts: LinkFact[] = []
-    for (const { f, kind } of [
-      ...(cache.links ?? []).map((f) => ({ f, kind: 'link' as const })),
-      ...(cache.embeds ?? []).map((f) => ({ f, kind: 'embed' as const })),
-    ]) {
-      const start = f.position.start.offset,
-        end = f.position.end.offset
-      if (
-        !Number.isInteger(start) ||
-        !Number.isInteger(end) ||
-        start < 0 ||
-        end > source.length ||
-        source.slice(start, end) !== f.original
-      )
-        throw new Error('Native cache callback offsets differ from bytes')
-      const resolved = this.options.app.metadataCache.getFirstLinkpathDest(f.link, path)
-      facts.push({
-        kind,
-        spelling: f.link,
-        original: f.original,
-        start,
-        end,
-        resolvedPath: resolved?.path ?? null,
-        targetId: null,
-        resolution: resolved ? 'resolved' : 'unresolved',
-      })
-    }
-    const o: Observation = {
-      path,
-      source,
-      cacheJson: JSON.stringify(cache),
-      sha: await sha256(new TextEncoder().encode(source)),
-      cacheSha: await hash(cache),
-      generation: crypto.randomUUID(),
-      facts,
-    }
+    const o = await observeLinks(this.options.app, this.options.state, path, source, cache)
     this.observations.set(path, o)
     for (const p of this.pastes.filter((p) => !p.done && p.notePath === path)) p.current = copy(o)
     await this.save()
-    for (const w of this.waiters.filter((w) => w.path === path && w.sha === o.sha))
-      w.resolve(copy(o))
-    this.waiters = this.waiters.filter((w) => w.path !== path || w.sha !== o.sha)
   }
   private async exactCache(path: string, sha: string): Promise<Observation | null> {
     await this.work
     const old = this.observations.get(path)
     if (old?.sha === sha) return copy(old)
-    return new Promise((resolve) => {
-      let ended = false
-      const finish = (o: Observation | null) => {
-        if (ended) return
-        ended = true
-        window.clearTimeout(timer)
-        resolve(o)
-      }
-      const waiter = { path, sha, resolve: finish },
-        timer = window.setTimeout(() => {
-          this.waiters = this.waiters.filter((w) => w !== waiter)
-          finish(null)
-        }, 10000)
-      this.waiters.push(waiter)
-    })
+    // Settlement runs in the personal state transaction: never wait for a future callback.
+    return null
   }
   private attestCache(c: SnapshotCandidate) {
     return [...this.observations.values()].some(
@@ -685,6 +637,16 @@ export class NativeOwnerPublication {
     beforeUpload: async (unit) => {
       this.check()
       await this.work
+      const local: Record<string, LinkFact[]> = {}
+      for (const o of unit.operations) {
+        if (!('sha' in o.op) || !o.op.sha) continue
+        const path =
+          o.op.op === 'create' ? o.op.path : (await this.options.state.byFileId(o.op.file_id))?.path
+        const observation = path ? this.observations.get(path) : null
+        if (path?.endsWith('.md') && observation?.sha === o.op.sha)
+          local[o.handle] = copy(observation.facts)
+      }
+      await this.persisted('link-unit:' + unit.idempotencyKey, local)
       const holds: number[] = [],
         inputs: PublicationInput[] = []
       for (const o of unit.operations) {
@@ -808,7 +770,27 @@ export class NativeOwnerPublication {
     onSettled: async (item, bytes, id) => {
       this.check()
       await this.work
+      if (item.op.op === 'move') {
+        const previous = await this.options.state.byFileId(item.fileId)
+        if (previous && previous.path !== item.path)
+          await this.snapshots.rename(item.fileId, previous.path, item.path)
+      }
       if (item.path.endsWith('.md') && bytes && item.sha) {
+        const local = await this.read<Record<string, LinkFact[]>>('link-unit:' + id)
+        const baseline = await this.snapshots.get(item.fileId)
+        const renames = await this.snapshots.renames()
+        const targets = existingPrivateTargets(baseline, local?.[item.handle] ?? [], renames.items)
+        const pending = (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
+        for (const target of targets) {
+          if (!pending.some((c) => c.sponsorId === item.fileId && c.targetId === target.targetId))
+            pending.push({
+              sponsorId: item.fileId,
+              targetId: target.targetId!,
+              targetPath: target.resolvedPath!,
+            })
+        }
+        // Preserve questions BEFORE replacing the immutable last-synced baseline.
+        if (targets.length) await this.persisted('existing-candidates', pending)
         const o = await this.exactCache(item.path, item.sha)
         if (o) {
           await this.snapshots.settle({
@@ -836,6 +818,11 @@ export class NativeOwnerPublication {
               p.sponsor = { fileId: item.fileId, versionId: item.versionId, sha: item.sha }
           await this.save()
         } else await this.snapshots.invalidate(item.fileId, 'No exact native callback cache')
+        if (local) {
+          delete local[item.handle]
+          if (Object.keys(local).length) await this.persisted('link-unit:' + id, local)
+          else await this.options.meta.setMeta(this.prefix + 'link-unit:' + id, null)
+        }
       }
       const p = this.pastes.find((p) => p.assetHandle === item.handle && !p.done)
       if (!p) return
@@ -861,8 +848,6 @@ export class NativeOwnerPublication {
     this.unhookPaste = null
     for (const { target, ref } of this.refs) target.offref(ref)
     this.refs = []
-    for (const w of this.waiters) w.resolve(null)
-    this.waiters = []
     if (this.originalCommit) this.options.client.commitRaw = this.originalCommit
   }
   diagnostics() {
