@@ -39,12 +39,18 @@ afterAll(async () => {
   await evalLong(`(async()=>{
     for(const l of app.workspace.getLeavesOfType('abele-deck'))if(l.view.file?.path===${JSON.stringify(PATH)})l.detach()
     const f=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(f)await app.vault.delete(f)
-    await app.workspace.changeLayout(${JSON.stringify(layout)})
-    ${windowState ? `const w=require('@electron/remote').getCurrentWindow();w.setMinimumSize(...${JSON.stringify(windowState.minimum)});w.setBounds(${JSON.stringify(windowState.bounds)})` : ''}
+    await app.workspace.requestSaveLayout.run()
     return true
   })()`)
-  // Remove fixture views before switching modes: reload persists the outgoing mobile layout.
+  // Close mobile fixtures first; restore the captured desktop layout only in desktop mode.
   if (emulated) await reloadApp('app.emulateMobile(false)')
+  await evalLong(`(async()=>{
+    if (${emulated} && app.isMobile) throw Error('Cannot restore desktop layout while mobile')
+    await app.workspace.changeLayout(${JSON.stringify(layout)})
+    ${windowState ? `const w=require('@electron/remote').getCurrentWindow();w.setMinimumSize(...${JSON.stringify(windowState.minimum)});w.setBounds(${JSON.stringify(windowState.bounds)})` : ''}
+    await app.workspace.requestSaveLayout.run()
+    return true
+  })()`)
 })
 
 const PRELUDE = `

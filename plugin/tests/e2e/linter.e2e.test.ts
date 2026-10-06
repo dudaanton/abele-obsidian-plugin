@@ -305,6 +305,14 @@ describe.skipIf(!available)('the linter', () => {
     }, 180_000)
 
     afterAll(async () => {
+      // Flush the outgoing layout only after closing the mobile fixture, not after reload.
+      probe(`
+        for (const button of document.querySelectorAll('.modal-close-button')) button.click()
+        app.workspace.detachLeavesOfType('abele-linter')
+        await app.workspace.requestSaveLayout.run()
+        return true
+      `)
+      expect(probe<number>("return app.workspace.getLeavesOfType('abele-linter').length")).toBe(0)
       if (size[0]) {
         evalRaw(
           `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]}); return 'ok' })()`
