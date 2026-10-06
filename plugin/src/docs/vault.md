@@ -507,6 +507,10 @@ new user messages waiting for a reply. These retained `int` records keep their c
 and `stored` data, but their `chatMessageId` names the compaction divider. Older records remain
 in the log for earlier branches: selecting a branch before the divider does not include the
 retained copies. Only the summary and its following records are sent on the compacted branch.
+Reviewed corrections are projected separately from their source replies: they do not define
+which model turn has finished and are not copied into the retained exchange under the divider's
+id. Their empty `model` identifies a correction rather than a new provider reply, including
+corrections materialized in the log for older clients.
 
 What a chat's tools changed in the vault is not in the chat file. It is kept in the plugin's
 folder, under `rewind/`, one folder per chat named by the id of its first message: `log.json`

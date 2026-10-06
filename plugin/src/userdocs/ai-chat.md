@@ -99,7 +99,9 @@ Up to 20 chats can be open at once, as tabs. Every chat is saved as a file in th
 chat approaches 90% of the model's configured context window, older messages are summarized
 automatically. This is checked before each model request, including between tool steps in one
 long run. The latest tool calls, their results and any newly queued message stay intact so the
-agent can continue. Results not yet included in reported usage are estimated; if the provider
+agent can continue, including after an earlier reply has been corrected. A reviewed correction
+does not count as a new model reply that has read your latest message or tool results.
+Results not yet included in reported usage are estimated; if the provider
 returns no usage, the text of the context is estimated instead.
 
 ## Finding words in chats

@@ -8,7 +8,7 @@ import { ChatSummarizer } from '@/ai/ChatSummarizer'
 import { OpenAIClient } from '@/ai/client/OpenAIClient'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import type { AgentTool, AssistantMessage, Message, StreamEvent } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 
@@ -30,6 +30,49 @@ const reply = (content: AssistantMessage['content'], total: number): AssistantMe
   stopReason: content.some((part) => part.type === 'toolCall') ? 'toolUse' : 'stop',
   timestamp: 1,
 })
+
+function seedCompactedRevision(storedCorrection: boolean) {
+  const original: ChatMessage = {
+    id: 'sample-old-reply',
+    parentId: 'sample-old-question',
+    role: 'assistant',
+    content: 'Corrected sample fact.',
+    timestamp: 2,
+    revisions: [
+      {
+        proposal: 'sample-proposal',
+        before: 'Original sample fact.',
+        after: 'Corrected sample fact.',
+        author: 'sample-reviewer',
+        at: 3,
+        highlights: [],
+      },
+    ],
+  }
+  const internals = session as unknown as {
+    allChatMessages: ChatMessage[]
+    allInternalMessages: Message[]
+    activeLeafId: string
+  }
+  internals.allChatMessages = [
+    { id: 'sample-old-question', role: 'user', content: 'Check the sample fact.', timestamp: 1 },
+    original,
+  ]
+  internals.allInternalMessages = [
+    {
+      role: 'user',
+      content: 'Check the sample fact.',
+      timestamp: 1,
+      chatMessageId: 'sample-old-question',
+    },
+    { ...reply([{ type: 'text', text: 'Original sample fact.' }], 50), chatMessageId: original.id },
+  ]
+  internals.activeLeafId = original.id
+  session.updateVisibleMessages()
+  session.applyCompactSummary('Prior sample summary.')
+  if (storedCorrection) internals.allInternalMessages.push(session.messagesForModel().at(-1)!)
+  return internals
+}
 
 beforeEach(() => {
   useVault([])
@@ -140,6 +183,122 @@ afterEach(() => {
 })
 
 describe('automatic compaction inside a tool loop', () => {
+  it.each(['projected', 'stored'] as const)(
+    'ignores a %s correction when retaining the unread tool batch, images and queued input',
+    async (kind) => {
+      seedCompactedRevision(kind === 'stored')
+      usage = 200
+      resultText = 'unread-result '.repeat(300)
+      queueCorrection = true
+      await session.sendMessage('Complete the sample request')
+      const next = requests[1]
+      expect(next.filter((m) => m.role === 'toolResult').map((m) => m.content[0].text)).toEqual([
+        resultText,
+        'second result',
+      ])
+      expect(
+        next.find((m) => m.role === 'assistant' && m.model === 'sample-model')?.content
+      ).toEqual([
+        { type: 'toolCall', id: 'call-one', name: 'sample_tool', arguments: {} },
+        { type: 'toolCall', id: 'call-two', name: 'sample_tool', arguments: {} },
+      ])
+      expect(next.filter((m) => m.role === 'user').map((m) => m.content)).toEqual([
+        [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } }],
+        'Preserve the sample correction',
+      ])
+      const corrections = next.filter((m) => m.role === 'assistant' && m.model === '')
+      expect(corrections).toHaveLength(1)
+      expect(JSON.stringify(corrections[0].content)).toContain('Corrected sample fact.')
+      expect(helpers).toHaveLength(1)
+      expect(JSON.stringify(helpers[0])).not.toContain('unread-result')
+      expect(JSON.stringify(helpers[0])).not.toContain('Preserve the sample correction')
+    }
+  )
+
+  it.each(['projected', 'stored'] as const)(
+    'does not let a %s correction summarize a new request before its first model reply',
+    async (kind) => {
+      const internals = seedCompactedRevision(kind === 'stored')
+      const content: Message['content'] = [
+        { type: 'text', text: 'unanswered-request '.repeat(300) },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,BBB' } },
+      ]
+      internals.allChatMessages.push({
+        id: 'sample-new-question',
+        parentId: internals.activeLeafId,
+        role: 'user',
+        content: 'Unanswered sample request',
+        timestamp: 4,
+      })
+      internals.allInternalMessages.push({
+        role: 'user',
+        content,
+        timestamp: 4,
+        chatMessageId: 'sample-new-question',
+      })
+      internals.activeLeafId = 'sample-new-question'
+      session.updateVisibleMessages()
+      await session.retryRequest()
+      expect(requests[0].filter((m) => m.role === 'user').map((m) => m.content)).toEqual([content])
+      expect(requests[0].filter((m) => m.role === 'assistant' && m.model === '')).toHaveLength(1)
+      expect(helpers).toHaveLength(1)
+      // Once the real model has responded, this user request may join the older summary.
+      expect(JSON.stringify(helpers[0])).toContain('unanswered-request')
+    }
+  )
+
+  it('compacts completed exchanges before a new request without summarizing that request', async () => {
+    const internals = seedCompactedRevision(false)
+    internals.allChatMessages.push(
+      {
+        id: 'sample-previous-question',
+        parentId: internals.activeLeafId,
+        role: 'user',
+        content: 'Previous sample question',
+        timestamp: 4,
+      },
+      {
+        id: 'sample-previous-reply',
+        parentId: 'sample-previous-question',
+        role: 'assistant',
+        content: 'Previous sample answer',
+        timestamp: 5,
+      },
+      {
+        id: 'sample-pending-question',
+        parentId: 'sample-previous-reply',
+        role: 'user',
+        content: 'Pending sample question',
+        timestamp: 6,
+      }
+    )
+    const content = [
+      { type: 'text' as const, text: 'pending-request '.repeat(300) },
+      { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,CCC' } },
+    ]
+    internals.allInternalMessages.push(
+      {
+        role: 'user',
+        content: 'Previous sample question',
+        timestamp: 4,
+        chatMessageId: 'sample-previous-question',
+      },
+      {
+        ...reply([{ type: 'text', text: 'Previous sample answer' }], 100),
+        chatMessageId: 'sample-previous-reply',
+      },
+      { role: 'user', content, timestamp: 6, chatMessageId: 'sample-pending-question' }
+    )
+    internals.activeLeafId = 'sample-pending-question'
+    session.updateVisibleMessages()
+    await session.retryRequest()
+    expect(helpers).toHaveLength(2)
+    expect(JSON.stringify(helpers[0])).toContain('Previous sample answer')
+    expect(JSON.stringify(helpers[0])).not.toContain('pending-request')
+    expect(requests[0].filter((m) => m.role === 'user').map((m) => m.content)).toEqual([content])
+    expect(requests[0].filter((m) => m.role === 'assistant' && m.model === '')).toHaveLength(1)
+  })
+
   it.each(['reported usage', 'new tool results', 'missing usage'] as const)(
     'compacts before the next request when %s crosses the threshold, preserving the completed batch',
     async (source) => {

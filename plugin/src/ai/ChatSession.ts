@@ -34,6 +34,7 @@ import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
 import { readChat, rewriteChat } from './chatCopy'
 import {
   compatibleReplyHistory,
+  isReplyCorrection,
   projectReplyHistory,
   undoRevision,
   type ReplyProposal,
@@ -826,7 +827,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // Keep the unfinished exchange verbatim after the marker. Link these copies to the
     // divider, so rewinding before it sees the original exchange once, not twice.
     this.allInternalMessages.push(
-      ...retained.map((message) => ({ ...message, chatMessageId: divider.id }))
+      ...retained
+        // Corrections are re-projected from the reviewed reply. Copying them under the
+        // divider's id would hide their source id and make the next projection duplicate them.
+        .filter((message) => !isReplyCorrection(message))
+        .map((message) => ({ ...message, chatMessageId: divider.id }))
     )
   }
 

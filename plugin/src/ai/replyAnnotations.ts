@@ -102,6 +102,12 @@ export function undoRevision(message: ChatMessage, at: number): ChatMessage {
   return { ...message, content: revision.before, highlights: revision.highlights, revisions }
 }
 
+/** Corrections have no provider model: they are projected annotations, not new model turns.
+ * This also identifies corrections materialized in the log for older clients. */
+export function isReplyCorrection(message: Message): boolean {
+  return message.role === 'assistant' && message.model === ''
+}
+
 /** Pure projection: reply text keeps assistant priority, even after its original was compacted. */
 export function projectReplyHistory(replies: ChatMessage[], internal: Message[]): Message[] {
   const edited = new Map(replies.filter((m) => m.revisions?.length).map((m) => [m.id, m]))

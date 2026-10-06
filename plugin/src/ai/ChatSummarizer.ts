@@ -8,6 +8,7 @@ import { requestSummary } from './ChatDigest'
 import { conversationLines } from './chatText'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from './types'
 import { estimateTokens } from './tokens'
+import { isReplyCorrection } from './replyAnnotations'
 
 /**
  * The slice of a chat the summarizer touches.
@@ -321,7 +322,11 @@ export class ChatSummarizer {
       const model = this.host.activeModel()
       if (!model?.contextWindow) return
       const messages = this.host.messagesForModel()
-      const lastAssistant = messages.findLastIndex((m) => m.role === 'assistant')
+      // A correction may be projected after the unread tail. Only a real model reply
+      // defines which user input and tool results have already reached the model.
+      const lastAssistant = messages.findLastIndex(
+        (m) => m.role === 'assistant' && !isReplyCorrection(m)
+      )
       const assistant = messages[lastAssistant]
       const marker = messages.findLastIndex(
         (m) => m.role === 'system' && m.content.startsWith(ChatSummarizer.COMPACT_MARKER)
@@ -350,7 +355,8 @@ export class ChatSummarizer {
       const older = messages.slice(0, retainFrom)
       // A summary alone cannot get any shorter by summarizing it again. A single large
       // in-flight result stays intact until the model has consumed it.
-      if (!older.some((m) => m.role !== 'system') || messages.length <= 2) return
+      if (!older.some((m) => m.role !== 'system' && !isReplyCorrection(m)) || messages.length <= 2)
+        return
       await this.compactHistory(
         older,
         messages.slice(retainFrom),
