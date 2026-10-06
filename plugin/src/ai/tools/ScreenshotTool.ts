@@ -10,6 +10,7 @@ import { saveImageToVault } from './imageUtils'
 import dayjs from 'dayjs'
 import { namedDeck, deckSlide } from './DeckTools'
 import { parseDeck } from '@/slides/core/markdown'
+import { presentationDeck } from '@/slides/core/sources'
 import { inspectDeckSlide, slidePicture } from '@/slides/inspection'
 
 export function findLeafByFile(path: string): WorkspaceLeaf | null {
@@ -148,7 +149,7 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
         if (params.view) throw new Error('Use slide with path, not view')
         const file = namedDeck(params.path, ctx)
         const app = GlobalStore.getInstance().app
-        const deck = parseDeck(await app.vault.read(file))
+        const deck = presentationDeck(parseDeck(await app.vault.read(file)))
         const index = deckSlide(params.slide, deck.slides.length)
         return inspectDeckSlide(
           app,

@@ -9,7 +9,10 @@ export is not implemented yet.
 Set frontmatter `type: presentation` to open the note as a deck. `aspect` is `16:9` (default,
 1280×720), `4:3` (960×720), or `9:16` (720×1280). The canvas scales uniformly to fit the tab or
 presentation window; it does not reflow to phone width. `theme: default` uses Obsidian's theme;
-a `theme: "[[sample-theme.css]]"` value loads a vault CSS file.
+a `theme: "[[sample-theme.css]]"` value loads a vault CSS file. The default slide type scale is
+about 28 logical pixels for body text, with larger, tightly spaced headings, theme-accent
+subheadings/emphasis, padded tables and accent-bordered quotes. Title, section and quote layouts
+have their own hierarchy. All fonts and colours come from Obsidian; deck CSS/theme files override.
 
 A standalone `---` line starts a new slide. Frontmatter fences, fenced code, indented code,
 quoted lines and raw HTML code blocks are not separators. Write `***` for a horizontal rule
@@ -41,6 +44,17 @@ A `> [!notes]` callout belongs to that slide's speaker notes, including callouts
 quotes or list items. Code examples of this syntax remain ordinary code. Folded forms (`[!notes]-` and
 `[!notes]+`) work too. The callout is retained in the portable deck model and source note but
 is never sent to the audience renderer. Only the presenter's notes panel renders these blocks.
+
+Put sources in the same `> [!notes]` callout: use `[Short label](https://example.test/report)`,
+reference links, `[[Sample reference|Short label]]` or `<https://example.test/report>`. Note links
+are collected into an automatic final **Sources** slide, grouped by slide number/title, and the
+original slide shows a small muted **Sources: N** marker. Repeated targets within one slide count
+once; images and code examples are not sources. Notes still show the links to the presenter.
+The appendix is a derived part of the portable audience model, not written into the note.
+`deck_read`/`deck_edit` number authored slides only; `deck_check`, `screenshot` and `present`
+also include the final rendered appendix. Do not try to edit it: edit its originating notes.
+The appendix is exempt from body-density warnings, but still checked for overflow; a long
+reference list may not fit a single canvas.
 
 A fenced `css` block anywhere in the deck adds deck CSS rather than a visible code sample.
 It and the optional theme file pass through the existing `scopeCss`, rooted at this deck's
@@ -151,8 +165,10 @@ This is the presentation-authoring skill, available without a vault skill instal
    request. Preserve facts and cite source links; do not invent missing figures. Ask only when
    the answer changes the deck. Keep the source note unchanged unless explicitly asked.
 2. Plan a short outline: title, context, one idea per slide, supporting evidence, conclusion.
-   Put detailed explanations in `> [!notes]`, not tiny text. Choose a built-in layout for each
-   idea; use the current Obsidian theme by default. Reuse in-scope pictures/drawings and their
+   Keep body text to about 40 words, at most 5 bullets, and tables to 5 data rows × 3 columns
+   with short cells. Put long explanations in `> [!notes]` or on another slide, not tiny text.
+   No links/URLs in the slide body: put source links in `> [!notes]` for the automatic appendix.
+   Choose a built-in layout for each idea; do not write deck CSS, colours or fonts unless asked. Reuse in-scope pictures/drawings and their
    existing embed syntax. A screenshot is not a substitute for checking the facts.
 3. Use `deck_create` for a new note, or `deck_read` before `deck_edit` on an existing deck.
    For a large deck follow each `nextOffset` with `deck_read.offset` until it is `null`;
@@ -162,7 +178,8 @@ This is the presentation-authoring skill, available without a vault skill instal
    never store or claim network consent. Ordinary write approval is still required.
 4. Run `deck_check` on every slide and inspect each slide with `screenshot({path, slide: N})`.
    These render at the fixed logical size, with all steps revealed and no notes. Fix overflow,
-   missing/clipped media and unnecessary density; use `deck_edit` to shorten, change layout or
+   missing/clipped media and authoring warnings (word/bullet/table limits, body links/URLs,
+   deck CSS fonts/literal colours); fix warnings or explain why they were kept. Use `deck_edit` to shorten, change layout or
    insert another slide. Repeat both the measurement and the visual check on changed slides.
    A zero-issue check alone does not prove readable composition or factual correctness.
 5. State what you checked. Never call live scripts/HTML verified by a nonexecuting preview;

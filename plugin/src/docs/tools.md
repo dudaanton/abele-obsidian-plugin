@@ -115,7 +115,14 @@ diff/confirmation and link the changed note to the chat.
 
 `deck_check(path, slide?)` renders slides sequentially at the deck's logical canvas size in the
 current theme, retaining each slide's original `data-slide` number for deck CSS. It reports per-slide overflow, clipped/missing media, intentional cover crops,
-and a text-density warning. Notes are excluded and steps fully revealed. Pair it with
+and the legacy crowded-content advisory in `issues`. Separate per-slide `warnings` report
+more than 40 body words (headings excluded), more than 5 list items (including nested items),
+each table over 5 data rows or 3 columns, more than 2 body links, visible raw URL text, and
+deck CSS that sets font-family or literal colours/backgrounds. Warnings do not reject a deck;
+fix them or explain why they were kept, as the result's instruction says. Notes are excluded
+and steps fully revealed. Note links derive a final Sources slide: checking, screenshots and
+`present` include it, while reads/edits keep authored slide numbering. The appendix is exempt
+from body-density warnings, not from fit checks. Pair it with
 `screenshot({path, slide: 1})`: a PNG of that whole slide, kept in attachments, shown under the
 call and sent to the model through the same image-message path as drawings and books. No open
 tab is needed or moved. Both previews use the untrusted Markdown policy: Abele's own blocks

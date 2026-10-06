@@ -6,12 +6,15 @@ import { fitSlide } from './core/navigation'
 import { checkSlideFit, type SlideFit } from './core/fit'
 import type { Deck } from './core/model'
 import { noteMedia } from './adapter'
+import { checkDeckCss, checkSlideDensity, type DensityWarning } from './core/density'
 
 export interface DeckInspection extends SlideFit {
   slide: number
   title: string
   layout: string
   unverified: string[]
+  warnings: DensityWarning[]
+  generated?: 'sources'
 }
 
 /** The same fixed canvas and theme as the audience, without activating scripts, frames,
@@ -109,6 +112,11 @@ export async function inspectDeckSlide<T>(
       title: original.title,
       layout: original.settings.layout,
       ...checkSlideFit(canvas),
+      warnings: [
+        ...(original.generated ? [] : checkSlideDensity(canvas)),
+        ...checkDeckCss(deck.css),
+      ],
+      ...(original.generated ? { generated: original.generated } : {}),
       unverified,
     }
     return await use(viewer.root, report)

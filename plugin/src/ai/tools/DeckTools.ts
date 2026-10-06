@@ -6,6 +6,7 @@ import { contentHash } from '../readGuard'
 import { STORE_OVER } from '../resultStore'
 import { deckReadPage } from './deckReadPage'
 import { parseDeck } from '@/slides/core/markdown'
+import { presentationDeck } from '@/slides/core/sources'
 import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/core/edit'
 import { inspectDeckSlide } from '@/slides/inspection'
 import { DECK_VIEW_TYPE } from '@/slides/opening'
@@ -27,6 +28,9 @@ export function deckSlide(value: unknown, count: number): number {
     throw new Error(`Invalid slide number; use 1–${count}`)
   return value - 1
 }
+
+const authoringRules =
+  ' One idea/slide; at most ~40 body words, 5 bullets, tables 5 data rows × 3 columns with short cells. Long explanations go in > [!notes] or another slide. No body links/URLs: put source links in > [!notes] (automatic Sources slide). Use built-in layouts; no deck CSS, colours or fonts unless requested.'
 
 const pathProperty = {
   type: 'string',
@@ -92,7 +96,8 @@ export function createDeckTools(): AgentTool[] {
       label: 'Create deck',
       category: 'Presentations',
       description:
-        'Create a presentation Markdown note. Content must include frontmatter type: presentation and slides separated by standalone ---. Uses the ordinary file-write confirmation and preview. Does not grant script trust or HTML network consent. See query_docs section slides for a template.',
+        'Create a presentation Markdown note. Content must include frontmatter type: presentation and slides separated by standalone ---. Uses the ordinary file-write confirmation and preview. Does not grant script trust or HTML network consent. See query_docs section slides for a template.' +
+        authoringRules,
       parameters: {
         type: 'object',
         properties: {
@@ -116,7 +121,8 @@ export function createDeckTools(): AgentTool[] {
       label: 'Edit slide',
       category: 'Presentations',
       description:
-        'Replace, insert or remove one numbered slide in a presentation note, retaining every untouched slide and deck property. Content is one slide of Markdown, optionally with a ::slide marker and speaker-notes callout, without frontmatter or a slide separator. Insert before slide N; count + 1 appends. Read the complete current deck first with deck_read or read. Uses the ordinary write diff/confirmation. Never grants script trust or HTML network consent.',
+        'Replace, insert or remove one numbered slide in a presentation note, retaining every untouched slide and deck property. Content is one slide of Markdown, optionally with a ::slide marker and speaker-notes callout, without frontmatter or a slide separator. Insert before slide N; count + 1 appends. Read the complete current deck first with deck_read or read. Uses the ordinary write diff/confirmation. Never grants script trust or HTML network consent.' +
+        authoringRules,
       parameters: {
         type: 'object',
         properties: {
@@ -155,7 +161,7 @@ export function createDeckTools(): AgentTool[] {
       label: 'Check deck fit',
       category: 'Presentations',
       description:
-        'Measure a deck at its logical canvas size in the current theme: per-slide text overflow, clipped or missing images/video, intentional cover cropping and a density warning for too much content. Optional slide checks just that one (numbered from 1). Speaker notes are excluded; steps are fully revealed. Agent previews never run named scripts, interactive HTML, autoplay, or network-consent prompts, and report live content as unverified. Other plugins’ executable Markdown blocks are inert. Use screenshot with path and slide to inspect composition, then revise and check again.',
+        'Measure a deck at its logical canvas size in the current theme: per-slide text overflow, clipped or missing images/video, intentional cover cropping and separate warnings for >40 body words, >5 bullets, tables >5 data rows or >3 columns, >2 body links, raw URL text and deck CSS fonts/literal colours. Optional slide checks just that one (numbered from 1). Speaker notes are excluded; steps are fully revealed. Agent previews never run named scripts, interactive HTML, autoplay, or network-consent prompts, and report live content as unverified. Other plugins’ executable Markdown blocks are inert. Use screenshot with path and slide to inspect composition, then revise and check again. Fix warnings or explain why you kept them. Includes the automatic final Sources slide; deck_read/edit number authored slides only.',
       parameters: {
         type: 'object',
         properties: {
@@ -170,7 +176,7 @@ export function createDeckTools(): AgentTool[] {
       execute: async (_id, params, signal, ctx) => {
         const file = namedDeck(params.path, ctx)
         const app = GlobalStore.getInstance().app
-        const deck = parseDeck(await app.vault.read(file))
+        const deck = presentationDeck(parseDeck(await app.vault.read(file)))
         const indexes =
           params.slide === undefined
             ? deck.slides.map((_, i) => i)
@@ -187,7 +193,13 @@ export function createDeckTools(): AgentTool[] {
               signal
             )
           )
-        return text({ path: file.path, aspect: deck.settings.aspect, slides })
+        return text({
+          path: file.path,
+          aspect: deck.settings.aspect,
+          instruction:
+            'Fix authoring warnings or explain why you kept them. Sources appendix is exempt from body-density rules, but check its fit.',
+          slides,
+        })
       },
     },
     {
@@ -207,7 +219,7 @@ export function createDeckTools(): AgentTool[] {
       execute: async (_id, params, signal, ctx) => {
         const file = namedDeck(params.path, ctx)
         const app = GlobalStore.getInstance().app
-        const deck = parseDeck(await app.vault.read(file))
+        const deck = presentationDeck(parseDeck(await app.vault.read(file)))
         const index = deckSlide(params.slide ?? 1, deck.slides.length)
         signal?.throwIfAborted()
         const leaf = app.workspace.getLeaf('tab')

@@ -47,7 +47,9 @@ for Obsidian's built-in Slides uses the same separator; its own Slides command s
 
 A settings line is optional and goes at the very top of its slide:
 `::slide{layout=content}::`. Choose `title`, `section`, `content`, `split`, `grid`, `image` or
-`quote`. Title, section and quote center their content. Split uses the `::left::` and
+`quote`. Title, section and quote center their content. The default style uses large slide
+text and a clear heading hierarchy, with your theme's accent for subheadings and emphasis,
+comfortable tables and bordered quotations. Title slides have a larger heading and muted subtitle. Split uses the `::left::` and
 `::right::` lines for columns. Grid uses one `::cell::` line for each cell. Image fills the
 slide with its embedded image or video and leaves the text as a caption.
 
@@ -71,6 +73,23 @@ a slide pauses its video and audio. Tap media or live controls without turning t
 
 A notes callout (`> [!notes]`) is kept with the slide but hidden from the audience. The presenter
 view shows it in your notes panel, using the same formatting as a note.
+
+Put source links in that notes callout too, for example:
+
+```markdown
+> [!notes]
+> Supporting detail for the speaker.
+> [Report](https://example.test/report)
+> [[Sample reference|Reference]]
+```
+
+The deck automatically adds a final **Sources** slide, grouped by slide title, and a small
+**Sources: N** label on each slide with references. Notes still show these links. Repeated
+links on the same slide count once; pictures and code examples are not collected. Use ordinary
+Markdown links (including reference links), note links or angle-bracket web links in notes.
+The last slide is not written into your note: change the references in the original notes
+rather than trying to edit the generated slide. A very long source list may overflow;
+check the final slide too.
 
 A fenced `css` block adds styling to the deck. Or set `theme: "[[sample-theme.css]]"` to use a
 CSS file in the vault. Both use the same CSS scoping as script views, limited to this deck's
@@ -146,14 +165,23 @@ slide, insert one or remove one. Long decks are read in small pages, so large sp
 inline images do not flood a model's context; the agent must finish reading the current deck
 before editing it. Its fit check measures text and media against the full slide
 canvas, not the phone-sized view. It flags overflow, clipped or missing pictures and unusually
-dense text. Its screenshot shows the complete slide in your current theme, with all list steps
+dense text. It separately warns about more than 40 body words, 5 list items, tables larger
+than 5 data rows by 3 columns, more than two body links, visible web addresses, and custom
+fonts or literal colours in deck CSS. The agent should fix these warnings or explain why
+it kept them. Sources are collected into the final slide rather than cluttering slide bodies.
+Its screenshot shows the complete slide in your current theme, with all list steps
 visible, but without speaker notes. Pictures are saved in your usual attachments folder and
 shown in the chat, so you can see what the agent saw.
 
 The recommended workflow is in the agent's presentation reference: read the source note,
 outline one idea per slide, create the deck, check every slide, look at its picture, then revise
-and check again. The source note stays unchanged unless you ask otherwise. A title-and-four-slide
-starting template and a reusable **Make a presentation** skill are provided as copyable examples
+and check again. The source note stays unchanged unless you ask otherwise.
+
+Keep about 40 body words and at most five bullets per slide; move detail and sources into
+speaker notes or split the slide. Built-in layouts and your Obsidian theme are the default;
+the agent should only write custom CSS, colours or fonts when you ask.
+
+A title-and-four-slide starting template and a reusable **Make a presentation** skill are provided as copyable examples
 in the repository's `docs/examples/`; they use the normal [Templates](templates) and skills
 system. The workflow is also available to any agent through its built-in reference without
 installing a skill note. Nothing is added to your vault automatically.
