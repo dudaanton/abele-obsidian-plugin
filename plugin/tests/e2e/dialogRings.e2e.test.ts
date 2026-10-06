@@ -190,6 +190,44 @@ describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', ()
   })
 })
 
+describe.skipIf(!available)('human Canvas focus rings', () => {
+  it('keeps creation, link, text, handoff and local-discard controls inside their clipping ancestors', () => {
+    const result = evalAsync<string[]>(`(async () => {
+      const path='sample-editor-rings.canvas'
+      if(app.vault.getAbstractFileByPath(path))throw Error('Synthetic file already exists')
+      const layout=app.workspace.getLayout(),file=await app.vault.create(path,'{"nodes":[],"edges":[]}'),leaf=app.workspace.getLeaf('tab'),cuts=[]
+      const wait=ms=>new Promise(r=>setTimeout(r,ms))
+      const until=async fn=>{for(let i=0;i<60;i++){if(fn())return;await wait(50)}throw Error('Canvas ring inventory did not open')}
+      const measure=(label,root)=>{
+        for(const field of root.querySelectorAll('input,textarea,button')){
+          if(!field.getBoundingClientRect().width)continue
+          field.focus()
+          const reach=(${outwardBoxShadowReach.toString()})(getComputedStyle(field).boxShadow),r=field.getBoundingClientRect()
+          for(let el=field.parentElement;el&&el!==document.documentElement;el=el.parentElement){
+            const style=getComputedStyle(el);if(style.overflowX==='visible'&&style.overflowY==='visible')continue
+            const b=el.getBoundingClientRect(),left=b.left+el.clientLeft
+            if(Math.max(left-(r.left-reach),r.right+reach-(left+el.clientWidth))>.5)cuts.push(label+': '+field.getAttribute('aria-label'))
+          }
+          field.blur()
+        }
+      }
+      const close=async()=>{document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(200)}
+      try{
+        await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);await until(()=>leaf.view.editor)
+        const root=leaf.view.contentEl
+        measure('editor',root)
+        root.querySelector('[aria-label="Add link"]').click();await until(()=>document.querySelector('.abele-canvas-input'));measure('link',document.querySelector('.abele-canvas-input'));await close()
+        root.querySelector('[aria-label="Add text card"]').click();measure('text',root)
+        leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]').click();await until(()=>document.querySelector('.abele-canvas-choice'));measure('native',document.querySelector('.abele-canvas-choice'));await close()
+        root.querySelector('[aria-label="Discard local draft"]').click();await until(()=>document.querySelector('.abele-canvas-choice'));measure('discard',document.querySelector('.abele-canvas-choice'));await close()
+        app.commands.executeCommandById('abele:new-canvas');await until(()=>document.querySelector('.abele-canvas-input'));measure('creation',document.querySelector('.abele-canvas-input'))
+        return cuts
+      } finally {await close();leaf.view.documentLease?.document.discardDraft();leaf.detach();await app.vault.delete(file);await app.workspace.changeLayout(layout)}
+    })()`)
+    expect(result).toEqual([])
+  })
+})
+
 describe('Canvas publication review focus inventory', () => {
   it('keeps local review and affirmative confirmation rings inside their clipping ancestors', () => {
     const run = <T>(body: string): T =>

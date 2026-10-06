@@ -1063,6 +1063,60 @@ const probeScript = `(async () => {
       timelineLeaf.detach()
     }
 
+    // Human canvas controls and native Obsidian pickers at the same phone width.
+    {
+      const file = await app.vault.create('Phone probe/sample-editor.canvas', '{"nodes":[],"edges":[]}')
+      SEEDED.push(file.path)
+      const leaf = app.workspace.getLeaf('tab')
+      try {
+        await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true})
+        await app.workspace.revealLeaf(leaf)
+        await until(()=>leaf.view.editor,5000)
+        const root=leaf.view.contentEl
+        await screen('canvas editor',root,root)
+        root.querySelector('[aria-label="Add note or attachment"]').click()
+        await until(()=>document.querySelector('.prompt'),5000)
+        await screen('canvas file picker',document.querySelector('.prompt'))
+        await closeDialog();await wait(200)
+        root.querySelector('[aria-label="Add link"]').click()
+        await until(()=>document.querySelector('.abele-canvas-input'),5000)
+        const input=document.querySelector('.abele-canvas-input')
+        await screen('canvas link input',input,input.querySelector('.abele-modal__body'))
+        report['canvas link input'].clipped=[]
+        for(const field of input.querySelectorAll('input,button')){field.focus();report['canvas link input'].clipped.push(...ringClipped(field));field.blur()}
+        await closeDialog();await wait(200)
+        root.querySelector('[aria-label="Add text card"]').click()
+        await screen('canvas text draft',root,root)
+        report['canvas text draft'].clipped=[]
+        for(const field of root.querySelectorAll('textarea,button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas text draft'].clipped.push(...ringClipped(field));field.blur()}
+        leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]').click()
+        await until(()=>document.querySelector('.abele-canvas-choice'),5000)
+        const choice=document.querySelector('.abele-canvas-choice')
+        await screen('canvas native handoff',choice,choice.querySelector('.abele-modal__body'))
+        report['canvas native handoff'].clipped=[]
+        for(const field of choice.querySelectorAll('button')){field.focus();report['canvas native handoff'].clipped.push(...ringClipped(field));field.blur()}
+        await closeDialog();await wait(200)
+        root.querySelector('[aria-label="Discard local draft"]').click()
+        await until(()=>document.querySelector('.abele-canvas-choice'),5000)
+        const discard=document.querySelector('.abele-canvas-choice')
+        await screen('canvas draft discard',discard,discard.querySelector('.abele-modal__body'))
+        report['canvas draft discard'].clipped=[]
+        for(const field of discard.querySelectorAll('button')){field.focus();report['canvas draft discard'].clipped.push(...ringClipped(field));field.blur()}
+        await closeDialog();await wait(200)
+        leaf.view.documentLease.document.discardDraft()
+        app.commands.executeCommandById('abele:new-canvas')
+        await until(()=>document.querySelector('.abele-canvas-input'),5000)
+        const create=document.querySelector('.abele-canvas-input')
+        await screen('canvas creation',create,create.querySelector('.abele-modal__body'))
+        report['canvas creation'].clipped=[]
+        for(const field of create.querySelectorAll('input,button')){field.focus();report['canvas creation'].clipped.push(...ringClipped(field));field.blur()}
+      } finally {
+        await closeDialog()
+        leaf.view.documentLease?.document.discardDraft()
+        leaf.detach()
+      }
+    }
+
     // Canvas-only inventory through the existing registered action; no shared dialog API fixture.
     await (async () => { ${PUBLICATION_SETUP} })()
     try {
@@ -1345,6 +1399,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'timeline main tab',
     'map location',
     'word document',
+    'canvas editor',
+    'canvas file picker',
+    'canvas link input',
+    'canvas text draft',
+    'canvas native handoff',
+    'canvas draft discard',
+    'canvas creation',
     ...CANVAS_SCREENS,
   ]
 
@@ -1369,6 +1430,16 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(screen?.voice).toBe(true)
     expect(screen?.edit).toBe(true)
     expect(screen?.attachment).toBe(true)
+  })
+
+  it.each([
+    'canvas link input',
+    'canvas text draft',
+    'canvas native handoff',
+    'canvas draft discard',
+    'canvas creation',
+  ])('%s: every field and action keeps its focus ring', (label) => {
+    expect(report[label]?.clipped ?? ['no report']).toEqual([])
   })
 
   it('Word documents fit the phone layout and offer no hand editing', () => {
@@ -1509,7 +1580,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
    * the list, so its list stops a field's height above the bottom by design. Only the count of
    * scrollers is asked of it.
    */
-  const prompts = new Set(['note picker', 'chat picker'])
+  const prompts = new Set(['note picker', 'chat picker', 'canvas file picker'])
 
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
     // A settings page's prompt editors are fields that scroll their own text, by design.
