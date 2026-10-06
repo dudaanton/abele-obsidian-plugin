@@ -3,6 +3,8 @@ import { NodeEventSchema, validateParams } from '@abele/node-protocol'
 import { z } from 'zod'
 
 export interface NodeClientState extends ClientState {
+  /** Replaceable artifact payload cache; journal references remain untouched. */
+  artifactData?: Record<string, Record<string, unknown>>
   results: Record<
     string,
     { result?: unknown; error?: string; input?: { sessionId: string; text: string } }
@@ -11,6 +13,7 @@ export interface NodeClientState extends ClientState {
 
 const StateSchema = z
   .object({
+    artifactData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
     node_id: z.string().min(1).max(128).optional(),
     installation_id: z.string().min(1).max(128).optional(),
     cursors: z.record(z.string(), z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)),
@@ -40,10 +43,11 @@ function readState(raw: unknown): NodeClientState {
       values.map((e) => NodeEventSchema.parse(e)),
     ])
   )
-  const outbox = state.outbox.map((entry) => ({
-    ...entry,
-    params: validateParams(entry.method, entry.params),
-  }))
+  const outbox = state.outbox.map((entry) => {
+    validateParams(entry.method, entry.params)
+    // Validation may add defaults in a newer protocol. Never rewrite a retry's body.
+    return entry
+  })
   return { ...state, events, outbox }
 }
 

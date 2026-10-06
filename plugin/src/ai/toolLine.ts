@@ -30,6 +30,10 @@ export function toolSummary(message: Pick<ChatMessage, 'toolName' | 'toolParams'
     return extractResultPath(message.toolResult) || String(p?.path || '')
   }
   if (!p) return ''
+  if (p.file_path) return truncate(String(p.file_path), 160)
+  if (p.command) return truncate(String(p.command).replace(/\s+/g, ' '), 160)
+  if (p.description) return truncate(String(p.description), 160)
+  if (p.pattern) return truncate(String(p.pattern), 160)
   if (p.path) return String(p.path)
   if (p.from && p.to) return `${p.from} → ${p.to}`
   if (p.url) return String(p.url)

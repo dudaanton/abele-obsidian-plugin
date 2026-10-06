@@ -1,10 +1,15 @@
 import type { JournalEvent } from '@abele/channel-protocol'
-import { PromptSchema, type Prompt } from '@abele/node-protocol'
+import { PromptSchema, SessionSchema, type Prompt } from '@abele/node-protocol'
 import type { ChatMessage } from '@/ai/types'
+import { ClaudeTranscript } from './claudeTranscript'
 
 export type NodeSessionState = 'idle' | 'queued' | 'accepted' | 'running' | 'needs-attention'
 export interface NodeTranscript {
   messages: ChatMessage[]
+  children: Record<string, ChatMessage[]>
+  activeRuns: string[]
+  queuedInputs: { id: string; text: string }[]
+  session?: ReturnType<typeof SessionSchema.parse>
   prompts: Prompt[]
   state: NodeSessionState
   artifacts: { messageId: string; artifactId: string; size: number }[]
@@ -22,21 +27,41 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   const unknown: JournalEvent[] = []
   const seen = new Set<number>()
   let failed = false
+  let session: NodeTranscript['session']
+  let at = 0
+  const message = (id: string, role: ChatMessage['role']): ChatMessage => {
+    let current = messages.get(id)
+    if (!current) {
+      current = { id, role, content: '', timestamp: at }
+      messages.set(id, current)
+    }
+    return current
+  }
+  const claude = new ClaudeTranscript(message)
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (seen.has(event.seq)) continue
     seen.add(event.seq)
     const data =
       event.data && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : {}
     const text = (key: string) => (typeof data[key] === 'string' ? (data[key] as string) : '')
-    const message = (id: string, role: ChatMessage['role']): ChatMessage => {
-      let current = messages.get(id)
-      if (!current) {
-        current = { id, role, content: '', timestamp: Date.parse(event.at) }
-        messages.set(id, current)
-      }
-      return current
+    at = Date.parse(event.at)
+    if (event.type === 'session.created' || event.type === 'session.updated') {
+      const parsed = SessionSchema.safeParse(data)
+      if (parsed.success) session = parsed.data
+      else unknown.push(event)
+      continue
     }
-    if (event.type === 'session.created') continue
+    if (event.type.startsWith('claude.') && (data.artifact_id || data.late)) {
+      unknown.push(event)
+      if (text('artifact_id'))
+        artifacts.push({
+          messageId: `event:${event.seq}`,
+          artifactId: text('artifact_id'),
+          size: Number(data.size),
+        })
+      continue
+    }
+    if (event.type.startsWith('claude.') && claude.apply(event.type, data)) continue
     if (event.type.startsWith('input.')) {
       const state = text('state') || event.type.slice(6)
       inputs.set(text('input_id'), state)
@@ -97,8 +122,17 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         : [...inputs.values()].includes('accepted')
           ? 'accepted'
           : 'idle'
+  const children: NodeTranscript['children'] = {}
+  for (const m of messages.values())
+    if (m.parentId && messages.has(m.parentId)) (children[m.parentId] ??= []).push(m)
   return {
-    messages: [...messages.values()],
+    messages: [...messages.values()].filter((m) => !m.parentId || !messages.has(m.parentId)),
+    children,
+    activeRuns: [...runs],
+    queuedInputs: [...inputs]
+      .filter(([, state]) => ['accepted', 'queued'].includes(state))
+      .map(([id]) => ({ id, text: messages.get(`input:${id}`)?.content ?? '' })),
+    session,
     prompts: [...prompts.values()],
     state,
     artifacts,

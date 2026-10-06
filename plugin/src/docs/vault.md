@@ -53,6 +53,11 @@ and bypass the synced secret catalog even when it is unlocked.
 Each enrollment uses its own IndexedDB database `abele-node-<local namespace>-<registration id>`,
 version 1, object store `client`. Its `state` record holds pinned node/installation identity,
 stream cursors, cached journal events, immutable operation outbox entries and durable receipts.
+Optional `artifactData` caches parsed normalized provider payloads by artifact ID for offline
+projection after reload; it does not replace journal references or advance cursors. Old state
+records without this cache remain valid. Project/workspace/job state, trust, repository Claude
+permission opt-in, workspace leases and native provider resume identities belong to the node,
+not plugin settings or vault files.
 Events and cursors commit together before acknowledgment; the outbox commits before sending
 and is removed only alongside a durable result. Rejected send receipts retain their session
 identity and original text for an explicit local rejection card, including after an offline

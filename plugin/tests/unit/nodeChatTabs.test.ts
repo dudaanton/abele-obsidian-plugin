@@ -22,6 +22,57 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('hydrates large normalized output through artifact reads without appending final snapshots twice', async () => {
+  const store = new MemoryClientStore()
+  const client = new NodeClient(
+    { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+    store
+  )
+  await store.transaction((s) => {
+    s.events['sample-session'] = [
+      {
+        kind: 'event',
+        node_id: 'sample-node',
+        stream_id: 'sample-session',
+        seq: 1,
+        at: '2025-01-01T00:00:00.000Z',
+        actor: { kind: 'node' },
+        type: 'claude.message.final',
+        data: { run_id: 'r', artifact_id: 'a', size: 9000 },
+      },
+    ]
+  })
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  const data = {
+    message_id: 'm',
+    role: 'assistant',
+    content: [{ type: 'text', text: 'Large **answer**' }],
+  }
+  const bytes = new TextEncoder().encode(JSON.stringify(data))
+  vi.spyOn(client, 'request').mockResolvedValue({
+    offset: 0,
+    total: bytes.length,
+    base64: btoa(String.fromCharCode(...bytes)),
+  })
+  const presenter = new NodeChatPresenter(reference, {
+    client,
+    state: ref('connected'),
+  } as unknown as NodeConnection)
+  await presenter.refresh()
+  await presenter.refresh()
+  expect(presenter.messages.value.map((m) => m.content)).toEqual(['Large **answer**'])
+  expect(client.request).toHaveBeenCalledOnce()
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(false)
+  const restored = new NodeChatPresenter(reference, {
+    client,
+    state: ref('offline'),
+  } as unknown as NodeConnection)
+  await restored.refresh()
+  expect(restored.messages.value.map((m) => m.content)).toEqual(['Large **answer**'])
+  presenter.destroy()
+  restored.destroy()
+})
+
 it('keeps the local new-chat action usable when node preferences cannot be read', () => {
   useVault([])
   vi.spyOn(NodeService, 'getInstance').mockImplementation(() => {

@@ -85,6 +85,19 @@ describe('node transcript', () => {
 })
 
 describe('installation-local store', () => {
+  it('validates an older pending operation without adding new protocol defaults to its immutable body', async () => {
+    const store = new NodeClientStore('sample-old-outbox', new IDBFactory())
+    const entry = {
+      operation_id: 'sample-create',
+      method: 'session.create',
+      params: { title: 'Sample fixture' },
+    }
+    await store.transaction((s) => {
+      s.outbox.push(entry)
+    })
+    expect(await store.transaction((s) => s.outbox)).toEqual([entry])
+    store.close()
+  })
   it('commits cursor and events atomically, rolls back asynchronous failures and survives reopening', async () => {
     const factory = new IDBFactory()
     const store = new NodeClientStore('sample-installation', factory)

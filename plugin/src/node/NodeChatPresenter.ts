@@ -29,6 +29,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly messages = computed(() => this.projection.value.messages)
   readonly isStreaming = computed(() => this.projection.value.state === 'running')
   readonly label = computed(() => this.reference.title)
+  readonly provider = computed(() => this.projection.value.session?.provider ?? 'fake')
+  readonly workspaceId = computed(() => this.projection.value.session?.workspace_id)
+  readonly nativeSessionId = computed(() => this.projection.value.session?.native_session_id)
   readonly draft = ref<ChatDraft>({ text: '', attachments: [] })
   readonly queued = ref<{ id: string; text: string }[]>([])
   readonly error = ref('')
@@ -45,6 +48,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private destroyed = false
   private refreshing?: Promise<void>
   private dirty = false
+  private readonly failedArtifacts = new Set<string>()
 
   constructor(
     readonly reference: Extract<ChatReference, { kind: 'node-session' }>,
@@ -91,18 +95,64 @@ export class NodeChatPresenter implements ChatPresentationSession {
       while (this.dirty && !this.destroyed) {
         this.dirty = false
         const client = this.connection.client
-        const { history, pending, rejected } = await client.store.transaction((raw) => {
-          const state = raw as NodeClientState
-          return {
-            history: state.events[this.reference.sessionId] ?? [],
-            pending: state.outbox,
-            rejected: Object.entries(state.results)
-              .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
-              .map(([id, r]) => ({ id, text: r.input!.text, error: r.error! })),
+        const { history, pending, rejected, artifactData } = await client.store.transaction(
+          (raw) => {
+            const state = raw as NodeClientState
+            return {
+              artifactData: state.artifactData ?? {},
+              history: state.events[this.reference.sessionId] ?? [],
+              pending: state.outbox,
+              rejected: Object.entries(state.results)
+                .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
+                .map(([id, r]) => ({ id, text: r.input!.text, error: r.error! })),
+            }
           }
-        })
+        )
         if (this.destroyed) return
-        this.projection.value = reduceTranscript(history)
+        const hydrated = []
+        for (const event of history) {
+          const data = event.data as Record<string, unknown>
+          const id = data?.artifact_id
+          if (
+            typeof id === 'string' &&
+            [
+              'claude.message.final',
+              'claude.tool.call',
+              'claude.tool.result',
+              'claude.thinking',
+              'claude.block.delta',
+            ].includes(event.type)
+          ) {
+            if (!artifactData[id] && client.connected && !this.failedArtifacts.has(id)) {
+              try {
+                const payload: unknown = JSON.parse(await this.artifact(id))
+                if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+                  throw new Error('Invalid normalized artifact')
+                artifactData[id] = payload as Record<string, unknown>
+                await client.store.transaction((raw) => {
+                  ;((raw as NodeClientState).artifactData ??= {})[id] = artifactData[id]
+                })
+              } catch (error) {
+                this.failedArtifacts.add(id)
+                this.report(error)
+              }
+            }
+            if (artifactData[id]) {
+              hydrated.push({
+                ...event,
+                data: {
+                  ...artifactData[id],
+                  run_id: data.run_id,
+                  ...(data.late ? { late: true } : {}),
+                },
+              })
+              continue
+            }
+          }
+          hydrated.push(event)
+        }
+        if (this.destroyed) return
+        this.projection.value = reduceTranscript(hydrated)
         this.rejected.value = rejected
         this.queued.value = pending
           .filter(
@@ -168,9 +218,28 @@ export class NodeChatPresenter implements ChatPresentationSession {
     await this.refresh()
   }
 
-  /** Stage 1 has no workspace resource API. Never interpret node paths as vault paths. */
+  async interrupt(runId: string): Promise<void> {
+    try {
+      await this.connection.client.interrupt(this.reference.sessionId, runId)
+    } catch (error) {
+      this.report(error)
+    }
+    await this.refresh()
+  }
+
+  async cancelInput(inputId: string): Promise<void> {
+    try {
+      await this.connection.client.cancelInput(this.reference.sessionId, inputId)
+    } catch (error) {
+      this.report(error)
+    }
+    await this.refresh()
+  }
+
+  /** File browsing is a later API. Never interpret node paths as vault paths. */
   openResource(_path: string): void {
-    this.error.value = 'Node files are not available in this stage'
+    this.error.value =
+      'Opening node files is not supported yet. Use the workspace status and diff preview.'
   }
 
   async artifact(artifactId: string): Promise<string> {
