@@ -37,6 +37,20 @@ describe.skipIf(!available)('template confirmation in the live vault', () => {
         button.click()
       }
       let templateFile
+      const reviewHash = async () => {
+        const template = api.UserTemplate.fromFile(templateFile)
+        const text = await template.getContent(), body = await template.getBody(text)
+        const settings = {
+          template_for: template.templateFor,
+          callbacks: template.callbacks,
+          target_folder: template.targetFolder,
+          target_name: template.targetName,
+          target_properties: template.targetProperties,
+        }
+        const source = 'Template execution settings:\n' + JSON.stringify(settings, null, 2) + '\n\nPrepared template body:\n' + body + '\n\nFull template:\n' + text
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source))
+        return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
+      }
       const apply = async () => {
         const file = await service.createNoteFromTemplate(api.UserTemplate.fromFile(templateFile), new Map([['Input', 'safe']]))
         return { path: file.path, text: await app.vault.read(file) }
@@ -62,8 +76,9 @@ describe.skipIf(!available)('template confirmation in the live vault', () => {
         await until(dialog)
         report.title = dialog().querySelector('.modal-title').textContent
         report.shown = dialog().querySelector('.cm-content').textContent
+        const firstHash = await reviewHash()
         press('Confirm')
-        await until(() => app.loadLocalStorage(key)?.scripts?.[templateFile.path])
+        await until(() => app.loadLocalStorage(key)?.scripts?.[templateFile.path]?.hash === firstHash)
         report.afterReview = [report.commands, report.methods]
         // Same device reload: approvals come from host-local storage, not session memory.
         api.ScriptTrust.reset()
@@ -82,7 +97,10 @@ describe.skipIf(!available)('template confirmation in the live vault', () => {
         report.reviewStillAvailable = !!notice()?.querySelector('button')
         notice().querySelector('button').click()
         await until(dialog)
+        const changedHash = await reviewHash()
+        if (changedHash === firstHash) throw Error('template edit did not change the reviewed hash')
         press('Confirm')
+        await until(() => app.loadLocalStorage(key)?.scripts?.[templateFile.path]?.hash === changedHash)
         await until(() => !notice())
         report.afterDeferredReview = [report.commands, report.methods]
         await apply()
