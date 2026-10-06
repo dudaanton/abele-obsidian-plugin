@@ -16,6 +16,13 @@ export class Criterion {
   value: string
   caseInsensitive: boolean
 
+  private regexCache?: {
+    pattern: string
+    content: boolean
+    insensitive: boolean
+    regex: RegExp | null
+  }
+
   constructor() {
     this.id = nanoid()
     this.type = 'path'
@@ -29,34 +36,39 @@ export class Criterion {
     return this.caseInsensitive ? s.toLowerCase() : s
   }
 
-  checkRegExp(value: string, pattern: string): boolean {
+  private cachedRegex(pattern: string, content: boolean): RegExp | null {
+    // Keep the existing syntax: content uses caseInsensitive; paths/properties use explicit flags.
+    const insensitive = content && this.caseInsensitive
+    const cached = this.regexCache
+    if (
+      cached?.pattern === pattern &&
+      cached.content === content &&
+      cached.insensitive === insensitive
+    ) {
+      return cached.regex
+    }
+    let regex: RegExp | null = null
     try {
-      const regexMatch = pattern.match(/^\/(.+)\/([gimsuvy]*)$/)
-      let regex
-
-      if (regexMatch) {
-        const [, pattern, flags] = regexMatch
-        const finalFlags = flags.includes('g') ? flags : flags + 'g'
-        regex = new RegExp(pattern, finalFlags)
+      if (content) {
+        regex = new RegExp(pattern, insensitive ? 'i' : '')
       } else {
-        regex = new RegExp(pattern, 'g')
+        const match = pattern.match(/^\/(.+)\/([gimsuvy]*)$/)
+        const flags = match?.[2] || 'g'
+        regex = new RegExp(match?.[1] ?? pattern, flags.includes('g') ? flags : flags + 'g')
       }
-
-      return regex.test(value)
-
-      // const allMatches = [...value.matchAll(regex)]
-      //
-      // if (allMatches.length === 0) {
-      //   return false
-      // }
-      //
-      // const capturedGroups = allMatches.flatMap((match) => match.slice(1))
-      //
-      // return capturedGroups.length > 0 ? capturedGroups : true
     } catch (e) {
       console.error(`Invalid regex in criterion: ${pattern}`, e)
-      return false
     }
+    // Invalid patterns are cached too: a bad query must not log once per candidate.
+    this.regexCache = { pattern, content, insensitive, regex }
+    return regex
+  }
+
+  checkRegExp(value: string, pattern: string): boolean {
+    const regex = this.cachedRegex(pattern, false)
+    if (!regex) return false
+    regex.lastIndex = 0
+    return regex.test(value)
   }
 
   checkPathCriterion(path: string): boolean {
@@ -134,13 +146,7 @@ export class Criterion {
       case 'endsWith':
         return c.endsWith(v)
       case 'regex':
-        try {
-          const regex = new RegExp(this.value, this.caseInsensitive ? 'i' : '')
-          return regex.test(content)
-        } catch (e) {
-          console.error(`Invalid regex in criterion: ${this.value}`, e)
-          return false
-        }
+        return this.cachedRegex(this.value, true)?.test(content) ?? false
       default:
         return false
     }

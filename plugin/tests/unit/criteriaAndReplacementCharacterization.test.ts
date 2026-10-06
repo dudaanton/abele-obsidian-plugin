@@ -121,6 +121,35 @@ describe('Criterion', () => {
     expect(c.checkContentCriterion('sample')).toBe(false)
   })
 
+  it('compiles an unchanged regex once across many candidates', () => {
+    const c = criterion({ operator: 'regex', value: '/sample/g' })
+    const NativeRegExp = globalThis.RegExp
+    const compile = vi.spyOn(globalThis, 'RegExp').mockImplementation(function (pattern, flags) {
+      return new NativeRegExp(pattern, flags)
+    })
+    for (let n = 0; n < 100; n++) expect(c.checkPathCriterion('sample')).toBe(true)
+    expect(compile).toHaveBeenCalledTimes(1)
+    c.value = 'other'
+    expect(c.checkPathCriterion('sample')).toBe(false)
+    expect(compile).toHaveBeenCalledTimes(2)
+    compile.mockClear()
+    c.value = 'SAMPLE'
+    c.caseInsensitive = true
+    for (let n = 0; n < 100; n++) expect(c.checkContentCriterion('sample')).toBe(true)
+    expect(compile).toHaveBeenCalledTimes(1)
+    c.caseInsensitive = false
+    expect(c.checkContentCriterion('sample')).toBe(false)
+    expect(compile).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports an unchanged invalid regex once, not once per file', () => {
+    const c = criterion({ operator: 'regex', value: '[' })
+    for (let n = 0; n < 100; n++) expect(c.checkContentCriterion('sample')).toBe(false)
+    expect(console.error).toHaveBeenCalledTimes(1)
+    c.value = 'sample'
+    expect(c.checkContentCriterion('sample')).toBe(true)
+  })
+
   it('requires a property name and values only for value-taking operators, without trimming', () => {
     const c = criterion({ type: 'property', operator: 'exists' })
     expect(c.isValid()).toBe(false)
