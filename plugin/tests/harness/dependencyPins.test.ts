@@ -21,9 +21,22 @@ describe('reproducible dependency sources', () => {
     })
   }
   it('pins all registry dependencies and exact vendored node tarballs to their actual bytes', () => {
-    const artifacts = JSON.parse(readFileSync('vendor/node/integrity.json', 'utf8')) as Array<{ name: string; filename: string; version: string; integrity: string }>
-    expect(artifacts.map((a) => a.name).sort()).toEqual(['@abele/channel-client', '@abele/channel-protocol', '@abele/node-client', '@abele/node-protocol'])
-    for (const [name, version] of Object.entries({ ...manifest.dependencies, ...manifest.devDependencies })) {
+    const artifacts = JSON.parse(readFileSync('vendor/node/integrity.json', 'utf8')) as Array<{
+      name: string
+      filename: string
+      version: string
+      integrity: string
+    }>
+    expect(artifacts.map((a) => a.name).sort()).toEqual([
+      '@abele/channel-client',
+      '@abele/channel-protocol',
+      '@abele/node-client',
+      '@abele/node-protocol',
+    ])
+    for (const [name, version] of Object.entries({
+      ...manifest.dependencies,
+      ...manifest.devDependencies,
+    })) {
       const installed = lock.packages[`node_modules/${name}`]
       const artifact = artifacts.find((a) => a.name === name)
       if (artifact) {
@@ -31,7 +44,11 @@ describe('reproducible dependency sources', () => {
         expect(version, name).toBe(source)
         expect(installed.resolved, name).toBe(source)
         expect(installed.version, name).toBe(artifact.version)
-        const integrity = 'sha512-' + createHash('sha512').update(readFileSync(`vendor/node/${artifact.filename}`)).digest('base64')
+        const integrity =
+          'sha512-' +
+          createHash('sha512')
+            .update(readFileSync(`vendor/node/${artifact.filename}`))
+            .digest('base64')
         expect(installed.integrity, name).toBe(integrity)
         expect(artifact.integrity, name).toBe(integrity)
       } else {

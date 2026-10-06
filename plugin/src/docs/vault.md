@@ -40,7 +40,9 @@ Each enrollment uses its own IndexedDB database `abele-node-<local namespace>-<r
 version 1, object store `client`. Its `state` record holds pinned node/installation identity,
 stream cursors, cached journal events, immutable operation outbox entries and durable receipts.
 Events and cursors commit together before acknowledgment; the outbox commits before sending
-and is removed only alongside a durable result. Unknown valid journal records remain cached.
+and is removed only alongside a durable result. Rejected send receipts retain their session
+identity and original text for an explicit local rejection card, including after an offline
+replay and reload; they never become accepted journal messages. Unknown valid journal records remain cached.
 Removing a connection forgets only its local preference and token; it neither deletes daemon
 history nor revokes the daemon credential. Retained caches are installation-local, not encrypted
 at rest, and are not canonical history. Re-enrollment uses a fresh cache namespace.

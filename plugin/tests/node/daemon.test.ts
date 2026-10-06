@@ -142,4 +142,11 @@ it('persists offline outbox, replay/cursor, approval and renderer history across
   )
   expect(await other.history(session.session_id)).toEqual(await client.history(session.session_id))
   expect(reduceTranscript(before).messages.filter((m) => m.role === 'user')).toHaveLength(1)
+  await client.disconnect()
+  const rejected = await client.send('missing-session', 'Sample offline rejection', 0)
+  await client.connect()
+  expect(await client.operationResult(rejected.operation_id)).toEqual({
+    error: 'not_found',
+    input: { sessionId: 'missing-session', text: 'Sample offline rejection' },
+  })
 }, 20000)

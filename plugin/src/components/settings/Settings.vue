@@ -51,6 +51,7 @@ import LinksSettings from './LinksSettings.vue'
 import OtherSettings from './OtherSettings.vue'
 import TransferSettings from './TransferSettings.vue'
 import GithubSettings from './GithubSettings.vue'
+import NodesSettings from './NodesSettings.vue'
 import ReaderSettings from './ReaderSettings.vue'
 import CalendarsSettings from './CalendarsSettings.vue'
 import QuickButtonSettings from './QuickButtonSettings.vue'
@@ -75,6 +76,7 @@ const tabs: SettingsTab[] = [
   { id: 'scripts', label: 'Scripts', component: markRaw(ScriptsSettings) },
   { id: 'links', label: 'Links', component: markRaw(LinksSettings) },
   { id: 'github', label: 'GitHub', component: markRaw(GithubSettings) },
+  { id: 'nodes', label: 'Nodes', component: markRaw(NodesSettings) },
   { id: 'reader', label: 'Books', component: markRaw(ReaderSettings) },
   { id: 'quick-button', label: 'Quick button', component: markRaw(QuickButtonSettings) },
   // Also under Scripts, where a script's own card leads to it; here it is a page of its own,

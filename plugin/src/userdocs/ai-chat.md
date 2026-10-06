@@ -21,6 +21,32 @@ long as each chunk arrives in time. The same setting applies to all providers, f
 delegated models, review responses, chat titles and compaction. It travels with **AI general**
 settings. Model-list fetching, image generation and voice input keep their separate timeouts.
 
+## Node sessions
+
+**Settings → Abele → Nodes** connects this device to a local AbeleNode daemon. Create a
+separate installation token with `abele-node token create`, then paste it beside the node's
+label and loopback URL. The token stays only in this device's keychain, even with the synced
+key store unlocked. Remote addresses, phone connections and real agent execution are not
+available in this stage.
+
+After adding a node, the chat's **+** menu offers **Local chat** and **Session on…** for each
+node. Pick an existing session or create a **fake session (non-executing)**. It uses the same
+chat tabs, message renderer and composer, but never runs the plugin's agents or vault tools.
+It accepts text only; local slash commands, attachments, history editing, branches and rewind
+are not offered. Node file links never open a coincidentally named vault file; file browsing
+will arrive in a later stage. **Read stored output** displays artifact-backed text.
+
+The status distinguishes **Offline**, **Queued**, **Accepted**, **Running** and **Needs
+attention**. After connecting once, messages sent offline are kept on this device and replayed
+with the same operation identity on reconnect. Unknown acceptance stays queued rather than
+silently being resent as a new message. Pending permissions show **Allow** and **Deny** and
+can only be answered while connected. **Ask for permission** pauses the next fake turn for a
+sample decision; this fixture is non-executing.
+Closing a tab does not stop the node session; reopening or reloading the plugin restores its
+history. Daemon journals own the history; the plugin keeps a device-local transactional cache,
+not a Markdown chat file. Removing a connection does not delete node history or revoke its
+token, and reconnecting with another token uses a fresh local cache.
+
 ## Offering tools by group
 
 Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.

@@ -2,6 +2,13 @@ import type { ClientState, ClientStore } from '@abele/node-client'
 import { NodeEventSchema, validateParams } from '@abele/node-protocol'
 import { z } from 'zod'
 
+export interface NodeClientState extends ClientState {
+  results: Record<
+    string,
+    { result?: unknown; error?: string; input?: { sessionId: string; text: string } }
+  >
+}
+
 const StateSchema = z
   .object({
     node_id: z.string().min(1).max(128).optional(),
@@ -13,12 +20,18 @@ const StateSchema = z
     ),
     results: z.record(
       z.string(),
-      z.object({ result: z.unknown().optional(), error: z.string().optional() })
+      z.object({
+        result: z.unknown().optional(),
+        error: z.string().optional(),
+        input: z
+          .object({ sessionId: z.string().min(1).max(128), text: z.string().max(32768) })
+          .optional(),
+      })
     ),
   })
   .strict()
 
-function readState(raw: unknown): ClientState {
+function readState(raw: unknown): NodeClientState {
   if (raw === undefined) return { cursors: {}, events: {}, outbox: [], results: {} }
   const state = StateSchema.parse(raw)
   const events = Object.fromEntries(
@@ -57,7 +70,7 @@ export class NodeClientStore implements ClientStore {
     }))
   }
 
-  async transaction<T>(work: (state: ClientState) => T | Promise<T>): Promise<T> {
+  async transaction<T>(work: (state: NodeClientState) => T | Promise<T>): Promise<T> {
     const db = await this.open()
     return new Promise<T>((resolve, reject) => {
       // The readwrite lock isolates even separate plugin windows/handles. A keepalive read
@@ -68,7 +81,14 @@ export class NodeClientStore implements ClientStore {
       let failure: unknown
       let pending = true
       tx.oncomplete = () => resolve(result)
-      tx.onabort = () => reject(failure ?? tx.error ?? new Error('Node store transaction aborted'))
+      tx.onabort = () => {
+        const error = failure ?? tx.error
+        reject(
+          error instanceof Error
+            ? error
+            : new Error('Node store transaction aborted', { cause: error })
+        )
+      }
       tx.onerror = () => {
         failure ??= tx.error
       }
@@ -83,7 +103,15 @@ export class NodeClientStore implements ClientStore {
         void (async () => {
           try {
             const state = readState(request.result)
+            const submitted = state.outbox.filter((entry) => entry.method === 'session.send')
             result = structuredClone(await work(state))
+            for (const entry of submitted) {
+              const receipt = state.results[entry.operation_id]
+              if (receipt?.error) {
+                const input = entry.params as { session_id: string; text: string }
+                receipt.input = { sessionId: input.session_id, text: input.text }
+              }
+            }
             store.put(state, 'state')
             pending = false
           } catch (error) {

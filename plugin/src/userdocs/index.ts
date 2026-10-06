@@ -216,6 +216,7 @@ const SETTINGS_TAB_PAGES: Record<string, string> = {
   scripts: 'scripts',
   links: 'scripts',
   github: 'github',
+  nodes: 'ai-chat',
   reader: 'books',
   transfer: 'transfer',
   'quick-button': 'quick-button',

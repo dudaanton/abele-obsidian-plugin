@@ -22,7 +22,7 @@
            message rather than under a long answer. The buttons come first: the params and the
            result below them can be tall. -->
       <div v-if="expanded" class="abele-chat-msg__details">
-        <div class="abele-chat-msg__detail-row">
+        <div v-if="!readOnlyHistory" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__branch-action" @click="emit('create-branch', message.id)"
             >Branch from here</span
           >
@@ -41,7 +41,7 @@
             >Ask here</span
           >
         </div>
-        <div v-if="message.role === 'user'" class="abele-chat-msg__detail-row">
+        <div v-if="!readOnlyHistory && message.role === 'user'" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__branch-action" @click="emit('repeat-message', message.id)"
             >Repeat</span
           >
@@ -64,7 +64,7 @@
           >
         </div>
         <div
-          v-if="message.role === 'assistant' || message.role === 'tool-call'"
+          v-if="!readOnlyHistory && (message.role === 'assistant' || message.role === 'tool-call')"
           class="abele-chat-msg__detail-row"
         >
           <span class="abele-chat-msg__branch-action" @click="emit('retry-message', message.id)"
@@ -106,7 +106,7 @@
       <!-- Thinking (collapsible) -->
       <details v-if="message.thinking" class="abele-chat-msg__thinking">
         <summary>Thinking</summary>
-        <Markdown :text="message.thinking" data-find-part="thinking" />
+        <Markdown :text="message.thinking" :resource-opener="resourceOpener" data-find-part="thinking" />
       </details>
 
       <!-- Tool call — compact one-liner + inline diff -->
@@ -208,7 +208,7 @@
         <template v-if="message.content.length > 100">
           <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
           <div v-if="expanded" class="abele-chat-msg__compact-summary">
-            <Markdown :text="message.content" data-find-part="summary" />
+            <Markdown :text="message.content" :resource-opener="resourceOpener" data-find-part="summary" />
           </div>
         </template>
         <span v-else class="abele-chat-msg__compact-label"
@@ -221,6 +221,7 @@
         v-else-if="(message.role === 'assistant' || message.role === 'user') && message.content"
         :ref="comments.content"
         :text="message.content"
+        :resource-opener="resourceOpener"
         :data-ask-message="canComment ? message.id : undefined"
         :data-highlight-reply="
           canComment && message.role === 'assistant' && !message.draft ? 'true' : undefined
@@ -229,7 +230,7 @@
         @rendered="onReplyRendered"
         @contextmenu="onContentMenu"
       />
-      <Markdown v-else-if="message.content" :text="message.content" data-find-part="content" />
+      <Markdown v-else-if="message.content" :text="message.content" :resource-opener="resourceOpener" data-find-part="content" />
 
       <div v-if="lastRevision" class="abele-chat-msg__revision">
         <span
@@ -430,6 +431,8 @@ import type { FindPart } from '@/ai/chatFind'
 
 const props = defineProps<{
   message: ChatMessage
+  readOnlyHistory?: boolean
+  resourceOpener?: (path: string) => void
   branchInfo?: BranchInfo
   interceptorStreaming?: boolean
   interceptorStreamingContent?: string
@@ -628,7 +631,8 @@ const toolFilePath = computed(() => {
 
 const openToolFile = () => {
   if (!toolFilePath.value) return
-  void openVaultFile(toolFilePath.value)
+  if (props.resourceOpener) props.resourceOpener(toolFilePath.value)
+  else void openVaultFile(toolFilePath.value)
 }
 
 const IMAGE_TOOLS = ['read_image', 'look_at_drawing', 'generate_image', 'edit_image', 'screenshot']
@@ -636,6 +640,7 @@ const IMAGE_TOOLS = ['read_image', 'look_at_drawing', 'generate_image', 'edit_im
 const PATH_IMAGE_TOOLS = ['read_image', 'look_at_drawing']
 
 const imagePath = computed(() => {
+  if (props.resourceOpener) return ''
   const name = props.message.toolName
   if (!name || !IMAGE_TOOLS.includes(name)) return ''
   if (PATH_IMAGE_TOOLS.includes(name)) return (props.message.toolParams?.path as string) || ''

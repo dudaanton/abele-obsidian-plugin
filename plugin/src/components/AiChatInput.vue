@@ -83,7 +83,7 @@
            move out from under the finger before the click lands (see fieldFocus.ts). -->
       <div class="abele-chat-input__toolbar-right" @mousedown.prevent>
         <template v-if="!isBusy && !importing">
-          <Icon icon="paperclip" with-bg tooltip="Attach a file" @click="showAttachMenu" />
+          <Icon v-if="!textOnly" icon="paperclip" with-bg tooltip="Attach a file" @click="showAttachMenu" />
           <Icon
             icon="mic"
             with-bg
@@ -187,6 +187,8 @@ import {
 const props = defineProps<{
   isStreaming: boolean
   isBusy: boolean
+  /** Node sessions accept text only and do not resolve vault skills or attachments. */
+  textOnly?: boolean
   /** Captured conversation lifetime, not merely the tab that displays it. */
   attachmentOwner?: ConversationOwner
   /** A session-owned object: neither mounting nor replacing an editor changes its lifetime. */
@@ -249,7 +251,7 @@ const editorHost = ref<HTMLElement | null>(null)
  * The note editor cannot be borrowed — an Obsidian that moved its insides, or a test with no
  * Obsidian at all — and the field is the plain text box it used to be.
  */
-const fallback = ref(!isEmbeddedEditorAvailable(GlobalStore.getInstance().app))
+const fallback = ref(props.textOnly || !isEmbeddedEditorAvailable(GlobalStore.getInstance().app))
 let editor: EmbeddedEditor | null = null
 /** What the editor itself last reported, so writing it back does not move the cursor. */
 let echoed = ''
@@ -327,7 +329,7 @@ const send = () => {
   const msg = text.value.trim()
   if (!msg && !attachments.value.length) return
 
-  if (msg.startsWith('/')) {
+  if (!props.textOnly && msg.startsWith('/')) {
     const name = msg.split(/\s+/, 1)[0]
     const cmd = name.toLowerCase()
     // A leading slash also appears in paths and prose. Consume only an actual command/skill.
@@ -450,6 +452,7 @@ const onFileSelected = async (e: Event) => {
 }
 
 const onPaste = async (e: ClipboardEvent) => {
+  if (props.textOnly) return
   const items = e.clipboardData?.items
   if (!items) return
 
@@ -473,6 +476,7 @@ const isDragging = ref(false)
 let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null
 
 const onDragOver = () => {
+  if (props.textOnly) return
   if (dragLeaveTimer) {
     window.clearTimeout(dragLeaveTimer)
     dragLeaveTimer = null
@@ -488,6 +492,7 @@ const onDragLeave = () => {
 }
 
 const onDrop = async (e: DragEvent) => {
+  if (props.textOnly) return
   isDragging.value = false
   const dt = e.dataTransfer
   if (!dt) return

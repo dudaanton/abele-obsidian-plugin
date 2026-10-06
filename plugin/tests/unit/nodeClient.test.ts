@@ -106,6 +106,29 @@ describe('installation-local store', () => {
     restored.close()
   })
 
+  it('retains rejected offline input beside its durable receipt after the outbox is removed', async () => {
+    const factory = new IDBFactory()
+    const store = new NodeClientStore('sample-rejected', factory)
+    await store.transaction((s) => {
+      s.outbox.push({
+        operation_id: 'sample-operation',
+        method: 'session.send',
+        params: { session_id: 'sample-session', text: 'Sample rejected input', observed_seq: 0 },
+      })
+    })
+    await store.transaction((s) => {
+      s.results['sample-operation'] = { error: 'not_found' }
+      s.outbox = []
+    })
+    store.close()
+    const restored = new NodeClientStore('sample-rejected', factory)
+    expect(await restored.transaction((s) => s.results['sample-operation'])).toEqual({
+      error: 'not_found',
+      input: { sessionId: 'sample-session', text: 'Sample rejected input' },
+    })
+    restored.close()
+  })
+
   it('serializes across independent handles and isolates installations', async () => {
     const factory = new IDBFactory()
     const a = new NodeClientStore('one', factory)

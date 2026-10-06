@@ -12,10 +12,11 @@
       :can-create="chatService.canCreateTab"
       @select="chatService.switchTab($event)"
       @close="chatService.closeTab($event)"
-      @create="chatService.newTab()"
+      @create="onNewTab"
     />
 
     <AiRunView v-if="activeRun" :run="activeRun" />
+    <NodeChatView v-else-if="nodeSession" :key="nodeSession.id" :presenter="nodeSession" @new-chat="onNewTab" />
 
     <template v-else>
       <!-- Header -->
@@ -77,7 +78,7 @@
             "
             @click="openNotesMenu"
           />
-          <Icon icon="plus" with-bg tooltip="Start a new chat" @click="handleNewChat" />
+          <Icon icon="plus" with-bg tooltip="Start a new chat" @click="onNewChatMenu" />
           <Icon
             icon="history"
             with-bg
@@ -386,6 +387,8 @@ import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
 import AiRunView from './AiRunView.vue'
+import NodeChatView from './NodeChatView.vue'
+import { newChatMenu } from '@/node/openSession'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
@@ -413,6 +416,7 @@ import { chatNotesMenu } from '@/commands/attachChat'
 const chatService = ChatService.getInstance()
 chatService.ensureInitialized()
 const session = computed(() => chatService.activeSession.value)
+const nodeSession = computed(() => chatService.activeTabId.value ? chatService.getNodeSession(chatService.activeTabId.value) : null)
 const attachmentOwner = computed<ConversationOwner | undefined>(() => {
   const id = chatService.activeTabId.value
   return id ? { sessionId: id, version: session.value?.conversationVersion?.value ?? 0 } : undefined
@@ -477,8 +481,8 @@ const tabInfos = computed(() =>
       }
     }
 
-    const s = chatService.getSession(id)
-    const label = s?.chatTitle.value || 'New chat'
+    const s = chatService.getPresentation(id)
+    const label = s?.label.value || 'New chat'
     return {
       id,
       label,
@@ -2021,6 +2025,13 @@ const onContinue = async () => {
   scrollOnUserSend()
   await session.value?.sendMessage('Continue')
 }
+
+const newMenuPosition = () => {
+  const rect = chatContainer.value?.getBoundingClientRect()
+  return { x: rect?.left ?? 0, y: (rect?.top ?? 0) + 40 }
+}
+const onNewTab = () => newChatMenu(() => { chatService.newTab() }, newMenuPosition())
+const onNewChatMenu = () => newChatMenu(() => { void handleNewChat() }, newMenuPosition())
 
 const handleNewChat = async () => {
   const id = session.value?.id

@@ -71,6 +71,15 @@ Named links that run a script or a command. See [Links](scripts#links).
 Turning GitHub tabs on, the token and server, page width, how people are shown, and code search.
 See [GitHub](github).
 
+## Nodes
+
+Connect this device to a local AbeleNode with a label, its loopback URL (default
+`http://127.0.0.1:7777`) and an installation token from `abele-node token create`.
+**Check** reports the connection, **Open session** creates or picks a fake session, and
+**Remove** forgets only this device's connection, not the node's history or credential.
+Connections and tokens never travel with settings or the synced key store. This stage is
+local desktop only and does not execute agents or tools. See [Node sessions](ai-chat#node-sessions).
+
 ## Books
 
 The reader's text and layout, reading aloud, where reading places are kept, where highlights go,

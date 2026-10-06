@@ -9,6 +9,7 @@
 
 <script setup lang="ts">
 import { GlobalStore } from '@/stores/GlobalStore'
+import { nodeMarkdownClick, nodeMarkdownPolicy } from '@/node/markdown'
 import { Component, Keymap, MarkdownRenderer } from 'obsidian'
 import { onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { markUntrusted, renderUntrustedMarkdown } from '@/markdown/renderUntrusted'
@@ -21,6 +22,8 @@ const props = defineProps<{
   /** Vault-owned text keeps installed plugins' processors. Replies and script output do not. */
   trusted?: boolean
   filePath?: string
+  /** Non-vault documents provide their own resource routing and suppress vault embeds. */
+  resourceOpener?: (path: string) => void
   /**
    * For a whole document rather than a line or two of prose.
    *
@@ -44,6 +47,7 @@ let component: Component | null = null
 const target = ref<HTMLElement>()
 
 const handleClick = (event: MouseEvent) => {
+  if (props.resourceOpener && nodeMarkdownClick(event, props.resourceOpener)) return
   const el = (event.target as HTMLElement).closest('a.internal-link')
   if (el) {
     event.preventDefault()
@@ -127,7 +131,7 @@ const renderContent = async () => {
   try {
     if (props.trusted)
       await MarkdownRenderer.render(GlobalStore.getInstance().app, text, next, path, own)
-    else await renderUntrustedMarkdown(next, text, own, path)
+    else await renderUntrustedMarkdown(next, text, own, path, props.resourceOpener ? nodeMarkdownPolicy : undefined)
   } catch (error) {
     own.unload()
     throw error

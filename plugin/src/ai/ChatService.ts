@@ -16,6 +16,9 @@ import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { revealSidebarView } from '@/views/revealSidebarView'
 import { buildCommentContext } from './commentContext'
 import { buildMessageCommentContext } from './messageComments'
+import { LocalChatPresenter, type ChatPresentationSession, type ChatReference } from './ChatPresentationSession'
+import { NodeChatPresenter } from '@/node/NodeChatPresenter'
+import { NodeService } from '@/node/NodeService'
 
 /** How many chats the sidebar holds open at once. */
 export const MAX_TABS = 20
@@ -36,7 +39,7 @@ export interface PendingInput {
 }
 
 interface TabsState {
-  tabs: Array<{ chatFilePath: string | null }>
+  tabs: Array<ChatReference | { kind?: undefined; chatFilePath: string | null }>
   activeIndex: number
 }
 
@@ -44,6 +47,7 @@ export class ChatService {
   private static instance: ChatService | null = null
 
   private sessions = new Map<string, ChatSession>()
+  private nodeSessions = new Map<string, NodeChatPresenter>()
   /**
    * Read-only tabs showing a delegated run.
    *
@@ -121,7 +125,7 @@ export class ChatService {
 
   /** Ensure at least one tab exists (called from components before restoreTabs) */
   ensureInitialized(): void {
-    if (!this.tabsRestored && this.sessions.size === 0) {
+    if (!this.tabsRestored && this.tabOrder.value.length === 0) {
       this.createTab()
     }
   }
@@ -167,6 +171,8 @@ export class ChatService {
     // Clear any tabs created before restore
     for (const session of this.sessions.values()) session.destroy()
     this.sessions.clear()
+    for (const presenter of this.nodeSessions.values()) presenter.destroy()
+    this.nodeSessions.clear()
     this.tabOrder.value = []
     this.activeTabId.value = null
 
@@ -180,10 +186,11 @@ export class ChatService {
       const activeIndex = Math.max(0, Math.min(state.activeIndex || 0, state.tabs.length - 1))
       const order = [activeIndex, ...state.tabs.map((_, i) => i).filter((i) => i !== activeIndex)]
       const slots: Array<string | undefined> = []
-      const publish = (index: number, session: ChatSession) => {
+      const publish = (index: number, session: ChatSession | NodeChatPresenter) => {
         slots[index] = session.id
-        this.sessions.set(session.id, session)
-        const restored = slots.filter((id): id is string => !!id && this.sessions.has(id))
+        if (session instanceof NodeChatPresenter) this.nodeSessions.set(session.id, session)
+        else this.sessions.set(session.id, session)
+        const restored = slots.filter((id): id is string => !!id && (this.sessions.has(id) || this.nodeSessions.has(id)))
         // Tabs opened while restoration was reading stay after the saved layout.
         this.tabOrder.value = [...new Set([...restored, ...this.tabOrder.value])]
         // Select once. Background hydration must not steal a later user selection.
@@ -207,6 +214,15 @@ export class ChatService {
         }
         if (generation !== this.restoreGeneration) return
         const tab = state.tabs[index]
+        if ('sessionId' in tab) {
+          try {
+            const presenter = new NodeChatPresenter(tab, NodeService.getInstance().connection(tab.registrationId))
+            publish(index, presenter)
+            // Offline cache restoration must not wait for network admission.
+            void presenter.load().catch((error: unknown) => console.error('[Abele] Node history could not be loaded', error))
+          } catch (error) { console.error('[Abele] Node tab could not be restored', error) }
+          continue
+        }
         if (!tab.chatFilePath) {
           publish(index, new ChatSession(this))
           continue
@@ -256,8 +272,7 @@ export class ChatService {
       tabs: this.tabOrder.value
         .filter((id) => !this.runTabs.has(id))
         .map((id) => {
-          const session = this.sessions.get(id)
-          return { chatFilePath: session?.currentChatFile.value?.path ?? null }
+          return this.getPresentation(id)?.reference ?? { kind: 'local-chat', chatFilePath: null }
         }),
       activeIndex: this.activeTabId.value ? this.tabOrder.value.indexOf(this.activeTabId.value) : 0,
     }
@@ -267,7 +282,7 @@ export class ChatService {
   // ── Session / tab management ──────────────────────────────────
 
   createTab(): string {
-    if (this.sessions.size >= MAX_TABS) {
+    if (!this.canCreateTab) {
       // Return active tab if at limit
       return this.activeTabId.value
     }
@@ -358,7 +373,7 @@ export class ChatService {
    * Silent, unlike `adoptSession`: nothing has been attempted yet.
    */
   hasRoomFor(session: ChatSession): boolean {
-    return this.sessions.has(session.id) || this.sessions.size < MAX_TABS
+    return this.sessions.has(session.id) || this.canCreateTab
   }
 
   adoptSession(session: ChatSession): boolean {
@@ -367,7 +382,7 @@ export class ChatService {
       return true
     }
 
-    if (this.sessions.size >= MAX_TABS) {
+    if (!this.canCreateTab) {
       new Notice(ChatService.TABS_FULL)
       return false
     }
@@ -429,6 +444,12 @@ export class ChatService {
       return
     }
 
+    const node = this.nodeSessions.get(tabId)
+    if (node) {
+      node.destroy()
+      this.dropTab(tabId)
+      return
+    }
     const session = this.sessions.get(tabId)
     if (!session) return
 
@@ -511,11 +532,12 @@ export class ChatService {
    * others: there is nothing left to save it into, and the session is destroyed elsewhere.
    */
   dropTab(tabId: string): void {
-    if (!this.sessions.delete(tabId)) return
+    const removed = this.sessions.delete(tabId) || this.nodeSessions.delete(tabId)
+    if (!removed) return
     this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
 
     // Always keep at least one tab: an empty tab bar is a sidebar showing nothing at all.
-    if (this.sessions.size === 0) {
+    if (this.tabOrder.value.length === 0) {
       this.createTab()
       return
     }
@@ -531,7 +553,7 @@ export class ChatService {
       this.activeTabId.value = tabId
       return
     }
-    if (this.sessions.has(tabId)) {
+    if (this.sessions.has(tabId) || this.nodeSessions.has(tabId)) {
       this.activeTabId.value = tabId
       this.saveTabs()
     }
@@ -539,6 +561,27 @@ export class ChatService {
 
   getSession(tabId: string): ChatSession | null {
     return this.sessions.get(tabId) ?? null
+  }
+
+  getNodeSession(tabId: string): NodeChatPresenter | null { return this.nodeSessions.get(tabId) ?? null }
+
+  getPresentation(tabId: string): ChatPresentationSession | null {
+    const node = this.nodeSessions.get(tabId)
+    if (node) return node
+    const local = this.sessions.get(tabId)
+    return local ? new LocalChatPresenter(local) : null
+  }
+
+  async openNodeSession(reference: Extract<ChatReference, { kind: 'node-session' }>): Promise<void> {
+    const id = `node:${reference.registrationId}:${reference.sessionId}`
+    if (this.nodeSessions.has(id)) { this.switchTab(id); return }
+    if (!this.canCreateTab) { new Notice(ChatService.TABS_FULL); return }
+    const presenter = new NodeChatPresenter(reference, NodeService.getInstance().connection(reference.registrationId))
+    this.nodeSessions.set(id, presenter)
+    this.tabOrder.value = [...this.tabOrder.value, id]
+    this.activeTabId.value = id
+    this.saveTabs()
+    await presenter.load()
   }
 
   // ── Run tabs ──────────────────────────────────────────────────
@@ -941,6 +984,9 @@ export class ChatService {
       session.destroy()
     }
     this.sessions.clear()
+    for (const presenter of this.nodeSessions.values()) presenter.destroy()
+    this.nodeSessions.clear()
+    NodeService.destroyCurrent()
     this.runTabs.clear()
     this.tabOrder.value = []
     this.activeTabId.value = null
