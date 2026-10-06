@@ -20,6 +20,8 @@ const PRELUDE = `
   const owned = cdp && !cdp.isAttached(); if(owned)cdp.attach('1.3')
   const tap = async (el,corner=false) => {
     if(!el)throw Error('Missing input target')
+    // Native mobile prompts animate in from below the viewport. DOM presence is not readiness.
+    await until(()=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight},'visible input target')
     const r=el.getBoundingClientRect(), x=Math.round(r.left+(corner?10:r.width/2)), y=Math.round(r.top+(corner?10:r.height/2))
     if(!r.width||!r.height||x<0||x>innerWidth||y<0||y>innerHeight)throw Error('Input target outside viewport: '+el.textContent)
     if(window.__e2eHost)await window.__e2eHost.tap(x,y)
