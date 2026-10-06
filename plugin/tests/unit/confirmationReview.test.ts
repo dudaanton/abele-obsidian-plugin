@@ -4,7 +4,7 @@ import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { NativeOwnerPublication } from '@/sync/publication/nativeOwnerPublication'
 import { buildFakeVault } from '../helpers/fakeVault'
 const link = '[[private.png]]'
-async function fixture(receivedLink = false) {
+async function fixture(receivedLink = false, delayedPull = false) {
   const source = receivedLink ? link : 'shared baseline\n'
   const app = buildFakeVault([
     { path: 'Shared/board.md', content: source },
@@ -114,31 +114,49 @@ async function fixture(receivedLink = false) {
       },
       new TextEncoder().encode(source)
     )
-  if (!receivedLink) {
+  if (!receivedLink && !delayedPull) {
     await changed(source)
     await pull()
   }
-  const local = async (text: string) => {
-    await app.vault.modify(app.vault.getAbstractFileByPath(sponsor.path)!, text)
-    await changed(text)
-    const sha = await sha256(new TextEncoder().encode(text))
-    const op = {
-      op: 'modify' as const,
-      file_id: sponsor.fileId,
-      base_version_id: sponsor.versionId,
-      sha,
-      size: text.length,
-      mtime: 2,
+  const local = async (
+    text: string,
+    creation?: 'novel' | 'adopted' | 'collision',
+    indexed = true
+  ) => {
+    if (creation) {
+      await state.delete(sponsor.path)
+      app.emit('vault', 'create', app.vault.getAbstractFileByPath(sponsor.path))
+      await runtime.flush()
     }
+    await app.vault.modify(app.vault.getAbstractFileByPath(sponsor.path)!, text)
+    if (indexed) await changed(text)
+    const sha = await sha256(new TextEncoder().encode(text))
+    const op = creation
+      ? { op: 'create' as const, path: sponsor.path, sha, size: text.length, mtime: 2 }
+      : {
+          op: 'modify' as const,
+          file_id: sponsor.fileId,
+          base_version_id: sponsor.versionId,
+          sha,
+          size: text.length,
+          mtime: 2,
+        }
     await runtime.hooks.beforeUpload!({
       operations: [{ op, index: 0, handle: 'sample-handle' }],
       idempotencyKey: 'sample-request',
     } as any)
-    sponsor = { ...sponsor, sha, size: text.length, versionId: 'note-v2' }
+    sponsor = {
+      ...sponsor,
+      fileId: creation ? 'sample-created-note' : sponsor.fileId,
+      sha,
+      size: text.length,
+      versionId: 'note-v2',
+    }
     await state.put(sponsor)
     await runtime.hooks.onSettled!(
       {
         op,
+        creation: creation ?? 'unknown',
         fileId: sponsor.fileId,
         versionId: sponsor.versionId,
         path: sponsor.path,
@@ -196,6 +214,82 @@ async function fixture(receivedLink = false) {
     close: () => runtime.close(),
   }
 }
+it('recovers an exact delayed received base across restart before comparing an own new link', async () => {
+  const f = await fixture(false, true)
+  try {
+    await f.pull()
+    expect(await (f.runtime() as any).snapshots.get('sample-note')).toMatchObject({
+      kind: 'unknown',
+    })
+    await f.reopen()
+    await f.changed('shared baseline\n')
+    expect(await (f.runtime() as any).snapshots.get('sample-note')).toMatchObject({
+      kind: 'complete',
+      origin: 'pull',
+      versionId: 'note-v1',
+      facts: [],
+    })
+    await f.local(link)
+    await f.runtime().refreshPublication()
+    expect(await f.runtime().confirmation.questions()).toHaveLength(1)
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it('initial private links in a proven novel local note ask from the empty base', async () => {
+  const f = await fixture(false, true)
+  try {
+    await f.local(link, 'novel')
+    await f.runtime().refreshPublication()
+    expect(await f.runtime().confirmation.questions()).toHaveLength(1)
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it('retains a proven novel create until its first exact callback supplies initial links', async () => {
+  const f = await fixture(false, true)
+  try {
+    await f.local(link, 'novel', false)
+    await f.reopen()
+    await f.changed(link)
+    await f.runtime().refreshPublication()
+    expect(await f.runtime().confirmation.questions()).toHaveLength(1)
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it.each(['adopted', 'collision', 'received'] as const)(
+  'does not give %s creates an empty owner base',
+  async (creation) => {
+    const f = await fixture(false, true)
+    try {
+      if (creation === 'received') await f.runtime().beforeRemote(['Shared/board.md'])
+      await f.local(link, creation === 'received' ? 'novel' : creation)
+      await f.runtime().refreshPublication()
+      expect(await f.runtime().confirmation.questions()).toEqual([])
+      expect(f.ports().add).not.toHaveBeenCalled()
+    } finally {
+      f.close()
+    }
+  }
+)
+it('a delayed base callback cannot overwrite a newer settled version', async () => {
+  const f = await fixture(false, true)
+  try {
+    await f.pull()
+    await f.local('ordinary new version without a link')
+    await f.changed('shared baseline\n')
+    expect(await (f.runtime() as any).snapshots.get('sample-note')).toMatchObject({
+      kind: 'complete',
+      versionId: 'note-v2',
+    })
+  } finally {
+    f.close()
+  }
+})
 it('re-resolves before proposing a question when a sibling rename shadows the short link', async () => {
   const f = await fixture()
   try {

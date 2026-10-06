@@ -13,17 +13,23 @@ import {
   type ExistingPublicationObservation,
   type ExistingPublicationQuestion,
   type ExistingPublicationDecision,
+  type LocalNoteBase,
 } from './publicationDecision'
 import type { OwnerAdd } from '../sharing/sponsoredAssets'
 /** Version comparison proposes a question, never permission. Only submitted LOCAL facts enter here. */
 export function existingPrivateTargets(
-  baseline: LinkSnapshot,
+  baseline: LinkSnapshot | LocalNoteBase,
   local: LinkFact[],
   renames: KnownRename[]
 ): LinkFact[] {
-  // Unknown is not an empty owner-authored base: it may contain received links.
-  if (baseline.kind !== 'complete') return []
-  const old = baseline.facts
+  // Only a proven local create has an empty base; arbitrary unknowns may contain received links.
+  if (baseline.kind === 'unknown') return []
+  if (
+    baseline.kind === 'local-create' &&
+    (!baseline.pending || baseline.hasLedgerIdentity || !baseline.handle)
+  )
+    return []
+  const old = baseline.kind === 'complete' ? baseline.facts : []
   const spellings = new Set(old.map((f) => normalizedSpelling(f.spelling)))
   const ids = new Set(old.flatMap((f) => (f.targetId ? [f.targetId] : [])))
   const paths = new Set(

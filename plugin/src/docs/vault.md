@@ -1471,8 +1471,11 @@ fingerprint; changed target bytes/identity or withdrawal invalidate an open answ
 forgetting a refusal. These records are not transferable settings or publication permission.
 Local settlement retains link candidates before advancing the last-synced baseline; pull only
 advances it. A merge compares the submitted local facts, not received links in the merged body.
-An unknown baseline never proposes publication questions. Until a real baseline is settled,
-local edits still sync personally, but their links cannot be certified as new owner additions.
+An arbitrary unknown baseline never proposes publication questions. A missing received cache
+keeps a device-local expected file/version/SHA until its exact callback recovers that base;
+a callback cannot overwrite a newer settled version. A locally observed note creation keeps
+its prepared handle until a novel creation receipt proves the empty base. Adopted, collided
+and received creates cannot supply that proof. Late initial indexing can then recover its links.
 A confirmed existing-private decision stores its exact add request and stable intent ID before
 HTTP; a lost reply retries that request, not another publication. Temporarily unavailable
 cache evidence retains the approved request for a later retry; it is not completion or refusal.

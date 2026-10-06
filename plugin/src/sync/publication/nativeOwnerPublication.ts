@@ -19,7 +19,11 @@ import {
   type SnapshotCandidate,
 } from './LinkSnapshotStore'
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
-import { PublicationDecisionStore, type PublicationInput } from './publicationDecision'
+import {
+  PublicationDecisionStore,
+  type PublicationInput,
+  type LocalNoteBase,
+} from './publicationDecision'
 import { SharingHttpError } from '../sharing/sharingHttp'
 import type { OwnerAdd } from '../sharing/sponsoredAssets'
 import { PUBLICATION_ENABLED } from './fence'
@@ -31,6 +35,16 @@ import {
 } from './existingPrivateConfirmation'
 interface Observation extends CacheObservation {
   resolutionEpoch: number
+}
+interface ReceivedBase {
+  path: string
+  versionId: string
+  sha: string
+  localCreateHandle?: string
+}
+interface LocalLinkUnit {
+  facts: Record<string, LinkFact[]>
+  localCreates: string[]
 }
 interface Paste {
   id: string
@@ -140,6 +154,7 @@ export class NativeOwnerPublication {
   private pastes: Paste[] = []
   private observations = new Map<string, Observation>()
   private resolutionEpoch = 0
+  private readonly localNotes = new Set<string>()
   private work: Promise<void> = Promise.resolve()
   private unhookPaste: (() => void) | null = null
   private remote = new Set<string>()
@@ -370,7 +385,11 @@ export class NativeOwnerPublication {
     const create = app.vault.on('create', (file) => {
       this.resolutionEpoch++
       const path = file.path
-      if (path.endsWith('.md') || this.remote.has(path)) return
+      if (this.remote.has(path)) return
+      if (path.endsWith('.md')) {
+        this.localNotes.add(path)
+        return
+      }
       void this.queue(async () => {
         this.check()
         if (await this.options.state.get(path)) return
@@ -387,6 +406,7 @@ export class NativeOwnerPublication {
     const rename = app.vault.on('rename', (file, from) => {
       this.resolutionEpoch++ // Invalidate derived resolutions, not immutable last-synced facts.
       const to = file.path
+      if (this.localNotes.delete(from)) this.localNotes.add(to)
       void this.queue(async () => {
         const entry = (await this.options.state.get(from)) ?? (await this.options.state.get(to))
         if (entry) await this.snapshots.rename(entry.fileId, from, to)
@@ -396,6 +416,7 @@ export class NativeOwnerPublication {
     const deleted = app.vault.on('delete', (file) => {
       this.resolutionEpoch++
       const path = file.path
+      this.localNotes.delete(path)
       this.deletedTargets.set(path, null)
       void this.queue(async () => {
         this.deletedTargets.set(path, (await this.options.state.get(path))?.fileId ?? null)
@@ -471,6 +492,7 @@ export class NativeOwnerPublication {
     await this.work
     for (const path of paths) {
       this.remote.add(path)
+      this.localNotes.delete(path)
       this.epochs.set(path, (this.epochs.get(path) ?? 0) + 1)
       for (const p of this.pastes.filter((p) => p.notePath === path && !p.done)) p.cancelled = true
     }
@@ -486,6 +508,89 @@ export class NativeOwnerPublication {
     this.observations.set(path, o)
     for (const p of this.pastes.filter((p) => !p.done && p.notePath === path)) p.current = copy(o)
     await this.save()
+    const waiting = (await this.read<Record<string, ReceivedBase>>('received-bases')) ?? {}
+    for (const [noteId, base] of Object.entries(waiting)) {
+      if (base.path !== path || base.sha !== o.sha) continue
+      const current = await this.options.state.byFileId(noteId),
+        previous = await this.snapshots.get(noteId)
+      if (
+        current?.versionId === base.versionId &&
+        current.sha === base.sha &&
+        previous.kind === 'unknown'
+      ) {
+        if (base.localCreateHandle) {
+          const renames = await this.snapshots.renames()
+          await this.preserveCandidates(
+            noteId,
+            existingPrivateTargets(
+              this.localBase(noteId, base.localCreateHandle),
+              o.facts,
+              renames.items
+            )
+          )
+        }
+        await this.settleObservation(
+          noteId,
+          base.versionId,
+          o,
+          base.localCreateHandle ? 'push' : 'pull'
+        )
+      }
+      delete waiting[noteId]
+      await this.persisted('received-bases', waiting)
+    }
+  }
+  private localBase(noteId: string, handle: string): LocalNoteBase {
+    return {
+      kind: 'local-create',
+      binding: this.options.binding,
+      noteId,
+      handle,
+      pending: true,
+      hasLedgerIdentity: false,
+    }
+  }
+  private async preserveCandidates(noteId: string, targets: LinkFact[]) {
+    if (!targets.length) return
+    const pending = (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
+    for (const target of targets) {
+      if (
+        target.targetId &&
+        target.resolvedPath &&
+        !pending.some((c) => c.sponsorId === noteId && c.targetId === target.targetId)
+      )
+        pending.push({
+          sponsorId: noteId,
+          targetId: target.targetId,
+          targetPath: target.resolvedPath,
+        })
+    }
+    await this.persisted('existing-candidates', pending)
+  }
+  private async settleObservation(
+    noteId: string,
+    versionId: string,
+    o: Observation,
+    origin: SnapshotCandidate['origin']
+  ) {
+    return this.snapshots.settle({
+      noteId,
+      versionId,
+      source: o.source,
+      origin,
+      facts: copy(o.facts),
+      evidence: {
+        adapter: 'obsidian-changed',
+        runtime: 'desktop',
+        generation: o.generation,
+        noteId,
+        versionId,
+        sourceSha: o.sha,
+        cacheSha: o.cacheSha,
+        cacheJson: o.cacheJson,
+        complete: true,
+      },
+    })
   }
   private async exactCache(path: string, sha: string): Promise<Observation | null> {
     await this.work
@@ -804,40 +909,41 @@ export class NativeOwnerPublication {
         throw new Error('Delivery is not the current recorded personal version')
       const observation = await this.exactCache(current.path, event.sha)
       if (!observation) {
-        await this.snapshots.invalidate(event.fileId, 'No exact received native callback cache')
+        await this.queue(async () => {
+          const arrived = this.observations.get(current.path)
+          if (arrived?.sha === event.sha) {
+            await this.settleObservation(event.fileId, event.versionId, arrived, 'pull')
+            return
+          }
+          const waiting = (await this.read<Record<string, ReceivedBase>>('received-bases')) ?? {}
+          waiting[event.fileId] = { path: current.path, versionId: event.versionId, sha: event.sha }
+          await this.persisted('received-bases', waiting)
+          await this.snapshots.invalidate(event.fileId, 'No exact received native callback cache')
+        })
         return
       }
       // Arrival supplies a last-synced base, never owner introduction/execution consent.
-      await this.snapshots.settle({
-        noteId: event.fileId,
-        versionId: event.versionId,
-        source: new TextDecoder().decode(bytes),
-        origin: 'pull',
-        facts: copy(observation.facts),
-        evidence: {
-          adapter: 'obsidian-changed',
-          runtime: 'desktop',
-          generation: observation.generation,
-          noteId: event.fileId,
-          versionId: event.versionId,
-          sourceSha: event.sha,
-          cacheSha: observation.cacheSha,
-          cacheJson: observation.cacheJson,
-          complete: true,
-        },
-      })
+      await this.settleObservation(event.fileId, event.versionId, observation, 'pull')
     },
     beforeUpload: async (unit) => {
       this.check()
       await this.work
-      const local: Record<string, LinkFact[]> = {}
+      const local: LocalLinkUnit = { facts: {}, localCreates: [] }
       for (const o of unit.operations) {
         if (!('sha' in o.op) || !o.op.sha) continue
         const path =
           o.op.op === 'create' ? o.op.path : (await this.options.state.byFileId(o.op.file_id))?.path
         const observation = path?.endsWith('.md') ? await this.exactCache(path, o.op.sha) : null
-        if (path?.endsWith('.md') && observation?.sha === o.op.sha)
-          local[o.handle] = copy(observation.facts)
+        if (path?.endsWith('.md')) {
+          if (observation?.sha === o.op.sha) local.facts[o.handle] = copy(observation.facts)
+          if (
+            o.op.op === 'create' &&
+            this.localNotes.has(path) &&
+            !this.remote.has(path) &&
+            !(await this.options.state.get(path))
+          )
+            local.localCreates.push(o.handle)
+        }
       }
       await this.persisted('link-unit:' + unit.idempotencyKey, local)
       const holds: number[] = [],
@@ -969,59 +1075,84 @@ export class NativeOwnerPublication {
           await this.snapshots.rename(item.fileId, previous.path, item.path)
       }
       if (item.path.endsWith('.md') && bytes && item.sha) {
-        const local = await this.read<Record<string, LinkFact[]>>('link-unit:' + id)
-        const baseline = await this.snapshots.get(item.fileId)
+        const raw = await this.read<LocalLinkUnit | Record<string, LinkFact[]>>('link-unit:' + id)
+        // Previously prepared requests stored only the fact map; they cannot acquire create proof.
+        const local: LocalLinkUnit | null =
+          raw &&
+          ('localCreates' in raw && 'facts' in raw && !Array.isArray(raw.facts)
+            ? (raw as LocalLinkUnit)
+            : { facts: raw as Record<string, LinkFact[]>, localCreates: [] })
+        const baseline: Awaited<ReturnType<LinkSnapshotStore['get']>> | LocalNoteBase =
+          item.op.op === 'create' &&
+          item.creation === 'novel' &&
+          local?.localCreates.includes(item.handle)
+            ? this.localBase(item.fileId, item.handle)
+            : await this.snapshots.get(item.fileId)
         const renames = await this.snapshots.renames()
-        const targets = existingPrivateTargets(baseline, local?.[item.handle] ?? [], renames.items)
+        const targets = existingPrivateTargets(
+          baseline,
+          local?.facts[item.handle] ?? [],
+          renames.items
+        )
         // Preserve questions BEFORE replacing the immutable last-synced baseline.
-        if (targets.length)
-          await this.queue(async () => {
-            const pending =
-              (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
-            for (const target of targets) {
-              if (
-                target.targetId &&
-                target.resolvedPath &&
-                !pending.some((c) => c.sponsorId === item.fileId && c.targetId === target.targetId)
-              )
-                pending.push({
-                  sponsorId: item.fileId,
-                  targetId: target.targetId,
-                  targetPath: target.resolvedPath,
-                })
-            }
-            await this.persisted('existing-candidates', pending)
-          })
+        await this.queue(async () => {
+          const waiting = (await this.read<Record<string, ReceivedBase>>('received-bases')) ?? {}
+          if (waiting[item.fileId]) {
+            delete waiting[item.fileId]
+            await this.persisted('received-bases', waiting)
+          }
+          await this.preserveCandidates(item.fileId, targets)
+        })
         const o = await this.exactCache(item.path, item.sha)
         if (o) {
-          await this.snapshots.settle({
-            noteId: item.fileId,
-            versionId: item.versionId,
-            source: new TextDecoder().decode(bytes),
-            origin: item.result.status === 'applied' ? 'push' : 'merge',
-            facts: copy(o.facts),
-            evidence: {
-              adapter: 'obsidian-changed',
-              runtime: 'desktop',
-              generation: o.generation,
-              noteId: item.fileId,
-              versionId: item.versionId,
-              sourceSha: o.sha,
-              cacheSha: o.cacheSha,
-              cacheJson: o.cacheJson,
-              complete: true,
-            },
-          })
+          await this.settleObservation(
+            item.fileId,
+            item.versionId,
+            o,
+            item.result.status === 'applied' ? 'push' : 'merge'
+          )
           if (item.result.status === 'applied')
             for (const p of this.pastes.filter(
               (p) => !p.done && p.notePath === item.path && p.current?.sha === item.sha
             ))
               p.sponsor = { fileId: item.fileId, versionId: item.versionId, sha: item.sha }
           await this.save()
-        } else await this.snapshots.invalidate(item.fileId, 'No exact native callback cache')
+        } else {
+          await this.queue(async () => {
+            const arrived = this.observations.get(item.path)
+            if (arrived?.sha === item.sha) {
+              if (baseline.kind === 'local-create')
+                await this.preserveCandidates(
+                  item.fileId,
+                  existingPrivateTargets(baseline, arrived.facts, renames.items)
+                )
+              await this.settleObservation(
+                item.fileId,
+                item.versionId,
+                arrived,
+                item.result.status === 'applied' ? 'push' : 'merge'
+              )
+              return
+            }
+            if (baseline.kind === 'local-create') {
+              const waiting =
+                (await this.read<Record<string, ReceivedBase>>('received-bases')) ?? {}
+              waiting[item.fileId] = {
+                path: item.path,
+                versionId: item.versionId,
+                sha: item.sha!,
+                localCreateHandle: item.handle,
+              }
+              await this.persisted('received-bases', waiting)
+            }
+            await this.snapshots.invalidate(item.fileId, 'No exact native callback cache')
+          })
+        }
         if (local) {
-          delete local[item.handle]
-          if (Object.keys(local).length) await this.persisted('link-unit:' + id, local)
+          delete local.facts[item.handle]
+          local.localCreates = local.localCreates.filter((handle) => handle !== item.handle)
+          if (Object.keys(local.facts).length || local.localCreates.length)
+            await this.persisted('link-unit:' + id, local)
           else await this.options.meta.setMeta(this.prefix + 'link-unit:' + id, null)
         }
       }
