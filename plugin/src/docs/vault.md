@@ -12,14 +12,19 @@ exact text, including leading zeros, matters.
 ## Device-local template approvals
 
 `abele-template-trust` in Obsidian's vault-scoped local storage holds template confirmations.
-It uses the same trust-state schema as scripts: content SHA-256 hashes and the last reviewed
-text per path (text is omitted above 100,000 characters). For user note templates, that text
-includes the full file and the indexed callbacks, path fields and target properties used at
-application time, so lagging metadata cannot run unreviewed settings. Prompt templates keep
-the full file text. These are explicit approvals only: existing templates, local writes and
-agent writes are not implicitly trusted. No vault sidecar or setting is added. Records are
-not synced or included in settings transfer, and the optional script-trust switch does not
-control template approvals. Notice deduplication is session memory only.
+It extends the script trust-state schema with `templateHashes`, the SHA-256 hashes of every
+explicitly confirmed template version. Identical content may reuse approval at another path;
+confirming a different version never removes an earlier version's approval. The `scripts`
+mapping still keeps the last reviewed hash and text per path for review diffs (text is omitted
+above 100,000 characters). Existing single-version records seed the history when loaded.
+For user note templates, the reviewed text includes the full file, the prepared body and the
+actual output type, callbacks, path fields and target properties used at application time,
+so lagging metadata cannot run unreviewed settings. Prompt templates keep the full file text.
+These are explicit approvals only: existing templates, local writes and agent writes are not
+implicitly trusted. No vault sidecar or setting is added. Records are not synced or included
+in settings transfer, and the optional script-trust switch does not control template approvals.
+Notice deduplication is session memory only and lasts only while a review notice is connected;
+a dismissed notice can be shown again on the next blocked application.
 
 ## ZIP archives
 

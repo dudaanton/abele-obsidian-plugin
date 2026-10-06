@@ -58,6 +58,8 @@ The note's `type` is taken from `template_for`.
 A template with command callbacks or plugin-method placeholders needs your confirmation once
 on each device. Ordinary templates keep working without a confirmation. Editing a template
 with commands makes it wait for confirmation again — even if an agent made the edit.
+Confirming another version does not cancel your earlier confirmations. Unchanged copies of
+an approved template keep their approval too.
 
 Until you confirm it, the note is still made, but its commands do not run. Plugin-method fields
 keep the text you supplied without calling the plugin. This also applies when an agent, a
@@ -71,7 +73,8 @@ while Obsidian is updating its template information, the changed version needs c
 **Confirm** enables this
 version on this device. Use the template again afterwards; confirmation does not repeat the
 work that was skipped. **Not now** leaves its commands waiting and keeps the notice available
-so you can review it later. Confirmations stay on this
+so you can review it later. If you dismiss the notice, using that waiting version again offers
+**Review** again. Confirmations stay on this
 device and do not travel through sync or settings transfer. The script confirmation setting
 does not turn off template confirmation.
 

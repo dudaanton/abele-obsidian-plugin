@@ -116,7 +116,16 @@ export class ScriptTrust {
   private get current(): TrustState {
     if (!this.state) {
       this.state = trustStateFrom(localStore().load(this.key))
-      if (this.key === TEMPLATE_TRUST_KEY) this.state.armed = true
+      if (this.key === TEMPLATE_TRUST_KEY) {
+        this.state.armed = true
+        // Preserve older single-version records before any path's latest review is replaced.
+        this.state.templateHashes = [
+          ...new Set([
+            ...(this.state.templateHashes ?? []),
+            ...Object.values(this.state.scripts).map((record) => record.hash),
+          ]),
+        ]
+      }
     }
     return this.state
   }
@@ -176,7 +185,15 @@ export class ScriptTrust {
   }
 
   verdict(path: string, hash: string | undefined): TrustVerdict {
-    return verdictOf(this.current, path, hash)
+    const verdict = verdictOf(this.current, path, hash)
+    if (
+      verdict === 'waiting' &&
+      this.key === TEMPLATE_TRUST_KEY &&
+      hash &&
+      this.current.templateHashes?.includes(hash)
+    )
+      return 'confirmed'
+    return verdict
   }
 
   /** The text of the last version confirmed at `path`, for the diff; none when not kept. */
@@ -186,7 +203,13 @@ export class ScriptTrust {
 
   /** The person looked at this version here and said yes. */
   confirm(file: TrustedFile): void {
-    this.put(withConfirmed(this.current, file.path, file.hash, file.text))
+    const next = withConfirmed(this.current, file.path, file.hash, file.text)
+    if (this.key === TEMPLATE_TRUST_KEY) {
+      // Approval belongs to exact content, not whichever version was reviewed last at a path.
+      // Copies already share the same hash; confirming another version must not revoke them.
+      next.templateHashes = [...new Set([...(this.current.templateHashes ?? []), file.hash])]
+    }
+    this.put(next)
   }
 
   /**

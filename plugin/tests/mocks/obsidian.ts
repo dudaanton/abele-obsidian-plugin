@@ -135,18 +135,30 @@ export class Notice {
    */
   static readonly shown: string[] = []
 
-  constructor(public message: string) {
-    Notice.shown.push(message)
+  readonly containerEl = document.createElement('div')
+  readonly messageEl = document.createElement('div')
+
+  constructor(public message: string | DocumentFragment) {
+    this.containerEl.className = 'notice'
+    this.containerEl.append(this.messageEl)
+    this.messageEl.append(message)
+    document.body.append(this.containerEl)
+    // Keep string history as before; rich messages retain the live buttons after the
+    // fragment is consumed, just as Obsidian's message element does.
+    Notice.shown.push(typeof message === 'string' ? message : (this.messageEl as unknown as string))
   }
 
   /** A notice that says what stage a long job is at rewrites itself. */
   setMessage(message: string): this {
     this.message = message
+    this.messageEl.textContent = message
     Notice.shown.push(message)
     return this
   }
 
-  hide(): void {}
+  hide(): void {
+    this.containerEl.remove()
+  }
 }
 
 export type EventRef = { id: string }

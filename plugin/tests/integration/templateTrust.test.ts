@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Notice } from 'obsidian'
 import { TemplateService } from '@/templates/TemplateService'
-import { ScriptTrust, TEMPLATE_TRUST_KEY, noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import {
+  ScriptTrust,
+  TEMPLATE_TRUST_KEY,
+  noteLocalScriptWrite,
+  sha256,
+} from '@/scripting/ScriptTrust'
+import { templateReviewSource } from '@/templates/TemplateTrust'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { createApplyTemplateTool } from '@/ai/tools/TemplateTool'
@@ -21,14 +27,18 @@ beforeEach(() => {
   review.mockReset().mockResolvedValue(true)
 })
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  document.querySelectorAll('.notice').forEach((el) => el.remove())
+})
 
 const service = () => TemplateService.getInstance()
-const reviewNotice = async () => {
-  const fragment = Notice.shown.find((n) => typeof n !== 'string') as DocumentFragment
+const reviewNotice = async (index = 0) => {
+  const fragment = Notice.shown.filter((n) => typeof n !== 'string')[index] as DocumentFragment
   expect(fragment.textContent).toContain('not run')
+  const calls = review.mock.calls.length
   fragment.querySelector('button')!.click()
-  await vi.waitFor(() => expect(review).toHaveBeenCalled())
+  await vi.waitFor(() => expect(review).toHaveBeenCalledTimes(calls + 1))
   // The click handler confirms asynchronously after the dialog resolves.
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
@@ -55,6 +65,101 @@ describe('template execution trust', () => {
     await service().createNoteFromTemplate(template, new Map())
     expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
     expect(Notice.shown).toHaveLength(2)
+  })
+
+  it('keeps both exact versions approved when their notices are confirmed out of order', async () => {
+    const env = templateHarness()
+    const storage = new Map<string, unknown>()
+    Object.assign(env.app, {
+      loadLocalStorage: (key: string) => storage.get(key),
+      saveLocalStorage: (key: string, value: unknown) => storage.set(key, structuredClone(value)),
+    })
+    const template = await env.template('First body', { callbacks: 'command:sample:run' })
+    await service().createNoteFromTemplate(template, new Map())
+    await env.app.vault.modify(template.file, 'Second body')
+    await service().createNoteFromTemplate(template, new Map())
+    expect(Notice.shown).toHaveLength(2)
+    await reviewNotice(1)
+    await reviewNotice(0)
+    expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+
+    for (const reload of [false, true]) {
+      if (reload) ScriptTrust.reset()
+      for (const body of ['Second body', 'First body']) {
+        await env.app.vault.modify(template.file, body)
+        const before = env.commands.executeCommandById.mock.calls.length
+        const file = await service().createNoteFromTemplate(template, new Map())
+        expect(await env.app.vault.read(file)).toBe(body)
+        expect(env.commands.executeCommandById).toHaveBeenCalledTimes(before + 1)
+      }
+    }
+    expect(Notice.shown).toHaveLength(2)
+    expect(review).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps an unchanged copy approved after confirming new content at the original path', async () => {
+    const env = templateHarness()
+    const properties = { callbacks: 'command:sample:run' }
+    const original = await env.template('Shared body', properties)
+    const copy = await env.template('Shared body', properties, 'Templates/copy.md')
+    await service().createNoteFromTemplate(original, new Map())
+    await reviewNotice()
+    await service().createNoteFromTemplate(copy, new Map())
+    expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
+    expect(Notice.shown).toHaveLength(1)
+    await env.app.vault.modify(original.file, 'New body')
+    await service().createNoteFromTemplate(original, new Map())
+    await reviewNotice(1)
+    await service().createNoteFromTemplate(copy, new Map())
+    expect(env.commands.executeCommandById).toHaveBeenCalledTimes(2)
+    expect(Notice.shown).toHaveLength(2)
+  })
+
+  it('preserves approvals loaded from the previous single-version storage format', async () => {
+    const env = templateHarness()
+    const template = await env.template('Saved body', { callbacks: 'command:sample:run' })
+    const text = templateReviewSource(template, 'Saved body', await template.getBody('Saved body'))
+    const storage = new Map<string, unknown>([
+      [
+        TEMPLATE_TRUST_KEY,
+        {
+          armed: true,
+          declined: false,
+          refused: [],
+          scripts: { [template.file.path]: { hash: await sha256(text), text } },
+        },
+      ],
+    ])
+    Object.assign(env.app, {
+      loadLocalStorage: (key: string) => storage.get(key),
+      saveLocalStorage: (key: string, value: unknown) => storage.set(key, structuredClone(value)),
+    })
+    await service().createNoteFromTemplate(template, new Map())
+    expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
+    expect(Notice.shown).toHaveLength(0)
+    await env.app.vault.modify(template.file, 'New body')
+    await service().createNoteFromTemplate(template, new Map())
+    await reviewNotice()
+    ScriptTrust.reset()
+    await env.app.vault.modify(template.file, 'Saved body')
+    await service().createNoteFromTemplate(template, new Map())
+    expect(env.commands.executeCommandById).toHaveBeenCalledTimes(2)
+    expect(Notice.shown).toHaveLength(1)
+  })
+
+  it('offers review again after the waiting notice is dismissed', async () => {
+    const env = templateHarness()
+    const template = await env.template('Body', { callbacks: 'command:sample:run' })
+    await service().createNoteFromTemplate(template, new Map())
+    const message = Notice.shown[0] as unknown as HTMLElement
+    expect(message.closest('.notice')?.isConnected).toBe(true)
+    message.closest('.notice')!.remove()
+    await service().createNoteFromTemplate(template, new Map())
+    expect(env.commands.executeCommandById).not.toHaveBeenCalled()
+    expect(Notice.shown).toHaveLength(2)
+    await reviewNotice(1)
+    await service().createNoteFromTemplate(template, new Map())
+    expect(env.commands.executeCommandById).toHaveBeenCalledOnce()
   })
 
   it.each(['body', 'property', 'folder', 'name'] as const)(

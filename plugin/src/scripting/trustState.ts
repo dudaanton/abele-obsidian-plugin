@@ -34,6 +34,8 @@ export interface TrustState {
   declined: boolean
   /** The last version vouched for, by path. */
   scripts: Record<string, TrustRecord>
+  /** All explicitly confirmed template versions; script trust does not use this history. */
+  templateHashes?: string[]
   /** Versions a source refused outright; see `ScriptSourcePolicy`. */
   refused: string[]
 }
@@ -73,6 +75,7 @@ export function trustStateFrom(stored: unknown): TrustState {
     armed?: unknown
     declined?: unknown
     scripts?: unknown
+    templateHashes?: unknown
     refused?: unknown
   }
   const scripts: Record<string, TrustRecord> = {}
@@ -90,7 +93,19 @@ export function trustStateFrom(stored: unknown): TrustState {
     ? raw.refused.filter((h): h is string => typeof h === 'string' && !!h)
     : []
   const armed = raw.armed === true
-  return { armed, declined: !armed && raw.declined === true, scripts, refused }
+  return {
+    armed,
+    declined: !armed && raw.declined === true,
+    scripts,
+    refused,
+    ...(Array.isArray(raw.templateHashes)
+      ? {
+          templateHashes: raw.templateHashes.filter(
+            (h): h is string => typeof h === 'string' && !!h
+          ),
+        }
+      : {}),
+  }
 }
 
 const record = (hash: string, text: string): TrustRecord =>

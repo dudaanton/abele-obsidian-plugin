@@ -5,8 +5,8 @@ import { reviewScript } from '@/scripting/reviewScript'
 import { parseTemplateVariables } from './TemplateParser'
 import type { UserTemplate } from './UserTemplate'
 
-/** Once per version and session, just like the notice for waiting scripts. */
-const announced = new WeakMap<ScriptTrust, Set<string>>()
+/** Reuse a still-visible review notice, but never suppress one that the user dismissed. */
+const pending = new WeakMap<ScriptTrust, Map<string, Notice>>()
 
 export type TemplateExecutionSettings = Pick<
   UserTemplate,
@@ -39,11 +39,10 @@ export async function allowTemplateExecution(
   const trust = ScriptTrust.forTemplates()
   const hash = await sha256(source)
   if (trust.verdict(path, hash) === 'confirmed') return true
-  let seen = announced.get(trust)
-  if (!seen) announced.set(trust, (seen = new Set()))
+  let notices = pending.get(trust)
+  if (!notices) pending.set(trust, (notices = new Map()))
   const key = `${path}\0${hash}`
-  if (seen.has(key)) return false
-  seen.add(key)
+  if (notices.get(key)?.containerEl.isConnected) return false
   const button = createEl('button', { text: 'Review', cls: 'mod-cta' })
   const fragment = createFragment()
   fragment.append(
@@ -53,6 +52,7 @@ export async function allowTemplateExecution(
     button
   )
   const notice = new Notice(fragment, 0)
+  notices.set(key, notice)
   button.addEventListener('click', () => {
     // Review exactly the held-back snapshot, never approve whatever arrived during the dialog.
     void reviewScript(GlobalStore.getInstance().app, {
@@ -62,6 +62,7 @@ export async function allowTemplateExecution(
       .then((yes) => {
         if (yes) {
           trust.confirm({ path, hash, text: source })
+          notices.delete(key)
           notice.hide()
         }
       })
