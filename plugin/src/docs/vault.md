@@ -30,7 +30,9 @@ or override `transition`. Navigation steps and the presenter timer are ephemeral
 Standalone `---` lines split slides outside properties and code; `***` is a horizontal rule
 within a slide. A slide may start with `::slide{layout=split bg="[[sample-image.png]]" dim=0.4}::`.
 Region markers are `::left::`, `::right::`, and `::cell::`. Speaker reminders are ordinary
-`> [!notes]` callouts retained in the note but excluded from audience rendering. Fenced `css`
+`> [!notes]` callouts retained in the note but excluded from audience rendering. Links in these
+notes derive source counts and a final Sources slide in memory only; no appendix or source-count
+metadata is written into the note. Fenced `css`
 blocks store deck styling. `slide-script` fences store named-script parameters and refresh policy;
 `slide-html` fences store HTML. Optional `htmlNetwork: true` requests interactive HTML network
 permission, not an approval itself. Vault-scoped device local storage keeps a boolean under

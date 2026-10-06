@@ -2,6 +2,7 @@ import { DeckViewer, interactive } from './DeckViewer'
 import type { BlockRenderer, Deck, MediaResolver } from './model'
 import { slideForKey } from './navigation'
 import { Presentation } from './Presentation'
+import { presentationDeck } from './sources'
 
 /** Local presenter UI. Window creation and source tracking belong to the app adapter. */
 export class PresenterView {
@@ -113,6 +114,7 @@ export class PresenterView {
 
   async setDeck(deck: Deck): Promise<void> {
     if (this.closed) return
+    deck = presentationDeck(deck)
     this.deck = deck
     this.noteIndex = -1
     this.list.replaceChildren(

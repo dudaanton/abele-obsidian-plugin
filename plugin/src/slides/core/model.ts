@@ -34,7 +34,16 @@ export interface SlideSettings {
   attributes: Record<string, Attribute>
 }
 
+export interface SlideSource {
+  label: string
+  target: string
+  markdown: string
+}
+
 export interface Slide {
+  /** Runtime-only citations and appendix; never written by the codec. */
+  sources?: SlideSource[]
+  generated?: 'sources'
   settings: SlideSettings
   title: string
   regions: { name: 'body' | 'left' | 'right' | 'cell'; blocks: SlideBlock[] }[]

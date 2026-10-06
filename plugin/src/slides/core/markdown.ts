@@ -128,7 +128,13 @@ function parseSlide(
   const { audience, notes } = extractSpeakerNotes(lines)
   const blocks = markdownBlocks(lines)
   const live = syntaxLines(lines, blocks)
-  const first = lines.findIndex((l) => l.trim())
+  // Deck-level CSS is not audience content and may precede the first layout marker.
+  const styleLines = new Set<number>()
+  for (const b of blocks) {
+    if (b.kind !== 'code' || !/^ {0,3}(?:`{3,}|~{3,})css\s*$/.test(lines[b.start])) continue
+    for (let i = b.start; i <= b.end; i++) styleLines.add(i)
+  }
+  const first = lines.findIndex((l, i) => l.trim() && !styleLines.has(i))
   const attributes = first >= 0 && live[first] ? parseSlideMarker(lines[first]) : null
   const slide: Slide = {
     settings: settings(attributes ?? {}),
@@ -268,7 +274,8 @@ export function serializeDeck(deck: Deck): string {
   }
   if (deck.settings.theme) properties.theme = deck.settings.theme
   else delete properties.theme
-  const slides = deck.slides.map((slide) => {
+  const authored = deck.slides.filter((slide) => !slide.generated)
+  const slides = authored.map((slide) => {
     const s = slide.settings
     const attributes: Record<string, Attribute> = {
       ...Object.fromEntries(

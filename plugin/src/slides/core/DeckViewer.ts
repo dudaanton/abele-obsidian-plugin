@@ -11,6 +11,7 @@ import type {
 } from './model'
 import { expandCssImports } from './cssImports'
 import { staticHtml } from './staticHtml'
+import { presentationDeck } from './sources'
 import { Presentation } from './Presentation'
 import { fitSlide, slideForGesture, slideForKey, type Navigation, type Point } from './navigation'
 
@@ -176,6 +177,8 @@ export class DeckViewer {
 
   setDeck(deck: Deck): Promise<void> {
     if (this.closed) return Promise.resolve()
+    // Single-slide inspection already receives a slice of the derived model.
+    if (this.options.slideOffset === undefined) deck = presentationDeck(deck)
     const revision = ++this.revision
     for (const entry of this.slides.values()) this.release(entry)
     this.slides.clear()
@@ -332,6 +335,7 @@ export class DeckViewer {
     for (const name of slide.settings.className.split(/\s+/).filter(Boolean))
       element.classList.add(name)
     element.dataset.slide = String(index + 1 + (this.options.slideOffset ?? 0))
+    if (slide.generated) element.dataset.generated = slide.generated
     const transition =
       slide.settings.attributes.transition ?? this.deck?.settings.properties.transition
     if (transition === 'fade' || transition === 'slide') element.dataset.transition = transition
@@ -367,6 +371,13 @@ export class DeckViewer {
     const content = doc.createElement('div')
     content.className = 'abele-slide-content markdown-rendered'
     element.append(content)
+    if (slide.sources?.length) {
+      element.classList.add('abele-slide-has-sources')
+      const marker = doc.createElement('div')
+      marker.className = 'abele-slide-sources-marker'
+      marker.textContent = `Sources: ${slide.sources.length}`
+      element.append(marker)
+    }
     const observer = new MutationObserver(() => {
       if (entry.gone) return
       this.publishSteps()

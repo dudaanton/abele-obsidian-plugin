@@ -30,6 +30,19 @@ const made = (source: string, renderer?: BlockRenderer) => {
 }
 
 describe('bounded deck rendering', () => {
+  it('renders a muted source count and an automatic final slide without exposing note prose', async () => {
+    const { viewer, host, load } = made(
+      '# Topic\nBody\n\n> [!notes]\n> Private reminder\n> [Report](https://example.test/report)'
+    )
+    await load()
+    expect(host.querySelector('.abele-slide-sources-marker')?.textContent).toBe('Sources: 1')
+    expect(host.textContent).not.toContain('Private reminder')
+    expect(viewer.model?.slides).toHaveLength(2)
+    await viewer.go('last')
+    expect(host.querySelector('.abele-slide:not([hidden])')?.textContent).toContain(
+      'https://example.test/report'
+    )
+  })
   it('shares fragments across viewers, preserves nested items and reverses before paging', async () => {
     const renderer: BlockRenderer = {
       render: async (_block, target) => {
