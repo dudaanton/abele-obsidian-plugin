@@ -495,10 +495,15 @@ describe.skipIf(!available)('discussions in books', () => {
       askIcon(view).click()
       await until(() => view.model.highlights.find((h) => h.discussion), 8000)
       await closeChat(); app.workspace.rightSplit.collapse()
+      await app.workspace.revealLeaf(leaf)
+      app.workspace.setActiveLeaf(leaf, { focus: false })
       view.reading.clearSelection(); view.model.active = null
       if (!(await until(() => !view.contentEl.querySelector('.abele-book-selection') &&
         view.engine.renderer.getContents()[0].overlayer?.element?.querySelector('.abele-discussion-bubble'))))
-        throw Error('The phone discussion mark did not appear after clearing the selection')
+        throw Error('The phone discussion mark did not appear after clearing the selection: ' + JSON.stringify({
+          leaf: leaf.id, pageBox: docOf(view).defaultView.frameElement.getBoundingClientRect().toJSON(),
+          highlights: view.model.highlights, selectionBar: !!view.contentEl.querySelector('.abele-book-selection'),
+        }))
       const overlay = view.engine.renderer.getContents()[0].overlayer?.element
       const bubble = !!overlay?.querySelector('.abele-discussion-bubble')
       await shoot('phone-marked')

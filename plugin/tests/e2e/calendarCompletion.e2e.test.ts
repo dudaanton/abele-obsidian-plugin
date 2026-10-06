@@ -41,10 +41,10 @@ const ICS = [
 ].join('\r\n')
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn) => {
+  const until = async (fn, stage = 'event UI') => {
     const deadline = Date.now() + 15000
     while (Date.now() < deadline) { const value = fn(); if (value) return value; await wait(100) }
-    throw Error('Timed out waiting for the event UI')
+    throw Error('Timed out waiting for ' + stage)
   }
   const shot = async (name) => {
     const path = ${JSON.stringify(SHOTS)} + '/calendar-completion-' + name + '.png'
@@ -131,15 +131,24 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         const checked = await until(() => timeline.querySelector('[data-timeline-item="event:' + events[0].id + '"] input:checked'))
         checked.scrollIntoView({ block: 'center' })
         await shot(${JSON.stringify(profile.replaceAll(' ', '-'))} + '-timeline')
-        await adapter.mkdir(${JSON.stringify(FOLDER)})
-        const path = ${JSON.stringify(FOLDER + '/sample-calendar.base')}
+        if (!app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)})) await app.vault.createFolder(${JSON.stringify(FOLDER)})
+        const path = ${JSON.stringify(FOLDER + '/sample-calendar-' + profile.replaceAll(' ', '-') + '.base')}
         await app.vault.create(path, 'filters:\\n  and:\\n    - file.inFolder("${FOLDER}/missing")\\nviews:\\n  - type: abele-calendar\\n    name: Sample calendar\\n    showCalendarEvents: true\\n')
         app.workspace.leftSplit?.collapse?.(); app.workspace.rightSplit?.collapse?.()
+        // getLeaf('tab') follows the active group: the timeline above made its sidebar active.
+        const main = app.workspace.getMostRecentLeaf(app.workspace.rootSplit)
+        if (main) app.workspace.setActiveLeaf(main, { focus: false })
         const leaf = app.workspace.getLeaf('tab')
         await leaf.openFile(app.vault.getFileByPath(path))
+        await app.workspace.revealLeaf(leaf)
         app.workspace.setActiveLeaf(leaf, { focus: true })
-        const root = await until(() => leaf.view.containerEl.querySelector('.abele-calendar-base'))
-        const agenda = await until(() => root.querySelector('.abele-calendar-base__agenda input:checked'))
+        const root = await until(() => leaf.view.containerEl.querySelector('.abele-calendar-base'), 'calendar root')
+        const agenda = await until(() => root.querySelector('.abele-calendar-base__agenda input:checked'), 'checked calendar occurrence').catch(error => {
+          throw Error(error.message + ': ' + JSON.stringify({
+            done: done(), text: root.textContent, inputs: [...root.querySelectorAll('input')].map(input => ({checked: input.checked, label: input.getAttribute('aria-label')})),
+            instances: [...t.GlobalStore.getInstance().calendarBaseInstances.value.values()].map(instance => ({events: instance.showEvents.value, mode: instance.mode.value})),
+          }))
+        })
         agenda.scrollIntoView({ block: 'center' })
         agenda.click()
         await until(() => !service.isDone(events[0]))
@@ -178,7 +187,8 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         config.version.value++
         await window.__abeleTest.calendars().refreshChanged()
         await app.workspace.changeLayout(saved.layout)
-        if (await adapter.exists(${JSON.stringify(FOLDER)})) await adapter.rmdir(${JSON.stringify(FOLDER)}, true)
+        const fixture = app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)})
+        if (fixture) await app.vault.delete(fixture, true)
         for (const [path, text] of [[saved.data, saved.dataText], [saved.cache, saved.cacheText]]) {
           if (text !== null) await adapter.write(path, text)
           else if (await adapter.exists(path)) await adapter.remove(path)
