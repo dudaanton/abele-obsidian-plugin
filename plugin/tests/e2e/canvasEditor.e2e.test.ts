@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { tap, typeText, screenshot } from './helpers/phone'
+import { driver, tap, typeText, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 
@@ -48,10 +48,19 @@ const press = async (expression: string, corner = false) => {
 const click = (label: string) => press(`button(${JSON.stringify(label)})`)
 const type = async (text: string) => {
   if (onPhone()) {
-    // DOM focus precedes the native keyboard's opening animation. Wait before
-    // submitting text through the standard driver; never replay submitted input.
+    // DOM focus precedes the native keyboard. Wait for it, then use its keys directly:
+    // a failed XCUITest focused-field attempt can partially type before falling back.
+    await until(`document.activeElement?.matches('input,textarea') &&
+      (parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) > 1 ||
+       innerHeight - (window.visualViewport?.height ?? innerHeight) > 1)`)
     await new Promise((resolve) => setTimeout(resolve, 500))
-    typeText(text)
+    const expected = run<string>(`const field=document.activeElement;
+      return field.value.slice(0,field.selectionStart)+${JSON.stringify(text)}+field.value.slice(field.selectionEnd)`)
+    if (text === '\b') typeText(text)
+    else {
+      driver(['type', text, '--via', 'keys'])
+      await until(`document.activeElement?.value === ${JSON.stringify(expected)}`)
+    }
   } else
     await withNativeInput(() =>
       run(`
@@ -105,10 +114,12 @@ const reopen = async () => {
 describe.skipIf(!available)('human canvas creation and editing with real input', () => {
   let creationStarted = false
   let created = false
-  beforeEach(() => {
-    // A hook failure cannot be swallowed by the expected-failure native-handoff case.
-    if (creationStarted)
+  beforeEach(({ task }) => {
+    if (creationStarted && !created) {
+      // Only the native-handoff guarantee is expected to fail, not a missing fixture.
+      task.fails = false
       expect(created, 'Canvas creation failed; dependent edits cannot run').toBe(true)
+    }
   })
   beforeAll(() => {
     run(`
