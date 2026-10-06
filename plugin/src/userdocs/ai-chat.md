@@ -113,6 +113,19 @@ does not count as a new model reply that has read your latest message or tool re
 Results not yet included in reported usage are estimated; if the provider
 returns no usage, the text of the context is estimated instead.
 
+## Asking the agent to find notes
+
+The agent can search by name, folder path, properties or words in a note's body. Name, path
+and property checks use Obsidian's index without opening note bodies. Combining them with a
+content search narrows how many notes need reading, even if the agent lists the content check
+first.
+
+Content searches read several notes at a time, with a fixed bound, and give the interface time
+to respond between chunks. **Stop** cancels a search in progress. The result limit shortens the
+list, not the search: the total number of matches still counts every accessible candidate.
+Searching all bodies can therefore take longer on slow storage than searching names or
+properties. Property text is not part of a body search.
+
 ## Finding words in chats
 
 **Cmd/Ctrl+F** inside a chat, the magnifier over it, or **Find in the current chat** from the

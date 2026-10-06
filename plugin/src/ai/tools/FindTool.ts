@@ -8,6 +8,9 @@ import { stringifyYaml } from 'obsidian'
 import { chatForAgent, isChatLog } from '../chatText'
 import { pathTree, groupByFolder, propertiesLine, sharedProperties } from './compactListing'
 
+const READ_BATCH_SIZE = 64
+const YIELD_EVERY = 1024
+
 interface CriterionParam {
   type: 'path' | 'name' | 'property' | 'content'
   operator:
@@ -105,7 +108,8 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
       },
       required: ['criteria'],
     },
-    execute: async (_id, params, _signal, ctx) => {
+    execute: async (_id, params, signal, ctx) => {
+      signal?.throwIfAborted()
       const {
         criteria: rawCriteria,
         include_frontmatter: includeFm,
@@ -144,45 +148,62 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
         ? app.vault.getMarkdownFiles().map((f) => f.path)
         : scope.getAccessiblePaths()
 
-      // Path & name filters (cheap, no I/O)
-      if (pathCriteria.length) {
-        paths = paths.filter((p) => pathCriteria.every((c) => c.checkPathCriterion(p)))
+      // Filter from the call-local scope once, using metadata before any body reads.
+      // Even cached-only searches yield: Promise/microtask yields alone starve the UI.
+      const candidates: string[] = []
+      for (let at = 0; at < paths.length; at += YIELD_EVERY) {
+        signal?.throwIfAborted()
+        for (const p of paths.slice(at, at + YIELD_EVERY)) {
+          if (!pathCriteria.every((c) => c.checkPathCriterion(p))) continue
+          if (nameCriteria.length) {
+            const name = p.split('/').pop()?.replace(/\.md$/, '') || ''
+            if (!nameCriteria.every((c) => c.checkPathCriterion(name))) continue
+          }
+          if (propertyCriteria.length) {
+            const file = app.vault.getAbstractFileByPath(p)
+            if (!file) continue
+            const fm = app.metadataCache.getFileCache(file as any)?.frontmatter || {}
+            if (!propertyCriteria.every((c) => c.checkPropertyCriterion(fm))) continue
+          }
+          candidates.push(p)
+        }
+        if (at + YIELD_EVERY < paths.length) await yieldSearch(signal)
       }
-      if (nameCriteria.length) {
-        paths = paths.filter((p) => {
-          const name = p.split('/').pop()?.replace(/\.md$/, '') || ''
-          return nameCriteria.every((c) => c.checkPathCriterion(name))
-        })
-      }
+      paths = candidates
 
-      // Property filter (uses cached metadata, fast)
-      if (propertyCriteria.length) {
-        paths = paths.filter((p) => {
-          const file = app.vault.getAbstractFileByPath(p)
-          if (!file) return false
-          const fm = app.metadataCache.getFileCache(file as any)?.frontmatter || {}
-          return propertyCriteria.every((c) => c.checkPropertyCriterion(fm))
-        })
-      }
-
-      // Content filter (reads files, expensive — run last)
+      // Exact totals require checking every candidate, even with a small output limit.
+      // Bound both outstanding reads and retained bodies; commit matches in input order.
       if (contentCriteria.length) {
         const matched: string[] = []
-        for (const p of paths) {
-          const file = app.vault.getAbstractFileByPath(p)
-          if (!file) continue
-          const raw = await app.vault.cachedRead(file as any)
-          // Matched against what `read` would show, so a search cannot probe a chat log for
-          // what its tools returned one guess at a time.
-          const text = isChatLog(p) ? chatForAgent(raw, p) : raw
-          const body = getNoteBody(text)
-          if (contentCriteria.every((c) => c.checkContentCriterion(body))) {
-            matched.push(p)
+        for (let at = 0; at < paths.length; at += READ_BATCH_SIZE) {
+          signal?.throwIfAborted()
+          const batch = paths.slice(at, at + READ_BATCH_SIZE)
+          const matches = await waitForReads(
+            Promise.all(
+              batch.map(async (p) => {
+                const file = app.vault.getAbstractFileByPath(p)
+                if (!file) return false
+                const raw = await app.vault.cachedRead(file as any)
+                signal?.throwIfAborted()
+                // Match what `read` shows, never a chat's private tool results.
+                const text = isChatLog(p) ? chatForAgent(raw, p) : raw
+                const body = getNoteBody(text)
+                return contentCriteria.every((c) => c.checkContentCriterion(body))
+              })
+            ),
+            signal
+          )
+          for (let i = 0; i < batch.length; i++) {
+            if (matches[i]) matched.push(batch[i])
+          }
+          if ((at + READ_BATCH_SIZE) % YIELD_EVERY === 0 && at + READ_BATCH_SIZE < paths.length) {
+            await yieldSearch(signal)
           }
         }
         paths = matched
       }
 
+      signal?.throwIfAborted()
       const total = paths.length
       paths = paths.slice(0, limit)
 
@@ -219,6 +240,27 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
       return { content: [{ type: 'text', text }] }
     },
   }
+}
+
+async function yieldSearch(signal?: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+  signal?.throwIfAborted()
+}
+
+/** Obsidian reads cannot be cancelled; abandon only this bounded batch, not the whole scan. */
+function waitForReads<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return work
+  return new Promise<T>((resolve, reject) => {
+    const abort = () =>
+      reject(
+        signal.reason instanceof Error
+          ? signal.reason
+          : new DOMException('Search aborted', 'AbortError')
+      )
+    signal.addEventListener('abort', abort, { once: true })
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+    if (signal.aborted) abort()
+  })
 }
 
 /** Frontmatter as a script would never parse it: each file one line, shared properties once. */
