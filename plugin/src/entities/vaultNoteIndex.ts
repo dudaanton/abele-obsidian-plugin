@@ -54,7 +54,8 @@ class VaultNoteIndex extends NoteTypeIndex {
           this.pending.add(normalizePath(file.path))
         } else if (!this.closed && file instanceof TFolder) {
           const prefix = normalizePath(oldPath) + '/'
-          for (const path of this.notes.keys())
+          // A previous rename may still be queued until metadata resolution.
+          for (const path of new Set([...this.notes.keys(), ...this.pending]))
             if (path.startsWith(prefix)) {
               this.pending.add(path)
               this.pending.add(normalizePath(file.path) + '/' + path.slice(prefix.length))

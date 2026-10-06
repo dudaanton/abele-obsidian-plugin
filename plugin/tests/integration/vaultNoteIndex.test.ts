@@ -110,6 +110,46 @@ describe('shared vault type and day index', () => {
       expect(map.size).toBe(0)
   })
 
+  it.each([false, true])(
+    'indexes consecutive folder renames after one resolution (startup resolved: %s)',
+    async (resolved) => {
+      const app = useVault(
+        ['task', 'time-entry', 'transaction', 'account'].map((type) => ({
+          path: `First/nested/${type}.md`,
+          frontmatter: { type, date: '2024-01-01' },
+        }))
+      )
+      configureAbele().applySettings(undefined)
+      const taskList = new TasksList(),
+        timeList = new TimeEntryList(),
+        txList = new TransactionsList(),
+        accountList = new AccountsList()
+      owned.push(taskList, timeList, txList, accountList)
+      const { acquireVaultNoteIndex } = await import('@/entities/vaultNoteIndex')
+      const lease = acquireVaultNoteIndex(GlobalStore.getInstance().app)
+      owned.push({ cleanup: lease.release })
+      if (resolved) app.emit('metadataCache', 'resolved')
+      const folder = app.vault.getAbstractFileByPath('First')!
+      await app.vault.rename(folder, 'Second')
+      app.emit('vault', 'rename', folder, 'First')
+      await app.vault.rename(folder, 'Third')
+      app.emit('vault', 'rename', folder, 'Second')
+      app.emit('metadataCache', 'resolved')
+      for (const [type, map] of [
+        ['task', taskList.tasks],
+        ['time-entry', timeList.entries],
+        ['transaction', txList.transactions],
+        ['account', accountList.accounts],
+      ] as const) {
+        expect([...map.keys()]).toEqual([`Third/nested/${type}.md`])
+        expect([...lease.index.pathsOfType(type)]).toEqual([`Third/nested/${type}.md`])
+      }
+      expect([...lease.index.pathsOnDay('2024-01-01')].sort()).toEqual(
+        ['account', 'task', 'time-entry', 'transaction'].map((type) => `Third/nested/${type}.md`)
+      )
+    }
+  )
+
   it('updates type/day changes, late metadata, rename and delete only after resolution', async () => {
     const app = useVault([{ path: 'Samples/late.md' }])
     const { acquireVaultNoteIndex } = await import('@/entities/vaultNoteIndex')
