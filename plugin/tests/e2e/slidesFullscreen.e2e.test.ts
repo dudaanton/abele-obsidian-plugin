@@ -36,7 +36,6 @@ beforeAll(async () => {
 })
 afterAll(async () => {
   if (!available) return
-  if (emulated) await reloadApp('app.emulateMobile(false)')
   await evalLong(`(async()=>{
     for(const l of app.workspace.getLeavesOfType('abele-deck'))if(l.view.file?.path===${JSON.stringify(PATH)})l.detach()
     const f=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(f)await app.vault.delete(f)
@@ -44,6 +43,8 @@ afterAll(async () => {
     ${windowState ? `const w=require('@electron/remote').getCurrentWindow();w.setMinimumSize(...${JSON.stringify(windowState.minimum)});w.setBounds(${JSON.stringify(windowState.bounds)})` : ''}
     return true
   })()`)
+  // Remove fixture views before switching modes: reload persists the outgoing mobile layout.
+  if (emulated) await reloadApp('app.emulateMobile(false)')
 })
 
 const PRELUDE = `
@@ -163,6 +164,10 @@ describe.skipIf(!available)('fullscreen show without permanent chrome', () => {
     verify(await probe('emulated-phone'), true)
   })
   it('ends a mobile show when another tab or file becomes active', async () => {
+    if (!onPhone() && !emulated) {
+      emulated = true
+      await reloadApp('app.emulateMobile(true)')
+    }
     const result = JSON.parse(
       await evalLong(`(async()=>{${PRELUDE}
       if(!mobile)throw Error('mobile layout required')
