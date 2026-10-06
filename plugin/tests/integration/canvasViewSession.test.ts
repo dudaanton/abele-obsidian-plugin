@@ -72,6 +72,20 @@ function repairScenario(raw = '{malformed') {
 }
 
 describe('Abele canvas leaf session lifecycle', () => {
+  it('refreshes relative cards and pictures when the canvas moves without byte changes', async () => {
+    const { app, file, view, registry } = repairScenario(serializeCanvas(emptyCanvas()))
+    await view.onOpen()
+    await view.onLoadFile(file)
+    const load = vi.mocked(view.viewer!.load)
+    load.mockClear()
+    const oldPath = file.path
+    await app.vault.rename(file, 'sample-moved.canvas')
+    app.emit('vault', 'rename', file, oldPath)
+    await registry.flush(file)
+    expect(load).toHaveBeenCalled()
+    await view.onClose()
+  })
+
   it('revokes a local choice synchronously before the host finishes its close animation', () => {
     const { host } = repairScenario(serializeCanvas(emptyCanvas())),
       keep = vi.fn()

@@ -1137,8 +1137,9 @@ const probeScript = `(async () => {
 
     // Human canvas controls and native Obsidian pickers at the same phone width.
     {
-      const file = await app.vault.create('Phone probe/sample-editor.canvas', '{"nodes":[],"edges":[]}')
-      SEEDED.push(file.path)
+      const reference = await app.vault.create('Phone probe/sample-reference.md', 'Sample note on a canvas.')
+      const file = await app.vault.create('Phone probe/sample-editor.canvas', JSON.stringify({nodes:[{id:'sample-reference',type:'file',file:reference.path,x:0,y:0,width:220,height:140}],edges:[]}))
+      SEEDED.push(file.path, reference.path)
       const leaf = app.workspace.getLeaf('tab')
       try {
         await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true})
@@ -1161,6 +1162,10 @@ const probeScript = `(async () => {
         await screen('canvas text draft',root,root)
         report['canvas text draft'].clipped=[]
         for(const field of root.querySelectorAll('textarea,button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas text draft'].clipped.push(...ringClipped(field));field.blur()}
+        await app.fileManager.renameFile(reference,'Phone probe/sample-renamed-reference.md')
+        SEEDED.push(reference.path)
+        await until(()=>leaf.view.viewer.graph.nodes.some(n=>n.file===reference.path),5000)
+        await screen('canvas renamed draft',root,root)
         leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]').click()
         await until(()=>document.querySelector('.abele-canvas-choice'),5000)
         const choice=document.querySelector('.abele-canvas-choice')
@@ -1479,6 +1484,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas file picker',
     'canvas link input',
     'canvas text draft',
+    'canvas renamed draft',
     'canvas native handoff',
     'canvas draft discard',
     'canvas creation',

@@ -56,12 +56,16 @@ describe.skipIf(!available)('native Canvas compatibility', () => {
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
       await reloadApp('app.emulateMobile(true)')
     }
-    evalRaw(`window.__canvasProbePreference = window.__abeleTest.AbeleConfig.getInstance().canvasViewer; window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false`)
+    evalRaw(
+      `window.__canvasProbePreference = window.__abeleTest.AbeleConfig.getInstance().canvasViewer; window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false`
+    )
     probe('setup')
   }, 120_000)
   afterAll(async () => {
     probe('cleanup')
-    evalRaw(`if (window.__canvasProbePreference !== undefined) window.__abeleTest.AbeleConfig.getInstance().canvasViewer = window.__canvasProbePreference; delete window.__canvasProbePreference`)
+    evalRaw(
+      `if (window.__canvasProbePreference !== undefined) window.__abeleTest.AbeleConfig.getInstance().canvasViewer = window.__canvasProbePreference; delete window.__canvasProbePreference`
+    )
     if (size) {
       evalRaw(
         `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
@@ -124,6 +128,20 @@ describe.skipIf(!available)('native Canvas compatibility', () => {
     expect(r.file).toBe('Sample canvas probe/sample-renamed.md')
     expect(r.text).toContain('sample-renamed')
     expect(r.text).not.toContain('sample-note')
+  }, 120_000)
+
+  it('rewrites image, drawing and group background references through attachment and folder moves', () => {
+    const r = probe<{
+      nodes: { file?: string; background?: string; subpath?: string }[]
+      future: unknown
+    }>('renameAttachments')
+    expect(r.nodes[0]).toMatchObject({
+      file: 'Sample canvas probe/sample-moved/sample-renamed.svg',
+      subpath: '#sample',
+    })
+    expect(r.nodes[1].file).toBe('Sample canvas probe/sample-moved/sample-drawing.svg')
+    expect(r.nodes[2].background).toBe('Sample canvas probe/sample-moved/sample-renamed.svg')
+    expect(r.future).toEqual({ file: 'Sample canvas probe/sample-assets/sample-image.svg' })
   }, 120_000)
 
   it('adopts a native canvas leaf by default and allows a native opt-out', () => {

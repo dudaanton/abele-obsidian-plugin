@@ -388,4 +388,67 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       discarded: true,
     })
   }, 120_000)
+
+  it('keeps inserted attachments usable after native rename and folder move, including pointer-driven undo', async () => {
+    run(`
+      await app.vault.createFolder(${JSON.stringify(DIR + '/sample-assets')})
+      for(const name of ['sample-image.svg','sample-drawing.svg'])await app.vault.create(${JSON.stringify(DIR + '/sample-assets/')}+name,'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M0 0L40 40"/></svg>')
+      // Discard the preceding retained failure via its normal user action before this scenario.
+      return true
+    `)
+    // The preceding native-handoff test deliberately leaves a conflicted draft.
+    if (run<boolean>('return view().documentLease.document.session.dirty')) {
+      await click('Discard local draft')
+      await press(textButton('.abele-canvas-choice', 'Discard local draft'))
+      await saved()
+    }
+    for (const name of ['sample-image.svg', 'sample-drawing.svg']) {
+      await click('Add note or attachment')
+      await press('document.querySelector(".prompt-input")')
+      await type(name)
+      await press(
+        `[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(${JSON.stringify(DIR + '/sample-assets/')}+${JSON.stringify(name)}))`
+      )
+      await saved()
+    }
+    // Opening the host rename dialog is navigation; its text and Save use real input.
+    run(
+      `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-image.svg')}));return true`
+    )
+    await until('document.activeElement?.matches(".rename-textarea")')
+    await type('sample-renamed')
+    await press(textButton('.mod-file-rename', 'Save'))
+    await until(
+      `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
+    )
+    // Host event stimulus, shared by desktop and physical-phone checks.
+    run(
+      `await app.fileManager.renameFile(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets')}),${JSON.stringify(DIR + '/sample-moved')});return true`
+    )
+    await until(
+      `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')})`
+    )
+    await click('Fit diagram')
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    await press(
+      `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
+    )
+    await click('Delete selected card')
+    await saved()
+    await click('Undo canvas change')
+    await saved()
+    const result = run<{ image: boolean; drawing: boolean; stale: boolean }>(
+      `const data=await read();return {image:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-renamed.svg')}),drawing:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}),stale:data.nodes.some(n=>n.file?.includes('/sample-assets/'))}`
+    )
+    shot('renamed-attachments')
+    expect(result).toEqual({ image: true, drawing: true, stale: false })
+    await press(
+      `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
+    )
+    await click('Open selected card')
+    await until(
+      `app.workspace.getActiveFile()?.path===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}`
+    )
+    await reopen()
+  }, 120_000)
 })

@@ -56,6 +56,7 @@ class LiveCards implements ViewerCards {
         node.type === 'file' && node.file ? this.app.vault.getAbstractFileByPath(node.file) : null
       const markdown = node.type === 'text' || (file instanceof TFile && file.extension === 'md')
       const signature = JSON.stringify([
+        this.source(),
         markdown,
         node.text,
         node.file,

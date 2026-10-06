@@ -66,10 +66,17 @@ export class CanvasView extends FileView {
         } else if (
           file.path !== this.file?.path &&
           file instanceof TFile &&
-          this.viewer?.graph.nodes.some((n) => n.file === file.path)
+          this.viewer?.graph.nodes.some((n) => n.file === file.path || n.background === file.path)
         ) {
           this.viewer.load(this.viewer.graph)
         }
+      })
+    )
+    // A canvas move can leave bytes/generation unchanged but change relative Markdown and assets.
+    // Native reference rewriting may arrive later; cancel stale picture loads immediately.
+    this.registerEvent(
+      this.app.vault.on('rename', () => {
+        if (!this.closed && this.viewer) this.viewer.load(this.viewer.graph)
       })
     )
     this.registerEvent(this.app.workspace.on('css-change', () => this.viewer?.draw()))

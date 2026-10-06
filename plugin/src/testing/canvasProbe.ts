@@ -384,6 +384,61 @@ export function createCanvasProbe(owner: Plugin) {
       }
       return { file: data.nodes[0].file, text: data.nodes[1].text }
     },
+    async renameAttachments() {
+      closeProbeLeaves()
+      const dir = `${DIR}/sample-assets`
+      await app.vault.createFolder(dir)
+      for (const name of ['sample-image.svg', 'sample-drawing.svg'])
+        await app.vault.create(
+          `${dir}/${name}`,
+          '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M0 0L20 20"/></svg>'
+        )
+      const path = `${DIR}/attachments.canvas`
+      await app.vault.create(
+        path,
+        JSON.stringify({
+          nodes: [
+            {
+              id: 'image',
+              type: 'file',
+              file: `${dir}/sample-image.svg`,
+              subpath: '#sample',
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 100,
+            },
+            {
+              id: 'drawing',
+              type: 'file',
+              file: `${dir}/sample-drawing.svg`,
+              x: 150,
+              y: 0,
+              width: 100,
+              height: 100,
+            },
+            {
+              id: 'group',
+              type: 'group',
+              background: `${dir}/sample-image.svg`,
+              x: -20,
+              y: -20,
+              width: 300,
+              height: 160,
+            },
+          ],
+          edges: [],
+          future: { file: `${dir}/sample-image.svg` },
+        })
+      )
+      await app.fileManager.renameFile(file(`${dir}/sample-image.svg`), `${dir}/sample-renamed.svg`)
+      await wait(1000)
+      const folder = app.vault.getAbstractFileByPath(dir)
+      await app.fileManager.renameFile(folder, `${DIR}/sample-moved`)
+      await wait(1500)
+      const data = await read(path)
+      return { nodes: data.nodes, future: data.future }
+    },
     async swap() {
       enabled = true
       const leaf = app.workspace.getLeaf('tab')
