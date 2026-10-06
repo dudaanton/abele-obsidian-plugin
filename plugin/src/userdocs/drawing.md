@@ -158,7 +158,9 @@ Editing a text card never edits the contents of a linked note.
 **Save text** completes one change, including creating a new text card. Until then, typing and
 IME composition are drafts, not writes. **Keep draft** leaves the text unsaved in this running
 session. **Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
-changes. Outside a text field, Delete/Backspace deletes a selected card, Enter edits its text,
+changes. Saving existing text without changes writes nothing and keeps redo available.
+If the shared history changes while an Undo/Redo click is waiting, the action is refused;
+read the updated diagram and try again. Outside a text field, Delete/Backspace deletes a selected card, Enter edits its text,
 and Ctrl or ⌘+Z / Shift+Z undo and redo. Inside fields those keys belong to the text input.
 Two Abele tabs share the same content and history, but keep their own selection and camera;
 an active text edit prevents another tab or agent from publishing over it.
@@ -172,8 +174,8 @@ Closing and reopening retains pending work in memory, not across a plugin reload
 Returning to **Open in Obsidian Canvas** with pending work asks you to stay, explicitly retain
 it in memory while opening the saved source, or discard it. Retaining does not save the draft;
 native changes (even a formatting-only save) can block retry. A failed Undo/Redo leaves a
-local history preview: explicitly discard that preview before trying Undo/Redo again, rather
-than saving it as a new text change. Failed agent proposals and uncertain writes still use the
+local history preview: text editing is unavailable until that preview is discarded.
+Explicitly discard it before trying Undo/Redo again, rather than saving it as a new text change. Failed agent proposals and uncertain writes still use the
 separate recovery/review action below for discard. No native pending save is silently cancelled.
 
 Use **Play**, then the arrow buttons, Right/Left or Space to move through steps. On a phone,

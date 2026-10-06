@@ -246,6 +246,79 @@ describe('human canvas editor', () => {
     expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
   })
 
+  it.each(['untouched', 'restored'] as const)(
+    'saving %s text publishes nothing and preserves redo',
+    async (mode) => {
+      const s = setup()
+      s.button('Add text card').click()
+      s.input('First text')
+      s.button('Save text').click()
+      await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+      s.button('Edit card text').click()
+      s.input('Second text')
+      s.button('Save text').click()
+      await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+      s.button('Undo canvas change').click()
+      await vi.waitFor(() => expect(s.document.session.history).toEqual({ undo: 1, redo: 1 }))
+      const baseline = s.document.session.committed
+      s.publish.mockClear()
+      s.button('Edit card text').click()
+      if (mode === 'restored') {
+        s.input('Temporary typing')
+        s.input('First text')
+      }
+      s.button('Save text').click()
+      await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+      expect(s.publish).not.toHaveBeenCalled()
+      expect(s.document.session.committed).toEqual(baseline)
+      expect(s.document.session.history).toEqual({ undo: 1, redo: 1 })
+      s.button('Redo canvas change').click()
+      await vi.waitFor(() => expect(s.document.session.graph.nodes[0].text).toBe('Second text'))
+    }
+  )
+
+  it('publishes a retained human addition even when its text field is unchanged', async () => {
+    const s = setup()
+    s.publish.mockRejectedValueOnce(new Error('Sample storage unavailable'))
+    s.button('Add text card').click()
+    s.input('Pending addition')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.button('Retry save').disabled).toBe(false))
+    s.publish.mockClear()
+    s.button('Edit card text').click()
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.publish).toHaveBeenCalledOnce()
+    expect(s.document.session.committed.graph.nodes[0].text).toBe('Pending addition')
+    expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
+  })
+
+  it('still publishes the explicit creation of a blank text card', async () => {
+    const s = setup()
+    s.button('Add text card').click()
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.publish).toHaveBeenCalledOnce()
+    expect(s.document.session.committed.graph.nodes).toHaveLength(1)
+    expect(s.document.session.history.undo).toBe(1)
+  })
+
+  it('does not silently discard an unchanged text draft after an external revision', async () => {
+    const s = setup()
+    s.button('Add text card').click()
+    s.input('Saved text')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    s.publish.mockClear()
+    s.button('Edit card text').click()
+    s.document.observe({ graph: s.document.session.committed.graph, revision: 'external-revision' })
+    s.button('Save text').click()
+    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.document.session.dirty).toBe(true)
+    expect(s.document.session.conflict).toBe(true)
+    expect(s.document.session.graph.nodes[0].text).toBe('Saved text')
+  })
+
   it('explicitly retains active text before native handoff, without silently saving it', async () => {
     const s = setup()
     s.button('Add text card').click()

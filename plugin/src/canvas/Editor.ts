@@ -1,6 +1,7 @@
 /** Human interaction over the existing shared document; no storage or replay machinery. */
 import { nanoid } from 'nanoid'
 import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
+import { canvasFingerprint } from './core/model'
 import type { CanvasSession, GraphTransform } from './core/session'
 import type { CanvasViewer } from './Viewer'
 
@@ -212,8 +213,25 @@ export class CanvasEditor {
     this.refresh()
   }
   private async complete(): Promise<void> {
-    if (this.composing || !this.editing) return
+    if (this.composing || this.waiting || !this.editing) return
+    const document = this.ownedDraft
     this.keep()
+    if (
+      document &&
+      this.ports.document() === document &&
+      !document.error &&
+      !document.state.native &&
+      !document.session.conflict &&
+      !document.session.publicationOutcome &&
+      document.draftPath === document.file.path &&
+      canvasFingerprint(document.session.graph) ===
+        canvasFingerprint(document.session.committed.graph)
+    ) {
+      // Completing a no-op draft is not a command and must not clear redo.
+      document.discardDraft()
+      this.refresh()
+      return
+    }
     await this.retry()
   }
   private async saving(action: () => Promise<unknown>): Promise<void> {

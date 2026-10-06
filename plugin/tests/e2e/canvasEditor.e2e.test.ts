@@ -198,6 +198,36 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     })
   }, 120_000)
 
+  it('saves unchanged text without writing and keeps redo available', async () => {
+    const before = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
+    const history = run<{ undo: number; redo: number }>(
+      'return view().documentLease.document.session.history'
+    )
+    expect(history.redo).toBe(1)
+    run(`window.__humanCanvas.process=app.vault.process;window.__humanCanvas.noopWrites=0;
+      app.vault.process=function(file,fn){if(file.path===path)window.__humanCanvas.noopWrites++;return window.__humanCanvas.process.call(this,file,fn)};return true`)
+    await click('Fit diagram')
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    await press(
+      `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(node=>node.type==='text').id+'"]')`,
+      true
+    )
+    await click('Edit card text')
+    await click('Save text')
+    await saved()
+    const result = run<{ same: boolean; writes: number; history: typeof history }>(
+      `return {same:${JSON.stringify(before)}===await app.vault.read(app.vault.getAbstractFileByPath(path)),writes:window.__humanCanvas.noopWrites,history:view().documentLease.document.session.history}`
+    )
+    expect(result).toEqual({ same: true, writes: 0, history })
+    restoreProcess()
+    await click('Redo canvas change')
+    await saved()
+    expect(run<number>('return (await read()).nodes.length')).toBe(1)
+    await click('Undo canvas change')
+    await saved()
+    expect(run<number>('return (await read()).nodes.length')).toBe(2)
+  }, 120_000)
+
   it('edits selected canvas text without editing the inserted note and adds a web link', async () => {
     await click('Fit diagram')
     await new Promise((resolve) => setTimeout(resolve, 350))
@@ -224,6 +254,36 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     expect(text).toContain('revised')
     expect(note).toBe('A note inserted by a person.')
     expect(link).toBe('https://sample.example/diagram')
+  }, 120_000)
+
+  it('blocks text editing of a failed undo preview until explicit discard', async () => {
+    await click('Fit diagram')
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    await press(
+      `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(node=>node.type==='text').id+'"]')`,
+      true
+    )
+    const before = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
+    const history = run<{ undo: number; redo: number }>(
+      'return view().documentLease.document.session.history'
+    )
+    failSave()
+    await click('Undo canvas change')
+    await until(
+      "view().documentLease.document.session.dirty&&!view().documentLease.document.session.busy&&button('Retry save').disabled"
+    )
+    expect(run<boolean>("return button('Edit card text').disabled")).toBe(true)
+    const generation = run<number>('return view().documentLease.document.session.generation')
+    await click('Edit card text')
+    expect(run<number>('return view().documentLease.document.session.generation')).toBe(generation)
+    expect(run('return view().documentLease.document.session.history')).toEqual(history)
+    restoreProcess()
+    await click('Discard local draft')
+    await press(textButton('.abele-canvas-choice', 'Discard local draft'))
+    await saved()
+    expect(run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')).toBe(
+      before
+    )
   }, 120_000)
 
   it('retries a known-unwritten human save on the same source and reopens saved content', async () => {
