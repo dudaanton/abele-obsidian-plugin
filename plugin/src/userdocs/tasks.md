@@ -91,6 +91,10 @@ is grey. The property can be renamed there too.
 - **Under a note**: the tasks linked to it. See [The footer](groups#the-footer).
 - **In your daily note**: the tasks for that day.
 
+Dates in the timeline sidebar and dated footer task lists always include a short weekday
+(Mo, Tu, We, Th, Fr, Sa, Su in English, or the date locale's short form). The label stays the
+same while dragging a task, including on narrow screens.
+
 Events from other calendars can show among them, read only. See
 [Other calendars](logs-and-journals#other-calendars).
 

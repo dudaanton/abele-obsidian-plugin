@@ -326,7 +326,7 @@ const getDateWikilink = (dateStr: string) => {
   if (diff < -1) suffix = `(${Math.abs(diff)} days ago)`
 
   const dateToShow = date.format(DISPLAY_DATE_FORMAT)
-  const weekday = drag.range.value ? ` · ${date.format('dddd')}` : ''
+  const weekday = ` · ${date.format('dd')}`
   // TODO: handle user defined daily note format and location
   return `[[${dateStr}|${dateToShow}${weekday} ${suffix}]]`
 }

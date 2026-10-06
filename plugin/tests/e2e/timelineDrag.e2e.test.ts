@@ -55,6 +55,11 @@ const probe = (footer: boolean) => String.raw`(async () => {
     await wait(900)
     report.initialState={padding:root.querySelector('.abele-timeline__blocks').style.paddingTop,space:root.querySelector('.abele-timeline__anchor-space').style.height}
     const initial=dates()
+    const labels=()=>[...root.querySelectorAll('.timeline__date')].map(el=>({day:el.closest('.abele-timeline__date-block').dataset.abeleAnchor,text:el.textContent,height:el.getBoundingClientRect().height}))
+    const shortWeekdays=()=>labels().every(label=>/ · (Mo|Tu|We|Th|Fr|Sa|Su) /.test(label.text))
+    const initialLabels=labels()
+    report.initialWeekdays=shortWeekdays()
+    report.fitsWidth=[...root.querySelectorAll('.timeline__date')].every(el=>el.scrollWidth<=el.clientWidth+1)
     const initialScroll=scroller.scrollTop
     const initialSource=await app.vault.read(app.vault.getAbstractFileByPath(folder+'/Sample moving.md'))
     await picture('before')
@@ -69,7 +74,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
     report.range=dates()
     report.startAnchor=[before,row().getBoundingClientRect().top]
     if (report.range.length < 20) return JSON.stringify(report)
-    report.weekdays=[...root.querySelectorAll('.timeline__date')].every(el => /Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday/.test(el.textContent))
+    report.weekdays=shortWeekdays()
+    report.stableLabels=initialLabels.every(before=>labels().some(after=>after.day===before.day && after.text===before.text && Math.abs(after.height-before.height)<=1))
     await picture('drag')
     report.hiddenVisible=!!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample completed.md"]') && !!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample past.md"]')
     const usableBottom=()=>Math.min(scroller.getBoundingClientRect().bottom,...[...document.querySelectorAll('.mobile-navbar,.mobile-toolbar')].flatMap(el=>{const r=el.getBoundingClientRect();return r.height && r.top>scroller.getBoundingClientRect().top && r.top<scroller.getBoundingClientRect().bottom?[r.top]:[]}))
@@ -222,7 +228,10 @@ describe.skipIf(!available)('timeline drag in native scroll panes', () => {
       expect(
         Math.abs(result.cancelState.scroll[1] - result.cancelState.scroll[0])
       ).toBeLessThanOrEqual(1)
+      expect(result.initialWeekdays).toBe(true)
+      expect(result.fitsWidth).toBe(true)
       expect(result.weekdays).toBe(true)
+      expect(result.stableLabels).toBe(true)
       expect(result.written).toBe(true)
       expect(Math.abs(result.dropAnchor[1] - result.dropAnchor[0])).toBeLessThanOrEqual(1)
       expect(result.extraGone).toBe(true)

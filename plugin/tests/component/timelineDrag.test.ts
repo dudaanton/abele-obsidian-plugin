@@ -71,12 +71,12 @@ afterEach(() => {
 
 describe('timeline task dragging', () => {
   it.each([
-    ['en', true, 'Saturday', 'Sunday', 'Monday'],
-    ['en', false, 'Saturday', 'Sunday', 'Monday'],
-    ['ru', true, 'суббота', 'воскресенье', 'понедельник'],
-    ['ru', false, 'суббота', 'воскресенье', 'понедельник'],
+    ['en', true, 'Sa', 'Su', 'Mo'],
+    ['en', false, 'Sa', 'Su', 'Mo'],
+    ['ru', true, 'сб', 'вс', 'пн'],
+    ['ru', false, 'сб', 'вс', 'пн'],
   ] as const)(
-    'labels drag dates in locale %s with Monday-first=%s without changing normal date links',
+    'always labels dates briefly in locale %s with Monday-first=%s without changing links during drag',
     async (locale, monday, saturday, sunday, mondayName) => {
       configureAbele().weekStartsOnMonday = monday
       GlobalStore.getInstance().applySettings()
@@ -85,6 +85,7 @@ describe('timeline task dragging', () => {
       const label = (day: string) =>
         view.find(`[data-abele-anchor="date:${day}"] .timeline__date`).attributes('text')
       const normal = label('2030-06-15')
+      expect(normal).toContain(` · ${saturday} `)
       await pointer('pointerdown', 80, 190, row().element)
       await pointer('pointermove', 80, 205)
       for (const [day, weekday] of [
@@ -92,14 +93,25 @@ describe('timeline task dragging', () => {
         ['2030-06-16', sunday],
         ['2030-06-17', mondayName],
       ]) {
-        expect(label(day)).toContain(weekday)
+        expect(label(day)).toContain(` · ${weekday} `)
         expect(label(day)).toContain(`[[${day}|`)
       }
+      expect(label('2030-06-15')).toBe(normal)
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
       await flushPromises()
       expect(label('2030-06-15')).toBe(normal)
     }
   )
+
+  it('shows all seven short English weekdays without a drag', async () => {
+    await render(
+      Array.from({ length: 7 }, (_, i) => sample(`sample-day-${i}`, `2030-06-${17 + i}`))
+    )
+    const labels = view.findAll('.timeline__date').map((date) => date.attributes('text'))
+    expect(labels).toHaveLength(7)
+    for (const [i, weekday] of ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].entries())
+      expect(labels[i]).toContain(`[[2030-06-${17 + i}|${17 + i}.06.2030 · ${weekday} `)
+  })
 
   it('leaves a click alone and expands every calendar date only after movement exceeds the threshold', async () => {
     await render([sample('sample-current', '2030-06-15')])
