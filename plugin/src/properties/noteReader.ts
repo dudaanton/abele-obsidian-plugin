@@ -9,7 +9,7 @@ export type NotePropertySource =
 
 /**
  * Explicit sources, not interchangeable parsers. Cache keeps host values; disk/text use the
- * installed front-matter reader and retain the existing reserved content/body contract.
+ * compatible note YAML reader and retain the existing reserved content/body contract.
  * Editor callers pass their captured text; reading a background editor is not a disk read.
  */
 export async function readNoteProperties(

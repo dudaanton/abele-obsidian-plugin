@@ -4,7 +4,7 @@ import { renderDataTemplate } from '@/templates/dataTemplate'
 export { renderDataTemplate as renderTemplate } from '@/templates/dataTemplate'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { normalizePath, stringifyYaml, TAbstractFile, TFile, TFolder, Vault } from 'obsidian'
-import fm from 'front-matter'
+import parseFrontmatter from './noteFrontmatter'
 import { getFileByPath, getFileByPathOrName, readFileContent } from './vaultUtils'
 import dayjs from 'dayjs'
 import { load as loadYaml } from 'js-yaml'
@@ -13,10 +13,11 @@ import { isCalendarDate, timestampTextSchema } from './yamlDates'
 /** Normalize only top-level Dates, using source syntax rather than local clock time. */
 function normalizeFrontmatterDates(
   attributes: Record<string, any>,
-  frontmatter: string
+  frontmatter: string | undefined
 ): Record<string, any> {
   const sourceAttributes = Object.values(attributes).some((value) => value instanceof Date)
-    ? ((loadYaml(frontmatter, { schema: timestampTextSchema }) as Record<string, unknown>) ?? {})
+    ? ((loadYaml(frontmatter ?? '', { schema: timestampTextSchema }) as Record<string, unknown>) ??
+      {})
     : {}
 
   return Object.fromEntries(
@@ -48,11 +49,11 @@ export async function parseNoteContent(
   // const bodyContent = getNoteBody(content)
   // let frontmatter = {}
 
-  const parsed = fm<Record<string, any>>(content)
+  const parsed = parseFrontmatter<Record<string, any>>(content)
 
   const parsedData = normalizeFrontmatterDates(parsed.attributes, parsed.frontmatter)
 
-  // `front-matter` swallows the blank lines after the closing `---`, and a body read here is
+  // The legacy extractor swallows blank lines after the closing `---`, and a body read here is
   // written back under rewritten frontmatter — so the text is taken as it stands in the note.
   const match = parsed.frontmatter !== undefined ? content.match(frontMatterRegex) : null
   const body = match ? content.slice(match[0].length) : parsed.body
@@ -114,7 +115,7 @@ export const updateNoteFrontmatter = async (
   const content = await readFileContent(file)
 
   // Parse the frontmatter and content
-  const parsed = fm<Record<string, any>>(content)
+  const parsed = parseFrontmatter<Record<string, any>>(content)
   const parsedAttributes = normalizeFrontmatterDates(parsed.attributes, parsed.frontmatter)
 
   // Update the frontmatter with the provided properties

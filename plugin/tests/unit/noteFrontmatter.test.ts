@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { TFile } from 'obsidian'
-import parseFrontmatter from 'front-matter'
+import parseFrontmatter from '@/helpers/noteFrontmatter'
 import { parseNoteContent } from '@/helpers/notesUtils'
 
 // Captured against front-matter 4.0.2 before replacing it. The extractor's legacy body
@@ -56,6 +56,7 @@ describe('note frontmatter compatibility', () => {
     ['1:20', 80],
     ['1:20:30', 4830],
     ['1:20.5', 80.5],
+    ['34:7:50:41:12:23:54:41:48:19.478', 343959285737094500],
     ['1.2_5', 1.25],
     ['1e3', 1000],
     ['-.5', '-.5'],
@@ -82,11 +83,39 @@ describe('note frontmatter compatibility', () => {
     })
   })
 
+  it('uses ordinary byte arrays without a Node Buffer host', () => {
+    vi.stubGlobal('Buffer', undefined)
+    try {
+      expect(parseFrontmatter('---\nbytes: !!binary SGk=\n---').attributes).toEqual({
+        bytes: [72, 105],
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it.each([
+    ['!!map\n  key: text', { key: 'text' }],
+    ['&anchor\n  key: text', { key: 'text' }],
+    ['!!map &anchor {key: text}', { key: 'text' }],
+    ['? !!str key\n: text', { key: 'text' }],
+    ['value: !!map {key: text}', { value: { key: 'text' } }],
+    ['value: |\n  !!str key: text', { value: '!!str key: text\n' }],
+    ['value: "!!str key: text"', { value: '!!str key: text' }],
+  ])('keeps valid properties and property-like text: %s', (yaml, attributes) => {
+    expect(parseFrontmatter(`---\n${yaml}\n---`).attributes).toEqual(attributes)
+  })
+
   it.each([
     'key: [unfinished',
     'key: one\nkey: two',
     'key: !!js/function function() {}',
     'value: !!int 0o12',
+    'value: !!int 12:',
+    'value: &anchor key: text',
+    '! key: text',
+    '!!map\n  !!str key: text',
+    'list:\n- !!str key: text',
   ])('rejects invalid or unsafe YAML %j', async (yaml) => {
     const text = `---\n${yaml}\n---\nBody`
     expect(() => parseFrontmatter(text)).toThrow()

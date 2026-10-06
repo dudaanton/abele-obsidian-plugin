@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import fm from 'front-matter'
+import fm from '@/helpers/noteFrontmatter'
 import { load } from 'js-yaml'
 import { TFile, stringifyYaml } from 'obsidian'
 import {
@@ -39,7 +39,7 @@ afterEach(() => {
 })
 const parse = (text: string) => parseNoteContent(new TFile(), text)
 
-describe('the installed front-matter package and note parser', () => {
+describe('the compatible frontmatter extractor and note parser', () => {
   it('exposes unquoted timestamps as Dates, quoted timestamps as strings, converting only top-level Dates locally', async () => {
     const text = `---
 day: 2028-03-01
