@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CanvasEditor } from '@/canvas/Editor'
 import { CanvasViewer } from '@/canvas/Viewer'
 import { CanvasDocument } from '@/canvas/documentRegistry'
-import { emptyCanvas } from '@/canvas/core/model'
+import { emptyCanvas, type CanvasGraph } from '@/canvas/core/model'
 import { TFile } from 'obsidian'
 
 const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
-function setup() {
+function setup(graph: CanvasGraph = emptyCanvas()) {
   const el = document.createElement('div')
   document.body.append(el)
   const openNode = vi.fn()
@@ -30,7 +30,7 @@ function setup() {
   })
   const file = Object.assign(new TFile(), { path: 'sample.canvas' })
   let documentState: CanvasDocument
-  const snapshot = { graph: emptyCanvas(), revision: 'initial' }
+  const snapshot = { graph, revision: 'initial' }
   documentState = new CanvasDocument(
     file,
     snapshot,
@@ -80,6 +80,193 @@ function setup() {
   })
   return { el, viewer, editor, document: documentState, publish, button, field, input, openNode }
 }
+
+const cards = (): CanvasGraph => ({
+  nodes: ['alpha', 'beta', 'gamma'].map((id, i) => ({
+    id,
+    type: 'text',
+    text: id,
+    x: i * 300,
+    y: 0,
+    width: 260,
+    height: 160,
+  })),
+  edges: [{ id: 'connection', fromNode: 'alpha', toNode: 'beta' }],
+})
+function pointer(s: ReturnType<typeof setup>, type: string, x: number, y: number, extra = {}) {
+  s.viewer.stage.dispatchEvent(
+    new PointerEvent(type, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: x,
+      clientY: y,
+      bubbles: true,
+      ...extra,
+    })
+  )
+}
+
+describe('human canvas geometry', () => {
+  it('previews a zoomed drag without publishing and completes exactly one shared history entry', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 2 })
+    pointer(s, 'pointerdown', 60, 60)
+    pointer(s, 'pointermove', 100, 100)
+    pointer(s, 'pointermove', 140, 120)
+    expect(s.document.session.busy).toBe(true)
+    expect(s.viewer.graph.nodes[0]).toMatchObject({ x: 40, y: 30 })
+    expect(s.document.session.committed.graph.nodes[0].x).toBe(0)
+    expect(s.publish).not.toHaveBeenCalled()
+    pointer(s, 'pointerup', 140, 120)
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+    expect(s.document.session.graph.nodes[0]).toMatchObject({ x: 40, y: 30 })
+    expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].x).toBe(0))
+    s.button('Redo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].x).toBe(40))
+  })
+
+  it.each(['pointercancel', 'lostpointercapture', 'second finger', 'Escape', 'Fit', 'close'])(
+    '%s cancels a geometry preview without an accidental move or history entry',
+    (reason) => {
+      const s = setup(cards())
+      s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+      pointer(s, 'pointerdown', 30, 30)
+      pointer(s, 'pointermove', 80, 70)
+      expect(s.viewer.graph.nodes[0].x).toBe(50)
+      if (reason === 'second finger') {
+        pointer(s, 'pointerdown', 180, 100, { pointerId: 2 })
+        pointer(s, 'pointermove', 200, 140, { pointerId: 2 })
+        pointer(s, 'pointerup', 200, 140, { pointerId: 2 })
+        pointer(s, 'pointermove', 120, 80)
+        pointer(s, 'pointerup', 120, 80)
+      } else if (reason === 'Escape')
+        s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      else if (reason === 'Fit') s.button('Fit diagram').click()
+      else if (reason === 'close') s.editor.destroy()
+      else pointer(s, reason, 80, 70)
+      expect(s.document.session.graph).toEqual(cards())
+      expect(s.document.session.dirty).toBe(false)
+      expect(s.document.session.history.undo).toBe(0)
+      expect(s.publish).not.toHaveBeenCalled()
+    }
+  )
+
+  it('resizes a selected note with a screen-space corner target at zoom', async () => {
+    const graph = cards()
+    graph.nodes[0] = { ...graph.nodes[0], type: 'file', file: 'sample-note.md' }
+    const s = setup(graph)
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 0.5 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointerup', 30, 30)
+    // 18 screen pixels beyond the corner is still within its touch target.
+    pointer(s, 'pointerdown', 148, 98)
+    pointer(s, 'pointermove', 178, 118)
+    pointer(s, 'pointerup', 178, 118)
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+    expect(s.document.session.graph.nodes[0]).toMatchObject({
+      width: 320,
+      height: 200,
+      file: 'sample-note.md',
+    })
+    expect(s.openNode).not.toHaveBeenCalled()
+  })
+
+  it('selects three cards by touch, groups, moves descendants once, ungroups and undoes', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Toggle multiple selection').click()
+    for (const x of [30, 330, 630]) {
+      pointer(s, 'pointerdown', x, 30)
+      pointer(s, 'pointerup', x, 30)
+    }
+    expect([...s.viewer.selection]).toEqual(['alpha', 'beta', 'gamma'])
+    s.button('Group selected cards').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(4))
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.viewer.selection.size).toBe(1)
+    s.button('Toggle multiple selection').click()
+    pointer(s, 'pointerdown', 80, -20)
+    pointer(s, 'pointermove', 130, 20)
+    pointer(s, 'pointerup', 130, 20)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
+    expect(s.document.session.graph.nodes.slice(0, 3).map((n) => [n.x, n.y])).toEqual([
+      [50, 40],
+      [350, 40],
+      [650, 40],
+    ])
+    s.button('Ungroup selected group').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(3))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(4))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].x).toBe(0))
+  })
+
+  it('keeps failed geometry as a visible ordinary human draft and retries it once', async () => {
+    const s = setup(cards())
+    s.publish.mockRejectedValueOnce(new Error('Sample unwritten save failure'))
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    await vi.waitFor(() => expect(s.button('Retry save').disabled).toBe(false))
+    expect(s.document.session.committed.graph.nodes[0].x).toBe(0)
+    expect(s.viewer.graph.nodes[0].x).toBe(50)
+    expect(s.el.textContent).toContain('not saved')
+    expect(s.document.session.history.undo).toBe(0)
+    s.button('Retry save').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.document.session.graph.nodes[0].x).toBe(50)
+    expect(s.document.session.history.undo).toBe(1)
+  })
+  it('does not publish a drag that returns to its start, preserving redo', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.history.redo).toBe(1))
+    s.publish.mockClear()
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointermove', 30, 30)
+    pointer(s, 'pointerup', 30, 30)
+    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.document.session.history).toEqual({ undo: 0, redo: 1 })
+  })
+  it('box-selects by touch and Shift-click toggles without moving or publishing', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Toggle multiple selection').click()
+    pointer(s, 'pointerdown', -30, -30)
+    pointer(s, 'pointermove', 570, 190)
+    pointer(s, 'pointerup', 570, 190)
+    expect([...s.viewer.selection]).toEqual(['alpha', 'beta'])
+    s.button('Toggle multiple selection').click()
+    pointer(s, 'pointerdown', 330, 30, { pointerType: 'mouse', shiftKey: true })
+    pointer(s, 'pointerup', 330, 30, { pointerType: 'mouse', shiftKey: true })
+    expect([...s.viewer.selection]).toEqual(['alpha'])
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.publish).not.toHaveBeenCalled()
+  })
+  it('refuses geometry publication if source changes during the gesture', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    const external = cards()
+    external.nodes[0].text = 'External content'
+    s.document.observe({ graph: external, revision: 'external' })
+    pointer(s, 'pointerup', 80, 70)
+    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.document.session.graph).toEqual(external)
+  })
+})
 
 describe('human canvas editor', () => {
   it('creates a text card and publishes completed text once, never its composition', async () => {

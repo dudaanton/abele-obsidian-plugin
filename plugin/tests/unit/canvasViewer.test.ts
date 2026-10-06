@@ -43,6 +43,82 @@ const make = () => {
   return { viewer, el, sync, dispose }
 }
 describe('canvas viewer controls and lifetime', () => {
+  it('reframes automatic Fit when controls reduce the surface, but preserves explicit cameras', () => {
+    let resized = () => {}
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resized = callback
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+    const { viewer, el } = make()
+    let height = 600
+    Object.defineProperties(viewer.stage, {
+      clientWidth: { value: 390 },
+      clientHeight: { get: () => height },
+    })
+    try {
+      viewer.load(graph())
+      height = 100
+      resized()
+      expect((100 - viewer.camera.y) * viewer.camera.zoom).toBeLessThanOrEqual(100)
+      const camera = { x: 50, y: 60, zoom: 2 }
+      viewer.setCamera(camera)
+      height = 300
+      resized()
+      expect(viewer.camera).toEqual(camera)
+    } finally {
+      viewer.destroy()
+      el.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+  it('does not reframe or cancel a pointer edit when a pending-status row changes surface height', () => {
+    let resized = () => {}
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resized = callback
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+    const { viewer, el } = make()
+    let height = 600
+    Object.defineProperties(viewer.stage, {
+      clientWidth: { value: 390 },
+      clientHeight: { get: () => height },
+    })
+    try {
+      viewer.load(graph())
+      const cancel = vi.fn()
+      viewer.input = { down: () => true, move: () => {}, up: () => {}, cancel, paint: () => {} }
+      viewer.stage.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          pointerId: 1,
+          pointerType: 'touch',
+          clientX: 40,
+          clientY: 40,
+          bubbles: true,
+        })
+      )
+      const camera = { ...viewer.camera }
+      height = 500
+      resized()
+      expect(cancel).not.toHaveBeenCalled()
+      expect(viewer.camera).toEqual(camera)
+    } finally {
+      viewer.destroy()
+      el.remove()
+      vi.unstubAllGlobals()
+    }
+  })
   it('does not paint a second image beneath a live markdown note card', () => {
     const { viewer, el, sync } = make()
     viewer.load(graph())

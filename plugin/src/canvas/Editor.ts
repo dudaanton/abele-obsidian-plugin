@@ -4,6 +4,7 @@ import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
 import { canvasFingerprint } from './core/model'
 import type { CanvasSession, GraphTransform } from './core/session'
 import type { CanvasViewer } from './Viewer'
+import { CanvasInput } from './input'
 
 export interface CanvasEditorDocument {
   session: CanvasSession
@@ -29,7 +30,11 @@ export interface CanvasEditorPorts {
   notice(message: string): void
 }
 export class CanvasEditor {
-  private selected: string | null = null
+  private selected = new Set<string>()
+  private multiple = false
+  private readonly inputAdapter: CanvasInput
+  private geometry: { document: CanvasEditorDocument; generation: number; path: string } | null =
+    null
   private editing: string | null = null
   private ownedDraft: CanvasEditorDocument | null = null
   private composing = false
@@ -73,6 +78,12 @@ export class CanvasEditor {
       if (node) viewer.openNode(node)
     })
     this.button('Delete selected card', 'Delete', () => this.remove())
+    this.button('Toggle multiple selection', 'Select multiple', () => {
+      this.multiple = !this.multiple
+      this.refresh()
+    })
+    this.button('Group selected cards', 'Group', () => this.group())
+    this.button('Ungroup selected group', 'Ungroup', () => this.group(true))
     this.button('Undo canvas change', 'Undo', () => this.history('undo'))
     this.button('Redo canvas change', 'Redo', () => this.history('redo'))
     this.button('Save text', 'Save text', () => this.complete())
@@ -89,9 +100,40 @@ export class CanvasEditor {
       this.refresh()
     })
     this.listen(this.text, 'input', () => this.input())
+    this.inputAdapter = new CanvasInput(viewer, {
+      enabled: () => this.canGesture(),
+      selection: () => this.selected,
+      select: (ids) => {
+        this.selected = ids
+        this.refresh()
+      },
+      multiple: () => this.multiple,
+      begin: () => {
+        try {
+          const document = this.ready()
+          this.geometry = {
+            document,
+            generation: document.session.generation,
+            path: document.file.path,
+          }
+          document.beginDraft()
+          this.geometry.generation = document.session.generation
+          return true
+        } catch (error) {
+          this.geometry = null
+          this.fail(error)
+          return false
+        }
+      },
+      valid: () => this.validGeometry(),
+      complete: (ops) => {
+        void this.completeGeometry(ops).catch((error) => this.fail(error))
+      },
+      cancel: () => this.cancelGeometry(),
+    })
     viewer.onSelect = (node) => {
       if (this.editing || this.waiting) return
-      this.selected = node?.id ?? null
+      this.selected = new Set(node ? [node.id] : [])
       this.refresh()
     }
     viewer.onEditorKey = (event) => this.key(event)
@@ -128,7 +170,49 @@ export class CanvasEditor {
     this.refresh()
   }
   private node() {
-    return this.ports.document()?.session.graph.nodes.find((node) => node.id === this.selected)
+    return this.selected.size === 1
+      ? this.ports.document()?.session.graph.nodes.find((node) => this.selected.has(node.id))
+      : undefined
+  }
+  private canGesture(): boolean {
+    const document = this.ports.document()
+    return (
+      !!document &&
+      !this.editing &&
+      !this.waiting &&
+      !this.destroyed &&
+      !document.state.native &&
+      !document.error &&
+      ((!document.session.busy && !document.session.dirty) || this.validGeometry())
+    )
+  }
+  private validGeometry(): boolean {
+    const g = this.geometry
+    return (
+      !!g &&
+      this.ports.document() === g.document &&
+      g.path === g.document.file.path &&
+      g.generation === g.document.session.generation &&
+      !g.document.session.conflict &&
+      !g.document.state.native &&
+      !g.document.error
+    )
+  }
+  private cancelGeometry(): void {
+    const g = this.geometry
+    this.geometry = null
+    if (g?.document.session.draft?.active) g.document.discardDraft()
+  }
+  private async completeGeometry(ops: CanvasOperation[]): Promise<void> {
+    const g = this.geometry
+    if (!this.validGeometry()) {
+      this.cancelGeometry()
+      return
+    }
+    this.geometry = null
+    this.update(g.document, ops)
+    g.document.finishDraft()
+    await this.saving(() => this.ports.publish())
   }
   private ready(): CanvasEditorDocument {
     const document = this.ports.document()
@@ -165,7 +249,7 @@ export class CanvasEditor {
     this.update(document, [
       { op: 'add_node', node: { id, kind: 'text', label: '', ...this.location() } },
     ])
-    this.selected = id
+    this.selected = new Set([id])
     this.showText(id)
   }
   private showText(id: string): void {
@@ -285,18 +369,35 @@ export class CanvasEditor {
       document.beginDraft()
       this.update(document, [{ op: 'add_node', node }])
       document.finishDraft()
-      this.selected = node.id
+      this.selected = new Set([node.id])
       await this.ports.publish()
     })
   }
   private async remove(): Promise<void> {
+    const document = this.ready()
+    if (!this.selected.size) return
+    document.beginDraft()
+    this.update(
+      document,
+      [...this.selected].map((id) => ({ op: 'remove', id }))
+    )
+    document.finishDraft()
+    this.selected.clear()
+    await this.saving(() => this.ports.publish())
+  }
+  private async group(ungroup = false): Promise<void> {
     const document = this.ready(),
       node = this.node()
-    if (!node) return
+    if (ungroup ? node?.type !== 'group' : this.selected.size < 2) return
+    const id = ungroup ? node.id : nanoid()
     document.beginDraft()
-    this.update(document, [{ op: 'remove', id: node.id }])
+    this.update(document, [
+      ungroup
+        ? { op: 'ungroup', id }
+        : { op: 'group', id, label: 'Group', ids: [...this.selected] },
+    ])
     document.finishDraft()
-    this.selected = null
+    this.selected = new Set(ungroup ? [] : [id])
     await this.saving(() => this.ports.publish())
   }
   private async history(direction: 'undo' | 'redo'): Promise<void> {
@@ -334,6 +435,7 @@ export class CanvasEditor {
     const document = this.ports.document()
     if (!document) return !this.waiting
     if (this.waiting || this.composing) return false
+    this.inputAdapter.cancel()
     if (this.editing) this.keep()
     if (document.session.busy) {
       this.ports.notice('Another canvas edit is active; finish it before opening native Canvas')
@@ -369,11 +471,13 @@ export class CanvasEditor {
   }
   refresh(): void {
     if (this.destroyed) return
+    this.inputAdapter?.validate()
     const document = this.ports.document(),
       session = document?.session,
       node = this.node()
-    if (this.selected && !node) this.selected = null
-    this.viewer.selection = new Set(this.selected ? [this.selected] : [])
+    const ids = new Set(session?.graph.nodes.map((node) => node.id))
+    this.selected = new Set([...this.selected].filter((id) => ids.has(id)))
+    this.viewer.selection = this.selected
     this.viewer.draw()
     const active = !!this.editing,
       blocked =
@@ -399,7 +503,13 @@ export class CanvasEditor {
       !!session?.publicationOutcome
     this.buttons.get('Open selected card').disabled =
       active || !node || !['file', 'link'].includes(node.type)
-    this.buttons.get('Delete selected card').disabled = blocked || !node
+    this.buttons.get('Delete selected card').disabled = blocked || !this.selected.size
+    this.buttons.get('Toggle multiple selection').disabled = blocked
+    this.buttons
+      .get('Toggle multiple selection')
+      .setAttribute('aria-pressed', String(this.multiple))
+    this.buttons.get('Group selected cards').disabled = blocked || this.selected.size < 2
+    this.buttons.get('Ungroup selected group').disabled = blocked || node?.type !== 'group'
     for (const direction of ['undo', 'redo'] as const)
       this.buttons.get(
         direction === 'undo' ? 'Undo canvas change' : 'Redo canvas change'
@@ -425,19 +535,23 @@ export class CanvasEditor {
     discard.hidden = !session?.dirty || !!document?.recovery || !!session?.publicationOutcome
     discard.disabled =
       this.waiting || this.composing || (!!session?.busy && this.ownedDraft !== document)
-    this.status.textContent = session?.dirty
-      ? 'Unsaved canvas work — retained in memory only; not saved. Reloading or crashing can lose it.' +
-        (session.conflict || (document.draftPath && document.draftPath !== document.file.path)
-          ? ' The source changed; retry is blocked. Keep or explicitly discard this local draft.'
-          : '') +
-        (!document.draftPath && !document.recovery && !session.publicationOutcome
-          ? ' Discard this local history preview before trying Undo or Redo again.'
-          : '')
-      : this.waiting
-        ? 'Canvas operation in progress…'
-        : this.selected
-          ? `Selected ${node?.type ?? 'card'}`
-          : ''
+    this.status.textContent = this.geometry
+      ? 'Moving or resizing selection…'
+      : session?.dirty
+        ? 'Unsaved canvas work — retained in memory only; not saved. Reloading or crashing can lose it.' +
+          (session.conflict || (document.draftPath && document.draftPath !== document.file.path)
+            ? ' The source changed; retry is blocked. Keep or explicitly discard this local draft.'
+            : '') +
+          (!document.draftPath && !document.recovery && !session.publicationOutcome
+            ? ' Discard this local history preview before trying Undo or Redo again.'
+            : '')
+        : this.waiting
+          ? 'Canvas operation in progress…'
+          : this.selected.size
+            ? this.selected.size === 1
+              ? `Selected ${node?.type ?? 'card'}`
+              : `${this.selected.size} cards selected`
+            : ''
   }
   private key(event: KeyboardEvent): boolean {
     if (
@@ -447,6 +561,13 @@ export class CanvasEditor {
       (event.target instanceof Element && event.target.closest('button'))
     )
       return false
+    if (event.key === 'Escape' && this.viewer.step === null) {
+      this.inputAdapter.cancel()
+      this.selected.clear()
+      this.refresh()
+      event.preventDefault()
+      return true
+    }
     const command = event.metaKey || event.ctrlKey
     let label: string
     if (command && event.key.toLowerCase() === 'z')
@@ -462,6 +583,7 @@ export class CanvasEditor {
   }
   destroy(): void {
     if (this.destroyed) return
+    this.inputAdapter.destroy()
     // Closing is not publication. Let the registry retain the now-inactive draft for reopening.
     if (this.ownedDraft === this.ports.document() && this.ownedDraft?.session.draft?.active)
       this.ownedDraft.finishDraft()

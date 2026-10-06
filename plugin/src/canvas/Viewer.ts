@@ -1,4 +1,4 @@
-/** Read-only DOM viewer. All vault, theme, markdown and file-opening behavior comes through ports. */
+/** DOM viewer with an optional editor input adapter; vault and rendering behavior comes through ports. */
 import { fitRect, panBy, toWorld, visibleRect, zoomAt, type Camera } from '../drawing/camera'
 import { guardSurface } from '../reader/ink/inkGuard'
 import { emptyCanvas, overlaps, type CanvasGraph, type CanvasNode, type Rect } from './core/model'
@@ -30,6 +30,13 @@ export interface CanvasViewerPorts {
   cards: ViewerCards
   openNode(node: CanvasNode): void
 }
+export interface CanvasViewerInput {
+  down(event: PointerEvent): boolean
+  move(event: PointerEvent): void
+  up(event: PointerEvent): void
+  cancel(): void
+  paint(): void
+}
 export class CanvasViewer {
   readonly stage: HTMLElement
   readonly canvas: HTMLCanvasElement
@@ -41,6 +48,7 @@ export class CanvasViewer {
   selection: ReadonlySet<string> = new Set()
   onSelect?: (node: CanvasNode | null) => void
   onEditorKey?: (event: KeyboardEvent) => boolean
+  input?: CanvasViewerInput
   openNode(node: CanvasNode): void {
     this.ports.openNode(node)
   }
@@ -59,6 +67,7 @@ export class CanvasViewer {
   private abort: AbortController | null = null
   private fitted = false
   private pendingFocus: Rect | null = null
+  private framedRegion: Rect | null = null
   private pointers = new Map<number, { x: number; y: number }>()
   private gesture: {
     x: number
@@ -67,6 +76,7 @@ export class CanvasViewer {
     multi: boolean
     touch: boolean
     camera: Camera
+    editing: boolean
   } | null = null
   private error = ''
 
@@ -115,11 +125,13 @@ export class CanvasViewer {
     this.listen(this.stage, 'pointermove', (e) => this.move(e as PointerEvent))
     this.listen(this.stage, 'pointerup', (e) => this.up(e as PointerEvent, false))
     this.listen(this.stage, 'pointercancel', (e) => this.up(e as PointerEvent, true))
+    this.listen(this.stage, 'lostpointercapture', (e) => this.up(e as PointerEvent, true))
     this.listen(this.stage, 'wheel', (e) => this.wheel(e as WheelEvent), { passive: false })
     this.resize = new ResizeObserver(() => {
       if (this.stage.clientWidth && this.stage.clientHeight && this.pendingFocus)
         this.focusRegion(this.pendingFocus, false)
       else if (!this.fitted && this.stage.clientWidth && this.stage.clientHeight) this.fit(false)
+      else if (this.framedRegion) this.focusRegion(this.framedRegion, false)
       else this.draw()
     })
     this.resize.observe(this.stage)
@@ -138,6 +150,7 @@ export class CanvasViewer {
     if (reset) {
       this.fitted = false
       this.pendingFocus = null
+      this.framedRegion = null
     }
     this.graph = graph
     this.error = ''
@@ -167,6 +180,7 @@ export class CanvasViewer {
   }
   go(number: number | null, animate = true): void {
     if (this.destroyed) return
+    this.cancelInput()
     if (number !== null && (!Number.isInteger(number) || number < 1 || number > this.steps.length))
       return
     this.step = number
@@ -189,6 +203,7 @@ export class CanvasViewer {
     this.el.dataset.step = this.step === null ? 'all' : String(this.step)
   }
   fit(animate = true): void {
+    this.cancelInput()
     let region: Rect
     try {
       region = this.scene().region
@@ -206,6 +221,8 @@ export class CanvasViewer {
     this.focusRegion(region, animate)
   }
   focusRegion(region: Rect, animate = false): void {
+    this.cancelInput()
+    this.framedRegion = { ...region }
     this.pendingFocus = { ...region }
     const width = this.stage.clientWidth,
       height = this.stage.clientHeight
@@ -245,7 +262,9 @@ export class CanvasViewer {
     this.animation = win.requestAnimationFrame(frame)
   }
   setCamera(camera: Camera): void {
+    this.cancelInput()
     this.pendingFocus = null
+    this.framedRegion = null
     this.stopAnimation()
     this.camera = { ...camera }
     this.fitted = true
@@ -303,6 +322,7 @@ export class CanvasViewer {
       lint: false,
       skipCards: true,
     })
+    this.input?.paint()
     const key = scene.graph.nodes
       .filter((n) => overlaps(n, region))
       .map((n) => n.id)
@@ -347,6 +367,7 @@ export class CanvasViewer {
     if (e.button !== 0 && e.pointerType === 'mouse') return
     e.stopPropagation()
     this.stopAnimation()
+    this.framedRegion = null
     if (e.pointerType === 'mouse') this.el.focus({ preventScroll: true })
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (!this.gesture)
@@ -357,8 +378,12 @@ export class CanvasViewer {
         multi: false,
         touch: e.pointerType !== 'mouse',
         camera: { ...this.camera },
+        editing: this.step === null && !!this.input?.down(e),
       }
-    else this.gesture.multi = true
+    else {
+      this.gesture.multi = true
+      this.input?.cancel()
+    }
     try {
       this.stage.setPointerCapture(e.pointerId)
     } catch {
@@ -369,6 +394,12 @@ export class CanvasViewer {
     const was = this.pointers.get(e.pointerId)
     if (!was) return
     e.stopPropagation()
+    if (this.gesture?.editing && !this.gesture.multi) {
+      this.input?.move(e)
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      return
+    }
+    this.framedRegion = null
     const other = [...this.pointers.entries()].find(([id]) => id !== e.pointerId)?.[1]
     const rect = this.stage.getBoundingClientRect()
     if (other) {
@@ -395,9 +426,17 @@ export class CanvasViewer {
     e.stopPropagation()
     this.pointers.delete(e.pointerId)
     const gesture = this.gesture
+    if (cancel) {
+      this.input?.cancel()
+      if (gesture) gesture.multi = true
+    }
     if (this.pointers.size || !gesture) return
     this.gesture = null
     if (cancel || gesture.multi) return
+    if (gesture.editing) {
+      this.input?.up(e)
+      return
+    }
     const dx = e.clientX - gesture.x,
       dy = e.clientY - gesture.y
     if (
@@ -424,7 +463,13 @@ export class CanvasViewer {
     else if (node && (node.type === 'file' || node.type === 'link')) this.ports.openNode(node)
     else if (this.step !== null) this.advance(1)
   }
+  private cancelInput(): void {
+    this.input?.cancel()
+    if (this.gesture) this.gesture.multi = true
+  }
   private wheel(e: WheelEvent): void {
+    this.cancelInput()
+    this.framedRegion = null
     e.preventDefault()
     e.stopPropagation()
     this.stopAnimation()
@@ -442,6 +487,7 @@ export class CanvasViewer {
   }
   destroy(): void {
     if (this.destroyed) return
+    this.cancelInput()
     this.destroyed = true
     this.abort?.abort()
     this.resize.disconnect()

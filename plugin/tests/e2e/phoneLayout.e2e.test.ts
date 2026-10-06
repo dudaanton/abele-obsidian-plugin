@@ -129,6 +129,8 @@ interface Screen {
   tabFocus?: { label: string; level: string; outside: boolean; clipped: string[] }[]
   /** The root's height as a share of the window's. */
   fill: number
+  handles?: number[][]
+  canvasFits?: boolean
   /** Where the picture went. */
   shot: string
   error: string
@@ -1138,7 +1140,12 @@ const probeScript = `(async () => {
     // Human canvas controls and native Obsidian pickers at the same phone width.
     {
       const reference = await app.vault.create('Phone probe/sample-reference.md', 'Sample note on a canvas.')
-      const file = await app.vault.create('Phone probe/sample-editor.canvas', JSON.stringify({nodes:[{id:'sample-reference',type:'file',file:reference.path,x:0,y:0,width:220,height:140}],edges:[]}))
+      const file = await app.vault.create('Phone probe/sample-editor.canvas', JSON.stringify({nodes:[
+        {id:'alpha',type:'text',text:'First concept',x:0,y:0,width:200,height:140},
+        {id:'beta',type:'text',text:'Second concept',x:280,y:0,width:200,height:140},
+        {id:'gamma',type:'text',text:'Third concept',x:0,y:220,width:200,height:140},
+        {id:'sample-reference',type:'file',file:reference.path,x:280,y:220,width:220,height:140}
+      ],edges:[]}))
       SEEDED.push(file.path, reference.path)
       const leaf = app.workspace.getLeaf('tab')
       try {
@@ -1147,6 +1154,28 @@ const probeScript = `(async () => {
         await until(()=>leaf.view.editor,5000)
         const root=leaf.view.contentEl
         await screen('canvas editor',root,root)
+        {const v=leaf.view.viewer,c=v.camera;report['canvas editor'].canvasFits=v.graph.nodes.every(n=>
+          (n.x-c.x)*c.zoom>=0&&(n.y-c.y)*c.zoom>=0&&
+          (n.x+n.width-c.x)*c.zoom<=v.stage.clientWidth&&
+          (n.y+n.height-c.y)*c.zoom<=v.stage.clientHeight)}
+        // Layout inventory only; actual mouse/touch acceptance is in canvasGeometry.
+        const select=id=>{
+          const viewer=leaf.view.viewer,n=viewer.graph.nodes.find(n=>n.id===id),c=viewer.camera,r=viewer.stage.getBoundingClientRect()
+          const init={pointerId:1,pointerType:'touch',clientX:r.left+(n.x+n.width/2-c.x)*c.zoom,clientY:r.top+(n.y+n.height/2-c.y)*c.zoom,bubbles:true}
+          for(const type of ['pointerdown','pointerup'])viewer.stage.dispatchEvent(new PointerEvent(type,init))
+        }
+        select('alpha');await wait(100)
+        await screen('canvas selection',root,root)
+        report['canvas selection'].handles=[...root.querySelectorAll('.abele-canvas-resize-handle')].map(el=>{const r=el.getBoundingClientRect();return [r.width,r.height]})
+        root.querySelector('[aria-label="Toggle multiple selection"]').click()
+        select('beta');select('gamma')
+        root.querySelector('[aria-label="Group selected cards"]').click()
+        await until(()=>!leaf.view.documentLease.document.session.dirty,5000)
+        root.querySelector('[aria-label="Fit diagram"]').click();await wait(350)
+        await screen('canvas group',root,root)
+        report['canvas group'].clipped=[]
+        for(const field of root.querySelectorAll('button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas group'].clipped.push(...ringClipped(field));field.blur()}
+        root.querySelector('[aria-label="Toggle multiple selection"]').click()
         root.querySelector('[aria-label="Add note or attachment"]').click()
         await until(()=>document.querySelector('.prompt'),5000)
         await screen('canvas file picker',document.querySelector('.prompt'))
@@ -1481,6 +1510,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'map location',
     'word document',
     'canvas editor',
+    'canvas selection',
+    'canvas group',
     'canvas file picker',
     'canvas link input',
     'canvas text draft',
@@ -1514,12 +1545,21 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(screen?.attachment).toBe(true)
   })
 
+  it('canvas editor: initially frames the diagram after its controls take space', () => {
+    expect(report['canvas editor']?.canvasFits).toBe(true)
+  })
+
+  it('canvas selection: all four corner targets remain touch-sized at phone width', () => {
+    expect(report['canvas selection']?.handles).toEqual(Array.from({ length: 4 }, () => [44, 44]))
+  })
+
   it.each([
     'canvas link input',
     'canvas text draft',
     'canvas native handoff',
     'canvas draft discard',
     'canvas creation',
+    'canvas group',
   ])('%s: every field and action keeps its focus ring', (label) => {
     expect(report[label]?.clipped ?? ['no report']).toEqual([])
   })

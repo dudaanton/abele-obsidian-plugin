@@ -144,9 +144,8 @@ steps default to Ask. Reading and inspecting pictures default to On, within the 
 viewer by default; **Settings → Abele → Other → Open canvases in Abele** chooses the default.
 **Open in Obsidian Canvas** in the viewer's header returns that tab to the native editor and
 keeps it there. A file's context menu offers **Open in Abele** to return to the viewer. The
-viewer now lets you create and edit cards by hand. Moving or resizing cards still happens in
-native Canvas or through the agent. Viewing, panning and playing steps never save changes into
-the diagram.
+viewer lets you create, edit, move, resize and group cards by hand. Viewing, panning and
+playing steps never save changes into the diagram.
 
 Abele's **New canvas** in the command palette, or **New Abele canvas** in a folder's menu,
 creates an empty diagram. Its
@@ -154,6 +153,20 @@ bar offers **Text**, **File** (an Obsidian picker for a note or attachment), and
 address). New cards appear near the centre of the current view. Tap a card to select it; **Edit
 text** edits a text card, while **Open** opens a linked note, attachment or web page separately.
 Editing a text card never edits the contents of a linked note.
+
+Drag a card with the mouse or one finger to move it. A selected card has four corner handles;
+drag a corner to resize it without changing the linked note's contents. The touch targets stay
+large even after zooming. Shift-click adds or removes cards from a selection. On a phone,
+**Select multiple** does the same with taps; turn it off to drag the selected cards together.
+Drag a box on empty space while selecting multiple cards to select everything wholly inside.
+**Group** wraps the selected cards; drag the group's empty background to move it and all its
+nested cards once. **Ungroup** removes only the frame. Resizing a group changes its frame,
+not the size of its contents. Delete removes the selection; deleting a group alone keeps its cards.
+
+Each finished drag or resize is one shared undo item. Until release the geometry is only a
+preview; an agent or another tab cannot publish over the active gesture. Escape, a cancelled
+touch, or Fit cancels the preview. Adding a second finger cancels a card move or resize and
+switches to pan/pinch, without saving an accidental move. Drag empty space to pan as before.
 
 **Save text** completes one change, including creating a new text card. Until then, typing and
 IME composition are drafts, not writes. **Keep draft** leaves the text unsaved in this running
@@ -165,7 +178,7 @@ and Ctrl or ⌘+Z / Shift+Z undo and redo. Inside fields those keys belong to th
 Two Abele tabs share the same content and history, but keep their own selection and camera;
 an active text edit prevents another tab or agent from publishing over it.
 
-A failed save keeps the text visible and explicitly marked unsaved. **Retry save** is available
+A failed save keeps the changed text or geometry visible and explicitly marked unsaved. **Retry save** is available
 only when the write is known not to have happened and the original source is unchanged. Source
 changes or renaming the canvas block retry; there is no whole-draft overwrite of newer content.
 **Discard draft…** asks before forgetting only local unsaved work, without restoring the file.
