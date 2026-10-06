@@ -6,6 +6,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { renderDataTemplate as renderTemplate } from './dataTemplate'
 import { getFolderFromPath } from '@/helpers/pathsHelpers'
 import { UserTemplate } from './UserTemplate'
+import { prepareTemplate } from './TemplateTrust'
 import { parseTemplateVariables, applyTemplateVariables } from './TemplateParser'
 import { dumpCalendarYaml as dump, loadCalendarYaml as load } from '@/helpers/yamlDates'
 
@@ -68,12 +69,13 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
         const template = UserTemplate.fromFile(templateFile)
         if (template) {
           // Get body with template props stripped (template_for → type, template_for_* stripped)
-          let body = await template.getBody()
+          const prepared = await prepareTemplate(template)
+          let body = prepared.body
 
           // Apply template variables ({{ date }}, {{ date.format(...) }}, etc.)
           const { variables } = parseTemplateVariables(body)
           const userValues = new Map<string, string>()
-          body = await applyTemplateVariables(body, variables, userValues)
+          body = await applyTemplateVariables(body, variables, userValues, prepared.allowed)
 
           // Apply target properties (template_for_date → date in frontmatter)
           const data: Record<string, string> = {

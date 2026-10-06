@@ -3,7 +3,7 @@ import { load } from 'js-yaml'
 import { UserTemplate } from '@/templates/UserTemplate'
 import { TemplateService } from '@/templates/TemplateService'
 import { getNoteRawFrontmatter } from '@/helpers/notesUtils'
-import { templateHarness } from '../helpers/templateHarness'
+import { confirmTemplate, templateHarness } from '../helpers/templateHarness'
 
 beforeEach(() => {
   vi.spyOn(console, 'debug').mockImplementation(() => {})
@@ -236,6 +236,7 @@ describe('applying a template', () => {
       template_for_keep: 'true',
       callbacks: 'command:first;command:broken;command:last',
     })
+    await confirmTemplate(template)
     const seen: string[] = []
     env.commands.executeCommandById.mockImplementation(async (id) => {
       seen.push(id)
@@ -263,6 +264,7 @@ describe('applying a template', () => {
       template_for_extra: 'value',
       callbacks: 'command:sample',
     })
+    await confirmTemplate(template)
     env.app.resetStats()
     expect(await service().insertTemplateAtCursor(template, new Map([['name', 'reader']]))).toBe(
       'Hello reader'
@@ -295,10 +297,11 @@ describe('applying a template', () => {
   it('guards automatic application without changing explicit default replacement', async () => {
     const env = templateHarness([{ path: 'sample.md', content: 'Existing' }])
     const file = env.app.vault.getFileByPath('sample.md')!
-    await env.template('Default body', {
+    const template = await env.template('Default body', {
       template_for: 'default',
       callbacks: 'command:sample',
     })
+    await confirmTemplate(template)
     expect(await service().applyDefaultTemplate(file, true)).toBe(false)
     expect(await env.app.vault.read(file)).toBe('Existing')
     expect(env.commands.executeCommandById).not.toHaveBeenCalled()

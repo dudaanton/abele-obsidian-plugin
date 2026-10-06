@@ -151,9 +151,8 @@ export class UserTemplate {
   /**
    * Get template body with template-specific properties removed from frontmatter
    */
-  async getBody(): Promise<string> {
-    const content = await this.getContent()
-    return this.stripTemplateProperties(content)
+  async getBody(content?: string): Promise<string> {
+    return this.stripTemplateProperties(content ?? (await this.getContent()))
   }
 
   /**

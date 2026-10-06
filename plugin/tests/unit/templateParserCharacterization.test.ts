@@ -6,8 +6,11 @@ import {
   type TemplateVariable,
 } from '@/templates/TemplateParser'
 import { useVault } from '../helpers/testEnv'
+import { ScriptTrust, sha256 } from '@/scripting/ScriptTrust'
 
 async function render(text: string, values: Record<string, string> = {}) {
+  // These characterize approved rendering; the unapproved paths have separate gate tests.
+  ScriptTrust.forTemplates().confirm({ path: '', hash: await sha256(text), text })
   return applyTemplateVariables(
     text,
     parseTemplateVariables(text).variables,

@@ -35,6 +35,8 @@ import {
 
 /** Where the state is kept, by `App.saveLocalStorage` — per vault, on this device. */
 export const TRUST_KEY = 'abele-script-trust'
+/** Template approvals use the same records, separately from the optional script switch. */
+export const TEMPLATE_TRUST_KEY = 'abele-template-trust'
 
 /** The SHA-256 of a text, in hex. Not a shorter hash: a collision would pass foreign code. */
 export async function sha256(text: string): Promise<string> {
@@ -84,6 +86,15 @@ const memory: LocalStore = {
 
 export class ScriptTrust {
   private static instance: ScriptTrust | null = null
+  private static templates: ScriptTrust | null = null
+
+  /** Templates always require explicit approval; neither local writes nor a script switch approve them. */
+  static forTemplates(): ScriptTrust {
+    if (!this.templates) this.templates = new ScriptTrust(TEMPLATE_TRUST_KEY)
+    return this.templates
+  }
+
+  private constructor(private readonly key = TRUST_KEY) {}
 
   static getInstance(): ScriptTrust {
     if (!this.instance) this.instance = new ScriptTrust()
@@ -93,6 +104,7 @@ export class ScriptTrust {
   /** For tests: drop what was read, so the next look reads the store again. */
   static reset(): void {
     this.instance = null
+    this.templates = null
     memoryMap.clear()
   }
 
@@ -102,14 +114,17 @@ export class ScriptTrust {
   private state: TrustState | null = null
 
   private get current(): TrustState {
-    if (!this.state) this.state = trustStateFrom(localStore().load(TRUST_KEY))
+    if (!this.state) {
+      this.state = trustStateFrom(localStore().load(this.key))
+      if (this.key === TEMPLATE_TRUST_KEY) this.state.armed = true
+    }
     return this.state
   }
 
   private put(next: TrustState): void {
     if (sameTrust(next, this.current)) return
     this.state = next
-    localStore().save(TRUST_KEY, next.armed || next.declined ? next : null)
+    localStore().save(this.key, next.armed || next.declined ? next : null)
     this.version.value++
   }
 

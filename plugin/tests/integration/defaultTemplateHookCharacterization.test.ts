@@ -5,7 +5,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { gate } from '../helpers/taskHarness'
 import { configureAbele, dailyJournal } from '../helpers/testEnv'
-import { templateHarness } from '../helpers/templateHarness'
+import { confirmTemplate, templateHarness } from '../helpers/templateHarness'
+import { TemplateService } from '@/templates/TemplateService'
 
 const enabledSteps = vi.hoisted(() => ({ workspaceEvents: false }))
 
@@ -155,6 +156,7 @@ describe('default template on newly created notes', () => {
       template_for: 'default',
       callbacks: 'command:sample',
     })
+    await confirmTemplate(TemplateService.getInstance().getDefaultTemplate()!)
     const reading = gate()
     const resume = gate()
     const read = env.app.vault.read.bind(env.app.vault)

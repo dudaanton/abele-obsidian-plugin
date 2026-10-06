@@ -69,6 +69,8 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'template-review',
+  'template-review-change',
   'slide-network',
   'reply-revision',
   'reply-original',

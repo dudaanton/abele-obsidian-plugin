@@ -14,6 +14,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import { destinationFixture } from './destinationFixture'
+import { reviewScript } from '@/scripting/reviewScript'
 
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
@@ -107,6 +108,26 @@ function mountAlone(component: Component, props: Record<string, unknown> = {}): 
  * own openers; the chat's two dialogs open from the chat.
  */
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  'template-review': () => {
+    void reviewScript(GlobalStore.getInstance().app, {
+      template: {
+        name: 'Sample command template',
+        path: 'Templates/sample-command.md',
+        source:
+          '---\ntype: template\ntemplate_for: sample\ncallbacks: command:sample:run\n---\n# {{Title}}\n\n{{sample;convert;Input}}',
+      },
+    })
+  },
+  'template-review-change': () => {
+    void reviewScript(GlobalStore.getInstance().app, {
+      template: {
+        name: 'Sample command template',
+        path: 'Templates/sample-command.md',
+        source: '---\ncallbacks: command:sample:changed\n---\n# Changed sample body',
+      },
+      previous: '---\ncallbacks: command:sample:run\n---\n# Sample body',
+    })
+  },
   'slide-network': () => {
     const app = GlobalStore.getInstance().app
     const path = 'sample-network-probe.md'

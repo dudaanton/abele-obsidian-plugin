@@ -399,6 +399,7 @@ import { ChatService, type PendingInput } from '@/ai/ChatService'
 import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
+import { allowTemplateExecution } from '@/templates/TemplateTrust'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import type { MessageComment } from '@/ai/types'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
@@ -860,6 +861,7 @@ const openNotesMenu = (evt: MouseEvent) => {
 }
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')
+let pendingPromptAllowsMethods = false
 const pendingPromptAllVars = ref<TemplateVariable[]>([])
 const pendingPromptUserVars = ref<TemplateVariable[]>([])
 
@@ -1851,6 +1853,12 @@ const onPromptSelected = async (file: TFile) => {
   const content = await app.vault.read(file)
   const body = content.replace(/^---[\s\S]*?---\n?/, '')
   const { variables, userVariables } = parseTemplateVariables(body)
+  pendingPromptAllowsMethods = await allowTemplateExecution(
+    file.path,
+    file.basename,
+    content,
+    variables.some((v) => v.type === 'plugin')
+  )
 
   if (userVariables.length > 0) {
     pendingPromptContent.value = body
@@ -1858,7 +1866,12 @@ const onPromptSelected = async (file: TFile) => {
     pendingPromptUserVars.value = userVariables
     variablesModalOpen.value = true
   } else {
-    const resolved = await applyTemplateVariables(body, variables, new Map())
+    const resolved = await applyTemplateVariables(
+      body,
+      variables,
+      new Map(),
+      pendingPromptAllowsMethods
+    )
     chatInput.value?.setText(resolved.trim())
   }
 }
@@ -1868,7 +1881,8 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
   const resolved = await applyTemplateVariables(
     pendingPromptContent.value,
     pendingPromptAllVars.value,
-    values
+    values,
+    pendingPromptAllowsMethods
   )
   chatInput.value?.setText(resolved.trim())
 }

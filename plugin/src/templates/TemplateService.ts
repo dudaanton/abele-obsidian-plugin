@@ -6,6 +6,7 @@ import { parseTemplateVariables, applyTemplateVariables, TemplateVariable } from
 import { getAvailablePath, getEditorForFile } from '@/helpers/vaultUtils'
 import { getFolderFromPath } from '@/helpers/pathsHelpers'
 import { ensureVaultFolder } from '@/helpers/vaultFolders'
+import { prepareTemplate } from './TemplateTrust'
 
 /** Wrap value in quotes if it contains a colon (breaks YAML), but leave wikilinks and arrays as-is */
 function escapeFrontmatterValue(value: string): string {
@@ -151,24 +152,24 @@ export class TemplateService {
     signal?: AbortSignal
   ): Promise<TFile> {
     signal?.throwIfAborted()
-    // Get template body
-    const body = await template.getBody()
+    // One snapshot and approval for body, properties, paths and callbacks.
+    const { body, allowed } = await prepareTemplate(template)
 
     // Parse and apply variables
     const { variables } = parseTemplateVariables(body)
-    let content = await applyTemplateVariables(body, variables, userValues)
+    let content = await applyTemplateVariables(body, variables, userValues, allowed)
 
     // Apply target properties (template_prop_* -> frontmatter)
-    content = await this.applyTargetProperties(content, template, variables, userValues)
+    content = await this.applyTargetProperties(content, template, variables, userValues, allowed)
 
     // Determine target path
-    const targetPath = await this.resolveTargetPath(template, userValues)
+    const targetPath = await this.resolveTargetPath(template, userValues, allowed)
 
     // Create file
     const file = await this.createFileWithPath(targetPath, content, signal)
 
     // Execute callbacks
-    await this.executeCallbacks(template.callbacks, signal)
+    if (allowed) await this.executeCallbacks(template.callbacks, signal)
 
     return file
   }
@@ -183,15 +184,15 @@ export class TemplateService {
   ): Promise<void> {
     const { app } = GlobalStore.getInstance()
 
-    const body = await template.getBody()
+    const { body, allowed } = await prepareTemplate(template)
     const { variables } = parseTemplateVariables(body)
-    let content = await applyTemplateVariables(body, variables, userValues)
+    let content = await applyTemplateVariables(body, variables, userValues, allowed)
 
     // Apply target properties
-    content = await this.applyTargetProperties(content, template, variables, userValues)
+    content = await this.applyTargetProperties(content, template, variables, userValues, allowed)
 
     await app.vault.modify(targetFile, content)
-    await this.executeCallbacks(template.callbacks)
+    if (allowed) await this.executeCallbacks(template.callbacks)
   }
 
   /**
@@ -201,11 +202,11 @@ export class TemplateService {
     template: UserTemplate,
     userValues: Map<string, string>
   ): Promise<string> {
-    const body = await template.getBody()
+    const { body, allowed } = await prepareTemplate(template)
     const { variables } = parseTemplateVariables(body)
-    const content = await applyTemplateVariables(body, variables, userValues)
+    const content = await applyTemplateVariables(body, variables, userValues, allowed)
 
-    await this.executeCallbacks(template.callbacks)
+    if (allowed) await this.executeCallbacks(template.callbacks)
 
     return content
   }
@@ -219,7 +220,7 @@ export class TemplateService {
     const defaultTemplate = this.getDefaultTemplate()
     if (!defaultTemplate) return false
 
-    const body = await defaultTemplate.getBody()
+    const { body, allowed } = await prepareTemplate(defaultTemplate)
     const { variables, userVariables } = parseTemplateVariables(body)
 
     // Automatic application cannot ask for input, including in target-only properties.
@@ -231,10 +232,16 @@ export class TemplateService {
       return false
     }
 
-    let content = await applyTemplateVariables(body, variables, new Map())
+    let content = await applyTemplateVariables(body, variables, new Map(), allowed)
 
     // Apply target properties
-    content = await this.applyTargetProperties(content, defaultTemplate, variables, new Map())
+    content = await this.applyTargetProperties(
+      content,
+      defaultTemplate,
+      variables,
+      new Map(),
+      allowed
+    )
 
     const { app: vaultApp } = GlobalStore.getInstance()
     if (onlyIfEmpty) {
@@ -250,7 +257,7 @@ export class TemplateService {
       await vaultApp.vault.modify(file, content)
     }
 
-    await this.executeCallbacks(defaultTemplate.callbacks)
+    if (allowed) await this.executeCallbacks(defaultTemplate.callbacks)
 
     return true
   }
@@ -263,7 +270,8 @@ export class TemplateService {
     content: string,
     template: UserTemplate,
     variables: TemplateVariable[],
-    userValues: Map<string, string>
+    userValues: Map<string, string>,
+    allowed: boolean
   ): Promise<string> {
     if (template.targetProperties.length === 0) {
       return content
@@ -274,7 +282,12 @@ export class TemplateService {
     for (const prop of template.targetProperties) {
       // Parse variables from property value itself (may contain variables not in body)
       const { variables: propVariables } = parseTemplateVariables(prop.value)
-      const resolvedValue = await applyTemplateVariables(prop.value, propVariables, userValues)
+      const resolvedValue = await applyTemplateVariables(
+        prop.value,
+        propVariables,
+        userValues,
+        allowed
+      )
       resolvedProps.push({ name: prop.name, value: resolvedValue })
     }
 
@@ -313,7 +326,8 @@ export class TemplateService {
    */
   private async resolveTargetPath(
     template: UserTemplate,
-    userValues: Map<string, string>
+    userValues: Map<string, string>,
+    allowed: boolean
   ): Promise<string> {
     const { app } = GlobalStore.getInstance()
 
@@ -323,7 +337,7 @@ export class TemplateService {
     // Resolve target_folder if specified
     if (template.targetFolder) {
       const { variables: folderVars } = parseTemplateVariables(template.targetFolder)
-      folder = await applyTemplateVariables(template.targetFolder, folderVars, userValues)
+      folder = await applyTemplateVariables(template.targetFolder, folderVars, userValues, allowed)
     } else {
       // Use Obsidian's default location for new files
       const defaultLocation = (app.vault as any).getConfig?.('newFileLocation') || 'root'
@@ -349,7 +363,7 @@ export class TemplateService {
         'userValues:',
         Object.fromEntries(userValues)
       )
-      name = await applyTemplateVariables(template.targetName, nameVars, userValues)
+      name = await applyTemplateVariables(template.targetName, nameVars, userValues, allowed)
       console.debug('[resolveTargetPath] resolved name:', JSON.stringify(name))
     }
 
@@ -363,7 +377,11 @@ export class TemplateService {
   /**
    * Create file with full path, creating directories if needed
    */
-  private async createFileWithPath(filePath: string, content: string, signal?: AbortSignal): Promise<TFile> {
+  private async createFileWithPath(
+    filePath: string,
+    content: string,
+    signal?: AbortSignal
+  ): Promise<TFile> {
     const { app } = GlobalStore.getInstance()
 
     console.debug(content)

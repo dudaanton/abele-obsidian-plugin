@@ -15,8 +15,16 @@ import { unifiedMergeView } from '@codemirror/merge'
 import { ShellModal } from '@/modal/ShellModal'
 import type { ParsedScript } from './types'
 
-export interface ReviewRequest {
-  script: ParsedScript
+export type ReviewRequest = (
+  | {
+      script: ParsedScript
+      template?: never
+    }
+  | {
+      template: { path: string; name: string; source: string }
+      script?: never
+    }
+) & {
   /** The text last confirmed at this path, when this device kept it. */
   previous?: string
   /** Refused by where it came from: shown, but there is nothing to confirm. */
@@ -25,8 +33,10 @@ export interface ReviewRequest {
 
 /** Resolves true only when Confirm was pressed; any other way of closing it is a no. */
 export function reviewScript(app: App, request: ReviewRequest): Promise<boolean> {
-  const { script, previous, refused } = request
-  const text = script.source ?? script.code
+  const { script, template, previous, refused } = request
+  const name = template?.name ?? script.meta.name
+  const path = template?.path ?? script.path
+  const text = template?.source ?? script.source ?? script.code
   return new Promise((resolve) => {
     let confirmed = false
     let view: EditorView | null = null
@@ -38,7 +48,7 @@ export function reviewScript(app: App, request: ReviewRequest): Promise<boolean>
         resolve(confirmed)
       }
     })(app, {
-      title: `Confirm script "${script.meta.name}"`,
+      title: `Confirm ${template ? 'template' : 'script'} "${name}"`,
       size: 'tall',
       footer: true,
       cls: ['abele-script-review'],
@@ -47,18 +57,18 @@ export function reviewScript(app: App, request: ReviewRequest): Promise<boolean>
     const body = modal.bodyEl
     body.createEl('p', {
       cls: 'abele-script-review__why',
-      text: refused
-        ? 'This version arrived through a connection that is not allowed to bring scripts to this device, so it does not run here. Change the script on this device to run it.'
-        : previous !== undefined
-          ? 'This script changed without being written on this device — through sync or another app. Buttons, automations, startup and agents will not run it until you confirm the change here.'
-          : 'This script appeared without being written on this device — through sync or another app. Buttons, automations, startup and agents will not run it until you confirm it here.',
+      text: template
+        ? 'This template can run commands or call plugin methods. Those parts will not run until you confirm this version on this device. Review the execution settings and the full template below. Confirmation does not reapply the template; use it again afterwards.'
+        : refused
+          ? 'This version arrived through a connection that is not allowed to bring scripts to this device, so it does not run here. Change the script on this device to run it.'
+          : previous !== undefined
+            ? 'This script changed without being written on this device — through sync or another app. Buttons, automations, startup and agents will not run it until you confirm the change here.'
+            : 'This script appeared without being written on this device — through sync or another app. Buttons, automations, startup and agents will not run it until you confirm it here.',
     })
     body.createEl('p', {
       cls: 'abele-script-review__path setting-item-description',
       text:
-        previous !== undefined
-          ? `${script.path} — changes against the version last confirmed here`
-          : script.path,
+        previous !== undefined ? `${path} — changes against the version last confirmed here` : path,
     })
 
     const codeEl = body.createDiv({ cls: 'abele-script-review__code' })
@@ -71,7 +81,7 @@ export function reviewScript(app: App, request: ReviewRequest): Promise<boolean>
           EditorState.readOnly.of(true),
           EditorView.lineWrapping,
           lineNumbers(),
-          javascript(),
+          ...(template ? [] : [javascript()]),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           ...(previous !== undefined
             ? [
@@ -90,7 +100,9 @@ export function reviewScript(app: App, request: ReviewRequest): Promise<boolean>
       modal.addButton('Close', () => modal.close(), { cta: true })
     } else {
       modal.addButton('Not now', () => modal.close(), {
-        tooltip: 'Leave it waiting; nothing runs it',
+        tooltip: template
+          ? 'Leave commands and plugin methods waiting'
+          : 'Leave it waiting; nothing runs it',
       })
       modal.addButton(
         'Confirm',

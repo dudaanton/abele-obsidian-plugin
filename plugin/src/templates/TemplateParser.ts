@@ -310,8 +310,15 @@ function formatListValue(jsonValue: string, isWikiList: boolean): string {
 export async function applyTemplateVariables(
   content: string,
   variables: TemplateVariable[],
-  userValues: Map<string, string>
+  userValues: Map<string, string>,
+  allowPluginMethods?: boolean
 ): Promise<string> {
+  // Standalone callers (such as prompt templates) also need a content-bound approval.
+  // Full note templates pass the single verdict covering their file and execution settings.
+  if (allowPluginMethods === undefined && variables.some((v) => v.type === 'plugin')) {
+    const { allowTemplateExecution } = await import('./TemplateTrust')
+    allowPluginMethods = await allowTemplateExecution('', 'Text template', content, true)
+  }
   let result = content
 
   for (const variable of variables) {
@@ -324,7 +331,7 @@ export async function applyTemplateVariables(
 
       case 'plugin': {
         const input = userValues.get(variable.name) || ''
-        value = await resolvePluginVariable(variable, input)
+        value = allowPluginMethods ? await resolvePluginVariable(variable, input) : input
         break
       }
 
