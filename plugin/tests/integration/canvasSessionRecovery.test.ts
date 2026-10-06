@@ -63,6 +63,70 @@ async function fail(name = 'canvas_edit', input: Record<string, unknown> = { ops
 }
 
 describe('supported canvas recovery and approval lifetime', () => {
+  it.each(
+    (['native-viewer', 'native-only', 'closed'] as const).flatMap((mode) =>
+      [
+        ['canvas_edit', { ops }],
+        ['canvas_layout', { algorithm: 'grid' }],
+        [
+          'canvas_steps',
+          {
+            ops: [
+              { op: 'replace', steps: [{ id: 'sample-step', reveal: ['sample'], say: 'Sample' }] },
+            ],
+          },
+        ],
+      ].map(([tool, input]) => ({ mode, tool: tool as string, input: input as object }))
+    )
+  )(
+    'reports uncertain $tool publication in $mode and refuses the old revision',
+    async ({ mode, tool, input }) => {
+      if (mode !== 'closed') {
+        const leaves = [
+          {
+            view: {
+              file,
+              canvas: {
+                getData: () => original,
+                requestPushHistory: { cancel: vi.fn() },
+                pushHistory: vi.fn(),
+                history: { data: [original], current: 0 },
+              },
+            },
+          },
+        ]
+        Object.assign(app, { workspace: { getLeavesOfType: () => leaves } })
+      }
+      if (mode === 'native-viewer') await store.open(file, {})
+      const approved = await read(),
+        process = app.vault.process.bind(app.vault)
+      const writes = vi
+        .spyOn(app.vault, 'process')
+        .mockImplementationOnce(async (target, transform) => {
+          await process(target, transform)
+          throw new Error('Sample uncertain tool publication')
+        })
+      await expect(
+        call(tool, { path, revision: approved.revision, ...input })
+      ).rejects.toMatchObject({
+        outcome: 'unknown',
+        message: expect.stringMatching(/uncertain.*canvas_read.*compare.*before.*edit/i),
+      })
+      const persisted = await app.vault.read(file)
+      expect(persisted).not.toBe(serializeCanvas(original))
+      const pending = await read()
+      if (mode === 'native-viewer') {
+        expect(pending.state).toMatchObject({ publicationOutcome: 'unknown', dirty: true })
+        expect(pending.state.recovery).toBeUndefined()
+      } else expect(pending.state).toBeUndefined()
+      await expect(call(tool, { path, revision: approved.revision, ...input })).rejects.toThrow(
+        /changed|reread/i
+      )
+      expect(writes).toHaveBeenCalledOnce()
+      expect(await app.vault.read(file)).toBe(persisted)
+    }
+  )
+
   it.each([
     'persisted-rejection',
     'transform-returned-rejection',

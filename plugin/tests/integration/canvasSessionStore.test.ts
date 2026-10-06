@@ -74,6 +74,108 @@ function native() {
 }
 
 describe('shared canvas document storage', () => {
+  it.each([
+    'persisted-rejection',
+    'transform-returned-rejection',
+    'confirmed-digest-failure',
+  ] as const)('retains a native-viewer %s for the existing local review exit', async (fault) => {
+    native()
+    const owner = {},
+      lease = await store.open(file, owner),
+      session = lease.document.session,
+      baseline = session.committed,
+      snapshot = await store.snapshot(path),
+      process = app.vault.process.bind(app.vault),
+      reject = vi.spyOn(session, 'reject'),
+      transform = vi.fn(edit('Native pending publication')),
+      proposed = edit('Native pending publication')(initial)
+    let digest: ReturnType<typeof vi.spyOn> | undefined
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
+      if (fault === 'transform-returned-rejection') {
+        transform(await app.vault.read(target))
+        throw new Error('Sample uncertain native outcome')
+      }
+      const published = await process(target, transform)
+      if (fault === 'persisted-rejection') throw new Error('Sample uncertain native outcome')
+      digest = vi
+        .spyOn(crypto.subtle, 'digest')
+        .mockRejectedValueOnce(new Error('Sample native digest failure'))
+      return published
+    })
+    const outcome =
+      fault === 'confirmed-digest-failure' ? 'written-acknowledgment-pending' : 'unknown'
+    try {
+      await expect(store.change(path, snapshot.revision, transform)).rejects.toMatchObject({
+        outcome,
+      })
+    } finally {
+      digest?.mockRestore()
+    }
+    expect(session.publicationEvidence).toEqual({
+      outcome,
+      baseline,
+      proposed,
+      kind: 'command',
+    })
+    expect(transform).toHaveBeenCalledOnce()
+    expect(session.committed).toEqual(baseline)
+    expect(session.draft?.graph).toEqual(proposed)
+    expect(session.history).toEqual({ undo: 0, redo: 0 })
+    expect(reject).not.toHaveBeenCalled()
+    const pending = await store.snapshot(path)
+    expect(pending.state).toMatchObject({
+      publicationOutcome: outcome,
+      dirty: true,
+      conflict: true,
+      busy: false,
+    })
+    expect(pending.state?.recovery).toBeUndefined()
+    const writes = vi.spyOn(app.vault, 'process')
+    writes.mockClear()
+    await expect(store.change(path, pending.revision, edit('Blind native retry'))).rejects.toThrow(
+      /pending|overlap|conflict/i
+    )
+    nativeLeaves.length = 0
+    const withoutNative = await store.snapshot(path)
+    await expect(
+      store.change(path, withoutNative.revision, edit('Blind Abele retry'))
+    ).rejects.toThrow(/conflict/i)
+    expect(writes).not.toHaveBeenCalled()
+    const persisted = await bytes(),
+      review = await store.reviewPublication(file, owner, () => true)
+    expect(review.source.bytes).toBe(persisted)
+    expect(review.evidence.proposed).toEqual(proposed)
+    store.keepPublicationReview(review)
+    expect(session.publicationOutcome).toBe(outcome)
+    await store.discardPublicationReview(await store.reviewPublication(file, owner, () => true))
+    expect(await bytes()).toBe(persisted)
+    expect(session.publicationOutcome).toBeNull()
+    expect(session.dirty).toBe(false)
+    expect(session.history).toEqual({ undo: 0, redo: 0 })
+    expect(writes).not.toHaveBeenCalled()
+  })
+
+  it('does not replace newer local work after an uncertain native publication', async () => {
+    native()
+    const lease = await open(),
+      snapshot = await store.snapshot(path),
+      process = app.vault.process.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, transform) => {
+      await process(target, transform)
+      nativeLeaves.length = 0
+      lease.document.beginDraft()
+      lease.document.updateDraft(edit('New human work'))
+      throw new Error('Sample delayed native rejection')
+    })
+    await expect(
+      store.change(path, snapshot.revision, edit('Uncertain native work'))
+    ).rejects.toMatchObject({ outcome: 'unknown' })
+    expect(lease.document.session.draft?.graph.nodes[0].text).toBe('New human work')
+    expect(lease.document.session.publicationEvidence).toBeNull()
+    expect(lease.document.session.history).toEqual({ undo: 0, redo: 0 })
+    expect(parseCanvas(await bytes()).nodes[0].text).toBe('Uncertain native work')
+  })
+
   it('retains an uncertain persisted-then-rejected publication without calling known-no-write rejection', async () => {
     const lease = await open(),
       baseline = lease.document.session.committed,

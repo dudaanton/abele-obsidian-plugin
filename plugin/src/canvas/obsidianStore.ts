@@ -50,7 +50,7 @@ export class CanvasPublicationError extends Error {
   ) {
     const status =
       outcome === 'unknown'
-        ? 'Canvas source publication outcome is uncertain; retained work requires review before reapplication'
+        ? 'Canvas source publication outcome is uncertain; use canvas_read and compare with the intended changes before any further edit; do not retry publication blindly'
         : outcome === 'written-acknowledgment-pending'
           ? 'Canvas source was written, but local acknowledgment is pending; do not retry publication blindly'
           : 'Canvas source was written and acknowledged, but local reporting failed'
@@ -361,6 +361,9 @@ export class ObsidianCanvasStore implements GraphStore {
       const release = registry.retain(file)
       let token: PreparedCanvasTransaction | undefined, document: CanvasDocument | undefined
       let recovered: ReturnType<CanvasDocument['requireRecovery']> | undefined
+      let nativePublication:
+        | { baseline: GraphSnapshot; proposed: CanvasGraph; generation: number }
+        | undefined
       let returnedBytes = false,
         sourceConfirmed = false,
         acknowledged = false
@@ -371,6 +374,7 @@ export class ObsidianCanvasStore implements GraphStore {
         const captured = await this.capture(file),
           snapshot = captured.stored
         document = captured.document
+        const generation = document?.session.generation
         if (kind !== 'draft' && (!revision || captured.snapshot.revision !== revision))
           throw new Error(CANVAS_CONFLICT)
         signal?.throwIfAborted()
@@ -450,6 +454,12 @@ export class ObsidianCanvasStore implements GraphStore {
             pendingSave?.cancel?.()
           }
           const bytes = serializeCanvas(after)
+          if (document && !token)
+            nativePublication = {
+              baseline: { graph: data, revision: snapshot.revision },
+              proposed: after,
+              generation,
+            }
           // After returning bytes, a rejected process promise cannot prove no source write.
           returnedBytes = true
           return bytes
@@ -499,10 +509,23 @@ export class ObsidianCanvasStore implements GraphStore {
             : sourceConfirmed
               ? 'written-acknowledgment-pending'
               : 'unknown'
-          if (token && document && outcome !== 'written') {
+          if (document && outcome !== 'written') {
             try {
-              document.session.quarantine(token, outcome)
-              document.clearRecovery()
+              if (
+                !token &&
+                nativePublication &&
+                registry.find(file) === document &&
+                document.session.generation === nativePublication.generation
+              ) {
+                // Adopt already-issued native work for local review only; never rerun its transform
+                // or acquire native history. Newer local work still revokes this authority.
+                token = document.session.prepare(() => nativePublication.proposed)
+                document.session.apply(token, nativePublication.baseline)
+              }
+              if (token) {
+                document.session.quarantine(token, outcome)
+                document.clearRecovery()
+              }
             } catch {
               /* Obsolete callbacks have no authority over replacement work. */
             }
