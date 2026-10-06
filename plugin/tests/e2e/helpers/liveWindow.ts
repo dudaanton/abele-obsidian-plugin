@@ -23,6 +23,9 @@ import {
 import { onPhone } from './target'
 import { installPhoneHost } from './phone'
 import { RESTORE_PHONE_SCRIPT } from './phoneState'
+import { assertNoLeakedRootViews, snapshotRootViews, type RootView } from './rootViews'
+
+let rootViews: RootView[] | undefined
 
 const cleanPhone = async () => {
   if (!onPhone()) return
@@ -50,6 +53,7 @@ beforeAll(async () => {
   waitForLinkIndex()
   // Nothing measured in a window that is not drawn means anything.
   assertWindowDrawn()
+  rootViews = snapshotRootViews()
 }, 150_000)
 
 // Stack hook ordering keeps this boundary outside every file's fixture teardown.
@@ -60,7 +64,11 @@ afterAll(async () => {
     closeStrayWindows()
     notesInEditor()
   } finally {
-    await cleanPhone()
+    try {
+      if (rootViews) assertNoLeakedRootViews(rootViews)
+    } finally {
+      await cleanPhone()
+    }
   }
 }, 90_000)
 

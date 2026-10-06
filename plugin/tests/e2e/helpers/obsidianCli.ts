@@ -686,6 +686,12 @@ async function reloadWindow(
   let failure: unknown
   let cleanupFailure: unknown
   try {
+    // A just-detached fixture pane still exists in the debounced saved layout. Reloading
+    // that layout resurrects it, even though the file's own teardown closed it correctly.
+    evalRawIdempotent(
+      `(async () => { await app.workspace.requestSaveLayout.run(); return 'saved' })()`,
+      30_000
+    )
     const before = readReloadWitness()
     owner = before.owner
     const outcome = await confirmReload(
