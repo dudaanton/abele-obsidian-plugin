@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
+import {
+  existingPublicationQuestion,
+  answerExistingPublication,
+} from '@/sync/publication/publicationDecision'
 import { openLinkSnapshots, type SnapshotDescriptor } from '@/sync/publication/snapshotDatabase'
 const binding = {
   localVault: 'sample-local',
@@ -30,6 +34,70 @@ function resources() {
   }
 }
 describe('snapshot database recovery sentinel', () => {
+  it('retains pending, decline and approval records across reopen in the separate publication database', async () => {
+    const port = resources(),
+      factory = new IDBFactory(),
+      first = await openLinkSnapshots(factory, port, binding, () => true)
+    const observation = {
+      binding,
+      target: {
+        fileId: 'private-id',
+        versionId: 'private-v1',
+        sha: 'a'.repeat(64),
+        path: 'Assets/private.png',
+        eligible: true,
+      },
+      sponsor: {
+        fileId: 'note-id',
+        versionId: 'note-v1',
+        path: 'Shared/note.md',
+        admissionGeneration: 1,
+        inScope: true,
+        intrinsic: true,
+      },
+      audience: {
+        grantId: 'audience-one',
+        label: 'Sample audience',
+        active: true,
+        alreadyShared: false,
+        revision: 0,
+        withdrawalGeneration: 0,
+      },
+      linked: true,
+    }
+    const q = (await existingPublicationQuestion(observation))!
+    await first.decisions.rememberExisting({ ...q, state: 'pending' })
+    first.close()
+    const next = await openLinkSnapshots(factory, port, binding, () => true)
+    try {
+      expect(await next.decisions.existing(binding)).toMatchObject([
+        { state: 'pending', exposureKey: q.exposureKey },
+      ])
+      await next.decisions.rememberExisting(
+        (await answerExistingPublication(q, observation, false))!
+      )
+      expect(
+        await existingPublicationQuestion(
+          observation,
+          await next.decisions.getExisting(q.exposureKey)
+        )
+      ).toBeNull()
+      const secondAudience = {
+        ...observation,
+        audience: { ...observation.audience, grantId: 'audience-two' },
+      }
+      const second = (await existingPublicationQuestion(secondAudience))!
+      await next.decisions.rememberExisting(
+        (await answerExistingPublication(second, secondAudience, true))!
+      )
+      expect(await next.decisions.existing(binding)).toMatchObject([
+        { state: 'declined' },
+        { state: 'approved' },
+      ])
+    } finally {
+      next.close()
+    }
+  })
   it('never bootstraps an empty database when the existing device descriptor survives', async () => {
     const port = resources(),
       factory = new IDBFactory(),

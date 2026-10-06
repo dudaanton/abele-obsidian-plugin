@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  existingPublicationQuestion,
+  answerExistingPublication,
   reducePublication,
   answerPublication,
   PublicationDecisionStore,
   type PublicationInput,
+  type ExistingPublicationObservation,
 } from '@/sync/publication/publicationDecision'
 import type { CompleteSnapshot, LinkFact } from '@/sync/publication/LinkSnapshotStore'
 const binding = {
@@ -88,6 +91,103 @@ function input(): PublicationInput {
     decisions: [],
   }
 }
+const existingObservation = (): ExistingPublicationObservation => ({
+  binding,
+  target: {
+    fileId: 'private-id',
+    versionId: 'private-v1',
+    sha: 'a'.repeat(64),
+    path: 'Assets/private.png',
+    eligible: true,
+  },
+  sponsor: {
+    fileId: 'note-id',
+    versionId: 'note-v1',
+    path: 'Shared/note.md',
+    admissionGeneration: 1,
+    intrinsic: true,
+    inScope: true,
+  },
+  audience: {
+    grantId: 'audience-one',
+    label: 'Sample audience',
+    active: true,
+    alreadyShared: false,
+    revision: 0,
+    withdrawalGeneration: 0,
+  },
+  linked: true,
+})
+describe('existing-private decisions separate from dialog freshness', () => {
+  it('uses only connection, stable target and one audience for the decision key', async () => {
+    const o = existingObservation(),
+      first = await existingPublicationQuestion(o)
+    const later = await existingPublicationQuestion({
+      ...o,
+      target: { ...o.target, sha: 'b'.repeat(64), versionId: 'private-v2', path: 'Renamed.png' },
+      sponsor: { ...o.sponsor, fileId: 'other-note', versionId: 'other-v1' },
+    })
+    expect(first!.exposureKey).toBe(later!.exposureKey)
+    expect(first!.fingerprint).not.toBe(later!.fingerprint)
+    expect(
+      (await existingPublicationQuestion({
+        ...o,
+        audience: { ...o.audience, grantId: 'audience-two' },
+      }))!.exposureKey
+    ).not.toBe(first!.exposureKey)
+    expect(
+      (await existingPublicationQuestion({
+        ...o,
+        target: { ...o.target, fileId: 'recreated-id' },
+      }))!.exposureKey
+    ).not.toBe(first!.exposureKey)
+  })
+  it('remembers refusal across saves, another sponsor, changed bytes and rename', async () => {
+    const values = new Map<string, string>(),
+      store = new PublicationDecisionStore({
+        getMeta: (k) => values.get(k) ?? null,
+        setMeta: (k, v) => {
+          if (v === null) values.delete(k)
+          else values.set(k, v)
+        },
+      })
+    const o = existingObservation(),
+      q = (await existingPublicationQuestion(o))!
+    const declined = (await answerExistingPublication(q, o, false))!
+    await store.rememberExisting(declined)
+    const previous = await store.getExisting(q.exposureKey)
+    expect(previous!.state).toBe('declined')
+    expect(
+      await existingPublicationQuestion(
+        {
+          ...o,
+          target: {
+            ...o.target,
+            path: 'Renamed.png',
+            sha: 'c'.repeat(64),
+            versionId: 'private-v3',
+          },
+          sponsor: { ...o.sponsor, fileId: 'other-note' },
+        },
+        previous
+      )
+    ).toBeNull()
+  })
+  it.each(['version', 'withdrawal', 'link', 'target'])(
+    'rejects a stale answer after %s changes without requiring baseline novelty',
+    async (change) => {
+      const o = existingObservation(),
+        q = (await existingPublicationQuestion(o))!
+      const current = structuredClone(o)
+      if (change === 'version') current.target.versionId = 'private-v2'
+      if (change === 'withdrawal') current.audience.withdrawalGeneration++
+      if (change === 'link') current.linked = false
+      if (change === 'target') current.target.fileId = 'recreated-id'
+      expect(await answerExistingPublication(q, current, true)).toBeNull()
+      expect(await answerExistingPublication(q, o, true)).toMatchObject({ state: 'approved' })
+    }
+  )
+})
 function pending(i: PublicationInput) {
   i.target = {
     ...i.target,

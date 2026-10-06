@@ -1,4 +1,95 @@
 import { sha256 } from '@abele/sync-core'
+import type { OwnerAdd, Sponsor, Target } from '../sharing/sponsoredAssets'
+
+export interface ExistingPublicationObservation {
+  binding: SnapshotBinding
+  target: Target
+  sponsor: Sponsor & { path: string }
+  audience: {
+    grantId: string
+    label: string
+    active: boolean
+    alreadyShared: boolean
+    revision: number
+    withdrawalGeneration: number
+  }
+  linked: boolean
+}
+export interface ExistingPublicationQuestion {
+  exposureKey: string
+  fingerprint: string
+  observation: ExistingPublicationObservation
+}
+export interface ExistingPublicationDecision extends ExistingPublicationQuestion {
+  state: ExposureDecision['state']
+  request?: OwnerAdd
+  applied?: boolean
+}
+/** Identity of an answer, independent of bytes, sponsor, generation, or the audience set. */
+export const existingExposureKey = (binding: SnapshotBinding, targetId: string, grantId: string) =>
+  hash([bindingKey(binding), targetId, grantId])
+
+/** Only the separate existing-private path can ask without paste-specific link provenance. */
+export async function existingPublicationQuestion(
+  observation: ExistingPublicationObservation,
+  previous?: ExistingPublicationDecision | null
+): Promise<ExistingPublicationQuestion | null> {
+  const o = clone(observation),
+    a = o.audience,
+    s = o.sponsor,
+    t = o.target
+  if (
+    o.binding.facet !== 'personal' ||
+    o.binding.grantId !== null ||
+    !o.linked ||
+    !t.fileId ||
+    !t.versionId ||
+    !digest(t.sha) ||
+    !t.eligible ||
+    !t.path ||
+    !s.fileId ||
+    !s.versionId ||
+    !s.intrinsic ||
+    !s.inScope ||
+    s.admissionGeneration < 1 ||
+    !a.grantId ||
+    !a.label ||
+    !a.active ||
+    a.alreadyShared ||
+    !Number.isSafeInteger(a.revision) ||
+    a.revision < 0 ||
+    !Number.isSafeInteger(a.withdrawalGeneration) ||
+    a.withdrawalGeneration < 0
+  )
+    return null
+  const exposureKey = await existingExposureKey(o.binding, t.fileId, a.grantId)
+  if (previous?.exposureKey === exposureKey) return null
+  const fingerprint = await hash([
+    exposureKey,
+    t,
+    s.fileId,
+    s.versionId,
+    s.admissionGeneration,
+    a.label,
+    a.withdrawalGeneration,
+  ])
+  return { exposureKey, fingerprint, observation: o }
+}
+/** Revalidate current link/target/authority, not novelty against the already advanced baseline. */
+export async function answerExistingPublication(
+  question: ExistingPublicationQuestion,
+  current: ExistingPublicationObservation,
+  accepted: boolean
+): Promise<ExistingPublicationDecision | null> {
+  const fresh = await existingPublicationQuestion(current)
+  if (
+    !fresh ||
+    fresh.exposureKey !== question.exposureKey ||
+    fresh.fingerprint !== question.fingerprint
+  )
+    return null
+  return { ...fresh, state: accepted ? 'approved' : 'declined' }
+}
 import {
   bindingKey,
   normalizedSpelling,
@@ -372,6 +463,52 @@ export class PublicationDecisionStore {
     await this.meta.setMeta(key, encoded)
     if ((await this.meta.getMeta(key)) !== encoded)
       throw new Error('Publication decision was not persisted; recovery required')
+  }
+  async rememberExisting(decision: ExistingPublicationDecision): Promise<void> {
+    const d = clone(decision),
+      o = d.observation
+    if (
+      d.exposureKey !==
+        (await existingExposureKey(o.binding, o.target.fileId, o.audience.grantId)) ||
+      !digest(d.fingerprint) ||
+      !['pending', 'declined', 'approved'].includes(d.state)
+    )
+      throw new Error('Exact existing-private decision identity is required')
+    const prefix = 'existing-publication-v1:' + bindingKey(o.binding) + ':'
+    const raw = await this.meta.getMeta(prefix + 'index')
+    const keys = raw === null ? [] : (JSON.parse(raw) as string[])
+    if (!keys.includes(d.exposureKey)) keys.push(d.exposureKey)
+    // Index first: a crash may leave a missing question, never an unindexed send request.
+    await this.meta.setMeta(prefix + 'index', JSON.stringify(keys))
+    const encoded = JSON.stringify(d),
+      key = 'existing-publication-decision-v1:' + d.exposureKey
+    await this.meta.setMeta(key, encoded)
+    if ((await this.meta.getMeta(key)) !== encoded)
+      throw new Error('Existing-private decision was not persisted')
+  }
+  async getExisting(exposureKey: string): Promise<ExistingPublicationDecision | null> {
+    const raw = await this.meta.getMeta('existing-publication-decision-v1:' + exposureKey)
+    if (raw === null) return null
+    const d = JSON.parse(raw) as ExistingPublicationDecision
+    if (
+      d.exposureKey !== exposureKey ||
+      !digest(d.fingerprint) ||
+      !['pending', 'declined', 'approved'].includes(d.state) ||
+      d.exposureKey !==
+        (await existingExposureKey(
+          d.observation.binding,
+          d.observation.target.fileId,
+          d.observation.audience.grantId
+        ))
+    )
+      throw new Error('Existing-private decision is unreadable; recovery required')
+    return clone(d)
+  }
+  async existing(binding: SnapshotBinding): Promise<ExistingPublicationDecision[]> {
+    const raw = await this.meta.getMeta('existing-publication-v1:' + bindingKey(binding) + ':index')
+    const keys = raw === null ? [] : (JSON.parse(raw) as string[])
+    const decisions = await Promise.all(keys.map((k) => this.getExisting(k)))
+    return decisions.filter((d): d is ExistingPublicationDecision => d !== null)
   }
   async get(exposureKey: string): Promise<ExposureDecision | null> {
     const raw = await this.meta.getMeta('publication-decision-v1:' + exposureKey)

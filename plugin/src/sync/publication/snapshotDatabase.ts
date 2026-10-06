@@ -1,3 +1,4 @@
+import { PublicationDecisionStore } from './publicationDecision'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
 import {
   LinkSnapshotStore,
@@ -23,7 +24,12 @@ export async function openLinkSnapshots(
   resources: SnapshotResources,
   binding: SnapshotBinding,
   attest: SnapshotAttestor
-): Promise<{ snapshots: LinkSnapshotStore; databaseName: string; close: () => void }> {
+): Promise<{
+  snapshots: LinkSnapshotStore
+  decisions: PublicationDecisionStore
+  databaseName: string
+  close: () => void
+}> {
   const old = resources.loadDescriptor()
   const sentinel = await resources.hasSentinel()
   if (!old && sentinel) throw new Error('Link snapshot descriptor lost; recovery required')
@@ -60,6 +66,7 @@ export async function openLinkSnapshots(
       throw new Error('Link snapshot identity was not persisted; recovery required')
     return {
       snapshots: new LinkSnapshotStore(meta, binding, attest),
+      decisions: new PublicationDecisionStore(meta),
       databaseName,
       close: () => meta.close(),
     }
