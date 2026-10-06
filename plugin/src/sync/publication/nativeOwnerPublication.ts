@@ -17,6 +17,7 @@ import {
   type CompleteSnapshot,
   type LinkFact,
   type SnapshotCandidate,
+  type LinkSnapshot,
 } from './LinkSnapshotStore'
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
 import {
@@ -45,6 +46,14 @@ interface ReceivedBase {
 interface LocalLinkUnit {
   facts: Record<string, LinkFact[]>
   localCreates: string[]
+  delayed?: Record<string, { sha: string; baseline: LinkSnapshot }>
+}
+interface DelayedLocalLinks {
+  path: string
+  sourceSha: string
+  settledSha: string
+  versionId: string
+  baseline: LinkSnapshot
 }
 interface Paste {
   id: string
@@ -541,6 +550,26 @@ export class NativeOwnerPublication {
       delete waiting[noteId]
       await this.persisted('received-bases', waiting)
     }
+    await this.recoverLocalLinks(path, o)
+  }
+  private async recoverLocalLinks(path: string, o: Observation) {
+    const waiting =
+      (await this.read<Record<string, DelayedLocalLinks>>('delayed-local-links')) ?? {}
+    for (const [noteId, pending] of Object.entries(waiting)) {
+      if (pending.path !== path || pending.sourceSha !== o.sha) continue
+      const current = await this.options.state.byFileId(noteId)
+      if (current?.versionId === pending.versionId && current.sha === pending.settledSha) {
+        const renames = await this.snapshots.renames()
+        await this.preserveCandidates(
+          noteId,
+          existingPrivateTargets(pending.baseline, o.facts, renames.items)
+        )
+        if (current.sha === o.sha)
+          await this.settleObservation(noteId, current.versionId, o, 'push')
+      }
+      delete waiting[noteId]
+      await this.persisted('delayed-local-links', waiting)
+    }
   }
   private localBase(noteId: string, handle: string): LocalNoteBase {
     return {
@@ -930,7 +959,7 @@ export class NativeOwnerPublication {
     beforeUpload: async (unit) => {
       this.check()
       await this.work
-      const local: LocalLinkUnit = { facts: {}, localCreates: [] }
+      const local: LocalLinkUnit = { facts: {}, localCreates: [], delayed: {} }
       for (const o of unit.operations) {
         if (!('sha' in o.op) || !o.op.sha) continue
         const path =
@@ -938,6 +967,11 @@ export class NativeOwnerPublication {
         const observation = path?.endsWith('.md') ? await this.exactCache(path, o.op.sha) : null
         if (path?.endsWith('.md')) {
           if (observation?.sha === o.op.sha) local.facts[o.handle] = copy(observation.facts)
+          else if (o.op.op === 'modify') {
+            const baseline = await this.snapshots.get(o.op.file_id)
+            if (baseline.kind === 'complete' && baseline.versionId === o.op.base_version_id)
+              local.delayed![o.handle] = { sha: o.op.sha, baseline }
+          }
           if (
             o.op.op === 'create' &&
             this.localNotes.has(path) &&
@@ -1104,6 +1138,21 @@ export class NativeOwnerPublication {
             await this.persisted('received-bases', waiting)
           }
           await this.preserveCandidates(item.fileId, targets)
+          const delayed = local?.delayed?.[item.handle]
+          if (delayed) {
+            const pending =
+              (await this.read<Record<string, DelayedLocalLinks>>('delayed-local-links')) ?? {}
+            pending[item.fileId] = {
+              path: item.path,
+              sourceSha: delayed.sha,
+              settledSha: item.sha!,
+              versionId: item.versionId,
+              baseline: delayed.baseline,
+            }
+            await this.persisted('delayed-local-links', pending)
+            const arrived = this.observations.get(item.path)
+            if (arrived?.sha === delayed.sha) await this.recoverLocalLinks(item.path, arrived)
+          }
         })
         const o = await this.exactCache(item.path, item.sha)
         if (o) {
@@ -1152,8 +1201,13 @@ export class NativeOwnerPublication {
         }
         if (local) {
           delete local.facts[item.handle]
+          if (local.delayed) delete local.delayed[item.handle]
           local.localCreates = local.localCreates.filter((handle) => handle !== item.handle)
-          if (Object.keys(local.facts).length || local.localCreates.length)
+          if (
+            Object.keys(local.facts).length ||
+            local.localCreates.length ||
+            Object.keys(local.delayed ?? {}).length
+          )
             await this.persisted('link-unit:' + id, local)
           else await this.options.meta.setMeta(this.prefix + 'link-unit:' + id, null)
         }

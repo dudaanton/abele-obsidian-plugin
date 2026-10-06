@@ -123,7 +123,7 @@ async function fixture(receivedLink = false, delayedPull = false) {
   const local = async (
     text: string,
     creation?: 'novel' | 'adopted' | 'collision',
-    indexed = true
+    indexed: boolean | 'settlement' = true
   ) => {
     if (creation) {
       await state.delete(sponsor.path)
@@ -131,7 +131,7 @@ async function fixture(receivedLink = false, delayedPull = false) {
       await runtime.flush()
     }
     await app.vault.modify(app.vault.getAbstractFileByPath(sponsor.path)!, text)
-    if (indexed) await changed(text)
+    if (indexed === true) await changed(text)
     const sha = await sha256(new TextEncoder().encode(text))
     const op = creation
       ? { op: 'create' as const, path: sponsor.path, sha, size: text.length, mtime: 2 }
@@ -147,6 +147,7 @@ async function fixture(receivedLink = false, delayedPull = false) {
       operations: [{ op, index: 0, handle: 'sample-handle' }],
       idempotencyKey: 'sample-request',
     } as any)
+    if (indexed === 'settlement') await changed(text)
     sponsor = {
       ...sponsor,
       fileId: creation ? 'sample-created-note' : sponsor.fileId,
@@ -216,6 +217,22 @@ async function fixture(receivedLink = false, delayedPull = false) {
     close: () => runtime.close(),
   }
 }
+it.each([false, 'settlement'] as const)(
+  'does not lose an own link when indexing arrives at %s instead of before upload',
+  async (indexed) => {
+    const f = await fixture()
+    try {
+      await f.local(link, undefined, indexed)
+      await f.reopen()
+      await f.changed(link)
+      await f.runtime().refreshPublication()
+      expect(await f.runtime().confirmation.questions()).toHaveLength(1)
+      expect(f.ports().add).not.toHaveBeenCalled()
+    } finally {
+      f.close()
+    }
+  }
+)
 it('recovers an exact delayed received base across restart before comparing an own new link', async () => {
   const f = await fixture(false, true)
   try {

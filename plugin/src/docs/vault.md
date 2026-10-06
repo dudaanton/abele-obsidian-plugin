@@ -1476,6 +1476,9 @@ keeps a device-local expected file/version/SHA until its exact callback recovers
 a callback cannot overwrite a newer settled version. A locally observed note creation keeps
 its prepared handle until a novel creation receipt proves the empty base. Adopted, collided
 and received creates cannot supply that proof. Late initial indexing can then recover its links.
+A submitted local edit whose cache was not ready keeps its source SHA and proven prior base
+until the exact callback arrives. Receipt version/SHA checks prevent stale callbacks from
+creating questions, and merged received links are never compared as locally submitted facts.
 A confirmed existing-private decision stores its exact add request and stable intent ID before
 HTTP; a lost reply retries that request, not another publication. Temporarily unavailable
 cache evidence retains the approved request for a later retry; it is not completion or refusal.
