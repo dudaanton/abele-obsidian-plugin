@@ -1,6 +1,13 @@
 import { Platform, type App } from 'obsidian'
 import { toRaw } from 'vue'
-import { SyncClient, SyncEngine, joinFinished, type VaultClient } from '@abele/sync-core'
+import {
+  SyncClient,
+  SyncEngine,
+  joinFinished,
+  scan,
+  isExcluded,
+  type VaultClient,
+} from '@abele/sync-core'
 import type { CommitOp, CommitOpResult } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
@@ -57,6 +64,7 @@ export interface BuiltEngine {
   engine: SyncEngine
   store: IndexedDbStateStore
   vault: VaultClient
+  countPending(): Promise<number>
 }
 
 /** Only an explicit enrolment may mint a ledger. Existing descriptors require recovery. */
@@ -169,6 +177,8 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       }
     }
     const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
+    const selective = selectiveFrom(toRaw(connection.selective), Platform.isMobile)
+    const ignore = ignoreFor(app.vault.configDir, ignoreText, join === null ? null : ownSettings)
     const engine = new SyncEngine({
       ...(ownerPublication?.hooks ?? {}),
       client: vault,
@@ -177,11 +187,11 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       stillHeld: () => store.permitsEngineEffects && trust.store.permitsEngineEffects,
       // A plain copy, never the ref's own: the engine files it in the state database with the
       // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
-      selective: selectiveFrom(toRaw(connection.selective), Platform.isMobile),
+      selective,
       // The ignore file and the hidden paths (`ignoreFor`), and while a join is in progress
       // this device's own `data.json`. Not that file otherwise: it names no device, so it
       // follows the Plugin settings switch like any other plugin's (`OwnSettingsWatch`).
-      ignore: ignoreFor(app.vault.configDir, ignoreText, join === null ? null : ownSettings),
+      ignore,
       // Filed with the scope, so a later engine can tell what this ignore file left out.
       ignoreText,
       ...(scriptsFolder === '' ? {} : { scriptsFolder }),
@@ -210,7 +220,18 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       },
       log: (line) => board.note(line),
     })
-    return { engine, store, vault }
+    return {
+      engine,
+      store,
+      vault,
+      countPending: async () => {
+        const found = await scan(fs, store, {
+          excluded: (path, size) =>
+            isExcluded(path, size, selective, scriptsFolder || 'Scripts') || ignore.ignores(path),
+        })
+        return found.ops.length
+      },
+    }
   } catch (error) {
     // Nothing may be left holding the database when no engine got built to close it.
     store.close()

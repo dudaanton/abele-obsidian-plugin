@@ -106,6 +106,10 @@ export class EngineRunner {
   private store: IndexedDbStateStore | null = null
   private vault: VaultClient | null = null
   private unwatchStatus: (() => void) | null = null
+  private countPending: (() => Promise<number>) | null = null
+  private pendingRead: Promise<void> = Promise.resolve()
+  private pendingRevision = 0
+  private localPending: number | null = null
 
   /** What the running engine was built on; a change to any of it means building another. */
   private built = ''
@@ -503,7 +507,7 @@ export class EngineRunner {
   ): Promise<void> {
     const app = this.host.app()
     if (app === null) return
-    const { engine, store, vault } = await buildEngine({
+    const { engine, store, vault, countPending } = await buildEngine({
       app,
       host: this.host,
       board: this.board,
@@ -532,9 +536,18 @@ export class EngineRunner {
     this.store = store
     this.vault = vault
     this.engine = engine
-    this.unwatchStatus = engine.onStatus((engineStatus) =>
-      this.board.publish(statusOf(engineStatus))
-    )
+    this.countPending = countPending
+    this.unwatchStatus = engine.onStatus((engineStatus) => {
+      const status = statusOf(engineStatus)
+      if (['offline', 'error', 'paused'].includes(status.state)) {
+        this.board.publish({ ...status, pending: this.localPending ?? status.pending })
+        this.refreshPending()
+      } else {
+        if (status.state === 'idle') this.localPending = null
+        this.pendingRevision++
+        this.board.publish({ ...status, pending: status.pending || this.localPending || 0 })
+      }
+    })
     // Not the engine's own status, which is `idle` before its first run has begun: `idle` means
     // *settled*, and `runAfterSync` would take it at its word in the gap before the first sync.
     this.board.publish({
@@ -590,6 +603,9 @@ export class EngineRunner {
     this.unwatchStatus?.()
     this.unwatchStatus = null
     this.engine = null
+    this.countPending = null
+    this.localPending = null
+    this.pendingRevision++
     this.store = null
     this.vault = null
     this.built = ''
@@ -598,6 +614,7 @@ export class EngineRunner {
     // The engine that failed is gone; its failure must not colour the next one's message.
     this.board.forgetFailure()
     await engine?.stop()
+    await this.pendingRead
     try {
       store?.close()
     } catch (error) {
@@ -620,7 +637,30 @@ export class EngineRunner {
    * A phone gets here too: it runs the same watcher, polling the ignore file with its config
    * folder every minute.
    */
+  private refreshPending(): void {
+    const engine = this.engine,
+      count = this.countPending
+    if (
+      !engine ||
+      !count ||
+      !['offline', 'error', 'paused'].includes(this.board.status.value.state)
+    )
+      return
+    const revision = ++this.pendingRevision
+    this.pendingRead = this.pendingRead
+      .then(async () => {
+        if (engine !== this.engine || revision !== this.pendingRevision) return
+        const pending = await count()
+        if (engine !== this.engine || revision !== this.pendingRevision) return
+        this.localPending = pending
+        this.board.publish({ ...this.board.status.value, pending })
+      })
+      .catch((error) =>
+        this.board.note(`pending changes could not be counted: ${messageOf(error)}`)
+      )
+  }
   private noticed(paths: string[]): void {
+    this.refreshPending()
     if (!paths.some((path) => caseKey(path) === caseKey(IGNORE_FILE))) return
     this.board.note('the vault ignore file changed; reading it again')
     void this.host.serialise(() => this.reconcile())

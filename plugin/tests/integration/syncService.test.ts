@@ -515,6 +515,25 @@ describe('SyncService — syncing', () => {
     expect(service.status.value.lastError).toBeNull()
   })
 
+  it('counts five unsent local changes even when the first server state request fails', async () => {
+    Platform.isMobile = true
+    const { other } = await connect()
+    await synced()
+    offline = true
+    for (let i = 0; i < 5; i++) await write(`Private/sample-${i}.md`, `offline change ${i}`)
+    await service.syncNow()
+    expect(service.status.value.state).toBe('offline')
+    await waitFor('the offline pending count', () => service.status.value.pending === 5)
+    await service.syncNow()
+    expect(service.status.value.pending).toBe(5)
+    offline = false
+    await service.syncNow()
+    await synced()
+    expect(service.status.value.pending).toBe(0)
+    expect(
+      (await serverPaths(other)).filter((path) => path.startsWith('Private/sample-'))
+    ).toHaveLength(5)
+  })
   it('is offline while nothing can reach the server, and comes back', async () => {
     const { other } = await connect()
     await synced()

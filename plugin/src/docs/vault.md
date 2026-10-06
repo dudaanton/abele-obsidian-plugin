@@ -1454,6 +1454,10 @@ sentinel blocks script snapshots and their final compilation checks during isola
 It is written before any managed provenance is temporarily detached and released only after
 original state restoration succeeds. A missing original trust record is never local-code trust.
 
+The offline/paused pending count is computed from a read-only local scan against the personal
+ledger, using this device's selective and ignore filters. A failed first server request does not
+mean there are no local edits; counting asks the server nothing and acknowledges no changes.
+
 ## Disabled owner sharing UI
 
 Owner folder-sharing and publication views remain behind an immutable disabled activation
