@@ -59,8 +59,9 @@
   color: var(--text-normal);
   background: var(--background-primary);
   font-family: var(--font-text);
-  font-size: var(--font-text-size);
-  line-height: var(--line-height-normal);
+  /* Logical pixels: the viewer scales this entire canvas uniformly, including on phones. */
+  font-size: calc(var(--font-text-size, 16px) * 1.75);
+  line-height: 1.35;
 }
 
 .abele-slide[hidden],
@@ -121,7 +122,8 @@
   pointer-events: none;
 }
 
-.abele-slide-content {
+/* The content layout's slide root has the same class; only style the inner surface. */
+.abele-slide > .abele-slide-content {
   position: relative;
   height: 100%;
   padding: var(--size-4-12);
@@ -129,6 +131,148 @@
   display: flex;
   flex-direction: column;
   gap: var(--size-4-4);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  /* Empty foreground space must not cover a background video's native controls. */
+  pointer-events: none;
+}
+
+.abele-slide-region > div {
+  pointer-events: auto;
+}
+
+.abele-slide-content h1,
+.abele-slide-content h2,
+.abele-slide-content h3 {
+  font-family: var(--font-heading, var(--font-text));
+  line-height: 1.12;
+  margin-block: 0 0.55em;
+}
+
+.abele-slide-content h1 {
+  font-size: 2.2em;
+}
+
+.abele-slide-content h2 {
+  font-size: 1.7em;
+}
+
+.abele-slide-content h3 {
+  font-size: 1.25em;
+  color: var(--text-accent, var(--interactive-accent));
+}
+
+.abele-slide-content strong {
+  color: var(--text-accent, var(--interactive-accent));
+}
+
+.abele-slide-content p {
+  margin-block: 0 0.75em;
+}
+
+.abele-slide-content ul,
+.abele-slide-content ol {
+  margin-block: 0 0.75em;
+  padding-inline-start: 1.25em;
+}
+
+.abele-slide-content li {
+  margin-block: 0.3em;
+}
+
+.abele-slide-content ul > li,
+.abele-slide-content ol > li {
+  /* The slide list already supplies indentation; do not add the note's item indent too. */
+  margin-inline-start: 0;
+}
+
+.abele-slide-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.abele-slide-content th,
+.abele-slide-content td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 0.45em 0.65em;
+  font-size: inherit;
+}
+
+.abele-slide-content th {
+  --table-column-alt-background: var(--background-secondary);
+  background: var(--background-secondary);
+  font-weight: var(--font-semibold);
+}
+
+.abele-slide-content blockquote {
+  margin: 0 0 0.75em;
+  padding: 0.15em 0 0.15em 0.9em;
+  border-inline-start: 4px solid var(--text-accent, var(--interactive-accent));
+}
+
+.abele-slide-title h1 {
+  font-size: 3em;
+  letter-spacing: -0.02em;
+}
+
+.abele-slide-title p {
+  color: var(--text-muted);
+  font-size: 1.15em;
+}
+
+.abele-slide-section h1,
+.abele-slide-section h2 {
+  font-size: 2.7em;
+}
+
+.abele-slide-quote blockquote {
+  font-size: 1.55em;
+  line-height: 1.2;
+  text-align: start;
+}
+
+.abele-slide-quote .abele-slide-content > .abele-slide-region {
+  max-width: 1000px;
+  align-self: center;
+}
+
+.abele-slide-has-sources .abele-slide-content {
+  padding-bottom: calc(var(--size-4-12) + 28px);
+}
+
+.abele-slide-sources-marker {
+  position: absolute;
+  inset: auto var(--size-4-12) 22px;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.abele-slide[data-generated='sources'] .abele-slide-region {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.abele-slide[data-generated='sources'] .abele-slide-region > div {
+  columns: 360px 2;
+  column-gap: 32px;
+}
+
+.abele-slide[data-generated='sources'] h1 {
+  font-size: 2.4em;
+  column-span: all;
+}
+
+.abele-slide[data-generated='sources'] h3 {
+  margin-block: 0.6em 0.2em;
+  break-after: avoid;
+}
+
+.abele-slide[data-generated='sources'] ul {
+  margin-bottom: 0.4em;
+  break-inside: avoid;
 }
 
 .abele-slide-region {
