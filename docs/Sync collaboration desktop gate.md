@@ -1,7 +1,7 @@
 # Collaboration scenario C — desktop fixture checkpoint
 
 This test/harness slice uses exact committed core/protocol/server/CLI archive
-`b5357cff918028e1e58b443ccc22eed0093eb689`. It never activates the shared or production server.
+`5cd9207bdf676cf19097b374c0a623e7909aa25a`. It never activates the shared or production server.
 The original closed capability/management fence is checked before an owned disposable group
 assembly listens. Its explicit owner-only preparation call and background worker invoke the
 real archived bootstrap/dirty-page services; no SQL membership/origin/generation edits are used.
