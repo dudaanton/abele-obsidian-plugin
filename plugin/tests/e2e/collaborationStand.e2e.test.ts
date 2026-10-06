@@ -631,6 +631,10 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       expect(readFileSync(join(mirror!.dir, newPath), 'utf8')).toBe(body)
     })
     it('recipient-planted image links stay inert across owner resave and rename', async () => {
+      if (cli!.evalAwait('window.__abeleTest.ownerPublicationDiagnostics(app)===null'))
+        await cli!.evalAwait(
+          `window.__abeleTest.enableOwnerPublicationFixture(app,${JSON.stringify([grant.id])})`
+        )
       const planted = readFileSync(join(peers[0].dir, NOTE), 'utf8') + '\n![[Неполучаемое.png]]\n'
       writeFileSync(join(peers[0].dir, NOTE), planted)
       await peerPush(0)
@@ -659,11 +663,14 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       expect(
         (await ownerApi.read(grant.id)).entries.some((e) => e.target.path === privatePath)
       ).toBe(false)
+      expect(cli!.evalAwait(svc + '.publicationPrompt.asking.value')).toBeNull()
+      expect(cli!.evalAwait<number>(svc + '.publicationPrompt.pending.value.length')).toBe(0)
     })
     it('a genuine native owner link to an existing private asset offers one exact audience confirmation', async () => {
-      await cli!.evalAwait(
-        `window.__abeleTest.enableOwnerPublicationFixture(app,${JSON.stringify([grant.id])})`
-      )
+      if (cli!.evalAwait('window.__abeleTest.ownerPublicationDiagnostics(app)===null'))
+        await cli!.evalAwait(
+          `window.__abeleTest.enableOwnerPublicationFixture(app,${JSON.stringify([grant.id])})`
+        )
       const path = ASSETS + '/sample-existing.png'
       await cli!.evalAwait(
         `(async()=>{await app.vault.createBinary(${JSON.stringify(path)},new Uint8Array([66,67,68]).buffer);await app.vault.modify(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}),${JSON.stringify('---\ngroups: ["[[Agents/Проект примера]]"]\n---\nowner baseline before existing link\n')});return true})()`
@@ -684,8 +691,19 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       )
       await ownerSync()
       await settleGroup()
+      await waitFor(
+        'existing-private confirmation dialog',
+        async () => {
+          await settleGroup()
+          await ownerSync()
+          return cli!.evalAwait<boolean>(
+            `[...document.querySelectorAll('.abele-publication-confirm')].some(el=>el.textContent.includes(${JSON.stringify(path)}))`
+          )
+        },
+        30000
+      )
       const snapshot = cli!.evalAwait<any>(
-        `(()=>{const dialogs=[...document.querySelectorAll('.modal-content,[role=dialog]')].map(el=>el.textContent||'');return{source:app.metadataCache.getCache(${JSON.stringify(NOTE)})?.embeds?.map(e=>e.link)||[],dialogs:dialogs.filter(body=>body.includes(${JSON.stringify(path)})&&body.includes('Проект примера')),publisher:window.__abeleTest.ownerPublicationDiagnostics(app)}})()`
+        `(()=>{const dialogs=[...document.querySelectorAll('.abele-publication-confirm')].map(el=>el.textContent||'');return{source:app.metadataCache.getCache(${JSON.stringify(NOTE)})?.embeds?.map(e=>e.link)||[],dialogs:dialogs.filter(body=>body.includes(${JSON.stringify(path)})&&body.includes('Проект примера')),publisher:window.__abeleTest.ownerPublicationDiagnostics(app)}})()`
       )
       console.info(JSON.stringify({ case: 'C-existing-private-confirmation', ...snapshot }))
       expect(snapshot.source).toContain(path)
@@ -693,6 +711,77 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       expect((await ownerApi.read(grant.id)).entries.some((e) => e.target.path === path)).toBe(
         false
       )
+      const target = await head(path)
+      expect((await ownerApi.visibility(grant.id, target.file_id)).visible).toBe(false)
+      await cli!.evalAwait(
+        `(()=>{[...document.querySelectorAll('.abele-publication-confirm button')].find(b=>b.textContent.trim()==='Publish').click();return true})()`
+      )
+      await waitFor(
+        'consented asset publication and peer materialization',
+        async () => {
+          await settleGroup()
+          await ownerSync()
+          if (
+            !(await ownerApi.read(grant.id)).entries.some((e) => e.target.fileId === target.file_id)
+          )
+            return false
+          for (let i = 0; i < 2; i++) peerRun(i)
+          return peers.every((p) => existsSync(join(p.dir, path)))
+        },
+        30000
+      )
+      expect(
+        (await ownerApi.read(grant.id)).entries.filter((e) => e.target.fileId === target.file_id)
+      ).toHaveLength(1)
+      expect((await ownerApi.visibility(grant.id, target.file_id)).visible).toBe(true)
+      const declinedPath = ASSETS + '/sample-declined.png'
+      await cli!.evalAwait(
+        `app.vault.createBinary(${JSON.stringify(declinedPath)},new Uint8Array([77,78,79]).buffer).then(()=>true)`
+      )
+      await ownerSync()
+      const declined = await head(declinedPath)
+      await cli!.evalAwait(
+        `(async()=>{const f=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});await app.vault.modify(f,(await app.vault.read(f))+${JSON.stringify('\n![[' + declinedPath + ']]\n')});return true})()`
+      )
+      await ownerSync()
+      await settleGroup()
+      await waitFor(
+        'separate private-target question',
+        async () => {
+          await settleGroup()
+          await ownerSync()
+          return cli!.evalAwait<boolean>(
+            `[...document.querySelectorAll('.abele-publication-confirm')].some(el=>el.textContent.includes(${JSON.stringify(declinedPath)}))`
+          )
+        },
+        30000
+      )
+      await cli!.evalAwait(
+        `(()=>{[...document.querySelectorAll('.abele-publication-confirm button')].find(b=>b.textContent.trim()==='Keep private').click();return true})()`
+      )
+      await waitFor(
+        'decline filed and dialog closed',
+        () => cli!.evalAwait(svc + '.publicationPrompt.asking.value') === null,
+        30000
+      )
+      const renamedPath = ASSETS + '/sample-declined-renamed.png'
+      await cli!.evalAwait(
+        `(async()=>{await app.vault.rename(app.vault.getAbstractFileByPath(${JSON.stringify(declinedPath)}),${JSON.stringify(renamedPath)});await app.vault.adapter.writeBinary(${JSON.stringify(renamedPath)},new Uint8Array([80,81,82]).buffer);const f=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});await app.vault.modify(f,(await app.vault.read(f))+'\\nordinary resave after decline\\n');return true})()`
+      )
+      await ownerSync()
+      await settleGroup()
+      await ownerSync()
+      expect((await head(renamedPath)).file_id).toBe(declined.file_id)
+      expect((await ownerApi.visibility(grant.id, declined.file_id)).visible).toBe(false)
+      expect(
+        (await ownerApi.read(grant.id)).entries.some((e) => e.target.fileId === declined.file_id)
+      ).toBe(false)
+      expect(cli!.evalAwait(svc + '.publicationPrompt.asking.value')).toBeNull()
+      expect(cli!.evalAwait<number>(svc + '.publicationPrompt.pending.value.length')).toBe(0)
+      for (let i = 0; i < 2; i++) {
+        peerRun(i)
+        expect(existsSync(join(peers[i].dir, renamedPath))).toBe(false)
+      }
     })
     it('native owner paste is automatic after group collaboration and preserves exact root asset paths', async () => {
       if (cli!.evalAwait('window.__abeleTest.ownerPublicationDiagnostics(app)===null'))
@@ -726,7 +815,15 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
           peerRun(0)
           peerRun(1)
           const view = await ownerApi.read(grant.id),
-            entry = view.entries.find((e) => e.target.path !== IMAGE && e.kind === 'owner-extra')
+            embeds = cli!.evalAwait<string[]>(
+              `(app.metadataCache.getCache(${JSON.stringify(NOTE)})?.embeds||[]).map(e=>app.metadataCache.getFirstLinkpathDest(e.link,${JSON.stringify(NOTE)})?.path).filter(Boolean)`
+            ),
+            entry = view.entries.find(
+              (e) =>
+                e.target.path !== IMAGE &&
+                embeds.includes(e.target.path) &&
+                e.kind === 'owner-extra'
+            )
           if (!entry) return false
           path = entry.target.path
           return peers.every((p) => existsSync(join(p.dir, path)))

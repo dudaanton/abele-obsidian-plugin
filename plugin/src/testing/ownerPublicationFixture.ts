@@ -71,10 +71,20 @@ export async function enableOwnerPublicationFixture(app: App, grants: string[]):
     await runtime.start(fresh)
     fresh = false
     live = runtime
+    const detachPrompt = svc.publicationPrompt.attach(runtime.confirmation)
+    await svc.publicationPrompt.refresh()
     return {
       hooks: runtime.hooks,
       beforeRemote: (paths) => runtime.beforeRemote(paths),
+      settled: async () => {
+        try {
+          await runtime.refreshPublication()
+        } finally {
+          await svc.publicationPrompt.refresh()
+        }
+      },
       close: () => {
+        detachPrompt()
         runtime.close()
         live = null
       },

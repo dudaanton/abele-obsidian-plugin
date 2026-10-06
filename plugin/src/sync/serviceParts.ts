@@ -9,6 +9,7 @@ import { EngineRunner } from './engineRunner'
 import { Enrolment } from './enrolment'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { HeldDeletesPrompt } from './heldDeletes'
+import { PublicationPrompt } from './publicationPrompt'
 import { askJoin, type JoinQuestion } from './join'
 import { finishJoin } from './joinState'
 import { ownSettingsPath, settingsArrived, settingsMeaning } from './ownSettings'
@@ -47,6 +48,7 @@ export interface ServiceParts {
   runner: EngineRunner
   enrolment: Enrolment
   heldPrompt: HeldDeletesPrompt
+  publicationPrompt: PublicationPrompt
   settingsPrompt: StagedSettingsPrompt
   codePrompt: StagedSettingsPrompt
   /** See `SyncService.joinQuestion`. */
@@ -176,5 +178,13 @@ export function wireParts(host: PartsHost): ServiceParts {
     })
   }
 
-  return { runner, enrolment, heldPrompt, settingsPrompt, codePrompt, joinQuestion }
+  return {
+    runner,
+    enrolment,
+    heldPrompt,
+    publicationPrompt: new PublicationPrompt(visible),
+    settingsPrompt,
+    codePrompt,
+    joinQuestion,
+  }
 }

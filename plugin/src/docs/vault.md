@@ -1471,6 +1471,12 @@ fingerprint; changed target bytes/identity or withdrawal invalidate an open answ
 forgetting a refusal. These records are not transferable settings or publication permission.
 Local settlement retains link candidates before advancing the last-synced baseline; pull only
 advances it. A merge compares the submitted local facts, not received links in the merged body.
+A confirmed existing-private decision stores its exact add request and stable intent ID before
+HTTP; a lost reply retries that request, not another publication. Target/link/sponsor checks and
+owner-device audience visibility are re-read outside the personal settlement transaction.
+Closing the dialog leaves the question pending without reopening it on every save; **Review**
+in the Sync tab opens it explicitly. **Keep private** remembers a refusal for that file/audience.
+The production activation fence remains disabled.
 
 ## Disabled group wizard, initial batch and Books profile
 

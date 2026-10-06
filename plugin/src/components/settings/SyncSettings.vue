@@ -134,6 +134,20 @@
         Many files deleted at once on this device, held back until somebody decides. The dialog
         asks once per new hold; this is where the question stays for as long as it lasts.
       -->
+      <Section v-if="publicationPending.length" title="Linked private files">
+        <Setting
+          v-for="question in publicationPending"
+          :key="question.exposureKey"
+          :name="question.observation.target.path"
+          :desc="question.observation.audience.label"
+        >
+          <Button
+            text="Review"
+            tooltip="Review this pending publication question"
+            @click="sync.publicationPrompt.open(question)"
+          />
+        </Setting>
+      </Section>
       <Section v-if="held.length > 0" title="Deletions held back">
         <HeldDeletesBlock :held="held" />
       </Section>
@@ -305,6 +319,7 @@ const device = sync.connection
 const status = sync.status
 /** What the engine holds back after many files went at once (`HeldDeletesPrompt`). */
 const held = sync.heldPrompt.held
+const publicationPending = sync.publicationPrompt.pending
 /** Settings changed on another device, waiting for Apply or Keep (`StagedSettingsPrompt`). */
 const stagedCode = sync.codePrompt.staged
 const staged = sync.settingsPrompt.staged

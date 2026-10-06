@@ -9,8 +9,8 @@
  * other dialog `openDialog` knows, each of its tabs included, and measures its ring against every clipping ancestor. The
  * phone probe does the same at 390×844.
  *
- * The sync dialogs are not here: they only open on a vault paired with a server, which this file
- * does not make. `syncPhone.e2e.test.ts` and `syncDialogs.e2e.test.ts` measure their rings on the
+ * Publication confirmation uses a presentation-only fixture here. Other sync dialogs require
+ * a vault paired with a server, which this file does not make. `syncPhone.e2e.test.ts` and `syncDialogs.e2e.test.ts` measure their rings on the
  * desktop as well as on a phone, in vaults of their own.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -29,6 +29,7 @@ import {
   PUBLICATION_MEASURE,
   publicationFault,
 } from './helpers/canvasPublicationReview'
+import { publicationQuestion } from '../helpers/publicationQuestion'
 
 interface Cut {
   screen: string
@@ -196,6 +197,12 @@ const script = `(async () => {
     }
     await closeDialog()
   }
+  window.__abeleTest.SyncService.getInstance().publicationPrompt.asking.value = ${JSON.stringify(publicationQuestion)}
+  if (await until(() => document.querySelector('.modal .abele-publication-confirm'), 5000)) {
+    await wait(300)
+    measureAll('publication confirmation', document.querySelector('.modal'))
+    await closeDialog()
+  } else cuts.push({ screen: 'publication confirmation', field: '-', by: ['dialog did not open'] })
 
   return JSON.stringify(cuts)
 })()`

@@ -143,6 +143,15 @@
     :question-key="codeAsking.key"
     @close="codePrompt.later($event)"
   />
+  <PublicationConfirmModal
+    v-if="publicationAsking && !heldAsking && !settingsAsking && !codeAsking"
+    :key="publicationAsking.exposureKey"
+    :question="publicationAsking"
+    :busy="publicationBusy"
+    :error="publicationError"
+    @answer="publicationPrompt.answer($event)"
+    @close="publicationPrompt.close()"
+  />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
   </Teleport>
@@ -176,6 +185,7 @@ import ScriptApprovalModal from './ScriptApprovalModal.vue'
 import VersionHistoryModal from './sync/VersionHistoryModal.vue'
 import DeletedFilesModal from './sync/DeletedFilesModal.vue'
 import HeldDeletesModal from './sync/HeldDeletesModal.vue'
+import PublicationConfirmModal from './sync/PublicationConfirmModal.vue'
 import SettingsArrivedModal from './sync/SettingsArrivedModal.vue'
 import PluginCodeModal from './sync/PluginCodeModal.vue'
 import SyncLogModal from './sync/SyncLogModal.vue'
@@ -230,7 +240,10 @@ const {
 } = GlobalStore.getInstance()
 
 /** Many files deleted at once, held back until decided: the question, while one is open. */
-const { heldPrompt, settingsPrompt, codePrompt } = SyncService.getInstance()
+const { heldPrompt, settingsPrompt, codePrompt, publicationPrompt } = SyncService.getInstance()
+const publicationAsking = publicationPrompt.asking
+const publicationBusy = publicationPrompt.busy
+const publicationError = publicationPrompt.error
 const codeAsking = codePrompt.asking
 const heldAsking = heldPrompt.asking
 /** Obsidian settings changed on another device, staged until answered: the question, if open. */

@@ -129,6 +129,9 @@ export class SyncService {
   /** Many files deleted at once, and the question about them (`heldDeletes.ts`). */
   readonly heldPrompt = this.parts.heldPrompt
 
+  /** Existing-private questions are separate from the personal upload lane. */
+  readonly publicationPrompt = this.parts.publicationPrompt
+
   /** Obsidian settings staged from another device, and the question about them. */
   readonly settingsPrompt = this.parts.settingsPrompt
 
@@ -517,6 +520,7 @@ export class SyncService {
         this.heldPrompt.foreground()
         this.settingsPrompt.foreground()
         this.codePrompt.foreground()
+        this.publicationPrompt.foreground()
       },
       sync: (visible) => {
         if (!this.runner.isRunning() || this.connection.value.paused) return
