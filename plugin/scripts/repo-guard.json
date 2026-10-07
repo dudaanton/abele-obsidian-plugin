@@ -53,30 +53,7 @@
   "allow": {
     "large": ["assets/abele_preview.jpg"],
     "images": ["assets/**", "docs/**", "plugin/tests/fixtures/**"],
-    "junk": [
-      "plugin/vendor/node/abele-channel-protocol-0.0.0.tgz",
-      "plugin/vendor/node/abele-node-protocol-0.0.0.tgz",
-      "plugin/vendor/node/abele-channel-client-0.0.0.tgz",
-      "plugin/vendor/node/abele-node-client-0.0.0.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-68bb5bb893a9.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-68bb5bb893a9.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-eb4844854b0a.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-eb4844854b0a.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-fc1e82dc3605.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-fc1e82dc3605.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-c3cec3ff2d08.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-c3cec3ff2d08.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-3b82b27ef378.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-3b82b27ef378.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-ac0df5090f7e.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-ac0df5090f7e.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-b5357cff9180.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-b5357cff9180.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-5cd9207bdf67.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-5cd9207bdf67.tgz",
-      "plugin/vendor/sync/abele-sync-core-0.0.0-80bc7c666ac5.tgz",
-      "plugin/vendor/sync/abele-sync-protocol-0.0.0-80bc7c666ac5.tgz"
-    ],
+    "junk": ["plugin/vendor/node/*.tgz", "plugin/vendor/sync/*.tgz"],
     "homePaths": []
   }
 }
