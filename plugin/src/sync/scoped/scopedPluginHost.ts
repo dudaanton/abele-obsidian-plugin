@@ -14,6 +14,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { pendingTeardown } from '../teardownBarrier'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
+import { StateRecoveryRequired } from '../idbIdentity'
 import { ObsidianFileSystem } from '../ObsidianFileSystem'
 import { GroupJoinHttp } from './groupJoinHttp'
 import {
@@ -133,11 +134,19 @@ export class ScopedPluginHost {
   private roots() {
     return [this.app.vault.configDir, AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts']
   }
-  private async identity(store: IndexedDbStateStore, key: string, expected: string): Promise<void> {
+  private async identity(
+    store: IndexedDbStateStore,
+    key: string,
+    expected: string,
+    initialize = true
+  ): Promise<void> {
     const stored = await store.getMeta(key)
     if (stored !== null && stored !== expected)
       throw new Error('Scoped database identity binding changed')
-    if (stored === null) await store.setMeta(key, expected)
+    if (stored === null) {
+      if (!initialize) throw new StateRecoveryRequired()
+      await store.setMeta(key, expected)
+    }
     if ((await store.getMeta(key)) !== expected)
       throw new Error('Scoped database identity was not persisted')
   }
@@ -165,6 +174,9 @@ export class ScopedPluginHost {
     })
     let meta: IndexedDbStateStore | null = null
     try {
+      // Capture before core initialization writes anything. An existing core ledger is
+      // independent evidence that native metadata must already exist, even on cold open.
+      const fresh = initialize && (await raw.pluginMeta()).size === 0
       const state = await ScopedState.open(raw, client.binding, { initialize })
       // The core header has proved this exact scope before adding the stable reconnect
       // identity (including upgrading ledgers written before these headers existed).
@@ -172,7 +184,7 @@ export class ScopedPluginHost {
       meta = await IndexedDbStateStore.open(this.factory, 'abele-scoped-native-' + c.ledgerId, {
         identity: { key: 'scoped-native-identity-v4', value: expected },
       })
-      await this.identity(meta, 'scoped-native-identity-v4', expected)
+      await this.identity(meta, 'scoped-native-identity-v4', expected, fresh)
       if (this.closed) throw new Error('Scoped host closed during database opening')
       const fs = new ObsidianFileSystem(this.app, { ledger: state.placementStore() })
       const r: Runtime = {

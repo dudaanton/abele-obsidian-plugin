@@ -1620,7 +1620,11 @@ establishes sharing authority or transfers consent to a new binding.
 
 Scoped installations use `abele-scoped-<ledgerId>` and `abele-scoped-native-<ledgerId>` IndexedDB
 stores, bound to the exact scoped credential fingerprint and descriptor. `abele-scoped-paused`
-is a device-local pause preference. Personal cursors and journals are never reused. An exact
+is a device-local pause preference. Personal cursors and journals are never reused. Native
+identity initialization is allowed only alongside an explicitly initialized empty core store.
+A missing native header beside an existing core ledger or journal holds recovery, including
+loss of the whole native database; cold open never manufactures replacement creation evidence.
+An exact
 scoped CREATE receipt is retained under `scoped-creation-receipt-v1:<handle>` before final
 materialization, so delayed certification or a restart cannot become identity adoption by
 matching bytes. `scoped-creation-journal-v1` binds the reviewed handle to its exact core request

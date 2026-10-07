@@ -68,6 +68,43 @@ it.each(['raw', 'meta'] as const)(
   }
 )
 
+it.each(['header', 'database'] as const)(
+  'holds recovery when the native %s is lost beside a durable scoped CREATE journal',
+  async (loss) => {
+    const { c, factory } = setup()
+    const r = await (host as any).open(c, true)
+    const journal = {
+      kind: 'scoped',
+      binding: r.client.binding,
+      request_id: 'sample-create-request',
+      startedAt: new Date(0).toISOString(),
+      ops: [
+        { op: 'create', path: 'Shared/sample-note.md', sha: 'a'.repeat(64), size: 10, mtime: 1000 },
+      ],
+    }
+    await r.state.setJournal(journal)
+    if (loss === 'header') await r.meta.setMeta('scoped-native-identity-v4', null)
+    await host.close()
+    if (loss === 'database')
+      await IndexedDbStateStore.delete(factory, 'abele-scoped-native-' + c.ledgerId)
+    const fetcher = vi.fn(() => {
+      throw new Error('Unexpected network effect')
+    })
+    host = new ScopedPluginHost((host as any).app, fetcher as never, factory)
+    await expect((host as any).open(c, false)).rejects.toThrow(/recovery|identity/i)
+    expect(fetcher).not.toHaveBeenCalled()
+    const raw = await IndexedDbStateStore.open(factory, 'abele-scoped-' + c.ledgerId)
+    const meta = await IndexedDbStateStore.open(factory, 'abele-scoped-native-' + c.ledgerId)
+    try {
+      expect(JSON.parse((await raw.getMeta('scoped-v4-state'))!).journal).toEqual(journal)
+      expect(await meta.getMeta('scoped-native-identity-v4')).toBeNull()
+    } finally {
+      raw.close()
+      meta.close()
+    }
+  }
+)
+
 it('never overwrites a changed identity header on a cold reopen', async () => {
   const { c, factory } = setup()
   const r = await (host as any).open(c, true)
