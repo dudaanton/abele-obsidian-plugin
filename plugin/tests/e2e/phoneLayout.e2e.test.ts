@@ -1288,6 +1288,23 @@ const probeScript = `(async () => {
           await screen('canvas ink preview',root,root)
           report['canvas ink preview'].stageTop=[before,v.stage.getBoundingClientRect().top]
           v.stage.dispatchEvent(new PointerEvent('pointercancel',init))}
+        root.querySelector('[aria-label="Erase part of strokes"]').click()
+        await screen('canvas eraser controls',root,root)
+        report['canvas eraser controls'].clipped=[]
+        for(const field of root.querySelectorAll('select,button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas eraser controls'].clipped.push(...ringClipped(field));field.blur()}
+        {const v=leaf.view.viewer,c=v.camera,r=v.stage.getBoundingClientRect(),init={pointerId:1,pointerType:'touch',buttons:1,clientX:r.left+r.width/2,clientY:r.top+r.height/2,bubbles:true},before=r.top
+          v.stage.dispatchEvent(new PointerEvent('pointerdown',init))
+          v.stage.dispatchEvent(new PointerEvent('pointermove',{...init,clientX:init.clientX+30}));await wait(100)
+          await screen('canvas eraser preview',root,root)
+          report['canvas eraser preview'].stageTop=[before,v.stage.getBoundingClientRect().top]
+          v.stage.dispatchEvent(new PointerEvent('pointercancel',init))}
+        root.querySelector('[aria-label="Lasso canvas objects"]').click()
+        select('alpha');await wait(100)
+        root.querySelector('.abele-canvas-shape-controls details').open=true
+        await screen('canvas lasso selection actions',root,root)
+        report['canvas lasso selection actions'].clipped=[]
+        for(const field of root.querySelectorAll('select,button,summary')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas lasso selection actions'].clipped.push(...ringClipped(field));field.blur()}
+        root.querySelector('.abele-canvas-shape-controls details').open=false
         root.querySelector('[aria-label="Canvas drawing tools"]').click()
         root.querySelector('[aria-label="Shapes and connections"]').click()
         await screen('canvas shapes',root,root)
@@ -1679,6 +1696,9 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas selection',
     'canvas pen controls',
     'canvas ink preview',
+    'canvas eraser controls',
+    'canvas eraser preview',
+    'canvas lasso selection actions',
     'canvas shapes',
     'canvas connection style',
     'canvas connector preview',
@@ -1754,6 +1774,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(top).toHaveLength(2)
     expect(top?.[1]).toBe(top?.[0])
   })
+  it('canvas eraser preview: the toolbar does not shift the captured pointer surface', () => {
+    const top = report['canvas eraser preview']?.stageTop
+    expect(top).toHaveLength(2)
+    expect(top?.[1]).toBe(top?.[0])
+  })
   it('canvas connector preview: the toolbar does not shift the captured pointer surface', () => {
     const top = report['canvas connector preview']?.stageTop
     expect(top).toHaveLength(2)
@@ -1778,6 +1803,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas creation',
     'canvas group',
     'canvas pen controls',
+    'canvas eraser controls',
+    'canvas lasso selection actions',
     'canvas shapes',
     'canvas connection style',
   ])('%s: every field and action keeps its focus ring', (label) => {

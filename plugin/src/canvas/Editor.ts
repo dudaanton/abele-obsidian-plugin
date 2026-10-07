@@ -3,6 +3,8 @@ import { nanoid } from 'nanoid'
 import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
 import { canvasFingerprint, SHAPES, type Shape } from './core/model'
 import { linesOf } from './core/primitives'
+import { allInkEntries, inkEntries } from './core/ink'
+import { canvasVisibility } from './core/visibility'
 import type { CanvasSession, GraphTransform } from './core/session'
 import type { CanvasViewer } from './Viewer'
 import { CanvasInput, type CanvasInputTool } from './input'
@@ -38,6 +40,8 @@ export class CanvasEditor {
   private tool: CanvasInputTool = 'select'
   private readonly palette: HTMLElement
   private readonly inkControls: HTMLElement
+  private readonly inkSelectionControls: HTMLDetailsElement
+  private readonly inkAttachment: HTMLSelectElement
   private readonly inkColor: HTMLSelectElement
   private readonly inkSize: HTMLSelectElement
   private readonly shape: HTMLSelectElement
@@ -115,6 +119,9 @@ export class CanvasEditor {
       ['pan', 'Navigate canvas', 'Navigate'],
       ['pen', 'Draw with pen', 'Pen'],
       ['marker', 'Draw with marker', 'Marker'],
+      ['eraser', 'Erase whole strokes', 'Eraser'],
+      ['partial-eraser', 'Erase part of strokes', 'Partial eraser'],
+      ['lasso', 'Lasso canvas objects', 'Lasso'],
     ] as const)
       this.button(
         label,
@@ -135,6 +142,38 @@ export class CanvasEditor {
       THICKNESSES.map((t) => [t, t])
     )
     this.inkSize.value = 'medium'
+    this.inkSelectionControls = make('details')
+    this.inkSelectionControls.className = 'abele-canvas-ink-selection'
+    const inkSummary = make('summary')
+    inkSummary.textContent = 'Selection actions'
+    this.inkSelectionControls.append(inkSummary)
+    const inkActions = make('div')
+    inkActions.className = 'abele-canvas-controls'
+    this.inkSelectionControls.append(inkActions)
+    this.inkControls.append(this.inkSelectionControls)
+    this.button(
+      'Toggle lasso multiple selection',
+      'Select multiple',
+      () => {
+        this.multiple = !this.multiple
+        this.refresh()
+      },
+      inkActions
+    )
+    this.button('Delete canvas selection', 'Delete', () => this.remove(), inkActions)
+    this.button('Group canvas selection', 'Group', () => this.group(), inkActions)
+    this.button('Ungroup canvas selection', 'Ungroup', () => this.group(true), inkActions)
+    this.button(
+      'Recolor canvas selection',
+      'Apply color',
+      () => this.inkAction('color'),
+      inkActions
+    )
+    this.button('Detach selected ink', 'Detach ink', () => this.inkAction('detach'), inkActions)
+    this.inkAttachment = this.select(inkActions, 'Ink attachment card', [
+      ['', 'Selected card or choose attachment'],
+    ])
+    this.button('Attach selected ink', 'Attach ink', () => this.inkAction('attach'), inkActions)
     this.shape = this.select(
       this.palette,
       'Canvas shape',
@@ -631,13 +670,54 @@ export class CanvasEditor {
     await this.saving(() => this.ports.publish())
     this.propertyBaseline = JSON.stringify(this.connection())
   }
+  private async inkAction(action: 'color' | 'detach' | 'attach'): Promise<void> {
+    const document = this.ready(),
+      graph = document.session.graph,
+      entries = allInkEntries(graph).filter((e) => this.selected.has(e.stroke.id)),
+      cards = graph.nodes.filter((n) => this.selected.has(n.id)),
+      target = this.inkAttachment.value || (cards.length === 1 ? cards[0].id : '')
+    const ops: CanvasOperation[] =
+      action === 'color'
+        ? [
+            ...entries.map((e) => ({
+              op: 'update_ink' as const,
+              id: e.stroke.id,
+              patch: { color: this.inkColor.value },
+            })),
+            ...graph.nodes
+              .filter((n) => this.selected.has(n.id))
+              .map((n) => ({
+                op: 'update' as const,
+                id: n.id,
+                patch: { color: this.inkColor.value },
+              })),
+          ]
+        : entries
+            .filter((e) => action === 'attach' || e.node)
+            .map((e) => ({
+              op: 'attach_ink',
+              id: e.stroke.id,
+              ...(action === 'attach' ? { node: target } : {}),
+            }))
+    if (!ops.length || (action === 'attach' && !target)) return
+    if (canvasFingerprint(editCanvas(graph, ops).graph) === canvasFingerprint(graph)) return
+    document.beginDraft()
+    this.update(document, ops)
+    document.finishDraft()
+    await this.saving(() => this.ports.publish())
+  }
   private async remove(): Promise<void> {
     const document = this.ready()
     if (!this.selected.size) return
     document.beginDraft()
+    const owned = new Set(
+      allInkEntries(document.session.graph)
+        .filter((e) => e.node && this.selected.has(e.node.id))
+        .map((e) => e.stroke.id)
+    )
     this.update(
       document,
-      [...this.selected].map((id) => ({ op: 'remove', id }))
+      [...this.selected].filter((id) => !owned.has(id)).map((id) => ({ op: 'remove', id }))
     )
     document.finishDraft()
     this.selected.clear()
@@ -646,7 +726,7 @@ export class CanvasEditor {
   private async group(ungroup = false): Promise<void> {
     const document = this.ready(),
       node = this.node()
-    if (ungroup ? node?.type !== 'group' : this.selected.size < 2) return
+    if (ungroup ? node?.type !== 'group' : this.selected.size < 1) return
     const id = ungroup ? node.id : nanoid()
     document.beginDraft()
     this.update(document, [
@@ -739,6 +819,7 @@ export class CanvasEditor {
           ...(graph?.nodes ?? []),
           ...(graph?.edges ?? []),
           ...linesOf(graph ?? { nodes: [], edges: [] }),
+          ...inkEntries(graph ?? { nodes: [], edges: [] }).map((e) => e.stroke),
         ].map((e) => e.id)
       )
     this.selected = new Set([...this.selected].filter((id) => ids.has(id)))
@@ -765,6 +846,48 @@ export class CanvasEditor {
       'Ungroup selected group',
     ])
       this.buttons.get(label).hidden = !this.inkControls.hidden
+    const ink = allInkEntries(graph ?? { nodes: [], edges: [] }).filter((e) =>
+        this.selected.has(e.stroke.id)
+      ),
+      groupable =
+        this.selected.size > 0 &&
+        [...this.selected].every(
+          (id) => graph?.nodes.some((n) => n.id === id) || ink.some((e) => e.stroke.id === id)
+        )
+    this.inkSelectionControls.hidden = this.tool !== 'lasso'
+    const attachment = this.inkAttachment.value
+    this.inkAttachment.replaceChildren()
+    for (const [value, text] of [
+      ['', 'Selected card or choose attachment'],
+      ...canvasVisibility(graph ?? { nodes: [], edges: [] }).visible.map((n) => [
+        n.id,
+        n.type === 'group'
+          ? n.label || 'Group'
+          : n.type === 'text'
+            ? n.text?.slice(0, 40) || 'Text card'
+            : n.file || n.url || 'Card',
+      ]),
+    ]) {
+      const option = this.inkAttachment.ownerDocument.createElementNS(
+        'http://www.w3.org/1999/xhtml',
+        'option'
+      ) as HTMLOptionElement
+      option.value = value
+      option.textContent = text
+      this.inkAttachment.append(option)
+    }
+    this.inkAttachment.value = attachment
+    this.inkAttachment.disabled = blocked || !ink.length
+    this.buttons.get('Toggle lasso multiple selection').disabled = blocked
+    this.buttons
+      .get('Toggle lasso multiple selection')
+      .setAttribute('aria-pressed', String(this.multiple))
+    this.buttons.get('Delete canvas selection').disabled = blocked || !this.selected.size
+    this.buttons.get('Group canvas selection').disabled = blocked || !groupable
+    this.buttons.get('Ungroup canvas selection').disabled = blocked || node?.type !== 'group'
+    this.buttons.get('Recolor canvas selection').disabled = blocked || !groupable
+    this.buttons.get('Detach selected ink').disabled = blocked || !ink.some((e) => e.node)
+    this.buttons.get('Attach selected ink').disabled = blocked || !ink.length
     const connection = this.connection()
     this.properties.hidden = !connection || active || !this.inkControls.hidden
     if (
@@ -824,6 +947,9 @@ export class CanvasEditor {
       ['pan', 'Navigate canvas'],
       ['pen', 'Draw with pen'],
       ['marker', 'Draw with marker'],
+      ['eraser', 'Erase whole strokes'],
+      ['partial-eraser', 'Erase part of strokes'],
+      ['lasso', 'Lasso canvas objects'],
       ['select', 'Select canvas objects'],
       ['connect', 'Draw connection'],
       ['line', 'Draw free line'],
@@ -892,10 +1018,13 @@ export class CanvasEditor {
       this.waiting || this.composing || (!!session?.busy && this.ownedDraft !== document)
     const penHint =
       'Draw on a card to attach ink; start on the background for free ink. Two fingers navigate.'
+    const eraserHint = 'Drag over ink to erase. Two fingers navigate; Undo restores the gesture.'
     this.status.textContent = this.geometry
       ? this.tool === 'pen' || this.tool === 'marker'
         ? penHint
-        : 'Canvas gesture in progress…'
+        : this.tool === 'eraser' || this.tool === 'partial-eraser'
+          ? eraserHint
+          : 'Canvas gesture in progress…'
       : session?.dirty
         ? 'Unsaved canvas work — retained in memory only; not saved. Reloading or crashing can lose it.' +
           (session.conflict || (document.draftPath && document.draftPath !== document.file.path)
@@ -908,15 +1037,19 @@ export class CanvasEditor {
           ? 'Canvas operation in progress…'
           : this.selected.size
             ? this.selected.size === 1
-              ? `Selected ${node?.type ?? 'connection'}`
-              : `${this.selected.size} cards selected`
-            : this.tool === 'pen' || this.tool === 'marker'
-              ? penHint
-              : this.tool === 'connect'
-                ? 'Drag from a card to another card to connect them.'
-                : this.tool === 'line' || this.tool === 'arrow'
-                  ? 'Drag to draw a free line or arrow.'
-                  : ''
+              ? `Selected ${node?.type ?? (ink.length ? 'stroke' : 'connection')}`
+              : `${this.selected.size} objects selected`
+            : this.tool === 'lasso'
+              ? 'Circle cards and ink to select; drag the selection to move or its corner to scale. Open Selection actions to edit it.'
+              : this.tool === 'eraser' || this.tool === 'partial-eraser'
+                ? eraserHint
+                : this.tool === 'pen' || this.tool === 'marker'
+                  ? penHint
+                  : this.tool === 'connect'
+                    ? 'Drag from a card to another card to connect them.'
+                    : this.tool === 'line' || this.tool === 'arrow'
+                      ? 'Drag to draw a free line or arrow.'
+                      : ''
   }
   private key(event: KeyboardEvent): boolean {
     if (

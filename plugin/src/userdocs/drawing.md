@@ -193,8 +193,29 @@ drawing and switch to pan/pinch without saving a partial stroke. Escape, Fit and
 input discard the preview too. A pen ignores a resting finger while drawing; pressure changes
 its width. The marker is translucent. Drawings appear above live note cards and in saved
 embeds, agent pictures and whole-canvas exports. Native Canvas retains the strokes but does
-not draw them; return to Abele to see them. Erasing and selecting individual strokes are not
-available in this increment; Undo removes a recent stroke.
+not draw them; return to Abele to see them.
+
+**Eraser** removes whole strokes that you pass over; **Partial eraser** cuts away only the
+part touched, keeping the remaining pieces and their colour, thickness and attachment.
+The eraser reaches the same distance on screen at any zoom and never deletes cards.
+One sweep is one Undo item. A cancelled gesture or a second finger restores the preview
+without changing the saved canvas; a resting finger is ignored while using a pen.
+
+**Lasso** circles both ink and cards. A tap selects a stroke or card; drag inside the
+selection to move it, or drag its bottom-right corner to scale it. Attached annotations
+selected together with their card move and scale only once. Open **Selection actions**
+for **Delete**, **Group**, **Ungroup** and **Apply color** (using the selected Canvas colour).
+**Select multiple** lets taps add/remove strokes and cards from the selection instead of
+dragging them. Turn it off again to move or scale the selection.
+**Detach ink** makes annotations independent; select one card together with the strokes,
+or choose an **Ink attachment card**, then use **Attach ink** to bind selected strokes to it.
+Both preserve the visible outline, including
+annotations stretched by a resized card. Grouping selected free ink attaches it to the new
+group; ink already owned by a selected card stays with that card. Ungrouping promotes the
+group's own ink to independent strokes without changing its appearance. Deleting a card
+also deletes its owned ink; Undo restores both. Each completed action uses the same shared
+history as cards and agent edits. A group containing unrecognized ink cannot be ungrouped
+safely: it is kept intact rather than guessing a new attachment or silently losing that ink.
 
 Each finished drag or resize is one shared undo item. Until release the geometry is only a
 preview; an agent or another tab cannot publish over the active gesture. Retry and discard

@@ -20,9 +20,20 @@ import {
 } from './core/selection'
 import type { CanvasViewer, CanvasViewerInput } from './Viewer'
 import { CanvasInkInput } from './inkAdapter'
+import { CanvasInkEditInput, inkSelectionBounds } from './inkEditAdapter'
 import type { CanvasTheme } from './core/painter'
 
-export type CanvasInputTool = 'select' | 'connect' | 'line' | 'arrow' | 'pen' | 'marker' | 'pan'
+export type CanvasInputTool =
+  | 'select'
+  | 'connect'
+  | 'line'
+  | 'arrow'
+  | 'pen'
+  | 'marker'
+  | 'pan'
+  | 'eraser'
+  | 'partial-eraser'
+  | 'lasso'
 export interface InputPorts {
   brush(): { color: string; size: number }
   tool(): CanvasInputTool
@@ -63,6 +74,7 @@ interface ConnectionGesture {
 }
 export class CanvasInput implements CanvasViewerInput {
   private readonly ink: CanvasInkInput
+  private readonly inkEdit: CanvasInkEditInput
   private connection: ConnectionGesture | null = null
   private gesture: Gesture | null = null
   private readonly overlay: HTMLElement
@@ -72,6 +84,7 @@ export class CanvasInput implements CanvasViewerInput {
     private readonly ports: InputPorts
   ) {
     this.ink = new CanvasInkInput(viewer, ports)
+    this.inkEdit = new CanvasInkEditInput(viewer, ports)
     this.overlay = viewer.el.ownerDocument.createElementNS(
       'http://www.w3.org/1999/xhtml',
       'div'
@@ -85,14 +98,16 @@ export class CanvasInput implements CanvasViewerInput {
     return toWorld(this.viewer.camera, event.clientX - rect.left, event.clientY - rect.top)
   }
   ignores(event: PointerEvent): boolean {
-    return this.ink.ignores(event)
+    return this.ink.ignores(event) || this.inkEdit.ignores(event)
   }
   paintInk(ctx: CanvasRenderingContext2D, theme: CanvasTheme): void {
     this.ink.paint(ctx, theme)
+    this.inkEdit.paint(ctx, theme)
   }
   down(event: PointerEvent): boolean {
     if (!this.ports.enabled() || event.altKey || event.button !== 0) return false
     if (this.ports.tool() === 'pen' || this.ports.tool() === 'marker') return this.ink.down(event)
+    if (this.inkEdit.down(event)) return true
     if (this.ports.tool() === 'pan') return false
     if (this.connectionDown(event)) return true
     if (this.ports.tool() !== 'select') return false
@@ -130,6 +145,7 @@ export class CanvasInput implements CanvasViewerInput {
   }
   move(event: PointerEvent): void {
     this.ink.move(event)
+    this.inkEdit.move(event)
     if (this.connection) {
       this.connectionMove(event)
       return
@@ -188,6 +204,7 @@ export class CanvasInput implements CanvasViewerInput {
   }
   up(event: PointerEvent): void {
     this.ink.up(event)
+    this.inkEdit.up(event)
     if (this.connection) {
       this.connectionUp(event)
       return
@@ -211,6 +228,7 @@ export class CanvasInput implements CanvasViewerInput {
   }
   cancel(): void {
     this.ink.cancel()
+    this.inkEdit.cancel()
     if (this.connection) {
       const g = this.connection
       this.connection = null
@@ -227,6 +245,7 @@ export class CanvasInput implements CanvasViewerInput {
   }
   validate(): void {
     this.ink.validate()
+    this.inkEdit.validate()
     if ((this.gesture?.active || this.connection?.active) && !this.ports.valid()) this.cancel()
   }
   paint(): void {
@@ -247,6 +266,23 @@ export class CanvasInput implements CanvasViewerInput {
       el.style.width = `${rect.width * this.viewer.camera.zoom}px`
       el.style.height = `${rect.height * this.viewer.camera.zoom}px`
       this.overlay.append(el)
+    }
+    if (this.ports.tool() === 'lasso') {
+      const rect = inkSelectionBounds(graph, selected)
+      if (rect) {
+        box(rect)
+        const handle = this.overlay.ownerDocument.createElementNS(
+            'http://www.w3.org/1999/xhtml',
+            'div'
+          ) as HTMLElement,
+          [x, y] = toScreen(this.viewer.camera, rect.x + rect.width, rect.y + rect.height)
+        handle.className = 'abele-canvas-resize-handle'
+        handle.setAttribute('aria-label', 'Scale canvas selection')
+        handle.style.left = `${x}px`
+        handle.style.top = `${y}px`
+        this.overlay.append(handle)
+      }
+      return
     }
     for (const node of graph.nodes.filter((n) => selected.has(n.id))) {
       box(node)

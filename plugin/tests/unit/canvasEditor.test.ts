@@ -106,6 +106,244 @@ function pointer(s: ReturnType<typeof setup>, type: string, x: number, y: number
   )
 }
 
+describe('human canvas ink editing', () => {
+  const drawn = (): CanvasGraph => ({
+    nodes: [],
+    edges: [],
+    abele: {
+      ink: [
+        {
+          version: 1,
+          id: 'first',
+          tool: 'pen',
+          color: '1',
+          size: 2,
+          points: [20, 100, 0.5, 180, 100, 0.5],
+        },
+        {
+          version: 1,
+          id: 'second',
+          tool: 'pen',
+          color: '2',
+          size: 2,
+          points: [20, 180, 0.5, 180, 180, 0.5],
+        },
+      ],
+    },
+  })
+  it('erases swept strokes in one history entry and restores them on undo', async () => {
+    const s = setup(drawn())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    expect(s.button('Erase whole strokes')).not.toBeNull()
+    s.button('Erase whole strokes').click()
+    pointer(s, 'pointerdown', 100, 80, { buttons: 1 })
+    pointer(s, 'pointermove', 100, 200, { buttons: 1 })
+    pointer(s, 'pointerup', 100, 200)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.graph.abele.ink).toEqual([])
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(drawn()))
+  })
+  it('partially erases sparse strokes and cancels on a second finger without writing', async () => {
+    const s = setup(drawn())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    expect(s.button('Erase part of strokes')).not.toBeNull()
+    s.button('Erase part of strokes').click()
+    pointer(s, 'pointerdown', 100, 100, { buttons: 1 })
+    pointer(s, 'pointerdown', 200, 200, { pointerId: 2, buttons: 1 })
+    expect(s.document.session.graph).toEqual(drawn())
+    expect(s.publish).not.toHaveBeenCalled()
+    pointer(s, 'pointerup', 100, 100)
+    pointer(s, 'pointerup', 200, 200, { pointerId: 2 })
+    pointer(s, 'pointerdown', 100, 100, { buttons: 1 })
+    pointer(s, 'pointerup', 100, 100)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.graph.abele.ink).toHaveLength(3)
+  })
+  it('detaches an annotation, explicitly attaches ink to the selected card and groups/ungroups with undo', async () => {
+    const g = drawn()
+    g.nodes.push({
+      id: 'card',
+      type: 'text',
+      text: 'Sample',
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 140,
+      abele: {
+        ink: [
+          {
+            version: 1,
+            id: 'owned',
+            tool: 'pen',
+            color: '2',
+            size: 4,
+            points: [20, 20, 0.5, 180, 20, 0.5],
+            frame: { width: 200, height: 140 },
+          },
+        ],
+      },
+    })
+    const s = setup(g)
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Lasso canvas objects').click()
+    pointer(s, 'pointerdown', 100, 20)
+    pointer(s, 'pointerup', 100, 20)
+    s.button('Detach selected ink').click()
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.graph.nodes[0].abele.ink).toEqual([])
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(g))
+    s.button('Toggle lasso multiple selection').click()
+    pointer(s, 'pointerdown', 100, 60)
+    pointer(s, 'pointerup', 100, 60)
+    pointer(s, 'pointerdown', 100, 180)
+    pointer(s, 'pointerup', 100, 180)
+    s.button('Toggle lasso multiple selection').click()
+    expect(s.viewer.selection).toEqual(new Set(['owned', 'card', 'second']))
+    s.button('Attach selected ink').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].abele.ink).toHaveLength(2))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(g))
+    s.button('Group canvas selection').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(2))
+    const grouped = s.document.session.graph
+    expect((grouped.nodes[1].abele.ink as { id: string }[]).map((s) => s.id)).toEqual(['second'])
+    s.button('Ungroup canvas selection').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(1))
+    expect((s.document.session.graph.abele.ink as { id: string }[]).map((s) => s.id)).toContain(
+      'second'
+    )
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(grouped))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(g))
+  })
+  it('cancels eraser previews on capture loss, Escape, Fit and source changes; a pen ignores a resting finger', async () => {
+    for (const cancel of ['lostpointercapture', 'Escape', 'Fit', 'source']) {
+      const s = setup(drawn())
+      s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+      s.button('Erase whole strokes').click()
+      pointer(s, 'pointerdown', 100, 100, { pointerType: 'pen', buttons: 1 })
+      pointer(s, 'pointerdown', 200, 200, { pointerId: 2 })
+      expect(s.document.session.busy).toBe(true)
+      if (cancel === 'Escape')
+        s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      else if (cancel === 'Fit') s.viewer.fit()
+      else if (cancel === 'source') {
+        s.document.observe({ graph: drawn(), revision: 'external' })
+      } else pointer(s, cancel, 100, 100)
+      expect(s.document.session.graph).toEqual(drawn())
+      expect(s.document.session.dirty).toBe(false)
+      expect(s.publish).not.toHaveBeenCalled()
+    }
+  })
+  it('deletes a card and its separately selected annotation once, without trapping a draft', async () => {
+    const g = drawn()
+    g.nodes.push({
+      id: 'card',
+      type: 'text',
+      text: 'Sample',
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 140,
+      abele: {
+        ink: [
+          {
+            version: 1,
+            id: 'owned',
+            tool: 'pen',
+            color: '1',
+            size: 2,
+            points: [20, 20, 0.5],
+            frame: { width: 200, height: 140 },
+          },
+        ],
+      },
+    })
+    const s = setup(g)
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Lasso canvas objects').click()
+    s.button('Toggle lasso multiple selection').click()
+    pointer(s, 'pointerdown', 100, 60)
+    pointer(s, 'pointerup', 100, 60)
+    pointer(s, 'pointerdown', 20, 20)
+    pointer(s, 'pointerup', 20, 20)
+    expect(s.viewer.selection).toEqual(new Set(['card', 'owned']))
+    s.button('Delete canvas selection').click()
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.busy).toBe(false)
+    expect(s.document.session.graph.nodes).toEqual([])
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(g))
+  })
+  it('retains a failed partial erase as an ordinary human draft and retries once', async () => {
+    const s = setup(drawn())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Erase part of strokes').click()
+    s.publish.mockRejectedValueOnce(new Error('Sample save failure'))
+    pointer(s, 'pointerdown', 100, 100, { buttons: 1 })
+    pointer(s, 'pointerup', 100, 100)
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+    expect(s.document.session.dirty).toBe(true)
+    expect(s.document.session.graph.abele.ink).toHaveLength(3)
+    s.button('Retry save').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.document.session.history.undo).toBe(1)
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(drawn()))
+  })
+  it('lassos, moves, scales and deletes a mixed selection, with one undo per action', async () => {
+    const g = drawn()
+    g.nodes.push({
+      id: 'card',
+      type: 'text',
+      text: 'Sample',
+      x: 220,
+      y: 80,
+      width: 100,
+      height: 120,
+    })
+    const s = setup(g)
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    expect(s.button('Lasso canvas objects')).not.toBeNull()
+    s.button('Lasso canvas objects').click()
+    pointer(s, 'pointerdown', 0, 60, { buttons: 1 })
+    for (const [x, y] of [
+      [340, 60],
+      [340, 220],
+      [0, 220],
+      [0, 60],
+    ])
+      pointer(s, 'pointermove', x, y, { buttons: 1 })
+    pointer(s, 'pointerup', 0, 60)
+    expect(s.viewer.selection).toEqual(new Set(['card', 'first', 'second']))
+    expect(s.publish).not.toHaveBeenCalled()
+    pointer(s, 'pointerdown', 100, 100, { buttons: 1 })
+    pointer(s, 'pointermove', 130, 120, { buttons: 1 })
+    pointer(s, 'pointerup', 130, 120)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.graph.nodes[0].x).toBe(250)
+    expect(s.viewer.selection.size).toBe(3)
+    s.viewer.input!.paint()
+    const handle = s.el.querySelector<HTMLElement>('[aria-label="Scale canvas selection"]')!
+    expect(handle).not.toBeNull()
+    const x = parseFloat(handle.style.left),
+      y = parseFloat(handle.style.top)
+    pointer(s, 'pointerdown', x, y, { buttons: 1 })
+    pointer(s, 'pointermove', x + 80, y + 40, { buttons: 1 })
+    pointer(s, 'pointerup', x + 80, y + 40)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
+    s.button('Delete canvas selection').click()
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(3))
+    expect(s.document.session.graph.nodes).toEqual([])
+    expect(s.document.session.graph.abele.ink).toEqual([])
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(1))
+  })
+})
+
 describe('human canvas pen', () => {
   it('gives the pen space on a phone by folding unrelated card controls until Drawing is closed', () => {
     const s = setup()

@@ -149,11 +149,15 @@
   resize: vertical;
   font: inherit;
 }
-.abele-canvas-connection-properties {
+.abele-canvas-connection-properties,
+.abele-canvas-ink-selection {
+  min-width: 0;
+  max-width: 100%;
   flex-shrink: 0;
   padding: var(--size-4-2);
 }
-.abele-canvas-connection-properties summary {
+.abele-canvas-connection-properties summary,
+.abele-canvas-ink-selection summary {
   cursor: pointer;
   min-height: 36px;
 }

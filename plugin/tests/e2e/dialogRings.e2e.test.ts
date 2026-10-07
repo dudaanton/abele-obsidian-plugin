@@ -284,6 +284,13 @@ describe.skipIf(!available)('human Canvas focus rings', () => {
         root.querySelector('[aria-label="Canvas drawing tools"]').click()
         root.querySelector('[aria-label="Draw with pen"]').click();measure('pen',root)
         root.querySelector('[aria-label="Draw with marker"]').click();measure('marker',root)
+        root.querySelector('[aria-label="Erase whole strokes"]').click();measure('whole eraser',root)
+        root.querySelector('[aria-label="Erase part of strokes"]').click();measure('partial eraser',root)
+        root.querySelector('[aria-label="Lasso canvas objects"]').click()
+        {const v=leaf.view.viewer,c=v.camera,r=v.stage.getBoundingClientRect(),n=v.graph.nodes[0],init={pointerId:1,pointerType:'touch',clientX:r.left+(n.x+n.width/2-c.x)*c.zoom,clientY:r.top+(n.y+n.height/2-c.y)*c.zoom,bubbles:true}
+          for(const type of ['pointerdown','pointerup'])v.stage.dispatchEvent(new PointerEvent(type,init))}
+        root.querySelector('.abele-canvas-ink-selection').open=true;measure('lasso selection actions',root)
+        root.querySelector('.abele-canvas-ink-selection').open=false
         root.querySelector('[aria-label="Canvas drawing tools"]').click()
         root.querySelector('[aria-label="Shapes and connections"]').click();measure('shapes',root)
         root.querySelector('[aria-label="Shapes and connections"]').click()
