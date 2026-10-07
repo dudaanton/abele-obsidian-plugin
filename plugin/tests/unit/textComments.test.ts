@@ -36,6 +36,16 @@ describe('human thread codec', () => {
 })
 
 describe('human comment lifecycle', () => {
+  it('reports malformed files during rename without stranding valid unloaded threads', async () => {
+    const m = memoryComments()
+    m.files.set('badbad', '{broken')
+    const saved = await m.service.publish(
+      await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'First')
+    )
+    await expect(m.service.rename('Notes', 'Archive')).rejects.toThrow()
+    expect((await m.repository.read(saved.thread.id))?.thread.anchor.note).toBe('Archive/sample.md')
+    expect(m.files.get('badbad')).toBe('{broken')
+  })
   it('cancellation before save has no side effects', async () => {
     const m = memoryComments()
     await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'First')

@@ -165,7 +165,8 @@ export class ScopeResolver {
 
     if (this.fullVaultAccess.value) {
       for (const file of app.vault.getFiles()) {
-        if (!this.ceiling || this.ceiling.isInScope(file.path)) result.add(file.path)
+        if (file.extension !== 'abcomment' && (!this.ceiling || this.ceiling.isInScope(file.path)))
+          result.add(file.path)
       }
       this._cache = result
       return result
@@ -204,7 +205,12 @@ export class ScopeResolver {
     // and a scope over the chat folder is not a scope over those notes. A chat reaches another
     // agent only by being attached, as the words exchanged in it (`chatForAgent`).
     for (const path of result) {
-      if (isChatLog(path) || (this.ceiling && !this.ceiling.isInScope(path))) result.delete(path)
+      if (
+        isChatLog(path) ||
+        path.toLowerCase().endsWith('.abcomment') ||
+        (this.ceiling && !this.ceiling.isInScope(path))
+      )
+        result.delete(path)
     }
 
     this._cache = result

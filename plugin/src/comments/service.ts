@@ -153,18 +153,28 @@ export class TextCommentService {
 
   /** Scan the repository, not the loaded UI cache. Folder moves use path-segment boundaries. */
   async rename(oldPath: string, newPath: string): Promise<void> {
+    const errors: unknown[] = []
     for (const id of await this.repository.ids()) {
-      const saved = await this.repository.read(id)
-      if (!saved) continue
-      const path = saved.thread.anchor.note
-      if (path !== oldPath && !path.startsWith(oldPath + '/')) continue
-      await this.repository.write(
-        {
-          ...saved.thread,
-          anchor: { ...saved.thread.anchor, note: newPath + path.slice(oldPath.length) },
-        },
-        saved.revision
-      )
+      try {
+        const saved = await this.repository.read(id)
+        if (!saved) continue
+        const path = saved.thread.anchor.note
+        if (path !== oldPath && !path.startsWith(oldPath + '/')) continue
+        await this.repository.write(
+          {
+            ...saved.thread,
+            anchor: { ...saved.thread.anchor, note: newPath + path.slice(oldPath.length) },
+          },
+          saved.revision
+        )
+      } catch (error) {
+        errors.push(error)
+      }
     }
+    if (errors.length)
+      throw new AggregateError(
+        errors,
+        'Some comment anchors could not be updated. Their files were retained'
+      )
   }
 }
