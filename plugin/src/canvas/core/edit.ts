@@ -16,7 +16,18 @@ import {
 import { moveIds } from './selection'
 import { lineSchema, linesOf, rawLines, writeLines, lineIds, type CanvasLine } from './primitives'
 
-import { addInk, inkIds, inkSchema } from './ink'
+import {
+  addInk,
+  inkIds,
+  inkSchema,
+  allInkEntries,
+  attachInk,
+  inkBounds,
+  replaceInk,
+  transformInk,
+  type CanvasInk,
+  rawInk,
+} from './ink'
 
 const id = z.string().min(1),
   object = z.record(z.string(), z.unknown())
@@ -55,6 +66,17 @@ export const operationSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('connect'), edge: edgeSchema }).strict(),
   z.object({ op: z.literal('add_line'), line: lineSchema }).strict(),
   z.object({ op: z.literal('add_ink'), stroke: inkSchema, node: id.optional() }).strict(),
+  z.object({ op: z.literal('update_ink'), id, patch: object }).strict(),
+  z.object({ op: z.literal('attach_ink'), id, node: id.optional() }).strict(),
+  z
+    .object({
+      op: z.literal('scale'),
+      ids: z.array(id).min(1),
+      x: z.number().finite(),
+      y: z.number().finite(),
+      factor: z.number().positive(),
+    })
+    .strict(),
   z
     .object({ op: z.literal('group'), id, label: z.string().optional(), ids: z.array(id).min(1) })
     .strict(),
@@ -111,7 +133,7 @@ export function editCanvas(
     needsLayout = false
   const nodes = new Map<string, CanvasNode>(),
     edges = new Map<string, CanvasEdge>(),
-    elements = new Map<string, CanvasNode | CanvasEdge | CanvasLine>(),
+    elements = new Map<string, CanvasNode | CanvasEdge | CanvasLine | CanvasInk>(),
     lines = new Map<string, CanvasLine>()
   const rebuild = () => {
     nodes.clear()
@@ -130,6 +152,7 @@ export function editCanvas(
       lines.set(line.id, line)
       elements.set(line.id, line)
     }
+    for (const { stroke } of allInkEntries(graph)) elements.set(stroke.id, stroke)
   }
   const uniqueId = (id: string) => {
     unique(elements, id)
@@ -175,12 +198,33 @@ export function editCanvas(
         recordParent(added, n.parent ?? null, graph)
         if (n.x === undefined && !near) needsLayout = true
         if (n.parent || type === 'group') parentsOf(graph)
-      } else if (op.op === 'move') {
+      } else if (op.op === 'update_ink' || op.op === 'attach_ink') {
+        const entry = allInkEntries(graph).find((e) => e.stroke.id === op.id)
+        if (!entry) throw new Error(`Unknown ink ${op.id}`)
+        if (op.op === 'attach_ink') attachInk(graph, entry, op.node)
+        else {
+          if ('id' in op.patch && op.patch.id !== op.id) throw new Error('An id cannot be changed')
+          if ('frame' in op.patch || 'version' in op.patch)
+            throw new Error('Use attach_ink to change attachment')
+          replaceInk(graph, entry, [inkSchema.parse({ ...entry.stroke, ...op.patch })])
+        }
+        rebuild()
+      } else if (op.op === 'move' || op.op === 'scale') {
+        const entries = allInkEntries(graph),
+          moving = moveIds(graph, new Set(op.ids)),
+          parents = parentsOf(graph)
         for (const id of op.ids) {
           known(id, elements)
-          if (!nodes.has(id) && !lines.has(id))
-            throw new Error('Only nodes and free lines can move')
+          if (edges.has(id)) throw new Error('Bound connections follow their nodes')
         }
+        const factor = op.op === 'scale' ? op.factor : 1,
+          x = op.op === 'scale' ? op.x : 0,
+          y = op.op === 'scale' ? op.y : 0,
+          dx = op.op === 'move' ? op.dx : 0,
+          dy = op.op === 'move' ? op.dy : 0
+        for (const entry of entries)
+          if (op.ids.includes(entry.stroke.id) && (!entry.node || !moving.has(entry.node.id)))
+            replaceInk(graph, entry, [transformInk(entry, x, y, factor, dx, dy)])
         if (op.ids.some((id) => lines.has(id))) {
           writeLines(
             graph,
@@ -189,19 +233,25 @@ export function editCanvas(
               return line && op.ids.includes(line.id)
                 ? lineSchema.parse({
                     ...line,
-                    from: { x: line.from.x + op.dx, y: line.from.y + op.dy },
-                    to: { x: line.to.x + op.dx, y: line.to.y + op.dy },
+                    from: {
+                      x: x + (line.from.x - x) * factor + dx,
+                      y: y + (line.from.y - y) * factor + dy,
+                    },
+                    to: {
+                      x: x + (line.to.x - x) * factor + dx,
+                      y: y + (line.to.y - y) * factor + dy,
+                    },
                   })
                 : value
             })
           )
         }
-        const parents = parentsOf(graph),
-          moving = moveIds(graph, new Set(op.ids))
         for (const node of graph.nodes)
           if (moving.has(node.id)) {
-            node.x += op.dx
-            node.y += op.dy
+            node.x = x + (node.x - x) * factor + dx
+            node.y = y + (node.y - y) * factor + dy
+            node.width *= factor
+            node.height *= factor
           }
         // Update anchors only after all descendants moved. Never resolve a half-moved group.
         if (graph.nodes.some((node) => node.type === 'group')) recordParents(graph, parents)
@@ -216,12 +266,15 @@ export function editCanvas(
       } else if (op.op === 'add_ink') {
         uniqueId(op.stroke.id)
         addInk(graph, op.stroke, op.node)
+        rebuild()
       } else if (op.op === 'add_line') {
         uniqueId(op.line.id)
         writeLines(graph, [...rawLines(graph, true), op.line])
         rebuild()
       } else if (op.op === 'update' || op.op === 'style') {
         const element = known(op.id, elements)
+        if (allInkEntries(graph).some((e) => e.stroke.id === op.id))
+          throw new Error('Use update_ink for strokes')
         const patch = op.op === 'style' ? { styleAttributes: op.styleAttributes } : op.patch
         if ('id' in patch && patch.id !== op.id) throw new Error('An id cannot be changed')
         const merged = { ...element, ...patch }
@@ -270,8 +323,16 @@ export function editCanvas(
         const previous = parentsOf(graph)
         // Freeze ALL pre-existing memberships, including cards without Abele metadata.
         const existing = [...graph.nodes]
-        const members = [...new Set(op.ids)].map((id) => known(id, nodes))
-        const box = bounds(members, 40)
+        const selected = [...new Set(op.ids)]
+        for (const id of selected) known(id, elements)
+        if (selected.some((id) => edges.has(id) || lines.has(id)))
+          throw new Error('Group cards and ink only')
+        const members = graph.nodes.filter((n) => selected.includes(n.id)),
+          moving = moveIds(graph, new Set(members.map((n) => n.id))),
+          ink = allInkEntries(graph).filter(
+            (e) => selected.includes(e.stroke.id) && (!e.node || !moving.has(e.node.id))
+          )
+        const box = bounds([...members, ...ink.map(inkBounds)], 40)
         graph.nodes.push({
           id: op.id,
           type: 'group',
@@ -282,6 +343,7 @@ export function editCanvas(
         for (const node of existing) recordParent(node, previous.get(node.id) ?? null, graph)
         recordParent(graph.nodes[graph.nodes.length - 1], null, graph)
         for (const member of members) recordParent(member, op.id, graph)
+        for (const entry of ink) attachInk(graph, entry, op.id)
         rebuild()
         parentsOf(graph)
       } else if (op.op === 'collapse') {
@@ -300,6 +362,15 @@ export function editCanvas(
             graph,
             rawLines(graph, true).filter((value) => (value as CanvasLine)?.id !== op.id)
           )
+        const ink = allInkEntries(graph).find((e) => e.stroke.id === op.id)
+        if (ink) replaceInk(graph, ink, [])
+        if (op.op === 'ungroup') {
+          const owned = allInkEntries(graph).filter((e) => e.node?.id === op.id),
+            raw = rawInk(known(op.id, nodes), true)
+          if (raw.length !== owned.length)
+            throw new Error('Cannot ungroup opaque ink without its attachment geometry')
+          for (const entry of owned) attachInk(graph, entry)
+        }
         const parents = parentsOf(graph)
         for (const node of graph.nodes)
           if (parents.get(node.id) === op.id) recordParent(node, parents.get(op.id) ?? null, graph)

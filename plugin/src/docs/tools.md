@@ -261,8 +261,12 @@ must be in scope. New diagrams join scope after creation, like `create`.
 Pen/marker strokes can be added with `add_ink {stroke,node?}` using the version-1 payload
 in the vault reference. Attached points are node-local with authoring `frame` dimensions;
 free points are world coordinates without a frame. The human pen uses this same operation.
-Individual stroke transformations/removal are not supported yet; node movement/resize carries
-its attached ink, and the shared history can undo a completed stroke.
+`update_ink {id,patch}` changes compatible stroke fields (not ID, version or attachment frame);
+`attach_ink {id,node?}` binds to a node, or detaches when node is omitted, preserving the outline.
+`move {ids,dx,dy}`, `scale {ids,x,y,factor}` (positive factor about world origin x/y), and
+`remove {id}` accept strokes too. Mixed card/ink transforms apply once when an owner is selected.
+`group` accepts cards and ink; `ungroup` promotes group-owned ink to the root without changing
+its appearance. Removing a node deletes its owned ink. All use the human editor's shared history.
 
 Free lines/arrows use `add_line {line:{version:1,id,from:{x,y},to:{x,y},fromEnd?,toEnd?,label?,color?}}`.
 Both arrow ends are `none` or `arrow`; omitted free-line ends have no arrow. Endpoints must be finite and distinct.
@@ -273,7 +277,8 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
 - `canvas_edit(path, {revision, ops})`: provide the revision returned by `canvas_read` or the
   last successful canvas write. A stale revision refuses the entire write with a reread message,
   including unsaved native changes and changes arriving at the final storage boundary. sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
-  {id,patch}`, `move {ids,dx,dy}`, `add_line {line}`, `add_ink {stroke,node?}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
+  {id,patch}`, `move {ids,dx,dy}`, `scale {ids,x,y,factor}`, `add_line {line}`, `add_ink {stroke,node?}`,
+  `update_ink {id,patch}`, `attach_ink {id,node?}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
   {id,collapsed}`, and `style {id,styleAttributes}`. Move translates selected nodes and group
   descendants once, even when a child is also selected, preserving group membership. Add group/node ids before connecting to them.
   New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`

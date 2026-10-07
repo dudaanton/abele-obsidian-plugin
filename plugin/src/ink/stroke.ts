@@ -305,6 +305,44 @@ export function strokePath(stroke: InkStroke): string {
   return penPath(pts)
 }
 
+/** Rendered centreline samples for clients that cut/pick a curved stroke rather than its chords. */
+export function strokeCenterline(stroke: InkStroke): number[] {
+  const pts = points(stroke),
+    pressure = (r: number) => Math.max(0, Math.min(1, ((r * 2) / stroke.size - 0.4) / 1.2))
+  if (stroke.tool === 'pen') return densify(pts).flatMap((p) => [p.x, p.y, pressure(p.r)])
+  if (pts.length < 3) return pts.flatMap((p) => [p.x, p.y, pressure(p.r)])
+  const out: number[] = [pts[0].x, pts[0].y, pressure(pts[0].r)]
+  let a = pts[0]
+  for (let i = 1; i < pts.length - 1; i++) {
+    const control = pts[i],
+      b = {
+        x: (control.x + pts[i + 1].x) / 2,
+        y: (control.y + pts[i + 1].y) / 2,
+        r: (control.r + pts[i + 1].r) / 2,
+      },
+      n = Math.max(
+        1,
+        Math.ceil(
+          Math.hypot(control.x - a.x, control.y - a.y) +
+            Math.hypot(b.x - control.x, b.y - control.y)
+        )
+      )
+    for (let k = 1; k <= n; k++) {
+      const t = k / n,
+        u = 1 - t
+      out.push(
+        u * u * a.x + 2 * u * t * control.x + t * t * b.x,
+        u * u * a.y + 2 * u * t * control.y + t * t * b.y,
+        pressure(u * u * a.r + 2 * u * t * control.r + t * t * b.r)
+      )
+    }
+    a = b
+  }
+  const b = pts[pts.length - 1]
+  out.push(b.x, b.y, pressure(b.r))
+  return out
+}
+
 /** How far a point is from the segment between two others, squared. */
 function distSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const dx = bx - ax

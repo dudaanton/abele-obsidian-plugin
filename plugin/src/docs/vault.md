@@ -123,12 +123,15 @@ Unknown entry versions and fields remain opaque and preserved; an incompatible n
 Native Canvas may not display the primitives, but retains the extension for returning to Abele.
 
 Freehand ink is stored in root `abele.ink` (free strokes) or node `abele.ink` (attached strokes),
-never in a sidecar: `{version:1,id,tool:pen|marker,color,size,points:[x,y,pressure,...],frame?:{width,height}}`.
+never in a sidecar: `{version:1,id,tool:pen|marker,color,size,points:[x,y,pressure,...],frame?:{width,height},transform?:{x,y,sx,sy}}`.
 Colour is a native Canvas preset (`1`–`6`), a six-digit hex colour, or empty for the theme default.
 Size is the authoring width; pressure is finite and within 0–1. Attached samples are node-local,
 with the node's authoring dimensions in `frame`; painting transforms the entire pressure outline
 by the current node's translation and independent width/height scale. It never rewrites points
-when the node moves/resizes. Free strokes have no frame and use world coordinates. IDs share
+when the node moves/resizes. The optional positive axis scales and translation in `transform`
+are applied before the node/frame transform (identity when omitted). They preserve the entire
+outline, not just the centreline, when detaching nonuniformly resized annotations or scaling
+ink selections. Free strokes have no frame; their transformed coordinates are world coordinates. IDs share
 one namespace with nodes, edges and lines, including opaque ink entries. Unknown versions and
 malformed legacy ink are preserved unchanged, not migrated or drawn; incompatible non-array
 containers cannot be overwritten by drawing. Attached ink follows its owner's visibility,
@@ -136,6 +139,15 @@ even when its bounds reach outside that owner. It appears with the owner in walk
 free ink is revealed by its ID. Fit, node crops, embeds, agent pictures and exports include ink.
 Human pen/marker gestures use the shared `add_ink {stroke,node?}` edit operation, one history
 item on completion. Cancellation discards the whole preview; no predictions are saved.
+Whole/partial eraser sweeps and lasso edits use that same history. Partial cuts keep the first
+fragment's ID and give further fragments fresh IDs, interpolating pressure at cut boundaries.
+`update_ink` changes a compatible stroke; `attach_ink` changes its owner while composing the
+outline transform. Mixed `move`/`scale` skip a separately selected stroke whose owner is already
+moving, preventing double transforms. Grouping may attach selected ink to the group; ink owned
+by a selected card remains with it. Ungrouping detaches group-owned ink before removing the
+frame. Ungroup refuses opaque/malformed group ink or an incompatible root container instead
+of guessing attachment geometry or losing unknown data. Deleting a node deletes its owned
+ink, restored with that node by Undo.
 
 Each node/edge has a stable id; agents choose meaningful ids. Native Canvas reorders elements
 and keys on save, so all edits and references are by id. Unknown extension data survives Abele
