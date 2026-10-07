@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Notice, TFile, type App } from 'obsidian'
+import { mount, flushPromises } from '@vue/test-utils'
+import AiRunView from '@/components/AiRunView.vue'
 import { chatCopyPath } from '@/ai/chatCopy'
 import { ChatService, MAX_TABS } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
-import { RunStorage } from '@/ai/RunStorage'
+import { RunStorage, type RunFile } from '@/ai/RunStorage'
 import { parseChat, serializeChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -101,6 +103,81 @@ async function sourceChat() {
   return { app, service, source, file }
 }
 
+async function nestedSource() {
+  const fixture = await sourceChat()
+  const { app, source, file } = fixture
+  const runs = RunStorage.getInstance()
+  const parent: RunFile = {
+    type: 'abele-run',
+    runId: 'sample-parent-run',
+    agentId: 'sample-agent',
+    agentName: 'Sample worker',
+    parentChat: file.path,
+    parentToolCallId: 'parent-call',
+    task: 'Sample parent task',
+    created: '2025-01-01',
+    status: 'done',
+    depth: 1,
+    branches: [
+      {
+        item: 'Sample item',
+        status: 'done',
+        messages: [
+          {
+            id: 'parent-message',
+            role: 'assistant',
+            content: 'Parent reply',
+            timestamp: 2,
+            subAgentRun: {
+              runId: 'sample-child-run',
+              agentId: 'sample-agent',
+              agentName: 'Sample helper',
+              path: runs.runPath('sample-child-run'),
+              status: 'done',
+              branchCount: 1,
+            },
+          },
+        ],
+      },
+    ],
+  }
+  await runs.save({
+    ...parent,
+    runId: 'sample-child-run',
+    depth: 2,
+    parentChat: runs.runPath(parent.runId),
+    branches: [
+      {
+        item: 'Sample child',
+        status: 'done',
+        messages: [
+          { id: 'child-message', role: 'assistant', content: 'Child reply', timestamp: 3 },
+        ],
+      },
+    ],
+  })
+  await runs.save(parent)
+  const data = parseChat(await app.vault.read(file))
+  data.messages[2].subAgentRun = {
+    runId: parent.runId,
+    agentId: parent.agentId,
+    agentName: parent.agentName,
+    path: runs.runPath(parent.runId),
+    status: 'done',
+    branchCount: 1,
+  }
+  await app.vault.modify(
+    file,
+    serializeChat({
+      metadata: data.metadata!,
+      messages: data.messages,
+      internalMessages: data.internalMessages,
+    })
+  )
+  await source.load(file)
+  return { ...fixture, runs }
+}
+
 describe('clone into a new chat tab', () => {
   it('writes an independent file, opens another tab, preserves the original and sends nothing', async () => {
     const { app, service, source, file } = await sourceChat()
@@ -168,6 +245,51 @@ describe('clone into a new chat tab', () => {
     expect(service.activeSession.value).toBe(source)
     expect(Notice.shown.join('\n')).toContain('closed')
   })
+
+  it('returns from a nested copied run to its parent run without creating a writable chat', async () => {
+    const { app, service, source, runs } = await nestedSource()
+    await service.cloneChatFromMessage(source.id, 'answer')
+    const clone = service.activeSession.value!
+    const parent = (await runs.load(clone.messages.value[1].subAgentRun!.runId))!
+    const child = (await runs.load(parent.branches[0].messages[0].subAgentRun!.runId))!
+    const parentFile = app.vault.getFileByPath(runs.runPath(parent.runId))!
+    const before = await app.vault.read(parentFile)
+    await service.openRun(child.runId)
+    const view = mount(AiRunView, {
+      props: { run: child },
+      global: { stubs: { AiRunBranch: true } },
+    })
+    try {
+      await view.get('.abele-run-view__parent').trigger('click')
+      await flushPromises()
+      expect(service.activeRun?.runId).toBe(parent.runId)
+      expect(service.activeSession.value).toBeNull()
+      await service.closeTab(service.activeTabId.value!)
+      expect(await app.vault.read(parentFile)).toBe(before)
+    } finally {
+      view.unmount()
+    }
+  })
+
+  it.each(['append', 'rewrite'] as const)(
+    'refuses a %s chat save over a run transcript',
+    async (kind) => {
+      const { app, source, runs } = await nestedSource()
+      const runFile = app.vault.getFileByPath(runs.runPath('sample-parent-run'))!
+      const before = await app.vault.read(runFile)
+      const snapshot = source.cloneSnapshot('answer')!
+      const content = serializeChat(snapshot)
+      await expect(
+        ChatStorage.getInstance().saveChat(
+          snapshot,
+          kind === 'append' ? { kind, data: content, records: 1 } : { kind, content, records: 1 },
+          runFile
+        )
+      ).rejects.toThrow('run')
+      expect(await app.vault.read(runFile)).toBe(before)
+      await expect(ChatStorage.getInstance().loadChat(runFile)).rejects.toThrow('run')
+    }
+  )
 
   it('copies delegated transcripts so deleting the clone cannot remove the source run', async () => {
     const { app, service, source, file } = await sourceChat()

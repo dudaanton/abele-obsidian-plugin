@@ -735,7 +735,10 @@ the retained internal records, using the last retained write time. Chat-wide man
 older links without path-local evidence are omitted, not inferred from tool arguments.
 Attachment paths still reference ordinary vault files. Delegated run sidecars receive new
 run IDs and paths, recursively, and point back to the new chat/run; they are independently
-owned for deletion. The source file, comments and device-local rewind data are not changed.
+owned for deletion. A nested run's `parentChat` may point to its parent run file; returning
+there opens the read-only run view, not an editable chat. Chat storage refuses run transcripts
+(including recognized torn run headers) on both load and save. The source file, comments and
+device-local rewind data are not changed.
 
 ## Durable chat selections (storage adapter)
 

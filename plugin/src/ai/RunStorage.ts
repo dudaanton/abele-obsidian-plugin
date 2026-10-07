@@ -6,6 +6,15 @@ import { readChatText, rewriteChat } from './chatCopy'
 
 export type RunStatus = 'running' | 'done' | 'error' | 'aborted'
 
+/** Runs share the chat extension, not the editable chat format. Also recognize torn runs. */
+export function isRunTranscript(content: string): boolean {
+  try {
+    return (JSON.parse(content) as { type?: string } | null)?.type === 'abele-run'
+  } catch {
+    return /^\s*\{\s*"type"\s*:\s*"abele-run"/.test(content)
+  }
+}
+
 export interface RunBranch {
   /** The item this branch was handed, or the task itself when there was no fan-out. */
   item: string

@@ -39,7 +39,7 @@ import EmptyState from './obsidian/EmptyState.vue'
 import AiRunBranch from './AiRunBranch.vue'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
-import type { RunFile } from '@/ai/RunStorage'
+import { isRunTranscript, type RunFile } from '@/ai/RunStorage'
 
 /**
  * A delegated run, shown as a conversation you can read but not join.
@@ -52,7 +52,10 @@ const props = defineProps<{ run: RunFile }>()
 async function openParent(): Promise<void> {
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(props.run.parentChat)
-  if (file instanceof TFile) await ChatService.getInstance().openChatFile(file)
+  if (!(file instanceof TFile)) return
+  const service = ChatService.getInstance()
+  if (isRunTranscript(await app.vault.read(file))) await service.openRun(file.basename)
+  else await service.openChatFile(file)
 }
 </script>
 

@@ -6,7 +6,7 @@ import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
-import { RunStorage } from './RunStorage'
+import { RunStorage, isRunTranscript } from './RunStorage'
 import { inspectChat, readChat, rewriteChat } from './chatCopy'
 import { ChatService } from './ChatService'
 import {
@@ -21,6 +21,11 @@ import {
   type ChatWritePlan,
   type ParsedChat,
 } from './ChatLog'
+
+function assertChatTarget(content: string): void {
+  if (isRunTranscript(content))
+    throw new Error('A delegated run cannot be saved or loaded as a chat.')
+}
 
 /** The same dates `messageTimes` reads from a file, from a conversation in memory. */
 function snapshotTimes(snapshot: ChatSnapshot) {
@@ -83,10 +88,12 @@ export class ChatStorage {
   ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
     const { metadata } = snapshot
+    if (metadata.type !== 'abele-chat') throw new Error('Only a chat can be saved as a chat log.')
 
     if (plan.kind === 'noop') return existingFile ?? null
 
     if (existingFile) {
+      assertChatTarget(await app.vault.read(existingFile))
       if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
       else await rewriteChat(app, existingFile, plan.content)
       this.updateHistoryEntry(
@@ -122,6 +129,7 @@ export class ChatStorage {
 
   async loadChat(file: TFile): Promise<ParsedChat> {
     const { app } = GlobalStore.getInstance()
+    assertChatTarget(await app.vault.read(file))
     const parsed = await readChat(app, file)
 
     if (parsed.damaged) {
