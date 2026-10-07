@@ -210,8 +210,11 @@ const script = `(async () => {
         cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
       // Node registration and permission opt-in are disclosures, not separate tabs.
       if (dialogName === 'node-workspaces' || dialogName === 'chat-navigation') {
-        for (const details of modal.querySelectorAll('details')) details.open = true
-        await wait(200)
+        // Each newly mounted continuation can reveal one further fork, just as a user expands it.
+        for (let level = 0; level < (dialogName === 'chat-navigation' ? 4 : 1); level++) {
+          for (const details of modal.querySelectorAll('details')) details.open = true
+          await wait(150)
+        }
       }
       // Node file/code/diff/review/history fixtures each exercise a separate view.
       measureAll('dialog ' + dialogName, modal)

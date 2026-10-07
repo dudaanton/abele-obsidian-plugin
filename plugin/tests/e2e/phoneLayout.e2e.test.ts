@@ -1162,6 +1162,30 @@ const probeScript = `(async () => {
           await wait(200)
         }
         await screen(label, modal, modal.querySelector('.abele-modal__body'))
+        if (dialogName === 'chat-navigation') {
+          modal.querySelector('[data-fork-id="question-0"]').open = true
+          await wait(150)
+          modal.querySelector('[data-continuation="alternate"] details').open = true
+          await wait(150)
+          modal.querySelector('[data-fork-id="alternate"]').open = true
+          await wait(150)
+          await screen('navigation continuation', modal, modal.querySelector('.abele-modal__body'))
+          for (const field of modal.querySelectorAll('input, select, button, summary, [tabindex="0"]')) {
+            if (!field.getBoundingClientRect().width) continue
+            field.focus(); report['navigation continuation'].clipped.push(...ringClipped(field)); field.blur()
+          }
+          const scope = modal.querySelector('select')
+          scope.value = 'all'; scope.dispatchEvent(new Event('change', { bubbles: true }))
+          const search = modal.querySelector('input')
+          search.value = 'first nested'; search.dispatchEvent(new Event('input', { bubbles: true }))
+          modal.querySelector('[role="checkbox"]').click()
+          await wait(500)
+          await screen('navigation search', modal, modal.querySelector('.abele-modal__body'))
+          for (const field of modal.querySelectorAll('input, select, button, [tabindex="0"]')) {
+            if (!field.getBoundingClientRect().width) continue
+            field.focus(); report['navigation search'].clipped.push(...ringClipped(field)); field.blur()
+          }
+        }
         if (dialogName === 'github-connection-approval') {
           for (const p of modal.querySelectorAll('p')) if (p.scrollWidth > p.clientWidth + 1) {
             report[label].over.push('approval text exceeds its paragraph by ' + (p.scrollWidth-p.clientWidth) + 'px')
@@ -1755,6 +1779,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'message actions',
     'message actions menu',
     'chat copy pending',
+    'navigation continuation',
+    'navigation search',
     'node chat',
     'node claude chat',
     'node claude permission',

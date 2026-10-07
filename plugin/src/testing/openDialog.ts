@@ -151,36 +151,27 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       confirmText: 'Delete',
     })
   },
-  'chat-navigation': () =>
+  'chat-navigation': () => {
+    const messages = Array.from({ length: 40 }, (_, i): ChatMessage[] => [
+      { id: `question-${i}`, parentId: i ? `tool-${i - 1}` : undefined, role: 'user',
+        content: `Sample question ${i + 1} with enough words to wrap across a narrow screen`, timestamp: 1700000000000 + i * 3600000 },
+      { id: `answer-${i}`, parentId: `question-${i}`, role: 'assistant',
+        content: 'A sample answer with more detail about the question.', timestamp: 1700000001000 + i * 3600000 },
+      { id: `tool-${i}`, parentId: `answer-${i}`, role: 'tool-call', content: '', toolName: 'read',
+        toolStatus: 'pending', toolParams: { path: 'Notes/sample-file.md' }, timestamp: 1700000002000 + i * 3600000 },
+    ]).flat()
     mountAlone(ChatNavigation, {
-      messages: Array.from({ length: 40 }, (_, i): ChatMessage[] => [
-        {
-          id: `question-${i}`,
-          role: 'user',
-          content: `Sample question ${i + 1} with enough words to wrap across a narrow screen`,
-          timestamp: 1700000000000 + i * 3600000,
-        },
-        {
-          id: `answer-${i}`,
-          role: 'assistant',
-          content: 'A sample answer with more detail about the question.',
-          timestamp: 1700000001000 + i * 3600000,
-        },
-        {
-          id: `tool-${i}`,
-          role: 'tool-call',
-          content: '',
-          toolName: 'read',
-          toolStatus: 'pending',
-          toolParams: { path: 'Notes/sample-file.md' },
-          timestamp: 1700000002000 + i * 3600000,
-        },
-      ]).flat(),
-      comments: [],
-      state: { expanded: [], scrollTop: 0 },
-      activeMessageId: 'answer-0',
-      canGoBack: true,
-    }),
+      messages,
+      allMessages: [...messages,
+        { id: 'alternate', parentId: 'question-0', role: 'user', content: 'Alternate sample continuation with enough words to wrap on a narrow screen', timestamp: 1700000003000 },
+        { id: 'alternate-first', parentId: 'alternate', role: 'assistant', content: 'First nested continuation', timestamp: 1700000004000 },
+        { id: 'alternate-second', parentId: 'alternate', role: 'assistant', content: 'Second nested continuation', timestamp: 1700000005000 },
+        { id: 'other-start', role: 'user', content: 'Another sample conversation start', timestamp: 1700000006000 },
+      ],
+      comments: [{ id: 'layout-sample-missing-discussion', message: 'question-0', quote: 'A retained sample passage ' + 'x'.repeat(100) }],
+      state: { expanded: [], scrollTop: 0 }, activeMessageId: 'answer-0', canGoBack: true,
+    })
+  },
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),

@@ -27,6 +27,14 @@ interface NavigationReport {
   searchPart: boolean
   selectedBranch: string
   beforeBranch: string
+  branchJump: boolean
+  branchReturn: boolean
+  branchPositionDrift: number
+  branchDeferred: boolean
+  allBranchSearch: boolean
+  sharedOnce: boolean
+  discussionSearch: boolean
+  unavailable: boolean
 }
 
 const script = `(async () => {
@@ -57,6 +65,9 @@ const script = `(async () => {
     records.push({ k: 'msg', id: 'a' + i, parentId: 'q' + i, role: 'assistant', content: 'A sample answer about a garden.\\n\\n' + 'The beds beside the path need enough room for the herbs and the watering can. '.repeat(8), timestamp: 1700000001000 + i * 3600000 })
   }
   records.push({ k: 'msg', id: 'other', parentId: 'q0', role: 'assistant', content: 'Hidden alternate answer', timestamp: 1700000002000 })
+  records.push({ k: 'msg', id: 'other-first', parentId: 'other', role: 'user', content: 'First alternate follow-up', timestamp: 1700000003000 })
+  records.push({ k: 'msg', id: 'other-second', parentId: 'other', role: 'user', content: 'Second alternate follow-up', timestamp: 1700000004000 })
+  records.push({ k: 'msg', id: 'other-start', role: 'user', content: 'Another sample conversation start', timestamp: 1700000005000 })
   // The current leaf is explicit; opening navigation must never change it.
   const meta = { v: 2, k: 'meta', type: 'abele-chat', title: 'Sample navigation', created: '2023-11-14', activeLeafId: 'a299', comments: [{ id: 'navd01', message: 'a0', quote: 'sample answer' }] }
   let owner
@@ -69,7 +80,7 @@ const script = `(async () => {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); dirs.unshift(dir) }
     }
     files.push(await app.vault.create(commentPath, [
-      { v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2023-11-14', anchor: { note: path, message: 'a0', quote: 'sample answer' }, comments: [{ id: 'navd02', message: 'du', quote: 'shade' }] },
+      { v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2023-11-14', anchor: { note: path, message: 'a0', quote: 'sample answer' }, comments: [{ id: 'navd02', message: 'du', quote: 'shade' }, { id: 'navm00', message: 'du', quote: 'Missing sample passage ' + 'x'.repeat(100) }] },
       { k: 'msg', id: 'du', role: 'user', content: 'Which plants need shade?', timestamp: 1700000005000 },
     ].map(JSON.stringify).join('\\n') + '\\n'))
     files.push(await app.vault.create(comments.commentPath('navd02'), [
@@ -82,7 +93,7 @@ const script = `(async () => {
     document.activeElement?.blur()
     await wait(300)
     owner.draft.value.text = 'An unsent sample follow-up'
-    report.beforeBranch = owner.activeLeafId
+    report.beforeBranch = owner.branchLeafId
     await open()
     report.unfocusedSearch = document.activeElement !== modal().querySelector('input')
     report.questions = modal().querySelectorAll('[data-question]').length
@@ -142,6 +153,52 @@ const script = `(async () => {
     modal().querySelectorAll('[data-nav-item]')[1].click()
     await until(() => item(tool.id)?.querySelector('[data-find-part="result"]'))
     report.searchPart = document.querySelector('.abele-chat-find__count')?.textContent.trim() === '2 of 2'
+    // Other-branch selection changes the send context, follows the earliest later fork, and
+    // restores both the original path and its reading position without any rollback.
+    document.querySelector('.abele-chat-find input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    const originalLeaf = owner.branchLeafId
+    box().dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
+    box().scrollTop += offset('q80') - 16
+    await wait(100)
+    const originalAt = offset('q80')
+    await open()
+    modal().querySelector('[data-fork-id="q0"] > summary').click()
+    await wait(100)
+    modal().querySelector('[data-continuation="other"] > button').click()
+    await until(() => owner.branchLeafId === 'other-first')
+    report.branchJump = document.querySelector('.abele-ai-chat__continuation')?.textContent.includes('Continuation 2 of 2')
+    document.querySelector('.abele-ai-chat__continuation button').click(); await until(modal)
+    await choose('Back to place'); await until(() => owner.branchLeafId === originalLeaf)
+    await wait(1800)
+    report.branchReturn = owner.branchLeafId === originalLeaf
+    report.branchPositionDrift = Math.abs(offset('q80') - originalAt)
+    owner.isExecutingTool.value = true
+    await open()
+    // The fork stayed expanded in this session.
+    modal().querySelector('[data-continuation="other"] > button').click()
+    await wait(150)
+    report.branchDeferred = owner.branchLeafId === originalLeaf && !!document.querySelector('.abele-ai-chat__navigation-pending')
+    owner.isExecutingTool.value = false
+    await until(() => owner.branchLeafId === 'other-first')
+    await open(); await choose('Back to place'); await until(() => owner.branchLeafId === originalLeaf)
+    await open()
+    const scope = modal().querySelector('select')
+    scope.value = 'all'; scope.dispatchEvent(new Event('change', { bubbles: true }))
+    const words = modal().querySelector('input')
+    words.value = 'Hidden alternate'; words.dispatchEvent(new Event('input', { bubbles: true }))
+    await wait(100)
+    report.allBranchSearch = modal().textContent.includes('Continuation 2 of 2') && modal().querySelectorAll('[data-nav-item]').length === 1
+    words.value = 'Sample question 0'; words.dispatchEvent(new Event('input', { bubbles: true })); await wait(100)
+    report.sharedOnce = modal().querySelectorAll('[data-nav-item]').length === 1
+    words.value = 'How much shade'; words.dispatchEvent(new Event('input', { bubbles: true }))
+    modal().querySelector('[role="checkbox"]').click()
+    await until(() => modal().textContent.includes('3 of 3 discussions'))
+    report.unavailable = modal().textContent.includes('Unavailable discussion') && modal().textContent.includes('Missing sample passage')
+    if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/navigation-search-discussions.png')})
+    await choose('How much shade')
+    await until(() => chats.activeSession.value?.commentId === 'navd02' && document.querySelector('.abele-chat-find__count')?.textContent.trim() === '1 of 1')
+    report.discussionSearch = true
+    await open(); await choose('Back to place'); await until(() => chats.activeSession.value === owner)
     report.draft = owner.draft.value.text
     // The search/jump cannot have selected the alternate answer. Account for the explicit
     // synthetic append above, which alone changed the leaf.
@@ -149,7 +206,7 @@ const script = `(async () => {
     return JSON.stringify(report)
   } finally {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    if (owner) { owner.isStreaming.value = false; owner.streamingContent.value = '' }
+    if (owner) { owner.isStreaming.value = false; owner.isExecutingTool.value = false; owner.streamingContent.value = '' }
     for (const id of ['navd02', 'navd01']) {
       if (comments.isShown(id)) await comments.hideFromSidebar(id)
       await comments.remove(id)
@@ -228,5 +285,13 @@ describe.skipIf(!available)('current-branch chat navigation', () => {
     expect(result.draft).toBe('An unsent sample follow-up')
     expect(result.searchPart).toBe(true)
     expect(result.selectedBranch).toBe(result.beforeBranch)
+    expect(result.branchJump).toBe(true)
+    expect(result.branchReturn).toBe(true)
+    expect(result.branchPositionDrift).toBeLessThan(2)
+    expect(result.branchDeferred).toBe(true)
+    expect(result.allBranchSearch).toBe(true)
+    expect(result.sharedOnce).toBe(true)
+    expect(result.discussionSearch).toBe(true)
+    expect(result.unavailable).toBe(true)
   }, 100_000)
 })
