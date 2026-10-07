@@ -52,7 +52,7 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
     const next = new Map<string, string | undefined>()
     for (const file of app.vault.getFiles().filter((file) => file.extension === 'abchat')) {
-      const metadata = parseChatMetadata(await app.vault.read(file))
+      const { metadata } = await readChat(app, file)
       next.set(file.path, metadata?.type === 'abele-chat' ? metadata.chatId : undefined)
     }
     this.selectionIdentities = next
