@@ -52,6 +52,14 @@ const click = async (label: string) => {
   await until(`button(${JSON.stringify(label)})&&!button(${JSON.stringify(label)}).disabled`)
   await press(`button(${JSON.stringify(label)})`)
 }
+const palette = async (open: boolean) => {
+  if (
+    run<boolean>('return view().contentEl.querySelector(".abele-canvas-shape-controls").hidden') ===
+    open
+  )
+    await click('Shapes and connections')
+  await until(`view().contentEl.querySelector(".abele-canvas-shape-controls").hidden===${!open}`)
+}
 const point = (id: string, corner = false): number[] =>
   run(`
   const v=view().viewer,n=v.graph.nodes.find(n=>n.id===${JSON.stringify(id)}),c=v.camera,r=v.stage.getBoundingClientRect()
@@ -143,16 +151,32 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
   }, 120_000)
 
   it('connects cards, changes the caption and arrow, reconnects an endpoint and undoes', async () => {
+    await palette(true)
     await click('Draw connection')
     await fit()
-    await input(point('alpha'), point('beta'))
+    run(`const stage=view().viewer.stage;window.__canvasConnections.events=[];
+      window.__canvasConnections.trace=e=>{const v=view().viewer,r=stage.getBoundingClientRect();window.__canvasConnections.events.push({type:e.type,id:e.pointerId,button:e.button,pointer:e.pointerType,x:e.clientX,y:e.clientY,rect:[r.x,r.y,r.width,r.height],camera:{...v.camera},busy:view().documentLease.document.session.busy})};
+      for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])stage.addEventListener(type,window.__canvasConnections.trace,true);return true`)
+    const from = point('alpha'),
+      to = point('beta')
+    try {
+      await input(from, to)
+    } finally {
+      console.info(
+        'Connection pointer proof',
+        run(
+          `const stage=view().viewer.stage,f=window.__canvasConnections;for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])stage.removeEventListener(type,f.trace,true);delete f.trace;return {from:${JSON.stringify(from)},to:${JSON.stringify(to)},events:f.events,edges:(await read()).edges,state:view().documentLease.document.state,status:view().contentEl.querySelector('.abele-canvas-editor-status').textContent}`
+        )
+      )
+    }
     await saved()
+    expect(run<number>('return (await read()).edges.length')).toBe(1)
     const edge = run<{ id: string; fromNode: string; toNode: string }>(
       'return (await read()).edges[0]'
     )
     expect(edge).toMatchObject({ fromNode: 'alpha', toNode: 'beta' })
     await click('Select canvas objects')
-    await click('Shapes and connections') // Close the palette; leave room for the property sheet.
+    await palette(false) // Leave room for the property sheet.
     await press('view().contentEl.querySelector(".abele-canvas-connection-properties summary")')
     await press('view().contentEl.querySelector(\'[aria-label="Connection label"]\')')
     await type('Next step')
@@ -210,7 +234,7 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
   }, 120_000)
 
   it('draws a free arrow, edits its endpoints, and retains it through a real native Canvas move', async () => {
-    await click('Shapes and connections')
+    await palette(true)
     await click('Draw free arrow')
     await fit()
     const points = run<number[]>(
@@ -221,7 +245,7 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     const original = run<{ id: string }>('return (await read()).abele.lines[0]')
     expect(original).toMatchObject({ version: 1, toEnd: 'arrow' })
     await click('Select canvas objects')
-    await click('Shapes and connections')
+    await palette(false)
     await fit()
     const e = endpoint('to')
     await input(e, [e[0] + 12, e[1] - 16])
