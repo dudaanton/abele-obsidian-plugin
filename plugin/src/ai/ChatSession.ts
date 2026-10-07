@@ -43,7 +43,7 @@ import type {
   RevisionReference,
 } from '@/selection/types'
 import { sameRevision } from '@/selection/revisionMapping'
-import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot } from './ChatLog'
+import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot, type ParsedChat } from './ChatLog'
 import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
 import { readChat, rewriteChat } from './chatCopy'
 import {
@@ -2963,10 +2963,47 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     )
   }
 
+  /** Read through recovery before returning; never flush stale records over a synced file. */
+  async reconcileForSelectionReturn(isCurrent = () => true): Promise<void> {
+    const file = this.currentChatFile.value
+    const version = this.conversationVersion.value
+    if (!file) throw new Error('The selection source is no longer open.')
+    while (this.writing) await this.writing
+    if (!isCurrent()) return
+    const result = await ChatStorage.getInstance().loadChat(file)
+    if (!isCurrent()) return
+    if (
+      this.destroyed ||
+      this.currentChatFile.value !== file ||
+      this.conversationVersion.value !== version
+    )
+      throw new Error('The selection source changed. Open the link again.')
+    if (this.log.matches(result)) return
+    if (this.dirty || this.writing || this.isBusy || this.isMidTurn || this.moving.value)
+      throw new Error(
+        'This chat changed elsewhere. Finish or save the local work before returning to the selection.'
+      )
+    // Do not use load/reset: reset saves the old snapshot and retires the local draft.
+    this.abortBackground()
+    this.readGuard.settle()
+    this.results.settle()
+    this.summarizer.forgetRecap()
+    this.error.value = null
+    this.lastModelId = ''
+    await this.restoreLoadedChat(file, result, this.activeLeafId)
+  }
+
   async load(file: TFile): Promise<void> {
     await this.reset()
     const result = await ChatStorage.getInstance().loadChat(file)
+    await this.restoreLoadedChat(file, result)
+  }
 
+  private async restoreLoadedChat(
+    file: TFile,
+    result: ParsedChat,
+    keepLeaf?: string | null
+  ): Promise<void> {
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
     // Seeds the writer with what the file already holds, so the first save of a reopened chat
@@ -3004,7 +3041,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
 
     // The newest message it names may be the one a crash lost.
-    const leaf = result.metadata?.activeLeafId
+    const leaf = keepLeaf ?? result.metadata?.activeLeafId
     this.activeLeafId =
       (leaf && this.allChatMessages.some((m) => m.id === leaf) ? leaf : null) ||
       findDefaultLeaf(this.allChatMessages)?.id ||

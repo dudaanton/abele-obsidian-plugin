@@ -722,9 +722,10 @@ export class ChatService {
   }
 
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
-  async openChatFile(file: TFile): Promise<void> {
+  async openChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
     const previous = this.activeSession.value
     const session = await this.loadFile(file, () => {
+      if (selectionReturn && !selectionReturn()) return null
       const active = this.activeSession.value
       if (active && !active.currentChatFile.value && !this.isLoading(active)) return active
       // createTab returns the active id at the limit; never load over that conversation.
@@ -734,7 +735,10 @@ export class ChatService {
       }
       return this.sessions.get(this.createTab()) ?? null
     })
-    if (session) this.selectLoaded(session, previous)
+    if (!session || (selectionReturn && !selectionReturn())) return
+    if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
+    // Loading/reconciliation may finish after a newer link selected another tab.
+    if (!selectionReturn || selectionReturn()) this.selectLoaded(session, previous)
   }
 
   /**

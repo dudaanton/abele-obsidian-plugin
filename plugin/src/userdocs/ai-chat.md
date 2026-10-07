@@ -254,7 +254,11 @@ changed, and no card or note is created automatically.
 Links survive closing the chat, reloading, moving, and renaming its file. They identify the
 conversation, not just its filename. If you have duplicate copies, **Choose selection source**
 asks which copy to open. If the source is gone, a notice explains that instead of opening a
-different conversation at the old path.
+different conversation at the old path. Returning also checks the saved file when the chat is
+already open, so selections and edits arriving from another device are not resolved against an
+old on-screen copy. A newer return takes priority over an earlier link still loading. Your draft
+is kept; if a changed file conflicts with local work still in progress, a notice explains why
+return cannot safely refresh the conversation yet.
 
 After a reply is edited, a selection that has no verified placement in the new version opens
 **Saved selection**: the retained earlier version, read-only, with the selected words. If an

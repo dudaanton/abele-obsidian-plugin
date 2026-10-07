@@ -139,6 +139,17 @@ describe.runIf(available)('ordinary backlinks to durable selections', () => {
     expect(report.native.copied).toBe(true)
     expect(report.native.link).toContain('#abele-selection=sample-source/sample-anchor')
   })
+  it('reconciles a newly synced anchor while keeping the conversation open', () => {
+    expect(report.syncedAnchor.sameSession).toBe(true)
+    expect(report.syncedAnchor.available).toBe(true)
+    expect(report.syncedAnchor.quote).toBe('echo')
+  })
+  it('shows an edit synced into an already-open reply historically, without marking the cached reply', () => {
+    expect(report.syncedEdit.sameSession).toBe(true)
+    expect(report.syncedEdit.content).toBe('echo edited elsewhere echo')
+    expect(report.syncedEdit.explanation).toContain('earlier version')
+    expect(report.syncedEdit.currentHighlighted).toBe(false)
+  })
   it('requires an explicit choice between duplicate copies', () => {
     expect(report.disambiguated).toBe(true)
     expect(report.chosen.quote).toBe('echo')

@@ -686,7 +686,13 @@ not a full source copy for each anchor. Do not edit these records by hand.
 Each ID is percent-encoded independently; the path is a navigation hint only. Returning rebuilds
 an identity-to-path index across all `.abchat` files, including unopened/nested discussions,
 validates identity even at an existing path, and asks for an explicit choice between copies.
-The index is transient, not another persisted store. Repeated quotes are never matched by proximity.
+The index is transient, not another persisted store. Index reads use the same backup recovery
+path as loading, so a recoverable torn file retains its identity and still counts as a copy.
+Already-open sessions reconcile changed files before resolving the anchor, preserving their draft
+and containing branch without flushing stale records. A conflict with pending local work is
+reported instead of replacing it or exposing a cached current placement. Return generations are
+checked before tab activation as well as before publication. Repeated quotes are never matched
+by proximity.
 
 The chat text projector is `chat-text-v1`: concatenated rendered text nodes, excluding comment
 badges and code-copy controls; positions use half-open UTF-16 offsets. The current message

@@ -200,9 +200,11 @@ export class CommentService implements CommentInfoSource {
    *
    * Returns whether the comment reached the sidebar, so a caller can say why it did not.
    */
-  async showInSidebar(id: string): Promise<boolean> {
+  async showInSidebar(id: string, selectionReturn?: () => boolean): Promise<boolean> {
     const session = await this.load(id)
-    if (!session) return false
+    if (!session || (selectionReturn && !selectionReturn())) return false
+    if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
+    if (selectionReturn && !selectionReturn()) return false
 
     // Opened as a chat since: it is one of the sidebar's own tabs now, not the one comment tab,
     // and a way back into it from a child below must not mark it as a comment being read.
@@ -218,8 +220,10 @@ export class CommentService implements CommentInfoSource {
     // still writing the same file, still painting its marker. An *expanded* comment is not
     // touched — that one is a chat, and owns its tab like any other.
     for (const other of [...this.shown]) {
+      if (selectionReturn && !selectionReturn()) return false
       if (other !== id) await this.hideFromSidebar(other)
     }
+    if (selectionReturn && !selectionReturn()) return false
 
     const chatService = ChatService.getInstance()
     // It can be refused: the tab bar has a limit and `adoptSession` keeps it. Nothing is

@@ -12,7 +12,7 @@ import { captureChatSelection } from '@/selection/anchors'
 import { parseAnchorLink, resolveAnchorPath } from '@/selection/anchorLinks'
 import { prepareSelectionBacklink, resolveAnchorReturn } from './chatAnchorNavigation'
 import { ChatStorage } from './ChatStorage'
-import { parseChatMetadata } from './ChatLog'
+import { readChat } from './chatCopy'
 import { CHAT_TEXT_PROJECTION_VERSION } from './messageComments'
 import { replyMarkdownText } from './replyMarkdown'
 import type { ChatSession } from './ChatSession'
@@ -132,13 +132,13 @@ export async function openSelectionLink(href: string): Promise<void> {
     // Validate again after a choice: a file can change while a dialog is open.
     if (
       !(file instanceof TFile) ||
-      parseChatMetadata(await app.vault.read(file))?.chatId !== parsed.address.chatId
+      (await readChat(app, file)).metadata?.chatId !== parsed.address.chatId
     ) {
       new Notice('The selection source changed. Open the link again.')
       return
     }
     if (generation !== selectionReturnGeneration) return
-    await openChat(file)
+    await openChat(file, () => generation === selectionReturnGeneration)
     const session = service.getSessionByFile(file.path)
     if (
       !session ||
@@ -146,7 +146,9 @@ export async function openSelectionLink(href: string): Promise<void> {
       generation !== selectionReturnGeneration
     )
       return
-    if (!(await session.getAnchor(parsed.address.chatId, parsed.address.anchorId))) {
+    const anchor = await session.getAnchor(parsed.address.chatId, parsed.address.anchorId)
+    if (generation !== selectionReturnGeneration || service.activeSession.value !== session) return
+    if (!anchor) {
       new Notice('This selection is no longer available')
       return
     }
@@ -186,16 +188,23 @@ export async function openSelectionLink(href: string): Promise<void> {
  * own ways of opening a file are routed here by `keepChatFilesOutOfLeaves`; everything of ours
  * that can open a chat calls this directly.
  */
-export async function openChat(file: TFile): Promise<void> {
+export async function openChat(file: TFile, selectionReturn?: () => boolean): Promise<void> {
+  if (selectionReturn && !selectionReturn()) return
   const comments = CommentService.getInstance()
   if (comments.isCommentFile(file)) {
     // In the sidebar, as its marker would open it — not turned into a full chat.
-    if (await comments.showInSidebar(file.basename)) return
+    const shown = selectionReturn
+      ? await comments.showInSidebar(file.basename, selectionReturn)
+      : await comments.showInSidebar(file.basename)
+    if (shown) return
+    if (selectionReturn) return
     await comments.openFile(file)
     return
   }
   const chatService = ChatService.getInstance()
-  await chatService.openChatFile(file)
+  if (selectionReturn) await chatService.openChatFile(file, selectionReturn)
+  else await chatService.openChatFile(file)
+  if (selectionReturn && !selectionReturn()) return
   await chatService.revealSidebar()
 }
 
