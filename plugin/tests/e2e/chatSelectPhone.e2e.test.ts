@@ -59,6 +59,7 @@ interface Report {
   /** The comment the bar's tap opened. */
   asked?: { kind: string; quote: string }
   leftBehind: string[]
+  copied?: { link: string; unchanged: boolean; anchors: number }
 }
 
 const script = `(async () => {
@@ -139,6 +140,19 @@ const script = `(async () => {
     report.duringHandle = !!bar()
     report.afterHandle = !!(await until(() => bar(), 3000))
 
+    const copyButton=[...bar().querySelectorAll('button')].find(button=>button.textContent.trim()==='Copy link to selection')
+    const write=navigator.clipboard.writeText.bind(navigator.clipboard)
+    let copied=''
+    try {
+      navigator.clipboard.writeText=async text=>{copied=text}
+      const r=copyButton.getBoundingClientRect()
+      await touch('touchStart',r.left+r.width/2,r.top+r.height/2);await wait(60);await touch('touchEnd')
+      await until(()=>copied,8000)
+      const message=chats.activeSession.value.allMessages.value.find(m=>m.id==='a1')
+      report.copied={link:copied,unchanged:message.content===a1.content,anchors:message.selection?.anchors.length||0}
+    } finally {navigator.clipboard.writeText=write}
+    document.getSelection().removeAllRanges();await wait(60)
+    select(range('night','Vilnius'));await until(()=>bar(),3000)
     const b = bar()
     if (b) {
       const r = b.querySelector('button').getBoundingClientRect()
@@ -212,6 +226,12 @@ describe.runIf(available)('selecting words in a chat with a finger', () => {
   it('goes while a handle moves the words, and comes back once they stop', () => {
     expect(report.duringHandle).toBe(false)
     expect(report.afterHandle).toBe(true)
+  })
+
+  it('copies an ordinary durable selection backlink without changing message Markdown', () => {
+    expect(report.copied?.link).toMatch(/^\[\[.+\.abchat#abele-selection=.+\/.+\|Return to selection\]\]$/)
+    expect(report.copied?.unchanged).toBe(true)
+    expect(report.copied?.anchors).toBe(1)
   })
 
   it('a tap on it opens a comment on the words, and nothing is left behind', () => {

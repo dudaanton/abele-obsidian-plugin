@@ -25,6 +25,9 @@ import { nodeWorkspaceFixture } from './nodeWorkspaceFixture'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
 import AiReplyOriginalDialog from '@/components/AiReplyOriginalDialog.vue'
+import ChatAnchorHistory from '@/components/ChatAnchorHistory.vue'
+import { chooseAnchorSource } from '@/ai/openChat'
+import { captureChatSelection, createChatAnchor } from '@/selection/anchors'
 import DateTimePickerModal from '@/components/DateTimePickerModal.vue'
 import RecurrencePickerModal from '@/components/RecurrencePickerModal.vue'
 import DateRangePickerModal from '@/components/DateRangePickerModal.vue'
@@ -138,6 +141,25 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     const previous = app.loadLocalStorage(key)
     app.saveLocalStorage(key, null)
     void networkDecision(app, path).finally(() => app.saveLocalStorage(key, previous))
+  },
+  'selection-source': () => { void chooseAnchorSource(['Chats/sample-original.abchat', 'Copies/a-long-sample-conversation-name-for-a-narrow-screen.abchat']) },
+  'selection-history': () => {
+    const revision = {
+      reference: { chatId: 'sample-chat', messageId: 'sample-reply', revisionId: 'sample-version' },
+      content: 'A small lantern glows beside the garden path.\n\nAn earlier answer with a retained selection.',
+      projection: { version: 'chat-text-v1', text: 'A small lantern glows beside the garden path.An earlier answer with a retained selection.' },
+    }
+    const snapshot = captureChatSelection({ revision, range: { space: 'rendered', start: 2, end: 15 }, sentence: revision.projection.text,
+      title: 'Sample chat', pathHint: 'Chats/sample.abchat', role: 'assistant', author: 'assistant' })
+    const anchor = createChatAnchor(snapshot, revision, () => 'sample-anchor')
+    mountAlone(ChatAnchorHistory, { anchor, resolution: { status: 'historical', revision, placement: anchor.placements[0] } })
+  },
+  'selection-unresolved': () => {
+    const revision = { reference: { chatId: 'sample-chat', messageId: 'sample-reply', revisionId: 'sample-version' },
+      content: 'Saved words from an earlier answer.', projection: { version: 'chat-text-v1', text: 'Saved words from an earlier answer.' } }
+    const snapshot = captureChatSelection({ revision, range: { space: 'rendered', start: 0, end: 11 }, sentence: revision.content,
+      title: 'Sample chat', pathHint: 'Chats/sample.abchat', role: 'assistant', author: 'assistant' })
+    mountAlone(ChatAnchorHistory, { anchor: createChatAnchor(snapshot, revision, () => 'sample-anchor'), resolution: { status: 'unresolved', snapshot } })
   },
   'reply-revision': () =>
     mountAlone(AiReplyRevisionDialog, {

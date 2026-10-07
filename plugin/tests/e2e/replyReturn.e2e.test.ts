@@ -9,6 +9,7 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { SELECTION_RETURN_SETUP, SELECTION_RETURN_CLEANUP, selectionReturnProbe } from './helpers/selectionReturn'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -103,4 +104,60 @@ describe.runIf(available)('returning from a comment to its reply passage', () =>
   )
   it('briefly marks the passage and removes that mark afterward', () =>
     expect(report.cleared).toBe(true))
+})
+
+describe.runIf(available)('ordinary backlinks to durable selections', () => {
+  let size: number[] = [], report: any
+  beforeAll(async () => {
+    if (!onPhone()) {
+      size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+      await reloadApp('app.emulateMobile(true)')
+      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
+    }
+    await evalLong(SELECTION_RETURN_SETUP)
+    await reloadApp('window.location.reload()')
+    report = JSON.parse(await evalLong(selectionReturnProbe(shots), 70_000))
+  }, 180_000)
+  afterAll(async () => {
+    await evalLong(SELECTION_RETURN_CLEANUP)
+    if (!onPhone()) {
+      if (size.length) evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`)
+      await reloadApp('app.emulateMobile(false)')
+    }
+  }, 90_000)
+  it('completes after a reload without errors', () => expect(report.error).toBeUndefined())
+  it('uses chat identity after rename and path reuse and switches to a containing descendant', () => {
+    expect(report.renamed.quote).toBe('echo')
+    expect(report.renamed.firstUnmarked).toBe('echo ')
+    expect(report.renamed.branch).toEqual(['root', 'answer', 'tail'])
+    expect(report.renamed.visible).toBe(true)
+    expect(report.renamed.keyboard).toBe(false)
+    expect(report.cleared).toBe(true)
+  })
+  it.runIf(onPhone())('keeps native touch selection and copies its durable link on the phone', () => {
+    expect(report.native.quote).toBe('echo')
+    expect(report.native.copied).toBe(true)
+    expect(report.native.link).toContain('#abele-selection=sample-source/sample-anchor')
+  })
+  it('requires an explicit choice between duplicate copies', () => {
+    expect(report.disambiguated).toBe(true)
+    expect(report.chosen.quote).toBe('echo')
+  })
+  it('shows the retained earlier version read-only without opening the keyboard', () => {
+    expect(report.historical.explanation).toContain('earlier version')
+    expect(report.historical.quote).toBe('echo')
+    expect(report.historical.editable).toBe(false)
+    expect(report.historical.keyboard).toBe(false)
+  })
+  it('returns into a nested discussion at the exact selected occurrence', () => {
+    expect(report.nested.quote).toBe('echo')
+    expect(report.nested.firstUnmarked).toBe('echo ')
+    expect(report.nested.kind).toBe('comment')
+    expect(report.nested.visible).toBe(true)
+    expect(report.nested.keyboard).toBe(false)
+  })
+  it('reports a deleted source instead of opening the replacement at its old path', () => {
+    expect(report.missing.notice).toContain('selection source')
+    expect(report.missing.replacementOpened).toBe(false)
+  })
 })

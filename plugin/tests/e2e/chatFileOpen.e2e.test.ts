@@ -37,6 +37,7 @@ interface Road {
   chatLeaves: number
   /** The user's main-area chat view was neither moved, replaced nor closed. */
   mainChatKept: boolean
+  selection?: string
 }
 
 type Roads =
@@ -48,6 +49,7 @@ type Roads =
   | 'switcherNewTab'
   | 'newTab'
   | 'attached'
+  | 'selectionLink'
 
 type Report = Partial<Record<Roads, Road | string>> & { error?: string }
 
@@ -132,6 +134,7 @@ const script = `(async () => {
         .some(l => l.getRoot() === app.workspace.rightSplit || l.getRoot() === app.workspace.leftSplit),
       chatLeaves: chatLeaves(),
       mainChatKept: attached.has(mainChat) && mainChat.view.getViewType() === 'abele-ai-sidebar-view',
+      selection: [...document.querySelectorAll('[data-selection-return]')].map(el => el.textContent).join(''),
     }
   }
   const tryRoad = async (name, mode, act) => {
@@ -168,11 +171,11 @@ const script = `(async () => {
     el.dispatchEvent(new MouseEvent('mouseup', o))
     el.dispatchEvent(new MouseEvent('click', o))
   }
-  const noteLink = async () => {
+  const noteLink = async (index = 0) => {
     const view = () => middle().view.containerEl
     const found = await until(() => view().querySelector('.markdown-preview-view a.internal-link'))
     if (!found) throw new Error('no link in the note')
-    return view().querySelector('.markdown-preview-view a.internal-link')
+    return view().querySelectorAll('.markdown-preview-view a.internal-link')[index]
   }
   const switcher = async (keys) => {
     app.commands.executeCommandById('switcher:open')
@@ -214,11 +217,22 @@ const script = `(async () => {
     const withChat = { ...msg, content: 'Look at this one', attachments: [chatPath] }
     const host = await app.vault.create(hostPath, meta(${JSON.stringify(HOST)}) + '\\n' + JSON.stringify(withChat) + '\\n')
     created.push(hostPath)
+    await svc.openChatFile(chat)
+    const selectionSession=svc.getSessionByFile(chatPath)
+    let sequence=0
+    const revision=await selectionSession.ensureSelectionRevision('a0',{nextId:()=> 'sample-open-'+(++sequence),project:text=>({version:'chat-text-v1',text})})
+    const range={space:'rendered',start:0,end:5}
+    const snapshot={text:'Hello',sentence:'Hello',title:'Sample chat',pathHint:chatPath,source:{kind:'chat',...revision.reference,role:'user',author:'user',quote:'Hello',range,projectionVersion:'chat-text-v1',context:{before:'',after:''}}}
+    const anchor=await selectionSession.ensureChatAnchor(snapshot)
+    const note=app.vault.getAbstractFileByPath(notePaths[1])
+    await app.vault.modify(note,(await app.vault.read(note))+'\\n[['+chatPath+'#abele-selection='+revision.reference.chatId+'/'+anchor.id+'|Return to selection]]\\n')
+    await closeChats()
     await storage.refreshHistory()
 
     await tryRoad('explorer', 'source', async () => press(await explorerRow(chat)))
     await tryRoad('explorerNewTab', 'source', async () => press(await explorerRow(chat), mod))
     await tryRoad('link', 'preview', async () => (await noteLink()).click())
+    await tryRoad('selectionLink', 'preview', async () => (await noteLink(1)).click())
     await tryRoad('linkNewTab', 'preview', async () =>
       (await noteLink()).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mod })))
     await tryRoad('switcher', 'source', () => switcher({}))
@@ -305,6 +319,11 @@ describe.skipIf(!available)('opening a chat file the ways Obsidian opens files, 
 
   it('from a link in the note: to the chat panel, the tabs left as they were', () => {
     untouched(report.link)
+  })
+
+  it('from a selection backlink: leaves the note in place and highlights only the verified range', () => {
+    untouched(report.selectionLink)
+    expect((report.selectionLink as Road).selection).toBe('Hello')
   })
 
   it('from a link in the note, asking for a new tab: the same', () => {
