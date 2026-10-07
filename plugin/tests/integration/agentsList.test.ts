@@ -83,6 +83,39 @@ describe('one list independent of open tabs', () => {
     expect(ChatService.getInstance().getAllSessions()).toHaveLength(2)
     expect(agents.rows.value).toHaveLength(2)
   })
+  // BUG: the discussion owner keys sessions and note markers by filename basename.
+  // Rewriting only the list reference cannot migrate that identity safely across restart.
+  it.fails(
+    'BUG: direct discussion file renames preserve tab closure and owner identity',
+    async () => {
+      const app = useVault([
+        {
+          path: 'AI/Comments/sample-discussion.abchat',
+          content: content({ kind: 'comment', anchor: { note: 'Notes/sample.md' } }),
+        },
+      ])
+      ;(app as unknown as { workspace: unknown }).workspace = {
+        iterateAllLeaves: () => {},
+        getLeavesOfType: () => [],
+      }
+      const agents = AgentsService.getInstance()
+      await agents.start()
+      const chats = ChatService.getInstance()
+      vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
+      const row = agents.rows.value[0]
+      await agents.open(row, row.reasons[0])
+      const session = chats.activeSession.value!
+      const file = session.currentChatFile.value!
+      const oldPath = file.path
+      await app.fileManager.renameFile(file, 'AI/Comments/renamed-discussion.abchat')
+      await agents.updateFile(file, oldPath)
+      const renamed = agents.rows.value[0]
+      await agents.open(renamed, renamed.reasons[0])
+      await chats.closeTab(session.id)
+      expect(chats.getSession(session.id)).toBeNull()
+      expect(CommentService.getInstance().sessionFor('renamed-discussion')).toBe(session)
+    }
+  )
   it('does not let an older reconciliation read resurrect an acknowledged error', async () => {
     const app = useVault([{ path: 'Chats/sample.abchat', content: content() }])
     const agents = AgentsService.getInstance()

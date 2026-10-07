@@ -76,21 +76,14 @@ describe('agents dialog', () => {
   })
   it('marks the tab-choice fixture as owned and settles its completion on close', async () => {
     useVault([])
-    const original = ShellModal.prototype.open
-    let modal!: ShellModal
-    const opened = vi.spyOn(ShellModal.prototype, 'open').mockImplementation(function (
-      this: ShellModal
-    ) {
-      modal = this
-      original.call(this)
-    })
+    const opened = vi.spyOn(ShellModal.prototype, 'open')
     try {
       const completion = openDialog('agents-tabs')
       expect(document.querySelector('.modal[data-abele-fixture="agents-tabs"]')).not.toBeNull()
-      modal.close()
+      ;(opened.mock.contexts[0] as ShellModal).close()
       await completion
     } finally {
-      modal?.close()
+      ;(opened.mock.contexts[0] as ShellModal | undefined)?.close()
       opened.mockRestore()
     }
   })

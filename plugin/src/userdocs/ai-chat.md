@@ -81,6 +81,10 @@ exists. Interrupted work offers an explicit continuation; opening the row starts
 Local work is identified as being on this device: file sync does not arbitrate simultaneous
 answers to local approvals across devices.
 
+Known limitation: directly renaming a discussion's `.abchat` file can break its owner's
+filename-based identity and tab closure. Renaming the note it discusses is a different action
+and updates its source normally. A durable discussion identity migration is still needed.
+
 This local implementation does not yet include the Node all-session summary. Registered
 nodes appear as incomplete coverage under **Connection and delivery**, even if a node tab
 is connected; zero known local requests must not be mistaken for zero Node requests.
