@@ -85,6 +85,7 @@ import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
 import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
+import { desktopTransport as syncDesktopTransport } from '@/sync/desktopTransport'
 import { joinFixtureTransfer } from './joinFixtureTransfer'
 import { prepareFixtureContext, restoreFixtureContext } from './fixtureContext'
 import {
@@ -200,7 +201,8 @@ interface AbeleTestApi {
   startPhoneReplay: typeof startPhoneReplay
   verifyPhoneReplay: typeof verifyPhoneReplay
   clearPhoneReplayEvidence: typeof clearPhoneReplayEvidence
-  desktopTransport: typeof desktopTransport
+  /** Sync's fetch-shaped native transport; network.desktopTransport has a different contract. */
+  desktopTransport: typeof syncDesktopTransport
   ObsidianFileSystem: typeof ObsidianFileSystem
   scriptTrust: {
     activate: typeof activateScriptProvenance
@@ -768,7 +770,7 @@ export function exposeTestApi(plugin: Plugin): void {
     startPhoneReplay,
     verifyPhoneReplay,
     clearPhoneReplayEvidence,
-    desktopTransport,
+    desktopTransport: syncDesktopTransport,
     ObsidianFileSystem,
     scriptTrust: {
       activate: activateScriptProvenance,
