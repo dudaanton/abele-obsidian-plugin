@@ -9,6 +9,12 @@ import {
 } from './chatFind'
 import { toolSummary } from './toolLine'
 
+/** Memory only, owned by the chat view for each conversation lifetime. */
+export interface NavigationState {
+  expanded: string[]
+  scrollTop: number
+}
+
 /** One sent question and the work after it, from the current projected path, never the log. */
 export interface NavigationTurn {
   message: ChatMessage
@@ -18,12 +24,18 @@ export interface NavigationTurn {
   attention: boolean
 }
 
+/** A compact label, not a rewrite of the text or its stored anchor. */
+export function navigationExcerpt(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > 100 ? flat.slice(0, 99) + '…' : flat
+}
+
 export function navigationTitle(message: ChatMessage): string {
   const text =
     message.role === 'tool-call'
       ? [message.toolName, toolSummary(message)].filter(Boolean).join(' · ')
       : message.content.replace(/\s+/g, ' ').trim()
-  if (text) return text.length > 100 ? text.slice(0, 99) + '…' : text
+  if (text) return navigationExcerpt(text)
   const files = message.attachments ?? []
   if (files.length > 1) return `${files.length} attachments`
   if (files.length === 1)

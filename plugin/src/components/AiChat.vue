@@ -65,6 +65,13 @@
             tooltip="Find in this chat"
             @click="find.open()"
           />
+          <Icon
+            icon="list-tree"
+            with-bg
+            class="abele-ai-chat__navigation"
+            tooltip="Navigation"
+            @click="openNavigation"
+          />
           <!-- One button for everything this chat is set up with: scope, skills, prompts,
                tool permissions, its own settings, and the two things that are neither —
                reading the file again and copying what the chat is made of. -->
@@ -355,6 +362,20 @@
       @close="replyReview = null"
     />
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
+    <ChatNavigation
+      v-if="navigationOpen && session"
+      :messages="messages"
+      :comments="session.messageComments.value"
+      :state="navigationState"
+      :active-message-id="navigationActiveMessage"
+      :can-go-back="navigationReturns.length > 0"
+      @close="navigationOpen = false"
+      @jump="navigationJump"
+      @start="navigationJump(messages.find(m => !m.draft)?.id ?? '')"
+      @latest="navigationLatest"
+      @back="navigationBack"
+      @discussion="navigationDiscussion"
+    />
     <AiRewindDialog
       v-if="rewinding && session"
       :rewind="session.rewind"
@@ -409,6 +430,9 @@ import { newChatMenu } from '@/node/openSession'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
+import ChatNavigation from './ChatNavigation.vue'
+import type { ChatSession } from '@/ai/ChatSession'
+import type { NavigationState } from '@/ai/chatNavigation'
 import AiRewindDialog from './AiRewindDialog.vue'
 import AiChatSetup from './AiChatSetup.vue'
 import AiCommentTrail from './AiCommentTrail.vue'
@@ -1382,12 +1406,17 @@ const revealMessage = async (
   messageId: string,
   passage?: { quote: string; start?: number },
   exact?: Extract<ChatAnchorResolution, { status: 'current' }>,
-  flashWholeMessage = true
+  flashWholeMessage = true,
+  currentBranchOnly = false
 ) => {
   const generation = ++revealing
   const s = session.value
   if (!s) return
   if (!s.messages.value.some((m) => m.id === messageId)) {
+    if (currentBranchOnly) {
+      new Notice('That message is no longer in the current branch')
+      return
+    }
     if (!s.allMessages.value.some((m) => m.id === messageId)) {
       new Notice('That message is no longer in this chat')
       return
@@ -1399,6 +1428,7 @@ const revealMessage = async (
   const box = messagesContainer.value
   if (box) await new Promise<void>((resolve) => nextFrame(box.win, resolve))
 
+  if (session.value !== s || generation !== revealing) return
   const index = messages.value.findIndex((m) => m.id === messageId)
   if (index < 0) return
   // A few before it too, so it does not sit flush against the top with nothing to scroll to.
@@ -1459,6 +1489,120 @@ const find = useChatFind({
     holdAnchorAWhile(box)
   },
 })
+
+// ── Navigation: memory only, never a branch selection or a send ──
+const navigationOpen = ref(false)
+const navigationActiveMessage = ref<string>()
+const navigationState = shallowRef<NavigationState>({ expanded: [], scrollTop: 0 })
+const navigationMemory = new WeakMap<ChatSession, { version: number; state: NavigationState }>()
+interface NavigationPlace {
+  owner: ChatSession
+  version: number
+  place: ReadingPlace | null
+}
+const navigationReturns = shallowRef<NavigationPlace[]>([])
+let navigationOpenedAt: NavigationPlace | null = null
+
+const openNavigation = () => {
+  const owner = session.value
+  if (!owner) return
+  const version = owner.conversationVersion.value
+  let memory = navigationMemory.get(owner)
+  if (!memory || memory.version !== version) {
+    memory = { version, state: { expanded: [], scrollTop: 0 } }
+    navigationMemory.set(owner, memory)
+  }
+  navigationState.value = memory.state
+  const el = messagesContainer.value
+  const top = el?.getBoundingClientRect().top ?? 0
+  const first = [...(el?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [])].find(
+    (m) => m.getBoundingClientRect().bottom > top
+  )
+  navigationActiveMessage.value = first?.dataset.messageId
+  const atEnd = !el || el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX
+  navigationOpenedAt = {
+    owner,
+    version,
+    place:
+      !atEnd && first?.dataset.messageId && el
+        ? { messageId: first.dataset.messageId, offset: offsetOf(first, el), hidden: olderCount.value }
+        : null,
+  }
+  navigationOpen.value = true
+}
+const saveNavigationReturn = () => {
+  const place = navigationOpenedAt
+  if (
+    !place ||
+    place.owner !== session.value ||
+    place.version !== place.owner.conversationVersion.value
+  ) return
+  if (navigationReturns.value.at(-1)?.owner !== place.owner)
+    navigationReturns.value = [...navigationReturns.value, place]
+}
+const navigationJump = async (id: string, part?: FindPart, query?: string) => {
+  const owner = session.value
+  if (!owner || !id || !owner.messages.value.some((m) => m.id === id && !m.draft)) return
+  saveNavigationReturn()
+  navigationOpen.value = false
+  shouldAutoScroll = false
+  composing.value = false
+  await revealMessage(id, undefined, undefined, true, true)
+  if (session.value !== owner || !owner.messages.value.some((m) => m.id === id)) return
+  const revealPart = part ?? (owner.messages.value.find((m) => m.id === id)?.role === 'tool-call' ? 'params' : undefined)
+  if (revealPart) messageRefs.get(id)?.revealPart(revealPart)
+  if (query) find.openAt(query, id, false, part)
+}
+const navigationLatest = () => {
+  saveNavigationReturn()
+  navigationOpen.value = false
+  anchor = null
+  endSteady(messagesContainer.value)
+  scrollOnUserSend()
+}
+const navigationDiscussion = async (id: string) => {
+  const owner = session.value
+  const version = owner?.conversationVersion.value
+  saveNavigationReturn()
+  navigationOpen.value = false
+  const comments = CommentService.getInstance()
+  // Read first so a delayed file cannot take over a different chat. Opening uses the marker's
+  // existing path, including replacing the one contextual tab for a nested discussion.
+  const loaded = await comments.load(id)
+  if (session.value !== owner || owner?.conversationVersion.value !== version) return
+  const opened = loaded && (await comments.showInSidebar(id))
+  if (!opened) new Notice('Discussion could not be opened — it may be unavailable')
+}
+const navigationBack = async () => {
+  const saved = navigationReturns.value.at(-1)
+  if (!saved) return
+  navigationOpen.value = false
+  navigationReturns.value = navigationReturns.value.slice(0, -1)
+  const owner = saved.owner
+  const messageId = saved.place?.messageId
+  if (
+    owner.isDestroyed ||
+    owner.conversationVersion.value !== saved.version ||
+    (messageId && !owner.messages.value.some((m) => m.id === messageId))
+  ) {
+    new Notice('The saved place is no longer in the current conversation')
+    return
+  }
+  if (owner.kind === 'comment' && owner.commentId) {
+    if (!(await CommentService.getInstance().showInSidebar(owner.commentId))) return
+  } else chatService.switchTab(owner.id)
+  await nextTick()
+  if (session.value !== owner) return
+  anchor = null
+  endSteady(messagesContainer.value)
+  shouldAutoScroll = saved.place === null
+  if (saved.place) await returnTo(saved.place)
+  else scrollOnUserSend()
+}
+watch(
+  () => attachmentOwner.value,
+  () => { navigationOpen.value = false }
+)
 
 // The command that finds in the chat in front, taken by whichever chat is on screen.
 watch(

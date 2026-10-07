@@ -336,6 +336,38 @@ list, not the search: the total number of matches still counts every accessible 
 Searching all bodies can therefore take longer on slow storage than searching names or
 properties. Property text is not part of a body search.
 
+## Navigating a conversation
+
+**Navigation** (the list button beside the magnifier) opens a table of contents in a standard
+Obsidian dialog, on desktop and phone. Your sent messages are the main rows, oldest first,
+with day separators and times. Titles come from the beginning of your text; textless messages
+show an image, file or attachment count. Drafts and queued messages are not listed.
+
+Choose a question to close the dialog and jump to it. **Answers** and **Agent work** expand
+only the contents list, never the chat feed. Each answer and tool call can be opened directly;
+tool details open when needed. Work waiting for approval or rejected is marked **Needs attention**.
+An answer before the first question remains reachable too.
+
+A question's **Discussions** lists direct discussions attached to it or the answers and work
+that followed it. Each shows its quoted passage and first question. Choose one to open its
+existing comment chat. **Nested discussions** reads the next level only when expanded;
+missing or unreadable discussions are labelled, not silently hidden. The comment's existing
+trail and **Back to place** in Navigation provide ways back.
+
+**To start**, **To latest** and **Back to place** move within the conversation without sending
+anything, rewinding files or changing the selected branch. Back returns to the reading place
+saved before the navigation jump, including from a discussion; if that place is no longer
+available, the dialog says so rather than switching branches. Typed text is kept.
+Expanded contents rows and the list's scroll position are remembered while the conversation
+stays open, not across a plugin reload.
+
+The dialog's search finds snippets in the current branch's available display text, including
+folded reasoning and tool details. Picking a result opens the existing find bar at that part.
+It does not search other branches or nested discussions. On desktop, **Up/Down** moves through
+rows, **Left/Right** folds and unfolds a focused heading, **Enter** chooses, and **Escape** closes.
+On a phone, opening Navigation does not open the keyboard; tap its search field to type.
+No model calls, new settings or chat-file changes are involved.
+
 ## Finding words in chats
 
 **Cmd/Ctrl+F** inside a chat, the magnifier over it, or **Find in the current chat** from the

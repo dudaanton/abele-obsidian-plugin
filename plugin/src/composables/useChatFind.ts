@@ -249,13 +249,15 @@ export function useChatFind(host: ChatFindHost) {
    * chats, landing in the chat it was found in. `focus` false leaves the cursor out of the bar:
    * on a phone it would bring the keyboard up over the message just landed on.
    */
-  const openAt = (words: string, messageId: string, focus = true) => {
+  const openAt = (words: string, messageId: string, focus = true, part?: FindPart) => {
     open(focus)
     query.value = words
     if (typing) win().clearTimeout(typing)
     typing = 0
     matches.value = findInMessages(host.messages(), words)
-    const i = matches.value.findIndex((m) => m.messageId === messageId)
+    const i = matches.value.findIndex(
+      (m) => m.messageId === messageId && (!part || m.part === part)
+    )
     index.value = i >= 0 ? i : startingMatch(matches.value, host.messages(), null)
     void show()
   }
