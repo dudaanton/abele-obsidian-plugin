@@ -239,6 +239,30 @@ views scripts open.
 The chat's settings button opens one dialog with everything about this chat: its scope, skills,
 prompts, permissions, model and tools.
 
+## Links back to selected words
+
+Select words in a saved user message or finished reply, including messages in a side discussion.
+On a computer, right-click and choose **Copy link to selection**. On a phone, lift your finger,
+wait for the selection bar, and tap **Copy link to selection**. Native Copy, **Ask here**, and
+**Highlight** remain available. Drafts and replies still being streamed are not link targets.
+
+Paste the copied link into a note. Opening it returns to the conversation and briefly marks
+that exact selection without opening the phone keyboard. Your current branch is kept if it
+contains the message; otherwise a branch containing it is opened. The message text is not
+changed, and no card or note is created automatically.
+
+Links survive closing the chat, reloading, moving, and renaming its file. They identify the
+conversation, not just its filename. If you have duplicate copies, **Choose selection source**
+asks which copy to open. If the source is gone, a notice explains that instead of opening a
+different conversation at the old path.
+
+After a reply is edited, a selection that has no verified placement in the new version opens
+**Saved selection**: the retained earlier version, read-only, with the selected words. If an
+exact placement cannot be verified, the original quote is shown without guessing another
+occurrence. Copying waits for the selection to be saved; a failed save reports an error and
+does not put a new link on the clipboard. Keep compatible plugin versions on all devices:
+older writers can discard this optional selection data when saving a chat.
+
 ## Highlighting and revising replies
 
 Select words in a finished model reply. On a computer, right-click and choose **Highlight**;

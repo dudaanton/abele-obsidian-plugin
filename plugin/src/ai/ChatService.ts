@@ -1,5 +1,5 @@
 import { providerKey } from '@/secrets/destinations'
-import { ref, computed } from 'vue'
+import { ref, computed, shallowRef } from 'vue'
 import { App, Notice, TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -87,6 +87,12 @@ export class ChatService {
    * A message to bring into view in the active chat, by id — a card in a note was pressed.
    * The chat component consumes it, as it does `pendingInput`.
    */
+  /** Suppress composer autofocus while opening a read-only selection return. */
+  public readonly openingSelection = ref(false)
+  public readonly pendingAnchorReturn = shallowRef<{
+    sessionId: string
+    target: Extract<import('./chatAnchorNavigation').AnchorReturn, { status: 'ready' }>
+  } | null>(null)
   public readonly pendingReveal = ref<string | null>(null)
   /** A comment return can address a passage within that message, in one specific chat. */
   public readonly pendingPassage = ref<{ path: string; message: string; quote: string; start?: number } | null>(null)

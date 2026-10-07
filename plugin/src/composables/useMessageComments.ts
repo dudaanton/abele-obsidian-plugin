@@ -12,6 +12,7 @@ import {
   paintMessageComments,
   paintReplyHighlights,
   selectionAnchor,
+  messageRenderedText,
   type PaintedComment,
 } from '@/ai/messageComments'
 import type { HighlightColor } from '@/reader/highlights'
@@ -37,7 +38,8 @@ export function useMessageComments(
   ask: Ask,
   highlights: () => ReplyHighlight[] | undefined = () => [],
   highlight?: (quote: string, start: number, color: HighlightColor) => void,
-  removeHighlight?: (id: string) => void
+  removeHighlight?: (id: string) => void,
+  captureLink?: (quote: string, start: number, text: string) => (() => void) | undefined
 ) {
   const content = ref<ComponentPublicInstance | null>(null)
   const root = (): HTMLElement | null => (content.value?.$el as HTMLElement | undefined) ?? null
@@ -109,6 +111,7 @@ export function useMessageComments(
     event.preventDefault()
     const selected = root()?.ownerDocument.getSelection()?.toString() ?? anchor.quote
 
+    const copyLink = captureLink?.(anchor.quote, anchor.start, messageRenderedText(root()!))
     const menu = new Menu()
     menu.addItem((item) =>
       item
@@ -121,6 +124,9 @@ export function useMessageComments(
         .setTitle('Ask here')
         .setIcon('message-circle-plus')
         .onClick(() => ask(anchor.quote, anchor.start))
+    )
+    if (copyLink) menu.addItem((item) =>
+      item.setTitle('Copy link to selection').setIcon('link').onClick(copyLink)
     )
     if (highlight) {
       menu.addItem((item) =>

@@ -15,6 +15,12 @@
       @create="onNewTab"
     />
 
+    <ChatAnchorHistory
+      v-if="anchorHistory"
+      :anchor="anchorHistory.anchor"
+      :resolution="anchorHistory.resolution"
+      @close="anchorHistory = null"
+    />
     <AiRunView v-if="activeRun" :run="activeRun" />
     <NodeChatView v-else-if="nodeSession" :key="nodeSession.id" :presenter="nodeSession" @new-chat="onNewTab" />
 
@@ -106,6 +112,7 @@
       <ChatSelectionBar
         v-if="messagesContainer && canComment && !composing"
         :scroller="messagesContainer"
+        :capture-link="captureLink"
         @ask="onAskHere"
         @highlight="onHighlight"
       />
@@ -175,6 +182,7 @@
           :interceptor-error="msg.draft ? interceptorError : replyReviews[msg.id]?.error"
           :comments="commentsOn.get(msg.id)"
           :can-comment="canComment"
+          :capture-link="captureLink"
           :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
           :changed-files="changedTurns.has(msg.id)"
           @create-branch="onCreateBranch"
@@ -375,6 +383,8 @@ import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import ChatSelectionBar from './ChatSelectionBar.vue'
+import ChatAnchorHistory from './ChatAnchorHistory.vue'
+import type { ChatAnchor, ChatAnchorResolution } from '@/selection/types'
 import AiReplyRevisionDialog from './AiReplyRevisionDialog.vue'
 import type { ReplyProposal } from '@/ai/replyAnnotations'
 import type { HighlightColor } from '@/reader/highlights'
@@ -406,7 +416,7 @@ import { allowTemplateExecution } from '@/templates/TemplateTrust'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import type { MessageComment } from '@/ai/types'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
-import { revealAnchor } from '@/ai/openChat'
+import { revealAnchor, captureSelectionLink } from '@/ai/openChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 import { isChatLog } from '@/ai/chatText'
@@ -608,6 +618,15 @@ const replyReview = shallowRef<{
 } | null>(null)
 const reportReplyError = (error: unknown) =>
   new Notice(error instanceof Error ? error.message : String(error))
+const captureLink = (id: string, quote: string, start: number, text: string) => {
+  const s = session.value
+  if (!s) return undefined
+  const prepare = captureSelectionLink(s, id, quote, start, text)
+  return () => { void prepare().then((link) => navigator.clipboard.writeText(link)).catch(reportReplyError) }
+}
+const anchorHistory = shallowRef<{ anchor: ChatAnchor; resolution: ChatAnchorResolution } | null>(null)
+let anchorReturnGeneration = 0
+
 const onHighlight = (id: string, quote: string, start: number, color: HighlightColor) => {
   void session.value?.highlightReply(id, quote, start, color).catch(reportReplyError)
 }
@@ -1340,7 +1359,11 @@ const REVEAL_CONTEXT = 3
  * is, and flashed so the eye finds it.
  */
 let revealing = 0
-const revealMessage = async (messageId: string, passage?: { quote: string; start?: number }) => {
+const revealMessage = async (
+  messageId: string,
+  passage?: { quote: string; start?: number },
+  exact?: Extract<ChatAnchorResolution, { status: 'current' }>
+) => {
   const generation = ++revealing
   const s = session.value
   if (!s) return
@@ -1365,10 +1388,12 @@ const revealMessage = async (messageId: string, passage?: { quote: string; start
   const target = el?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`)
   if (!el || !target || session.value !== s || generation !== revealing) return
   let selected: HTMLElement | null | undefined
-  if (passage) {
+  if (passage || exact) {
     const until = Date.now() + 3000
     do {
-      selected = messageRefs.get(messageId)?.revealPassage(passage.quote, passage.start)
+      selected = exact
+        ? messageRefs.get(messageId)?.revealSelection(exact.revision, exact.placement.range)
+        : messageRefs.get(messageId)?.revealPassage(passage!.quote, passage!.start)
       if (selected !== undefined) break
       await new Promise<void>(resolve => el.win.setTimeout(resolve, 30))
       if (session.value !== s || generation !== revealing || !target.isConnected) return
@@ -1379,12 +1404,13 @@ const revealMessage = async (messageId: string, passage?: { quote: string; start
   holdAnchor()
   bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
   holdAnchorAWhile(el)
-  if (!selected) {
+  if (!selected && !exact) {
     target.classList.remove('abele-footnote-flash')
     void target.offsetWidth
     target.classList.add('abele-footnote-flash')
     window.setTimeout(() => target.classList.remove('abele-footnote-flash'), 2500)
   }
+  return !!selected
 }
 
 // ── Find in this chat ──
@@ -1458,6 +1484,32 @@ watch(
   },
   { immediate: true, flush: 'post' }
 )
+
+watch(
+  () => [chatService.pendingAnchorReturn.value, session.value, messagesContainer.value] as const,
+  async ([pending, s, el]) => {
+    if (!pending || !s || !el || pending.sessionId !== s.id) return
+    const generation = ++anchorReturnGeneration
+    chatService.pendingAnchorReturn.value = null
+    composing.value = false
+    await nextTick()
+    if (session.value !== s || generation !== anchorReturnGeneration) return
+    stopFocusing()
+    const focused = el.ownerDocument.activeElement
+    if (focused?.instanceOf(HTMLElement) && chatContainer.value?.contains(focused)) focused.blur()
+    const { target } = pending
+    if (target.resolution.status === 'current') {
+      const selected = await revealMessage(target.messageId, undefined, target.resolution)
+      if (session.value === s && generation === anchorReturnGeneration && !selected)
+        anchorHistory.value = { anchor: target.anchor, resolution: { status: 'unresolved', snapshot: target.anchor.snapshot } }
+    } else {
+      await revealMessage(target.messageId)
+      if (session.value === s && generation === anchorReturnGeneration) anchorHistory.value = target
+    }
+  },
+  { immediate: true, flush: 'post' }
+)
+watch(session, () => { anchorHistory.value = null; anchorReturnGeneration++ })
 
 watch(
   () => [chatService.pendingReveal.value, session.value, messagesContainer.value] as const,
@@ -1687,11 +1739,13 @@ function stopFocusing() {
 
 function focusComposer() {
   stopFocusing()
+  if (chatService.openingSelection.value || chatService.pendingAnchorReturn.value) return
   focusWindow = chatContainer.value?.ownerDocument.defaultView ?? window
   const win = focusWindow
   const until = Date.now() + FOCUS_TRIES_FOR_MS
   const attempt = () => {
     focusTimer = null
+    if (chatService.openingSelection.value || chatService.pendingAnchorReturn.value) return
     const input = chatInput.value
     input?.focus({ atEnd: true })
     if (input?.hasFocus()) return

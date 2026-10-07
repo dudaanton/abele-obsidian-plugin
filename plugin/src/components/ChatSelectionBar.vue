@@ -15,6 +15,12 @@
       @click="ask"
     />
     <Button
+      v-if="shown.copyLink"
+      text="Copy link to selection"
+      icon="link"
+      @click="copyLink"
+    />
+    <Button
       v-if="shown.highlight"
       text="Highlight"
       icon="highlighter"
@@ -30,7 +36,7 @@ import { nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 
 import { Platform } from 'obsidian'
 import Button from './obsidian/Button.vue'
 import type { HighlightColor } from '@/reader/highlights'
-import { selectionAnchor } from '@/ai/messageComments'
+import { selectionAnchor, messageRenderedText } from '@/ai/messageComments'
 import { SettledSelection } from '@/helpers/settledSelection'
 import { placeSelectionBar } from '@/helpers/selectionBarPlace'
 
@@ -47,6 +53,7 @@ import { placeSelectionBar } from '@/helpers/selectionBarPlace'
 const props = defineProps<{
   /** The chat's scrolling list of messages. The bar is drawn beside it, in its parent. */
   scroller: HTMLElement
+  captureLink?: (id: string, quote: string, start: number, text: string) => (() => void) | undefined
 }>()
 
 const emit = defineEmits<{
@@ -60,6 +67,7 @@ interface Asked {
   start: number
   range: Range
   highlight: boolean
+  copyLink?: () => void
 }
 
 const shown = shallowRef<Asked | null>(null)
@@ -85,6 +93,9 @@ function read(): Asked | null {
     ...anchor,
     range,
     highlight: el.dataset.highlightReply === 'true',
+    copyLink: el.dataset.copySelection === 'true'
+      ? props.captureLink?.(el.dataset.askMessage, anchor.quote, anchor.start, messageRenderedText(el))
+      : undefined,
   }
 }
 
@@ -126,6 +137,13 @@ function ask() {
   pressing = false
   shown.value = null
   if (asked) emit('ask', asked.id, asked.quote, asked.start)
+}
+
+function copyLink() {
+  const action = shown.value?.copyLink
+  pressing = false
+  shown.value = null
+  action?.()
 }
 
 function highlight() {

@@ -679,6 +679,24 @@ Keep compatible clients on all devices; never reconstruct lost identity from mat
 Retaining many anchors on one source costs the source/projection once plus per-anchor captures,
 not a full source copy for each anchor. Do not edit these records by hand.
 
+## Selection return links
+
+**Copy link to selection** creates a durable anchor before exposing an ordinary wikilink:
+`[[chat-path.abchat#abele-selection=<encoded-chat-id>/<encoded-anchor-id>|Return to selection]]`.
+Each ID is percent-encoded independently; the path is a navigation hint only. Returning rebuilds
+an identity-to-path index across all `.abchat` files, including unopened/nested discussions,
+validates identity even at an existing path, and asks for an explicit choice between copies.
+The index is transient, not another persisted store. Repeated quotes are never matched by proximity.
+
+The chat text projector is `chat-text-v1`: concatenated rendered text nodes, excluding comment
+badges and code-copy controls; positions use half-open UTF-16 offsets. The current message
+source, retained projection and live renderer must agree before its recorded range is marked.
+The active branch is retained if it contains the message; otherwise return chooses the oldest
+valid descendant leaf, breaking equal timestamps by message ID. Historical placements open the
+retained source read-only. Unresolved/conflicting placements keep the captured quote without
+highlighting a guessed occurrence. This changes no message Markdown or provider history and
+implements no card binding or script launch.
+
 ## Reply highlights and revisions
 
 Assistant `msg` records may carry `highlights`: entries with `id`, `quote` (rendered text),

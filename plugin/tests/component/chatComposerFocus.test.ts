@@ -28,6 +28,7 @@ beforeEach(() => {
   service.tabOrder.value = ['tab-a']
   service.activeTabId.value = 'tab-a'
   service.pendingInput.value = null
+  service.openingSelection.value = false
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
     value: fakeChatSession({ messages: ref<ChatMessage[]>([]), kind: 'chat' }),
@@ -61,6 +62,14 @@ function refuseFocus(el: HTMLTextAreaElement, times: number) {
 }
 
 describe('the cursor in the composer', () => {
+  it('is not requested by a selection return opening the sidebar', async () => {
+    service.openingSelection.value = true
+    const wrapper = open()
+    await wait(600)
+    expect(document.activeElement).not.toBe(textarea(wrapper))
+    service.openingSelection.value = false
+  })
+
   it('is put there when the chat opens, even if the first tries are dropped', async () => {
     const wrapper = open()
     refuseFocus(textarea(wrapper), 3)

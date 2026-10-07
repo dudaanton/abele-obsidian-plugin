@@ -79,6 +79,24 @@ describe('words selected in a chat on a phone', () => {
     expect(bar().exists()).toBe(false)
   })
 
+  it('copies a link to the captured selection even if the tap clears native selection', async () => {
+    scroller.querySelector<HTMLElement>('[data-ask-message]')!.dataset.copySelection = 'true'
+    const copy = vi.fn()
+    const captureLink = vi.fn(() => copy)
+    await wrapper.setProps({ captureLink })
+    select('night train')
+    await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)
+    expect(captureLink).toHaveBeenCalledWith('m1', 'night train', 9, 'Take the night train.')
+    const button = bar().findAll('button').find((button) => button.text() === 'Copy link to selection')!
+    expect(button).toBeDefined()
+    await button.trigger('pointerdown')
+    document.getSelection()!.removeAllRanges()
+    document.dispatchEvent(new Event('selectionchange'))
+    await button.trigger('click')
+    expect(copy).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('ask')).toBeUndefined()
+  })
+
   it('go away at once when the words are let go', async () => {
     select('train')
     await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)

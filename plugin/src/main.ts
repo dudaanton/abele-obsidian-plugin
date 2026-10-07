@@ -128,8 +128,8 @@ import { installUntrustedGuard, uninstallUntrustedGuard } from '@/markdown/rende
 import { beginStartup, startupStep, startupStepAsync } from '@/helpers/startupSteps'
 import { startStartupScripts } from '@/scripting/startupRunner'
 import { claimVueSetters } from '@/helpers/vueGlobals'
-import { openChat } from '@/ai/openChat'
-import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
+import { openChat, openSelectionLink } from '@/ai/openChat'
+import { keepChatFilesOutOfLeaves, routeChatAnchorLinks } from '@/ai/chatFileLeaves'
 import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
 import { openQuickMenu } from '@/quickButton/open'
@@ -346,6 +346,7 @@ export default class AbelePlugin extends Plugin {
     // A chat file opened from anywhere — file explorer, quick switcher, a link, search — goes
     // to the chat panel instead of replacing the note in front.
     this.register(keepChatFilesOutOfLeaves(openChat, () => this.app.workspace))
+    this.register(routeChatAnchorLinks(this.app.workspace, openSelectionLink))
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))

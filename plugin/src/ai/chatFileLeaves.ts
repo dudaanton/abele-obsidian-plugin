@@ -3,6 +3,27 @@ import { isChatLog } from './chatText'
 
 type OpenFile = (this: WorkspaceLeaf, file: TFile, state?: OpenViewState) => Promise<void>
 
+/** Intercept before path lookup: an anchor can outlive a rename or a reused/deleted path. */
+export function routeChatAnchorLinks(
+  workspace: Pick<Workspace, 'openLinkText'>,
+  open: (href: string) => Promise<void>
+): () => void {
+  const original = workspace.openLinkText
+  let live = true
+  const wrapped: Workspace['openLinkText'] = async function (href, sourcePath, pane, state) {
+    if (live && href.includes('#abele-selection=')) {
+      await open(href)
+      return
+    }
+    return original.call(this, href, sourcePath, pane, state)
+  }
+  workspace.openLinkText = wrapped
+  return () => {
+    live = false
+    if (workspace.openLinkText === wrapped) workspace.openLinkText = original
+  }
+}
+
 /**
  * A chat file is never opened into a leaf: it goes to the chat panel, and the leaf keeps what
  * it had.

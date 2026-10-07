@@ -224,6 +224,7 @@
         :text="message.content"
         :resource-opener="resourceOpener"
         :data-ask-message="canComment ? message.id : undefined"
+        :data-copy-selection="canComment && !message.draft && !readOnlyHistory ? 'true' : undefined"
         :data-highlight-reply="
           canComment && message.role === 'assistant' && !message.draft ? 'true' : undefined
         "
@@ -397,7 +398,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { flashMessagePassage } from '@/ai/messageComments'
+import { flashMessagePassage, flashExactSelection } from '@/ai/messageComments'
+import type { ChatRevision, RenderedRange } from '@/selection/types'
 import dayjs from 'dayjs'
 import { Menu, Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -449,6 +451,7 @@ const props = defineProps<{
   canRewind?: boolean
   /** This user message's turn changed files that can still be put back. */
   changedFiles?: boolean
+  captureLink?: (id: string, quote: string, start: number, text: string) => (() => void) | undefined
 }>()
 
 const emit = defineEmits<{
@@ -482,7 +485,9 @@ const comments = useMessageComments(
   props.message.role === 'assistant' && !props.message.draft
     ? (quote, start, color) => emit('highlight', props.message.id, quote, start, color)
     : undefined,
-  (id) => emit('remove-highlight', props.message.id, id)
+  (id) => emit('remove-highlight', props.message.id, id),
+  (quote, start, text) => !props.message.draft && !props.readOnlyHistory && replyRendered.value
+    ? props.captureLink?.(props.message.id, quote, start, text) : undefined
 )
 
 const originalOpen = ref(false)
@@ -591,7 +596,15 @@ function revealPassage(quote: string, start?: number): HTMLElement | null | unde
   return root ? flashMessagePassage(root, quote, start) : null
 }
 
-defineExpose({ revealPart, revealPassage })
+function revealSelection(revision: ChatRevision, range: RenderedRange): HTMLElement | null | undefined {
+  if (!replyRendered.value) return undefined
+  const root = comments.content.value?.$el as HTMLElement | undefined
+  return root && props.message.content === revision.content &&
+    props.message.selection?.revisionId === revision.reference.revisionId
+    ? flashExactSelection(root, revision.projection, range) : null
+}
+
+defineExpose({ revealPart, revealPassage, revealSelection })
 
 const FILE_TOOLS = [
   'read',
