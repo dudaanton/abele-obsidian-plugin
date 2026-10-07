@@ -159,7 +159,7 @@ describe.skipIf(why !== null)('the devices on a vault', () => {
         (r) => textOf(r.querySelector('.setting-item-name')) === ${JSON.stringify(DAEMON)})
       if (!(await poll(row, 20000))) throw new Error('no row for the daemon')
       await press(row(), 'Revoke')
-      await press(() => modalOf('.abele-confirm', doc), 'Revoke')
+      await press(() => modalOf('.abele-confirm__message', doc), 'Revoke')
       const left = await poll(() => !row(), 20000)
       await closeSettings()
       return left
@@ -216,7 +216,7 @@ describe.skipIf(why !== null)('the devices on a vault', () => {
       const seen = await poll(row, 10000)
       if (seen) {
         await press(row(), 'Forget without telling the server')
-        await press(() => modalOf('.abele-confirm', doc), 'Forget')
+        await press(() => modalOf('.abele-confirm__message', doc), 'Forget')
         await poll(() => !row(), 10000)
       }
       await closeSettings()
