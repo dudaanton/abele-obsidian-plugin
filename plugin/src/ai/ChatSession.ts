@@ -29,6 +29,20 @@ import type {
   ToolDefinition,
 } from './client'
 import { ChatStorage } from './ChatStorage'
+import {
+  prepareSelectionRevision,
+  ensureCapturedAnchor,
+  type ChatBindingRecovery,
+} from './chatAnchorStore'
+import type {
+  AnchorStoragePort,
+  ChatAnchor,
+  ChatRevision,
+  ChatSelectionSnapshot,
+  RevisionPorts,
+  RevisionReference,
+} from '@/selection/types'
+import { sameRevision } from '@/selection/revisionMapping'
 import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot } from './ChatLog'
 import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
 import { readChat, rewriteChat } from './chatCopy'
@@ -165,7 +179,7 @@ export interface SessionOptions {
   anchor?: CommentAnchor
 }
 
-export class ChatSession implements SummarizerHost, InterceptorHost {
+export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStoragePort {
   private static readonly TITLE_GENERATION_TRIGGERS = [1]
   /**
    * The turns after which the history summary is written again.
@@ -235,6 +249,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private userMessageCount = 0
   public readonly chatTitle = ref('')
   private chatCreated = ''
+  private chatIdentity: string | undefined
+  private bindingRecovery: ChatBindingRecovery[] | undefined
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
   /** Changes before replacing a conversation; saving its first file does not change it. */
@@ -2292,6 +2308,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.userMessageCount = 0
     this.chatTitle.value = ''
     this.chatCreated = ''
+    this.chatIdentity = undefined
+    this.bindingRecovery = undefined
     this.lastModelId = ''
     this.customSystemPrompt.value = ''
     this.customSystemPromptNotePath.value = ''
@@ -2492,13 +2510,129 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
   }
 
+  /**
+   * Durable revision preparation precedes capture. The projector is injected: rendered offsets
+   * cannot be obtained by treating Markdown as plain text. No ids are exposed before success.
+   */
+  async ensureSelectionRevision(id: string, ports: RevisionPorts): Promise<ChatRevision> {
+    const captured = this.findMessage(id)
+    return this.changeSelectionAnnotations(id, ports.nextId, (message, chatId) => {
+      if (
+        !captured ||
+        captured.content !== message.content ||
+        captured.revisions !== message.revisions ||
+        (captured.selection && captured.selection.revisionId !== message.selection?.revisionId)
+      )
+        throw new Error('The captured selection revision changed. Select the passage again.')
+      const { selection, revision } = prepareSelectionRevision(message, chatId, ports)
+      return { selection, result: revision }
+    })
+  }
+
+  /** A return address is safe to expose only after this checked, serialized write succeeds. */
+  async ensureChatAnchor(snapshot: ChatSelectionSnapshot, nextId = nanoid): Promise<ChatAnchor> {
+    return this.changeSelectionAnnotations(snapshot.source.messageId, nextId, (message, chatId) => {
+      const { selection, anchor } = ensureCapturedAnchor(message, chatId, snapshot, nextId)
+      if (
+        this.allChatMessages.some(
+          (m) => m.id !== message.id && m.selection?.anchors.some((item) => item.id === anchor.id)
+        )
+      )
+        throw new Error('Anchor identity must be unique within the chat.')
+      return { selection, result: anchor }
+    })
+  }
+
+  async getAnchor(chatId: string, anchorId: string): Promise<ChatAnchor | undefined> {
+    if (chatId !== this.chatIdentity) return undefined
+    return this.allChatMessages
+      .flatMap((message) => message.selection?.anchors ?? [])
+      .find((anchor) => anchor.id === anchorId)
+  }
+
+  async getRevision(reference: RevisionReference): Promise<ChatRevision | undefined> {
+    if (reference.chatId !== this.chatIdentity) return undefined
+    return this.findMessage(reference.messageId)?.selection?.versions.find((revision) =>
+      sameRevision(revision.reference, reference)
+    )
+  }
+
+  /**
+   * Annotation-only writes own the same writer as saves/highlights, but never freeze the turn.
+   * Publish only selection metadata, not the captured tree or internal array: events can arrive
+   * while IO is pending. A draft/streaming bubble has no stable saved target to annotate.
+   */
+  private async changeSelectionAnnotations<T>(
+    id: string,
+    nextId: () => string,
+    change: (
+      message: ChatMessage,
+      chatId: string
+    ) => {
+      selection: NonNullable<ChatMessage['selection']>
+      result: T
+    }
+  ): Promise<T> {
+    const generation = this.generation
+    while (this.writing) await this.writing
+    const file = this.currentChatFile.value
+    const check = () => {
+      if (this.destroyed || generation !== this.generation || this.currentChatFile.value !== file)
+        throw new Error('The captured conversation changed.')
+    }
+    check()
+    if (this.replyChanging || this.moving.value || this.kind === 'run')
+      throw new Error('This message is being changed. Try again when it finishes.')
+    if (!file) throw new Error('Only saved chat messages can have selection anchors.')
+    const operation = Promise.resolve().then(async () => {
+      check()
+      const message = this.findMessage(id)
+      if (!message || message.draft || (message.role !== 'user' && message.role !== 'assistant'))
+        throw new Error('Only saved user or model messages can have selection anchors.')
+      const chatId = this.chatIdentity ?? nextId()
+      const { selection, result } = change(message, chatId)
+      const snapshot = this.snapshot()
+      await this.rewriteReply(
+        file,
+        {
+          ...snapshot,
+          metadata: { ...snapshot.metadata, chatId },
+          messages: snapshot.messages.map((m) => (m.id === id ? { ...m, selection } : m)),
+          internalMessages: [...snapshot.internalMessages],
+        },
+        check
+      )
+      check()
+      this.chatIdentity = chatId
+      this.updateChatMessage(
+        (m) => m.id === id,
+        (m) => ({ ...m, selection })
+      )
+      return result
+    })
+    this.writing = operation.then(
+      (): void => {},
+      (): void => {}
+    )
+    try {
+      return await operation
+    } finally {
+      this.writing = null
+    }
+  }
+
   /** Protected owner edits share one external-change guard and persistence recovery path. */
-  private async rewriteReply(file: TFile, snapshot: ChatSnapshot): Promise<void> {
+  private async rewriteReply(
+    file: TFile,
+    snapshot: ChatSnapshot,
+    check?: () => void
+  ): Promise<void> {
     const written = serializeChat(snapshot)
     const { app } = GlobalStore.getInstance()
     let attempted = false
     try {
       await rewriteChat(app, file, written, (content) => {
+        check?.()
         if (!this.log.matches(parseChat(content)))
           throw new Error('This chat changed elsewhere. Reopen it before making changes.')
         attempted = true
@@ -2670,6 +2804,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
+      chatId: this.chatIdentity,
+      bindingRecovery: this.bindingRecovery,
       queuedMessages: this.queuedMessages.value.length
         ? this.queuedMessages.value.map((q) => ({ ...q, attachments: q.attachments?.slice() }))
         : undefined,
@@ -2840,6 +2976,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.currentChatFile.value = file
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
+    this.chatIdentity = result.metadata?.chatId
+    this.bindingRecovery = result.metadata?.bindingRecovery
     // Before `restoreAgentBinding`, which rebuilds the scope: the anchor has to be in place
     // by then or the note is left out until the next agent change.
     if (result.metadata?.kind) this.kind = result.metadata.kind

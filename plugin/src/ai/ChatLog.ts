@@ -64,6 +64,8 @@ export function serializeMetadata(metadata: ChatMetadata): string {
   return metaLine(metadata) + '\n'
 }
 
+/** Optional selections, retained versions and decoration evidence stay on the winning msg.
+ * Compaction copies that entire record; it must not rebuild only the conversation fields. */
 const messageLine = (message: ChatMessage): string => JSON.stringify({ k: 'msg', ...message })
 
 const internalLine = (message: Message): string => JSON.stringify({ k: 'int', ...message })

@@ -602,6 +602,49 @@ A tool result too long to send whole carries `stored`: its key and the whole tex
 sent only the start of it; `read_result` reads the rest by that key, for as long as the chat file
 holds the message — compaction and closing the chat included.
 
+## Durable chat selections (storage adapter)
+
+Optional `chatId` in the chat's metadata is a durable identity for selections, independent of
+file path, tab/session id, and the first-message rewind key. It is initialized lazily by a
+checked serialized write, not when an old chat is loaded. Each selected user/assistant `msg`
+may carry `selection`: `revisionId` (current version), `versions` (retained source and rendered
+projection, once per referenced version), and `anchors` (immutable captures and proven
+placements). Each version has a `{chatId, messageId, revisionId}` reference, source `content`,
+and `projection: {version, text}`. Anchors carry `id`, `original`, captured `snapshot`, and
+`placements`; title/path/context are hints, never identity or quote-matching proof. Offsets are
+half-open UTF-16 rendered-text positions, not Markdown positions. The adapter requires an
+injected deterministic projector and validates the exact captured current version before saving.
+
+Revision preparation and anchor creation share the chat writer with normal saves and highlights.
+They leave message Markdown and internal/provider history unchanged, publish only after durable
+success, and retain concurrent turn events. Drafts and unfinished streaming targets are refused;
+previously saved messages remain annotatable during a turn. Failures return no successful anchor
+address. Referenced source versions and anchors survive append, reopen, crash recovery and log
+compaction. Accepted semantic edits allocate fresh version IDs, even for equal text; reply
+`revisions` store optional `beforeRevisionId`/`afterRevisionId`, and undo restores the recorded
+before ID. Without a rendered-edit proof, old anchors remain historical, never guessed onto a
+new occurrence. Undo without version proof allocates a fresh ID instead. New user branches and
+regenerated replies have new message IDs and inherit no selection metadata; shared ancestor
+messages keep their anchors. Navigation and selection-script UI are separate adapters, not
+provided by this storage layer.
+
+The optional `decorationOperations` on messages and `bindingRecovery` in metadata are separate
+storage contracts for later explicit card binding. A decoration records operation/binding/anchor
+IDs, actual target path, captured/resulting revision references and a verified source patch.
+Recovery records that operation, actual card path, optional evidence, and a status (`pending`,
+`applied`, `known-not-written`, `uncertain`, or `undone`). Existing records are retained verbatim
+through saves and compaction, including unresolved evidence. This layer creates no binding,
+card, decoration, recovery workflow or provider annotation, and never replays these records.
+A later binding writer must persist operation evidence atomically with decorated message content.
+
+Format version remains 2. Legacy chats without these optional fields load unchanged and migrate
+on their first write. The v2 codec preserves additional fields when records pass through intact;
+an older client rebuilding only fields it knows can drop `chatId`, selections, version proofs or
+recovery evidence during a round trip. Preservation by such older writers is **not guaranteed**.
+Keep compatible clients on all devices; never reconstruct lost identity from matching text.
+Retaining many anchors on one source costs the source/projection once plus per-anchor captures,
+not a full source copy for each anchor. Do not edit these records by hand.
+
 ## Reply highlights and revisions
 
 Assistant `msg` records may carry `highlights`: entries with `id`, `quote` (rendered text),

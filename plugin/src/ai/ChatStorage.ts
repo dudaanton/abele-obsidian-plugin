@@ -405,8 +405,8 @@ export class ChatStorage {
   addHistoryEntry(entry: AiChatHistoryEntry): void {
     const config = AbeleConfig.getInstance()
     if (!config.ai.chatHistory) config.ai.chatHistory = []
-    // The path is the identity of a chat, and expansion runs again every time a comment is
-    // reopened from its file — so without this the same conversation is listed twice.
+    // The path keys the history index, independently of the durable selection chatId.
+    // Expansion runs on every reopen, so without this the same conversation is listed twice.
     if (config.ai.chatHistory.some((e) => e.path === entry.path)) return
     config.ai.chatHistory.unshift(entry)
     // A chat arriving in the index may already name notes — an expanded comment does, and so
