@@ -7,10 +7,9 @@ targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const PATH = 'Text comment sample.md'
 const SHOTS = shotDir('abele-phone')
-const run = <T>(body: string): T =>
-  JSON.parse(
-    evalRaw(
-      `(async () => {
+const run = <T>(body: string): T => {
+  const result = evalRaw(
+    `(async () => {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for(let i=0;i<80;i++) { if(fn()) return true; await wait(100) } return false }
   const button = text => [...(document.querySelectorAll('.modal').length ? [...document.querySelectorAll('.modal')].at(-1).querySelectorAll('button') : [])].find(el => el.textContent.trim() === text)
@@ -18,9 +17,11 @@ const run = <T>(body: string): T =>
   const view = app.workspace.getLeavesOfType('markdown').find(leaf => leaf.view.file?.path === note?.path)?.view
   ${body}
 })()`,
-      90_000
-    )
+    90_000
   )
+  if (result.startsWith('Error:')) throw new Error(result)
+  return JSON.parse(result)
+}
 
 describe.skipIf(!available)('ordinary-note text comments', () => {
   beforeAll(() =>
