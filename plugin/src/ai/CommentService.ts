@@ -597,7 +597,7 @@ export class CommentService implements CommentInfoSource {
   }
 
   /** Contents-list inspection must not create a writer, migrate a file or repair a safety copy. */
-  async navigationPreview(id: string): Promise<Pick<ChatSession, 'messages' | 'messageComments' | 'isDestroyed'> | null> {
+  async navigationPreview(id: string): Promise<(Pick<ChatSession, 'messages' | 'messageComments' | 'isDestroyed'> & Partial<Pick<ChatSession, 'allMessages'>>) | null> {
     const known = this.sessionFor(id)
     if (known) return known
     const { app } = GlobalStore.getInstance()
@@ -610,6 +610,7 @@ export class CommentService implements CommentInfoSource {
     if (opened) return opened
     return {
       messages: ref(navigationPath(parsed.messages, parsed.metadata.activeLeafId)),
+      allMessages: ref(parsed.messages),
       messageComments: ref(parsed.metadata.comments ?? []),
       isDestroyed: false,
     }

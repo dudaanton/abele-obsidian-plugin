@@ -247,6 +247,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private retryCancel: (() => void) | null = null
   private allChatMessages: ChatMessage[] = []
   private activeLeafId: string | null = null
+  private branchSelectionRevision = 0
   private userMessageCount = 0
   public readonly chatTitle = ref('')
   private chatCreated = ''
@@ -2463,7 +2464,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   /** Serializes owner changes with normal saves, publishing only after durable success. */
-  private replyChanging = false
+  private readonly replyChangingState = ref(false)
+  private get replyChanging(): boolean {
+    return this.replyChangingState.value
+  }
+  private set replyChanging(value: boolean) {
+    this.replyChangingState.value = value
+  }
 
   async changeReply(id: string, change: (message: ChatMessage) => ChatMessage): Promise<void> {
     if (this.isMidTurn || this.isBusy || this.moving.value)
@@ -3169,6 +3176,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   createBranch(messageId: string): void {
     if (this.busyFor('branch')) return
+    this.branchSelectionRevision++
     this.activeLeafId = messageId
     this.updateVisibleMessages()
   }
@@ -3182,6 +3190,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // Dismiss any pending tool approvals
     this.pendingToolCalls.value = []
 
+    this.branchSelectionRevision++
     this.activeLeafId = msg.parentId || null
     this.updateVisibleMessages()
 
@@ -3214,6 +3223,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     return this.activeLeafId
   }
 
+  /** Unlike appended replies, an explicit path choice retires a return bookmark's growth. */
+  get branchSelectionVersion(): number {
+    return this.branchSelectionRevision
+  }
+
   get branchSwitchBlocked(): boolean {
     return (
       this.isMidTurn ||
@@ -3239,6 +3253,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       current = current.parentId ? byId.get(current.parentId) : undefined
     }
     const leaf = followContinuation ? findDeepestLeaf(this.allChatMessages, messageId) : target
+    this.branchSelectionRevision++
     this.activeLeafId = leaf.id
     this.updateVisibleMessages()
     this.markDirty()

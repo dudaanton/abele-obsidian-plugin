@@ -348,28 +348,58 @@ only the contents list, never the chat feed. Each answer and tool call can be op
 tool details open when needed. Work waiting for approval or rejected is marked **Needs attention**.
 An answer before the first question remains reachable too.
 
+**Continuations · N** appears at each fork, even inside folded agent work. Open it to see the
+beginning and time of each continuation, with **Selected** on the current one. Several starts
+appear as **Conversation starts** above the questions. **Show continuation** reads the next
+stretch of the contents; later forks expand one at a time. The shared prefix is not repeated
+before every alternative, and the selected continuation is already listed in the main path.
+Expanding a heading does not change the conversation.
+
+Choosing a message on another continuation selects that branch for the next send and jumps
+to the message. Later forks use their earliest continuation, as the chat's existing branch
+arrows do. A shared message already on the selected path keeps that path. Above the input,
+**Continuation 2 of 3 · Show fork** identifies the chosen fork and opens Navigation at it.
+This changes the conversation the agent will receive; it never rolls back files.
+
+If the agent is answering, executing an action, compacting, retrying, waiting for an approval
+or waiting for your answer, an off-path selection waits until the turn finishes. The pending
+choice is visible above the input and in Navigation, with **Cancel branch switch**. Reading
+messages on the current branch remains available. Choosing another message, switching chats
+or replacing the conversation invalidates the old pending choice.
+
 A question's **Discussions** lists direct discussions attached to it or the answers and work
 that followed it. Each shows its quoted passage and first question. Choose one to open its
-existing comment chat. **Nested discussions** lists only discussions on the sub-chat's current branch and reads the
-next level only when expanded;
-missing or unreadable discussions are labelled, not silently hidden. Reading the contents does
-not migrate discussion files or repair their safety copies; only opening a discussion uses its
-ordinary chat-loading path. The comment's existing
-trail and **Back to place** in Navigation provide ways back.
+existing comment chat. **Nested discussions** lists only discussions on the sub-chat's current
+branch and reads the next level only when expanded. Missing or unreadable discussions are
+labelled, not silently hidden. Reading the contents does not migrate discussion files or
+repair their safety copies; only opening a discussion uses its ordinary chat-loading path.
+The comment's existing trail and **Back to place** in Navigation provide ways back.
 
-**To start**, **To latest** and **Back to place** move within the conversation without sending
-anything, rewinding files or changing the selected branch. Back returns to the reading place
-saved before the navigation jump, including from a discussion; if that place is no longer
-available, the dialog says so rather than switching branches. Typed text is kept.
-Expanded contents rows and the list's scroll position are remembered while the conversation
-stays open, not across a plugin reload.
+**To start** and **To latest** move within the current conversation without sending anything.
+**Back to place** restores the exact branch and reading position saved before the navigation
+jump, including from a discussion. A branch restore waits while that conversation is busy;
+if the saved message no longer exists, you are told rather than taken to a different message.
+Typed text stays in its conversation's draft through branch changes and returns. Expanded
+contents rows and the list's scroll position are remembered while the conversation stays open,
+not across a plugin reload.
 
-The dialog's search finds snippets in the current branch's available display text, including
-folded reasoning and tool details. Picking a result opens the existing find bar at that part.
-It does not search other branches or nested discussions. On desktop, **Up/Down** moves through
-rows, **Left/Right** folds and unfolds a focused heading, **Enter** chooses, and **Escape** closes.
-On a phone, opening Navigation does not open the keyboard; tap its search field to type.
-No model calls, new settings or chat-file changes are involved.
+Search starts on **Current branch**. Choose **All branches of this chat** to find other
+continuations too. Shared messages appear once, and results name their continuation. Search
+uses available display text, including folded reasoning and tool details, not the technical
+journal. Picking a result opens the existing find bar at that message part.
+
+**Search discussions (including nested)** explicitly adds related discussion files. They are
+read only after this option is enabled with a nonempty query, with a running file count and
+**Cancel search**. Missing, unreadable or not-yet-synced files remain visible as unavailable.
+Cancel retains the partial results but publishes no late matches or descendants. A changed
+query, scope or closed dialog invalidates the previous search. The selected search scope also
+applies inside discussions; choosing a match opens that discussion at its message and part.
+
+On desktop, **Up/Down** moves through rows, **Left/Right** folds and unfolds a focused heading,
+**Enter** chooses, and **Escape** closes. The scope selector keeps its native arrow keys. On a
+phone, opening Navigation does not open the keyboard; tap its search field to type. No model
+calls, new settings or chat-format changes are involved; branch choices use the existing
+selected-path metadata.
 
 ## Finding words in chats
 

@@ -161,7 +161,11 @@ describe('the navigation modal', () => {
     expect(root().textContent).toContain('A pond liner')
     await click('A pond liner')
     expect(wrapper!.emitted('jump')![0]).toEqual(['t1', 'result', 'liner'])
-    expect(root().textContent).not.toContain('All branches')
+    // Scope selection alone never switches a conversation; search still starts on its current path.
+    expect(root().querySelector<HTMLSelectElement>('select')!.value).toBe('current')
+    expect(
+      [...root().querySelectorAll('option')].map((option) => (option as HTMLOptionElement).value)
+    ).toEqual(['current', 'all'])
   })
 
   it('uses arrows to move focus and Enter to jump, and closes with Escape', async () => {
