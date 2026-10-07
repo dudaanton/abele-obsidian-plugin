@@ -3209,12 +3209,40 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
   }
 
-  switchBranch(messageId: string): void {
-    if (this.isStreaming.value) return
-    const leaf = findDeepestLeaf(this.allChatMessages, messageId)
+  /** The exact path end, including an unsent continuation at an interior message. */
+  get branchLeafId(): string | null {
+    return this.activeLeafId
+  }
+
+  get branchSwitchBlocked(): boolean {
+    return (
+      this.isMidTurn ||
+      this.isExecutingTool.value ||
+      this.retrying.value !== null ||
+      this.interceptor.streaming.value ||
+      this.moving.value
+    )
+  }
+
+  switchBranch(messageId: string, followContinuation = true): boolean {
+    if (this.isDestroyed || this.branchSwitchBlocked) return false
+    const byId = new Map(this.allChatMessages.map((message) => [message.id, message]))
+    const target = byId.get(messageId)
+    if (!target) return false
+    // Never walk a malformed cycle into findDeepestLeaf or the path renderer.
+    const seen = new Set<string>()
+    let current: ChatMessage | undefined = target
+    while (current) {
+      if (seen.has(current.id)) return false
+      seen.add(current.id)
+      if (current.parentId && !byId.has(current.parentId)) return false
+      current = current.parentId ? byId.get(current.parentId) : undefined
+    }
+    const leaf = followContinuation ? findDeepestLeaf(this.allChatMessages, messageId) : target
     this.activeLeafId = leaf.id
     this.updateVisibleMessages()
     this.markDirty()
+    return true
   }
 
   // ── Delegate support ──────────────────────────────────────────
