@@ -50,6 +50,68 @@ it('keeps a completed passphrase change when an older encrypted store read retur
   }
 })
 
+it('keeps a passphrase save queued while reload waits for tool descriptions', async () => {
+  const app = useVault([])
+  const disk = new FakeSettings({ refreshDelay: 500 })
+  config.init(disk as never)
+  await config.loadSettings()
+  const toolsEntered = deferred<void>(),
+    releaseTools = deferred<void>(),
+    requested = deferred<void>()
+  let holding = false
+  const store = new SecretStore({
+    keychain: () => app.secretStorage,
+    read: () => config.secretStore,
+    write: async (file) => {
+      config.secretStore = file
+      const saved = config.saveSettings()
+      if (holding) requested.resolve()
+      await saved
+    },
+    ids: () => ['sample-key'],
+    conflictCopies: async () => [],
+    now: () => 1000,
+  })
+  store.set('sample-key', 'invented-value')
+  await store.enable('sample-old-phrase', { iterations: 1000 })
+  const incoming = JSON.parse(JSON.stringify(config.exportSettings()))
+  incoming.refreshDelay = 888
+  incoming.ai.prompts.toolDescriptions = { read: 'Sample tool override' }
+  disk.stored = incoming
+  vi.doMock('@/ai/tools', () => ({
+    codeToolDescriptions: async () => {
+      toolsEntered.resolve()
+      await releaseTools.promise
+      return {}
+    },
+  }))
+  const reading = config.reloadSettings()
+  await toolsEntered.promise
+  holding = true
+  const changing = store.changePassphrase('sample-new-phrase', { iterations: 1000 })
+  try {
+    await requested.promise
+    const next = JSON.parse(JSON.stringify(config.secretStore))
+    expect(next).not.toEqual(incoming.secretStore)
+    releaseTools.resolve()
+    await Promise.all([reading, changing])
+    expect(config.secretStore).toEqual(next)
+    expect((disk.stored as any).secretStore).toEqual(next)
+    await store.load()
+    expect(store.status.value).toBe('unlocked')
+    expect(store.get('sample-key')).toBe('invented-value')
+    expect(config.refreshDelay).toBe(888)
+    // Protection ends for reads begun after acknowledgment; a genuinely newer file wins.
+    disk.stored = { ...config.exportSettings(), secretStore: incoming.secretStore }
+    await config.reloadSettings()
+    expect(config.secretStore).toEqual(incoming.secretStore)
+  } finally {
+    releaseTools.resolve()
+    await Promise.all([reading, changing])
+    vi.doUnmock('@/ai/tools')
+  }
+})
+
 const config = AbeleConfig.getInstance()
 afterEach(() => {
   config.destroy()

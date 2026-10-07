@@ -128,8 +128,9 @@ export class SettingsKeeper {
    * field patches until every read that could return an older snapshot has been reconciled.
    */
   private fileQueue: Promise<unknown> = Promise.resolve()
-  /** Managed values are atomic: an older read cannot undo a successful local save. */
-  private writeGeneration = 0
+  /** Managed values are retained atomically from request through acknowledgment and old reads. */
+  private managedGeneration = 0
+  private managedWrite: { generation: number; value: unknown; pending: boolean } | null = null
 
   constructor(private readonly host: SettingsHost) {}
 
@@ -139,6 +140,7 @@ export class SettingsKeeper {
     this.onDisk = null
     this.base = null
     this.saveCapture = null
+    this.managedWrite = null
     this.stamp = null
     this.unannounced = false
   }
@@ -199,7 +201,8 @@ export class SettingsKeeper {
     file: unknown,
     settings: unknown,
     index: () => AiChatHistoryEntry[],
-    stamp: string | null
+    stamp: string | null,
+    readGeneration = this.managedGeneration
   ): Promise<void> {
     this.loadedSync =
       file === null || file === undefined ? null : { sync: (file as { sync?: unknown }).sync }
@@ -216,8 +219,11 @@ export class SettingsKeeper {
       (settings as AbeleSettings)?.ai?.prompts?.toolDescriptions
     ).kept
     const tools = Object.keys(candidates).length ? await codeToolDescriptions() : {}
+    // Recheck after tool-description loading: a managed save may have been requested
+    // during that await and be queued behind this reload. Never apply the old ciphertext.
+    const arrived = this.withManagedWrite(settings, readGeneration)
     const migrated = this.host.apply(
-      (settings ?? undefined) as AbeleSettings | undefined,
+      (arrived ?? undefined) as AbeleSettings | undefined,
       tools,
       index()
     )
@@ -284,7 +290,7 @@ export class SettingsKeeper {
     const edits = this.host.edits()
     const finishRead = edits.beginRead()
     const base = this.base
-    const generation = this.writeGeneration
+    const generation = this.managedGeneration
     try {
       const read = await this.readReload()
       return await this.onFile(() => this.reloadNow(read, base, generation))
@@ -339,11 +345,7 @@ export class SettingsKeeper {
         return false
       }
     } else {
-      const current =
-        readGeneration !== this.writeGeneration && isSettingsObject(stored)
-          ? { ...stored, secretStore: this.host.secretStore() }
-          : stored
-      const settings = this.defaultsInMemory ? current : this.ontoArrived(current, readBase)
+      const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored, readBase)
       if (
         this.waitingForInitialFile &&
         isSettingsObject(stored) &&
@@ -353,15 +355,37 @@ export class SettingsKeeper {
         this.pendingLegacySync = JSON.parse(JSON.stringify(stored.sync))
       }
       this.waitingForInitialFile = false
-      await this.take(stored, settings, () => this.host.chatHistory(), stamp)
+      await this.take(stored, settings, () => this.host.chatHistory(), stamp, readGeneration)
       // Only the startup load's block is moved: one from another device is never this one's.
       this.loadedSync = null
       // What was put back on top of the file goes into it.
-      if (settings !== stored || this.host.edits().hasAcknowledged()) await this.writeNow()
+      if (
+        settings !== stored ||
+        this.host.edits().hasAcknowledged() ||
+        this.managedAfter(readGeneration)
+      )
+        await this.writeNow()
     }
     this.unannounced = false
     this.host.reloaded()
     return true
+  }
+
+  private managedAfter(generation: number): boolean {
+    return (
+      this.managedWrite !== null &&
+      (this.managedWrite.pending || this.managedWrite.generation > generation)
+    )
+  }
+
+  private withManagedWrite(settings: unknown, generation: number): unknown {
+    if (!isSettingsObject(settings) || !this.managedAfter(generation)) return settings
+    const value = this.managedWrite!.value
+    return { ...settings, secretStore: value === undefined ? undefined : settingsSnapshot(value) }
+  }
+
+  private acknowledgeManaged(generation: number): void {
+    if (this.managedWrite?.generation === generation) this.managedWrite.pending = false
   }
 
   /**
@@ -427,6 +451,18 @@ export class SettingsKeeper {
     const plugin = this.host.plugin()
     if (!plugin) return this.onFile(() => this.writeNow(plugin))
     const current = this.host.export()
+    if (
+      this.saveCapture === null ||
+      canonicalJson({ store: this.saveCapture.secretStore }) !==
+        canonicalJson({ store: current.secretStore })
+    ) {
+      this.managedWrite = {
+        generation: ++this.managedGeneration,
+        value:
+          current.secretStore === undefined ? undefined : settingsSnapshot(current.secretStore),
+        pending: true,
+      }
+    }
     if (this.saveCapture !== null) {
       for (const change of localChanges(this.saveCapture, current, ['secretStore'])) {
         if (change.path[0] === 'ai' && change.path[1] === 'chatHistory') continue
@@ -450,6 +486,7 @@ export class SettingsKeeper {
     }
     if (!(await this.catchUp(plugin))) return
     const accepted = this.host.export()
+    const generation = this.managedGeneration
     const next = accepted
     const text = canonicalJson(next)
     // Nothing changed in meaning: writing would only hand every other device a file to pull
@@ -458,14 +495,14 @@ export class SettingsKeeper {
       // A coalesced direct save can return to its starting value. It still resolves
       // as a successful save and must protect that field against an older read.
       this.host.edits().written()()
-      this.writeGeneration++
+      this.acknowledgeManaged(generation)
       this.base = accepted
       return
     }
     const written = this.host.edits().written()
     await plugin.saveData(settingsSnapshot(next))
     written()
-    this.writeGeneration++
+    this.acknowledgeManaged(generation)
     this.gone = false
     this.onDisk = text
     this.base = accepted
