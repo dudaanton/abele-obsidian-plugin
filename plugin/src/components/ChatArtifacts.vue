@@ -193,7 +193,9 @@ const run = (job: Promise<unknown>) => {
       new Notice(error instanceof Error ? error.message : 'Could not change the chat’s artifacts')
   )
 }
-const open = (path: string) => run(openVaultFile(path))
+const open = (path: string) => {
+  if (artifactFile(path)) run(openVaultFile(path))
+}
 const unlink = (path: string) => {
   const chat = owner.currentChatFile.value?.path
   if (canMutate.value && chat) run(detachNote(chat, path))

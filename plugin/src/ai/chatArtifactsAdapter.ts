@@ -4,17 +4,31 @@ import { isScriptPath } from '@/scripting/scriptPath'
 import { chatArtifacts } from './chatArtifacts'
 import type { ChatSession } from './ChatSession'
 
-/** Only exact stored resource paths: a missing image must not resolve to a different basename. */
+/** Reject absolute/schemed paths and parent traversal before Obsidian strips or rewrites them. */
+function validArtifactPath(path: string): boolean {
+  const slashPath = path.replace(/\\/g, '/')
+  return (
+    !!path &&
+    !slashPath.startsWith('/') &&
+    !/^[a-z][a-z\d+.-]*:/i.test(slashPath) &&
+    !slashPath.split('/').includes('..') &&
+    ![...path].some((char) => char.charCodeAt(0) < 32)
+  )
+}
+const resolveArtifactPath = (path: string) => (validArtifactPath(path) ? normalizePath(path) : path)
+
+/** Only exact stored resource paths: an invalid or missing path never aliases a vault file. */
 export function artifactsOf(session: ChatSession) {
   return chatArtifacts({
     touched: session.touched.value,
     messages: session.allMessages.value,
-    resolvePath: normalizePath,
+    resolvePath: resolveArtifactPath,
     isScript: isScriptPath,
   })
 }
 export function artifactFile(path: string): TFile | undefined {
-  const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)
+  if (!validArtifactPath(path)) return
+  const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(normalizePath(path))
   return file instanceof TFile ? file : undefined
 }
 export async function revealArtifact(path: string): Promise<void> {
