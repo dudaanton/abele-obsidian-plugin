@@ -1,4 +1,6 @@
 import { mount } from '@vue/test-utils'
+import { toRaw } from 'vue'
+import InitialAssetBatchModal from '@/components/sync/InitialAssetBatchModal.vue'
 import { describe, expect, it, vi } from 'vitest'
 import OwnerPublicationSettings from '@/components/settings/sync/OwnerPublicationSettings.vue'
 const view = {
@@ -37,6 +39,63 @@ const global = {
   },
 }
 describe('publication settings UI', () => {
+  it.each(['missing flow', 'missing entries', 'missing shared groups'])(
+    'hides an initial image batch with %s',
+    (missing) => {
+      const w = mount(OwnerPublicationSettings, {
+        props: {
+          batchFlow: missing === 'missing flow' ? undefined : { close: vi.fn() },
+          batchEntries:
+            missing === 'missing entries'
+              ? []
+              : [
+                  {
+                    target: view.entries[0].target,
+                    sponsors: view.entries[0].sponsors,
+                    reason: 'initial-batch',
+                  },
+                ],
+          batchAudiences: missing === 'missing shared groups' ? [] : ['sample-audience'],
+        } as never,
+        global,
+      })
+      try {
+        expect(
+          w.findAll('button').some((button) => button.text() === 'Review initial asset batch')
+        ).toBe(false)
+      } finally {
+        w.unmount()
+      }
+    }
+  )
+  it('retains a wired initial image batch and passes its exact choices to the dialog', async () => {
+    const batchFlow = { review: vi.fn(), confirm: vi.fn(), close: vi.fn() }
+    const batchEntries = [
+      {
+        target: view.entries[0].target,
+        sponsors: view.entries[0].sponsors,
+        reason: 'initial-batch' as const,
+      },
+    ]
+    const batchAudiences = ['sample-audience']
+    const w = mount(OwnerPublicationSettings, {
+      props: { batchFlow, batchEntries, batchAudiences } as never,
+      global: { stubs: { ...global.stubs, ObsidianModal: { template: '<div><slot/></div>' } } },
+    })
+    try {
+      const button = w
+        .findAll('button')
+        .find((button) => button.text() === 'Review initial asset batch')!
+      expect(button.attributes('disabled')).toBeUndefined()
+      await button.trigger('click')
+      const dialog = w.findComponent(InitialAssetBatchModal)
+      expect(toRaw(dialog.props('flow'))).toBe(batchFlow)
+      expect(dialog.props('entries')).toEqual(batchEntries)
+      expect(dialog.props('audiences')).toEqual(batchAudiences)
+    } finally {
+      w.unmount()
+    }
+  })
   it('keeps the activation hold truthful and never unshares with missing cache evidence', async () => {
     const model = { reviewUnshare: vi.fn() }
     const w = mount(OwnerPublicationSettings, {

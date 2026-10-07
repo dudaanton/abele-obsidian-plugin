@@ -76,6 +76,7 @@
           @click="groupOpen = true"
       /></Setting>
       <Setting
+        v-if="hasBatch"
         name="Existing-image initial batch"
         desc="One exact target/sponsor/audience review, never a whole-list replacement."
         ><Button
@@ -100,7 +101,14 @@
       :enabled="enabled"
       @close="groupOpen = false"
     />
-    <InitialAssetBatchModal v-if="batchOpen" :enabled="enabled" @close="batchOpen = false" />
+    <InitialAssetBatchModal
+      v-if="batchOpen && hasBatch"
+      :flow="batchFlow"
+      :entries="batchEntries"
+      :audiences="batchAudiences"
+      :enabled="enabled"
+      @close="batchOpen = false"
+    />
     <ConfirmModal
       v-if="unshare"
       title="Unshare this exact file?"
@@ -134,6 +142,7 @@ import { OWNER_SHARING_ENABLED, type FolderSharingFlow } from '@/sync/sharing/fo
 import type { AssetView } from '@/sync/sharing/sponsoredAssets'
 import type { PublicationSettingsModel, UnshareReview } from '@/sync/sharing/publicationSettings'
 import type { OwnerGroupRootFlow } from '@/sync/sharing/ownerGroupRoot'
+import type { InitialAssetBatch, BatchEntry } from '@/sync/sharing/groupSharing'
 const props = withDefaults(
   defineProps<{
     facet?: 'device' | 'scoped' | 'account'
@@ -142,6 +151,9 @@ const props = withDefaults(
     model?: PublicationSettingsModel
     folderFlow?: FolderSharingFlow
     groupRootFlow?: OwnerGroupRootFlow
+    batchFlow?: InitialAssetBatch
+    batchEntries?: BatchEntry[]
+    batchAudiences?: string[]
     cacheComplete?: boolean
     referencedIds?: string[]
     state?: 'syncing' | 'scope-updating' | 'cache-unknown' | 'awaiting-confirmation' | 'idle'
@@ -151,6 +163,9 @@ const props = withDefaults(
 )
 const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   ownerContext = computed(() => props.facet !== 'scoped' && (props.owner ?? true)),
+  hasBatch = computed(
+    () => !!props.batchFlow && !!props.batchEntries?.length && !!props.batchAudiences?.length
+  ),
   folderOpen = ref(false),
   groupOpen = ref(false),
   batchOpen = ref(false),

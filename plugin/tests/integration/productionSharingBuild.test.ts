@@ -116,10 +116,10 @@ it('enables owner review controls rendered by the unmodified production settings
   const root = await syncSettings()
   await expect.poll(() => root.textContent).toContain('Review folder sharing')
   expect(root.textContent).not.toContain('Sharing is not active')
+  expect(root.textContent).not.toContain('Review initial asset batch')
   for (const [action, selector, review] of [
     ['Review folder sharing', '.abele-folder-sharing', 'Review current folder'],
     ['Review group sharing', '.abele-group-review', 'Review root and current scope'],
-    ['Review initial asset batch', '.abele-initial-batch', null],
   ] as const) {
     expect(buttonIn(root, action).disabled).toBe(false)
     buttonIn(root, action).click()
