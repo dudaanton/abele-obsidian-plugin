@@ -33,6 +33,8 @@ export class PluginSharing {
   readonly scope: ScopedPluginHost['connection']
   readonly publicationPrompt: SyncService['publicationPrompt']
   private closed = false
+  private readonly ownerAvailable = shallowRef(false)
+  private managementCache: { owner: object; port: OwnerFolderHttpPort } | null = null
   private live: {
     context: Parameters<NonNullable<SyncServiceDeps['ownerPublication']>>[0]
     runtime: NativeOwnerPublication
@@ -204,6 +206,7 @@ export class PluginSharing {
         settling,
         restoreTransaction,
       }
+      this.ownerAvailable.value = true
       this.audiences.value = [...grants]
       await this.recordAudiences([])
       detach = this.publicationPrompt.attach(runtime.confirmation)
@@ -219,14 +222,24 @@ export class PluginSharing {
           owner.runtime.close()
           restoreTransaction()
           owner.resources.close()
-          if (this.live === owner) this.live = null
+          if (this.live === owner) {
+            this.ownerAvailable.value = false
+            this.live = null
+            this.managementCache?.port.close()
+            this.managementCache = null
+          }
         },
       }
     } catch (error) {
       detach()
       runtime?.close()
       restoreTransaction()
-      if (this.live?.runtime === runtime) this.live = null
+      if (this.live?.runtime === runtime) {
+        this.ownerAvailable.value = false
+        this.live = null
+        this.managementCache?.port.close()
+        this.managementCache = null
+      }
       resources.close()
       throw error
     }
@@ -244,11 +257,13 @@ export class PluginSharing {
       .catch(() => {})
   }
   get ownerReady(): boolean {
-    return !!this.live?.held() && !this.live.settling() && !this.scope.value
+    return (
+      this.ownerAvailable.value && !!this.live?.held() && !this.live.settling() && !this.scope.value
+    )
   }
   private owner() {
     const owner = this.live
-    if (!owner || !owner.held() || this.scope.value)
+    if (!this.ownerAvailable.value || !owner || !owner.held() || this.scope.value)
       throw new Error('Bound owner personal connection required')
     return owner
   }
@@ -394,7 +409,12 @@ export class PluginSharing {
     )
   }
   ownerManagement(): OwnerFolderHttpPort {
-    return this.management()
+    const owner = this.owner()
+    if (this.managementCache?.owner === owner) return this.managementCache.port
+    this.managementCache?.port.close()
+    const port = this.management()
+    this.managementCache = { owner, port }
+    return port
   }
   /** Revalidate retained publication work outside the personal settlement transaction. */
   async refreshPublication(): Promise<void> {
@@ -429,6 +449,9 @@ export class PluginSharing {
   }
   async close() {
     this.closed = true
+    this.ownerAvailable.value = false
+    this.managementCache?.port.close()
+    this.managementCache = null
     this.live?.runtime.close()
     this.live?.restoreTransaction()
     this.live?.resources.close()

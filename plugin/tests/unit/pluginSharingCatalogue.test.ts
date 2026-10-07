@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { shallowRef } from 'vue'
+import { shallowRef, computed } from 'vue'
 import { MemoryStateStore } from '@abele/sync-core'
 import { SyncService } from '@/sync/SyncService'
 import { PluginSharing } from '@/sync/pluginSharing'
@@ -102,6 +102,14 @@ it('imports sharing onto a second owner device at startup and after a settings r
   })
   sync.refreshSharing.mockImplementation(async () => host.refreshPublication())
   const state = new MemoryStateStore()
+  const management = computed(() => {
+    try {
+      return host.ownerManagement()
+    } catch {
+      return undefined
+    }
+  })
+  expect(management.value).toBeUndefined()
   let owner: Awaited<ReturnType<typeof host.ownerPublication>> | undefined
   try {
     owner = await host.ownerPublication({
@@ -114,6 +122,8 @@ it('imports sharing onto a second owner device at startup and after a settings r
       held: () => true,
     })
     expect(host.audiences.value).toEqual(['sample-group'])
+    expect(management.value).toBeDefined()
+    expect(host.ownerManagement()).toBe(management.value)
     config.sync = {
       keySignature: null,
       sharing: [
