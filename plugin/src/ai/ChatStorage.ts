@@ -1,5 +1,6 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentsService } from '@/agents/AgentsService'
+import { mergeAttentionTruth, settledAttention } from '@/agents/attention'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TFile } from 'obsidian'
 import dayjs from 'dayjs'
@@ -8,7 +9,7 @@ import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
 import { RunStorage, isRunTranscript } from './RunStorage'
-import { inspectChat, readChat, rewriteChat } from './chatCopy'
+import { chatCopyPath, inspectChat, readChat, rewriteChat } from './chatCopy'
 import { ChatService } from './ChatService'
 import {
   parseChat,
@@ -88,15 +89,68 @@ export class ChatStorage {
     existingFile?: TFile
   ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
-    const { metadata } = snapshot
+    let { metadata } = snapshot
     if (metadata.type !== 'abele-chat') throw new Error('Only a chat can be saved as a chat log.')
 
     if (plan.kind === 'noop') return existingFile ?? null
 
     if (existingFile) {
-      assertChatTarget(await app.vault.read(existingFile))
+      // A stale holder must never undo a disk-confirmed answer or acknowledgement, even
+      // when its file-change notification has not reached the view yet.
+      const previous = await app.vault.read(existingFile)
+      assertChatTarget(previous)
+      const disk = parseChat(previous)
+      if (
+        plan.kind === 'append' &&
+        (!disk.metadata ||
+          ((disk.torn || disk.damaged) &&
+            (await app.vault.adapter.exists(chatCopyPath(app, existingFile.path)))))
+      ) {
+        throw new Error('This chat needs reopening before saving its attention state.')
+      }
+      const guarded =
+        metadata.attention !== undefined ||
+        disk.metadata?.attention !== undefined ||
+        metadata.commentId !== undefined ||
+        disk.metadata?.commentId !== undefined
+      const attention = mergeAttentionTruth(
+        metadata.attention ?? {},
+        disk.metadata?.attention ?? {}
+      )
+      const settled = settledAttention(attention)
+      const next = {
+        ...metadata,
+        attention,
+        pendingToolCalls: metadata.pendingToolCalls?.filter((tc) => !settled.has(tc.id)),
+      }
+      if (!next.pendingToolCalls?.length) next.pendingToolCalls = undefined
+      if (JSON.stringify(next) !== JSON.stringify(metadata)) {
+        if (plan.kind === 'append') {
+          const before = serializeMetadata(metadata)
+          const after = serializeMetadata(next)
+          if (plan.data.includes(before)) plan.data = plan.data.replace(before, after)
+          else {
+            plan.data += after
+            plan.records++
+          }
+        } else plan.content = serializeChat({ ...snapshot, metadata: next })
+        snapshot.metadata = metadata = next
+      }
       if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
-      else await rewriteChat(app, existingFile, plan.content)
+      else
+        await rewriteChat(
+          app,
+          existingFile,
+          plan.content,
+          undefined,
+          guarded ? previous : undefined
+        )
+      const recorded = parseChatMetadata(await app.vault.read(existingFile))
+      if (recorded)
+        snapshot.metadata = metadata = {
+          ...metadata,
+          attention: mergeAttentionTruth(metadata.attention ?? {}, recorded.attention ?? {}),
+        }
       this.updateHistoryEntry(
         existingFile.path,
         metadata.title || existingFile.basename,

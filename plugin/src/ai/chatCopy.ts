@@ -34,7 +34,8 @@ export async function rewriteChat(
   app: App,
   file: TFile,
   content: string,
-  check?: (previous: string) => void
+  check?: (previous: string) => void,
+  expected?: string
 ): Promise<void> {
   const adapter = app.vault.adapter
   const copy = chatCopyPath(app, file.path)
@@ -72,11 +73,15 @@ export async function rewriteChat(
     console.warn('[Abele] Could not keep a copy of a chat being rewritten', err)
   }
   let previous: string | undefined
+  let writeStarted = false
   try {
-    if (check)
+    if (check || expected !== undefined)
       await app.vault.process(file, (current) => {
-        check(current)
-        previous = current
+        if (expected !== undefined && current !== expected)
+          throw new Error('This chat changed elsewhere. Reopen it before saving.')
+        check?.(current)
+        if (check) previous = current
+        writeStarted = true
         return content
       })
     else await app.vault.modify(file, content)
@@ -100,7 +105,7 @@ export async function rewriteChat(
         console.error('[Abele] Could not restore a failed checked chat rewrite', recoveryError)
         // The restoration copy remains for readChat; the session must reconcile its writer.
       }
-    } else if (check && copied) {
+    } else if ((check || expected !== undefined) && !writeStarted && copied) {
       // A rejected guard (or a failure before process ran) did not touch the chat.
       try {
         await adapter.remove(copy)

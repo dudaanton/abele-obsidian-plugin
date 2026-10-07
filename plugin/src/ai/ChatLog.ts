@@ -1,5 +1,19 @@
 import type { ChatMessage, ChatMetadata } from './types'
 import type { Message } from './client'
+/** Kept self-contained with the log codec: only positive records retire an identity. */
+function settledAttention(state: NonNullable<ChatMetadata['attention']> = {}): Set<string> {
+  return new Set([
+    ...(state.resolved ?? []),
+    ...(state.errors ?? []).filter((e) => e.seen).map((e) => e.id),
+    ...(state.run?.status === 'done' ? [state.run.id] : []),
+    ...(state.question && ['answered', 'cancelled'].includes(state.question.status)
+      ? [state.question.id]
+      : []),
+    ...Object.entries(state.tools ?? {})
+      .filter(([, status]) => status === 'done')
+      .map(([id]) => id),
+  ])
+}
 
 /**
  * The `.abchat` file format.
@@ -121,21 +135,68 @@ export function parseChat(content: string): ParsedChat {
  * be metadata, which in a long conversation is a handful out of thousands.
  */
 export function parseChatMetadata(content: string): ChatMetadata | null {
-  const lines = content.split('\n')
-
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (!lines[i].startsWith(META_PREFIX)) continue
+  let metadata: ChatMetadata | null = null
+  for (const line of content.split('\n')) {
+    if (!line.startsWith(META_PREFIX)) continue
     try {
-      const { k, v, ...rest } = JSON.parse(lines[i])
+      const { k, v, ...rest } = JSON.parse(line)
       void k
       void v
-      return rest as ChatMetadata
+      metadata = mergeMetadataEvidence(rest as ChatMetadata, metadata)
     } catch {
       continue
     }
   }
+  return metadata ?? parseLegacy(content).metadata
+}
 
-  return parseLegacy(content).metadata
+/** Metadata remains last-wins except for irreversible, disk-recorded attention decisions. */
+function mergeMetadataEvidence(current: ChatMetadata, previous: ChatMetadata | null): ChatMetadata {
+  const state = current.attention ?? {}
+  const prior = previous?.attention ?? {}
+  const settled = settledAttention(prior)
+  const currentSettled = settledAttention(state)
+  const extra = [...settled].filter((id) => !currentSettled.has(id))
+  const accepted = Object.entries(prior.tools ?? {}).filter(
+    ([id, phase]) => phase !== 'done' && !state.tools?.[id] && !currentSettled.has(id)
+  )
+  const allSettled = new Set([...settled, ...currentSettled])
+  const staleError = state.errors?.some((error) => !error.seen && allSettled.has(error.id))
+  const staleQuestion =
+    state.question &&
+    allSettled.has(state.question.id) &&
+    ['waiting', 'interrupted'].includes(state.question.status)
+  const attention =
+    extra.length || accepted.length || staleError || staleQuestion
+      ? {
+          ...state,
+          ...(extra.length
+            ? { resolved: [...new Set([...(state.resolved ?? []), ...extra])] }
+            : {}),
+          ...(accepted.length
+            ? { tools: { ...Object.fromEntries(accepted), ...state.tools } }
+            : {}),
+          ...(state.errors
+            ? {
+                errors: state.errors.map((error) =>
+                  allSettled.has(error.id) ? { ...error, seen: true } : error
+                ),
+              }
+            : {}),
+          ...(state.question &&
+          allSettled.has(state.question.id) &&
+          ['waiting', 'interrupted'].includes(state.question.status)
+            ? { question: { ...state.question, status: 'cancelled' as const } }
+            : {}),
+        }
+      : current.attention
+  return {
+    ...current,
+    ...(attention ? { attention } : {}),
+    ...(current.commentId === undefined && previous?.commentId
+      ? { commentId: previous.commentId }
+      : {}),
+  }
 }
 
 function parseLog(content: string): ParsedChat {
@@ -167,7 +228,7 @@ function parseLog(content: string): ParsedChat {
       const { k, v, ...rest } = record
       void k
       void v
-      metadata = rest as unknown as ChatMetadata
+      metadata = mergeMetadataEvidence(rest as unknown as ChatMetadata, metadata)
     } else if (record.k === 'msg') {
       const { k, ...rest } = record
       void k
@@ -380,8 +441,13 @@ export class ChatLogWriter {
       // V8 can keep split results as slices of the entire plan, including large tool results.
       // Re-serialize only retained records to independent strings; parse ids from those copies
       // too, so neither map keys nor values keep the plan buffer alive.
-      if (line.startsWith(META_PREFIX)) this.metaLine = JSON.stringify(JSON.parse(line))
-      else if (line.startsWith(MSG_START)) {
+      if (line.startsWith(META_PREFIX)) {
+        const { k, v, ...metadata } = JSON.parse(line)
+        void k
+        void v
+        const previous = this.metaLine ? (JSON.parse(this.metaLine) as ChatMetadata) : null
+        this.metaLine = metaLine(mergeMetadataEvidence(metadata as ChatMetadata, previous))
+      } else if (line.startsWith(MSG_START)) {
         const message = JSON.parse(line) as { id: string }
         this.messageLines.set(message.id, JSON.stringify(message))
       } else if (line.startsWith('{"k":"int"')) {

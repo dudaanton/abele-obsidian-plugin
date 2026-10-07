@@ -1356,6 +1356,11 @@ export default class AbelePlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
         if (file instanceof TFile && file.extension === 'abchat') void agents.updateFile(file, oldPath)
+        else if (file instanceof TFolder) {
+          for (const child of this.app.vault.getFiles()) if (child.extension === 'abchat' && child.path.startsWith(`${file.path}/`)) {
+            void agents.updateFile(child, oldPath + child.path.slice(file.path.length))
+          }
+        }
       })
     )
     this.registerEvent(
@@ -1365,11 +1370,8 @@ export default class AbelePlugin extends Plugin {
     )
     const onChatFileChanged = (file: TAbstractFile) => {
       if (!(file instanceof TFile) || file.extension !== 'abchat') return
-      const comments = CommentService.getInstance()
-      if (
-        ChatService.getInstance().getSessionByFile(file.path) ||
-        (comments.isCommentFile(file) && comments.sessionFor(file.basename))
-      ) return
+      // An open tab is not authoritative over a synced file. The adapter applies disk
+      // decisions read-only; its own writes use the same monotonic resolution rule.
       void agents.updateFile(file)
     }
     this.registerEvent(this.app.vault.on('create', onChatFileChanged))

@@ -83,39 +83,94 @@ describe('one list independent of open tabs', () => {
     expect(ChatService.getInstance().getAllSessions()).toHaveLength(2)
     expect(agents.rows.value).toHaveLength(2)
   })
-  // BUG: the discussion owner keys sessions and note markers by filename basename.
-  // Rewriting only the list reference cannot migrate that identity safely across restart.
-  it.fails(
-    'BUG: direct discussion file renames preserve tab closure and owner identity',
-    async () => {
-      const app = useVault([
-        {
-          path: 'AI/Comments/sample-discussion.abchat',
-          content: content({ kind: 'comment', anchor: { note: 'Notes/sample.md' } }),
-        },
-      ])
-      ;(app as unknown as { workspace: unknown }).workspace = {
-        iterateAllLeaves: () => {},
-        getLeavesOfType: () => [],
-      }
-      const agents = AgentsService.getInstance()
-      await agents.start()
-      const chats = ChatService.getInstance()
-      vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
-      const row = agents.rows.value[0]
-      await agents.open(row, row.reasons[0])
-      const session = chats.activeSession.value!
-      const file = session.currentChatFile.value!
-      const oldPath = file.path
-      await app.fileManager.renameFile(file, 'AI/Comments/renamed-discussion.abchat')
-      await agents.updateFile(file, oldPath)
-      const renamed = agents.rows.value[0]
-      await agents.open(renamed, renamed.reasons[0])
-      await chats.closeTab(session.id)
-      expect(chats.getSession(session.id)).toBeNull()
-      expect(CommentService.getInstance().sessionFor('renamed-discussion')).toBe(session)
+  it('direct discussion file renames preserve tab closure and owner identity', async () => {
+    const app = useVault([
+      {
+        path: 'AI/Comments/sample-discussion.abchat',
+        content: content({ kind: 'comment', anchor: { note: 'Notes/sample.md' } }),
+      },
+    ])
+    ;(app as unknown as { workspace: unknown }).workspace = {
+      iterateAllLeaves: () => {},
+      getLeavesOfType: () => [],
     }
-  )
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    const chats = ChatService.getInstance()
+    vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
+    const row = agents.rows.value[0]
+    await agents.open(row, row.reasons[0])
+    const session = chats.activeSession.value!
+    const file = session.currentChatFile.value!
+    const oldPath = file.path
+    await app.fileManager.renameFile(file, 'AI/Comments/renamed-discussion.abchat')
+    await agents.updateFile(file, oldPath)
+    const renamed = agents.rows.value[0]
+    await agents.open(renamed, renamed.reasons[0])
+    await chats.closeTab(session.id)
+    expect(chats.getSession(session.id)).toBeNull()
+    expect(CommentService.getInstance().sessionFor('renamed-discussion')).toBe(session)
+  })
+  it('preserves the original note-marker identity through a closed rename and restart', async () => {
+    const app = useVault([
+      {
+        path: 'AI/Comments/sample-marker.abchat',
+        content: content({ kind: 'comment', anchor: { note: 'Notes/sample.md' } }),
+      },
+    ])
+    ;(app as unknown as { workspace: unknown }).workspace = {
+      iterateAllLeaves: () => {},
+      getLeavesOfType: () => [],
+    }
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    const file = app.vault.getFileByPath('AI/Comments/sample-marker.abchat')!
+    const oldPath = file.path
+    await app.fileManager.renameFile(file, 'AI/Comments/renamed-marker.abchat')
+    await agents.updateFile(file, oldPath)
+    expect(parseChatMetadata(await app.vault.read(file))?.commentId).toBe('sample-marker')
+    CommentService.getInstance().destroy()
+    ChatService.getInstance().destroy()
+    AgentsService.destroyCurrent()
+    await AgentsService.getInstance().start()
+    const comments = CommentService.getInstance()
+    const restored = await comments.load('sample-marker')
+    expect(restored?.currentChatFile.value?.path).toBe(file.path)
+    expect(restored?.commentId).toBe('sample-marker')
+    expect(comments.sessionFor('renamed-marker')).toBe(restored)
+  })
+  it('opens copied discussion files without stealing the original marker or writer', async () => {
+    const app = useVault(
+      ['sample-original', 'sample-copy'].map((name) => ({
+        path: `AI/Comments/${name}.abchat`,
+        content: content({
+          kind: 'comment',
+          commentId: 'sample-original',
+          anchor: { note: 'Notes/sample.md' },
+        }),
+      }))
+    )
+    ;(app as unknown as { workspace: unknown }).workspace = {
+      iterateAllLeaves: () => {},
+      getLeavesOfType: () => [],
+    }
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    const chats = ChatService.getInstance()
+    vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
+    const rows = [...agents.rows.value]
+    const originalRow = rows.find((row) => row.key.endsWith('sample-original.abchat'))!
+    const copyRow = rows.find((row) => row.key.endsWith('sample-copy.abchat'))!
+    await agents.open(originalRow, originalRow.reasons[0])
+    const original = chats.activeSession.value!
+    await agents.open(copyRow, copyRow.reasons[0])
+    const copy = chats.activeSession.value!
+    expect(copy).not.toBe(original)
+    expect(copy.currentChatFile.value?.path).toBe(copyRow.key)
+    expect(CommentService.getInstance().sessionFor('sample-original')).toBe(original)
+    await chats.closeTab(copy.id)
+    expect(chats.getSession(original.id)).toBe(original)
+  })
   it('does not let an older reconciliation read resurrect an acknowledged error', async () => {
     const app = useVault([{ path: 'Chats/sample.abchat', content: content() }])
     const agents = AgentsService.getInstance()

@@ -45,7 +45,8 @@ in the note.
 The comment's agent can see this note and can edit the passage it is about. Press the mark to
 open the conversation again. One comment is shown at a time: pressing another mark replaces it.
 The comment agent and the folder comments are saved in are set on the **General** tab of the AI
-settings.
+settings. A discussion keeps the identity its note marker uses when its conversation file is
+renamed; reopening and closing it still use the same discussion owner after restart.
 
 ## Keeping notes without asking
 

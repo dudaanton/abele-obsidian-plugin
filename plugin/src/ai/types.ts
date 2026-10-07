@@ -702,6 +702,8 @@ export interface MessageComment {
 
 export interface ChatMetadata {
   type: 'abele-chat'
+  /** Discussion identity survives file renames; legacy files acquire their original basename. */
+  commentId?: string
   /** Explicit local execution evidence; absent in older files, never inferred from prose. */
   attention?: import('@/agents/attention').LocalAttention
   /** Lazily allocated durable selection identity; never the rewind key or a path. */

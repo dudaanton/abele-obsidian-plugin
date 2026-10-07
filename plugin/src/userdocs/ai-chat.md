@@ -81,9 +81,15 @@ exists. Interrupted work offers an explicit continuation; opening the row starts
 Local work is identified as being on this device: file sync does not arbitrate simultaneous
 answers to local approvals across devices.
 
-Known limitation: directly renaming a discussion's `.abchat` file can break its owner's
-filename-based identity and tab closure. Renaming the note it discusses is a different action
-and updates its source normally. A durable discussion identity migration is still needed.
+Renaming a discussion file preserves its original note-marker identity, owner and tab closure,
+including after restart. Renaming the note it discusses updates its source normally.
+
+The local list retains unresolved evidence until a saved answer/acknowledgement proves it is
+resolved, or its file is confirmed deleted. Missing or unreadable data does not mean resolved:
+those rows remain marked uncertain. Available safety copies are inspected without modifying
+them. Opening a row is read-only. Changes arriving through file sync update open conversations'
+attention state, and a stale save cannot undo a recorded acknowledgement. A tool already
+accepted and executing appears as work, not another approval request.
 
 This local implementation does not yet include the Node all-session summary. Registered
 nodes appear as incomplete coverage under **Connection and delivery**, even if a node tab

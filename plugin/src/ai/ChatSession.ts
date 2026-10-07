@@ -8,7 +8,7 @@ import {
   type ShallowRef,
 } from 'vue'
 import { TFile, Notice } from 'obsidian'
-import type { LocalAttention } from '@/agents/attention'
+import { mergeAttentionTruth, settledAttention, type LocalAttention } from '@/agents/attention'
 import { AgentsService } from '@/agents/AgentsService'
 import { needsSecretApproval } from './tools/secretUtils'
 import { nanoid } from 'nanoid'
@@ -337,6 +337,53 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   public readonly error = ref<string | null>(null)
   public readonly attention = ref<LocalAttention>({})
   private restoringAttention = false
+  private readonly attentionAcks = new Set<string>()
+  private committedAttention: LocalAttention = {}
+  private persistFailed = false
+
+  get attentionBusy(): boolean {
+    return this.isBusy
+  }
+
+  /** Disk-confirmed decisions update the holder without saving, approving, or resuming it. */
+  applyAttentionTruth(metadata: ChatMetadata, reconcileRequests = true): void {
+    const previous = this.restoringAttention
+    this.restoringAttention = true
+    try {
+      this.committedAttention = mergeAttentionTruth(
+        metadata.attention ?? {},
+        this.committedAttention
+      )
+      const merged = mergeAttentionTruth(this.attention.value, this.committedAttention)
+      if (!this.isBusy) {
+        if (merged.tools)
+          merged.tools = Object.fromEntries(
+            Object.entries(merged.tools ?? {}).map(([id, status]) => [
+              id,
+              status === 'executing' ? 'interrupted' : status,
+            ])
+          )
+        if (merged.run?.status === 'running') merged.run = { ...merged.run, status: 'interrupted' }
+        if (merged.question?.status === 'waiting' && !this.pendingQuestions.value)
+          merged.question = { ...merged.question, status: 'interrupted' }
+      }
+      this.attention.value = merged
+      if (!reconcileRequests) return
+      const settled = settledAttention(merged)
+      this.pendingToolCalls.value = this.pendingToolCalls.value.filter((tc) => !settled.has(tc.id))
+      if (
+        !this.isBusy &&
+        !this.pendingToolCalls.value.length &&
+        metadata.pendingToolCalls?.length
+      ) {
+        this.pendingToolCalls.value = metadata.pendingToolCalls
+          .filter((tc) => !settled.has(tc.id) && !merged.tools?.[tc.id])
+          .map((tc) => ({ ...tc, type: 'toolCall' as const }))
+      }
+    } finally {
+      this.restoringAttention = previous
+    }
+  }
 
   recordAttentionError(text: string): void {
     this.attention.value = {
@@ -356,27 +403,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   async markAttentionSeen(id: string): Promise<void> {
-    const state = this.attention.value
-    this.attention.value = {
-      ...state,
-      errors: state.errors?.map((e) => (e.id === id ? { ...e, seen: true } : e)),
-      run: state.run?.id === id ? { ...state.run, status: 'done' } : state.run,
-      question:
-        state.question?.id === id ? { ...state.question, status: 'cancelled' } : state.question,
-    }
-    await this.save()
-    if (this.dirty) {
-      // Roll back only this decision, not a new failure or request that arrived during I/O.
-      const current = this.attention.value
-      this.attention.value = {
-        ...current,
-        errors: current.errors?.map((e) =>
-          e.id === id ? { ...e, seen: state.errors?.find((before) => before.id === id)?.seen } : e
-        ),
-        run: current.run?.id === id ? state.run : current.run,
-        question: current.question?.id === id ? state.question : current.question,
-      }
-      throw new Error('Не удалось сохранить отметку. Повтори действие.')
+    // The visible state and its ledger remain unresolved until storage confirms this ack.
+    this.attentionAcks.add(id)
+    try {
+      await this.save()
+      if (!settledAttention(this.committedAttention).has(id))
+        throw new Error('Не удалось сохранить отметку. Повтори действие.')
+    } finally {
+      this.attentionAcks.delete(id)
     }
   }
 
@@ -473,9 +507,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   /** The comment's id, which is its file's basename. Null for anything not anchored. */
+  private commentIdentity?: string
+  bindCommentIdentity(id: string): void {
+    this.commentIdentity = id
+  }
   get commentId(): string | null {
-    if (!this.anchor.value) return null
-    return this.currentChatFile.value?.basename ?? null
+    if (!this.anchor.value && this.kind !== 'comment') return null
+    return this.commentIdentity ?? this.currentChatFile.value?.basename ?? null
   }
 
   /**
@@ -669,6 +707,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
                 ? { ...run, status: 'done' }
                 : undefined,
           }
+          if (run && (!working || run.status !== 'running'))
+            this.attention.value.resolved = [
+              ...new Set([...(this.attention.value.resolved ?? []), run.id]),
+            ]
           // The device-local index records this immediately; the next normal chat write
           // carries it too, without an extra write per state change within a turn.
           this.dirty = true
@@ -677,7 +719,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       )
       watch(
         this.pendingToolCalls,
-        (calls) => {
+        (calls, previousCalls) => {
           if (this.restoringAttention || this.destroyed || this.kind === 'run') return
           if (!calls.length && !this.attention.value.approvals) return
           this.attention.value = {
@@ -685,6 +727,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             approvals: Object.fromEntries(
               calls.map((p) => [p.id, this.attention.value.approvals?.[p.id] ?? Date.now()])
             ),
+            resolved: [
+              ...new Set([
+                ...(this.attention.value.resolved ?? []),
+                ...previousCalls
+                  .filter((tc) => !calls.some((next) => next.id === tc.id))
+                  .map((tc) => tc.id),
+              ]),
+            ],
           }
           this.markDirty()
         },
@@ -1581,6 +1631,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.attention.value = {
         ...this.attention.value,
         question: { ...question, status: 'cancelled' },
+        resolved: [...new Set([...(this.attention.value.resolved ?? []), question.id])],
       }
     }
     try {
@@ -1849,6 +1900,34 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.toolAbortController = controller
         this.isExecutingTool.value = true
         try {
+          this.attention.value = {
+            ...this.attention.value,
+            tools: { ...this.attention.value.tools, [tc.id]: 'executing' },
+          }
+          this.markDirty()
+          // Commit the accepted identity before admitting an operation. A crash must not
+          // offer the same already-started tool as a fresh approval after restart.
+          await this.save()
+          if (
+            this.kind !== 'run' &&
+            (this.persistFailed ||
+              (this.currentChatFile.value &&
+                this.committedAttention.tools?.[tc.id] !== 'executing'))
+          ) {
+            const tools = { ...this.attention.value.tools }
+            delete tools[tc.id]
+            this.attention.value = { ...this.attention.value, tools }
+            this.updateChatMessage(
+              (m) => m.toolCallId === tc.id,
+              (m) => ({ ...m, toolStatus: 'pending' })
+            )
+            throw new Error('Не удалось сохранить разрешение. Операция не началась.')
+          }
+          if (controller.signal.aborted) {
+            this.recordRefusal(tc, 'Operation stopped before starting')
+            this.markDirty()
+            return
+          }
           await this.executeCurrentPendingTool(head?.args, controller.signal, !!head)
         } finally {
           this.toolAbortController = null
@@ -2002,7 +2081,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.rememberInternal(...toolResult.injectMessages)
     }
 
-    this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
+    this.attention.value = {
+      ...this.attention.value,
+      tools: { ...this.attention.value.tools, [tc.id]: 'done' },
+    }
+    this.pendingToolCalls.value = this.pendingToolCalls.value.filter((next) => next.id !== tc.id)
   }
 
   // ── Public API ──────────────────────────────────────────────────
@@ -2490,6 +2573,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           currentIndex: Math.min(pq.currentIndex + 1, pq.questions.length - 1),
           status: pq.currentIndex + 1 < pq.questions.length ? 'waiting' : 'answered',
         },
+        resolved:
+          pq.currentIndex + 1 < pq.questions.length
+            ? this.attention.value.resolved
+            : [...new Set([...(this.attention.value.resolved ?? []), saved.id])],
       }
       this.markDirty()
     }
@@ -2514,6 +2601,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.attention.value = {
         ...this.attention.value,
         question: { ...this.attention.value.question, status: 'cancelled' },
+        resolved: [
+          ...new Set([...(this.attention.value.resolved ?? []), this.attention.value.question.id]),
+        ],
       }
       this.markDirty()
     }
@@ -2601,10 +2691,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.currentChatFile.value = null
     this.error.value = null
     this.attention.value = {}
+    this.committedAttention = {}
     this.userMessageCount = 0
     this.chatTitle.value = ''
     this.chatCreated = ''
     this.chatIdentity = undefined
+    this.commentIdentity = undefined
     this.bindingRecovery = undefined
     this.lastModelId = ''
     this.customSystemPrompt.value = ''
@@ -3121,15 +3213,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.persistTimer = null
     }
 
-    // Never two writes at once: an append that overtook its predecessor would reorder records.
-    while (this.writing) await this.writing
+    // The owning flush handles failure and keeps the dirty state. Another waiter must
+    // not leak that same rejection or start a concurrent write.
+    while (this.writing) await this.writing.catch(() => {})
     if (!this.dirty) return
 
     this.dirty = false
     this.writing = this.writeNow()
     try {
       await this.writing
+      this.persistFailed = false
     } catch (err) {
+      this.persistFailed = true
       // The change is still only in memory, so it stays pending rather than being dropped:
       // the next save retries it, and a flush at close gets one more chance.
       this.dirty = true
@@ -3153,10 +3248,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
-      attention: Object.keys(this.attention.value).length
-        ? (JSON.parse(JSON.stringify(this.attention.value)) as LocalAttention)
-        : undefined,
+      attention:
+        Object.keys(this.attention.value).length || this.attentionAcks.size
+          ? {
+              ...(JSON.parse(JSON.stringify(this.attention.value)) as LocalAttention),
+              resolved: [
+                ...new Set([...(this.attention.value.resolved ?? []), ...this.attentionAcks]),
+              ],
+              errors: this.attention.value.errors?.map((e) =>
+                this.attentionAcks.has(e.id) ? { ...e, seen: true } : { ...e }
+              ),
+            }
+          : undefined,
       chatId: this.chatIdentity,
+      commentId: this.commentId ?? undefined,
       bindingRecovery: this.bindingRecovery,
       queuedMessages: this.queuedMessages.value.length
         ? this.queuedMessages.value.map((q) => ({ ...q, attachments: q.attachments?.slice() }))
@@ -3234,6 +3339,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     )
     if (!file) return
 
+    this.applyAttentionTruth(snapshot.metadata, false)
     this.log.commit(snapshot, plan)
     this.localRevision++
     this.currentChatFile.value = file
@@ -3395,14 +3501,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.chatCreated = result.metadata?.created || ''
     this.chatIdentity = result.metadata?.chatId
     this.delegationWakeStopped = false
+    this.commentIdentity =
+      result.metadata?.commentId ??
+      (result.metadata?.kind === 'comment' || result.metadata?.anchor ? file.basename : undefined)
     this.bindingRecovery = result.metadata?.bindingRecovery
     const evidence = result.metadata?.attention ?? {}
+    this.committedAttention = evidence
     this.attention.value = {
       ...evidence,
       run:
         evidence.run?.status === 'running'
           ? { ...evidence.run, status: 'interrupted' }
           : evidence.run,
+      ...(evidence.tools
+        ? {
+            tools: Object.fromEntries(
+              Object.entries(evidence.tools).map(([id, status]) => [
+                id,
+                status === 'executing' ? 'interrupted' : status,
+              ])
+            ),
+          }
+        : {}),
       question:
         evidence.question?.status === 'waiting'
           ? { ...evidence.question, status: 'interrupted' }
@@ -3453,14 +3573,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     // Restore pending tool calls
     if (result.metadata?.pendingToolCalls?.length) {
-      this.pendingToolCalls.value = result.metadata.pendingToolCalls.map((tc) => ({
-        type: 'toolCall' as const,
-        id: tc.id,
-        name: tc.name,
-        arguments: tc.arguments,
-        permissionKey: tc.permissionKey,
-        destinationKey: tc.destinationKey,
-      }))
+      const settled = settledAttention(this.attention.value)
+      this.pendingToolCalls.value = result.metadata.pendingToolCalls
+        .filter((tc) => !settled.has(tc.id) && !this.attention.value.tools?.[tc.id])
+        .map((tc) => ({
+          type: 'toolCall' as const,
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments,
+          permissionKey: tc.permissionKey,
+          destinationKey: tc.destinationKey,
+        }))
     }
 
     // Last, after everything the file said has been restored. This writes a fresh snapshot, so

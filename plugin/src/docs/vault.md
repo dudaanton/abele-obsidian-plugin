@@ -160,18 +160,35 @@ failure is separate from a tool error handled by the agent. Older files without 
 are not inferred to have failed. Loading does not execute tools or model requests; saved local
 work and questions without a process are interrupted, not working. Pending tool calls continue
 to use the existing approval mechanism. Seen flags acknowledge only their specific failure;
-opening or closing a tab is not acknowledgement.
+opening or closing a tab is not acknowledgement. `resolved` is a monotonic array of retired
+request/run identities. `tools` records accepted calls as executing/interrupted/done; acceptance
+is saved before a tool starts, and an accepted call found without its process is not re-offered
+as a new approval. Complete metadata records retain positive resolutions across later stale
+snapshots; ordinary fields remain last-wins. Compaction keeps those resolution identities.
+A Seen action stages its acknowledgement in the write snapshot, leaving reactive state and
+index evidence unchanged until the file confirms the decision.
 
 Obsidian vault-scoped local storage `abele-agents-index` holds a small array of conversation
 references and reason/request/run IDs, timestamps, expiry and target message references. It
-contains no conversation text, question text, titles or error text. Files are authoritative;
-startup reconciles all `.abchat` files, including unopened discussions, without making sessions.
-Live state overrides the same file's indexed row, so a discussion shown as a tab is not duplicated.
-The index is device-local, does not travel in settings transfer, and is marked incomplete while
-reconciling or when reading or saving fails. An explicit indexed failure whose detailed chat write
-was lost retains its identity and a missing-details explanation until acknowledged; opening or
-acknowledging it restores that evidence in metadata, never reconstructs conversation text.
-File renames/deletions update its references.
+contains no conversation text, question text, titles or error text. It is an evidence ledger:
+live arrivals are unioned into it, and only a disk-confirmed resolution or proven file deletion
+may remove an identity. It loads before publication, including node-registry publication.
+Startup reconciles all `.abchat` files, including unopened discussions, without making sessions.
+Missing fields do not resolve indexed approvals/questions/runs/errors; such rows remain uncertain.
+Read-only discovery consults the existing safety-copy reader for a damaged main file, without
+repairing or removing either copy. Backup-only or still-unreadable states retain their pointers
+as uncertain and do not retire entries. Renames move references before I/O, never delete and rebuild.
+Live projection may show an accepted tool as work, but transient projection cannot retire evidence.
+External file changes update open holders read-only; file writes preserve disk-confirmed decisions.
+Opening a row does not write reconstructed index data back into the conversation.
+The index is device-local and does not travel in settings transfer.
+
+Discussion metadata additionally keeps `commentId`, the identity used by note markers, independently
+of the file basename. Legacy discussions acquire their original basename identity on save/rename.
+The discussion owner rebuilds identity-to-location mappings from metadata and follows renames;
+closed conversations reopen through that owner after restart. Exact-file handover prevents a copied
+discussion from stealing the original marker or writer. These identifiers travel with chat files,
+not as new settings or secrets.
 This is not multi-device arbitration for local tool approvals.
 
 ## Node sessions (device-local)

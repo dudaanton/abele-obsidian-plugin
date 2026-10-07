@@ -5,7 +5,7 @@ import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
 import type { ChatSession } from '@/ai/ChatSession'
 import { parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
-import { transformChat } from '@/ai/chatCopy'
+import { inspectChat, inspectMainChat, transformChat } from '@/ai/chatCopy'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import type { ChatMetadata } from '@/ai/types'
 import { ShellModal } from '@/modal/ShellModal'
@@ -13,7 +13,11 @@ import {
   attentionBadge,
   attentionReasons,
   restoreIndexedErrors,
+  reconcileAttentionReasons,
+  settledAttention,
+  mergeAttentionTruth,
   sortAttention,
+  type LocalAttention,
   type AttentionRow,
   type AttentionReason,
 } from './attention'
@@ -32,7 +36,12 @@ export class AgentsService {
   readonly rows = shallowRef<AttentionRow[]>([])
   private readonly localIncomplete = ref(true)
   private readonly nodes = shallowRef<{ id: string; label: string; expectedNodeId: string }[]>([])
-  readonly incomplete = computed(() => this.localIncomplete.value || this.nodes.value.length > 0)
+  readonly incomplete = computed(
+    () =>
+      this.localIncomplete.value ||
+      this.nodes.value.length > 0 ||
+      this.rows.value.some((row) => row.uncertain)
+  )
   readonly status = ref('Обновляется')
   readonly badge = computed(() => attentionBadge(this.rows.value, this.incomplete.value))
   readonly tooltip = computed(
@@ -42,6 +51,8 @@ export class AgentsService {
   private readonly files = new Map<string, AttentionRow>()
   private readonly removed = new Set<string>()
   private readonly revisions = new Map<string, number>()
+  /** Only disk-confirmed decisions may subtract from the evidence ledger. */
+  private readonly truths = new Map<string, LocalAttention>()
   private savedIndex = ''
   private readonly live = new Map<ChatSession, WatchStopHandle>()
   private started = false
@@ -70,7 +81,11 @@ export class AgentsService {
   untrack(session: ChatSession): void {
     // Capture before destroy clears its references. Closing is not acknowledgement.
     const row = this.liveRow(session, false)
-    if (row) this.files.set(row.key, row)
+    if (row)
+      this.files.set(row.key, {
+        ...row,
+        reasons: row.reasons.map((r) => (r.kind === 'running' ? { ...r, kind: 'interrupted' } : r)),
+      })
     this.live.get(session)?.()
     this.live.delete(session)
     this.publish()
@@ -83,10 +98,20 @@ export class AgentsService {
         path,
         ...(metadata.kind === 'comment'
           ? {
-              commentId: path
-                .split('/')
-                .pop()
-                .replace(/\.abchat$/, ''),
+              commentId:
+                metadata.commentId ??
+                (this.files.get(path)?.reference.kind === 'local'
+                  ? (
+                      this.files.get(path)!.reference as Extract<
+                        AttentionRow['reference'],
+                        { kind: 'local' }
+                      >
+                    ).commentId
+                  : undefined) ??
+                path
+                  .split('/')
+                  .pop()
+                  .replace(/\.abchat$/, ''),
             }
           : {}),
       },
@@ -98,25 +123,70 @@ export class AgentsService {
     }
   }
   private fileRow(path: string, metadata: ChatMetadata, live = false): AttentionRow {
-    const indexed = this.files.get(path)?.reasons ?? []
-    const state = metadata.attention ?? {}
-    const row = this.metadataRow(
-      path,
-      { ...metadata, attention: { ...state, errors: restoreIndexedErrors(state, indexed) } },
-      live
-    )
-    // A run transition reaches the local index before the next ordinary file save.
-    // Retain only explicit newer work evidence, never infer failures from old prose.
-    for (const reason of this.files.get(path)?.reasons ?? []) {
-      const run = metadata.attention?.run
-      if (
-        ['running', 'interrupted'].includes(reason.kind) &&
-        (!run || (run.id !== reason.id && reason.at > run.at))
-      ) {
-        row.reasons.push({ ...reason, kind: 'interrupted' })
-      }
-    }
+    const row = this.metadataRow(path, metadata, live)
+    row.reasons = reconcileAttentionReasons(
+      this.files.get(path)?.reasons ?? [],
+      row.reasons,
+      this.truths.get(path)
+    ).map((reason) => ({
+      ...reason,
+      ...(reason.kind === 'error' && !reason.text
+        ? { text: 'Подробности ошибки не сохранились.' }
+        : {}),
+      ...(!live && reason.kind === 'running' ? { kind: 'interrupted' as const } : {}),
+    }))
+    row.uncertain =
+      row.reasons.some((reason) => reason.uncertain) ||
+      row.reasons.some(
+        (reason) =>
+          !attentionReasons(metadata.attention ?? {}, metadata.pendingToolCalls ?? [], live).some(
+            (current) => current.id === reason.id
+          )
+      )
     return row
+  }
+  private acceptDisk(path: string, metadata: ChatMetadata, reconcileRequests = true): void {
+    const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)
+    if (file instanceof TFile) CommentService.getInstance().rememberFile(file, metadata)
+    const truth = mergeAttentionTruth(metadata.attention ?? {}, this.truths.get(path) ?? {})
+    this.truths.set(path, truth)
+    this.files.set(path, this.fileRow(path, { ...metadata, attention: truth }))
+    for (const session of this.live.keys())
+      if (session.currentChatFile.value?.path === path)
+        session.applyAttentionTruth({ ...metadata, attention: truth }, reconcileRequests)
+  }
+  private unknown(path: string): void {
+    const row = this.files.get(path)
+    if (row)
+      this.files.set(path, {
+        ...row,
+        uncertain: true,
+        reasons: row.reasons.map((r) => ({ ...r, uncertain: true })),
+      })
+    this.localIncomplete.value = true
+    this.status.value = 'Не все состояния подтверждены'
+  }
+  /** Old tool-result records are positive resolutions too; absence of a call is not. */
+  private async inspect(
+    file: TFile
+  ): Promise<{ metadata: ChatMetadata; committed: boolean } | null> {
+    const app = GlobalStore.getInstance().app
+    const main = await inspectMainChat(app, file)
+    const parsed = main ?? (await inspectChat(app, file))
+    if (!parsed.metadata || parsed.damaged || parsed.torn) return null
+    const resolved = parsed.messages
+      .filter((m) => m.toolCallId && (m.toolResult !== undefined || m.toolStatus === 'rejected'))
+      .map((m) => m.toolCallId!)
+    return {
+      metadata: {
+        ...parsed.metadata,
+        attention: {
+          ...parsed.metadata.attention,
+          resolved: [...new Set([...(parsed.metadata.attention?.resolved ?? []), ...resolved])],
+        },
+      },
+      committed: main !== null,
+    }
   }
   private liveRow(session: ChatSession, live = true): AttentionRow | null {
     const path = session.currentChatFile.value?.path ?? ''
@@ -134,6 +204,7 @@ export class AgentsService {
         title: session.chatTitle.value,
         agentId: session.agentId.value,
         attention: session.attention.value,
+        commentId: session.commentId ?? undefined,
         pendingToolCalls: session.pendingToolCalls.value,
       },
       live
@@ -146,6 +217,14 @@ export class AgentsService {
   }
   private publish(): void {
     if (this.disposed) return
+    // Add live arrivals to the ledger, but never retire an entry from a transient view.
+    const liveRows = new Map<string, AttentionRow>()
+    for (const session of this.live.keys()) {
+      const row = this.liveRow(session)
+      if (!row) continue
+      if (row.reference.kind === 'local' && row.reference.path) this.files.set(row.key, row)
+      liveRows.set(row.key, row)
+    }
     const rows = new Map(this.files)
     for (const node of this.nodes.value)
       rows.set(`node-coverage:${node.id}`, {
@@ -169,14 +248,31 @@ export class AgentsService {
         ],
       })
     for (const session of this.live.keys()) {
-      const row = this.liveRow(session)
-      if (row) rows.set(row.key, row)
+      const row = liveRows.get(session.currentChatFile.value?.path ?? `live:${session.id}`)
+      if (!row) continue
+      // An accepted tool can already be executing while its decision write is pending.
+      const localSettled = settledAttention(session.attention.value)
+      const diskSettled = settledAttention(this.truths.get(row.key) ?? {})
+      const reasons = row.reasons.map((reason) =>
+        session.attention.value.tools?.[reason.id] === 'executing'
+          ? { ...reason, kind: 'running' as const, uncertain: false }
+          : localSettled.has(reason.id) && !diskSettled.has(reason.id)
+            ? { ...reason, kind: 'delivery' as const, uncertain: true, text: 'Решение сохраняется' }
+            : reason
+      )
+      rows.set(row.key, {
+        ...row,
+        reasons,
+        uncertain: row.uncertain || reasons.some((r) => r.uncertain),
+      })
     }
     this.rows.value = sortAttention([...rows.values()].filter((r) => r.reasons.length))
     if (this.started) {
       try {
-        const index = this.rows.value
-          .filter((row) => row.reference.kind === 'local' && !!row.reference.path)
+        const index = [...this.files.values()]
+          .filter(
+            (row) => row.reference.kind === 'local' && !!row.reference.path && row.reasons.length
+          )
           .map((row) => ({
             reference: row.reference,
             reasons: row.reasons.map(({ kind, id, at, target, expires }) => ({
@@ -200,17 +296,7 @@ export class AgentsService {
   }
   async start(): Promise<void> {
     if (this.started) return this.refresh()
-    this.started = true
-    const registered = GlobalStore.getInstance().app.loadLocalStorage('abele-node-registry')
-    if (Array.isArray(registered))
-      this.setNodes(
-        registered.filter(
-          (n) =>
-            typeof n?.id === 'string' &&
-            typeof n?.label === 'string' &&
-            typeof n?.expectedNodeId === 'string'
-        )
-      )
+    // Load durable evidence before enabling any publication, including node registry changes.
     // The last local copy is explicitly incomplete until the authoritative files are read.
     try {
       const stored = GlobalStore.getInstance().app.loadLocalStorage(INDEX_KEY)
@@ -229,12 +315,23 @@ export class AgentsService {
             title: path.split('/').pop()!,
             agent: 'Агент',
             source: 'Обновляется',
-            reasons: entry.reasons,
+            reasons: reconcileAttentionReasons(entry.reasons, this.files.get(path)?.reasons ?? []),
           })
         }
     } catch {
       this.status.value = 'Не удалось прочитать список'
     }
+    const registered = GlobalStore.getInstance().app.loadLocalStorage('abele-node-registry')
+    if (Array.isArray(registered))
+      this.setNodes(
+        registered.filter(
+          (n) =>
+            typeof n?.id === 'string' &&
+            typeof n?.label === 'string' &&
+            typeof n?.expectedNodeId === 'string'
+        )
+      )
+    this.started = true
     this.publish()
     await this.refresh()
   }
@@ -252,17 +349,25 @@ export class AgentsService {
       const path = file.path
       const revision = this.revisions.get(path) ?? 0
       try {
-        const metadata = parseChatMetadata(await app.vault.read(file))
+        const metadata = await this.inspect(file)
         if (this.disposed) return
         if (file.path !== path || (this.revisions.get(path) ?? 0) !== revision) continue
-        if (metadata?.type === 'abele-chat')
-          this.files.set(file.path, this.fileRow(file.path, metadata))
-        else {
-          this.files.delete(file.path)
+        if (metadata?.metadata.type === 'abele-chat') {
+          if (metadata.committed) this.acceptDisk(file.path, metadata.metadata)
+          else {
+            this.files.set(path, this.fileRow(path, metadata.metadata))
+            this.unknown(path)
+            failed = true
+          }
+        } else {
+          this.unknown(path)
           failed = true
         }
       } catch {
-        if ((this.revisions.get(path) ?? 0) === revision) failed = true
+        if ((this.revisions.get(path) ?? 0) === revision) {
+          this.unknown(path)
+          failed = true
+        }
       }
       // Startup reading yields between files, never instantiates a session or starts a tool.
       await new Promise((resolve) => window.setTimeout(resolve, 0))
@@ -274,31 +379,48 @@ export class AgentsService {
         .filter((f) => f.extension === 'abchat')
         .map((f) => f.path)
     )
-    for (const path of this.files.keys()) if (!paths.has(path)) this.files.delete(path)
+    for (const path of this.files.keys()) if (!paths.has(path)) this.deleted(path)
     this.localIncomplete.value = failed
     this.status.value = failed ? 'Не все разговоры удалось прочитать' : ''
     this.publish()
   }
   /** A changed file costs one read, not a vault scan on every streamed token. */
   async updateFile(file: TFile, oldPath?: string): Promise<void> {
-    if (oldPath) this.deleted(oldPath)
+    if (oldPath && oldPath !== file.path) {
+      // Move the only durable evidence before I/O; never publish a delete-then-rebuild gap.
+      const previous = this.files.get(oldPath)
+      if (previous)
+        this.files.set(file.path, {
+          ...previous,
+          key: file.path,
+          reference: { ...previous.reference, path: file.path } as AttentionRow['reference'],
+        })
+      const truth = this.truths.get(oldPath)
+      if (truth) this.truths.set(file.path, truth)
+      this.files.delete(oldPath)
+      this.truths.delete(oldPath)
+      this.revisions.set(oldPath, (this.revisions.get(oldPath) ?? 0) + 1)
+      this.removed.add(oldPath)
+      this.publish()
+    }
     const path = file.path
     const revision = (this.revisions.get(path) ?? 0) + 1
     this.revisions.set(path, revision)
     this.removed.delete(path)
     try {
-      const metadata = parseChatMetadata(await GlobalStore.getInstance().app.vault.read(file))
+      if (oldPath) await CommentService.getInstance().handleConversationRename(file, oldPath)
+      const metadata = await this.inspect(file)
       if (this.disposed || file.path !== path || this.revisions.get(path) !== revision) return
-      if (metadata?.type === 'abele-chat')
-        this.files.set(file.path, this.fileRow(file.path, metadata))
-      else {
-        this.localIncomplete.value = true
-        this.status.value = 'Не удалось прочитать разговор'
-      }
+      if (metadata?.metadata.type === 'abele-chat') {
+        if (metadata.committed) this.acceptDisk(file.path, metadata.metadata)
+        else {
+          this.files.set(path, this.fileRow(path, metadata.metadata))
+          this.unknown(path)
+        }
+      } else this.unknown(path)
     } catch {
       if (this.revisions.get(path) !== revision) return
-      this.localIncomplete.value = true
-      this.status.value = 'Не удалось прочитать разговор'
+      this.unknown(path)
     }
     this.publish()
   }
@@ -308,13 +430,19 @@ export class AgentsService {
   }
   saved(path: string, metadata: ChatMetadata): void {
     this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1)
-    this.files.set(path, this.fileRow(path, metadata))
+    this.acceptDisk(path, metadata, false)
     this.publish()
   }
   deleted(path: string): void {
+    if (GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)) {
+      this.unknown(path)
+      this.publish()
+      return
+    }
     this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1)
     this.removed.add(path)
     this.files.delete(path)
+    this.truths.delete(path)
     this.publish()
   }
 
@@ -400,24 +528,12 @@ export class AgentsService {
       }
       const session = chats.activeSession.value
       if (!session || session.currentChatFile.value?.path !== ref.path) return false
-      const savedRun = session.attention.value.run
-      if (
-        reason.kind === 'interrupted' &&
-        (!savedRun || (savedRun.id !== reason.id && reason.at > savedRun.at)) &&
-        this.files.get(row.key)?.reasons.some((r) => r.id === reason.id && r.kind === 'interrupted')
-      ) {
-        session.attention.value = {
-          ...session.attention.value,
-          run: { id: reason.id, at: reason.at, status: 'interrupted', target: reason.target },
-        }
-        await session.save()
-      }
-      const restoredErrors = restoreIndexedErrors(session.attention.value, row.reasons)
-      if (restoredErrors.length !== (session.attention.value.errors?.length ?? 0)) {
-        session.attention.value = { ...session.attention.value, errors: restoredErrors }
-        await session.save()
-      }
+      await this.updateFile(file)
+      if (!session.isMidTurn && !session.attentionBusy) await session.reconcileForSelectionReturn()
       const current = this.liveRow(session)
+      if (current?.uncertain)
+        new Notice('Состояние не подтверждено. Открыта сохранённая версия разговора.')
+      // Opening is read-only. Missing index evidence is not recreated into the conversation.
       if (!current?.reasons.some((r) => r.id === reason.id))
         new Notice('Ответ уже принят или запрос больше не действует')
       const target =

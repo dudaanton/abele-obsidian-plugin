@@ -94,6 +94,7 @@ export class CommentService implements CommentInfoSource {
    * `expand` moved it into `expanded`, and it is destroyed only with the comment itself.
    */
   async revealChat(id: string): Promise<void> {
+    id = this.canonicalId(id)
     const session = this.expanded.get(id)
     if (!session) return
 
@@ -125,6 +126,7 @@ export class CommentService implements CommentInfoSource {
    * and its passage stayed highlighted as if it were (2026-09-05, from the phone).
    */
   private onScreen(id: string | null): boolean {
+    if (id) id = this.canonicalId(id)
     if (!id || this.open.value !== id) return false
     const session = this.sessionFor(id)
     const chatService = ChatService.getInstance()
@@ -180,7 +182,7 @@ export class CommentService implements CommentInfoSource {
 
   /** True for a comment `ChatService` is showing as a tab without owning it. */
   isShown(id: string): boolean {
-    return this.shown.has(id)
+    return this.shown.has(this.canonicalId(id))
   }
 
   /**
@@ -204,6 +206,7 @@ export class CommentService implements CommentInfoSource {
   async showInSidebar(id: string, selectionReturn?: () => boolean): Promise<boolean> {
     const session = await this.load(id)
     if (!session || (selectionReturn && !selectionReturn())) return false
+    id = session.commentId ?? this.canonicalId(id)
     if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
     if (selectionReturn && !selectionReturn()) return false
 
@@ -251,8 +254,9 @@ export class CommentService implements CommentInfoSource {
     const session = chats.activeSession.value
     if (session?.currentChatFile.value?.path !== file.path) return false
     if (session.kind === 'comment') {
-      this.shown.add(file.basename)
-      this.open.value = file.basename
+      const id = session.commentId ?? file.basename
+      this.shown.add(id)
+      this.open.value = id
     }
     await chats.revealSidebar({ focus: false })
     return true
@@ -267,6 +271,7 @@ export class CommentService implements CommentInfoSource {
    * act agree.
    */
   async hideFromSidebar(id: string): Promise<void> {
+    id = this.canonicalId(id)
     const session = this.sessions.get(id)
     if (!this.shown.delete(id) || !session) return
 
@@ -279,7 +284,7 @@ export class CommentService implements CommentInfoSource {
 
   /** True for a comment that has been opened as a chat: `ChatService` owns it now. */
   isExpanded(id: string): boolean {
-    return this.expanded.has(id)
+    return this.expanded.has(this.canonicalId(id))
   }
 
   /** Stops the state watcher of each session, so a removed comment stops repainting. */
@@ -299,7 +304,7 @@ export class CommentService implements CommentInfoSource {
 
   /** True once an id has been written off, which is what a card says instead of "reading…". */
   isMissing(id: string): boolean {
-    return this.missing.has(id)
+    return this.missing.has(this.canonicalId(id))
   }
 
   /**
@@ -317,8 +322,87 @@ export class CommentService implements CommentInfoSource {
     return ChatStorage.commentsFolder()
   }
 
+  /** File locations are separate from the stable identity used by note markers. */
+  private readonly locations = new Map<string, string>()
+  private readonly fileAliases = new Map<string, string>()
+  private readonly discussionPaths = new Set<string>()
+  private canonicalId(id: string): string {
+    return this.fileAliases.get(id) ?? id
+  }
+
+  rememberFile(file: TFile, metadata: ChatMetadata): void {
+    if (metadata.kind !== 'comment' && !metadata.commentId) return
+    const id = metadata.commentId ?? file.basename
+    this.discussionPaths.add(file.path)
+    const previous = this.locations.get(id)
+    // A copied file is not allowed to steal the original note marker's location.
+    if (
+      previous &&
+      previous !== file.path &&
+      GlobalStore.getInstance().app.vault.getAbstractFileByPath(previous) &&
+      file.basename !== id
+    )
+      return
+    this.locations.set(id, file.path)
+    if (file.basename !== id && !this.locations.has(file.basename))
+      this.fileAliases.set(file.basename, id)
+    if (this.missing.delete(id) && metadata.anchor?.note && GlobalStore.getInstance().app.workspace)
+      dispatchCommentsChanged(metadata.anchor.note)
+  }
+
+  async handleConversationRename(file: TFile, oldPath: string): Promise<void> {
+    const oldId = [...this.locations].find(([, path]) => path === oldPath)?.[0] ?? idOf(oldPath)
+    const owner =
+      this.sessionOnFile(file.path) ?? this.sessions.get(oldId) ?? this.expanded.get(oldId)
+    const pending = this.loading.get(oldPath)
+    if (pending) {
+      this.loading.set(file.path, pending)
+      this.loading.delete(oldPath)
+    }
+    const session = owner ?? (pending ? await pending : null)
+    const metadata = session
+      ? undefined
+      : parseChatMetadata(await GlobalStore.getInstance().app.vault.read(file))
+    if (
+      session?.kind !== 'comment' &&
+      !session?.anchor.value &&
+      metadata?.kind !== 'comment' &&
+      !metadata?.commentId
+    )
+      return
+    const id = session?.commentId ?? metadata?.commentId ?? oldId
+    this.rememberFile(file, {
+      type: 'abele-chat',
+      kind: 'comment',
+      commentId: id,
+      providerId: '',
+      modelId: '',
+      created: '',
+    })
+    if (session) {
+      session.bindCommentIdentity(id)
+      await session.save()
+    } else if (metadata && metadata.commentId !== id) {
+      await transformChat(
+        GlobalStore.getInstance().app,
+        file,
+        (content) => {
+          const current = parseChatMetadata(content)
+          if (!current) throw new Error('The discussion is unavailable.')
+          return content + serializeMetadata({ ...current, commentId: id })
+        },
+        () => {
+          if (this.sessionOnFile(file.path))
+            throw new Error('The discussion was opened. Retry the rename.')
+        }
+      )
+    }
+    ChatService.getInstance().saveTabs()
+  }
+
   commentPath(id: string): string {
-    return `${this.folder()}/${id}.abchat`
+    id = this.canonicalId(id)
+    return this.locations.get(id) ?? `${this.folder()}/${id}.abchat`
   }
 
   /**
@@ -333,7 +417,7 @@ export class CommentService implements CommentInfoSource {
 
   /** True for a file this service owns. A path join, because the name *is* the id. */
   isCommentFile(file: TFile): boolean {
-    return file.path === this.commentPath(file.basename)
+    return this.discussionPaths.has(file.path) || file.path === this.commentPath(file.basename)
   }
 
   /**
@@ -350,6 +434,7 @@ export class CommentService implements CommentInfoSource {
    * a way into the sidebar.
    */
   sessionFor(id: string): ChatSession | null {
+    id = this.canonicalId(id)
     const known = this.sessions.get(id) ?? this.expanded.get(id) ?? null
     if (known && !known.isDestroyed) return known
     if (known) this.forget(id)
@@ -462,6 +547,7 @@ export class CommentService implements CommentInfoSource {
   async reveal(id: string): Promise<boolean> {
     const session = await this.load(id)
     if (!session) return false
+    id = session.commentId ?? this.canonicalId(id)
     if (session.kind === 'chat') {
       // Read from a file that became a chat: `ChatService` owns it, as `expand` would have left it.
       if (this.sessions.delete(id)) this.expanded.set(id, session)
@@ -569,8 +655,10 @@ export class CommentService implements CommentInfoSource {
   }
 
   touch(notePath: string, ids: string[]): void {
+    ids = ids.map((id) => this.canonicalId(id))
     const unseen = ids.filter(
-      (id) => !this.sessionFor(id) && !this.loading.has(id) && !this.missing.has(id)
+      (id) =>
+        !this.sessionFor(id) && !this.loading.has(this.commentPath(id)) && !this.missing.has(id)
     )
     if (!unseen.length) return
 
@@ -632,18 +720,20 @@ export class CommentService implements CommentInfoSource {
     }
   }
 
-  async load(id: string): Promise<ChatSession | null> {
-    const known = this.sessionFor(id)
+  async load(id: string, sourceFile?: TFile): Promise<ChatSession | null> {
+    id = this.canonicalId(id)
+    const path = sourceFile?.path ?? this.commentPath(id)
+    const known = sourceFile ? this.sessionOnFile(path) : this.sessionFor(id)
     if (known) return known
 
-    const pending = this.loading.get(id)
+    const pending = this.loading.get(path)
     if (pending !== undefined) return pending
 
     const generation = this.generations.get(id) ?? 0
 
     const task = (async (): Promise<ChatSession | null> => {
       const { app } = GlobalStore.getInstance()
-      const file = app.vault.getAbstractFileByPath(this.commentPath(id))
+      const file = sourceFile ?? app.vault.getAbstractFileByPath(this.commentPath(id))
       if (!(file instanceof TFile)) {
         this.missing.add(id)
         return null
@@ -668,15 +758,27 @@ export class CommentService implements CommentInfoSource {
         return null
       }
 
-      this.adopt(id, session)
+      const identity = session.commentId ?? id
+      const located = this.locations.get(identity)
+      if (located && located !== file.path && app.vault.getAbstractFileByPath(located))
+        session.bindCommentIdentity(newCommentId())
+      this.rememberFile(file, {
+        type: 'abele-chat',
+        kind: session.kind === 'comment' ? 'comment' : 'chat',
+        commentId: session.commentId ?? id,
+        providerId: '',
+        modelId: '',
+        created: '',
+      })
+      this.adopt(session.commentId ?? id, session)
       return session
     })()
 
-    this.loading.set(id, task)
+    this.loading.set(path, task)
     try {
       return await task
     } finally {
-      this.loading.delete(id)
+      for (const [key, pending] of this.loading) if (pending === task) this.loading.delete(key)
     }
   }
 
@@ -691,9 +793,10 @@ export class CommentService implements CommentInfoSource {
    * Loading it and *then* letting `restoreTabs` build its own is what put two log writers on
    * one file — the editor is up before `onLayoutReady`, so the comment is usually read first.
    */
-  async handOverToTab(id: string): Promise<ChatSession | null> {
-    const session = await this.load(id)
+  async handOverToTab(id: string, file?: TFile): Promise<ChatSession | null> {
+    const session = await this.load(id, file)
     if (!session) return null
+    id = session.commentId ?? this.canonicalId(id)
 
     if (session.kind === 'comment') {
       this.shown.add(id)
@@ -718,6 +821,7 @@ export class CommentService implements CommentInfoSource {
    * taken out of, or a tab bar with no room in it.
    */
   async expand(id: string): Promise<CommentMoveResult> {
+    id = this.canonicalId(id)
     const session = this.sessions.get(id)
     if (!session) return 'busy'
 
@@ -852,8 +956,9 @@ export class CommentService implements CommentInfoSource {
     }
 
     const id = file.basename
-    if (!(await this.load(id))) return
-    await this.expand(id)
+    const session = await this.load(id, file)
+    if (!session) return
+    await this.expand(session.commentId ?? id)
   }
 
   // ── Following the note ────────────────────────────────────────
@@ -945,6 +1050,7 @@ export class CommentService implements CommentInfoSource {
    * on the next `touch`.
    */
   handleFileCreated(id: string): void {
+    id = this.canonicalId(id)
     if (!this.missing.delete(id)) return
 
     const note = this.sessionFor(id)?.anchor.value?.note
@@ -958,7 +1064,13 @@ export class CommentService implements CommentInfoSource {
    * that no longer matches what is on disk.
    */
   handleFileDeleted(id: string): void {
+    id = this.canonicalId(id)
     const session = this.sessions.get(id) ?? this.expanded.get(id) ?? null
+    const path = this.locations.get(id)
+    if (path) this.discussionPaths.delete(path)
+    this.locations.delete(id)
+    for (const [alias, identity] of this.fileAliases)
+      if (identity === id) this.fileAliases.delete(alias)
     const note = session?.anchor.value?.note ?? null
 
     this.watchers.get(id)?.()
@@ -986,6 +1098,7 @@ export class CommentService implements CommentInfoSource {
    * and the file. A marker deleted by hand leaves the file behind; orphans are not collected.
    */
   async remove(id: string, options: { chatGoing?: boolean } = {}): Promise<void> {
+    id = this.canonicalId(id)
     // Before the first await: a load already reading this file checks it after, and a marker
     // the person left behind must not fetch the file back.
     this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
@@ -1079,9 +1192,9 @@ export class CommentService implements CommentInfoSource {
   private sessionOnFile(path: string): ChatSession | null {
     const tab = ChatService.getInstance().getSessionByFile(path)
     if (tab) return tab
-    if (!this.isCommentPath(path)) return null
-    const session = this.sessions.get(idOf(path)) ?? this.expanded.get(idOf(path)) ?? null
-    return session && !session.isDestroyed ? session : null
+    for (const session of [...this.sessions.values(), ...this.expanded.values()])
+      if (!session.isDestroyed && session.currentChatFile.value?.path === path) return session
+    return null
   }
 
   /** True for a path in the comment folder, which is what a comment on a comment hangs from. */
@@ -1207,6 +1320,9 @@ export class CommentService implements CommentInfoSource {
     this.expanded.clear()
     this.shown.clear()
     this.loading.clear()
+    this.locations.clear()
+    this.fileAliases.clear()
+    this.discussionPaths.clear()
     this.missing.clear()
     this.generations.clear()
     this.batch.length = 0

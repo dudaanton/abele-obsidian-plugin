@@ -776,7 +776,7 @@ export class ChatService {
           return
         }
         const session = (entry.session = comment
-          ? await comments.handOverToTab(file.basename)
+          ? await comments.handOverToTab(file.basename, file)
           : create())
         if (!session) {
           complete(null)
