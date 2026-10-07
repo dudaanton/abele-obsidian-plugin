@@ -15,8 +15,12 @@ import { OwnerFolderHttpPort } from './sharing/ownerHttp'
 import { OwnerGroupRootFlow, type GroupRoot } from './sharing/ownerGroupRoot'
 import { ScopedPluginHost } from './scoped/scopedPluginHost'
 
-const DESCRIPTOR = 'abele-owner-publication'
-const SENTINEL = '.abele-owner-publication'
+import {
+  PUBLICATION_DESCRIPTOR as DESCRIPTOR,
+  PUBLICATION_SENTINEL as SENTINEL,
+  rememberPublicationStore,
+  retirePublicationStores,
+} from './publication/publicationRetirement'
 const AUDIENCES = 'owner-publication-audiences-v1'
 const hash = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 
@@ -93,6 +97,7 @@ export class PluginSharing {
       this.app.loadLocalStorage(descriptorKey) == null
     const key = useLegacy ? DESCRIPTOR : descriptorKey
     const sentinel = useLegacy ? SENTINEL : sentinelPath
+    await retirePublicationStores(this.app, factoryOf(this.deps), key)
     const resources = await openLinkSnapshots(
       factoryOf(this.deps),
       {
@@ -107,6 +112,12 @@ export class PluginSharing {
     let runtime: NativeOwnerPublication | null = null
     let detach = () => {}
     try {
+      await rememberPublicationStore(
+        this.app,
+        key,
+        sentinel,
+        this.app.loadLocalStorage(key) as SnapshotDescriptor
+      )
       const raw = await resources.meta.getMeta(AUDIENCES)
       if (raw === null && !resources.fresh)
         throw new Error('Publication audiences lost; recovery required')
@@ -285,6 +296,10 @@ export class PluginSharing {
   }
   createScoped() {
     return this.scoped.creation()
+  }
+  async retirePublication(forget = false): Promise<void> {
+    if (this.live) throw new Error('Publication retirement requires engine teardown')
+    await retirePublicationStores(this.app, factoryOf(this.deps), null, forget)
   }
   async close() {
     this.closed = true

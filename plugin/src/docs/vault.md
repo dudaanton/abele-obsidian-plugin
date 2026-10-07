@@ -1609,6 +1609,15 @@ Selecting an audience does not grant access: every question and publication rech
 server visibility and intrinsic-sponsor proof endpoints. Neither the catalogue nor its decisions
 travel in settings transfer.
 
+`abele-owner-publication-stores-v1` is a device-local ownership/retirement catalogue.
+Disconnect and a new binding retire old stores only when all retained work is provably
+terminal; unknown or unfinished evidence stays separate for recovery. At most 16 stores may
+be retained: a full recovery budget holds new allocation rather than evicting pending work.
+Forget explicitly deletes the catalogued databases, descriptors and sentinels, including
+unfinished local work. Durable retirement markers let interrupted deletion resume without
+mistaking an intentionally removed descriptor for a new installation. None of this catalogue
+establishes sharing authority or transfers consent to a new binding.
+
 Scoped installations use `abele-scoped-<ledgerId>` and `abele-scoped-native-<ledgerId>` IndexedDB
 stores, bound to the exact scoped credential fingerprint and descriptor. `abele-scoped-paused`
 is a device-local pause preference. Personal cursors and journals are never reused. An exact

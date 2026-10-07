@@ -355,6 +355,21 @@ export class IndexedDbStateStore implements StateStore {
     return value
   }
 
+  /** Durable plugin metadata inventory for conservative lifecycle retirement, never engine rows. */
+  async pluginMeta(): Promise<Map<string, string>> {
+    this.assertRecovery()
+    const rows = await this.read('cannot inventory plugin metadata', [META], async (tx) =>
+      wait<MetaRow[]>(tx.objectStore(META).getAll())
+    )
+    const result = new Map<string, string>()
+    for (const row of rows) {
+      if (!row.key.startsWith('plugin:')) continue
+      if (typeof row.value !== 'string') throw new EngineError('io', 'Invalid plugin metadata')
+      result.set(row.key.slice(7), row.value)
+    }
+    return result
+  }
+
   async setMeta(key: string, value: string | null): Promise<void> {
     this.assertRecovery()
     await this.setMetaValue(`cannot record ${key}`, own(key), value)

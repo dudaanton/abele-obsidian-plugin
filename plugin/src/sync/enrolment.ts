@@ -26,6 +26,7 @@ import { authorizeLedgerBootstrap, LEDGER_BOOTSTRAP_KEY, LEDGER_PROOF_KEY } from
 import { messageOf } from './messages'
 import { USER_AGENT } from './transport'
 import { Revoker, withTimeout } from './revoke'
+import { retirePublicationStores } from './publication/publicationRetirement'
 
 /**
  * Setting this device up and taking it down again: signing in, enrolling on a vault, taking a
@@ -474,7 +475,7 @@ export class Enrolment {
     await this.host.serialise(() => this.disconnectLocal())
   }
 
-  private async disconnectLocal(): Promise<void> {
+  private async disconnectLocal(forgetPublication = false): Promise<void> {
     await this.host.teardown()
     const own = this.host.connection()
     const tokenId = own.deviceTokenId
@@ -515,6 +516,7 @@ export class Enrolment {
     this.host.note('disconnected; the device token is forgotten')
     const app = this.host.app()
     if (app) {
+      await retirePublicationStores(app, this.host.factory(), null, forgetPublication)
       const retained = readLedgerId(app).stateId
       for (const retired of ledgerCleanupIds(app))
         if (retired !== retained) await this.dropLedger(retired)
@@ -524,7 +526,7 @@ export class Enrolment {
   /** Disconnect and throw away what this device remembered: the ledger and the keychain name. */
   async forget(): Promise<void> {
     await this.host.serialise(async () => {
-      await this.disconnectLocal()
+      await this.disconnectLocal(true)
       const app = this.host.app()
       const tokenId = this.host.connection().deviceTokenId
       if (tokenId !== '') {
