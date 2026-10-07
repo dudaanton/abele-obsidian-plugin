@@ -234,11 +234,17 @@ export class ComparisonService {
           `${repoApiPath(this.repo)}/git/blobs/${encodeURIComponent(node.sha!)}`,
           { what: `the immutable file ${node.path}` }
         )
-        if (answer.encoding !== 'base64' || typeof answer.content !== 'string')
+        if (
+          !['base64', 'utf-8', 'utf8'].includes(answer.encoding ?? '') ||
+          typeof answer.content !== 'string'
+        )
           throw new Error(
             'GitHub did not supply supported blob bytes. The API may limit this file; open either side on GitHub.'
           )
-        const bytes = base64Bytes(answer.content)
+        const bytes =
+          answer.encoding === 'base64'
+            ? base64Bytes(answer.content)
+            : new TextEncoder().encode(answer.content)
         if (bytes.byteLength > MAX_BYTES)
           throw new Error(
             'This file exceeds the comparison memory budget. Open each side separately.'
@@ -331,8 +337,14 @@ export class ComparisonService {
         result.note = 'Symlink text only. The link is not followed.'
       return result
     } catch (error) {
+      if (signal?.aborted && index.counts.get(path)?.state === 'pending') index.counts.delete(path)
       this.check(signal)
-      return unavailable(error instanceof Error ? error.message : String(error))
+      const message = error instanceof Error ? error.message : String(error)
+      return unavailable(
+        error instanceof GithubError && error.kind === 'network'
+          ? `This part is not cached for offline use. ${message}`
+          : message
+      )
     }
   }
   async open(baseSha: string, rest: string[], signal?: AbortSignal): Promise<PinnedFile> {

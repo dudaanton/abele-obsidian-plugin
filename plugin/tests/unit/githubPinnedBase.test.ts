@@ -266,6 +266,49 @@ describe('comparison reads', () => {
     expect((await service.file(index, 'link')).note).toContain('not followed')
     expect((await service.file(index, 'pointer')).note).toContain('No payload')
   })
+  it('retains loaded comparisons offline and distinguishes an uncached blob from unchanged text', async () => {
+    const { client, request } = clientWith(routes)
+    const service = comparisonService(client, REPO)
+    await service.open(BASE, [TARGET, 'src', 'file.ts'])
+    const calls = request.mock.calls.length
+    request.mockImplementation(async () => {
+      throw new Error('Offline transport')
+    })
+    expect((await service.open(BASE, [TARGET, 'src', 'file.ts'])).text?.additions).toBe(1)
+    expect(request).toHaveBeenCalledTimes(calls)
+    const uncached = await service.open(BASE, [TARGET, 'gone.ts'])
+    expect(uncached.text).toBeUndefined()
+    expect(uncached.note).toContain('Could not reach')
+    expect(uncached.index.counts.get('gone.ts')?.state).toBe('unavailable')
+  })
+  it('keeps a shared tree comparison alive when just one tab cancels', async () => {
+    const { client } = clientWith(routes)
+    const get = client.get.bind(client)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(client, 'get').mockImplementation(async (path, options) => {
+      if (path.includes(`/git/trees/${TARGET}`)) await gate
+      return get(path, options)
+    })
+    const service = comparisonService(client, REPO),
+      cancel = new AbortController()
+    const first = service.index(BASE, TARGET, cancel.signal),
+      second = service.index(BASE, TARGET)
+    cancel.abort()
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' })
+    release()
+    expect((await second).changes.map((c) => c.path)).toEqual(['gone.ts', 'src/file.ts'])
+  })
+  it('decodes explicitly UTF-8 encoded Enterprise blobs through the same immutable reader', async () => {
+    const { client } = clientWith({
+      ...routes,
+      '/repos/sample/project/git/blobs/new': { json: { encoding: 'utf-8', content: 'new\n' } },
+    })
+    const result = await comparisonService(client, REPO).open(BASE, [TARGET, 'src', 'file.ts'])
+    expect(result.text).toMatchObject({ additions: 1, deletions: 1 })
+  })
   it('stops uncached requests until the primary rate reset while loaded data remains readable', async () => {
     const reset = Math.ceil(Date.now() / 1000) + 60
     const request = vi.fn(async () => ({

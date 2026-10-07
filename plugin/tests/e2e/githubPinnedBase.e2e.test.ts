@@ -9,7 +9,7 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { BASE_SHA, HEAD_SHA } from './helpers/fakeGithubRepo'
-import { openBasePicker } from './helpers/githubBasePicker'
+import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
@@ -33,9 +33,37 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
         return { ok: true }
       })()`)
     } finally {
-      try { restoreGithub() } finally { gh?.stop() }
+      try {
+        restoreGithub()
+      } finally {
+        gh?.stop()
+      }
     }
   })
+
+  it('shows the full resolved commit in the native base picker before confirmation', () => {
+    const result = evalAsync<{
+      sha: string
+      clipped: string[]
+      over: string[]
+      shot: string
+    }>(`(async () => {
+      ${PRELUDE}
+      ${openBasePicker(gh.web)}
+      ${basePickerGeometry}
+      const shot = ${JSON.stringify(`${SHOTS}/github-pinned-picker.png`)}
+      if (window.__e2eHost) pickerReport.shot = await window.__e2eHost.shot(shot)
+      else { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(shot, image.toPNG()); pickerReport.shot = shot }
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+      await until(() => !document.querySelector('.abele-github-base-picker'), 3000)
+      leaf.detach()
+      return pickerReport
+    })()`)
+    expect(result.sha).toContain(BASE_SHA)
+    expect(result.clipped).toEqual([])
+    expect(result.over).toEqual([])
+    expect(result.shot).toMatch(/\.png$/)
+  }, 90000)
 
   it('pins a resolved SHA, follows target context, and agrees across both project modes', async () => {
     const result = evalAsync<{
