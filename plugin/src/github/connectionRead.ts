@@ -2,7 +2,8 @@ import { ConnectionFallback } from './connectionFallback'
 import { primaryAccess } from './primaryAccess'
 import { clientForTab, tabAccessSnapshot, tabConnectionAllowed } from './tabConnectionAccess'
 import { GithubError } from './client'
-import { loadItem, type ItemData } from './loadItem'
+import { loadItem, type ItemData, type PinnedLoad } from './loadItem'
+import { comparisonService } from './comparison/service'
 import {
   connectionClient,
   connectionGeneration,
@@ -20,7 +21,8 @@ const fallback = new ConnectionFallback(routingMemory)
 export async function readConnectionItem(
   model: GithubViewModel,
   target: GithubTarget,
-  retry = false
+  retry = false,
+  pinned: PinnedLoad = {}
 ): Promise<{
   connectionId: string
   data: ItemData
@@ -38,6 +40,7 @@ export async function readConnectionItem(
   const contexts = new Map(
     candidates.map((c) => [c.id, c.id ? connectionClient(c.id) : githubClient(target.host)])
   )
+  const resolved = new Map<string, PinnedLoad['resolved']>()
   const result = await fallback.read({
     candidates,
     retry,
@@ -52,7 +55,18 @@ export async function readConnectionItem(
       const rawClient = contexts.get(id)!
       rawClient.assertCurrent()
       const client = clientForTab(scope, id, rawClient)
-      await primaryAccess(client, target)
+      if (pinned.base && target.kind === 'blob') {
+        resolved.set(
+          id,
+          await comparisonService(client, target).resolve(
+            pinned.resolved
+              ? [pinned.resolved.sha, ...pinned.resolved.path.split('/')]
+              : target.rest,
+            pinned.base.baseSha,
+            pinned.signal
+          )
+        )
+      } else await primaryAccess(client, target)
       return client
     },
   })
@@ -61,9 +75,14 @@ export async function readConnectionItem(
   let shown = target
   if (!permitted(result.id))
     throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
-  const data = await loadItem(result.value, target, (promoted) => {
-    shown = promoted
-  })
+  const data = await loadItem(
+    result.value,
+    target,
+    (promoted) => {
+      shown = promoted
+    },
+    { ...pinned, resolved: resolved.get(result.id) }
+  )
   if (!permitted(result.id))
     throw new GithubError('other', 'The agent no longer has access to this GitHub connection.')
   const name = (id: string) =>

@@ -5,6 +5,14 @@
  * shows it as what it is.
  */
 import type { GithubClient } from './client'
+import { comparisonService } from './comparison/service'
+import type { BasePin } from './comparison/pins'
+
+export interface PinnedLoad {
+  base?: BasePin
+  signal?: AbortSignal
+  resolved?: { sha: string; path: string; ref: string }
+}
 import type { GithubTarget } from './urls'
 import { repoWeb } from './origin'
 import {
@@ -41,7 +49,8 @@ export type ItemData =
 export async function loadItem(
   client: GithubClient,
   t: GithubTarget,
-  promote: (shown: GithubTarget) => void
+  promote: (shown: GithubTarget) => void,
+  pinned: PinnedLoad = {}
 ): Promise<ItemData> {
   switch (t.kind) {
     case 'issue': {
@@ -60,6 +69,20 @@ export async function loadItem(
     case 'compare':
       return loadCompare(client, t)
     case 'blob':
+      if (pinned.base) {
+        const service = comparisonService(client, t)
+        const resolved =
+          pinned.resolved ?? (await service.resolve(t.rest, pinned.base.baseSha, pinned.signal))
+        const index = await service.index(pinned.base.baseSha, resolved.sha, pinned.signal)
+        const comparison = await service.file(index, resolved.path, false, pinned.signal)
+        return {
+          ref: resolved.sha,
+          path: resolved.path,
+          text: comparison.after?.text ?? '',
+          url: `${repoWeb(t)}/blob/${t.rest.map(encodeURIComponent).join('/')}`,
+          comparison,
+        }
+      }
       try {
         return await loadBlob(client, t)
       } catch (e) {
@@ -79,7 +102,15 @@ export async function loadItem(
         if (folder.path) return folder
         // The root at a ref is the front page at that ref, as the branch switcher opens it.
         const { host, origin, owner, repo, anchor } = t
-        const home: Of<'repo'> = { kind: 'repo', host, origin, owner, repo, anchor, ref: folder.ref }
+        const home: Of<'repo'> = {
+          kind: 'repo',
+          host,
+          origin,
+          owner,
+          repo,
+          anchor,
+          ref: folder.ref,
+        }
         promote(home)
         return await loadRepoHome(client, home, folder)
       } catch (e) {

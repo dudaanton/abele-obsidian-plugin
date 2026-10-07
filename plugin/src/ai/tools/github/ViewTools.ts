@@ -78,11 +78,13 @@ function describe(n: number, { leaf, model }: Shown): string[] {
   else if (!s.title) out.push('   Still loading.')
   if (s.section) out.push(`   Showing ${SECTION_NAME[s.section] ?? s.section}.`)
   if (model.tree) out.push('   The file tree panel is open beside it, at the version shown.')
+  if (s.comparison) out.push(`   Exact comparison: ${s.comparison.baseRef} (${s.comparison.baseSha}) → ${s.comparison.targetSha}`)
   if (s.expanded.length) out.push(`   Open diffs: ${s.expanded.join(', ')}`)
   if (s.selection) {
     const sel = s.selection
     out.push(`   Selected: ${sel.path}, ${sel.label}${sel.url ? ` — ${sel.url}` : ''}`)
-    const lang = t.kind === 'blob' ? '' : 'diff'
+    if (sel.side && sel.sha) out.push(`   Selected side: ${sel.side} @ ${sel.sha}`)
+    const lang = t.kind === 'blob' && !s.comparison ? '' : 'diff'
     out.push('   ```' + lang, clip(sel.code, SELECTION_MAX), '   ```')
   }
   if (s.prose) out.push(...describeProse(s.prose))

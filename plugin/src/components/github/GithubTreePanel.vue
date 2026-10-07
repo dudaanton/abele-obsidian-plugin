@@ -10,6 +10,7 @@
         @click="emit('close')"
       />
     </div>
+    <Tabs v-if="comparisonIndex" v-model="projectMode" :tabs="projectModes" level="secondary" />
     <Search v-model="query" class="abele-github-tree__filter" placeholder="Filter by name" />
     <div ref="body" class="abele-github-tree__body">
       <div v-if="error" class="abele-github-tree__error">
@@ -18,7 +19,10 @@
       </div>
       <EmptyState v-else-if="!tree" text="Loading the files…" />
       <template v-else>
-        <div v-if="tree.truncated && query" class="abele-github-tree__note">
+        <div
+          v-if="tree.truncated && query && (!comparisonIndex || projectMode === 'all')"
+          class="abele-github-tree__note"
+        >
           The repository is too large to list at once: only the folders opened so far are filtered.
         </div>
         <div v-if="query && !filtered?.matches" class="abele-github-tree__note">
@@ -34,6 +38,8 @@
             :node="child"
             :expanded="shownOpen"
             :current="current?.path ?? null"
+            :changes="changeLabels"
+            @visible="requestCounts"
             @pick="pick"
             @page="(n: TreeNode) => openFolder(n, false)"
           />
@@ -48,7 +54,11 @@
 
 <script setup lang="ts">
 import { openExternal } from '@/helpers/openExternal'
-import { computed, nextTick, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
+import Tabs from '../obsidian/Tabs.vue'
+import { comparisonService, type ComparisonIndex } from '@/github/comparison/service'
+import { projectTree } from '@/github/comparison/trees'
+import { findNode as findTargetNode } from '@/github/tree/fileTree'
 import { Keymap, type PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
 import Button from '../obsidian/Button.vue'
@@ -87,6 +97,8 @@ const props = defineProps<{
   resolve: () => Promise<{ ref: string; sha: string }>
   /** What the tab shows, to mark: a file, or a folder. */
   current: { path: string; kind: 'file' | 'dir' } | null
+  comparison?: ComparisonIndex
+  baseSha?: string
 }>()
 
 const emit = defineEmits<{
@@ -101,21 +113,74 @@ const tree = shallowRef<RepoTree | null>(null)
 const version = ref<{ ref: string; sha: string } | null>(null)
 const error = ref<string | null>(null)
 const query = ref('')
+const comparisonIndex = shallowRef<ComparisonIndex | null>(null)
+const projectMode = ref('all')
+const projectModes = [
+  { id: 'all', label: 'All files' },
+  { id: 'changed', label: 'Changed files' },
+]
+let cancellation = new AbortController()
+const changeLabels = computed(() => {
+  const index = comparisonIndex.value,
+    labels = new Map<string, string>()
+  for (const row of index?.changes ?? []) {
+    const count = index!.counts.get(row.path)
+    const stats =
+      count?.state === 'ready'
+        ? `+${count.additions} −${count.deletions}`
+        : count?.state === 'unavailable'
+          ? '—'
+          : '…'
+    labels.set(row.path, `${row.status} ${stats}`)
+    for (const ancestor of ancestors(row.path)) labels.set(ancestor, 'changed')
+  }
+  return labels
+})
+const requestCounts = (path: string) => {
+  const index = comparisonIndex.value
+  if (!index || index.counts.has(path) || !index.changes.some((c) => c.path === path)) return
+  void comparisonService(props.client, props.repo)
+    .file(index, path, false, cancellation.signal)
+    .catch(() => {})
+}
+onBeforeUnmount(() => {
+  generation++
+  cancellation.abort()
+})
 
 /** The folders open in the tree, and — while filtering — in the filtered one. */
 const expanded = reactive(new Set<string>())
 const filterOpen = reactive(new Set<string>())
 
 let generation = 0
+let fixedVersion: { key: string; version: { ref: string; sha: string } } | undefined
 const load = async () => {
   const mine = ++generation
+  cancellation.abort()
+  cancellation = new AbortController()
+  const signal = cancellation.signal
   error.value = null
   if (!props.versionKey) return
   try {
-    const v = await props.resolve()
-    const t = await repoTree(props.client, props.repo, v.sha)
+    const v = props.comparison
+      ? { ref: props.comparison.targetSha, sha: props.comparison.targetSha }
+      : props.baseSha && fixedVersion?.key === props.versionKey
+        ? fixedVersion.version
+        : await props.resolve()
+    const index =
+      props.comparison ??
+      (props.baseSha
+        ? await comparisonService(props.client, props.repo).index(props.baseSha, v.sha, signal)
+        : null)
+    const t = index?.target ?? (await repoTree(props.client, props.repo, v.sha))
     if (mine !== generation) return
     version.value = v
+    comparisonIndex.value = index
+    if (index)
+      fixedVersion = {
+        key: props.versionKey,
+        version: { ref: index.targetSha, sha: index.targetSha },
+      }
     tree.value = t
     void showCurrent()
   } catch (e) {
@@ -125,10 +190,10 @@ const load = async () => {
   }
 }
 watch(
-  () => props.versionKey,
-  (key, before) => {
-    if (key === before) return
+  () => [props.versionKey, props.baseSha, props.comparison] as const,
+  () => {
     tree.value = null
+    comparisonIndex.value = null
     version.value = null
     expanded.clear()
     void load()
@@ -136,15 +201,22 @@ watch(
   { immediate: true }
 )
 
+const projectRoot = computed(() =>
+  tree.value
+    ? comparisonIndex.value
+      ? projectTree(tree.value.root, comparisonIndex.value.changes, projectMode.value === 'changed')
+      : tree.value.root
+    : null
+)
 const filtered = computed(() =>
-  tree.value && query.value.trim() ? filterTree(tree.value.root, query.value) : null
+  projectRoot.value && query.value.trim() ? filterTree(projectRoot.value, query.value) : null
 )
 watch(filtered, (f) => {
   filterOpen.clear()
   for (const path of f?.open ?? []) filterOpen.add(path)
 })
 const shownOpen = computed(() => (filtered.value ? filterOpen : expanded))
-const shownRoot = computed<TreeNode | null>(() => filtered.value?.root ?? tree.value?.root ?? null)
+const shownRoot = computed<TreeNode | null>(() => filtered.value?.root ?? projectRoot.value)
 
 const paged = usePagedList(() => shownRoot.value?.children ?? [], 200)
 const sentinel = paged.sentinel
@@ -215,7 +287,9 @@ const pick = (node: TreeNode, event: MouseEvent) => {
     if (open.has(node.path)) open.delete(node.path)
     else {
       open.add(node.path)
-      tree.value?.expand(node).catch((e: unknown) => {
+      const targetNode = tree.value ? findTargetNode(tree.value.root, node.path) : null
+      if (!targetNode || targetNode.kind !== 'dir') return
+      tree.value?.expand(targetNode).catch((e: unknown) => {
         console.debug('[Abele] GitHub file tree: a folder did not load', e)
         open.delete(node.path)
       })
@@ -226,7 +300,7 @@ const pick = (node: TreeNode, event: MouseEvent) => {
   const url = blobUrlAt(props.repo, version.value.ref, node.path)
   const pane = paneForClick(event, false)
   // A submodule is another repository, at a commit only GitHub's own page names.
-  if (pane === null || node.kind === 'submodule') openExternal(url)
+  if (pane === null || (node.kind === 'submodule' && !comparisonIndex.value)) openExternal(url)
   else emit('open', url, pane, overlaid())
 }
 </script>

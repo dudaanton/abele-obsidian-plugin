@@ -23,6 +23,7 @@ import { clientForTab, tabAccessSnapshot } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
+import type { PinnedLoad } from './loadItem'
 import { chatSubject, emptyScreen } from './screen'
 import { OpenPicker } from './open/OpenPicker'
 import { RepoPicker } from './open/RepoPicker'
@@ -84,6 +85,7 @@ export class GithubView extends ItemView {
     }
     if (this.model.mode) state.mode = this.model.mode
     if (this.model.tree !== undefined) state.tree = this.model.tree
+    if (this.model.originalFile) state.originalFile = true
     return state
   }
 
@@ -121,7 +123,7 @@ export class GithubView extends ItemView {
       if (accountChanged || url !== this.model.url) Object.assign(this.model.screen, emptyScreen())
       this.model.connectionId = connectionId
       this.model.connectionIntent = requested.connectionIntent === 'manual' ? 'manual' : 'automatic'
-      const access=tabAccessSnapshot(requested)
+      const access = tabAccessSnapshot(requested)
       this.model.allowedConnections = access.allowedConnections
       this.model.executionAgentId = access.executionAgentId
       this.model.approvedConnections = access.approvedConnections
@@ -130,6 +132,8 @@ export class GithubView extends ItemView {
       this.model.target = target
       // A link followed says nothing of it: the file opens the way the link asks.
       this.model.mode = mode === 'preview' || mode === 'code' ? mode : undefined
+      const originalFile = (state as { originalFile?: unknown }).originalFile
+      if (typeof originalFile === 'boolean') this.model.originalFile = originalFile
       // The panel is the tab's, not the link's: only a tab that has not decided takes it from the
       // state — a restart. Back and forward leave it as it is.
       const tree = (state as { tree?: unknown }).tree
@@ -244,7 +248,7 @@ export class GithubView extends ItemView {
     )
     const t = this.model.target
     if (t) {
-      const repo = { host: t.host, origin:t.origin, owner: t.owner, repo: t.repo }
+      const repo = { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo }
       const pinned = isPinned(repo)
       menu.addItem((item) =>
         item
@@ -291,10 +295,10 @@ export class GithubView extends ItemView {
           ? connectionClient(this.model.connectionId)
           : githubClient(this.model.target?.host)
         const agentOpened = this.model.allowedConnections !== undefined
-        const client = clientForTab(this.model,this.model.connectionId ?? '',rawClient)
+        const client = clientForTab(this.model, this.model.connectionId ?? '', rawClient)
         if (this.model.screenNamespace && this.model.screenNamespace !== client.cacheNamespace) {
-          Object.assign(this.model.screen,emptyScreen())
-          this.title=''
+          Object.assign(this.model.screen, emptyScreen())
+          this.title = ''
           this.refreshHeader()
         }
         return h(GithubItem, {
@@ -334,11 +338,12 @@ export class GithubView extends ItemView {
             ? async (
                 target: GithubTarget,
                 promote: (target: GithubTarget) => void,
-                retry = false
+                retry = false,
+                pinned: PinnedLoad = {}
               ) => {
                 const startedId = this.model.connectionId,
                   startedUrl = this.model.url
-                const result = await readConnectionItem(this.model, target, retry)
+                const result = await readConnectionItem(this.model, target, retry, pinned)
                 if (this.model.connectionId !== startedId || this.model.url !== startedUrl)
                   throw new GithubError('other', 'The tab changed while loading.')
                 promote(result.shown)

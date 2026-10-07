@@ -4,6 +4,7 @@ import { compareTrees } from '@/github/comparison/trees'
 import { fullDiff, decodeBlob } from '@/github/comparison/text'
 import { comparisonService } from '@/github/comparison/service'
 import { GithubClient } from '@/github/client'
+import { guardedGithubClient } from '@/github/guardedClient'
 import { endpoints } from '@/github/urls'
 import { buildTree, type TreeEntry } from '@/github/tree/fileTree'
 import { forgetRepoTrees } from '@/github/tree/repoTree'
@@ -24,6 +25,13 @@ const blob = (text: string) => ({ encoding: 'base64', content: btoa(text) })
 beforeEach(() => forgetRepoTrees())
 
 describe('device-local frozen bases', () => {
+  it('validates a pasted SHA as a commit before persisting it', async () => {
+    const app = { loadLocalStorage: () => undefined, saveLocalStorage: vi.fn() }
+    const pins = new BasePins(app)
+    const { client } = clientWith({})
+    await expect(pins.pin(client, REPO, BASE)).rejects.toMatchObject({ kind: 'not-found' })
+    expect(app.saveLocalStorage).not.toHaveBeenCalled()
+  })
   it('persists resolved commits, canonicalizes repository identity, and notifies other tabs', async () => {
     const storage = new Map<string, unknown>()
     const app = {
@@ -172,6 +180,109 @@ describe('comparison reads', () => {
     await expect(service.open(BASE, [TARGET, 'src', 'file.ts'])).rejects.toThrow(
       /connection changed/
     )
+  })
+  it('never reuses another caller’s capability for credential-scoped cache hits', async () => {
+    const { client } = clientWith(routes)
+    await comparisonService(client, REPO).open(BASE, [TARGET, 'src', 'file.ts'])
+    let allowed = true
+    const guarded = guardedGithubClient(client, () => {
+      if (!allowed) throw new Error('Access revoked')
+    })
+    const service = comparisonService(guarded, REPO)
+    allowed = false
+    await expect(service.open(BASE, [TARGET, 'src', 'file.ts'])).rejects.toThrow('Access revoked')
+  })
+  it('falls back from truncated recursive trees to complete differing subtrees', async () => {
+    const { client, request } = clientWith({
+      [`/repos/sample/project/git/trees/${BASE}`]: (r) => ({
+        json: r.url.includes('recursive=1')
+          ? { tree: [], truncated: true }
+          : tree([{ path: 'src', type: 'tree', sha: 'base-dir' }]),
+      }),
+      [`/repos/sample/project/git/trees/${TARGET}`]: (r) => ({
+        json: r.url.includes('recursive=1')
+          ? { tree: [], truncated: true }
+          : tree([{ path: 'src', type: 'tree', sha: 'target-dir' }]),
+      }),
+      '/repos/sample/project/git/trees/base-dir': { json: tree([entry('file.ts', 'old')]) },
+      '/repos/sample/project/git/trees/target-dir': { json: tree([entry('file.ts', 'new')]) },
+    })
+    const index = await comparisonService(client, REPO).index(BASE, TARGET)
+    expect(index.changes.map((c) => c.path)).toEqual(['src/file.ts'])
+    expect(request).toHaveBeenCalledTimes(6)
+  })
+  it('accepts edited rename metadata only when its endpoints and merge base agree', async () => {
+    const renamedRoutes = {
+      [`/repos/sample/project/git/trees/${BASE}`]: { json: tree([entry('old.ts', 'old')]) },
+      [`/repos/sample/project/git/trees/${TARGET}`]: { json: tree([entry('new.ts', 'new')]) },
+    }
+    for (const ancestor of [BASE, 'd'.repeat(40)]) {
+      const { client, request } = clientWith({
+        ...renamedRoutes,
+        [`/repos/sample/project/compare/${BASE}...${TARGET}`]: {
+          json: {
+            merge_base_commit: { sha: ancestor },
+            files: [
+              { filename: 'new.ts', previous_filename: 'old.ts', status: 'renamed', sha: 'new' },
+            ],
+          },
+        },
+      })
+      const index = await comparisonService(client, REPO).index(BASE, TARGET)
+      expect(index.changes.map((c) => c.status)).toEqual(
+        ancestor === BASE ? ['renamed'] : ['added', 'removed']
+      )
+      expect(request.mock.calls.filter(([r]) => r.url.includes('/compare/'))).toHaveLength(1)
+    }
+  })
+  it('uses unavailable counts for binary/submodules, keeps symlink and LFS text, and inspects large sizes first', async () => {
+    const nodes = [
+      entry('binary.dat', 'binary'),
+      entry('large.ts', 'large'),
+      entry('link', 'link', '120000'),
+      entry('pointer', 'pointer'),
+      { path: 'module', sha: 'module', mode: '160000', type: 'commit' },
+    ]
+    nodes[1].size = 2 * 1024 * 1024
+    const { client, request } = clientWith({
+      [`/repos/sample/project/git/trees/${BASE}`]: { json: tree([]) },
+      [`/repos/sample/project/git/trees/${TARGET}`]: { json: tree(nodes) },
+      '/repos/sample/project/git/blobs/binary': { json: blob('\0binary') },
+      '/repos/sample/project/git/blobs/large': { json: blob('large\n') },
+      '/repos/sample/project/git/blobs/link': { json: blob('../file.ts\n') },
+      '/repos/sample/project/git/blobs/pointer': {
+        json: blob('version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 123\n'),
+      },
+    })
+    const service = comparisonService(client, REPO),
+      index = await service.index(BASE, TARGET)
+    expect((await service.file(index, 'binary.dat')).text).toBeUndefined()
+    expect(index.counts.get('binary.dat')?.state).toBe('unavailable')
+    expect((await service.file(index, 'module')).note).toContain('Submodule')
+    expect(request.mock.calls.some(([r]) => r.url.endsWith('/git/blobs/module'))).toBe(false)
+    expect((await service.file(index, 'large.ts')).canLoadLarge).toBe(true)
+    expect(request.mock.calls.some(([r]) => r.url.endsWith('/git/blobs/large'))).toBe(false)
+    expect((await service.file(index, 'large.ts', true)).text?.additions).toBe(1)
+    expect((await service.file(index, 'link')).note).toContain('not followed')
+    expect((await service.file(index, 'pointer')).note).toContain('No payload')
+  })
+  it('stops uncached requests until the primary rate reset while loaded data remains readable', async () => {
+    const reset = Math.ceil(Date.now() / 1000) + 60
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Limit': '60',
+        'X-RateLimit-Reset': String(reset),
+      },
+      json: {},
+      text: '{}',
+      arrayBuffer: new ArrayBuffer(0),
+    }))
+    const client = new GithubClient(endpoints(''), '', request)
+    expect(await client.get('/sample')).toEqual({})
+    await expect(client.get('/uncached')).rejects.toMatchObject({ kind: 'rate-limit' })
+    expect(request).toHaveBeenCalledTimes(1)
   })
   it('opens deletion with an empty target without changing the comparison target', async () => {
     const { client } = clientWith(routes)

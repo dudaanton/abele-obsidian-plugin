@@ -154,6 +154,8 @@ export interface DiscussionData extends ItemHead {
 }
 
 export interface BlobData {
+  /** Exact endpoint file comparison; absent for the existing original-file view. */
+  comparison?: import('./comparison/service').PinnedFile
   ref: string
   path: string
   text: string

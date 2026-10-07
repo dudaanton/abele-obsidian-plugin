@@ -7,6 +7,8 @@
         :version-key="versionKey"
         :resolve="resolveVersion"
         :current="current"
+        :comparison="blob?.comparison?.index"
+        :base-sha="pin?.baseSha"
         @open="openFromPanel"
         @close="setPanel(false)"
       />
@@ -71,6 +73,16 @@
           </template>
         </GithubHeader>
 
+        <GithubBaseBar
+          v-if="repoRef && ['blob', 'tree', 'repo'].includes(shown.kind)"
+          :repo="repoRef"
+          :client="client()"
+          :pin="pin"
+          :target-sha="blob?.comparison?.targetSha"
+          :file="shown.kind === 'blob'"
+          :original="model.originalFile"
+          @original="setOriginal"
+        />
         <EmptyState v-if="model.connectionNotice" :text="model.connectionNotice" />
 
         <!-- Kept while the tab follows a result, so the next result is still there to take. -->
@@ -207,7 +219,17 @@
         />
 
         <template v-else-if="shown.kind === 'blob' && blob">
+          <GithubPinnedFile
+            v-if="blob.comparison"
+            :file="blob.comparison"
+            :repo="repoRef!"
+            :range="blobRange"
+            :nonce="model.nonce"
+            :busy="largeBusy"
+            @large="loadLarge"
+          />
           <GithubBlob
+            v-else
             :text="blob.text"
             :file="blobFile!"
             :range="blobRange"
@@ -265,6 +287,10 @@ import GithubCompare, { type CompareSection } from './GithubCompare.vue'
 import GithubThread from './GithubThread.vue'
 import GithubFiles from './GithubFiles.vue'
 import GithubBlob from './GithubBlob.vue'
+import GithubPinnedFile from './GithubPinnedFile.vue'
+import GithubBaseBar from './GithubBaseBar.vue'
+import { basePins } from '@/github/comparison/pins'
+import { comparisonService } from '@/github/comparison/service'
 import GithubNotice from './GithubNotice.vue'
 import GithubFindBar from './GithubFindBar.vue'
 import GithubCodeSearch from './GithubCodeSearch.vue'
@@ -279,7 +305,7 @@ import GithubLayout from './GithubLayout.vue'
 import { useTreePanel } from '@/github/tree/useTreePanel'
 import { itemHead, itemTabTitle, placeLink, type ItemHead } from '@/github/itemHead'
 import type { FolderData } from '@/github/tree/folder'
-import { loadItem, type ItemData } from '@/github/loadItem'
+import { loadItem, type ItemData, type PinnedLoad } from '@/github/loadItem'
 import type { PaneType } from 'obsidian'
 import { useTabSearch } from '@/github/search/useTabSearch'
 import type { GithubViewModel } from '@/github/model'
@@ -323,7 +349,8 @@ const props = defineProps<{
   primaryLoad?: (
     target: GithubTarget,
     promote: (target: GithubTarget) => void,
-    retry?: boolean
+    retry?: boolean,
+    pinned?: PinnedLoad
   ) => Promise<ItemData>
   peopleClient?: () => GithubClient
   accountName?: string
@@ -351,6 +378,14 @@ watch([root, pageWidth], ([el, width]) => el?.style.setProperty('--abele-github-
   immediate: true,
 })
 const target = computed(() => props.model.target)
+const pins = basePins(GlobalStore.getInstance().app)
+const pin = computed(() => (target.value ? pins.get(target.value) : null))
+const setOriginal = (original: boolean) => {
+  props.model.originalFile = original
+  props.onState?.()
+}
+let cancellation = new AbortController()
+let frozenTarget: { key: string; resolved: PinnedLoad['resolved'] } | undefined
 
 /**
  * What is actually on screen. An issue link whose number turns out to be a pull request is shown
@@ -367,22 +402,37 @@ let active = true
 onBeforeUnmount(() => {
   active = false
   loadGeneration++
+  cancellation.abort()
 })
-const main = useLoad<ItemData>(() => {
+const main = useLoad<ItemData>(async () => {
   const generation = loadGeneration,
     currentClient = client(),
     currentTarget = target.value
   const read =
     props.primaryLoad ??
-    ((target: GithubTarget, promote: (target: GithubTarget) => void) =>
-      loadItem(currentClient, target, promote))
-  return read(
+    ((
+      target: GithubTarget,
+      promote: (target: GithubTarget) => void,
+      _retry?: boolean,
+      pinned?: PinnedLoad
+    ) => loadItem(currentClient, target, promote, pinned))
+  const key = `${currentClient.cacheNamespace}:${targetKey(currentTarget)}`
+  const data = await read(
     currentTarget,
     (t) => {
       if (active && generation === loadGeneration && currentClient === client()) promoted.value = t
     },
-    retryPrimary
+    retryPrimary,
+    {
+      base: props.model.originalFile ? undefined : (pin.value ?? undefined),
+      signal: cancellation.signal,
+      resolved: frozenTarget?.key === key ? frozenTarget.resolved : undefined,
+    }
   )
+  const at = currentTarget.kind === 'blob' ? (data as BlobData).comparison : undefined
+  if (at && active && generation === loadGeneration)
+    frozenTarget = { key, resolved: { sha: at.targetSha, path: at.path, ref: at.targetSha } }
+  return data
 })
 
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
@@ -436,7 +486,31 @@ const discussion = computed(() =>
 const commit = computed(() =>
   shown.value.kind === 'commit' ? (main.data.value as CommitData) : null
 )
-const blob = computed(() => (shown.value.kind === 'blob' ? (main.data.value as BlobData) : null))
+const blob = computed(() => (shown.value?.kind === 'blob' ? (main.data.value as BlobData) : null))
+const largeBusy = ref(false)
+const loadLarge = async () => {
+  const data = blob.value,
+    at = data?.comparison,
+    generation = loadGeneration
+  if (!data || !at || !repoRef.value || largeBusy.value) return
+  largeBusy.value = true
+  const signal = cancellation.signal
+  try {
+    const result = await comparisonService(client(), repoRef.value).file(
+      at.index,
+      at.path,
+      true,
+      signal
+    )
+    if (active && generation === loadGeneration && main.data.value === data)
+      main.data.value = { ...data, comparison: result }
+  } catch (error) {
+    if (!signal.aborted && active && generation === loadGeneration)
+      main.error.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    largeBusy.value = false
+  }
+}
 const folder = computed(() =>
   shown.value.kind === 'tree' ? (main.data.value as FolderData) : null
 )
@@ -581,6 +655,8 @@ watch(
       pullTab.value,
       compareTab.value,
       shown.value,
+      blob.value?.comparison,
+      pin.value?.enteredRef,
     ] as const,
   () => {
     const t = target.value ? shown.value : null
@@ -591,6 +667,14 @@ watch(
     screen.section =
       t?.kind === 'pull' ? pullTab.value : t?.kind === 'compare' ? compareTab.value : null
     screen.error = main.error.value ?? ''
+    const comparison = blob.value?.comparison
+    screen.comparison = comparison
+      ? {
+          baseSha: comparison.baseSha,
+          targetSha: comparison.targetSha,
+          baseRef: pin.value?.enteredRef ?? comparison.baseSha,
+        }
+      : null
   },
   { immediate: true }
 )
@@ -649,6 +733,8 @@ const reload = async (retry = false) => {
   retryPrimary = retry
   const generation = ++loadGeneration
   promoted.value = null
+  cancellation.abort()
+  cancellation = new AbortController()
   files.clear()
   commits.clear()
   await main.load()
@@ -659,7 +745,9 @@ const reload = async (retry = false) => {
 }
 
 const loadKey = computed(() =>
-  target.value ? `${client().cacheNamespace}:${targetKey(target.value)}` : null
+  target.value
+    ? `${client().cacheNamespace}:${targetKey(target.value)}:${pin.value?.baseSha ?? ''}:${!!props.model.originalFile}`
+    : null
 )
 
 // A tab that follows a link to another item must not draw the new item from the old one's data
@@ -669,6 +757,7 @@ watch(
   () => loadKey.value,
   () => {
     loadGeneration++
+    cancellation.abort()
     promoted.value = null
     main.clear()
     files.clear()
@@ -716,7 +805,7 @@ watch(
   gap: var(--size-4-3);
 
   // Diffs want the width a code review wants, not a line of prose.
-  &:has(.abele-github-files, .abele-github-blob) {
+  &:has(.abele-github-files, .abele-github-blob, .abele-github-pinned) {
     max-width: none;
   }
 

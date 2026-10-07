@@ -1,6 +1,7 @@
 import { shallowRef } from 'vue'
 import { commitSha } from '../api'
 import type { GithubClient } from '../client'
+import { repoApiPath } from '../contents'
 
 export interface Repository {
   host: string
@@ -61,7 +62,14 @@ export class BasePins {
   async resolve(client: GithubClient, repo: Repository, enteredRef: string): Promise<BasePin> {
     const ref = enteredRef.trim()
     if (!ref) throw new Error('Enter a commit, branch or tag.')
-    const baseSha = await commitSha(client, repo, ref)
+    const baseSha = /^[a-f\d]{40}$/i.test(ref)
+      ? (
+          await client.get<{ sha: string }>(
+            `${repoApiPath(repo)}/commits/${encodeURIComponent(ref)}`,
+            { what: 'the comparison base commit' }
+          )
+        ).sha
+      : await commitSha(client, repo, ref)
     client.assertCurrent()
     if (!/^[a-f\d]{40}$/i.test(baseSha))
       throw new Error('GitHub did not resolve that ref to a commit SHA.')

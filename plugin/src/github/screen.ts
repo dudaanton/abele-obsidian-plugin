@@ -23,6 +23,9 @@ export interface ScreenSelection {
   code: string
   /** A link to the lines when one can be made without asking GitHub. */
   url?: string
+  /** Exact endpoint provenance for selections in a locally computed comparison. */
+  side?: 'base' | 'target'
+  sha?: string
 }
 
 /** The selected lines as "Ask here" hands them to a chat: read when used, never serialised. */
@@ -53,6 +56,7 @@ export interface GithubScreen {
   link: GithubLink | null
   /** Why the item could not be shown, when it could not. */
   error: string
+  comparison: { baseSha: string; targetSha: string; baseRef: string } | null
 }
 
 export const emptyScreen = (): GithubScreen => ({
@@ -65,6 +69,7 @@ export const emptyScreen = (): GithubScreen => ({
   prose: null,
   link: null,
   error: '',
+  comparison: null,
 })
 
 export const SCREEN: InjectionKey<GithubScreen> = Symbol('abele-github-screen')

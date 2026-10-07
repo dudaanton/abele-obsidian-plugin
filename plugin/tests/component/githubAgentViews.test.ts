@@ -78,6 +78,29 @@ beforeEach(() => {
 })
 
 describe('what is on screen', () => {
+  it('describes exact pinned endpoints and the selected side to agents', async () => {
+    const { wrapper, model } = openTab('https://github.com/o/r/blob/main/file.ts', {
+      '/repos/o/r/contents/file.ts': { text: 'line\n' },
+    })
+    await vi.waitFor(() => expect(model.screen.title).toBeTruthy())
+    model.screen.comparison = {
+      baseSha: '1'.repeat(40),
+      targetSha: '2'.repeat(40),
+      baseRef: 'topic/base',
+    }
+    model.screen.selection = {
+      path: 'file.ts',
+      label: 'Line 1, base',
+      code: '-line',
+      side: 'base',
+      sha: '1'.repeat(40),
+    }
+    leaves = [{ view: { model, containerEl: { isShown: () => true } } }]
+    const out = await run(createGithubViewsTool())
+    expect(out).toContain(`Exact comparison: topic/base (${'1'.repeat(40)}) → ${'2'.repeat(40)}`)
+    expect(out).toContain(`Selected side: base @ ${'1'.repeat(40)}`)
+    wrapper.unmount()
+  })
   it('follows the section, the open diffs and the selected lines with their code', async () => {
     const hash = await diffAnchorHash('src/app.ts')
     const { wrapper, model } = openTab('https://github.com/o/r/pull/7/files', PULL_ROUTES)

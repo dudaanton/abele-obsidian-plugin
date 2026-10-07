@@ -203,14 +203,15 @@ export function mountDiff(
   lines: DiffLine[],
   path: string,
   highlight: number[] = [],
-  hooks: SelectionHooks = {}
+  hooks: SelectionHooks = {},
+  signs = false
 ): Viewer {
   const selection = lineSelection({
     ...hooks,
     initial: highlight.map((i) => i + 1),
     selectable: (n) => lines[n - 1]?.old !== undefined || lines[n - 1]?.new !== undefined,
   })
-  const diff = diffParts(lines, selection.gutterHandlers)
+  const diff = diffParts(lines, selection.gutterHandlers, signs)
 
   return mount(
     parent,
@@ -223,7 +224,8 @@ export function mountDiff(
 /** A diff's text, its two columns of line numbers and the colours of its added and removed lines. */
 function diffParts(
   lines: DiffLine[],
-  handlers?: ReturnType<typeof lineSelection>['gutterHandlers']
+  handlers?: ReturnType<typeof lineSelection>['gutterHandlers'],
+  signs = false
 ): { doc: string; extensions: Extension[] } {
   const widest = String(lines.reduce((max, l) => Math.max(max, l.old ?? 0, l.new ?? 0), 0)).replace(
     /\d/g,
@@ -247,7 +249,25 @@ function diffParts(
   )
   return {
     doc: state.doc.toString(),
-    extensions: [numbers('old'), numbers('new'), EditorView.decorations.of(decorations)],
+    extensions: [
+      numbers('old'),
+      numbers('new'),
+      ...(signs
+        ? [
+            gutter({
+              class: 'abele-github-code__gutter_sign',
+              lineMarker(view, block) {
+                const type = lines[view.state.doc.lineAt(block.from).number - 1]?.type
+                return type === 'add' || type === 'del'
+                  ? new NumberMarker(type === 'add' ? '+' : '−')
+                  : null
+              },
+              initialSpacer: () => new NumberMarker('+'),
+            }),
+          ]
+        : []),
+      EditorView.decorations.of(decorations),
+    ],
   }
 }
 

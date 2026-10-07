@@ -44,7 +44,15 @@ const cancelled = (signal?: AbortSignal) => {
 
 /** Immutable session data is bounded, deduplicated, and owned by one credential generation. */
 export class ComparisonService {
-  private readonly indexes = new Map<string, Promise<ComparisonIndex>>()
+  private readonly indexes = new Map<
+    string,
+    {
+      promise: Promise<ComparisonIndex>
+      controller: AbortController
+      readers: number
+      done: boolean
+    }
+  >()
   private readonly blobs = new Map<string, BlobContent>()
   private readonly reading = new Map<string, Promise<BlobContent>>()
   private bytes = 0
@@ -55,6 +63,7 @@ export class ComparisonService {
     private readonly repo: Repository
   ) {}
   clear(): void {
+    for (const entry of this.indexes.values()) entry.controller.abort()
     this.indexes.clear()
     this.blobs.clear()
     this.reading.clear()
@@ -66,13 +75,14 @@ export class ComparisonService {
   }
   private async limited<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (this.running >= 3) await new Promise<void>((resolve) => this.queue.push(resolve))
-    this.running++
+    else this.running++
     try {
       this.check(signal)
       return await read()
     } finally {
-      this.running--
-      this.queue.shift()?.()
+      const next = this.queue.shift()
+      if (next) next()
+      else this.running--
     }
   }
   /** Resolve the ref before reading its tree. No Contents read is made at a mutable ref. */
@@ -113,15 +123,17 @@ export class ComparisonService {
   async index(baseSha: string, targetSha: string, signal?: AbortSignal): Promise<ComparisonIndex> {
     this.check(signal)
     const key = `${baseSha}:${targetSha}`
-    let pending = this.indexes.get(key)
-    if (!pending) {
-      // Shared loads do not inherit one tab's cancellation. Consumers check their generation.
-      pending = (async () => {
+    let entry = this.indexes.get(key)
+    if (!entry) {
+      const controller = new AbortController()
+      const promise = (async () => {
         const base = await repoTree(this.client, this.repo, baseSha)
+        this.check(controller.signal)
         const target = await repoTree(this.client, this.repo, targetSha)
-        const changes = await compareTrees(base, target)
-        this.client.assertCurrent()
+        const changes = await compareTrees(base, target, controller.signal)
+        this.check(controller.signal)
         await this.renameMetadata(changes, baseSha, targetSha)
+        this.check(controller.signal)
         return {
           baseSha,
           targetSha,
@@ -131,15 +143,43 @@ export class ComparisonService {
           counts: shallowReactive(new Map<string, FileCounts>()),
         }
       })()
-      this.indexes.set(key, pending)
-      pending.catch(() => {
-        if (this.indexes.get(key) === pending) this.indexes.delete(key)
-      })
-      while (this.indexes.size > 8) this.indexes.delete(this.indexes.keys().next().value!)
+      entry = { promise, controller, readers: 0, done: false }
+      const owned = entry
+      this.indexes.set(key, entry)
+      void promise.then(
+        () => {
+          owned.done = true
+        },
+        () => {
+          owned.done = true
+          if (this.indexes.get(key) === owned) this.indexes.delete(key)
+        }
+      )
+      while (this.indexes.size > 8) {
+        const oldest = this.indexes.keys().next().value!
+        const dropped = this.indexes.get(oldest)!
+        if (!dropped.readers) dropped.controller.abort()
+        this.indexes.delete(oldest)
+      }
     }
-    const result = await pending
-    this.check(signal)
-    return result
+    entry.readers++
+    try {
+      const result = await new Promise<ComparisonIndex>((resolve, reject) => {
+        const abort = () => reject(new DOMException('Comparison cancelled', 'AbortError'))
+        signal?.addEventListener('abort', abort, { once: true })
+        void entry.promise
+          .then(resolve, reject)
+          .finally(() => signal?.removeEventListener('abort', abort))
+      })
+      this.check(signal)
+      return result
+    } finally {
+      entry.readers--
+      if (!entry.done && !entry.readers) {
+        entry.controller.abort()
+        if (this.indexes.get(key) === entry) this.indexes.delete(key)
+      }
+    }
   }
   /** One optional compare page, never commit pagination; endpoint trees remain authoritative. */
   private async renameMetadata(changes: FileChange[], base: string, target: string): Promise<void> {
@@ -268,13 +308,23 @@ export class ComparisonService {
       result.after = after
       if ([before, after].some((c) => c.kind === 'binary' || c.kind === 'unsupported'))
         return unavailable('Binary or unsupported encoding. Text counts are unavailable (—).')
-      result.text = await computeDiff(before.text!, after.text!, signal)
+      if (
+        !large &&
+        (before.text!.match(/\n/g)?.length ?? 0) + (after.text!.match(/\n/g)?.length ?? 0) > 20000
+      )
+        return unavailable(
+          'Many lines: load the diff explicitly, or open either side separately.',
+          true
+        )
+      result.text = await this.limited(() => computeDiff(before.text!, after.text!, signal), signal)
       this.check(signal)
       index.counts.set(path, {
         state: 'ready',
         additions: result.text.additions,
         deletions: result.text.deletions,
       })
+      if (before.text!.includes('\r\n') !== after.text!.includes('\r\n'))
+        result.note = 'Line endings differ between the base and target (CRLF / LF).'
       if ([before, after].some((c) => c.kind === 'lfs'))
         result.note = 'Git LFS pointer text only. No payload is downloaded.'
       if (nodes.some((n) => n.mode === '120000'))
@@ -291,23 +341,41 @@ export class ComparisonService {
     return this.file(index, resolved.path, false, signal)
   }
 }
-const services = new Map<string, ComparisonService>()
+// A capability wrapper must never inherit a different caller's still-valid access guard.
+const services = new Map<GithubClient, Map<string, ComparisonService>>()
+const cacheOwners = new Map<ComparisonService, { client: GithubClient; key: string }>()
 export function comparisonService(client: GithubClient, repo: Repository): ComparisonService {
   client.assertCurrent()
   const key = `${client.cacheNamespace}:${repositoryKey(repo)}`
-  let service = services.get(key)
+  let repositories = services.get(client)
+  if (!repositories) {
+    repositories = new Map()
+    services.set(client, repositories)
+    const owned = repositories
+    client.onRetire?.(() => {
+      for (const service of owned.values()) {
+        service.clear()
+        cacheOwners.delete(service)
+      }
+      owned.clear()
+      services.delete(client)
+    })
+  }
+  let service = repositories.get(key)
   if (!service) {
     service = new ComparisonService(client, repo)
-    services.set(key, service)
-    client.onRetire?.(() => {
-      services.get(key)?.clear()
-      services.delete(key)
-    })
-    while (services.size > 16) {
-      const oldest = services.keys().next().value!
-      services.get(oldest)?.clear()
-      services.delete(oldest)
-    }
+    repositories.set(key, service)
+  }
+  cacheOwners.delete(service)
+  cacheOwners.set(service, { client, key })
+  while (cacheOwners.size > 8) {
+    const oldest = cacheOwners.keys().next().value!
+    const owner = cacheOwners.get(oldest)!
+    oldest.clear()
+    cacheOwners.delete(oldest)
+    const rows = services.get(owner.client)
+    rows?.delete(owner.key)
+    if (!rows?.size) services.delete(owner.client)
   }
   return service
 }

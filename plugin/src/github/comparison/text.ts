@@ -32,6 +32,8 @@ const tokens = (text: string): string[] => text.match(/[^\n]*\n|[^\n]+$/g) ?? []
 export function fullDiff(before: string, after: string): TextDiff {
   const a = tokens(before),
     b = tokens(after)
+  if (a.length + b.length > 100000)
+    throw new Error('This diff exceeds the line budget. Open each side separately.')
   const ids = new Map<string, string>()
   const encode = (lines: string[]) =>
     lines
@@ -41,7 +43,8 @@ export function fullDiff(before: string, after: string): TextDiff {
           // One UTF-16 unit per line keeps the diff's offsets identical to line indexes.
           if (ids.size >= 60000)
             throw new Error('Too many distinct lines to compare safely. Open each side separately.')
-          id = String.fromCharCode(ids.size + 1)
+          const code = ids.size + 1
+          id = String.fromCharCode(code >= 0xd800 ? code + 0x800 : code)
           ids.set(line, id)
         }
         return id
