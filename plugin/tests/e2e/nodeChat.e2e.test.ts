@@ -21,7 +21,13 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const PRELUDE = `const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async fn => { for (let i=0; i<200; i++) { if (fn()) return; await wait(50) } throw new Error('Node UI did not converge: ' + fn.toString()) };
 const chats = window.__abeleTest.ChatService.getInstance();
-const nodes = window.__abeleTest.NodeService.getInstance();`
+const nodes = window.__abeleTest.NodeService.getInstance();
+const nodeMenu = async title => {
+  document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+  await until(() => [...document.querySelectorAll('.menu-item')].some(item => item.querySelector('.menu-item-title')?.textContent.trim() === title));
+  [...document.querySelectorAll('.menu-item')].find(item => item.querySelector('.menu-item-title')?.textContent.trim() === title).click();
+  await wait(100);
+};`
 
 it('adds a node through settings, sends and answers a prompt, then restores offline outbox and history after reload', async () => {
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI for node live acceptance')
@@ -142,15 +148,14 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
       await until(() => document.querySelector('.suggestion-item'));
       [...document.querySelectorAll('.suggestion-item')].find(item => item.textContent.includes('Create new fake session')).click();
       await until(() => document.querySelector('.abele-node-chat'));
-      const permission = [...document.querySelectorAll('.abele-node-chat .setting-item')].find(row => row.querySelector('.setting-item-name')?.textContent === 'Ask for permission');
-      permission.querySelector('.checkbox-container').click();
+      await nodeMenu('Ask for permission');
       const field = document.querySelector('.abele-node-chat textarea');
       field.value = 'Sample permission question'; field.dispatchEvent(new Event('input',{bubbles:true}));
       field.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));
       await until(() => [...document.querySelectorAll('.abele-node-chat button')].some(b => b.textContent.trim() === 'Allow'));
       [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === 'Allow').click();
       await until(() => chats.getNodeSession(chats.activeTabId.value).messages.value.some(m => m.role === 'assistant' && m.content === 'Sample permission question'));
-      permission.querySelector('.checkbox-container').click();
+      await nodeMenu('Ask for permission');
       return JSON.stringify(node.id)
     })()`)
 
@@ -206,7 +211,7 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
         ${PRELUDE}
         const press = text => [...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === text).click();
         const fill = (label, value) => { const field = document.querySelector('input[aria-label="' + label + '"]'); field.value = value; field.dispatchEvent(new Event('input', {bubbles:true})) };
-        [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === 'Projects and workspaces').click();
+        await nodeMenu('Projects and workspaces');
         await until(() => document.querySelector('.abele-node-workspaces'));
         await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Refresh').disabled);
         const registration = [...document.querySelectorAll('.abele-node-workspaces details')].find(d => d.querySelector('summary')?.textContent === 'Register a project');
@@ -214,14 +219,14 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
         fill('Project path', ${JSON.stringify(projectPaths[i])});
         registration.querySelector('.checkbox-container').click();
         await wait(100); press('Register project');
-        await until(() => document.querySelector('select[aria-label="Project"] option:checked')?.textContent.includes(${JSON.stringify(projectPaths[i])}));
+        await until(() => document.querySelector('select[aria-label="Project"]')?.getAttribute('title')?.includes(${JSON.stringify(projectPaths[i])}));
         await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Create workspace').disabled);
         press('Create workspace');
-        await until(() => { const selected = document.querySelector('select[aria-label="Workspace"] option:checked')?.textContent; return selected?.includes('abele/') && selected.includes('ready') });
+        await until(() => { const selected = document.querySelector('select[aria-label="Workspace"] option:checked')?.textContent; return selected?.includes('abele/') && selected.includes('Ready') });
         await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Start session in workspace').disabled);
         fill('Node session title', 'Sample coding task ${i + 1}');
         await wait(100); press('Start session in workspace');
-        await until(() => !document.querySelector('.abele-node-workspaces') && document.querySelector('.abele-node-chat')?.textContent.includes('Claude Code'));
+        await until(() => !document.querySelector('.abele-node-workspaces') && document.querySelector('.abele-node-chat__title')?.getAttribute('title').includes('Claude Code'));
         const presenter = chats.getNodeSession(chats.activeTabId.value);
         const send = text => { const field = document.querySelector('.abele-node-chat textarea'); field.value = text; field.dispatchEvent(new Event('input', {bubbles:true})); field.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true})) };
         send(${JSON.stringify(i === 0 ? 'edit' : 'deny')});
@@ -242,7 +247,7 @@ it('adds a node through settings, sends and answers a prompt, then restores offl
         await until(() => [...document.querySelectorAll('.abele-node-chat button')].some(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')} && !b.disabled));
         [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')}).click();
         await until(() => presenter.messages.value.some(m => m.content === ${JSON.stringify(i === 0 ? '**Finished:** followup' : '**Finished:** deny')}));
-        [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === 'Projects and workspaces').click();
+        await nodeMenu('Projects and workspaces');
         await until(() => document.querySelector('.abele-node-workspaces'));
         await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Preview status and diff').disabled);
         [...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Preview status and diff').click();

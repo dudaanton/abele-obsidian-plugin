@@ -761,9 +761,9 @@ const probeScript = `(async () => {
         await wait(400)
         const nodeChat = document.querySelector('.abele-node-chat')
         await screen('node chat', nodeChat, nodeChat.querySelector('.abele-ai-chat__messages'))
-        const claude = { ...presenter, id: 'layout-claude-tab', provider: { value: 'claude' }, nativeSessionId: { value: 'sample-native-session' }, workspaceId: { value: 'sample-workspace' },
+        const claude = { ...presenter, id: 'layout-claude-tab', queued: { value: [] }, provider: { value: 'claude' }, nativeSessionId: { value: 'sample-native-session' }, workspaceId: { value: 'sample-workspace' },
           messages: { value: [{ id: 'assistant', role: 'assistant', content: '**Completed:** a sample edit.\\n\\n- One changed path', thinking: 'Sample exposed reasoning.', timestamp: 0 }, { id: 'tool', role: 'tool-call', content: '', toolName: 'Edit', toolParams: { file_path: 'src/sample-file.txt', old_string: 'before', new_string: 'after' }, toolResult: 'Edited sample file', toolStatus: 'approved', toolDiff: { old: 'before', new: 'after' }, timestamp: 0 }] },
-          projection: { value: { activeRuns: ['sample-run'], queuedInputs: [{ id: 'followup', text: 'Sample queued follow-up' }], artifacts: [], unknown: [], children: { tool: [{ id: 'child', role: 'assistant', content: 'Sample nested work', timestamp: 0 }] }, prompts: [{ prompt_id: 'sample-permission', state: 'pending', tool_name: 'Bash', input: { command: 'printf sample > sample-new-file.txt', description: 'Write a disposable sample file' }, expires_at: 1999999999999, choice: null }] } }, interrupt: async () => {}, cancelInput: async () => {} }
+          projection: { value: { activeRuns: ['sample-run'], queuedInputs: [{ id: 'followup', text: 'Sample queued follow-up' }], artifacts: [], unknown: [], children: { tool: [{ id: 'child', role: 'assistant', content: 'Sample nested work', timestamp: 0 }] }, prompts: [{ prompt_id: 'sample-permission', state: 'pending', tool_name: 'Bash', input: { command: 'printf sample > sample-new-file.txt', description: 'Write a disposable sample file' }, expires_at: Date.now() + 300000, choice: null }] } }, interrupt: async () => {}, cancelInput: async () => {} }
         chats.nodeSessions.set(claude.id, claude)
         chats.tabOrder.value = [...chats.tabOrder.value, claude.id]
         chats.activeTabId.value = claude.id
@@ -774,6 +774,17 @@ const probeScript = `(async () => {
         transcriptScroll.scrollTop = transcriptScroll.scrollHeight
         await wait(200)
         await screen('node claude permission', claudeChat, transcriptScroll)
+        const approval = claudeChat.querySelector('.abele-node-permission')
+        const approveButton = [...approval.querySelectorAll('button')].find(b => b.textContent.trim() === 'Approve')
+        const denyButton = [...approval.querySelectorAll('button')].find(b => b.textContent.trim() === 'Deny')
+        report['node claude permission'].actionRows = Math.abs(approveButton.getBoundingClientRect().top - denyButton.getBoundingClientRect().top) < 2 ? 1 : 2
+        report['node claude permission'].accent = approveButton.classList.contains('mod-cta')
+        report['node claude permission'].queueCopies = (claudeChat.textContent.match(/Sample queued follow-up/g) || []).length
+        report['node claude chat'].headerHeight = claudeChat.querySelector('.abele-ai-chat__header').getBoundingClientRect().height
+        for (const field of claudeChat.querySelectorAll('button, textarea, [tabindex="0"]')) {
+          if (!field.getBoundingClientRect().width) continue
+          field.focus(); report['node claude permission'].clipped.push(...ringClipped(field)); field.blur()
+        }
         const fence = String.fromCharCode(96).repeat(3)
         const codeReply = { ...claude, id: 'layout-node-code-tab', state: { value: 'idle' }, messages: { value: [{ id: 'reply', role: 'assistant', timestamp: 0, content: [fence + 'abele-message', 'chat: AI/Chats/sample.abchat', 'message: sample', '---', '![[sample-local-note.md]]', '[[sample-local-note]]', fence].join('\\n') }] }, projection: { value: { artifacts: [], unknown: [], children: {}, activeRuns: [], queuedInputs: [], prompts: [] } } }
         chats.nodeSessions.set(codeReply.id, codeReply)
@@ -1681,6 +1692,16 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(report[label]?.clipped).toEqual([])
     }
   )
+  it('node session chrome leaves space for messages and keeps one compact approval and queue row', () => {
+    const header = report['node claude chat'] as Screen & { headerHeight: number }
+    const permission = report['node claude permission'] as Screen & { actionRows: number; accent: boolean; queueCopies: number }
+    expect(header.headerHeight).toBeLessThan(60)
+    expect(permission.actionRows).toBe(1)
+    expect(permission.accent).toBe(true)
+    expect(permission.queueCopies).toBe(1)
+    expect(permission.clipped).toEqual([])
+  })
+
   it('node message blocks remain plain code on a phone rather than vault-backed cards', () => {
     const code = report['node message code'] as Screen & { cards?: number; code?: string }
     expect(code?.cards).toBe(0)
