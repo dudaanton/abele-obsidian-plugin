@@ -55,7 +55,7 @@ it('retains the snapshot of an existing selection when another snapshot is publi
       .findAll('button')
       .find((b) => b.text() === 'Add to review')!
       .trigger('click')
-    await flushPromises()
+    await vi.waitFor(() => expect(props.model.comments.value).toHaveLength(2))
     expect(props.model.comments.value.at(-1)?.diff_id).toBe(selectedId)
   } finally {
     wrapper.unmount()
@@ -175,7 +175,9 @@ it('keeps the editor text when the protocol rejects comment admission', async ()
       .findAll('button')
       .find((b) => b.text() === 'Add to review')!
       .trigger('click')
-    await flushPromises()
+    // One flushPromises turn does not await the native WebCrypto digest in addComment.
+    // The alert proves admission finished before checking that the draft survived.
+    await vi.waitFor(() => expect(wrapper.find('[role="alert"]').exists()).toBe(true))
     expect(props.model.comments.value).toHaveLength(1)
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe(text)
     expect(wrapper.find('[role="alert"]').text()).toContain('node limits')
