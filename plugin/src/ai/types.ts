@@ -1,6 +1,11 @@
 import { DEFAULT_REQUEST_TIMEOUT_SECONDS } from './requestTimeout'
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
 import type { ReplyHighlight, ReplyProposal, ReplyRevision } from './replyAnnotations'
+import type {
+  ChatSelectionData,
+  ChatDecorationOperation,
+  ChatBindingRecovery,
+} from './chatAnchorStore'
 import type { TFile } from 'obsidian'
 import type { DraftImports } from './draftImports'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
@@ -626,6 +631,10 @@ export interface ChatMessage {
   /** Owner annotations and accepted versions travel with this message record. */
   highlights?: ReplyHighlight[]
   revisions?: ReplyRevision[]
+  /** Durable selections, separate from semantic edits and model history. */
+  selection?: ChatSelectionData
+  /** Reserved decoration evidence; anchor creation never populates it. */
+  decorationOperations?: ChatDecorationOperation[]
   /** A side agent's proposal; never applied by the tool itself. */
   replyProposal?: ReplyProposal
 }
@@ -666,6 +675,10 @@ export interface MessageComment {
 
 export interface ChatMetadata {
   type: 'abele-chat'
+  /** Lazily allocated durable selection identity; never the rewind key or a path. */
+  chatId?: string
+  /** Reserved binding recovery contract; kept through saves and compaction, never replayed here. */
+  bindingRecovery?: ChatBindingRecovery[]
   /** Unsent messages; attachments are vault paths, just like ordinary chat bubbles. */
   queuedMessages?: QueuedMessage[]
   /** Which agent the chat runs on. Absent in chats saved before agents existed. */

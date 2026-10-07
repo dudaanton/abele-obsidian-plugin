@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid'
 import type { HighlightColor } from '@/reader/highlights'
 import { EMPTY_USAGE, type AssistantContentBlock, type Message } from './client'
 import type { ChatMessage } from './types'
@@ -18,6 +19,9 @@ export interface ReplyRevision {
   at: number
   highlights: ReplyHighlight[]
   undoneAt?: number
+  /** Version identity proof for undo, not equality of the before/after strings. */
+  beforeRevisionId?: string
+  afterRevisionId?: string
 }
 
 /** A proposal is not permission to change a reply. Only owner acceptance applies it. */
@@ -72,9 +76,14 @@ export function acceptRevision(
     message.content.slice(0, proposal.from) +
     proposal.text +
     message.content.slice(proposal.from + proposal.old.length)
+  const beforeRevisionId = message.selection?.revisionId
+  const afterRevisionId = beforeRevisionId ? nanoid() : undefined
   return {
     ...message,
     content: after,
+    selection: message.selection
+      ? { ...message.selection, revisionId: afterRevisionId! }
+      : undefined,
     // Rendered offsets may move. Keep annotations on the old version, never move them to
     // another occurrence by guessing. Undo restores them with that version.
     highlights: [],
@@ -87,6 +96,8 @@ export function acceptRevision(
         author: proposal.author,
         at,
         highlights: message.highlights ?? [],
+        beforeRevisionId,
+        afterRevisionId,
       },
     ],
   }
@@ -99,7 +110,19 @@ export function undoRevision(message: ChatMessage, at: number): ChatMessage {
   if (!revision || revision.after !== message.content)
     throw new Error('This revision can no longer be undone.')
   revisions[index] = { ...revision, undoneAt: at }
-  return { ...message, content: revision.before, highlights: revision.highlights, revisions }
+  return {
+    ...message,
+    content: revision.before,
+    highlights: revision.highlights,
+    revisions,
+    selection: message.selection
+      ? {
+          ...message.selection,
+          // An older writer may have dropped the proof. Equal bytes are not an undo identity.
+          revisionId: revision.beforeRevisionId ?? nanoid(),
+        }
+      : undefined,
+  }
 }
 
 /** Corrections have no provider model: they are projected annotations, not new model turns.
