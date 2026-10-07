@@ -279,6 +279,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * test's — has no vault to watch.
    */
   private rewindLog: ChatRewind | null = null
+  /** Local publications/settings and writes, including edits that never call markDirty. */
+  private localRevision = 0
   private dirty = false
   private writing: Promise<void> | null = null
   private persistTimer: number | null = null
@@ -550,6 +552,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.anchor.value = options.anchor ?? null
     this.effects = effectScope(true)
     this.effects.run(() => {
+      watch(
+        [
+          this.chatTitle,
+          this.agentId,
+          this.overrides,
+          this.kindRef,
+          this.anchor,
+          this.touched,
+          this.messageComments,
+          this.queuedMessages,
+          this.pendingToolCalls,
+          this.recap,
+          this.summary,
+          this.customSystemPrompt,
+          this.customSystemPromptNotePath,
+          () => this.interceptor.override.value,
+        ],
+        () => {
+          this.localRevision++
+        },
+        { deep: true, flush: 'sync' }
+      )
       this.watchScope()
       this.watchCompaction()
       this.watchAnchoredNote()
@@ -842,7 +866,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.appendChatMessage(divider)
     this.updateVisibleMessages()
 
-    this.allInternalMessages.push({
+    this.rememberInternal({
       role: 'system',
       content: `${ChatSummarizer.COMPACT_MARKER}\n\n${summary}`,
       timestamp: Date.now(),
@@ -850,7 +874,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     })
     // Keep the unfinished exchange verbatim after the marker. Link these copies to the
     // divider, so rewinding before it sees the original exchange once, not twice.
-    this.allInternalMessages.push(
+    this.rememberInternal(
       ...retained
         // Corrections are re-projected from the reviewed reply. Copying them under the
         // divider's id would hide their source id and make the next projection duplicate them.
@@ -1321,12 +1345,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   // ── Tree helpers ─────────────────────────────────────────────────
 
   private appendChatMessage(msg: ChatMessage): void {
+    this.localRevision++
     msg.parentId = this.activeLeafId || undefined
     this.allChatMessages.push(msg)
     this.activeLeafId = msg.id
   }
 
+  private rememberInternal(...messages: Message[]): void {
+    this.localRevision++
+    this.allInternalMessages.push(...messages)
+  }
+
   updateVisibleMessages(): void {
+    this.localRevision++
     if (!this.activeLeafId) {
       this.messages.value = []
     } else {
@@ -1504,7 +1535,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       const checkpoint = (messages: Message[]) => {
         const added = messages.slice(committed)
         this.linkInternalMessages(added)
-        this.allInternalMessages.push(...added)
+        this.rememberInternal(...added)
         committed = messages.length
       }
       const systemPrompt = await this.chatService.getSystemPrompt(this)
@@ -1739,7 +1770,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
         (m) => ({ ...m, toolResult: errText, toolStatus: 'rejected' as const })
       )
-      this.allInternalMessages.push({
+      this.rememberInternal({
         role: 'toolResult',
         toolCallId: tc.id,
         toolName: tc.name,
@@ -1788,7 +1819,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       }
     )
 
-    this.allInternalMessages.push({
+    this.rememberInternal({
       role: 'toolResult',
       toolCallId: tc.id,
       toolName: tc.name,
@@ -1804,7 +1835,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       for (const injected of toolResult.injectMessages) {
         injected.chatMessageId = toolChatMsg?.id
       }
-      this.allInternalMessages.push(...toolResult.injectMessages)
+      this.rememberInternal(...toolResult.injectMessages)
     }
 
     this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
@@ -1833,7 +1864,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const text = content.trim()
     if (!text) return false
 
-    this.allInternalMessages.push(await this.userMessage(text, undefined, false))
+    this.rememberInternal(await this.userMessage(text, undefined, false))
     await this.save()
     return true
   }
@@ -1865,7 +1896,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.wroteThisTurn = false
     this.turnPolicy.clear()
 
-    this.allInternalMessages.push(await this.userMessage(content, attachments))
+    this.rememberInternal(await this.userMessage(content, attachments))
 
     try {
       await this.runAgentLoop()
@@ -2150,7 +2181,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       (m) => ({ ...m, toolResult: reasonText, toolStatus: 'rejected' as const })
     )
 
-    this.allInternalMessages.push({
+    this.rememberInternal({
       role: 'toolResult',
       toolCallId: tc.id,
       toolName: tc.name,
@@ -2246,7 +2277,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.appendChatMessage(chatMsg)
     this.updateVisibleMessages()
 
-    this.allInternalMessages.push({
+    this.rememberInternal({
       role: 'system',
       content: `[Skill: ${skillName}]\n\n${content}`,
       timestamp: Date.now(),
@@ -2627,6 +2658,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     snapshot: ChatSnapshot,
     check?: () => void
   ): Promise<void> {
+    this.localRevision++
     const written = serializeChat(snapshot)
     const { app } = GlobalStore.getInstance()
     let attempted = false
@@ -2649,6 +2681,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         }
       }
       throw err
+    } finally {
+      this.localRevision++
     }
     this.log.adopt(parseChat(written))
   }
@@ -2745,6 +2779,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * coalesced over a short window and then append only what changed.
    */
   markDirty(): void {
+    this.localRevision++
     if (this.kind === 'run') {
       this.onPersist?.()
       return
@@ -2861,6 +2896,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   private async writeNow(): Promise<void> {
+    this.localRevision++
     // Nothing to write and nowhere to write it: a tab nobody has typed into yet. Once a file
     // exists — a comment's, written before its first turn — a meta change is worth a save.
     if (
@@ -2882,6 +2918,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (!file) return
 
     this.log.commit(snapshot, plan)
+    this.localRevision++
     this.currentChatFile.value = file
     // The first moment a new chat has a path to key its index entry on.
     this.mirrorNoteLinks()
@@ -2970,6 +3007,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (!file) throw new Error('The selection source is no longer open.')
     while (this.writing) await this.writing
     if (!isCurrent()) return
+    const localRevision = this.localRevision
     const result = await ChatStorage.getInstance().loadChat(file)
     if (!isCurrent()) return
     if (
@@ -2978,6 +3016,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.conversationVersion.value !== version
     )
       throw new Error('The selection source changed. Open the link again.')
+    if (this.localRevision !== localRevision)
+      throw new Error('This chat changed while returning. Open the link again.')
     if (this.log.matches(result)) return
     if (this.dirty || this.writing || this.isBusy || this.isMidTurn || this.moving.value)
       throw new Error(
@@ -3231,7 +3271,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       find: (id) => this.findMessage(id),
       save: () => this.save(),
       modelMessage: (bubble) => this.modelMessage(bubble),
-      remember: (...messages) => void this.allInternalMessages.push(...messages),
+      remember: (...messages) => this.rememberInternal(...messages),
       countUserMessage: () => void this.userMessageCount++,
       runTurnFor: (bubble, policy) => this.runTurnFor(bubble, policy),
       drainQueue: () => this.drainQueue(),
@@ -3314,7 +3354,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.wroteThisTurn = false
     this.turnPolicy.set(policy)
 
-    this.allInternalMessages.push(await this.modelMessage(bubble))
+    this.rememberInternal(await this.modelMessage(bubble))
 
     try {
       await this.runAgentLoop()

@@ -258,7 +258,9 @@ different conversation at the old path. Returning also checks the saved file whe
 already open, so selections and edits arriving from another device are not resolved against an
 old on-screen copy. A newer return takes priority over an earlier link still loading. Your draft
 is kept; if a changed file conflicts with local work still in progress, a notice explains why
-return cannot safely refresh the conversation yet.
+return cannot safely refresh the conversation yet. If you edit the chat or change its settings
+while return is loading, that older snapshot is not applied: open the link again to return from
+the updated conversation.
 
 After a reply is edited, a selection that has no verified placement in the new version opens
 **Saved selection**: the retained earlier version, read-only, with the selected words. If an

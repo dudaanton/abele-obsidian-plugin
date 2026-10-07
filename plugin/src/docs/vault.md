@@ -686,11 +686,16 @@ not a full source copy for each anchor. Do not edit these records by hand.
 Each ID is percent-encoded independently; the path is a navigation hint only. Returning rebuilds
 an identity-to-path index across all `.abchat` files, including unopened/nested discussions,
 validates identity even at an existing path, and asks for an explicit choice between copies.
-The index is transient, not another persisted store. Index reads use the same backup recovery
-path as loading, so a recoverable torn file retains its identity and still counts as a copy.
+The index is transient, not another persisted store. Discovery and path validation are read-only:
+a whole main file wins; a torn file may use a whole safety copy matching its path and recovery
+record-count rules. Neither the file nor the safety copy is repaired or removed by discovery,
+so an active writer cannot lose its crash protection. Recovery belongs to normal serialized opening.
+A recoverable torn file retains its identity and still counts as a duplicate.
 Already-open sessions reconcile changed files before resolving the anchor, preserving their draft
 and containing branch without flushing stale records. A conflict with pending local work is
-reported instead of replacing it or exposing a cached current placement. Return generations are
+reported instead of replacing it or exposing a cached current placement. Reconciliation captures
+a local revision counter before reading; any local publication, setting change or write during
+that read invalidates the return instead of applying the older snapshot. Return generations are
 checked before tab activation as well as before publication. Repeated quotes are never matched
 by proximity.
 

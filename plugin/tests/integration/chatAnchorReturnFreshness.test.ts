@@ -160,6 +160,70 @@ describe('returning through an already-open chat after an external write', () =>
   })
 })
 
+describe('local changes while a return snapshot is being read', () => {
+  it('does not restore the old reply after a local edit finishes its write during the read', async () => {
+    await service.openChatFile(file())
+    const session = service.getSessionByFile(PATH)!
+    const started = deferred(),
+      release = deferred()
+    const storage = ChatStorage.getInstance(),
+      load = storage.loadChat.bind(storage)
+    vi.spyOn(storage, 'loadChat').mockImplementationOnce(async (file) => {
+      const result = await load(file)
+      started.resolve()
+      await release.promise
+      return result
+    })
+    const returning = session.reconcileForSelectionReturn().then(
+      () => 'ready',
+      (error: Error) => error.message
+    )
+    await started.promise
+    try {
+      await session.changeReply('reply', (message) => ({
+        ...message,
+        content: 'A locally revised answer.',
+        selection: { ...message.selection!, revisionId: 'local-edit' },
+      }))
+    } finally {
+      release.resolve()
+    }
+    const outcome = await returning
+    expect(session.messages.value[0].content).toBe('A locally revised answer.')
+    expect(outcome).toContain('changed while returning')
+    expect((await load(file())).messages[0].content).toBe('A locally revised answer.')
+    await session.reconcileForSelectionReturn()
+    expect(session.messages.value[0].content).toBe('A locally revised answer.')
+  })
+  it('keeps an unsaved local setting changed during a read of an external snapshot', async () => {
+    await service.openChatFile(file())
+    const session = service.getSessionByFile(PATH)!
+    const data = snapshot()
+    data.messages[0].content = 'A remote revision.'
+    await app.vault.modify(file(), serializeChat(data))
+    const started = deferred(),
+      release = deferred()
+    const storage = ChatStorage.getInstance(),
+      load = storage.loadChat.bind(storage)
+    vi.spyOn(storage, 'loadChat').mockImplementationOnce(async (file) => {
+      const result = await load(file)
+      started.resolve()
+      await release.promise
+      return result
+    })
+    const returning = session.reconcileForSelectionReturn().then(
+      () => 'ready',
+      (error: Error) => error.message
+    )
+    await started.promise
+    session.customSystemPrompt.value = 'Unsaved local instructions.'
+    release.resolve()
+    const outcome = await returning
+    expect(session.customSystemPrompt.value).toBe('Unsaved local instructions.')
+    expect(outcome).toContain('changed while returning')
+  })
+})
+
 describe('last selection return request wins before tab activation', () => {
   it.each(['chat', 'comment'] as const)(
     'does not activate a slow earlier %s after a newer return is shown',
