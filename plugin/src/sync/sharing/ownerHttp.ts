@@ -403,6 +403,32 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
       revision: body.expected_revision + 1,
     }
   }
+  async invitation(
+    session: OwnerSession,
+    grant: GroupGrant,
+    role: 'reader' | 'editor'
+  ): Promise<string> {
+    const body = z
+      .object({ role: z.enum(['reader', 'editor']), expires_at: z.string().datetime() })
+      .strict()
+      .parse({ role, expires_at: new Date(this.now() + 3600000).toISOString() })
+    const response = z
+      .object({ invitation_token: z.string().regex(/^absinv_[A-Za-z0-9_-]{43}$/) })
+      .passthrough()
+      .parse(
+        await this.http.json(
+          'POST',
+          '/v1/vaults/' +
+            segment(this.options.vaultId) +
+            '/grants/groups/' +
+            segment(grant.id) +
+            '/invitations',
+          this.ownerToken(session),
+          body
+        )
+      )
+    return response.invitation_token
+  }
   close() {
     this.sessions = new WeakMap()
   }

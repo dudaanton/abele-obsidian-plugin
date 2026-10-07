@@ -12,6 +12,7 @@ export const serverTestFixtures = {
     'syncConnectionSaves',
     'syncDevices',
     'scopedPublicationPush',
+    'productionSharingBuild',
   ].map((name) => `tests/integration/${name}.test.ts`),
   ABELE_SCOPED_API_FIXTURE: [
     'tests/integration/ownerHttpApi.test.ts',

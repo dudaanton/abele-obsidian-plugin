@@ -1,5 +1,5 @@
 import { Notice, Platform, type App } from 'obsidian'
-import { ref, type Ref } from 'vue'
+import { ref, shallowRef, type Ref } from 'vue'
 import type { DeleteDecision, HeldDelete, StateEntry, VaultClient } from '@abele/sync-core'
 import type { ChangeItem, DeviceInfo, JoinPrefer, VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
@@ -19,6 +19,7 @@ import { pendingTeardown, recordTeardown } from './teardownBarrier'
 import { wireParts, type ServiceParts } from './serviceParts'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
+import type { PluginSharing } from './pluginSharing'
 
 export { isWireConfigDir } from './scope'
 export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
@@ -66,6 +67,8 @@ export type { SyncServiceDeps } from './environment'
  */
 
 export class SyncService {
+  /** The plugin installs these trusted host adapters; test API activation is not required. */
+  readonly sharing = shallowRef<PluginSharing | null>(null)
   private static instance: SyncService | null = null
 
   static getInstance(): SyncService {
@@ -179,7 +182,7 @@ export class SyncService {
       // Whatever instance a plugin reload left stopping goes first.
       await pending
       this.settingsPrompt.restoreAppliedWaiting()
-      await this.runner.reconcile()
+      if (!this.sharing.value?.scope.value) await this.runner.reconcile()
     }).catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : String(error)
       const message = `the previous sync could not be stopped (${reason}); restart Obsidian before syncing again`
@@ -229,7 +232,15 @@ export class SyncService {
     if (SyncService.instance === this) SyncService.instance = null
     this.unhookSettings?.()
     this.unhookSettings = null
-    const stopping = this.queue.run(() => this.runner.teardown())
+    const sharing = this.sharing.value
+    this.sharing.value = null
+    // Closing synchronously revokes both host lifetimes before a successor can start;
+    // the barrier also awaits scoped in-flight work and independent metadata teardown.
+    const sharedClosing = sharing?.close() ?? Promise.resolve()
+    const stopping = this.queue.run(async () => {
+      await sharedClosing
+      await this.runner.teardown()
+    })
     if (this.app !== null) recordTeardown(this.app, Promise.all([this.previousTeardown, stopping]))
     await stopping
     this.board.clearListeners()
@@ -242,7 +253,7 @@ export class SyncService {
 
   /** Whether an engine is running at all — that is, whether this device is set up. */
   isConnected(): boolean {
-    return this.runner.isRunning()
+    return this.runner.isRunning() || (this.sharing.value?.scoped.active ?? false)
   }
 
   /**
@@ -303,6 +314,7 @@ export class SyncService {
    * the engine it builds is the sync that was asked for.
    */
   syncNow(): Promise<void> {
+    if (this.sharing.value?.scope.value) return this.sharing.value.scoped.sync()
     return this.runner.syncNow()
   }
 
@@ -376,11 +388,13 @@ export class SyncService {
    * reconcile runs after that build and puts the engine where the tab says it is.
    */
   pause(): void {
+    if (this.sharing.value?.scope.value) { this.sharing.value.scoped.setPaused(true); return }
     this.setPaused(true)
   }
 
   /** Sync again, and forget a token failure so the triggers are taken back. */
   resume(): void {
+    if (this.sharing.value?.scope.value) { this.sharing.value.scoped.setPaused(false); return }
     this.setPaused(false)
   }
 
@@ -505,7 +519,13 @@ export class SyncService {
    * to land inside the window.
    */
   onSettingsSaved(): void {
+    if (this.sharing.value?.scope.value) return
     void this.serialise(() => this.runner.reconcile())
+  }
+
+  /** Status-only callback from the installed scoped host; it never supplies authority. */
+  scopedStatus(state: 'idle' | 'syncing' | 'paused' | 'error', lastError: string | null = null): void {
+    this.board.publish({ ...DISCONNECTED_STATUS, state, lastError })
   }
 
   /* -- Wiring ----------------------------------------------------------- */

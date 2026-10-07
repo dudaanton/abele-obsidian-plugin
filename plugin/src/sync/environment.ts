@@ -16,7 +16,8 @@ import { desktopTransport } from './desktopTransport'
  * no two tests share a database.
  */
 export interface SyncServiceDeps {
-  /** Trusted host injection for disabled owner publication integration/native fixture. No setting/env override. */
+  /** Trusted production host factory (the plugin installs it), with isolated stand replacements
+   * permitted through this port. No setting, test hook or environment value establishes authority. */
   ownerPublication?: (context: {
     app: App
     state: StateStore

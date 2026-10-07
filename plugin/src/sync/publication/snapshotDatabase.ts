@@ -18,7 +18,7 @@ export interface SnapshotResources {
   writeSentinel(): Promise<void>
 }
 const HEADER = 'link-snapshot-identity-v1'
-/** No production call site until the disabled publication fence's prerequisite gates pass. */
+/** The production host opens this independent store with a vault-local recovery sentinel. */
 export async function openLinkSnapshots(
   factory: IDBFactory,
   resources: SnapshotResources,
@@ -28,6 +28,8 @@ export async function openLinkSnapshots(
   snapshots: LinkSnapshotStore
   decisions: PublicationDecisionStore
   databaseName: string
+  meta: IndexedDbStateStore
+  fresh: boolean
   close: () => void
 }> {
   const old = resources.loadDescriptor()
@@ -68,6 +70,8 @@ export async function openLinkSnapshots(
       snapshots: new LinkSnapshotStore(meta, binding, attest),
       decisions: new PublicationDecisionStore(meta),
       databaseName,
+      meta,
+      fresh,
       close: () => meta.close(),
     }
   } catch (error) {

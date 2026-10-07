@@ -1,0 +1,279 @@
+import { beforeAll, afterAll, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import { resolve, join } from 'node:path'
+import { productionPluginCode, bootProductionPlugin } from '../helpers/productionPlugin'
+import { spawnCollaborationStandServer } from '../e2e/helpers/collaborationStandHarness'
+import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
+import { readFileSync } from 'node:fs'
+
+let code: string
+let native: Awaited<ReturnType<typeof bootProductionPlugin>>
+let server: Awaited<ReturnType<typeof spawnCollaborationStandServer>>
+let work: string
+let peer: Awaited<ReturnType<typeof bootProductionPlugin>>
+let group: any
+let groupFlow: any
+let groupReview: any
+const password = 'invented-owner-password'
+const email = 'sample-production-owner@example.com'
+beforeAll(async () => {
+  const root = verifySyncFixture(process.env.ABELE_SYNC_DIR)
+  const commit = JSON.parse(readFileSync('vendor/sync/provenance.json', 'utf8')).commit
+  const scratch = resolve('../.scratch/production-sharing')
+  mkdirSync(scratch, { recursive: true })
+  work = mkdtempSync(join(scratch, 'run-'))
+  server = await spawnCollaborationStandServer(root, commit, work)
+  server.createAccount(email, password)
+  code = await productionPluginCode()
+  native = await bootProductionPlugin(code)
+}, 120000)
+afterAll(async () => {
+  try {
+    await native?.close()
+  } finally {
+    await peer?.close()
+    await server?.stop()
+    if (work) await rm(work, { recursive: true, force: true })
+  }
+})
+
+it('installs sharing from the production plugin rather than a test API', async () => {
+  expect(code).not.toContain('__abeleTest')
+  expect((window as any).__abeleTest).toBeUndefined()
+  expect(native.plugin.syncSharing).toBeDefined()
+  expect(typeof native.plugin.syncSharing.ownerFolder).toBe('function')
+  expect(typeof native.plugin.syncSharing.ownerGroup).toBe('function')
+  expect(typeof native.plugin.syncSharing.invitation).toBe('function')
+  expect(typeof native.plugin.syncSharing.createScoped).toBe('function')
+})
+
+it('shares a folder and a prepared group through the production owner ports', async () => {
+  const host = native.plugin.syncSharing
+  await host.sync.connect(server.url, email, password)
+  await host.sync.chooseVault({ create: 'Sample production vault' }, 'Sample owner')
+  await native.app.vault.createFolder('Folder share')
+  await native.app.vault.createFolder('Notes')
+  await native.app.vault.createFolder('Elsewhere')
+  await native.app.vault.createFolder('Assets')
+  await native.app.vault.create('Folder share/example.md', 'Sample folder note')
+  await native.app.vault.create('Notes/Project.md', 'Sample root')
+  // The root must exist on the server before a new groups token is introduced.
+  await host.sync.syncNow()
+  await native.app.vault.create(
+    'Elsewhere/member.md',
+    '---\ngroups: ["[[Notes/Project]]"]\n---\nSample shared note\n'
+  )
+  await native.app.vault.createBinary('Assets/private.png', new Uint8Array([21, 22, 23]).buffer)
+  await host.sync.syncNow()
+  const folder = host.ownerFolder()
+  await folder.review('Folder share/', 'reader', 'Sample folder audience')
+  const credential = await folder.confirm(password, email)
+  expect(credential.token).toMatch(/^absk_/)
+  groupFlow = host.ownerGroup()
+  groupReview = await groupFlow.review('Notes/Project.md', 'editor', 'Sample project audience')
+  for (let page = 0; page < 100; page++) {
+    group = await groupFlow.confirm(groupReview, password, email)
+    if (group.state === 'active') break
+  }
+  expect(group.state).toBe('active')
+  expect(host.audiences.value).toContain(group.id)
+}, 30000)
+
+it('joins a collaborator with the production scoped host and no personal credential fallback', async () => {
+  const collaborator = 'sample-production-collaborator@example.com'
+  server.createAccount(collaborator, password)
+  const invitation = await groupFlow.invitation('editor')
+  peer = await bootProductionPlugin(code)
+  const host = peer.plugin.syncSharing
+  const flow = host.invitation(server.url)
+  await flow.begin({
+    issuer: server.url,
+    token: invitation,
+    email: collaborator,
+    name: 'Sample scoped collaborator',
+    role: 'editor',
+    platform: 'desktop',
+  })
+  const joined = await flow.resume(password)
+  expect(joined.phase).toBe('joined')
+  expect(host.scope.value).toMatchObject({
+    facet: 'scoped',
+    principalKind: 'installation',
+    scriptPolicy: 'refuse',
+  })
+  expect(await peer.app.vault.adapter.read('Elsewhere/member.md')).toContain('Sample shared note')
+  expect(await peer.app.vault.adapter.exists('Assets/private.png')).toBe(false)
+  expect(host.sync.connection.value.deviceTokenId).toBe('')
+}, 30000)
+
+it('creates a reviewed scoped note through the production scoped creation ports', async () => {
+  const host = peer.plugin.syncSharing
+  const flow = await host.createScoped()
+  const review = await flow.review({
+    kind: 'note',
+    path: 'Elsewhere/new-scoped.md',
+    text: 'Sample collaborator-created note',
+    rootId: group.rootId,
+  })
+  await expect
+    .poll(
+      async () => {
+        try {
+          await flow.confirm(review)
+          return true
+        } catch (error) {
+          if ((error as { code?: string }).code === 'scope_updating') return false
+          throw error
+        }
+      },
+      { timeout: 10000 }
+    )
+    .toBe(true)
+  await host.scoped.sync()
+  await native.plugin.syncSharing.sync.syncNow()
+  expect(await peer.app.vault.adapter.read('Elsewhere/new-scoped.md')).toContain(
+    'Sample collaborator-created note'
+  )
+  expect(await native.app.vault.adapter.read('Elsewhere/new-scoped.md')).toContain(
+    'Sample collaborator-created note'
+  )
+}, 30000)
+
+it('creates a scoped image with its own upload proof and an exact intrinsic sponsor', async () => {
+  const host = peer.plugin.syncSharing
+  const flow = await host.createScoped()
+  const selected = flow.sponsors.find(
+    (candidate: { fileId: string }) => candidate.fileId === group.rootId
+  )
+  expect(selected).toBeDefined()
+  const { label: _label, ...sponsor } = selected
+  const review = await flow.review({
+    kind: 'asset',
+    path: 'Assets/scoped-new.png',
+    bytes: new Uint8Array([7, 8, 9]),
+    sponsor,
+  })
+  await expect
+    .poll(
+      async () => {
+        try {
+          await flow.confirm(review)
+          return true
+        } catch (error) {
+          if ((error as { code?: string }).code === 'scope_updating') return false
+          throw error
+        }
+      },
+      { timeout: 10000 }
+    )
+    .toBe(true)
+  await expect
+    .poll(
+      async () => {
+        try {
+          await host.scoped.sync()
+          return true
+        } catch (error) {
+          if ((error as { code?: string }).code === 'scope_updating') return false
+          throw error
+        }
+      },
+      { timeout: 10000 }
+    )
+    .toBe(true)
+  await native.plugin.syncSharing.sync.syncNow()
+  expect([
+    ...new Uint8Array(await peer.app.vault.adapter.readBinary('Assets/scoped-new.png')),
+  ]).toEqual([7, 8, 9])
+  expect(await peer.app.vault.adapter.read('Notes/Project.md')).toContain('scoped-new.png')
+}, 30000)
+
+it('publishes an existing private target only after the production confirmation dialog accepts', async () => {
+  const host = native.plugin.syncSharing
+  const file = native.app.vault.getAbstractFileByPath('Elsewhere/member.md')
+  await native.metadata(file)
+  await host.sync.syncNow()
+  expect(host.publicationPrompt.asking.value).toBeNull()
+  await native.app.vault.modify(
+    file,
+    (await native.app.vault.read(file)) + '\n![[Assets/private.png]]\n'
+  )
+  await host.sync.syncNow()
+  await expect
+    .poll(
+      async () => {
+        await host.sync.syncNow()
+        return document.querySelector('.abele-publication-confirm')?.textContent ?? ''
+      },
+      { timeout: 10000 }
+    )
+    .toContain('Assets/private.png')
+  await peer.plugin.syncSharing.scoped.sync()
+  expect(await peer.app.vault.adapter.exists('Assets/private.png')).toBe(false)
+  const button = [
+    ...document.querySelectorAll<HTMLButtonElement>('.abele-publication-confirm button'),
+  ].find((element) => element.textContent?.trim() === 'Publish')!
+  expect(button).toBeDefined()
+  button.click()
+  await expect.poll(() => host.publicationPrompt.asking.value, { timeout: 10000 }).toBeNull()
+  await peer.plugin.syncSharing.scoped.sync()
+  expect([
+    ...new Uint8Array(await peer.app.vault.adapter.readBinary('Assets/private.png')),
+  ]).toEqual([21, 22, 23])
+  expect((window as any).__abeleTest).toBeUndefined()
+}, 30000)
+
+it('does not publish a recipient-planted private link when the owner resaves it', async () => {
+  const host = native.plugin.syncSharing
+  await native.app.vault.createBinary(
+    'Assets/planted-private.png',
+    new Uint8Array([31, 32, 33]).buffer
+  )
+  await host.sync.syncNow()
+  const remote = peer.app.vault.getAbstractFileByPath('Elsewhere/member.md')
+  await peer.app.vault.modify(
+    remote,
+    (await peer.app.vault.read(remote)) + '\n![[Assets/planted-private.png]]\n'
+  )
+  await expect
+    .poll(
+      async () => {
+        try {
+          await peer.plugin.syncSharing.scoped.sync()
+          return true
+        } catch (error) {
+          if ((error as { code?: string }).code === 'scope_updating') return false
+          throw error
+        }
+      },
+      { timeout: 10000 }
+    )
+    .toBe(true)
+  await host.sync.syncNow()
+  const local = native.app.vault.getAbstractFileByPath('Elsewhere/member.md')
+  await native.metadata(local)
+  await native.app.vault.modify(
+    local,
+    (await native.app.vault.read(local)) + '\nOrdinary owner sentence.\n'
+  )
+  await host.sync.syncNow()
+  await expect
+    .poll(
+      async () => {
+        try {
+          await host.refreshPublication()
+          return true
+        } catch (error) {
+          if ((error as { code?: string }).code === 'scope_updating') return false
+          throw error
+        }
+      },
+      { timeout: 10000 }
+    )
+    .toBe(true)
+  expect(host.publicationPrompt.pending.value).toEqual([])
+  expect(host.publicationPrompt.asking.value).toBeNull()
+  await peer.plugin.syncSharing.scoped.sync()
+  expect(await peer.app.vault.adapter.exists('Assets/planted-private.png')).toBe(false)
+}, 30000)

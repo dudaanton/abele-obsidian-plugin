@@ -140,6 +140,7 @@ import { HeaderCommands } from '@/headerButtons/viewActions'
 import { moveFooterFolds } from '@/composables/useFooterFold'
 import { moveFooterView } from '@/composables/useFooterView'
 import { SyncService } from './sync/SyncService'
+import { PluginSharing } from './sync/pluginSharing'
 import { renderStatus, type SyncStatus } from './sync/status'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
@@ -151,6 +152,8 @@ const releaseVueSetters = claimVueSetters()
 export default class AbelePlugin extends Plugin {
   private vueApp: VueApp | null = null
   private headerCommands: HeaderCommands | null = null
+  /** Application sharing ports, installed identically in production and development. */
+  syncSharing: PluginSharing | null = null
 
   initializeVue() {
     const rootContainer = createDiv()
@@ -208,7 +211,13 @@ export default class AbelePlugin extends Plugin {
       deps.fetch = observePhoneReplayTransport(this.app, (input, init) =>
         transportOf({})(input, init)
       )
+    this.syncSharing = new PluginSharing(this.app, sync, deps)
+    sync.sharing.value = this.syncSharing
+    deps.ownerPublication = this.syncSharing.ownerPublication
     sync.init(this.app, this, deps)
+    void this.syncSharing.scoped.start().catch((error) => {
+      sync.note('scoped sharing requires recovery: ' + String(error))
+    })
 
     const statusEl = this.addStatusBarItem()
     statusEl.addClass('mod-clickable')

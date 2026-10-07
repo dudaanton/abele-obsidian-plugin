@@ -222,6 +222,13 @@ export class NativeOwnerPublication {
       () => this.live && options.held()
     )
   }
+  /** The host supplies only persisted, owner-created grant IDs; changing audiences cancels
+   * in-flight question reads. Server visibility and sponsor proofs remain the authority. */
+  setAudiences(grants: string[]): void {
+    this.check()
+    this.resolutionEpoch++
+    this.options.grants.splice(0, this.options.grants.length, ...grants)
+  }
   private enabled() {
     return (this.options.enabled ?? (() => PUBLICATION_ENABLED))()
   }

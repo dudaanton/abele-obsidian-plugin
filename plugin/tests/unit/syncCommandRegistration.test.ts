@@ -27,8 +27,10 @@ const aPlugin = () => {
   const ready: (() => void)[] = []
   const statusEl = document.createElement('div')
   Object.assign(statusEl, { toggle: vi.fn() })
+  const app = GlobalStore.getInstance().app
+  Object.assign(app.workspace, { onLayoutReady: (fn: () => void) => ready.push(fn) })
   Object.assign(plugin, {
-    app: { workspace: { onLayoutReady: (fn: () => void) => ready.push(fn) } },
+    app,
     addCommand: (command: Command) => {
       commands.push(command)
       return command
