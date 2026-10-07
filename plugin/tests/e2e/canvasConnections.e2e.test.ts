@@ -131,6 +131,13 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await click('Add canvas shape')
     await press('view().contentEl.querySelector("textarea")')
     await type('A new shape')
+    console.info(
+      'Typed shape',
+      run(
+        'return {text:view().contentEl.querySelector("textarea").value,focused:document.activeElement===view().contentEl.querySelector("textarea"),keyboard:getComputedStyle(document.body).getPropertyValue("--keyboard-height")}'
+      )
+    )
+    await until('view().contentEl.querySelector("textarea").value==="A new shape"')
     await click('Save text')
     await saved()
     expect(
@@ -155,7 +162,7 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await click('Draw connection')
     await fit()
     run(`const stage=view().viewer.stage;window.__canvasConnections.events=[];
-      window.__canvasConnections.trace=e=>{const v=view().viewer,r=stage.getBoundingClientRect();window.__canvasConnections.events.push({type:e.type,id:e.pointerId,button:e.button,pointer:e.pointerType,x:e.clientX,y:e.clientY,rect:[r.x,r.y,r.width,r.height],camera:{...v.camera},busy:view().documentLease.document.session.busy})};
+      window.__canvasConnections.trace=e=>{const v=view().viewer,r=stage.getBoundingClientRect();window.__canvasConnections.events.push({type:e.type,id:e.pointerId,button:e.button,pointer:e.pointerType,x:e.clientX,y:e.clientY,rect:[r.x,r.y,r.width,r.height],camera:{...v.camera},busy:view().documentLease.document.session.busy,generation:view().documentLease.document.session.generation,geometry:view().editor.geometry?.generation,world:[(e.clientX-r.x)/v.camera.zoom+v.camera.x,(e.clientY-r.y)/v.camera.zoom+v.camera.y],source:v.input.connection?.source,target:v.input.connection?.point})};
       for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])stage.addEventListener(type,window.__canvasConnections.trace,true);return true`)
     const from = point('alpha'),
       to = point('beta')
@@ -164,8 +171,10 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     } finally {
       console.info(
         'Connection pointer proof',
-        run(
-          `const stage=view().viewer.stage,f=window.__canvasConnections;for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])stage.removeEventListener(type,f.trace,true);delete f.trace;return {from:${JSON.stringify(from)},to:${JSON.stringify(to)},events:f.events,edges:(await read()).edges,state:view().documentLease.document.state,status:view().contentEl.querySelector('.abele-canvas-editor-status').textContent}`
+        JSON.stringify(
+          run(
+            `const stage=view().viewer.stage,f=window.__canvasConnections;for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])stage.removeEventListener(type,f.trace,true);delete f.trace;return {from:${JSON.stringify(from)},to:${JSON.stringify(to)},events:f.events,graph:await read(),state:view().documentLease.document.state,status:view().contentEl.querySelector('.abele-canvas-editor-status').textContent}`
+          )
         )
       )
     }
@@ -261,6 +270,8 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
       `const leaf=app.workspace.getLeavesOfType('canvas').find(l=>l.view.file?.path===path),node=leaf.view.canvas.nodes.get('alpha'),r=node.nodeEl.getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]`
     )
     const before = run<number>("return (await read()).nodes.find(n=>n.id==='alpha').x")
+    await input(nativePoint) // Native mobile Canvas selects before a card can be dragged.
+    shot('native-selected')
     await input(nativePoint, [nativePoint[0] + 20, nativePoint[1] + 14])
     await until(`(await read()).nodes.find(n=>n.id==='alpha').x!==${before}`)
     expect(run('return (await read()).abele.lines[0]')).toEqual(line)
