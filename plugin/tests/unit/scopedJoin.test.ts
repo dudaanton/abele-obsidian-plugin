@@ -71,6 +71,16 @@ describe('disabled invitation single-connection join', () => {
     expect(await s.make().resume('invented-password')).toMatchObject({ phase: 'joined' })
     expect(s.local.get('abele-sync-ledger')).toEqual({ stateId: '', vaultId: '' })
   })
+  it('leaves dormant script trust untouched when a forgotten vault joins with scripts refused', async () => {
+    const s = setup()
+    const trust = { version: 1, vaultId: 'former-vault', principal: 'former-device' }
+    s.local.set('abele-script-provenance', trust)
+    s.local.set('abele-sync-ledger', { stateId: '', vaultId: '' })
+    await s.make().begin(invite)
+    await s.make().resume('invented-password')
+    expect(s.local.get('abele-script-provenance')).toEqual(trust)
+    expect(s.local.get(SCOPED_CONNECTION_KEY)).toMatchObject({ scriptPolicy: 'refuse' })
+  })
   it.each([{ stateId: '', vaultId: 'retained' }, {}, { stateId: '', vaultId: '', extra: true }])(
     'refuses ambiguous ledger evidence %j',
     async (ledger) => {

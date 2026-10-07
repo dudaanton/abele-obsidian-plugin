@@ -165,6 +165,8 @@ export class ScopedJoinFlow {
       deviceTokenId?: string
       pendingRevoke?: unknown[]
     } | null
+    // Script provenance can deliberately survive Forget. It is not a personal connection;
+    // preserve it without using it, and keep the joined installation's scriptPolicy=refuse.
     const ledger = this.storage.loadLocalStorage('abele-sync-ledger')
     const forgotten =
       ledger !== null &&
@@ -181,7 +183,6 @@ export class ScopedJoinFlow {
         'abele-sync-ledger-proof',
         'abele-sync-ledger-bootstrap',
         'abele-sync-ledger-cleanup',
-        'abele-script-provenance',
       ].some((k) => this.storage.loadLocalStorage(k) != null)
     )
       throw new ScopedJoinError('personal_connected')
