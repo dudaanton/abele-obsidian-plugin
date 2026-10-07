@@ -36,7 +36,7 @@ const NATIVE_TOUCH = `
       if('unavailable' in target) throw new Error('Native formatting toolbar is outside the viewport')
       if('scroll' in target) {
         const left=Math.max(bounds.left,screen.left)+16,right=Math.min(bounds.right,screen.right)-16,y=(bounds.top+bounds.bottom)/2
-        await host.swipe(target.scroll==='left'?right:left,y,target.scroll==='left'?left:right,y)
+        await host.swipe(target.scroll==='left'?right:left,y,target.scroll==='left'?left:right,y,{velocity:1000,hold:0})
         continue
       }
       const under=document.elementFromPoint(target.point.x,target.point.y)
