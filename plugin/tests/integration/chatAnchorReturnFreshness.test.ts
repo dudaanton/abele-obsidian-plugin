@@ -9,6 +9,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { serializeChat, type ChatSnapshot } from '@/ai/ChatLog'
+import { chatCopyPath, readChat, rewriteChat } from '@/ai/chatCopy'
 import { captureChatSelection, createChatAnchor } from '@/selection/anchors'
 import { openSelectionLink } from '@/ai/openChat'
 import * as commentEvents from '@/editor/CommentPlugin'
@@ -160,6 +161,85 @@ describe('returning through an already-open chat after an external write', () =>
   })
 })
 
+describe('read-only selection return reconciliation', () => {
+  it('preserves a safety copy created after its read starts when the rewrite crashes after truncation', async () => {
+    await service.openChatFile(file())
+    const session = service.getSessionByFile(PATH)!
+    const reading = deferred(),
+      releaseRead = deferred(),
+      copied = deferred(),
+      crash = deferred()
+    const read = app.vault.read.bind(app.vault)
+    vi.spyOn(app.vault, 'read').mockImplementationOnce(async (file) => {
+      const text = await read(file)
+      reading.resolve()
+      await releaseRead.promise
+      return text
+    })
+    const returning = session.reconcileForSelectionReturn()
+    await reading.promise
+    const next = snapshot()
+    next.messages[0].content = 'The rewritten reply.'
+    const content = serializeChat(next)
+    const backup = chatCopyPath(app as never, PATH)
+    const modify = app.vault.modify.bind(app.vault)
+    vi.spyOn(app.vault, 'modify').mockImplementationOnce(async () => {
+      copied.resolve()
+      await crash.promise
+      await modify(file(), '')
+      throw new Error('Interrupted rewrite')
+    })
+    const writing = rewriteChat(app as never, file(), content).catch(
+      (error: Error) => error.message
+    )
+    await copied.promise
+    try {
+      expect(await app.vault.adapter.read(backup)).toBe(`${PATH}\n${content}`)
+      releaseRead.resolve()
+      await returning
+    } finally {
+      releaseRead.resolve()
+      crash.resolve()
+      expect(await writing).toBe('Interrupted rewrite')
+    }
+    expect(await read(file())).toBe('')
+    expect(await app.vault.adapter.exists(backup)).toBe(true)
+    expect(await app.vault.adapter.read(backup)).toBe(`${PATH}\n${content}`)
+    // Only the ordinary recovery path repairs the interrupted rewrite on reopen.
+    expect((await readChat(app as never, file())).messages[0].content).toBe('The rewritten reply.')
+    expect(await read(file())).toBe(content)
+  })
+  it('reads a torn chat from its safety copy without repairing or deleting either file', async () => {
+    await service.openChatFile(file())
+    const next = snapshot()
+    next.messages[0].content = 'Recovered reply.'
+    const backup = chatCopyPath(app as never, PATH)
+    const raw = `${PATH}\n${serializeChat(next)}`
+    await app.vault.adapter.write(backup, raw)
+    await app.vault.modify(file(), '')
+    const modify = vi.spyOn(app.vault, 'modify')
+    const remove = vi.spyOn(app.vault.adapter, 'remove')
+    await service.getSessionByFile(PATH)!.reconcileForSelectionReturn()
+    expect(service.getSessionByFile(PATH)!.messages.value[0].content).toBe('Recovered reply.')
+    expect(await app.vault.read(file())).toBe('')
+    expect(await app.vault.adapter.read(backup)).toBe(raw)
+    expect(modify).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+  })
+  it('does not persist migrations while restoring an externally replaced flat conversation', async () => {
+    await service.openChatFile(file())
+    const next = snapshot()
+    next.messages.push({ id: 'tail', role: 'user', timestamp: 2, content: 'A flat follow-up.' })
+    const text = serializeChat(next)
+    await app.vault.modify(file(), text)
+    const save = vi.spyOn(ChatStorage.getInstance(), 'saveChat')
+    await service.getSessionByFile(PATH)!.reconcileForSelectionReturn()
+    expect(service.getSessionByFile(PATH)!.allMessages.value[1].parentId).toBe('reply')
+    expect(await app.vault.read(file())).toBe(text)
+    expect(save).not.toHaveBeenCalled()
+  })
+})
+
 describe('local changes while a return snapshot is being read', () => {
   it('does not restore the old reply after a local edit finishes its write during the read', async () => {
     await service.openChatFile(file())
@@ -168,11 +248,12 @@ describe('local changes while a return snapshot is being read', () => {
       release = deferred()
     const storage = ChatStorage.getInstance(),
       load = storage.loadChat.bind(storage)
-    vi.spyOn(storage, 'loadChat').mockImplementationOnce(async (file) => {
-      const result = await load(file)
+    const read = app.vault.read.bind(app.vault)
+    vi.spyOn(app.vault, 'read').mockImplementationOnce(async (file) => {
+      const text = await read(file)
       started.resolve()
       await release.promise
-      return result
+      return text
     })
     const returning = session.reconcileForSelectionReturn().then(
       () => 'ready',
@@ -203,13 +284,12 @@ describe('local changes while a return snapshot is being read', () => {
     await app.vault.modify(file(), serializeChat(data))
     const started = deferred(),
       release = deferred()
-    const storage = ChatStorage.getInstance(),
-      load = storage.loadChat.bind(storage)
-    vi.spyOn(storage, 'loadChat').mockImplementationOnce(async (file) => {
-      const result = await load(file)
+    const read = app.vault.read.bind(app.vault)
+    vi.spyOn(app.vault, 'read').mockImplementationOnce(async (file) => {
+      const text = await read(file)
       started.resolve()
       await release.promise
-      return result
+      return text
     })
     const returning = session.reconcileForSelectionReturn().then(
       () => 'ready',

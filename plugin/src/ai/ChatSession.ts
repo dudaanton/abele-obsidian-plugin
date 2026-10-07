@@ -45,7 +45,7 @@ import type {
 import { sameRevision } from '@/selection/revisionMapping'
 import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot, type ParsedChat } from './ChatLog'
 import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
-import { readChat, rewriteChat } from './chatCopy'
+import { inspectChat, readChat, rewriteChat } from './chatCopy'
 import {
   compatibleReplyHistory,
   isReplyCorrection,
@@ -3000,7 +3000,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     )
   }
 
-  /** Read through recovery before returning; never flush stale records over a synced file. */
+  /** Inspect recovery before returning; never repair files or flush stale records over a synced file. */
   async reconcileForSelectionReturn(isCurrent = () => true): Promise<void> {
     const file = this.currentChatFile.value
     const version = this.conversationVersion.value
@@ -3008,7 +3008,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     while (this.writing) await this.writing
     if (!isCurrent()) return
     const localRevision = this.localRevision
-    const result = await ChatStorage.getInstance().loadChat(file)
+    // Waiting above does not exclude a new writer during this read. Its safety copy belongs
+    // to that writer: reconciliation must neither restore it nor remove it.
+    const result = await inspectChat(GlobalStore.getInstance().app, file)
     if (!isCurrent()) return
     if (
       this.destroyed ||
@@ -3030,7 +3032,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.summarizer.forgetRecap()
     this.error.value = null
     this.lastModelId = ''
-    await this.restoreLoadedChat(file, result, this.activeLeafId)
+    await this.restoreLoadedChat(file, result, {
+      keepLeaf: this.activeLeafId,
+      readOnly: true,
+    })
   }
 
   async load(file: TFile): Promise<void> {
@@ -3042,7 +3047,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async restoreLoadedChat(
     file: TFile,
     result: ParsedChat,
-    keepLeaf?: string | null
+    options: { keepLeaf?: string | null; readOnly?: boolean } = {}
   ): Promise<void> {
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
@@ -3081,7 +3086,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
 
     // The newest message it names may be the one a crash lost.
-    const leaf = keepLeaf ?? result.metadata?.activeLeafId
+    const leaf = options.keepLeaf ?? result.metadata?.activeLeafId
     this.activeLeafId =
       (leaf && this.allChatMessages.some((m) => m.id === leaf) ? leaf : null) ||
       findDefaultLeaf(this.allChatMessages)?.id ||
@@ -3114,7 +3119,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // anything not yet put back is written out as absent: run earlier it filed the chat under
     // the default agent, dropped the overrides it was saved with, and forgot the tool call it
     // was waiting on approval for.
-    if (needsMigration || permissionsMigrated) {
+    // A selection return may migrate in memory, but must leave files and safety copies alone.
+    // The writer's adopted snapshot retains the difference for the next ordinary save.
+    if (!options.readOnly && (needsMigration || permissionsMigrated)) {
       await this.save()
     }
   }
