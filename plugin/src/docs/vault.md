@@ -1131,6 +1131,9 @@ aliases and changed endpoint URLs are refused with a request for a fresh call; t
 
 ## Sync
 
+Sync uses a self-hosted **abele-sync** server; there is no hosted service. The server operator
+owns the vault history, retention policy and account provisioning.
+
 `.abele-script-managed` is a device-local recovery marker for script provenance. It is hidden
 and never synced. Managed file identities and exact-byte execution approvals live in a
 separate device-local IndexedDB database, selected by `abele-script-provenance` in this vault's
@@ -1470,10 +1473,10 @@ The offline/paused pending count is computed from a read-only local scan against
 ledger, using this device's selective and ignore filters. A failed first server request does not
 mean there are no local edits; counting asks the server nothing and acknowledges no changes.
 
-## Disabled owner sharing UI
+## Owner sharing UI
 
-Owner folder-sharing and publication views remain behind an immutable disabled activation
-fence. Folder reviews keep exact paths, require fresh owner-password authentication and expose
+Owner sharing, scoped join, scoped creation and publication flags are enabled in production.
+Each operation still requires its matching connection and trusted host ports. Folder reviews keep exact paths, require fresh owner-password authentication and expose
 only scoped machine keys. Sponsored/native lists require identity/version, intrinsic sponsors,
 CAS/withdrawal generations and own-upload proof; no body parser or personal-token fallback.
 Grant create/PATCH replies retain the committed id and revision separately from preparation.
@@ -1483,7 +1486,7 @@ preparation is ready. A closed or superseded review cannot adopt a late preparat
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports are not an activated scoped engine or owner publication pipeline.
 
-The disabled publication store keeps existing-private decisions (`pending`, `declined`,
+The publication store keeps existing-private decisions (`pending`, `declined`,
 `approved`) in its own device-local IndexedDB, separate from the personal sync ledger.
 A decision is keyed by connection, stable target file identity and one audience, not content,
 version, sponsor or the audience set. The pending question retains a separate freshness
@@ -1515,14 +1518,13 @@ foreground and not busy when its read completes; closing or answering invalidate
 Questions stay pending while an editor, editable field or link suggestion has focus. Leaving
 editing wakes presentation; sync never blurs the editor or interrupts input to show a question.
 **Keep private** remembers a refusal for that file/audience.
-The production activation fence remains disabled. Only `npm run build:test` uses the dedicated
-`sharing-test` build mode to substitute owner-sharing/publication gates at compile time.
-Source flags remain false. Production validates those source declarations and rejects any test
-sharing activation module in its rendered graph. Test HTTPS stand activation still requires
+Production validates that all four sharing source flags remain enabled and rejects test API
+and test-sharing activation modules from its rendered graph. `npm run build:test` uses the
+separate `sharing-test` mode only to mark the test artifact, not to unlock a production feature. Test HTTPS stand activation still requires
 an owned isolated fixture context and bound device; it does not bypass server activation or
 credential/visibility checks.
 
-## Disabled group wizard and initial batch
+## Group wizard and initial batch
 
 The owner group wizard requires a certified exact root/member/anchor preview and fresh owner
 account authentication. Relations/anchors are separate explicit version-bound approvals; a
@@ -1534,7 +1536,7 @@ An existing/resumed review whose journal disappears cannot mint replacement oper
 Successful relation acknowledgements advance the reviewed ACL revision and retain confirmed
 progress; an uncertain approval reply is recovery, not permission to guess another revision.
 
-## Disabled scoped invitation and creation state
+## Scoped invitation and creation state
 
 Folder/group sharing is device-neutral: an e-ink reader uses the same grants, reader/editor
 roles and scoped installation rules as any other collaborator device. Books are ordinary
@@ -1549,23 +1551,25 @@ missing scoped ledger state requires recovery. Joining publishes no unrelated lo
 holds unmanaged incoming-path collisions without replacement/remap. Pending/malformed scoped
 context also refuses personal enrolment and vault script execution before credentials/effects.
 
-The disabled `scoped-native-create-v1:` metadata records exact new-file reviews, immutable bytes,
-operation handles, root/sponsor and own-upload proof for retry. The UI can preview these flows,
-but actual scoped engine/ledger/paste/native HTTP/link host adapters are not enabled. Reader or
+The `scoped-native-create-v1:` metadata records exact new-file reviews, immutable bytes,
+operation handles, root/sponsor and own-upload proof for retry. Enabling a source flag does not
+install scoped engine/ledger/paste/native HTTP/link host adapters; a flow without its trusted
+adapter remains unavailable. Reader or
 changed scope/root/sponsor, occupied path, adoption and lost evidence hold instead of upload or
 replacement. No received file is moved to satisfy a new-file choice.
 
-## Disabled publication intent integration
+## Publication intent integration
 
-The disabled intent ledger uses `publication-intents-v1:` metadata, exact connection binding
+The intent ledger uses `publication-intents-v1:` metadata, exact connection binding
 and a checksum-verified bounded aggregate. It records immutable push units, approved decisions,
 local-create handles, exact verified receipts, per-audience CAS deltas and stable intent IDs.
 A lost successful response is reconciled by its exact receipt; withdrawal or version changes
 never trigger a stale re-add. Missing ledger evidence on reopen requires recovery rather than
 manufacturing a new intent. The separate `publication-scoped-unit-v1:` records connect the
 reviewed core's durable pre-upload and exact-version settlement hooks to immutable cache facts;
-completed unit metadata is removed only after core journal retirement. Neither class has a
-production call site while activation is disabled. The trusted disabled owner host port uses
+completed unit metadata is removed only after core journal retirement. Automatic publication
+also requires the production host installation; the flag alone does not install that adapter.
+The trusted owner host port uses
 reviewed personal hooks, including exact received-note delivery, and `native-owner-v1:` metadata
 in an independently owned store. Rows bind note/cache observations, paste range, stable handles,
 prepared sending candidates, exact admitted submitted bodies and wire receipts to the connection
@@ -1585,12 +1589,12 @@ received snapshots are baselines, never owner introduction or script consent. Lo
 holds. Production host installation and unverified native cache/paste barriers remain separate
 requirements; the disposable test port does not activate the application pipeline.
 
-## Disabled publication snapshot contract
+## Publication snapshot contract
 
-The concept branch defines a separate device-local IndexedDB link-snapshot store, bound to
+The sync implementation defines a separate device-local IndexedDB link-snapshot store, bound to
 local vault, issuer, principal/facet/grant and exact settled note identity/version/SHA. Its
-independent descriptor and recovery sentinel are behind host ports; there is no production
-call site while automatic publication is disabled. Unknown or lost evidence never creates
+independent descriptor and recovery sentinel are behind trusted host ports; merely enabling
+the publication flag does not supply an absent host installation. Unknown or lost evidence never creates
 an empty local baseline. Pending local-create novelty clears on settlement; immutable
 received baselines and bounded known-rename evidence are separate from publication authority.
 The disabled pure publication reducer also defines device-local pending/declined/approved

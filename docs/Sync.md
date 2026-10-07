@@ -5,8 +5,8 @@ the whole vault, changes travel within seconds on a desktop, and the server keep
 history and a trash of what was deleted. It does nothing until a device is connected, in
 **Settings → Abele → Sync**.
 
-It needs a server and an account on it. Accounts are made by whoever runs the server; the plugin
-signs in to one, it does not create one.
+It needs a self-hosted **abele-sync** server and an account on it; there is no hosted service.
+Accounts are made by whoever runs the server; the plugin signs in to one, it does not create one.
 
 ## Connecting a device
 

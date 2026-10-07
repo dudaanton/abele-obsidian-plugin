@@ -137,6 +137,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Sync
 
+These commands use a self-hosted **abele-sync** server configured on the Sync tab; there is
+no hosted service.
+
 - Sync now · Pause or resume sync
 - Open sync log — also a click on the sync item in the status bar
 - Open deleted files — what was deleted anywhere in the vault, each with a Restore, and

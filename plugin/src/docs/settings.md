@@ -236,6 +236,9 @@ cache), so the lists show it without a network.
 
 ## Sync
 
+Abele Sync requires a self-hosted **abele-sync** server and an operator-created account; there
+is no hosted service. The Sync tab connects this device to that server.
+
 `sync` holds only what every device on the vault shares: `sync.keySignature`, stored but not yet
 applied. The vault-wide policy — merge or conflict file, the server's size cap, how long history is
 kept — is on the server, not here.

@@ -78,7 +78,7 @@ Working with images was a long-standing pain point in my Obsidian workflow. This
 
 ### Charts
 
-My vault holds a lot of numbers — finances, time tracking and beyond — and I wanted to see the trends in them. Charts are a new Obsidian Bases view type, and they build from any data in your notes.
+Charts turn numeric note properties into trends and comparisons. This Obsidian Bases view can plot financial records, time entries or other measurements, using the same notes as the rest of the plugin.
 
 ### Templates
 
@@ -86,7 +86,7 @@ I used to use [Templater](https://github.com/SilentVoid13/Templater), which is p
 
 ### AI Agents
 
-My goal was never to build a new Claude Code inside Obsidian. What I wanted was fine-grained control over the file access I hand to an agent — my vault is flat, so granting access to a folder means nothing.
+AI agents work with explicitly chosen parts of a vault rather than treating every note as available. Access can follow relationships between notes as well as folders, so a flat collection can still have precise boundaries.
 
 So access is a scope built from files, folders, patterns and, most usefully, groups. Grant an agent the "My Project" group and it gets every note linking to that project through `groups`, everything under those, and so on down the graph. If a path falls outside the scope, the tools refuse it.
 
@@ -129,7 +129,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 - Comment chats anchored to a passage of a note, or of an agent's answer inside a chat
 - Mermaid diagrams drawn the way GitHub draws them — the width of the note, with zoom, drag, full screen and copy as source, SVG or picture ([how](docs/Mermaid.md))
 - CSS snippets loaded and hot-reloaded from a folder in the vault
-- Sync between devices through an Abele Sync server — chosen per device, with version history, deleted files and notes merged when two devices change one ([how](docs/Sync.md))
+- Sync between devices through a self-hosted **abele-sync** server — chosen per device, with version history, deleted files and notes merged when two devices change one. There is no hosted service ([how](docs/Sync.md))
 - Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
 - GitHub issues, pull requests with their diffs, discussions, comparisons and files opened from links in notes, in tabs of their own — read only, off by default ([how](docs/GitHub.md))
 
