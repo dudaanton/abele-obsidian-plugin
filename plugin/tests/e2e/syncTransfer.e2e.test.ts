@@ -82,8 +82,8 @@ async function capture(suffix: string): Promise<void> {
     const nameLines = [...nameRange.getClientRects()].filter((r) => r.width && r.height).length
     out[label].extra = { afterCheckbox, nameWidth: r.width, rowWidth: box.width, nameLines, destination: textOf(title), nameFont: doc.defaultView.getComputedStyle(title).fontSize, rowFont: doc.defaultView.getComputedStyle(row).fontSize }
     await press(preview, 'Apply')
-    if (!(await poll(() => doc.querySelector('.abele-confirm'), 10000))) throw new Error('no switch guard')
-    const confirm = doc.querySelector('.abele-confirm').closest('.modal')
+    if (!(await poll(() => modalOf('.abele-confirm__message', doc), 10000))) throw new Error('no switch guard')
+    const confirm = modalOf('.abele-confirm__message', doc)
     const confirmLabel = 'transfer switch confirm' + ${JSON.stringify(suffix)}
     out[confirmLabel] = await ownedScreen(confirmLabel, confirm, confirm)
     const heading = confirm.querySelector('.modal-title')
