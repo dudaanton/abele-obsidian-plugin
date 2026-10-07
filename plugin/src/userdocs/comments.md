@@ -1,6 +1,35 @@
 # Comments
 
-Chats anchored to a passage of a note, a message in a chat, or words in a book.
+Your own comments on note text, and AI discussions anchored to a passage of a note, a message
+in a chat, or words in a book.
+
+## Adding your own comment
+
+Select text in an ordinary note and choose **Add comment** in the editor menu or run
+**Abele: Add comment**. In reading mode, select the words and use the command palette.
+Choose a highlight colour or **Underline**, write in the full note editor, then press **Save**
+(or Cmd/Ctrl+Enter). Enter starts a new line. This needs no AI provider, model or enabled AI.
+
+A square speech-bubble mark opens the comments in both Live Preview and reading mode. The
+round speech bubble still opens **Ask here**; if a passage has both, each has its own mark and
+count. Add another entry in the same dialog to keep several comments stacked together.
+Selecting the same passage again opens its existing thread.
+
+Each entry shows its local creation date and time, and its edit time when changed. **Edit**
+changes only that entry; **Delete** asks for confirmation. Removing the last entry removes the
+mark, not the words in your note. Save a colour change without adding a new entry, too.
+Closing with unsaved text or appearance asks before discarding it. A failed save keeps your
+text in the dialog; a comment changed elsewhere must be reopened before you can overwrite it.
+
+The mark follows insertions before the passage and note/folder renames. If the words change
+or disappear, the dimmed mark still opens the comment, but no longer claims a highlight over
+different words. Some Markdown rendered by other plugins cannot be mapped safely: the mark
+remains available without guessing which repeated text to highlight.
+
+Comments are kept in separate `.abcomment` files in the configured comments folder (default
+`AI/Comments`), not in chat history. If you remove a mark by hand, its comment file stays and
+can be opened from that folder. Sync other file types in Obsidian Sync so these files reach
+your other devices along with the note.
 
 ## Asking about a passage
 
@@ -50,4 +79,5 @@ working in. Pressing the card opens the chat at that message.
 ## What not to do
 
 Do not edit or move the marks in the text by hand, such as `%%c:k7d2ph%%`. Editing the text
-around them is fine. Deleting a comment deletes every comment under it.
+around them is fine. Deleting an AI discussion deletes every discussion under it; deleting a
+free-form entry leaves the other entries in its thread.

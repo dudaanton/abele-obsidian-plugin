@@ -17,7 +17,10 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   In progress, Done, Cancelled, Forwarded, Scheduled, Question and Important. Not a task-note
   completion command; the checkbox's context menu offers the same states directly
 - Copy link to selected lines — copies a link to the selected line range in the current note
-- Comment here — opens a comment chat for the selected passage
+- Comment here — opens an AI comment chat for the selected passage
+- Add comment — opens a free-form text comment dialog for selected ordinary-note text, with
+  colour or underline, rich Markdown editing and dated entries. Works with AI disabled and
+  is also in the editor selection menu; reading-mode selections can use the command palette
 
 ## Presentations
 

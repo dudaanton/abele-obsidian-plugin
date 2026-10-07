@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, shallowRef } from 'vue'
+import { computed, nextTick, ref, shallowRef } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
 import Markdown from './obsidian/Markdown.vue'
@@ -85,7 +85,7 @@ const appearance = ref<CommentAppearance>(props.initial?.thread.appearance ?? 'y
 const body = ref('')
 const editing = ref<string | null>(null)
 const originalBody = ref('')
-const editor = ref<{ focus(): void } | null>(null)
+const editor = ref<{ focus(): void; $el: HTMLElement } | null>(null)
 const busy = ref(false)
 const error = ref('')
 let draft: CommentDraft | undefined
@@ -139,7 +139,13 @@ async function edit(id: string) {
   editing.value = id
   body.value = entry.body
   originalBody.value = entry.body
+  await nextTick()
   editor.value?.focus()
+  // A long thread can put its composer below the screen. Focus alone does not scroll the
+  // dialog on desktop or bring the edited words above the phone keyboard.
+  const field = editor.value?.$el
+  const start = field?.querySelector<HTMLElement>('.cm-line') ?? field
+  start?.scrollIntoView?.({ block: 'center' })
 }
 async function save() {
   if (busy.value || !saveable.value) return

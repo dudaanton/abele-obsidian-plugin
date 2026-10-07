@@ -87,6 +87,7 @@ import { registerPropertyWidgets } from './properties/register'
 import { registerLinter } from './linter/register'
 import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
+import { registerTextComments } from './comments/register'
 import { ScriptService } from './scripting/ScriptService'
 import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
@@ -437,7 +438,20 @@ export default class AbelePlugin extends Plugin {
     // The documentation for people, opened by a command, from the settings and on first start.
     this.registerView(USER_DOCS_VIEW_TYPE, (leaf) => new UserDocsView(leaf))
     this.registerExtensions(
-      ['json', 'css', 'js', 'ts', 'html', 'xml', 'yaml', 'yml', 'csv', 'txt', 'abchat'],
+      [
+        'json',
+        'css',
+        'js',
+        'ts',
+        'html',
+        'xml',
+        'yaml',
+        'yml',
+        'csv',
+        'txt',
+        'abchat',
+        'abcomment',
+      ],
       CODE_VIEW_TYPE
     )
     // A chat file opened from anywhere — file explorer, quick switcher, a link, search — goes
@@ -556,6 +570,7 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(footnoteExtensions)
     this.registerEditorExtension(highlightStateField)
     this.registerEditorExtension(commentExtensions)
+    registerTextComments(this)
     const config = AbeleConfig.getInstance()
     this.registerEditorExtension(editorSyntaxExtension(() => config.editorSyntaxHighlight))
     this.register(
