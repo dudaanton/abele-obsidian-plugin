@@ -620,7 +620,9 @@ They leave message Markdown and internal/provider history unchanged, publish onl
 success, and retain concurrent turn events. Drafts and unfinished streaming targets are refused;
 previously saved messages remain annotatable during a turn. Failures return no successful anchor
 address. Referenced source versions and anchors survive append, reopen, crash recovery and log
-compaction. Accepted semantic edits allocate fresh version IDs, even for equal text; reply
+compaction. Before a checked rewrite of a recognised but torn/damaged chat, the safety copy
+stores a clean v2 snapshot of every still-readable prior record, not the damaged bytes or the
+proposed annotation. A crash immediately after truncation can therefore recover that prior state. Accepted semantic edits allocate fresh version IDs, even for equal text; reply
 `revisions` store optional `beforeRevisionId`/`afterRevisionId`, and undo restores the recorded
 before ID. Without a rendered-edit proof, old anchors remain historical, never guessed onto a
 new occurrence. Undo without version proof allocates a fresh ID instead. New user branches and

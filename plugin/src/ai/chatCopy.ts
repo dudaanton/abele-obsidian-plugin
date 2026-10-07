@@ -42,8 +42,12 @@ export async function rewriteChat(
   // not apply an unchecked or failed annotation, including a crash before its guard runs.
   const prior = check ? await app.vault.read(file) : undefined
   const parsedPrior = prior === undefined ? null : parseChat(prior)
+  // A readable log may still have an earlier torn append. Copying those damaged bytes
+  // would make readChat reject the only backup after this rewrite truncates the main file.
+  // Retain the recognised prior state as a whole v2 snapshot, never the proposed annotation.
   const copyContent =
-    parsedPrior?.metadata && parsedPrior.version === 1
+    parsedPrior?.metadata &&
+    (parsedPrior.version === 1 || parsedPrior.torn || parsedPrior.damaged > 0)
       ? serializeChat({ ...parsedPrior, metadata: parsedPrior.metadata })
       : (prior ?? content)
   let copied = false

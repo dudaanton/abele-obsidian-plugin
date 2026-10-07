@@ -167,6 +167,45 @@ describe('durable selection anchors', () => {
     expect(await session.getAnchor(snapshot.source.chatId, a.id)).toEqual(a)
   })
 
+  it('recovers every readable prior record after an anchor rewrite crashes on a reopened torn log', async () => {
+    const snapshot = await capture()
+    await session.addUserNote('A readable turn before the interrupted append.')
+    await app.vault.append(file(), '{"k":"int","role":"user","content":"unfinished')
+    await reopen()
+    const before = await disk()
+    expect(before.torn).toBe(true)
+    expect(before.damaged).toBe(1)
+    expect(before.messages).toHaveLength(2)
+    let recovered: ReturnType<typeof parseChat> | undefined
+    let reopenedMessages: typeof before.messages | undefined
+    const modify = app.vault.modify.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (target, fn) => {
+      fn(await app.vault.read(target))
+      // Crash after truncation: exercise the next open BEFORE the old writer's catch can
+      // restore anything. That writer is unavailable to a real post-crash process.
+      await modify(target, '')
+      const replacement = new ChatSession(ChatService.getInstance())
+      try {
+        await replacement.load(target)
+        recovered = await disk()
+        reopenedMessages = replacement.allMessages.value
+      } finally {
+        replacement.destroy()
+      }
+      throw new Error('sample crash after anchor rewrite truncation')
+    })
+    await expect(session.ensureChatAnchor(snapshot, ports.nextId)).rejects.toThrow(
+      'sample crash after anchor rewrite truncation'
+    )
+    expect(recovered?.metadata).toEqual(before.metadata)
+    expect(recovered?.messages).toEqual(before.messages)
+    expect(reopenedMessages).toEqual(before.messages)
+    expect(recovered?.internalMessages).toEqual(before.internalMessages)
+    expect(recovered?.torn).toBe(false)
+    expect(recovered?.damaged).toBe(0)
+    expect(session.findMessage('reply')?.selection?.anchors).toEqual([])
+  })
+
   it('does not publish lazy identities if their initial save fails', async () => {
     vi.spyOn(app.vault, 'process').mockRejectedValueOnce(new Error('sample identity failure'))
     await expect(session.ensureSelectionRevision('reply', ports)).rejects.toThrow(
