@@ -239,9 +239,11 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
   'agents': () => mountAlone(AgentsListDialog, { source: agentsFixture() }),
   'agents-tabs': async () => {
-    await chooseAttentionTab(GlobalStore.getInstance().app,
+    const completion = chooseAttentionTab(GlobalStore.getInstance().app,
       Array.from({ length: 20 }, (_, i) => ({ id: `sample-tab-${i}`, label: `Sample conversation ${i + 1} with an intentionally long invented title for a narrow dialog` })),
       async () => {})
+    document.querySelector<HTMLElement>('.abele-agents-tabs')?.setAttribute('data-abele-fixture', 'agents-tabs')
+    await completion
   },
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),

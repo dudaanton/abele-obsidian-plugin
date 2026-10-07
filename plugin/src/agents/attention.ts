@@ -102,6 +102,24 @@ export function sortAttention(rows: AttentionRow[]): AttentionRow[] {
     return (x[0] === y[0] ? 0 : x[0] - y[0]) || x[1] - y[1] || a.key.localeCompare(b.key)
   })
 }
+/** The index proves a failure happened even if its detailed file write was lost. */
+export function restoreIndexedErrors(
+  state: LocalAttention,
+  reasons: AttentionReason[]
+): NonNullable<LocalAttention['errors']> {
+  const errors = [...(state.errors ?? [])]
+  for (const reason of reasons)
+    if (reason.kind === 'error' && !errors.some((e) => e.id === reason.id)) {
+      errors.push({
+        id: reason.id,
+        at: reason.at,
+        target: reason.target,
+        text: reason.text ?? 'Подробности ошибки не сохранились.',
+      })
+    }
+  return errors
+}
+
 export function reasonLabel(reason: AttentionReason): string {
   switch (reason.kind) {
     case 'approval':

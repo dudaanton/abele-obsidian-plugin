@@ -168,7 +168,10 @@ contains no conversation text, question text, titles or error text. Files are au
 startup reconciles all `.abchat` files, including unopened discussions, without making sessions.
 Live state overrides the same file's indexed row, so a discussion shown as a tab is not duplicated.
 The index is device-local, does not travel in settings transfer, and is marked incomplete while
-reconciling or when reading or saving fails. File renames/deletions update its references.
+reconciling or when reading or saving fails. An explicit indexed failure whose detailed chat write
+was lost retains its identity and a missing-details explanation until acknowledged; opening or
+acknowledging it restores that evidence in metadata, never reconstructs conversation text.
+File renames/deletions update its references.
 This is not multi-device arbitration for local tool approvals.
 
 ## Node sessions (device-local)

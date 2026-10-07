@@ -4,6 +4,7 @@ import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { CommentService } from '@/ai/CommentService'
+import { ShellModal } from '@/modal/ShellModal'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { serializeChat, parseChatMetadata } from '@/ai/ChatLog'
@@ -176,7 +177,11 @@ describe('one list independent of open tabs', () => {
     }
     const original = [...chats.tabOrder.value]
     const revealing = vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
+    const titles = vi.spyOn(ShellModal.prototype, 'setTitle')
     const opened = agents.open(agents.rows.value[0], agents.rows.value[0].reasons[0])
+    const title = titles.mock.calls.at(-1)![0]
+    expect(title).toMatch(/закры/)
+    expect(title.length).toBeLessThanOrEqual(32)
     expect(chats.tabOrder.value).toEqual(original)
     const choice = document.querySelector<HTMLButtonElement>('.modal button')!
     expect(choice).not.toBeNull()
@@ -216,6 +221,23 @@ describe('one list independent of open tabs', () => {
       id: 'new-run',
       at: 100,
     })
+  })
+  it('retains explicit indexed failures when their last chat write did not reach the file', async () => {
+    const app = useVault([
+      { path: 'Chats/sample.abchat', content: content({ attention: undefined }) },
+    ])
+    app.saveLocalStorage('abele-agents-index', [
+      {
+        reference: { kind: 'local', path: 'Chats/sample.abchat' },
+        reasons: [{ kind: 'error', id: 'unsaved-error', at: 100 }],
+      },
+    ])
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    expect(agents.badge.value.attention).toBe(1)
+    expect(agents.rows.value[0].reasons[0].text).toContain('не сохранились')
+    await agents.markSeen(agents.rows.value[0], 'unsaved-error')
+    expect(agents.rows.value).toHaveLength(0)
   })
   it('never claims complete coverage when a registered node has no all-session summary', async () => {
     const app = useVault([])

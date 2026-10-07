@@ -27,9 +27,8 @@
             class="abele-agents__seen"
             :disabled="busy"
             @click="seen(row, reason.id)"
-          >
-            Просмотрено
-          </button>
+            v-text="'Просмотрено'"
+          />
         </div>
       </section>
     </div>

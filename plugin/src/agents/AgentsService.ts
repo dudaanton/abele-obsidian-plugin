@@ -12,6 +12,7 @@ import { ShellModal } from '@/modal/ShellModal'
 import {
   attentionBadge,
   attentionReasons,
+  restoreIndexedErrors,
   sortAttention,
   type AttentionRow,
   type AttentionReason,
@@ -96,8 +97,14 @@ export class AgentsService {
       reasons: attentionReasons(metadata.attention ?? {}, metadata.pendingToolCalls ?? [], live),
     }
   }
-  private fileRow(path: string, metadata: ChatMetadata): AttentionRow {
-    const row = this.metadataRow(path, metadata, false)
+  private fileRow(path: string, metadata: ChatMetadata, live = false): AttentionRow {
+    const indexed = this.files.get(path)?.reasons ?? []
+    const state = metadata.attention ?? {}
+    const row = this.metadataRow(
+      path,
+      { ...metadata, attention: { ...state, errors: restoreIndexedErrors(state, indexed) } },
+      live
+    )
     // A run transition reaches the local index before the next ordinary file save.
     // Retain only explicit newer work evidence, never infer failures from old prose.
     for (const reason of this.files.get(path)?.reasons ?? []) {
@@ -115,7 +122,7 @@ export class AgentsService {
     const path = session.currentChatFile.value?.path ?? ''
     if ((!live && !path) || this.removed.has(path) || session.isDestroyed || session.kind === 'run')
       return null
-    const row = this.metadataRow(
+    const row = this.fileRow(
       path,
       {
         type: 'abele-chat',
@@ -320,8 +327,13 @@ export class AgentsService {
       return
     }
     const open = [...this.live.keys()].find((s) => s.currentChatFile.value?.path === file.path)
-    if (open) await open.markAttentionSeen(id)
-    else
+    if (open) {
+      open.attention.value = {
+        ...open.attention.value,
+        errors: restoreIndexedErrors(open.attention.value, row.reasons),
+      }
+      await open.markAttentionSeen(id)
+    } else
       await transformChat(
         app,
         file,
@@ -335,7 +347,9 @@ export class AgentsService {
               ...metadata,
               attention: {
                 ...state,
-                errors: state.errors?.map((e) => (e.id === id ? { ...e, seen: true } : e)),
+                errors: restoreIndexedErrors(state, row.reasons).map((e) =>
+                  e.id === id ? { ...e, seen: true } : e
+                ),
                 run: state.run?.id === id ? { ...state.run, status: 'done' } : state.run,
                 question:
                   state.question?.id === id
@@ -398,6 +412,11 @@ export class AgentsService {
         }
         await session.save()
       }
+      const restoredErrors = restoreIndexedErrors(session.attention.value, row.reasons)
+      if (restoredErrors.length !== (session.attention.value.errors?.length ?? 0)) {
+        session.attention.value = { ...session.attention.value, errors: restoredErrors }
+        await session.save()
+      }
       const current = this.liveRow(session)
       if (!current?.reasons.some((r) => r.id === reason.id))
         new Notice('Ответ уже принят или запрос больше не действует')
@@ -453,9 +472,12 @@ export function chooseAttentionTab(
         if (!chosen) resolve(false)
       }
     })(app, {
-      title: 'Все 20 вкладок открыты · Выбери, какую закрыть',
+      title: 'Выбери вкладку для закрытия',
       size: 'tall',
       cls: ['abele-agents-tabs'],
+    })
+    modal.bodyEl.createEl('p', {
+      text: 'Все 20 вкладок открыты. Закроется только выбранная вкладка.',
     })
     for (const tab of tabs) {
       const button = modal.bodyEl.createEl('button', { text: tab.label })

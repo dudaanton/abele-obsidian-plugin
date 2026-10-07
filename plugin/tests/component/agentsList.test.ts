@@ -4,6 +4,8 @@ import { ref } from 'vue'
 import AgentsListDialog from '@/components/AgentsListDialog.vue'
 import AgentsButton from '@/components/AgentsButton.vue'
 import { openAgents, closeAgents } from '@/agents/openAgents'
+import { openDialog } from '@/testing/openDialog'
+import { ShellModal } from '@/modal/ShellModal'
 import type { AttentionRow } from '@/agents/attention'
 import { useVault } from '../helpers/testEnv'
 
@@ -57,6 +59,7 @@ describe('agents dialog', () => {
     await flushPromises()
     expect(source.open).toHaveBeenCalledWith(rows[0], rows[0].reasons[0])
     expect(source.markSeen).not.toHaveBeenCalled()
+    expect(wrapper.find('.abele-agents__seen').element.textContent).toBe('Просмотрено')
     await wrapper.find('.abele-agents__seen').trigger('click')
     expect(source.markSeen).toHaveBeenCalledWith(rows[0], 'error-1')
     wrapper.unmount()
@@ -70,6 +73,26 @@ describe('agents dialog', () => {
     closeAgents()
     await flushPromises()
     expect(document.querySelectorAll('.abele-agents')).toHaveLength(0)
+  })
+  it('marks the tab-choice fixture as owned and settles its completion on close', async () => {
+    useVault([])
+    const original = ShellModal.prototype.open
+    let modal!: ShellModal
+    const opened = vi.spyOn(ShellModal.prototype, 'open').mockImplementation(function (
+      this: ShellModal
+    ) {
+      modal = this
+      original.call(this)
+    })
+    try {
+      const completion = openDialog('agents-tabs')
+      expect(document.querySelector('.modal[data-abele-fixture="agents-tabs"]')).not.toBeNull()
+      modal.close()
+      await completion
+    } finally {
+      modal?.close()
+      opened.mockRestore()
+    }
   })
   it('keeps the shared header entry keyboard accessible', () => {
     useVault([])
