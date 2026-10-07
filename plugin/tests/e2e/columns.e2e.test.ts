@@ -419,7 +419,7 @@ describe.skipIf(!available)('note columns foundation', () => {
   it('without the plugin the nested callouts retain every content block', async () => {
     show('preview')
     asyncEval(
-      `await app.plugins.disablePlugin('abele');await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:'source',source:false}});await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:'preview'}});await wait(700);return true`
+      `if(document.activeElement?.isContentEditable)document.activeElement.blur();await wait(400);await app.plugins.disablePlugin('abele');await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:'source',source:false}});await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:'preview'}});await wait(700);return true`
     )
     const fallback = asyncEval<{ text: string; count: number }>(
       `return {text:root().textContent,count:root().querySelectorAll('.callout[data-callout="abele-column"]').length}`
