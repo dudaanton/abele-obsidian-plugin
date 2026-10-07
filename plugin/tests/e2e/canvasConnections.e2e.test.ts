@@ -92,22 +92,8 @@ const type = async (text: string) => {
         },
         { timeout: 15_000, interval: 100 }
       )
-      .toBeGreaterThanOrEqual(5)
-    run(
-      `const f=window.__canvasConnections,el=document.activeElement;f.typing=[];f.inputEl=el;f.traceInput=e=>f.typing.push({type:e.type,data:e.data,inputType:e.inputType,value:el.value,connected:el.isConnected,busy:view().documentLease.document.session.busy});for(const type of ['beforeinput','input','focus','blur','compositionstart','compositionend'])el.addEventListener(type,f.traceInput,true);return true`
-    )
-    try {
-      typeText(text)
-    } finally {
-      console.info(
-        'Native typing proof',
-        JSON.stringify(
-          run(
-            `const f=window.__canvasConnections;for(const type of ['beforeinput','input','focus','blur','compositionstart','compositionend'])f.inputEl.removeEventListener(type,f.traceInput,true);delete f.traceInput;return {requested:${JSON.stringify(text)},value:f.inputEl.value,events:f.typing}`
-          )
-        )
-      )
-    }
+      .toBeGreaterThanOrEqual(10)
+    typeText(text)
   } else
     await withNativeInput(() =>
       run(
