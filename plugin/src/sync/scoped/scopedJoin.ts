@@ -1,6 +1,6 @@
 import { normalizeServerUrl } from '@abele/sync-protocol'
 import type { LocalStorage } from '../ledgerId'
-export const SCOPED_JOIN_ENABLED = false
+export const SCOPED_JOIN_ENABLED = true
 export const SCOPED_JOIN_KEY = 'abele-sync-scoped-join'
 export const SCOPED_CONNECTION_KEY = 'abele-sync-scoped-connection'
 export interface ScopedInvitation {

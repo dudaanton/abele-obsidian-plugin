@@ -122,10 +122,10 @@ describe('disabled owner group wizard exact previews', () => {
     expect(s.port.create).toHaveBeenCalledTimes(1)
     expect(s.port.prepare).toHaveBeenCalledTimes(2)
   })
-  it('default fence makes no preview or management request', async () => {
+  it('explicitly disabled fence makes no preview or management request', async () => {
     const s = setup()
     await expect(
-      new GroupSharingFlow('sample-vault', s.port).review('sample-root', 'editor', 'Sample group')
+      new GroupSharingFlow('sample-vault', s.port, () => false).review('sample-root', 'editor', 'Sample group')
     ).rejects.toThrow(/disabled/)
     expect(s.port.preview).not.toHaveBeenCalled()
   })

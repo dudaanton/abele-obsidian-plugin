@@ -64,9 +64,9 @@ const invite = {
   platform: 'desktop' as const,
 }
 describe('disabled invitation single-connection join', () => {
-  it('default fence sends/stores nothing', async () => {
+  it('explicitly disabled fence sends/stores nothing', async () => {
     const s = setup(),
-      flow = new ScopedJoinFlow(s.storage, s.secrets, s.port)
+      flow = new ScopedJoinFlow(s.storage, s.secrets, s.port, () => false)
     await expect(flow.begin(invite)).rejects.toThrow(/disabled/)
     expect(s.local.size).toBe(0)
     expect(s.port.login).not.toHaveBeenCalled()

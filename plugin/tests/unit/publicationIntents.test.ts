@@ -233,9 +233,9 @@ describe('disabled durable publication intent integration', () => {
     await s.make().retry(s.unit.requestId)
     expect(s.port.apply).toHaveBeenCalledTimes(1)
   })
-  it('default fence performs no persistence or publication', async () => {
+  it('explicitly disabled fence performs no persistence or publication', async () => {
     const s = await setup(),
-      m = new PublicationIntents(s.meta, s.input.binding, s.port)
+      m = new PublicationIntents(s.meta, s.input.binding, s.port, () => false)
     await expect(m.prepare(s.unit, [s.input])).rejects.toThrow(/disabled/)
     expect(s.data.size).toBe(1)
     expect([...s.data.values()][0]).not.toContain('sample-request')

@@ -90,6 +90,7 @@ describe('concrete fenced owner HTTP port', () => {
   it('sends nothing while activation is disabled', async () => {
     const fetch = vi.fn()
     const p = new OwnerFolderHttpPort({
+      enabled: () => false,
       baseUrl: 'https://sync.example',
       vaultId: 'sample-vault',
       email: 'sample@example.com',

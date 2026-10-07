@@ -1,7 +1,8 @@
-/** Pure contract logic is testable; no engine/UI/upload hook may enable it yet. */
-export const PUBLICATION_ENABLED = false
-export function assertPublicationEnabled(): never {
+/** Publication is available in production; per-context policy still controls each operation. */
+export const PUBLICATION_ENABLED = true
+export function assertPublicationEnabled(enabled = PUBLICATION_ENABLED): void {
+  if (enabled) return
   throw new Error(
-    'Automatic publication is disabled pending native cache, transport and scoped API gates'
+    'Automatic publication is disabled for this context'
   )
 }

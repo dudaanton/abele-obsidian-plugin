@@ -47,7 +47,7 @@ function setup() {
 describe('owner publication settings review', () => {
   it('never reads private publication lists for a scoped or disabled context', async () => {
     const { port } = setup()
-    const closed = new PublicationSettingsModel(owner, port)
+    const closed = new PublicationSettingsModel(owner, port, () => false)
     await expect(closed.load('sample-grant')).rejects.toThrow(/disabled/)
     const scoped = new PublicationSettingsModel(
       { ...owner, facet: 'scoped', owner: false },

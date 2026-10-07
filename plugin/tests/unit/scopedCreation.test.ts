@@ -58,10 +58,10 @@ function setup() {
   }
 }
 describe('fenced exact-path native creation choices', () => {
-  it('default fence performs no local create/upload', async () => {
+  it('explicitly disabled fence performs no local create/upload', async () => {
     const s = setup()
     await expect(
-      new ScopedCreationFlow(s.meta, s.port).review({
+      new ScopedCreationFlow(s.meta, s.port, () => false).review({
         kind: 'note',
         path: 'Scattered/new.md',
         text: 'sample',

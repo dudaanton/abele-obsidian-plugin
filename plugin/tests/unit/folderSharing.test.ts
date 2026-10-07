@@ -146,9 +146,18 @@ describe('disabled owner folder sharing contract', () => {
     expect(await confirmation).toBeInstanceOf(Error)
     expect(port.create).not.toHaveBeenCalled()
   })
-  it('refuses remote mutations behind the default disabled fence', async () => {
+  it('allows owner sharing through the production default after review and authorization', async () => {
     const { port } = setup()
     const flow = new FolderSharingFlow('sample-vault', port)
+    await flow.review('Agents/', 'editor', 'Sample')
+    const result = await flow.confirm('invented-password')
+    expect(result.token).toMatch(/^absk_/)
+    expect(port.authorize).toHaveBeenCalledWith('invented-password')
+    expect(port.create).toHaveBeenCalledTimes(1)
+  })
+  it('refuses remote mutations behind the explicitly disabled fence', async () => {
+    const { port } = setup()
+    const flow = new FolderSharingFlow('sample-vault', port, () => false)
     await expect(flow.review('Agents/', 'editor', 'Sample')).rejects.toThrow(/disabled/)
     expect(port.preview).not.toHaveBeenCalled()
   })

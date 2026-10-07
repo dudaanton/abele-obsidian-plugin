@@ -3,6 +3,8 @@ export const TEST_SHARING_MODULE = 'virtual:abele-test-sharing'
 const flags = new Map([
   ['/src/sync/sharing/folderSharing.ts', 'OWNER_SHARING_ENABLED'],
   ['/src/sync/publication/fence.ts', 'PUBLICATION_ENABLED'],
+  ['/src/sync/scoped/scopedJoin.ts', 'SCOPED_JOIN_ENABLED'],
+  ['/src/sync/scoped/scopedCreation.ts', 'SCOPED_CREATION_ENABLED'],
 ])
 export function testSharingBuildPlugin(mode) {
   return {
@@ -20,8 +22,8 @@ export function testSharingBuildPlugin(mode) {
       const path = id.replaceAll('\\', '/').split('?')[0]
       for (const [suffix, flag] of flags) {
         if (!path.endsWith(suffix)) continue
-        const declaration = `export const ${flag} = false`
-        if (!code.includes(declaration)) throw new Error('Sharing source flags must remain false')
+        const declaration = `export const ${flag} = true`
+        if (!code.includes(declaration)) throw new Error('Sharing source flags must remain true')
         if (mode !== 'sharing-test') return null
         return code.replace(
           declaration,

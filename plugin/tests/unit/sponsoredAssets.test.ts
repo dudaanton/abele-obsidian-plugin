@@ -62,9 +62,9 @@ const request = () => ({
   reason: 'confirmed-existing' as const,
 })
 describe('fenced sponsored extras and native creation', () => {
-  it('is disabled by default without any network access', async () => {
+  it('is disabled by policy without any network access', async () => {
     const { port } = setup()
-    const service = new SponsoredAssetService(port)
+    const service = new SponsoredAssetService(port, () => false)
     await expect(service.add(owner, request())).rejects.toThrow(/disabled/)
     expect(port.read).not.toHaveBeenCalled()
   })

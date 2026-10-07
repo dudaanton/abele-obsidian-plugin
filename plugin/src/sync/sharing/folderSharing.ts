@@ -1,7 +1,7 @@
 import { CreateFolderGrantRequestSchema, IssueFolderKeyRequestSchema } from '@abele/sync-protocol'
 import { sha256 } from '@abele/sync-core'
 import type { GrantPreparation } from './grantPreparation'
-export const OWNER_SHARING_ENABLED = false
+export const OWNER_SHARING_ENABLED = true
 export interface FolderPreview {
   /** Opaque UI review identity; the HTTP preview endpoint cannot supply this authority. */
   reviewId?: string

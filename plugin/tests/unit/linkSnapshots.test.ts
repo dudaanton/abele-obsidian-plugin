@@ -106,9 +106,10 @@ describe('existing-private version comparison', () => {
   })
 })
 describe('durable exact-version link snapshots', () => {
-  it('is disabled independently of stored facts and accepts only an attested producer', async () => {
-    expect(PUBLICATION_ENABLED).toBe(false)
-    expect(assertPublicationEnabled).toThrow(/disabled/)
+  it('supports production publication without trusting unattested stored facts and accepts only an attested producer', async () => {
+    expect(PUBLICATION_ENABLED).toBe(true)
+    expect(assertPublicationEnabled).not.toThrow()
+    expect(() => assertPublicationEnabled(false)).toThrow(/disabled/)
     const store = new LinkSnapshotStore(meta(), binding, () => false)
     expect((await store.settle(await candidate())).kind).toBe('unknown')
   })

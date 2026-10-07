@@ -59,9 +59,9 @@ async function setup() {
   return { binding, meta, snapshots, observe, make, bytes, ops }
 }
 describe('reviewed scoped push exact-version hook integration', () => {
-  it('is disabled by default before any journal/upload/network operation', async () => {
+  it('is disabled by policy before any journal/upload/network operation', async () => {
     const s = await setup(),
-      m = new ScopedPushIntegration(s.meta, s.binding, s.snapshots, s.observe)
+      m = new ScopedPushIntegration(s.meta, s.binding, s.snapshots, s.observe, () => false)
     await expect(m.push({ ...f!, ops: s.ops, stillHeld: () => true })).rejects.toThrow(/disabled/)
     expect(await f!.state.getJournal()).toBeNull()
     expect(f!.client.putBlob).not.toHaveBeenCalled()

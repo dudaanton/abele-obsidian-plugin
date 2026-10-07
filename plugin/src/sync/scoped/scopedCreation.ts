@@ -1,6 +1,6 @@
 import { sha256 } from '@abele/sync-core'
 import type { SnapshotMeta } from '../publication/LinkSnapshotStore'
-export const SCOPED_CREATION_ENABLED = false
+export const SCOPED_CREATION_ENABLED = true
 export interface ApprovedRoot {
   fileId: string
   versionId: string
