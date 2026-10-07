@@ -4,6 +4,11 @@ import type { FileWrite, FileMutationResult } from '@abele/node-client'
 /** Installation-local editor state, never settings or a vault file. */
 export const FileDraftSchema = z
   .object({
+    // Migration adds one stable local CAS identity; each committed change replaces it.
+    revision: z
+      .string()
+      .uuid()
+      .default(() => crypto.randomUUID()),
     baseContentId: z.string().regex(/^[a-f0-9]{64}$/),
     baseText: z.string().max(32768),
     text: z.string().max(16 * 1024 * 1024),
@@ -22,3 +27,4 @@ export const FileDraftSchema = z
   })
   .strict()
 export type FileDraft = z.infer<typeof FileDraftSchema>
+export type FileDraftSnapshot = Pick<FileDraft, 'revision' | 'text' | 'baseContentId'>

@@ -6,9 +6,27 @@ const text = 'export const sample = "retained file content"\n'.repeat(60)
 const patch = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,2 +1,2 @@\n export const sample = true\n-old value\n+new value\ndiff --git a/other.txt b/other.txt\n--- a/other.txt\n+++ b/other.txt\n@@ -1 +1 @@\n-before\n+after\n`
 /** Invented browser contract only: layout checks never start an agent or daemon. */
 export async function nodeFilesFixture(
-  view: 'files' | 'diffs' | 'review' | 'history' | 'edit' | 'conflict' | 'unknown' = 'files'
+  view:
+    | 'files'
+    | 'diffs'
+    | 'review'
+    | 'history'
+    | 'edit'
+    | 'conflict'
+    | 'unknown'
+    | 'binary'
+    | 'tooLarge'
+    | 'shared' = 'files'
 ) {
-  const fileView = ['files', 'edit', 'conflict', 'unknown'].includes(view)
+  const fileView = [
+    'files',
+    'edit',
+    'conflict',
+    'unknown',
+    'binary',
+    'tooLarge',
+    'shared',
+  ].includes(view)
   const contentId = Array.from(
     new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))),
     (b) => b.toString(16).padStart(2, '0')
@@ -72,6 +90,24 @@ export async function nodeFilesFixture(
     await model.openFile(path)
     await model.beginEditing()
     await model.editText('export const sample = "local draft"\n')
+    if (view === 'binary' || view === 'tooLarge') {
+      const read = client.readFile
+      client.readFile = async (...args) => ({
+        ...(await read(...args)),
+        binary: view === 'binary',
+        too_large: view === 'tooLarge',
+        content_id: view === 'tooLarge' ? null : 'b'.repeat(64),
+        size: view === 'tooLarge' ? 20 * 1024 * 1024 : 64,
+      })
+      await model.openFile(path)
+    }
+    if (view === 'shared') {
+      const other = new NodeFilesModel(client, model.nodeId, model.workspaceId, 'other-session')
+      await other.openFile(path)
+      await other.beginEditing()
+      await other.editText('Draft from another view')
+      await model.editText('export const sample = "visible local draft"\n').catch(() => {})
+    }
     if (view === 'conflict' || view === 'unknown') {
       await model.saveFile()
       const pending = model.draft.value!.pending!

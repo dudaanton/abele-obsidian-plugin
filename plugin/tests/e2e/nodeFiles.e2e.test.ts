@@ -48,7 +48,14 @@ it('shows the shared editor and conflict/unknown notices within a phone-width fi
   await reloadApp('app.emulateMobile(true)')
   try {
     evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
-    for (const state of ['edit', 'edit-conflict', 'edit-unknown']) {
+    for (const state of [
+      'edit',
+      'edit-conflict',
+      'edit-unknown',
+      'edit-binary',
+      'edit-large',
+      'edit-shared',
+    ]) {
       const result = evalAsync<{ text: string; editable: boolean; right: number }>(`(async()=>{
         const wait=ms=>new Promise(r=>setTimeout(r,ms));await window.__abeleTest.openDialog('node-${state}');await wait(300);
         const root=document.querySelector('.abele-node-files');root.querySelector('h3').scrollIntoView({block:'start'});await wait(200);
@@ -62,6 +69,9 @@ it('shows the shared editor and conflict/unknown notices within a phone-width fi
       expect(result.right).toBeLessThanOrEqual(390)
       if (state === 'edit-conflict') expect(result.text).toContain('Conflict ·')
       if (state === 'edit-unknown') expect(result.text).toContain('Save outcome unknown')
+      if (state === 'edit-binary' || state === 'edit-large')
+        expect(result.text).toContain('Retained local text')
+      if (state === 'edit-shared') expect(result.text).toContain('another view')
     }
   } finally {
     evalRaw(

@@ -2,6 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from '@/testing/nodeFilesFixture'
+import { NodeFilesModel } from '@/node/NodeFilesModel'
 import { useVault } from '../helpers/testEnv'
 const stubs = {
   Modal: { template: '<div><slot/><slot name="footer"/></div>' },
@@ -267,6 +268,106 @@ it('starts a new edit from the newly loaded file rather than resurrecting a prev
   expect(model.draftText.value).toBe(doc.text)
   expect(model.draft.value?.baseContentId).toBe(doc.contentId)
 })
+it('reopening Browse refreshes a shared draft changed by another model', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('edit'),
+    a = props.model,
+    path = props.initialPath!
+  await a.editText('draft A')
+  const b = new NodeFilesModel(a.client, a.nodeId, a.workspaceId, 'other-session')
+  await b.openFile(path)
+  await b.beginEditing()
+  await b.editText('draft B')
+  const wrapper = mount(NodeFilesDialog, {
+    props: { model: a, connection: props.connection },
+    global: { stubs },
+  })
+  try {
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'GithubCode' }).props('text')).toBe('draft B')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('passive reopen never discards a visible copy rejected by shared-draft CAS', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('edit'),
+    a = props.model,
+    path = props.initialPath!
+  const b = new NodeFilesModel(a.client, a.nodeId, a.workspaceId, 'other-session')
+  await b.openFile(path)
+  await b.beginEditing()
+  await b.editText('shared B')
+  await expect(a.editText('visible private A')).rejects.toThrow('another view')
+  const wrapper = mount(NodeFilesDialog, {
+    props: { model: a, connection: props.connection },
+    global: { stubs },
+  })
+  try {
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'GithubCode' }).props('text')).toBe('visible private A')
+    expect(wrapper.text()).not.toContain('Unsent edit · stored only')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('does not label an unstored private edit as the previously saved version', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('edit'),
+    model = props.model
+  model.draft.value = { ...model.draft.value!, status: 'saved', baseText: model.draftText.value }
+  model.documents.edit = () => {
+    throw new Error('validation failure')
+  }
+  await expect(model.editText('visible unsent paste')).rejects.toThrow('validation failure')
+  const wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+  try {
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Saved ·')
+    expect(wrapper.text()).toContain('copy your text')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('allows explicit conflict rebase when the loaded content has returned to the original base', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('conflict')
+  const wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+  try {
+    await flushPromises()
+    const rebase = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Use loaded version as base for this draft')
+    expect(rebase).toBeDefined()
+    await rebase!.trigger('click')
+    await flushPromises()
+    expect(props.model.draft.value?.status).toBe('draft')
+    expect(props.model.draftText.value).toContain('local draft')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it.each(['binary', 'tooLarge'] as const)(
+  'keeps draft text reachable when current contents become %s',
+  async (kind) => {
+    useVault([])
+    const props = await nodeFilesFixture('edit'),
+      read = props.model.client.readFile
+    props.model.client.readFile = async (...args) => ({
+      ...(await read(...args)),
+      binary: kind === 'binary',
+      too_large: kind === 'tooLarge',
+      content_id: kind === 'tooLarge' ? null : 'b'.repeat(64),
+    })
+    const wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+    try {
+      await flushPromises()
+      expect(wrapper.findComponent({ name: 'GithubCode' }).props('text')).toContain('local draft')
+    } finally {
+      wrapper.unmount()
+    }
+  }
+)
 it('holds comments on terminal rejection and sends a queued batch only once', async () => {
   useVault([])
   const props = await nodeFilesFixture('review')

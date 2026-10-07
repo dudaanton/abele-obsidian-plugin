@@ -93,7 +93,7 @@
             <Button
               text="Reload current version"
               icon="refresh-cw"
-              :disabled="busy || offline || !!model.draftError.value"
+              :disabled="busy || offline || !model.canReloadDraft.value"
               @click="act(() => model.openFile(model.filePath.value, lifetime.signal))"
             />
             <Button
@@ -108,13 +108,21 @@
             v-if="
               model.editing.value &&
               !model.draft.value?.pending &&
-              model.draft.value?.status === 'draft'
+              model.draft.value?.status === 'draft' &&
+              !model.draftError.value
             "
             role="status"
           >
             Unsent edit · stored only on this device. Save uses the version you started from.
           </p>
-          <p v-if="model.draft.value?.status === 'saved'" role="status">
+          <p
+            v-if="
+              model.draft.value?.status === 'saved' &&
+              !model.draftDirty.value &&
+              !model.draftError.value
+            "
+            role="status"
+          >
             Saved · the node confirmed this version. External editors may change it afterwards.
           </p>
           <p v-if="model.draft.value?.status === 'conflict'" role="alert">
@@ -143,7 +151,8 @@
             v-if="
               model.draft.value &&
               !model.draft.value.pending &&
-              model.document.value.contentId !== model.draft.value.baseContentId
+              (model.draft.value.status === 'conflict' ||
+                model.document.value.contentId !== model.draft.value.baseContentId)
             "
             text="Use loaded version as base for this draft"
             :disabled="busy || !model.fileEditable.value"
@@ -176,12 +185,30 @@
             its contents.
           </p>
           <p v-else-if="model.document.value.binary">Binary file · no text preview.</p>
-          <template v-else>
+          <template
+            v-if="
+              model.draft.value || (!model.document.value.binary && !model.document.value.tooLarge)
+            "
+          >
+            <p
+              v-if="
+                model.draft.value && (model.document.value.binary || model.document.value.tooLarge)
+              "
+            >
+              Retained local text · the current file cannot be shown as text. Your draft remains
+              readable and copyable below.
+            </p>
             <p v-if="model.document.value.large">Large file · retained content shown below.</p>
             <GithubCode
               :key="model.filePath.value"
-              :text="model.editing.value ? model.draftText.value : model.document.value.text || ''"
-              :editable="model.editing.value && !model.saving.value && !model.draft.value?.pending"
+              :text="
+                model.editing.value || model.document.value.binary || model.document.value.tooLarge
+                  ? model.draftText.value
+                  : model.document.value.text || ''
+              "
+              :editable="
+                model.editing.value && !busy && !model.saving.value && !model.draft.value?.pending
+              "
               :path="model.filePath.value"
               :range="model.fileRange.value"
               :focus="
@@ -190,7 +217,11 @@
               @change="editText"
             />
             <details
-              v-if="model.editing.value && model.draftText.value !== model.document.value.text"
+              v-if="
+                model.editing.value &&
+                model.document.value.text !== undefined &&
+                model.draftText.value !== model.document.value.text
+              "
             >
               <summary>Last loaded version · reload to inspect current contents</summary>
               <GithubCode :text="model.document.value.text || ''" :path="model.filePath.value" />
@@ -500,12 +531,17 @@ onMounted(
       // A requested resource and the cached folder listing are independent reads. A removed
       // folder must not suppress a valid file link (nor vice versa).
       const reads: Promise<unknown>[] = []
-      if (props.initialPath) {
+      if (props.model.draftError.value) {
+        // An unpersisted private copy must stay visible until an explicit reload/copy action.
+        error.value = props.model.draftError.value
+      } else if (props.initialPath) {
         reads.push(
           props.initialRange
             ? props.model.openFile(props.initialPath, lifetime.signal, props.initialRange)
             : props.model.openResource(props.initialPath, lifetime.signal)
         )
+      } else if (props.model.filePath.value) {
+        reads.push(props.model.openFile(props.model.filePath.value, lifetime.signal))
       }
       reads.push(props.model.list(props.model.directory.value, false, lifetime.signal))
       const results = await Promise.allSettled(reads)

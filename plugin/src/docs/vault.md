@@ -71,7 +71,15 @@ operation ID/body, and retained result/error. It stays in the installation's Ind
 not settings transfer, synced secrets, vault Markdown or agent context. Baselines and saves are
 bounded at 32,768 UTF-16 code units; unsent drafts may grow to the retained-content limit without
 being silently discarded when save admission refuses them. A save identity/body commits locally
-before outbox admission; source recreation resumes exactly that operation. File receipts retain
+before outbox admission; source recreation resumes exactly that operation. Each shared
+`[workspace_id, relative_path]` draft has a revision UUID, migrated transactionally for old
+records. Editing, rebase and discard compare that revision; save also verifies the exact visible
+text and base identity before queuing that snapshot. Different models/windows cannot silently
+replace each other's draft or submit text that their editor did not show. Failed-CAS private
+text stays visible for copying; passive dialog reopening does not discard it. Explicit reload
+refreshes shared drafts after network reads and local writes, and programmatic code restoration
+never becomes an editor change. Synchronous validation failures use the same copy-warning and
+save/reload fence as storage failures. A binary/oversized current file cannot hide retained text. File receipts retain
 optional `request` method/params so client ID/body reuse is checked after settlement too. Known
 conflicts can be explicitly rebased against a freshly loaded version; uncertain drafts retain
 their identity/evidence and cannot be blindly edited, discarded or resubmitted. Node predecessor

@@ -18,6 +18,8 @@ it('keeps ordinary file views read only and uses the same code renderer for edit
   expect(change).toHaveBeenCalledWith('draft')
   editable.setText('draft')
   expect(change).toHaveBeenCalledTimes(1)
+  editable.setText('different restored draft')
+  expect(change).toHaveBeenCalledTimes(1)
   expect(EditorView.findFromDOM(parent.querySelector('.cm-editor')!)).toBe(view)
   editable.destroy()
   parent.remove()

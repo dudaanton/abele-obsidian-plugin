@@ -136,6 +136,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(NodeFilesDialog, await nodeFilesFixture('conflict'), 'node-edit-conflict'),
   'node-edit-unknown': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('unknown'), 'node-edit-unknown'),
+  'node-edit-binary': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('binary'), 'node-edit-binary'),
+  'node-edit-large': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('tooLarge'), 'node-edit-large'),
+  'node-edit-shared': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
   'node-review': async () =>

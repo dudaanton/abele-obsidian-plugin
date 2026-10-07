@@ -5,7 +5,13 @@
  * thousand lines costs what twenty do, and it gives selection, copying and the same highlighting
  * the plugin's own code view uses.
  */
-import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state'
+import {
+  Annotation,
+  Compartment,
+  EditorState,
+  RangeSetBuilder,
+  type Extension,
+} from '@codemirror/state'
 import {
   Decoration,
   EditorView,
@@ -53,6 +59,8 @@ export interface CodeViewer extends Viewer {
   blame(options: BlameGutter | null): void
   setText(text: string): void
 }
+
+const restoredText = Annotation.define<boolean>()
 
 class NumberMarker extends GutterMarker {
   constructor(private readonly n: string) {
@@ -106,7 +114,11 @@ function mount(
               keymap.of([...defaultKeymap, ...historyKeymap]),
               EditorView.contentAttributes.of({ 'aria-label': 'Workspace file editor' }),
               EditorView.updateListener.of((update) => {
-                if (update.docChanged) onChange(update.state.doc.toString())
+                if (
+                  update.docChanged &&
+                  !update.transactions.some((t) => t.annotation(restoredText))
+                )
+                  onChange(update.state.doc.toString())
               }),
             ]
           : readOnly),
@@ -300,6 +312,7 @@ export function mountCode(
       if (viewer.view.state.doc.toString() !== text)
         viewer.view.dispatch({
           changes: { from: 0, to: viewer.view.state.doc.length, insert: text },
+          annotations: restoredText.of(true),
         })
     },
     blame(options) {

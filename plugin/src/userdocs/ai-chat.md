@@ -85,7 +85,17 @@ A **Conflict** keeps your draft separate from the changed workspace. **Reload cu
 loads current contents without replacing your draft. Inspect **Last loaded version**, then
 choose **Use loaded version as base for this draft** only if you intend to apply the retained
 draft against that version. **Discard local draft** forgets only known, local editor work; it
-never restores or changes the workspace file.
+never restores or changes the workspace file. If the current file returns to the original
+version after a conflict, the explicit base choice still lets you continue with your draft.
+Your retained text remains readable and copyable even if the current file becomes binary or
+exceeds the viewing limit.
+
+Drafts of the same workspace file are shared by views on this device. If another view changes
+one, an older editor cannot silently replace it or save the newer text without showing it.
+Copy any private text you want to keep, then explicitly reload the shared draft. Ordinary
+reopening refreshes shared work; a visible copy that could not be stored stays visible instead.
+Reload cannot roll back text entered while its read was pending. If local validation or storage
+fails, saving/reloading is blocked and the copy warning remains until the text can be stored.
 
 A **Save outcome unknown** is not success or a safe reason to save again. Reconnect and
 choose **Check save**: the original operation is retried, never a newly allocated edit. The
@@ -94,8 +104,12 @@ locked for inspection; its receipt includes a retained predecessor and recovery 
 **Read retained predecessor** uses the same code presentation. Recovery does not guess success
 by matching bytes or automatically restore/reapply files. Node API writes are serialized,
 but external editors and agent shell writes are not; replacement may briefly leave the path
-absent. The daemon preserves recoverable evidence instead of silently overwriting a competing
-version. A saved receipt confirms the accepted version, not that no external edit happened later.
+absent. The daemon rechecks and preserves the displaced file, including writes through an
+already-open external editor. It retains up to 32 unchanged successful predecessor copies per
+workspace; older copies are re-read into retained storage before cleanup, and changed/uncertain
+copies stay for inspection. Actual displaced-file permissions and permitted owner/group are
+preserved. Files with ACLs or unsupported extended attributes are explicitly refused instead
+of silently dropping their access rules; the macOS system provenance attribute is copied. A saved receipt confirms the accepted version, not that no external edit happened later.
 
 In **Diffs**, choose HEAD/worktree, staged, unstaged, committed branch/base, or a commit
 change. Branch/base explicitly compares the merge-base with HEAD, not uncommitted files.
