@@ -83,7 +83,7 @@ const script = `(async () => {
 
   const cuts = []
   const measureAll = (screen, root) => {
-    const fields = root.querySelectorAll('input, textarea, select, button, [tabindex="0"]')
+    const fields = root.querySelectorAll('input, textarea, select, button, [tabindex="0"], .cm-content[contenteditable="true"]')
     for (const field of fields) {
       const s = getComputedStyle(field)
       if (s.display === 'none' || s.visibility === 'hidden') continue

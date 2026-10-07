@@ -21,6 +21,8 @@ export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
 }
+import TextCommentDialog from '@/components/TextCommentDialog.vue'
+import { textCommentFixture } from './textCommentFixture'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
@@ -128,6 +130,23 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'chat-artifacts-empty': () => mountAlone(chatArtifactsFixture('empty')),
   'chat-artifacts': () => mountAlone(chatArtifactsFixture('populated')),
   'chat-artifacts-long': () => mountAlone(chatArtifactsFixture('long')),
+  'text-comment-create': () => mountAlone(TextCommentDialog, textCommentFixture()),
+  'text-comment-list': () => mountAlone(TextCommentDialog, textCommentFixture(true)),
+  'text-comment-edit': async () => {
+    mountAlone(TextCommentDialog, textCommentFixture(true))
+    await nextTick()
+    Array.from(document.querySelectorAll<HTMLButtonElement>('.abele-text-comments button'))
+      .find((button) => button.textContent?.trim() === 'Edit')
+      ?.click()
+  },
+  'text-comment-delete': () => {
+    void confirmAction(GlobalStore.getInstance().app, {
+      title: 'Delete comment?',
+      message:
+        'This is the last entry. Its marker and thread will also be removed. The note text will stay.',
+      confirmText: 'Delete',
+    })
+  },
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
@@ -173,24 +192,56 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     app.saveLocalStorage(key, null)
     void networkDecision(app, path).finally(() => app.saveLocalStorage(key, previous))
   },
-  'selection-source': () => { void chooseAnchorSource(['Chats/sample-original.abchat', 'Copies/a-long-sample-conversation-name-for-a-narrow-screen.abchat']) },
+  'selection-source': () => {
+    void chooseAnchorSource([
+      'Chats/sample-original.abchat',
+      'Copies/a-long-sample-conversation-name-for-a-narrow-screen.abchat',
+    ])
+  },
   'selection-history': () => {
     const revision = {
       reference: { chatId: 'sample-chat', messageId: 'sample-reply', revisionId: 'sample-version' },
-      content: 'A small lantern glows beside the garden path.\n\nAn earlier answer with a retained selection.',
-      projection: { version: 'chat-text-v1', text: 'A small lantern glows beside the garden path.An earlier answer with a retained selection.' },
+      content:
+        'A small lantern glows beside the garden path.\n\nAn earlier answer with a retained selection.',
+      projection: {
+        version: 'chat-text-v1',
+        text: 'A small lantern glows beside the garden path.An earlier answer with a retained selection.',
+      },
     }
-    const snapshot = captureChatSelection({ revision, range: { space: 'rendered', start: 2, end: 15 }, sentence: revision.projection.text,
-      title: 'Sample chat', pathHint: 'Chats/sample.abchat', role: 'assistant', author: 'assistant' })
+    const snapshot = captureChatSelection({
+      revision,
+      range: { space: 'rendered', start: 2, end: 15 },
+      sentence: revision.projection.text,
+      title: 'Sample chat',
+      pathHint: 'Chats/sample.abchat',
+      role: 'assistant',
+      author: 'assistant',
+    })
     const anchor = createChatAnchor(snapshot, revision, () => 'sample-anchor')
-    mountAlone(ChatAnchorHistory, { anchor, resolution: { status: 'historical', revision, placement: anchor.placements[0] } })
+    mountAlone(ChatAnchorHistory, {
+      anchor,
+      resolution: { status: 'historical', revision, placement: anchor.placements[0] },
+    })
   },
   'selection-unresolved': () => {
-    const revision = { reference: { chatId: 'sample-chat', messageId: 'sample-reply', revisionId: 'sample-version' },
-      content: 'Saved words from an earlier answer.', projection: { version: 'chat-text-v1', text: 'Saved words from an earlier answer.' } }
-    const snapshot = captureChatSelection({ revision, range: { space: 'rendered', start: 0, end: 11 }, sentence: revision.content,
-      title: 'Sample chat', pathHint: 'Chats/sample.abchat', role: 'assistant', author: 'assistant' })
-    mountAlone(ChatAnchorHistory, { anchor: createChatAnchor(snapshot, revision, () => 'sample-anchor'), resolution: { status: 'unresolved', snapshot } })
+    const revision = {
+      reference: { chatId: 'sample-chat', messageId: 'sample-reply', revisionId: 'sample-version' },
+      content: 'Saved words from an earlier answer.',
+      projection: { version: 'chat-text-v1', text: 'Saved words from an earlier answer.' },
+    }
+    const snapshot = captureChatSelection({
+      revision,
+      range: { space: 'rendered', start: 0, end: 11 },
+      sentence: revision.content,
+      title: 'Sample chat',
+      pathHint: 'Chats/sample.abchat',
+      role: 'assistant',
+      author: 'assistant',
+    })
+    mountAlone(ChatAnchorHistory, {
+      anchor: createChatAnchor(snapshot, revision, () => 'sample-anchor'),
+      resolution: { status: 'unresolved', snapshot },
+    })
   },
   'reply-revision': () =>
     mountAlone(AiReplyRevisionDialog, {

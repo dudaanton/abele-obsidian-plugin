@@ -82,6 +82,10 @@ const DIALOGS = [
   'chat-artifacts-empty',
   'chat-artifacts',
   'chat-artifacts-long',
+  'text-comment-create',
+  'text-comment-list',
+  'text-comment-edit',
+  'text-comment-delete',
   'node-workspaces',
   'node-files',
   'node-edit',
@@ -1165,7 +1169,7 @@ const probeScript = `(async () => {
           await screen('node workspace permissions', modal, modal.querySelector('.abele-modal__body'))
         }
         const clipped = []
-        for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"]')) {
+        for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"], .cm-content[contenteditable="true"]')) {
           const cs = getComputedStyle(f)
           if (cs.display === 'none' || cs.visibility === 'hidden' || f.getBoundingClientRect().width === 0) continue
           f.focus()
