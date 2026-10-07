@@ -13,6 +13,18 @@ body.is-tablet.abele-half-width-sidebars {
   --mobile-sidebar-max-width: 50vw;
 }
 
+.abele-agents-ribbon { position: relative; }
+.abele-agents-ribbon__badge {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  color: var(--text-accent);
+  background: var(--background-primary);
+  border-radius: var(--radius-s);
+  font-size: var(--font-smallest);
+  line-height: var(--line-height-normal);
+}
+
 /* Colored highlight variables */
 body {
   --abele-highlight-red: rgba(255, 82, 82, 0.3);

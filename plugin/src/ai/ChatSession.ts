@@ -8,6 +8,8 @@ import {
   type ShallowRef,
 } from 'vue'
 import { TFile, Notice } from 'obsidian'
+import type { LocalAttention } from '@/agents/attention'
+import { AgentsService } from '@/agents/AgentsService'
 import { needsSecretApproval } from './tools/secretUtils'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
@@ -47,7 +49,13 @@ import type {
   RevisionReference,
 } from '@/selection/types'
 import { sameRevision } from '@/selection/revisionMapping'
-import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot, type ParsedChat } from './ChatLog'
+import {
+  ChatLogWriter,
+  parseChat,
+  serializeChat,
+  type ChatSnapshot,
+  type ParsedChat,
+} from './ChatLog'
 import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
 import { inspectMainChat, readChat, rewriteChat } from './chatCopy'
 import {
@@ -327,6 +335,41 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   public readonly isExecutingTool = ref(false)
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
+  public readonly attention = ref<LocalAttention>({})
+  private restoringAttention = false
+
+  recordAttentionError(text: string): void {
+    this.attention.value = {
+      ...this.attention.value,
+      errors: [
+        ...(this.attention.value.errors ?? []),
+        {
+          id: nanoid(),
+          at: Date.now(),
+          text,
+          target: this.activeLeafId ?? undefined,
+        },
+      ],
+    }
+    // The ordinary end-of-turn save commits this together with the conversation.
+    this.dirty = true
+  }
+
+  async markAttentionSeen(id: string): Promise<void> {
+    const state = this.attention.value
+    this.attention.value = {
+      ...state,
+      errors: state.errors?.map((e) => (e.id === id ? { ...e, seen: true } : e)),
+      run: state.run?.id === id ? { ...state.run, status: 'done' } : state.run,
+      question:
+        state.question?.id === id ? { ...state.question, status: 'cancelled' } : state.question,
+    }
+    await this.save()
+    if (this.dirty) {
+      this.attention.value = state
+      throw new Error('Не удалось сохранить отметку. Повтори действие.')
+    }
+  }
 
   // UI preferences
   public readonly hideReasoning = ref(false)
@@ -597,11 +640,53 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         },
         { deep: true, flush: 'sync' }
       )
+      watch(
+        () => this.isStreaming.value || this.isExecutingTool.value || !!this.retrying.value,
+        (working) => {
+          if (this.restoringAttention || this.destroyed || this.kind === 'run') return
+          const run = this.attention.value.run
+          this.attention.value = {
+            ...this.attention.value,
+            run: working
+              ? run?.status === 'running'
+                ? run
+                : {
+                    id: nanoid(),
+                    at: Date.now(),
+                    status: 'running',
+                    target: this.activeLeafId ?? undefined,
+                  }
+              : run
+                ? { ...run, status: 'done' }
+                : undefined,
+          }
+          // The device-local index records this immediately; the next normal chat write
+          // carries it too, without an extra write per state change within a turn.
+          this.dirty = true
+        },
+        { flush: 'sync' }
+      )
+      watch(
+        this.pendingToolCalls,
+        (calls) => {
+          if (this.restoringAttention || this.destroyed || this.kind === 'run') return
+          if (!calls.length && !this.attention.value.approvals) return
+          this.attention.value = {
+            ...this.attention.value,
+            approvals: Object.fromEntries(
+              calls.map((p) => [p.id, this.attention.value.approvals?.[p.id] ?? Date.now()])
+            ),
+          }
+          this.markDirty()
+        },
+        { flush: 'sync' }
+      )
       this.watchScope()
       this.watchCompaction()
       this.watchAnchoredNote()
     })
     this.syncScopeFromAgent()
+    if (this.kind !== 'run') AgentsService.getInstance().track(this)
   }
 
   // ── Agent binding ──────────────────────────────────────────────
@@ -1502,6 +1587,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     } finally {
       this.activeAgentTurns.value--
       endBackgroundTurn()
+      if (this.error.value && !this.destroyed && !this.turnAborted)
+        this.recordAttentionError(this.error.value)
     }
   }
 
@@ -2339,6 +2426,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   // ── Questions tool ──────────────────────────────────────────────
 
   askQuestions(questions: { question: string; options: string[] }[]): Promise<string[] | null> {
+    this.attention.value = {
+      ...this.attention.value,
+      question: {
+        id: nanoid(),
+        at: Date.now(),
+        target: this.activeLeafId ?? undefined,
+        status: 'waiting',
+        questions,
+        currentIndex: 0,
+        answers: [],
+      },
+    }
+    this.markDirty()
     return new Promise((resolve) => {
       this.pendingQuestions.value = {
         questions,
@@ -2354,6 +2454,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (!pq) return
 
     const answers = [...pq.answers, answer]
+    const saved = this.attention.value.question
+    if (saved) {
+      this.attention.value = {
+        ...this.attention.value,
+        question: {
+          ...saved,
+          answers,
+          currentIndex: Math.min(pq.currentIndex + 1, pq.questions.length - 1),
+          status: pq.currentIndex + 1 < pq.questions.length ? 'waiting' : 'answered',
+        },
+      }
+      this.markDirty()
+    }
     if (pq.currentIndex + 1 < pq.questions.length) {
       this.pendingQuestions.value = {
         ...pq,
@@ -2371,6 +2484,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (!pq) return
     pq.resolve(null)
     this.pendingQuestions.value = null
+    if (!this.destroyed && !this.restoringAttention && this.attention.value.question) {
+      this.attention.value = {
+        ...this.attention.value,
+        question: { ...this.attention.value.question, status: 'cancelled' },
+      }
+      this.markDirty()
+    }
   }
 
   async injectSkill(skillName: string, args?: string): Promise<void> {
@@ -2454,6 +2574,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.pendingToolCalls.value = []
     this.currentChatFile.value = null
     this.error.value = null
+    this.attention.value = {}
     this.userMessageCount = 0
     this.chatTitle.value = ''
     this.chatCreated = ''
@@ -3006,6 +3127,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
+      attention: Object.keys(this.attention.value).length
+        ? (JSON.parse(JSON.stringify(this.attention.value)) as LocalAttention)
+        : undefined,
       chatId: this.chatIdentity,
       bindingRecovery: this.bindingRecovery,
       queuedMessages: this.queuedMessages.value.length
@@ -3214,9 +3338,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   async load(file: TFile): Promise<void> {
-    await this.reset()
-    const result = await ChatStorage.getInstance().loadChat(file)
-    await this.restoreLoadedChat(file, result)
+    this.restoringAttention = true
+    try {
+      await this.reset()
+      const result = await ChatStorage.getInstance().loadChat(file)
+      await this.restoreLoadedChat(file, result)
+    } finally {
+      this.restoringAttention = false
+    }
   }
 
   private async restoreLoadedChat(
@@ -3235,6 +3364,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.chatIdentity = result.metadata?.chatId
     this.delegationWakeStopped = false
     this.bindingRecovery = result.metadata?.bindingRecovery
+    const evidence = result.metadata?.attention ?? {}
+    this.attention.value = {
+      ...evidence,
+      run:
+        evidence.run?.status === 'running'
+          ? { ...evidence.run, status: 'interrupted' }
+          : evidence.run,
+      question:
+        evidence.question?.status === 'waiting'
+          ? { ...evidence.question, status: 'interrupted' }
+          : evidence.question,
+    }
     // Before `restoreAgentBinding`, which rebuilds the scope: the anchor has to be in place
     // by then or the note is left out until the next agent change.
     if (result.metadata?.kind) this.kind = result.metadata.kind
@@ -3644,6 +3785,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // is idempotent on its own, but `abort()` on a session already torn down is a second
     // abort signal raised over listeners that have gone.
     if (this.destroyed) return
+    if (this.kind !== 'run') AgentsService.getInstance().untrack(this)
     this.destroyed = true
     this.draft.value.imports?.retire()
     this.draft.value = { text: '', attachments: [] }

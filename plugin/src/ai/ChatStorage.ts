@@ -1,4 +1,5 @@
 import { GlobalStore } from '@/stores/GlobalStore'
+import { AgentsService } from '@/agents/AgentsService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TFile } from 'obsidian'
 import dayjs from 'dayjs'
@@ -102,6 +103,7 @@ export class ChatStorage {
         metadata.summary
       )
       this.noteMessageTimes(existingFile.path, snapshot)
+      AgentsService.getInstance().saved(existingFile.path, metadata)
       return existingFile
     }
 
@@ -116,6 +118,7 @@ export class ChatStorage {
     const path = await getAvailablePath(desiredPath)
     const file = await app.vault.create(path, content)
 
+    AgentsService.getInstance().saved(file.path, metadata)
     this.addHistoryEntry({
       path: file.path,
       title: metadata.title || title,

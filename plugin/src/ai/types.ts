@@ -702,6 +702,8 @@ export interface MessageComment {
 
 export interface ChatMetadata {
   type: 'abele-chat'
+  /** Explicit local execution evidence; absent in older files, never inferred from prose. */
+  attention?: import('@/agents/attention').LocalAttention
   /** Lazily allocated durable selection identity; never the rewind key or a path. */
   chatId?: string
   /** Reserved binding recovery contract; kept through saves and compaction, never replayed here. */

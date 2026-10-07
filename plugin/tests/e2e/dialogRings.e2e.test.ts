@@ -207,7 +207,8 @@ const script = `(async () => {
   } else cuts.push({ screen: 'settings nodes', field: '-', by: ['settings did not open'] })
   app.setting.close()
 
-  // Every other dialog of the plugin, in the dialog shell, opened by name.
+  // Every other dialog of the plugin, including the agents search/open/seen buttons,
+  // in the dialog shell, opened by name.
   for (const dialogName of window.__abeleTest.dialogNames()) {
     window.__abeleTest.openDialog(dialogName)
     if (await until(() => document.querySelector('.modal.abele-modal'), 5000)) {

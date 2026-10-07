@@ -25,6 +25,8 @@ import TextCommentDialog from '@/components/TextCommentDialog.vue'
 import { textCommentFixture } from './textCommentFixture'
 import ChatNavigation from '@/components/ChatNavigation.vue'
 import type { ChatMessage } from '@/ai/types'
+import AgentsListDialog from '@/components/AgentsListDialog.vue'
+import { agentsFixture } from './agentsFixture'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
@@ -234,6 +236,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(NodeFilesDialog, await nodeFilesFixture('tooLarge'), 'node-edit-large'),
   'node-edit-shared': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
+  'agents': () => mountAlone(AgentsListDialog, { source: agentsFixture() }),
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
   'node-review': async () =>

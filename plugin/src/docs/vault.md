@@ -149,6 +149,28 @@ in settings transfer, and the optional script-trust switch does not control temp
 Notice deduplication is session memory only and lasts only while a review notice is connected;
 a dismissed notice can be shown again on the next blocked application.
 
+## Local agent attention
+
+Chat metadata may contain `attention`: an explicit run identity, timestamp, target message and
+`running`/`interrupted`/`done` status; approval request timestamps keyed by request ID; an explicit
+question identity, text/options, current index, saved answers and waiting/interrupted/answered/cancelled
+state; and failed-run records with unique identities, text, target message and optional `seen` flag.
+These records live in the existing `.abchat` metadata log and survive compaction. A stopped run
+failure is separate from a tool error handled by the agent. Older files without this evidence
+are not inferred to have failed. Loading does not execute tools or model requests; saved local
+work and questions without a process are interrupted, not working. Pending tool calls continue
+to use the existing approval mechanism. Seen flags acknowledge only their specific failure;
+opening or closing a tab is not acknowledgement.
+
+Obsidian vault-scoped local storage `abele-agents-index` holds a small array of conversation
+references and reason/request/run IDs, timestamps, expiry and target message references. It
+contains no conversation text, question text, titles or error text. Files are authoritative;
+startup reconciles all `.abchat` files, including unopened discussions, without making sessions.
+Live state overrides the same file's indexed row, so a discussion shown as a tab is not duplicated.
+The index is device-local, does not travel in settings transfer, and is marked incomplete while
+reconciling or when reading or saving fails. File renames/deletions update its references.
+This is not multi-device arbitration for local tool approvals.
+
 ## Node sessions (device-local)
 
 Node history is owned by the daemon journal, not vault Markdown or `.abchat` files. The

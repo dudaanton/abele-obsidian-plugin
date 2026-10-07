@@ -54,6 +54,35 @@ If that budget runs out before any answer, the chat shows a token-limit error. I
 model's output-token limit or lower its thinking effort before retrying; a longer timeout
 alone does not increase the token budget.
 
+## Agents needing attention
+
+Open **Агенты** (Agents) from the activity icon in the ribbon, the chat header, or the command
+palette. The command can be assigned to the mobile toolbar. There is no floating button.
+The number counts conversations needing attention, not operations: three approvals in one
+chat count as one. A dot means only work is running; a separate question mark means the
+available information is incomplete, not that there are definitely no requests.
+
+The list has **Needs your action**, **Working**, and **Connection and delivery** sections,
+with search and ordinary keyboard-accessible buttons. Opening a row returns to its existing
+conversation and request; discussions remain discussions. Approvals are reviewed in the
+conversation, never granted from the list. Ordinary question marks in an answer do not count
+as explicit questions. An error handled by the agent while it continues is not an alert.
+
+Stopped-run errors remain until **Просмотрено** (Seen) is explicitly pressed. That mark
+belongs only to that error; a later failure returns to the list. Opening or closing a tab does
+not dismiss an error. The list survives restart and includes unopened local chats and
+closed discussion tabs. Interrupted local work is labelled as interrupted and is never
+resumed just by opening the list. Existing saved approvals can be reviewed again; saved
+questions retain their text and answers, but a lost local process cannot still be waiting.
+Old conversations without explicit execution evidence are not guessed to be failures.
+Local work is identified as being on this device: file sync does not arbitrate simultaneous
+answers to local approvals across devices.
+
+When all 20 tabs are occupied, returning from this list offers a choice of a tab to close;
+nothing closes automatically. On a phone, opening the list or conversation does not focus
+the composer or search and does not intentionally bring up the keyboard. No model requests
+are made to populate the list.
+
 ## Node sessions
 
 **Settings → Abele → Nodes** connects this device to a local AbeleNode daemon. Create a

@@ -91,6 +91,8 @@ import { registerPropertyWidgets } from './properties/register'
 import { registerLinter } from './linter/register'
 import { ChatService } from './ai/ChatService'
 import { NodeService } from './node/NodeService'
+import { AgentsService } from './agents/AgentsService'
+import { openAgents, closeAgents } from './agents/openAgents'
 import { CommentService } from './ai/CommentService'
 import { registerTextComments } from './comments/register'
 import { ScriptService } from './scripting/ScriptService'
@@ -1338,6 +1340,27 @@ export default class AbelePlugin extends Plugin {
   }
 
   registerAiFeatures() {
+    const agents = AgentsService.getInstance()
+    this.addCommand({ id: 'agents', name: 'Агенты', icon: 'activity', callback: openAgents })
+    const ribbon = this.addRibbonIcon('activity', 'Агенты', openAgents)
+    ribbon.addClass('abele-agents-ribbon')
+    const badge = ribbon.createSpan({ cls: 'abele-agents-ribbon__badge' })
+    this.register(watch([agents.badge, agents.tooltip], ([value, tooltip]) => {
+      badge.textContent = `${value.mark}${value.incomplete ? ' ?' : ''}`.trim()
+      ribbon.setAttribute('aria-label', tooltip)
+    }, { immediate: true }))
+    this.app.workspace.onLayoutReady(() => { void agents.start() })
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      if (file instanceof TFile && file.extension === 'abchat') void agents.updateFile(file, oldPath)
+    }))
+    this.registerEvent(this.app.vault.on('delete', (file) => {
+      if (file instanceof TFile && file.extension === 'abchat') agents.deleted(file.path)
+    }))
+    for (const event of ['create', 'modify'] as const) this.registerEvent(this.app.vault.on(event, (file) => {
+      if (!(file instanceof TFile) || file.extension !== 'abchat') return
+      if (ChatService.getInstance().getSessionByFile(file.path) || CommentService.getInstance().sessionFor(file.basename)) return
+      void agents.updateFile(file)
+    }))
     // The editor's comment field reads this synchronously to draw each marker's icon.
     setCommentInfoSource(CommentService.getInstance())
 
@@ -1583,8 +1606,10 @@ export default class AbelePlugin extends Plugin {
     AutomationService.destroy()
     ScriptService.destroy()
     ScriptViewService.destroy()
+    closeAgents()
     CommentService.getInstance().destroy()
     ChatService.getInstance().destroy()
+    AgentsService.destroyCurrent()
     ChangeTracker.get()?.uninstall()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()
