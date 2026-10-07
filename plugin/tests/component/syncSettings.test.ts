@@ -1070,7 +1070,7 @@ describe('what this device takes', () => {
     await flushPromises()
 
     expect(saveSettings).not.toHaveBeenCalled()
-    expect(config.exportSettings().sync).toEqual({ keySignature: null })
+    expect(config.exportSettings().sync).toEqual({ keySignature: null, sharing: [] })
   })
 
   /**

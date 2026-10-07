@@ -11,9 +11,10 @@ import { openLinkSnapshots, type SnapshotDescriptor } from './publication/snapsh
 import { NativeOwnerPublication } from './publication/nativeOwnerPublication'
 import { bindingKey, type SnapshotBinding } from './publication/LinkSnapshotStore'
 import { FolderSharingFlow } from './sharing/folderSharing'
-import { OwnerFolderHttpPort } from './sharing/ownerHttp'
+import { OwnerFolderHttpPort, type OwnerSharedGrant } from './sharing/ownerHttp'
 import { OwnerGroupRootFlow, type GroupRoot } from './sharing/ownerGroupRoot'
 import { ScopedPluginHost } from './scoped/scopedPluginHost'
+import { audiencesFor } from './sharing/sharingCatalogue'
 
 import {
   PUBLICATION_DESCRIPTOR as DESCRIPTOR,
@@ -39,8 +40,12 @@ export class PluginSharing {
     binding: SnapshotBinding
     grants: string[]
     held: () => boolean
+    settling: () => boolean
+    restoreTransaction: () => void
   } | null = null
   private catalogueQueue: Promise<void> = Promise.resolve()
+  private linkRefreshQueued = false
+  private linksDirty = false
   readonly audiences = shallowRef<string[]>([])
   constructor(
     readonly app: App,
@@ -111,6 +116,7 @@ export class PluginSharing {
     )
     let runtime: NativeOwnerPublication | null = null
     let detach = () => {}
+    let restoreTransaction = () => {}
     try {
       await rememberPublicationStore(
         this.app,
@@ -148,6 +154,28 @@ export class PluginSharing {
         resources.meta.permitsEngineEffects &&
         context.held() &&
         this.token(c) === context.token
+      let transactionDepth = 0
+      const settling = () => transactionDepth > 0
+      // Core's automatic watcher runs independently of the service queue. Track the public
+      // ledger transaction boundary too, so a late cache event cannot read an uncommitted
+      // overlay or make publication effects while personal settlement is still running.
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- restored to the exact same receiver
+      const originalTransaction = context.state.transaction
+      const transaction = originalTransaction.bind(context.state) as typeof originalTransaction
+      const wrappedTransaction: typeof originalTransaction = async (work) => {
+        transactionDepth++
+        try {
+          return await transaction(work)
+        } finally {
+          transactionDepth--
+          if (!settling() && this.linksDirty) this.linksChanged()
+        }
+      }
+      context.state.transaction = wrappedTransaction
+      restoreTransaction = () => {
+        if (context.state.transaction === wrappedTransaction)
+          context.state.transaction = originalTransaction
+      }
       runtime = new NativeOwnerPublication({
         app: this.app,
         configurationRoots: () => [
@@ -162,12 +190,25 @@ export class PluginSharing {
         grants,
         fetch: context.fetch,
         held,
+        settling,
+        linksChanged: () => this.linksChanged(),
       })
       await runtime.start(resources.fresh)
-      this.live = { context, runtime, resources, binding, grants, held }
+      this.live = {
+        context,
+        runtime,
+        resources,
+        binding,
+        grants,
+        held,
+        settling,
+        restoreTransaction,
+      }
       this.audiences.value = [...grants]
+      await this.recordAudiences([])
       detach = this.publicationPrompt.attach(runtime.confirmation)
       await this.publicationPrompt.refresh()
+      if (this.linksDirty) this.linksChanged()
       const owner = this.live
       return {
         hooks: runtime.hooks,
@@ -176,6 +217,7 @@ export class PluginSharing {
         close: () => {
           detach()
           owner.runtime.close()
+          restoreTransaction()
           owner.resources.close()
           if (this.live === owner) this.live = null
         },
@@ -183,9 +225,26 @@ export class PluginSharing {
     } catch (error) {
       detach()
       runtime?.close()
+      restoreTransaction()
+      if (this.live?.runtime === runtime) this.live = null
       resources.close()
       throw error
     }
+  }
+  private linksChanged(): void {
+    this.linksDirty = true
+    if (this.linkRefreshQueued || this.closed || !this.ownerReady) return
+    this.linkRefreshQueued = true
+    void this.sync
+      .refreshSharing()
+      .finally(() => {
+        this.linkRefreshQueued = false
+        if (this.linksDirty && !this.closed && this.ownerReady) this.linksChanged()
+      })
+      .catch(() => {})
+  }
+  get ownerReady(): boolean {
+    return !!this.live?.held() && !this.live.settling() && !this.scope.value
   }
   private owner() {
     const owner = this.live
@@ -194,10 +253,17 @@ export class PluginSharing {
     return owner
   }
   private async recordAudience(id: string) {
+    await this.recordAudiences([id])
+  }
+  private async recordAudiences(ids: string[], remove: string[] = []) {
     const owner = this.owner()
     const next = this.catalogueQueue.then(async () => {
       if (this.owner() !== owner) throw new Error('Owner audience connection changed')
-      const grants = [...new Set([...owner.grants, id])]
+      const config = AbeleConfig.getInstance()
+      const portable = audiencesFor(config.sync, owner.binding.issuer, owner.binding.vaultId)
+      const grants = [...new Set([...owner.grants, ...portable, ...ids])].filter(
+        (id) => !remove.includes(id)
+      )
       if (grants.length > 16) throw new Error('Publication audience budget reached')
       const value = { binding: owner.binding, grants }
       const text = JSON.stringify({ value, checksum: await hash(value) })
@@ -207,6 +273,22 @@ export class PluginSharing {
       owner.runtime.setAudiences(grants)
       owner.grants.splice(0, owner.grants.length, ...grants)
       this.audiences.value = grants
+      if (JSON.stringify(portable) !== JSON.stringify(grants)) {
+        const entry = { issuer: owner.binding.issuer, vaultId: owner.binding.vaultId, grants }
+        const sharing = config.sync.sharing ?? []
+        config.editSettings(() => {
+          config.sync = {
+            ...config.sync,
+            sharing: [
+              ...sharing.filter(
+                (item) => item.issuer !== entry.issuer || item.vaultId !== entry.vaultId
+              ),
+              entry,
+            ],
+          }
+        })
+        await config.saveSettings()
+      }
     })
     this.catalogueQueue = next.catch(() => {})
     await next
@@ -232,6 +314,36 @@ export class PluginSharing {
         if (grant.state === 'active') await this.recordAudience(grant.id)
         return grant
       }
+    }
+    const list = port.list.bind(port)
+    port.list = async (session) => {
+      if (this.owner() !== owner) throw new Error('Owner management connection changed')
+      const shares: OwnerSharedGrant[] = await list(session)
+      if (this.owner() !== owner) throw new Error('Owner management connection changed')
+      const active = shares
+        .filter((share) => ['active', 'preparing'].includes(share.state))
+        .map((share) => share.id)
+      const known = [
+        ...owner.grants,
+        ...audiencesFor(
+          AbeleConfig.getInstance().sync,
+          owner.binding.issuer,
+          owner.binding.vaultId
+        ),
+      ]
+      const retired = known.filter((id) => !active.includes(id))
+      // The publisher's existing audience budget must not prevent listing/revoking shares
+      // created by another client. Do not silently select a subset as publication policy.
+      await this.recordAudiences(active.length <= 16 ? active : [], retired)
+      return shares
+    }
+    const revoke = port.revoke.bind(port)
+    port.revoke = async (session, share) => {
+      if (this.owner() !== owner) throw new Error('Owner management connection changed')
+      await revoke(session, share)
+      if (this.owner() !== owner) throw new Error('Owner management connection changed')
+      await this.recordAudiences([], [share.id])
+      await this.sync.refreshSharing()
     }
     return port
   }
@@ -281,9 +393,23 @@ export class PluginSharing {
       )
     )
   }
+  ownerManagement(): OwnerFolderHttpPort {
+    return this.management()
+  }
   /** Revalidate retained publication work outside the personal settlement transaction. */
   async refreshPublication(): Promise<void> {
     const owner = this.owner()
+    if (owner.settling()) {
+      this.linksDirty = true
+      return
+    }
+    this.linksDirty = false
+    const portable = audiencesFor(
+      AbeleConfig.getInstance().sync,
+      owner.binding.issuer,
+      owner.binding.vaultId
+    )
+    if (portable.some((id) => !owner.grants.includes(id))) await this.recordAudiences(portable)
     await owner.runtime.flush()
     try {
       await owner.runtime.refreshPublication()
@@ -304,6 +430,7 @@ export class PluginSharing {
   async close() {
     this.closed = true
     this.live?.runtime.close()
+    this.live?.restoreTransaction()
     this.live?.resources.close()
     this.live = null
     await this.scoped.close()

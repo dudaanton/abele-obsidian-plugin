@@ -2,6 +2,57 @@ import { describe, expect, it, vi } from 'vitest'
 import { OwnerFolderHttpPort } from '@/sync/sharing/ownerHttp'
 describe('concrete fenced owner HTTP port', () => {
   it.each(['folder', 'group'] as const)(
+    'lists and revokes a reviewed %s through the existing owner CAS route',
+    async (kind) => {
+      const wire = {
+        id: 'sample-share',
+        vault_id: 'sample-vault',
+        label: 'Sample sharing',
+        selector_kind: kind,
+        folder_prefix: kind === 'folder' ? 'Shared/' : null,
+        root_file_id: kind === 'group' ? 'sample-root' : null,
+        role: 'editor',
+        acl_revision: 4,
+        state: 'active',
+      }
+      const sends: { path: string; body: any }[] = []
+      const fetcher: typeof fetch = async (url, init) => {
+        const path = new URL(String(url)).pathname
+        expect(new Headers(init?.headers).get('authorization')).toBe(
+          path === '/v1/auth/login' ? null : 'Bearer abst_' + 'a'.repeat(43)
+        )
+        const value =
+          path === '/v1/auth/login'
+            ? {
+                account_token: 'abst_' + 'a'.repeat(43),
+                expires_at: new Date(Date.now() + 100000).toISOString(),
+              }
+            : init?.method === 'PATCH'
+              ? { ...wire, acl_revision: 5, state: 'revoked' }
+              : [wire]
+        if (init?.method === 'PATCH') sends.push({ path, body: JSON.parse(String(init.body)) })
+        return new Response(JSON.stringify(value))
+      }
+      const port = new OwnerFolderHttpPort({
+        baseUrl: 'https://sync.example',
+        vaultId: 'sample-vault',
+        deviceToken: () => 'absd_' + 'b'.repeat(43),
+        fetch: fetcher,
+      })
+      const session = await port.authorize('invented-password', 'sample@example.com')
+      const [share] = await port.list(session)
+      expect(share).toMatchObject({ id: wire.id, label: wire.label, revision: 4, kind })
+      await port.revoke(session, share)
+      expect(sends).toEqual([
+        {
+          path: '/v1/vaults/sample-vault/grants/' + (kind === 'group' ? 'groups/' : '') + wire.id,
+          body: { expected_revision: 4, revoke: true },
+        },
+      ])
+    }
+  )
+
+  it.each(['folder', 'group'] as const)(
     'retains %s mutation id/revision and retries only preparation after create and PATCH',
     async (kind) => {
       const calls: { method: string; path: string }[] = []
@@ -87,6 +138,50 @@ describe('concrete fenced owner HTTP port', () => {
       )
     }
   )
+  it('reports checked folder files as included or excluded, not permanently unknown', async () => {
+    const kinds = ['note', 'canvas', 'script', 'settings', 'attachment']
+    const files = kinds.map((kind) => ({
+      file_id: 'sample-' + kind,
+      path: 'Shared/sample-' + kind + (kind === 'script' ? '.js' : '.md'),
+      kind,
+      version_id: 'sample-version',
+      seq: 1,
+      sha: 'a'.repeat(64),
+      size: 1,
+      mtime: 1,
+    }))
+    const state = {
+      head_seq: 1,
+      settings: {},
+      usage: {
+        live_bytes: 0,
+        history_bytes: 0,
+        trash_bytes: 0,
+        quota_bytes: null,
+        by_kind: Object.fromEntries(kinds.map((kind) => [kind, { live_bytes: 0, count: 0 }])),
+      },
+    }
+    const port = new OwnerFolderHttpPort({
+      baseUrl: 'https://sync.example',
+      vaultId: 'sample-vault',
+      deviceToken: () => 'absd_' + 'a'.repeat(43),
+      fetch: async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).includes('/manifest') ? { items: files, next: null, head_seq: 1 } : state
+          )
+        ),
+    })
+    const preview = await port.preview('Shared/')
+    expect(preview.files.map((file) => file.eligibility)).toEqual([
+      'eligible',
+      'eligible',
+      'excluded',
+      'excluded',
+      'eligible',
+    ])
+    expect(preview.files.map((file) => file.eligible)).toEqual([true, true, false, false, true])
+  })
   it('sends nothing while activation is disabled', async () => {
     const fetch = vi.fn()
     const p = new OwnerFolderHttpPort({

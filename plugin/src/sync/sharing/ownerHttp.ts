@@ -25,6 +25,29 @@ export interface OwnerHttpOptions extends SharingHttpOptions {
   now?: () => number
   configurationRoots?: string[]
 }
+export interface OwnerSharedGrant {
+  id: string
+  label: string
+  kind: 'folder' | 'group'
+  prefix: string | null
+  rootId: string | null
+  role: 'reader' | 'editor'
+  revision: number
+  state: string
+}
+const SharedGrantSchema = z
+  .object({
+    id: z.string().min(1),
+    vault_id: z.string().min(1),
+    label: z.string().min(1),
+    selector_kind: z.enum(['folder', 'group']),
+    folder_prefix: z.string().nullable().optional(),
+    root_file_id: z.string().nullable().optional(),
+    role: z.enum(['reader', 'editor']),
+    acl_revision: z.number().int().nonnegative(),
+    state: z.string().min(1),
+  })
+  .passthrough()
 const segment = (id: string) => encodeURIComponent(id)
 /** Concrete registered personal-preview and owner-management HTTP APIs, with disjoint credentials. */
 export class OwnerFolderHttpPort implements FolderSharingPort {
@@ -75,21 +98,23 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
       )
       total += page.items.length
       if (total > 100000) throw new Error('Folder preview inventory is incomplete')
-      for (const item of page.items)
-        if (item.path.startsWith(scope))
-          files.push({
-            path: item.path,
-            fileId: item.file_id,
-            versionId: item.version_id,
-            eligible: false,
-            eligibility:
-              ['script', 'settings'].includes(item.kind) ||
-              (this.options.configurationRoots ?? []).some(
-                (root) => item.path === root || item.path.startsWith(root + '/')
-              )
-                ? 'excluded'
-                : 'unknown',
-          })
+      for (const item of page.items) {
+        if (!item.path.startsWith(scope)) continue
+        const excluded =
+          ['script', 'settings'].includes(item.kind) ||
+          item.path.split('/').some((part) => part.startsWith('.')) ||
+          /\.(?:js|mjs|cjs|ts|py|sh|wasm)$/i.test(item.path) ||
+          (this.options.configurationRoots ?? []).some(
+            (root) => item.path === root || item.path.startsWith(root + '/')
+          )
+        files.push({
+          path: item.path,
+          fileId: item.file_id,
+          versionId: item.version_id,
+          eligible: !excluded,
+          eligibility: excluded ? 'excluded' : 'eligible',
+        })
+      }
       cursor = page.next ?? null
       if (cursor) {
         if (cursors.has(cursor)) throw new Error('Folder preview cursor did not progress')
@@ -130,6 +155,59 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
     }
     this.sessions.set(session, login.account_token)
     return session
+  }
+  async list(session: OwnerSession): Promise<OwnerSharedGrant[]> {
+    const rows = z
+      .array(SharedGrantSchema)
+      .max(1000)
+      .parse(
+        await this.http.json(
+          'GET',
+          '/v1/vaults/' + segment(this.options.vaultId) + '/grants',
+          this.ownerToken(session)
+        )
+      )
+    if (
+      rows.some(
+        (row) =>
+          row.vault_id !== this.options.vaultId ||
+          (row.selector_kind === 'folder' ? !row.folder_prefix : !row.root_file_id)
+      )
+    )
+      throw new Error('Sharing list differs from the bound vault')
+    return rows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      kind: row.selector_kind,
+      prefix: row.folder_prefix ?? null,
+      rootId: row.root_file_id ?? null,
+      role: row.role,
+      revision: row.acl_revision,
+      state: row.state,
+    }))
+  }
+  async revoke(session: OwnerSession, share: OwnerSharedGrant): Promise<void> {
+    const request = { expected_revision: share.revision, revoke: true }
+    const result =
+      share.kind === 'folder'
+        ? await this.updateFolder(
+            session,
+            { id: share.id, prefix: share.prefix!, role: share.role, revision: share.revision },
+            request
+          )
+        : await this.updateGroup(
+            session,
+            {
+              id: share.id,
+              rootId: share.rootId!,
+              rootVersion: '',
+              role: share.role,
+              revision: share.revision,
+              state: share.state,
+            },
+            request
+          )
+    if (result.state !== 'revoked') throw new Error('Sharing was not stopped')
   }
   async create(
     session: OwnerSession,

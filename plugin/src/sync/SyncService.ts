@@ -388,13 +388,19 @@ export class SyncService {
    * reconcile runs after that build and puts the engine where the tab says it is.
    */
   pause(): void {
-    if (this.sharing.value?.scope.value) { this.sharing.value.scoped.setPaused(true); return }
+    if (this.sharing.value?.scope.value) {
+      this.sharing.value.scoped.setPaused(true)
+      return
+    }
     this.setPaused(true)
   }
 
   /** Sync again, and forget a token failure so the triggers are taken back. */
   resume(): void {
-    if (this.sharing.value?.scope.value) { this.sharing.value.scoped.setPaused(false); return }
+    if (this.sharing.value?.scope.value) {
+      this.sharing.value.scoped.setPaused(false)
+      return
+    }
     this.setPaused(false)
   }
 
@@ -520,11 +526,25 @@ export class SyncService {
    */
   onSettingsSaved(): void {
     if (this.sharing.value?.scope.value) return
-    void this.serialise(() => this.runner.reconcile())
+    void this.serialise(async () => {
+      await this.runner.reconcile()
+      if (this.sharing.value?.ownerReady) await this.sharing.value.refreshPublication()
+    })
+  }
+
+  /** Cache completion can lag a personal sync, especially on mobile. Revalidate only after
+   * the sync queue releases its transaction; metadata callbacks never make network effects. */
+  refreshSharing(): Promise<void> {
+    return this.serialise(async () => {
+      if (this.sharing.value?.ownerReady) await this.sharing.value.refreshPublication()
+    })
   }
 
   /** Status-only callback from the installed scoped host; it never supplies authority. */
-  scopedStatus(state: 'idle' | 'syncing' | 'paused' | 'error', lastError: string | null = null): void {
+  scopedStatus(
+    state: 'idle' | 'syncing' | 'paused' | 'error',
+    lastError: string | null = null
+  ): void {
     this.board.publish({ ...DISCONNECTED_STATUS, state, lastError })
   }
 

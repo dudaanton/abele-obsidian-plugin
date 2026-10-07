@@ -28,7 +28,12 @@ it('carries every declared shared sync setting through its transfer section', ()
   expect(Object.keys(defaults).sort()).toEqual(names.sort())
   const source = {
     ...DEFAULT_SETTINGS,
-    sync: { keySignature: { property: 'sample-private', value: 'yes' } },
+    sync: {
+      keySignature: { property: 'sample-private', value: 'yes' },
+      sharing: [
+        { issuer: 'https://sync.example', vaultId: 'sample-vault', grants: ['sample-group'] },
+      ],
+    },
   }
   const entry = collectEntries(source).find((item) => item.section === 'sync')!
   expect(Object.keys((entry.data as { sync: object }).sync).sort()).toEqual(names.sort())
