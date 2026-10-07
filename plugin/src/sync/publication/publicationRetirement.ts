@@ -87,6 +87,7 @@ async function settled(
   )
     return false
   const units = new Set<string>()
+  const publishedDecisions = new Set<string>()
   for (const u of ledger.units) {
     if (
       (ledger.version === 2 ? u.s : u.settled) !== true ||
@@ -97,6 +98,8 @@ async function settled(
     )
       return false
     units.add(ledger.version === 2 ? u.e.r : u.unit.requestId)
+    for (const intent of u.intents)
+      publishedDecisions.add(intent.proposal.exposureKey + ':' + intent.proposal.fingerprint)
   }
   const decisions = new PublicationDecisionStore(meta)
   const snapshots = new LinkSnapshotStore(meta, binding, () => false)
@@ -139,8 +142,11 @@ async function settled(
     } else if (name === snapshot + 'renames') {
       await snapshots.renames()
     } else if (name.startsWith('publication-decision-v1:')) {
+      const d = await decisions.get(name.slice('publication-decision-v1:'.length))
       if (
-        (await decisions.get(name.slice('publication-decision-v1:'.length)))?.state !== 'declined'
+        !d ||
+        (d.state !== 'declined' &&
+          !(d.state === 'approved' && publishedDecisions.has(d.exposureKey + ':' + d.fingerprint)))
       )
         return false
     } else if (name.startsWith('existing-publication-decision-v1:')) {

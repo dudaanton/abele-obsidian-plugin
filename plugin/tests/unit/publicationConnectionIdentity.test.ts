@@ -3,6 +3,9 @@ import { ref } from 'vue'
 import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { bindingKey } from '@/sync/publication/LinkSnapshotStore'
+import { PublicationIntents } from '@/sync/publication/publicationIntents'
+import { publicationFixture } from '../helpers/publicationFixture'
+import { reducePublication, answerPublication } from '@/sync/publication/publicationDecision'
 import { PluginSharing } from '@/sync/pluginSharing'
 import { PublicationPrompt } from '@/sync/publicationPrompt'
 import { emptyConnection } from '@/sync/connection'
@@ -114,6 +117,94 @@ it('retires terminal stores on Disconnect but holds uncompleted recovery at a fi
     (await factory.databases()).filter((db) => db.name?.startsWith('abele-link-snapshots-'))
   ).toEqual([])
 })
+
+it.each(['matching', 'changed'] as const)(
+  'retires completed publication only with a %s approved exposure fingerprint',
+  async (fingerprint) => {
+    const { host, factory, open } = fixture()
+    const runtime = await open()
+    const { binding, resources } = (host as any).live
+    const input = await publicationFixture(false)
+    input.binding = binding
+    input.current.binding = binding
+    if (input.baseline.kind === 'complete') input.baseline.binding = binding
+    const proposal = await reducePublication(input)
+    if (proposal.kind !== 'confirm') throw new Error('Expected reviewable exposure')
+    const approved = await answerPublication(proposal, input, true)
+    if (approved.kind !== 'confirmed-intent') throw new Error('Expected confirmed exposure')
+    await new PublicationDecisionStore(resources.meta).remember(approved, 'approved')
+    const authority = {
+      grantId: 'sample-grant',
+      active: true,
+      revision: 1,
+      admissionGeneration: 1,
+      publicationGeneration: 0,
+      withdrawalGeneration: 0,
+      targetFileId: 'sample-asset',
+      targetVersionId: 'asset-v1',
+      sponsorFileId: 'sample-note',
+      sponsorVersionId: 'note-v1',
+    }
+    const intents = new PublicationIntents(
+      resources.meta,
+      binding,
+      {
+        attest: async () => true,
+        verifyReceipt: async () => true,
+        inspect: async () => authority,
+        lookup: async () => null,
+        apply: async () => ({ status: 'applied' }),
+      },
+      () => true,
+      () => true
+    )
+    const unit = {
+      requestId: 'sample-published-request',
+      ops: [
+        {
+          op: 'modify' as const,
+          file_id: 'sample-note',
+          base_version_id: 'base-note',
+          sha: input.current.sha,
+          size: 22,
+          mtime: 1,
+        },
+      ],
+      createHandles: {},
+    }
+    await intents.prepare(unit, [input])
+    await intents.settle({
+      requestId: unit.requestId,
+      ops: unit.ops,
+      outcomes: [
+        {
+          index: 0,
+          status: 'applied',
+          fileId: 'sample-note',
+          versionId: 'note-v1',
+          sha: input.current.sha,
+          path: 'Shared/sample.md',
+        },
+      ],
+    })
+    await intents.retry(unit.requestId)
+    expect(
+      JSON.parse((await resources.meta.getMeta('publication-intents-v1:' + bindingKey(binding)))!)
+        .ledger.units[0].intents[0].state
+    ).toBe('published')
+    if (fingerprint === 'changed')
+      await new PublicationDecisionStore(resources.meta).remember(
+        { ...approved, fingerprint: 'f'.repeat(64) },
+        'approved'
+      )
+    runtime.close()
+    await host.retirePublication()
+    expect(
+      (await factory.databases()).filter((db) => db.name?.startsWith('abele-link-snapshots-'))
+        .length
+    ).toBe(fingerprint === 'matching' ? 0 : 1)
+  }
+)
 
 it('retries a partially completed retirement without allocating another store', async () => {
   const { host, app, factory, open } = fixture()
