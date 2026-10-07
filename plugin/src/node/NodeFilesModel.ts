@@ -549,33 +549,54 @@ export class NodeFilesModel {
     this.persistingEdit = task
     return task
   }
+  private acceptOperationDraft(draft: FileDraft | undefined, completed?: FileDraft) {
+    // A revision is meaningful only together with the text/base the editor shows. Never
+    // acknowledge an intervening shared edit through a finally-only metadata refresh.
+    if (
+      (draft?.text ?? '') !== this.draftText.value ||
+      (completed && draft?.revision !== completed.revision) ||
+      (!completed &&
+        draft &&
+        this.draft.value &&
+        draft.baseContentId !== this.draft.value.baseContentId)
+    ) {
+      this.draftError.value = draftConflict
+      throw new Error(draftConflict)
+    }
+    this.draft.value = draft
+  }
   async saveFile() {
     if (this.saving.value) return
     const path = this.filePath.value,
       generation = this.fileGeneration,
       text = this.draftText.value
-    let localConflict = false
+    let localConflict = false,
+      completed: FileDraft | undefined,
+      admissionStarted = false
     this.saving.value = true
     try {
       await this.persistingEdit
       if (generation !== this.fileGeneration)
         throw new Error('File view changed before save admission')
       const draft = this.draft.value
+      admissionStarted = !!draft
       if (draft)
-        await this.documents.save(path, {
+        completed = await this.documents.save(path, {
           revision: draft.revision,
           text,
           baseContentId: draft.baseContentId,
         })
+      if (generation === this.fileGeneration && completed)
+        this.acceptOperationDraft(completed, completed)
     } catch (e) {
       localConflict = e instanceof Error && e.message === draftConflict
       if (localConflict) this.draftError.value = draftConflict
       throw e
     } finally {
       try {
-        if (!localConflict) {
+        if (!localConflict && admissionStarted) {
           const draft = await this.documents.draft(path)
-          if (generation === this.fileGeneration) this.draft.value = draft
+          if (generation === this.fileGeneration) this.acceptOperationDraft(draft, completed)
         }
       } finally {
         this.saving.value = false
@@ -585,9 +606,12 @@ export class NodeFilesModel {
   async checkSave() {
     const path = this.filePath.value,
       generation = this.fileGeneration
-    let localConflict = false
+    let localConflict = false,
+      completed: FileDraft | undefined
     try {
-      await this.documents.check(path, this.draft.value?.revision ?? null)
+      completed = await this.documents.check(path, this.draft.value?.revision ?? null)
+      if (generation === this.fileGeneration && completed)
+        this.acceptOperationDraft(completed, completed)
     } catch (e) {
       localConflict = e instanceof Error && e.message === draftConflict
       if (localConflict) this.draftError.value = draftConflict
@@ -595,7 +619,7 @@ export class NodeFilesModel {
     } finally {
       if (!localConflict) {
         const draft = await this.documents.draft(path)
-        if (generation === this.fileGeneration) this.draft.value = draft
+        if (generation === this.fileGeneration) this.acceptOperationDraft(draft, completed)
       }
     }
   }
@@ -619,11 +643,15 @@ export class NodeFilesModel {
     this.editing.value = false
   }
   async readPredecessor() {
-    const content = this.draft.value?.result?.predecessor_content_id,
+    const receipt = this.draft.value?.result,
+      content = receipt?.predecessor_content_id,
       generation = this.fileGeneration
     if (!content) return
     const text = await readNodeText(
-      (offset) => this.client.readContent(this.workspaceId, content, offset),
+      (offset) =>
+        receipt?.recovery_path?.startsWith('file-recovery/')
+          ? this.client.readRecovery(this.workspaceId, receipt.recovery_path, offset)
+          : this.client.readContent(this.workspaceId, content, offset),
       16 * 1024 * 1024
     )
     if (generation === this.fileGeneration) this.predecessorText.value = text
@@ -688,6 +716,11 @@ export class NodeFilesModel {
   }
   async addComment(selection: ReviewSelection, comment: string) {
     this.assertEditable()
+    // A known invalid length must not wait for WebCrypto before surfacing the rejection.
+    if (comment.trim().length > 2000)
+      throw new Error(
+        'Review exceeds node limits: at most 32 comments, 200 lines and 2000 characters per comment'
+      )
     const context_hash = await contextHash(selection.context)
     this.assertEditable() // Submission may have started while WebCrypto was pending.
     if (!comment.trim()) throw new Error('Enter a comment')

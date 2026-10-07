@@ -165,7 +165,8 @@
               {{ model.draft.value.result.state }}<br />Predecessor ·
               {{ model.draft.value.result.predecessor_content_id || 'See recovery path'
               }}<template v-if="model.draft.value.result.recovery_path"
-                ><br />Recovery path · {{ model.draft.value.result.recovery_path }}</template
+                ><br />Recovery copy · node storage ·
+                {{ model.draft.value.result.recovery_path }}</template
               >
             </p>
             <Button

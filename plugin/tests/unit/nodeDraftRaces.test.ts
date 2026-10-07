@@ -39,6 +39,83 @@ it('two models cannot overwrite a newer shared draft or save text other than the
   expect((await b.documents.draft(path))?.text).toBe('draft B')
   expect(a.client.writeFile).not.toHaveBeenCalled()
 })
+it.each(['save', 'check'] as const)(
+  "%s completion cannot adopt another view's revision without its text",
+  async (action) => {
+    const s = await nodeFilesFixture('edit'),
+      a = s.model,
+      path = s.initialPath!
+    await a.editText('shown A')
+    const b = new NodeFilesModel(a.client, a.nodeId, a.workspaceId, 'other-session')
+    const settle = async () => {
+      const draft = (await a.documents.draft(path))!,
+        pending = draft.pending!
+      await a.client.store.transaction((state) => {
+        state.outbox = []
+        state.results[pending.operationId] = {
+          result: {
+            operation_id: pending.operationId,
+            workspace_id: a.workspaceId,
+            path,
+            state: 'saved',
+            expected_content_id: pending.params.expected_content_id,
+            content_id: 'b'.repeat(64),
+            predecessor_content_id: pending.params.expected_content_id,
+            recovery_path: null,
+          },
+        }
+      })
+      return a.documents.check(path, draft.revision)
+    }
+    const changeOtherView = async () => {
+      await b.openFile(path)
+      await b.beginEditing()
+      await b.editText('shared B')
+    }
+    if (action === 'save') {
+      const original = a.documents.save.bind(a.documents)
+      a.documents.save = async (...args) => {
+        await original(...args)
+        const completed = await settle()
+        await changeOtherView()
+        return completed
+      }
+      await a.saveFile().catch((e) => {
+        expect((e as Error).message).toContain('another view')
+      })
+    } else {
+      await a.saveFile()
+      const original = a.documents.check.bind(a.documents)
+      const pending = a.draft.value!.pending!
+      await a.client.store.transaction((state) => {
+        state.outbox = []
+        state.results[pending.operationId] = {
+          result: {
+            operation_id: pending.operationId,
+            workspace_id: a.workspaceId,
+            path,
+            state: 'saved',
+            expected_content_id: pending.params.expected_content_id,
+            content_id: 'b'.repeat(64),
+            predecessor_content_id: pending.params.expected_content_id,
+            recovery_path: null,
+          },
+        }
+      })
+      a.documents.check = async (...args) => {
+        const completed = await original(...args)
+        await changeOtherView()
+        return completed
+      }
+      await a.checkSave().catch((e) => {
+        expect((e as Error).message).toContain('another view')
+      })
+    }
+    expect(a.draftText.value).toBe('shown A')
+    await expect(a.editText('continued A')).rejects.toThrow('another view')
+    expect((await b.documents.draft(path))!.text).toBe('shared B')
+  }
+)
 it('sync validation throws retain the visible paste, warn about storage, and block save/reload', async () => {
   const s = await nodeFilesFixture('edit'),
     model = s.model,

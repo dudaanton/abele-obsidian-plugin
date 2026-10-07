@@ -99,17 +99,23 @@ fails, saving/reloading is blocked and the copy warning remains until the text c
 
 A **Save outcome unknown** is not success or a safe reason to save again. Reconnect and
 choose **Check save**: the original operation is retried, never a newly allocated edit. The
-editor is locked until a known result arrives. A node-confirmed uncertain replacement stays
-locked for inspection; its receipt includes a retained predecessor and recovery path.
-**Read retained predecessor** uses the same code presentation. Recovery does not guess success
-by matching bytes or automatically restore/reapply files. Node API writes are serialized,
-but external editors and agent shell writes are not; replacement may briefly leave the path
-absent. The daemon rechecks and preserves the displaced file, including writes through an
-already-open external editor. It retains up to 32 unchanged successful predecessor copies per
-workspace; older copies are re-read into retained storage before cleanup, and changed/uncertain
-copies stay for inspection. Actual displaced-file permissions and permitted owner/group are
-preserved. Files with ACLs or unsupported extended attributes are explicitly refused instead
-of silently dropping their access rules; the macOS system provenance attribute is copied. A saved receipt confirms the accepted version, not that no external edit happened later.
+editor is locked until a known result arrives. A node-confirmed uncertain write stays locked for inspection; its receipt names a recovery
+copy in node storage, never a temporary file in the workspace. **Read retained predecessor**
+uses the same code presentation. Copies, including uncertain writes, are bounded to 32 files
+and 16 MiB per workspace; oldest copies expire when another copy needs that quota. The node
+also exposes an explicit, version-checked restore action through its client API. Recovery
+never guesses success from matching bytes or automatically restores/repeats the original save.
+
+Node API writes are serialized, but external editors and agent shell writes are not. Existing
+files are written in place: the inode, permissions, owner/group, ACLs and attributes are kept,
+and an already-open external editor still writes the live file. Read-only files are refused
+cleanly. Concurrent writers can interleave, as with any editor; verification reports observed
+disagreement and the next save checks its base again. A saved receipt confirms the accepted
+version, not that no external edit happened later. No recovery filenames enter Git staging.
+
+After save/check completion, a revision is accepted only with its matching visible text/base.
+An intervening shared draft produces a local conflict rather than silently replacing metadata
+behind the editor.
 
 In **Diffs**, choose HEAD/worktree, staged, unstaged, committed branch/base, or a commit
 change. Branch/base explicitly compares the merge-base with HEAD, not uncommitted files.

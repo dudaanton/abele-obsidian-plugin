@@ -82,8 +82,15 @@ never becomes an editor change. Synchronous validation failures use the same cop
 save/reload fence as storage failures. A binary/oversized current file cannot hide retained text. File receipts retain
 optional `request` method/params so client ID/body reuse is checked after settlement too. Known
 conflicts can be explicitly rebased against a freshly loaded version; uncertain drafts retain
-their identity/evidence and cannot be blindly edited, discarded or resubmitted. Node predecessor
-bytes, filesystem recovery paths and mutation receipts belong to the daemon. Catalog file-change
+their identity/evidence and cannot be blindly edited, discarded or resubmitted. Node pre-write bytes, node-state recovery references and mutation receipts belong to the daemon.
+Recovery references are not workspace-relative files: new copies are read with
+`workspace.recovery.read`, and explicit `workspace.restore` has its own operation identity and
+fresh current-content precondition. Physical copies have a 32-file/16-MiB per-workspace quota,
+including uncertain writes; oldest copies can expire while immutable receipts remain. Existing
+files are written in place, retaining their access metadata; new-file writes require an explicit
+null base and exclusive creation. Save/check completion cannot adopt a newer shared revision
+without its corresponding shown text/base. Historical read snapshots keep their separate
+retention policy. Catalog file-change
 invalidations are refresh hints, not authoritative contents. No new settings, tools or transfer
 entries are introduced.
 

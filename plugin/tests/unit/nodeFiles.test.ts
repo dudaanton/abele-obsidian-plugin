@@ -191,6 +191,29 @@ it('refuses a 201-line comment before admitting it into the review draft', async
   await addComment(s, 'sample.txt', { side: 'R', start: 1, end: 200 }, 'Valid range')
   expect(s.model.comments.value).toHaveLength(1)
 })
+it('rejects an oversized comment before asynchronous hashing can delay its error', async () => {
+  const s = setup()
+  await s.model.loadDiff('head')
+  const digest = vi
+    .spyOn(crypto.subtle, 'digest')
+    .mockReturnValueOnce(new Promise<ArrayBuffer>(() => {}))
+  try {
+    let rejection = ''
+    void addComment(s, 'sample.txt', { side: 'R', start: 2, end: 2 }, 'x'.repeat(2001)).catch(
+      (e) => {
+        rejection = (e as Error).message
+      }
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(rejection).toContain('node limits')
+    expect(digest).not.toHaveBeenCalled()
+    expect(s.model.comments.value).toHaveLength(0)
+  } finally {
+    digest.mockRestore()
+  }
+})
 it('refuses comment 33 before admission and admits a replacement after removal', async () => {
   const s = setup()
   await s.model.loadDiff('head')
