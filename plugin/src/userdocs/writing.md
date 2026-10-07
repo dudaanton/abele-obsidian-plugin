@@ -12,6 +12,34 @@ masonry, column and slider layouts and sets its height. Drop files onto a galler
 the arrows on a picture move it and the bin removes it. Click one to see it full size, and swipe
 through the rest.
 
+## Note columns (experimental)
+
+The column format is a probe, not yet a stable authoring format. A parent callout contains
+at least two child callouts, separated by a blank line that still belongs to the parent:
+
+```markdown
+> [!abele-columns|ratio=2:1 mobile=stack]
+> > [!abele-column]
+> > First column text.
+>
+> > [!abele-column]
+> > Second column text.
+```
+
+Reading view and Live Preview lay out the child content in the given proportions. Omit
+`ratio` for equal widths; its number of positive weights must match the number of children.
+A narrow area (500 CSS pixels or less) stacks the columns in source order. Wide tables scroll
+individually. Ordinary lists, checkboxes, code, math and embeds use Obsidian's renderer.
+The column callout titles are currently hidden; put a heading inside the child for a visible
+heading. Foldable column callouts and extra content outside the children remain ordinary
+callouts rather than columns.
+
+In Live Preview the area expands to source when entered and returns to columns when the cursor
+leaves. **A prose click currently puts the cursor at the outer header, not at the clicked
+passage.** This is a known limitation of the native callout widget. There are no insertion,
+removal or configuration commands yet. Without Abele the same note is readable as nested
+callouts; no content or sidecar is rewritten by the column renderer.
+
 ## Coloured highlights
 
 `=={red} some text==` highlights text in a colour. **Insert colored highlight** wraps the

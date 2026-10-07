@@ -134,6 +134,16 @@ rewind recording remains broad across concurrent operations. Failed/stopped cons
 no partial ZIP; parents already created before a later failure may remain. See `tools` topic
 **ZIP archives** for selection, permission, byte preservation and resource contracts.
 
+## Note columns (provisional)
+
+The experimental renderer recognizes an ordinary `abele-columns` callout containing two or
+more direct `abele-column` callouts. Metadata `ratio=2:1 mobile=stack` gives one positive
+weight per child; omitting the ratio makes them equal. A parent-quoted blank line separates
+the children. The renderer adds no properties, sidecar, settings or transfer keys and never
+rewrites the source. Unknown metadata, mismatched weights, foldable children or content
+outside the children retain native callout rendering. This is not yet a stable authoring
+contract; there are no column tools or commands. See the writing user guide for limitations.
+
 ## Presentations
 
 `type: presentation` marks an ordinary Markdown note that opens as a deck. Deck frontmatter

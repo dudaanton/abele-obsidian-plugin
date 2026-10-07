@@ -1,0 +1,51 @@
+/* Keep the theme's typography and native content; only replace the callout frame/layout. */
+.callout.abele-columns,
+.callout.abele-columns > .callout-content > .callout.abele-column {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.callout.abele-columns {
+  container-type: inline-size;
+  container-name: abele-columns;
+}
+
+.callout.abele-columns > .callout-title,
+.callout.abele-columns > .callout-content > .abele-column > .callout-title {
+  display: none;
+}
+
+.callout.abele-columns > .callout-content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-4);
+  overflow: visible;
+}
+
+.callout.abele-columns > .callout-content > .abele-column {
+  flex: var(--abele-column-weight, 1) 1 0;
+}
+
+.abele-column > .callout-content {
+  min-width: 0;
+}
+
+.abele-column-table {
+  max-width: 100%;
+  /* Scroll the table alone: the paragraph and checkbox beside it must not move. */
+  overflow-x: auto;
+}
+
+@container abele-columns (max-width: 500px) {
+  .callout.abele-columns > .callout-content {
+    flex-direction: column;
+  }
+  .callout.abele-columns > .callout-content > .abele-column {
+    flex: none;
+    width: 100%;
+  }
+}
