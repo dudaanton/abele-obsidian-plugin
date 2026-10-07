@@ -9,7 +9,7 @@ import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { readLedgerId } from './ledgerId'
 import { openLinkSnapshots, type SnapshotDescriptor } from './publication/snapshotDatabase'
 import { NativeOwnerPublication } from './publication/nativeOwnerPublication'
-import type { SnapshotBinding } from './publication/LinkSnapshotStore'
+import { bindingKey, type SnapshotBinding } from './publication/LinkSnapshotStore'
 import { FolderSharingFlow } from './sharing/folderSharing'
 import { OwnerFolderHttpPort } from './sharing/ownerHttp'
 import { OwnerGroupRootFlow, type GroupRoot } from './sharing/ownerGroupRoot'
@@ -80,13 +80,26 @@ export class PluginSharing {
       facet: 'personal',
       grantId: null,
     }
+    // Re-enrolment changes the principal; Forget and vault changes can also change the
+    // ledger. Keep each identity's evidence separate instead of inheriting decisions or
+    // making an unrelated old descriptor prevent this personal engine from starting.
+    const identity = await hash(bindingKey(binding))
+    const descriptorKey = `${DESCRIPTOR}:${identity}`
+    const sentinelPath = `${SENTINEL}-${identity}`
+    const legacy = this.app.loadLocalStorage(DESCRIPTOR) as SnapshotDescriptor | null
+    const useLegacy =
+      !!legacy?.binding &&
+      bindingKey(legacy.binding) === bindingKey(binding) &&
+      this.app.loadLocalStorage(descriptorKey) == null
+    const key = useLegacy ? DESCRIPTOR : descriptorKey
+    const sentinel = useLegacy ? SENTINEL : sentinelPath
     const resources = await openLinkSnapshots(
       factoryOf(this.deps),
       {
-        loadDescriptor: () => this.app.loadLocalStorage(DESCRIPTOR) as SnapshotDescriptor | null,
-        saveDescriptor: (value) => this.app.saveLocalStorage(DESCRIPTOR, value),
-        hasSentinel: () => this.app.vault.adapter.exists(SENTINEL),
-        writeSentinel: () => this.app.vault.adapter.write(SENTINEL, JSON.stringify(binding)),
+        loadDescriptor: () => this.app.loadLocalStorage(key) as SnapshotDescriptor | null,
+        saveDescriptor: (value) => this.app.saveLocalStorage(key, value),
+        hasSentinel: () => this.app.vault.adapter.exists(sentinel),
+        writeSentinel: () => this.app.vault.adapter.write(sentinel, JSON.stringify(binding)),
       },
       binding,
       () => false

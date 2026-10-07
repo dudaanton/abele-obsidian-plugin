@@ -1596,8 +1596,12 @@ it with a body parser or infers local authorship from received bytes.
 
 ## Production sharing host records
 
-`abele-owner-publication` in vault-local storage describes the independent publication database;
-`.abele-owner-publication` is its hidden recovery sentinel and never syncs. Either one lost while
+`abele-owner-publication:<binding-hash>` in vault-local storage describes each connection's
+independent publication database; `.abele-owner-publication-<binding-hash>` is its hidden
+recovery sentinel and never syncs. Re-enrolment, Forget and vault changes open disjoint resources
+for the new ledger/principal instead of blocking personal sync or inheriting old decisions.
+Legacy unsuffixed records are reopened only for their exact matching binding; old-identity work
+is retained separately for recovery, never replayed as a new identity. Either one lost while
 the other remains requires recovery, not an empty publication baseline. The database's
 `owner-publication-audiences-v1` record is checksum-bound to local vault, issuer and personal
 principal. It retains only IDs returned by authenticated owner grant creation/preparation.

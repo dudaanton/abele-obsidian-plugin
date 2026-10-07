@@ -12,6 +12,7 @@ let native: Awaited<ReturnType<typeof bootProductionPlugin>>
 let server: Awaited<ReturnType<typeof spawnCollaborationStandServer>>
 let work: string
 let peer: Awaited<ReturnType<typeof bootProductionPlugin>>
+let unshared: Awaited<ReturnType<typeof bootProductionPlugin>>
 let group: any
 let groupFlow: any
 let groupReview: any
@@ -33,6 +34,7 @@ afterAll(async () => {
     await native?.close()
   } finally {
     await peer?.close()
+    await unshared?.close()
     await server?.stop()
     if (work) await rm(work, { recursive: true, force: true })
   }
@@ -222,6 +224,37 @@ it('publishes an existing private target only after the production confirmation 
     ...new Uint8Array(await peer.app.vault.adapter.readBinary('Assets/private.png')),
   ]).toEqual([21, 22, 23])
   expect((window as any).__abeleTest).toBeUndefined()
+}, 30000)
+
+it('keeps personal sync working through disconnect, re-enrolment, Forget and another vault without sharing', async () => {
+  unshared = await bootProductionPlugin(code)
+  const host = unshared.plugin.syncSharing
+  const sync = host.sync
+  const connect = async (choice: string | { create: string }) => {
+    await sync.connect(server.url, email, password)
+    await sync.chooseVault(choice, 'Sample unshared device')
+    await sync.syncNow()
+    expect(sync.status.value.state).toBe('idle')
+    expect(host.audiences.value).toEqual([])
+  }
+  await connect({ create: 'Sample unshared vault' })
+  const first = sync.connection.value
+  await unshared.app.vault.create('sample-before.md', 'Sample before reconnect')
+  await sync.syncNow()
+  await sync.disconnect()
+  await connect(first.vaultId)
+  expect(sync.connection.value.deviceId).not.toBe(first.deviceId)
+  await unshared.app.vault.create('sample-after.md', 'Sample after reconnect')
+  await sync.syncNow()
+  expect(await sync.entryFor('sample-after.md')).not.toBeNull()
+  await sync.forget()
+  await connect(first.vaultId)
+  await sync.disconnect()
+  await connect({ create: 'Sample other vault' })
+  expect(sync.connection.value.vaultId).not.toBe(first.vaultId)
+  await unshared.app.vault.create('sample-other.md', 'Sample on another vault')
+  await sync.syncNow()
+  expect(await sync.entryFor('sample-other.md')).not.toBeNull()
 }, 30000)
 
 it('does not publish a recipient-planted private link when the owner resaves it', async () => {
