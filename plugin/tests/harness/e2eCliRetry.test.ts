@@ -9,10 +9,13 @@ vi.mock('node:child_process', () => ({
   execFileSync: exec,
 }))
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
-vi.mock('node:os', () => ({
-  default: { tmpdir: () => join(process.cwd(), 'node_modules') },
-  tmpdir: () => join(process.cwd(), 'node_modules'),
-}))
+vi.mock('node:os', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:os')>()
+  const tmpdir = () => join(process.cwd(), 'node_modules')
+  // Only the lock directory is test-owned. Keep real CLI-discovery exports, including
+  // homedir, so an unset OBSIDIAN_CLI behaves the same as an ordinary checkout/CI host.
+  return { ...original, default: { ...original.default, tmpdir }, tmpdir }
+})
 
 const noAnswer = () => Object.assign(new Error('timeout'), { code: 'ETIMEDOUT', signal: 'SIGKILL' })
 
@@ -29,6 +32,14 @@ afterEach(() => {
 })
 
 describe('explicitly idempotent CLI calls', () => {
+  it('isolates only the reload-lock directory while preserving CLI-discovery OS exports', async () => {
+    const os = await import('node:os')
+    expect(os.tmpdir()).toBe(join(process.cwd(), 'node_modules'))
+    expect(os.default.tmpdir()).toBe(os.tmpdir())
+    expect(os.homedir()).toBe(os.default.homedir())
+    expect(os.homedir()).toEqual(expect.any(String))
+  })
+
   it('repeats the exact read after a lost answer', () => {
     exec
       .mockImplementationOnce(() => {
