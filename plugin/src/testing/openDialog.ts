@@ -15,6 +15,7 @@ import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import { destinationFixture } from './destinationFixture'
 import { reviewScript } from '@/scripting/reviewScript'
+import { chatArtifactsFixture } from './chatArtifactsFixture'
 
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
@@ -124,6 +125,9 @@ function mountAlone(
  * own openers; the chat's two dialogs open from the chat.
  */
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  'chat-artifacts-empty': () => mountAlone(chatArtifactsFixture('empty')),
+  'chat-artifacts': () => mountAlone(chatArtifactsFixture('populated')),
+  'chat-artifacts-long': () => mountAlone(chatArtifactsFixture('long')),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),

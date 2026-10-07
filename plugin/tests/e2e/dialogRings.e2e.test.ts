@@ -182,6 +182,9 @@ const script = `(async () => {
     if (await until(() => document.querySelector('.modal.abele-modal'), 5000)) {
       await wait(300)
       const modal = document.querySelector('.modal.abele-modal')
+      // Empty, populated and long-path artifact fixtures must all retain their three sections.
+      if (dialogName.startsWith('chat-artifacts') && modal.querySelectorAll('.abele-chat-artifacts section').length !== 3)
+        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
       // Node registration and permission opt-in are disclosures, not separate tabs.
       if (dialogName === 'node-workspaces') for (const details of modal.querySelectorAll('details')) details.open = true
       // Node file/code/diff/review/history fixtures each exercise a separate view.

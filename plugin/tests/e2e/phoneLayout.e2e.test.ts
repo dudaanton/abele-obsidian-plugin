@@ -76,6 +76,9 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'chat-artifacts-empty',
+  'chat-artifacts',
+  'chat-artifacts-long',
   'node-workspaces',
   'node-files',
   'node-diffs',
@@ -623,23 +626,22 @@ const probeScript = `(async () => {
       await screen('nested comment opened', deep, deep)
       await comments.hideFromSidebar('pnest3')
     }
-    // Attaching a chat to a note: the link button's menu, and the two pickers — a note for a
-    // chat, and a chat for a note. Obsidian's own menu and prompt, with the plugin's items in
-    // them; pictured so a person can see they read right on a phone.
+    // Attaching a chat to a note: Artifacts and the two pickers — a note for a
+    // chat, and a chat for a note. Keep the attachment choices reachable from the new view.
     const probeChat = app.vault.getAbstractFileByPath(SEEDED.find((p) => p.endsWith('.abchat')))
     const chats = window.__abeleTest.ChatService.getInstance()
     await window.__abeleTest.ChatStorage.getInstance().refreshHistory()
     await chats.openChatFile(probeChat)
-    const link = () => document.querySelector('.abele-ai-chat .abele-ai-chat__notes')
+    const link = () => document.querySelector('.abele-ai-chat .abele-ai-chat__artifacts')
     await until(() => link() && !link().classList.contains('abele-obsidian-icon_disabled'), 5000)
     if (link()) {
       link().click()
-      await until(() => document.querySelector('.menu'), 3000)
+      await until(() => document.querySelector('.abele-chat-artifacts'), 3000)
       await wait(300)
-      const menu = document.querySelector('.menu')
-      await screen('chat notes menu', menu, menu)
-      const pick = [...document.querySelectorAll('.menu .menu-item')].find(
-        (el) => el.textContent.trim() === 'Attach to a note…'
+      const modal = document.querySelector('.abele-chat-artifacts').closest('.modal')
+      await screen('chat artifacts', modal, modal.querySelector('.abele-modal__body'))
+      const pick = [...modal.querySelectorAll('button')].find(
+        (el) => el.textContent.trim() === 'Attach to a note…' && !el.disabled
       )
       if (pick) pick.click()
       else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -651,8 +653,9 @@ const probeScript = `(async () => {
         report['note picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'note picker did not open' }
       }
       await closeDialog()
+      await closeDialog()
     } else {
-      report['chat notes menu'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no link button' }
+      report['chat artifacts'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no artifacts button' }
     }
     // From a note's end: the command for the note in front, which picks a chat.
     const probeNote = app.vault.getAbstractFileByPath(SEEDED[0])
@@ -1708,7 +1711,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'nested comment',
     'nested comment folded',
     'nested comment opened',
-    'chat notes menu',
+    'chat artifacts',
     'note picker',
     'chat picker',
     'icon picker',
