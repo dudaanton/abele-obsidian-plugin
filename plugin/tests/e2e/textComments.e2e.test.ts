@@ -7,6 +7,20 @@ targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const PATH = 'Text comment sample.md'
 const SHOTS = shotDir('abele-phone')
+const NATIVE_TOUCH = `
+  const host = window.__e2eHost
+  const tap = async el => {
+    const target = el.matches('.cm-content') ? el.querySelector('.cm-line') ?? el : el
+    target.scrollIntoView({block:'center'})
+    let r=target.getBoundingClientRect()
+    for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; if(stable) break }
+    const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
+    if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing'))
+    await host.tap(x,y)
+  }
+  const keyboardHeight = () => Math.max(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,window.innerHeight-(window.visualViewport?.height??window.innerHeight))
+`
+let nativeToolbar: { clicked: boolean; formatted: boolean; sourceUnchanged: boolean } | undefined
 const run = <T>(body: string): T => {
   const result = evalRaw(
     `(async () => {
@@ -121,41 +135,24 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     `)
     ).toEqual({ closed: true, visible: true })
   })
-  // BUG: native toolbar taps have not delivered a click in device validation. Keep every
-  // assertion: passing layout/storage checks is not formatting or native-edit acceptance.
-  it.skipIf(!onPhone()).fails(
-    'BUG: native keyboard toolbar formatting and edit-save touch workflow is not yet accepted',
-    () => {
-      const result = run<{
-        keyboard: boolean
-        room: number
-        geometry: unknown
-        toolbar: boolean
-        saved: boolean
-        formatted: boolean
-        formatText: string
-        toolbarClick: boolean
-        toolbarContext: unknown
-        sourceUnchanged: boolean
-        edited: boolean
-        shots: string[]
-      }>(`
+  it.skipIf(!onPhone())('native keyboard geometry, save and edit preserve the source note', () => {
+    const result = run<{
+      keyboard: boolean
+      room: number
+      geometry: unknown
+      toolbar: boolean
+      saved: boolean
+      sourceUnchanged: boolean
+      edited: boolean
+      shots: string[]
+    }>(`
       await view.setState({ mode: 'source' }, {})
       app.workspace.setActiveLeaf(view.leaf, { focus: true })
       view.editor.setSelection(view.editor.offsetToPos(2), view.editor.offsetToPos(20))
       app.commands.executeCommandById('abele:add-text-comment')
       await until(() => document.querySelector('.abele-text-comments'))
-      const host = window.__e2eHost
-      const tap = async el => {
-        const target = el.matches('.cm-content') ? el.querySelector('.cm-line') ?? el : el
-        target.scrollIntoView({block:'center'})
-        let r=target.getBoundingClientRect()
-        for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; if(stable) break }
-        const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
-        if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing'))
-        await host.tap(x,y)
-      }
-      const keyboardHeight = () => Math.max(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,window.innerHeight-(window.visualViewport?.height??window.innerHeight))
+      ${NATIVE_TOUCH}
+      const sourceBefore = view.editor.getValue()
       const field = document.querySelector('.abele-text-comments .cm-content')
       field.blur(); await wait(200)
       await tap(field)
@@ -170,20 +167,6 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const shots = [await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard-open.png')]
       await host.type('Native second comment\\nwith another line')
       shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard.png'))
-      const cm = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
-      cm.focus()
-      cm.dispatch({selection:{anchor:0,head:6}})
-      const sourceBeforeToolbar = view.editor.getValue()
-      const glyph = document.querySelector('.mobile-toolbar .lucide-bold')
-      const bold = glyph.closest('.mobile-toolbar-option, .mobile-toolbar-item, .clickable-icon, button') ?? glyph.parentElement
-      let toolbarClick = false
-      bold.addEventListener('click', () => { toolbarClick = true }, {once:true,capture:true})
-      const toolbarContext = { control: bold.className, inert: bold.closest('[inert]')?.className ?? '', owner: app.workspace.activeEditor?.editor?.cm === cm, focused: document.activeElement === cm.contentDOM }
-      await tap(bold)
-      await until(() => cm.state.doc.toString().startsWith('**Native**'))
-      const formatText = cm.state.doc.toString()
-      const formatted = formatText.startsWith('**Native**')
-      const sourceUnchanged = view.editor.getValue() === sourceBeforeToolbar
       await host.swipe(window.innerWidth/2, window.innerHeight-keyboardHeight()-100, window.innerWidth/2, 160)
       await tap(button('Save'))
       await until(() => document.querySelectorAll('.abele-text-comments__entry').length === 2)
@@ -202,18 +185,47 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const editedThread = JSON.parse(await app.vault.read(savedFile))
       const edited = !!editedThread.entries[0].editedAt && editedThread.entries[0].body.endsWith(' Updated')
       await tap(button('Close'))
-      return JSON.stringify({keyboard, room, geometry, toolbar, formatted, formatText, toolbarClick, toolbarContext, sourceUnchanged, saved, edited, shots})
+      return JSON.stringify({keyboard, room, geometry, toolbar, sourceUnchanged:view.editor.getValue()===sourceBefore, saved, edited, shots})
     `)
-      console.log('Native comment editor:', result)
-      expect(result.keyboard).toBe(true)
-      expect(result.room).toBeGreaterThan(150)
-      expect(result.toolbar).toBe(true)
-      expect(result.sourceUnchanged).toBe(true)
-      expect(result.toolbarClick).toBe(true)
-      expect(result.formatted).toBe(true)
-      expect(result.saved).toBe(true)
-      expect(result.edited).toBe(true)
-      expect(result.shots.every((path) => !path.startsWith('no picture'))).toBe(true)
+    console.log('Native comment editor:', result)
+    expect(result.keyboard).toBe(true)
+    expect(result.room).toBeGreaterThan(150)
+    expect(result.toolbar).toBe(true)
+    expect(result.sourceUnchanged).toBe(true)
+    expect(result.saved).toBe(true)
+    expect(result.edited).toBe(true)
+    expect(result.shots.every((path) => !path.startsWith('no picture'))).toBe(true)
+  })
+  it.skipIf(!onPhone())('native toolbar actions cannot change the underlying note', () => {
+    nativeToolbar = run<{ clicked: boolean; formatted: boolean; sourceUnchanged: boolean }>(`
+      ${NATIVE_TOUCH}
+      await view.setState({mode:'source'}, {})
+      app.workspace.setActiveLeaf(view.leaf, {focus:true})
+      view.editor.setSelection(view.editor.offsetToPos(2), view.editor.offsetToPos(20))
+      app.commands.executeCommandById('abele:add-text-comment')
+      await until(() => document.querySelector('.abele-text-comments'))
+      const cm = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
+      cm.dispatch({changes:{from:0,to:cm.state.doc.length,insert:'Native toolbar probe'}})
+      await tap(cm.contentDOM)
+      cm.dispatch({selection:{anchor:0,head:6}})
+      const sourceBefore = view.editor.getValue()
+      const glyph = document.querySelector('.mobile-toolbar .lucide-bold')
+      const bold = glyph.closest('.mobile-toolbar-option,.mobile-toolbar-item,.clickable-icon,button') ?? glyph.parentElement
+      let clicked = false
+      bold.addEventListener('click',()=>{clicked=true},{once:true,capture:true})
+      await tap(bold)
+      await until(() => cm.state.doc.toString().startsWith('**Native**'))
+      return JSON.stringify({clicked,formatted:cm.state.doc.toString().startsWith('**Native**'),sourceUnchanged:view.editor.getValue()===sourceBefore})
+    `)
+    expect(nativeToolbar.sourceUnchanged).toBe(true)
+  })
+  // BUG: only native toolbar delivery/formatting is unaccepted. Setup, geometry, source
+  // integrity and persistence above are ordinary tests and cannot become expected failures.
+  it.skipIf(!onPhone()).fails(
+    'BUG: native toolbar formatting has not delivered the selected text change',
+    () => {
+      expect(nativeToolbar?.clicked).toBe(true)
+      expect(nativeToolbar?.formatted).toBe(true)
     }
   )
   it('reading mode paints formatted passages and reopens the same thread', () => {
