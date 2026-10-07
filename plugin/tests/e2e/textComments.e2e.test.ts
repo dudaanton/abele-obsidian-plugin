@@ -125,9 +125,10 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await until(() => document.querySelector('.abele-text-comments'))
       const host = window.__e2eHost
       const tap = async el => {
-        el.scrollIntoView({block:'center'})
-        let r=el.getBoundingClientRect()
-        for(let i=0;i<30;i++) { await wait(150); const next=el.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; if(stable) break }
+        const target = el.matches('.cm-content') ? el.querySelector('.cm-line') ?? el : el
+        target.scrollIntoView({block:'center'})
+        let r=target.getBoundingClientRect()
+        for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; if(stable) break }
         const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
         if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing'))
         await host.tap(x,y)
@@ -139,8 +140,9 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await until(() => keyboardHeight() > 100)
       const keyboard = keyboardHeight() > 100
       const toolbar = !![...document.querySelectorAll('.mobile-toolbar')].find(el => el.getBoundingClientRect().height > 0)
+      const shots = [await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard-open.png')]
       await host.type('Native second comment\\nwith another line')
-      const shots = [await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard.png')]
+      shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard.png'))
       await host.swipe(window.innerWidth/2, (window.visualViewport?.height ?? window.innerHeight)-130, window.innerWidth/2, 160)
       await tap(button('Save'))
       await until(() => document.querySelectorAll('.abele-text-comments__entry').length === 2)

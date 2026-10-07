@@ -133,7 +133,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'text-comment-create': () => mountAlone(TextCommentDialog, textCommentFixture()),
   'text-comment-list': () => mountAlone(TextCommentDialog, textCommentFixture(true)),
   'text-comment-edit': async () => {
-    mountAlone(TextCommentDialog, textCommentFixture(true))
+    mountAlone(TextCommentDialog, textCommentFixture(true), 'text-comment-edit')
     await nextTick()
     Array.from(document.querySelectorAll<HTMLButtonElement>('.abele-text-comments button'))
       .find((button) => button.textContent?.trim() === 'Edit')
