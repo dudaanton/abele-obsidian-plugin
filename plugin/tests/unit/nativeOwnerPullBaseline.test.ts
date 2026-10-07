@@ -429,6 +429,193 @@ it('settles personal uploads without publication HTTP, then asks and publishes o
     s.p.close()
   }
 })
+it.each(['applied', 'merged'] as const)(
+  'recovers late cache after %s settlement without assigning merged paste authorship',
+  async (status) => {
+    const s = await setup()
+    try {
+      await s.p.hooks.onPersonalNoteApplied(s.event, s.bytes)
+      const p = s.p as any
+      const source = s.bytes.length
+        ? new TextDecoder().decode(s.bytes) + '![[sample-image.png]]'
+        : ''
+      const sha = await sha256(new TextEncoder().encode(source))
+      const note = {
+        path: 'Received.md',
+        wirePath: 'Received.md',
+        fileId: s.event.fileId,
+        versionId: 'local-v3',
+        sha,
+        size: source.length,
+        mtime: 2,
+      }
+      p.pastes.push({
+        id: 'sample-paste',
+        notePath: note.path,
+        current: undefined,
+        baseline: await p.snapshots.get(note.fileId),
+        before: new TextDecoder().decode(s.bytes),
+        start: s.bytes.length,
+        end: s.bytes.length,
+        epoch: 0,
+      })
+      const op = {
+        op: 'modify',
+        file_id: note.fileId,
+        base_version_id: s.event.versionId,
+        sha,
+        size: source.length,
+        mtime: 2,
+      }
+      await s.p.hooks.beforeUpload!({
+        operations: [{ op, index: 0, handle: 'sample-handle' }],
+        idempotencyKey: 'sample-request',
+      } as any)
+      vi.mocked(s.state.byFileId).mockResolvedValue(note)
+      await s.p.hooks.onSettled!(
+        {
+          op,
+          fileId: note.fileId,
+          versionId: note.versionId,
+          path: note.path,
+          sha,
+          handle: 'sample-handle',
+          result: { status },
+        } as any,
+        new TextEncoder().encode(source),
+        'sample-request'
+      )
+      s.events.get('changed')!({ path: note.path }, source, {
+        embeds: [
+          {
+            link: 'sample-image.png',
+            original: '![[sample-image.png]]',
+            position: { start: { offset: s.bytes.length }, end: { offset: source.length } },
+          },
+        ],
+      })
+      await s.p.flush()
+      if (status === 'applied')
+        expect(p.pastes[0].sponsor).toEqual({ fileId: note.fileId, versionId: note.versionId, sha })
+      else expect(p.pastes[0].sponsor).toBeUndefined()
+      expect(await p.snapshots.get(note.fileId)).toMatchObject({
+        kind: 'complete',
+        versionId: note.versionId,
+      })
+    } finally {
+      s.p.close()
+    }
+  }
+)
+
+it.each(['identity', 'resolution'] as const)(
+  'asks about a new image when its %s is ready only after the note cache and upload',
+  async (delayed) => {
+    const s = await setup()
+    try {
+      await s.p.hooks.onPersonalNoteApplied(s.event, s.bytes)
+      const p = s.p as any,
+        app = p.options.app
+      const image = new Uint8Array([4, 5, 6])
+      await app.vault.createBinary('Assets/sample-image.png', image.buffer)
+      await app.vault.adapter.writeBinary('Assets/sample-image.png', image.buffer)
+      const source = '![[sample-image.png]]'
+      const sha = await sha256(new TextEncoder().encode(source))
+      const note = {
+        path: 'Received.md',
+        wirePath: 'Received.md',
+        fileId: s.event.fileId,
+        versionId: 'local-v3',
+        sha,
+        size: source.length,
+        mtime: 2,
+      }
+      app.metadataCache.getFirstLinkpathDest = () =>
+        delayed === 'resolution' ? null : { path: 'Assets/sample-image.png' }
+      await app.vault.modify(app.vault.getAbstractFileByPath(note.path), source)
+      s.events.get('changed')!({ path: note.path }, source, {
+        embeds: [
+          {
+            link: 'sample-image.png',
+            original: source,
+            position: { start: { offset: 0 }, end: { offset: source.length } },
+          },
+        ],
+      })
+      await s.p.flush()
+      const op = {
+        op: 'modify',
+        file_id: note.fileId,
+        base_version_id: s.event.versionId,
+        sha,
+        size: source.length,
+        mtime: 2,
+      }
+      await s.p.hooks.beforeUpload!({
+        operations: [{ op, index: 0, handle: 'sample-handle' }],
+        idempotencyKey: 'sample-request',
+      } as any)
+      vi.mocked(s.state.byFileId).mockResolvedValue(note)
+      await s.p.hooks.onSettled!(
+        {
+          op,
+          fileId: note.fileId,
+          versionId: note.versionId,
+          path: note.path,
+          sha,
+          handle: 'sample-handle',
+          result: { status: 'applied' },
+        } as any,
+        new TextEncoder().encode(source),
+        'sample-request'
+      )
+      const target = {
+        path: 'Assets/sample-image.png',
+        wirePath: 'Assets/sample-image.png',
+        fileId: 'sample-image',
+        versionId: 'image-v1',
+        sha: await sha256(image),
+        size: image.length,
+        mtime: 2,
+      }
+      await s.state.put(target)
+      vi.mocked(s.state.byFileId).mockImplementation(async (id) =>
+        id === note.fileId ? note : id === target.fileId ? target : null
+      )
+      if (delayed === 'resolution') {
+        app.metadataCache.getFirstLinkpathDest = () => ({ path: target.path })
+        s.events.get('resolved')!()
+      }
+      vi.spyOn(p.assets, 'visibility').mockResolvedValue({
+        grantId: 'sample-grant',
+        label: 'Sample group',
+        targetFileId: target.fileId,
+        visible: false,
+        targetVersionId: null,
+        revision: 0,
+        scopeRevision: 1,
+        withdrawalGeneration: 0,
+      })
+      vi.spyOn(p.assets, 'sponsorProof').mockResolvedValue({
+        fileId: note.fileId,
+        versionId: note.versionId,
+        admissionGeneration: 1,
+        inScope: true,
+        intrinsic: true,
+      })
+      const add = vi.spyOn(p.assets, 'add').mockResolvedValue({})
+      await s.p.refreshPublication()
+      const [question] = await s.p.confirmation.questions()
+      expect(question?.observation.target.fileId).toBe(target.fileId)
+      expect(add).not.toHaveBeenCalled()
+      expect(await s.p.confirmation.answer(question, true)).toBe(true)
+      expect(add).toHaveBeenCalledTimes(1)
+    } finally {
+      s.p.close()
+    }
+  }
+)
+
 it('a mismatched received delivery cannot certify a baseline', async () => {
   const s = await setup()
   try {

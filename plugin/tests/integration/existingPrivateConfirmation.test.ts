@@ -96,6 +96,18 @@ function setup() {
   }
 }
 describe('existing-private confirmation coordinator', () => {
+  it('retains local link introductions until a second owner device discovers its shared audiences', async () => {
+    const s = setup(),
+      grants: string[] = []
+    const coordinator = new ExistingPrivateConfirmation(s.store, binding, grants, s.port)
+    const remaining = await coordinator.refresh(s.candidates)
+    expect(remaining).toEqual(s.candidates)
+    expect(s.port.observe).not.toHaveBeenCalled()
+    grants.push('sample-grant')
+    await coordinator.refresh(remaining)
+    expect(await coordinator.questions()).toHaveLength(1)
+    expect(s.port.add).not.toHaveBeenCalled()
+  })
   it('pending and decline do not publish or hold the personal upload lane', async () => {
     const s = setup()
     await s.coordinator.refresh(s.candidates)

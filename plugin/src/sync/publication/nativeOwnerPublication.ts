@@ -54,7 +54,8 @@ interface DelayedLocalLinks {
   sourceSha: string
   settledSha: string
   versionId: string
-  baseline: LinkSnapshot
+  baseline: LinkSnapshot | LocalNoteBase
+  applied?: boolean
 }
 interface Paste {
   id: string
@@ -86,6 +87,10 @@ interface Options {
   fetch: typeof fetch
   enabled?: () => boolean
   held: () => boolean
+  /** The host's personal ledger may be in an automatic transaction outside its UI queue. */
+  settling?: () => boolean
+  /** Schedule outside the engine transaction; cache callbacks themselves never do HTTP. */
+  linksChanged?: () => void
 }
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const hash = (v: unknown) => sha256(new TextEncoder().encode(JSON.stringify(v)))
@@ -204,7 +209,7 @@ export class NativeOwnerPublication {
       {
         observe: (c, grantId) => this.existingObservation(c, grantId),
         add: (request) => this.addExisting(request),
-        held: () => this.enabled() && this.live && options.held(),
+        held: () => this.enabled() && this.live && options.held() && !options.settling?.(),
         questionEpoch: () => this.resolutionEpoch,
       }
     )
@@ -333,9 +338,17 @@ export class NativeOwnerPublication {
       const path = file.path,
         source = String(data),
         snapshot = copy(cache)
-      void this.queue(() => this.observe(path, source, snapshot)).catch(() => {})
+      void this.queue(() => this.observe(path, source, snapshot))
+        .then(() => this.options.linksChanged?.())
+        .catch(() => {})
     })
     this.refs.push({ target: app.metadataCache, ref: changed })
+    const resolved = app.metadataCache.on('resolved', () => {
+      this.resolutionEpoch++
+      // This is an invalidation/wakeup, not permission to certify cached source bytes.
+      this.options.linksChanged?.()
+    })
+    this.refs.push({ target: app.metadataCache, ref: resolved })
     // Native capture-phase observer: never handles/cancels Obsidian's default paste operation.
     // Scope to this vault's ACTIVE source editor, not arbitrary form fields/another window.
     const target = this.options.eventTarget ?? document
@@ -565,6 +578,9 @@ export class NativeOwnerPublication {
       (await this.read<Record<string, DelayedLocalLinks>>('delayed-local-links')) ?? {}
     for (const [noteId, pending] of Object.entries(waiting)) {
       if (pending.path !== path || pending.sourceSha !== o.sha) continue
+      // A native link can resolve before the image obtains its sync identity. Keep the
+      // exact local introduction evidence until that identity exists; no new callback is needed.
+      const incomplete = o.facts.some((f) => !f.targetId)
       const current = await this.options.state.byFileId(noteId)
       if (current?.versionId === pending.versionId && current.sha === pending.settledSha) {
         const renames = await this.snapshots.renames()
@@ -572,9 +588,18 @@ export class NativeOwnerPublication {
           noteId,
           existingPrivateTargets(pending.baseline, o.facts, renames.items)
         )
-        if (current.sha === o.sha)
+        if (current.sha === o.sha) {
           await this.settleObservation(noteId, current.versionId, o, 'push')
+          if (pending.applied) {
+            for (const p of this.pastes.filter(
+              (p) => !p.done && !p.cancelled && p.notePath === path && p.current?.sha === o.sha
+            ))
+              p.sponsor = { fileId: noteId, versionId: current.versionId, sha: current.sha }
+            await this.save()
+          }
+        }
       }
+      if (current?.versionId === pending.versionId && incomplete) continue
       delete waiting[noteId]
       await this.persisted('delayed-local-links', waiting)
     }
@@ -637,7 +662,8 @@ export class NativeOwnerPublication {
     // Settlement never waits for a future callback. Existing exact source/cache bytes remain
     // reusable after a rename, but their derived target identities must be resolved again.
     if (old?.sha !== sha) return null
-    if (old.resolutionEpoch === this.resolutionEpoch) return copy(old)
+    if (old.resolutionEpoch === this.resolutionEpoch && !old.facts.some((f) => !f.targetId))
+      return copy(old)
     const resolutionEpoch = this.resolutionEpoch
     const fresh = {
       ...(await observeLinks(
@@ -651,6 +677,10 @@ export class NativeOwnerPublication {
     }
     if (resolutionEpoch !== this.resolutionEpoch || this.observations.get(path) !== old) return null
     this.observations.set(path, fresh)
+    for (const paste of this.pastes.filter(
+      (p) => !p.done && !p.cancelled && p.notePath === path && p.current?.sha === sha
+    ))
+      paste.current = copy(fresh)
     return copy(fresh)
   }
   private attestCache(c: SnapshotCandidate) {
@@ -735,9 +765,11 @@ export class NativeOwnerPublication {
     )
   }
   private async authority(grantId: string, targetId?: string, sponsorId?: string) {
+    this.checkEffects()
     const view = await this.assets.read(grantId),
       target = targetId ? await this.options.state.byFileId(targetId) : null
     let sponsor: Awaited<ReturnType<SponsoredAssetsHttpPort['sponsorProof']>> | null = null
+    this.checkEffects()
     if (sponsorId) sponsor = await this.assets.sponsorProof(grantId, sponsorId)
     else {
       const pending = this.pastes.find((p) => !p.done && p.sponsor)
@@ -757,7 +789,12 @@ export class NativeOwnerPublication {
       sponsorVersionId: sponsor?.versionId,
     }
   }
+  private checkEffects() {
+    this.check()
+    if (this.options.settling?.()) throw new Error('Publication waits for personal settlement')
+  }
   private async apply(d: PublicationDelta) {
+    this.checkEffects()
     try {
       await this.assets.add({
         grantId: d.grantId,
@@ -814,11 +851,12 @@ export class NativeOwnerPublication {
       )
     )
       throw new Error('Publication reference changed before transport')
-    this.check()
+    this.checkEffects()
     return this.assets.add(request)
   }
   private async existingObservation(c: ExistingPrivateCandidate, grantId: string) {
     this.check()
+    if (this.options.settling?.()) return undefined
     const target = await this.options.state.byFileId(c.targetId),
       sponsor = await this.options.state.byFileId(c.sponsorId)
     if (
@@ -878,8 +916,10 @@ export class NativeOwnerPublication {
       if (!(await unchanged())) return undefined
       const linked = await linkedNow()
       if (linked !== true) return linked === undefined ? undefined : null
-      const view = await this.assets.visibility(grantId, target.fileId),
-        proof = await this.assets.sponsorProof(grantId, sponsor.fileId)
+      if (this.options.settling?.()) return undefined
+      const view = await this.assets.visibility(grantId, target.fileId)
+      if (this.options.settling?.()) return undefined
+      const proof = await this.assets.sponsorProof(grantId, sponsor.fileId)
       if (proof.versionId !== sponsor.versionId || !(await unchanged())) return undefined
       const stillLinked = await linkedNow()
       if (stillLinked !== true) return stillLinked === undefined ? undefined : null
@@ -912,7 +952,14 @@ export class NativeOwnerPublication {
   /** Called after a sync transaction finishes; HTTP and questions never enter settlement. */
   async refreshPublication() {
     this.check()
+    if (this.options.settling?.()) return
     await this.intents.retrySettled()
+    const delayed =
+      (await this.read<Record<string, DelayedLocalLinks>>('delayed-local-links')) ?? {}
+    for (const pending of Object.values(delayed)) {
+      const observation = await this.exactCache(pending.path, pending.sourceSha)
+      if (observation) await this.queue(() => this.recoverLocalLinks(pending.path, observation))
+    }
     const candidates = (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
     const remaining = await this.confirmation.refresh(candidates)
     const key = (c: ExistingPrivateCandidate) => JSON.stringify([c.sponsorId, c.targetId])
@@ -975,7 +1022,10 @@ export class NativeOwnerPublication {
         const observation = path?.endsWith('.md') ? await this.exactCache(path, o.op.sha) : null
         if (path?.endsWith('.md')) {
           if (observation?.sha === o.op.sha) local.facts[o.handle] = copy(observation.facts)
-          else if (o.op.op === 'modify') {
+          if (
+            o.op.op === 'modify' &&
+            (!observation || observation.facts.some((f) => !f.targetId))
+          ) {
             const baseline = await this.snapshots.get(o.op.file_id)
             if (baseline.kind === 'complete' && baseline.versionId === o.op.base_version_id)
               local.delayed![o.handle] = { sha: o.op.sha, baseline }
@@ -1147,7 +1197,11 @@ export class NativeOwnerPublication {
             await this.persisted('received-bases', waiting)
           }
           await this.preserveCandidates(item.fileId, targets)
-          const delayed = local?.delayed?.[item.handle]
+          const delayed =
+            local?.delayed?.[item.handle] ??
+            (baseline.kind === 'local-create' && local?.facts[item.handle]?.some((f) => !f.targetId)
+              ? { sha: item.op.op === 'create' ? item.op.sha : item.sha!, baseline }
+              : undefined)
           if (delayed) {
             const pending =
               (await this.read<Record<string, DelayedLocalLinks>>('delayed-local-links')) ?? {}
@@ -1157,6 +1211,7 @@ export class NativeOwnerPublication {
               settledSha: item.sha!,
               versionId: item.versionId,
               baseline: delayed.baseline,
+              applied: item.result.status === 'applied',
             }
             await this.persisted('delayed-local-links', pending)
             const arrived = this.observations.get(item.path)

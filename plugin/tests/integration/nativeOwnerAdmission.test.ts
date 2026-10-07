@@ -116,6 +116,35 @@ it('receipt storage references the exact frozen unit digest, never a different s
     f.close()
   }
 })
+it('retains exact receipt metadata inside settlement but defers every publication effect until afterward', async () => {
+  const f = await nativeOwnerAdmissionFixture('quota_waiting')
+  let depth = 0
+  const transaction = f.state.transaction.bind(f.state)
+  f.state.transaction = async (work) => {
+    depth++
+    try {
+      return await transaction(work)
+    } finally {
+      depth--
+    }
+  }
+  ;(f.runtime() as any).options.settling = () => depth > 0
+  try {
+    await push(f.transport, f.fs, f.state, f.scan, f.options())
+    expect(await f.state.getJournal()).toBeNull()
+    expect(f.versionCount()).toBe(1)
+    expect(f.publicationCount()).toBe(0)
+    depth = 1
+    await f.runtime().refreshPublication()
+    expect(f.publicationCount()).toBe(0)
+    depth = 0
+    await f.runtime().refreshPublication()
+    expect(f.publicationCount()).toBe(1)
+  } finally {
+    depth = 0
+    f.close()
+  }
+})
 for (const code of ['too_large', 'quota_exceeded', 'quota_waiting'] as const) {
   it(`binds the final admitted commit before transport after ${code}, then settles without weakening exact receipts`, async () => {
     const f = await nativeOwnerAdmissionFixture(code)

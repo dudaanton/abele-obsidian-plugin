@@ -136,7 +136,11 @@ export class ExistingPrivateConfirmation {
         }
       for (const d of await this.store.existing(this.binding))
         if (d.state === 'approved' && !d.completed) await this.deliver(d)
-      return candidates.filter((c) => waiting.has(JSON.stringify([c.sponsorId, c.targetId])))
+      // An empty discovery list on a newly connected owner device is not proof that its
+      // notes have no shared audiences. Keep local introductions until discovery arrives.
+      return candidates.filter(
+        (c) => !this.grants.length || waiting.has(JSON.stringify([c.sponsorId, c.targetId]))
+      )
     })
   }
   private current(q: ExistingPublicationQuestion) {
