@@ -296,6 +296,9 @@ describe.skipIf(!available)('note columns foundation', () => {
     }>(`
       view.editor.setCursor({line:20,ch:10});await wait(200);
       const expanded=!root().querySelector('.abele-columns');
+      const focused=view.editor.cm.hasFocus;
+      view.editor.focus();await wait(200);
+      console.log('source focus',JSON.stringify({focused,expanded,afterFocus:!root().querySelector('.abele-columns'),cursor:view.editor.getCursor()}));
       view.editor.replaceSelection('sample edit');await wait(200);
       const edited=view.editor.getValue()===${JSON.stringify(BODY)}.replace('> > Second column paragraph.','> > Secondsample edit column paragraph.');
       view.editor.undo();await wait(200);
