@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildChatNavigation, navigationTitle, searchChatNavigation } from '@/ai/chatNavigation'
+import {
+  buildChatNavigation,
+  navigationPath,
+  navigationTitle,
+  searchChatNavigation,
+} from '@/ai/chatNavigation'
 import type { ChatMessage, MessageComment } from '@/ai/types'
 
 const msg = (
@@ -10,6 +15,33 @@ const msg = (
 ): ChatMessage => ({ id, role, content, timestamp: 1000, ...extra })
 
 describe('current conversation navigation', () => {
+  it('projects an unopened discussion onto its selected continuation, not the alternative answers', () => {
+    const messages = [
+      msg('q', 'user', 'Question'),
+      msg('a', 'assistant', 'Alternate answer', { parentId: 'q', timestamp: 2 }),
+      msg('b', 'assistant', 'Selected answer', { parentId: 'q', timestamp: 3 }),
+    ]
+    expect(navigationPath(messages, 'b').map((m) => m.id)).toEqual(['q', 'b'])
+    expect(navigationPath(messages).map((m) => m.id)).toEqual(['q', 'a'])
+  })
+
+  it('repairs legacy and missing-parent links only in preview copies', () => {
+    const legacy = [msg('q', 'user'), msg('a', 'assistant')]
+    expect(navigationPath(legacy).map((m) => m.id)).toEqual(['q', 'a'])
+    expect(legacy[1].parentId).toBeUndefined()
+    const damaged = [msg('q', 'user'), msg('a', 'assistant', '', { parentId: 'lost' })]
+    expect(navigationPath(damaged, 'a').map((m) => m.id)).toEqual(['q', 'a'])
+    expect(damaged[1].parentId).toBe('lost')
+  })
+
+  it('terminates a malformed cyclic preview path', () => {
+    const messages = [
+      msg('a', 'user', '', { parentId: 'b' }),
+      msg('b', 'assistant', '', { parentId: 'a' }),
+    ]
+    expect(navigationPath(messages, 'b').map((m) => m.id)).toEqual(['a', 'b'])
+  })
+
   it('groups the current messages under sent questions, without following parent links or sorting the path', () => {
     const messages = [
       msg('intro', 'assistant', 'An earlier answer'),

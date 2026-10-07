@@ -27,7 +27,12 @@ import { computed, onMounted, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { CommentService } from '@/ai/CommentService'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { MessageComment } from '@/ai/types'
-import { navigationExcerpt, navigationTitle, type NavigationState } from '@/ai/chatNavigation'
+import {
+  buildChatNavigation,
+  navigationExcerpt,
+  navigationTitle,
+  type NavigationState,
+} from '@/ai/chatNavigation'
 
 const props = withDefaults(
   defineProps<{
@@ -69,9 +74,13 @@ const title = computed(() => {
   const first = loaded.value.messages.value.find((m) => m.role === 'user' && !m.draft)
   return first ? navigationTitle(first) : 'Empty discussion'
 })
-const children = computed(() =>
-  loaded.value?.isDestroyed ? [] : (loaded.value?.messageComments.value ?? [])
-)
+const children = computed(() => {
+  const preview = loaded.value
+  if (!preview || preview.isDestroyed) return []
+  return buildChatNavigation(preview.messages.value, preview.messageComments.value).flatMap(
+    (turn) => turn.discussions
+  )
+})
 const toggle = (event: Event) => {
   expanded.value = (event.target as HTMLDetailsElement).open
   props.state.expanded = props.state.expanded.filter((k) => k !== key)

@@ -350,7 +350,8 @@ An answer before the first question remains reachable too.
 
 A question's **Discussions** lists direct discussions attached to it or the answers and work
 that followed it. Each shows its quoted passage and first question. Choose one to open its
-existing comment chat. **Nested discussions** reads the next level only when expanded;
+existing comment chat. **Nested discussions** lists only discussions on the sub-chat's current branch and reads the
+next level only when expanded;
 missing or unreadable discussions are labelled, not silently hidden. Reading the contents does
 not migrate discussion files or repair their safety copies; only opening a discussion uses its
 ordinary chat-loading path. The comment's existing

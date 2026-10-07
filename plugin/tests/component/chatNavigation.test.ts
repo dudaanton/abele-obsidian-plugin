@@ -213,6 +213,52 @@ describe('the navigation modal', () => {
     expect(load.mock.calls).toEqual([['direct'], ['nested']])
   })
 
+  it('shows and reads only nested discussions attached to the loaded sub-chat current path', async () => {
+    const child = fakeChatSession({
+      messages: ref([
+        { id: 'discussion-q', role: 'user', content: 'A sample branching question', timestamp: 1 },
+        {
+          id: 'answer-b',
+          parentId: 'discussion-q',
+          role: 'assistant',
+          content: 'Selected answer',
+          timestamp: 3,
+        },
+        {
+          id: 'unsent',
+          parentId: 'answer-b',
+          role: 'user',
+          content: 'Draft question',
+          draft: true,
+          timestamp: 4,
+        },
+      ]),
+      overrides: {
+        messageComments: ref([
+          { id: 'hidden-child', message: 'answer-a' },
+          { id: 'visible-child', message: 'answer-b' },
+          { id: 'draft-child', message: 'unsent' },
+          { id: 'removed-child', message: 'removed-answer' },
+        ]),
+      },
+    })
+    const visible = fakeChatSession({
+      messages: ref([
+        { id: 'nested-q', role: 'user', content: 'Visible nested sample question', timestamp: 5 },
+      ]),
+    })
+    const preview = vi
+      .spyOn(CommentService.getInstance(), 'navigationPreview')
+      .mockImplementation(async (id) => (id === 'direct' ? child : visible) as never)
+    await open({ comments: [{ id: 'direct', message: 'a1' }] })
+    expect(root().textContent).toContain('Nested discussions · 1')
+    expect(preview.mock.calls).toEqual([['direct']])
+    await click('Nested discussions · 1')
+    expect(preview.mock.calls).toEqual([['direct'], ['visible-child']])
+    expect(root().textContent).toContain('Visible nested sample question')
+    expect(root().textContent).not.toContain('Draft question')
+  })
+
   it('keeps a long quoted passage compact without changing its stored anchor', async () => {
     vi.spyOn(CommentService.getInstance(), 'navigationPreview').mockResolvedValue(null)
     const quote = 'A sample passage with many words. '.repeat(100)
