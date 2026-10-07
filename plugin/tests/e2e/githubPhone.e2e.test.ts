@@ -30,7 +30,8 @@ import {
   startFakeGithub,
   type FakeGithub,
 } from './helpers/githubLive'
-import { BASE_SHA } from './helpers/fakeGithubRepo'
+import { BASE_SHA, HEAD_SHA } from './helpers/fakeGithubRepo'
+import { openBasePicker } from './helpers/githubBasePicker'
 import { onPhone, targets } from './helpers/target'
 import { longPress as fingerHeld } from './helpers/phone'
 import { shotDir } from './helpers/shots'
@@ -296,6 +297,27 @@ const measurePicker = (
     return report
   })()`)
 
+const measurePinned = (web: string) =>
+  evalAsync<Screen>(`(async () => {
+  ${PRELUDE}
+  try {
+    ${openBasePicker(web)}
+    prompt.querySelector('.suggestion-item').click()
+    await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(web + '/blob/' + HEAD_SHA + '/src/long.ts#L399')} }, active: true })
+    if (!(await until(() => [...root.querySelectorAll('.abele-github-code__line_target')].some(l => l.textContent.includes('setting399')), 20000))) throw Error('Pinned target context did not show')
+    await settledLayout(root)
+    const content = root.querySelector('.abele-github-layout__main'), edge = Math.min(content.getBoundingClientRect().right, innerWidth)
+    const over = [...content.querySelectorAll('.abele-github-base > *, .abele-github-pinned > *, .abele-github-file__head > *')].filter(el => el.getBoundingClientRect().right > edge + 1).map(el => el.className)
+    const report = { phone: document.body.classList.contains('is-phone'), over, sideways: content.scrollWidth - content.clientWidth }
+    const shot = ${JSON.stringify(SHOTS + '/github-pinned.png')}
+    if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
+    else { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(shot, image.toPNG()); report.shot = shot }
+    ;[...root.querySelectorAll('button')].find(b => b.textContent === 'Unpin').click()
+    await until(() => root.querySelector('.abele-github-blob'), 20000)
+    return report
+  } catch (error) { return { error: String(error.message || error) } }
+})()`)
+
 describe.skipIf(!available)('a pull request on a phone', () => {
   let gh: FakeGithub
   let size: [number, number] = [0, 0]
@@ -313,6 +335,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     screens.markdown = measure(gh.web, 'markdown')
     screens.home = measure(gh.web, 'home')
     screens.list = measure(gh.web, 'list')
+    screens.pinned = measurePinned(gh.web)
     // Last: the tests below work in the pull request's files.
     screens.files = measure(gh.web, 'files')
     screens.picker = measurePicker('loader', 'suggestions')
@@ -338,7 +361,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     await reload('app.emulateMobile(false)')
   }, 180_000)
 
-  it.each(['conversation', 'files', 'compare', 'markdown', 'home', 'list'])(
+  it.each(['conversation', 'files', 'compare', 'markdown', 'home', 'list', 'pinned'])(
     '%s: shown in the phone layout',
     (section) => {
       expect(screens[section]?.error).toBeUndefined()
@@ -357,7 +380,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     expect((screens.picker as { rows?: number } | undefined)?.rows).toBe(3)
   })
 
-  it.each(['conversation', 'files', 'compare', 'markdown', 'home', 'list'])(
+  it.each(['conversation', 'files', 'compare', 'markdown', 'home', 'list', 'pinned'])(
     '%s: nothing reaches past the edge of the screen',
     (section) => {
       expect(screens[section]?.over ?? ['no report']).toEqual([])

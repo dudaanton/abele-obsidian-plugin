@@ -28,6 +28,9 @@
  * docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
+import { PRELUDE as BASE_PRELUDE, startFakeGithub, enableGithub, restoreGithub, evalAsync as evalBase, type FakeGithub } from './helpers/githubLive'
+import { BASE_SHA } from './helpers/fakeGithubRepo'
 import {
   activeVaultName,
   evalJson,
@@ -1655,6 +1658,39 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
 }
 
 const available = isObsidianRunning() && hasTestApi()
+
+describe.skipIf(!available)('the GitHub base picker on a phone', () => {
+  let gh: FakeGithub, size: [number, number]
+  beforeAll(async () => {
+    size = windowSize()
+    await setMobile(true)
+    await setWindowSize(PHONE.width, PHONE.height)
+    gh = await startFakeGithub()
+    enableGithub(gh.origin, false)
+  }, 90000)
+  afterAll(async () => {
+    try { restoreGithub() } finally { gh?.stop() }
+    if (size?.[0]) await setWindowSize(size[0], size[1])
+    await setMobile(false)
+  }, 120000)
+  it('shows the resolved SHA and keeps the native prompt and field ring within the phone', () => {
+    const result = evalBase<{ clipped: string[]; over: string[]; sha: string; width: number; shot: string }>(`(async () => {
+      ${BASE_PRELUDE}
+      ${openBasePicker(gh.web)}
+      ${basePickerGeometry}
+      const shot = ${JSON.stringify(SHOTS + '/github-base-picker.png')}
+      if (window.__e2eHost) pickerReport.shot = await window.__e2eHost.shot(shot)
+      else { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(shot, image.toPNG()); pickerReport.shot = shot }
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+      return pickerReport
+    })()`)
+    expect(result.clipped).toEqual([])
+    expect(result.over).toEqual([])
+    expect(result.width).toBeGreaterThan(100)
+    expect(result.sha).toContain(BASE_SHA)
+    expect(result.shot).toMatch(/\.png$/)
+  }, 90000)
+})
 
 describe.skipIf(!available)('the chat dialogs on a phone', () => {
   let report: Report = {}

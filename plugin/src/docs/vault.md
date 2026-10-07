@@ -23,6 +23,21 @@ entry does not disable a header opt-in. Book choices travel with the Book reader
 section, chat choices with Script settings. Neither list contains credentials or grants trust.
 Chat launch wiring is separate; configuring these lists writes no message annotations.
 
+## Device-local GitHub comparison bases
+
+`abele-github-comparison-bases` in Obsidian's vault-scoped local storage is an array of
+`{origin, owner, repo, enteredRef, baseSha}`. Origins retain scheme and port; repository owner
+and name are canonicalized case-insensitively. `baseSha` is the immutable commit resolved and
+confirmed when pinning, not a branch/tag that is followed later. Pins are independent of the
+account used to read their repository. This is device-local reading context, not synced plugin
+settings, settings-transfer data, a vault sidecar, or the separate synced pinned-repository list.
+
+Workspace GitHub-tab state may store `originalFile: true`, a per-tab escape that leaves the
+repository base pinned. Resolved targets and displayed comparison/selection provenance are
+runtime-only. Immutable trees, blob text and endpoint indexes/counts are bounded session-memory
+caches scoped to credential generation and repository identity, with separate caller capability
+guards. Credential retirement clears them. No persistent private-source cache is added.
+
 ## Device-local template approvals
 
 `abele-template-trust` in Obsidian's vault-scoped local storage holds template confirmations.

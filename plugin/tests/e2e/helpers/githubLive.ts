@@ -38,7 +38,7 @@ export interface FakeGithub {
  * older Enterprise Server — see `fakeGithubServer.ts`.
  */
 export async function startFakeGithub(
-  options: { mode?: 'legacy' | 'no-raw' | 'accounts' | 'wide-readme' } = {}
+  options: { mode?: 'legacy' | 'no-raw' | 'accounts' | 'wide-readme' | 'pinned' } = {}
 ): Promise<FakeGithub> {
   const dir = mkdtempSync(join(tmpdir(), 'abele-fake-github-'))
   const bundle = join(dir, 'server.mjs')

@@ -20,6 +20,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { deflateSync } from 'node:zlib'
 import {
   BASE_FILES,
+  BASE_SHA,
   DISCUSSION,
   HEAD_FILES,
   HEAD_SHA,
@@ -47,13 +48,26 @@ const mode = process.argv[3] ?? ''
 const legacy = mode === 'legacy' || mode === 'no-raw'
 const fixtureFilesAt = (ref: string, web: string) => {
   const files = repositoryFilesAt(ref)
+  if (files && mode === 'pinned')
+    return {
+      ...files,
+      'src/worker.ts':
+        Array.from(
+          { length: 3000 },
+          (_, i) =>
+            `export const sample${i} = '${i % 10 === 0 && files === HEAD_FILES ? 'after' : 'before'} value with enough text for worker computation'`
+        ).join('\n') + '\n',
+    }
   return files && mode === 'wide-readme'
     ? { ...files, 'src/README.md': wideGithubReadme(web) }
     : files
 }
 const accountOf = (req: IncomingMessage): 'one' | 'two' | 'anonymous' =>
-  req.headers.authorization === 'Bearer invented-connection-one' ? 'one' :
-  req.headers.authorization === 'Bearer invented-connection-two' ? 'two' : 'anonymous'
+  req.headers.authorization === 'Bearer invented-connection-one'
+    ? 'one'
+    : req.headers.authorization === 'Bearer invented-connection-two'
+      ? 'two'
+      : 'anonymous'
 /** The size that stands for the contents API's 1 MB in legacy mode: `src/long.ts` is over it. */
 const LEGACY_LARGE = 10_000
 
@@ -75,6 +89,15 @@ const blobSha = (text: string) =>
   createHash('sha1')
     .update(`blob ${Buffer.byteLength(text)}\0${text}`)
     .digest('hex')
+
+const treeSha = (files: Record<string, string>, path: string) =>
+  blobSha(
+    Object.entries(files)
+      .filter(([p]) => p.startsWith(`${path}/`))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([p, text]) => `${p}:${blobSha(text)}`)
+      .join('\n')
+  )
 
 /** GitHub wraps its base64 at 60 columns. */
 const base64 = (text: string) =>
@@ -226,10 +249,14 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   const accept = String(req.headers.accept ?? '')
   if (url.pathname === '/api/v3/user') {
     const account = accountOf(req)
-    if (mode === 'accounts' && account === 'anonymous') return send(res, 401, { message: 'Bad credentials' })
+    if (mode === 'accounts' && account === 'anonymous')
+      return send(res, 401, { message: 'Bad credentials' })
     res.setHeader('X-RateLimit-Limit', '5000')
     res.setHeader('X-RateLimit-Remaining', account === 'two' ? '4900' : '100')
-    return send(res, 200, { login: `sample-account-${account === 'two' ? 'two' : 'one'}`, avatar_url: `${web}/avatars/u/sample` })
+    return send(res, 200, {
+      login: `sample-account-${account === 'two' ? 'two' : 'one'}`,
+      avatar_url: `${web}/avatars/u/sample`,
+    })
   }
   if (url.pathname === '/api/v3/search/issues') return searchIssues(res, url, web)
   // The account's own repositories and the starred ones: this one, and a starred one to tell apart.
@@ -320,13 +347,21 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
       : m[1]
     if (accept.includes('vnd.github.sha') && !legacy) {
       return filesAt(ref)
-        ? send(res, 200, ref === 'main' ? HEAD_SHA : ref, 'text/plain')
+        ? send(
+            res,
+            200,
+            ref === TAG || ref === BASE_SHA ? BASE_SHA : ref === FIRST_SHA ? FIRST_SHA : HEAD_SHA,
+            'text/plain'
+          )
         : notFound(res)
     }
     const detail = f.commitDetail(ref === 'main' ? HEAD_SHA : ref)
     if (detail) return send(res, 200, detail)
     // An older server answers the `sha` type with the commit; this one has only its SHA to give.
-    if (legacy && filesAt(ref)) return send(res, 200, { sha: ref === 'main' ? HEAD_SHA : ref })
+    if (filesAt(ref))
+      return send(res, 200, {
+        sha: ref === TAG || ref === BASE_SHA ? BASE_SHA : ref === FIRST_SHA ? FIRST_SHA : HEAD_SHA,
+      })
     return notFound(res)
   }
 
@@ -369,25 +404,56 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
 
   m = /^\/git\/trees\/(.+)$/.exec(path)
   if (m) {
-    const files = filesAt(m[1])
+    let files = filesAt(m[1]),
+      folder = ''
+    if (!files) {
+      for (const ref of [HEAD_SHA, BASE_SHA]) {
+        const candidates = filesAt(ref)!
+        const found = foldersOf(candidates).find((p) => treeSha(candidates, p) === m![1])
+        if (found) {
+          files = candidates
+          folder = found
+          break
+        }
+      }
+    }
     if (!files) return notFound(res)
-    // Folders as well as files, the way GitHub lists a whole tree.
+    // Folders' identities depend on descendants, so exact comparisons can skip equal subtrees.
     const tree = [
-      ...foldersOf(files).map((p) => ({ path: p, type: 'tree', sha: blobSha(`tree:${p}`) })),
+      ...foldersOf(files).map((p) => ({
+        path: p,
+        type: 'tree',
+        mode: '040000',
+        sha: treeSha(files!, p),
+      })),
       ...Object.entries(files).map(([p, text]) => ({
         path: p,
         type: 'blob',
+        mode: '100644',
         size: Buffer.byteLength(text),
         sha: blobSha(text),
       })),
     ]
-    return send(res, 200, { sha: m[1], tree, truncated: false })
+    const prefix = folder ? `${folder}/` : ''
+    const listing = tree
+      .filter((e) => e.path.startsWith(prefix))
+      .map((e) => ({ ...e, path: e.path.slice(prefix.length) }))
+    const recursive = url.searchParams.get('recursive') === '1'
+    return send(res, 200, {
+      sha: m[1],
+      tree: recursive
+        ? mode === 'pinned'
+          ? listing.slice(0, 2)
+          : listing
+        : listing.filter((e) => !e.path.includes('/')),
+      truncated: recursive && mode === 'pinned',
+    })
   }
 
   m = /^\/git\/blobs\/([0-9a-f]{40})$/.exec(path)
   if (m) {
     const sha = m[1]
-    const text = [...Object.values(HEAD_FILES), ...Object.values(BASE_FILES)].find(
+    const text = [...Object.values(filesAt(HEAD_SHA)!), ...Object.values(filesAt(BASE_SHA)!)].find(
       (t) => blobSha(t) === sha
     )
     if (text === undefined) return notFound(res)
@@ -623,7 +689,12 @@ const server = createServer((req, res) => {
     console.log(
       `${req.method} ${url.pathname}${url.search}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`
     )
-  if (mode === 'accounts' && url.pathname.startsWith(`/api/v3/repos/${OWNER}/${REPO}/`) && accountOf(req) !== 'two') return notFound(res)
+  if (
+    mode === 'accounts' &&
+    url.pathname.startsWith(`/api/v3/repos/${OWNER}/${REPO}/`) &&
+    accountOf(req) !== 'two'
+  )
+    return notFound(res)
   if (req.method === 'POST' && url.pathname === '/api/graphql') {
     graphql(req, res, web).catch((e) => send(res, 500, { message: String(e) }))
     return

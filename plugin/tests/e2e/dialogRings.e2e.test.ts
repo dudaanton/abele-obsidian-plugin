@@ -16,7 +16,8 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
-import { evalAsync } from './helpers/githubLive'
+import { evalAsync, PRELUDE as BASE_PRELUDE, startFakeGithub, enableGithub, restoreGithub } from './helpers/githubLive'
+import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
 import {
   SELECTION_MENUS_SETUP,
   SELECTION_MENUS_OPEN,
@@ -352,6 +353,24 @@ describe('Canvas publication review focus inventory', () => {
       run(PUBLICATION_CLEANUP)
     }
   })
+})
+
+describe.skipIf(!available)('GitHub comparison base focus', () => {
+  it('keeps the native base picker field ring inside its clipping ancestors', async () => {
+    const gh = await startFakeGithub()
+    try {
+      enableGithub(gh.origin)
+      const result = evalAsync<{ clipped: string[]; over: string[] }>(`(async () => {
+        ${BASE_PRELUDE}
+        ${openBasePicker(gh.web)}
+        ${basePickerGeometry}
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+        return pickerReport
+      })()`)
+      expect(result.clipped).toEqual([])
+      expect(result.over).toEqual([])
+    } finally { restoreGithub(); gh.stop() }
+  }, 90000)
 })
 
 describe.skipIf(!available)('changelog controls', () => {

@@ -32,7 +32,7 @@ export class BasePicker extends SuggestModal<Row> {
     const name = query.trim(),
       generation = ++this.queryGeneration
     if (name) {
-      await new Promise((resolve) => setTimeout(resolve, 250))
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
       if (this.closed || generation !== this.queryGeneration) return []
       try {
         const pending =

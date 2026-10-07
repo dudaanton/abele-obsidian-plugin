@@ -57,6 +57,53 @@ With **Open GitHub links in Obsidian** on, a click on a GitHub link in a note op
 
 Anything else, such as a release, still goes to the browser.
 
+## Comparing file links against a pinned base
+
+On a file, folder or repository page, choose **Compare against…** and enter a commit SHA,
+branch or tag. The picker resolves the name and shows the full commit SHA before you confirm.
+The base is frozen to that commit: a branch or tag moving later does not move your comparison.
+These comparison bases are separate from the pinned repositories in the repository picker.
+They survive restarts in this vault **on this device only**; they are not synced or transferred.
+Different server schemes and ports, and different repositories, have independent bases.
+
+While a base is pinned, file links show a unified, read-only diff from that exact base to the
+commit the link names—not GitHub's merge-base comparison. A mutable target branch is resolved
+once when opened; both the text and project tree use that commit. Each tab keeps its own target,
+even when another tab opens a different commit or you change the base. Linked lines always
+refer to the target side, including unchanged context far from a change. Identical files remain
+readable and say **No changes in the text of this file**.
+
+The file tree offers **All files** (target files with change markers and deleted paths) and
+**Changed files** (the complete endpoint difference). Both modes use the same statuses and
+counts and open the same comparison-aware file view. Deleted entries show the base-side text
+with an empty target; opening one does not change the comparison's target commit. Renames are
+shown only with reliable endpoint metadata or a unique identical blob match. Otherwise the
+old and new paths remain separate removed/added entries.
+
+**Change base** replaces the frozen base for this repository's tabs. **Unpin** restores the
+existing file views everywhere for that repository. **Original file** escapes the comparison
+in this tab only; **Show comparison** returns without removing the repository base. Explicit
+pull request, commit and compare pages keep their existing behavior. Original URLs, line links,
+account choices and navigation history are retained.
+
+The diff keeps the normal find, copy, quote and Ask actions. A removed-line selection links to
+the base commit; added and unchanged selections link to the target commit, using ordinary blob
+permalinks rather than invented compare anchors. **Open base** and **Open target** open either
+side on GitHub. On a phone the tree is a drawer and the diff stays unified at full content width.
+
+Text counts are computed from the complete file texts. **…** means not yet counted; **—** means
+unavailable, not zero. Binary files and unsupported encodings retain their status, sizes and
+side-opening actions. Symlinks show their stored link text without following it, submodules
+show commit metadata without fetching another repository, and LFS files show pointer text
+without downloading payloads. Large files and many-line diffs require **Load large diff**;
+files beyond the memory/line budget or GitHub's API limits can still be opened on either side.
+
+Loaded immutable trees and file bytes remain available offline in bounded session memory.
+Uncached portions explain the failure and can be retried with the header's refresh action.
+Restarting or changing credentials forgets private-source caches. GitHub's primary and secondary
+rate limits pause uncached requests until the reset or retry time; accounts are never switched
+to get around a rate limit.
+
 ## File tree width
 
 On a wide screen, drag the divider beside the file tree to resize it. The tree stays between

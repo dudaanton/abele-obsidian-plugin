@@ -560,7 +560,12 @@ the next part rather than trying to get everything at once.
   they are in (who wrote it, its `#…` anchor, its link) or, across several, the item and the
   comments it runs through. The last words selected stay reported while the person types in the
   chat. Start here whenever they say "this PR", "this file", "these lines", "what does this mean";
-  `github_read` on the link gives the whole comment and the thread around it.
+  `github_read` on the link gives the whole comment and the thread around it. A pinned-file
+  comparison reports its frozen base ref/SHA and exact target SHA, plus the selected side and
+  commit. These are endpoint diffs, not merge-base patches; selections use base/target blob
+  permalinks. Read additional context with `github_file` at the reported side's SHA. Device-local
+  comparison bases affect file tabs opened by `github_open`, but do not change explicit PR,
+  commit or compare pages, and are not synced settings.
 - `github_read` — an issue, pull request or discussion: head, description, conversation twenty
   comments a page (`page`).
 - `github_pr_files` — a pull request's files. Without `path` the list with +/- counts; with
