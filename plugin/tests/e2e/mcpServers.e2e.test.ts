@@ -111,6 +111,56 @@ for (const shape of [
       )
     })
 
+    it('fetches in the unsaved dialog after ticking a new token', () => {
+      const fetched = evalAsync<{
+        error: string
+        listed: boolean
+        unchanged: boolean
+      }>(`(async () => {
+        const t = window.__abeleTest
+        const store = t.secrets()
+        const config = t.AbeleConfig.getInstance()
+        const before = JSON.stringify(config.ai.mcpServers)
+        const slot = 'abele-mcp-probe'
+        if (store.get(slot) || store.status.value !== 'off') throw new Error('Draft fixture slot is unavailable')
+        if (document.querySelector('.modal')) throw new Error('Another dialog is open')
+        let modal
+        try {
+          t.openMcpServer(${JSON.stringify(server.url)})
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          modal = document.querySelector('.modal')
+          const input = modal.querySelector('.abele-secret-field input')
+          input.value = 'fake-draft-token'
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          modal.querySelector('.abele-secret-field__row .abele-obsidian-icon').click()
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          if (input.value || !store.get(slot)) throw new Error('Token tick did not store and clear')
+          const fetch = [...modal.querySelectorAll('button')].find((b) => b.textContent === 'Fetch tools')
+          fetch.click()
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          const deadline = Date.now() + 15000
+          while (fetch.disabled && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50))
+          if (fetch.disabled) throw new Error('Draft fetch did not finish')
+          return {
+            error: modal.querySelector('.abele-mcp-server__error')?.textContent ?? '',
+            listed: modal.textContent.includes('Says back the text it is given.'),
+            unchanged: JSON.stringify(config.ai.mcpServers) === before,
+          }
+        } finally {
+          if (modal) {
+            document.body.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true,
+            }))
+            await new Promise((resolve) => setTimeout(resolve, 50))
+          }
+          store.forgetLocal(slot)
+          t.McpService.getInstance().reset()
+        }
+      })()`)
+      expect(fetched).toEqual({ error: '', listed: true, unchanged: true })
+    })
+
     it('calls them and brings back what they answered', () => {
       expect(outcome.echo).toContain('echo: from Obsidian')
       expect(outcome.sum).toContain('42')

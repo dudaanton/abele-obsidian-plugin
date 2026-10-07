@@ -148,6 +148,8 @@ const headersDesc =
 const form = reactive<McpServer>(JSON.parse(JSON.stringify(props.server)) as McpServer)
 const headersText = ref(formatHeaders(form.headers))
 const token = ref('')
+/** Only a token entered in this dialog, never one read from a saved server. */
+const draftToken = ref('')
 const forgetToken = ref(false)
 const fetching = ref(false)
 const fetchError = ref('')
@@ -163,6 +165,7 @@ function saveToken(): void {
   form.keyId = mcpKeyId(form.id)
   secrets().set(form.keyId, typed)
   storedToken.value = typed
+  draftToken.value = typed
   forgetToken.value = false
   token.value = ''
 }
@@ -194,7 +197,11 @@ async function fetchTools(): Promise<void> {
   fetchError.value = ''
   try {
     const typed = token.value.trim()
-    const options = typed ? { token: typed } : forgetToken.value ? { token: '' } : {}
+    const options = forgetToken.value
+      ? { token: typed }
+      : typed || draftToken.value
+        ? { token: typed || draftToken.value }
+        : {}
     form.tools = await McpService.getInstance().fetchTools(current(), options)
     form.fetchedAt = new Date().toISOString()
   } catch (error) {

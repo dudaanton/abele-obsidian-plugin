@@ -433,7 +433,11 @@ conversation while it is open. Concurrent and nested subtasks share that budget.
 **Settings → Abele → AI Agent → MCP** connects MCP servers reached over HTTP; nothing is started on
 your device, so they work on a phone too. Give each a name, its address, and a token or headers if
 it needs them. **Fetch tools** reads its list of tools, and that saved list is what agents are
-told until you fetch again.
+told until you fetch again. You can fetch before saving the server, including after pressing
+the tick beside a newly entered token. **Save** keeps the address and fetched list. An existing
+saved token stays bound to its configured address; changing that address alone does not allow
+a trial fetch to send the token there. Stored keys used in headers keep their allowed-address
+checks too.
 
 A server's tools are off for every agent until you switch the server on in the agent's
 **Access** tab or a chat's permissions. They then ask before each call, unless you set a tool to

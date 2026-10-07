@@ -18,6 +18,14 @@ import { mcpKeyId } from '@/ai/mcp/settings'
 import { mcpPermissionKey } from '@/ai/mcp/permissions'
 import { secrets } from '@/secrets/SecretStore'
 import { useVault } from '../helpers/testEnv'
+import { setRequestGuard } from '@/helpers/http'
+import { checkRequestDestinations, initializeDestinations, keyFor } from '@/secrets/destinations'
+
+const { requestUrl } = vi.hoisted(() => ({ requestUrl: vi.fn() }))
+vi.mock('obsidian', async (original) => ({
+  ...(await original<typeof import('obsidian')>()),
+  requestUrl,
+}))
 
 const TOOLS: McpToolSnapshot[] = [
   { name: 'lookup', title: 'Look up', description: 'Finds a thing.', inputSchema: {} },
@@ -29,9 +37,25 @@ beforeEach(() => {
   AgentRegistry.destroy()
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [], mcpServers: [] }
   AbeleConfig.getInstance().saveSettings = vi.fn(async () => {})
+  McpService.getInstance().reset()
+  setRequestGuard((request) => checkRequestDestinations(request, AbeleConfig.getInstance()))
+  requestUrl.mockImplementation(async ({ body }: { body: string }) => {
+    const message = JSON.parse(body)
+    return {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      text: JSON.stringify({
+        jsonrpc: '2.0',
+        id: message.id,
+        result: message.method === 'tools/list' ? { tools: TOOLS } : {},
+      }),
+    }
+  })
 })
 
 afterEach(() => {
+  setRequestGuard(undefined)
+  McpService.getInstance().reset()
   vi.restoreAllMocks()
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
 })
@@ -161,6 +185,100 @@ describe('adding one', () => {
     expect(saved.keyId).toBe(mcpKeyId(saved.id))
     expect(saved.keyId).toMatch(/^[a-z0-9-]+$/)
     expect(secrets().get(saved.keyId)).toBe('tok-abcdefgh-1234')
+  })
+
+  it.each([true, false])(
+    'fetches before saving the server when its token tick is pressed (address entered first: %s)',
+    async (addressFirst) => {
+      const view = mountTab()
+      await buttonNamed(view, 'Add server').trigger('click')
+      await field(view, 'Name').find('input').setValue('Sample')
+      if (addressFirst) await field(view, 'URL').find('input').setValue('https://draft.example/mcp')
+      await field(view, 'Token').find('input').setValue('fake-draft-token')
+      await field(view, 'Token')
+        .find('.abele-secret-field__row .abele-obsidian-icon')
+        .trigger('click')
+      if (!addressFirst)
+        await field(view, 'URL').find('input').setValue('https://draft.example/mcp')
+      expect(field(view, 'Token').find('input').element.value).toBe('')
+
+      await buttonNamed(view, 'Fetch tools').trigger('click')
+      await flushPromises()
+
+      expect(view.find('.abele-mcp-server__error').exists()).toBe(false)
+      expect(view.text()).toContain('Look up')
+      expect(requestUrl).toHaveBeenCalledTimes(2)
+      for (const [request] of requestUrl.mock.calls)
+        expect(request).toMatchObject({
+          url: 'https://draft.example/mcp',
+          headers: { Authorization: 'Bearer fake-draft-token' },
+        })
+      expect(servers()).toEqual([])
+      expect(AbeleConfig.getInstance().saveSettings).not.toHaveBeenCalled()
+
+      await buttonNamed(view, 'Save').trigger('click')
+      const [saved] = servers()
+      expect(saved.tools).toEqual(TOOLS)
+      expect(keyFor(saved.keyId, saved.url, AbeleConfig.getInstance())).toBe('fake-draft-token')
+      expect(() =>
+        keyFor(saved.keyId, 'https://other.example/mcp', AbeleConfig.getInstance())
+      ).toThrow(/configured/)
+      view.unmount()
+    }
+  )
+
+  it('does not fetch with a saved token at an unsaved replacement address', async () => {
+    const saved = createMcpServer({
+      id: 'sample',
+      name: 'Sample',
+      url: 'https://saved.example/mcp',
+      keyId: 'abele-mcp-sample',
+    })
+    servers().push(saved)
+    secrets().set(saved.keyId, 'fake-saved-token')
+    initializeDestinations(AbeleConfig.getInstance())
+    const view = mountTab()
+    await view.find('.abele-card').trigger('click')
+    await field(view, 'URL').find('input').setValue('https://other.example/mcp')
+    await buttonNamed(view, 'Fetch tools').trigger('click')
+    await flushPromises()
+
+    expect(view.find('.abele-mcp-server__error').text()).toMatch(/configured/)
+    expect(requestUrl).not.toHaveBeenCalled()
+    expect(servers()[0].url).toBe(saved.url)
+
+    // Re-entering the same stored value must not bypass the request-level binding either.
+    await field(view, 'Token').find('input').setValue('fake-saved-token')
+    await field(view, 'Token')
+      .find('.abele-secret-field__row .abele-obsidian-icon')
+      .trigger('click')
+    await buttonNamed(view, 'Fetch tools').trigger('click')
+    await flushPromises()
+    expect(view.find('.abele-mcp-server__error').text()).toMatch(/configured/)
+    expect(requestUrl).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
+  it('forgets a ticked draft token for fetching and saving', async () => {
+    const view = mountTab()
+    await buttonNamed(view, 'Add server').trigger('click')
+    await field(view, 'Name').find('input').setValue('Sample')
+    await field(view, 'URL').find('input').setValue('https://draft.example/mcp')
+    await field(view, 'Token').find('input').setValue('fake-forgotten-token')
+    await field(view, 'Token')
+      .find('.abele-secret-field__row .abele-obsidian-icon')
+      .trigger('click')
+    await field(view, 'Token')
+      .find('.abele-secret-field__row .abele-obsidian-icon')
+      .trigger('click')
+    await buttonNamed(view, 'Fetch tools').trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('Look up')
+    for (const [request] of requestUrl.mock.calls)
+      expect(request.headers.Authorization).toBeUndefined()
+    await buttonNamed(view, 'Save').trigger('click')
+    expect(servers()[0].keyId).toBe('')
+    view.unmount()
   })
 
   it('says why fetching failed', async () => {
