@@ -128,6 +128,8 @@ export class SettingsKeeper {
    * field patches until every read that could return an older snapshot has been reconciled.
    */
   private fileQueue: Promise<unknown> = Promise.resolve()
+  /** Managed values are atomic: an older read cannot undo a successful local save. */
+  private writeGeneration = 0
 
   constructor(private readonly host: SettingsHost) {}
 
@@ -282,9 +284,10 @@ export class SettingsKeeper {
     const edits = this.host.edits()
     const finishRead = edits.beginRead()
     const base = this.base
+    const generation = this.writeGeneration
     try {
       const read = await this.readReload()
-      return await this.onFile(() => this.reloadNow(read, base))
+      return await this.onFile(() => this.reloadNow(read, base, generation))
     } finally {
       finishRead()
     }
@@ -308,7 +311,8 @@ export class SettingsKeeper {
 
   private async reloadNow(
     { stored, stamp }: { stored: unknown; stamp: string | null },
-    readBase: AbeleSettings | null
+    readBase: AbeleSettings | null,
+    readGeneration: number
   ): Promise<boolean> {
     if (!this.host.plugin()) return false
     if (stored === undefined) {
@@ -335,7 +339,11 @@ export class SettingsKeeper {
         return false
       }
     } else {
-      const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored, readBase)
+      const current =
+        readGeneration !== this.writeGeneration && isSettingsObject(stored)
+          ? { ...stored, secretStore: this.host.secretStore() }
+          : stored
+      const settings = this.defaultsInMemory ? current : this.ontoArrived(current, readBase)
       if (
         this.waitingForInitialFile &&
         isSettingsObject(stored) &&
@@ -450,12 +458,14 @@ export class SettingsKeeper {
       // A coalesced direct save can return to its starting value. It still resolves
       // as a successful save and must protect that field against an older read.
       this.host.edits().written()()
+      this.writeGeneration++
       this.base = accepted
       return
     }
     const written = this.host.edits().written()
     await plugin.saveData(settingsSnapshot(next))
     written()
+    this.writeGeneration++
     this.gone = false
     this.onDisk = text
     this.base = accepted

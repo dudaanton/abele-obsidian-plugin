@@ -3,6 +3,52 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { FakeSettings } from '../helpers/fakeSettings'
 import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
+import { SecretStore } from '@/secrets/SecretStore'
+
+it('keeps a completed passphrase change when an older encrypted store read returns', async () => {
+  const app = useVault([])
+  const disk = new FakeSettings({ refreshDelay: 500 })
+  config.init(disk as never)
+  await config.loadSettings()
+  const store = new SecretStore({
+    keychain: () => app.secretStorage,
+    read: () => config.secretStore,
+    write: async (file) => {
+      config.secretStore = file
+      await config.saveSettings()
+    },
+    ids: () => ['sample-key'],
+    conflictCopies: async () => [],
+    now: () => 1000,
+  })
+  store.set('sample-key', 'invented-value')
+  await store.enable('sample-old-phrase', { iterations: 1000 })
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  vi.spyOn(disk, 'loadData').mockImplementationOnce(async () => {
+    const snapshot = JSON.parse(JSON.stringify(disk.stored))
+    snapshot.refreshDelay = 888
+    entered.resolve()
+    await release.promise
+    return snapshot
+  })
+  const reading = config.reloadSettings()
+  await entered.promise
+  try {
+    await store.changePassphrase('sample-new-phrase', { iterations: 1000 })
+    const saved = JSON.parse(JSON.stringify(config.secretStore))
+    release.resolve()
+    await reading
+    await store.load()
+    expect(config.secretStore).toEqual(saved)
+    expect(store.status.value).toBe('unlocked')
+    expect(store.get('sample-key')).toBe('invented-value')
+    expect(config.refreshDelay).toBe(888)
+  } finally {
+    release.resolve()
+    await reading
+  }
+})
 
 const config = AbeleConfig.getInstance()
 afterEach(() => {
