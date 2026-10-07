@@ -6,7 +6,6 @@ interface Entry {
   view: EditorView
   document: string
   anchor: number
-  frameFrom: number
 }
 
 /** Resolve a native callout's block by syntax order, then its UTF-16 DOM caret offset. */
@@ -68,7 +67,7 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
     const count = (block.tagName === 'LI' ? text.trimStart() : text).length
     anchor = paragraph.positions[count] ?? paragraph.to
   }
-  return { view, document, anchor, frameFrom: source.from }
+  return { view, document, anchor }
 }
 
 function reveal(entry: Entry): void {
@@ -77,9 +76,6 @@ function reveal(entry: Entry): void {
   const editor = entry.view.state.field(editorInfoField, false)?.editor
   if (editor) editor.focus()
   else entry.view.focus()
-  // Activate the native outer widget first, then place the exact caret in the same event.
-  // Neither transaction selects text or scrolls to the header; only the final caret is revealed.
-  entry.view.dispatch({ selection: { anchor: entry.frameFrom }, userEvent: 'select.pointer' })
   entry.view.dispatch({
     selection: { anchor: entry.anchor },
     scrollIntoView: true,

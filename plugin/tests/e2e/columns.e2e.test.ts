@@ -255,7 +255,12 @@ describe.skipIf(!available)('note columns foundation', () => {
     const point = asyncEval<{ x: number; y: number }>(`
       view.editor.focus();await wait(300);
       const p=[...root().querySelectorAll('.abele-column p')].find(e=>e.textContent.includes('Second column paragraph.'));
-      p.scrollIntoView({block:'center'});await wait(100);const r=p.getBoundingClientRect();return {x:r.x+40,y:r.y+r.height/2};
+      p.scrollIntoView({block:'center'});await wait(100);
+      const keyboard=parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0;
+      const bottom=Math.min(innerHeight-keyboard,window.visualViewport?.height??innerHeight);
+      const desired=Math.max(140,Math.min(240,bottom-100));
+      const before=p.getBoundingClientRect();view.editor.cm.scrollDOM.scrollTop+=before.y+before.height/2-desired;
+      await wait(200);const r=p.getBoundingClientRect();return {x:r.x+40,y:r.y+r.height/2};
     `)
     click(point.x, point.y)
     const result = asyncEval<{
