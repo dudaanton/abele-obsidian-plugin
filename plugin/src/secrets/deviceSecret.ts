@@ -16,6 +16,8 @@ function bindingServer(server: string): string | null {
 }
 
 export const DEVICE_SECRET_PREFIX = 'abele-sync-device-'
+/** Scoped invitation/installation credentials and their proofs are also device-local. */
+export const SCOPED_SECRET_PREFIX = 'abele-scoped-'
 
 interface DeviceRoad {
   get(id: string): string
@@ -82,5 +84,5 @@ export function isDeviceSecretId(id: string | undefined | null): id is string {
  * whole vault to wherever that road goes.
  */
 export function isReservedSecretId(id: string | undefined | null): boolean {
-  return typeof id === 'string' && id.toLowerCase().startsWith(DEVICE_SECRET_PREFIX)
+  return typeof id === 'string' && [DEVICE_SECRET_PREFIX, SCOPED_SECRET_PREFIX].some((prefix) => id.toLowerCase().startsWith(prefix))
 }

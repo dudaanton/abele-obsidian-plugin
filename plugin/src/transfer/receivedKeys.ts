@@ -11,7 +11,7 @@
  * — it names the sender, and the settings hold no connection any more — so the token has
  * nothing to go with, and the store must never take one whatever section it came under.
  */
-import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
+import { isReservedSecretId, secrets } from '@/secrets/SecretStore'
 import { isDeviceOnly } from './entries'
 import type { TransferEntry } from './types'
 
@@ -37,7 +37,7 @@ export function storeReceivedKeys(
       const value = received[secretId]
       // A key that did not travel leaves whatever this device already has alone.
       if (!value) continue
-      if (!deviceOnly && isDeviceSecretId(secretId)) continue
+      if (!deviceOnly && isReservedSecretId(secretId)) continue
 
       try {
         road.set(secretId, value)
