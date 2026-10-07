@@ -60,6 +60,7 @@ onBeforeMount(() => {
     }
   })(app, { title: props.title, size: props.size ?? 'default', footer: !!slots.footer })
 
+  modal.value.modalEl.addClass('abele-modal')
   if (props.phoneSheet) modal.value.modalEl.addClass('mod-lg')
   const el = modal.value.bodyEl
   el.id = id.value
@@ -86,6 +87,15 @@ const emit = defineEmits<{
 </script>
 
 <style lang="scss">
+// Keep native phone title typography, reserving space for both touch-sized controls.
+body.is-phone .modal.abele-modal .modal-title {
+  max-width: calc(100% - (var(--touch-size-m) + var(--size-4-2)) * 2);
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
 /**
  * A dialog’s answer row stays visible while the body scrolls.
  * A dialog's answer row, `abele-modal__actions` on the element that holds its buttons: kept at

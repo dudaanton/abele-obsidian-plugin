@@ -14,6 +14,20 @@ folder. If the note changes while the preview is open, open the link again to re
 Chart tooltips display note names and property values literally, not as HTML. The chart library
 is updated; chart settings and data are unchanged.
 
+## Sync
+
+Abele Sync requires a self-hosted **abele-sync** server; there is no hosted service. Enter
+that server's URL, sign in, and choose or create a vault on the Sync tab. This device keeps
+its connection and selective-sync choices locally. Notes and canvases always sync; other
+file types, folders, size limits and configuration sections can be selected separately.
+Disconnect revokes this device without deleting its notes. Version history and deleted files
+are kept on your server, under its retention policy.
+
+The command palette provides **Sync now**, **Pause or resume sync**, **Open sync log** and
+**Open deleted files**. Right-click a synced file for **Open version history**. Sharing,
+joining a shared vault and publishing selected linked material use the same server; review
+the proposed access before confirming.
+
 ## Tasks
 
 The tasks folder, the quick choices of dates, times and repeats in the task editor, the busy day

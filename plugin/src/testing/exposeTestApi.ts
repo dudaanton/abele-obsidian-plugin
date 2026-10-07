@@ -94,7 +94,6 @@ import {
 } from './ownerPublicationFixture'
 import { openFencedScreen, closeFencedScreen, FENCED_SCREENS } from './fencedScreens'
 import { startPhoneReplay, verifyPhoneReplay, clearPhoneReplayEvidence } from './phoneReplay'
-import { desktopTransport } from '@/sync/desktopTransport'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'

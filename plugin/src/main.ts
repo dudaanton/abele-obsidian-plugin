@@ -307,10 +307,10 @@ export default class AbelePlugin extends Plugin {
       // After the store: a token moved out of the settings lands in it when it is open here.
       await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
       // Announce before layout-ready so cold-start links wait for the first pull.
-      SyncService.getInstance().announce()
+      startupStep('sync announcement', () => SyncService.getInstance().announce())
 
-      applySettingsLook(AbeleConfig.getInstance())
-      this.initSync()
+      startupStep('settings look', () => applySettingsLook(AbeleConfig.getInstance()))
+      this.app.workspace.onLayoutReady(() => startupStep('sync', () => this.initSync()))
 
       // The store takes the week start and the rest of what it draws from out of the settings.
       startupStep('store', () => GlobalStore.getInstance().init(this.app))
@@ -1488,6 +1488,7 @@ export default class AbelePlugin extends Plugin {
       })
     }
 
+    this.addCommand({
       id: 'show-script-api',
       name: 'Show script API reference',
       icon: 'book-open',

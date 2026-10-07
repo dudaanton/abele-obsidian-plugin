@@ -68,6 +68,14 @@ export default defineConfig(async ({ mode }) => {
   return {
     resolve: {
       alias: {
+        ...(prod
+          ? Object.fromEntries(
+              ['@/testing/exposeTestApi', '@/testing/phoneReplay'].map((id) => [
+                id,
+                path.resolve(__dirname, 'src/helpers/productionTestFence.ts'),
+              ])
+            )
+          : {}),
         '@': path.resolve(__dirname, 'src'),
         // JSZip's browser distribution embeds legacy polyfills, bypassing package aliases.
         // Use its modular entry so both schedulers can be replaced without editing dependencies.
@@ -76,7 +84,10 @@ export default defineConfig(async ({ mode }) => {
         setimmediate: path.resolve(__dirname, 'src/shims/setimmediate.ts'),
       },
     },
-    define: { __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test') },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
+      __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test'),
+    },
     plugins: [
       testSharingBuildPlugin(mode),
       vue(),
