@@ -72,7 +72,7 @@
         desc="Review stable group identities and explicit relations; no folder/remap or inferred anchor authority."
         ><Button
           text="Review group sharing"
-          tooltip="Inspect the disabled exact-root group wizard"
+          tooltip="Review the exact synced root and authenticate the owner"
           @click="groupOpen = true"
       /></Setting>
       <Setting
@@ -94,7 +94,7 @@
       :enabled="enabled"
       @close="folderOpen = false"
     />
-    <GroupSharingModal v-if="groupOpen" :enabled="enabled" @close="groupOpen = false" />
+    <GroupSharingModal v-if="groupOpen" :root-flow="groupRootFlow" :enabled="enabled" @close="groupOpen = false" />
     <InitialAssetBatchModal v-if="batchOpen" :enabled="enabled" @close="batchOpen = false" />
     <ConfirmModal
       v-if="unshare"
@@ -128,6 +128,7 @@ import InitialAssetBatchModal from '../../sync/InitialAssetBatchModal.vue'
 import { OWNER_SHARING_ENABLED, type FolderSharingFlow } from '@/sync/sharing/folderSharing'
 import type { AssetView } from '@/sync/sharing/sponsoredAssets'
 import type { PublicationSettingsModel, UnshareReview } from '@/sync/sharing/publicationSettings'
+import type { OwnerGroupRootFlow } from '@/sync/sharing/ownerGroupRoot'
 const props = withDefaults(
   defineProps<{
     facet?: 'device' | 'scoped' | 'account'
@@ -135,6 +136,7 @@ const props = withDefaults(
     view?: AssetView
     model?: PublicationSettingsModel
     folderFlow?: FolderSharingFlow
+    groupRootFlow?: OwnerGroupRootFlow
     cacheComplete?: boolean
     referencedIds?: string[]
     state?: 'syncing' | 'scope-updating' | 'cache-unknown' | 'awaiting-confirmation' | 'idle'

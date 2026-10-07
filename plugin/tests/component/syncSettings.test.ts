@@ -212,7 +212,7 @@ describe('a device nobody has set up', () => {
   it('offers ordinary shared setup without a separate device-specific books preset', () => {
     const screen = open(ConnectCard, { serverUrl: '' })
     const buttons = screen.findAllComponents(Button).map((button) => button.props('text'))
-    expect(buttons).toContain('Preview shared group join…')
+    expect(buttons).toContain('Join a shared group…')
     expect(buttons).toContain('Preview scoped file creation…')
     expect(buttons.join(' ')).not.toMatch(/Books|group-only setup/i)
     expect(screen.text()).not.toContain('Untrusted Books reader')

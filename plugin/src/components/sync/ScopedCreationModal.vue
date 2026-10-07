@@ -40,15 +40,35 @@
             :disabled="busy || !enabled"
           /></label
       ></template>
-      <p v-if="kind === 'asset' || !enabled">
-        Native image bytes and an exact current intrinsic sponsor must be provided by the native
-        paste adapter before upload. Missing paste evidence is a hold, not a media-folder
-        permission.
-      </p>
+      <template v-if="kind === 'asset'">
+        <label
+          >New image bytes<input
+            type="file"
+            accept="image/*"
+            aria-label="New scoped image"
+            :disabled="busy || !enabled"
+            @change="chooseAsset"
+        /></label>
+        <label
+          >Intrinsic sponsor<select
+            v-model="sponsorId"
+            aria-label="Scoped image sponsor"
+            :disabled="busy || !enabled"
+          >
+            <option v-for="sponsor in sponsors" :key="sponsor.fileId" :value="sponsor.fileId">
+              {{ sponsor.label }} — {{ sponsor.versionId }}
+            </option>
+          </select></label
+        >
+        <p>
+          The selected image's bytes and this exact current intrinsic sponsor are reviewed before
+          upload. Existing paths are never adopted or replaced.
+        </p>
+      </template>
       <Button
         text="Review new-file choice"
         tooltip="Recheck current scope, root and destination before any local file creation"
-        :disabled="busy || !enabled || !flow || kind === 'asset'"
+        :disabled="busy || !enabled || !flow || (kind === 'asset' && !assetBytes)"
         @click="review"
       />
       <template v-if="shown"
@@ -85,37 +105,59 @@ import {
   type ScopedCreationFlow,
   type ApprovedRoot,
   type CreationReview,
+  type NativeSponsor,
 } from '@/sync/scoped/scopedCreation'
 const props = defineProps<{
     flow?: ScopedCreationFlow
     roots?: ApprovedRoot[]
+    sponsors?: (NativeSponsor & { label: string })[]
     enabled?: boolean
   }>(),
   emit = defineEmits<{ close: [] }>(),
   enabled = props.enabled ?? SCOPED_CREATION_ENABLED,
-  roots = props.roots ?? []
+  roots = props.roots ?? [],
+  sponsors = props.sponsors ?? []
 const kind = ref<'note' | 'asset'>('note'),
   path = ref(''),
-  rootId = ref(''),
+  rootId = ref(roots[0]?.fileId ?? ''),
+  sponsorId = ref(sponsors[0]?.fileId ?? ''),
+  assetBytes = ref<Uint8Array | null>(null),
   text = ref(''),
   busy = ref(false),
   error = ref(''),
   shown = ref<CreationReview | null>(null)
-watch([kind, path, rootId, text], () => {
+watch([kind, path, rootId, text, sponsorId, assetBytes], () => {
   shown.value = null
   props.flow?.close()
 })
+async function chooseAsset(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  assetBytes.value = file ? new Uint8Array(await file.arrayBuffer()) : null
+}
 async function review() {
-  if (!enabled || !props.flow || kind.value !== 'note') return
+  if (!enabled || !props.flow) return
   busy.value = true
   error.value = ''
   try {
-    shown.value = await props.flow.review({
-      kind: 'note',
-      path: path.value,
-      text: text.value,
-      rootId: rootId.value,
-    })
+    if (kind.value === 'note')
+      shown.value = await props.flow.review({
+        kind: 'note',
+        path: path.value,
+        text: text.value,
+        rootId: rootId.value,
+      })
+    else {
+      const selected = sponsors.find((sponsor) => sponsor.fileId === sponsorId.value)
+      if (!selected || !assetBytes.value)
+        throw new Error('Choose new image bytes and a current intrinsic sponsor')
+      const { label: _label, ...sponsor } = selected
+      shown.value = await props.flow.review({
+        kind: 'asset',
+        path: path.value,
+        bytes: assetBytes.value,
+        sponsor,
+      })
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Scoped file choice held'
   } finally {
@@ -137,6 +179,7 @@ async function confirm() {
 function close() {
   props.flow?.close()
   shown.value = null
+  assetBytes.value = null
   emit('close')
 }
 onUnmounted(() => props.flow?.close())

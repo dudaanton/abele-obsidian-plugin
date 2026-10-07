@@ -2,8 +2,22 @@
   <div class="abele-sync-settings">
     <ConnectCard v-if="!connected" :server-url="device.serverUrl" />
 
-    <template v-else>
-      <OwnerPublicationSettings :folder-flow="ownerFolderFlow" :model="ownerPublicationModel" />
+    <Section v-if="scoped" title="Shared scoped vault" desc="This installation uses only its scoped credential; scripts and personal enrolment stay unavailable.">
+      <Setting name="Server"><span>{{ scoped.issuer }}</span></Setting>
+      <Setting name="Grant"><span>{{ scoped.grantId }}</span></Setting>
+      <Setting name="Role"><span>{{ scopedRole }}</span></Setting>
+      <Setting name="Sync">
+        <Button text="Sync now" tooltip="Sync only authorized scoped identities" @click="sync.syncNow()" />
+        <Button :text="scopedPaused ? 'Resume' : 'Pause'" tooltip="Pause or resume this scoped installation" @click="scopedPaused ? sync.resume() : sync.pause()" />
+      </Setting>
+      <Setting name="New scoped file" desc="Review a new path and a current intrinsic root or sponsor; existing files are never adopted or replaced.">
+        <Button text="New scoped file…" tooltip="Open the scoped creation review" :disabled="scopedRole !== 'editor'" @click="openScopedCreation" />
+      </Setting>
+      <p v-if="scopedError" role="alert">{{ scopedError }}</p>
+      <ScopedCreationModal v-if="scopedFlow" :flow="scopedFlow" :roots="scopedFlow.roots" :sponsors="scopedFlow.sponsors" @close="scopedFlow = null" />
+    </Section>
+    <template v-if="connected && !scoped">
+      <OwnerPublicationSettings :folder-flow="ownerFolderFlow" :group-root-flow="ownerGroupFlow" :model="ownerPublicationModel" />
       <!--
         A connection a transfer brought, onto a vault that may hold files, into one that may hold
         files too: nothing syncs until the join question is answered. The dialog opens by itself;
@@ -276,7 +290,7 @@
  * the join dialog opens by itself — and offers what makes sense before a first sync: what this
  * device takes, and leaving instead. The vault's policy and usage wait for an engine to ask with.
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { JoinPrefer } from '@abele/sync-protocol'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -289,6 +303,8 @@ import VaultPolicy from './sync/VaultPolicy.vue'
 import DeviceList from './sync/DeviceList.vue'
 import UsageCard from './sync/UsageCard.vue'
 import OwnerPublicationSettings from './sync/OwnerPublicationSettings.vue'
+import ScopedCreationModal from '../sync/ScopedCreationModal.vue'
+import type { PluginSharing } from '@/sync/pluginSharing'
 import { OwnerFolderHttpPort } from '@/sync/sharing/ownerHttp'
 import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
 import { PublicationSettingsModel } from '@/sync/sharing/publicationSettings'
@@ -325,7 +341,24 @@ const stagedCode = sync.codePrompt.staged
 const staged = sync.settingsPrompt.staged
 const stagedNames = sync.settingsPrompt.names
 const stagedWritten = computed(() => sync.settingsPrompt.appliedWaiting?.value ?? [])
-const connected = computed(() => status.value.state !== 'disconnected')
+const scoped = computed(() => sync.sharing?.value?.scope.value ?? null)
+const scopedPaused = computed(() => sync.sharing?.value?.scoped.paused.value ?? false)
+const scopedRole = computed(() => sync.sharing?.value?.scoped.role.value ?? scoped.value?.role)
+const scopedFlow = shallowRef<Awaited<ReturnType<PluginSharing['createScoped']>> | null>(null)
+const scopedError = ref('')
+async function openScopedCreation() {
+  try {
+    const host = sync.sharing?.value
+    if (!host) throw new Error('The sharing host is not ready')
+    scopedFlow.value = await host.createScoped()
+    scopedError.value = ''
+  } catch (error) { scopedError.value = error instanceof Error ? error.message : 'Scoped creation held' }
+}
+const connected = computed(() => status.value.state !== 'disconnected' || scoped.value !== null)
+const ownerGroupFlow = computed(() => {
+  if (!connected.value || scoped.value) return undefined
+  try { return sync.sharing?.value?.ownerGroup() } catch { return undefined }
+})
 const ownerFolderFlow = computed(() => {
   const c = device.value
   if (!connected.value || !c.vaultId || serverUrlProblem(c.serverUrl) !== null) return undefined
@@ -334,6 +367,9 @@ const ownerFolderFlow = computed(() => {
     vaultId: c.vaultId,
     deviceId: c.deviceId,
     tokenId: c.deviceTokenId,
+  }
+  if (sync.sharing?.value) {
+    try { return sync.sharing.value.ownerFolder() } catch { return undefined }
   }
   const port = new OwnerFolderHttpPort({
     baseUrl: binding.serverUrl,

@@ -51,15 +51,15 @@
 
     <Setting
       name="Shared group invitation"
-      desc="Scoped installation join remains disabled; preview its single-connection and local-file protections."
+      desc="Join with a scoped installation. Existing personal connections and unmanaged local-file collisions stay protected."
     >
       <Button
-        text="Preview shared group join…"
-        tooltip="Inspect the disabled scoped invitation flow without signing in"
+        text="Join a shared group…"
+        tooltip="Accept an invitation and enrol this device with a scoped credential"
         @click="scopedPreview = true"
       />
     </Setting>
-    <ScopedInvitationModal v-if="scopedPreview" @close="scopedPreview = false" />
+    <ScopedInvitationModal v-if="scopedPreview" :factory="scopedInvitation" @close="scopedPreview = false" />
     <Setting
       name="Scoped new-file choice"
       desc="Preview the disabled exact-path/root and native paste protections."
@@ -202,6 +202,11 @@ const emit = defineEmits<{
 }>()
 
 const sync = () => SyncService.getInstance()
+const scopedInvitation = (issuer: string) => {
+  const host = sync().sharing?.value
+  if (!host) throw new Error('The plugin sharing host is not ready')
+  return host.invitation(issuer)
+}
 
 const serverUrl = ref(props.serverUrl)
 const email = ref('')

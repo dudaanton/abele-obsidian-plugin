@@ -32,7 +32,7 @@
       <Button
         text="Review root and current scope"
         tooltip="Obtain a complete certified exact-version group/anchor preview before creation"
-        :disabled="busy || !enabled || !flow"
+        :disabled="busy || !enabled || (!flow && !rootFlow)"
         @click="review"
       />
       <template v-if="display"
@@ -86,11 +86,56 @@
           :disabled="busy || !enabled || !flow || !password"
           @click="confirm"
       /></template>
+      <template v-if="rootShown">
+        <p>
+          Reviewed root <code>{{ rootShown.root.path }}</code> · {{ rootShown.root.fileId }} /
+          {{ rootShown.root.versionId }}.
+        </p>
+        <p>
+          The server prepares membership from this exact root. This is not a certified client graph
+          preview and does not approve anchors or assets.
+        </p>
+        <label
+          >Owner email<input
+            v-model="email"
+            type="email"
+            aria-label="Group owner email"
+            :disabled="busy"
+        /></label>
+        <label
+          >Current password<input
+            v-model="password"
+            type="password"
+            aria-label="Group owner password"
+            :disabled="busy"
+        /></label>
+        <Button
+          :text="
+            grant?.state === 'preparing'
+              ? 'Continue group preparation'
+              : 'Create this reviewed group'
+          "
+          tooltip="Use fresh owner authentication and the exact current root version"
+          :disabled="busy || !enabled || (!password && !grant)"
+          @click="confirm"
+        />
+      </template>
+      <Button
+        v-if="rootFlow && grant?.state === 'active'"
+        text="Create invitation"
+        tooltip="Invite a member with the reviewed role using the fresh owner session"
+        :disabled="busy"
+        @click="invite"
+      />
+      <p v-if="invitationToken">
+        Invitation token:
+        <input :value="invitationToken" aria-label="Group invitation token" readonly />
+      </p>
       <p v-if="grant" role="status">
         Grant {{ grant.id }}: {{ grant.state }}. No anchor or asset batch is implicitly approved.
       </p>
       <Button
-        v-if="grant"
+        v-if="grant && flow"
         text="Approve reviewed relations"
         tooltip="Recheck certified source/target versions before explicit relation approval"
         :disabled="busy || !enabled || !flow"
@@ -112,7 +157,13 @@ import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import { OWNER_SHARING_ENABLED } from '@/sync/sharing/folderSharing'
 import type { GroupSharingFlow, GroupReview, GroupGrant } from '@/sync/sharing/groupSharing'
-const props = defineProps<{ flow?: GroupSharingFlow; preview?: GroupReview; enabled?: boolean }>(),
+import type { OwnerGroupRootFlow, GroupRootReview } from '@/sync/sharing/ownerGroupRoot'
+const props = defineProps<{
+    flow?: GroupSharingFlow
+    rootFlow?: OwnerGroupRootFlow
+    preview?: GroupReview
+    enabled?: boolean
+  }>(),
   emit = defineEmits<{ close: [] }>(),
   enabled = props.enabled ?? OWNER_SHARING_ENABLED
 const rootId = ref(''),
@@ -122,21 +173,28 @@ const rootId = ref(''),
   password = ref(''),
   busy = ref(false),
   error = ref(''),
+  rootShown = ref<GroupRootReview | null>(null),
+  invitationToken = ref(''),
   shown = ref<GroupReview | null>(null),
   grant = ref<GroupGrant | null>(null),
   display = computed(() => shown.value ?? props.preview)
 watch([rootId, label, role], () => {
   shown.value = null
+  rootShown.value = null
+  invitationToken.value = ''
   password.value = ''
   grant.value = null
   props.flow?.close()
+  props.rootFlow?.close()
 })
 async function review() {
-  if (!enabled || !props.flow) return
+  if (!enabled || (!props.flow && !props.rootFlow)) return
   busy.value = true
   error.value = ''
   try {
-    shown.value = await props.flow.review(rootId.value, role.value, label.value)
+    if (props.rootFlow)
+      rootShown.value = await props.rootFlow.review(rootId.value, role.value, label.value)
+    else shown.value = await props.flow!.review(rootId.value, role.value, label.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Group scope held'
   } finally {
@@ -144,11 +202,22 @@ async function review() {
   }
 }
 async function confirm() {
-  if (!enabled || !props.flow || !shown.value) return
+  if (!enabled || (!props.flow && !props.rootFlow) || (!shown.value && !rootShown.value)) return
   busy.value = true
   error.value = ''
   try {
-    grant.value = await props.flow.confirm(shown.value, password.value, email.value || undefined)
+    if (props.rootFlow && rootShown.value)
+      grant.value = await props.rootFlow.confirm(
+        rootShown.value,
+        password.value,
+        email.value || undefined
+      )
+    else
+      grant.value = await props.flow!.confirm(
+        shown.value!,
+        password.value,
+        email.value || undefined
+      )
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Group creation held'
   } finally {
@@ -167,13 +236,28 @@ async function approve() {
     busy.value = false
   }
 }
+async function invite() {
+  if (!props.rootFlow || busy.value) return
+  busy.value = true
+  try {
+    invitationToken.value = await props.rootFlow.invitation(role.value)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Invitation held'
+  } finally {
+    busy.value = false
+  }
+}
 function close() {
   password.value = ''
+  invitationToken.value = ''
+  props.rootFlow?.close()
   props.flow?.close()
   emit('close')
 }
 onUnmounted(() => {
   password.value = ''
+  invitationToken.value = ''
+  props.rootFlow?.close()
   props.flow?.close()
 })
 </script>
