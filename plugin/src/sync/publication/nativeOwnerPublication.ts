@@ -1199,7 +1199,10 @@ export class NativeOwnerPublication {
           await this.preserveCandidates(item.fileId, targets)
           const delayed =
             local?.delayed?.[item.handle] ??
-            (baseline.kind === 'local-create' && local?.facts[item.handle]?.some((f) => !f.targetId)
+            // A novel receipt proves the empty local base even when no cache exists yet.
+            // Keep that proof through both delayed cache delivery and delayed image identity.
+            (baseline.kind === 'local-create' &&
+            (!local?.facts[item.handle] || local.facts[item.handle].some((f) => !f.targetId))
               ? { sha: item.op.op === 'create' ? item.op.sha : item.sha!, baseline }
               : undefined)
           if (delayed) {

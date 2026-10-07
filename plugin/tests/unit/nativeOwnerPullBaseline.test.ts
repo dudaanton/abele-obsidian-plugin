@@ -429,6 +429,110 @@ it('settles personal uploads without publication HTTP, then asks and publishes o
     s.p.close()
   }
 })
+it.each(['novel', 'adopted', 'collision'] as const)(
+  'retains a %s new note introduction through a late cache and later image identity',
+  async (creation) => {
+    const s = await setup()
+    try {
+      const p = s.p as any,
+        app = p.options.app
+      const source = '![[local-image.png]]',
+        bytes = new TextEncoder().encode(source),
+        sha = await sha256(bytes)
+      const created = await app.vault.create('New-local.md', source)
+      app.emit('vault', 'create', created)
+      expect(p.localNotes.has('New-local.md')).toBe(true)
+      const image = new Uint8Array([7, 8, 9])
+      await app.vault.createBinary('Assets/local-image.png', image.buffer)
+      await app.vault.adapter.writeBinary('Assets/local-image.png', image.buffer)
+      app.metadataCache.getFirstLinkpathDest = () => ({ path: 'Assets/local-image.png' })
+      await s.p.flush()
+      const op = { op: 'create', path: 'New-local.md', sha, size: bytes.length, mtime: 1 }
+      await s.p.hooks.beforeUpload!({
+        operations: [{ op, index: 0, handle: 'local-note-handle' }],
+        idempotencyKey: 'local-note-request',
+      } as any)
+      const note = {
+        path: 'New-local.md',
+        wirePath: 'New-local.md',
+        fileId: 'local-note',
+        versionId: 'local-note-v1',
+        sha,
+        size: bytes.length,
+        mtime: 1,
+      }
+      await s.state.put(note)
+      vi.mocked(s.state.byFileId).mockResolvedValue(note)
+      await s.p.hooks.onSettled!(
+        {
+          op,
+          path: note.path,
+          sha,
+          fileId: note.fileId,
+          versionId: note.versionId,
+          handle: 'local-note-handle',
+          creation,
+          result: { status: 'applied' },
+        } as any,
+        bytes,
+        'local-note-request'
+      )
+      s.events.get('changed')!({ path: note.path }, source, {
+        embeds: [
+          {
+            link: 'local-image.png',
+            original: source,
+            position: { start: { offset: 0 }, end: { offset: source.length } },
+          },
+        ],
+      })
+      await s.p.flush()
+      const target = {
+        path: 'Assets/local-image.png',
+        wirePath: 'Assets/local-image.png',
+        fileId: 'local-image',
+        versionId: 'local-image-v1',
+        sha: await sha256(image),
+        size: image.length,
+        mtime: 1,
+      }
+      await s.state.put(target)
+      vi.mocked(s.state.byFileId).mockImplementation(async (id) =>
+        id === note.fileId ? note : id === target.fileId ? target : null
+      )
+      vi.spyOn(p.assets, 'visibility').mockResolvedValue({
+        grantId: 'sample-grant',
+        label: 'Sample group',
+        targetFileId: target.fileId,
+        visible: false,
+        targetVersionId: null,
+        revision: 0,
+        scopeRevision: 1,
+        withdrawalGeneration: 0,
+      })
+      vi.spyOn(p.assets, 'sponsorProof').mockResolvedValue({
+        fileId: note.fileId,
+        versionId: note.versionId,
+        admissionGeneration: 1,
+        inScope: true,
+        intrinsic: true,
+      })
+      const add = vi.spyOn(p.assets, 'add').mockResolvedValue({})
+      await s.p.refreshPublication()
+      const questions = await s.p.confirmation.questions()
+      expect(add).not.toHaveBeenCalled()
+      if (creation === 'novel') {
+        expect(questions).toHaveLength(1)
+        expect(questions[0].observation.target.fileId).toBe(target.fileId)
+        expect(await s.p.confirmation.answer(questions[0], true)).toBe(true)
+        expect(add).toHaveBeenCalledTimes(1)
+      } else expect(questions).toEqual([])
+    } finally {
+      s.p.close()
+    }
+  }
+)
+
 it.each(['applied', 'merged'] as const)(
   'recovers late cache after %s settlement without assigning merged paste authorship',
   async (status) => {
