@@ -1362,7 +1362,8 @@ let revealing = 0
 const revealMessage = async (
   messageId: string,
   passage?: { quote: string; start?: number },
-  exact?: Extract<ChatAnchorResolution, { status: 'current' }>
+  exact?: Extract<ChatAnchorResolution, { status: 'current' }>,
+  flashWholeMessage = true
 ) => {
   const generation = ++revealing
   const s = session.value
@@ -1404,7 +1405,7 @@ const revealMessage = async (
   holdAnchor()
   bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
   holdAnchorAWhile(el)
-  if (!selected && !exact) {
+  if (!selected && !exact && flashWholeMessage) {
     target.classList.remove('abele-footnote-flash')
     void target.offsetWidth
     target.classList.add('abele-footnote-flash')
@@ -1503,7 +1504,7 @@ watch(
       if (session.value === s && generation === anchorReturnGeneration && !selected)
         anchorHistory.value = { anchor: target.anchor, resolution: { status: 'unresolved', snapshot: target.anchor.snapshot } }
     } else {
-      await revealMessage(target.messageId)
+      await revealMessage(target.messageId, undefined, undefined, false)
       if (session.value === s && generation === anchorReturnGeneration) anchorHistory.value = target
     }
   },

@@ -71,7 +71,7 @@ export function selectionReturnProbe(shots: string): string {
     const original=records.find(r=>r.k==='msg'&&r.id==='answer')
     await app.vault.append(file,JSON.stringify({...original,content:'echo changed echo',selection:{...original.selection,revisionId:'changed-version'}})+'\\n')
     await click(0);await until(()=>document.querySelector('.abele-anchor-history'))
-    report.historical={explanation:document.querySelector('.abele-anchor-history').textContent,quote:document.querySelector('.abele-anchor-history blockquote')?.textContent,editable:!!document.querySelector('.abele-anchor-history input, .abele-anchor-history textarea'),keyboard:keyboard()}
+    report.historical={explanation:document.querySelector('.abele-anchor-history').textContent,quote:document.querySelector('.abele-anchor-history blockquote')?.textContent,editable:!!document.querySelector('.abele-anchor-history input, .abele-anchor-history textarea'),keyboard:keyboard(),currentHighlighted:document.querySelector('[data-message-id="answer"]')?.classList.contains('abele-footnote-flash')||!!document.querySelector('[data-ask-message="answer"] [data-selection-return]')}
     await shoot('selection-return-history')
     ;[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Close').click()
     await click(1);await until(()=>chats.activeSession.value?.kind==='comment'&&document.querySelector('[data-selection-return]'))

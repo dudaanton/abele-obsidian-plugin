@@ -148,6 +148,7 @@ describe.runIf(available)('ordinary backlinks to durable selections', () => {
     expect(report.historical.quote).toBe('echo')
     expect(report.historical.editable).toBe(false)
     expect(report.historical.keyboard).toBe(false)
+    expect(report.historical.currentHighlighted).toBe(false)
   })
   it('returns into a nested discussion at the exact selected occurrence', () => {
     expect(report.nested.quote).toBe('echo')
