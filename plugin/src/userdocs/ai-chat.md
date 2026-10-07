@@ -51,7 +51,9 @@ summary. Click the tool icon to expand arguments and results. Successful Edit ca
 before/after snippets, Write calls show supplied content, nested work is grouped and thinking
 is collapsed. These are provider-reported operations, not immutable file snapshots; review
 the workspace diff too. Empty thinking is labelled honestly. Large normalized output is
-loaded through authorized artifact reads and cached locally. **Read stored output** exposes
+loaded through authorized artifact reads and cached locally. Interrupted or timed-out reads retry
+when the connection returns or the history refreshes. A successful manual read also restores
+the rendered reply. Invalid payloads are not retried automatically. **Read stored output** exposes
 other retained content; raw provider evidence stays collapsed under **Other journal records
 and provider evidence**, with **Read stored record** for each artifact. Individual outputs
 above 1 MiB are not rendered inline.

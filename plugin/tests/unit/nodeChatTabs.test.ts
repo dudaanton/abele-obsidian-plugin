@@ -73,6 +73,132 @@ it('hydrates large normalized output through artifact reads without appending fi
   restored.destroy()
 })
 
+async function normalizedArtifact() {
+  const store = new MemoryClientStore()
+  const client = new NodeClient(
+    { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+    store
+  )
+  await store.transaction((s) => {
+    s.events[reference.sessionId] = [
+      {
+        kind: 'event',
+        node_id: reference.nodeId,
+        stream_id: reference.sessionId,
+        seq: 1,
+        at: '2025-01-01T00:00:00.000Z',
+        actor: { kind: 'node' },
+        type: 'claude.message.final',
+        data: { run_id: 'run', artifact_id: 'artifact', size: 9000 },
+      },
+    ]
+  })
+  const connected = vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  const state = ref('connected')
+  vi.spyOn(client, 'subscribe').mockResolvedValue({})
+  const response = (text: string) => {
+    const bytes = new TextEncoder().encode(text)
+    return { offset: 0, total: bytes.length, base64: btoa(String.fromCharCode(...bytes)) }
+  }
+  const valid = response(
+    JSON.stringify({
+      message_id: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Recovered answer' }],
+    })
+  )
+  const request = vi.spyOn(client, 'request').mockResolvedValue(valid)
+  const presenter = new NodeChatPresenter(reference, { client, state } as unknown as NodeConnection)
+  return { store, client, presenter, state, connected, request, response, valid }
+}
+
+it.each(['disconnected', 'request timeout'])(
+  'retries transient artifact reads on refresh (%s)',
+  async (error) => {
+    const f = await normalizedArtifact()
+    try {
+      f.request.mockRejectedValueOnce(new Error(error))
+      await f.presenter.refresh()
+      expect(f.presenter.messages.value).toEqual([])
+      await f.presenter.refresh()
+      expect(f.presenter.messages.value.map((m) => m.content)).toEqual(['Recovered answer'])
+      expect(f.request).toHaveBeenCalledTimes(2)
+    } finally {
+      f.presenter.destroy()
+    }
+  }
+)
+
+it('excludes invalid artifact encodings from automatic retry', async () => {
+  const f = await normalizedArtifact()
+  try {
+    f.request.mockResolvedValue({ offset: 0, total: 2, base64: '%%%' })
+    await f.presenter.refresh()
+    await f.presenter.refresh()
+    expect(f.request).toHaveBeenCalledOnce()
+    expect(f.presenter.messages.value).toEqual([])
+  } finally {
+    f.presenter.destroy()
+  }
+})
+
+it('retries a failed payload cache commit rather than treating it as unusable content', async () => {
+  const f = await normalizedArtifact()
+  try {
+    f.request.mockImplementationOnce(async () => {
+      f.store.fault = () => {
+        f.store.fault = undefined
+        throw new Error('Sample storage failure')
+      }
+      return f.valid
+    })
+    await f.presenter.refresh()
+    expect(f.presenter.messages.value).toEqual([])
+    await f.presenter.refresh()
+    expect(f.presenter.messages.value.map((m) => m.content)).toEqual(['Recovered answer'])
+    expect(f.request).toHaveBeenCalledTimes(2)
+  } finally {
+    f.presenter.destroy()
+  }
+})
+
+it('retries a disconnected artifact when the connection returns', async () => {
+  const f = await normalizedArtifact()
+  try {
+    f.request.mockRejectedValueOnce(new Error('disconnected'))
+    await f.presenter.refresh()
+    f.connected.mockReturnValue(false)
+    f.state.value = 'offline'
+    await f.presenter.refresh()
+    f.connected.mockReturnValue(true)
+    f.state.value = 'connected'
+    await vi.waitFor(() =>
+      expect(f.presenter.messages.value.map((m) => m.content)).toEqual(['Recovered answer'])
+    )
+    expect(f.request).toHaveBeenCalledTimes(2)
+  } finally {
+    f.presenter.destroy()
+  }
+})
+
+it('excludes unusable payloads from automatic retry, but a successful manual read repairs the cached projection', async () => {
+  const f = await normalizedArtifact()
+  try {
+    f.request.mockResolvedValue(f.response('{invalid json'))
+    await f.presenter.refresh()
+    await f.presenter.refresh()
+    expect(f.request).toHaveBeenCalledOnce()
+    expect(f.presenter.messages.value).toEqual([])
+    f.request.mockResolvedValue(f.valid)
+    await f.presenter.artifact('artifact')
+    expect(f.presenter.messages.value.map((m) => m.content)).toEqual(['Recovered answer'])
+    await f.presenter.refresh()
+    expect(f.request).toHaveBeenCalledTimes(2)
+  } finally {
+    f.presenter.destroy()
+  }
+})
+
 it('keeps the local new-chat action usable when node preferences cannot be read', () => {
   useVault([])
   vi.spyOn(NodeService, 'getInstance').mockImplementation(() => {

@@ -7,6 +7,16 @@ import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
 import type { NodeClientState } from './NodeClientStore'
 
+const NORMALIZED_ARTIFACT_EVENTS = new Set([
+  'claude.message.final',
+  'claude.tool.call',
+  'claude.tool.result',
+  'claude.thinking',
+  'claude.block.delta',
+])
+/** Immutable bytes that cannot be projected; transport/storage failures are retryable. */
+class UnusableArtifactError extends Error {}
+
 const NodeReferenceSchema = z
   .object({
     kind: z.literal('node-session'),
@@ -48,7 +58,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private destroyed = false
   private refreshing?: Promise<void>
   private dirty = false
-  private readonly failedArtifacts = new Set<string>()
+  private readonly unusableArtifacts = new Set<string>()
 
   constructor(
     readonly reference: Extract<ChatReference, { kind: 'node-session' }>,
@@ -113,27 +123,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
         for (const event of history) {
           const data = event.data as Record<string, unknown>
           const id = data?.artifact_id
-          if (
-            typeof id === 'string' &&
-            [
-              'claude.message.final',
-              'claude.tool.call',
-              'claude.tool.result',
-              'claude.thinking',
-              'claude.block.delta',
-            ].includes(event.type)
-          ) {
-            if (!artifactData[id] && client.connected && !this.failedArtifacts.has(id)) {
+          if (typeof id === 'string' && NORMALIZED_ARTIFACT_EVENTS.has(event.type)) {
+            if (!artifactData[id] && client.connected && !this.unusableArtifacts.has(id)) {
               try {
-                const payload: unknown = JSON.parse(await this.artifact(id))
-                if (!payload || typeof payload !== 'object' || Array.isArray(payload))
-                  throw new Error('Invalid normalized artifact')
-                artifactData[id] = payload as Record<string, unknown>
-                await client.store.transaction((raw) => {
-                  ;((raw as NodeClientState).artifactData ??= {})[id] = artifactData[id]
-                })
+                artifactData[id] = await this.cacheArtifact(id, await this.readArtifact(id))
               } catch (error) {
-                this.failedArtifacts.add(id)
+                if (error instanceof UnusableArtifactError) this.unusableArtifacts.add(id)
                 this.report(error)
               }
             }
@@ -243,6 +238,41 @@ export class NodeChatPresenter implements ChatPresentationSession {
   }
 
   async artifact(artifactId: string): Promise<string> {
+    const text = await this.readArtifact(artifactId)
+    const normalized = await this.connection.client.store.transaction((raw) =>
+      (raw.events[this.reference.sessionId] ?? []).some(
+        (event) =>
+          NORMALIZED_ARTIFACT_EVENTS.has(event.type) &&
+          (event.data as Record<string, unknown>)?.artifact_id === artifactId
+      )
+    )
+    if (normalized) {
+      await this.cacheArtifact(artifactId, text)
+      this.unusableArtifacts.delete(artifactId)
+      // Do not await our own in-flight refresh when a manual read overlaps it.
+      if (this.refreshing) this.dirty = true
+      else await this.refresh()
+    }
+    return text
+  }
+
+  private async cacheArtifact(id: string, text: string): Promise<Record<string, unknown>> {
+    let payload: unknown
+    try {
+      payload = JSON.parse(text)
+    } catch {
+      throw new UnusableArtifactError('Invalid normalized artifact JSON')
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+      throw new UnusableArtifactError('Invalid normalized artifact')
+    const data = payload as Record<string, unknown>
+    await this.connection.client.store.transaction((raw) => {
+      ;((raw as NodeClientState).artifactData ??= {})[id] = data
+    })
+    return data
+  }
+
+  private async readArtifact(artifactId: string): Promise<string> {
     const parts: Uint8Array[] = []
     let offset = 0
     while (true) {
@@ -253,20 +283,26 @@ export class NodeChatPresenter implements ChatPresentationSession {
         length: 128 * 1024,
       })) as { offset: number; total: number; base64: string }
       if (
+        !result ||
         result.offset !== offset ||
         !Number.isSafeInteger(result.total) ||
         result.total < offset ||
         result.total > 1024 * 1024 ||
         typeof result.base64 !== 'string'
       )
-        throw new Error('Invalid node artifact')
-      const bytes = Uint8Array.from(atob(result.base64), (char) => char.charCodeAt(0))
+        throw new UnusableArtifactError('Invalid node artifact')
+      let bytes: Uint8Array
+      try {
+        bytes = Uint8Array.from(atob(result.base64), (char) => char.charCodeAt(0))
+      } catch {
+        throw new UnusableArtifactError('Invalid artifact encoding')
+      }
       if (
         bytes.length > 128 * 1024 ||
         offset + bytes.length > result.total ||
         (!bytes.length && offset < result.total)
       )
-        throw new Error('Incomplete node artifact')
+        throw new UnusableArtifactError('Incomplete node artifact')
       parts.push(bytes)
       offset += bytes.length
       if (offset >= result.total) break
@@ -277,7 +313,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
       all.set(part, start)
       start += part.length
     }
-    return new TextDecoder('utf-8', { fatal: true }).decode(all)
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(all)
+    } catch {
+      throw new UnusableArtifactError('Invalid artifact encoding')
+    }
   }
 
   private report(error: unknown): void {
