@@ -181,7 +181,9 @@ export function readingCommentSelection(root: HTMLElement, range: Range): Commen
 }
 
 export function noteCommentPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-  if (!ctx.sourcePath.endsWith('.md') || !el.closest('.markdown-preview-view')) return
+  // Obsidian processes a section before attaching it to the preview DOM. The source section,
+  // not an ancestor class on that detached element, distinguishes note rendering from forms.
+  if (!ctx.sourcePath.endsWith('.md')) return
   const section = ctx.getSectionInfo(el)
   if (!section) return
   const lines = section.text.split('\n')

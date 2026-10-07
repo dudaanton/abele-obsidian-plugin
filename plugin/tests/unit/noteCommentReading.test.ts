@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { paintNoteComments, readingCommentSelection } from '@/comments/reading'
+import {
+  paintNoteComments,
+  readingCommentSelection,
+  noteCommentPostProcessor,
+} from '@/comments/reading'
+import type { MarkdownPostProcessorContext, MarkdownRenderChild } from 'obsidian'
 import { setTextCommentInfoSource, setTextCommentClickHandler } from '@/editor/CommentPlugin'
 
 const source = (quotes: Record<string, string>) =>
@@ -24,6 +29,23 @@ function root(html: string) {
   return el
 }
 describe('ordinary-note reading comments', () => {
+  it('registers detached source sections and removes its paint and subscription on unload', () => {
+    const text = 'sample%%c:aaaaaa%%'
+    source({ aaaaaa: 'sample' })
+    const el = root('<p>sample</p>')
+    let child: MarkdownRenderChild | undefined
+    noteCommentPostProcessor(el, {
+      sourcePath: 'sample.md',
+      getSectionInfo: () => ({ text, lineStart: 0, lineEnd: 0 }),
+      addChild: (value: MarkdownRenderChild) => {
+        child = value
+      },
+    } as MarkdownPostProcessorContext)
+    child!.load()
+    expect(el.querySelector('[data-comment-kind="human"]')).not.toBeNull()
+    child!.unload()
+    expect(el.querySelector('[data-comment-kind="human"]')).toBeNull()
+  })
   it('maps formatted multiline source to DOM text, preserving links and using separate targets', () => {
     const text = 'First **bold [label](sample.md)**\nand `code`%%c:aaaaaa%%'
     source({ aaaaaa: '**bold [label](sample.md)**\nand `code`' })
