@@ -215,8 +215,12 @@ export async function installBuild(pluginDir: string): Promise<string> {
       {
         request: () =>
           phoneEval(
-            `(() => {
+            `(async () => {
         sessionStorage.setItem('${key}', ${JSON.stringify(requestId)})
+        // Restore a plugin unloaded by a fallback probe, but never contend with a busy loader.
+        const plugins = app.plugins
+        if (plugins && !plugins.plugins?.abele && !plugins.loadingPluginId)
+          await plugins.enablePlugin('abele')
         setTimeout(() => location.reload(), 50)
         return ${JSON.stringify(requestId)}
       })()`,

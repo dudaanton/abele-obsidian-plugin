@@ -175,6 +175,63 @@ it('records the verified hashes only after a new generation and its API are read
   }
 })
 
+it.each(['unloaded', 'running', 'loader busy'])(
+  'enables only an unloaded idle plugin before the reload request (%s)',
+  async (mode) => {
+    let generation = 10,
+      requestId: string | null = null
+    phone.eval.mockImplementation((code) => {
+      if (code.includes('SHA-256')) return '=> false'
+      if (code.includes('location.reload')) {
+        requestId = /sessionStorage.setItem\('[^']+', "([^"]+)"\)/.exec(code)![1]
+        generation++
+        return '=> ' + requestId
+      }
+      if (code.includes('performance.timeOrigin') && !code.includes('__e2eInstalledBuild ='))
+        return (
+          '=> ' +
+          JSON.stringify({
+            owner: 'sample-vault',
+            generation,
+            requestId,
+            mobile: true,
+            apiReady: true,
+            layoutReady: true,
+          })
+        )
+      return '=> sample-vault'
+    })
+    await installBuild(process.cwd())
+    const code = phone.eval.mock.calls.find(([code]) => code.includes('location.reload'))![0]
+    const events: string[] = []
+    const plugins = {
+      plugins: { abele: mode === 'running' ? {} : undefined },
+      loadingPluginId: mode === 'loader busy' ? 'sample-startup-addon' : null,
+      enablePlugin: vi.fn(async () => {
+        events.push('enable')
+      }),
+    }
+    await new Function('app', 'sessionStorage', 'setTimeout', 'return ' + code)(
+      { plugins },
+      {
+        setItem: () => {
+          events.push('witness')
+        },
+      },
+      () => {
+        events.push('reload')
+      }
+    )
+    expect(plugins.enablePlugin).toHaveBeenCalledTimes(mode === 'unloaded' ? 1 : 0)
+    if (mode === 'unloaded') {
+      expect(plugins.enablePlugin).toHaveBeenCalledWith('abele')
+      expect(events.indexOf('enable')).toBeLessThan(events.indexOf('reload'))
+    }
+    expect(events).toContain('witness')
+    expect(events.at(-1)).toBe('reload')
+  }
+)
+
 function stalledHost(mode: string) {
   const version = JSON.parse(manifest.toString()).version as string
   const state = {
