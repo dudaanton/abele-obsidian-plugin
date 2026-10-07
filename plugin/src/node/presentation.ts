@@ -74,7 +74,7 @@ export function nodeQueueView(
   for (const queued of device) {
     const id = `operation:${queued.id}`
     if (ids.has(id)) continue
-    shown.push({ id, role: 'user', content: queued.text, timestamp: 0, draft: true })
+    shown.push({ id, role: 'user', content: queued.text, timestamp: 0 })
     states[id] = { label: 'Queued on this device' }
     ids.add(id)
   }

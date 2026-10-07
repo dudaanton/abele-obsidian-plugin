@@ -301,7 +301,7 @@
     </div>
 
     <!-- Draft actions -->
-    <div v-if="message.draft && !interceptorStreaming" class="abele-chat-msg__draft-actions">
+    <div v-if="message.draft && !interceptorStreaming && !readOnlyHistory" class="abele-chat-msg__draft-actions">
       <button
         class="abele-chat-msg__draft-btn abele-chat-msg__draft-btn--send"
         @click="emit('confirm-draft', message.id)"

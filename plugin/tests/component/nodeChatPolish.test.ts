@@ -74,6 +74,43 @@ it('shows queue state on the existing input rather than another copy of its text
     wrapper.unmount()
   }
 })
+it('does not offer local draft Send or Edit for already queued node inputs', async () => {
+  useVault([])
+  const p = presenter()
+  p.messages.value = []
+  p.projection.value.queuedInputs = []
+  p.queued.value = [{ id: 'pending-operation', text: 'Sample offline input' }] as never
+  const wrapper = mount(NodeChatView, {
+    props: { presenter: p as never },
+    global: { stubs: { AiChatInput: true, Markdown: true } },
+  })
+  try {
+    await flushPromises()
+    expect(wrapper.findAllComponents(AiChatMessage)).toHaveLength(1)
+    expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('read-only message rows never enable local draft actions while local drafts still do', () => {
+  useVault([])
+  for (const readOnlyHistory of [true, false]) {
+    const wrapper = mount(AiChatMessage, {
+      props: {
+        message: { id: 'sample', role: 'user', content: 'Sample draft', timestamp: 0, draft: true },
+        readOnlyHistory,
+      },
+      global: { stubs: { Markdown: true } },
+    })
+    try {
+      expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(!readOnlyHistory)
+    } finally {
+      wrapper.unmount()
+    }
+  }
+})
+
 it('pluralises nested records and keeps tool diffs and thinking closed', async () => {
   useVault([])
   const wrapper = mount(NodeMessageTree, {
