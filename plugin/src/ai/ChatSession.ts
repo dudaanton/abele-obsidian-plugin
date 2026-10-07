@@ -366,7 +366,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
     await this.save()
     if (this.dirty) {
-      this.attention.value = state
+      // Roll back only this decision, not a new failure or request that arrived during I/O.
+      const current = this.attention.value
+      this.attention.value = {
+        ...current,
+        errors: current.errors?.map((e) =>
+          e.id === id ? { ...e, seen: state.errors?.find((before) => before.id === id)?.seen } : e
+        ),
+        run: current.run?.id === id ? state.run : current.run,
+        question: current.question?.id === id ? state.question : current.question,
+      }
       throw new Error('Не удалось сохранить отметку. Повтори действие.')
     }
   }
@@ -1566,6 +1575,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async runAgentLoop(): Promise<void> {
     this.activeAgentTurns.value++
     const endBackgroundTurn = mobileBackground.beginTurn()
+    const question = this.attention.value.question
+    if (question?.status === 'interrupted') {
+      // An explicit new turn ends a lost questionnaire; there is no old resolver to answer.
+      this.attention.value = {
+        ...this.attention.value,
+        question: { ...question, status: 'cancelled' },
+      }
+    }
     try {
       const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
       for (let attempt = 0; ; attempt++) {
@@ -1633,6 +1650,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.streamingContent.value = ''
     this.streamingThinking.value = ''
     this.error.value = null
+    // Give a new conversation a durable reference during a long first request. Fast turns
+    // still use their ordinary single save; later transitions use the small local index.
+    if (!this.currentChatFile.value && this.allChatMessages.length) this.markDirty()
 
     try {
       const model = this.resolveModel()
@@ -1746,6 +1766,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       if (this.turnAbortController === controller) this.turnAbortController = null
       this.reconnecting.value = null
       this.isStreaming.value = false
+      // The caller commits the completed turn. Do not leave a second delayed write behind
+      // or retry a failed write within the same turn merely because this timer was pending.
+      if (this.persistTimer !== null) {
+        window.clearTimeout(this.persistTimer)
+        this.persistTimer = null
+      }
       this.unsubscribe?.()
       this.unsubscribe = null
       this.agentLoop = null

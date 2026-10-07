@@ -311,6 +311,7 @@
         <div v-if="reconnecting" class="setting-item-description" role="status" aria-live="polite">
           {{ reconnecting === 'waiting' ? 'Waiting to reconnect when the app returns…' : 'Reconnecting…' }}
         </div>
+        <LocalAttentionPanel v-if="session" :session="session" />
 
         <!-- Error -->
         <div v-if="error" class="abele-ai-chat__error">
@@ -433,6 +434,7 @@ import { ref, shallowRef, watch, watchEffect, nextTick, computed, onMounted, onU
 import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
+import LocalAttentionPanel from './LocalAttentionPanel.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import ChatSelectionBar from './ChatSelectionBar.vue'
@@ -1885,6 +1887,21 @@ watch(
   { immediate: true, flush: 'post' }
 )
 watch(session, () => { anchorHistory.value = null; anchorReturnGeneration++ })
+
+watch(
+  () => [chatService.pendingAttentionReveal?.value, session.value, messagesContainer.value] as const,
+  async ([request, s, el]) => {
+    if (!request || !s || !el || request.sessionId !== s.id) return
+    chatService.pendingAttentionReveal.value = null
+    composing.value = false
+    await nextTick()
+    if (session.value !== s || messagesContainer.value !== el) return
+    const target = [...el.querySelectorAll<HTMLElement>('[data-attention-id]')].find(e => e.dataset.attentionId === request.id)
+      ?? el.querySelector<HTMLElement>(request.kind === 'approval' ? '.abele-tool-approval' : '.abele-ai-chat__questions')
+    target?.scrollIntoView({ block: 'center' })
+  },
+  { flush: 'post', immediate: true }
+)
 
 watch(
   () => [chatService.pendingReveal.value, session.value, messagesContainer.value] as const,

@@ -8,9 +8,9 @@ export function openAgents(): void {
   const host = document.body.createDiv()
   const app = createApp({ render: () => h(AgentsListDialog, { onClose: closeAgents }) })
   closeCurrent = () => {
+    closeCurrent = undefined
     app.unmount()
     host.remove()
-    closeCurrent = undefined
   }
   app.mount(host)
 }

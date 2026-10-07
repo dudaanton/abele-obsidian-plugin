@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
-import { Notice, TFile } from 'obsidian'
+import { Notice, TFile, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
@@ -29,7 +29,9 @@ export class AgentsService {
     this.instance = null
   }
   readonly rows = shallowRef<AttentionRow[]>([])
-  readonly incomplete = ref(true)
+  private readonly localIncomplete = ref(true)
+  private readonly nodes = shallowRef<{ id: string; label: string; expectedNodeId: string }[]>([])
+  readonly incomplete = computed(() => this.localIncomplete.value || this.nodes.value.length > 0)
   readonly status = ref('Обновляется')
   readonly badge = computed(() => attentionBadge(this.rows.value, this.incomplete.value))
   readonly tooltip = computed(
@@ -38,6 +40,7 @@ export class AgentsService {
   )
   private readonly files = new Map<string, AttentionRow>()
   private readonly removed = new Set<string>()
+  private readonly revisions = new Map<string, number>()
   private savedIndex = ''
   private readonly live = new Map<ChatSession, WatchStopHandle>()
   private started = false
@@ -81,7 +84,7 @@ export class AgentsService {
           ? {
               commentId: path
                 .split('/')
-                .pop()!
+                .pop()
                 .replace(/\.abchat$/, ''),
             }
           : {}),
@@ -109,10 +112,10 @@ export class AgentsService {
     return row
   }
   private liveRow(session: ChatSession, live = true): AttentionRow | null {
-    const path = session.currentChatFile.value?.path
-    if (!path || this.removed.has(path) || session.isDestroyed || session.kind === 'run')
+    const path = session.currentChatFile.value?.path ?? ''
+    if ((!live && !path) || this.removed.has(path) || session.isDestroyed || session.kind === 'run')
       return null
-    return this.metadataRow(
+    const row = this.metadataRow(
       path,
       {
         type: 'abele-chat',
@@ -128,10 +131,36 @@ export class AgentsService {
       },
       live
     )
+    if (!path) {
+      row.key = `live:${session.id}`
+      row.reference = { kind: 'local', path: '', sessionId: session.id }
+    }
+    return row
   }
   private publish(): void {
     if (this.disposed) return
     const rows = new Map(this.files)
+    for (const node of this.nodes.value)
+      rows.set(`node-coverage:${node.id}`, {
+        key: `node-coverage:${node.id}`,
+        reference: {
+          kind: 'node',
+          registrationId: node.id,
+          nodeId: node.expectedNodeId,
+          sessionId: '',
+        },
+        title: node.label,
+        agent: 'Node',
+        source: `Node · ${node.label}`,
+        reasons: [
+          {
+            kind: 'delivery',
+            id: `node-coverage:${node.id}`,
+            at: 0,
+            text: 'Сводка всех сессий Node недоступна · Данные неполны',
+          },
+        ],
+      })
     for (const session of this.live.keys()) {
       const row = this.liveRow(session)
       if (row) rows.set(row.key, row)
@@ -139,23 +168,25 @@ export class AgentsService {
     this.rows.value = sortAttention([...rows.values()].filter((r) => r.reasons.length))
     if (this.started) {
       try {
-        const index = this.rows.value.map((row) => ({
-          reference: row.reference,
-          reasons: row.reasons.map(({ kind, id, at, target, expires }) => ({
-            kind,
-            id,
-            at,
-            target,
-            expires,
-          })),
-        }))
+        const index = this.rows.value
+          .filter((row) => row.reference.kind === 'local' && !!row.reference.path)
+          .map((row) => ({
+            reference: row.reference,
+            reasons: row.reasons.map(({ kind, id, at, target, expires }) => ({
+              kind,
+              id,
+              at,
+              target,
+              expires,
+            })),
+          }))
         const encoded = JSON.stringify(index)
         if (encoded !== this.savedIndex) {
           GlobalStore.getInstance().app.saveLocalStorage(INDEX_KEY, index)
           this.savedIndex = encoded
         }
       } catch {
-        this.incomplete.value = true
+        this.localIncomplete.value = true
         this.status.value = 'Не удалось сохранить список'
       }
     }
@@ -163,6 +194,16 @@ export class AgentsService {
   async start(): Promise<void> {
     if (this.started) return this.refresh()
     this.started = true
+    const registered = GlobalStore.getInstance().app.loadLocalStorage('abele-node-registry')
+    if (Array.isArray(registered))
+      this.setNodes(
+        registered.filter(
+          (n) =>
+            typeof n?.id === 'string' &&
+            typeof n?.label === 'string' &&
+            typeof n?.expectedNodeId === 'string'
+        )
+      )
     // The last local copy is explicitly incomplete until the authoritative files are read.
     try {
       const stored = GlobalStore.getInstance().app.loadLocalStorage(INDEX_KEY)
@@ -191,7 +232,7 @@ export class AgentsService {
     await this.refresh()
   }
   refresh(): Promise<void> {
-    if (this.refreshing) return this.refreshing
+    if (this.refreshing !== undefined) return this.refreshing
     this.refreshing = this.scan().finally(() => {
       this.refreshing = undefined
     })
@@ -199,13 +240,14 @@ export class AgentsService {
   }
   private async scan(): Promise<void> {
     const { app } = GlobalStore.getInstance()
-    const paths = new Set<string>()
     let failed = false
     for (const file of app.vault.getFiles().filter((f) => f.extension === 'abchat')) {
-      paths.add(file.path)
+      const path = file.path
+      const revision = this.revisions.get(path) ?? 0
       try {
         const metadata = parseChatMetadata(await app.vault.read(file))
         if (this.disposed) return
+        if (file.path !== path || (this.revisions.get(path) ?? 0) !== revision) continue
         if (metadata?.type === 'abele-chat')
           this.files.set(file.path, this.fileRow(file.path, metadata))
         else {
@@ -213,41 +255,57 @@ export class AgentsService {
           failed = true
         }
       } catch {
-        failed = true
+        if ((this.revisions.get(path) ?? 0) === revision) failed = true
       }
       // Startup reading yields between files, never instantiates a session or starts a tool.
       await new Promise((resolve) => window.setTimeout(resolve, 0))
     }
     if (this.disposed) return
+    const paths = new Set(
+      app.vault
+        .getFiles()
+        .filter((f) => f.extension === 'abchat')
+        .map((f) => f.path)
+    )
     for (const path of this.files.keys()) if (!paths.has(path)) this.files.delete(path)
-    this.incomplete.value = failed
+    this.localIncomplete.value = failed
     this.status.value = failed ? 'Не все разговоры удалось прочитать' : ''
     this.publish()
   }
   /** A changed file costs one read, not a vault scan on every streamed token. */
   async updateFile(file: TFile, oldPath?: string): Promise<void> {
-    if (oldPath) this.files.delete(oldPath)
-    this.removed.delete(file.path)
+    if (oldPath) this.deleted(oldPath)
+    const path = file.path
+    const revision = (this.revisions.get(path) ?? 0) + 1
+    this.revisions.set(path, revision)
+    this.removed.delete(path)
     try {
       const metadata = parseChatMetadata(await GlobalStore.getInstance().app.vault.read(file))
-      if (this.disposed) return
+      if (this.disposed || file.path !== path || this.revisions.get(path) !== revision) return
       if (metadata?.type === 'abele-chat')
         this.files.set(file.path, this.fileRow(file.path, metadata))
       else {
-        this.incomplete.value = true
+        this.localIncomplete.value = true
         this.status.value = 'Не удалось прочитать разговор'
       }
     } catch {
-      this.incomplete.value = true
+      if (this.revisions.get(path) !== revision) return
+      this.localIncomplete.value = true
       this.status.value = 'Не удалось прочитать разговор'
     }
     this.publish()
   }
+  setNodes(nodes: { id: string; label: string; expectedNodeId: string }[]): void {
+    this.nodes.value = nodes
+    this.publish()
+  }
   saved(path: string, metadata: ChatMetadata): void {
+    this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1)
     this.files.set(path, this.fileRow(path, metadata))
     this.publish()
   }
   deleted(path: string): void {
+    this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1)
     this.removed.add(path)
     this.files.delete(path)
     this.publish()
@@ -298,6 +356,17 @@ export class AgentsService {
     const chats = ChatService.getInstance()
     if (row.reference.kind !== 'local') return false
     const ref = row.reference
+    if (!ref.path && ref.sessionId) {
+      const session = chats.getSession(ref.sessionId)
+      if (!session) {
+        new Notice('Разговор больше недоступен')
+        return false
+      }
+      chats.switchTab(session.id)
+      await chats.revealSidebar({ focus: false })
+      if (reason.target) chats.pendingReveal.value = reason.target
+      return true
+    }
     const existing = [...this.live.keys()].find((s) => s.currentChatFile.value?.path === ref.path)
     const inTab = existing && chats.getSession(existing.id)
     if (!inTab && !chats.canCreateTab && !(await this.chooseTab())) return false
@@ -310,7 +379,7 @@ export class AgentsService {
     chats.openingSelection.value = true
     try {
       if (ref.commentId) {
-        if (!(await CommentService.getInstance().reveal(ref.commentId))) return false
+        if (!(await CommentService.getInstance().revealForAttention(file))) return false
       } else {
         await chats.openChatFile(file)
         await chats.revealSidebar({ focus: false })
@@ -337,7 +406,11 @@ export class AgentsService {
         (reason.kind === 'approval'
           ? session.allMessages.value.find((m) => m.toolCallId === reason.id)?.id
           : undefined)
-      if (target) chats.pendingReveal.value = target
+      if (
+        target &&
+        (reason.kind === 'running' || !current?.reasons.some((r) => r.id === reason.id))
+      )
+        chats.pendingReveal.value = target
       chats.pendingAttentionReveal.value = {
         sessionId: session.id,
         kind: reason.kind,
@@ -350,38 +423,57 @@ export class AgentsService {
   }
   private chooseTab(): Promise<boolean> {
     const chats = ChatService.getInstance()
-    return new Promise((resolve) => {
-      let chosen = false
-      const modal = new (class extends ShellModal {
-        onClose(): void {
-          super.onClose()
-          if (!chosen) resolve(false)
-        }
-      })(GlobalStore.getInstance().app, { title: 'Все 20 вкладок открыты · Выбери, какую закрыть' })
-      for (const id of chats.tabOrder.value) {
-        const button = modal.bodyEl.createEl('button', {
-          text: chats.getPresentation(id)?.label.value || 'Чат',
-        })
-        button.addEventListener('click', () => {
-          button.disabled = true
-          void chats.closeTab(id).then(
-            () => {
-              chosen = true
-              modal.close()
-              resolve(true)
-            },
-            () => {
-              button.disabled = false
-            }
-          )
-        })
-      }
-      modal.open()
-    })
+    return chooseAttentionTab(
+      GlobalStore.getInstance().app,
+      chats.tabOrder.value.map((id) => ({
+        id,
+        label: chats.getPresentation(id)?.label.value || 'Чат',
+      })),
+      (id) => chats.closeTab(id)
+    )
   }
   private destroy(): void {
     this.disposed = true
     for (const stop of this.live.values()) stop()
     this.live.clear()
   }
+}
+
+/** The full-tab choice is explicit; dismissal never closes a conversation. */
+export function chooseAttentionTab(
+  app: App,
+  tabs: { id: string; label: string }[],
+  close: (id: string) => Promise<void>
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let chosen = false
+    const modal = new (class extends ShellModal {
+      onClose(): void {
+        super.onClose()
+        if (!chosen) resolve(false)
+      }
+    })(app, {
+      title: 'Все 20 вкладок открыты · Выбери, какую закрыть',
+      size: 'tall',
+      cls: ['abele-agents-tabs'],
+    })
+    for (const tab of tabs) {
+      const button = modal.bodyEl.createEl('button', { text: tab.label })
+      button.addEventListener('click', () => {
+        button.disabled = true
+        void close(tab.id).then(
+          () => {
+            chosen = true
+            modal.close()
+            resolve(true)
+          },
+          (error) => {
+            button.disabled = false
+            new Notice(error instanceof Error ? error.message : 'Не удалось закрыть вкладку')
+          }
+        )
+      })
+    }
+    modal.open()
+  })
 }

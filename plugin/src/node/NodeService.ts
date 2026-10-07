@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue'
+import { AgentsService } from '@/agents/AgentsService'
 import { NodeClient, PairedWssConnector } from '@abele/node-client'
 import { type PairingInvite, fingerprint, ChannelError } from '@abele/channel-protocol'
 import { NodeDeviceKeyStore } from './NodeDeviceKeyStore'
@@ -203,6 +204,7 @@ export class NodeService {
       const node = { id, label, url, expectedNodeId }
       this.registry.add(node, token)
       this.nodes.value = this.registry.list()
+      AgentsService.getInstance().setNodes(this.nodes.value)
       const connection = new NodeConnection(client, store)
       this.connections.set(id, connection)
       connection.start()
@@ -309,6 +311,7 @@ export class NodeService {
     this.connections.delete(id)
     this.registry.remove(id)
     this.nodes.value = this.registry.list()
+    AgentsService.getInstance().setNodes(this.nodes.value)
   }
 
   destroy(): void {

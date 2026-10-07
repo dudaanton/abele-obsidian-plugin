@@ -92,6 +92,7 @@ const DIALOGS = [
   'text-comment-delete',
   'chat-navigation',
   'agents',
+  'agents-tabs',
   'node-pairing',
   'node-pairing-waiting',
   'node-pairing-recovery',

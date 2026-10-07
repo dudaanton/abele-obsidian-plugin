@@ -59,6 +59,19 @@ describe('persisted attention', () => {
     const content = await useContent(file.path)
     expect(parseChat(content).metadata?.attention?.errors).toHaveLength(2)
   })
+  it('does not hide an error or lose a newer failure when acknowledgement storage fails', async () => {
+    session.recordAttentionError('First sample failure')
+    await session.save()
+    const id = session.attention.value.errors![0].id
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(ChatStorage.getInstance(), 'saveChat').mockImplementation(async () => {
+      session.recordAttentionError('Concurrent sample failure')
+      throw new Error('Sample disk unavailable')
+    })
+    await expect(session.markAttentionSeen(id)).rejects.toThrow('Не удалось сохранить')
+    expect(session.attention.value.errors).toHaveLength(2)
+    expect(session.attention.value.errors![0].seen).not.toBe(true)
+  })
   it('persists transitions to local work even before its first streamed token', async () => {
     await session.save()
     session.isStreaming.value = true

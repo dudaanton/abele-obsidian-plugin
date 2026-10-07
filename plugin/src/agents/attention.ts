@@ -23,7 +23,7 @@ export interface AttentionReason {
   interrupted?: boolean
 }
 export type AttentionReference =
-  | { kind: 'local'; path: string; commentId?: string }
+  | { kind: 'local'; path: string; commentId?: string; sessionId?: string }
   | { kind: 'node'; registrationId: string; nodeId: string; sessionId: string }
 export interface AttentionRow {
   key: string

@@ -27,6 +27,7 @@ import ChatNavigation from '@/components/ChatNavigation.vue'
 import type { ChatMessage } from '@/ai/types'
 import AgentsListDialog from '@/components/AgentsListDialog.vue'
 import { agentsFixture } from './agentsFixture'
+import { chooseAttentionTab } from '@/agents/AgentsService'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
@@ -237,6 +238,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-edit-shared': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
   'agents': () => mountAlone(AgentsListDialog, { source: agentsFixture() }),
+  'agents-tabs': () => chooseAttentionTab(GlobalStore.getInstance().app,
+    Array.from({ length: 20 }, (_, i) => ({ id: `sample-tab-${i}`, label: `Sample conversation ${i + 1} with an intentionally long invented title for a narrow dialog` })),
+    async () => {}),
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
   'node-review': async () =>

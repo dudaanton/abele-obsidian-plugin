@@ -75,8 +75,15 @@ closed discussion tabs. Interrupted local work is labelled as interrupted and is
 resumed just by opening the list. Existing saved approvals can be reviewed again; saved
 questions retain their text and answers, but a lost local process cannot still be waiting.
 Old conversations without explicit execution evidence are not guessed to be failures.
+An interrupted question offers **Continue with a message**: write the answer in the composer
+and explicitly send it as a new turn. It does not pretend to answer a process that no longer
+exists. Interrupted work offers an explicit continuation; opening the row starts nothing.
 Local work is identified as being on this device: file sync does not arbitrate simultaneous
 answers to local approvals across devices.
+
+This local implementation does not yet include the Node all-session summary. Registered
+nodes appear as incomplete coverage under **Connection and delivery**, even if a node tab
+is connected; zero known local requests must not be mistaken for zero Node requests.
 
 When all 20 tabs are occupied, returning from this list offers a choice of a tab to close;
 nothing closes automatically. On a phone, opening the list or conversation does not focus

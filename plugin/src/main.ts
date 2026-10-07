@@ -9,6 +9,7 @@ import {
   Platform,
   TFile,
   TFolder,
+  type TAbstractFile,
 } from 'obsidian'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { applySettingsLook } from '@/helpers/settingsLook'
@@ -1345,22 +1346,34 @@ export default class AbelePlugin extends Plugin {
     const ribbon = this.addRibbonIcon('activity', 'Агенты', openAgents)
     ribbon.addClass('abele-agents-ribbon')
     const badge = ribbon.createSpan({ cls: 'abele-agents-ribbon__badge' })
-    this.register(watch([agents.badge, agents.tooltip], ([value, tooltip]) => {
-      badge.textContent = `${value.mark}${value.incomplete ? ' ?' : ''}`.trim()
-      ribbon.setAttribute('aria-label', tooltip)
-    }, { immediate: true }))
+    this.register(
+      watch([agents.badge, agents.tooltip], ([value, tooltip]) => {
+        badge.textContent = `${value.mark}${value.incomplete ? ' ?' : ''}`.trim()
+        ribbon.setAttribute('aria-label', tooltip)
+      }, { immediate: true })
+    )
     this.app.workspace.onLayoutReady(() => { void agents.start() })
-    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-      if (file instanceof TFile && file.extension === 'abchat') void agents.updateFile(file, oldPath)
-    }))
-    this.registerEvent(this.app.vault.on('delete', (file) => {
-      if (file instanceof TFile && file.extension === 'abchat') agents.deleted(file.path)
-    }))
-    for (const event of ['create', 'modify'] as const) this.registerEvent(this.app.vault.on(event, (file) => {
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (file instanceof TFile && file.extension === 'abchat') void agents.updateFile(file, oldPath)
+      })
+    )
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        if (file instanceof TFile && file.extension === 'abchat') agents.deleted(file.path)
+      })
+    )
+    const onChatFileChanged = (file: TAbstractFile) => {
       if (!(file instanceof TFile) || file.extension !== 'abchat') return
-      if (ChatService.getInstance().getSessionByFile(file.path) || CommentService.getInstance().sessionFor(file.basename)) return
+      const comments = CommentService.getInstance()
+      if (
+        ChatService.getInstance().getSessionByFile(file.path) ||
+        (comments.isCommentFile(file) && comments.sessionFor(file.basename))
+      ) return
       void agents.updateFile(file)
-    }))
+    }
+    this.registerEvent(this.app.vault.on('create', onChatFileChanged))
+    this.registerEvent(this.app.vault.on('modify', onChatFileChanged))
     // The editor's comment field reads this synchronously to draw each marker's icon.
     setCommentInfoSource(CommentService.getInstance())
 

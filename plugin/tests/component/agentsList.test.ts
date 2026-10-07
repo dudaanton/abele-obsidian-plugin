@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import AgentsListDialog from '@/components/AgentsListDialog.vue'
 import AgentsButton from '@/components/AgentsButton.vue'
+import { openAgents, closeAgents } from '@/agents/openAgents'
 import type { AttentionRow } from '@/agents/attention'
 import { useVault } from '../helpers/testEnv'
 
@@ -59,6 +60,16 @@ describe('agents dialog', () => {
     await wrapper.find('.abele-agents__seen').trigger('click')
     expect(source.markSeen).toHaveBeenCalledWith(rows[0], 'error-1')
     wrapper.unmount()
+  })
+  it('owns one modal and releases it cleanly on command cleanup', async () => {
+    useVault([])
+    openAgents()
+    openAgents()
+    await flushPromises()
+    expect(document.querySelectorAll('.abele-agents')).toHaveLength(1)
+    closeAgents()
+    await flushPromises()
+    expect(document.querySelectorAll('.abele-agents')).toHaveLength(0)
   })
   it('keeps the shared header entry keyboard accessible', () => {
     useVault([])

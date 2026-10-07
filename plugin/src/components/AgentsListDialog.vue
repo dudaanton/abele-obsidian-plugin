@@ -10,7 +10,11 @@
         </p>
         <p v-if="!section.rows.length">Нет разговоров</p>
         <div v-for="row in section.rows" :key="row.key" class="abele-agents__row">
-          <button class="abele-agents__open" @click="open(row)">
+          <button
+            class="abele-agents__open"
+            :disabled="row.reference.kind === 'node' && !row.reference.sessionId"
+            @click="open(row)"
+          >
             <strong>{{ row.title }} · {{ row.agent }}</strong>
             <span>{{ row.source }}</span>
             <span v-if="row.quote">{{ row.quote }}</span>

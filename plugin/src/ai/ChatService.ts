@@ -105,7 +105,11 @@ export class ChatService {
     target: Extract<import('./chatAnchorNavigation').AnchorReturn, { status: 'ready' }>
   } | null>(null)
   public readonly pendingReveal = ref<string | null>(null)
-  public readonly pendingAttentionReveal = ref<{ sessionId: string; kind: import('@/agents/attention').AttentionReason['kind']; id: string } | null>(null)
+  public readonly pendingAttentionReveal = ref<{
+    sessionId: string
+    kind: import('@/agents/attention').AttentionReason['kind']
+    id: string
+  } | null>(null)
   /** A comment return can address a passage within that message, in one specific chat. */
   public readonly pendingPassage = ref<{ path: string; message: string; quote: string; start?: number } | null>(null)
 
@@ -835,7 +839,7 @@ export class ChatService {
     const session = await this.loadFile(file, () => {
       if (selectionReturn && !selectionReturn()) return null
       const active = this.activeSession.value
-      if (active && !active.currentChatFile.value && !this.isLoading(active)) return active
+      if (ChatService.isBlank(active) && !this.isLoading(active)) return active
       // createTab returns the active id at the limit; never load over that conversation.
       if (!this.canCreateTab) {
         new Notice(ChatService.TABS_FULL)

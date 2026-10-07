@@ -242,6 +242,22 @@ export class CommentService implements CommentInfoSource {
     return true
   }
 
+  /** Returns from the attention list without replacing any other discussion tab. */
+  async revealForAttention(file: TFile): Promise<boolean> {
+    if (!this.isCommentFile(file)) return false
+    const chats = ChatService.getInstance()
+    // Every chat-file opener shares one reservation and hands comment files to this owner.
+    await chats.openChatFile(file)
+    const session = chats.activeSession.value
+    if (session?.currentChatFile.value?.path !== file.path) return false
+    if (session.kind === 'comment') {
+      this.shown.add(file.basename)
+      this.open.value = file.basename
+    }
+    await chats.revealSidebar({ focus: false })
+    return true
+  }
+
   /**
    * The way back out of the sidebar: the tab goes, the conversation stays.
    *

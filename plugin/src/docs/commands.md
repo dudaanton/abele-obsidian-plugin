@@ -39,6 +39,12 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 ## Views
 
 - Show timeline sidebar · Show todo sidebar · Show AI chat sidebar
+- Агенты — lists conversations needing an explicit approval, an answer or acknowledgement of a
+  stopped-run error, plus current local work and incomplete connection coverage. The activity
+  ribbon and shared chat header open the same modal. Counts conversations, not operations;
+  returns to existing chats/discussions without running models or approving from the list.
+  Local execution evidence survives closed tabs and restart; Node all-session summary coverage
+  is currently marked incomplete rather than inferred from open tabs.
 - Add to agent context — adds the note (or its selected passage) to the chat in front and
   opens the agent sidebar. File and folder menus offer the same action
 - Chat about this — a new chat with a link to that note ready in the input, and access
