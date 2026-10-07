@@ -156,6 +156,9 @@ const script = `(async () => {
     // Other-branch selection changes the send context, follows the earliest later fork, and
     // restores both the original path and its reading position without any rollback.
     document.querySelector('.abele-chat-find input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    // Finish the preceding find excursion before capturing a separate branch-return point.
+    // Back intentionally retains the original bookmark until it is used.
+    await open(); await choose('Back to place'); await wait(1800)
     const originalLeaf = owner.branchLeafId
     box().dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
     box().scrollTop += offset('q80') - 16
