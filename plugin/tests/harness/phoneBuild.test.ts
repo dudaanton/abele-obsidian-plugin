@@ -46,7 +46,11 @@ async function installedProbe(change: string) {
   const code = phone.eval.mock.calls[0][0]
   const api = {}
   const loaded = { hashes: { ...hashes }, api, generation: 10 }
-  const page = { __abeleTest: api as object | null, __e2eInstalledBuild: loaded }
+  const page = {
+    __abeleTest: api as object | null,
+    __e2eInstalledBuild: loaded,
+    __e2eJobs: {} as Record<string, { done: boolean }>,
+  }
   let vault = 'sample-vault'
   const files = { ...bytes }
   if (change.endsWith('hash'))
@@ -55,6 +59,7 @@ async function installedProbe(change: string) {
   if (change === 'different vault') vault = 'another-sample-vault'
   if (change === 'stale generation') loaded.generation--
   if (change === 'replaced API') page.__abeleTest = {}
+  if (change === 'unfinished page job') page.__e2eJobs.pending = { done: false }
   const app = {
     vault: {
       getName: () => vault,
@@ -90,6 +95,7 @@ it.each([
   'different vault',
   'stale generation',
   'replaced API',
+  'unfinished page job',
 ])('does not accept %s as an installed build', async (change) => {
   await expect(installedProbe(change)).resolves.toBe(false)
 })

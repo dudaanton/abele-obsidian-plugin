@@ -129,7 +129,10 @@ export async function installBuild(pluginDir: string): Promise<string> {
           const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
           if (hash !== expected) return false
         }
-        return loaded.api === window.__abeleTest && loaded.generation === performance.timeOrigin
+        // A timed-out worker may have left a live page job. Reload rather than let it
+        // continue writing or driving the UI alongside the retry session.
+        return loaded.api === window.__abeleTest && loaded.generation === performance.timeOrigin &&
+          !Object.values(window.__e2eJobs || {}).some(job => !job.done)
       })()`,
           30_000
         ) === '=> true'
