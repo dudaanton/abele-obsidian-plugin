@@ -347,7 +347,8 @@ describe.skipIf(why !== null)('sync between Obsidian and a daemon folder', () =>
       () => `the confirmation (${confirmed})`,
       () =>
         (confirmed = dom<string>(`
-          const button = document.querySelector('.abele-confirm__actions button.mod-warning')
+          const confirm = document.querySelector('.abele-confirm__message')?.closest('.modal')
+          const button = confirm?.querySelector('.abele-modal__footer button.mod-warning')
           if (!button) return 'no confirmation'
           button.click()
           return 'confirmed'
