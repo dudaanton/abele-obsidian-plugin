@@ -9,7 +9,7 @@ import {
   runCli,
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { screenshot, tap } from './helpers/phone'
+import { screenshot, swipe, tap } from './helpers/phone'
 import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
@@ -193,6 +193,39 @@ describe.skipIf(!available)('note columns foundation', () => {
     })
   }
 
+  it('a horizontal gesture scrolls only the table without entering source', async () => {
+    show('source')
+    const point = asyncEval<{ x: number; y: number }>(`
+      const scroller=root().querySelector('.abele-column-table');scroller.scrollLeft=0;
+      scroller.scrollIntoView({block:'center'});await wait(150);
+      const r=scroller.getBoundingClientRect();return {x:r.right-24,y:r.y+16};
+    `)
+    if (onPhone()) swipe(point.x, point.y, point.x - 180, point.y)
+    else
+      runCli([
+        'dev:cdp',
+        'method=Input.dispatchMouseEvent',
+        'params=' +
+          JSON.stringify({ type: 'mouseWheel', x: point.x, y: point.y, deltaX: 180, deltaY: 0 }),
+      ])
+    const result = asyncEval<{
+      scroll: number
+      paragraphX: number
+      columnX: number
+      rendered: boolean
+    }>(`
+      await wait(400);const column=root().querySelectorAll('.abele-column')[1];
+      return {scroll:column.querySelector('.abele-column-table').scrollLeft,
+        paragraphX:column.querySelector('p').getBoundingClientRect().x,columnX:column.getBoundingClientRect().x,
+        rendered:!!root().querySelector('.abele-columns')};
+    `)
+    console.log('horizontal table gesture', JSON.stringify(result))
+    expect(result.scroll).toBeGreaterThan(30)
+    expect(result.paragraphX).toBeCloseTo(result.columnX, 0)
+    expect(result.rendered).toBe(true)
+    await shot('table-gesture')
+  })
+
   // BUG: Obsidian's native callout widget maps every prose click to the outer header.
   // Keep the no-jump guarantee red until a source-aware click adapter exists.
   it.fails(
@@ -276,6 +309,52 @@ describe.skipIf(!available)('note columns foundation', () => {
     },
     90_000
   )
+
+  it('alternative markers lack the native shared callout boundary', async () => {
+    const alternate = [
+      '::columns::',
+      '',
+      '::left::',
+      '',
+      'Marker left prose.',
+      '',
+      '::right::',
+      '',
+      'Marker right prose.',
+      '',
+      '::end::',
+      '',
+      '<!-- abele-columns -->',
+      '',
+      '<!-- abele-column -->',
+      '',
+      'Comment left prose.',
+      '',
+      '<!-- abele-column -->',
+      '',
+      'Comment right prose.',
+      '',
+      '<!-- /abele-columns -->',
+      '',
+    ].join('\n')
+    show('preview')
+    asyncEval(
+      `await app.vault.modify(view.file,${JSON.stringify(alternate)});await wait(500);return true`
+    )
+    const rendered = asyncEval<{ text: string; callouts: number }>(
+      `return {text:root().textContent,callouts:root().querySelectorAll('.callout').length}`
+    )
+    expect(rendered.text).toContain('::left::')
+    expect(rendered.text).toContain('Marker right prose.')
+    expect(rendered.text).toContain('Comment left prose.')
+    expect(rendered.text).toContain('Comment right prose.')
+    expect(rendered.text).not.toContain('<!-- abele-column -->')
+    expect(rendered.callouts).toBe(0)
+    await shot('alternatives')
+    asyncEval(
+      `await app.vault.modify(view.file,${JSON.stringify(BODY)});await wait(500);return true`
+    )
+  })
 
   it('without the plugin the nested callouts retain every content block', async () => {
     show('preview')

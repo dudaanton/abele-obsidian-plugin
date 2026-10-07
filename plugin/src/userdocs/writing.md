@@ -35,10 +35,10 @@ heading. Foldable column callouts and extra content outside the children remain 
 callouts rather than columns.
 
 In Live Preview the area expands to source when entered and returns to columns when the cursor
-leaves. **A prose click currently selects the whole outer callout, starting at its header,
-not the clicked passage.** Click a source line to place the caret before typing; typing over
-the initial selection would replace the area. This is a known limitation of the native
-callout widget. There are no insertion,
+leaves. **A prose click currently enters source at the outer header, not the clicked
+passage.** On desktop it also selects the whole outer callout. Click a source line to place
+the caret before typing; typing over that initial selection would replace the area. This
+is a known limitation of the native callout widget. There are no insertion,
 removal or configuration commands yet. Without Abele the same note is readable as nested
 callouts; no content or sidecar is rewritten by the column renderer.
 
