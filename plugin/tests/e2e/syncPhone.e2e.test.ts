@@ -305,15 +305,15 @@ const CONFIRM_SCREEN = `
   const card = cardNamed('#2')
   const restore = [...card.querySelectorAll('.abele-card__actions button')].find((b) => b.textContent.trim() === 'Restore')
   restore.click()
-  if (!(await until(() => document.querySelector('.abele-confirm'), 5000))) throw new Error('no confirmation')
+  if (!(await until(() => document.querySelector('.abele-confirm__message'), 5000))) throw new Error('no confirmation')
   await wait(300)
-  const confirm = document.querySelector('.abele-confirm').closest('.modal')
-  const entry = await screen('sync restore confirm', confirm, confirm)
+  const confirm = document.querySelector('.abele-confirm__message').closest('.modal')
+  const entry = await screen('sync restore confirm', confirm, confirm.querySelector('.abele-modal__body'))
   const inView = (el) => {
     const r = el.getBoundingClientRect()
     return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth + 1 && r.bottom <= window.innerHeight + 1
   }
-  const buttons = [...confirm.querySelectorAll('.abele-confirm__actions button')]
+  const buttons = [...confirm.querySelectorAll('.abele-modal__footer button')]
   // On top means the button is what a finger at its middle lands on, not the sheet under it.
   const onTop = buttons.every((b) => {
     const r = b.getBoundingClientRect()
@@ -323,7 +323,7 @@ const CONFIRM_SCREEN = `
   entry.extra = { buttons: buttons.length, buttonsInView: buttons.filter(inView).length, onTop, dialogInView: inView(confirm) }
   buttons.find((b) => b.textContent.trim() === 'Cancel').click()
   await wait(400)
-  entry.extra.sheetStays = !!document.querySelector('.abele-version-history') && !document.querySelector('.abele-confirm')
+  entry.extra.sheetStays = !!document.querySelector('.abele-version-history') && !document.querySelector('.abele-confirm__message')
   await closeDialog()
   return { 'sync restore confirm': entry }
 `
