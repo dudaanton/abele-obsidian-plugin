@@ -40,6 +40,43 @@ it('reserves a job without attaching a provider, and starts only in an unused re
   await expect(model.startSession('Other', 'claude')).rejects.toThrow('session')
 })
 
+it.each([
+  {
+    entries: [
+      { workspace_id: 'removed', kind: 'managed', state: 'removed' },
+      { workspace_id: 'root', kind: 'root', state: 'ready' },
+      { workspace_id: 'live', kind: 'managed', state: 'ready' },
+    ],
+    expected: 'live',
+  },
+  { entries: [{ workspace_id: 'removed', kind: 'managed', state: 'removed' }], expected: '' },
+])(
+  'moves a removed selection to a present workspace or none ($expected)',
+  async ({ entries, expected }) => {
+    const client = {
+      listWorkspaces: vi.fn(async (_id, after) => (after ? [] : entries)),
+      listJobs: vi.fn(async () => []),
+    }
+    const model = new NodeWorkspaceModel(client as never)
+    model.workspaceId.value = 'removed'
+    await model.selectProject('project')
+    expect(model.workspaceId.value).toBe(expected)
+  }
+)
+
+it('does not choose a removed first entry as the fallback for a missing selection', async () => {
+  const entries = [
+    { workspace_id: 'removed', kind: 'managed', state: 'removed' },
+    { workspace_id: 'root', kind: 'root', state: 'ready' },
+  ]
+  const model = new NodeWorkspaceModel({
+    listWorkspaces: async (_id: string, after?: string) => (after ? [] : entries),
+    listJobs: async () => [],
+  } as never)
+  await model.selectProject('project')
+  expect(model.workspaceId.value).toBe('root')
+})
+
 it('pages status and reads unified diff over the client seam', async () => {
   const client = {
     workspaceStatus: vi.fn(async (_id, offset) => ({

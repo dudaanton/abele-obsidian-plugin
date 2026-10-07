@@ -203,7 +203,9 @@ const project = computed(() =>
   props.model.projects.value.find((p) => p.project_id === props.model.projectId.value)
 )
 const workspace = computed(() =>
-  props.model.workspaces.value.find((w) => w.workspace_id === props.model.workspaceId.value)
+  props.model.workspaces.value.find(
+    (w) => w.workspace_id === props.model.workspaceId.value && w.state !== 'removed'
+  )
 )
 const attached = computed(() =>
   props.model.sessions.value.find((s) => s.workspace_id === props.model.workspaceId.value)
@@ -243,17 +245,19 @@ const repositoryPermissions = () =>
   })
 const removeWorkspace = () =>
   act(async () => {
+    const target = workspace.value
     if (
-      !workspace.value ||
+      !target ||
+      target.kind !== 'managed' ||
       !(await confirm({
         title: 'Remove unused workspace?',
         message: 'Only a clean, unused managed worktree can be removed. Its branch is retained.',
       }))
     )
       return
-    props.model.reservation.value = await props.model.client.removeWorkspace(
-      workspace.value.workspace_id
-    )
+    // A catalog refresh must not retarget the action that was confirmed.
+    if (workspace.value?.workspace_id !== target.workspace_id) return
+    props.model.reservation.value = await props.model.client.removeWorkspace(target.workspace_id)
     clearPreview()
     await props.model.load()
   })

@@ -78,10 +78,11 @@ export class NodeWorkspaceModel {
     if (this.projectId.value !== id) return
     this.workspaces.value = workspaces
     this.jobs.value = jobs
-    if (!workspaces.some((w) => w.workspace_id === this.workspaceId.value))
+    const available = workspaces.filter((w) => w.state !== 'removed')
+    if (!available.some((w) => w.workspace_id === this.workspaceId.value))
       this.workspaceId.value =
-        workspaces.find((w) => w.kind === 'managed' && w.state === 'ready')?.workspace_id ??
-        workspaces[0]?.workspace_id ??
+        available.find((w) => w.kind === 'managed' && w.state === 'ready')?.workspace_id ??
+        available[0]?.workspace_id ??
         ''
   }
   async register(path: string, trusted: boolean): Promise<void> {
