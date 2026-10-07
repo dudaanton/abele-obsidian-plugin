@@ -1,12 +1,14 @@
 import { EditorView } from '@codemirror/view'
-import { editorInfoField, editorLivePreviewField, type Plugin } from 'obsidian'
+import { editorLivePreviewField, type Plugin } from 'obsidian'
 import { columnSource } from './source'
 
 interface Entry {
   view: EditorView
   document: string
   anchor: number
+  widget: HTMLElement
 }
+const contextBound = new WeakSet<HTMLElement>()
 
 /** Resolve a native callout's block by syntax order, then its UTF-16 DOM caret offset. */
 function entryAt(target: Element, x: number, y: number): Entry | null {
@@ -16,6 +18,19 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
   const block = target.closest<HTMLElement>('p,h1,h2,h3,h4,h5,h6,li')
   const editor = parent?.closest<HTMLElement>('.cm-editor')
   if (!parent || !column || !block || !editor) return null
+  if (!contextBound.has(parent)) {
+    contextBound.add(parent)
+    parent.addEventListener(
+      'contextmenu',
+      (event) => {
+        if (Date.now() < Number(parent.dataset.abeleTapUntil ?? 0)) {
+          event.preventDefault()
+          event.stopImmediatePropagation()
+        }
+      },
+      true
+    )
+  }
   const view = EditorView.findFromDOM(editor)
   if (!view || !view.state.field(editorLivePreviewField, false)) return null
   const document = view.state.doc.toString()
@@ -67,20 +82,19 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
     const count = (block.tagName === 'LI' ? text.trimStart() : text).length
     anchor = paragraph.positions[count] ?? paragraph.to
   }
-  return { view, document, anchor }
+  return { view, document, anchor, widget: parent }
 }
 
 function reveal(entry: Entry): void {
   // A stale DOM callback must not put a caret into a different version of the note.
   if (entry.view.state.doc.toString() !== entry.document) return
-  const editor = entry.view.state.field(editorInfoField, false)?.editor
-  if (editor) editor.focus()
-  else entry.view.focus()
+  entry.widget.dataset.abeleTapUntil = String(Date.now() + 1000)
   entry.view.dispatch({
     selection: { anchor: entry.anchor },
     scrollIntoView: true,
     userEvent: 'select.pointer',
   })
+  entry.view.focus()
 }
 
 export function registerColumnEntry(plugin: Plugin): void {
@@ -102,6 +116,7 @@ export function registerColumnEntry(plugin: Plugin): void {
     // Prevent the compatibility mouse/click sequence from overwriting the touch's caret.
     plugin.registerDomEvent(doc, 'click', suppress, true)
     plugin.registerDomEvent(doc, 'mouseup', suppress, true)
+    plugin.registerDomEvent(doc, 'contextmenu', suppress, true)
     plugin.registerDomEvent(
       doc,
       'pointerdown',
