@@ -348,6 +348,8 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
         `return (await read()).abele.ink.filter(s=>[${JSON.stringify(humanId)},'agent-ink'].includes(s.id)).map(s=>s.color)`
       )
     ).toEqual(['', ''])
+    await actions()
+    await fit()
     shot('human-agent-ink-selected')
     await click('Undo canvas change')
     await saved()
@@ -359,7 +361,28 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
     await click('Undo canvas change')
     await saved()
     expect(source()).toEqual(before)
-    await actions()
     shot('agent-ink-batch-undone')
   }, 180_000)
+  it('plays agent-defined ink highlights with visible attached and free strokes', async () => {
+    const before = source()
+    const ids = run<string[]>(`
+      const scope=new window.__abeleTest.ScopeResolver();scope.setFullVaultAccess(true)
+      const ctx={scope,interactive:true},tools=Object.fromEntries(window.__abeleTest.createAgentTools().map(t=>[t.name,t]))
+      const snapshot=JSON.parse((await tools.canvas_read.execute('read',{path},undefined,ctx)).content[0].text)
+      await tools.canvas_steps.execute('steps',{path,revision:snapshot.revision,ops:[{op:'replace',steps:[{
+        id:'ink-step',reveal:['card','free'],highlight:['attached','free'],focus:{x:-20,y:-20,width:440,height:380},say:'An annotation and an independent stroke.'
+      }]}]},undefined,ctx)
+      const step=JSON.parse((await tools.canvas_read.execute('read',{path,step:1},undefined,ctx)).content[0].text)
+      return step.ink.map(s=>s.id)
+    `)
+    expect(ids).toEqual(['attached', 'free'])
+    await click('Play walkthrough')
+    await until('view().viewer.step===1')
+    await fit()
+    shot('ink-step-highlight')
+    await click('Show whole diagram')
+    await click('Undo canvas change')
+    await saved()
+    expect(source()).toEqual(before)
+  }, 120_000)
 })
