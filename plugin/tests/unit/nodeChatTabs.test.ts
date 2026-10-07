@@ -22,6 +22,33 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('passes a node file path and line range separately to the resource-opening adapter', () => {
+  useVault([])
+  const client = new NodeClient(
+    { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+    new MemoryClientStore()
+  )
+  const presenter = new NodeChatPresenter(reference, {
+    client,
+    state: ref('offline'),
+  } as unknown as NodeConnection)
+  presenter.projection.value.session = {
+    session_id: reference.sessionId,
+    title: reference.title,
+    provider: 'fake',
+    created_at: '2026-01-01T00:00:00Z',
+    workspace_id: 'sample-workspace',
+  }
+  const open = vi.fn()
+  presenter.setFilesOpener(open)
+  presenter.openResource('src/sample.ts#L12-L20')
+  expect(open).toHaveBeenCalledWith(
+    expect.objectContaining({ workspaceId: 'sample-workspace' }),
+    'src/sample.ts',
+    { start: 12, end: 20 }
+  )
+  presenter.destroy()
+})
 it('hydrates large normalized output through artifact reads without appending final snapshots twice', async () => {
   const store = new MemoryClientStore()
   const client = new NodeClient(

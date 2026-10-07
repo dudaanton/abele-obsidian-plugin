@@ -63,7 +63,13 @@ Select line numbers (including ranges) in the shared GitHub-style diff, choose *
 and **Add to review**. Comments across files or snapshots collect in one batch; remove a
 comment before sending if needed. **Send review** submits exactly one session input, including
 retained selections and their comments. If the workspace has changed, acceptance identifies
-stale selections rather than silently moving them onto different lines.
+stale selections rather than silently moving them onto different lines. A selection keeps
+its snapshot identity and original text even if another snapshot is opened while a comment
+is being composed. Add or clear that comment before choosing a different target. Closing
+this browser discards pending read results, so they cannot replace a reopened view.
+Comments in a submitting or queued batch are read-only until its outcome is known.
+Node links ending in `#L12` or `#L12-L20` open the file at the marked line or range;
+the fragment is navigation, not part of its filesystem path.
 
 A disconnected review is stored in the same device-local queue as messages. **Check queued
 review** checks the original receipt; it never sends a second batch. A terminal rejection

@@ -138,8 +138,8 @@ import Button from './obsidian/Button.vue'
 const props = defineProps<{ presenter: NodeChatPresenter }>()
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
 // The presenter owns resource identities; this thin view supplies Obsidian's dialog adapter.
-const stopFiles = props.presenter.setFilesOpener?.((model, path) =>
-  openNodeFiles(model, props.presenter.connection, path)
+const stopFiles = props.presenter.setFilesOpener?.((model, path, range) =>
+  openNodeFiles(model, props.presenter.connection, path, range)
 )
 onUnmounted(() => stopFiles?.())
 const labels = {

@@ -350,8 +350,11 @@ it('provisions two projects, renders gated fake CLI edits, reloads approvals, qu
   await files.loadDiff('head')
   const snapshot = files.snapshot.value!
   await files.addComment(
-    'sample.txt',
-    { side: 'R', start: 1, end: 1 },
+    files.selectLines(files.files.value.find((file) => file.path === 'sample.txt')!, {
+      side: 'R',
+      start: 1,
+      end: 1,
+    }),
     'Explain the retained change'
   )
   writeFileSync(resolve(workspace.path, 'sample.txt'), 'later\n')

@@ -63,8 +63,7 @@ export async function nodeFilesFixture(view: 'files' | 'diffs' | 'review' | 'his
   if (view !== 'files' && view !== 'history') await model.loadDiff('head')
   if (view === 'review')
     await model.addComment(
-      path,
-      { side: 'R', start: 2, end: 2 },
+      model.selectLines(model.files.value[0], { side: 'R', start: 2, end: 2 }),
       'Please explain why this changed. Keep the retained context when the workspace moves on.'
     )
   if (view === 'history') await model.loadLog()
@@ -74,6 +73,8 @@ export async function nodeFilesFixture(view: 'files' | 'diffs' | 'review' | 'his
     initialTab: view === 'review' ? ('diffs' as const) : view,
     initialPath: view === 'files' ? path : undefined,
     initialSelection:
-      view === 'review' ? { path, span: { side: 'R' as const, start: 2, end: 2 } } : undefined,
+      view === 'review'
+        ? model.selectLines(model.files.value[0], { side: 'R', start: 2, end: 2 })
+        : undefined,
   }
 }

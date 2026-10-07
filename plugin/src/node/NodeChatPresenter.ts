@@ -9,7 +9,7 @@ import type { NodeClientState } from './NodeClientStore'
 import { nodeQueueView } from './presentation'
 import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
 import { FrameCodec } from '@abele/channel-protocol'
-import { NodeFilesModel } from './NodeFilesModel'
+import { NodeFilesModel, nodeResourceTarget, type CodeLineRange } from './NodeFilesModel'
 import { PromptSchema, validateParams } from '@abele/node-protocol'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
@@ -69,7 +69,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         : this.projection.value.state
   )
   private filesModel?: NodeFilesModel
-  private filesOpener?: (model: NodeFilesModel, path?: string) => void
+  private filesOpener?: (model: NodeFilesModel, path?: string, range?: CodeLineRange) => void
   private stopEvent: () => void
   private stopWatch: WatchStopHandle
   private destroyed = false
@@ -297,15 +297,18 @@ export class NodeChatPresenter implements ChatPresentationSession {
 
   /** A node resource never passes through vault-path resolution. */
   openResource(path: string): void {
-    this.openFiles(path)
+    const target = nodeResourceTarget(path)
+    this.openFiles(target.path, target.range)
   }
-  setFilesOpener(opener: (model: NodeFilesModel, path?: string) => void): () => void {
+  setFilesOpener(
+    opener: (model: NodeFilesModel, path?: string, range?: CodeLineRange) => void
+  ): () => void {
     this.filesOpener = opener
     return () => {
       if (this.filesOpener === opener) this.filesOpener = undefined
     }
   }
-  openFiles(path?: string): void {
+  openFiles(path?: string, range?: CodeLineRange): void {
     const workspace = this.workspaceId.value
     if (!workspace) {
       this.error.value = 'This session has no workspace'
@@ -318,7 +321,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         workspace,
         this.reference.sessionId
       )
-    if (this.filesOpener) this.filesOpener(this.filesModel, path)
+    if (this.filesOpener) this.filesOpener(this.filesModel, path, range)
     else this.error.value = 'Open this session in the chat to browse its files'
   }
 

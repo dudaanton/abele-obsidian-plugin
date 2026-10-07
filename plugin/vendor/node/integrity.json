@@ -37,10 +37,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 15446,
-    "unpackedSize": 97030,
-    "shasum": "2ed5981b1f14fcdadbc35a93ad5d303bdf3b7e18",
-    "integrity": "sha512-qiSR72BZLZXLpN562TYFHqdfFAI42MC97dh39Y5K9QHH8VoaCdDxiTO/cfc0cDRfejQKGnFPM41hOd3s75T/+A==",
+    "size": 15753,
+    "unpackedSize": 98294,
+    "shasum": "170377ee355560a4f7c04c86b55e5b152c2484d0",
+    "integrity": "sha512-sMcQeL9Wl+sdKzyzXqVLS5XBHH07RdIlnt05OYjENVEkxsJkqpC5DTM5ZlMqM2BgLu+SDDA4UM2wj3UbSu8jMQ==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -50,12 +50,12 @@
       },
       {
         "path": "dist/files.js",
-        "size": 6971,
+        "size": 7644,
         "mode": 420
       },
       {
         "path": "dist/files.js.map",
-        "size": 9185,
+        "size": 9776,
         "mode": 420
       },
       {

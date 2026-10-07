@@ -1,5 +1,5 @@
 <template>
-  <Modal title="Workspace files and review" size="full" @close="emit('close')">
+  <Modal title="Workspace files and review" size="full" @close="close">
     <div class="abele-node-files">
       <div class="abele-node-files__actions" role="tablist" aria-label="Workspace views">
         <Button text="Files" :accent="tab === 'files'" @click="tab = 'files'" />
@@ -17,13 +17,13 @@
             text="Parent folder"
             icon="arrow-up"
             :disabled="busy || offline"
-            @click="act(() => model.list(parent))"
+            @click="act(() => model.list(parent, false, lifetime.signal))"
           />
           <Button
             text="Refresh folder"
             icon="refresh-cw"
             :disabled="busy || offline"
-            @click="act(() => model.list(model.directory.value))"
+            @click="act(() => model.list(model.directory.value, false, lifetime.signal))"
           />
           <span class="abele-node-files__path">{{ model.directory.value || '/' }}</span>
         </div>
@@ -58,7 +58,7 @@
             v-if="model.next.value"
             text="More files"
             :disabled="busy || offline"
-            @click="act(() => model.list(model.directory.value, true))"
+            @click="act(() => model.list(model.directory.value, true, lifetime.signal))"
           />
         </div>
         <template v-if="model.document.value">
@@ -75,6 +75,10 @@
               :key="model.document.value.contentId || model.filePath.value"
               :text="model.document.value.text || ''"
               :path="model.filePath.value"
+              :range="model.fileRange.value"
+              :focus="
+                model.fileRange.value ? { line: model.fileRange.value.start, context: 3 } : null
+              "
             />
           </template>
         </template>
@@ -117,27 +121,33 @@
           :key="`${model.snapshot.value?.diff_id}/${file.path}`"
           :file="file"
           initially-open
-          @select="select(file.path, $event)"
+          @select="select(file, $event)"
         >
           <template #selection="{ span, label }"
             ><Button
               :text="`Comment · ${label}`"
               icon="message-square"
-              :disabled="!!model.pendingReview.value || !model.sessionId"
-              @click="select(file.path, span, true)"
+              :disabled="model.reviewLocked.value || !model.sessionId"
+              @click="select(file, span, true)"
           /></template>
         </GithubDiffFile>
         <div v-if="selection && commenting" class="abele-node-files__comment">
           <p class="abele-node-files__path">
             {{ selection.path }} · {{ selection.span.side === 'L' ? 'Before' : 'After' }} · lines
-            {{ selection.span.start }}–{{ selection.span.end }}
+            {{ selection.span.start }}–{{ selection.span.end }} · snapshot {{ selection.diffId }}
           </p>
           <Setting name="Review comment">
-            <textarea v-model="comment" aria-label="Review comment" rows="3" maxlength="2000" />
+            <textarea
+              v-model="comment"
+              aria-label="Review comment"
+              rows="3"
+              maxlength="2000"
+              :disabled="model.reviewLocked.value"
+            />
           </Setting>
           <Button
             text="Add to review"
-            :disabled="busy || !comment.trim() || !!model.pendingReview.value"
+            :disabled="busy || !comment.trim() || model.reviewLocked.value"
             @click="addComment"
           />
         </div>
@@ -160,7 +170,7 @@
           v-if="model.logs.value.length"
           text="More commits"
           :disabled="busy || offline"
-          @click="act(() => model.loadLog(true))"
+          @click="act(() => model.loadLog(true, lifetime.signal))"
         />
       </template>
       <details v-if="model.comments.value.length" open>
@@ -178,8 +188,8 @@
           <p>{{ anchor.comment }}</p>
           <Button
             text="Remove comment"
-            :disabled="!!model.pendingReview.value || busy"
-            @click="model.comments.value.splice(index, 1)"
+            :disabled="model.reviewLocked.value || busy"
+            @click="model.removeComment(index)"
           />
         </div>
       </details>
@@ -221,18 +231,25 @@
         v-else
         :text="`Send review (${model.comments.value.length})`"
         accent
-        :disabled="busy || !model.sessionId || !model.comments.value.length"
+        :disabled="
+          busy || model.reviewLocked.value || !model.sessionId || !model.comments.value.length
+        "
         @click="act(() => model.submit())"
       />
-      <Button text="Close" @click="emit('close')" />
+      <Button text="Close" @click="close" />
     </template>
   </Modal>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { DiffMode } from '@abele/node-client'
 import type { DiffSpan } from '@/github/permalinks'
-import type { NodeFilesModel } from '@/node/NodeFilesModel'
+import type {
+  NodeFilesModel,
+  NodeDiffFile,
+  ReviewSelection,
+  CodeLineRange,
+} from '@/node/NodeFilesModel'
 import type { NodeConnection } from '@/node/NodeService'
 import Modal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
@@ -246,9 +263,16 @@ const props = defineProps<{
   connection: Pick<NodeConnection, 'state'>
   initialPath?: string
   initialTab?: 'files' | 'diffs' | 'history'
-  initialSelection?: { path: string; span: DiffSpan }
+  initialSelection?: ReviewSelection
+  initialRange?: CodeLineRange
 }>()
 const emit = defineEmits<{ close: [] }>()
+const lifetime = new AbortController()
+const close = () => {
+  lifetime.abort()
+  emit('close')
+}
+onUnmounted(() => lifetime.abort())
 const tab = ref(props.initialTab || 'files'),
   error = ref(''),
   busy = ref(false),
@@ -256,7 +280,7 @@ const tab = ref(props.initialTab || 'files'),
   commit = ref(''),
   comment = ref(''),
   commenting = ref(!!props.initialSelection)
-const selection = ref<{ path: string; span: DiffSpan } | null>(props.initialSelection || null)
+const selection = shallowRef<ReviewSelection | null>(props.initialSelection || null)
 const offline = computed(() => props.connection.state.value !== 'connected')
 const parent = computed(() => props.model.directory.value.split('/').slice(0, -1).join('/'))
 async function act(work: () => Promise<unknown>) {
@@ -273,17 +297,22 @@ async function act(work: () => Promise<unknown>) {
 }
 const open = (entry: { path: string; kind: string }) =>
   act(() =>
-    entry.kind === 'directory' ? props.model.list(entry.path) : props.model.openFile(entry.path)
+    entry.kind === 'directory'
+      ? props.model.list(entry.path, false, lifetime.signal)
+      : props.model.openFile(entry.path, lifetime.signal)
   )
 const loadDiff = () =>
   act(async () => {
-    await props.model.loadDiff(mode.value, mode.value === 'commit' ? commit.value : undefined)
-    selection.value = null
-    commenting.value = false
+    await props.model.loadDiff(
+      mode.value,
+      mode.value === 'commit' ? commit.value : undefined,
+      lifetime.signal
+    )
+    // A comment already being composed remains attached to its retained selection.
   })
 const history = () => {
   tab.value = 'history'
-  return act(() => props.model.loadLog())
+  return act(() => props.model.loadLog(false, lifetime.signal))
 }
 const openCommit = (sha: string) => {
   tab.value = 'diffs'
@@ -291,23 +320,50 @@ const openCommit = (sha: string) => {
   commit.value = sha
   return loadDiff()
 }
-function select(path: string, span: DiffSpan | null, show = false) {
-  if (span) selection.value = { path, span }
-  else if (selection.value?.path === path) selection.value = null
-  if (show) commenting.value = true
+function select(file: NodeDiffFile, span: DiffSpan | null, show = false) {
+  if (commenting.value && !show) return
+  try {
+    const next = span ? props.model.selectLines(file, span) : null
+    if (
+      show &&
+      commenting.value &&
+      comment.value.trim() &&
+      (next?.diffId !== selection.value?.diffId ||
+        next?.path !== selection.value?.path ||
+        next?.span.start !== selection.value?.span.start ||
+        next?.span.end !== selection.value?.span.end ||
+        next?.span.side !== selection.value?.span.side)
+    ) {
+      error.value = 'Add or clear the current comment before choosing another selection'
+      return
+    }
+    if (next) selection.value = next
+    else if (
+      selection.value?.path === file.path &&
+      selection.value?.diffId === file.document.snapshot.diff_id
+    )
+      selection.value = null
+    if (show) commenting.value = true
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Invalid selection'
+  }
 }
 const addComment = () =>
   act(async () => {
     if (!selection.value) return
-    await props.model.addComment(selection.value.path, selection.value.span, comment.value)
+    await props.model.addComment(selection.value, comment.value)
     comment.value = ''
     commenting.value = false
   })
 onMounted(
   () =>
     void act(async () => {
-      await props.model.list(props.model.directory.value)
-      if (props.initialPath) await props.model.openFile(props.initialPath)
+      await props.model.list(props.model.directory.value, false, lifetime.signal)
+      if (props.initialPath && !lifetime.signal.aborted) {
+        if (props.initialRange)
+          await props.model.openFile(props.initialPath, lifetime.signal, props.initialRange)
+        else await props.model.openResource(props.initialPath, lifetime.signal)
+      }
     })
 )
 </script>

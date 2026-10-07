@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue'
+import { computed, readonly, ref, shallowRef } from 'vue'
 import type { NodeClient, DiffMode, DiffSnapshot, ReviewAnchor } from '@abele/node-client'
 import { selectedContext, decodePatchPath } from '@abele/node-protocol'
 import type { DiffFile } from '@/github/api'
@@ -16,6 +16,35 @@ export interface CodeDocumentSource {
 }
 export interface DiffSource {
   capture(mode: DiffMode, commit?: string): Promise<{ snapshot: DiffSnapshot; patch: string }>
+}
+export interface CodeLineRange {
+  start: number
+  end: number
+}
+export function nodeResourceTarget(resource: string): { path: string; range?: CodeLineRange } {
+  const separator = resource.indexOf('#')
+  if (separator < 0) return { path: resource }
+  const path = resource.slice(0, separator),
+    match = resource.slice(separator + 1).match(/^L([1-9]\d*)(?:-L([1-9]\d*))?$/)
+  if (!match) return { path }
+  const start = Number(match[1]),
+    end = Number(match[2] ?? match[1])
+  return Number.isSafeInteger(start) && Number.isSafeInteger(end) && end >= start
+    ? { path, range: { start, end } }
+    : { path }
+}
+export interface DiffDocument {
+  readonly snapshot: Readonly<DiffSnapshot>
+  readonly patch: string
+}
+export interface NodeDiffFile extends DiffFile {
+  readonly document: DiffDocument
+}
+export interface ReviewSelection {
+  readonly diffId: string
+  readonly path: string
+  readonly span: Readonly<DiffSpan>
+  readonly context: string
 }
 /** Bounded byte assembly, not per-chunk decoding (a chunk can split a UTF-8 character). */
 export async function readNodeText(
@@ -126,10 +155,12 @@ export class NodeFilesModel {
   readonly directory = ref('')
   readonly document = shallowRef<Awaited<ReturnType<CodeDocumentSource['read']>> | null>(null)
   readonly filePath = ref('')
+  readonly fileRange = shallowRef<CodeLineRange>()
   readonly snapshot = shallowRef<DiffSnapshot | null>(null)
   readonly patch = ref('')
-  readonly files = shallowRef<DiffFile[]>([])
-  readonly comments = ref<ReviewAnchor[]>([])
+  readonly files = shallowRef<NodeDiffFile[]>([])
+  private readonly draftComments = shallowRef<readonly ReviewAnchor[]>(Object.freeze([]))
+  readonly comments = readonly(this.draftComments)
   readonly pendingReview = ref('')
   readonly reviewStatus = ref('')
   readonly submittedReview = ref<{ anchor: ReviewAnchor; stale: boolean }[]>([])
@@ -139,7 +170,10 @@ export class NodeFilesModel {
   private listingGeneration = 0
   private fileGeneration = 0
   private diffGeneration = 0
-  private submitting = false
+  private logGeneration = 0
+  private readonly submitting = ref(false)
+  readonly reviewLocked = computed(() => this.submitting.value || !!this.pendingReview.value)
+  private sentAnchors?: readonly ReviewAnchor[]
   constructor(
     readonly client: NodeClient,
     readonly nodeId: string,
@@ -149,81 +183,123 @@ export class NodeFilesModel {
     this.documents = new NodeDocumentSource(client, workspaceId)
     this.diffs = new NodeDiffSource(client, workspaceId)
   }
-  async list(path = '', more = false) {
+  async list(path = '', more = false, signal?: AbortSignal) {
     const generation = ++this.listingGeneration
     const page = await this.client.listFiles(
       this.workspaceId,
       path,
       more ? (this.next.value ?? undefined) : undefined
     )
-    if (generation !== this.listingGeneration) return
+    if (generation !== this.listingGeneration || signal?.aborted) return
     this.directory.value = path
     this.entries.value = more ? [...this.entries.value, ...page.entries] : page.entries
     this.next.value = page.next
   }
-  async openFile(path: string) {
+  async openFile(path: string, signal?: AbortSignal, range?: CodeLineRange) {
     const generation = ++this.fileGeneration
     const doc = await this.documents.read(path)
-    if (generation !== this.fileGeneration) return
+    if (generation !== this.fileGeneration || signal?.aborted) return
     this.filePath.value = path
     this.document.value = doc
+    const lines = doc.text?.split('\n').length ?? 0
+    // Do not allocate decorations for a hostile billion-line fragment or retarget an absent line.
+    this.fileRange.value =
+      range && range.start <= lines
+        ? { start: range.start, end: Math.min(range.end, lines) }
+        : undefined
   }
-  async loadDiff(mode: DiffMode, commit?: string) {
+  openResource(resource: string, signal?: AbortSignal) {
+    const target = nodeResourceTarget(resource)
+    return this.openFile(target.path, signal, target.range)
+  }
+  async loadDiff(mode: DiffMode, commit?: string, signal?: AbortSignal) {
     const generation = ++this.diffGeneration
     const result = await this.diffs.capture(mode, commit)
-    if (generation !== this.diffGeneration) return
-    this.snapshot.value = result.snapshot
-    this.patch.value = result.patch
-    this.files.value = splitNodeDiff(result.patch)
+    if (generation !== this.diffGeneration || signal?.aborted) return
+    const document = Object.freeze({
+      snapshot: Object.freeze({ ...result.snapshot }),
+      patch: result.patch,
+    })
+    this.snapshot.value = document.snapshot
+    this.patch.value = document.patch
+    this.files.value = splitNodeDiff(document.patch).map((file) => ({ ...file, document }))
   }
-  async loadLog(more = false) {
+  async loadLog(more = false, signal?: AbortSignal) {
+    const generation = ++this.logGeneration
     const rows = await this.client.gitLog(this.workspaceId, more ? this.logs.value.length : 0)
+    if (generation !== this.logGeneration || signal?.aborted) return
     this.logs.value = more ? [...this.logs.value, ...rows] : rows
   }
-  async addComment(path: string, span: DiffSpan, comment: string) {
-    const snapshot = this.snapshot.value
-    if (!snapshot) throw new Error('Open a diff before selecting lines')
-    if (this.pendingReview.value) throw new Error('Waiting for the submitted review')
-    const range = {
-      path,
-      side: span.side === 'L' ? ('old' as const) : ('new' as const),
+  selectLines(file: NodeDiffFile, span: DiffSpan): ReviewSelection {
+    const context = selectedContext(file.document.patch, {
+      path: file.path,
+      side: span.side === 'L' ? 'old' : 'new',
       start_line: span.start,
       end_line: span.end,
-    }
-    const context = selectedContext(this.patch.value, range)
-    const context_hash = await contextHash(context)
-    if (!comment.trim()) throw new Error('Enter a comment')
-    this.comments.value.push({
-      node_id: this.nodeId,
-      workspace_id: this.workspaceId,
-      diff_id: snapshot.diff_id,
-      ...range,
-      context_hash,
-      comment: comment.trim(),
+    })
+    return Object.freeze({
+      diffId: file.document.snapshot.diff_id,
+      path: file.path,
+      span: Object.freeze({ ...span }),
+      context,
     })
   }
+  private assertEditable() {
+    if (this.reviewLocked.value) throw new Error('Waiting for the submitted review')
+  }
+  removeComment(index: number) {
+    this.assertEditable()
+    this.draftComments.value = Object.freeze(this.draftComments.value.filter((_, i) => i !== index))
+  }
+  async addComment(selection: ReviewSelection, comment: string) {
+    this.assertEditable()
+    const context_hash = await contextHash(selection.context)
+    this.assertEditable() // Submission may have started while WebCrypto was pending.
+    if (!comment.trim()) throw new Error('Enter a comment')
+    this.draftComments.value = Object.freeze([
+      ...this.draftComments.value,
+      Object.freeze({
+        node_id: this.nodeId,
+        workspace_id: this.workspaceId,
+        diff_id: selection.diffId,
+        path: selection.path,
+        side: selection.span.side === 'L' ? ('old' as const) : ('new' as const),
+        start_line: selection.span.start,
+        end_line: selection.span.end,
+        context_hash,
+        comment: comment.trim(),
+      }),
+    ])
+  }
   async submit() {
-    if (this.submitting) return
+    if (this.submitting.value) return
     if (this.pendingReview.value) return this.checkReview()
     if (!this.sessionId) throw new Error('Open a workspace session before sending a review')
     if (!this.comments.value.length) return
-    this.submitting = true
+    const anchors = Object.freeze(
+      this.draftComments.value.map((anchor) => Object.freeze({ ...anchor }))
+    )
+    this.submitting.value = true
     try {
       const { operation_id } = await this.client.submitReview({
         session_id: this.sessionId,
         observed_seq: await this.client.cursor(this.sessionId),
-        anchors: this.comments.value.map((a) => ({ ...a })),
+        anchors: anchors.map((anchor) => ({ ...anchor })),
       })
+      this.sentAnchors = anchors
       this.pendingReview.value = operation_id
       await this.checkReview()
     } finally {
-      this.submitting = false
+      this.submitting.value = false
     }
   }
   async checkReview() {
-    if (!this.pendingReview.value) return
+    const operation = this.pendingReview.value,
+      anchors = this.sentAnchors
+    if (!operation || !anchors) return
     try {
-      const result = await this.client.reviewResult(this.pendingReview.value)
+      const result = await this.client.reviewResult(operation)
+      if (this.pendingReview.value !== operation) return
       if (!result) {
         this.reviewStatus.value =
           'Queued review · waiting for confirmation. Reconnect to check; do not send it again.'
@@ -232,16 +308,20 @@ export class NodeFilesModel {
       this.reviewStatus.value = result.stale.some(Boolean)
         ? 'Review accepted · the workspace changed; retained selections were sent and marked stale.'
         : 'Review accepted as one session input.'
-      this.submittedReview.value = this.comments.value.map((anchor, i) => ({
+      this.submittedReview.value = anchors.map((anchor, i) => ({
         anchor: { ...anchor },
         stale: result.stale[i] ?? false,
       }))
-      this.comments.value = []
+      this.draftComments.value = Object.freeze([])
       this.pendingReview.value = ''
+      this.sentAnchors = undefined
     } catch (e) {
       // Only a durable terminal rejection permits a new edited batch, never a read/storage error.
-      const receipt = await this.client.operationResult(this.pendingReview.value)
-      if (receipt?.error) this.pendingReview.value = ''
+      const receipt = await this.client.operationResult(operation)
+      if (receipt?.error && this.pendingReview.value === operation) {
+        this.pendingReview.value = ''
+        this.sentAnchors = undefined
+      }
       throw e
     }
   }
