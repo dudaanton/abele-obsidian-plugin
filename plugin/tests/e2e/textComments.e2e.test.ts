@@ -118,6 +118,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
         toolbar: boolean
         saved: boolean
         formatted: boolean
+        formatText: string
         sourceUnchanged: boolean
         edited: boolean
         shots: string[]
@@ -156,7 +157,8 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       cm.dispatch({selection:{anchor:0,head:6}})
       const sourceBeforeToolbar = view.editor.getValue()
       await tap(document.querySelector('.mobile-toolbar .lucide-bold'))
-      const formatted = cm.state.doc.toString().startsWith('**Native**')
+      const formatText = cm.state.doc.toString()
+      const formatted = formatText.startsWith('**Native**')
       const sourceUnchanged = view.editor.getValue() === sourceBeforeToolbar
       await host.swipe(window.innerWidth/2, window.innerHeight-keyboardHeight()-100, window.innerWidth/2, 160)
       await tap(button('Save'))
@@ -176,7 +178,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const editedThread = JSON.parse(await app.vault.read(savedFile))
       const edited = !!editedThread.entries[0].editedAt && editedThread.entries[0].body.endsWith(' Updated')
       await tap(button('Close'))
-      return JSON.stringify({keyboard, room, geometry, toolbar, formatted, sourceUnchanged, saved, edited, shots})
+      return JSON.stringify({keyboard, room, geometry, toolbar, formatted, formatText, sourceUnchanged, saved, edited, shots})
     `)
       console.log('Native comment editor:', result)
       expect(result.keyboard).toBe(true)

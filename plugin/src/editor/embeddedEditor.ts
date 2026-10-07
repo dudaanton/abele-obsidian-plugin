@@ -376,7 +376,12 @@ export function createEmbeddedEditor(
   const doc = host.ownerDocument
   const onToolbarPress = (event: Event) => {
     if (workspace.activeEditor !== controller.owner) return
-    if ((event.target as Element | null)?.closest?.('.mobile-toolbar')) toolbarPress = true
+    if ((event.target as Element | null)?.closest?.('.mobile-toolbar')) {
+      toolbarPress = true
+      // Keep the keyboard and native selection in place through the touch. Moving the toolbar
+      // on blur can swallow its click; restoring the owner alone does not preserve selection.
+      if (event.type === 'pointerdown' || event.type === 'mousedown') event.preventDefault()
+    }
   }
   const finishToolbarPress = () => {
     if (!toolbarPress) return
@@ -387,6 +392,7 @@ export function createEmbeddedEditor(
     })
   }
   doc.addEventListener('pointerdown', onToolbarPress, true)
+  doc.addEventListener('mousedown', onToolbarPress, true)
   doc.addEventListener('touchstart', onToolbarPress, true)
   doc.addEventListener('click', finishToolbarPress, true)
   doc.addEventListener('pointercancel', finishToolbarPress, true)
@@ -408,6 +414,7 @@ export function createEmbeddedEditor(
       disposed = true
       toolbarPress = false
       doc.removeEventListener('pointerdown', onToolbarPress, true)
+      doc.removeEventListener('mousedown', onToolbarPress, true)
       doc.removeEventListener('touchstart', onToolbarPress, true)
       doc.removeEventListener('click', finishToolbarPress, true)
       doc.removeEventListener('pointercancel', finishToolbarPress, true)
