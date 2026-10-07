@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
-import { targets } from './helpers/target'
+import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { onPhone, targets } from './helpers/target'
+import { tap, typeText } from './helpers/phone'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
+const SHOTS = shotDir('abele-phone')
 
 interface NavigationReport {
   unfocusedSearch: boolean
@@ -112,6 +115,7 @@ const script = `(async () => {
     // Put the reader at the first question again, then open its direct and nested discussions.
     await open(); await choose('To start'); await wait(200)
     await open(); await until(() => modal().textContent.includes('Which plants need shade?'))
+    if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/navigation-discussions.png')})
     const fold = [...modal().querySelectorAll('summary')].find(s => s.textContent.includes('Nested discussions'))
     fold.click(); await until(() => modal().textContent.includes('How much shade?'))
     await choose('How much shade?')
@@ -155,6 +159,53 @@ const script = `(async () => {
     for (const dir of dirs) { const folder = app.vault.getAbstractFileByPath(dir); if (folder && !folder.children.length) await app.vault.delete(folder) }
   }
 })()`
+
+describe.skipIf(!available || !onPhone())('navigation with the phone keyboard', () => {
+  it('opens without the keyboard, then keeps the tapped search field above the real keyboard', async () => {
+    try {
+      const initial = JSON.parse(
+        await evalLong(`(async () => {
+        window.__abeleTest.openDialog('chat-navigation')
+        for (let i=0; i<100 && !document.querySelector('.abele-chat-navigation input'); i++) await new Promise(r => setTimeout(r, 30))
+        await new Promise(r => setTimeout(r, 300))
+        const field = document.querySelector('.abele-chat-navigation input')
+        const r = field.getBoundingClientRect()
+        return JSON.stringify({ keyboard: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height')) || 0, focused: field === document.activeElement, x: r.left + r.width/2, y: r.top + r.height/2 })
+      })()`)
+      ) as { keyboard: number; focused: boolean; x: number; y: number }
+      expect(initial.keyboard).toBe(0)
+      expect(initial.focused).toBe(false)
+      tap(initial.x, initial.y)
+      typeText('sample question')
+      const measured = JSON.parse(
+        await evalLong(`(async () => {
+        const height = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height')) || 0
+        for (let i=0; i<100 && !height(); i++) await new Promise(r => setTimeout(r, 50))
+        await new Promise(r => setTimeout(r, 800))
+        const field = document.querySelector('.abele-chat-navigation input'), r = field.getBoundingClientRect()
+        const shot = await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/navigation-keyboard.png')})
+        return JSON.stringify({ keyboard: height(), top: r.top, bottom: r.bottom, keyboardTop: window.innerHeight-height(), value: field.value, results: document.querySelectorAll('.abele-chat-navigation [data-nav-item]').length, shot })
+      })()`)
+      ) as {
+        keyboard: number
+        top: number
+        bottom: number
+        keyboardTop: number
+        value: string
+        results: number
+      }
+      expect(measured.keyboard).toBeGreaterThan(0)
+      expect(measured.top).toBeGreaterThanOrEqual(0)
+      expect(measured.bottom).toBeLessThanOrEqual(measured.keyboardTop)
+      expect(measured.value).toBe('sample question')
+      expect(measured.results).toBe(40)
+    } finally {
+      evalRaw(
+        `document.activeElement?.blur(); document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`
+      )
+    }
+  }, 60_000)
+})
 
 describe.skipIf(!available)('current-branch chat navigation', () => {
   it('jumps, returns, opens direct and nested discussions, and keeps the draft and reading place', async () => {
