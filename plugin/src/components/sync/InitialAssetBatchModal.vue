@@ -7,10 +7,13 @@
       <p>Once shared, images stay shared until you unshare them, even if a link is removed.</p>
       <h4>Shared folders and groups</h4>
       <ul>
-        <li v-for="a in display?.audiences ?? []" :key="a.grantId" :title="a.grantId">
-          Selected shared folder or group
+        <li v-for="a in namedAudiences" :key="a.grantId" :title="a.grantId">
+          {{ a.name || 'Shared folder or group name unavailable' }}
         </li>
       </ul>
+      <p v-if="missingNames" role="alert">
+        Names of some shared folders or groups are missing. Review your selection before sharing.
+      </p>
       <h4>Selected images</h4>
       <ul>
         <li v-for="e in entries" :key="e.target.fileId">
@@ -34,7 +37,7 @@
       /><Button
         text="Share selected images"
         tooltip="Share only the selected images in this review"
-        :disabled="busy || !enabled || !flow || !shown"
+        :disabled="busy || !enabled || !flow || !shown || !allNamed"
         @click="confirm"
       />
       <p v-if="error" role="alert">{{ error }}</p>
@@ -66,6 +69,8 @@ const props = withDefaults(
       preview?: BatchReview
       entries?: BatchEntry[]
       audiences?: string[]
+      /** Group note titles, folder paths or collaborator names, keyed by the reviewed ID. */
+      audienceNames?: Record<string, string>
       enabled?: boolean
       state?: string
     }>(),
@@ -76,6 +81,7 @@ const props = withDefaults(
       preview: undefined,
       entries: () => [],
       audiences: () => [],
+      audienceNames: () => ({}),
     }
   ),
   emit = defineEmits<{ close: [] }>(),
@@ -87,6 +93,14 @@ const props = withDefaults(
   error = ref(''),
   shown = ref<BatchReview | null>(null),
   display = computed(() => shown.value ?? props.preview),
+  namedAudiences = computed(() =>
+    (display.value?.audiences ?? props.audiences.map((grantId) => ({ grantId }))).map((a) => {
+      const name = props.audienceNames[a.grantId]
+      return { grantId: a.grantId, name: typeof name === 'string' ? name.trim() : '' }
+    })
+  ),
+  missingNames = computed(() => namedAudiences.value.some((a) => !a.name)),
+  allNamed = computed(() => namedAudiences.value.length > 0 && !missingNames.value),
   entries = computed(() => display.value?.entries ?? props.entries ?? [])
 async function review() {
   if (!enabled || !props.flow) return
@@ -103,7 +117,7 @@ async function review() {
   }
 }
 async function confirm() {
-  if (!enabled || !props.flow || !shown.value) return
+  if (!enabled || !props.flow || !shown.value || !allNamed.value) return
   busy.value = true
   try {
     await props.flow.confirm(shown.value)

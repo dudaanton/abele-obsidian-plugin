@@ -14,6 +14,7 @@
   <InitialAssetBatchModal
     v-else-if="screen === 'initial-batch'"
     :preview="batch"
+    :audience-names="{ [audience]: 'Sample shared group' }"
     :state="state"
     :enabled="false"
     @close="emit('close')"

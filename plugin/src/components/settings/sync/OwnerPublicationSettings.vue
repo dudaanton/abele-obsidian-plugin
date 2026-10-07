@@ -96,6 +96,7 @@
       :flow="batchFlow"
       :entries="batchEntries"
       :audiences="batchAudiences"
+      :audience-names="batchAudienceNames"
       :enabled="enabled"
       @close="batchOpen = false"
     />
@@ -142,6 +143,7 @@ const props = withDefaults(
     batchFlow?: InitialAssetBatch
     batchEntries?: BatchEntry[]
     batchAudiences?: string[]
+    batchAudienceNames?: Record<string, string>
     cacheComplete?: boolean
     referencedIds?: string[]
     state?: 'syncing' | 'scope-updating' | 'cache-unknown' | 'awaiting-confirmation' | 'idle'

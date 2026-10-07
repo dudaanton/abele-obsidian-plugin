@@ -76,8 +76,9 @@ describe('publication settings UI', () => {
       },
     ]
     const batchAudiences = ['sample-audience']
+    const batchAudienceNames = { 'sample-audience': 'Sample shared group' }
     const w = mount(OwnerPublicationSettings, {
-      props: { batchFlow, batchEntries, batchAudiences } as never,
+      props: { batchFlow, batchEntries, batchAudiences, batchAudienceNames } as never,
       global: { stubs: { ...global.stubs, ObsidianModal: { template: '<div><slot/></div>' } } },
     })
     try {
@@ -88,6 +89,8 @@ describe('publication settings UI', () => {
       expect(toRaw(dialog.props('flow'))).toBe(batchFlow)
       expect(dialog.props('entries')).toEqual(batchEntries)
       expect(dialog.props('audiences')).toEqual(batchAudiences)
+      expect(dialog.props('audienceNames')).toEqual(batchAudienceNames)
+      expect(dialog.text()).toContain('Sample shared group')
     } finally {
       w.unmount()
     }

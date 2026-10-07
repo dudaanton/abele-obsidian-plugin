@@ -144,6 +144,7 @@ it.each([
     InitialAssetBatchModal,
     {
       flow: flow(),
+      audienceNames: { 'opaque-grant': 'Sample shared group' },
       preview: {
         id: 'opaque-review',
         entries: [{ target, sponsors: [sponsor], reason: 'initial-batch' }],

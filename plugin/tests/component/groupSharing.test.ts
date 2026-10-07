@@ -23,6 +23,7 @@ describe('disabled group/batch preview screens', () => {
         props: {
           flow: flow as any,
           enabled: false,
+          audienceNames: { 'sample-audience': 'Sample shared group' },
           preview: {
             id: 'sample',
             entries: [],
@@ -33,6 +34,7 @@ describe('disabled group/batch preview screens', () => {
       })
     expect(w.text()).toContain('not active')
     expect(w.find('[title="sample-audience"]').exists()).toBe(true)
+    expect(w.text()).toContain('Sample shared group')
     expect(w.text()).not.toContain('sample-audience')
     expect(w.text()).toContain(
       'These images are private. Review where they will be shared before confirming.'
