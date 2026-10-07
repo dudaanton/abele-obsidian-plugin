@@ -138,6 +138,7 @@
           <span v-if="message.toolStatus === 'rejected'" class="abele-chat-msg__tool-err-badge"
             >failed</span
           >
+          <slot name="tool-note" />
         </span>
         <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->
         <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
@@ -180,12 +181,12 @@
           class="abele-chat-msg__map"
         />
         <pre
-          v-if="message.toolDiff && !message.toolDiff.old"
+          v-if="message.toolDiff && !message.toolDiff.old && (!compactToolDetails || expanded)"
           class="abele-chat-msg__new-file"
           data-find-part="newfile"
         ><code>{{ message.toolDiff.new }}</code></pre>
         <Diff
-          v-else-if="message.toolDiff"
+          v-else-if="message.toolDiff && (!compactToolDetails || expanded)"
           :text-left="message.toolDiff.old"
           :text-right="message.toolDiff.new"
           class="abele-chat-msg__diff"
@@ -231,6 +232,7 @@
         @contextmenu="onContentMenu"
       />
       <Markdown v-else-if="message.content" :text="message.content" :resource-opener="resourceOpener" data-find-part="content" />
+      <slot name="metadata" />
 
       <div v-if="lastRevision" class="abele-chat-msg__revision">
         <span
@@ -432,6 +434,8 @@ import type { FindPart } from '@/ai/chatFind'
 const props = defineProps<{
   message: ChatMessage
   readOnlyHistory?: boolean
+  /** Node histories keep successful tool previews behind the existing detail toggle. */
+  compactToolDetails?: boolean
   resourceOpener?: (path: string) => void
   branchInfo?: BranchInfo
   interceptorStreaming?: boolean

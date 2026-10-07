@@ -1,42 +1,50 @@
 <template>
   <div class="abele-node-chat">
     <div class="abele-ai-chat__header">
-      <span
-        >{{ presenter.label.value }} ·
-        {{ presenter.provider?.value === 'claude' ? 'Claude Code' : 'Fake (non-executing)' }}</span
-      >
-      <Button text="Projects and workspaces" @click="workspaces" />
-      <Icon icon="plus" with-bg tooltip="New chat or node session" @click="emit('new-chat')" />
+      <span class="abele-node-chat__title" :title="title">{{ presenter.label.value }}</span>
+      <div class="abele-ai-chat__header-actions">
+        <span class="abele-node-chat__indicator" role="status" :title="status" :aria-label="status">
+          <Icon :icon="statusIcon" no-hover />
+          <span class="abele-node-chat__status-label">{{ status }}</span>
+        </span>
+        <Icon
+          v-for="runId in presenter.projection.value.activeRuns"
+          :key="runId"
+          icon="square"
+          with-bg
+          role="button"
+          tabindex="0"
+          aria-label="Interrupt turn"
+          tooltip="Interrupt turn"
+          :disabled="offline"
+          @click="presenter.interrupt(runId)"
+          @keydown.enter.prevent="!offline && presenter.interrupt(runId)"
+          @keydown.space.prevent="!offline && presenter.interrupt(runId)"
+        />
+        <Icon
+          icon="more-horizontal"
+          with-bg
+          role="button"
+          tabindex="0"
+          aria-label="Node session menu"
+          tooltip="Node session menu"
+          @click="openMenu"
+          @keydown.enter.prevent="openMenu"
+          @keydown.space.prevent="openMenu"
+        />
+        <Icon
+          icon="plus"
+          with-bg
+          role="button"
+          tabindex="0"
+          aria-label="New chat or node session"
+          tooltip="New chat or node session"
+          @click="emit('new-chat')"
+          @keydown.enter.prevent="emit('new-chat')"
+          @keydown.space.prevent="emit('new-chat')"
+        />
+      </div>
     </div>
-    <div class="abele-node-chat__status" role="status">
-      {{ labels[presenter.state.value] }}
-      <template v-if="presenter.connection.state.value === 'connecting'"> · Connecting…</template>
-      <template v-if="presenter.state.value === 'offline' && presenter.queued.value.length">
-        · {{ presenter.queued.value.length }} queued on this device</template
-      >
-      <Button v-if="presenter.state.value === 'offline'" text="Reconnect" @click="reconnect" />
-    </div>
-    <div v-if="presenter.provider?.value === 'claude'" class="abele-node-chat__status">
-      Steering and questions are not supported yet.
-      <details v-if="presenter.nativeSessionId?.value">
-        <summary>Session resume</summary>
-        <span>Follow-ups resume native session {{ presenter.nativeSessionId.value }}.</span>
-      </details>
-      <Button
-        v-for="runId in presenter.projection.value.activeRuns"
-        :key="runId"
-        text="Interrupt turn"
-        :disabled="presenter.connection.state.value !== 'connected'"
-        @click="presenter.interrupt(runId)"
-      />
-    </div>
-    <Setting
-      v-else
-      name="Ask for permission"
-      desc="Pause the next fake turn for Allow or Deny. Nothing executes."
-    >
-      <Checkbox :is-enabled="permissionFixture" @toggle="permissionFixture = !permissionFixture" />
-    </Setting>
     <div
       v-if="presenter.error.value || presenter.connection.error.value"
       class="abele-ai-chat__error"
@@ -44,70 +52,27 @@
     >
       {{ presenter.error.value || presenter.connection.error.value }}
     </div>
-    <div ref="scroller" v-show="!expanded" class="abele-ai-chat__messages">
+    <div v-show="!expanded" ref="scroller" class="abele-ai-chat__messages">
       <NodeMessageTree
-        :messages="presenter.messages.value"
+        :messages="presentation.messages"
         :children="presenter.projection.value.children || {}"
+        :queue-states="presentation.states"
+        :offline="offline"
         :open-resource="openResource"
+        @cancel="presenter.cancelInput($event)"
       />
       <div v-for="artifact in presenter.projection.value.artifacts" :key="artifact.artifactId">
         <Button text="Read stored output" @click="readArtifact(artifact.artifactId)" />
         <pre v-if="artifacts[artifact.artifactId]">{{ artifacts[artifact.artifactId] }}</pre>
       </div>
-      <Setting
+      <NodePermissionCard
         v-for="prompt in presenter.projection.value.prompts"
         :key="prompt.prompt_id"
-        :name="prompt.tool_name ? `Permission request · ${prompt.tool_name}` : 'Permission request'"
-        :desc="
-          prompt.state === 'pending'
-            ? presenter.provider?.value === 'claude'
-              ? 'Approve exactly this action or deny it. Your decision applies only to this request.'
-              : 'The fake session is waiting for your decision. No tools will execute.'
-            : `Permission ${prompt.state}${prompt.choice ? ': ' + prompt.choice : ''}`
-        "
-      >
-        <pre v-if="prompt.input">{{ JSON.stringify(prompt.input, null, 2) }}</pre>
-        <span v-if="prompt.state === 'pending'"
-          >Expires {{ new Date(prompt.expires_at).toLocaleString() }}</span
-        >
-        <span v-else-if="prompt.state === 'resolved'">{{
-          prompt.delivered
-            ? 'Decision delivered to provider'
-            : 'Decision saved; provider delivery not confirmed'
-        }}</span>
-        <template v-if="prompt.state === 'pending'">
-          <Button
-            :text="presenter.provider?.value === 'claude' ? 'Approve' : 'Allow'"
-            :disabled="answering || presenter.connection.state.value !== 'connected'"
-            @click="answer(prompt, 'allow')"
-          />
-          <Button
-            text="Deny"
-            :disabled="answering || presenter.connection.state.value !== 'connected'"
-            @click="answer(prompt, 'deny')"
-          />
-        </template>
-      </Setting>
-      <div
-        v-for="queued in presenter.queued.value"
-        :key="queued.id"
-        class="abele-ai-chat__queued-item"
-      >
-        <Icon icon="clock" no-hover />
-        <span>Queued on this device: {{ queued.text }}</span>
-      </div>
-      <div
-        v-for="input in presenter.projection.value.queuedInputs"
-        :key="input.id"
-        class="abele-ai-chat__queued-item"
-      >
-        <span>Queued on node: {{ input.text }}</span>
-        <Button
-          text="Cancel queued input"
-          :disabled="presenter.connection.state.value !== 'connected'"
-          @click="presenter.cancelInput(input.id)"
-        />
-      </div>
+        :prompt="prompt"
+        :fake="presenter.provider?.value !== 'claude'"
+        :disabled="answering || offline"
+        @answer="answer(prompt, $event)"
+      />
       <div
         v-for="rejected in presenter.rejected.value"
         :key="rejected.id"
@@ -144,20 +109,19 @@
     />
   </div>
 </template>
-
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { Menu, Notice } from 'obsidian'
 import type { Prompt } from '@abele/node-client'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
-import NodeMessageTree from './NodeMessageTree.vue'
+import { nodeQueueView } from '@/node/presentation'
 import { NodeService } from '@/node/NodeService'
 import { openNodeWorkspaces } from '@/node/openSession'
+import NodeMessageTree from './NodeMessageTree.vue'
+import NodePermissionCard from './NodePermissionCard.vue'
 import AiChatInput from './AiChatInput.vue'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
-import Setting from './obsidian/Setting.vue'
-import Checkbox from './obsidian/Checkbox.vue'
-
 const props = defineProps<{ presenter: NodeChatPresenter }>()
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
 const labels = {
@@ -168,10 +132,43 @@ const labels = {
   'needs-attention': 'Needs attention',
   idle: 'Connected · Idle',
 }
-const expanded = ref(false)
-const sending = ref(false)
-const answering = ref(false)
-const permissionFixture = ref(false)
+const icons = {
+  offline: 'wifi-off',
+  queued: 'clock',
+  accepted: 'check',
+  running: 'loader',
+  'needs-attention': 'circle-alert',
+  idle: 'circle-check',
+}
+const title = computed(
+  () =>
+    `${props.presenter.label.value} · ${props.presenter.provider?.value === 'claude' ? 'Claude Code' : 'Fake (non-executing)'}`
+)
+const status = computed(() =>
+  props.presenter.connection.state.value === 'connecting'
+    ? 'Connecting…'
+    : labels[props.presenter.state.value]
+)
+const statusIcon = computed(() =>
+  props.presenter.connection.state.value === 'connecting'
+    ? 'loader'
+    : icons[props.presenter.state.value]
+)
+const offline = computed(() => props.presenter.connection.state.value !== 'connected')
+const presentation = computed(
+  () =>
+    props.presenter.presentation?.value ??
+    nodeQueueView(
+      props.presenter.messages.value,
+      props.presenter.queued.value,
+      props.presenter.projection.value.queuedInputs ?? [],
+      {}
+    )
+)
+const expanded = ref(false),
+  sending = ref(false),
+  answering = ref(false),
+  permissionFixture = ref(false)
 const scroller = ref<HTMLElement>()
 const artifacts = ref<Record<string, string>>({})
 const recordArtifact = (data: unknown): string => {
@@ -186,8 +183,70 @@ const workspaces = () => {
   )
   if (node) openNodeWorkspaces(node, props.presenter.workspaceId?.value ?? undefined)
 }
-const reconnect = () => {
-  void props.presenter.connection.connect().catch(() => {})
+const openMenu = (event: MouseEvent | KeyboardEvent) => {
+  const menu = new Menu()
+  menu.addItem((i) =>
+    i
+      .setTitle(
+        props.presenter.provider?.value === 'claude' ? 'Claude Code' : 'Fake (non-executing)'
+      )
+      .setIcon('terminal')
+      .setDisabled(true)
+  )
+  menu.addItem((i) =>
+    i.setTitle('Projects and workspaces').setIcon('git-branch').onClick(workspaces)
+  )
+  menu.addItem((i) =>
+    i
+      .setTitle('Reconnect')
+      .setIcon('refresh-cw')
+      .onClick(() => {
+        void props.presenter.connection.connect().catch(() => {})
+      })
+  )
+  if (props.presenter.provider?.value === 'claude') {
+    menu.addItem((i) =>
+      i
+        .setTitle('Session resume')
+        .setIcon('history')
+        .onClick(
+          () =>
+            new Notice(
+              props.presenter.nativeSessionId?.value
+                ? `Follow-ups resume native session ${props.presenter.nativeSessionId.value}.`
+                : 'A native session identity is not available yet.'
+            )
+        )
+    )
+    menu.addItem((i) =>
+      i
+        .setTitle('Steer turn')
+        .setIcon('corner-up-right')
+        .onClick(() => {
+          props.presenter.error.value =
+            'Steering is not supported yet. Send a queued follow-up instead.'
+        })
+    )
+    menu.addItem((i) =>
+      i
+        .setTitle('Ask a question')
+        .setIcon('circle-help')
+        .onClick(() => {
+          props.presenter.error.value = 'Interactive questions are not supported yet.'
+        })
+    )
+  } else
+    menu.addItem((i) =>
+      i
+        .setTitle('Ask for permission')
+        .setIcon('shield-alert')
+        .setChecked(permissionFixture.value)
+        .onClick(() => {
+          permissionFixture.value = !permissionFixture.value
+        })
+    )
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  menu.showAtPosition({ x: rect.left, y: rect.bottom })
 }
 const send = async (text: string) => {
   sending.value = true
@@ -220,14 +279,13 @@ const readArtifact = async (id: string) => {
 watch(
   () => props.presenter.messages.value,
   async () => {
-    const el = scroller.value
-    const atEnd = el && el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const el = scroller.value,
+      atEnd = el && el.scrollHeight - el.scrollTop - el.clientHeight < 80
     await nextTick()
     if (el && atEnd) el.scrollTop = el.scrollHeight
   }
 )
 </script>
-
 <style lang="scss">
 .abele-node-chat {
   display: flex;
@@ -236,23 +294,25 @@ watch(
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  .abele-ai-chat__header {
-    flex-wrap: wrap;
-    overflow-wrap: anywhere;
-  }
-  .abele-node-chat__status {
-    padding: var(--size-4-2);
-    color: var(--text-muted);
-    overflow-wrap: anywhere;
-  }
-  .setting-item {
-    flex-wrap: wrap;
-    gap: var(--size-4-2);
-  }
-  .setting-item-control {
-    flex-wrap: wrap;
+  &__title {
+    flex: 1;
     min-width: 0;
-    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  &__indicator {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: var(--size-4-1);
+    color: var(--text-muted);
+  }
+  .abele-ai-chat__header-actions {
+    flex-shrink: 0;
+  }
+  &__status-label {
+    display: none;
   }
   .abele-chat-msg__diff,
   .abele-chat-msg__new-file {

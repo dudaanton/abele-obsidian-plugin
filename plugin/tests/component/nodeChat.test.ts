@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import { Menu } from 'obsidian'
 import NodeChatView from '@/components/NodeChatView.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import AiChatInput from '@/components/AiChatInput.vue'
@@ -28,8 +29,9 @@ it('uses the shared composer and renderer, labels offline queue and never offers
   }
   const wrapper = mount(NodeChatView, {
     props: { presenter: presenter as never },
-    global: { stubs: { AiChatInput: true, AiChatMessage: true, Icon: true, Button: true } },
+    global: { stubs: { AiChatInput: true, Icon: true, Button: true } },
   })
+  await flushPromises()
   expect(wrapper.text()).toContain('Offline')
   expect(wrapper.text()).toContain('Queued input')
   expect(wrapper.findComponent({ name: 'AiChatMessage' }).props('readOnlyHistory')).toBe(true)
@@ -80,33 +82,41 @@ it('restores exact Claude permission cards and nested work without fake controls
     interrupt: vi.fn(),
     cancelInput: vi.fn(),
   }
+  const menuShown = vi.spyOn(Menu.prototype, 'showAtPosition')
   const mountChat = () =>
     mount(NodeChatView, {
       props: { presenter: presenter as never },
-      global: { stubs: { AiChatMessage: true, AiChatInput: true, Icon: true } },
+      global: { stubs: { Markdown: true, AiChatInput: true } },
     })
   let wrapper = mountChat()
   wrapper.unmount()
   wrapper = mountChat()
   try {
-    expect(wrapper.text()).toContain('Claude Code')
+    expect(wrapper.get('.abele-node-chat__title').attributes('title')).toContain('Claude Code')
     expect(wrapper.text()).not.toContain('Ask for permission')
     expect(wrapper.text()).toContain('printf sample')
+    expect(wrapper.text()).not.toContain('not supported yet')
+    await wrapper.get('[aria-label="Node session menu"]').trigger('click')
+    ;(menuShown.mock.contexts.at(-1) as Menu).items.find((i) => i.title === 'Steer turn')!
+      .handler!()
+    await flushPromises()
     expect(wrapper.text()).toContain('not supported yet')
     expect(wrapper.find('.abele-node-child-work').attributes('open')).toBeUndefined()
-    expect(wrapper.findAllComponents(AiChatMessage)).toHaveLength(2)
+    const rendered = wrapper.findAllComponents(AiChatMessage)
+    expect(
+      rendered.filter((c) => ['parent', 'child'].includes(c.props('message').id))
+    ).toHaveLength(2)
+    expect(rendered).toHaveLength(3)
     await wrapper
       .findAll('button')
       .find((b) => b.text() === 'Approve')!
       .trigger('click')
     await flushPromises()
     expect(answer).toHaveBeenCalledWith(prompt, 'allow')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Cancel queued input')!
-      .trigger('click')
+    await wrapper.get('[aria-label="Cancel queued input"]').trigger('click')
     expect(presenter.cancelInput).toHaveBeenCalledWith('i')
   } finally {
+    menuShown.mockRestore()
     wrapper.unmount()
   }
 })

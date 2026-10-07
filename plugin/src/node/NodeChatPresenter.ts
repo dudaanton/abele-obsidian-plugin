@@ -6,6 +6,7 @@ import type { ChatDraft } from '@/ai/types'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
 import type { NodeClientState } from './NodeClientStore'
+import { nodeQueueView } from './presentation'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
   'claude.message.final',
@@ -46,6 +47,15 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly queued = ref<{ id: string; text: string }[]>([])
   readonly error = ref('')
   readonly rejected = ref<{ id: string; text: string; error: string }[]>([])
+  private readonly receipts = ref<NodeClientState['results']>({})
+  readonly presentation = computed(() =>
+    nodeQueueView(
+      this.messages.value,
+      this.queued.value,
+      this.projection.value.queuedInputs,
+      this.receipts.value
+    )
+  )
   readonly state = computed(() =>
     this.connection.state.value !== 'connected'
       ? 'offline'
@@ -105,10 +115,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
       while (this.dirty && !this.destroyed) {
         this.dirty = false
         const client = this.connection.client
-        const { history, pending, rejected, artifactData } = await client.store.transaction(
-          (raw) => {
+        const { history, pending, rejected, artifactData, receipts } =
+          await client.store.transaction((raw) => {
             const state = raw as NodeClientState
             return {
+              receipts: state.results,
               artifactData: state.artifactData ?? {},
               history: state.events[this.reference.sessionId] ?? [],
               pending: state.outbox,
@@ -116,8 +127,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
                 .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
                 .map(([id, r]) => ({ id, text: r.input!.text, error: r.error! })),
             }
-          }
-        )
+          })
         if (this.destroyed) return
         const hydrated = []
         for (const event of history) {
@@ -149,6 +159,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         if (this.destroyed) return
         this.projection.value = reduceTranscript(hydrated)
         this.rejected.value = rejected
+        this.receipts.value = receipts
         this.queued.value = pending
           .filter(
             (entry) =>
