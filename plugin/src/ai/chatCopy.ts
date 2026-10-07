@@ -149,10 +149,15 @@ function recoverableChat(text: string, current: ParsedChat, copy: ParsedChat): b
   )
 }
 
+export interface InspectedChat extends ParsedChat {
+  /** These records exist only in the safety copy, not in the main file's committed log. */
+  fromCopy: boolean
+}
+
 /** Read-only discovery: a live writer's safety copy must never be repaired or removed here. */
-export async function inspectChat(app: App, file: TFile): Promise<ParsedChat> {
+export async function inspectChat(app: App, file: TFile): Promise<InspectedChat> {
   const text = await app.vault.read(file)
-  const current = parseChat(text)
+  const current: InspectedChat = { ...parseChat(text), fromCopy: false }
   if (!tornChat(text, current)) return current
   const adapter = app.vault.adapter
   const path = chatCopyPath(app, file.path)
@@ -161,7 +166,7 @@ export async function inspectChat(app: App, file: TFile): Promise<ParsedChat> {
   const cut = raw.indexOf('\n')
   if (cut === -1 || raw.slice(0, cut) !== file.path) return current
   const copy = parseChat(raw.slice(cut + 1))
-  return recoverableChat(text, current, copy) ? copy : current
+  return recoverableChat(text, current, copy) ? { ...copy, fromCopy: true } : current
 }
 
 /**

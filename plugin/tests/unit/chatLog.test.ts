@@ -272,6 +272,29 @@ describe('planning a save', () => {
     expect(writer.plan(after).kind).toBe('append')
   })
 
+  it.each(['adopted copy', 'matching copy'] as const)(
+    'keeps a full rewrite pending for an %s until the write is committed',
+    (source) => {
+      const writer = new ChatLogWriter()
+      const state = snapshot()
+      const parsed = parseChat(serializeChat(state))
+      writer.adopt(parsed, source === 'adopted copy')
+      if (source === 'matching copy') writer.requireRewrite()
+      expect(writer.matches(parsed)).toBe(true)
+      const plan = writer.plan(state)
+      expect(plan).toEqual({ kind: 'rewrite', content: serializeChat(state), records: 3 })
+
+      // A failed write does not commit the recovered records, so retries must still rewrite.
+      writer.interrupted()
+      expect(writer.plan(state)).toEqual(plan)
+      expect(writer.matches(parsed)).toBe(true)
+      writer.commit(state, plan)
+      expect(writer.plan(state).kind).toBe('noop')
+      state.internalMessages.push(internal('two'))
+      expect(writer.plan(state).kind).toBe('append')
+    }
+  )
+
   it('rewrites a file written by an older build, migrating it', () => {
     const writer = new ChatLogWriter()
     const state = snapshot()

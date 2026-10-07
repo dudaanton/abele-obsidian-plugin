@@ -8,7 +8,7 @@ import { CommentService } from '@/ai/CommentService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
-import { serializeChat, type ChatSnapshot } from '@/ai/ChatLog'
+import { parseChat, serializeChat, type ChatSnapshot } from '@/ai/ChatLog'
 import { chatCopyPath, readChat, rewriteChat } from '@/ai/chatCopy'
 import { captureChatSelection, createChatAnchor } from '@/selection/anchors'
 import { openSelectionLink } from '@/ai/openChat'
@@ -226,6 +226,61 @@ describe('read-only selection return reconciliation', () => {
     expect(modify).not.toHaveBeenCalled()
     expect(remove).not.toHaveBeenCalled()
   })
+  it.each([
+    ['empty', 'cached'],
+    ['empty', 'changed'],
+    ['torn', 'cached'],
+    ['torn', 'changed'],
+  ] as const)(
+    'rewrites every recovered record on the next save with a damaged (%s) main file and %s backup state',
+    async (damage, state) => {
+      const next = snapshot()
+      next.messages.push(
+        { id: 'follow-up', parentId: 'reply', role: 'user', timestamp: 2, content: 'Follow-up.' },
+        { id: 'answer', parentId: 'follow-up', role: 'assistant', timestamp: 3, content: 'Answer.' }
+      )
+      next.internalMessages = [
+        { role: 'user', content: 'Internal question.' },
+        { role: 'assistant', content: 'Internal answer.' },
+      ]
+      await app.vault.modify(file(), serializeChat(next))
+      await service.openChatFile(file())
+      const session = service.getSessionByFile(PATH)!
+      if (state === 'changed') next.messages[2].content = 'Recovered answer.'
+      const content = serializeChat(next)
+      const backup = chatCopyPath(app as never, PATH)
+      const raw = `${PATH}\n${content}`
+      await app.vault.adapter.write(backup, raw)
+      const torn = damage === 'empty' ? '' : content.slice(0, content.indexOf('\n') + 20)
+      await app.vault.modify(file(), torn)
+      await session.reconcileForSelectionReturn()
+      expect(session.allMessages.value).toEqual(next.messages)
+      expect(await app.vault.read(file())).toBe(torn)
+      expect(await app.vault.adapter.read(backup)).toBe(raw)
+
+      const append = vi.spyOn(app.vault, 'append')
+      const modify = app.vault.modify.bind(app.vault)
+      const rewrite = vi.spyOn(app.vault, 'modify').mockImplementationOnce(async (file, text) => {
+        // The next save must protect the entire recovered conversation before rewriting.
+        expect(await app.vault.adapter.read(backup)).toBe(`${PATH}\n${text}`)
+        await modify(file, text)
+      })
+      await session.save()
+      const main = parseChat(await app.vault.read(file()))
+      expect(main.messages).toEqual(next.messages)
+      expect(main.internalMessages).toEqual(next.internalMessages)
+      expect(main.damaged).toBe(0)
+      expect(main.torn).toBe(false)
+      expect(rewrite).toHaveBeenCalledOnce()
+      expect(append).not.toHaveBeenCalled()
+      expect(await app.vault.adapter.exists(backup)).toBe(false)
+      await session.load(file())
+      expect(session.allMessages.value).toEqual(next.messages)
+      expect((await ChatStorage.getInstance().loadChat(file())).internalMessages).toEqual(
+        next.internalMessages
+      )
+    }
+  )
   it('does not persist migrations while restoring an externally replaced flat conversation', async () => {
     await service.openChatFile(file())
     const next = snapshot()

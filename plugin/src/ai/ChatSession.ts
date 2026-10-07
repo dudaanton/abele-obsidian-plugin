@@ -3020,7 +3020,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       throw new Error('The selection source changed. Open the link again.')
     if (this.localRevision !== localRevision)
       throw new Error('This chat changed while returning. Open the link again.')
-    if (this.log.matches(result)) return
+    if (this.log.matches(result)) {
+      // Even an identical cached conversation can now exist only in the recovery copy.
+      if (result.fromCopy) this.log.requireRewrite()
+      return
+    }
     if (this.dirty || this.writing || this.isBusy || this.isMidTurn || this.moving.value)
       throw new Error(
         'This chat changed elsewhere. Finish or save the local work before returning to the selection.'
@@ -3035,6 +3039,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     await this.restoreLoadedChat(file, result, {
       keepLeaf: this.activeLeafId,
       readOnly: true,
+      rewriteOnSave: result.fromCopy,
     })
   }
 
@@ -3047,14 +3052,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async restoreLoadedChat(
     file: TFile,
     result: ParsedChat,
-    options: { keepLeaf?: string | null; readOnly?: boolean } = {}
+    options: { keepLeaf?: string | null; readOnly?: boolean; rewriteOnSave?: boolean } = {}
   ): Promise<void> {
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
-    // Seeds the writer with what the file already holds, so the first save of a reopened chat
-    // appends rather than rewriting it. A file in the older format is not adopted, so that
-    // first save rewrites it as a log — which is how a chat migrates.
-    this.log.adopt(result)
+    // Only main-file records are safe to append to. Inspection may return a recovery copy
+    // without repairing the torn main file: the next serialized save must write it in full.
+    // A file in the older format also needs a rewrite, which is how a chat migrates.
+    this.log.adopt(result, options.rewriteOnSave)
     this.currentChatFile.value = file
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
