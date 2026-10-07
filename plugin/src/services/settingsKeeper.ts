@@ -121,9 +121,9 @@ export class SettingsKeeper {
   private unannounced = false
 
   /**
-   * Every load, reload and write of the settings file, one after another. A save computed from
-   * the settings before a reload and written after it would put the old settings back over the
-   * ones that just arrived; a save in the middle of a reload would write half of each.
+   * Apply and write effects are serialized. Reload reads deliberately run outside this queue:
+   * a slow native read must not block a screen's save. SettingsEdits retains acknowledged
+   * field patches until every read that could return an older snapshot has been reconciled.
    */
   private fileQueue: Promise<unknown> = Promise.resolve()
 
@@ -274,11 +274,19 @@ export class SettingsKeeper {
    * reason to fall back to defaults either: the settings in memory stay, and the next save
    * writes the file again.
    */
-  reload(): Promise<boolean> {
-    return this.onFile(() => this.reloadNow())
+  async reload(): Promise<boolean> {
+    const edits = this.host.edits()
+    const finishRead = edits.beginRead()
+    const base = this.base
+    try {
+      const read = await this.readReload()
+      return await this.onFile(() => this.reloadNow(read, base))
+    } finally {
+      finishRead()
+    }
   }
 
-  private async reloadNow(): Promise<boolean> {
+  private async readReload(): Promise<{ stored: unknown; stamp: string | null }> {
     if (!this.host.plugin()) {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
@@ -287,10 +295,18 @@ export class SettingsKeeper {
     if (stored === undefined) {
       console.debug('[Abele] data.json would not parse; reading it again in a moment')
       await pause(UNREADABLE_RETRY_MS)
-      if (!this.host.plugin()) return false
+      if (!this.host.plugin()) return { stored: undefined, stamp }
       stamp = await this.readStamp()
       stored = await this.host.plugin().loadData()
     }
+    return { stored, stamp }
+  }
+
+  private async reloadNow(
+    { stored, stamp }: { stored: unknown; stamp: string | null },
+    readBase: AbeleSettings | null
+  ): Promise<boolean> {
+    if (!this.host.plugin()) return false
     if (stored === undefined) {
       console.error(
         '[Abele] data.json that arrived could not be read; keeping the settings in memory and not writing to it'
@@ -315,7 +331,7 @@ export class SettingsKeeper {
         return false
       }
     } else {
-      const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored)
+      const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored, readBase)
       if (
         this.waitingForInitialFile &&
         isSettingsObject(stored) &&
@@ -329,7 +345,7 @@ export class SettingsKeeper {
       // Only the startup load's block is moved: one from another device is never this one's.
       this.loadedSync = null
       // What was put back on top of the file goes into it.
-      if (settings !== stored) await this.writeNow()
+      if (settings !== stored || this.host.edits().hasAcknowledged()) await this.writeNow()
     }
     this.unannounced = false
     this.host.reloaded()
@@ -341,7 +357,7 @@ export class SettingsKeeper {
    * where the file names none, and with what this copy changed in memory since it last read or
    * wrote the file put back on top. The file itself when there is nothing to keep.
    */
-  private ontoArrived(stored: unknown): unknown {
+  private ontoArrived(stored: unknown, base: AbeleSettings | null = this.base): unknown {
     if (!isSettingsObject(stored)) return stored
     let arrived: Record<string, unknown> = stored
     if (stored.secretStore === undefined && isStoreFile(this.host.secretStore())) {
@@ -356,9 +372,9 @@ export class SettingsKeeper {
     // entries put onto it would leave ciphertext in a file that says there is none.
     const keep = ['secretStore']
     const changes =
-      this.base === null
+      base === null
         ? []
-        : localChanges(this.base, this.host.export(), keep).filter(
+        : localChanges(base, this.host.export(), keep).filter(
             (change) => !this.host.edits().pending(change.path)
           )
     if (changes.length > 0) {

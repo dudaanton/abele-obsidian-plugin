@@ -50,6 +50,11 @@ export class SettingsEdits {
     this.edits.set(key, { path, value: after })
   }
 
+  /** A save completed while a native settings read could still return its older snapshot. */
+  hasAcknowledged(): boolean {
+    return this.acknowledged.size > 0
+  }
+
   /** The screen still owes its debounced save for this field. */
   pending(path: string[]): boolean {
     return [...this.edits.values()].some((edit) => edit.path.every((part, at) => path[at] === part))

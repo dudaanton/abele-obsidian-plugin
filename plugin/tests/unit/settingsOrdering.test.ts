@@ -8,8 +8,7 @@ import { useVault } from '../helpers/testEnv'
 import { useFakeClock } from '../helpers/fakeClock'
 import { deferred } from '../helpers/deferred'
 
-// BUG: the sync file queue defers saves until the in-flight read finishes; this historical timing guarantee no longer holds.
-it.fails('preserves an edit whose debounced save finishes before an older reload returns', async () => {
+it('preserves an edit whose debounced save finishes before an older reload returns', async () => {
   useVault([])
   const disk = new FakeSettings()
   const config = AbeleConfig.getInstance()

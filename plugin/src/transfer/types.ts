@@ -6,7 +6,7 @@ export const TRANSFER_SECTIONS = [
   'ai-providers',
   'ai-image-providers',
   'ai-agents',
-  'ai-interceptors',
+  // Legacy interceptors migrate into agents; only the whole agent definitions travel.
   'ai-secrets',
   'ai-prompts',
   'ai-voice',

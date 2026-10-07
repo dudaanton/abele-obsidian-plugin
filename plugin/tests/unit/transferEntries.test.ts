@@ -155,8 +155,7 @@ describe('what the sending side offers', () => {
    * built by `files.ts` from the vault, not from the settings — and so is the sync connection,
    * built by `transfer/connection.ts` from the device's own record.
    */
-  // BUG: the retired ai-interceptors section remains in the offered section list without a descriptor.
-  it.fails('describes every section the screen offers', () => {
+  it('describes every section the screen offers', () => {
     const described = new Set(SECTIONS.map((section) => section.id))
     const missing = TRANSFER_SECTIONS.filter((id) => !isSpecialSection(id) && !described.has(id))
 
