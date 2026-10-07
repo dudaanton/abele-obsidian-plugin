@@ -5,9 +5,12 @@ import {
   decodePatchPath,
   ReviewAnchorSchema,
   ReviewBatchSchema,
+  FileWriteSchema,
 } from '@abele/node-protocol'
 import type { DiffFile } from '@/github/api'
 import type { DiffSpan } from '@/github/permalinks'
+import { type FileDraft } from './fileDrafts'
+export type { FileDraft } from './fileDrafts'
 
 export interface CodeDocumentSource {
   read(path: string): Promise<{
@@ -18,6 +21,19 @@ export interface CodeDocumentSource {
     large: boolean
     tooLarge: boolean
   }>
+  draft(path: string): Promise<FileDraft | undefined>
+  edit(
+    path: string,
+    document: Awaited<ReturnType<CodeDocumentSource['read']>>,
+    text: string
+  ): Promise<FileDraft>
+  save(path: string): Promise<FileDraft | undefined>
+  check(path: string): Promise<FileDraft | undefined>
+  rebase(
+    path: string,
+    document: Awaited<ReturnType<CodeDocumentSource['read']>>
+  ): Promise<FileDraft>
+  discard(path: string): Promise<void>
 }
 export interface DiffSource {
   capture(mode: DiffMode, commit?: string): Promise<{ snapshot: DiffSnapshot; patch: string }>
@@ -89,6 +105,142 @@ export class NodeDocumentSource implements CodeDocumentSource {
     private client: NodeClient,
     private workspaceId: string
   ) {}
+  private transaction<T>(
+    path: string,
+    work: (drafts: Record<string, FileDraft>, key: string) => T | Promise<T>
+  ): Promise<T> {
+    return this.client.store.transaction((state) => {
+      const local = state as typeof state & { fileDrafts?: Record<string, FileDraft> }
+      return work((local.fileDrafts ??= {}), JSON.stringify([this.workspaceId, path]))
+    })
+  }
+  draft(path: string) {
+    return this.transaction(path, (drafts, key) => drafts[key])
+  }
+  private writable(
+    path: string,
+    doc: Awaited<ReturnType<CodeDocumentSource['read']>>,
+    text: string
+  ) {
+    if (doc.binary || doc.tooLarge || doc.text === undefined || doc.text.length > 32768)
+      throw new Error('This file is not editable in the bounded text editor')
+    const params = FileWriteSchema.safeParse({
+      workspace_id: this.workspaceId,
+      path,
+      expected_content_id: doc.contentId,
+      text,
+    })
+    if (!params.success)
+      throw new Error(
+        'The text editor accepts existing UTF-8 files up to 32768 characters, outside Git metadata'
+      )
+    return params.data
+  }
+  edit(path: string, doc: Awaited<ReturnType<CodeDocumentSource['read']>>, text: string) {
+    this.writable(path, doc, doc.text ?? '')
+    if (text.length > 16 * 1024 * 1024)
+      throw new Error('Local draft exceeds the retained-content limit; copy it before closing')
+    return this.transaction(path, (drafts, key) => {
+      const previous = drafts[key]
+      if (previous?.pending)
+        throw new Error('This save is unresolved; check its original outcome before editing')
+      const draft: FileDraft = {
+        ...(previous ?? { baseContentId: doc.contentId!, baseText: doc.text! }),
+        text,
+        status: previous?.status === 'conflict' ? 'conflict' : 'draft',
+        error: undefined,
+      }
+      return (drafts[key] = draft)
+    })
+  }
+  async save(path: string) {
+    const draft = await this.transaction(path, (drafts, key) => {
+      const draft = drafts[key]
+      if (!draft || draft.pending || draft.status === 'saved') return draft
+      if (draft.status === 'conflict')
+        throw new Error(
+          'Inspect the current version and explicitly use it as the base before saving again'
+        )
+      const parsed = FileWriteSchema.safeParse({
+        workspace_id: this.workspaceId,
+        path,
+        expected_content_id: draft.baseContentId,
+        text: draft.text,
+      })
+      if (!parsed.success)
+        throw new Error(
+          'This draft exceeds the UTF-8 save limit of 32768 characters or contains unsupported text. Your local draft is retained.'
+        )
+      draft.pending = { operationId: crypto.randomUUID(), params: parsed.data }
+      draft.result = undefined
+      draft.error = undefined
+      draft.status = 'outcome_unknown'
+      return draft
+    })
+    return draft?.pending ? this.check(path) : draft
+  }
+  async check(path: string) {
+    const draft = await this.draft(path),
+      pending = draft?.pending
+    if (!pending) return draft
+    // Identity/body were committed before outbox admission. Resume that same operation even
+    // after reload or failure in the tiny gap between those local transactions.
+    if (!(await this.client.operationResult(pending.operationId)))
+      await this.client.writeFile(pending.params, pending.operationId)
+    let result: Awaited<ReturnType<NodeClient['fileMutationResult']>>, error: string | undefined
+    try {
+      result = await this.client.fileMutationResult(pending.operationId)
+    } catch (e) {
+      const receipt = await this.client.operationResult(pending.operationId)
+      if (!receipt?.error) throw e
+      error = receipt.error
+    }
+    if (
+      result &&
+      (result.operation_id !== pending.operationId ||
+        result.workspace_id !== this.workspaceId ||
+        result.path !== path ||
+        result.expected_content_id !== pending.params.expected_content_id)
+    )
+      throw new Error('Invalid file save receipt identity')
+    return this.transaction(path, (drafts, key) => {
+      const current = drafts[key]
+      if (!current || current.pending?.operationId !== pending.operationId) return current
+      if (!result && !error) {
+        current.status = 'outcome_unknown'
+        return current
+      }
+      current.error = error
+      current.result = result
+      current.status = error ? 'rejected' : result!.state
+      if (result?.state === 'saved') {
+        current.baseContentId = result.content_id
+        current.baseText = pending.params.text
+      }
+      if (error || result?.state !== 'outcome_unknown') current.pending = undefined
+      return current
+    })
+  }
+  rebase(path: string, doc: Awaited<ReturnType<CodeDocumentSource['read']>>) {
+    return this.transaction(path, (drafts, key) => {
+      const current = drafts[key]
+      if (!current || current.pending)
+        throw new Error('This save is unresolved; cannot change its precondition')
+      this.writable(path, doc, doc.text ?? '')
+      current.baseContentId = doc.contentId!
+      current.baseText = doc.text!
+      current.status = 'draft'
+      current.error = undefined
+      return current
+    })
+  }
+  discard(path: string) {
+    return this.transaction(path, (drafts, key) => {
+      if (drafts[key]?.pending)
+        throw new Error('This save is unresolved; keep its draft and evidence')
+      delete drafts[key]
+    })
+  }
   async read(path: string) {
     const content = await this.client.readFile(this.workspaceId, path)
     const text =
@@ -160,6 +312,31 @@ export class NodeFilesModel {
   readonly directory = ref('')
   readonly document = shallowRef<Awaited<ReturnType<CodeDocumentSource['read']>> | null>(null)
   readonly filePath = ref('')
+  readonly draft = shallowRef<FileDraft>()
+  readonly draftText = ref('')
+  readonly editing = ref(false)
+  readonly saving = ref(false)
+  readonly draftError = ref('')
+  readonly predecessorText = ref<string>()
+  private persistingEdit: Promise<unknown> = Promise.resolve()
+  readonly draftDirty = computed(
+    () => !!this.draft.value && this.draftText.value !== this.draft.value.baseText
+  )
+  readonly fileEditable = computed(() => {
+    const doc = this.document.value
+    return (
+      !!doc &&
+      !doc.binary &&
+      !doc.tooLarge &&
+      doc.text !== undefined &&
+      FileWriteSchema.safeParse({
+        workspace_id: this.workspaceId,
+        path: this.filePath.value,
+        expected_content_id: doc.contentId,
+        text: doc.text,
+      }).success
+    )
+  })
   readonly fileRange = shallowRef<CodeLineRange>()
   readonly snapshot = shallowRef<DiffSnapshot | null>(null)
   readonly patch = ref('')
@@ -201,17 +378,135 @@ export class NodeFilesModel {
     this.next.value = page.next
   }
   async openFile(path: string, signal?: AbortSignal, range?: CodeLineRange) {
+    await this.persistingEdit
     const generation = ++this.fileGeneration
-    const doc = await this.documents.read(path)
+    const draft = await this.documents.draft(path)
+    let doc: Awaited<ReturnType<CodeDocumentSource['read']>>
+    try {
+      doc = await this.documents.read(path)
+    } catch (e) {
+      if (!draft) throw e
+      // Even offline/reopened views can display the original local base and unsent text.
+      doc = {
+        text: draft.baseText,
+        contentId: draft.baseContentId,
+        size: new TextEncoder().encode(draft.baseText).length,
+        binary: false,
+        large: false,
+        tooLarge: false,
+      }
+    }
     if (generation !== this.fileGeneration || signal?.aborted) return
     this.filePath.value = path
     this.document.value = doc
+    this.draft.value = draft
+    this.draftText.value = draft?.text ?? doc.text ?? ''
+    this.editing.value = !!draft && draft.status !== 'saved'
+    this.draftError.value = ''
+    this.predecessorText.value = undefined
     const lines = doc.text?.split('\n').length ?? 0
     // Do not allocate decorations for a hostile billion-line fragment or retarget an absent line.
     this.fileRange.value =
       range && range.start <= lines
         ? { start: range.start, end: Math.min(range.end, lines) }
         : undefined
+  }
+  async beginEditing() {
+    const path = this.filePath.value,
+      doc = this.document.value,
+      generation = this.fileGeneration
+    if (!doc || !this.fileEditable.value) throw new Error('This file is not editable')
+    let draft = await this.documents.draft(path)
+    if (draft?.status === 'saved') {
+      // A confirmed old save is history, not an unsent edit of the newly loaded version.
+      await this.documents.discard(path)
+      draft = undefined
+    }
+    draft ??= await this.documents.edit(path, doc, doc.text ?? '')
+    if (generation !== this.fileGeneration) return
+    this.draft.value = draft
+    this.draftText.value = this.draft.value.text
+    this.editing.value = true
+  }
+  editText(text: string) {
+    const path = this.filePath.value,
+      doc = this.document.value,
+      generation = this.fileGeneration
+    if (!doc || this.saving.value || this.draft.value?.pending)
+      return Promise.reject(new Error('This save is unresolved'))
+    this.draftText.value = text
+    const task = this.documents
+      .edit(path, doc, text)
+      .then((draft) => {
+        if (generation === this.fileGeneration) {
+          this.draft.value = draft
+          this.draftError.value = ''
+        }
+      })
+      .catch((e: unknown) => {
+        if (generation === this.fileGeneration)
+          this.draftError.value =
+            'Local draft could not be stored. Keep this window open and copy your text before closing.'
+        throw e
+      })
+    this.persistingEdit = task
+    return task
+  }
+  async saveFile() {
+    if (this.saving.value) return
+    const path = this.filePath.value,
+      generation = this.fileGeneration
+    this.saving.value = true
+    try {
+      await this.persistingEdit
+      await this.documents.save(path)
+    } finally {
+      try {
+        const draft = await this.documents.draft(path)
+        if (generation === this.fileGeneration) this.draft.value = draft
+      } finally {
+        this.saving.value = false
+      }
+    }
+  }
+  async checkSave() {
+    const path = this.filePath.value,
+      generation = this.fileGeneration
+    try {
+      await this.documents.check(path)
+    } finally {
+      const draft = await this.documents.draft(path)
+      if (generation === this.fileGeneration) this.draft.value = draft
+    }
+  }
+  async rebaseDraft() {
+    const path = this.filePath.value,
+      doc = this.document.value,
+      generation = this.fileGeneration
+    await this.persistingEdit
+    if (!doc) return
+    const draft = await this.documents.rebase(path, doc)
+    if (generation === this.fileGeneration) this.draft.value = draft
+  }
+  async discardDraft() {
+    const path = this.filePath.value,
+      generation = this.fileGeneration
+    await this.persistingEdit
+    await this.documents.discard(path)
+    if (generation !== this.fileGeneration) return
+    this.draft.value = undefined
+    this.draftText.value = this.document.value?.text ?? ''
+    this.editing.value = false
+  }
+  async readPredecessor() {
+    const content = this.draft.value?.result?.predecessor_content_id,
+      generation = this.fileGeneration
+    if (!content) return
+    const text = await readNodeText(
+      (offset) => this.client.readContent(this.workspaceId, content, offset),
+      16 * 1024 * 1024
+    )
+    if (generation === this.fileGeneration) this.predecessorText.value = text
   }
   openResource(resource: string, signal?: AbortSignal) {
     const target = nodeResourceTarget(resource)

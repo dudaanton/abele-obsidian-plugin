@@ -27,6 +27,8 @@ const props = withDefaults(
   defineProps<{
     text: string
     path: string
+    /** Opt-in workspace editor; ordinary GitHub code/diff views remain read only. */
+    editable?: boolean
     blame?: BlameRange[] | null
     /** The lines the link named. */
     range?: LineRange
@@ -35,12 +37,13 @@ const props = withDefaults(
     /** A line to bring into view when drawn, rather than the first marked one. */
     focus?: { line: number; context: number } | null
   }>(),
-  { range: undefined, selected: null, focus: null, blame: null }
+  { range: undefined, selected: null, focus: null, blame: null, editable: false }
 )
 
 const emit = defineEmits<{
   (e: 'select', span: LineSpan | null): void
   (e: 'commit', sha: string): void
+  (e: 'change', text: string): void
 }>()
 
 const editorEl = ref<HTMLElement>()
@@ -95,7 +98,8 @@ const draw = async (focus: { line: number; context: number } | null) => {
     props.path,
     marked,
     { ...selectionHooks, initialBar: !!carried },
-    focus?.line
+    focus?.line,
+    props.editable ? (text) => emit('change', text) : undefined
   )
   viewer = drawn
   applyBlame()
@@ -111,6 +115,13 @@ const draw = async (focus: { line: number; context: number } | null) => {
 onMounted((): void => void draw(props.focus))
 watch(
   () => props.text,
+  (): void => {
+    if (props.editable && viewer) viewer.setText(props.text)
+    else void draw(null)
+  }
+)
+watch(
+  () => props.editable,
   (): void => void draw(null)
 )
 // A link to lines of the same file — the same lines again, a new range object, or others — marks

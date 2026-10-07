@@ -7,7 +7,8 @@ const stubs = {
   Modal: { template: '<div><slot/><slot name="footer"/></div>' },
   GithubCode: {
     name: 'GithubCode',
-    props: ['range', 'focus'],
+    props: ['range', 'focus', 'text', 'editable'],
+    emits: ['change'],
     template: '<div class="sample-code" />',
   },
   GithubDiffFile: { template: '<div class="sample-diff" />' },
@@ -184,6 +185,87 @@ it('keeps the editor text when the protocol rejects comment admission', async ()
   } finally {
     wrapper.unmount()
   }
+})
+it('edits in the shared code view and retains a save with unknown outcome across dialog remount', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('files')
+  let wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+  try {
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Edit file')!
+      .trigger('click')
+    await flushPromises()
+    const editor = wrapper.findComponent({ name: 'GithubCode' })
+    expect(editor.props('editable')).toBe(true)
+    editor.vm.$emit('change', 'local draft')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Unsent edit')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Save file')!
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('outcome unknown')
+    expect(wrapper.findComponent({ name: 'GithubCode' }).props('editable')).toBe(false)
+    const operation = props.model.draft.value!.pending!.operationId
+    wrapper.unmount()
+    wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'GithubCode' }).props('text')).toBe('local draft')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Check save')!
+      .trigger('click')
+    await flushPromises()
+    expect((await props.model.client.pending()).map((e) => e.operation_id)).toEqual([operation])
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('locks edits during save admission and never publishes a late save into another opened file', async () => {
+  const props = await nodeFilesFixture('files'),
+    model = props.model
+  await model.openFile(props.initialPath!)
+  await model.beginEditing()
+  await model.editText('submitted draft')
+  const write = model.client.writeFile.bind(model.client)
+  let release!: () => void
+  model.client.writeFile = vi.fn(async (...args) => {
+    await new Promise<void>((r) => {
+      release = r
+    })
+    return write(...args)
+  })
+  const saving = model.saveFile()
+  await expect(model.editText('late keystroke')).rejects.toThrow('unresolved')
+  await flushPromises()
+  await model.openFile('other.txt')
+  release()
+  await saving
+  expect(model.filePath.value).toBe('other.txt')
+  expect(model.draft.value).toBeUndefined()
+  expect(model.draftText.value).not.toBe('submitted draft')
+})
+it('starts a new edit from the newly loaded file rather than resurrecting a previously saved draft', async () => {
+  const props = await nodeFilesFixture('files'),
+    model = props.model
+  await model.openFile(props.initialPath!)
+  const doc = model.document.value!
+  await model.client.store.transaction((state) => {
+    ;(state as typeof state & { fileDrafts: Record<string, unknown> }).fileDrafts = {
+      [JSON.stringify([model.workspaceId, props.initialPath])]: {
+        baseContentId: 'b'.repeat(64),
+        baseText: 'previously saved',
+        text: 'previously saved',
+        status: 'saved',
+      },
+    }
+  })
+  await model.beginEditing()
+  expect(model.draftText.value).toBe(doc.text)
+  expect(model.draft.value?.baseContentId).toBe(doc.contentId)
 })
 it('holds comments on terminal rejection and sends a queued batch only once', async () => {
   useVault([])

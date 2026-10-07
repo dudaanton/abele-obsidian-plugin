@@ -131,6 +131,11 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
+  'node-edit': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('edit'), 'node-edit'),
+  'node-edit-conflict': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('conflict'), 'node-edit-conflict'),
+  'node-edit-unknown': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('unknown'), 'node-edit-unknown'),
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
   'node-review': async () =>

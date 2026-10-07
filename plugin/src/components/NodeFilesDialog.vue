@@ -63,7 +63,114 @@
         </div>
         <template v-if="model.document.value">
           <h3 class="abele-node-files__path">{{ model.filePath.value }}</h3>
-          <p>{{ model.document.value.size }} bytes · read only · retained content</p>
+          <p>{{ model.document.value.size }} bytes · retained version</p>
+          <div class="abele-node-files__actions">
+            <Button
+              v-if="!model.editing.value"
+              text="Edit file"
+              icon="pencil"
+              :disabled="busy || !model.fileEditable.value || !!model.draft.value?.pending"
+              @click="act(() => model.beginEditing())"
+            />
+            <Button
+              v-else-if="model.draft.value?.pending"
+              text="Check save"
+              :disabled="busy"
+              @click="act(() => model.checkSave())"
+            />
+            <Button
+              v-else
+              text="Save file"
+              accent
+              :disabled="
+                busy ||
+                !model.draftDirty.value ||
+                !!model.draftError.value ||
+                model.draft.value?.status === 'conflict'
+              "
+              @click="act(() => model.saveFile())"
+            />
+            <Button
+              text="Reload current version"
+              icon="refresh-cw"
+              :disabled="busy || offline || !!model.draftError.value"
+              @click="act(() => model.openFile(model.filePath.value, lifetime.signal))"
+            />
+            <Button
+              v-if="model.draft.value && !model.draft.value.pending"
+              text="Discard local draft"
+              :disabled="busy || !!model.draftError.value"
+              @click="act(() => model.discardDraft())"
+            />
+          </div>
+          <p v-if="model.draftError.value" role="alert">{{ model.draftError.value }}</p>
+          <p
+            v-if="
+              model.editing.value &&
+              !model.draft.value?.pending &&
+              model.draft.value?.status === 'draft'
+            "
+            role="status"
+          >
+            Unsent edit · stored only on this device. Save uses the version you started from.
+          </p>
+          <p v-if="model.draft.value?.status === 'saved'" role="status">
+            Saved · the node confirmed this version. External editors may change it afterwards.
+          </p>
+          <p v-if="model.draft.value?.status === 'conflict'" role="alert">
+            Conflict · the workspace changed. Your local draft is retained and was not applied.
+            Reload and inspect the current version before choosing a new base.
+          </p>
+          <p v-if="model.draft.value?.status === 'rejected'" role="alert">
+            Save rejected · {{ model.draft.value.error }}. Your local draft is retained.
+          </p>
+          <p v-if="model.draft.value?.pending" role="alert">
+            Save outcome unknown · keep this draft. Reconnect and check the same save; do not submit
+            it again. A confirmed uncertain replacement requires inspection of the retained
+            predecessor.
+          </p>
+          <p
+            v-if="
+              !model.fileEditable.value &&
+              !model.document.value.binary &&
+              !model.document.value.tooLarge
+            "
+          >
+            This version is read only. The bounded editor accepts UTF-8 text up to 32,768 characters
+            and does not edit Git metadata.
+          </p>
+          <Button
+            v-if="
+              model.draft.value &&
+              !model.draft.value.pending &&
+              model.document.value.contentId !== model.draft.value.baseContentId
+            "
+            text="Use loaded version as base for this draft"
+            :disabled="busy || !model.fileEditable.value"
+            @click="act(() => model.rebaseDraft())"
+          />
+          <details v-if="model.draft.value?.result" class="abele-node-files__comment">
+            <summary>Save receipt and retained predecessor</summary>
+            <p class="abele-node-files__path">
+              Operation · {{ model.draft.value.result.operation_id }}<br />Outcome ·
+              {{ model.draft.value.result.state }}<br />Predecessor ·
+              {{ model.draft.value.result.predecessor_content_id || 'See recovery path'
+              }}<template v-if="model.draft.value.result.recovery_path"
+                ><br />Recovery path · {{ model.draft.value.result.recovery_path }}</template
+              >
+            </p>
+            <Button
+              v-if="model.draft.value.result.predecessor_content_id"
+              text="Read retained predecessor"
+              :disabled="busy || offline"
+              @click="act(() => model.readPredecessor())"
+            />
+            <GithubCode
+              v-if="model.predecessorText.value !== undefined"
+              :text="model.predecessorText.value"
+              :path="model.filePath.value"
+            />
+          </details>
           <p v-if="model.document.value.tooLarge">
             This file exceeds the node's retained-content limit. Its size is shown without loading
             its contents.
@@ -72,14 +179,22 @@
           <template v-else>
             <p v-if="model.document.value.large">Large file · retained content shown below.</p>
             <GithubCode
-              :key="model.document.value.contentId || model.filePath.value"
-              :text="model.document.value.text || ''"
+              :key="model.filePath.value"
+              :text="model.editing.value ? model.draftText.value : model.document.value.text || ''"
+              :editable="model.editing.value && !model.saving.value && !model.draft.value?.pending"
               :path="model.filePath.value"
               :range="model.fileRange.value"
               :focus="
                 model.fileRange.value ? { line: model.fileRange.value.start, context: 3 } : null
               "
+              @change="editText"
             />
+            <details
+              v-if="model.editing.value && model.draftText.value !== model.document.value.text"
+            >
+              <summary>Last loaded version · reload to inspect current contents</summary>
+              <GithubCode :text="model.document.value.text || ''" :path="model.filePath.value" />
+            </details>
           </template>
         </template>
       </template>
@@ -313,6 +428,11 @@ async function act(work: () => Promise<unknown>) {
   } finally {
     busy.value = false
   }
+}
+const editText = (text: string) => {
+  void props.model.editText(text).catch((e: unknown) => {
+    error.value = e instanceof Error ? e.message : 'Local draft could not be stored'
+  })
 }
 const open = (entry: { path: string; kind: string }) =>
   act(() =>

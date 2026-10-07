@@ -41,6 +41,35 @@ it('keeps the review comment field and its focus ring on a phone-sized screen', 
     await reloadApp('app.emulateMobile(false)')
   }
 }, 60000)
+it('shows the shared editor and conflict/unknown notices within a phone-width file panel', async () => {
+  const bounds = evalJson<number[]>(
+    `require('@electron/remote').getCurrentWindow().getContentSize()`
+  )
+  await reloadApp('app.emulateMobile(true)')
+  try {
+    evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
+    for (const state of ['edit', 'edit-conflict', 'edit-unknown']) {
+      const result = evalAsync<{ text: string; editable: boolean; right: number }>(`(async()=>{
+        const wait=ms=>new Promise(r=>setTimeout(r,ms));await window.__abeleTest.openDialog('node-${state}');await wait(300);
+        const root=document.querySelector('.abele-node-files');root.querySelector('h3').scrollIntoView({block:'start'});await wait(200);
+        const code=root.querySelector('.cm-content'),box=code.getBoundingClientRect();
+        require('fs').writeFileSync('/tmp/abele-phone/node-${state}-body.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+        const result={text:root.textContent,editable:code.contentEditable==='true',right:box.right};
+        [...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Close').click();await wait(50);return result
+      })()`)
+      expect(result.text).toContain('local draft')
+      expect(result.editable).toBe(state !== 'edit-unknown')
+      expect(result.right).toBeLessThanOrEqual(390)
+      if (state === 'edit-conflict') expect(result.text).toContain('Conflict ·')
+      if (state === 'edit-unknown') expect(result.text).toContain('Save outcome unknown')
+    }
+  } finally {
+    evalRaw(
+      `document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));require('@electron/remote').getCurrentWindow().setContentSize(${bounds[0]},${bounds[1]})`
+    )
+    await reloadApp('app.emulateMobile(false)')
+  }
+}, 60000)
 it('selects lines in the shared diff across files, adds comments, and queues exactly one review', () => {
   const result = evalAsync<{ comments: number; queued: boolean; secondSend: boolean }>(`(async()=>{
     const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async fn=>{for(let i=0;i<100;i++){if(fn())return;await wait(40)}throw Error('Node review control did not appear')}

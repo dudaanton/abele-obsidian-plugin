@@ -65,6 +65,20 @@ or a persistent file cache. A submitted `review.submit` batch enters the existin
 operation outbox with its immutable anchors and comments; reconnect retries that operation
 identity. Review receipts, rejection labels and the resulting journal/input are retained by
 the existing stores. No new settings, secret identifiers or transfer entries are introduced.
+Optional `fileDrafts`, keyed by the JSON pair `[workspace_id, relative_path]`, stores a text
+editor's original content identity and text, current unsent text, save status, immutable pending
+operation ID/body, and retained result/error. It stays in the installation's IndexedDB `state`,
+not settings transfer, synced secrets, vault Markdown or agent context. Baselines and saves are
+bounded at 32,768 UTF-16 code units; unsent drafts may grow to the retained-content limit without
+being silently discarded when save admission refuses them. A save identity/body commits locally
+before outbox admission; source recreation resumes exactly that operation. File receipts retain
+optional `request` method/params so client ID/body reuse is checked after settlement too. Known
+conflicts can be explicitly rebased against a freshly loaded version; uncertain drafts retain
+their identity/evidence and cannot be blindly edited, discarded or resubmitted. Node predecessor
+bytes, filesystem recovery paths and mutation receipts belong to the daemon. Catalog file-change
+invalidations are refresh hints, not authoritative contents. No new settings, tools or transfer
+entries are introduced.
+
 Prompt-answer receipts additionally retain optional `answer` metadata (session identity, prompt
 identity and the submitted allow/deny choice), including terminal rejections. This is committed
 with outbox removal, so a tab or plugin reload cannot offer another answer while journal

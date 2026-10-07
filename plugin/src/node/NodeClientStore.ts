@@ -2,8 +2,10 @@ import type { ClientState, ClientStore } from '@abele/node-client'
 import { NodeEventSchema, validateParams } from '@abele/node-protocol'
 import { z } from 'zod'
 import { retainPromptAnswerIdentity } from './promptAnswers'
+import { FileDraftSchema, type FileDraft } from './fileDrafts'
 
 export interface NodeClientState extends ClientState {
+  fileDrafts?: Record<string, FileDraft>
   /** Replaceable artifact payload cache; journal references remain untouched. */
   artifactData?: Record<string, Record<string, unknown>>
   results: Record<
@@ -11,6 +13,7 @@ export interface NodeClientState extends ClientState {
     {
       result?: unknown
       error?: string
+      request?: { method: string; params: unknown }
       input?: { sessionId: string; text: string }
       answer?: { sessionId: string; promptId: string; choice: 'allow' | 'deny' }
     }
@@ -19,6 +22,7 @@ export interface NodeClientState extends ClientState {
 
 const StateSchema = z
   .object({
+    fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
     artifactData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
     node_id: z.string().min(1).max(128).optional(),
     installation_id: z.string().min(1).max(128).optional(),
@@ -32,6 +36,7 @@ const StateSchema = z
       z.object({
         result: z.unknown().optional(),
         error: z.string().optional(),
+        request: z.object({ method: z.string(), params: z.unknown() }).optional(),
         answer: z
           .object({
             sessionId: z.string().min(1).max(128),

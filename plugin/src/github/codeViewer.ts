@@ -12,8 +12,10 @@ import {
   GutterMarker,
   gutter,
   lineNumbers,
+  keymap,
   type DecorationSet,
 } from '@codemirror/view'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { parsePatch, type DiffLine } from './patch'
 import type { LineRange } from './urls'
@@ -49,6 +51,7 @@ export interface CodeViewer extends Viewer {
   /** Marks `range` instead, and makes its first line the one `targetTop` finds. */
   mark(range: LineRange): void
   blame(options: BlameGutter | null): void
+  setText(text: string): void
 }
 
 class NumberMarker extends GutterMarker {
@@ -88,14 +91,25 @@ function mount(
   doc: string,
   extensions: Extension[],
   firstHighlighted: number | null,
-  wrap = true
+  wrap = true,
+  onChange?: (text: string) => void
 ): Viewer & { view: EditorView; retarget(line: number | null): void } {
   const view = new EditorView({
     parent,
     state: EditorState.create({
       doc,
       extensions: [
-        ...readOnly,
+        ...(onChange
+          ? [
+              syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+              history(),
+              keymap.of([...defaultKeymap, ...historyKeymap]),
+              EditorView.contentAttributes.of({ 'aria-label': 'Workspace file editor' }),
+              EditorView.updateListener.of((update) => {
+                if (update.docChanged) onChange(update.state.doc.toString())
+              }),
+            ]
+          : readOnly),
         ...(wrap ? [EditorView.lineWrapping] : []),
         ...extensions,
         // Go to definition, for a viewer inside a tab that knows its repository.
@@ -256,7 +270,8 @@ export function mountCode(
   path: string,
   range?: LineRange,
   hooks: SelectionHooks = {},
-  focus?: number
+  focus?: number,
+  onChange?: (text: string) => void
 ): CodeViewer {
   const lines = (r?: LineRange) => {
     const out: number[] = []
@@ -275,10 +290,18 @@ export function mountCode(
       selection.extension,
       ...languageFor(path),
     ],
-    focus ?? (range ? range.start : null)
+    focus ?? (range ? range.start : null),
+    true,
+    onChange
   )
   return {
     ...viewer,
+    setText(text) {
+      if (viewer.view.state.doc.toString() !== text)
+        viewer.view.dispatch({
+          changes: { from: 0, to: viewer.view.state.doc.length, insert: text },
+        })
+    },
     blame(options) {
       viewer.view.dispatch({ effects: blame.reconfigure(options ? blameGutter(options) : []) })
     },

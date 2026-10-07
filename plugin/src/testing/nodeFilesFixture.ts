@@ -5,7 +5,14 @@ const path = 'sample-folder/long-file-name-with-several-parts.ts'
 const text = 'export const sample = "retained file content"\n'.repeat(60)
 const patch = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,2 +1,2 @@\n export const sample = true\n-old value\n+new value\ndiff --git a/other.txt b/other.txt\n--- a/other.txt\n+++ b/other.txt\n@@ -1 +1 @@\n-before\n+after\n`
 /** Invented browser contract only: layout checks never start an agent or daemon. */
-export async function nodeFilesFixture(view: 'files' | 'diffs' | 'review' | 'history' = 'files') {
+export async function nodeFilesFixture(
+  view: 'files' | 'diffs' | 'review' | 'history' | 'edit' | 'conflict' | 'unknown' = 'files'
+) {
+  const fileView = ['files', 'edit', 'conflict', 'unknown'].includes(view)
+  const contentId = Array.from(
+    new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))),
+    (b) => b.toString(16).padStart(2, '0')
+  ).join('')
   const store = new MemoryClientStore()
   await store.transaction((s) => {
     s.node_id = 'sample-node'
@@ -27,7 +34,7 @@ export async function nodeFilesFixture(view: 'files' | 'diffs' | 'review' | 'his
   client.readFile = async (p, name) => ({
     workspace_id: p,
     path: name,
-    content_id: 'sample-content',
+    content_id: contentId,
     size: text.length,
     binary: false,
     large: false,
@@ -60,7 +67,32 @@ export async function nodeFilesFixture(view: 'files' | 'diffs' | 'review' | 'his
     { commit: 'b'.repeat(40), subject: 'Initial sample' },
   ]
   const model = new NodeFilesModel(client, 'sample-node', 'sample-workspace', 'sample-session')
-  if (view !== 'files' && view !== 'history') await model.loadDiff('head')
+  if (!fileView && view !== 'history') await model.loadDiff('head')
+  if (fileView && view !== 'files') {
+    await model.openFile(path)
+    await model.beginEditing()
+    await model.editText('export const sample = "local draft"\n')
+    if (view === 'conflict' || view === 'unknown') {
+      await model.saveFile()
+      const pending = model.draft.value!.pending!
+      await store.transaction((s) => {
+        s.outbox = []
+        s.results[pending.operationId] = {
+          result: {
+            operation_id: pending.operationId,
+            workspace_id: model.workspaceId,
+            path,
+            state: view === 'conflict' ? 'conflict' : 'outcome_unknown',
+            expected_content_id: contentId,
+            content_id: 'b'.repeat(64),
+            predecessor_content_id: contentId,
+            recovery_path: view === 'unknown' ? 'sample-folder/.abele-fixture-predecessor' : null,
+          },
+        }
+      })
+      await model.checkSave()
+    }
+  }
   if (view === 'review')
     await model.addComment(
       model.selectLines(model.files.value[0], { side: 'R', start: 2, end: 2 }),
@@ -70,8 +102,12 @@ export async function nodeFilesFixture(view: 'files' | 'diffs' | 'review' | 'his
   return {
     model,
     connection: { state: ref('connected' as const) },
-    initialTab: view === 'review' ? ('diffs' as const) : view,
-    initialPath: view === 'files' ? path : undefined,
+    initialTab: fileView
+      ? ('files' as const)
+      : view === 'review'
+        ? ('diffs' as const)
+        : (view as 'files' | 'diffs' | 'history'),
+    initialPath: fileView ? path : undefined,
     initialSelection:
       view === 'review'
         ? model.selectLines(model.files.value[0], { side: 'R', start: 2, end: 2 })

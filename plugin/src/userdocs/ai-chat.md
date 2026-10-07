@@ -70,11 +70,32 @@ Its read-only preview lists changed and untracked paths and shows the current un
 of tracked staged/unstaged changes against HEAD. Untracked contents are not included, and
 the preview is not an immutable snapshot. Refresh it to review newer work.
 
-The header's **Browse workspace files** opens a read-only browser including dotfiles,
+The header's **Browse workspace files** opens a browser including dotfiles,
 ignored and untracked files. Symbolic links are listed but never followed. File views use
 numbered code with the same presentation as GitHub tabs; binary and oversized files show
-metadata instead of text. There is no node file editing yet. The workspace dialog also
-offers browsing without attaching a session.
+metadata instead of text. The workspace dialog also offers browsing without attaching a session.
+
+Choose **Edit file** to edit an existing small UTF-8 file in the same numbered code view.
+Unsent text and its original version are stored only on this device, including across plugin
+reloads. **Save file** checks that original version before applying the change. Saving accepts
+at most 32,768 characters; larger local drafts remain stored but cannot be submitted. Binary
+files, symbolic links and Git metadata stay read only. There is no file creation or Git mutation UI.
+
+A **Conflict** keeps your draft separate from the changed workspace. **Reload current version**
+loads current contents without replacing your draft. Inspect **Last loaded version**, then
+choose **Use loaded version as base for this draft** only if you intend to apply the retained
+draft against that version. **Discard local draft** forgets only known, local editor work; it
+never restores or changes the workspace file.
+
+A **Save outcome unknown** is not success or a safe reason to save again. Reconnect and
+choose **Check save**: the original operation is retried, never a newly allocated edit. The
+editor is locked until a known result arrives. A node-confirmed uncertain replacement stays
+locked for inspection; its receipt includes a retained predecessor and recovery path.
+**Read retained predecessor** uses the same code presentation. Recovery does not guess success
+by matching bytes or automatically restore/reapply files. Node API writes are serialized,
+but external editors and agent shell writes are not; replacement may briefly leave the path
+absent. The daemon preserves recoverable evidence instead of silently overwriting a competing
+version. A saved receipt confirms the accepted version, not that no external edit happened later.
 
 In **Diffs**, choose HEAD/worktree, staged, unstaged, committed branch/base, or a commit
 change. Branch/base explicitly compares the merge-base with HEAD, not uncommitted files.
