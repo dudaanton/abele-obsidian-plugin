@@ -10,6 +10,7 @@ import { repoWeb } from '../origin'
 export interface TreeEntry {
   path: string
   type: string
+  mode?: string
   size?: number
   sha?: string
 }
@@ -21,6 +22,7 @@ export interface TreeNode {
   /** From the repository's root, without a leading slash; empty for the root itself. */
   path: string
   kind: NodeKind
+  mode?: string
   size?: number
   /** The git object: for a folder read lazily, the tree its children are asked by. */
   sha?: string
@@ -95,6 +97,7 @@ export function nodeOf(entry: TreeEntry, path = entry.path): TreeNode {
     path,
     kind: KIND_OF[entry.type] ?? 'file',
     size: entry.size,
+    mode: entry.mode,
     sha: entry.sha,
   }
 }

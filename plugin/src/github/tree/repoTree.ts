@@ -20,6 +20,7 @@ import {
 } from './fileTree'
 
 export interface RepoRef {
+  origin?: string
   host: string
   owner: string
   repo: string
@@ -57,7 +58,12 @@ export class RepoTree {
         `${repoApiPath(this.repo)}/git/trees/${encodeURIComponent(node.sha)}`,
         { what: `the folder ${node.path}` }
       )
-      node.children = childrenFrom(node.path, answer.tree ?? [])
+      if (answer.truncated || !Array.isArray(answer.tree))
+        throw new Error(
+          `GitHub did not send a complete tree for ${node.path}. Retry when it is available.`
+        )
+      this.client.assertCurrent?.()
+      node.children = childrenFrom(node.path, answer.tree)
     })()
     this.reading.set(node.path, read)
     // A failure is not kept: opening the folder again asks again.
@@ -80,19 +86,22 @@ const MAX_TREES = 8
 const trees = new Map<string, Promise<RepoTree>>()
 
 const keyOf = (repo: RepoRef, sha: string) =>
-  `${repo.host}/${repo.owner}/${repo.repo}@${sha}`.toLowerCase()
+  `${repo.origin ?? `https://${repo.host}`}/${repo.owner}/${repo.repo}@${sha}`.toLowerCase()
 
 async function read(client: GithubClient, repo: RepoRef, sha: string): Promise<RepoTree> {
   const base = `${repoApiPath(repo)}/git/trees/${encodeURIComponent(sha)}`
   const whole = await client.get<TreeAnswer>(`${base}?recursive=1`, {
     what: "the repository's file list",
   })
+  if (!Array.isArray(whole.tree)) throw new Error('GitHub sent no repository tree.')
   if (!whole.truncated) {
     return new RepoTree(client, repo, sha, buildTree(whole.tree ?? []), false)
   }
   // Part of a tree cannot be told from the whole of it: the top level is read on its own, and
   // each folder below when it is opened.
   const top = await client.get<TreeAnswer>(base, { what: "the repository's file list" })
+  if (top.truncated || !Array.isArray(top.tree))
+    throw new Error('GitHub did not send a complete top-level tree.')
   const root: TreeNode = {
     name: '',
     path: '',
@@ -115,6 +124,7 @@ export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Prom
   }
   const pending = read(client, repo, sha)
   trees.set(key, pending)
+  client.onRetire?.(() => trees.delete(key))
   pending.catch(() => {
     if (trees.get(key) === pending) trees.delete(key)
   })

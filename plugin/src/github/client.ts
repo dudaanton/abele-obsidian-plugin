@@ -156,6 +156,12 @@ export class GithubClient {
   readonly cacheNamespace = `github-${++clientGeneration}`
   readonly rate = shallowRef<GithubRate | null>(null)
   private current = true
+  private readonly retireListeners = new Set<() => void>()
+  /** Session-only consumers discard immutable private content with this credential generation. */
+  onRetire(listener: () => void): void {
+    this.retireListeners.add(listener)
+  }
+  private retryAt = 0
   get isCurrent(): boolean {
     return this.current
   }
@@ -163,6 +169,8 @@ export class GithubClient {
     this.current = false
     this.cache.clear()
     this.cacheBytes = 0
+    for (const listener of this.retireListeners) listener()
+    this.retireListeners.clear()
   }
   assertCurrent(): void {
     if (!this.current)
@@ -258,6 +266,12 @@ export class GithubClient {
     anonymousRedirect = false
   ): Promise<RequestUrlResponse> {
     this.assertCurrent()
+    if (Date.now() < this.retryAt) {
+      throw new GithubError(
+        'rate-limit',
+        `GitHub requests are paused until ${new Date(this.retryAt).toLocaleTimeString()}. Retry then.`
+      )
+    }
     let url: URL
     try {
       url = new URL(request.url)
@@ -318,6 +332,20 @@ export class GithubClient {
       }
       if (!this.hasToken && this.endpoints.webHost === 'github.com')
         anonymousGithubRate.value = this.rate.value
+    }
+    if (this.rate.value?.remaining === 0 && this.rate.value.reset)
+      this.retryAt = Math.max(this.retryAt, this.rate.value.reset)
+    const retry = header(response.headers, 'retry-after')
+    if ([403, 429].includes(response.status) && retry) {
+      const until = /^\d+(?:\.\d+)?$/.test(retry)
+        ? Date.now() + Number(retry) * 1000
+        : Date.parse(retry)
+      if (Number.isFinite(until)) this.retryAt = Math.max(this.retryAt, until)
+    } else if (
+      response.status === 429 ||
+      (response.status === 403 && /secondary rate limit|abuse detection/i.test(response.text))
+    ) {
+      this.retryAt = Math.max(this.retryAt, Date.now() + 60000)
     }
     const location = header(response.headers, 'location')
     if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response
