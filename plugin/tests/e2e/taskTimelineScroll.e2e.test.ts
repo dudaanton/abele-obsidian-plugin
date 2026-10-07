@@ -1,7 +1,6 @@
 /** Folded history and viewport anchoring in the task timeline's real scroll owners. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  evalJson,
   evalLong,
   evalRaw,
   hasTestApi,
@@ -14,6 +13,8 @@ import { shotDir } from './helpers/shots'
 import { timelineStyleReference } from './helpers/timelineStyleReference'
 import { PIXEL_PROBE } from './helpers/stablePixels'
 import { TIMELINE_POSITION_PROBE } from './helpers/timelinePosition'
+import { TIMELINE_FIXTURE_PROBE } from './helpers/timelineFixture'
+import { TIMELINE_READY_PROBE } from './helpers/timelineReady'
 import { timelineStructuralCss } from './contracts/timelineStructuralCss'
 
 targets('desktop', 'phone')
@@ -66,15 +67,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
   const wait = ms => new Promise(r => setTimeout(r, ms))
   let uiState = () => null
   const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready: ' + condition + '; state=' + JSON.stringify(uiState())) }
-  const createTask = async (path, text) => {
-    const file = await app.vault.create(path, text)
-    // The native adapter resolves a write before metadata and the task store see it.
-    // Feed it one complete task at a time, not hundreds of overlapping native writes.
-    await until(() => app.metadataCache.getFileCache(file)?.frontmatter?.type === 'task' &&
-      window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.get(path)?.dates.length,
-      'created task metadata ' + path)
-  }
-  const writeBatch = async writes => { for (const write of writes) await write() }
+  ${TIMELINE_FIXTURE_PROBE}
+  ${TIMELINE_READY_PROBE}
   const folder = ${JSON.stringify(FOLDER)} + (${short} ? ' short' : '')
   const label = 'sample-timeline-probe' + (${short} ? '-short' : '')
   const shots = ${JSON.stringify(SHOTS)}
@@ -114,7 +108,6 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         }
       }
       await writeBatch(writes)
-      await wait(3000)
     }
     yield 'waiting for every fixture task in the resolved metadata store'
     const expectedTasks = ${short ? 51 : 318}
@@ -149,7 +142,6 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const option = await until(() => [...document.querySelectorAll('.menu-item')].find(x => x.querySelector('.menu-item-title')?.textContent.trim().startsWith(label + ' (')))
       option.click()
     }
-    await wait(1200)
     if (!${footer} && document.body.classList.contains('is-phone')) {
       const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
       const header = leaf.view.containerEl.querySelector('.view-header')
@@ -165,6 +157,26 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       fixtureDates:[...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.values()]
         .filter(task=>task.taskPath.startsWith(folder+'/')&&!task.completedAt)
         .reduce((counts,task)=>{const key=task.date?.format('YYYY-MM-DD')??'none';counts[key]=(counts[key]??0)+1;return counts},{})})
+    const settleUI = async (expected = () => true, timeline = root, owner = scroller) => {
+      const items = () => [...timeline.querySelectorAll('.abele-task-view')]
+      const ready = () => expected() && items().every(el => {
+        const r = el.getBoundingClientRect(), viewport = owner.getBoundingClientRect()
+        if (r.bottom <= viewport.top || r.top >= viewport.bottom) return true
+        const title = el.dataset.abeleAnchor?.split('/').pop()?.replace(/\.md$/, '')
+        return title && el.textContent.includes(title)
+      })
+      await settleTimelineUI(() => [owner.scrollTop, owner.scrollHeight,
+        timeline.querySelector('.abele-timeline__history')?.getAttribute('aria-expanded'), ...[...timeline.querySelectorAll('.abele-timeline__date-block')].map(el => {
+          const r = el.getBoundingClientRect(); return [el.dataset.abeleAnchor, r.top, r.height]
+        }), ...items().map(el => { const r = el.getBoundingClientRect(); return [el.dataset.abeleAnchor, r.top, r.height, el.textContent] })],
+        ready, wait)
+    }
+    const toggleCompleted = async () => {
+      const control = root.querySelector('.abele-timeline__completed-toggle')
+      const before = control.textContent
+      control.click()
+      await settleUI(() => control.textContent !== before)
+    }
     const revealClick = async () => {
       const el = strip()
       const expanded = el.getAttribute('aria-expanded')
@@ -189,6 +201,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
           for (const type of ['touchstart', 'touchend', 'click']) document.removeEventListener(type, record, true)
         }
       } else el.click()
+      await until(() => strip()?.getAttribute('aria-expanded') !== expanded, 'history toggled')
     }
     const row = (d, n = 1) => [...root.querySelectorAll('.abele-task-view')].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item ' + d + ' ' + n + '.md')
     const chromeBottom = () => {
@@ -309,6 +322,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     }
     yield 'initial dates and unchanged appearance'
     await until(() => dates().length === ${short ? 1 : 20} && strip()?.textContent.includes(${short ? "'2 unfinished'" : "'90 unfinished'"}), 'initial fixture dates and unfinished count')
+    await settleUI()
     report.initial = dates()
     report.summary = strip()?.textContent.trim() ?? null
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
@@ -326,22 +340,20 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     if (${short}) {
       yield 'short-list completion and history anchors'
       const before = row(0).getBoundingClientRect().top
-      root.querySelector('.abele-timeline__completed-toggle').click()
-      await wait(1200)
+      await toggleCompleted()
       report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
       await shot('completed')
       const beforeHide = row(0).getBoundingClientRect().top
-      root.querySelector('.abele-timeline__completed-toggle').click()
-      await wait(1200)
+      await toggleCompleted()
       report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
       const beforeReveal = row(0).getBoundingClientRect().top
       await revealClick()
-      await wait(1200)
+      await settleUI()
       report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
       report.revealed = dates()
       const beforeCollapse = row(0).getBoundingClientRect().top
       await revealClick()
-      await wait(1200)
+      await settleUI()
       report.collapseAnchor = [beforeCollapse, row(0).getBoundingClientRect().top]
       report.collapsed = dates()
       root.querySelector('.abele-timeline__search-toggle').click()
@@ -349,7 +361,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const input = root.querySelector('.abele-timeline__search input')
       input.value = 'sample-no-match'
       input.dispatchEvent(new Event('input', { bubbles: true }))
-      await wait(1200)
+      await settleUI(() => blocks().length === 0 && !!root.querySelector('.abele-timeline__no-tasks'))
       report.emptySpace = root.querySelector('.abele-timeline__anchor-space').getBoundingClientRect().height
       return JSON.stringify(report)
     }
@@ -434,55 +446,51 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await align(row(0)); await wait(500)
     const beforeReveal = row(0).getBoundingClientRect().top
     await revealClick()
-    await wait(1200)
+    await settleUI()
     report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
     report.revealed = dates()
     report.countAfter = strip()?.textContent.trim() ?? null
     // Keep the first incomplete row under the eye while completed rows appear above it.
     await align(row(0)); await wait(500)
     const before = row(0).getBoundingClientRect().top
-    root.querySelector('.abele-timeline__completed-toggle').click()
-    await wait(1200)
+    await toggleCompleted()
     report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
     report.allHistory = dates().includes('date:' + day(-90))
     report.pastCompleted = !!row(-45, 0)
     report.overflow = scroller.scrollWidth - scroller.clientWidth
     await shot('completed')
     const beforeHide = row(0)?.getBoundingClientRect().top ?? -9999
-    root.querySelector('.abele-timeline__completed-toggle').click()
-    await wait(1200)
+    await toggleCompleted()
     report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
     yield 'future rows and collapsing history'
     for (let i = 0; i < 4 && !row(25); i++) { scroller.scrollTop = scroller.scrollHeight; await wait(700) }
     await until(() => row(25))
     await align(row(25)); await wait(1000)
     const futureBefore = row(25).getBoundingClientRect().top
-    root.querySelector('.abele-timeline__completed-toggle').click()
-    await wait(1200)
+    await toggleCompleted()
     report.futureAnchor = [futureBefore, row(25)?.getBoundingClientRect().top ?? -9999]
     const beforeCollapse = row(25).getBoundingClientRect().top
     await revealClick()
-    await wait(1200)
+    await settleUI()
     report.collapseAnchor = [beforeCollapse, row(25).getBoundingClientRect().top]
     report.collapsed = dates()
     report.collapseSummary = strip()?.textContent.trim() ?? null
     const beforeRereveal = row(25).getBoundingClientRect().top
     await revealClick()
-    await wait(1200)
+    await settleUI()
     report.rerevealAnchor = [beforeRereveal, row(25).getBoundingClientRect().top]
     await align(row(-40)); await wait(1000)
     const removedBefore = row(-40).getBoundingClientRect().top
     await revealClick()
-    await wait(1200)
+    await settleUI()
     report.removedPastAnchor = [removedBefore, row(0, 0).getBoundingClientRect().top]
     await shot('hidden-past')
     await revealClick()
-    await wait(1200)
+    await settleUI()
     if (${footer}) {
       yield 'reopening saved history and row anchor'
       // A past row's saved anchor is useful only if reopening actually recreates that day.
-      root.querySelector('.abele-timeline__completed-toggle').click()
-      await wait(1200)
+      await toggleCompleted()
       config.rememberNotePlaces = true
       await align(row(-1)); await wait(1500)
       const beforeReturn = row(-1).getBoundingClientRect().top - scroller.getBoundingClientRect().top
@@ -495,7 +503,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.restoredHistory = !!returned
       report.restoredAnchor = [beforeReturn, returned ? returned.getBoundingClientRect().top - leaf.view.containerEl.querySelector('.cm-scroller').getBoundingClientRect().top : -9999]
       reopened.querySelector('.abele-timeline__history').click()
-      await wait(1200)
+      await until(() => reopened.querySelector('.abele-timeline__history')?.getAttribute('aria-expanded') === 'false', 'reopened history folded')
+      await settleUI(() => true, reopened, leaf.view.containerEl.querySelector('.cm-scroller'))
       await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample item 0 1.md'))
       await wait(500)
       await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample group.md'))
@@ -537,20 +546,21 @@ async function runProbe(footer: boolean, short = false): Promise<Probe> {
 // reusing a partial folder bypasses fixture creation and cannot test timeline behaviour.
 async function removeFixtures(): Promise<void> {
   for (const dir of [FOLDER, FOLDER + ' short']) {
-    const paths = evalJson<string[]>(
-      `app.vault.getFiles().filter(file => file.path.startsWith(${JSON.stringify(dir + '/')})).map(file => file.path)`
-    )
-    for (let i = 0; i < paths.length; i += 24) {
-      console.info(`Timeline cleanup ${dir}: ${i}/${paths.length} files`)
-      const raw = await evalLong(
-        `(async () => { for (const path of ${JSON.stringify(paths.slice(i, i + 24))}) { const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file, true) } return 'removed' })()`,
-        60_000
-      )
-      if (raw.startsWith('Error:')) throw new Error(raw)
-    }
+    // Folder deletion still goes through the native vault and emits its file events, without
+    // hundreds of host round trips. Wait for the store too before recreating the same paths.
     const raw = await evalLong(
-      `(async () => { const dir = app.vault.getAbstractFileByPath(${JSON.stringify(dir)}); if (dir) await app.vault.delete(dir, true); return 'removed folder' })()`,
-      60_000
+      `(async () => {
+        const path = ${JSON.stringify(dir)}
+        const folder = app.vault.getAbstractFileByPath(path)
+        if (folder) await app.vault.delete(folder, true)
+        const deadline = Date.now() + 60000
+        while ([...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.keys()].some(key => key.startsWith(path + '/'))) {
+          if (Date.now() > deadline) throw Error('deleted fixture tasks remained in the store')
+          await new Promise(done => setTimeout(done, 100))
+        }
+        return 'removed folder'
+      })()`,
+      120_000
     )
     if (raw.startsWith('Error:')) throw new Error(raw)
   }
