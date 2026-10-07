@@ -43,6 +43,38 @@ const walk = () =>
   ])
 
 describe('portable canvas walkthroughs', () => {
+  it('reveals and focuses free primitives by stable id without leaking later lines', () => {
+    const graph = sample()
+    graph.abele!.lines = [
+      {
+        version: 1,
+        id: 'free',
+        from: { x: -400, y: -100 },
+        to: { x: -200, y: 100 },
+        toEnd: 'arrow',
+      },
+      { version: 1, id: 'later-line', from: { x: 1000, y: 0 }, to: { x: 1200, y: 100 } },
+    ]
+    const changed = editCanvasSteps(graph, [
+      {
+        op: 'replace',
+        steps: [
+          {
+            id: 'first',
+            reveal: ['free'],
+            highlight: ['free'],
+            focus: 'free',
+            say: 'A free arrow',
+          },
+          { id: 'last', reveal: ['later-line'], say: 'Another line' },
+        ],
+      },
+    ])
+    expect(stepScene(changed, 1).graph.abele?.lines).toEqual([graph.abele!.lines[0]])
+    expect(stepScene(changed, 1).region.x).toBeLessThan(-400)
+    expect(stepScene(changed, 2).graph.abele?.lines).toHaveLength(2)
+    expect(lintCanvas(changed).filter((w) => w.code === 'missing-step-id')).toEqual([])
+  })
   it('reveals cumulatively by id, expands groups, never leaks an unrevealed endpoint, and rewinds', () => {
     const graph = walk()
     expect(

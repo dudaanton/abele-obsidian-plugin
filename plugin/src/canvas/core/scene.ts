@@ -109,22 +109,48 @@ export function endpoint(node: CanvasNode, side: Side): Point {
     bottom: { x: node.x + node.width / 2, y: node.y + node.height },
     left: { x: node.x, y: node.y + node.height / 2 },
   }
-  return centres[side]
+  const p = centres[side]
+  if (node.styleAttributes?.shape === 'parallelogram') {
+    if (side === 'left') p.x += node.width * 0.075
+    if (side === 'right') p.x -= node.width * 0.075
+  }
+  if (node.styleAttributes?.shape === 'document' && side === 'bottom') p.y -= 12
+  return p
 }
 export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
   const from = graph.nodes.find((n) => n.id === edge.fromNode),
     to = graph.nodes.find((n) => n.id === edge.toNode)
   if (!from || !to) return []
   if (from.id === to.id) {
-    const right = endpoint(from, 'right'),
-      top = endpoint(from, 'top')
-    return [
-      right,
-      { x: right.x + 40, y: right.y },
-      { x: right.x + 40, y: top.y - 40 },
-      { x: top.x, y: top.y - 40 },
-      top,
-    ]
+    const aSide = edge.fromSide ?? 'right',
+      bSide = edge.toSide ?? 'top',
+      a = endpoint(from, aSide),
+      b = endpoint(from, bSide),
+      outside = (p: Point, side: Side): Point => ({
+        x: p.x + (side === 'right' ? 40 : side === 'left' ? -40 : 0),
+        y: p.y + (side === 'bottom' ? 40 : side === 'top' ? -40 : 0),
+      }),
+      aa = outside(a, aSide),
+      bb = outside(b, bSide),
+      horizontalA = aSide === 'right' || aSide === 'left',
+      horizontalB = bSide === 'right' || bSide === 'left'
+    if (aSide === bSide) {
+      const tangent = horizontalA ? { x: aa.x, y: aa.y - 40 } : { x: aa.x + 40, y: aa.y }
+      return [a, aa, tangent, bb, b]
+    }
+    if (horizontalA === horizontalB) {
+      return horizontalA
+        ? [a, aa, { x: aa.x, y: from.y - 40 }, { x: bb.x, y: from.y - 40 }, bb, b]
+        : [
+            a,
+            aa,
+            { x: from.x + from.width + 40, y: aa.y },
+            { x: from.x + from.width + 40, y: bb.y },
+            bb,
+            b,
+          ]
+    }
+    return [a, aa, horizontalA ? { x: aa.x, y: bb.y } : { x: bb.x, y: aa.y }, bb, b]
   }
   const dx = to.x + to.width / 2 - from.x - from.width / 2,
     dy = to.y + to.height / 2 - from.y - from.height / 2
@@ -141,6 +167,17 @@ export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
   return horizontal
     ? [a, { x: (a.x + b.x) / 2, y: a.y }, { x: (a.x + b.x) / 2, y: b.y }, b]
     : [a, { x: a.x, y: (a.y + b.y) / 2 }, { x: b.x, y: (a.y + b.y) / 2 }, b]
+}
+export function sideAt(node: CanvasNode, point: Point): Side {
+  const dx = (point.x - node.x - node.width / 2) / node.width,
+    dy = (point.y - node.y - node.height / 2) / node.height
+  return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : dy >= 0 ? 'bottom' : 'top'
+}
+export function routeSamples(route: PaintedRoute): Point[] {
+  if (route.kind !== 'cubic') return route.points
+  const xs = route.points.map((p) => p.x),
+    ys = route.points.map((p) => p.y)
+  return Array.from({ length: 49 }, (_, i) => ({ x: cubicAt(xs, i / 48), y: cubicAt(ys, i / 48) }))
 }
 export interface PaintedRoute {
   kind: 'cubic' | 'polyline'

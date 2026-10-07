@@ -143,7 +143,7 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_read',
       'Read canvas',
-      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline; step (one-based) shows cumulative revealed content and camera/narration. Works without an open tab; read-only. Open Abele sessions expose pending graph content and state (generation, dirty, busy, conflict, native writer presence and failed-proposal recovery instructions); a pending read never commits text. Node/edge array order preserves stacking, not identity.',
+      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, free line/arrow primitives (lines with stable ids, geometry and style), stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline; step (one-based) shows cumulative revealed content and camera/narration. Works without an open tab; read-only. Open Abele sessions expose pending graph content and state (generation, dirty, busy, conflict, native writer presence and failed-proposal recovery instructions); a pending read never commits text. Node/edge array order preserves stacking, not identity.',
       z
         .object({
           path,
@@ -205,7 +205,7 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_edit',
       'Edit canvas',
-      'Pass revision from canvas_read or the last successful write; stale file/native/Abele session state is refused before any agent change; pending human drafts remain unsaved and block writes. Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, move {ids,dx,dy} (group descendants move once), remove {id}, connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Removing a group promotes its children; removing a node removes incident edges. One shared Abele session or native Canvas undo item when open. Own Ask mode.' +
+      'Pass revision from canvas_read or the last successful write; stale file/native/Abele session state is refused before any agent change; pending human drafts remain unsaved and block writes. Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, move {ids,dx,dy} (nodes and free lines; group descendants move once), add_line {line:{version:1,id,from:{x,y},to:{x,y},fromEnd?:none|arrow,toEnd?:none|arrow,label?,color?}}, remove {id}, connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Removing a group promotes its children; removing a node removes incident edges. One shared Abele session or native Canvas undo item when open. Own Ask mode.' +
         recoveryHelp,
       z.union([
         z.object({ path, revision, ops: z.array(operationSchema).min(1) }).strict(),

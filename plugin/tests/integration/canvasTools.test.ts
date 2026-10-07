@@ -212,6 +212,60 @@ describe('agent canvas tools and permissions', () => {
       /exists/i
     )
   })
+  it('authors and reads free primitives through the existing edit schema, atomically and within scope', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const line = {
+      version: 1,
+      id: 'free-arrow',
+      from: { x: -300, y: -100 },
+      to: { x: 0, y: 0 },
+      toEnd: 'arrow',
+    }
+    await call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'add_line', line }] })
+    let data = JSON.parse((await call('canvas_read', { path: 'sample.canvas' })).content[0].text)
+    expect(data.lines).toEqual([line])
+    const revision = data.revision
+    await call('canvas_edit', {
+      path: 'sample.canvas',
+      ops: [
+        { op: 'move', ids: ['free-arrow'], dx: 20, dy: 30 },
+        { op: 'update', id: 'free-arrow', patch: { label: 'Caption', fromEnd: 'arrow' } },
+      ],
+    })
+    data = JSON.parse(
+      (await call('canvas_read', { path: 'sample.canvas', detail: 'full' })).content[0].text
+    )
+    expect(data.lines[0]).toMatchObject({
+      from: { x: -280, y: -70 },
+      label: 'Caption',
+      fromEnd: 'arrow',
+    })
+    await expect(
+      call('canvas_edit', {
+        path: 'sample.canvas',
+        revision,
+        ops: [{ op: 'remove', id: 'free-arrow' }],
+      })
+    ).rejects.toThrow(/changed|stale|revision/i)
+    const file = app.vault.getAbstractFileByPath('sample.canvas') as TFile,
+      before = await app.vault.read(file)
+    await expect(
+      call('canvas_edit', {
+        path: 'sample.canvas',
+        ops: [
+          { op: 'remove', id: 'free-arrow' },
+          { op: 'add_line', line: { ...line, from: { x: NaN, y: 0 } } },
+        ],
+      })
+    ).rejects.toThrow(/op 1/)
+    expect(await app.vault.read(file)).toBe(before)
+    const restricted = new ScopeResolver()
+    restricted.setFullVaultAccess(false)
+    ctx = { scope: restricted, interactive: true }
+    await expect(
+      call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'remove', id: 'free-arrow' }] })
+    ).rejects.toThrow(/scope/i)
+  })
   it('applies an approved edit with nested patches from a deep reactive tool-call queue', async () => {
     await call('canvas_create', { path: 'sample.canvas', from: { graph } })
     const read = await call('canvas_read', { path: 'sample.canvas' })

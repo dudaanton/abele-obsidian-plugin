@@ -1,5 +1,6 @@
 /** JSON Canvas + extension data, independent of any vault or host API. */
 import { z } from 'zod'
+import { lineIds } from './primitives'
 
 export const SHAPES = [
   'rectangle',
@@ -112,6 +113,10 @@ export function parseCanvas(input: unknown): CanvasGraph {
   for (const element of [...graph.nodes, ...graph.edges]) {
     if (ids.has(element.id)) throw new Error(`Duplicate canvas id: ${element.id}`)
     ids.add(element.id)
+  }
+  for (const id of lineIds(graph)) {
+    if (ids.has(id)) throw new Error(`Duplicate canvas id: ${id}`)
+    ids.add(id)
   }
   parentsOf(graph) // Refuse ambiguous/cyclic explicit hierarchy before edits can destroy it.
   return graph

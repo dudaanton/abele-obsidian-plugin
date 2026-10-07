@@ -1,5 +1,6 @@
 import { labelOf, overlaps, parentsOf, type CanvasGraph, type Rect } from './model'
 import { lintCanvas } from './lint'
+import { linesOf, lineBounds } from './primitives'
 import { stepScene } from './steps'
 import { defaultMetrics, type TextMetricsPort } from './scene'
 /** Coordinates appear only in full detail. All outline ordering is deterministic by id. */
@@ -45,6 +46,9 @@ export function canvasOutline(
           ? e
           : { id: e.id, from: e.fromNode, to: e.toNode, label: e.label ?? '' }
       ),
+    lines: linesOf(graph)
+      .filter((l) => !options.region || overlaps(lineBounds(l), options.region))
+      .sort((a, b) => a.id.localeCompare(b.id)),
     steps: source.abele?.steps ?? [],
     ...(options.step !== undefined
       ? {

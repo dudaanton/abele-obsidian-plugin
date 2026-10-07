@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { bounds, cloneCanvas, descendants, parentsOf, type CanvasGraph, type Rect } from './model'
 import { routeEdge } from './scene'
+import { linesOf, lineBounds } from './primitives'
 
 export const cameraRegionSchema = z
   .object({
@@ -98,7 +99,7 @@ export function editCanvasSteps(input: CanvasGraph, ops: unknown): CanvasGraph {
       }
       graph.abele = { ...graph.abele, steps }
       steps = stepsOf(graph)
-      const ids = new Set([...graph.nodes, ...graph.edges].map((e) => e.id))
+      const ids = new Set([...graph.nodes, ...graph.edges, ...linesOf(graph)].map((e) => e.id))
       for (const step of steps)
         for (const id of [
           ...step.reveal,
@@ -126,6 +127,8 @@ export function stepScene(graph: CanvasGraph, number: number) {
     graph,
     steps.slice(0, number).flatMap((s) => s.reveal)
   )
+  const refs = new Set(steps.slice(0, number).flatMap((s) => s.reveal)),
+    lines = linesOf(graph).filter((l) => refs.has(l.id))
   const visible = new Set(revealed)
   for (const id of revealed) {
     let parent = parents.get(id)
@@ -136,6 +139,7 @@ export function stepScene(graph: CanvasGraph, number: number) {
   }
   const scene: CanvasGraph = {
     ...graph,
+    abele: { ...graph.abele, lines },
     nodes: graph.nodes.filter((n) => visible.has(n.id)),
     edges: graph.edges.filter((e) => visible.has(e.fromNode) && visible.has(e.toNode)),
   }
@@ -145,6 +149,7 @@ export function stepScene(graph: CanvasGraph, number: number) {
   ])
   const rectangles = (ids: ReadonlySet<string>): Rect[] => [
     ...scene.nodes.filter((n) => ids.has(n.id)),
+    ...lines.filter((l) => ids.has(l.id)).map((l) => lineBounds(l)),
     ...scene.edges
       .filter((e) => ids.has(e.id))
       .flatMap((e) => routeEdge(e, scene))
@@ -155,11 +160,16 @@ export function stepScene(graph: CanvasGraph, number: number) {
   else if (typeof step.focus === 'string') {
     // A focus may describe the next level, but must never expose unrevealed content.
     const target =
-      graph.nodes.find((n) => n.id === step.focus) ?? graph.edges.find((e) => e.id === step.focus)
+      graph.nodes.find((n) => n.id === step.focus) ??
+      graph.edges.find((e) => e.id === step.focus) ??
+      linesOf(graph).find((l) => l.id === step.focus)
     if (!target) throw new Error(`Step ${step.id}: missing focus id ${step.focus}`)
     const rects = rectangles(new Set([step.focus]))
-    region = bounds(rects.length ? rects : rectangles(revealed), 24)
-  } else region = bounds(rectangles(revealed), 24)
+    region = bounds(
+      rects.length ? rects : rectangles(new Set([...revealed, ...lines.map((l) => l.id)])),
+      24
+    )
+  } else region = bounds(rectangles(new Set([...revealed, ...lines.map((l) => l.id)])), 24)
   return {
     graph: scene,
     region,

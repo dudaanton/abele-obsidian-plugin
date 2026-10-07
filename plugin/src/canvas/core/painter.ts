@@ -1,5 +1,6 @@
 /** Canvas 2D graph painter. The host supplies its theme, note text, and local image assets. */
 import { arrowHead } from '../../drawing/items'
+import { lineBounds, linesOf } from './primitives'
 import { stepScene } from './steps'
 import { canvasVisibility } from './visibility'
 import {
@@ -80,6 +81,7 @@ export function pictureRegion(
       : bounds(
           [
             ...graph.nodes,
+            ...linesOf(graph).map((line) => lineBounds(line)),
             ...graph.edges
               .flatMap((edge) => routeEdge(edge, graph))
               .map((point) => ({ ...point, width: 1, height: 1 })),
@@ -295,6 +297,31 @@ export function paintCanvas(
       ctx.fillRect(caption.x, caption.y, caption.width, caption.height)
       ctx.fillStyle = theme.text
       ctx.fillText(edge.label, middle.x - width / 2, middle.y)
+    }
+  }
+  for (const line of linesOf(graph)) {
+    if (!overlaps(lineBounds(line, theme.size), region)) continue
+    ctx.setLineDash([])
+    ctx.lineWidth = assets.highlight?.has(line.id) ? 3 : 1.5
+    ctx.strokeStyle = assets.highlight?.has(line.id)
+      ? theme.accent
+      : colorOf(line.color, theme.border, theme)
+    ctx.fillStyle = ctx.strokeStyle
+    ctx.beginPath()
+    ctx.moveTo(line.from.x, line.from.y)
+    ctx.lineTo(line.to.x, line.to.y)
+    ctx.stroke()
+    if (line.fromEnd === 'arrow') arrow(ctx, line.to, line.from, undefined)
+    if (line.toEnd === 'arrow') arrow(ctx, line.from, line.to, undefined)
+    if (line.label) {
+      ctx.font = `${theme.size}px ${theme.font}`
+      const width = ctx.measureText(line.label).width,
+        x = (line.from.x + line.to.x) / 2 - width / 2,
+        y = (line.from.y + line.to.y) / 2
+      ctx.fillStyle = theme.paper
+      ctx.fillRect(x - 4, y - theme.size, width + 8, theme.size * 1.4)
+      ctx.fillStyle = theme.text
+      ctx.fillText(line.label, x, y)
     }
   }
   for (const node of visible.filter((n) => n.type !== 'group' && !assets.skipCards)) {

@@ -105,6 +105,13 @@ still a text node. Shapes use Advanced Canvas `styleAttributes.shape`: `rectangl
 with `pathfindingMethod` and floating-end fields retained. Groups retain `collapsed`; file nodes
 retain `portal` and `subpath`. Standard `file` paths and text-card links follow Obsidian renames.
 
+Free lines/arrows are root `abele.lines` entries: `{version:1,id,from:{x,y},to:{x,y},fromEnd?,toEnd?,label?,color?}`.
+Ends are `none` or `arrow` (omitted ends mean none), coordinates are finite world coordinates, and endpoints are distinct.
+Their ids share the node/edge namespace. They use the same edit batches and history, appear in reads, pictures and embeds,
+and contribute to Fit bounds even without nodes. Bound connections remain standard edges. There is no drawing sidecar.
+Unknown entry versions and fields remain opaque and preserved; an incompatible non-array `lines` container is never overwritten.
+Native Canvas may not display the primitives, but retains the extension for returning to Abele.
+
 Each node/edge has a stable id; agents choose meaningful ids. Native Canvas reorders elements
 and keys on save, so all edits and references are by id. Unknown extension data survives Abele
 parse/edit/serialize; unknown node types are refused because native Canvas drops them on save.

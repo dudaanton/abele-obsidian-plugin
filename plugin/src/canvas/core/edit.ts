@@ -14,6 +14,7 @@ import {
   type CanvasNode,
 } from './model'
 import { moveIds } from './selection'
+import { lineSchema, linesOf, rawLines, writeLines, lineIds, type CanvasLine } from './primitives'
 
 const id = z.string().min(1),
   object = z.record(z.string(), z.unknown())
@@ -50,6 +51,7 @@ export const operationSchema = z.discriminatedUnion('op', [
     })
     .strict(),
   z.object({ op: z.literal('connect'), edge: edgeSchema }).strict(),
+  z.object({ op: z.literal('add_line'), line: lineSchema }).strict(),
   z
     .object({ op: z.literal('group'), id, label: z.string().optional(), ids: z.array(id).min(1) })
     .strict(),
@@ -106,7 +108,8 @@ export function editCanvas(
     needsLayout = false
   const nodes = new Map<string, CanvasNode>(),
     edges = new Map<string, CanvasEdge>(),
-    elements = new Map<string, CanvasNode | CanvasEdge>()
+    elements = new Map<string, CanvasNode | CanvasEdge | CanvasLine>(),
+    lines = new Map<string, CanvasLine>()
   const rebuild = () => {
     nodes.clear()
     edges.clear()
@@ -119,6 +122,15 @@ export function editCanvas(
       edges.set(edge.id, edge)
       elements.set(edge.id, edge)
     }
+    lines.clear()
+    for (const line of linesOf(graph)) {
+      lines.set(line.id, line)
+      elements.set(line.id, line)
+    }
+  }
+  const uniqueId = (id: string) => {
+    unique(elements, id)
+    if (lineIds(graph).includes(id)) throw new Error(`Duplicate id ${id}`)
   }
   rebuild()
   for (let index = 0; index < ops.length; index++) {
@@ -126,7 +138,7 @@ export function editCanvas(
       const op = operationSchema.parse(ops[index])
       if (op.op === 'add_node') {
         const n = op.node
-        unique(elements, n.id)
+        uniqueId(n.id)
         if ((n.x === undefined) !== (n.y === undefined))
           throw new Error('Provide both x and y, or neither')
         if (n.parent) {
@@ -161,7 +173,26 @@ export function editCanvas(
         if (n.x === undefined && !near) needsLayout = true
         if (n.parent || type === 'group') parentsOf(graph)
       } else if (op.op === 'move') {
-        for (const id of op.ids) known(id, nodes)
+        for (const id of op.ids) {
+          known(id, elements)
+          if (!nodes.has(id) && !lines.has(id))
+            throw new Error('Only nodes and free lines can move')
+        }
+        if (op.ids.some((id) => lines.has(id))) {
+          writeLines(
+            graph,
+            rawLines(graph, true).map((value) => {
+              const line = lines.get((value as CanvasLine)?.id)
+              return line && op.ids.includes(line.id)
+                ? lineSchema.parse({
+                    ...line,
+                    from: { x: line.from.x + op.dx, y: line.from.y + op.dy },
+                    to: { x: line.to.x + op.dx, y: line.to.y + op.dy },
+                  })
+                : value
+            })
+          )
+        }
         const parents = parentsOf(graph),
           moving = moveIds(graph, new Set(op.ids))
         for (const node of graph.nodes)
@@ -171,13 +202,18 @@ export function editCanvas(
           }
         // Update anchors only after all descendants moved. Never resolve a half-moved group.
         if (graph.nodes.some((node) => node.type === 'group')) recordParents(graph, parents)
+        rebuild()
       } else if (op.op === 'connect') {
-        unique(elements, op.edge.id)
+        uniqueId(op.edge.id)
         known(op.edge.fromNode, nodes)
         known(op.edge.toNode, nodes)
         graph.edges.push(op.edge)
         edges.set(op.edge.id, op.edge)
         elements.set(op.edge.id, op.edge)
+      } else if (op.op === 'add_line') {
+        uniqueId(op.line.id)
+        writeLines(graph, [...rawLines(graph, true), op.line])
+        rebuild()
       } else if (op.op === 'update' || op.op === 'style') {
         const element = known(op.id, elements)
         const patch = op.op === 'style' ? { styleAttributes: op.styleAttributes } : op.patch
@@ -185,7 +221,12 @@ export function editCanvas(
         const merged = { ...element, ...patch }
         for (const key of ['abele', 'styleAttributes'] as const) {
           if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key]))
-            merged[key] = { ...element[key], ...patch[key] }
+            merged[key] = {
+              ...(element[key] && typeof element[key] === 'object'
+                ? (element[key] as Record<string, unknown>)
+                : {}),
+              ...patch[key],
+            }
         }
         if (nodes.has(op.id)) {
           const updated = nodeSchema.parse(merged)
@@ -200,6 +241,16 @@ export function editCanvas(
           )
             recordParent(updated, updated.abele?.parent as string | null, graph)
           if (op.op === 'update') parentsOf(graph)
+        } else if (lines.has(op.id)) {
+          const updated = lineSchema.parse(merged)
+          writeLines(
+            graph,
+            rawLines(graph, true).map((value) =>
+              (value as CanvasLine)?.id === op.id ? updated : value
+            )
+          )
+          lines.set(op.id, updated)
+          elements.set(op.id, updated)
         } else {
           const updated = edgeSchema.parse(merged)
           known(updated.fromNode, nodes)
@@ -209,7 +260,7 @@ export function editCanvas(
           elements.set(updated.id, updated)
         }
       } else if (op.op === 'group') {
-        unique(elements, op.id)
+        uniqueId(op.id)
         const previous = parentsOf(graph)
         // Freeze ALL pre-existing memberships, including cards without Abele metadata.
         const existing = [...graph.nodes]
@@ -238,6 +289,11 @@ export function editCanvas(
           !graph.nodes.some((node) => node.id === op.id && node.type === 'group')
         )
           throw new Error('Only groups can ungroup')
+        if (lines.has(op.id))
+          writeLines(
+            graph,
+            rawLines(graph, true).filter((value) => (value as CanvasLine)?.id !== op.id)
+          )
         const parents = parentsOf(graph)
         for (const node of graph.nodes)
           if (parents.get(node.id) === op.id) recordParent(node, parents.get(op.id) ?? null, graph)
