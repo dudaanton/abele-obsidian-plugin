@@ -15,6 +15,8 @@ export interface ScriptMeta {
   enabled?: boolean
   /** `@book`: offered as its own button on words selected in a book. */
   book?: boolean
+  /** `@chat-selection`: opt in to the chat selection menu, independently of books. */
+  chatSelection?: boolean
   /** `@toolbar`: an icon on the left ribbon on a computer, and on the phone's toolbar. */
   toolbar?: boolean
   /** `@startup`: run each time the plugin starts, on the devices named (`desktop`, `mobile`). */

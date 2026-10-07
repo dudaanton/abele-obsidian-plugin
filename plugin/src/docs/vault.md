@@ -9,6 +9,20 @@ Note frontmatter reads use `js-yaml` 4's default schema. An unquoted time such a
 `0755` are decimal (`755`), not legacy octal. Quote a numeric-looking value when its
 exact text, including leading zeros, matters.
 
+## Selection-script menu settings
+
+Plugin `data.json` stores independent ordered lists at `reader.selectionScripts` (books) and
+`ai.chatSelectionScripts` (chats). Both use `{script, name, icon}` entries: `script` is the
+library header name; empty presentation overrides use the script name/header icon, then
+`scroll-text`. List membership pins the script to that surface. Missing or invalid lists
+normalize to empty; empty names and duplicate script entries are dropped, keeping the first.
+Missing library scripts remain stored but are not offered until available again. Settings
+entries override presentation and order on their own surface; unlisted `@book` or
+`@chat-selection` opt-ins follow alphabetically on that surface only. Removing a settings
+entry does not disable a header opt-in. Book choices travel with the Book reader transfer
+section, chat choices with Script settings. Neither list contains credentials or grants trust.
+Chat launch wiring is separate; configuring these lists writes no message annotations.
+
 ## Device-local template approvals
 
 `abele-template-trust` in Obsidian's vault-scoped local storage holds template confirmations.

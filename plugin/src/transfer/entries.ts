@@ -211,6 +211,7 @@ export const SECTIONS: Section[] = [
     'scriptsEnabled',
     'scriptsFolder',
     'toolbarScripts',
+    'chatSelectionScripts',
     'startupScripts',
     'startupScriptsPaused',
     // Arms the device it arrives on, unless that device was switched off by hand; see

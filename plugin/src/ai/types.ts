@@ -217,6 +217,8 @@ export interface AiSettings {
    * own `// @toolbar` header line does the same without being listed here.
    */
   toolbarScripts: string[]
+  /** Chat selection menu, in order; independent of reader.selectionScripts and @book. */
+  chatSelectionScripts: import('@/scripting/selectionMenuScripts').SelectionMenuScript[]
   /**
    * Scripts run each time the plugin starts, in this order, each on the devices it names. A
    * script's own `// @startup` header line does the same without being listed here, after these.
@@ -487,6 +489,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   scriptsFolder: '',
   skillsFolder: '',
   toolbarScripts: [],
+  chatSelectionScripts: [],
   startupScripts: [],
   startupScriptsPaused: false,
   confirmForeignScripts: false,

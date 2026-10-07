@@ -7,6 +7,7 @@ import type { ScriptMeta, ScriptParam, StartupDevices } from './types'
  *   // @param path string "Vault path"
  *   // @param style string? "Optional style"
  *   // @book
+ *   // @chat-selection
  *   // @toolbar
  *   // @startup mobile
  *   // @lint warning
@@ -23,6 +24,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
 
   let icon: string | undefined
   let book = false
+  let chatSelection = false
   let toolbar = false
   let startup: StartupDevices | undefined
   let lint: 'error' | 'warning' | undefined
@@ -44,6 +46,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       enabled = content.slice(9).trim() !== 'false'
     } else if (content === '@book' || content.startsWith('@book ')) {
       book = true
+    } else if (content === '@chat-selection' || content.startsWith('@chat-selection ')) {
+      chatSelection = true
     } else if (content === '@toolbar' || content.startsWith('@toolbar ')) {
       toolbar = true
     } else if (content === '@startup' || content.startsWith('@startup ')) {
@@ -68,6 +72,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
     params,
     enabled,
     ...(book ? { book } : {}),
+    ...(chatSelection ? { chatSelection } : {}),
     ...(toolbar ? { toolbar } : {}),
     ...(startup ? { startup } : {}),
     ...(lint ? { lint } : {}),

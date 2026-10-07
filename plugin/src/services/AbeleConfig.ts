@@ -28,6 +28,7 @@ import {
 } from '@/calendars/settings'
 import { completionMarksFrom, type CompletionMarks } from '@/calendars/completion'
 import { DEFAULT_READER_SETTINGS, readerSettingsFrom, type ReaderSettings } from '@/reader/settings'
+import { selectionMenuScriptsFrom } from '@/scripting/selectionMenuScripts'
 import {
   DEFAULT_QUICK_BUTTON,
   quickButtonSettingsFrom,
@@ -647,6 +648,7 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.excludedPathsForDefaultTemplate,
     ]
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
+    this.ai.chatSelectionScripts = selectionMenuScriptsFrom(this.ai.chatSelectionScripts)
     // Runs before the legacy migrations below, so a settings file predating both is folded
     // into an agent using the values it actually had on disk.
     let migrated = migrateAgents(this.ai)
