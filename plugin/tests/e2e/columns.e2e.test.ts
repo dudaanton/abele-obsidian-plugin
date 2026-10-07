@@ -85,7 +85,7 @@ function show(mode: 'preview' | 'source') {
     await leaf.setViewState({type:'markdown', state:{file:${JSON.stringify(NOTE)},mode:${JSON.stringify(mode)},source:false}});
     view=leaf.view;
     app.workspace.setActiveLeaf(leaf,{focus:true});
-    if (${JSON.stringify(mode)} === 'source') { view.editor.focus(); view.editor.setCursor({line:view.editor.lineCount()-1,ch:0}); }
+    if (${JSON.stringify(mode)} === 'source') view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});
     for(let i=0;i<50;i++){if(root().querySelector('.abele-columns')) break; await wait(100)}
     await wait(300);
     return !!root().querySelector('.abele-columns');
@@ -250,6 +250,29 @@ describe.skipIf(!available)('note columns foundation', () => {
     expect(show('source')).toBe(true)
   })
 
+  it('an already focused editor also expands at the tapped passage without selecting the frame', async () => {
+    show('source')
+    const point = asyncEval<{ x: number; y: number }>(`
+      view.editor.focus();await wait(300);
+      const p=[...root().querySelectorAll('.abele-column p')].find(e=>e.textContent.includes('Second column paragraph.'));
+      p.scrollIntoView({block:'center'});await wait(100);const r=p.getBoundingClientRect();return {x:r.x+40,y:r.y+r.height/2};
+    `)
+    click(point.x, point.y)
+    const result = asyncEval<{
+      line: string
+      selected: number
+      rendered: boolean
+      focused: boolean
+    }>(`
+      await wait(300);return {line:view.editor.getLine(view.editor.getCursor().line),selected:view.editor.getSelection().length,rendered:!!root().querySelector('.abele-columns'),focused:view.editor.cm.hasFocus};
+    `)
+    console.log('focused entry', JSON.stringify(result))
+    expect(result.line).toBe('> > Second column paragraph.')
+    expect(result.selected).toBe(0)
+    expect(result.rendered).toBe(false)
+    expect(result.focused).toBe(true)
+  })
+
   it('identical formatted passages map to the clicked source character with no selection', async () => {
     const duplicate = [
       '> [!abele-columns]',
@@ -282,7 +305,7 @@ describe.skipIf(!available)('note columns foundation', () => {
     expect(result).toEqual({ cursor: { line: 5, ch: 13 }, selected: 0, text: duplicate })
     await shot('duplicate-entry')
     asyncEval(
-      `view.editor.setValue(${JSON.stringify(BODY)});view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});await view.save();return true`
+      `view.editor.setValue(${JSON.stringify(BODY)});view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});view.editor.focus();await view.save();return true`
     )
   })
 
