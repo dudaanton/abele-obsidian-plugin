@@ -1476,7 +1476,10 @@ mean there are no local edits; counting asks the server nothing and acknowledges
 ## Owner sharing UI
 
 Owner sharing, scoped join, scoped creation and publication flags are enabled in production.
-Each operation still requires its matching connection and trusted host ports. Folder reviews keep exact paths, require fresh owner-password authentication and expose
+The plugin installs `PluginSharing` at layout-ready in both build modes. It supplies the bound
+owner publication lifetime, folder/group management ports and scoped installation/creation
+ports; no test API installs them. Each operation still requires its matching connection.
+Folder reviews keep exact paths, require fresh owner-password authentication and expose
 only scoped machine keys. Sponsored/native lists require identity/version, intrinsic sponsors,
 CAS/withdrawal generations and own-upload proof; no body parser or personal-token fallback.
 Grant create/PATCH replies retain the committed id and revision separately from preparation.
@@ -1484,7 +1487,7 @@ A preparation failure or unfinished bounded page retries the authenticated `/pre
 not another create/PATCH. The review keeps its saved grant and issues no key/approval until
 preparation is ready. A closed or superseded review cannot adopt a late preparation response.
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
-and operation ports are not an activated scoped engine or owner publication pipeline.
+and operation ports do not substitute credentials between personal and scoped pipelines.
 
 The publication store keeps existing-private decisions (`pending`, `declined`,
 `approved`) in its own device-local IndexedDB, separate from the personal sync ledger.
@@ -1552,9 +1555,11 @@ holds unmanaged incoming-path collisions without replacement/remap. Pending/malf
 context also refuses personal enrolment and vault script execution before credentials/effects.
 
 The `scoped-native-create-v1:` metadata records exact new-file reviews, immutable bytes,
-operation handles, root/sponsor and own-upload proof for retry. Enabling a source flag does not
-install scoped engine/ledger/paste/native HTTP/link host adapters; a flow without its trusted
-adapter remains unavailable. Reader or
+operation handles, root/sponsor and own-upload proof for retry. `ScopedPluginHost` installs the
+separate tagged ledger, scoped client, guarded filesystem, upload/native HTTP and link ports.
+New notes and chosen image bytes are explicitly reviewed with a current root or intrinsic
+sponsor. Installation tokens and colon-suffixed binding slots use device-only keychain entries
+with a keychain-safe spelling, through the secret service. Reader or
 changed scope/root/sponsor, occupied path, adoption and lost evidence hold instead of upload or
 replacement. No received file is moved to satisfy a new-file choice.
 
@@ -1567,9 +1572,9 @@ A lost successful response is reconciled by its exact receipt; withdrawal or ver
 never trigger a stale re-add. Missing ledger evidence on reopen requires recovery rather than
 manufacturing a new intent. The separate `publication-scoped-unit-v1:` records connect the
 reviewed core's durable pre-upload and exact-version settlement hooks to immutable cache facts;
-completed unit metadata is removed only after core journal retirement. Automatic publication
-also requires the production host installation; the flag alone does not install that adapter.
-The trusted owner host port uses
+completed unit metadata is removed only after core journal retirement. The production plugin
+installs the owner host, attaches its confirmation coordinator to the foreground prompt and
+refreshes it after settlement. The trusted owner host port uses
 reviewed personal hooks, including exact received-note delivery, and `native-owner-v1:` metadata
 in an independently owned store. Rows bind note/cache observations, paste range, stable handles,
 prepared sending candidates, exact admitted submitted bodies and wire receipts to the connection
@@ -1586,15 +1591,34 @@ Once bound, body/key/handles are immutable on replay; receipts must match exactl
 omitted targets/sponsors stay held. A final-binding persistence failure prevents transport. Only trusted exact native paste-range
 introduction plus verified novel creation and authorized intrinsic sponsor proof may publish;
 received snapshots are baselines, never owner introduction or script consent. Lost evidence
-holds. Production host installation and unverified native cache/paste barriers remain separate
-requirements; the disposable test port does not activate the application pipeline.
+holds. Native cache/paste evidence remains a prerequisite; the production host never replaces
+it with a body parser or infers local authorship from received bytes.
+
+## Production sharing host records
+
+`abele-owner-publication` in vault-local storage describes the independent publication database;
+`.abele-owner-publication` is its hidden recovery sentinel and never syncs. Either one lost while
+the other remains requires recovery, not an empty publication baseline. The database's
+`owner-publication-audiences-v1` record is checksum-bound to local vault, issuer and personal
+principal. It retains only IDs returned by authenticated owner grant creation/preparation.
+Selecting an audience does not grant access: every question and publication rechecks the existing
+server visibility and intrinsic-sponsor proof endpoints. Neither the catalogue nor its decisions
+travel in settings transfer.
+
+Scoped installations use `abele-scoped-<ledgerId>` and `abele-scoped-native-<ledgerId>` IndexedDB
+stores, bound to the exact scoped credential fingerprint and descriptor. `abele-scoped-paused`
+is a device-local pause preference. Personal cursors and journals are never reused. An exact
+scoped CREATE receipt is retained under `scoped-creation-receipt-v1:<handle>` before final
+materialization, so delayed certification or a restart cannot become identity adoption by
+matching bytes. Note creation uses the existing no-adoption scoped commit protocol; image
+creation uses the existing sponsored-native API and principal-owned upload proof. Received files
+keep their original paths. Scripts stay refused for scoped connections, even when paused.
 
 ## Publication snapshot contract
 
 The sync implementation defines a separate device-local IndexedDB link-snapshot store, bound to
 local vault, issuer, principal/facet/grant and exact settled note identity/version/SHA. Its
-independent descriptor and recovery sentinel are behind trusted host ports; merely enabling
-the publication flag does not supply an absent host installation. Unknown or lost evidence never creates
+independent descriptor and recovery sentinel are installed by the plugin's trusted host. Unknown or lost evidence never creates
 an empty local baseline. Pending local-create novelty clears on settlement; immutable
 received baselines and bounded known-rename evidence are separate from publication authority.
 The disabled pure publication reducer also defines device-local pending/declined/approved
