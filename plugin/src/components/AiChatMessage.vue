@@ -408,6 +408,7 @@ import AiReplyOriginalDialog from './AiReplyOriginalDialog.vue'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
+import { toolImage } from '@/ai/chatArtifacts'
 import Markdown from './obsidian/Markdown.vue'
 import AbeleMap from './AbeleMap.vue'
 import { normalizeMapBlock, type MapConfig } from '@/helpers/mapConfig'
@@ -652,20 +653,9 @@ const openToolFile = () => {
   else void openVaultFile(toolFilePath.value)
 }
 
-const IMAGE_TOOLS = ['read_image', 'look_at_drawing', 'generate_image', 'edit_image', 'screenshot']
-/** The tools whose picture is the file they were given. */
-const PATH_IMAGE_TOOLS = ['read_image', 'look_at_drawing']
-
-const imagePath = computed(() => {
-  if (props.resourceOpener) return ''
-  const name = props.message.toolName
-  if (!name || !IMAGE_TOOLS.includes(name)) return ''
-  if (PATH_IMAGE_TOOLS.includes(name)) return (props.message.toolParams?.path as string) || ''
-  const result = props.message.toolResult
-  if (!result) return ''
-  const match = result.match(/(?:Image saved|Edited image saved|Screenshot saved): (.+)/)
-  return match ? match[1].trim() : ''
-})
+const imagePath = computed(() =>
+  props.resourceOpener ? '' : (toolImage(props.message)?.path ?? '')
+)
 
 const viewerOpen = ref(false)
 const contentPicture = ref<ViewerImage | null>(null)
@@ -769,29 +759,11 @@ const onImageContextMenu = (e: MouseEvent) => {
 }
 
 const imageUrl = computed(() => {
-  const name = props.message.toolName
-  if (!name || !IMAGE_TOOLS.includes(name)) return ''
-
-  // read_image: path is in toolParams
-  if (PATH_IMAGE_TOOLS.includes(name)) {
-    const path = props.message.toolParams?.path as string
-    if (!path) return ''
-    const { app } = GlobalStore.getInstance()
-    const file = app.vault.getAbstractFileByPath(path)
-    if (!(file instanceof TFile)) return ''
-    return vaultUrl(app, file)
-  }
-
-  // generate_image / edit_image: extract saved path from toolResult
-  const result = props.message.toolResult
-  if (!result) return ''
-  const match = result.match(/(?:Image saved|Edited image saved|Screenshot saved): (.+)/)
-  if (!match) return ''
-  const path = match[1].trim()
+  const path = imagePath.value
+  if (!path) return ''
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(path)
-  if (!(file instanceof TFile)) return ''
-  return vaultUrl(app, file)
+  return file instanceof TFile ? vaultUrl(app, file) : ''
 })
 
 // A chat attached here goes to the sidebar; opened in the editor it would close the note.
