@@ -73,6 +73,35 @@ function open() {
   return { workspace, owner: workspace.activeEditor, host }
 }
 describe('embedded editor toolbar ownership', () => {
+  it('reclaims a still-focused field when the workspace cleared its active editor before a toolbar press', () => {
+    const m = open()
+    m.workspace.activeEditor = null
+    const toolbar = document.createElement('div')
+    toolbar.className = 'mobile-toolbar'
+    document.body.append(toolbar)
+    toolbar.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }))
+    expect(m.workspace.activeEditor).toBe(m.owner)
+  })
+  it('does not cancel touch pointers, so WebKit can deliver the toolbar click', async () => {
+    const m = open()
+    const toolbar = document.createElement('div')
+    toolbar.className = 'mobile-toolbar'
+    const action = document.createElement('button')
+    toolbar.append(action)
+    document.body.append(toolbar)
+    const touch = new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerType: 'touch',
+    })
+    action.dispatchEvent(touch)
+    expect(touch.defaultPrevented).toBe(false)
+    field!.contentEl.blur()
+    expect(m.workspace.activeEditor).toBe(m.owner)
+    action.click()
+    await Promise.resolve()
+    expect(m.workspace.activeEditor).toBeNull()
+  })
   it('keeps formatting on the field through a toolbar-induced blur, then releases normal blur', async () => {
     const m = open()
     expect(m.owner).not.toBeNull()

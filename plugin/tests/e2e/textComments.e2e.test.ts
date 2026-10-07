@@ -154,9 +154,11 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await host.type('Native second comment\\nwith another line')
       shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard.png'))
       const cm = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
+      cm.focus()
       cm.dispatch({selection:{anchor:0,head:6}})
       const sourceBeforeToolbar = view.editor.getValue()
       await tap(document.querySelector('.mobile-toolbar .lucide-bold'))
+      await until(() => cm.state.doc.toString().startsWith('**Native**'))
       const formatText = cm.state.doc.toString()
       const formatted = formatText.startsWith('**Native**')
       const sourceUnchanged = view.editor.getValue() === sourceBeforeToolbar

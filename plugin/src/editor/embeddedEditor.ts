@@ -375,13 +375,21 @@ export function createEmbeddedEditor(
   host.addEventListener('click', onClick, true)
   const doc = host.ownerDocument
   const onToolbarPress = (event: Event) => {
-    if (workspace.activeEditor !== controller.owner) return
-    if ((event.target as Element | null)?.closest?.('.mobile-toolbar')) {
-      toolbarPress = true
-      // Keep the keyboard and native selection in place through the touch. Moving the toolbar
-      // on blur can swallow its click; restoring the owner alone does not preserve selection.
-      if (event.type === 'pointerdown' || event.type === 'mousedown') event.preventDefault()
+    if (!(event.target as Element | null)?.closest?.('.mobile-toolbar')) return
+    if (workspace.activeEditor !== controller.owner) {
+      if (!host.contains(doc.activeElement)) return
+      activate()
     }
+    toolbarPress = true
+    // Keep the keyboard and native selection in place through the touch. Moving the toolbar
+    // on blur can swallow its click; restoring the owner alone does not preserve selection.
+    // Cancelling a touch pointer suppresses WebKit's compatibility click. Prevent only
+    // mouse focus transfer; touch ownership is held through its click without cancelling it.
+    if (
+      event.type === 'mousedown' ||
+      (event.type === 'pointerdown' && (event as PointerEvent).pointerType !== 'touch')
+    )
+      event.preventDefault()
   }
   const finishToolbarPress = () => {
     if (!toolbarPress) return
