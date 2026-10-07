@@ -16,9 +16,15 @@ describe('production sharing with isolated test activation', () => {
     for (const [file, flag] of flags) {
       const source = readFileSync(new URL('../../' + file, import.meta.url), 'utf8')
       expect(source).toContain(`export const ${flag} = true`)
-      expect(testSharingBuildPlugin('production').transform(source, '/sample/plugin/' + file)).toBeNull()
-      expect(testSharingBuildPlugin('development').transform(source, '/sample/plugin/' + file)).toBeNull()
-      expect(testSharingBuildPlugin('sharing-test').transform(source, '/sample/plugin/' + file)).toContain(TEST_SHARING_MODULE)
+      expect(
+        testSharingBuildPlugin('production').transform(source, '/sample/plugin/' + file)
+      ).toBeNull()
+      expect(
+        testSharingBuildPlugin('development').transform(source, '/sample/plugin/' + file)
+      ).toBeNull()
+      expect(
+        testSharingBuildPlugin('sharing-test').transform(source, '/sample/plugin/' + file)
+      ).toContain(TEST_SHARING_MODULE)
     }
   })
 
@@ -31,18 +37,30 @@ describe('production sharing with isolated test activation', () => {
   })
 
   it('rejects rendered test API modules while permitting ordinary sharing modules', () => {
-    expect(() => assertNoTestingModules({
-      main: { type: 'chunk', modules: { '/sample/src/testing/exposeTestApi.ts': { renderedLength: 1 } } },
-    })).toThrow(/testing module/)
-    expect(() => assertNoTestingModules({
-      main: { type: 'chunk', modules: { '/sample/src/sync/sharing/folderSharing.ts': { renderedLength: 100 } } },
-    })).not.toThrow()
+    expect(() =>
+      assertNoTestingModules({
+        main: {
+          type: 'chunk',
+          modules: { '/sample/src/testing/exposeTestApi.ts': { renderedLength: 1 } },
+        },
+      })
+    ).toThrow(/testing module/)
+    expect(() =>
+      assertNoTestingModules({
+        main: {
+          type: 'chunk',
+          modules: { '/sample/src/sync/sharing/folderSharing.ts': { renderedLength: 100 } },
+        },
+      })
+    ).not.toThrow()
   })
 
   it('refuses accidental production deactivation', () => {
-    expect(() => testSharingBuildPlugin('production').transform(
-      'export const PUBLICATION_ENABLED = false',
-      '/sample/plugin/src/sync/publication/fence.ts'
-    )).toThrow(/true/)
+    expect(() =>
+      testSharingBuildPlugin('production').transform(
+        'export const PUBLICATION_ENABLED = false',
+        '/sample/plugin/src/sync/publication/fence.ts'
+      )
+    ).toThrow(/true/)
   })
 })

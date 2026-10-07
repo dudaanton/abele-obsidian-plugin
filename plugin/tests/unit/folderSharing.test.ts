@@ -148,6 +148,12 @@ describe('disabled owner folder sharing contract', () => {
   })
   it('allows owner sharing through the production default after review and authorization', async () => {
     const { port } = setup()
+    port.authorize.mockResolvedValue({
+      facet: 'account',
+      ownerVaultId: 'sample-vault',
+      authenticatedAt: Date.now() - 1000,
+      expiresAt: Date.now() + 100000,
+    })
     const flow = new FolderSharingFlow('sample-vault', port)
     await flow.review('Agents/', 'editor', 'Sample')
     const result = await flow.confirm('invented-password')
