@@ -77,6 +77,9 @@ command, arguments or edit diff expandable. **Approve** is the accent button, wi
 beside it. An approaching expiry is shown as relative time; distant deadlines stay hidden.
 Approvals apply only to that exact action; no argument editing or permanent allow is offered.
 Cards survive reopening/reload from the journal, including resolved/expired decisions.
+After choosing an answer, the card shows **Answer sent** without another Approve/Deny choice,
+even across tab switches or reload while confirmation is pending. Reconnection retries the
+same durable operation, never a second UI answer; a terminal rejection stays visible.
 A saved decision and its delivery to the provider are separate facts. Answer only while
 connected. User Claude settings may allow a tool without asking the node: such calls are
 labelled **Allowed by your Claude settings**, not as node approvals. Repository Claude

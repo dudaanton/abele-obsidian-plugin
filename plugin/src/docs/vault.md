@@ -58,6 +58,11 @@ projection after reload; it does not replace journal references or advance curso
 records without this cache remain valid. Project/workspace/job state, trust, repository Claude
 permission opt-in, workspace leases and native provider resume identities belong to the node,
 not plugin settings or vault files.
+Prompt-answer receipts additionally retain optional `answer` metadata (session identity, prompt
+identity and the submitted allow/deny choice), including terminal rejections. This is committed
+with outbox removal, so a tab or plugin reload cannot offer another answer while journal
+resolution is still pending. Older records without the metadata remain readable; pending
+outbox entries and older successful prompt receipts also identify prior answers.
 Events and cursors commit together before acknowledgment; the outbox commits before sending
 and is removed only alongside a durable result. Rejected send receipts retain their session
 identity and original text for an explicit local rejection card, including after an offline

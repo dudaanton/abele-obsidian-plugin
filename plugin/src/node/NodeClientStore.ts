@@ -1,13 +1,19 @@
 import type { ClientState, ClientStore } from '@abele/node-client'
 import { NodeEventSchema, validateParams } from '@abele/node-protocol'
 import { z } from 'zod'
+import { retainPromptAnswerIdentity } from './promptAnswers'
 
 export interface NodeClientState extends ClientState {
   /** Replaceable artifact payload cache; journal references remain untouched. */
   artifactData?: Record<string, Record<string, unknown>>
   results: Record<
     string,
-    { result?: unknown; error?: string; input?: { sessionId: string; text: string } }
+    {
+      result?: unknown
+      error?: string
+      input?: { sessionId: string; text: string }
+      answer?: { sessionId: string; promptId: string; choice: 'allow' | 'deny' }
+    }
   >
 }
 
@@ -26,6 +32,13 @@ const StateSchema = z
       z.object({
         result: z.unknown().optional(),
         error: z.string().optional(),
+        answer: z
+          .object({
+            sessionId: z.string().min(1).max(128),
+            promptId: z.string().min(1).max(128),
+            choice: z.enum(['allow', 'deny']),
+          })
+          .optional(),
         input: z
           .object({ sessionId: z.string().min(1).max(128), text: z.string().max(32768) })
           .optional(),
@@ -107,9 +120,10 @@ export class NodeClientStore implements ClientStore {
         void (async () => {
           try {
             const state = readState(request.result)
-            const submitted = state.outbox.filter((entry) => entry.method === 'session.send')
+            const submitted = state.outbox.slice()
             result = structuredClone(await work(state))
-            for (const entry of submitted) {
+            retainPromptAnswerIdentity(state, submitted)
+            for (const entry of submitted.filter((entry) => entry.method === 'session.send')) {
               const receipt = state.results[entry.operation_id]
               if (receipt?.error) {
                 const input = entry.params as { session_id: string; text: string }

@@ -785,6 +785,20 @@ const probeScript = `(async () => {
           if (!field.getBoundingClientRect().width) continue
           field.focus(); report['node claude permission'].clipped.push(...ringClipped(field)); field.blur()
         }
+        const sent = { ...claude, id: 'layout-node-answer-tab', answers: { value: { 'sample-permission': { state: 'pending', choice: 'allow' } } } }
+        chats.nodeSessions.set(sent.id, sent)
+        chats.tabOrder.value = [...chats.tabOrder.value, sent.id]
+        chats.activeTabId.value = sent.id
+        await wait(250)
+        const sentChat = document.querySelector('.abele-node-chat')
+        const sentScroll = sentChat.querySelector('.abele-ai-chat__messages')
+        sentScroll.scrollTop = sentScroll.scrollHeight
+        await wait(100)
+        await screen('node answer sent', sentChat, sentScroll)
+        report['node answer sent'].sent = sentChat.querySelector('.abele-node-permission')?.textContent.includes('Answer sent')
+        report['node answer sent'].buttons = sentChat.querySelectorAll('.abele-node-permission button').length
+        chats.nodeSessions.delete(sent.id)
+        chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== sent.id)
         const fence = String.fromCharCode(96).repeat(3)
         const codeReply = { ...claude, id: 'layout-node-code-tab', state: { value: 'idle' }, messages: { value: [{ id: 'reply', role: 'assistant', timestamp: 0, content: [fence + 'abele-message', 'chat: AI/Chats/sample.abchat', 'message: sample', '---', '![[sample-local-note.md]]', '[[sample-local-note]]', fence].join('\\n') }] }, projection: { value: { artifacts: [], unknown: [], children: {}, activeRuns: [], queuedInputs: [], prompts: [] } } }
         chats.nodeSessions.set(codeReply.id, codeReply)
@@ -834,7 +848,7 @@ const probeScript = `(async () => {
         app.setting.close()
         nodes.nodes.value = wasNodes
         nodes.connections.delete(registration.id)
-        for (const id of [presenter.id, 'layout-claude-tab', 'layout-node-code-tab']) {
+        for (const id of [presenter.id, 'layout-claude-tab', 'layout-node-code-tab', 'layout-node-answer-tab']) {
           chats.nodeSessions.delete(id)
           chats.tabOrder.value = chats.tabOrder.value.filter(tab => tab !== id)
         }
@@ -1608,6 +1622,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'node chat',
     'node claude chat',
     'node claude permission',
+    'node answer sent',
     'node message code',
     'node workspace preview',
     'node workspace actions',
@@ -1700,6 +1715,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(permission.accent).toBe(true)
     expect(permission.queueCopies).toBe(1)
     expect(permission.clipped).toEqual([])
+  })
+
+  it('a restored sent answer offers no second approval or denial on a phone', () => {
+    const sent = report['node answer sent'] as Screen & { sent: boolean; buttons: number }
+    expect(sent.sent).toBe(true)
+    expect(sent.buttons).toBe(0)
   })
 
   it('node message blocks remain plain code on a phone rather than vault-backed cards', () => {

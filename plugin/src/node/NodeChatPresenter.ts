@@ -7,6 +7,9 @@ import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
 import type { NodeClientState } from './NodeClientStore'
 import { nodeQueueView } from './presentation'
+import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
+import { FrameCodec } from '@abele/channel-protocol'
+import { PromptSchema, validateParams } from '@abele/node-protocol'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
   'claude.message.final',
@@ -47,6 +50,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly queued = ref<{ id: string; text: string }[]>([])
   readonly error = ref('')
   readonly rejected = ref<{ id: string; text: string; error: string }[]>([])
+  readonly answers = ref<Record<string, PromptAnswerState>>({})
   private readonly receipts = ref<NodeClientState['results']>({})
   readonly presentation = computed(() =>
     nodeQueueView(
@@ -129,6 +133,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
             }
           })
         if (this.destroyed) return
+        this.answers.value = promptAnswerStates(
+          { outbox: pending, results: receipts },
+          this.reference.sessionId
+        )
         const hydrated = []
         for (const event of history) {
           const data = event.data as Record<string, unknown>
@@ -216,8 +224,47 @@ export class NodeChatPresenter implements ChatPresentationSession {
 
   async answer(prompt: Prompt, choice: 'allow' | 'deny'): Promise<void> {
     this.error.value = ''
+    const client = this.connection.client
     try {
-      await this.connection.client.answerPrompt(prompt, choice)
+      prompt = PromptSchema.parse(prompt)
+      if (prompt.session_id !== this.reference.sessionId)
+        throw new Error('Prompt belongs to another session')
+      if (prompt.state !== 'pending') return
+      if (!client.connected) throw new Error('Reconnect before answering a prompt')
+      const { session_id, prompt_id, run_id, revision, action_digest } = prompt
+      const params = validateParams('prompt.answer', {
+        session_id,
+        prompt_id,
+        run_id,
+        revision,
+        action_digest,
+        choice,
+      })
+      const operationId = crypto.randomUUID()
+      FrameCodec.encode({
+        kind: 'request',
+        request_id: 'validation',
+        operation_id: operationId,
+        method: 'prompt.answer',
+        params,
+      })
+      // Admission and duplicate check share the store's lock, including across windows/reloads.
+      const admission = await client.store.transaction((raw) => {
+        const state = raw as NodeClientState
+        const answers = promptAnswerStates(state, session_id)
+        if (answers[prompt_id]) return { queued: false, answers }
+        if (state.node_id !== this.reference.nodeId)
+          throw new Error('Node identity does not match this prompt')
+        state.outbox.push({ operation_id: operationId, method: 'prompt.answer', params })
+        return { queued: true, answers: promptAnswerStates(state, session_id) }
+      })
+      this.answers.value = admission.answers
+      if (admission.queued) {
+        await client.flush()
+        const receipt = await client.operationResult(operationId)
+        if (!receipt) throw new Error('Answer sent; waiting for confirmation')
+        if (receipt.error) throw new Error(`Answer not accepted: ${receipt.error}`)
+      }
     } catch (error) {
       this.report(error)
     }

@@ -21,7 +21,16 @@
         class="abele-tool-approval__code"
       ><code>{{ JSON.stringify(prompt.input, null, 2) }}</code></pre>
     </details>
-    <template v-if="prompt.state === 'pending'">
+    <div
+      v-if="prompt.state === 'pending' && answerState"
+      class="abele-node-permission__note"
+      role="status"
+    >
+      Answer sent · {{ answerState.choice === 'allow' ? 'Approve' : 'Deny' }}
+      <template v-if="answerState.state === 'pending'"> · waiting for confirmation</template>
+      <template v-if="answerState.error"> · not accepted: {{ answerState.error }}</template>
+    </div>
+    <template v-else-if="prompt.state === 'pending'">
       <div v-if="expiry" class="abele-node-permission__note">{{ expiry }}</div>
       <div class="abele-tool-approval__actions">
         <Button
@@ -57,13 +66,19 @@ import { computed } from 'vue'
 import type { Prompt } from '@abele/node-client'
 import { toolSummary } from '@/ai/toolLine'
 import { promptExpiry } from '@/node/presentation'
+import type { PromptAnswerState } from '@/node/promptAnswers'
 import { useDisplayClock } from '@/composables/useDisplayClock'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import Diff from './Diff.vue'
-const props = defineProps<{ prompt: Prompt; disabled: boolean; fake?: boolean }>()
+const props = defineProps<{
+  prompt: Prompt
+  disabled: boolean
+  fake?: boolean
+  answerState?: PromptAnswerState
+}>()
 const emit = defineEmits<{ (e: 'answer', choice: 'allow' | 'deny'): void }>()
-const now = useDisplayClock('minute', () => props.prompt.state === 'pending')
+const now = useDisplayClock('minute', () => props.prompt.state === 'pending' && !props.answerState)
 const expiry = computed(() => promptExpiry(props.prompt.expires_at, now.value))
 const summary = computed(() =>
   toolSummary({ toolName: props.prompt.tool_name, toolParams: props.prompt.input })

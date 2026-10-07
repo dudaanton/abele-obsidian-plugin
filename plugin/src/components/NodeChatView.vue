@@ -70,8 +70,9 @@
         :key="prompt.prompt_id"
         :prompt="prompt"
         :fake="presenter.provider?.value !== 'claude'"
-        :disabled="answering || offline"
-        @answer="answer(prompt, $event)"
+        :disabled="offline"
+        :answer-state="presenter.answers?.value[prompt.prompt_id]"
+        @answer="presenter.answer(prompt, $event)"
       />
       <div
         v-for="rejected in presenter.rejected.value"
@@ -112,7 +113,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { Menu, Notice } from 'obsidian'
-import type { Prompt } from '@abele/node-client'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { NodeService } from '@/node/NodeService'
@@ -167,7 +167,6 @@ const presentation = computed(
 )
 const expanded = ref(false),
   sending = ref(false),
-  answering = ref(false),
   permissionFixture = ref(false)
 const scroller = ref<HTMLElement>()
 const artifacts = ref<Record<string, string>>({})
@@ -259,14 +258,6 @@ const send = async (text: string) => {
   }
   await nextTick()
   if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
-}
-const answer = async (prompt: Prompt, choice: 'allow' | 'deny') => {
-  answering.value = true
-  try {
-    await props.presenter.answer(prompt, choice)
-  } finally {
-    answering.value = false
-  }
 }
 const readArtifact = async (id: string) => {
   try {
