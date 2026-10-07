@@ -126,9 +126,7 @@
           @bookmark="emit('bookmark')"
           @draw="emit('ink', true)"
           @zoom="emit('zoom', $event)"
-          @zoom-menu="
-            (at: { x: number; y: number }, steps: boolean) => emit('zoom-menu', at, steps)
-          "
+          @zoom-menu="onZoomMenu"
         />
       </div>
     </div>
@@ -272,6 +270,8 @@ const emit = defineEmits<{
   (e: 'ink-undo'): void
   (e: 'ink-redo'): void
 }>()
+
+const onZoomMenu = (at: { x: number; y: number }, steps: boolean) => emit('zoom-menu', at, steps)
 
 const panelTabs = [
   { id: 'contents', label: 'Contents' },
