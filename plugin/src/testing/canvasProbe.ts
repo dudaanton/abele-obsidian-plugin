@@ -41,6 +41,14 @@ function fixture(): GraphData {
       steps: [{ reveal: ['alpha', 'beta', 'flow'], focus: 'alpha', say: 'Sample explanation' }],
       ink: [
         {
+          version: 1,
+          id: 'sample-free-stroke',
+          tool: 'pen',
+          color: '1',
+          size: 2.4,
+          points: [10, 20, 0.2, 60, 70, 0.8],
+        },
+        {
           id: 'sample-ink',
           points: [
             [1, 2],
@@ -54,7 +62,21 @@ function fixture(): GraphData {
     sampleExtension: { version: 1 },
     nodes: [
       {
-        abele: { level: 1, ink: [{ points: [[2, 3]] }] },
+        abele: {
+          level: 1,
+          ink: [
+            { points: [[2, 3]] },
+            {
+              version: 1,
+              id: 'sample-attached-stroke',
+              tool: 'marker',
+              color: '3',
+              size: 14,
+              points: [30, 40, 0.5, 90, 60, 0.5],
+              frame: { width: 240, height: 140 },
+            },
+          ],
+        },
         styleAttributes: { shape: 'diamond', border: 'dashed' },
         id: 'alpha',
         type: 'text',

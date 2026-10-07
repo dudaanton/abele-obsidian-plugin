@@ -112,6 +112,21 @@ and contribute to Fit bounds even without nodes. Bound connections remain standa
 Unknown entry versions and fields remain opaque and preserved; an incompatible non-array `lines` container is never overwritten.
 Native Canvas may not display the primitives, but retains the extension for returning to Abele.
 
+Freehand ink is stored in root `abele.ink` (free strokes) or node `abele.ink` (attached strokes),
+never in a sidecar: `{version:1,id,tool:pen|marker,color,size,points:[x,y,pressure,...],frame?:{width,height}}`.
+Colour is a native Canvas preset (`1`–`6`), a six-digit hex colour, or empty for the theme default.
+Size is the authoring width; pressure is finite and within 0–1. Attached samples are node-local,
+with the node's authoring dimensions in `frame`; painting transforms the entire pressure outline
+by the current node's translation and independent width/height scale. It never rewrites points
+when the node moves/resizes. Free strokes have no frame and use world coordinates. IDs share
+one namespace with nodes, edges and lines, including opaque ink entries. Unknown versions and
+malformed legacy ink are preserved unchanged, not migrated or drawn; incompatible non-array
+containers cannot be overwritten by drawing. Attached ink follows its owner's visibility,
+even when its bounds reach outside that owner. It appears with the owner in walkthroughs;
+free ink is revealed by its ID. Fit, node crops, embeds, agent pictures and exports include ink.
+Human pen/marker gestures use the shared `add_ink {stroke,node?}` edit operation, one history
+item on completion. Cancellation discards the whole preview; no predictions are saved.
+
 Each node/edge has a stable id; agents choose meaningful ids. Native Canvas reorders elements
 and keys on save, so all edits and references are by id. Unknown extension data survives Abele
 parse/edit/serialize; unknown node types are refused because native Canvas drops them on save.
@@ -128,7 +143,7 @@ stable author-chosen names; referenced ids name diagram nodes/groups/edges. Reve
 a group reveals descendants, and connections appear once both endpoints are visible. Older
 steps without ids receive temporary `step-N` names, persisted on the next step-authoring write.
 Unknown step extension fields are retained. Lint reports invalid steps, missing ids and overly
-dense reveals (including group descendants). Ink and layout hints are retained, not authored. Do not invent new `type` values for these features. Agent changes use an atomic vault
+dense reveals (including group descendants). Opaque legacy ink and layout hints are retained. Do not invent new `type` values for these features. Agent changes use an atomic vault
 transaction with an expected revision of the file bytes and pending native state. `canvas_read`
 and successful writes return that revision; edit/layout refuse versions changed since the read,
 checking again at publication. The token is not a stored canvas field or sidecar. An open native

@@ -16,6 +16,8 @@ import {
 import { moveIds } from './selection'
 import { lineSchema, linesOf, rawLines, writeLines, lineIds, type CanvasLine } from './primitives'
 
+import { addInk, inkIds, inkSchema } from './ink'
+
 const id = z.string().min(1),
   object = z.record(z.string(), z.unknown())
 export const inputNodeSchema = z
@@ -52,6 +54,7 @@ export const operationSchema = z.discriminatedUnion('op', [
     .strict(),
   z.object({ op: z.literal('connect'), edge: edgeSchema }).strict(),
   z.object({ op: z.literal('add_line'), line: lineSchema }).strict(),
+  z.object({ op: z.literal('add_ink'), stroke: inkSchema, node: id.optional() }).strict(),
   z
     .object({ op: z.literal('group'), id, label: z.string().optional(), ids: z.array(id).min(1) })
     .strict(),
@@ -130,7 +133,7 @@ export function editCanvas(
   }
   const uniqueId = (id: string) => {
     unique(elements, id)
-    if (lineIds(graph).includes(id)) throw new Error(`Duplicate id ${id}`)
+    if ([...lineIds(graph), ...inkIds(graph)].includes(id)) throw new Error(`Duplicate id ${id}`)
   }
   rebuild()
   for (let index = 0; index < ops.length; index++) {
@@ -210,6 +213,9 @@ export function editCanvas(
         graph.edges.push(op.edge)
         edges.set(op.edge.id, op.edge)
         elements.set(op.edge.id, op.edge)
+      } else if (op.op === 'add_ink') {
+        uniqueId(op.stroke.id)
+        addInk(graph, op.stroke, op.node)
       } else if (op.op === 'add_line') {
         uniqueId(op.line.id)
         writeLines(graph, [...rawLines(graph, true), op.line])

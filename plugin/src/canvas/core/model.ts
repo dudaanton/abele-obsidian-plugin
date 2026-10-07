@@ -1,6 +1,7 @@
 /** JSON Canvas + extension data, independent of any vault or host API. */
 import { z } from 'zod'
 import { lineIds } from './primitives'
+import { inkIds } from './ink'
 
 export const SHAPES = [
   'rectangle',
@@ -114,7 +115,7 @@ export function parseCanvas(input: unknown): CanvasGraph {
     if (ids.has(element.id)) throw new Error(`Duplicate canvas id: ${element.id}`)
     ids.add(element.id)
   }
-  for (const id of lineIds(graph)) {
+  for (const id of [...lineIds(graph), ...inkIds(graph)]) {
     if (ids.has(id)) throw new Error(`Duplicate canvas id: ${id}`)
     ids.add(id)
   }

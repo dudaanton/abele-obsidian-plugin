@@ -257,6 +257,13 @@ must be in scope. New diagrams join scope after creation, like `create`.
   note requires `file`, link requires `url`. Mermaid input is a flowchart string, not another
   diagram grammar. Undirected/bidirectional/directed links retain both endpoint kinds; unsupported
   marker kinds are refused rather than silently converted to arrows. Creation fits text and applies layered dagre layout; it never overwrites a file.
+
+Pen/marker strokes can be added with `add_ink {stroke,node?}` using the version-1 payload
+in the vault reference. Attached points are node-local with authoring `frame` dimensions;
+free points are world coordinates without a frame. The human pen uses this same operation.
+Individual stroke transformations/removal are not supported yet; node movement/resize carries
+its attached ink, and the shared history can undo a completed stroke.
+
 Free lines/arrows use `add_line {line:{version:1,id,from:{x,y},to:{x,y},fromEnd?,toEnd?,label?,color?}}`.
 Both arrow ends are `none` or `arrow`; omitted free-line ends have no arrow. Endpoints must be finite and distinct.
 `update {id,patch}`, `move {ids,dx,dy}` and `remove {id}` work on free primitives too, with the same atomic validation and shared history as human input.
@@ -266,7 +273,7 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
 - `canvas_edit(path, {revision, ops})`: provide the revision returned by `canvas_read` or the
   last successful canvas write. A stale revision refuses the entire write with a reread message,
   including unsaved native changes and changes arriving at the final storage boundary. sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
-  {id,patch}`, `move {ids,dx,dy}`, `add_line {line}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
+  {id,patch}`, `move {ids,dx,dy}`, `add_line {line}`, `add_ink {stroke,node?}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
   {id,collapsed}`, and `style {id,styleAttributes}`. Move translates selected nodes and group
   descendants once, even when a child is also selected, preserving group membership. Add group/node ids before connecting to them.
   New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`

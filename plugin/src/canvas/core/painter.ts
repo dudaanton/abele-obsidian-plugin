@@ -1,6 +1,8 @@
 /** Canvas 2D graph painter. The host supplies its theme, note text, and local image assets. */
 import { arrowHead } from '../../drawing/items'
 import { lineBounds, linesOf } from './primitives'
+import { inkBounds, inkEntries, inkPath, inkTransform, type CanvasInk, type InkEntry } from './ink'
+import { MARKER_OPACITY } from '../../ink/stroke'
 import { stepScene } from './steps'
 import { canvasVisibility } from './visibility'
 import {
@@ -50,6 +52,8 @@ export interface CanvasAssets {
   skipCards?: boolean
   /** Individual card layers must remain transparent outside their shape. */
   transparent?: boolean
+  /** Interactive ink is composited above live Markdown cards. */
+  skipInk?: boolean
 }
 export function withoutLiveCardAssets(
   assets: CanvasAssets,
@@ -81,6 +85,7 @@ export function pictureRegion(
       : bounds(
           [
             ...graph.nodes,
+            ...inkEntries(graph).map(inkBounds),
             ...linesOf(graph).map((line) => lineBounds(line)),
             ...graph.edges
               .flatMap((edge) => routeEdge(edge, graph))
@@ -96,7 +101,15 @@ export function pictureRegion(
   )
     throw new Error('Region must be finite with positive width and height')
   return options.node
-    ? bounds([region], 24)
+    ? bounds(
+        [
+          region,
+          ...inkEntries(graph)
+            .filter((e) => e.node?.id === options.node)
+            .map(inkBounds),
+        ],
+        24
+      )
     : { x: region.x, y: region.y, width: region.width, height: region.height }
 }
 export function textResolutionWarnings(scale: number, fontSize: number): CanvasWarning[] {
@@ -127,6 +140,47 @@ const colorOf = (color: unknown, fallback: string, theme: CanvasTheme) =>
     : typeof color === 'string' && /^[1-6]$/.test(color)
       ? theme.presets[Number(color) - 1] || fallback
       : fallback
+const inkPaths = new WeakMap<CanvasInk, Path2D>()
+export function paintInkEntry(
+  ctx: CanvasRenderingContext2D,
+  entry: InkEntry,
+  theme: CanvasTheme,
+  preview = false
+): void {
+  const { stroke } = entry,
+    t = inkTransform(entry)
+  let path = preview ? undefined : inkPaths.get(stroke)
+  if (!path) {
+    path = new Path2D(inkPath(stroke))
+    if (!preview) inkPaths.set(stroke, path)
+  }
+  ctx.save()
+  ctx.translate(t.x, t.y)
+  ctx.scale(t.sx, t.sy)
+  ctx.globalAlpha = stroke.tool === 'marker' ? MARKER_OPACITY : 1
+  ctx.fillStyle = ctx.strokeStyle = colorOf(
+    stroke.color,
+    stroke.tool === 'marker' ? theme.presets[2] || theme.text : theme.text,
+    theme
+  )
+  ctx.setLineDash([])
+  if (stroke.tool === 'pen') ctx.fill(path)
+  else {
+    ctx.lineWidth = stroke.size
+    ctx.lineCap = ctx.lineJoin = 'round'
+    ctx.stroke(path)
+  }
+  ctx.restore()
+}
+export function paintCanvasInk(
+  ctx: CanvasRenderingContext2D,
+  graph: CanvasGraph,
+  region: Rect,
+  theme: CanvasTheme
+): void {
+  for (const entry of inkEntries(graph))
+    if (overlaps(inkBounds(entry), region)) paintInkEntry(ctx, entry, theme)
+}
 function shapePath(ctx: CanvasRenderingContext2D, node: CanvasNode): void {
   const { x, y, width: w, height: h } = node,
     shape = node.styleAttributes?.shape
@@ -395,6 +449,7 @@ export function paintCanvas(
     }
     ctx.restore()
   }
+  if (!assets.skipInk) paintCanvasInk(ctx, graph, region, theme)
   ctx.restore()
   return { visible: visible.map((n) => n.id), warnings }
 }

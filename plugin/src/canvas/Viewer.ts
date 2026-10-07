@@ -4,6 +4,7 @@ import { guardSurface } from '../reader/ink/inkGuard'
 import { emptyCanvas, overlaps, type CanvasGraph, type CanvasNode, type Rect } from './core/model'
 import {
   paintCanvas,
+  paintCanvasInk,
   pictureRegion,
   withoutLiveCardAssets,
   type CanvasAssets,
@@ -36,10 +37,13 @@ export interface CanvasViewerInput {
   up(event: PointerEvent): void
   cancel(): void
   paint(): void
+  paintInk?(ctx: CanvasRenderingContext2D, theme: CanvasTheme): void
+  ignores?(event: PointerEvent): boolean
 }
 export class CanvasViewer {
   readonly stage: HTMLElement
   readonly canvas: HTMLCanvasElement
+  readonly inkCanvas: HTMLCanvasElement
   readonly narration: HTMLElement
   readonly status: HTMLElement
   camera: Camera = { x: 0, y: 0, zoom: 1 }
@@ -60,6 +64,7 @@ export class CanvasViewer {
   private readonly play: HTMLButtonElement
   private readonly counter: HTMLElement
   private frame = 0
+  private inkFrame = 0
   private animation = 0
   private destroyed = false
   private assets: CanvasAssets = {}
@@ -115,6 +120,11 @@ export class CanvasViewer {
       'aria-label',
       'Diagram; drag to pan, pinch or wheel to zoom, swipe to change step'
     )
+    this.inkCanvas = make(
+      'canvas',
+      'abele-canvas-surface abele-canvas-ink',
+      this.stage
+    ) as HTMLCanvasElement
     this.narration = make('div', 'abele-canvas-narration', el)
     this.narration.setAttribute('aria-live', 'polite')
     this.status = make('div', 'abele-canvas-status', el)
@@ -285,6 +295,35 @@ export class CanvasViewer {
       this.paint()
     })
   }
+  /** Pen sampling repaints only the ink plane, not Markdown cards or asset loads. */
+  drawInk(): void {
+    if (this.destroyed || this.inkFrame) return
+    this.inkFrame = this.el.ownerDocument.defaultView!.requestAnimationFrame(() => {
+      this.inkFrame = 0
+      this.paintInk()
+    })
+  }
+  private paintInk(): void {
+    const width = this.stage.clientWidth,
+      height = this.stage.clientHeight
+    if (this.destroyed || !width || !height) return
+    const ratio = this.el.ownerDocument.defaultView!.devicePixelRatio || 1
+    this.inkCanvas.width = Math.max(1, Math.round(width * ratio))
+    this.inkCanvas.height = Math.max(1, Math.round(height * ratio))
+    const ctx = this.inkCanvas.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(
+      ratio * this.camera.zoom,
+      0,
+      0,
+      ratio * this.camera.zoom,
+      -this.camera.x * ratio * this.camera.zoom,
+      -this.camera.y * ratio * this.camera.zoom
+    )
+    const theme = this.ports.theme()
+    paintCanvasInk(ctx, this.step === null ? this.graph : this.scene().graph, this.visible(), theme)
+    if (this.step === null) this.input?.paintInk?.(ctx, theme)
+  }
   private paint(): void {
     if (this.destroyed) return
     const width = this.stage.clientWidth,
@@ -321,7 +360,9 @@ export class CanvasViewer {
       highlight,
       lint: false,
       skipCards: true,
+      skipInk: true,
     })
+    this.paintInk()
     this.input?.paint()
     const key = scene.graph.nodes
       .filter((n) => overlaps(n, region))
@@ -364,7 +405,7 @@ export class CanvasViewer {
     e.stopPropagation()
   }
   private down(e: PointerEvent): void {
-    if (e.button !== 0 && e.pointerType === 'mouse') return
+    if ((e.button !== 0 && e.pointerType === 'mouse') || this.input?.ignores?.(e)) return
     e.stopPropagation()
     this.stopAnimation()
     this.framedRegion = null
@@ -493,6 +534,7 @@ export class CanvasViewer {
     this.resize.disconnect()
     this.stopAnimation()
     if (this.frame) this.el.ownerDocument.defaultView!.cancelAnimationFrame(this.frame)
+    if (this.inkFrame) this.el.ownerDocument.defaultView!.cancelAnimationFrame(this.inkFrame)
     this.off.splice(0).forEach((fn) => fn())
     this.ports.cards.destroy()
     this.pointers.clear()

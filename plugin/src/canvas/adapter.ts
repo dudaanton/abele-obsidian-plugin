@@ -127,6 +127,7 @@ class LiveCards implements ViewerCards {
             highlight,
             lint: false,
             transparent: true,
+            skipInk: true,
           })
         }
       }
