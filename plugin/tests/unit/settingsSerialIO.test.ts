@@ -103,6 +103,59 @@ it('orders a queued managed write after the delayed read and its application', a
   }
 })
 
+it('persists a requested ordinary edit when unload occurs during reload preparation', async () => {
+  const disk = await setup()
+  const incoming = JSON.parse(JSON.stringify(config.exportSettings()))
+  incoming.tasksFolder = 'Sample incoming tasks'
+  incoming.refreshDelay = 777
+  incoming.ai.prompts.toolDescriptions = { read: 'Sample description override' }
+  disk.stored = incoming
+  const read = disk.delays.holdNext('load')
+  const toolsEntered = deferred<void>(),
+    releaseTools = deferred<void>()
+  vi.doMock('@/ai/tools', () => ({
+    codeToolDescriptions: async () => {
+      toolsEntered.resolve()
+      await releaseTools.promise
+      return {}
+    },
+  }))
+  const reading = config.reloadSettings()
+  await read.entered
+  config.tasksFolder = 'Sample local tasks'
+  const saving = config.saveSettings()
+  try {
+    read.release()
+    await toolsEntered.promise
+    config.destroy()
+    releaseTools.resolve()
+    await Promise.all([reading, saving])
+    expect(config.tasksFolder).toBe('Sample local tasks')
+    expect(disk.stored).toMatchObject({ tasksFolder: 'Sample local tasks', refreshDelay: 777 })
+  } finally {
+    read.release()
+    releaseTools.resolve()
+    await Promise.all([reading, saving])
+    vi.doUnmock('@/ai/tools')
+  }
+})
+
+it('finishes a queued reload safely when unload precedes the start of its IO', async () => {
+  const disk = await setup()
+  const write = disk.delays.holdNext('save')
+  config.tasksFolder = 'Sample local tasks'
+  const saving = config.saveSettings()
+  await write.entered
+  const load = vi.spyOn(disk, 'loadData')
+  const reading = config.reloadSettings()
+  config.destroy()
+  write.release()
+  await saving
+  await expect(reading).resolves.toBe(false)
+  expect(load).not.toHaveBeenCalled()
+  expect(disk.stored).toMatchObject({ tasksFolder: 'Sample local tasks' })
+})
+
 it('accepts a new external store after a completed local save', async () => {
   const disk = await setup()
   config.secretStore = localStore

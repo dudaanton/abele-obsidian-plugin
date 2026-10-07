@@ -158,7 +158,8 @@ export class SettingsKeeper {
     if (!this.host.plugin()) return
     // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
     // parse, and that is still somebody's settings.
-    const finishRead = this.host.edits().beginRead()
+    const edits = this.host.edits()
+    const finishRead = edits.beginRead()
     try {
       const stamp = await this.readStamp()
       const stored: unknown = await this.host.plugin().loadData()
@@ -171,7 +172,7 @@ export class SettingsKeeper {
           : null
       const index = await this.host.index.read(this.host.plugin())
       this.host.index.onDisk = index !== null
-      await this.take(stored, stored, () => index ?? [], stamp)
+      await this.take(stored, stored, () => index ?? [], stamp, edits)
     } finally {
       finishRead()
     }
@@ -200,7 +201,8 @@ export class SettingsKeeper {
     file: unknown,
     settings: unknown,
     index: () => AiChatHistoryEntry[],
-    stamp: string | null
+    stamp: string | null,
+    edits: SettingsEdits = this.host.edits()
   ): Promise<void> {
     this.loadedSync =
       file === null || file === undefined ? null : { sync: (file as { sync?: unknown }).sync }
@@ -227,7 +229,9 @@ export class SettingsKeeper {
     )
     this.base = this.host.export()
     const inSettings = this.host.index.inSettings
-    const merged = this.host.edits().apply(this.base)
+    // The operation owns this edit buffer across IO/import awaits. Unload may detach
+    // the public host's buffer, but cannot discard edits already accepted for saving.
+    const merged = edits.apply(this.base)
     if (canonicalJson(merged) !== canonicalJson(this.base))
       this.host.apply(merged, tools, this.host.chatHistory())
     this.host.index.inSettings = inSettings
@@ -246,7 +250,8 @@ export class SettingsKeeper {
     // the same migration running again on the next launch — and, for the Comment agent,
     // what stops a fresh one being minted every time the vault is opened. A migration that
     // came out where the file already was writes nothing (`writeNow`).
-    if (migrated || (this.host.index.inSettings && this.host.index.onDisk)) await this.writeNow()
+    if (migrated || (this.host.index.inSettings && this.host.index.onDisk))
+      await this.writeNow(this.host.plugin(), edits)
   }
 
   /**
@@ -285,36 +290,44 @@ export class SettingsKeeper {
    * writes the file again.
    */
   reload(): Promise<boolean> {
+    const plugin = this.host.plugin()
     return this.onFile(async () => {
-      const finishRead = this.host.edits().beginRead()
+      // The queued request belongs to this plugin lifetime, not a successor's settings.
+      if (!plugin || this.host.plugin() !== plugin) return false
+      const edits = this.host.edits()
+      const finishRead = edits.beginRead()
       const base = this.base
       try {
-        return await this.reloadNow(await this.readReload(), base)
+        const read = await this.readReload(plugin)
+        if (!read || this.host.plugin() !== plugin) return false
+        return await this.reloadNow(read, base, edits)
       } finally {
         finishRead()
       }
     })
   }
 
-  private async readReload(): Promise<{ stored: unknown; stamp: string | null }> {
-    if (!this.host.plugin()) {
-      throw new Error('AbeleConfig not initialized with plugin instance.')
-    }
-    let stamp = await this.readStamp()
-    let stored: unknown = await this.host.plugin().loadData()
+  private async readReload(
+    plugin: AbelePlugin
+  ): Promise<{ stored: unknown; stamp: string | null } | null> {
+    let stamp = await this.readStamp(plugin)
+    if (this.host.plugin() !== plugin) return null
+    let stored: unknown = await plugin.loadData()
     if (stored === undefined) {
       console.debug('[Abele] data.json would not parse; reading it again in a moment')
       await pause(UNREADABLE_RETRY_MS)
-      if (!this.host.plugin()) return { stored: undefined, stamp }
-      stamp = await this.readStamp()
-      stored = await this.host.plugin().loadData()
+      if (this.host.plugin() !== plugin) return null
+      stamp = await this.readStamp(plugin)
+      if (this.host.plugin() !== plugin) return null
+      stored = await plugin.loadData()
     }
     return { stored, stamp }
   }
 
   private async reloadNow(
     { stored, stamp }: { stored: unknown; stamp: string | null },
-    readBase: AbeleSettings | null
+    readBase: AbeleSettings | null,
+    edits: SettingsEdits
   ): Promise<boolean> {
     if (!this.host.plugin()) return false
     if (stored === undefined) {
@@ -341,7 +354,7 @@ export class SettingsKeeper {
         return false
       }
     } else {
-      const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored, readBase)
+      const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored, readBase, edits)
       if (
         this.waitingForInitialFile &&
         isSettingsObject(stored) &&
@@ -351,16 +364,12 @@ export class SettingsKeeper {
         this.pendingLegacySync = JSON.parse(JSON.stringify(stored.sync))
       }
       this.waitingForInitialFile = false
-      await this.take(stored, settings, () => this.host.chatHistory(), stamp)
+      await this.take(stored, settings, () => this.host.chatHistory(), stamp, edits)
       // Only the startup load's block is moved: one from another device is never this one's.
       this.loadedSync = null
       // What was put back on top of the file goes into it.
-      if (
-        settings !== stored ||
-        this.host.edits().hasAcknowledged() ||
-        this.managedStore.protects()
-      )
-        await this.writeNow()
+      if (settings !== stored || edits.hasAcknowledged() || this.managedStore.protects())
+        await this.writeNow(this.host.plugin(), edits)
     }
     this.unannounced = false
     this.host.reloaded()
@@ -378,7 +387,11 @@ export class SettingsKeeper {
    * where the file names none, and with what this copy changed in memory since it last read or
    * wrote the file put back on top. The file itself when there is nothing to keep.
    */
-  private ontoArrived(stored: unknown, base: AbeleSettings | null = this.base): unknown {
+  private ontoArrived(
+    stored: unknown,
+    base: AbeleSettings | null = this.base,
+    edits: SettingsEdits = this.host.edits()
+  ): unknown {
     if (!isSettingsObject(stored)) return stored
     let arrived: Record<string, unknown> = stored
     if (stored.secretStore === undefined && isStoreFile(this.host.secretStore())) {
@@ -396,7 +409,7 @@ export class SettingsKeeper {
       base === null
         ? []
         : localChanges(base, this.host.export(), keep).filter(
-            (change) => !this.host.edits().pending(change.path)
+            (change) => !edits.pending(change.path)
           )
     if (changes.length > 0) {
       console.debug(
@@ -436,6 +449,7 @@ export class SettingsKeeper {
     const plugin = this.host.plugin()
     if (!plugin) return this.onFile(() => this.writeNow(plugin))
     const current = this.host.export()
+    const edits = this.host.edits()
     if (
       this.saveCapture === null ||
       canonicalJson({ store: this.saveCapture.secretStore }) !==
@@ -446,15 +460,18 @@ export class SettingsKeeper {
     if (this.saveCapture !== null) {
       for (const change of localChanges(this.saveCapture, current, ['secretStore'])) {
         if (change.path[0] === 'ai' && change.path[1] === 'chatHistory') continue
-        this.host.edits().recordPatch(change.path, change.value)
+        edits.recordPatch(change.path, change.value)
       }
     }
     this.saveCapture = current
-    return this.onFile(() => this.writeNow(plugin))
+    return this.onFile(() => this.writeNow(plugin, edits))
   }
 
   /** `write` for a step already on the queue — a load or a reload writing. */
-  private async writeNow(plugin: AbelePlugin | null = this.host.plugin()): Promise<void> {
+  private async writeNow(
+    plugin: AbelePlugin | null = this.host.plugin(),
+    edits: SettingsEdits = this.host.edits()
+  ): Promise<void> {
     if (!plugin) return
     if (this.unreadable) {
       this.tellUnreadable()
@@ -464,7 +481,7 @@ export class SettingsKeeper {
       this.deferredRewrite = true
       return
     }
-    if (!(await this.catchUp(plugin))) return
+    if (!(await this.catchUp(plugin, edits))) return
     const accepted = this.host.export()
     const managedWritten = this.managedStore.beginWrite()
     const next = accepted
@@ -474,12 +491,12 @@ export class SettingsKeeper {
     if (text === this.onDisk) {
       // A coalesced direct save can return to its starting value. Acknowledge the
       // pending request even when its accepted state needs no physical write.
-      this.host.edits().written()()
+      edits.written()()
       managedWritten()
       this.base = accepted
       return
     }
-    const written = this.host.edits().written()
+    const written = edits.written()
     await plugin.saveData(settingsSnapshot(next))
     written()
     managedWritten()
@@ -501,7 +518,7 @@ export class SettingsKeeper {
    * Answers false when the file will not parse even after a moment: it is left alone, the
    * change stays in memory, and the reload that follows says what is wrong with it.
    */
-  private async catchUp(plugin: AbelePlugin): Promise<boolean> {
+  private async catchUp(plugin: AbelePlugin, edits: SettingsEdits): Promise<boolean> {
     let stamp = await this.readStamp(plugin)
     if (stamp === this.stamp) return true
     let fresh: unknown = await plugin.loadData()
@@ -522,11 +539,11 @@ export class SettingsKeeper {
     }
     if (canonicalJson(fresh) === this.onDisk) return true
     console.debug('[Abele] data.json changed on disk before this save; taking it in first')
-    const settings = this.ontoArrived(fresh)
+    const settings = this.ontoArrived(fresh, this.base, edits)
     // The startup load's block stays for its one reader; one from another device is never
     // this one's (`reloadNow`).
     const loaded = this.loadedSync
-    await this.take(fresh, settings, () => this.host.chatHistory(), stamp)
+    await this.take(fresh, settings, () => this.host.chatHistory(), stamp, edits)
     this.loadedSync = loaded
     this.unannounced = true
     // What reopens the secret store and the AI features on what arrived. The sync asks for it
