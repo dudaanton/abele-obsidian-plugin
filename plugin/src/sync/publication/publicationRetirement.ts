@@ -4,6 +4,7 @@ import { IndexedDbStateStore } from '../IndexedDbStateStore'
 import { bindingKey, LinkSnapshotStore } from './LinkSnapshotStore'
 import { PublicationDecisionStore } from './publicationDecision'
 import type { SnapshotDescriptor } from './snapshotDatabase'
+import { emptyLocalLinkUnit } from './linkUnit'
 
 export const PUBLICATION_DESCRIPTOR = 'abele-owner-publication'
 export const PUBLICATION_SENTINEL = '.abele-owner-publication'
@@ -145,6 +146,8 @@ async function settled(
         if (!Array.isArray(record.value) || record.value.length) return false
       } else if (part === 'received-bases' || part === 'delayed-local-links') {
         if (!record.value || Object.keys(record.value).length) return false
+      } else if (part.startsWith('link-unit:')) {
+        if (!emptyLocalLinkUnit(record.value)) return false
       } else if (part.startsWith('unit:') || part.startsWith('receipt:')) {
         if (!units.has(part.slice(part.indexOf(':') + 1))) return false
       } else return false

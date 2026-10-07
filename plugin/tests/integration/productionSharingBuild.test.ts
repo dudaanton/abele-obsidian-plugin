@@ -419,6 +419,58 @@ it('does not publish a recipient-planted private link when the owner resaves it'
   expect(await peer.app.vault.adapter.exists('Assets/planted-private.png')).toBe(false)
 }, 30000)
 
+it('retires production publication stores across twenty binary-upload reconnect cycles', async () => {
+  const device = await bootProductionPlugin(code)
+  const sync = device.plugin.syncSharing.sync
+  const factory = window.indexedDB
+  const root = verifySyncFixture(process.env.ABELE_SYNC_DIR)
+  const commit = JSON.parse(readFileSync('vendor/sync/provenance.json', 'utf8')).commit
+  let vaultId: string | undefined
+  let cycleServer: typeof server | undefined
+  const cycleWork = mkdtempSync(join(work, 'binary-cycles-'))
+  try {
+    for (let cycle = 0; cycle < 20; cycle++) {
+      // Keep real login throttling intact: each isolated issuer exercises seven reconnects,
+      // then the next issuer also exercises the same vault's cross-binding cleanup.
+      if (cycle % 7 === 0) {
+        await cycleServer?.stop()
+        const directory = join(cycleWork, String(cycle))
+        mkdirSync(directory)
+        cycleServer = await spawnCollaborationStandServer(root, commit, directory)
+        cycleServer.createAccount(email, password)
+        vaultId = undefined
+      }
+      await sync.connect(cycleServer!.url, email, password)
+      await sync.chooseVault(
+        vaultId ?? { create: 'Sample binary lifecycle vault' },
+        'Sample binary device'
+      )
+      vaultId = sync.connection.value.vaultId
+      await device.app.vault.createBinary(
+        `Images/sample-${cycle}.png`,
+        new Uint8Array([cycle, 1, 2]).buffer
+      )
+      await sync.syncNow()
+      expect(sync.status.value.state).toBe('idle')
+      const records = device.app.loadLocalStorage('abele-owner-publication-stores-v1') as {
+        descriptor: { id: string }
+      }[]
+      expect(records).toHaveLength(1)
+      const name = 'abele-link-snapshots-' + records[0].descriptor.id
+      await sync.disconnect()
+      expect(device.app.loadLocalStorage('abele-owner-publication-stores-v1')).toEqual([])
+      expect((await factory.databases()).map((database) => database.name)).not.toContain(name)
+    }
+  } finally {
+    try {
+      await device.close()
+    } finally {
+      await cycleServer?.stop()
+      await rm(cycleWork, { recursive: true, force: true })
+    }
+  }
+}, 30000)
+
 it('continues production personal sync with a copied script marker and no local provenance descriptor', async () => {
   const device = await bootProductionPlugin(code)
   try {

@@ -221,6 +221,27 @@ it('retries a partially completed retirement without allocating another store', 
   ).toEqual([])
 })
 
+it.each([
+  ['legacy empty', {}, true],
+  ['empty binary', { facts: {}, localCreates: [], delayed: {} }, true],
+  ['pending note', { facts: { 'sample-handle': [] }, localCreates: [], delayed: {} }, false],
+  ['pending create', { facts: {}, localCreates: ['sample-handle'], delayed: {} }, false],
+  ['unknown layout', { facts: {}, localCreates: [], futureEvidence: true }, false],
+] as const)(
+  'retires %s link-unit metadata only when no evidence remains',
+  async (_name, value, terminal) => {
+    const { host, factory, open } = fixture()
+    const runtime = await open()
+    await (host as any).live.runtime.persisted('link-unit:sample-binary-request', value)
+    runtime.close()
+    await host.retirePublication()
+    expect(
+      (await factory.databases()).filter((db) => db.name?.startsWith('abele-link-snapshots-'))
+        .length
+    ).toBe(terminal ? 0 : 1)
+  }
+)
+
 it('does not apply stored consent from a previous principal to a new binding', async () => {
   const { host, connection, open } = fixture()
   const first = await open()

@@ -6,6 +6,7 @@ import {
   type StateStore,
 } from '@abele/sync-core'
 import { storeOwnerUnit, loadOwnerUnit, type StoredOwnerUnit } from './ownerUnitStorage'
+import { emptyLocalLinkUnit } from './linkUnit'
 import { CommitResponseSchema, type CommitOp } from '@abele/sync-protocol'
 import { MarkdownView, type App, type CachedMetadata } from 'obsidian'
 import { PublicationIntents, type PushReceipt, type PublicationDelta } from './publicationIntents'
@@ -988,7 +989,8 @@ export class NativeOwnerPublication {
             local.localCreates.push(o.handle)
         }
       }
-      await this.persisted('link-unit:' + unit.idempotencyKey, local)
+      if (!emptyLocalLinkUnit(local))
+        await this.persisted('link-unit:' + unit.idempotencyKey, local)
       const holds: number[] = [],
         inputs: PublicationInput[] = []
       for (const o of unit.operations) {
@@ -1210,14 +1212,15 @@ export class NativeOwnerPublication {
           delete local.facts[item.handle]
           if (local.delayed) delete local.delayed[item.handle]
           local.localCreates = local.localCreates.filter((handle) => handle !== item.handle)
-          if (
-            Object.keys(local.facts).length ||
-            local.localCreates.length ||
-            Object.keys(local.delayed ?? {}).length
-          )
-            await this.persisted('link-unit:' + id, local)
+          if (!emptyLocalLinkUnit(local)) await this.persisted('link-unit:' + id, local)
           else await this.options.meta.setMeta(this.prefix + 'link-unit:' + id, null)
         }
+      } else {
+        // Older binary-only batches persisted empty units. They carry no note lineage,
+        // but must be cleared on ordinary non-Markdown settlement as well.
+        const local = await this.read('link-unit:' + id)
+        if (emptyLocalLinkUnit(local))
+          await this.options.meta.setMeta(this.prefix + 'link-unit:' + id, null)
       }
       const p = this.pastes.find((p) => p.assetHandle === item.handle && !p.done)
       if (!p) return

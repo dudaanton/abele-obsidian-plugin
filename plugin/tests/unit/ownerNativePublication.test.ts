@@ -132,6 +132,49 @@ describe('native owner paste preflight, not note-wide authorship', () => {
     await expect(s.make().start(false)).rejects.toThrow(/evidence missing/)
     expect(s.client.commitRaw).not.toHaveBeenCalled()
   })
+  it('does not retain empty link evidence for an ordinary binary upload', async () => {
+    const s = setup(),
+      owner = s.make()
+    await owner.start(true)
+    try {
+      const op = {
+        op: 'create' as const,
+        path: 'Images/sample.png',
+        sha: 'a'.repeat(64),
+        size: 1,
+        mtime: 1,
+      }
+      await owner.hooks.beforeUpload!({
+        idempotencyKey: 'sample-binary-request',
+        operations: [{ index: 0, handle: 'sample-binary-handle', op }],
+      } as never)
+      const key =
+        'native-owner-v1:' +
+        JSON.stringify((owner as any).options.binding) +
+        ':link-unit:sample-binary-request'
+      expect(await s.meta.getMeta(key)).toBeNull()
+      for (const retained of [{}, { facts: {}, localCreates: [], delayed: {} }]) {
+        await (owner as any).persisted('link-unit:sample-binary-request', retained)
+        await owner.hooks.onSettled!(
+          {
+            op,
+            path: op.path,
+            handle: 'sample-binary-handle',
+            fileId: 'sample-file',
+            versionId: 'sample-version',
+            sha: op.sha,
+            result: { status: 'applied' },
+          } as never,
+          new Uint8Array([1]),
+          'sample-binary-request'
+        )
+        expect(await s.meta.getMeta(key)).toBeNull()
+      }
+    } finally {
+      owner.close()
+    }
+  })
+
   it('default disabled activation performs no event installation or storage bootstrap', async () => {
     const s = setup()
     await expect(s.make(false).start(true)).rejects.toThrow(/disabled/)

@@ -1619,7 +1619,10 @@ Every known record, including the current binding, requires its matching descrip
 sentinel before opening. Loss of both markers still holds recovery when the catalogue
 proves previous storage; it never allocates an empty replacement over retained decisions.
 Disconnect and a new binding retire old stores only when all retained work is provably
-terminal; unknown or unfinished evidence stays separate for recovery. At most 16 stores may
+terminal; unknown or unfinished evidence stays separate for recovery. Empty binary-only
+link units carry no retained link work: live uploads no longer create them, and old empty
+units are cleared at settlement or accepted as terminal during retirement. Nonempty or
+unknown layouts still hold. At most 16 stores may
 be retained: a full recovery budget holds new allocation rather than evicting pending work.
 Forget explicitly deletes the catalogued databases, descriptors and sentinels, including
 unfinished local work. Durable retirement markers let interrupted deletion resume without
