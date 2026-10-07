@@ -25,6 +25,7 @@ import {
   type CollaborationPeer,
 } from './helpers/collaborationPeers'
 import { pasteNativeImage } from './helpers/nativePaste'
+import { leaveEditorForPublication } from './helpers/publicationEditorExit'
 const COMMIT = '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba',
   ROOT = 'Agents/Проект примера.md',
   NOTE = 'Agents/Разрозненные/Общая заметка.md',
@@ -691,6 +692,15 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       )
       await ownerSync()
       await settleGroup()
+      expect(cli!.evalAwait(svc + '.publicationPrompt.asking.value')).toBeNull()
+      await cli!.evalAwait(
+        `(()=>{(${leaveEditorForPublication.toString()})(document);return true})()`
+      )
+      await waitFor(
+        'editor focus left before confirmation',
+        () => cli!.evalAwait<boolean>('!app.workspace.getMostRecentLeaf().view.editor.hasFocus()'),
+        5000
+      )
       await waitFor(
         'existing-private confirmation dialog',
         async () => {
@@ -745,6 +755,9 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       )
       await ownerSync()
       await settleGroup()
+      await cli!.evalAwait(
+        `(()=>{(${leaveEditorForPublication.toString()})(document);return true})()`
+      )
       await waitFor(
         'separate private-target question',
         async () => {
