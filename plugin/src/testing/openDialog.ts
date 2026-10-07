@@ -238,9 +238,11 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-edit-shared': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
   'agents': () => mountAlone(AgentsListDialog, { source: agentsFixture() }),
-  'agents-tabs': () => chooseAttentionTab(GlobalStore.getInstance().app,
-    Array.from({ length: 20 }, (_, i) => ({ id: `sample-tab-${i}`, label: `Sample conversation ${i + 1} with an intentionally long invented title for a narrow dialog` })),
-    async () => {}),
+  'agents-tabs': async () => {
+    await chooseAttentionTab(GlobalStore.getInstance().app,
+      Array.from({ length: 20 }, (_, i) => ({ id: `sample-tab-${i}`, label: `Sample conversation ${i + 1} with an intentionally long invented title for a narrow dialog` })),
+      async () => {})
+  },
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
   'node-review': async () =>
