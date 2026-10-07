@@ -1,10 +1,7 @@
 <template>
   <Modal title="Node workspaces" size="wide" @close="emit('close')">
     <div class="abele-node-workspaces">
-      <p>
-        {{ label }} · Each session has its own worktree and branch. The original checkout stays
-        unchanged.
-      </p>
+      <p>{{ label }} · Isolated worktrees; original checkouts stay unchanged.</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <details :open="!model.projects.value.length">
         <summary>Register a project</summary>
@@ -29,16 +26,18 @@
       <Setting name="Project">
         <select
           aria-label="Project"
+          :title="project?.root_path"
           :value="model.projectId.value"
           :disabled="busy || offline"
           @change="selectProject"
         >
           <option value="">Choose a project</option>
           <option v-for="p in model.projects.value" :key="p.project_id" :value="p.project_id">
-            {{ p.root_path }} · {{ p.trust }}
+            {{ shortNodePath(p.root_path, 36) }}
           </option>
         </select>
       </Setting>
+      <NodePath v-if="project" :path="project.root_path" label="Full project path" />
       <details>
         <summary>Claude permission settings</summary>
         <Setting
@@ -59,34 +58,56 @@
       <div class="abele-node-workspaces__actions">
         <Button
           text="Create workspace"
+          icon="plus"
+          accent
           :disabled="busy || offline || !project?.repository_path"
           @click="act(() => model.createWorkspace(base.trim()))"
         />
-        <Button text="Refresh" :disabled="busy || offline" @click="act(() => model.load())" />
         <Button
-          text="Unregister project"
-          :disabled="busy || offline || !project"
-          @click="unregister"
+          text="Refresh"
+          icon="refresh-cw"
+          :disabled="busy || offline"
+          @click="act(() => model.load())"
         />
       </div>
-      <p v-if="model.reservation.value" role="status">
-        Workspace reserved · Job {{ model.reservation.value.job_id }}. A session can start only
-        after provisioning succeeds.
-      </p>
-      <ul v-if="model.jobs.value.length" aria-label="Workspace jobs">
-        <li v-for="job in model.jobs.value" :key="job.job_id">
-          {{
-            model.workspaces.value.find((w) => w.workspace_id === job.workspace_id)?.branch ||
-            job.workspace_id
-          }}
-          · {{ job.kind }} · {{ job.state }} · {{ job.phase
-          }}<template v-if="job.error"> · {{ job.error }}</template>
-        </li>
-      </ul>
+      <div v-if="latestJobs.length" aria-label="Workspace jobs" class="abele-node-workspaces__jobs">
+        <div
+          v-for="job in latestJobs"
+          :key="job.job_id"
+          class="abele-node-workspaces__job"
+          role="status"
+        >
+          <Icon
+            :icon="
+              job.state === 'succeeded'
+                ? 'check'
+                : ['queued', 'running'].includes(job.state)
+                  ? 'loader'
+                  : 'circle-alert'
+            "
+            no-hover
+          />
+          <span
+            >{{ nodeJobLabel(job)
+            }}<template v-if="latestJobs.length > 1">
+              ·
+              {{
+                shortNodePath(
+                  model.workspaces.value.find((w) => w.workspace_id === job.workspace_id)?.branch ||
+                    'Worktree',
+                  26
+                )
+              }}</template
+            ></span
+          >
+          <span v-if="job.error"> · {{ job.error.replace(/_/g, ' ') }}</span>
+        </div>
+      </div>
       <Setting name="Workspace">
         <select
           aria-label="Workspace"
           v-model="model.workspaceId.value"
+          :title="workspace?.branch || workspace?.path"
           :disabled="busy || offline"
           @change="clearPreview"
         >
@@ -96,29 +117,25 @@
             :key="w.workspace_id"
             :value="w.workspace_id"
           >
-            {{ w.branch || 'Original checkout (browse only)' }} · {{ w.state }}
+            {{ w.branch ? shortNodePath(w.branch, 28) : 'Original checkout' }} ·
+            {{ workspaceStateLabels[w.state] }}
           </option>
         </select>
       </Setting>
-      <p v-if="workspace">{{ workspace.path }}</p>
+      <NodePath v-if="workspace" :path="workspace.path" />
       <div class="abele-node-workspaces__actions">
         <Button
           text="Preview status and diff"
           :disabled="busy || offline || workspace?.state !== 'ready'"
           @click="act(() => model.preview())"
         />
-        <Button
-          text="Remove unused workspace"
-          :disabled="busy || offline || workspace?.kind !== 'managed' || !!attached"
-          @click="removeWorkspace"
-        />
+
         <Button
           v-if="attached"
           text="Open attached session"
           :disabled="busy"
           @click="emit('session', attached)"
         />
-        <Button v-if="attached" text="Detach session" :disabled="busy || offline" @click="detach" />
       </div>
       <details v-if="model.diff.value" open>
         <summary>Read-only status and HEAD diff</summary>
@@ -133,7 +150,13 @@
           </li>
         </ul>
         <p v-if="!model.status.value.length">Clean workspace</p>
-        <p>HEAD {{ model.diff.value.head_commit }} · Base {{ model.diff.value.base_commit }}</p>
+        <details>
+          <summary>
+            HEAD {{ model.diff.value.head_commit.slice(0, 8) }} · Base
+            {{ model.diff.value.base_commit?.slice(0, 8) || '—' }}
+          </summary>
+          <code>{{ model.diff.value.head_commit }} · {{ model.diff.value.base_commit }}</code>
+        </details>
         <pre>{{ model.diff.value.diff || 'No tracked changes' }}</pre>
       </details>
       <Setting name="Session title"
@@ -147,6 +170,7 @@
       </Setting>
       <Button
         text="Start session in workspace"
+        accent
         :disabled="
           busy ||
           offline ||
@@ -157,13 +181,45 @@
         "
         @click="start"
       />
-      <p>
-        Messages are serialized; follow-ups queue while a turn runs. Steering and interactive
-        questions are not supported yet.
-      </p>
       <details>
         <summary>Provider availability and effective configuration</summary>
-        <pre>{{ JSON.stringify(model.description.value, null, 2) }}</pre>
+        <p v-for="p in providers" :key="p.provider">
+          {{ p.provider === 'claude' ? 'Claude Code' : 'Fake (non-executing)' }} ·
+          {{ p.available === false ? 'Unavailable' : 'Available'
+          }}<template v-if="p.configuration?.model"> · {{ p.configuration.model }}</template
+          ><template v-if="p.configuration?.profile">
+            · {{ p.configuration.profile }} settings</template
+          >
+        </p>
+        <details>
+          <summary>Technical details</summary>
+          <pre>{{
+            JSON.stringify({ node: model.description.value, jobs: model.jobs.value }, null, 2)
+          }}</pre>
+        </details>
+      </details>
+      <details class="abele-node-workspaces__danger">
+        <summary>Detach or remove</summary>
+        <div class="abele-node-workspaces__actions">
+          <Button
+            v-if="attached"
+            text="Detach session"
+            :disabled="busy || offline"
+            @click="detach"
+          />
+          <Button
+            text="Remove unused workspace"
+            warning
+            :disabled="busy || offline || workspace?.kind !== 'managed' || !!attached"
+            @click="removeWorkspace"
+          />
+          <Button
+            text="Unregister project"
+            warning
+            :disabled="busy || offline || !project"
+            @click="unregister"
+          />
+        </div>
       </details>
     </div>
   </Modal>
@@ -172,6 +228,9 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { NodeWorkspaceModel, NodeSession } from '@/node/NodeWorkspaceModel'
 import type { NodeConnection } from '@/node/NodeService'
+import { nodeJobLabel, shortNodePath, workspaceStateLabels } from '@/node/presentation'
+import Icon from './obsidian/Icon.vue'
+import NodePath from './NodePath.vue'
 import { confirmAction } from '@/modal/confirm'
 import { GlobalStore } from '@/stores/GlobalStore'
 const confirm = (options: Parameters<typeof confirmAction>[1]) =>
@@ -207,6 +266,26 @@ const workspace = computed(() =>
     (w) => w.workspace_id === props.model.workspaceId.value && w.state !== 'removed'
   )
 )
+const latestJobs = computed(() => {
+  const byWorkspace = new Map<string, (typeof props.model.jobs.value)[number]>()
+  for (const job of props.model.jobs.value) {
+    const previous = byWorkspace.get(job.workspace_id)
+    if (!previous || previous.created_at < job.created_at) byWorkspace.set(job.workspace_id, job)
+  }
+  return [...byWorkspace.values()]
+})
+const providers = computed(() => {
+  const description = props.model.description.value as
+    | {
+        providers?: {
+          provider: string
+          available?: boolean
+          configuration?: { model?: string; profile?: string }
+        }[]
+      }
+    | undefined
+  return Array.isArray(description?.providers) ? description.providers : []
+})
 const attached = computed(() =>
   props.model.sessions.value.find((s) => s.workspace_id === props.model.workspaceId.value)
 )
@@ -263,15 +342,17 @@ const removeWorkspace = () =>
   })
 const unregister = () =>
   act(async () => {
+    const target = project.value
     if (
-      !project.value ||
+      !target ||
       !(await confirm({
         title: 'Unregister project?',
         message: 'The original checkout is retained. Remove managed workspaces first.',
       }))
     )
       return
-    await props.model.client.removeProject(project.value.project_id)
+    if (project.value?.project_id !== target.project_id) return
+    await props.model.client.removeProject(target.project_id)
     await props.model.load()
   })
 const detach = () =>
@@ -345,6 +426,16 @@ onUnmounted(() => {
     min-width: 0;
     max-width: 100%;
     flex-wrap: wrap;
+  }
+  &__job {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-1);
+    margin-block: var(--size-4-1);
+    color: var(--text-muted);
+  }
+  &__danger {
+    margin-top: var(--size-4-4);
   }
   &__actions {
     display: flex;

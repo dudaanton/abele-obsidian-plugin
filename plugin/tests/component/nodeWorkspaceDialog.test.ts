@@ -64,6 +64,43 @@ it('does not remove a different workspace when selection changes during confirma
   }
 })
 
+it('does not unregister a different project when the selection changes during confirmation', async () => {
+  useVault([])
+  const props = nodeWorkspaceFixture()
+  props.model.client.removeProject = vi.fn(async () => ({
+    removed: true as const,
+    project_id: 'other',
+  }))
+  let decide!: (answer: boolean) => void
+  vi.mocked(confirmAction).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        decide = resolve
+      })
+  )
+  const wrapper = mount(NodeWorkspaceDialog, {
+    props,
+    global: { stubs: { Modal: { template: '<div><slot /></div>' } } },
+  })
+  try {
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Unregister project')!
+      .trigger('click')
+    props.model.projects.value = [
+      ...props.model.projects.value,
+      { ...props.model.projects.value[0], project_id: 'other' },
+    ]
+    props.model.projectId.value = 'other'
+    decide(true)
+    await flushPromises()
+    expect(props.model.client.removeProject).not.toHaveBeenCalled()
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('uses the shared modal and node seam, displays durable provisioning state and starts the selected provider', async () => {
   useVault([])
   const props = nodeWorkspaceFixture()
