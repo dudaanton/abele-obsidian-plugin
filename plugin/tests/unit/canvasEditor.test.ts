@@ -106,6 +106,172 @@ function pointer(s: ReturnType<typeof setup>, type: string, x: number, y: number
   )
 }
 
+describe('human shapes and connections', () => {
+  it('adds any of the eight shapes through the controls', async () => {
+    const s = setup()
+    const shape = s.el.querySelector<HTMLSelectElement>('[aria-label="Canvas shape"]')!
+    expect(shape).not.toBeNull()
+    expect(shape.options).toHaveLength(8)
+    shape.value = 'diamond'
+    s.button('Add canvas shape').click()
+    s.input('Decision')
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(s.document.session.graph.nodes[0]).toMatchObject({
+      type: 'text',
+      text: 'Decision',
+      styleAttributes: { shape: 'diamond' },
+    })
+  })
+  it('changes a selected shape and its native color in one undo item', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 130, 80)
+    pointer(s, 'pointerup', 130, 80)
+    s.el.querySelector<HTMLSelectElement>('[aria-label="Canvas shape"]')!.value = 'circle'
+    const color = s.el.querySelector<HTMLSelectElement>('[aria-label="Shape color"]')!
+    expect(color).not.toBeNull()
+    color.value = '4'
+    s.button('Apply selected shape').click()
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.graph.nodes[0]).toMatchObject({
+      styleAttributes: { shape: 'circle' },
+      color: '4',
+    })
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(cards()))
+  })
+  it('selects connections over group backgrounds, rather than dragging the group', () => {
+    const graph = cards()
+    graph.nodes.unshift({ id: 'frame', type: 'group', x: -40, y: -40, width: 920, height: 240 })
+    const s = setup(graph)
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 280, 80)
+    pointer(s, 'pointerup', 280, 80)
+    expect(s.viewer.selection.has('connection')).toBe(true)
+    expect(s.publish).not.toHaveBeenCalled()
+  })
+  it('connects by touch with preview only, selects, reconnects and deletes an edge with atomic undo', async () => {
+    const graph = cards()
+    graph.edges = []
+    const s = setup(graph)
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw connection').click()
+    pointer(s, 'pointerdown', 130, 80)
+    pointer(s, 'pointermove', 280, 80)
+    expect(s.document.session.busy).toBe(true)
+    expect(s.document.session.graph.edges).toHaveLength(0)
+    expect(s.publish).not.toHaveBeenCalled()
+    pointer(s, 'pointerup', 430, 80)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    const edge = s.document.session.graph.edges[0]
+    expect(edge).toMatchObject({ fromNode: 'alpha', toNode: 'beta' })
+    s.button('Select canvas objects').click()
+    pointer(s, 'pointerdown', 280, 80)
+    pointer(s, 'pointerup', 280, 80)
+    expect(s.viewer.selection.has(edge.id)).toBe(true)
+    const label = s.el.querySelector<HTMLInputElement>('[aria-label="Connection label"]')!
+    label.value = 'Next step'
+    s.button('Apply connection style').click()
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
+    expect(s.document.session.graph.edges[0].label).toBe('Next step')
+    pointer(s, 'pointerdown', 300, 80)
+    pointer(s, 'pointermove', 560, 80)
+    pointer(s, 'pointerup', 730, 80)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(3))
+    expect(s.document.session.graph.edges[0]).toMatchObject({
+      id: edge.id,
+      toNode: 'gamma',
+      label: 'Next step',
+    })
+    s.button('Delete selected card').click()
+    await vi.waitFor(() => expect(s.document.session.graph.edges).toHaveLength(0))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.edges[0]?.toNode).toBe('gamma'))
+  })
+  it.each(['empty release', 'pointercancel', 'second finger', 'source change'])(
+    'cancels an incomplete connection on %s',
+    (reason) => {
+      const graph = cards()
+      graph.edges = []
+      const s = setup(graph)
+      s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+      s.button('Draw connection').click()
+      pointer(s, 'pointerdown', 130, 80)
+      pointer(s, 'pointermove', 280, 80)
+      if (reason === 'pointercancel') pointer(s, 'pointercancel', 280, 80)
+      else if (reason === 'second finger') pointer(s, 'pointerdown', 400, 80, { pointerId: 2 })
+      else if (reason === 'source change') {
+        const external = cards()
+        external.edges = []
+        external.nodes[0].text = 'External'
+        s.document.observe({ graph: external, revision: 'external' })
+        pointer(s, 'pointerup', 430, 80)
+      } else pointer(s, 'pointerup', 280, 80)
+      expect(s.publish).not.toHaveBeenCalled()
+      expect(s.document.session.dirty).toBe(false)
+      expect(s.document.session.graph.edges).toHaveLength(0)
+    }
+  )
+  it('applying an unchanged connection style does not write or add history', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 280, 80)
+    pointer(s, 'pointerup', 280, 80)
+    s.button('Apply connection style').click()
+    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.document.session.graph).toEqual(cards())
+  })
+  it('does not replace a changed connection with stale property input', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 280, 80)
+    pointer(s, 'pointerup', 280, 80)
+    const field = s.el.querySelector<HTMLInputElement>('[aria-label="Connection label"]')!
+    field.focus()
+    field.value = 'Local caption'
+    const external = cards()
+    external.edges[0].label = 'External caption'
+    s.document.observe({ graph: external, revision: 'external' })
+    s.button('Apply connection style').click()
+    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.document.session.graph.edges[0].label).toBe('External caption')
+  })
+  it('draws, moves and changes endpoints of a free arrow by touch', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw free arrow').click()
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 180, 120)
+    pointer(s, 'pointerup', 230, 130)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    const line = (s.document.session.graph.abele?.lines as { id: string; toEnd: string }[])[0]
+    expect(line.toEnd).toBe('arrow')
+    s.button('Select canvas objects').click()
+    pointer(s, 'pointerdown', 130, 80)
+    pointer(s, 'pointerup', 130, 80)
+    expect(s.viewer.selection.has(line.id)).toBe(true)
+    pointer(s, 'pointerdown', 230, 130)
+    pointer(s, 'pointermove', 250, 150)
+    pointer(s, 'pointerup', 270, 170)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
+    expect((s.document.session.graph.abele?.lines as { to: unknown }[])[0].to).toEqual({
+      x: 270,
+      y: 170,
+    })
+    pointer(s, 'pointerdown', 150, 100)
+    pointer(s, 'pointermove', 170, 120)
+    pointer(s, 'pointerup', 170, 120)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(3))
+    expect((s.document.session.graph.abele?.lines as { from: unknown }[])[0].from).toEqual({
+      x: 50,
+      y: 50,
+    })
+  })
+})
+
 describe('human canvas geometry', () => {
   it('previews a zoomed drag without publishing and completes exactly one shared history entry', async () => {
     const s = setup(cards())

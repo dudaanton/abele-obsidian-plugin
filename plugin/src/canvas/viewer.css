@@ -79,7 +79,8 @@
   border: 2px solid var(--interactive-accent);
   border-radius: var(--radius-s);
 }
-.abele-canvas-editor-controls button[aria-pressed='true'] {
+.abele-canvas-editor-controls button[aria-pressed='true'],
+.abele-canvas-shape-controls button[aria-pressed='true'] {
   color: var(--text-on-accent);
   background: var(--interactive-accent);
 }
@@ -144,6 +145,25 @@
   resize: vertical;
   font: inherit;
 }
+.abele-canvas-connection-properties {
+  flex-shrink: 0;
+  padding: var(--size-4-2);
+}
+.abele-canvas-connection-properties summary {
+  cursor: pointer;
+  min-height: 36px;
+}
+.abele-canvas-connection-properties input,
+.abele-canvas-shape-controls select,
+.abele-canvas-connection-properties select {
+  min-width: 0;
+  max-width: 100%;
+}
+.abele-canvas-endpoint-handle::after {
+  border-radius: 50%;
+}
+.abele-canvas-shape-controls[hidden],
+.abele-canvas-connection-properties[hidden],
 .abele-canvas-text-editor[hidden],
 .abele-canvas-editor-controls button[hidden] {
   display: none;

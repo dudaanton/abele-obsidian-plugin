@@ -163,6 +163,24 @@ Drag a box on empty space while selecting multiple cards to select everything wh
 nested cards once. **Ungroup** removes only the frame. Resizing a group changes its frame,
 not the size of its contents. Delete removes the selection; deleting a group alone keeps its cards.
 
+**Shapes and lines** opens the drawing controls. Choose a rectangle, pill, diamond,
+parallelogram, circle, predefined process, document or database, and **Add shape**; enter its
+text and **Save text**. The colours are the theme's ordinary Canvas colours. Select a text card,
+choose a shape and colour, and **Change shape** changes it in one undo item.
+
+**Connect**: drag from one card to another with the mouse or one finger. An unfinished
+connection is only a preview; releasing on empty space cancels it. **Line** and **Arrow** draw
+free primitives by dragging anywhere, without attaching them to cards. **Select** returns to
+selecting and moving. Tap a connection or free line to select it; drag either endpoint handle
+to reconnect to a card, or change the endpoint of a free line. Drag the middle of a selected
+free line to move it. Moving or resizing cards keeps their bound connections attached.
+
+With a connection selected, open **Connection style** to edit its label, start/end arrows,
+colour and, for bound connections, curved, elbow or straight routing. **Apply** saves those
+choices together. Emptying the label removes it. **Delete**, Undo and Redo work on connections
+and free lines too. Free primitives are kept in the same canvas file; native Canvas may not
+show them, but returning to Abele restores their display.
+
 Each finished drag or resize is one shared undo item. Until release the geometry is only a
 preview; an agent or another tab cannot publish over the active gesture. Escape, a cancelled
 touch, or Fit cancels the preview. Adding a second finger cancels a card move or resize and
@@ -270,7 +288,7 @@ plain vector SVG drawings and static PNG/GIF/WebP work.
 Remote images are never fetched.
 
 The agent has the same whole-canvas export, with its own Ask permission and access only to
-notes and images in the chat's scope. Human drawing tools on structured diagrams are not
+notes and images in the chat's scope. Freehand pen tools on structured diagrams are not
 available yet. SVG drawings retain their existing pen tools and export.
 
 ## Where it is kept

@@ -1,10 +1,11 @@
 /** Human interaction over the existing shared document; no storage or replay machinery. */
 import { nanoid } from 'nanoid'
 import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
-import { canvasFingerprint } from './core/model'
+import { canvasFingerprint, SHAPES, type Shape } from './core/model'
+import { linesOf } from './core/primitives'
 import type { CanvasSession, GraphTransform } from './core/session'
 import type { CanvasViewer } from './Viewer'
-import { CanvasInput } from './input'
+import { CanvasInput, type CanvasInputTool } from './input'
 
 export interface CanvasEditorDocument {
   session: CanvasSession
@@ -32,6 +33,18 @@ export interface CanvasEditorPorts {
 export class CanvasEditor {
   private selected = new Set<string>()
   private multiple = false
+  private tool: CanvasInputTool = 'select'
+  private readonly palette: HTMLElement
+  private readonly shape: HTMLSelectElement
+  private readonly shapeColor: HTMLSelectElement
+  private readonly properties: HTMLDetailsElement
+  private readonly label: HTMLInputElement
+  private readonly fromEnd: HTMLSelectElement
+  private readonly toEnd: HTMLSelectElement
+  private readonly routing: HTMLSelectElement
+  private readonly color: HTMLSelectElement
+  private propertyBaseline = ''
+  private propertyId = ''
   private readonly inputAdapter: CanvasInput
   private geometry: { document: CanvasEditorDocument; generation: number; path: string } | null =
     null
@@ -52,6 +65,8 @@ export class CanvasEditor {
     private readonly ports: CanvasEditorPorts
   ) {
     const doc = viewer.el.ownerDocument
+    const make = <K extends keyof HTMLElementTagNameMap>(tag: K) =>
+      doc.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElementTagNameMap[K]
     this.bar = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div')
     this.bar.className = 'abele-canvas-controls abele-canvas-editor-controls'
     this.panel = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div')
@@ -69,6 +84,84 @@ export class CanvasEditor {
     viewer.el.insertBefore(this.bar, viewer.stage)
     viewer.el.insertBefore(this.panel, viewer.stage)
     viewer.el.insertBefore(this.status, viewer.stage)
+    this.palette = make('div')
+    this.palette.className = 'abele-canvas-controls abele-canvas-shape-controls'
+    this.palette.hidden = true
+    viewer.el.insertBefore(this.palette, viewer.stage)
+    this.button('Shapes and connections', 'Shapes and lines', () => {
+      this.palette.hidden = !this.palette.hidden
+      this.refresh()
+    })
+    this.shape = this.select(
+      this.palette,
+      'Canvas shape',
+      SHAPES.map((s) => [s, s.replace(/-/g, ' ')])
+    )
+    this.shapeColor = this.select(this.palette, 'Shape color', this.colorOptions())
+    this.button('Apply selected shape', 'Change shape', () => this.applyShape(), this.palette)
+    this.button(
+      'Add canvas shape',
+      'Add shape',
+      () => this.addText(this.shape.value as Shape),
+      this.palette
+    )
+    for (const [tool, label, text] of [
+      ['select', 'Select canvas objects', 'Select'],
+      ['connect', 'Draw connection', 'Connect'],
+      ['line', 'Draw free line', 'Line'],
+      ['arrow', 'Draw free arrow', 'Arrow'],
+    ] as const)
+      this.button(
+        label,
+        text,
+        () => {
+          this.inputAdapter.cancel()
+          this.tool = tool
+          this.multiple = false
+          this.refresh()
+        },
+        this.palette
+      )
+    this.properties = make('details')
+    this.properties.className = 'abele-canvas-connection-properties'
+    const summary = make('summary')
+    summary.textContent = 'Connection style'
+    this.properties.append(summary)
+    const fields = make('div')
+    fields.className = 'abele-canvas-controls'
+    this.properties.append(fields)
+    this.label = make('input')
+    this.label.type = 'text'
+    this.label.setAttribute('aria-label', 'Connection label')
+    this.label.placeholder = 'Connection label'
+    fields.append(this.label)
+    this.fromEnd = this.select(fields, 'Start arrow', [
+      ['none', 'Start: no arrow'],
+      ['arrow', 'Start: arrow'],
+    ])
+    this.toEnd = this.select(fields, 'End arrow', [
+      ['none', 'End: no arrow'],
+      ['arrow', 'End: arrow'],
+    ])
+    this.routing = this.select(fields, 'Connection routing', [
+      ['bezier', 'Curved'],
+      ['square', 'Elbow'],
+      ['direct', 'Straight'],
+    ])
+    this.color = this.select(fields, 'Connection color', this.colorOptions())
+    this.button(
+      'Reverse connection arrows',
+      'Reverse arrows',
+      () => {
+        const start = this.fromEnd.value
+        this.fromEnd.value = this.toEnd.value
+        this.toEnd.value = start
+        return this.applyConnection()
+      },
+      fields
+    )
+    this.button('Apply connection style', 'Apply', () => this.applyConnection(), fields)
+    viewer.el.insertBefore(this.properties, viewer.stage)
     this.button('Add text card', 'Text', () => this.addText())
     this.button('Add note or attachment', 'File', () => this.pick('file'))
     this.button('Add link', 'Link', () => this.pick('link'))
@@ -101,6 +194,7 @@ export class CanvasEditor {
     })
     this.listen(this.text, 'input', () => this.input())
     this.inputAdapter = new CanvasInput(viewer, {
+      tool: () => this.tool,
       enabled: () => this.canGesture(),
       selection: () => this.selected,
       select: (ids) => {
@@ -143,7 +237,39 @@ export class CanvasEditor {
     el.addEventListener(type, fn)
     this.off.push(() => el.removeEventListener(type, fn))
   }
-  private button(label: string, text: string, action: () => unknown): void {
+  private colorOptions(): [string, string][] {
+    return [
+      ['', 'Default color'],
+      ...['1', '2', '3', '4', '5', '6'].map((v, i): [string, string] => [
+        v,
+        ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Purple'][i],
+      ]),
+    ]
+  }
+  private select(
+    parent: HTMLElement,
+    label: string,
+    options: readonly (readonly [string, string])[]
+  ): HTMLSelectElement {
+    const select = parent.ownerDocument.createElementNS(
+      'http://www.w3.org/1999/xhtml',
+      'select'
+    ) as HTMLSelectElement
+    select.setAttribute('aria-label', label)
+    select.title = label
+    for (const [value, text] of options) {
+      const option = parent.ownerDocument.createElementNS(
+        'http://www.w3.org/1999/xhtml',
+        'option'
+      ) as HTMLOptionElement
+      option.value = value
+      option.textContent = text
+      select.append(option)
+    }
+    parent.append(select)
+    return select
+  }
+  private button(label: string, text: string, action: () => unknown, parent = this.bar): void {
     const button = this.bar.ownerDocument.createElementNS(
       'http://www.w3.org/1999/xhtml',
       'button'
@@ -152,7 +278,7 @@ export class CanvasEditor {
     button.textContent = text
     button.setAttribute('aria-label', label)
     button.title = label
-    this.bar.append(button)
+    parent.append(button)
     this.buttons.set(label, button)
     this.listen(button, 'click', () => {
       if (button.disabled) return
@@ -211,6 +337,10 @@ export class CanvasEditor {
     }
     this.geometry = null
     this.update(g.document, ops)
+    for (const op of ops) {
+      if (op.op === 'connect') this.selected = new Set([op.edge.id])
+      if (op.op === 'add_line') this.selected = new Set([op.line.id])
+    }
     g.document.finishDraft()
     await this.saving(() => this.ports.publish())
   }
@@ -241,15 +371,27 @@ export class CanvasEditor {
       y: region.y + region.height / 2 - 80 + offset,
     }
   }
-  private addText(): void {
+  private addText(shape?: Shape): void {
     const document = this.ready(),
       id = nanoid()
     document.beginDraft()
     this.ownedDraft = document
     this.update(document, [
-      { op: 'add_node', node: { id, kind: 'text', label: '', ...this.location() } },
+      {
+        op: 'add_node',
+        node: {
+          id,
+          kind: shape ? 'shape' : 'text',
+          shape,
+          ...(shape && this.shapeColor.value ? { color: this.shapeColor.value } : {}),
+          label: '',
+          ...this.location(),
+        },
+      },
     ])
     this.selected = new Set([id])
+    this.tool = 'select'
+    this.palette.hidden = true
     this.showText(id)
   }
   private showText(id: string): void {
@@ -373,6 +515,64 @@ export class CanvasEditor {
       await this.ports.publish()
     })
   }
+  private async applyShape(): Promise<void> {
+    const document = this.ready(),
+      node = this.node()
+    if (node?.type !== 'text') return
+    const ops: CanvasOperation[] = [
+      {
+        op: 'update',
+        id: node.id,
+        patch: { color: this.shapeColor.value, styleAttributes: { shape: this.shape.value } },
+      },
+    ]
+    if (
+      canvasFingerprint(editCanvas(document.session.graph, ops).graph) ===
+      canvasFingerprint(document.session.graph)
+    )
+      return
+    document.beginDraft()
+    this.update(document, ops)
+    document.finishDraft()
+    await this.saving(() => this.ports.publish())
+  }
+  private connection() {
+    if (this.selected.size !== 1) return undefined
+    const graph = this.ports.document()?.session.graph
+    return (
+      graph?.edges.find((e) => this.selected.has(e.id)) ??
+      linesOf(graph ?? { nodes: [], edges: [] }).find((l) => this.selected.has(l.id))
+    )
+  }
+  private async applyConnection(): Promise<void> {
+    const document = this.ready(),
+      element = this.connection()
+    if (!element) return
+    if (JSON.stringify(element) !== this.propertyBaseline)
+      throw new Error('Connection changed; select it again before applying its style')
+    const patch: Record<string, unknown> = {}
+    const changed = (key: string, value: string, previous: unknown) => {
+      if (value !== previous) patch[key] = value
+    }
+    changed('label', this.label.value, element.label ?? '')
+    changed('fromEnd', this.fromEnd.value, element.fromEnd ?? 'none')
+    changed('toEnd', this.toEnd.value, element.toEnd ?? ('fromNode' in element ? 'arrow' : 'none'))
+    if (this.color.value !== '__retain') changed('color', this.color.value, element.color ?? '')
+    if ('fromNode' in element)
+      changed('pathfindingMethod', this.routing.value, element.pathfindingMethod ?? 'bezier')
+    if (!Object.keys(patch).length) return
+    if (
+      canvasFingerprint(
+        editCanvas(document.session.graph, [{ op: 'update', id: element.id, patch }]).graph
+      ) === canvasFingerprint(document.session.graph)
+    )
+      return
+    document.beginDraft()
+    this.update(document, [{ op: 'update', id: element.id, patch }])
+    document.finishDraft()
+    await this.saving(() => this.ports.publish())
+    this.propertyBaseline = JSON.stringify(this.connection())
+  }
   private async remove(): Promise<void> {
     const document = this.ready()
     if (!this.selected.size) return
@@ -475,7 +675,14 @@ export class CanvasEditor {
     const document = this.ports.document(),
       session = document?.session,
       node = this.node()
-    const ids = new Set(session?.graph.nodes.map((node) => node.id))
+    const graph = session?.graph,
+      ids = new Set(
+        [
+          ...(graph?.nodes ?? []),
+          ...(graph?.edges ?? []),
+          ...linesOf(graph ?? { nodes: [], edges: [] }),
+        ].map((e) => e.id)
+      )
     this.selected = new Set([...this.selected].filter((id) => ids.has(id)))
     this.viewer.selection = this.selected
     this.viewer.draw()
@@ -487,7 +694,69 @@ export class CanvasEditor {
         document.state.native ||
         !!session?.busy ||
         !!session?.dirty
-    for (const label of ['Add text card', 'Add note or attachment', 'Add link'])
+    const connection = this.connection()
+    this.properties.hidden = !connection || active
+    if (
+      connection &&
+      (connection.id !== this.propertyId ||
+        !this.properties.contains(this.properties.ownerDocument.activeElement))
+    ) {
+      this.propertyId = connection.id
+      this.propertyBaseline = JSON.stringify(connection)
+      this.label.value = connection.label ?? ''
+      this.fromEnd.value = connection.fromEnd ?? 'none'
+      this.toEnd.value = connection.toEnd ?? ('fromNode' in connection ? 'arrow' : 'none')
+      // Unsupported Advanced Canvas routing and custom colours are retained unless explicitly changed.
+      const retainOption = (select: HTMLSelectElement, value: string) => {
+        if (!Array.from(select.options).some((o) => o.value === value)) {
+          const option = select.ownerDocument.createElementNS(
+            'http://www.w3.org/1999/xhtml',
+            'option'
+          ) as HTMLOptionElement
+          option.value = value
+          option.textContent = 'Retain existing'
+          select.append(option)
+        }
+        select.value = value
+      }
+      retainOption(
+        this.routing,
+        'fromNode' in connection
+          ? typeof connection.pathfindingMethod === 'string'
+            ? connection.pathfindingMethod
+            : 'bezier'
+          : 'direct'
+      )
+      retainOption(
+        this.color,
+        connection.color && !/^[1-6]$/.test(connection.color)
+          ? '__retain'
+          : (connection.color ?? '')
+      )
+    }
+    this.routing.disabled = blocked || !connection || !('fromNode' in connection)
+    this.buttons.get('Apply selected shape').disabled = blocked || node?.type !== 'text'
+    for (const field of [
+      this.shape,
+      this.shapeColor,
+      this.label,
+      this.fromEnd,
+      this.toEnd,
+      this.color,
+    ])
+      field.disabled = blocked
+    for (const label of ['Apply connection style', 'Reverse connection arrows'])
+      this.buttons.get(label).disabled = blocked || !connection
+    for (const [tool, label] of [
+      ['select', 'Select canvas objects'],
+      ['connect', 'Draw connection'],
+      ['line', 'Draw free line'],
+      ['arrow', 'Draw free arrow'],
+    ] as const) {
+      this.buttons.get(label).disabled = blocked
+      this.buttons.get(label).setAttribute('aria-pressed', String(this.tool === tool))
+    }
+    for (const label of ['Add text card', 'Add note or attachment', 'Add link', 'Add canvas shape'])
       this.buttons.get(label).disabled = blocked
     this.buttons.get('Edit card text').disabled =
       !document ||
@@ -508,7 +777,10 @@ export class CanvasEditor {
     this.buttons
       .get('Toggle multiple selection')
       .setAttribute('aria-pressed', String(this.multiple))
-    this.buttons.get('Group selected cards').disabled = blocked || this.selected.size < 2
+    this.buttons.get('Group selected cards').disabled =
+      blocked ||
+      this.selected.size < 2 ||
+      [...this.selected].some((id) => !graph?.nodes.some((n) => n.id === id))
     this.buttons.get('Ungroup selected group').disabled = blocked || node?.type !== 'group'
     for (const direction of ['undo', 'redo'] as const)
       this.buttons.get(
@@ -536,7 +808,7 @@ export class CanvasEditor {
     discard.disabled =
       this.waiting || this.composing || (!!session?.busy && this.ownedDraft !== document)
     this.status.textContent = this.geometry
-      ? 'Moving or resizing selection…'
+      ? 'Canvas gesture in progress…'
       : session?.dirty
         ? 'Unsaved canvas work — retained in memory only; not saved. Reloading or crashing can lose it.' +
           (session.conflict || (document.draftPath && document.draftPath !== document.file.path)
@@ -549,9 +821,13 @@ export class CanvasEditor {
           ? 'Canvas operation in progress…'
           : this.selected.size
             ? this.selected.size === 1
-              ? `Selected ${node?.type ?? 'card'}`
+              ? `Selected ${node?.type ?? 'connection'}`
               : `${this.selected.size} cards selected`
-            : ''
+            : this.tool === 'connect'
+              ? 'Drag from a card to another card to connect them.'
+              : this.tool === 'line' || this.tool === 'arrow'
+                ? 'Drag to draw a free line or arrow.'
+                : ''
   }
   private key(event: KeyboardEvent): boolean {
     if (
@@ -564,6 +840,7 @@ export class CanvasEditor {
     if (event.key === 'Escape' && this.viewer.step === null) {
       this.inputAdapter.cancel()
       this.selected.clear()
+      this.tool = 'select'
       this.refresh()
       event.preventDefault()
       return true
@@ -595,5 +872,7 @@ export class CanvasEditor {
     this.bar.remove()
     this.panel.remove()
     this.status.remove()
+    this.palette.remove()
+    this.properties.remove()
   }
 }

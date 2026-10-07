@@ -1177,7 +1177,7 @@ const probeScript = `(async () => {
         {id:'beta',type:'text',text:'Second concept',x:280,y:0,width:200,height:140},
         {id:'gamma',type:'text',text:'Third concept',x:0,y:220,width:200,height:140},
         {id:'sample-reference',type:'file',file:reference.path,x:280,y:220,width:220,height:140}
-      ],edges:[]}))
+      ],edges:[{id:'sample-flow',fromNode:'alpha',toNode:'beta',label:'Next'}]}))
       SEEDED.push(file.path, reference.path)
       const leaf = app.workspace.getLeaf('tab')
       try {
@@ -1196,6 +1196,20 @@ const probeScript = `(async () => {
           const init={pointerId:1,pointerType:'touch',clientX:r.left+(n.x+n.width/2-c.x)*c.zoom,clientY:r.top+(n.y+n.height/2-c.y)*c.zoom,bubbles:true}
           for(const type of ['pointerdown','pointerup'])viewer.stage.dispatchEvent(new PointerEvent(type,init))
         }
+        root.querySelector('[aria-label="Shapes and connections"]').click()
+        await screen('canvas shapes',root,root)
+        report['canvas shapes'].clipped=[]
+        for(const field of root.querySelectorAll('select,button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas shapes'].clipped.push(...ringClipped(field));field.blur()}
+        root.querySelector('[aria-label="Shapes and connections"]').click()
+        {const v=leaf.view.viewer,c=v.camera,r=v.stage.getBoundingClientRect(),init={pointerId:1,pointerType:'touch',clientX:r.left+(240-c.x)*c.zoom,clientY:r.top+(70-c.y)*c.zoom,bubbles:true}
+          for(const type of ['pointerdown','pointerup'])v.stage.dispatchEvent(new PointerEvent(type,init))}
+        const properties=root.querySelector('.abele-canvas-connection-properties')
+        properties.open=true
+        await screen('canvas connection style',root,root)
+        report['canvas connection style'].handles=[...root.querySelectorAll('.abele-canvas-endpoint-handle')].map(el=>{const r=el.getBoundingClientRect();return [r.width,r.height]})
+        report['canvas connection style'].clipped=[]
+        for(const field of root.querySelectorAll('input,select,button,summary')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas connection style'].clipped.push(...ringClipped(field));field.blur()}
+        properties.open=false
         select('alpha');await wait(100)
         await screen('canvas selection',root,root)
         report['canvas selection'].handles=[...root.querySelectorAll('.abele-canvas-resize-handle')].map(el=>{const r=el.getBoundingClientRect();return [r.width,r.height]})
@@ -1552,6 +1566,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'word document',
     'canvas editor',
     'canvas selection',
+    'canvas shapes',
+    'canvas connection style',
     'canvas group',
     'canvas export menu',
     'canvas file picker',
@@ -1598,6 +1614,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(report['canvas editor']?.canvasFits).toBe(true)
   })
 
+  it('canvas connection style: both endpoint targets remain touch-sized at phone width', () => {
+    expect(report['canvas connection style']?.handles).toEqual(
+      Array.from({ length: 2 }, () => [44, 44])
+    )
+  })
+
   it('canvas selection: all four corner targets remain touch-sized at phone width', () => {
     expect(report['canvas selection']?.handles).toEqual(Array.from({ length: 4 }, () => [44, 44]))
   })
@@ -1609,6 +1631,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas draft discard',
     'canvas creation',
     'canvas group',
+    'canvas shapes',
+    'canvas connection style',
   ])('%s: every field and action keeps its focus ring', (label) => {
     expect(report[label]?.clipped ?? ['no report']).toEqual([])
   })
