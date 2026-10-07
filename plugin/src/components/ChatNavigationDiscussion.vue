@@ -39,7 +39,9 @@ const props = withDefaults(
   { ancestors: () => [], trail: () => [] }
 )
 const emit = defineEmits<{ (e: 'discussion', id: string): void }>()
-const loaded = shallowRef<ChatSession | null>(null)
+const loaded = shallowRef<Pick<ChatSession, 'messages' | 'messageComments' | 'isDestroyed'> | null>(
+  null
+)
 const pending = ref(true)
 const key = `discussion:${props.comment.id}`
 const expanded = ref(props.state.expanded.includes(key))
@@ -50,7 +52,7 @@ onBeforeUnmount(() => {
 onMounted(async () => {
   try {
     if (props.ancestors.includes(props.comment.id)) return
-    const session = await CommentService.getInstance().load(props.comment.id)
+    const session = await CommentService.getInstance().navigationPreview(props.comment.id)
     if (!closed) loaded.value = session
   } catch {
     // A malformed or unreadable file is still an anchor worth showing.

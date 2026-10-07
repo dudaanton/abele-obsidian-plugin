@@ -351,7 +351,9 @@ An answer before the first question remains reachable too.
 A question's **Discussions** lists direct discussions attached to it or the answers and work
 that followed it. Each shows its quoted passage and first question. Choose one to open its
 existing comment chat. **Nested discussions** reads the next level only when expanded;
-missing or unreadable discussions are labelled, not silently hidden. The comment's existing
+missing or unreadable discussions are labelled, not silently hidden. Reading the contents does
+not migrate discussion files or repair their safety copies; only opening a discussion uses its
+ordinary chat-loading path. The comment's existing
 trail and **Back to place** in Navigation provide ways back.
 
 **To start**, **To latest** and **Back to place** move within the conversation without sending

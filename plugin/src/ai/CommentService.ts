@@ -14,7 +14,8 @@ import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChat, parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
-import { transformChat } from './chatCopy'
+import { inspectChat, transformChat } from './chatCopy'
+import { navigationPath } from './chatNavigation'
 import { acceptRevision, compatibleReplyHistory, type ReplyProposal } from './replyAnnotations'
 import { firstQuestion } from './chatText'
 import { baseName, commentLineage, commentName, commentTrail, type TrailStep } from './commentTrail'
@@ -593,6 +594,25 @@ export class CommentService implements CommentInfoSource {
       if (!produced) return
       for (const note of notes) dispatchCommentsChanged(note)
     })
+  }
+
+  /** Contents-list inspection must not create a writer, migrate a file or repair a safety copy. */
+  async navigationPreview(id: string): Promise<Pick<ChatSession, 'messages' | 'messageComments' | 'isDestroyed'> | null> {
+    const known = this.sessionFor(id)
+    if (known) return known
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(this.commentPath(id))
+    if (!(file instanceof TFile)) return null
+    const parsed = await inspectChat(app, file)
+    if (parsed.metadata?.type !== 'abele-chat') return null
+    // A real session may have opened during the read; prefer its live selected path.
+    const opened = this.sessionFor(id)
+    if (opened) return opened
+    return {
+      messages: ref(navigationPath(parsed.messages, parsed.metadata.activeLeafId)),
+      messageComments: ref(parsed.metadata.comments ?? []),
+      isDestroyed: false,
+    }
   }
 
   async load(id: string): Promise<ChatSession | null> {

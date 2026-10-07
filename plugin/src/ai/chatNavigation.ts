@@ -8,6 +8,28 @@ import {
   type Snippet,
 } from './chatFind'
 import { toolSummary } from './toolLine'
+import { backfillParentIds, reattachOrphans, findDefaultLeaf } from './chatTree'
+
+/** Project a file snapshot like an opened chat, repairing only local copies of its messages. */
+export function navigationPath(
+  messages: readonly ChatMessage[],
+  activeLeafId?: string
+): ChatMessage[] {
+  const local = messages.map((message) => ({ ...message }))
+  backfillParentIds(local)
+  reattachOrphans(local)
+  const byId = new Map(local.map((message) => [message.id, message]))
+  let current: ChatMessage | undefined =
+    (activeLeafId ? byId.get(activeLeafId) : undefined) ?? findDefaultLeaf(local)
+  const path: ChatMessage[] = []
+  const seen = new Set<string>()
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id)
+    path.push(current)
+    current = current.parentId ? byId.get(current.parentId) : undefined
+  }
+  return path.reverse()
+}
 
 /** Memory only, owned by the chat view for each conversation lifetime. */
 export interface NavigationState {

@@ -7,6 +7,9 @@ import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
+import { TFile } from 'obsidian'
+import { serializeChat } from '@/ai/ChatLog'
+import { chatCopyPath } from '@/ai/chatCopy'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { useVault } from '../helpers/testEnv'
 import { useFakeClock } from '../helpers/fakeClock'
@@ -56,6 +59,74 @@ const open = async (extra = {}) => {
 }
 
 describe('the navigation modal', () => {
+  it('reads an unopened legacy discussion without migrating or writing its file or safety copies', async () => {
+    const comments = CommentService.getInstance()
+    const path = comments.commentPath('sample-legacy')
+    const source = JSON.stringify({
+      metadata: {
+        type: 'abele-chat',
+        kind: 'comment',
+        created: '2030-01-01',
+        allowWebSearch: true,
+      },
+      messages: [
+        { id: 'legacy-q', role: 'user', content: 'A sample legacy question', timestamp: 1 },
+        { id: 'legacy-a', role: 'assistant', content: 'A sample legacy answer', timestamp: 2 },
+      ],
+      internalMessages: [],
+    })
+    const app = useVault([{ path, raw: source }])
+    vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue(undefined)
+    vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
+    const write = vi.spyOn(app.vault.adapter, 'write')
+    const remove = vi.spyOn(app.vault.adapter, 'remove')
+    try {
+      await open({ comments: [{ id: 'sample-legacy', message: 'a1' }] })
+      expect(root().textContent).toContain('A sample legacy question')
+      wrapper!.unmount()
+      wrapper = undefined
+      expect(app.stats.written).toBe(0)
+      expect(write).not.toHaveBeenCalled()
+      expect(remove).not.toHaveBeenCalled()
+      expect(await app.vault.read(app.vault.getAbstractFileByPath(path) as TFile)).toBe(source)
+      expect(comments.sessionFor('sample-legacy')).toBeNull()
+      // Choosing the discussion later still uses the ordinary migration path.
+      await comments.load('sample-legacy')
+      expect(app.stats.written).toBeGreaterThan(0)
+    } finally {
+      comments.destroy()
+    }
+  })
+
+  it('inspects a recoverable discussion without repairing its torn file or deleting its safety copy', async () => {
+    const comments = CommentService.getInstance()
+    const path = comments.commentPath('sample-recovery')
+    const metadata = {
+      type: 'abele-chat' as const,
+      kind: 'comment' as const,
+      created: '2030-01-01',
+      providerId: '',
+      modelId: '',
+    }
+    const source = JSON.stringify({ v: 2, k: 'meta', ...metadata }) + '\n{"k":"msg"'
+    const copy = `${path}\n${serializeChat({ metadata, messages: [{ id: 'recovered-q', role: 'user', content: 'A sample recovered question', timestamp: 1 }], internalMessages: [] })}`
+    const app = useVault([{ path, raw: source }])
+    const backup = chatCopyPath(app as never, path)
+    await app.vault.adapter.write(backup, copy)
+    // Count only writes caused by opening the contents, not fixture creation.
+    app.stats.written = 0
+    const write = vi.spyOn(app.vault.adapter, 'write')
+    const remove = vi.spyOn(app.vault.adapter, 'remove')
+    await open({ comments: [{ id: 'sample-recovery', message: 'a1' }] })
+    expect(root().textContent).toContain('A sample recovered question')
+    expect(app.stats.written).toBe(0)
+    expect(write).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+    expect(await app.vault.read(app.vault.getAbstractFileByPath(path) as TFile)).toBe(source)
+    expect(await app.vault.adapter.read(backup)).toBe(copy)
+    expect(comments.sessionFor('sample-recovery')).toBeNull()
+  })
+
   it('shows dated questions, leaves the search unfocused, and expands only navigation rows', async () => {
     await open({ activeMessageId: 'a1' })
     expect([...root().querySelectorAll('[data-question]')].map((el) => el.textContent)).toEqual(
@@ -131,7 +202,7 @@ describe('the navigation modal', () => {
       messages: ref([{ id: 'dq', role: 'user', content: 'Which pond liner?', timestamp: 1 }]),
       overrides: { messageComments: ref([{ id: 'nested', message: 'dq', quote: 'liner' }]) },
     })
-    const load = vi.spyOn(comments, 'load').mockResolvedValue(child as never)
+    const load = vi.spyOn(comments, 'navigationPreview').mockResolvedValue(child as never)
     await open({ comments: [{ id: 'direct', message: 'a1', quote: 'pond' }] })
     expect(root().textContent).toContain('Discussions · 1')
     expect(root().textContent).toContain('Which pond liner?')
@@ -143,7 +214,7 @@ describe('the navigation modal', () => {
   })
 
   it('keeps a long quoted passage compact without changing its stored anchor', async () => {
-    vi.spyOn(CommentService.getInstance(), 'load').mockResolvedValue(null)
+    vi.spyOn(CommentService.getInstance(), 'navigationPreview').mockResolvedValue(null)
     const quote = 'A sample passage with many words. '.repeat(100)
     const comment = { id: 'long-quote', message: 'a1', quote }
     await open({ comments: [comment] })
@@ -154,7 +225,7 @@ describe('the navigation modal', () => {
   })
 
   it('labels missing discussions instead of losing their anchors', async () => {
-    vi.spyOn(CommentService.getInstance(), 'load').mockResolvedValue(null)
+    vi.spyOn(CommentService.getInstance(), 'navigationPreview').mockResolvedValue(null)
     await open({ comments: [{ id: 'missing', message: 'a1', quote: 'sample passage' }] })
     expect(root().textContent).toContain('sample passage')
     expect(root().textContent).toContain('Discussion unavailable')
