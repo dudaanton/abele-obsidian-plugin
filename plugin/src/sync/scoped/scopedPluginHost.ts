@@ -77,7 +77,13 @@ export class ScopedPluginHost {
     }
   }
   private serial<T>(step: () => Promise<T>): Promise<T> {
-    const task = this.tail.then(step)
+    const previous = pendingTeardown(this.app)
+    const task = this.tail.then(async () => {
+      if (this.closed) throw new Error('Scoped host is closed')
+      await previous
+      if (this.closed) throw new Error('Scoped host is closed')
+      return step()
+    })
     this.tail = task.catch(() => {})
     return task
   }
@@ -135,6 +141,7 @@ export class ScopedPluginHost {
       token,
       fetch: this.fetcher,
     })
+    if (this.closed) throw new Error('Scoped host closed during client opening')
     const expected = JSON.stringify({ connection: c, binding: client.binding })
     const raw = await IndexedDbStateStore.open(this.factory, 'abele-scoped-' + c.ledgerId, {
       identity: { key: 'scoped-plugin-identity-v4', value: expected },
@@ -145,6 +152,7 @@ export class ScopedPluginHost {
       meta = await IndexedDbStateStore.open(this.factory, 'abele-scoped-native-' + c.ledgerId, {
         identity: { key: 'scoped-native-identity-v4', value: expected },
       })
+      if (this.closed) throw new Error('Scoped host closed during database opening')
       const fs = new ObsidianFileSystem(this.app, { ledger: state.placementStore() })
       const r: Runtime = {
         connection: structuredClone(c),
@@ -327,7 +335,12 @@ export class ScopedPluginHost {
       configurationDirectories: this.roots(),
     })
   }
-  async creation(): Promise<
+  creation(): Promise<
+    ScopedCreationFlow & { roots: ApprovedRoot[]; sponsors: (NativeSponsor & { label: string })[] }
+  > {
+    return this.serial(() => this.creationNow())
+  }
+  private async creationNow(): Promise<
     ScopedCreationFlow & { roots: ApprovedRoot[]; sponsors: (NativeSponsor & { label: string })[] }
   > {
     const c = this.connection.value
