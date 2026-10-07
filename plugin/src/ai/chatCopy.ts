@@ -42,6 +42,15 @@ export async function rewriteChat(
   // not apply an unchecked or failed annotation, including a crash before its guard runs.
   const prior = check ? await app.vault.read(file) : undefined
   const parsedPrior = prior === undefined ? null : parseChat(prior)
+  // A checked edit must not replace a recovery copy with torn main-file bytes and then
+  // delete it if its guard rejects the edit. Only an ordinary open may recover that copy.
+  if (
+    prior !== undefined &&
+    parsedPrior &&
+    tornChat(prior, parsedPrior) &&
+    (await adapter.exists(copy))
+  )
+    throw new Error('This chat needs reopening. Reopen it before making changes.')
   // A readable log may still have an earlier torn append. Copying those damaged bytes
   // would make readChat reject the only backup after this rewrite truncates the main file.
   // Retain the recognised prior state as a whole v2 snapshot, never the proposed annotation.
@@ -149,15 +158,17 @@ function recoverableChat(text: string, current: ParsedChat, copy: ParsedChat): b
   )
 }
 
-export interface InspectedChat extends ParsedChat {
-  /** These records exist only in the safety copy, not in the main file's committed log. */
-  fromCopy: boolean
+/** Main-file inspection only: a torn file is not a committed snapshot of the session. */
+export async function inspectMainChat(app: App, file: TFile): Promise<ParsedChat | null> {
+  const text = await app.vault.read(file)
+  const parsed = parseChat(text)
+  return tornChat(text, parsed) ? null : parsed
 }
 
 /** Read-only discovery: a live writer's safety copy must never be repaired or removed here. */
-export async function inspectChat(app: App, file: TFile): Promise<InspectedChat> {
+export async function inspectChat(app: App, file: TFile): Promise<ParsedChat> {
   const text = await app.vault.read(file)
-  const current: InspectedChat = { ...parseChat(text), fromCopy: false }
+  const current = parseChat(text)
   if (!tornChat(text, current)) return current
   const adapter = app.vault.adapter
   const path = chatCopyPath(app, file.path)
@@ -166,7 +177,7 @@ export async function inspectChat(app: App, file: TFile): Promise<InspectedChat>
   const cut = raw.indexOf('\n')
   if (cut === -1 || raw.slice(0, cut) !== file.path) return current
   const copy = parseChat(raw.slice(cut + 1))
-  return recoverableChat(text, current, copy) ? { ...copy, fromCopy: true } : current
+  return recoverableChat(text, current, copy) ? copy : current
 }
 
 /**

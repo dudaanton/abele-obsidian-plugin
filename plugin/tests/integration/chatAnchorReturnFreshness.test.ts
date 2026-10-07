@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TFile } from 'obsidian'
+import { Notice, type TFile } from 'obsidian'
 import { useVault } from '../helpers/testEnv'
 import { ChatService } from '@/ai/ChatService'
 import { ChatSession } from '@/ai/ChatSession'
@@ -11,7 +11,7 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { parseChat, serializeChat, type ChatSnapshot } from '@/ai/ChatLog'
 import { chatCopyPath, readChat, rewriteChat } from '@/ai/chatCopy'
 import { captureChatSelection, createChatAnchor } from '@/selection/anchors'
-import { openSelectionLink } from '@/ai/openChat'
+import { captureSelectionLink, openSelectionLink } from '@/ai/openChat'
 import * as commentEvents from '@/editor/CommentPlugin'
 
 const PATH = 'Chats/sample-return.abchat'
@@ -162,6 +162,70 @@ describe('returning through an already-open chat after an external write', () =>
 })
 
 describe('read-only selection return reconciliation', () => {
+  it.each([
+    ['empty', 'highlight'],
+    ['empty', 'copy-link'],
+    ['torn', 'highlight'],
+    ['torn', 'copy-link'],
+    ['unterminated', 'highlight'],
+    ['unterminated', 'copy-link'],
+  ] as const)(
+    'keeps the backup intact after a selection return followed by %s-main %s',
+    async (damage, action) => {
+      await service.openChatFile(file())
+      const session = service.getSessionByFile(PATH)!
+      const messages = session.allMessages.value
+      const next = snapshot()
+      next.metadata.title = 'Backup-only title'
+      const selection = next.messages[0].selection!
+      selection.anchors.push({ ...selection.anchors[0], id: 'backup-only-anchor' })
+      const content = serializeChat(next)
+      const backup = chatCopyPath(app as never, PATH)
+      const raw = `${PATH}\n${content}`
+      await app.vault.adapter.write(backup, raw)
+      const torn =
+        damage === 'empty'
+          ? ''
+          : damage === 'torn'
+            ? content.slice(0, content.indexOf('\n') + 20)
+            : serializeChat(snapshot()).trimEnd()
+      await app.vault.modify(file(), torn)
+      await openSelectionLink(`${PATH}#abele-selection=sample-chat/sample-anchor`)
+      expect(service.pendingAnchorReturn.value?.target.anchor.id).toBe('sample-anchor')
+      const write = vi.spyOn(app.vault.adapter, 'write')
+      const remove = vi.spyOn(app.vault.adapter, 'remove')
+      const change =
+        action === 'highlight'
+          ? session.highlightReply('reply', 'repeat', 7)
+          : captureSelectionLink(session, 'reply', 'repeat', 7, 'repeat repeat')()
+      await expect(change).rejects.toThrow(/Reopen/)
+      expect(await app.vault.adapter.exists(backup)).toBe(true)
+      expect(await app.vault.adapter.read(backup)).toBe(raw)
+      expect(await app.vault.read(file())).toBe(torn)
+      expect(session.allMessages.value).toBe(messages)
+      expect(write).not.toHaveBeenCalled()
+      expect(remove).not.toHaveBeenCalled()
+    }
+  )
+  it('asks to reopen when the requested anchor exists only in a damaged file’s backup', async () => {
+    await service.openChatFile(file())
+    const session = service.getSessionByFile(PATH)!
+    const messages = session.allMessages.value
+    const next = snapshot()
+    const selection = next.messages[0].selection!
+    selection.anchors.push({ ...selection.anchors[0], id: 'backup-only-anchor' })
+    const backup = chatCopyPath(app as never, PATH)
+    const raw = `${PATH}\n${serializeChat(next)}`
+    await app.vault.adapter.write(backup, raw)
+    await app.vault.modify(file(), '')
+    const notices = Notice.shown.length
+    await openSelectionLink(`${PATH}#abele-selection=sample-chat/backup-only-anchor`)
+    expect(service.pendingAnchorReturn.value).toBeNull()
+    expect(Notice.shown.slice(notices).join(' ')).toMatch(/reopen/i)
+    expect(session.allMessages.value).toBe(messages)
+    expect(await app.vault.adapter.read(backup)).toBe(raw)
+    expect(await app.vault.read(file())).toBe('')
+  })
   it('preserves a safety copy created after its read starts when the rewrite crashes after truncation', async () => {
     await service.openChatFile(file())
     const session = service.getSessionByFile(PATH)!
@@ -209,7 +273,40 @@ describe('read-only selection return reconciliation', () => {
     expect((await readChat(app as never, file())).messages[0].content).toBe('The rewritten reply.')
     expect(await read(file())).toBe(content)
   })
-  it('reads a torn chat from its safety copy without repairing or deleting either file', async () => {
+  it.each(['empty', 'unterminated', 'damaged'] as const)(
+    'ignores a %s main snapshot without consulting backups or disturbing an in-flight session',
+    async (damage) => {
+      await service.openChatFile(file())
+      const session = service.getSessionByFile(PATH)!
+      const messages = session.allMessages.value
+      const title = session.chatTitle.value
+      const next = snapshot()
+      next.metadata.title = 'Uncommitted title'
+      const content = serializeChat(next)
+      const text =
+        damage === 'empty'
+          ? ''
+          : damage === 'unterminated'
+            ? content.trimEnd()
+            : content + '{bad}\n'
+      await app.vault.modify(file(), text)
+      const exists = vi.spyOn(app.vault.adapter, 'exists')
+      const read = vi.spyOn(app.vault.adapter, 'read')
+      session.isStreaming.value = true
+      try {
+        await session.reconcileForSelectionReturn()
+        expect(session.allMessages.value).toBe(messages)
+        expect(session.chatTitle.value).toBe(title)
+        expect(session.isStreaming.value).toBe(true)
+        expect(exists).not.toHaveBeenCalled()
+        expect(read).not.toHaveBeenCalled()
+        expect(await app.vault.read(file())).toBe(text)
+      } finally {
+        session.isStreaming.value = false
+      }
+    }
+  )
+  it('leaves a torn chat and its safety copy alone without adopting recovered state', async () => {
     await service.openChatFile(file())
     const next = snapshot()
     next.messages[0].content = 'Recovered reply.'
@@ -220,7 +317,7 @@ describe('read-only selection return reconciliation', () => {
     const modify = vi.spyOn(app.vault, 'modify')
     const remove = vi.spyOn(app.vault.adapter, 'remove')
     await service.getSessionByFile(PATH)!.reconcileForSelectionReturn()
-    expect(service.getSessionByFile(PATH)!.messages.value[0].content).toBe('Recovered reply.')
+    expect(service.getSessionByFile(PATH)!.messages.value[0].content).toBe('repeat repeat')
     expect(await app.vault.read(file())).toBe('')
     expect(await app.vault.adapter.read(backup)).toBe(raw)
     expect(modify).not.toHaveBeenCalled()
@@ -232,7 +329,7 @@ describe('read-only selection return reconciliation', () => {
     ['torn', 'cached'],
     ['torn', 'changed'],
   ] as const)(
-    'rewrites every recovered record on the next save with a damaged (%s) main file and %s backup state',
+    'leaves a damaged (%s) main file and %s backup state unchanged until reopen recovers every record',
     async (damage, state) => {
       const next = snapshot()
       next.messages.push(
@@ -246,6 +343,7 @@ describe('read-only selection return reconciliation', () => {
       await app.vault.modify(file(), serializeChat(next))
       await service.openChatFile(file())
       const session = service.getSessionByFile(PATH)!
+      const messages = session.allMessages.value
       if (state === 'changed') next.messages[2].content = 'Recovered answer.'
       const content = serializeChat(next)
       const backup = chatCopyPath(app as never, PATH)
@@ -254,31 +352,34 @@ describe('read-only selection return reconciliation', () => {
       const torn = damage === 'empty' ? '' : content.slice(0, content.indexOf('\n') + 20)
       await app.vault.modify(file(), torn)
       await session.reconcileForSelectionReturn()
-      expect(session.allMessages.value).toEqual(next.messages)
+      expect(session.allMessages.value).toBe(messages)
       expect(await app.vault.read(file())).toBe(torn)
       expect(await app.vault.adapter.read(backup)).toBe(raw)
 
-      const append = vi.spyOn(app.vault, 'append')
-      const modify = app.vault.modify.bind(app.vault)
-      const rewrite = vi.spyOn(app.vault, 'modify').mockImplementationOnce(async (file, text) => {
-        // The next save must protect the entire recovered conversation before rewriting.
-        expect(await app.vault.adapter.read(backup)).toBe(`${PATH}\n${text}`)
-        await modify(file, text)
-      })
-      await session.save()
-      const main = parseChat(await app.vault.read(file()))
-      expect(main.messages).toEqual(next.messages)
-      expect(main.internalMessages).toEqual(next.internalMessages)
-      expect(main.damaged).toBe(0)
-      expect(main.torn).toBe(false)
-      expect(rewrite).toHaveBeenCalledOnce()
-      expect(append).not.toHaveBeenCalled()
-      expect(await app.vault.adapter.exists(backup)).toBe(false)
-      await session.load(file())
-      expect(session.allMessages.value).toEqual(next.messages)
-      expect((await ChatStorage.getInstance().loadChat(file())).internalMessages).toEqual(
-        next.internalMessages
-      )
+      // Recovery belongs to an ordinary open, not reconciliation or a deferred rewrite flag.
+      const reopened = new ChatSession(service)
+      try {
+        await reopened.load(file())
+        expect(reopened.allMessages.value).toEqual(next.messages)
+        expect(await app.vault.read(file())).toBe(content)
+        expect(await app.vault.adapter.exists(backup)).toBe(false)
+        const append = vi.spyOn(app.vault, 'append')
+        const rewrite = vi.spyOn(app.vault, 'modify')
+        reopened.chatTitle.value = 'Saved after recovery'
+        await reopened.save()
+        const main = parseChat(await app.vault.read(file()))
+        expect(main.messages).toEqual(next.messages)
+        expect(main.internalMessages).toEqual(next.internalMessages)
+        expect(main.damaged).toBe(0)
+        expect(main.torn).toBe(false)
+        expect(append).toHaveBeenCalledOnce()
+        expect(rewrite).not.toHaveBeenCalled()
+        expect((await ChatStorage.getInstance().loadChat(file())).internalMessages).toEqual(
+          next.internalMessages
+        )
+      } finally {
+        reopened.destroy()
+      }
     }
   )
   it('does not persist migrations while restoring an externally replaced flat conversation', async () => {

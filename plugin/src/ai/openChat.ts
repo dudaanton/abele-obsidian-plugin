@@ -149,7 +149,7 @@ export async function openSelectionLink(href: string): Promise<void> {
     const anchor = await session.getAnchor(parsed.address.chatId, parsed.address.anchorId)
     if (generation !== selectionReturnGeneration || service.activeSession.value !== session) return
     if (!anchor) {
-      new Notice('This selection is no longer available')
+      new Notice('This selection is no longer available. Reopen the chat and try again.')
       return
     }
     const target = resolveAnchorReturn(

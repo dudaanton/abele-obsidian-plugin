@@ -269,12 +269,9 @@ export class ChatLogWriter {
   private legacySnapshot: string | null = null
   /** Whether the file is known to end with a whole line, so an append may start right there. */
   private clean = true
-  /** Recovered records not yet committed to the main file must be written in full. */
-  private rewriteRequired = false
 
-  /** Seeds the writer from a file, or a recovery copy that still needs a whole-file save. */
-  adopt(parsed: ParsedChat, rewriteRequired = false): void {
-    this.rewriteRequired = rewriteRequired
+  /** Seeds the writer from a file just read, so the next save appends rather than rewrites. */
+  adopt(parsed: ParsedChat): void {
     if (parsed.version !== 2) {
       // A version 1 file is migrated by the first save, which rewrites it as a log.
       this.forget()
@@ -303,14 +300,8 @@ export class ChatLogWriter {
     this.clean = false
   }
 
-  /** Keep comparison state, but never append to a file missing the recovered records. */
-  requireRewrite(): void {
-    this.rewriteRequired = true
-  }
-
   /** Forgets the file, so the next save writes the whole conversation. */
   forget(): void {
-    this.rewriteRequired = false
     this.legacySnapshot = null
     this.metaLine = ''
     this.messageLines = new Map()
@@ -345,7 +336,7 @@ export class ChatLogWriter {
   plan(snapshot: ChatSnapshot): ChatWritePlan {
     const live = liveRecords(snapshot)
 
-    if (this.records === 0 || this.rewriteRequired) {
+    if (this.records === 0) {
       return { kind: 'rewrite', content: serializeChat(snapshot), records: live }
     }
 

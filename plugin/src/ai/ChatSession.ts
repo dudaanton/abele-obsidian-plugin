@@ -45,7 +45,7 @@ import type {
 import { sameRevision } from '@/selection/revisionMapping'
 import { ChatLogWriter, parseChat, serializeChat, type ChatSnapshot, type ParsedChat } from './ChatLog'
 import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
-import { inspectChat, readChat, rewriteChat } from './chatCopy'
+import { inspectMainChat, readChat, rewriteChat } from './chatCopy'
 import {
   compatibleReplyHistory,
   isReplyCorrection,
@@ -3000,7 +3000,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     )
   }
 
-  /** Inspect recovery before returning; never repair files or flush stale records over a synced file. */
+  /** Reconcile only an intact main file; backup recovery belongs to the ordinary open path. */
   async reconcileForSelectionReturn(isCurrent = () => true): Promise<void> {
     const file = this.currentChatFile.value
     const version = this.conversationVersion.value
@@ -3008,9 +3008,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     while (this.writing) await this.writing
     if (!isCurrent()) return
     const localRevision = this.localRevision
-    // Waiting above does not exclude a new writer during this read. Its safety copy belongs
-    // to that writer: reconciliation must neither restore it nor remove it.
-    const result = await inspectChat(GlobalStore.getInstance().app, file)
+    // A writer may start during this read. Never inspect or adopt its recovery copy: if the
+    // main file is torn, selection return uses the conversation already held in memory.
+    const result = await inspectMainChat(GlobalStore.getInstance().app, file)
     if (!isCurrent()) return
     if (
       this.destroyed ||
@@ -3020,11 +3020,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       throw new Error('The selection source changed. Open the link again.')
     if (this.localRevision !== localRevision)
       throw new Error('This chat changed while returning. Open the link again.')
-    if (this.log.matches(result)) {
-      // Even an identical cached conversation can now exist only in the recovery copy.
-      if (result.fromCopy) this.log.requireRewrite()
-      return
-    }
+    if (!result || this.log.matches(result)) return
     if (this.dirty || this.writing || this.isBusy || this.isMidTurn || this.moving.value)
       throw new Error(
         'This chat changed elsewhere. Finish or save the local work before returning to the selection.'
@@ -3039,7 +3035,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     await this.restoreLoadedChat(file, result, {
       keepLeaf: this.activeLeafId,
       readOnly: true,
-      rewriteOnSave: result.fromCopy,
     })
   }
 
@@ -3052,14 +3047,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async restoreLoadedChat(
     file: TFile,
     result: ParsedChat,
-    options: { keepLeaf?: string | null; readOnly?: boolean; rewriteOnSave?: boolean } = {}
+    options: { keepLeaf?: string | null; readOnly?: boolean } = {}
   ): Promise<void> {
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
-    // Only main-file records are safe to append to. Inspection may return a recovery copy
-    // without repairing the torn main file: the next serialized save must write it in full.
-    // A file in the older format also needs a rewrite, which is how a chat migrates.
-    this.log.adopt(result, options.rewriteOnSave)
+    // Normal opens repair the main file before adopting it; reconciliation accepts only an
+    // intact main-file snapshot. An older format needs a rewrite on save to migrate to a log.
+    this.log.adopt(result)
     this.currentChatFile.value = file
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''

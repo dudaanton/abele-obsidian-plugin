@@ -272,26 +272,29 @@ describe('planning a save', () => {
     expect(writer.plan(after).kind).toBe('append')
   })
 
-  it.each(['adopted copy', 'matching copy'] as const)(
-    'keeps a full rewrite pending for an %s until the write is committed',
+  it.each(['reopened file', 'cached file'] as const)(
+    'keeps comparison state and appends safely after an interrupted write to a %s',
     (source) => {
       const writer = new ChatLogWriter()
       const state = snapshot()
-      const parsed = parseChat(serializeChat(state))
-      writer.adopt(parsed, source === 'adopted copy')
-      if (source === 'matching copy') writer.requireRewrite()
+      const content = serializeChat(state)
+      const parsed = parseChat(content)
+      if (source === 'reopened file') writer.adopt(parsed)
+      else writer.commit(state, writer.plan(state))
       expect(writer.matches(parsed)).toBe(true)
-      const plan = writer.plan(state)
-      expect(plan).toEqual({ kind: 'rewrite', content: serializeChat(state), records: 3 })
+      expect(writer.plan(state).kind).toBe('noop')
 
-      // A failed write does not commit the recovered records, so retries must still rewrite.
+      // Only intact main-file records are adopted; a failed append still needs a line break.
       writer.interrupted()
-      expect(writer.plan(state)).toEqual(plan)
       expect(writer.matches(parsed)).toBe(true)
+      state.internalMessages.push(internal('two'))
+      const plan = writer.plan(state)
+      expect(plan.kind).toBe('append')
+      if (plan.kind !== 'append') throw new Error('Expected an append after reopening')
+      expect(plan.data.startsWith('\n')).toBe(true)
+      expect(parseChat(content + plan.data).internalMessages).toEqual(state.internalMessages)
       writer.commit(state, plan)
       expect(writer.plan(state).kind).toBe('noop')
-      state.internalMessages.push(internal('two'))
-      expect(writer.plan(state).kind).toBe('append')
     }
   )
 
