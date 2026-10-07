@@ -1,3 +1,4 @@
+import { scriptSource } from '../helpers/scriptSource'
 /**
  * A script that stops to ask for parameters, run from a chat.
  *
@@ -47,9 +48,7 @@ function script(name: string, code: string): ParsedScript {
 
 /** Matching source files and discovery entries, without invoking the command palette. */
 function withScripts(...scripts: ParsedScript[]): ScriptService {
-  useVault(
-    scripts.map((one) => ({ path: one.path, content: `// @name ${one.meta.name}\n${one.code}` }))
-  )
+  for (const one of scripts) scriptSource(one.path, `// @name ${one.meta.name}\n${one.code}`)
   const service = ScriptService.getInstance()
   const map = new Map(scripts.map((one) => [one.path, one]))
   ;(service as unknown as { scripts: Map<string, ParsedScript> }).scripts = map

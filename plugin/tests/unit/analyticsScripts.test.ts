@@ -1,3 +1,4 @@
+import { scriptSource } from '../helpers/scriptSource'
 /**
  * `analytics` in a script: the analysis spec answering with objects, the plain functions, and a
  * script of its own that already calls something `analytics` still compiling.
@@ -14,6 +15,7 @@ let service: ScriptService
 
 function register(name: string, code: string): string {
   const path = `Scripts/${name}.js`
+  scriptSource(path, `// @name ${name}\n${code}`)
   const scripts = (service as unknown as { scripts: Map<string, unknown> }).scripts
   scripts.set(path, { path, code, commandId: '', meta: { name, description: '', params: [] } })
   return path

@@ -70,7 +70,7 @@ const confirmButton = async () => {
 }
 
 beforeEach(() => {
-  useVault([])
+  useVault([{ path, content: script.source }])
   ScriptService.destroy()
   ScriptRuns.destroy()
   ScriptTrust.reset()

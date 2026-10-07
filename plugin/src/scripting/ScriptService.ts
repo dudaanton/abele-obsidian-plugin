@@ -629,7 +629,7 @@ export class ScriptService {
       const script = this.scripts.get(path)
       if (!script) throw new Error(`Script not found: ${path}`)
       const verdict = this.verdict(script)
-      if (verdict === 'confirmed') return scriptForExecution(GlobalStore.getInstance().app, path, ASKS_A_PERSON.has(source) ? (request) => showScriptApproval(request, signal) : undefined)
+      if (verdict === 'confirmed') return script
       if (!ASKS_A_PERSON.has(source)) throw new ScriptWaitingError(script.meta.name, verdict)
       const confirmed = await this.review(script, signal)
       signal?.throwIfAborted()
@@ -707,7 +707,8 @@ export class ScriptService {
    * status bar — since the linter calls what comes back once per note.
    */
   async definition(path: string, signal?: AbortSignal): Promise<unknown> {
-    const script = await this.admit(path, 'lint', signal)
+    await this.admit(path, 'lint', signal)
+    const script = await scriptForExecution(GlobalStore.getInstance().app, path)
     const logs: string[] = []
     const ctx = readOnly(
       buildScriptContext({
@@ -878,7 +879,12 @@ export class ScriptService {
       formHandler: given.formHandler ?? formHandler,
     }
     opts.signal?.throwIfAborted()
-    const script = await this.admit(path, opts.source ?? 'agent', opts.signal)
+    await this.admit(path, opts.source ?? 'agent', opts.signal)
+    const script = await scriptForExecution(
+      GlobalStore.getInstance().app,
+      path,
+      opts.allowApprovalPrompt ? (request) => showScriptApproval(request, opts.signal) : undefined
+    )
     if (script.meta.interceptor) {
       throw new Error(
         `Script "${script.meta.name}" is an interceptor: it runs when a chat sends a message, with that message, and not by itself`
@@ -902,7 +908,8 @@ export class ScriptService {
     input: { message: unknown; chat: unknown },
     signal: AbortSignal
   ): Promise<unknown> {
-    const script = await this.admit(path, 'interceptor', signal)
+    await this.admit(path, 'interceptor', signal)
+    const script = await scriptForExecution(GlobalStore.getInstance().app, path)
     if (!script.meta.interceptor) {
       throw new Error(`Script "${script.meta.name}" is not an interceptor (no @interceptor line)`)
     }

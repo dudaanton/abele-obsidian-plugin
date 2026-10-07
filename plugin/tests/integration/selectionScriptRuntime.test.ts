@@ -1,3 +1,4 @@
+import { scriptSource } from '../helpers/scriptSource'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptRuns } from '@/scripting/ScriptRuns'
@@ -42,6 +43,7 @@ const selection = () => ({
 let service: ScriptService
 const register = (code: string) => {
   const path = 'Scripts/sample.js'
+  scriptSource(path, `// @name Sample\n${code}`)
   ;(service as unknown as { scripts: Map<string, unknown> }).scripts.set(path, {
     path,
     code,

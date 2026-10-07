@@ -1,3 +1,4 @@
+import { scriptSource } from '../helpers/scriptSource'
 /**
  * Scripts run on words selected in a book: the `@book` header, the parameters the words fill,
  * `book` in the script's scope, and the sentence read off the page.
@@ -68,6 +69,7 @@ describe('book in a script', () => {
   let service: ScriptService
   const register = (code: string): string => {
     const path = 'Scripts/Book.js'
+    scriptSource(path, `// @name Book\n${code}`)
     const scripts = (service as unknown as { scripts: Map<string, unknown> }).scripts
     scripts.set(path, {
       path,
