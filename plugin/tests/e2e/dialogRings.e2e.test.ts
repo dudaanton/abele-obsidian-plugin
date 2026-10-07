@@ -251,7 +251,7 @@ describe.skipIf(!available)('selection-menu focus rings', () => {
 })
 
 describe.skipIf(!available)('human Canvas focus rings', () => {
-  it('keeps creation, shapes, connection styles, text and handoff controls inside their clipping ancestors', () => {
+  it('keeps creation, pen, shapes, connection styles, text and handoff controls inside their clipping ancestors', () => {
     const result = evalAsync<string[]>(`(async () => {
       const path='sample-editor-rings.canvas'
       if(app.vault.getAbstractFileByPath(path))throw Error('Synthetic file already exists')
@@ -279,6 +279,10 @@ describe.skipIf(!available)('human Canvas focus rings', () => {
         await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);await until(()=>leaf.view.editor)
         const root=leaf.view.contentEl
         measure('editor',root)
+        root.querySelector('[aria-label="Canvas drawing tools"]').click()
+        root.querySelector('[aria-label="Draw with pen"]').click();measure('pen',root)
+        root.querySelector('[aria-label="Draw with marker"]').click();measure('marker',root)
+        root.querySelector('[aria-label="Canvas drawing tools"]').click()
         root.querySelector('[aria-label="Shapes and connections"]').click();measure('shapes',root)
         root.querySelector('[aria-label="Shapes and connections"]').click()
         {const v=leaf.view.viewer,c=v.camera,r=v.stage.getBoundingClientRect(),init={pointerId:1,pointerType:'touch',clientX:r.left+(290-c.x)*c.zoom,clientY:r.top+(60-c.y)*c.zoom,bubbles:true}
