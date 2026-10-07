@@ -125,6 +125,11 @@
       <NodePath v-if="workspace" :path="workspace.path" />
       <div class="abele-node-workspaces__actions">
         <Button
+          text="Browse workspace files"
+          :disabled="busy || offline || workspace?.state !== 'ready'"
+          @click="browseFiles"
+        />
+        <Button
           text="Preview status and diff"
           :disabled="busy || offline || workspace?.state !== 'ready'"
           @click="act(() => model.preview())"
@@ -226,6 +231,8 @@
 </template>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { NodeFilesModel } from '@/node/NodeFilesModel'
+import { openNodeFiles } from '@/node/openFiles'
 import type { NodeWorkspaceModel, NodeSession } from '@/node/NodeWorkspaceModel'
 import type { NodeConnection } from '@/node/NodeService'
 import { nodeJobLabel, shortNodePath, workspaceStateLabels } from '@/node/presentation'
@@ -244,6 +251,17 @@ import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
 import Button from './obsidian/Button.vue'
 import Checkbox from './obsidian/Checkbox.vue'
+const browseFiles = async () => {
+  const selected = workspace.value
+  if (!selected || selected.state !== 'ready' || offline.value || busy.value) return
+  await act(async () => {
+    const nodeId = await props.connection.client.store.transaction((s) => s.node_id)
+    if (!nodeId) throw new Error('Reconnect before browsing files')
+    const model = new NodeFilesModel(props.connection.client, nodeId, selected.workspace_id)
+    emit('close')
+    openNodeFiles(model, props.connection)
+  })
+}
 const props = defineProps<{
   model: NodeWorkspaceModel
   connection: NodeConnection

@@ -38,8 +38,8 @@ start only in a ready, unused managed workspace. Choose **Claude Code** or **Fak
 session title; an attached session can be reopened instead of starting another one. It uses the same
 chat tabs, message renderer and composer, but never runs the plugin's agents or vault tools.
 It accepts text only; local slash commands, attachments, history editing, branches and rewind
-are not offered. Node file links never open a coincidentally named vault file; file browsing
-will arrive in a later stage. Nested `abele-message` blocks in node replies remain plain code,
+are not offered. Node file links open the workspace's retained file view, never a
+coincidentally named vault file. Nested `abele-message` blocks in node replies remain plain code,
 including their note links and embeds; they do not open vault-backed message cards.
 Open **Projects and workspaces** from the node chat header's **…** menu. That menu also
 holds reconnection, native-session resume information, and actions that explicitly explain
@@ -48,6 +48,29 @@ session title, connection/run status, and an interrupt icon only while a turn is
 Its read-only preview lists changed and untracked paths and shows the current unified diff
 of tracked staged/unstaged changes against HEAD. Untracked contents are not included, and
 the preview is not an immutable snapshot. Refresh it to review newer work.
+
+The header's **Browse workspace files** opens a read-only browser including dotfiles,
+ignored and untracked files. Symbolic links are listed but never followed. File views use
+numbered code with the same presentation as GitHub tabs; binary and oversized files show
+metadata instead of text. There is no node file editing yet. The workspace dialog also
+offers browsing without attaching a session.
+
+In **Diffs**, choose HEAD/worktree, staged, unstaged, committed branch/base, or a commit
+change. Branch/base explicitly compares the merge-base with HEAD, not uncommitted files.
+**History** lists commits and opens their change. **Open new snapshot** captures newer work;
+an already open snapshot remains unchanged even when an agent edits the workspace.
+Select line numbers (including ranges) in the shared GitHub-style diff, choose **Comment**,
+and **Add to review**. Comments across files or snapshots collect in one batch; remove a
+comment before sending if needed. **Send review** submits exactly one session input, including
+retained selections and their comments. If the workspace has changed, acceptance identifies
+stale selections rather than silently moving them onto different lines.
+
+A disconnected review is stored in the same device-local queue as messages. **Check queued
+review** checks the original receipt; it never sends a second batch. A terminal rejection
+keeps comments editable. Unsent comments and open views survive closing/reopening the dialog
+while its chat tab remains alive, but are not saved across plugin reload or tab disposal.
+Submitted batches and receipts are durable. Browse-only workspaces cannot submit reviews;
+open the browser from a workspace session to send one.
 
 Claude assistant text renders as Markdown; tool rows show the name and a short argument
 summary. Click the tool icon to expand arguments, results and file previews. Successful Edit calls show

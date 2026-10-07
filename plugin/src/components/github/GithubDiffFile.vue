@@ -80,8 +80,10 @@
         }}
       </EmptyState>
       <!-- After the empty note, not between it and the diff: `v-else` pairs with its neighbour. -->
-      <Teleport v-if="barHost && selectedSpan && linker?.item()" :to="barHost">
+      <Teleport v-if="barHost && selectedSpan" :to="barHost">
+        <slot name="selection" :span="selectedSpan" :label="selectedLabel" />
         <GithubSelectionBar
+          v-if="linker?.item()"
           :linker="linker"
           :label="selectedLabel"
           :link="selectedLink"
@@ -149,6 +151,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   /** Opens a GitHub URL: `false` by the usual rule, a pane type in a new tab, split or window. */
   open: [url: string, pane: PaneType | false]
+  select: [span: DiffSpan | null]
 }>()
 
 const root = ref<HTMLElement>()
@@ -216,6 +219,7 @@ const selectionHooks = {
   onSelect: (span: { from: number; to: number } | null) => {
     selectedSpan.value = span ? diffSpan(lines.value, span.from - 1, span.to - 1) : null
     selectedLines.value = span
+    emit('select', selectedSpan.value)
     if (!screen) return
     if (!span || !selectedSpan.value) return clearOwnSelection()
     let url: string | undefined

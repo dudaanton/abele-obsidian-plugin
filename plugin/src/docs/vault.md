@@ -58,6 +58,13 @@ projection after reload; it does not replace journal references or advance curso
 records without this cache remain valid. Project/workspace/job state, trust, repository Claude
 permission opt-in, workspace leases and native provider resume identities belong to the node,
 not plugin settings or vault files.
+Workspace file bytes and immutable diff snapshots also belong to node storage, identified
+by workspace/content/diff IDs. Open read-only views and unsent review comments are tab-local
+memory, retained while the node chat presenter lives; they are not vault files, settings,
+or a persistent file cache. A submitted `review.submit` batch enters the existing IndexedDB
+operation outbox with its immutable anchors and comments; reconnect retries that operation
+identity. Review receipts, rejection labels and the resulting journal/input are retained by
+the existing stores. No new settings, secret identifiers or transfer entries are introduced.
 Prompt-answer receipts additionally retain optional `answer` metadata (session identity, prompt
 identity and the submitted allow/deny choice), including terminal rejections. This is committed
 with outbox removal, so a tab or plugin reload cannot offer another answer while journal

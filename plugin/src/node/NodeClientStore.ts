@@ -123,11 +123,16 @@ export class NodeClientStore implements ClientStore {
             const submitted = state.outbox.slice()
             result = structuredClone(await work(state))
             retainPromptAnswerIdentity(state, submitted)
-            for (const entry of submitted.filter((entry) => entry.method === 'session.send')) {
+            for (const entry of submitted.filter((entry) =>
+              ['session.send', 'review.submit'].includes(entry.method)
+            )) {
               const receipt = state.results[entry.operation_id]
               if (receipt?.error) {
                 const input = entry.params as { session_id: string; text: string }
-                receipt.input = { sessionId: input.session_id, text: input.text }
+                receipt.input = {
+                  sessionId: input.session_id,
+                  text: entry.method === 'review.submit' ? 'Review batch' : input.text,
+                }
               }
             }
             store.put(state, 'state')

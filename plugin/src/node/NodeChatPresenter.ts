@@ -9,6 +9,7 @@ import type { NodeClientState } from './NodeClientStore'
 import { nodeQueueView } from './presentation'
 import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
 import { FrameCodec } from '@abele/channel-protocol'
+import { NodeFilesModel } from './NodeFilesModel'
 import { PromptSchema, validateParams } from '@abele/node-protocol'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
@@ -67,6 +68,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
         ? 'queued'
         : this.projection.value.state
   )
+  private filesModel?: NodeFilesModel
+  private filesOpener?: (model: NodeFilesModel, path?: string) => void
   private stopEvent: () => void
   private stopWatch: WatchStopHandle
   private destroyed = false
@@ -171,12 +174,15 @@ export class NodeChatPresenter implements ChatPresentationSession {
         this.queued.value = pending
           .filter(
             (entry) =>
-              entry.method === 'session.send' &&
+              ['session.send', 'review.submit'].includes(entry.method) &&
               (entry.params as { session_id?: string }).session_id === this.reference.sessionId
           )
           .map((entry) => ({
             id: entry.operation_id,
-            text: (entry.params as { text: string }).text,
+            text:
+              entry.method === 'review.submit'
+                ? 'Review batch'
+                : (entry.params as { text: string }).text,
           }))
       }
     })().finally(() => {
@@ -289,10 +295,31 @@ export class NodeChatPresenter implements ChatPresentationSession {
     await this.refresh()
   }
 
-  /** File browsing is a later API. Never interpret node paths as vault paths. */
-  openResource(_path: string): void {
-    this.error.value =
-      'Opening node files is not supported yet. Use the workspace status and diff preview.'
+  /** A node resource never passes through vault-path resolution. */
+  openResource(path: string): void {
+    this.openFiles(path)
+  }
+  setFilesOpener(opener: (model: NodeFilesModel, path?: string) => void): () => void {
+    this.filesOpener = opener
+    return () => {
+      if (this.filesOpener === opener) this.filesOpener = undefined
+    }
+  }
+  openFiles(path?: string): void {
+    const workspace = this.workspaceId.value
+    if (!workspace) {
+      this.error.value = 'This session has no workspace'
+      return
+    }
+    if (!this.filesModel || this.filesModel.workspaceId !== workspace)
+      this.filesModel = new NodeFilesModel(
+        this.connection.client,
+        this.reference.nodeId,
+        workspace,
+        this.reference.sessionId
+      )
+    if (this.filesOpener) this.filesOpener(this.filesModel, path)
+    else this.error.value = 'Open this session in the chat to browse its files'
   }
 
   async artifact(artifactId: string): Promise<string> {

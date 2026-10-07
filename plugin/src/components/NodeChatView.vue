@@ -22,6 +22,18 @@
           @keydown.space.prevent="!offline && presenter.interrupt(runId)"
         />
         <Icon
+          v-if="presenter.workspaceId?.value"
+          icon="folder-open"
+          with-bg
+          role="button"
+          tabindex="0"
+          aria-label="Browse workspace files"
+          tooltip="Browse workspace files and review"
+          @click="presenter.openFiles()"
+          @keydown.enter.prevent="presenter.openFiles()"
+          @keydown.space.prevent="presenter.openFiles()"
+        />
+        <Icon
           icon="more-horizontal"
           with-bg
           role="button"
@@ -111,12 +123,13 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
 import { Menu, Notice } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { NodeService } from '@/node/NodeService'
 import { openNodeWorkspaces } from '@/node/openSession'
+import { openNodeFiles } from '@/node/openFiles'
 import NodeMessageTree from './NodeMessageTree.vue'
 import NodePermissionCard from './NodePermissionCard.vue'
 import AiChatInput from './AiChatInput.vue'
@@ -124,6 +137,11 @@ import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 const props = defineProps<{ presenter: NodeChatPresenter }>()
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
+// The presenter owns resource identities; this thin view supplies Obsidian's dialog adapter.
+const stopFiles = props.presenter.setFilesOpener?.((model, path) =>
+  openNodeFiles(model, props.presenter.connection, path)
+)
+onUnmounted(() => stopFiles?.())
 const labels = {
   offline: 'Offline',
   queued: 'Queued',
