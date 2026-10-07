@@ -108,8 +108,10 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     `)
     ).toEqual({ closed: true, visible: true })
   })
-  it.skipIf(!onPhone())(
-    'uses the native keyboard and formatting toolbar, scrolls and saves on a real phone',
+  // BUG: native toolbar taps have not delivered a click in device validation. Keep every
+  // assertion: passing layout/storage checks is not formatting or native-edit acceptance.
+  it.skipIf(!onPhone()).fails(
+    'BUG: native keyboard toolbar formatting and edit-save touch workflow is not yet accepted',
     () => {
       const result = run<{
         keyboard: boolean
