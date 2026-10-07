@@ -28,12 +28,14 @@
         desc="Wait for the first response or next chunk, not the whole answer. 1–3600 seconds; empty uses the global timeout. Applies to chat and background work with this model."
       >
         <Input
-          :model-value="
-            form.requestTimeoutSeconds === undefined ? '' : String(form.requestTimeoutSeconds)
-          "
+          :model-value="timeoutInput"
+          :aria-invalid="timeoutError ? 'true' : undefined"
           placeholder="Global timeout"
           @update:model-value="setRequestTimeout($event)"
         />
+        <div v-if="timeoutError" class="setting-item-description" role="alert">
+          {{ timeoutError }}
+        </div>
       </Setting>
 
       <Setting name="Reasoning" desc="Enable reasoning/thinking for supported models.">
@@ -73,7 +75,7 @@
     <template #footer>
       <Button
         text="Save"
-        :disabled="!form.id"
+        :disabled="!form.id || !!timeoutError"
         tooltip="Keep these settings and close"
         @click="onSave"
       />
@@ -89,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
@@ -112,14 +114,26 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive<AiModelConfig>({ ...props.model })
+const timeoutInput = ref(
+  form.requestTimeoutSeconds === undefined ? '' : String(form.requestTimeoutSeconds)
+)
+const timeoutError = computed(() => {
+  const seconds = Number(timeoutInput.value)
+  return timeoutInput.value.trim() !== '' &&
+    (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_REQUEST_TIMEOUT_SECONDS)
+    ? 'Enter 1–3600 seconds. Correct this value before saving.'
+    : ''
+})
 
 const setRequestTimeout = (value: string) => {
+  timeoutInput.value = value
   if (value.trim() === '') {
+    timeoutInput.value = ''
     delete form.requestTimeoutSeconds
     return
   }
   const seconds = Number(value)
-  if (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_REQUEST_TIMEOUT_SECONDS) return
+  if (timeoutError.value) return
   form.requestTimeoutSeconds = seconds
 }
 
@@ -127,6 +141,7 @@ const setRequestTimeout = (value: string) => {
 const confirming = ref(false)
 
 const onSave = () => {
+  if (timeoutError.value) return
   emit('save', { ...form })
   emit('close')
 }

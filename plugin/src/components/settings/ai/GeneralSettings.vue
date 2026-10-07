@@ -20,10 +20,12 @@
         desc="Wait for the model to connect or send the next response chunk, not for the whole answer. 1–3600 seconds; empty restores 60. Used for chat and background models without their own timeout."
       >
         <Input
-          :model-value="String(modelRequestTimeout)"
+          :model-value="timeoutInput"
+          :aria-invalid="timeoutError ? 'true' : undefined"
           placeholder="60"
           @update:model-value="setRequestTimeout($event)"
         />
+        <div v-if="timeoutError" class="setting-item-description" role="alert">{{ timeoutError }}</div>
       </Setting>
       <Section title="Providers">
         <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">
@@ -756,10 +758,19 @@ const secretValueInputs = reactive<Record<string, string>>({})
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
 const sequentialAuxiliary = ref(config.ai.sequentialAuxiliary)
 const modelRequestTimeout = ref(requestTimeoutSeconds(config.ai.requestTimeoutSeconds))
+const timeoutInput = ref(String(modelRequestTimeout.value))
+const timeoutError = computed(() => {
+  const seconds = Number(timeoutInput.value)
+  return timeoutInput.value.trim() !== '' &&
+    (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_REQUEST_TIMEOUT_SECONDS)
+    ? 'Enter 1–3600 seconds. This value has not been saved.'
+    : ''
+})
 
 const setRequestTimeout = (value: string) => {
+  timeoutInput.value = value
+  if (timeoutError.value) return
   const seconds = value.trim() === '' ? requestTimeoutSeconds(undefined) : Number(value)
-  if (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_REQUEST_TIMEOUT_SECONDS) return
   modelRequestTimeout.value = seconds
   save()
 }
@@ -868,6 +879,7 @@ watch(config.version, () => {
   auxiliaryModelId.value = config.ai.auxiliaryModelId
   sequentialAuxiliary.value = config.ai.sequentialAuxiliary
   modelRequestTimeout.value = requestTimeoutSeconds(config.ai.requestTimeoutSeconds)
+  timeoutInput.value = String(modelRequestTimeout.value)
   chatFolder.value = config.ai.chatFolder
   rewindLimitMb.value = config.ai.rewindLimitMb ?? DEFAULT_REWIND_LIMIT_MB
   commentAgentId.value = config.ai.commentAgentId ?? ''

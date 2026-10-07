@@ -20,6 +20,8 @@ To give a particular model a different wait, open its card under **Providers** a
 **Request timeout (seconds)** in the model editor. The same **1 to 3600** range applies.
 An empty model field follows the global timeout, including later changes to it; clearing an
 override returns that model to the global value. Save to keep changes to a model.
+Invalid input stays visible with an explanation instead of silently saving an earlier value;
+correct it before saving a model. An invalid global value is not saved either.
 
 It is an idle timeout, not a limit on the whole answer: a model can keep answering longer as
 long as each chunk arrives in time. Each chosen model uses its own override or the global

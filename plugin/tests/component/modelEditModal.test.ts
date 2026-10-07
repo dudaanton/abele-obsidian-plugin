@@ -50,14 +50,25 @@ describe('per-model request timeout', () => {
         expect(setting).toBeDefined()
         const input = setting.findComponent(Input)
         expect(input.props('modelValue')).toBe(initial === undefined ? '' : String(initial))
-        for (const value of ['1', '3600', '180']) {
-          await input.vm.$emit('update:model-value', value)
-          expect(input.props('modelValue')).toBe(value)
+        for (const value of ['1', '3600', '180', '500']) {
+          await input.find('input').setValue(value)
+          expect((input.find('input').element as HTMLInputElement).value).toBe(value)
         }
-        for (const value of ['0', '-1', '0.5', '3601', 'Infinity', 'not a number']) {
-          await input.vm.$emit('update:model-value', value)
-          expect(input.props('modelValue')).toBe('180')
+        const save = view
+          .findAllComponents(Button)
+          .find((button) => button.props('text') === 'Save')!
+        for (const value of ['5000', '0', '-1', '0.5', '3601', 'Infinity', 'not a number']) {
+          await input.find('input').setValue(value)
+          expect((input.find('input').element as HTMLInputElement).value).toBe(value)
+          expect(setting.find('[role="alert"]').text()).toContain('1–3600')
+          expect(input.find('input').attributes('aria-invalid')).toBe('true')
+          expect(save.props('disabled')).toBe(true)
+          await save.find('button').trigger('click')
+          expect(view.emitted('save')).toBeUndefined()
         }
+        await input.find('input').setValue('180')
+        expect(setting.find('[role="alert"]').exists()).toBe(false)
+        expect(save.props('disabled')).toBe(false)
         expect(view.emitted('save')).toBeUndefined()
         expect(view.props('model').requestTimeoutSeconds).toBe(initial)
         await view
@@ -85,7 +96,7 @@ describe('per-model request timeout', () => {
         .find((item) => item.props('name') === 'Request timeout (seconds)')!
       expect(setting).toBeDefined()
       const input = setting.findComponent(Input)
-      await input.vm.$emit('update:model-value', ' ')
+      await input.find('input').setValue(' ')
       expect(input.props('modelValue')).toBe('')
       await view
         .findAllComponents(Button)

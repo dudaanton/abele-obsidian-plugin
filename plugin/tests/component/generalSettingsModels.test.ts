@@ -52,6 +52,38 @@ it('saves a timeout in seconds, rejects invalid values and follows incoming sett
   expect(input.props('modelValue')).toBe('240')
 })
 
+it('shows invalid global timeout input without saving a different value', async () => {
+  useVault([])
+  const config = AbeleConfig.getInstance()
+  config.destroy()
+  config.applySettings(undefined)
+  config.ai.enabled = true
+  const save = vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
+  screen = mount(GeneralSettings, {
+    global: { stubs: { Dropdown: true, Search: true } },
+  })
+  const setting = screen
+    .findAllComponents(Setting)
+    .find((item) => item.props('name') === 'Request timeout (seconds)')!
+  const input = setting.find('input')
+  await input.setValue('500')
+  expect(config.ai.requestTimeoutSeconds).toBe(500)
+  await flushPromises()
+  const calls = save.mock.calls.length
+  await input.setValue('5000')
+  expect((input.element as HTMLInputElement).value).toBe('5000')
+  expect(input.attributes('aria-invalid')).toBe('true')
+  expect(setting.find('[role="alert"]').text()).toContain('1–3600')
+  expect(config.ai.requestTimeoutSeconds).toBe(500)
+  await flushPromises()
+  expect(save.mock.calls.length).toBe(calls)
+  await input.setValue('300')
+  expect(setting.find('[role="alert"]').exists()).toBe(false)
+  expect(config.ai.requestTimeoutSeconds).toBe(300)
+  await input.setValue('')
+  expect(config.ai.requestTimeoutSeconds).toBe(60)
+})
+
 it('saves the whole provider/model key selected for background work', async () => {
   useVault([])
   const config = AbeleConfig.getInstance()
