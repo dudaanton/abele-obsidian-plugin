@@ -80,9 +80,7 @@ it.each(['save', 'check'] as const)(
         await changeOtherView()
         return completed
       }
-      await a.saveFile().catch((e) => {
-        expect((e as Error).message).toContain('another view')
-      })
+      await expect(a.saveFile()).rejects.toThrow('another view')
     } else {
       await a.saveFile()
       const original = a.documents.check.bind(a.documents)
@@ -107,9 +105,7 @@ it.each(['save', 'check'] as const)(
         await changeOtherView()
         return completed
       }
-      await a.checkSave().catch((e) => {
-        expect((e as Error).message).toContain('another view')
-      })
+      await expect(a.checkSave()).rejects.toThrow('another view')
     }
     expect(a.draftText.value).toBe('shown A')
     await expect(a.editText('continued A')).rejects.toThrow('another view')
