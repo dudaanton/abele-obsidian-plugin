@@ -142,12 +142,6 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const option = await until(() => [...document.querySelectorAll('.menu-item')].find(x => x.querySelector('.menu-item-title')?.textContent.trim().startsWith(label + ' (')))
       option.click()
     }
-    if (!${footer} && document.body.classList.contains('is-phone')) {
-      const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
-      const header = leaf.view.containerEl.querySelector('.view-header')
-      if (!calendar || !header) throw Error('calendar or native view header missing')
-      report.calendarGap = calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom
-    }
     const scroller = ${footer} ? leaf.view.containerEl.querySelector('.cm-scroller') : root.closest('.abele-timeline-sidebar')
     const blocks = () => [...root.querySelectorAll('.abele-timeline__date-block')]
     const dates = () => blocks().map(x => x.dataset.abeleAnchor)
@@ -323,6 +317,12 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     yield 'initial dates and unchanged appearance'
     await until(() => dates().length === ${short ? 1 : 20} && strip()?.textContent.includes(${short ? "'2 unfinished'" : "'90 unfinished'"}), 'initial fixture dates and unfinished count')
     await settleUI()
+    if (!${footer} && document.body.classList.contains('is-phone')) {
+      const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
+      const header = leaf.view.containerEl.querySelector('.view-header')
+      if (!calendar || !header) throw Error('calendar or native view header missing')
+      report.calendarGap = calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom
+    }
     report.initial = dates()
     report.summary = strip()?.textContent.trim() ?? null
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
