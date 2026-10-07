@@ -79,8 +79,9 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
   let leaf
   const config = window.__abeleTest.AbeleConfig.getInstance()
   const remembered = config.rememberNotePlaces
-  config.rememberNotePlaces = false
+  const renders = observeTimelineMarkdown(window.__abeleTest.MarkdownRenderer)
   try {
+    config.rememberNotePlaces = false
     yield 'fixture creation'
     if (!app.vault.getAbstractFileByPath(folder)) {
       await app.vault.createFolder(folder)
@@ -152,18 +153,13 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         .filter(task=>task.taskPath.startsWith(folder+'/')&&!task.completedAt)
         .reduce((counts,task)=>{const key=task.date?.format('YYYY-MM-DD')??'none';counts[key]=(counts[key]??0)+1;return counts},{})})
     const settleUI = async (expected = () => true, timeline = root, owner = scroller) => {
-      const items = () => [...timeline.querySelectorAll('.abele-task-view')]
-      const ready = () => expected() && items().every(el => {
-        const r = el.getBoundingClientRect(), viewport = owner.getBoundingClientRect()
-        if (r.bottom <= viewport.top || r.top >= viewport.bottom) return true
-        const title = el.dataset.abeleAnchor?.split('/').pop()?.replace(/\.md$/, '')
-        return title && el.textContent.includes(title)
-      })
-      await settleTimelineUI(() => [owner.scrollTop, owner.scrollHeight,
-        timeline.querySelector('.abele-timeline__history')?.getAttribute('aria-expanded'), ...[...timeline.querySelectorAll('.abele-timeline__date-block')].map(el => {
-          const r = el.getBoundingClientRect(); return [el.dataset.abeleAnchor, r.top, r.height]
-        }), ...items().map(el => { const r = el.getBoundingClientRect(); return [el.dataset.abeleAnchor, r.top, r.height, el.textContent] })],
-        ready, wait)
+      const chrome = () => {
+        const sidebar = timeline.closest('.abele-timeline-sidebar')
+        const header = leaf.view.containerEl.querySelector('.view-header')
+        return sidebar ? [sidebar.querySelector('.abele-calendar'), header] : [header]
+      }
+      const frame = () => new Promise(done => owner.ownerDocument.defaultView.requestAnimationFrame(done))
+      await settleTimelineView(timeline, owner, expected, renders, chrome, frame)
     }
     const toggleCompleted = async () => {
       const control = root.querySelector('.abele-timeline__completed-toggle')
@@ -514,7 +510,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         ![...foldedAgain.querySelectorAll('.abele-timeline__date-block')].some(x => x.dataset.abeleAnchor < 'date:' + day(0))
     }
   } catch (e) { report.error = String(e) + '\n' + (e?.stack ?? '') }
-  finally { leaf?.detach(); config.rememberNotePlaces = remembered }
+  finally { renders.restore(); leaf?.detach(); config.rememberNotePlaces = remembered }
   return JSON.stringify(report)
 })()`
 
