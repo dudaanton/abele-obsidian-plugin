@@ -13,8 +13,9 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { verifySyncFixture } from '../../../scripts/verify-sync-inputs.mjs'
+import { locateSyncRepository } from '../../../scripts/sync-repository.mjs'
 
 /** Thrown when the sibling repository is absent or unbuilt; the suite skips on it. */
 export class SiblingUnavailableError extends Error {}
@@ -23,6 +24,7 @@ export class SiblingUnavailableError extends Error {}
  * Only the explicit clean-archive ABELE_SYNC_DIR fixture; its provenance must match the
  * pinned plugin packages. Missing input is a failure, not sibling resolution or a skip.
  */
+export const siblingRepositoryPath = locateSyncRepository(resolve(__dirname, '../../..'))
 const SIBLING = process.env.ABELE_SYNC_DIR ? resolved(process.env.ABELE_SYNC_DIR) : ''
 /**
  * The path with its links followed. In a worktree the sibling is reached through a symlink, and
@@ -70,6 +72,10 @@ export const siblingPath = SIBLING
 
 /** Why the sibling cannot be used, in words that say what to do about it; null when it can. */
 export function siblingMissing(): string | null {
+  if (!SIBLING)
+    throw new Error(
+      `ABELE_SYNC_DIR must name a pinned clean-archive fixture. Prepare it with npm run test:server -- ${siblingRepositoryPath}`
+    )
   verifySyncFixture(SIBLING)
   if (!siblingBuilt())
     throw new SiblingUnavailableError('the explicit sync fixture has no built server and daemon')

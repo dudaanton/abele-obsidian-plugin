@@ -938,8 +938,11 @@ What it needs, and what it says when something is missing:
   in front. Without one the suite skips.
 - **An explicit revision-checked sync fixture.** `ABELE_SYNC_DIR` names a clean-archive fixture
   prepared by `node scripts/vendor-sync.mjs <repository> <pinned-commit> fixture`. The server,
-  admin CLI and daemon come from that fixture's checked `dist`; no sibling is inferred.
-  Missing/changed/wrong-revision fixture provenance fails, rather than silently skipping.
+  admin CLI and daemon come from that fixture's checked `dist`, never a mutable sibling build.
+  The e2e helper locates the `abele-sync` source checkout beside the main plugin checkout via
+  Git's common directory, so main checkouts and worktrees give the same preparation command
+  without a symlink. Missing/changed/wrong-revision fixture provenance fails, rather than
+  silently skipping.
   See [pinned sync inputs](Sync%20build%20inputs%20proposal.md) for rebuild/update instructions.
 - **This plugin, built for testing.** `npm run build:test`, newer than `src/` and the pinned
   `vendor/sync` payloads, which the bundle inlines. A missing, stale or
