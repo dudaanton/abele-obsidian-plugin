@@ -17,6 +17,7 @@ it.each([false, true])(
     config.init(disk as never)
     await config.loadSettings()
     config.editorSyntaxHighlight = !incoming
+    await config.saveSettings()
     const screen = mount(OtherSettings)
     const row = screen
       .findAllComponents(Setting)

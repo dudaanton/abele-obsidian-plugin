@@ -16,11 +16,10 @@ import { useVault } from '../helpers/testEnv'
 
 const DIR = '.obsidian/plugins/abele'
 
-/** Run while a load reads what each tool says of itself: the await a reload makes after reading. */
+/** Run after the settings snapshot is read, before the reload applies it. */
 const tools = vi.hoisted(() => ({ during: null as (() => void) | null }))
 vi.mock('@/ai/tools', () => ({
   codeToolDescriptions: () => {
-    tools.during?.()
     return {}
   },
 }))
@@ -55,7 +54,10 @@ function install(): AbeleConfig {
   saved = []
   loadData = async () => {
     if (disk.broken) return undefined
-    return disk.file === null ? null : clone(disk.file)
+    const snapshot = disk.file === null ? null : clone(disk.file)
+    await Promise.resolve()
+    tools.during?.()
+    return snapshot
   }
   const config = AbeleConfig.getInstance()
   config.init({

@@ -24,8 +24,10 @@ const CONNECTION_SECTION = 'connection'
 /** Returns how many keys the keychain refused. */
 export function storeReceivedKeys(
   entries: TransferEntry[],
-  received: Record<string, string>
+  received: Record<string, string>,
+  acceptedIds?: string[]
 ): number {
+  if (acceptedIds) entries = [{ section: 'ai-general', secretIds: acceptedIds } as TransferEntry]
   let refused = 0
   for (const entry of entries) {
     if (entry.section === OLDER_SYNC_SECTION || entry.section === CONNECTION_SECTION) continue

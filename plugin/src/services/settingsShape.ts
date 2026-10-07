@@ -1,60 +1,17 @@
-import { GlobalStore } from '@/stores/GlobalStore'
-import { SettingsEdits, settingsSnapshot } from './settingsEdits'
-import { savedKeysWithIds } from '@/ai/savedKeyIds'
-import { nanoid } from 'nanoid'
-import { migrateMcpPermissions } from '@/ai/mcp/permissions'
-import { notifyMcpPermissionReset } from '@/ai/mcp/settings'
-import { Notice } from 'obsidian'
-import { Journal, JournalDTO } from '@/entities/Journal'
-import {
-  AiSettings,
-  DEFAULT_AI_SETTINGS,
-  ImageProvider,
-  migrateOldPermissions,
-  type AiChatHistoryEntry,
-} from '@/ai/types'
-import { chatIndexDiskOf, mergeChatIndex } from '@/ai/chatIndexFile'
-import { migrateAgents } from '@/ai/agents/migration'
-import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
-import {
-  DEFAULT_ACCOUNTS_LIST,
-  normalizeAccountsList,
-  type AccountsListSettings,
-} from '@/helpers/accountRows'
-import { defaultSyncSettings, migrateSyncSettings, type SyncSettings } from '@/sync/settings'
-import AbelePlugin from '@/main'
-import { isKitColor } from '@/constants/colors'
+import { AiSettings, DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { type AutomationRule } from '@/automations/types'
+import { DEFAULT_LIFE_YEARS } from '@/bases/lifeWeeks'
+import { type CompletionMarks } from '@/calendars/completion'
+import { DEFAULT_CALENDAR_SETTINGS, type CalendarSettings } from '@/calendars/settings'
+import { JournalDTO } from '@/entities/Journal'
+import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from '@/github/settings'
+import { DEFAULT_ACCOUNTS_LIST, type AccountsListSettings } from '@/helpers/accountRows'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
-import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
-import { projectLegacy } from '@/github/connections'
-import { migrateLegacyConnectionAccess } from '@/github/agentAccess'
-import {
-  DEFAULT_CALENDAR_SETTINGS,
-  calendarSettingsFrom,
-  type CalendarSettings,
-} from '@/calendars/settings'
-import { completionMarksFrom, type CompletionMarks } from '@/calendars/completion'
-import { DEFAULT_READER_SETTINGS, readerSettingsFrom, type ReaderSettings } from '@/reader/settings'
-import { selectionMenuScriptsFrom } from '@/scripting/selectionMenuScripts'
-import {
-  DEFAULT_QUICK_BUTTON,
-  quickButtonSettingsFrom,
-  type QuickButtonSettings,
-} from '@/quickButton/settings'
-import { normalizeRule, type AutomationRule } from '@/automations/types'
-import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
-import { DEFAULT_LIFE_YEARS, isBirthDate, lifeYears } from '@/bases/lifeWeeks'
-import { DEFAULT_LINTER_SETTINGS, linterSettingsFrom, type LinterSettings } from '@/linter/settings'
-import { isStoreFile } from '@/secrets/storeFile'
-import {
-  canonicalJson,
-  isSettingsObject,
-  localChanges,
-  pause,
-  reapply,
-  settingsStampOf,
-  UNREADABLE_RETRY_MS,
-} from './settingsFile'
+import { DEFAULT_LINTER_SETTINGS, type LinterSettings } from '@/linter/settings'
+import { DEFAULT_QUICK_BUTTON, type QuickButtonSettings } from '@/quickButton/settings'
+import { DEFAULT_READER_SETTINGS, type ReaderSettings } from '@/reader/settings'
+import { defaultSyncSettings, type SyncSettings } from '@/sync/settings'
+import { nanoid } from 'nanoid'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds

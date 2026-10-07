@@ -173,7 +173,7 @@ describe('MCP permissions through execution and transfer', () => {
     const received = applyEntries(entries, target)
     expect(received.ai.toolModes).toEqual(source.ai.toolModes)
     expect(received.ai.mcpLegacyToolMap).toEqual(source.ai.mcpLegacyToolMap)
-    expect(received.ai.agents.find((a) => a.id === agent.id)?.toolModes).toEqual(agent.toolModes)
+    expect(received.ai.agents.find((a) => a.id === agent.id)?.toolModes).toEqual(source.ai.agents.find((a) => a.id === agent.id)?.toolModes)
     expect(received.ai.mcpServers?.map((s) => s.id)).toEqual(['a', 'b'])
   })
 

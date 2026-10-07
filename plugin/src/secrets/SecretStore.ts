@@ -202,7 +202,7 @@ export class SecretStore {
    */
   async load(): Promise<void> {
     const file = this.host.read()
-    if (!isStoreFile(file)) {
+    if (file === undefined || file === null || (file as { off?: unknown })?.off === true) {
       // No store where this device knows one: a fresh install's file, a transfer's or an older
       // build's won the sync, or the file was edited. None of them is anybody turning the store
       // off, so the store stays as it is here, key and all, and the settings put it back.

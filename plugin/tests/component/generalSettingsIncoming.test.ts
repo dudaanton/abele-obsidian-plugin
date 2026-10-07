@@ -24,6 +24,7 @@ it.each(['remove', 'reorder'] as const)(
     config.ai.secrets = [first, second]
     app.secretStorage.setSecret(first.keyId, 'first value')
     app.secretStorage.setSecret(second.keyId, 'second value')
+    await config.saveSettings()
     const screen = mount(GeneralSettings, { global: { stubs: { Dropdown: true, Search: true } } })
     const card = (title: string) =>
       screen.findAllComponents(Card).find((item) => item.props('title') === title)!

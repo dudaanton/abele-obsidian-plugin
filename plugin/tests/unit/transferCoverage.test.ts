@@ -98,7 +98,7 @@ it('accounts for every declared root and AI setting in transfer sections or expl
     {
       ...DEFAULT_SETTINGS,
       ...Object.fromEntries(
-        fields('src/services/AbeleConfig.ts', 'AbeleSettings').map((key) => [
+        fields('src/services/settingsShape.ts', 'AbeleSettings').map((key) => [
           key,
           (DEFAULT_SETTINGS as unknown as Record<string, unknown>)[key],
         ])
@@ -114,7 +114,7 @@ it('accounts for every declared root and AI setting in transfer sections or expl
   )
   collectEntries(settings)
   for (const [declared, offered, exclusions] of [
-    [fields('src/services/AbeleConfig.ts', 'AbeleSettings'), root, localOrManaged.root],
+    [fields('src/services/settingsShape.ts', 'AbeleSettings'), root, localOrManaged.root],
     [fields('src/ai/types.ts', 'AiSettings'), ai, localOrManaged.ai],
   ] as const) {
     expect(declared.filter((key) => !offered.has(key) && !(key in exclusions))).toEqual([])

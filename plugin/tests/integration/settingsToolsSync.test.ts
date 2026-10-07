@@ -1,13 +1,7 @@
 /**
- * The settings tools and this device's sync connection.
- *
- * The connection left `data.json` for the vault's local storage, and with it the `AbeleConfig`
- * object the tools walk — so without a table of its own an agent that could point this device
- * at a server before could no longer even read where it syncs. The fields it could write stay
- * writable (Anton's "no restriction"), but through `SyncService.updateConnection`, so the https
- * rule, the keychain-name rule and the token's own server hold for the agent exactly as they
- * hold for the Sync tab. What the bookkeeping owns — where the token was minted, the revokes
- * still waiting — is not reachable at all.
+ * Device-local sync fields remain accessible through settings tools after moving out of
+ * data.json. Writes go through the sync service so URL, keychain and token-origin checks
+ * match the settings screen. Internal migration and revocation bookkeeping stays private.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { App } from 'obsidian'

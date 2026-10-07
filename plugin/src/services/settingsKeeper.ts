@@ -18,7 +18,7 @@ import {
 
 /** What `SettingsKeeper` needs of the settings it reads and writes: `AbeleConfig`. */
 export interface SettingsHost {
-  readonly edits: SettingsEdits
+  edits(): SettingsEdits
   fresh(fresh: boolean): void
   plugin(): AbelePlugin | null
   /** Puts settings read off disk in force; answers whether a migration rewrote anything. */
@@ -152,21 +152,23 @@ export class SettingsKeeper {
     if (!this.host.plugin()) return
     // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
     // parse, and that is still somebody's settings.
-    const finishRead = this.host.edits.beginRead()
+    const finishRead = this.host.edits().beginRead()
     try {
-    const stamp = await this.readStamp()
-    const stored: unknown = await this.host.plugin().loadData()
-    this.deferredRewrite = false
-    this.waitingForInitialFile = stored === null || stored === undefined
-    const legacy = isSettingsObject(stored) && isSettingsObject(stored.sync) ? stored.sync : null
-    this.pendingLegacySync =
-      legacy && (legacy.serverUrl || legacy.deviceTokenId || legacy.vaultId)
-        ? JSON.parse(JSON.stringify(legacy))
-        : null
-    const index = await this.host.index.read(this.host.plugin())
-    this.host.index.onDisk = index !== null
-    await this.take(stored, stored, () => index ?? [], stamp)
-    } finally { finishRead() }
+      const stamp = await this.readStamp()
+      const stored: unknown = await this.host.plugin().loadData()
+      this.deferredRewrite = false
+      this.waitingForInitialFile = stored === null || stored === undefined
+      const legacy = isSettingsObject(stored) && isSettingsObject(stored.sync) ? stored.sync : null
+      this.pendingLegacySync =
+        legacy && (legacy.serverUrl || legacy.deviceTokenId || legacy.vaultId)
+          ? JSON.parse(JSON.stringify(legacy))
+          : null
+      const index = await this.host.index.read(this.host.plugin())
+      this.host.index.onDisk = index !== null
+      await this.take(stored, stored, () => index ?? [], stamp)
+    } finally {
+      finishRead()
+    }
   }
 
   /** Runs `step` after every load, reload and write of the settings file already asked for. */
@@ -205,15 +207,21 @@ export class SettingsKeeper {
     this.onDisk = isSettingsObject(file) ? canonicalJson(file) : null
     this.stamp = stamp
 
-    const candidates = pruneToolDescriptions((settings as AbeleSettings)?.ai?.prompts?.toolDescriptions).kept
+    const candidates = pruneToolDescriptions(
+      (settings as AbeleSettings)?.ai?.prompts?.toolDescriptions
+    ).kept
     const tools = Object.keys(candidates).length ? await codeToolDescriptions() : {}
     const migrated = this.host.apply(
       (settings ?? undefined) as AbeleSettings | undefined,
       tools,
       index()
     )
-    this.host.apply(this.host.edits.apply(this.host.export()), tools, index())
     this.base = this.host.export()
+    const inSettings = this.host.index.inSettings
+    const merged = this.host.edits().apply(this.base)
+    if (canonicalJson(merged) !== canonicalJson(this.base))
+      this.host.apply(merged, tools, this.host.chatHistory())
+    this.host.index.inSettings = inSettings
 
     // The index goes to its own file before `data.json` is written without it: in the other
     // order, a crash between the two writes would lose every chat the index listed.
@@ -347,7 +355,12 @@ export class SettingsKeeper {
     // again on what arrived. A marker saying the store is off is taken as it is: this copy's
     // entries put onto it would leave ciphertext in a file that says there is none.
     const keep = ['secretStore']
-    const changes = this.base === null ? [] : localChanges(this.base, this.host.export(), keep)
+    const changes =
+      this.base === null
+        ? []
+        : localChanges(this.base, this.host.export(), keep).filter(
+            (change) => !this.host.edits().pending(change.path)
+          )
     if (changes.length > 0) {
       console.debug(
         `[Abele] settings changed here while another copy arrived; keeping ${changes.length} of them on top`
@@ -408,7 +421,7 @@ export class SettingsKeeper {
       this.base = accepted
       return
     }
-    const written = this.host.edits.written()
+    const written = this.host.edits().written()
     await plugin.saveData(settingsSnapshot(next))
     written()
     this.gone = false

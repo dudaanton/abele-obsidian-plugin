@@ -1,28 +1,30 @@
-import { ref } from 'vue'
-import { GlobalStore } from '@/stores/GlobalStore'
-import { SettingsEdits } from './settingsEdits'
-import type { CalendarSettings } from '@/calendars/settings'
-import type { CompletionMarks } from '@/calendars/completion'
-import type { QuickButtonSettings } from '@/quickButton/settings'
-import type { LinterSettings } from '@/linter/settings'
-import type { Journal } from '@/entities/Journal'
-import type { AiSettings, AiChatHistoryEntry } from '@/ai/types'
-import type { AccountsListSettings } from '@/helpers/accountRows'
-import type { SyncSettings } from '@/sync/settings'
-import AbelePlugin from '@/main'
-import type { LabelColor } from '@/helpers/taskMeta'
-import type { GithubSettings } from '@/github/settings'
-import type { ReaderSettings } from '@/reader/settings'
+import type { AiChatHistoryEntry, AiSettings } from '@/ai/types'
 import type { AutomationRule } from '@/automations/types'
+import type { CompletionMarks } from '@/calendars/completion'
+import { calendarSettingsFrom, type CalendarSettings } from '@/calendars/settings'
+import type { Journal } from '@/entities/Journal'
+import type { GithubSettings } from '@/github/settings'
+import type { AccountsListSettings } from '@/helpers/accountRows'
+import type { LabelColor } from '@/helpers/taskMeta'
+import { linterSettingsFrom, type LinterSettings } from '@/linter/settings'
+import AbelePlugin from '@/main'
+import type { QuickButtonSettings } from '@/quickButton/settings'
+import type { ReaderSettings } from '@/reader/settings'
 import { moveLegacySecrets } from '@/secrets/legacy'
-import { applySettingsTo, exportSettingsOf } from './settingsApply'
+import { GlobalStore } from '@/stores/GlobalStore'
+import type { SyncSettings } from '@/sync/settings'
+import { ref } from 'vue'
 import { ChatIndexKeeper } from './chatIndexKeeper'
+import { applySettingsTo, exportSettingsOf } from './settingsApply'
+import { SettingsEdits, settingsSnapshot } from './settingsEdits'
 import { SettingsKeeper } from './settingsKeeper'
 import type { AbeleSettings, HeaderButtonDefinition, LinkDefinition } from './settingsShape'
 
 export {
   DEFAULT_SETTINGS,
   normalizeConditions,
+  normalizeHeaderButton,
+  normalizeLink,
   PROPERTY_TESTS,
   type AbeleSettings,
   type HeaderButtonCondition,
@@ -111,8 +113,10 @@ export class AbeleConfig {
   /** The settings file itself: every load, reload and write of it, one at a time. */
   private readonly file = new SettingsKeeper({
     plugin: () => this.plugin,
-    edits: this.pendingEdits,
-    fresh: (fresh) => { this.freshInstall = fresh },
+    edits: () => this.pendingEdits,
+    fresh: (fresh) => {
+      this.freshInstall = fresh
+    },
     apply: (settings, toolDefaults, index) => this.applySettings(settings, toolDefaults, index),
     export: () => this.exportSettings(),
     secretStore: () => this.secretStore,
@@ -285,7 +289,6 @@ export class AbeleConfig {
       GlobalStore.getInstance().applySettings()
       plugin.syncAiFeatures()
     }
-
 
     this.tellSaved()
   }

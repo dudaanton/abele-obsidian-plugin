@@ -50,6 +50,11 @@ export class SettingsEdits {
     this.edits.set(key, { path, value: after })
   }
 
+  /** The screen still owes its debounced save for this field. */
+  pending(path: string[]): boolean {
+    return [...this.edits.values()].some((edit) => edit.path.every((part, at) => path[at] === part))
+  }
+
   apply<T>(settings: T): T {
     const merged = settingsSnapshot(settings)
     for (const { path, value } of this.edits.values()) {

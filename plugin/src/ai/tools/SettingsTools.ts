@@ -1,26 +1,5 @@
-import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import {
-  AmbiguousItem,
-  isHidden,
-  itemLine,
-  knownRoots,
-  redact,
-  resolve,
-  restoreHidden,
-  rootOf,
-  typeOf,
-} from './settingsPaths'
-import {
-  addItem,
-  isAgent,
-  moveItem,
-  refuseInterceptor,
-  refusePattern,
-  removeItem,
-  updateItem,
-  type ItemResult,
-} from './settingsItems'
+import type { AgentTool } from '../client'
 import {
   deviceNext,
   deviceTypes,
@@ -33,6 +12,27 @@ import {
   startFailure,
   writeDevice,
 } from './settingsDevice'
+import {
+  addItem,
+  isAgent,
+  moveItem,
+  refuseInterceptor,
+  refusePattern,
+  removeItem,
+  updateItem,
+  type ItemResult,
+} from './settingsItems'
+import {
+  AmbiguousItem,
+  isHidden,
+  itemLine,
+  knownRoots,
+  redact,
+  resolve,
+  restoreHidden,
+  rootOf,
+  typeOf,
+} from './settingsPaths'
 
 /**
  * Reading and changing the plugin's own settings, from a chat.
@@ -61,7 +61,6 @@ function pathProblem(path: string): string | null {
   if (isDevicePath(path) && !isValidDevicePath(path)) return invalidPath(path)
   return null
 }
-
 
 /** One line per setting: what it is, and either its value or how much of it there is. */
 function summarise(path: string): string {
@@ -270,8 +269,10 @@ async function write(
     if (op !== 'set') return 'Change device sync settings one field at a time with set.'
     const next = parseValue(raw!)
     const { before } = describeSettingsWrite(path, raw!)
-    const takes = deviceTypes(path)
-    if (takes && !takes.includes(typeOf(next))) return `"${path}" is ${takes.join(' or ')}; ${JSON.stringify(next)} is ${typeOf(next)}. The type has to match.`
+    const takes =
+      deviceTypes(path) ?? (typeOf(found.value) === 'empty' ? null : [typeOf(found.value)])
+    if (takes && !takes.includes(typeOf(next)))
+      return `"${path}" is ${takes.join(' or ')}; ${JSON.stringify(next)} is ${typeOf(next)}. The type has to match.`
     const refusal = await writeDevice(path, next)
     if (refusal) return refusal
     // What the connection holds now, not what was asked: the address is stored normalised.
@@ -280,9 +281,6 @@ async function write(
     const line = `${path}: ${before} → ${stored}`
     return failure === null ? line : `${line} — sync could not start: ${failure}`
   }
-  found.parent[found.key] = next
-  await AbeleConfig.getInstance().saveSettings()
-
   let result: ItemResult
   if (op === 'set') result = setValue(path, found, parseValue(raw))
   else if (op === 'update') result = updateItem(path, found, parseValue(raw))

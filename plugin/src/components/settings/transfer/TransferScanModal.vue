@@ -579,7 +579,7 @@ const finish = async (takeConnection: boolean) => {
     ScriptService.getInstance().setConfirmForeign(true)
   }
 
-  const keysRefused = storeReceivedKeys(chosen, payload.value.secrets)
+  const keysRefused = storeReceivedKeys(chosen, payload.value.secrets, incomingKeyIds)
 
   await config.saveSettings()
 
