@@ -319,6 +319,7 @@ await v.open()
 | \`params\` | \`object\` | Resolved parameter values from the script header |
 | \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
 | \`book\` | \`object \\| null\` | The words in a book the script was run on from the reader (see below) |
+| \`selection\` | \`object \\| null\` | Read-only captured selection, its source metadata and backlink (see below) |
 | \`books\` | \`object\` | Reader-file library, saved progress and navigation (see below); not available in lint rules |
 | \`analytics\` | \`object\` | Statistics over finance, notes and bases (see Analytics above) |
 | \`vocabulary\` | \`object\` | Words a note's properties or a highlight name, underlined in books (see below) |
@@ -399,6 +400,28 @@ re-query in the callback. Subscribe before the initial list, using the *view* si
 (not the run's \`signal\`), and use \`v.on('focus', refresh)\` or a manual Refresh
 button to recover external changes. See \`query_docs\` section \`scripts\` for a
 runnable shelf using Card, Grid, Search and Button. No position setter is exposed.
+
+### selection — captured words and their source
+
+Book runs also receive read-only \`selection\`: \`text\`, \`sentence\`, \`title\`, \`pathHint\`,
+\`backlink\`, and \`source\`. \`source.kind === 'book'\` carries \`place\` (the CFI),
+\`chapter\` and \`language\`; the existing \`book\` API is unchanged. Other ordinary runs
+receive \`null\`. A script may declare its own \`selection\` variable.
+
+The shared runtime also supports \`source.kind === 'chat'\`: \`chatId\`, \`messageId\`,
+\`revisionId\`, \`role\`, \`author\`, \`quote\`, rendered \`range\`, \`projectionVersion\`
+and surrounding \`context\`. Chat contexts include a durable \`anchorId\` and \`backlink\`;
+\`pathHint\` is only a navigation hint, not identity. Chat selection launch is not enabled
+in the UI yet. It does not supply \`book\` or an interceptor's \`chat\`/\`message\`.
+
+Selection is captured before pickers, review or forms. Selection parameters use its words
+before their defaults; only an empty required parameter opens the initial form. The chat
+adapter validates the captured revision and durably saves the anchor after review and forms,
+before execution receives a backlink. Conflicts and failed saves do not execute the script.
+Reruns retain that captured source, including its revision and anchor, rather than reading
+current selection or creating another anchor. Changing a message does not retarget a run.
+Ordinary selection execution does not edit message text. There is no \`selection.bind\`
+capability or chat-wide vocabulary marking here.
 
 ### book — when run on words in a book
 
@@ -571,7 +594,7 @@ names inside the script fails to start it, with a message naming the conflict.
 
 ### Shadowable globals
 
-\`event\`, \`book\`, \`books\`, \`analytics\`, \`vocabulary\`, \`message\` and \`chat\` are
+\`event\`, \`book\`, \`selection\`, \`books\`, \`analytics\`, \`vocabulary\`, \`message\` and \`chat\` are
 supplied by the surrounding scope, not reserved inside the script. A script can declare its
 own variable with one of those names without a compiler error.
 

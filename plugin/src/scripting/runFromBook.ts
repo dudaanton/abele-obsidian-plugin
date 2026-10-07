@@ -11,32 +11,14 @@
 import { FuzzySuggestModal, Notice, setIcon, type App, type FuzzyMatch } from 'obsidian'
 import { ScriptService } from './ScriptService'
 import { ScriptWaitingError } from './ScriptTrust'
-import { showFormModal } from './formModal'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from '@/reader/settings'
 import { bookMenu, bookMenuPlace, withBookScript, withoutBookScript } from './bookMenuScripts'
 import type { BookScriptContext } from './bookContext'
 import type { ParsedScript } from './types'
 
-/** What a script run on `words` is passed, and whether a required parameter is left empty. */
-export function bookParams(
-  script: ParsedScript,
-  words: string
-): { params: Record<string, unknown>; missing: boolean } {
-  const params: Record<string, unknown> = {}
-  let missing = false
-  for (const p of script.meta.params) {
-    const value = p.selection && words ? words : p.default
-    if (value === undefined || value === '') {
-      if (p.required) missing = true
-      continue
-    }
-    if (p.type === 'boolean') params[p.name] = value === 'true'
-    else if (p.type === 'number') params[p.name] = Number(value)
-    else params[p.name] = value
-  }
-  return { params, missing }
-}
+/** Compatible export; both surfaces use the same parameter rules. */
+export { selectionParams as bookParams } from './runFromSelection'
 
 /** The scripts with a button of their own on words in a book, by name. */
 export function bookScripts(all: ParsedScript[]): ParsedScript[] {
@@ -48,29 +30,13 @@ export async function runScriptOnBook(
   script: ParsedScript,
   book: BookScriptContext
 ): Promise<void> {
-  const service = ScriptService.getInstance()
   try {
-    // Before the form, whose fields come from the script's header: a script from elsewhere is
-    // shown for confirmation first, and left alone when it is not confirmed.
-    script = await service.admit(script.path, 'book')
-  } catch (err) {
-    if (!(err instanceof ScriptWaitingError)) {
-      new Notice(`${script.meta.name}: ${err instanceof Error ? err.message : String(err)}`, 10000)
-    }
-    return
-  }
-  let { params, missing } = bookParams(script, book.text)
-  if (missing) {
-    const asked = await service.showParamForm(script, book.text)
-    if (!asked) return
-    params = asked
-  }
-  try {
-    const result = await service.execute(script.path, params, {
-      source: 'book',
+    const outcome = await ScriptService.getInstance().executeFromSelection(script.path, {
+      kind: 'book',
       book,
-      formHandler: showFormModal,
     })
+    if (outcome.status !== 'done') return
+    const result = outcome.output
     if (result.trim()) new Notice(result.length > 500 ? `${result.slice(0, 500)}…` : result, 10000)
     else new Notice(`${script.meta.name}: done`)
   } catch (err) {
@@ -178,7 +144,8 @@ export function pickScriptForBook(app: App, book: BookScriptContext): void {
     new Notice('There are no scripts yet: add one to the scripts folder')
     return
   }
-  new BookScriptPicker(app, scripts, (s) => void runScriptOnBook(s, book)).open()
+  const captured = Object.freeze({ ...book })
+  new BookScriptPicker(app, scripts, (s) => void runScriptOnBook(s, captured)).open()
 }
 
 /** Runs the script named `name` on the words; the picker when no name is given. */

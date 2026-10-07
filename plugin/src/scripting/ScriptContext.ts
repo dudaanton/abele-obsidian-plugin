@@ -42,6 +42,7 @@ import { scriptAnalytics } from './analyticsApi'
 import { scriptVocabulary } from './vocabularyApi'
 import type { AutomationEvent } from '@/automations/types'
 import type { BookScriptContext } from './bookContext'
+import { bookSelection, captureSelection, type SelectionScriptContext } from './selectionContext'
 import { createBooksApi, type BooksHost } from './booksApi'
 import { booksDisposalFor } from './booksLifetime'
 import { bookPlaces } from '@/reader/places'
@@ -154,6 +155,8 @@ export function buildScriptContext(opts: {
   event?: AutomationEvent
   /** The words in a book the run was asked for from. The script reads it as `book`. */
   book?: BookScriptContext
+  /** Captured selection with a durable source backlink; unrelated to interceptor `chat`. */
+  selection?: SelectionScriptContext
   /**
    * Told the path of every note the script is about to write, before it is written. An
    * automation marks those paths with its own id, which is how the change the script makes
@@ -213,6 +216,12 @@ export function buildScriptContext(opts: {
     event: opts.event ?? null,
     /** The words in a book the run was asked for from; `null` for every other run. */
     book: opts.book ? { ...opts.book } : null,
+    /** Read-only selection source; book runs keep their legacy `book` API too. */
+    selection: opts.selection
+      ? captureSelection(opts.selection)
+      : opts.book
+        ? bookSelection(opts.book)
+        : null,
     /** Vault reader files and their already-stored reader data; unrelated to the selection `book`. */
     books: createBooksApi(
       (() => {

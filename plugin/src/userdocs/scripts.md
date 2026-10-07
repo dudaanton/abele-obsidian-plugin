@@ -96,6 +96,13 @@ enabled yet. These settings do not change chat messages or add links to cards.
 or why it failed. A run can be stopped, run again, or run again with changed values. While a
 script runs, the status bar says so.
 
+A book-selection run keeps the original words and place, even if you change tabs while choosing
+its script or filling in a form. **Run again** and **Run as new** keep that same source; the latter
+lets you change parameter values, not the selection. Scripts can read the captured words,
+sentence and source link through the read-only `selection` object as well as the existing `book`
+object. Scripts in the library can still use their own variable named `selection`.
+**Run as new** asks you to confirm a script from elsewhere before displaying its parameter form.
+
 ## The toolbar
 
 Pin a script in **Settings → Abele → Scripts → Library** (the pin on its card), or add a

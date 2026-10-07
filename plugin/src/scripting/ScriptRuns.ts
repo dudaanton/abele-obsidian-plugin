@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { nanoid } from 'nanoid'
 import type { BookScriptContext } from './bookContext'
+import { bookSelection, captureSelection, type SelectionScriptContext } from './selectionContext'
 
 /**
  * Every script run of this session, and what became of it.
@@ -22,6 +23,7 @@ export type RunSource =
   | 'view'
   | 'automation'
   | 'book'
+  | 'chat-selection'
   | 'startup'
   | 'interceptor'
 
@@ -48,6 +50,8 @@ export interface ScriptRun {
   trigger?: string
   /** The words in a book it was run on, given again when it is run again from the list. */
   book?: BookScriptContext
+  /** Captured identity/placement and anchor provenance, not the current DOM selection. */
+  selection?: SelectionScriptContext
 }
 
 /**
@@ -84,6 +88,7 @@ export class ScriptRuns {
     stop: () => void
     trigger?: string
     book?: BookScriptContext
+    selection?: SelectionScriptContext
   }): string {
     const id = nanoid(8)
     this.stoppers.set(id, run.stop)
@@ -102,7 +107,12 @@ export class ScriptRuns {
       result: '',
       error: '',
       ...(run.trigger ? { trigger: run.trigger } : {}),
-      ...(run.book ? { book: run.book } : {}),
+      ...(run.book ? { book: Object.freeze({ ...run.book }) } : {}),
+      ...(run.selection
+        ? { selection: captureSelection(run.selection) }
+        : run.book
+          ? { selection: bookSelection(run.book) }
+          : {}),
     })
     this.trim()
     return id

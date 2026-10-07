@@ -181,6 +181,17 @@ Settings → Books (`reader.selectionScripts`) or pinned from its script list, t
 whose header has `// @book`. Up to three are a button each, more fold into one menu, and any other
 script is picked from the list. A script can call another with `runScript`.
 
+Book runs also receive read-only `selection`: `text`, `sentence`, `title`, `pathHint`,
+`backlink`, and `source` (`kind: 'book'`, `place`, `chapter`, `language`). The legacy `book`
+API is unchanged. The shared runtime's chat adapter carries `kind: 'chat'`, chat/message/revision
+identity, author/role, exact rendered range, quote, projection version and surrounding context,
+plus a durable anchor ID and backlink. It reviews the script and completes forms before validating
+and saving that anchor. A stale revision returns a conflict; a failed save exposes no backlink to
+execution. Chat-selection launch is not enabled in the UI yet, and does not impersonate the
+interceptor's `chat` or `message`. Selection and run/rerun state retain the captured source rather
+than consulting current tabs or DOM selection. Ordinary runs find `selection === null`; scripts
+can shadow that name. Selection has no binding operation and does not edit chat messages.
+
 The toolbar is the same idea for notes. A script whose header has `// @toolbar`, or which the
 person pinned from the script library (`ai.toolbarScripts`, by name), is an icon on Obsidian's
 left ribbon on a computer — its own icon, its name as the tooltip, pressed it runs on the note in

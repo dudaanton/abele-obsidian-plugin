@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { Notice } from 'obsidian'
 import ScriptRunsView from '@/components/ScriptRuns.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { ScriptRuns } from '@/scripting/ScriptRuns'
@@ -30,6 +31,7 @@ const script: ParsedScript = {
 
 let runs: ScriptRuns
 let execute: ReturnType<typeof vi.fn>
+let admit: ReturnType<typeof vi.fn>
 
 const open = () => mount(ScriptRunsView)
 type Screen = ReturnType<typeof open>
@@ -64,8 +66,10 @@ beforeEach(() => {
   ScriptRuns.destroy()
   runs = ScriptRuns.getInstance()
   execute = vi.fn().mockResolvedValue('')
+  admit = vi.fn().mockResolvedValue(script)
   vi.spyOn(ScriptService, 'getInstance').mockReturnValue({
     execute,
+    admit,
     getAll: () => [script],
   } as unknown as ScriptService)
   showFormModal.mockReset()
@@ -190,6 +194,44 @@ describe('stopping a run', () => {
 })
 
 describe('running it again', () => {
+  it.each(['Run again', 'Run as new'])(
+    'keeps the captured chat identity and backlink for %s',
+    async (button) => {
+      const selection = {
+        text: 'seed',
+        sentence: 'A seed grows.',
+        title: 'Sample',
+        pathHint: 'Sample.abchat',
+        backlink: '[[Sample.abchat#address|Return]]',
+        anchorId: 'anchor-1',
+        source: {
+          kind: 'chat' as const,
+          chatId: 'chat-1',
+          messageId: 'message-1',
+          revisionId: 'revision-1',
+          role: 'user' as const,
+          author: 'Reader',
+          quote: 'seed',
+          projectionVersion: 'plain-1',
+          range: { space: 'rendered' as const, start: 2, end: 6 },
+          context: { before: 'A ', after: ' grows.' },
+        },
+      }
+      showFormModal.mockResolvedValue({ tag: 'later' })
+      runs.finish(began({ source: 'chat-selection', selection }), '')
+      const wrapper = open()
+      expect(wrapper.find('.abele-badge').text()).toBe('chat selection')
+      await expand(wrapper, 'Tag notes')
+      await press(wrapper, 'Tag notes', button)
+      expect(execute).toHaveBeenCalledWith(
+        'Scripts/tag.js',
+        expect.any(Object),
+        expect.objectContaining({ source: 'chat-selection', selection })
+      )
+      wrapper.unmount()
+    }
+  )
+
   it('goes with the same values, without asking anything', async () => {
     runs.finish(began(), '')
     const wrapper = open()
@@ -217,6 +259,31 @@ describe('running it again', () => {
 })
 
 describe('running it as new', () => {
+  it('still says when the script is gone instead of silently dropping the action', async () => {
+    Notice.shown.length = 0
+    admit.mockRejectedValue(new Error('Script not found: Scripts/tag.js'))
+    runs.finish(began(), '')
+    const wrapper = open()
+    await expand(wrapper, 'Tag notes')
+    await press(wrapper, 'Tag notes', 'Run as new')
+    expect(Notice.shown).toContain('Script not found: Scripts/tag.js')
+    expect(showFormModal).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('admits before the form and runs nothing when the script is left unconfirmed', async () => {
+    admit.mockRejectedValue(new Error('Not confirmed'))
+    runs.finish(began({ source: 'chat-selection' }), '')
+    const wrapper = open()
+    await expand(wrapper, 'Tag notes')
+    await press(wrapper, 'Tag notes', 'Run as new')
+    expect(admit).toHaveBeenCalledWith('Scripts/tag.js', 'chat-selection')
+    expect(showFormModal).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('asks for the values again, starting from the ones it had', async () => {
     showFormModal.mockResolvedValue(null)
     runs.finish(began(), '')

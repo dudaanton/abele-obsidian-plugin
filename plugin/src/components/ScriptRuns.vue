@@ -117,6 +117,7 @@ import Badge from './obsidian/Badge.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import { ScriptRuns, type ScriptRun } from '@/scripting/ScriptRuns'
 import { ScriptService } from '@/scripting/ScriptService'
+import { ScriptWaitingError } from '@/scripting/ScriptTrust'
 import { showFormModal } from '@/scripting/formModal'
 import { GlobalStore } from '@/stores/GlobalStore'
 
@@ -144,6 +145,7 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   view: 'view',
   automation: 'automation',
   book: 'book',
+  'chat-selection': 'chat selection',
   startup: 'startup',
   interceptor: 'interceptor',
 }
@@ -236,16 +238,19 @@ const openScript = async (run: ScriptRun) => {
   await app.workspace.getLeaf('tab').openFile(file)
 }
 
+const rerunSource = (run: ScriptRun) =>
+  run.source === 'agent' || run.source === 'automation' || run.source === 'startup'
+    ? 'command'
+    : run.source
+
 const start = async (run: ScriptRun, params: Record<string, unknown>) => {
   try {
     const result = await ScriptService.getInstance().execute(run.path, params, {
       formHandler: showFormModal,
       // Run again by hand, an agent's or an automation's run is the person's own.
-      source:
-        run.source === 'agent' || run.source === 'automation' || run.source === 'startup'
-          ? 'command'
-          : run.source,
+      source: rerunSource(run),
       book: run.book,
+      selection: run.selection,
     })
     if (result.trim()) new Notice(result.length > 500 ? result.slice(0, 500) + '…' : result, 10000)
   } catch (err) {
@@ -261,11 +266,15 @@ const again = (run: ScriptRun) => void start(run, run.params)
  * was wrong is the whole reason to look at this list.
  */
 const asNew = async (run: ScriptRun) => {
-  const script = ScriptService.getInstance()
-    .getAll()
-    .find((candidate) => candidate.path === run.path)
-  if (!script) {
-    new Notice(`Script is gone: ${run.path}`)
+  // The header supplies the fields, so review must happen before displaying them here too.
+  let script
+  try {
+    script = await ScriptService.getInstance().admit(run.path, rerunSource(run))
+  } catch (err) {
+    if (!(err instanceof ScriptWaitingError)) {
+      new Notice(err instanceof Error ? err.message : String(err))
+    }
+    console.debug('[ScriptRuns] not run', err)
     return
   }
 

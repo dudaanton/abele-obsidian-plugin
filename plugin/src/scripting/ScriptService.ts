@@ -25,6 +25,12 @@ import { ScriptTrust, ScriptWaitingError, sha256, noteLocalScriptWrite } from '.
 import type { TrustedFile, TrustVerdict } from './trustState'
 import { announceWaiting, reviewOne, reviewWaiting } from './scriptReview'
 import type { BookScriptContext } from './bookContext'
+import { bookSelection, captureSelection, type SelectionScriptContext } from './selectionContext'
+import {
+  runFromSelection,
+  type SelectionLaunchTarget,
+  type SelectionLaunchOutcome,
+} from './runFromSelection'
 import type { RestoreInfo, ViewHost } from './view/View'
 import type { AutomationEvent } from '@/automations/types'
 import { ref } from 'vue'
@@ -65,6 +71,8 @@ export interface ExecuteOptions {
   trigger?: string
   /** The words in a book the run was asked for from; the script reads it as `book`. */
   book?: BookScriptContext
+  /** Immutable source and durable backlink, also retained for reruns. */
+  selection?: SelectionScriptContext
 }
 
 /**
@@ -131,7 +139,13 @@ function safeJson(value: unknown): string {
  * elsewhere is put in front of them to confirm. Everything else — automations, startup, agents,
  * a script's own `runScript`, a view rebuilt with the layout, a lint rule — is refused.
  */
-const ASKS_A_PERSON = new Set<RunSource | 'lint'>(['command', 'note', 'link', 'book'])
+const ASKS_A_PERSON = new Set<RunSource | 'lint'>([
+  'command',
+  'note',
+  'link',
+  'book',
+  'chat-selection',
+])
 
 /** The id of the command that walks through the scripts waiting to be confirmed. */
 const REVIEW_COMMAND = 'review-waiting-scripts'
@@ -139,7 +153,7 @@ const REVIEW_COMMAND = 'review-waiting-scripts'
 /**
  * The script as a function of its context. Throws what the engine threw, said better.
  *
- * `event`, `book`, `books`, `analytics`, `vocabulary`, `message` and `chat` are given in the scope around the script
+ * `event`, `book`, `selection`, `books`, `analytics`, `vocabulary`, `message` and `chat` are given in the scope around the script
  * rather than beside the reserved names: they arrived after scripts had been written for years,
  * and all are ordinary names for a variable. Declared out there, a script's own `const event`
  * simply shadows it.
@@ -149,7 +163,7 @@ function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
     return new Function(
       'ctx',
       `"use strict";
-      const { event, book, books, analytics, vocabulary, message, chat } = ctx;
+      const { event, book, selection, books, analytics, vocabulary, message, chat } = ctx;
       return (async () => {
         const { ${SCRIPT_GLOBALS.join(', ')} } = ctx;
         ${code}
@@ -839,7 +853,19 @@ export class ScriptService {
   ): Promise<string> {
     const given: ExecuteOptions =
       options instanceof AbortSignal ? { signal: options } : (options ?? {})
-    const opts: ExecuteOptions = { ...given, formHandler: given.formHandler ?? formHandler }
+    // Capture before admission can open a dialog. Reruns use this address, never current UI.
+    const book = given.book ? Object.freeze({ ...given.book }) : undefined
+    const selection = given.selection
+      ? captureSelection(given.selection)
+      : book
+        ? bookSelection(book)
+        : undefined
+    const opts: ExecuteOptions = {
+      ...given,
+      book,
+      selection,
+      formHandler: given.formHandler ?? formHandler,
+    }
     opts.signal?.throwIfAborted()
     const script = await this.admit(path, opts.source ?? 'agent')
     if (script.meta.interceptor) {
@@ -916,6 +942,7 @@ export class ScriptService {
       stop: () => combinedController.abort(),
       trigger: opts.trigger,
       book: opts.book,
+      selection: opts.selection,
     })
     this.renderStatusBar()
 
@@ -943,6 +970,7 @@ export class ScriptService {
         viewHost: opts.viewHost,
         event: opts.event,
         book: opts.book,
+        selection: opts.selection,
         onWrite: opts.onWrite,
         intercept: opts.intercept,
       })
@@ -973,6 +1001,25 @@ export class ScriptService {
     } finally {
       this.renderStatusBar()
     }
+  }
+
+  /** Shared adapter for the reader and the later chat launch UI; no chat entry point yet. */
+  executeFromSelection(
+    path: string,
+    target: SelectionLaunchTarget,
+    signal?: AbortSignal
+  ): Promise<SelectionLaunchOutcome> {
+    return runFromSelection(
+      path,
+      target,
+      {
+        admit: (path, source) => this.admit(path, source),
+        showParams: (script, text, signal) => this.showParamForm(script, text, signal),
+        execute: (path, params, options) =>
+          this.execute(path, params, { ...options, formHandler: showFormModal }),
+      },
+      signal
+    )
   }
 
   /**
@@ -1028,7 +1075,8 @@ export class ScriptService {
    */
   async showParamForm(
     script: ParsedScript,
-    selection = this.getEditorSelection()
+    selection = this.getEditorSelection(),
+    signal?: AbortSignal
   ): Promise<Record<string, unknown> | null> {
     const fields: FormField[] = script.meta.params.map((p) => ({
       name: p.name,
@@ -1042,7 +1090,7 @@ export class ScriptService {
       required: p.required,
       default: p.selection && selection ? selection : p.default,
     }))
-    const result = await showFormModal(fields)
+    const result = await showFormModal(fields, undefined, signal)
     if (!result) return null
 
     const typed: Record<string, unknown> = {}
