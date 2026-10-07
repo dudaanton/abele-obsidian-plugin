@@ -47,6 +47,14 @@ function open(barTop: number, keyboard = 0) {
   return container
 }
 describe('comment form with the mobile formatting toolbar', () => {
+  it('keeps the title and close action below the phone safe area when fitting a tall form', async () => {
+    const style = document.createElement('style')
+    style.textContent = '.abele-safe-area-probe { padding-top: 30px; }'
+    document.body.append(style)
+    const container = open(780)
+    await advance(500)
+    expect(container.style.getPropertyValue('--abele-room-top')).toBe('30px')
+  })
   it('keeps pinned actions above a toolbar even when the software keyboard is hidden', async () => {
     const container = open(780)
     await advance(500)

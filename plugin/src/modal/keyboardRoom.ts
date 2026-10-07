@@ -341,6 +341,9 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
     const bar = typing ? toolbarTop(doc) : null
     fittedBar = bar
     if (bar !== null && bar < bottom) bottom = bar
+    // Fitting a tall footed form overrides the sheet's natural top. Keep its title and close
+    // action below the same resolved safe area used to reveal the editor caret.
+    if (!onTablet && (bar !== null || keyboardTop !== null)) top = Math.max(top, safeAreaTop(doc))
 
     const covered = top > rect.top + 1 || bottom < rect.bottom - 1
 
