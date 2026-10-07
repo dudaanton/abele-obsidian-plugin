@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { tap, swipe, typeText, screenshot } from './helpers/phone'
+import { tap, swipe, typeText, screenshot, driver, swipeDriverArgs } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 
@@ -131,12 +131,6 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await click('Add canvas shape')
     await press('view().contentEl.querySelector("textarea")')
     await type('A new shape')
-    console.info(
-      'Typed shape',
-      run(
-        'return {text:view().contentEl.querySelector("textarea").value,focused:document.activeElement===view().contentEl.querySelector("textarea"),keyboard:getComputedStyle(document.body).getPropertyValue("--keyboard-height")}'
-      )
-    )
     await until('view().contentEl.querySelector("textarea").value==="A new shape"')
     await click('Save text')
     await saved()
@@ -161,23 +155,7 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await palette(true)
     await click('Draw connection')
     await fit()
-    run(`const stage=view().viewer.stage;window.__canvasConnections.events=[];
-      window.__canvasConnections.trace=e=>{const v=view().viewer,r=stage.getBoundingClientRect();window.__canvasConnections.events.push({type:e.type,id:e.pointerId,button:e.button,pointer:e.pointerType,x:e.clientX,y:e.clientY,rect:[r.x,r.y,r.width,r.height],camera:{...v.camera},busy:view().documentLease.document.session.busy,generation:view().documentLease.document.session.generation,geometry:view().editor.geometry?.generation,world:[(e.clientX-r.x)/v.camera.zoom+v.camera.x,(e.clientY-r.y)/v.camera.zoom+v.camera.y],source:v.input.connection?.source,target:v.input.connection?.point})};
-      for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])stage.addEventListener(type,window.__canvasConnections.trace,true);return true`)
-    const from = point('alpha'),
-      to = point('beta')
-    try {
-      await input(from, to)
-    } finally {
-      console.info(
-        'Connection pointer proof',
-        JSON.stringify(
-          run(
-            `const stage=view().viewer.stage,f=window.__canvasConnections;for(const type of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture'])stage.removeEventListener(type,f.trace,true);delete f.trace;return {from:${JSON.stringify(from)},to:${JSON.stringify(to)},events:f.events,graph:await read(),state:view().documentLease.document.state,status:view().contentEl.querySelector('.abele-canvas-editor-status').textContent}`
-          )
-        )
-      )
-    }
+    await input(point('alpha'), point('beta'))
     await saved()
     expect(run<number>('return (await read()).edges.length')).toBe(1)
     const edge = run<{ id: string; fromNode: string; toNode: string }>(
@@ -272,7 +250,18 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     const before = run<number>("return (await read()).nodes.find(n=>n.id==='alpha').x")
     await input(nativePoint) // Native mobile Canvas selects before a card can be dragged.
     shot('native-selected')
-    await input(nativePoint, [nativePoint[0] + 20, nativePoint[1] + 14])
+    if (onPhone())
+      driver(
+        swipeDriverArgs(
+          nativePoint[0],
+          nativePoint[1],
+          nativePoint[0] + 20,
+          nativePoint[1] + 14,
+          100,
+          0.65
+        )
+      )
+    else await input(nativePoint, [nativePoint[0] + 20, nativePoint[1] + 14])
     await until(`(await read()).nodes.find(n=>n.id==='alpha').x!==${before}`)
     expect(run('return (await read()).abele.lines[0]')).toEqual(line)
     expect(run('return (await read()).abele.future')).toEqual({ opaque: true })

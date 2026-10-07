@@ -182,7 +182,9 @@ and free lines too. Free primitives are kept in the same canvas file; native Can
 show them, but returning to Abele restores their display.
 
 Each finished drag or resize is one shared undo item. Until release the geometry is only a
-preview; an agent or another tab cannot publish over the active gesture. Escape, a cancelled
+preview; an agent or another tab cannot publish over the active gesture. Retry and discard
+controls stay hidden during the gesture so they do not move the canvas under your finger.
+Escape, a cancelled
 touch, or Fit cancels the preview. Adding a second finger cancels a card move or resize and
 switches to pan/pinch, without saving an accidental move. Drag empty space to pan as before.
 

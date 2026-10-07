@@ -151,6 +151,32 @@ describe('human shapes and connections', () => {
     expect(s.viewer.selection.has('connection')).toBe(true)
     expect(s.publish).not.toHaveBeenCalled()
   })
+  it('keeps pending-save controls out of a connector preview so a wrapped phone toolbar cannot move the target', async () => {
+    const graph = cards()
+    graph.edges = []
+    const s = setup(graph)
+    s.viewer.stage.getBoundingClientRect = () => ({
+      x: 0,
+      y: 100 + (s.button('Retry save').hidden ? 0 : 52),
+      left: 0,
+      top: 100 + (s.button('Retry save').hidden ? 0 : 52),
+      width: 390,
+      height: 230,
+      right: 390,
+      bottom: 330,
+      toJSON: () => ({}),
+    })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 0.5 })
+    s.button('Draw connection').click()
+    pointer(s, 'pointerdown', 65, 140)
+    pointer(s, 'pointermove', 130, 140)
+    expect(s.button('Retry save').hidden).toBe(true)
+    expect(s.button('Discard local draft').hidden).toBe(true)
+    pointer(s, 'pointerup', 215, 140)
+    await vi.waitFor(() => expect(s.document.session.graph.edges).toHaveLength(1))
+    expect(s.document.session.graph.edges[0]).toMatchObject({ fromNode: 'alpha', toNode: 'beta' })
+    expect(s.document.session.history.undo).toBe(1)
+  })
   it('connects by touch with preview only, selects, reconnects and deletes an edge with atomic undo', async () => {
     const graph = cards()
     graph.edges = []

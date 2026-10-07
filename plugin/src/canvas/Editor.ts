@@ -805,8 +805,14 @@ export class CanvasEditor {
     this.panel.hidden = !active
     const retry = this.buttons.get('Retry save'),
       discard = this.buttons.get('Discard local draft')
+    // A live gesture is a preview, not retained work to retry/discard. On a narrow screen
+    // these extra buttons wrap and move the stage underneath the captured pointer.
     retry.hidden =
-      !session?.dirty || active || !!document?.recovery || !!session?.publicationOutcome
+      !!this.geometry ||
+      !session?.dirty ||
+      active ||
+      !!document?.recovery ||
+      !!session?.publicationOutcome
     retry.disabled =
       this.waiting ||
       !!session?.busy ||
@@ -815,7 +821,8 @@ export class CanvasEditor {
       !!document?.state.native ||
       !document?.draftPath ||
       document.draftPath !== document.file.path
-    discard.hidden = !session?.dirty || !!document?.recovery || !!session?.publicationOutcome
+    discard.hidden =
+      !!this.geometry || !session?.dirty || !!document?.recovery || !!session?.publicationOutcome
     discard.disabled =
       this.waiting || this.composing || (!!session?.busy && this.ownedDraft !== document)
     this.status.textContent = this.geometry
