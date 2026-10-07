@@ -6,7 +6,9 @@
  */
 import { execFile, execFileSync } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { confirmReload, type ReloadWitness } from './reloadWitness'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import type { AddressInfo } from 'node:net'
@@ -84,7 +86,7 @@ export function assertPhoneReady(): void {
  * directory and installs it in the phone's vault; `ABELE_PHONE_BUILD` names a build directory
  * to install instead. Then reloads Obsidian and waits for exactly that version.
  */
-export function installBuild(pluginDir: string): string {
+export async function installBuild(pluginDir: string): Promise<string> {
   const manifestPath = resolve(pluginDir, '..', 'manifest.json')
   const version = (JSON.parse(readFileSync(manifestPath, 'utf8')) as { version: string }).version
   let dir = process.env.ABELE_PHONE_BUILD
@@ -101,7 +103,40 @@ export function installBuild(pluginDir: string): string {
       }
     )
   }
+  const hashes = Object.fromEntries(
+    [
+      ['main.js', join(dir, 'main.js')],
+      ['styles.css', join(dir, existsSync(join(dir, 'main.css')) ? 'main.css' : 'styles.css')],
+      ['manifest.json', manifestPath],
+    ].map(([name, path]) => [name, createHash('sha256').update(readFileSync(path)).digest('hex')])
+  )
   try {
+    // Version alone cannot identify a development build. Require both installed bytes and
+    // the API object of the generation that loaded these bytes on this very vault.
+    let matches = false
+    try {
+      matches =
+        phoneEval(
+          `(async () => {
+        if (app.vault.getName() !== ${JSON.stringify(PHONE_VAULT)} || !window.__abeleTest) return false
+        const hashes = ${JSON.stringify(hashes)}
+        const loaded = window.__e2eInstalledBuild
+        if (!loaded || loaded.api !== window.__abeleTest || loaded.generation !== performance.timeOrigin ||
+          JSON.stringify(loaded.hashes) !== JSON.stringify(hashes)) return false
+        for (const [name, expected] of Object.entries(hashes)) {
+          const bytes = await app.vault.adapter.readBinary(app.vault.configDir + '/plugins/abele/' + name)
+          const digest = await crypto.subtle.digest('SHA-256', bytes)
+          const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
+          if (hash !== expected) return false
+        }
+        return loaded.api === window.__abeleTest && loaded.generation === performance.timeOrigin
+      })()`,
+          30_000
+        ) === '=> true'
+    } catch {
+      // Unreadable files or an unavailable hash API are not evidence of an installed build.
+    }
+    if (matches) return version
     driver(['push-plugin', dir, manifestPath, PHONE_VAULT], 10 * 60_000)
   } finally {
     if (scratch) rmSync(scratch, { recursive: true, force: true })
@@ -122,19 +157,48 @@ export function installBuild(pluginDir: string): string {
     if (vault !== `=> ${PHONE_VAULT}`)
       throw new Error(`Obsidian on the phone has ${vault} open and would not open ${PHONE_VAULT}`)
   }
-  phoneEval(`(() => { setTimeout(() => location.reload(), 50); return 'ok' })()`, 30_000)
-  sleepSync(3000)
-  const deadline = Date.now() + 120_000
-  for (;;) {
-    const running = phoneEval(
-      `(window.__abeleTest && app.plugins.plugins.abele?.manifest.version) || ''`,
-      30_000
-    )
-    if (running === `=> ${version}`) return version
-    if (Date.now() > deadline)
-      throw new Error(`the phone runs ${running}, not the ${version} just installed`)
-    sleepSync(1000)
-  }
+  const key = 'abele-e2e-install-request'
+  const requestId = 'install-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+  const read = (): ReloadWitness =>
+    JSON.parse(
+      phoneEval(
+        `JSON.stringify({ owner: app.vault.getName(), generation: performance.timeOrigin,
+      requestId: sessionStorage.getItem('${key}'), mobile: !!app.isMobile,
+      apiReady: !!window.__abeleTest && app.plugins.plugins.abele?.manifest.version === ${JSON.stringify(version)},
+      layoutReady: !!app.workspace.layoutReady })`,
+        10_000
+      ).replace(/^=> /, '')
+    ) as ReloadWitness
+  await confirmReload(
+    read(),
+    requestId,
+    true,
+    {
+      request: () =>
+        phoneEval(
+          `(() => {
+      sessionStorage.setItem('${key}', ${JSON.stringify(requestId)})
+      setTimeout(() => location.reload(), 50)
+      return ${JSON.stringify(requestId)}
+    })()`,
+          30_000
+        ).replace(/^=> /, ''),
+      read,
+      now: Date.now,
+      pause: (ms) => new Promise((done) => setTimeout(done, ms)),
+    },
+    120_000
+  )
+  phoneEval(
+    `(() => {
+    window.__e2eInstalledBuild = { hashes: ${JSON.stringify(hashes)},
+      generation: performance.timeOrigin, api: window.__abeleTest }
+    sessionStorage.removeItem('${key}')
+    return 'ready'
+  })()`,
+    30_000
+  )
+  return version
 }
 
 /** Where the phone's pictures go. */

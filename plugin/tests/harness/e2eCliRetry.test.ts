@@ -183,6 +183,37 @@ describe('explicitly idempotent CLI calls', () => {
     }
   )
 
+  it('observes short jobs within 100 ms without changing action or cleanup semantics', async () => {
+    vi.useFakeTimers()
+    try {
+      exec
+        .mockReturnValueOnce('=> sample-job')
+        .mockReturnValueOnce('=> {"done":true,"out":"=> ready"}')
+        .mockReturnValueOnce('=> ok')
+      const result = cli.evalLong('probe()')
+      await vi.advanceTimersByTimeAsync(100)
+      expect(exec).toHaveBeenCalledTimes(3)
+      await expect(result).resolves.toBe('ready')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('backs off unfinished jobs to one-second polls and retains the deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      exec.mockReturnValue('=> {"done":false}')
+      const result = cli.evalLong('probe()', 2000).catch((error) => error)
+      await vi.advanceTimersByTimeAsync(750)
+      // launch, then polls at 50, 150, 350 and 750 ms
+      expect(exec).toHaveBeenCalledTimes(5)
+      await vi.runAllTimersAsync()
+      expect((await result).message).toContain('did not finish in 2000 ms')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('waits for a settled test API instead of classifying one false probe as a missing build', async () => {
     vi.useFakeTimers()
     try {

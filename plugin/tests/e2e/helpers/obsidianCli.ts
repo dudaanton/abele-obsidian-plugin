@@ -365,7 +365,7 @@ export function answerOf(output: string): string {
 
 /**
  * `evalRaw` for a script that runs long — a probe walking through every dialog. It is started in
- * the page and asked after every second, so the worker is never blocked for longer than one short
+ * the page and polled with backoff, so the worker is never blocked for longer than one short
  * call: a call that blocks it past a minute ends the whole run ("Timeout calling onTaskUpdate"),
  * and a single call is cut at `CALL_CEILING_MS` — the phone probe, walking every dialog of the
  * plugin, took longer than that on the desktop too.
@@ -395,8 +395,10 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
   )
   if (launched.startsWith('Error:')) throw new Error(`Could not launch eval job: ${launched}`)
   const deadline = Date.now() + timeoutMs
+  let pollMs = 50
   for (;;) {
-    await pauseAsync(1000)
+    await pauseAsync(pollMs)
+    pollMs = Math.min(1000, pollMs * 2)
     // Reading must not delete the result: the reply itself may be lost.
     const job = evalJsonIdempotent<{ done: boolean; out?: string } | null>(
       `(window.__e2eJobs || {})[${JSON.stringify(id)}] ?? null`,
@@ -922,13 +924,34 @@ async function reloadWindow(
  * side of the phone harness, which the reload took with it (`installPhoneHost`).
  */
 async function reloadPhone(): Promise<void> {
-  evalRaw(`(() => { setTimeout(() => location.reload(), 50); return 'ok' })()`, 30_000)
-  await pauseAsync(3000)
-  const deadline = Date.now() + 90_000
-  while (!hasTestApi()) {
-    if (Date.now() > deadline)
-      throw new Error('the plugin did not come back on the phone after a reload')
-    await pauseAsync(1000)
-  }
+  const key = 'abele-e2e-phone-reload'
+  const requestId = 'reload-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+  const read = () =>
+    evalJsonIdempotent<ReloadWitness>(
+      `({ owner: app.vault.getName(), generation: performance.timeOrigin,
+      requestId: sessionStorage.getItem('${key}'), mobile: !!app.isMobile,
+      apiReady: !!window.__abeleTest, layoutReady: !!app.workspace.layoutReady })`,
+      10_000
+    )
+  await confirmReload(
+    read(),
+    requestId,
+    true,
+    {
+      request: () =>
+        evalRaw(
+          `(() => {
+      sessionStorage.setItem('${key}', ${JSON.stringify(requestId)})
+      setTimeout(() => location.reload(), 50)
+      return ${JSON.stringify(requestId)}
+    })()`,
+          30_000
+        ),
+      read,
+      now: Date.now,
+      pause: pauseAsync,
+    },
+    90_000
+  )
   installPhoneHost()
 }

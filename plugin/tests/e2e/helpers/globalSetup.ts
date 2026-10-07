@@ -43,7 +43,7 @@ export async function setup(): Promise<void> {
       // started again since it last was is aimed at the home screen, and text typed there is
       // typed into nothing — which ends the driver (2026-09-27).
       driver(['launch', 'md.obsidian'])
-      const version = installBuild(process.cwd())
+      const version = await installBuild(process.cwd())
       await startHost()
       console.info(`\n  phone ready, abele ${version}\n`)
     } catch (error) {
