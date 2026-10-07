@@ -1,7 +1,7 @@
 # Node browser packages
 
 These four exact `0.0.0` npm tarballs contain the built browser packages from
-AbeleNode stage-3 browser contract (revision `d365974`). They are kept in the
+AbeleNode stage-4A browser contract (revision `e1d6ad5`). They are kept in the
 repository so `npm ci` and the plugin build work in a clean clone without a sibling
 checkout, workspace link, daemon or private registry. `integrity.json` records npm's
 SHA-512 integrity and the packaged file list. Runtime source has not been modified.
