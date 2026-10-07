@@ -67,7 +67,7 @@ export function watchTheFront(
 ): void {
   // Desktop windows can regain focus without a visibilitychange (another app covered them).
   // Presentation still checks editor idleness; focus does not grant sharing permission.
-  plugin.registerDomEvent(window, 'focus', () => on.held())
+  if (!phone) plugin.registerDomEvent(window, 'focus', () => on.held())
   plugin.registerDomEvent(document, 'visibilitychange', () => {
     on.held()
     if (phone) on.sync(document.visibilityState === 'visible')

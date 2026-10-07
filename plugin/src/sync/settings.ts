@@ -9,7 +9,7 @@
 import { migrateSharingCatalogue, type SharingCatalogueEntry } from './sharing/sharingCatalogue'
 export interface SyncSettings {
   /** Bound, portable sharing discovery. No credentials, decisions or local ledger identity. */
-  sharing: SharingCatalogueEntry[]
+  sharing?: SharingCatalogueEntry[]
   /**
    * The frontmatter property and value a note must carry to be encrypted. Stored from this
    * phase on, applied from the next: nothing reads it yet.
@@ -19,7 +19,7 @@ export interface SyncSettings {
 
 /** A fresh set of settings, safe to mutate. */
 export function defaultSyncSettings(): SyncSettings {
-  return { keySignature: null, sharing: [] }
+  return { keySignature: null }
 }
 
 /** The defaults, for reading. Call `defaultSyncSettings()` for a set to edit. */
@@ -41,7 +41,10 @@ export function migrateSyncSettings(raw: unknown): SyncSettings {
   const o = objectOf(raw)
   if (o === null) return defaultSyncSettings()
   const sharing = migrateSharingCatalogue(o.sharing)
-  return { keySignature: migrateKeySignature(o.keySignature), sharing: sharing ?? [] }
+  return {
+    keySignature: migrateKeySignature(o.keySignature),
+    ...(sharing?.length ? { sharing } : {}),
+  }
 }
 
 /** A signature is both halves or neither: half of one would name every note or none. */

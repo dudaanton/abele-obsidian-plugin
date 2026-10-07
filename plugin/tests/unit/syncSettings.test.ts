@@ -15,7 +15,7 @@ import { DEFAULT_SYNC_SETTINGS, defaultSyncSettings, migrateSyncSettings } from 
 
 describe('defaultSyncSettings', () => {
   it('holds no key signature', () => {
-    expect(defaultSyncSettings()).toEqual({ keySignature: null, sharing: [] })
+    expect(defaultSyncSettings()).toEqual({ keySignature: null })
   })
 
   it('hands back a fresh set every time, while the shared one cannot be edited', () => {
@@ -28,6 +28,11 @@ describe('defaultSyncSettings', () => {
 })
 
 describe('migrateSyncSettings', () => {
+  it('omits empty discovery on load and serialisation instead of inventing synced data', () => {
+    const migrated = migrateSyncSettings({ sharing: [], keySignature: null })
+    expect(migrated).not.toHaveProperty('sharing')
+    expect(JSON.parse(JSON.stringify(migrated))).toEqual({ keySignature: null })
+  })
   it('gives the defaults for a settings file with no sync in it', () => {
     expect(migrateSyncSettings(undefined)).toEqual(defaultSyncSettings())
     expect(migrateSyncSettings(null)).toEqual(defaultSyncSettings())
@@ -52,13 +57,13 @@ describe('migrateSyncSettings', () => {
       keySignature: { property: 'secret', value: 'yes' },
     })
 
-    expect(settings).toEqual({ keySignature: { property: 'secret', value: 'yes' }, sharing: [] })
+    expect(settings).toEqual({ keySignature: { property: 'secret', value: 'yes' } })
   })
 
   it('keeps unknown keys out', () => {
     const settings = migrateSyncSettings({ deviceToken: 'absd_secret', lastSeq: 42 })
 
-    expect(Object.keys(settings)).toEqual(['keySignature', 'sharing'])
+    expect(Object.keys(settings)).toEqual(['keySignature'])
     expect(settings).not.toHaveProperty('deviceToken')
     expect(settings).not.toHaveProperty('lastSeq')
   })

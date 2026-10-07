@@ -25,7 +25,12 @@ it('carries every declared shared sync setting through its transfer section', ()
     .filter(ts.isPropertySignature)
     .map((member) => member.name.getText(file))
   const defaults = defaultSyncSettings()
-  expect(Object.keys(defaults).sort()).toEqual(names.sort())
+  const required = shape.members
+    .filter(ts.isPropertySignature)
+    .filter((member) => !member.questionToken)
+    .map((member) => member.name.getText(file))
+  expect(Object.keys(defaults).sort()).toEqual(required.sort())
+  expect(defaults).not.toHaveProperty('sharing')
   const source = {
     ...DEFAULT_SETTINGS,
     sync: {
