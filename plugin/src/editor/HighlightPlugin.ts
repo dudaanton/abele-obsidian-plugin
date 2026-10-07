@@ -8,19 +8,7 @@ import { editorLivePreviewField } from 'obsidian'
  */
 const HIGHLIGHT_RE = /=={(\w+)}\s((?:(?!==)[\s\S])+)==/g
 
-export const HIGHLIGHT_COLORS = [
-  'red',
-  'orange',
-  'yellow',
-  'green',
-  'cyan',
-  'blue',
-  'purple',
-  'pink',
-  'gray',
-] as const
-
-export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
+export { HIGHLIGHT_COLORS, type HighlightColor } from './highlightColors'
 
 interface HighlightMatch {
   from: number
