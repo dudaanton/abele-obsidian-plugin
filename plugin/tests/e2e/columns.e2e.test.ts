@@ -416,6 +416,76 @@ describe.skipIf(!available)('note columns foundation', () => {
     )
   })
 
+  it('native commands and menus insert, resize, reorder and remove a frame without losing the selection', async () => {
+    show('source')
+    const seeded = 'Selected passage.\n\nAfter.'
+    for (const kind of ['two', 'three', 'aside']) {
+      const inserted = asyncEval<string>(`
+        view.editor.setValue(${JSON.stringify(seeded)});view.editor.setSelection({line:0,ch:0},{line:0,ch:17});
+        app.workspace.activeEditor=view;
+        app.commands.executeCommandById('abele:insert-columns-'+${JSON.stringify(kind)});
+        await wait(300);return view.editor.getValue();
+      `)
+      expect(inserted).toContain('> > Selected passage.')
+      expect(inserted.match(/\[!abele-column(?:\||\])/g)).toHaveLength(kind === 'three' ? 3 : 2)
+      if (kind === 'aside') expect(inserted).toContain('role=aside')
+    }
+    // The menu works with rendered content, not only with a raw header selected in the editor.
+    show('source')
+    asyncEval(
+      `root().querySelector('.abele-columns-controls button').click();await wait(100);return true`
+    )
+    const choose = (title: string) =>
+      asyncEval<boolean>(`
+      const item=[...document.querySelectorAll('.menu-item')].find(e=>e.querySelector('.menu-item-title')?.textContent===${JSON.stringify(title)});
+      if(!item)return false;item.click();await wait(300);return true;
+    `)
+    expect(choose('Proportions 1:2')).toBe(true)
+    expect(asyncEval<string>(`return view.editor.getValue()`)).toContain('ratio=1:2')
+    show('source')
+    asyncEval(
+      `root().querySelector('.abele-columns-controls button').click();await wait(100);return true`
+    )
+    expect(choose('Add column')).toBe(true)
+    expect(
+      asyncEval<string>(`return view.editor.getValue()`).match(/\[!abele-column(?:\||\])/g)
+    ).toHaveLength(3)
+    // A source-position command targets the current column, while the header button targets the first.
+    asyncEval(
+      `const lines=view.editor.getValue().split('\\n');view.editor.setCursor({line:lines.findIndex(l=>l.includes('Selected passage.')),ch:4});app.workspace.activeEditor=view;app.commands.executeCommandById('abele:column-options');await wait(100);return true`
+    )
+    expect(choose('Move column right')).toBe(true)
+    const moved = asyncEval<string>(`return view.editor.getValue()`)
+    expect(moved.indexOf('Selected passage.')).toBeGreaterThan(moved.indexOf('role=aside'))
+    asyncEval(
+      `const lines=view.editor.getValue().split('\\n');view.editor.setCursor({line:lines.findIndex(l=>l.includes('Selected passage.')),ch:4});app.workspace.activeEditor=view;app.commands.executeCommandById('abele:remove-columns');await wait(300);return true`
+    )
+    const plain = asyncEval<string>(`return view.editor.getValue()`)
+    expect(plain).not.toContain('[!abele-column')
+    expect(plain).toContain('Selected passage.')
+    expect(plain).toContain('After.')
+    await shot('commands')
+    asyncEval(
+      `view.editor.setValue(${JSON.stringify(BODY)});await view.save();view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});return true`
+    )
+  })
+
+  it('custom proportions use a native dialog and reject invalid weights', async () => {
+    show('source')
+    asyncEval(
+      `root().querySelector('.abele-columns-controls button').click();await wait(100);const item=[...document.querySelectorAll('.menu-item')].find(e=>e.querySelector('.menu-item-title')?.textContent==='Custom proportions…');item.click();await wait(100);return true`
+    )
+    await shot('ratio-dialog')
+    const saved = asyncEval<string>(`
+      const input=document.querySelector('.modal input');input.value='0:1';input.dispatchEvent(new Event('input',{bubbles:true}));
+      const apply=[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Apply');apply.click();await wait(100);
+      if(!document.querySelector('.modal input')||view.editor.getValue()!==${JSON.stringify(BODY)})throw Error('Invalid weights were accepted');
+      input.value='3:1';input.dispatchEvent(new Event('input',{bubbles:true}));apply.click();await wait(300);return view.editor.getValue();
+    `)
+    expect(saved).toContain('ratio=3:1')
+    asyncEval(`view.editor.setValue(${JSON.stringify(BODY)});await view.save();return true`)
+  })
+
   it('without the plugin the nested callouts retain every content block', async () => {
     show('preview')
     asyncEval(

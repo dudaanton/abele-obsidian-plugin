@@ -12,9 +12,22 @@ masonry, column and slider layouts and sets its height. Drop files onto a galler
 the arrows on a picture move it and the bin removes it. Click one to see it full size, and swipe
 through the rest.
 
-## Note columns (experimental)
+## Note columns
 
-The column format is a probe, not yet a stable authoring format. A parent callout contains
+**Insert columns** offers two equal columns, three equal columns, or text with a narrower
+aside. The selected text goes into the first column. The three templates are also separate
+commands. **Column options** works at the cursor, and the frame's column icon opens the same
+Obsidian menu in Reading view or Live Preview. Right-click or long-press a column to target
+that column: add a column, move it left/right, choose proportions, or remove the frame.
+
+For two columns, the menu offers `1:1`, `2:1` and `1:2`. **Custom proportions** opens a native
+dialog accepting one positive weight per column, such as `3:1` or `1:2:1`. The narrow-screen
+menu defaults to stacking in written order; **Keep side by side** keeps the widths readable
+and scrolls the row instead of shrinking the font. Wide tables scroll independently.
+**Remove columns** removes only the quote frame and callout markers: content, code, deeper
+quotes and explicit callout titles remain in written order. Editor operations support undo.
+
+The note remains ordinary Markdown. A parent callout contains
 at least two child callouts, separated by a blank line that still belongs to the parent:
 
 ```markdown
@@ -34,13 +47,12 @@ The column callout titles are currently hidden; put a heading inside the child f
 heading. Foldable column callouts and extra content outside the children remain ordinary
 callouts rather than columns.
 
-In Live Preview the area expands to source when entered and returns to columns when the cursor
-leaves. **A prose click currently enters source at the outer header, not the clicked
-passage.** On desktop it also selects the whole outer callout. Click a source line to place
-the caret before typing; typing over that initial selection would replace the area. This
-is a known limitation of the native callout widget. There are no insertion,
-removal or configuration commands yet. Without Abele the same note is readable as nested
-callouts; no content or sidecar is rewritten by the column renderer.
+In Live Preview a click or tap on prose expands the area to source and places a single caret
+at the clicked passage, including formatted or identical passages in different columns.
+There is no whole-frame selection to type over. Leaving the area restores columns. Native
+links, checkboxes, code controls, math and embeds keep their own interaction. Editing directly
+in side-by-side columns is not supported. Without Abele the note is readable as nested
+callouts. The renderer writes no sidecar; only explicit frame commands change the Markdown.
 
 ## Coloured highlights
 

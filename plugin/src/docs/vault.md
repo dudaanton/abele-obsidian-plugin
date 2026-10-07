@@ -134,15 +134,20 @@ rewind recording remains broad across concurrent operations. Failed/stopped cons
 no partial ZIP; parents already created before a later failure may remain. See `tools` topic
 **ZIP archives** for selection, permission, byte preservation and resource contracts.
 
-## Note columns (provisional)
+## Note columns
 
-The experimental renderer recognizes an ordinary `abele-columns` callout containing two or
-more direct `abele-column` callouts. Metadata `ratio=2:1 mobile=stack` gives one positive
-weight per child; omitting the ratio makes them equal. A parent-quoted blank line separates
-the children. The renderer adds no properties, sidecar, settings or transfer keys and never
-rewrites the source. Unknown metadata, mismatched weights, foldable children or content
-outside the children retain native callout rendering. This is not yet a stable authoring
-contract; there are no column tools or commands. See the writing user guide for limitations.
+An ordinary `abele-columns` callout contains two or more direct `abele-column` callouts.
+Metadata `ratio=2:1 mobile=stack` gives one positive weight per child; omitting the ratio makes
+them equal. A parent-quoted blank line separates children. `mobile=stack` preserves written
+order on narrow panes; `mobile=keep` keeps a horizontally scrolling row. The text-and-aside
+insertion template uses `ratio=2:1` and marks its second child `abele-column|role=aside`;
+this is an annotation, not an aside-specific mobile or print mode.
+
+Insertion, add/move, proportions and removal commands modify only the Markdown frame.
+Removal retains body content, deeper quotes and explicit titles. There are no new properties,
+sidecars, settings or transfer keys. The renderer never rewrites source. Unknown parent
+metadata, mismatched weights, folding or extra parent content retain native callout rendering.
+See the writing guide for commands and editing limitations; there are no column agent tools.
 
 ## Presentations
 
