@@ -10,6 +10,8 @@ import ModelEditModal from '@/components/settings/ModelEditModal.vue'
 import ImageModelEditModal from '@/components/settings/ImageModelEditModal.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import Button from '@/components/obsidian/Button.vue'
+import Setting from '@/components/obsidian/Setting.vue'
+import Input from '@/components/obsidian/Input.vue'
 import type { AiModelConfig, ImageModelConfig2 } from '@/ai/types'
 
 const model: AiModelConfig = {
@@ -32,6 +34,71 @@ const STUBS = {
   ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' },
   Dropdown: { props: ['modelValue', 'options'], template: '<div class="dropdown-stub" />' },
 }
+
+describe('per-model request timeout', () => {
+  it.each([undefined, 180])(
+    'opens with saved timeout %s and only commits changes on Save',
+    async (initial) => {
+      const view = mount(ModelEditModal, {
+        props: { model: { ...model, requestTimeoutSeconds: initial } },
+        global: { stubs: STUBS },
+      })
+      try {
+        const setting = view
+          .findAllComponents(Setting)
+          .find((item) => item.props('name') === 'Request timeout (seconds)')!
+        expect(setting).toBeDefined()
+        const input = setting.findComponent(Input)
+        expect(input.props('modelValue')).toBe(initial === undefined ? '' : String(initial))
+        for (const value of ['1', '3600', '180']) {
+          await input.vm.$emit('update:model-value', value)
+          expect(input.props('modelValue')).toBe(value)
+        }
+        for (const value of ['0', '-1', '0.5', '3601', 'Infinity', 'not a number']) {
+          await input.vm.$emit('update:model-value', value)
+          expect(input.props('modelValue')).toBe('180')
+        }
+        expect(view.emitted('save')).toBeUndefined()
+        expect(view.props('model').requestTimeoutSeconds).toBe(initial)
+        await view
+          .findAllComponents(Button)
+          .find((button) => button.props('text') === 'Save')!
+          .vm.$emit('click')
+        expect(view.emitted('save')?.[0]?.[0]).toMatchObject({
+          ...model,
+          requestTimeoutSeconds: 180,
+        })
+      } finally {
+        view.unmount()
+      }
+    }
+  )
+
+  it('clears the override rather than saving a copy of the global timeout', async () => {
+    const view = mount(ModelEditModal, {
+      props: { model: { ...model, requestTimeoutSeconds: 180 } },
+      global: { stubs: STUBS },
+    })
+    try {
+      const setting = view
+        .findAllComponents(Setting)
+        .find((item) => item.props('name') === 'Request timeout (seconds)')!
+      expect(setting).toBeDefined()
+      const input = setting.findComponent(Input)
+      await input.vm.$emit('update:model-value', ' ')
+      expect(input.props('modelValue')).toBe('')
+      await view
+        .findAllComponents(Button)
+        .find((button) => button.props('text') === 'Save')!
+        .vm.$emit('click')
+      expect(
+        (view.emitted('save')?.[0]?.[0] as AiModelConfig).requestTimeoutSeconds
+      ).toBeUndefined()
+    } finally {
+      view.unmount()
+    }
+  })
+})
 
 const editors = [
   { name: 'the model editor', component: ModelEditModal, props: { model } },

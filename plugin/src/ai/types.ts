@@ -50,6 +50,8 @@ export interface AiModelConfig {
   maxTokens: number
   supportsReasoning: boolean
   reasoningEffort?: 'low' | 'medium' | 'high'
+  /** Idle request timeout in seconds; absent follows the shared AI setting. */
+  requestTimeoutSeconds?: number
 }
 
 export interface AiPrompts {

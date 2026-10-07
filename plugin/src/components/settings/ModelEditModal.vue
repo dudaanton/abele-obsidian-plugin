@@ -23,6 +23,19 @@
         />
       </Setting>
 
+      <Setting
+        name="Request timeout (seconds)"
+        desc="Wait for the first response or next chunk, not the whole answer. 1–3600 seconds; empty uses the global timeout. Applies to chat and background work with this model."
+      >
+        <Input
+          :model-value="
+            form.requestTimeoutSeconds === undefined ? '' : String(form.requestTimeoutSeconds)
+          "
+          placeholder="Global timeout"
+          @update:model-value="setRequestTimeout($event)"
+        />
+      </Setting>
+
       <Setting name="Reasoning" desc="Enable reasoning/thinking for supported models.">
         <Checkbox
           :is-enabled="form.supportsReasoning"
@@ -85,6 +98,7 @@ import Dropdown from '../obsidian/Dropdown.vue'
 import Button from '../obsidian/Button.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import type { AiModelConfig } from '@/ai/types'
+import { MAX_REQUEST_TIMEOUT_SECONDS } from '@/ai/requestTimeout'
 
 const props = defineProps<{
   model: AiModelConfig
@@ -98,6 +112,16 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive<AiModelConfig>({ ...props.model })
+
+const setRequestTimeout = (value: string) => {
+  if (value.trim() === '') {
+    delete form.requestTimeoutSeconds
+    return
+  }
+  const seconds = Number(value)
+  if (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_REQUEST_TIMEOUT_SECONDS) return
+  form.requestTimeoutSeconds = seconds
+}
 
 /** Held open until the question is answered — see docs/Design.md. */
 const confirming = ref(false)

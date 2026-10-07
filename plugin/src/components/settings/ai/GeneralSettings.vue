@@ -17,7 +17,7 @@
       </Setting>
       <Setting
         name="Request timeout (seconds)"
-        desc="Wait for the model to connect or send the next response chunk, not for the whole answer. 1–3600 seconds; empty restores 60. Applies to all chat and background models."
+        desc="Wait for the model to connect or send the next response chunk, not for the whole answer. 1–3600 seconds; empty restores 60. Used for chat and background models without their own timeout."
       >
         <Input
           :model-value="String(modelRequestTimeout)"

@@ -16,10 +16,17 @@ Chats with AI models that can read and change your notes, inside limits you set.
 On the **General** tab, **Request timeout (seconds)** sets how long Abele waits for a model
 connection or the next response chunk. It defaults to **60**; use a higher value for slow local
 models. Values from **1 to 3600** seconds are accepted; clearing the field restores 60.
+To give a particular model a different wait, open its card under **Providers** and set
+**Request timeout (seconds)** in the model editor. The same **1 to 3600** range applies.
+An empty model field follows the global timeout, including later changes to it; clearing an
+override returns that model to the global value. Save to keep changes to a model.
+
 It is an idle timeout, not a limit on the whole answer: a model can keep answering longer as
-long as each chunk arrives in time. The same setting applies to all providers, fallback and
-delegated models, review responses, chat titles and compaction. It travels with **AI general**
-settings. Model-list fetching, image generation and voice input keep their separate timeouts.
+long as each chunk arrives in time. Each chosen model uses its own override or the global
+value for chat, fallback, delegated and review responses, chat titles and compaction alike.
+The global timeout travels with **AI general** settings; a model's override travels with its
+**AI providers** entry. Model-list fetching, image generation and voice input keep their
+separate timeouts.
 
 ## Node sessions
 

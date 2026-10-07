@@ -8,6 +8,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { collectEntries, applyEntries } from '@/transfer/entries'
 import { useVault } from '../helpers/testEnv'
+import { FakeSettings } from '../helpers/fakeSettings'
 
 const model: ModelConfig = {
   id: 'sample-model',
@@ -75,6 +76,94 @@ describe('model request timeout settings', () => {
       service.getModelConfigFor('sample-provider', model.id),
     ])
       expect(chosen?.requestTimeoutSeconds).toBe(120)
+  })
+
+  it.each([
+    [180, 180],
+    [1, 1],
+    [3600, 3600],
+    [1.5, 1.5],
+    [undefined, 120],
+    [0, 120],
+    [3601, 120],
+    [NaN, 120],
+    ['180', 120],
+    [null, 120],
+  ])('resolves model timeout %s to %s in every request path', (value, expected) => {
+    const config = AbeleConfig.getInstance()
+    config.ai.providers[0].models[0] = { ...model, requestTimeoutSeconds: value as number }
+    const agent = createAgent({
+      providerId: 'sample-provider',
+      modelId: model.id,
+      fallbackProviderId: 'sample-provider',
+      fallbackModelId: model.id,
+      auxiliaryProviderId: 'sample-provider',
+      auxiliaryModelId: model.id,
+    })
+    const registry = AgentRegistry.getInstance()
+    const service = ChatService.getInstance()
+    for (const chosen of [
+      registry.resolveModel(agent),
+      registry.resolveModel(agent, { fallback: true }),
+      registry.resolveModel(agent, { background: true }),
+      service.getActiveModelConfig(),
+      service.getAuxiliaryModelConfig(),
+      service.getModelConfigFor('sample-provider', model.id),
+    ])
+      expect(chosen?.requestTimeoutSeconds).toBe(expected)
+  })
+
+  it('uses the chosen model timeout independently for chat, fallback and background work', () => {
+    const config = AbeleConfig.getInstance()
+    config.ai.providers[0].models = [
+      { ...model, requestTimeoutSeconds: 180 },
+      { ...model, id: 'sample-fallback', requestTimeoutSeconds: 30 },
+      { ...model, id: 'sample-background' },
+    ]
+    config.ai.auxiliaryModelId = 'sample-provider::sample-background'
+    const agent = createAgent({
+      providerId: 'sample-provider',
+      modelId: model.id,
+      fallbackProviderId: 'sample-provider',
+      fallbackModelId: 'sample-fallback',
+      auxiliaryProviderId: 'sample-provider',
+      auxiliaryModelId: 'sample-background',
+    })
+    const registry = AgentRegistry.getInstance()
+    expect(registry.resolveModel(agent)?.requestTimeoutSeconds).toBe(180)
+    expect(registry.resolveModel(agent, { fallback: true })?.requestTimeoutSeconds).toBe(30)
+    expect(registry.resolveModel(agent, { background: true })?.requestTimeoutSeconds).toBe(120)
+    expect(ChatService.getInstance().getAuxiliaryModelConfig().requestTimeoutSeconds).toBe(120)
+  })
+
+  it('travels with the provider and survives settings reload without changing the global value', async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai.providers[0].models[0] = { ...model, requestTimeoutSeconds: 180 }
+    const source = config.exportSettings()
+    const entry = collectEntries(source).find((item) => item.section === 'ai-providers')!
+    const received = applyEntries(JSON.parse(JSON.stringify([entry])), {
+      ...source,
+      ai: { ...source.ai, providers: [], requestTimeoutSeconds: 45 },
+    })
+    expect(received.ai.providers[0].models[0]).toMatchObject({ requestTimeoutSeconds: 180 })
+    expect(received.ai.requestTimeoutSeconds).toBe(45)
+    const disk = new FakeSettings()
+    config.init(disk as never)
+    disk.stored = received
+    await config.reloadSettings()
+    expect(ChatService.getInstance().getActiveModelConfig().requestTimeoutSeconds).toBe(180)
+  })
+
+  it('follows later global changes when cleared and uses 60 when both values are invalid', () => {
+    const config = AbeleConfig.getInstance()
+    const selected = config.ai.providers[0].models[0]
+    selected.requestTimeoutSeconds = 180
+    expect(ChatService.getInstance().getActiveModelConfig().requestTimeoutSeconds).toBe(180)
+    delete selected.requestTimeoutSeconds
+    config.ai.requestTimeoutSeconds = 240
+    expect(ChatService.getInstance().getActiveModelConfig().requestTimeoutSeconds).toBe(240)
+    config.ai.requestTimeoutSeconds = 0
+    expect(ChatService.getInstance().getActiveModelConfig().requestTimeoutSeconds).toBe(60)
   })
 
   it('travels in AI general settings', () => {
@@ -146,6 +235,28 @@ describe('model request timeout settings', () => {
         error: 'Request timed out after 60s',
       })
       expect(signal?.aborted).toBe(true)
+    }
+  )
+
+  it.each(['chat', 'background'] as const)(
+    'honors the %s model override at the transport deadline',
+    async (path) => {
+      const config = AbeleConfig.getInstance()
+      config.ai.providers[0].models[0] = { ...model, requestTimeoutSeconds: 1 }
+      const chosen =
+        path === 'chat'
+          ? ChatService.getInstance().getActiveModelConfig()
+          : ChatService.getInstance().getAuxiliaryModelConfig()
+      vi.useFakeTimers()
+      const cancel = vi.fn()
+      vi.spyOn(window, 'fetch').mockResolvedValue(new Response(new ReadableStream({ cancel })))
+      const work = collect(chosen)
+      await vi.advanceTimersByTimeAsync(1001)
+      expect(cancel).toHaveBeenCalled()
+      expect((await work).at(-1)).toMatchObject({
+        type: 'error',
+        error: 'Request timed out after 1s',
+      })
     }
   )
 

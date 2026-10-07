@@ -8,6 +8,7 @@ import { getNoteBody } from '@/helpers/notesUtils'
 import { createAgent, type AgentDefinition, type AgentPrompt } from './types'
 import { renderMemory } from './memory'
 import { CORE_TOOLS } from '@/ai/types'
+import { requestTimeoutSeconds } from '@/ai/requestTimeout'
 import type { ModelConfig } from '@/ai/client'
 import type { AiModelConfig, AiProvider } from '@/ai/types'
 import type { SkillInfo } from '@/ai/tools/SkillTool'
@@ -186,7 +187,10 @@ export class AgentRegistry {
       id: found.model.id,
       name: found.model.name,
       baseUrl: found.provider.baseUrl,
-      requestTimeoutSeconds: AbeleConfig.getInstance().ai.requestTimeoutSeconds,
+      requestTimeoutSeconds: requestTimeoutSeconds(
+        found.model.requestTimeoutSeconds,
+        AbeleConfig.getInstance().ai.requestTimeoutSeconds
+      ),
       ...providerKey(found.provider.apiKeyId, found.provider.baseUrl, AbeleConfig.getInstance()),
       contextWindow: found.model.contextWindow,
       maxTokens: found.model.maxTokens,

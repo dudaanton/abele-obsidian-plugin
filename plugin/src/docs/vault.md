@@ -864,11 +864,17 @@ settings. Incoming settings cannot move an open key editor onto another record.
 ## Model request timeout
 
 `ai.requestTimeoutSeconds` stores the shared chat-model timeout in seconds, defaulting to 60.
-Values from 1 to 3600 are accepted; absent or invalid values use 60. It limits connection wait,
-error-body reading and each idle wait for a streamed chunk, not the whole response. It applies
-to all OpenAI-compatible chat models, including background, review, fallback and delegated
-requests, and travels in the AI general settings section. Other request types keep their own
-limits.
+Values from 1 to 3600 are accepted; absent or invalid values use 60. Each model in
+`ai.providers[].models[]` may store its own optional `requestTimeoutSeconds` in the same
+range. An absent or invalid model override follows the global value, then 60 if that is
+invalid too. Clearing the model field removes the override rather than copying the current
+global value. The override travels with its whole provider in AI providers; the global value
+travels in AI general settings.
+
+The resolved timeout limits connection wait, error-body reading and each idle wait for a
+streamed chunk, not the whole response. It applies to all OpenAI-compatible chat models,
+including background, review, fallback and delegated requests. Other request types keep
+their own limits.
 
 ## Background model settings
 
