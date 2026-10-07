@@ -106,6 +106,8 @@ export class SettingsKeeper {
    * save or a reload puts back on top of a file that arrived in between (`localChanges`).
    */
   private base: AbeleSettings | null = null
+  /** Last applied/captured screen state, independent of a write still waiting on IO. */
+  private saveCapture: AbeleSettings | null = null
 
   /**
    * The settings file's size and mtime when it was last read or written, or null for none (or
@@ -134,6 +136,7 @@ export class SettingsKeeper {
     this.gone = false
     this.onDisk = null
     this.base = null
+    this.saveCapture = null
     this.stamp = null
     this.unannounced = false
   }
@@ -222,6 +225,7 @@ export class SettingsKeeper {
     if (canonicalJson(merged) !== canonicalJson(this.base))
       this.host.apply(merged, tools, this.host.chatHistory())
     this.host.index.inSettings = inSettings
+    this.saveCapture = this.host.export()
 
     // The index goes to its own file before `data.json` is written without it: in the other
     // order, a crash between the two writes would lose every chat the index listed.
@@ -413,6 +417,14 @@ export class SettingsKeeper {
   write(): Promise<void> {
     // Taken now: a save asked for just before the plugin unloads still reaches the disk.
     const plugin = this.host.plugin()
+    const current = this.host.export()
+    if (this.saveCapture !== null) {
+      for (const change of localChanges(this.saveCapture, current, ['secretStore'])) {
+        if (change.path[0] === 'ai' && change.path[1] === 'chatHistory') continue
+        this.host.edits().recordPatch(change.path, change.value)
+      }
+    }
+    this.saveCapture = current
     return this.onFile(() => this.writeNow(plugin))
   }
 
@@ -434,6 +446,9 @@ export class SettingsKeeper {
     // Nothing changed in meaning: writing would only hand every other device a file to pull
     // and reload for nothing, and a newer mtime to beat whatever they save next.
     if (text === this.onDisk) {
+      // A coalesced direct save can return to its starting value. It still resolves
+      // as a successful save and must protect that field against an older read.
+      this.host.edits().written()()
       this.base = accepted
       return
     }

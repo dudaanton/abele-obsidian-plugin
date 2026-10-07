@@ -42,12 +42,20 @@ export class SettingsEdits {
       return
     }
     if (JSON.stringify(before) === JSON.stringify(after)) return
+    this.recordPatch(path, after)
+  }
+
+  /** A known field change captured from a direct save request, including deletion. */
+  recordPatch(path: string[], value: unknown): void {
     const key = JSON.stringify(path)
     // A changed parent replaces any earlier patches below it.
     for (const [id, edit] of this.edits) {
       if (path.every((part, index) => edit.path[index] === part)) this.edits.delete(id)
     }
-    this.edits.set(key, { path, value: after })
+    this.edits.set(key, {
+      path: [...path],
+      value: value === undefined ? undefined : settingsSnapshot(value),
+    })
   }
 
   /** A save completed while a native settings read could still return its older snapshot. */
