@@ -188,7 +188,7 @@ describe.skipIf(why !== null)('many files deleted at once', () => {
     await heldDialogLead()
     sync.run(`
       await press(() => modalOf('.abele-held-deletes'), 'Delete everywhere')
-      await press(() => modalOf('.abele-confirm'), 'Delete everywhere')
+      await press(() => modalOf('.abele-confirm__message'), 'Delete everywhere')
       if (!(await poll(() => !modalOf('.abele-held-deletes'), 20000))) throw new Error('the dialog stayed open')
       return 'ok'
     `)
@@ -214,7 +214,7 @@ describe.skipIf(why !== null)('many files deleted at once', () => {
       const row = document.querySelector('.abele-restore-since')
       const preview = textOf(row.querySelector('.setting-item-description'))
       await press(row, 'Restore ${COUNT}…')
-      await press(() => modalOf('.abele-confirm'), 'Restore')
+      await press(() => modalOf('.abele-confirm__message'), 'Restore')
       if (!(await poll(() => document.querySelectorAll('.abele-deleted-files .abele-card').length === 0, 60000)))
         throw new Error('the list still shows ' + document.querySelectorAll('.abele-deleted-files .abele-card').length)
       await escapeIn()
@@ -282,7 +282,7 @@ describe.skipIf(why !== null)('many files deleted at once', () => {
       const section = () => sectionTitled(root, 'Deletions held back')
       if (!(await poll(section, 10000))) throw new Error('the Sync tab has no "Deletions held back"')
       await press(section, 'Delete everywhere')
-      await press(() => modalOf('.abele-confirm', root.ownerDocument), 'Delete everywhere')
+      await press(() => modalOf('.abele-confirm__message', root.ownerDocument), 'Delete everywhere')
       if (!(await poll(() => section() && section().querySelector('.abele-held-deletes__filed'), 20000)))
         throw new Error('the tab never said the answer was filed')
       const filed = textOf(section().querySelector('.abele-held-deletes__filed'))
