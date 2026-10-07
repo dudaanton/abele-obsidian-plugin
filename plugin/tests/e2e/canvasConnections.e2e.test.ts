@@ -134,7 +134,11 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await click('Add canvas shape')
     await press('view().contentEl.querySelector("textarea")')
     await type('A new shape')
-    await until('view().contentEl.querySelector("textarea").value==="A new shape"')
+    await expect
+      .poll(() => run<string>('return view().contentEl.querySelector("textarea").value'), {
+        timeout: 15_000,
+      })
+      .toBe('A new shape')
     shot('shape-keyboard')
     await click('Save text')
     await saved()
@@ -171,9 +175,15 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await press('view().contentEl.querySelector(".abele-canvas-connection-properties summary")')
     await press('view().contentEl.querySelector(\'[aria-label="Connection label"]\')')
     await type('Next step')
-    await until(
-      'view().contentEl.querySelector(\'[aria-label="Connection label"]\').value==="Next step"'
-    )
+    await expect
+      .poll(
+        () =>
+          run<string>(
+            'return view().contentEl.querySelector(\'[aria-label="Connection label"]\').value'
+          ),
+        { timeout: 15_000 }
+      )
+      .toBe('Next step')
     shot('caption-keyboard')
     await click('Apply connection style')
     await saved()
