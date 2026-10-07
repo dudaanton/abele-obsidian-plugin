@@ -15,6 +15,7 @@ import { NodeClient } from '@abele/node-client'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import { NodeWorkspaceModel } from '@/node/NodeWorkspaceModel'
+import { NodeFilesModel } from '@/node/NodeFilesModel'
 
 const cli = process.env.ABELE_NODE_CLI
 if (!cli)
@@ -336,4 +337,44 @@ it('provisions two projects, renders gated fake CLI edits, reloads approvals, qu
         .at(-1)!
     )
   ).toMatchObject({ text: 'resumed', resume: native })
+  const files = new NodeFilesModel(
+    client,
+    daemon.node_id,
+    workspace.workspace_id,
+    session.session_id
+  )
+  await files.list()
+  expect(files.entries.value.some((e) => e.name === 'sample.txt')).toBe(true)
+  await files.openFile('sample.txt')
+  expect(files.document.value?.text).toBe('after\n')
+  await files.loadDiff('head')
+  const snapshot = files.snapshot.value!
+  await files.addComment(
+    'sample.txt',
+    { side: 'R', start: 1, end: 1 },
+    'Explain the retained change'
+  )
+  writeFileSync(resolve(workspace.path, 'sample.txt'), 'later\n')
+  await client.disconnect()
+  await files.submit()
+  const operation = files.pendingReview.value
+  expect(operation).toBeTruthy()
+  await stop(daemon.child)
+  daemon = await start(dir)
+  client = make()
+  await client.connect()
+  await client.subscribe(session.session_id)
+  expect((await client.reviewResult(operation))?.stale).toEqual([true])
+  expect((await client.getDiff(workspace.workspace_id, snapshot.diff_id)).content_id).toBe(
+    snapshot.content_id
+  )
+  await eventually(async () =>
+    reduceTranscript(await client.history(session.session_id)).messages.some(
+      (m) => m.role === 'assistant' && m.content.includes('Review batch')
+    )
+  )
+  expect(
+    (await client.history(session.session_id)).filter((e) => e.type === 'review.submitted')
+  ).toHaveLength(1)
+  expect((await client.getSession(session.session_id)).native_session_id).toBe(native)
 }, 20000)

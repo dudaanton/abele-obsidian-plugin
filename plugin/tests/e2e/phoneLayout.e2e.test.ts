@@ -75,6 +75,10 @@ const SHOTS = shotDir('abele-phone')
  */
 const DIALOGS = [
   'node-workspaces',
+  'node-files',
+  'node-diffs',
+  'node-review',
+  'node-history',
   'template-review',
   'template-review-change',
   'slide-network',
@@ -1093,6 +1097,9 @@ const probeScript = `(async () => {
       let fixtureCompletion, openingError
       try {
         fixtureCompletion = window.__abeleTest.openDialog(dialogName)
+        // These contract fixtures prepare retained content before mounting, unlike approval
+        // fixtures whose completion waits for the user to close them.
+        if (['node-files', 'node-diffs', 'node-review', 'node-history'].includes(dialogName)) await fixtureCompletion
         fixtureCompletion?.catch(error => { openingError = error })
         if (!(await until(() => openingError || document.querySelector('.modal.abele-modal'), 5000))) throw new Error('did not open')
         if (openingError) throw openingError
@@ -1154,6 +1161,13 @@ const probeScript = `(async () => {
           modal.querySelector('input[aria-label="Node session title"]')?.scrollIntoView({ block: 'start' })
           await wait(200)
           await screen('node workspace actions', modal, modal.querySelector('.abele-modal__body'))
+        }
+        if (dialogName === 'node-review') {
+          const comment = modal.querySelector('textarea[aria-label="Review comment"]')
+          comment?.scrollIntoView({ block: 'center' })
+          await wait(200)
+          await screen('node review comment', modal, modal.querySelector('.abele-modal__body'))
+          if (!comment) report['node review comment'].error = 'No review comment field'
         }
         // The agent editor's interceptor, a script chosen and a pattern that does not compile
         // typed into its field: the picker, the field and the line saying why it was not kept.
@@ -1661,6 +1675,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'node message code',
     'node workspace preview',
     'node workspace actions',
+    'node review comment',
     'node workspace registration',
     'node workspace permissions',
     'settings nodes',

@@ -20,6 +20,8 @@ export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
 }
+import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
+import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
 import { nodeWorkspaceFixture } from './nodeWorkspaceFixture'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
@@ -92,7 +94,11 @@ const HIGHLIGHT: Highlight = {
 const ENDINGS = ['onClose', 'onCancel', 'onConfirm', 'onClear', 'onSave', 'onReset', 'onApply']
 
 /** A Vue dialog mounted on its own, as the plugin mounts it, and unmounted when it ends. */
-function mountAlone(component: Component, props: Record<string, unknown> = {}): void {
+function mountAlone(
+  component: Component,
+  props: Record<string, unknown> = {},
+  fixtureName?: string
+): void {
   const host = document.body.createDiv()
   let open = true
   const close = () => {
@@ -104,6 +110,11 @@ function mountAlone(component: Component, props: Record<string, unknown> = {}): 
   const endings = Object.fromEntries(ENDINGS.map((name) => [name, close]))
   const app = createApp(component, { ...endings, ...props })
   app.mount(host)
+  // Promise-returning fixtures participate in the inventory's owned-modal cleanup protocol.
+  if (fixtureName)
+    Array.from(document.querySelectorAll('.modal.abele-modal'))
+      .at(-1)
+      ?.setAttribute('data-abele-fixture', fixtureName)
 }
 
 /**
@@ -114,6 +125,14 @@ function mountAlone(component: Component, props: Record<string, unknown> = {}): 
  */
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
+  'node-files': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
+  'node-diffs': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
+  'node-review': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('review'), 'node-review'),
+  'node-history': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('history'), 'node-history'),
   'template-review': () => {
     void reviewScript(GlobalStore.getInstance().app, {
       template: {
