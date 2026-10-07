@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { MarkdownView, Notice, SuggestModal, TFile, type App } from 'obsidian'
 import { ChatStorage } from '@/ai/ChatStorage'
-import { newCommentId, parseMarkers, resolveQuote } from '@/editor/commentMarkers'
+import { newCommentId, parseMarkers, resolveQuote, stripMarkers } from '@/editor/commentMarkers'
 import {
   dispatchCommentsChanged,
   type CommentInfo,
@@ -150,6 +150,21 @@ export class TextComments implements CommentInfoSource {
         }
       }
     }
+    const linked = new Set(parseMarkers(selection.source).flatMap((marker) => marker.ids))
+    const quote = stripMarkers(selection.source.slice(selection.from, selection.to))
+    for (const id of await this.repository.ids()) {
+      if (linked.has(id)) continue
+      let saved: ThreadSnapshot | null
+      try {
+        saved = await this.repository.read(id)
+      } catch {
+        continue
+      }
+      if (saved?.thread.anchor.note === selection.note && saved.thread.anchor.quote === quote) {
+        await this.show({ initial: saved, selection, beforeWrite })
+        return
+      }
+    }
     await this.show({ selection, beforeWrite })
   }
   async show(options: {
@@ -160,10 +175,12 @@ export class TextComments implements CommentInfoSource {
     if (this.dead) return
     const initial = options.initial
     let unresolved = false
+    let orphan = false
     if (initial) {
       const file = this.app.vault.getAbstractFileByPath(initial.thread.anchor.note)
       const text = file instanceof TFile ? await this.app.vault.read(file) : ''
       const marker = parseMarkers(text).find((marker) => marker.ids.includes(initial.thread.id))
+      orphan = !marker
       unresolved = !marker || !resolveQuote(text, marker, initial.thread.anchor.quote)
     }
     const host = document.body.createDiv()
@@ -177,6 +194,7 @@ export class TextComments implements CommentInfoSource {
       service: this.service,
       ...options,
       unresolved,
+      orphan,
       beforeWrite: options.beforeWrite ?? (() => this.flushNote(note)),
       changed: (saved: ThreadSnapshot | null) => {
         const id = saved?.thread.id ?? initial?.thread.id

@@ -20,6 +20,7 @@ changes only that entry; **Delete** asks for confirmation. Removing the last ent
 mark, not the words in your note. Save a colour change without adding a new entry, too.
 Closing with unsaved text or appearance asks before discarding it. A failed save keeps your
 text in the dialog; a comment changed elsewhere must be reopened before you can overwrite it.
+Text typed while deletion is in progress stays in the dialog, even if the thread was deleted.
 
 The mark follows insertions before the passage and note/folder renames. If the words change
 or disappear, the dimmed mark still opens the comment, but no longer claims a highlight over
@@ -28,7 +29,10 @@ remains available without guessing which repeated text to highlight.
 
 Comments are kept in separate `.abcomment` files in the configured comments folder (default
 `AI/Comments`), not in chat history. If you remove a mark by hand, its comment file stays and
-can be opened from that folder. Sync other file types in Obsidian Sync so these files reach
+can be opened from that folder. **Republish marker** restores an unlinked saved thread without
+creating another entry. For repeated passages, select the exact occurrence in the note and
+choose **Add comment** to reopen that thread and republish there. If the original words no longer
+exist, restore them first or create a new comment; recovery does not guess a replacement passage. Sync other file types in Obsidian Sync so these files reach
 your other devices along with the note.
 
 ## Asking about a passage

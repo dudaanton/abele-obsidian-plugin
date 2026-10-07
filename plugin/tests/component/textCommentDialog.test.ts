@@ -46,6 +46,60 @@ async function press(text: string) {
 }
 
 describe('free-form comment dialog', () => {
+  it('reopens a persisted orphan and republishes its existing marker without new entries', async () => {
+    const m = memoryComments()
+    const draft = await m.service.draft(
+      'Notes/sample.md',
+      'sample words',
+      0,
+      12,
+      'yellow',
+      'Retained'
+    )
+    m.failDocument(true)
+    await expect(m.service.publish(draft)).rejects.toThrow()
+    const initial = (await m.repository.read(draft.thread.id))!
+    m.failDocument(false)
+    open({ service: m.service, initial, orphan: true, unresolved: true })
+    expect(wrapper!.findAll('button').some((button) => button.text() === 'Republish marker')).toBe(
+      true
+    )
+    await press('Republish marker')
+    expect(m.notes.get('Notes/sample.md')).toBe(`sample words%%c:${initial.thread.id}%%`)
+    expect(await m.repository.read(initial.thread.id)).toEqual(initial)
+    expect(m.files.size).toBe(1)
+  })
+  it.each([false, true])(
+    'retains typing while deleting an entry (siblings: %s)',
+    async (siblings) => {
+      const m = memoryComments()
+      let initial = await m.service.publish(
+        await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'Saved')
+      )
+      if (siblings) initial = await m.service.add(initial, 'Sibling')
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      open({ service: m.service, initial, beforeWrite: () => gate })
+      if (siblings) await press('Edit')
+      await press('Delete')
+      await wrapper!.find('textarea').setValue('Typed during deletion')
+      release()
+      await flushPromises()
+      expect(wrapper!.find('textarea').element.value).toBe('Typed during deletion')
+      expect(wrapper!.emitted('close')).toBeUndefined()
+      if (siblings) {
+        expect(
+          (await m.repository.read(initial.thread.id))!.thread.entries.map((entry) => entry.body)
+        ).toEqual(['Sibling'])
+        await press('Save')
+        expect(
+          (await m.repository.read(initial.thread.id))!.thread.entries.map((entry) => entry.body)
+        ).toEqual(['Sibling', 'Typed during deletion'])
+      }
+    }
+  )
   it('keeps text typed during a slow save as an edit draft instead of silently clearing it', async () => {
     const m = memoryComments()
     let release!: () => void

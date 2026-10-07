@@ -863,18 +863,25 @@ immutable full UTC ISO `createdAt` and optional full UTC ISO `editedAt`. The fil
 versions, invalid timestamps, duplicate entry ids and malformed JSON are refused, not rewritten.
 
 The thread file is created before the marker is published. A failure between the writes leaves
-an orphan file which can be reopened and retried; retrying does not duplicate the entry or
-marker. Cancelling an unsaved comment creates neither file nor marker. Writes compare the
+an orphan file which can be reopened and its marker explicitly republished; this does not
+duplicate entries or change creation timestamps. Recovery uses a unique exact quote in the
+current note, or an explicitly captured current selection when the quote is repeated. Selecting
+the same passage with Add comment reopens the retained orphan instead of creating another thread. Cancelling an unsaved comment creates neither file nor marker. Writes compare the
 current file revision to the revision read, refusing stale external changes rather than
 silently overwriting them. Note and folder renames update anchors, including unloaded threads.
-Removing one entry preserves its siblings; removing the final entry removes only that thread's
-marker id and trashes its file. Manually removing a marker never collects the thread file.
+Removing one entry preserves its siblings. Final-entry deletion compares the revision inside
+the native adapter's shared trash queue item, after any approval/recording delay. Writes and sync
+updates through that adapter cannot enter between the check and trash; unsupported storage is
+refused, not deleted with a separate precheck. Out-of-band filesystem writers do not participate
+in this adapter queue. Only after the thread deletion succeeds is its marker id removed from
+the note. A deletion refusal leaves the marker intact. Chained rename events are serialized. Manually removing a marker never collects the thread file.
 
 Anchoring is exact, not fuzzy: text immediately before the marker, then the nearest exact
 quote, otherwise an unresolved point marker. Changes before a passage survive; replacing the
 passage may leave it unresolved. AI and human ids at one marker keep separate icons and counts.
 These files are JSON system files, not ordinary Markdown notes or AI conversations. Media
-cleanup scans their bodies so an image used only in a comment is not considered unused. With
+cleanup scans their bodies relative to `anchor.note`, exactly like the dialog renderer, so
+an image used only in a comment (including a relative `./assets/` link) is not considered unused. With
 Obsidian Sync, enable syncing other file types to carry `.abcomment` files to another device.
 
 ### AI discussions

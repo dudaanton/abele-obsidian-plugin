@@ -132,6 +132,8 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'chat-artifacts-long': () => mountAlone(chatArtifactsFixture('long')),
   'text-comment-create': () => mountAlone(TextCommentDialog, textCommentFixture()),
   'text-comment-list': () => mountAlone(TextCommentDialog, textCommentFixture(true)),
+  'text-comment-orphan': () =>
+    mountAlone(TextCommentDialog, { ...textCommentFixture(true), orphan: true, unresolved: true }),
   'text-comment-edit': async () => {
     mountAlone(TextCommentDialog, textCommentFixture(true), 'text-comment-edit')
     await nextTick()

@@ -84,6 +84,7 @@ const DIALOGS = [
   'chat-artifacts-long',
   'text-comment-create',
   'text-comment-list',
+  'text-comment-orphan',
   'text-comment-edit',
   'text-comment-delete',
   'node-workspaces',

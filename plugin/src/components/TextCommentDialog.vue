@@ -2,7 +2,11 @@
   <ObsidianModal title="Text comments" size="tall" :can-close="canClose" @close="emit('close')">
     <div class="abele-text-comments">
       <blockquote>{{ quote }}</blockquote>
-      <p v-if="unresolved" role="status">
+      <p v-if="orphan" role="status">
+        This saved thread has no marker in its note. Republish its marker to restore access from the
+        passage.
+      </p>
+      <p v-else-if="unresolved" role="status">
         The quoted passage changed or is missing. This comment is still available here.
       </p>
       <label class="abele-text-comments__appearance">
@@ -45,6 +49,7 @@
       </p>
     </div>
     <template #footer>
+      <Button v-if="orphan" text="Republish marker" :disabled="busy" @click="republish" />
       <Button text="Save" :disabled="busy || !saveable" @click="save" />
       <Button v-if="editing" text="Cancel edit" :disabled="busy" @click="cancelEdit" />
       <Button text="Close" :disabled="busy" @click="close" />
@@ -75,12 +80,14 @@ const props = defineProps<{
   initial?: ThreadSnapshot
   selection?: CommentSelection
   unresolved?: boolean
+  orphan?: boolean
   /** Flush the originating view before marker publication/removal, never a stale editor buffer. */
   beforeWrite?: () => Promise<void>
   changed?: (saved: ThreadSnapshot | null) => void
 }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 const saved = shallowRef(props.initial)
+const orphan = ref(props.orphan ?? false)
 const appearance = ref<CommentAppearance>(props.initial?.thread.appearance ?? 'yellow')
 const body = ref('')
 const editing = ref<string | null>(null)
@@ -201,6 +208,21 @@ async function save() {
     busy.value = false
   }
 }
+async function republish() {
+  if (busy.value || !saved.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await props.beforeWrite?.()
+    await props.service.republish(saved.value, props.selection)
+    orphan.value = false
+    props.changed?.(saved.value)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    busy.value = false
+  }
+}
 async function remove(id: string) {
   if (busy.value || !saved.value) return
   if (saved.value.thread.entries.length === 1 && dirty.value && !(await canClose())) return
@@ -217,17 +239,25 @@ async function remove(id: string) {
     return
   busy.value = true
   error.value = ''
+  const beforeDelete = body.value
   try {
     await props.beforeWrite?.()
     const next = await props.service.deleteEntry(saved.value, id)
     saved.value = next ?? undefined
     props.changed?.(next)
-    if (editing.value === id) {
-      body.value = ''
+    const continuedTyping = body.value !== beforeDelete
+    if (editing.value === id || !next) {
+      if (!continuedTyping) body.value = ''
       originalBody.value = ''
       editing.value = null
     }
-    if (!next) emit('close')
+    if (!next) {
+      orphan.value = false
+      if (continuedTyping)
+        error.value =
+          'The thread was deleted. Your new text is kept here; copy it before closing or start a new comment.'
+      else emit('close')
+    }
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause)
   } finally {

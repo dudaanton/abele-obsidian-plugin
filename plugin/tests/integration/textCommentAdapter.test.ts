@@ -34,6 +34,23 @@ function setup() {
   return { app, comments, thread, folder }
 }
 describe('vault human comment presentation adapter', () => {
+  it('choosing the same selection reopens its persisted orphan instead of allocating a new thread', async () => {
+    const m = setup()
+    await m.app.vault.modify(m.app.vault.getFileByPath('Notes/sample.md')!, 'words')
+    const show = vi.spyOn(m.comments, 'show').mockResolvedValue()
+    const selection = { note: 'Notes/sample.md', source: 'words', from: 0, to: 5 }
+    const beforeWrite = async () => {}
+    await m.comments.add(selection, beforeWrite)
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initial: expect.objectContaining({ thread: expect.objectContaining({ id: 'aaaaaa' }) }),
+        selection,
+        beforeWrite,
+      })
+    )
+    expect(await m.comments.repository.ids()).toEqual(['aaaaaa'])
+    m.comments.destroy()
+  })
   it('repaints the new note paths after a folder rename', async () => {
     const m = setup()
     m.comments.touch('Notes/sample.md', ['aaaaaa'])
