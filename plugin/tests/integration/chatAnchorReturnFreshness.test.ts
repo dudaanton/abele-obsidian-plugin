@@ -182,6 +182,7 @@ describe('read-only selection return reconciliation', () => {
       const content = serializeChat(next)
       const backup = chatCopyPath(app as never, PATH)
       const raw = `${PATH}\n${content}`
+      await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
       await app.vault.adapter.write(backup, raw)
       const torn =
         damage === 'empty'
@@ -216,7 +217,8 @@ describe('read-only selection return reconciliation', () => {
     selection.anchors.push({ ...selection.anchors[0], id: 'backup-only-anchor' })
     const backup = chatCopyPath(app as never, PATH)
     const raw = `${PATH}\n${serializeChat(next)}`
-    await app.vault.adapter.write(backup, raw)
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
+      await app.vault.adapter.write(backup, raw)
     await app.vault.modify(file(), '')
     const notices = Notice.shown.length
     await openSelectionLink(`${PATH}#abele-selection=sample-chat/backup-only-anchor`)
@@ -312,7 +314,8 @@ describe('read-only selection return reconciliation', () => {
     next.messages[0].content = 'Recovered reply.'
     const backup = chatCopyPath(app as never, PATH)
     const raw = `${PATH}\n${serializeChat(next)}`
-    await app.vault.adapter.write(backup, raw)
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
+      await app.vault.adapter.write(backup, raw)
     await app.vault.modify(file(), '')
     const modify = vi.spyOn(app.vault, 'modify')
     const remove = vi.spyOn(app.vault.adapter, 'remove')
@@ -348,6 +351,7 @@ describe('read-only selection return reconciliation', () => {
       const content = serializeChat(next)
       const backup = chatCopyPath(app as never, PATH)
       const raw = `${PATH}\n${content}`
+      await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
       await app.vault.adapter.write(backup, raw)
       const torn = damage === 'empty' ? '' : content.slice(0, content.indexOf('\n') + 20)
       await app.vault.modify(file(), torn)

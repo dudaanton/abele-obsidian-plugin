@@ -5,7 +5,7 @@
  * `eval`, DOM queries, console capture and plugin reload against the real running instance,
  * which is everything these tests need.
  */
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -20,7 +20,7 @@ import {
 import { tmpdir, homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { onPhone, desktopOnly } from './target'
 import { phoneEval, installPhoneHost, assertPhoneTransport } from './phone'
 import { confirmReload, type ReloadWitness } from './reloadWitness'
@@ -67,12 +67,18 @@ const sleepSync = (ms: number): void => {
  * app is asked takes more than seconds; one that has not answered in this long is not going to.
  */
 const CALL_CEILING_MS = 45_000
-const EVAL_PROCESS = fileURLToPath(new URL('./obsidianEvalProcess.mjs', import.meta.url))
+const EVAL_PROCESS = join(dirname(fileURLToPath(import.meta.url)), 'obsidianEvalProcess.mjs')
 
 class CliNoAnswerError extends Error {}
 
 /** Opt-in only: arbitrary evals, reloads and native input must never be replayed. */
-function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false, vault = TARGET_VAULT, reply?: string): string {
+function run(
+  args: string[],
+  timeoutMs = CALL_CEILING_MS,
+  idempotent = false,
+  vault = TARGET_VAULT,
+  reply?: string
+): string {
   timeoutMs = Math.min(timeoutMs, CALL_CEILING_MS)
   if (onPhone()) return runOnPhone(args, timeoutMs)
   const attempts = idempotent ? 3 : 1
@@ -112,6 +118,13 @@ function runOnce(args: string[], timeoutMs: number, vault: string, reply?: strin
   try {
     // SIGKILL, not the default SIGTERM: a CLI call that never gets its answer from the app
     // ignores SIGTERM, and the timeout then stopped nothing — the whole run hung on it.
+    if (reply === undefined)
+      return execFileSync(CLI, fullArgs, {
+        encoding: 'utf8',
+        timeout: timeoutMs,
+        killSignal: 'SIGKILL',
+        maxBuffer: 64 * 1024 * 1024,
+      }).trim()
     const framed = reply !== undefined
     const executable = framed ? process.execPath : CLI
     const command = framed
@@ -150,7 +163,7 @@ function runOnce(args: string[], timeoutMs: number, vault: string, reply?: strin
     if (err.code === 'ENOENT') {
       throw new ObsidianUnavailableError(`Obsidian CLI not found at ${CLI}`)
     }
-    if (err.signal === 'SIGKILL') {
+    if (err.signal === 'SIGKILL' && (reply !== undefined || err.code === 'ETIMEDOUT')) {
       const stdout = String(err.stdout ?? '')
       const stderr = String(err.stderr ?? '')
       // Distinguish a missing renderer reply from a CLI process that printed its reply but
@@ -891,7 +904,8 @@ async function reloadWindow(
     } catch (cleanupError) {
       // A later read failure cannot replace the primary uncertain-reload diagnosis.
       cleanupFailure = cleanupError
-      if (failure) console.warn('[abele e2e] reload cleanup failed after primary error', cleanupError)
+      if (failure)
+        console.warn('[abele e2e] reload cleanup failed after primary error', cleanupError)
     } finally {
       unlinkSync(join(RELOAD_LOCK, String(process.pid)))
       rmdirSync(RELOAD_LOCK)

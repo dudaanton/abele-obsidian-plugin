@@ -792,6 +792,14 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
           }
         },
 
+        async read(path: string) {
+          return decoder.decode(await this.readBinary(path))
+        },
+
+        async write(path: string, data: string) {
+          await this.writeBinary(path, new TextEncoder().encode(data).buffer)
+        },
+
         async readBinary(path: string) {
           const file = actualPath(path)
           const entry = file === null ? null : entryAt(file)
@@ -874,6 +882,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       },
     },
     workspace: {
+      getLeavesOfType: () => [],
       on: register('workspace'),
       offref,
     },

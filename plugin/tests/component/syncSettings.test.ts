@@ -152,6 +152,7 @@ beforeEach(() => {
   config.init({ saveData: vi.fn(), syncAiFeatures: vi.fn() } as never)
   unhook = config.onSaved(() => service.onSettingsSaved())
 
+  service.chooseVault.mockReset().mockResolvedValue(undefined)
   service.connected = false
   service.heldPrompt.held.value = []
   service.publicationPrompt.pending.value = []

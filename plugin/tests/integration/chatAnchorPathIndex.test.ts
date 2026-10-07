@@ -59,6 +59,7 @@ describe('rebuildable chat identity index', () => {
     ])
     const path = 'Chats/sample-torn.abchat'
     const backup = chatCopyPath(app as never, path)
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
     await app.vault.adapter.write(backup, `${path}\n${content('source')}`)
     const index = await ChatStorage.getInstance().selectionIdentityIndex()
     expect(resolveAnchorPath('source', path, index)).toEqual({
@@ -80,6 +81,7 @@ describe('rebuildable chat identity index', () => {
     const app = useVault([{ path, content: '' }])
     const backup = chatCopyPath(app as never, path)
     const raw = `${source}\n${copy}`
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
     await app.vault.adapter.write(backup, raw)
     expect(await ChatStorage.getInstance().selectionIdentityIndex()).toEqual([
       { path, chatId: undefined },
@@ -92,6 +94,7 @@ describe('rebuildable chat identity index', () => {
     const app = useVault([{ path, content: content('current') }])
     const backup = chatCopyPath(app as never, path)
     const raw = `${path}\n${content('earlier')}`
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
     await app.vault.adapter.write(backup, raw)
     expect(await ChatStorage.getInstance().selectionIdentityIndex()).toEqual([
       { path, chatId: 'current' },

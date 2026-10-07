@@ -10,7 +10,10 @@ const artifacts = JSON.parse(readFileSync('vendor/node/integrity.json', 'utf8'))
   version: string
   integrity: string
 }>
-const registryExclusions = new Set(artifacts.map((artifact) => artifact.name))
+const nodeExclusions = new Set(artifacts.map((artifact) => artifact.name))
+const syncProvenance = JSON.parse(readFileSync('vendor/sync/provenance.json', 'utf8')).packages
+const syncNames = ['@abele/sync-core', '@abele/sync-protocol']
+const registryExclusions = new Set([...nodeExclusions, ...syncNames])
 
 describe('reproducible dependency sources', () => {
   it('excludes exactly the vendored node dependency set from registry checks', () => {
@@ -18,8 +21,8 @@ describe('reproducible dependency sources', () => {
       .filter(([, source]) => typeof source === 'string' && source.startsWith('file:vendor/node/'))
       .map(([name]) => name)
       .sort()
-    expect([...registryExclusions].sort()).toEqual(vendoredDependencies)
-    expect([...registryExclusions].sort()).toEqual([
+    expect([...nodeExclusions].sort()).toEqual(vendoredDependencies)
+    expect([...nodeExclusions].sort()).toEqual([
       '@abele/channel-client',
       '@abele/channel-protocol',
       '@abele/node-client',
@@ -51,7 +54,21 @@ describe('reproducible dependency sources', () => {
     })) {
       const installed = lock.packages[`node_modules/${name}`]
       const artifact = artifacts.find((a) => a.name === name)
-      if (artifact) {
+      if (syncNames.includes(name)) {
+        const pinned = syncProvenance[name]
+        const source = `file:vendor/sync/${pinned.archive}`
+        expect(version, name).toBe(source)
+        expect(installed.resolved, name).toBe(source)
+        expect(installed.version, name).toBe(
+          `0.0.0-${JSON.parse(readFileSync('vendor/sync/provenance.json', 'utf8')).commit.slice(0, 12)}`
+        )
+        const bytes = readFileSync(`vendor/sync/${pinned.archive}`)
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe(pinned.sha256)
+        expect('sha512-' + createHash('sha512').update(bytes).digest('base64')).toBe(
+          pinned.integrity
+        )
+        expect(installed.integrity, name).toBe(pinned.integrity)
+      } else if (artifact) {
         const source = `file:vendor/node/${artifact.filename}`
         expect(version, name).toBe(source)
         expect(installed.resolved, name).toBe(source)

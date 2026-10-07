@@ -143,7 +143,7 @@ beforeEach(() => {
   service.connected = true
   service.status.value = { ...DISCONNECTED_STATUS, state: 'idle' }
   service.entryFor.mockResolvedValue(ENTRY)
-  client.versions.mockResolvedValue(HISTORY)
+  client.versions.mockReset().mockResolvedValue(HISTORY)
   client.versionBytes.mockResolvedValue(bytesOf('one\nTWO\n'))
   client.restore.mockResolvedValue(APPLIED)
   vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)

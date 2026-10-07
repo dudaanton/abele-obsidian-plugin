@@ -127,6 +127,15 @@ export class Menu {
   }
 }
 
+// Server-backed tests run in Node and install a visibility-only document stand-in.
+import { Window as TestWindow } from 'happy-dom'
+let noticeFallback: Document | undefined
+function noticeDocument(): Document {
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function')
+    return document
+  return (noticeFallback ??= new TestWindow().document as unknown as Document)
+}
+
 export class Notice {
   /**
    * Every notice raised, in order. A notice is often the whole of what a code path does for
@@ -135,14 +144,15 @@ export class Notice {
    */
   static readonly shown: string[] = []
 
-  readonly containerEl = document.createElement('div')
-  readonly messageEl = document.createElement('div')
+  private readonly doc = noticeDocument()
+  readonly containerEl = this.doc.createElement('div')
+  readonly messageEl = this.doc.createElement('div')
 
   constructor(public message: string | DocumentFragment) {
     this.containerEl.className = 'notice'
     this.containerEl.append(this.messageEl)
     this.messageEl.append(message)
-    document.body.append(this.containerEl)
+    this.doc.body.append(this.containerEl)
     // Keep string history as before; rich messages retain the live buttons after the
     // fragment is consumed, just as Obsidian's message element does.
     Notice.shown.push(typeof message === 'string' ? message : (this.messageEl as unknown as string))
@@ -335,6 +345,8 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
     },
     /** Shows or hides the element, the way Obsidian's does: `display: none` or nothing. */
     toggle: {
+      writable: true,
+      configurable: true,
       value(this: HTMLElement, show: boolean) {
         this.style.display = show ? '' : 'none'
       },

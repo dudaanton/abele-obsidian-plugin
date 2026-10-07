@@ -118,6 +118,7 @@ describe('what is recorded', () => {
   })
 
   it('never the plugin folder, the trash or a chat file', async () => {
+    await app.vault.adapter.mkdir('.obsidian/plugins/abele')
     await asAgent(async () => {
       await app.vault.adapter.write('.obsidian/plugins/abele/data.json', '{}')
       await app.vault.create('AI/Chats/Talk.abchat', '{}')
@@ -243,6 +244,7 @@ describe('rewinding', () => {
   })
 
   it('takes back what the reader wrote straight through the adapter', async () => {
+    await app.vault.adapter.mkdir('Books')
     const since = Date.now()
     await asAgent(
       () => app.vault.adapter.write('Books/marks.json', '{"marks":[1]}'),
