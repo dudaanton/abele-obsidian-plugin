@@ -152,6 +152,9 @@ body.is-phone .modal.abele-modal_tall {
   max-height: 100%;
   margin-top: 0;
   margin-bottom: 0;
+  /* On mobile the native bottom inset can itself include the keyboard. It is outside this
+     already measured room; leave only the theme's ordinary gap above the toolbar. */
+  padding-bottom: var(--size-4-2);
 }
 
 /*

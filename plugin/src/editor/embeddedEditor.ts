@@ -170,6 +170,8 @@ export function createEmbeddedEditor(
   const keys = (app as unknown as { keymap: KeymapWithScopes }).keymap
   let previousActive: unknown = undefined
   let scopePushed = false
+  let toolbarPress = false
+  let disposed = false
   const suggestionKeys: { scope: Scope; binding: ReturnType<Scope['register']> }[] = []
   const submit = () => {
     options.onSubmit?.()
@@ -334,7 +336,9 @@ export function createEmbeddedEditor(
    * screen) is put back by name.
    */
   function giveBack(): void {
-    if (workspace.activeEditor !== controller.owner) return
+    // A toolbar press may blur the field before its formatting command runs. That command
+    // still belongs to this field, not the note underneath the dialog.
+    if (toolbarPress || workspace.activeEditor !== controller.owner) return
     workspace.activeEditor = null
     const previous = previousActive as { editor?: { cm?: EditorView } } | null | undefined
     if (previous && previous !== controller.owner && previous.editor?.cm?.dom?.isConnected) {
@@ -369,6 +373,23 @@ export function createEmbeddedEditor(
     cm.focus()
   }
   host.addEventListener('click', onClick, true)
+  const doc = host.ownerDocument
+  const onToolbarPress = (event: Event) => {
+    if (workspace.activeEditor !== controller.owner) return
+    if ((event.target as Element | null)?.closest?.('.mobile-toolbar')) toolbarPress = true
+  }
+  const finishToolbarPress = () => {
+    if (!toolbarPress) return
+    queueMicrotask(() => {
+      if (disposed) return
+      toolbarPress = false
+      if (!controller.editor.cm.hasFocus) giveBack()
+    })
+  }
+  doc.addEventListener('pointerdown', onToolbarPress, true)
+  doc.addEventListener('touchstart', onToolbarPress, true)
+  doc.addEventListener('click', finishToolbarPress, true)
+  doc.addEventListener('pointercancel', finishToolbarPress, true)
   embeddedViews.set(host, controller.editor.cm)
 
   return {
@@ -384,6 +405,12 @@ export function createEmbeddedEditor(
       return controller.editor.cm.contentDOM
     },
     destroy: () => {
+      disposed = true
+      toolbarPress = false
+      doc.removeEventListener('pointerdown', onToolbarPress, true)
+      doc.removeEventListener('touchstart', onToolbarPress, true)
+      doc.removeEventListener('click', finishToolbarPress, true)
+      doc.removeEventListener('pointercancel', finishToolbarPress, true)
       host.removeEventListener('click', onClick, true)
       deactivate()
       giveBack()
