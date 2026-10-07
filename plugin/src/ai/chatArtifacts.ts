@@ -61,6 +61,13 @@ export function toolImage(value: unknown): { path: string; origin: ArtifactOrigi
     )
     path = text(match?.[1])
     origin = format[1]
+    // A no-pixels model response can contain this same line and still be approved.
+    // Only the tool's persisted save result proves generation/editing; old text alone cannot.
+    if (
+      (message.toolName === 'generate_image' || message.toolName === 'edit_image') &&
+      (!path || text(message.toolImagePath) !== path)
+    )
+      return
   }
   if (path && isArtifactImage(path)) return { path, origin }
 }

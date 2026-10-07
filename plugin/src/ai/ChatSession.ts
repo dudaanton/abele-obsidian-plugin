@@ -1808,9 +1808,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       (m) => {
         const resultText = toolResult.content.map((c) => c.text).join('')
         const diff = (toolResult.details as ToolWriteDetails)?.diff
+        const imagePath = (toolResult.details as { imagePath?: unknown } | undefined)?.imagePath
         return {
           ...m,
           toolResult: resultText,
+          toolImagePath: !isError && typeof imagePath === 'string' ? imagePath : undefined,
           toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
           toolMap: (toolResult.details as ToolMapDetails)?.map,
           replyProposal: (toolResult.details as { replyProposal?: ReplyProposal })?.replyProposal,

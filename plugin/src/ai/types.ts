@@ -618,6 +618,8 @@ export interface ChatMessage {
   toolParams?: Record<string, unknown>
   toolStatus?: 'pending' | 'approved' | 'rejected' | 'modified'
   toolResult?: string
+  /** A successfully saved image, copied from the tool's own result details, never model text. */
+  toolImagePath?: string
   toolDiff?: ChatMessageDiff
   /** A map a tool drew — shown under the call, the way a diff or a screenshot is. */
   toolMap?: MapBlock

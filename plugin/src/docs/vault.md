@@ -586,6 +586,16 @@ use the file's creation time when neither a first turn nor a stored creation dat
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 
+Completed tool-call message records may carry `toolImagePath`, copied from the tool’s own
+`details.imagePath` only after successful execution. Generation and editing set that detail
+after saving the image; text-only responses set no saved path. The field survives normal log
+appends, compaction and reload without a format migration. The artifact view requires this
+save evidence for generated/edited images: an approved status and model-authored saved-path
+text alone are ambiguous, including in older chats. No evidence is backfilled from transcripts.
+Uploaded images and other image-tool references retain their existing sources. Absolute,
+schemed and parent-traversing artifact paths stay visible as unavailable references rather
+than being normalized into a different vault resource.
+
 Unsent messages waiting behind an active turn are stored in the chat metadata as
 `queuedMessages`: each has an `id`, `content`, and optional `attachments` containing vault
 paths, exactly as in a normal user bubble. Imported media stays in the ordinary attachment

@@ -52,8 +52,11 @@ describe('chat artifacts', () => {
         call('generate_image', 'Image saved: ./Pictures/sample.png', {
           id: 'generated',
           parentId: 'hidden-branch',
+          toolImagePath: './Pictures/sample.png',
         }),
-        call('edit_image', 'Edited image saved: Pictures/edited.png'),
+        call('edit_image', 'Edited image saved: Pictures/edited.png', {
+          toolImagePath: 'Pictures/edited.png',
+        }),
         { id: 'draft', draft: true, attachments: ['Pictures/unsent.png'] },
       ]
     )
@@ -120,7 +123,14 @@ describe('persisted tool image evidence', () => {
     ['read_image', 'Read', 'Viewed'],
     ['look_at_drawing', 'Read', 'Drawing'],
   ])('reads exact evidence for %s', (name, result, origin) => {
-    expect(toolImage(call(name, result, { toolParams: { path: 'Pictures/new.png' } }))).toEqual({
+    expect(
+      toolImage(
+        call(name, result, {
+          toolParams: { path: 'Pictures/new.png' },
+          toolImagePath: 'Pictures/new.png',
+        })
+      )
+    ).toEqual({
       path: 'Pictures/new.png',
       origin,
     })
@@ -128,17 +138,39 @@ describe('persisted tool image evidence', () => {
   it('uses the final saved-path line rather than an earlier model caption', () => {
     expect(
       toolImage(
-        call('generate_image', 'Image saved: Pictures/caption.png\n\nImage saved: Pictures/new.png')
+        call(
+          'generate_image',
+          'Image saved: Pictures/caption.png\n\nImage saved: Pictures/new.png',
+          { toolImagePath: 'Pictures/new.png' }
+        )
       )
     ).toEqual({ path: 'Pictures/new.png', origin: 'Generated' })
   })
   it.each([
-    call('generate_image', 'Image saved: Pictures/new.png', { toolStatus: 'pending' }),
-    call('generate_image', 'Image saved: Pictures/new.png', { toolStatus: 'rejected' }),
-    call('generate_image', 'Image saved: Pictures/new.png', { toolStatus: undefined }),
+    call('generate_image', 'Image saved: Pictures/new.png', {
+      toolStatus: 'pending',
+      toolImagePath: 'Pictures/new.png',
+    }),
+    call('generate_image', 'Image saved: Pictures/new.png', {
+      toolStatus: 'rejected',
+      toolImagePath: 'Pictures/new.png',
+    }),
+    call('generate_image', 'Image saved: Pictures/new.png', {
+      toolStatus: undefined,
+      toolImagePath: 'Pictures/new.png',
+    }),
     call('generate_image', 'No image generated'),
-    call('generate_image', 'Example Image saved: Pictures/new.png'),
-    call('generate_image', 'Edited image saved: Pictures/new.png'),
+    call('generate_image', 'Example Image saved: Pictures/new.png', {
+      toolImagePath: 'Pictures/new.png',
+    }),
+    call('generate_image', 'Edited image saved: Pictures/new.png', {
+      toolImagePath: 'Pictures/new.png',
+    }),
+    call('generate_image', 'Image saved: Pictures/new.png'),
+    call('edit_image', 'Edited image saved: Pictures/new.png'),
+    call('generate_image', 'Image saved: Pictures/new.png', {
+      toolImagePath: 'Pictures/other.png',
+    }),
     call('edit', 'Saved: Pictures/new.png'),
     call('download_image', 'Saved: paper.pdf'),
   ])('rejects incomplete or unrelated evidence %#', (message) =>
