@@ -177,7 +177,7 @@ free line to move it. Moving or resizing cards keeps their bound connections att
 
 With a connection selected, open **Connection style** to edit its label, start/end arrows,
 colour and, for bound connections, curved, elbow or straight routing. **Apply** saves those
-choices together. Emptying the label removes it. **Delete**, Undo and Redo work on connections
+choices together and closes the caption's keyboard so you can navigate by touch again. Emptying the label removes it. **Delete**, Undo and Redo work on connections
 and free lines too. Free primitives are kept in the same canvas file; native Canvas may not
 show them, but returning to Abele restores their display.
 

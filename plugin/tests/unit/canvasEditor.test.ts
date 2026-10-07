@@ -236,6 +236,19 @@ describe('human shapes and connections', () => {
     expect(s.document.session.dirty).toBe(false)
     expect(s.document.session.graph).toEqual(cards())
   })
+  it('finishing a connection caption releases text focus for touch navigation', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 280, 80)
+    pointer(s, 'pointerup', 280, 80)
+    const field = s.el.querySelector<HTMLInputElement>('[aria-label="Connection label"]')!
+    field.focus()
+    field.value = 'Caption'
+    s.button('Apply connection style').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+    expect(document.activeElement).not.toBe(field)
+    expect(s.document.session.graph.edges[0].label).toBe('Caption')
+  })
   it('does not replace a changed connection with stale property input', () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })

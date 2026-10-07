@@ -251,15 +251,18 @@ describe.skipIf(!available)('selection-menu focus rings', () => {
 })
 
 describe.skipIf(!available)('human Canvas focus rings', () => {
-  it('keeps creation, link, text, handoff and local-discard controls inside their clipping ancestors', () => {
+  it('keeps creation, shapes, connection styles, text and handoff controls inside their clipping ancestors', () => {
     const result = evalAsync<string[]>(`(async () => {
       const path='sample-editor-rings.canvas'
       if(app.vault.getAbstractFileByPath(path))throw Error('Synthetic file already exists')
-      const layout=app.workspace.getLayout(),file=await app.vault.create(path,'{"nodes":[],"edges":[]}'),leaf=app.workspace.getLeaf('tab'),cuts=[]
+      const layout=app.workspace.getLayout(),file=await app.vault.create(path,JSON.stringify({nodes:[
+        {id:'alpha',type:'text',text:'Input',x:0,y:0,width:220,height:120},
+        {id:'beta',type:'text',text:'Result',x:360,y:0,width:220,height:120}
+      ],edges:[{id:'flow',fromNode:'alpha',toNode:'beta',label:'Next'}]})),leaf=app.workspace.getLeaf('tab'),cuts=[]
       const wait=ms=>new Promise(r=>setTimeout(r,ms))
       const until=async fn=>{for(let i=0;i<60;i++){if(fn())return;await wait(50)}throw Error('Canvas ring inventory did not open')}
       const measure=(label,root)=>{
-        for(const field of root.querySelectorAll('input,textarea,button')){
+        for(const field of root.querySelectorAll('input,textarea,select,button,summary')){
           if(!field.getBoundingClientRect().width)continue
           field.focus()
           const reach=(${outwardBoxShadowReach.toString()})(getComputedStyle(field).boxShadow),r=field.getBoundingClientRect()
@@ -276,6 +279,12 @@ describe.skipIf(!available)('human Canvas focus rings', () => {
         await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);await until(()=>leaf.view.editor)
         const root=leaf.view.contentEl
         measure('editor',root)
+        root.querySelector('[aria-label="Shapes and connections"]').click();measure('shapes',root)
+        root.querySelector('[aria-label="Shapes and connections"]').click()
+        {const v=leaf.view.viewer,c=v.camera,r=v.stage.getBoundingClientRect(),init={pointerId:1,pointerType:'touch',clientX:r.left+(290-c.x)*c.zoom,clientY:r.top+(60-c.y)*c.zoom,bubbles:true}
+          for(const type of ['pointerdown','pointerup'])v.stage.dispatchEvent(new PointerEvent(type,init))}
+        root.querySelector('.abele-canvas-connection-properties').open=true;measure('connection style',root)
+        root.querySelector('.abele-canvas-connection-properties').open=false
         root.querySelector('[aria-label="Add link"]').click();await until(()=>document.querySelector('.abele-canvas-input'));measure('link',document.querySelector('.abele-canvas-input'));await close()
         root.querySelector('[aria-label="Add text card"]').click();measure('text',root)
         leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]').click();await until(()=>document.querySelector('.abele-canvas-choice'));measure('native',document.querySelector('.abele-canvas-choice'));await close()

@@ -135,6 +135,7 @@ export class CanvasEditor {
     this.label.setAttribute('aria-label', 'Connection label')
     this.label.placeholder = 'Connection label'
     fields.append(this.label)
+    this.button('Apply connection style', 'Apply', () => this.applyConnection(), fields)
     this.fromEnd = this.select(fields, 'Start arrow', [
       ['none', 'Start: no arrow'],
       ['arrow', 'Start: arrow'],
@@ -160,7 +161,6 @@ export class CanvasEditor {
       },
       fields
     )
-    this.button('Apply connection style', 'Apply', () => this.applyConnection(), fields)
     viewer.el.insertBefore(this.properties, viewer.stage)
     this.button('Add text card', 'Text', () => this.addText())
     this.button('Add note or attachment', 'File', () => this.pick('file'))
@@ -566,13 +566,18 @@ export class CanvasEditor {
     if (this.color.value !== '__retain') changed('color', this.color.value, element.color ?? '')
     if ('fromNode' in element)
       changed('pathfindingMethod', this.routing.value, element.pathfindingMethod ?? 'bezier')
-    if (!Object.keys(patch).length) return
+    if (!Object.keys(patch).length) {
+      this.label.blur()
+      return
+    }
     if (
       canvasFingerprint(
         editCanvas(document.session.graph, [{ op: 'update', id: element.id, patch }]).graph
       ) === canvasFingerprint(document.session.graph)
     )
       return
+    // Release the keyboard before draft notifications disable the field.
+    this.label.blur()
     document.beginDraft()
     this.update(document, [{ op: 'update', id: element.id, patch }])
     document.finishDraft()

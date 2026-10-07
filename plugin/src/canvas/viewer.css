@@ -159,6 +159,11 @@
   min-width: 0;
   max-width: 100%;
 }
+.abele-canvas-connection-properties input {
+  flex: 1;
+  width: 0;
+  min-width: 120px;
+}
 .abele-canvas-endpoint-handle::after {
   border-radius: 50%;
 }
