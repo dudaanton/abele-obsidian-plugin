@@ -88,6 +88,7 @@ const DIALOGS = [
   'text-comment-orphan',
   'text-comment-edit',
   'text-comment-delete',
+  'chat-navigation',
   'node-workspaces',
   'node-files',
   'node-edit',
@@ -1155,6 +1156,11 @@ const probeScript = `(async () => {
           const heading = [...modal.querySelectorAll('.abele-section__heading')].find(el => el.textContent === 'Connections')
           heading?.scrollIntoView({ block: 'start' })
         }
+        if (dialogName === 'chat-navigation') {
+          if (modal.querySelector('input') === document.activeElement) throw new Error('Navigation opened the keyboard without a search tap')
+          for (const details of [...modal.querySelectorAll('details')].slice(0, 2)) details.open = true
+          await wait(200)
+        }
         await screen(label, modal, modal.querySelector('.abele-modal__body'))
         if (dialogName === 'github-connection-approval') {
           for (const p of modal.querySelectorAll('p')) if (p.scrollWidth > p.clientWidth + 1) {
@@ -1190,7 +1196,7 @@ const probeScript = `(async () => {
           await screen('node workspace permissions', modal, modal.querySelector('.abele-modal__body'))
         }
         const clipped = []
-        for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"], .cm-content[contenteditable="true"]')) {
+        for (const f of modal.querySelectorAll('input, textarea, select, button, summary, [tabindex="0"], .cm-content[contenteditable="true"]')) {
           const cs = getComputedStyle(f)
           if (cs.display === 'none' || cs.visibility === 'hidden' || f.getBoundingClientRect().width === 0) continue
           f.focus()

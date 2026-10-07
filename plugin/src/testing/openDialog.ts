@@ -23,6 +23,8 @@ export interface DialogFixtureOptions {
 }
 import TextCommentDialog from '@/components/TextCommentDialog.vue'
 import { textCommentFixture } from './textCommentFixture'
+import ChatNavigation from '@/components/ChatNavigation.vue'
+import type { ChatMessage } from '@/ai/types'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
@@ -149,6 +151,36 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       confirmText: 'Delete',
     })
   },
+  'chat-navigation': () =>
+    mountAlone(ChatNavigation, {
+      messages: Array.from({ length: 40 }, (_, i): ChatMessage[] => [
+        {
+          id: `question-${i}`,
+          role: 'user',
+          content: `Sample question ${i + 1} with enough words to wrap across a narrow screen`,
+          timestamp: 1700000000000 + i * 3600000,
+        },
+        {
+          id: `answer-${i}`,
+          role: 'assistant',
+          content: 'A sample answer with more detail about the question.',
+          timestamp: 1700000001000 + i * 3600000,
+        },
+        {
+          id: `tool-${i}`,
+          role: 'tool-call',
+          content: '',
+          toolName: 'read',
+          toolStatus: 'pending',
+          toolParams: { path: 'Notes/sample-file.md' },
+          timestamp: 1700000002000 + i * 3600000,
+        },
+      ]).flat(),
+      comments: [],
+      state: { expanded: [], scrollTop: 0 },
+      activeMessageId: 'answer-0',
+      canGoBack: true,
+    }),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),

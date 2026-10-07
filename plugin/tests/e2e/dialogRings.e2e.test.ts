@@ -85,7 +85,7 @@ const script = `(async () => {
 
   const cuts = []
   const measureAll = (screen, root) => {
-    const fields = root.querySelectorAll('input, textarea, select, button, [tabindex="0"], .cm-content[contenteditable="true"]')
+    const fields = root.querySelectorAll('input, textarea, select, button, summary, [tabindex="0"], .cm-content[contenteditable="true"]')
     for (const field of fields) {
       const s = getComputedStyle(field)
       if (s.display === 'none' || s.visibility === 'hidden') continue
@@ -209,7 +209,10 @@ const script = `(async () => {
       if (dialogName.startsWith('chat-artifacts') && modal.querySelectorAll('.abele-chat-artifacts section').length !== 3)
         cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
       // Node registration and permission opt-in are disclosures, not separate tabs.
-      if (dialogName === 'node-workspaces') for (const details of modal.querySelectorAll('details')) details.open = true
+      if (dialogName === 'node-workspaces' || dialogName === 'chat-navigation') {
+        for (const details of modal.querySelectorAll('details')) details.open = true
+        await wait(200)
+      }
       // Node file/code/diff/review/history fixtures each exercise a separate view.
       measureAll('dialog ' + dialogName, modal)
       // A dialog with tabs, the agent editor's among them, is measured tab by tab.
