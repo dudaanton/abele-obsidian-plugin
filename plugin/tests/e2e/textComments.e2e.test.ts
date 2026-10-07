@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { visibleToolbarTarget } from '../helpers/visibleToolbarTarget'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -19,8 +20,45 @@ const NATIVE_TOUCH = `
     await host.tap(x,y)
   }
   const keyboardHeight = () => Math.max(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,window.innerHeight-(window.visualViewport?.height??window.innerHeight))
+  const tapToolbar = async selector => {
+    const toolbar = document.querySelector('.mobile-toolbar')
+    const glyph = toolbar?.querySelector(selector)
+    if(!glyph) throw new Error('Native formatting action is missing: '+selector)
+    const control = glyph.closest('.mobile-toolbar-option,.mobile-toolbar-item,.clickable-icon,button') ?? glyph.parentElement
+    let scroller = control.parentElement
+    while(scroller && scroller !== toolbar && scroller.scrollWidth <= scroller.clientWidth + 1) scroller=scroller.parentElement
+    scroller ??= toolbar
+    for(let attempt=0;attempt<10;attempt++) {
+      await wait(250)
+      const bar=toolbar.getBoundingClientRect(), clip=scroller.getBoundingClientRect(), item=control.getBoundingClientRect()
+      const bounds={left:Math.max(bar.left,clip.left),right:Math.min(bar.right,clip.right),top:Math.max(bar.top,clip.top),bottom:Math.min(bar.bottom,clip.bottom)}
+      const viewport=window.visualViewport
+      const screen={left:viewport?.offsetLeft??0,top:viewport?.offsetTop??0,right:(viewport?.offsetLeft??0)+(viewport?.width??innerWidth),bottom:(viewport?.offsetTop??0)+(viewport?.height??innerHeight)}
+      const target=(${visibleToolbarTarget.toString()})(item,bounds,screen)
+      if('unavailable' in target) throw new Error('Native formatting toolbar is outside the viewport')
+      if('scroll' in target) {
+        const left=Math.max(bounds.left,screen.left)+16,right=Math.min(bounds.right,screen.right)-16,y=(bounds.top+bounds.bottom)/2
+        await host.swipe(target.scroll==='left'?right:left,y,target.scroll==='left'?left:right,y)
+        continue
+      }
+      const under=document.elementFromPoint(target.point.x,target.point.y)
+      if(under!==control&&!control.contains(under)) throw new Error('Native formatting action is covered')
+      await host.tap(target.point.x,target.point.y)
+      return control
+    }
+    throw new Error('Native formatting action could not be reached by horizontal scrolling')
+  }
 `
-let nativeToolbar: { clicked: boolean; formatted: boolean; sourceUnchanged: boolean } | undefined
+let nativeToolbar:
+  | {
+      clicked: boolean
+      formatted: boolean
+      italic: boolean
+      selectionKept: boolean
+      keyboard: boolean
+      sourceUnchanged: boolean
+    }
+  | undefined
 const run = <T>(body: string): T => {
   const result = evalRaw(
     `(async () => {
@@ -197,7 +235,14 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     expect(result.shots.every((path) => !path.startsWith('no picture'))).toBe(true)
   })
   it.skipIf(!onPhone())('native toolbar actions cannot change the underlying note', () => {
-    nativeToolbar = run<{ clicked: boolean; formatted: boolean; sourceUnchanged: boolean }>(`
+    nativeToolbar = run<{
+      clicked: boolean
+      formatted: boolean
+      italic: boolean
+      selectionKept: boolean
+      keyboard: boolean
+      sourceUnchanged: boolean
+    }>(`
       ${NATIVE_TOUCH}
       await view.setState({mode:'source'}, {})
       app.workspace.setActiveLeaf(view.leaf, {focus:true})
@@ -207,25 +252,37 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const cm = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
       cm.dispatch({changes:{from:0,to:cm.state.doc.length,insert:'Native toolbar probe'}})
       await tap(cm.contentDOM)
+      await until(() => keyboardHeight()>100)
+      await wait(500)
+      cm.focus()
       cm.dispatch({selection:{anchor:0,head:6}})
+      await wait(100)
       const sourceBefore = view.editor.getValue()
-      const glyph = document.querySelector('.mobile-toolbar .lucide-bold')
-      const bold = glyph.closest('.mobile-toolbar-option,.mobile-toolbar-item,.clickable-icon,button') ?? glyph.parentElement
       let clicked = false
-      bold.addEventListener('click',()=>{clicked=true},{once:true,capture:true})
-      await tap(bold)
+      const toolbar=document.querySelector('.mobile-toolbar')
+      toolbar.addEventListener('click',()=>{clicked=true},{once:true,capture:true})
+      await tapToolbar('.lucide-bold')
       await until(() => cm.state.doc.toString().startsWith('**Native**'))
-      return JSON.stringify({clicked,formatted:cm.state.doc.toString().startsWith('**Native**'),sourceUnchanged:view.editor.getValue()===sourceBefore})
+      const formatted=cm.state.doc.toString().startsWith('**Native**')
+      await host.shot(${JSON.stringify(SHOTS)}+'/text-comment-bold.png')
+      await tapToolbar('.lucide-italic')
+      await until(() => /^(?:\\*\\*\\*Native\\*\\*\\*|\\*\\*_Native_\\*\\*)/.test(cm.state.doc.toString()))
+      const italic=/^(?:\\*\\*\\*Native\\*\\*\\*|\\*\\*_Native_\\*\\*)/.test(cm.state.doc.toString())
+      const selected=cm.state.selection.main
+      const selectionKept=cm.state.sliceDoc(selected.from,selected.to)==='Native'
+      await host.shot(${JSON.stringify(SHOTS)}+'/text-comment-italic.png')
+      return JSON.stringify({clicked,formatted,italic,selectionKept,keyboard:keyboardHeight()>100,sourceUnchanged:view.editor.getValue()===sourceBefore})
     `)
     expect(nativeToolbar.sourceUnchanged).toBe(true)
   })
-  // BUG: only native toolbar delivery/formatting is unaccepted. Setup, geometry, source
-  // integrity and persistence above are ordinary tests and cannot become expected failures.
-  it.skipIf(!onPhone()).fails(
-    'BUG: native toolbar formatting has not delivered the selected text change',
+  it.skipIf(!onPhone())(
+    'native toolbar formats the selected comment text after horizontal scrolling',
     () => {
       expect(nativeToolbar?.clicked).toBe(true)
       expect(nativeToolbar?.formatted).toBe(true)
+      expect(nativeToolbar?.italic).toBe(true)
+      expect(nativeToolbar?.selectionKept).toBe(true)
+      expect(nativeToolbar?.keyboard).toBe(true)
     }
   )
   it('reading mode paints formatted passages and reopens the same thread', () => {
