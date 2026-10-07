@@ -417,6 +417,7 @@ export class SettingsKeeper {
   write(): Promise<void> {
     // Taken now: a save asked for just before the plugin unloads still reaches the disk.
     const plugin = this.host.plugin()
+    if (!plugin) return this.onFile(() => this.writeNow(plugin))
     const current = this.host.export()
     if (this.saveCapture !== null) {
       for (const change of localChanges(this.saveCapture, current, ['secretStore'])) {
