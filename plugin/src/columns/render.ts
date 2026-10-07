@@ -32,8 +32,7 @@ export function columnsPostProcessor(el: HTMLElement): void {
       ;(child as HTMLElement).style.setProperty('--abele-column-weight', String(weights[index]))
       for (const table of Array.from(child.querySelectorAll('table'))) {
         if (table.closest('.abele-column-table')) continue
-        const scroller = table.ownerDocument.createElement('div')
-        scroller.className = 'abele-column-table'
+        const scroller = table.ownerDocument.win.createDiv({ cls: 'abele-column-table' })
         table.before(scroller)
         scroller.append(table)
       }

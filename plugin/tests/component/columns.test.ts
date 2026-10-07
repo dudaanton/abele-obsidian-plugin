@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
+import 'obsidian'
 import { columnsPostProcessor } from '@/columns/render'
 
-function fixture(extra = '') {
+function fixture(extra?: HTMLElement) {
   const el = document.createElement('div')
   el.innerHTML = `<div class="callout" data-callout="abele-columns" data-callout-metadata="ratio=2:1 mobile=stack">
     <div class="callout-title">Columns</div><div class="callout-content">
       <div class="callout" data-callout="abele-column"><div class="callout-title">First</div><div class="callout-content"><input type="checkbox">Keep the task</div></div>
-      ${extra}
       <div class="callout" data-callout="abele-column"><div class="callout-title">Second</div><div class="callout-content"><table><tr><td>Keep the table</td></tr></table></div></div>
     </div></div>`
+  if (extra) {
+    const content = el.querySelector('.callout-content')!
+    content.insertBefore(extra, content.lastElementChild)
+  }
   return el
 }
 
@@ -47,9 +51,10 @@ describe('columns over native callout DOM', () => {
   })
 
   it('does not mistake embedded or deeper callouts for direct columns', () => {
-    const el = fixture(
-      '<div class="internal-embed"><div class="callout" data-callout="abele-column">Embedded</div></div>'
-    )
+    const embed = document.createElement('div')
+    embed.className = 'internal-embed'
+    embed.innerHTML = '<div class="callout" data-callout="abele-column">Embedded</div>'
+    const el = fixture(embed)
     columnsPostProcessor(el)
     expect(el.querySelector('.abele-columns')).toBeNull()
     expect(el.textContent).toContain('Embedded')
@@ -68,7 +73,9 @@ describe('columns over native callout DOM', () => {
       columnsPostProcessor(el)
       expect(el.querySelector('.abele-columns')).toBeNull()
     }
-    const el = fixture('<p>Unassigned text</p>')
+    const paragraph = document.createElement('p')
+    paragraph.textContent = 'Unassigned text'
+    const el = fixture(paragraph)
     columnsPostProcessor(el)
     expect(el.querySelector('.abele-columns')).toBeNull()
     expect(el.textContent).toContain('Unassigned text')
