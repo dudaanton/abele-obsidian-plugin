@@ -23,7 +23,7 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
             models: [{id: 'sample-model', name: 'Sample model', contextWindow: 1000, maxTokens: 100, supportsReasoning: false}],
           }]}
         })
-        const open = async () => {
+        const open = async (validateGlobal = false) => {
           app.setting.open()
           app.setting.openTabById('abele')
           if (!await until(() => app.setting.activeTab?.containerEl, 5000)) throw Error('Settings did not open')
@@ -36,6 +36,14 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
           if (!await until(() => doc.querySelector('.abele-ai-settings__tabs'), 5000)) throw Error('AI settings did not open')
           ;[...doc.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')].find(t => t.textContent.trim() === 'General')?.click()
           if (!await until(() => doc.querySelector('.abele-ai-provider .abele-card'), 5000)) throw Error('Model card did not open')
+          if (validateGlobal) {
+            const row = [...doc.querySelectorAll('.abele-settings__ai .setting-item')].find(e => e.querySelector('.setting-item-name')?.textContent === 'Request timeout (seconds)')
+            const input = row.querySelector('input')
+            await edit(input, '500')
+            await edit(input, '5000')
+            if (input.value !== '5000' || !row.querySelector('[role="alert"]') || config.ai.requestTimeoutSeconds !== 500) throw Error('Invalid global timeout was silently accepted')
+            await edit(input, '120')
+          }
           doc.querySelector('.abele-ai-provider .abele-card').click()
           if (!await until(() => doc.querySelector('.abele-model-edit'), 5000)) throw Error('Model editor did not open')
           const editor = doc.querySelector('.abele-model-edit')
@@ -55,22 +63,32 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
           app.setting.close()
           await config.reloadSettings()
         }
-        const first = await open()
+        const capture = async (path) => {
+          if (window.__e2eHost) return window.__e2eHost.shot(path)
+          const fs = require('fs')
+          fs.mkdirSync(${JSON.stringify(shotDir('abele-model-settings'))}, {recursive: true})
+          const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage()
+          fs.writeFileSync(path, image.toPNG())
+          return path
+        }
+        const first = await open(true)
         const initial = first.input.value
+        await edit(first.input, '500')
+        await edit(first.input, '5000')
+        const button = first.editor.closest('.modal').querySelector('.abele-modal__footer button')
+        if (first.input.value !== '5000' || !first.editor.querySelector('[role="alert"]') || !button.disabled) throw Error('Invalid model timeout was silently accepted')
+        button.click()
+        await wait(300)
+        if (!first.doc.querySelector('.abele-model-edit') || config.ai.providers[0].models[0].requestTimeoutSeconds !== undefined) throw Error('Invalid model timeout was saved')
+        first.input.scrollIntoView({block: 'center'})
+        await wait(300)
+        const invalidShot = await capture(${JSON.stringify(shotDir('abele-model-settings') + '/timeout-invalid.png')})
         await edit(first.input, '180')
         first.input.scrollIntoView({block: 'center'})
         await wait(300)
         const r = first.input.getBoundingClientRect()
         const outside = r.width <= 0 || r.left < 0 || r.right > innerWidth || r.top < 0 || r.bottom > innerHeight
-        let savedShot
-        if (window.__e2eHost) savedShot = await window.__e2eHost.shot(${JSON.stringify(shot)})
-        else {
-          const fs = require('fs')
-          fs.mkdirSync(${JSON.stringify(shotDir('abele-model-settings'))}, {recursive: true})
-          const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage()
-          fs.writeFileSync(${JSON.stringify(shot)}, image.toPNG())
-          savedShot = ${JSON.stringify(shot)}
-        }
+        const savedShot = await capture(${JSON.stringify(shot)})
         await save(first)
         const saved = config.ai.providers[0].models[0].requestTimeoutSeconds
         const reopened = await open()
@@ -78,7 +96,7 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
         await edit(reopened.input, '')
         await save(reopened)
         result = {initial, saved, displayed, cleared: config.ai.providers[0].models[0].requestTimeoutSeconds === undefined,
-          global: config.ai.requestTimeoutSeconds, outside, shot: savedShot}
+          global: config.ai.requestTimeoutSeconds, outside, shot: savedShot, invalidShot}
       } finally {
         const doc = app.setting.activeTab?.containerEl.ownerDocument
         doc?.querySelector('.modal:has(.abele-model-edit) .modal-close-button')?.click()
@@ -101,6 +119,8 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
     })
     expect(result.shot).toBeTruthy()
     expect(result.shot).not.toMatch(/^no picture:/)
+    expect(result.invalidShot).toBeTruthy()
+    expect(result.invalidShot).not.toMatch(/^no picture:/)
     console.info(JSON.stringify(result))
   }, 120_000)
 })

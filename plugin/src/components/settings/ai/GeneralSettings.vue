@@ -25,7 +25,9 @@
           placeholder="60"
           @update:model-value="setRequestTimeout($event)"
         />
-        <div v-if="timeoutError" class="setting-item-description" role="alert">{{ timeoutError }}</div>
+        <div v-if="timeoutError" class="setting-item-description" role="alert">
+          {{ timeoutError }}
+        </div>
       </Setting>
       <Section title="Providers">
         <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">

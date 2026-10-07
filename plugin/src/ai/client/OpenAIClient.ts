@@ -77,6 +77,7 @@ interface StreamChunk {
   id?: string
   choices?: ChunkChoice[]
   usage?: ChunkUsage
+  error?: string | { message?: string }
 }
 
 // ── Client ──────────────────────────────────────────────────
@@ -178,6 +179,13 @@ export class OpenAIClient {
 
       for await (const chunk of this.parseSSE(response.body, signal, timeoutMs)) {
         if (!chunk || typeof chunk !== 'object') continue
+        if (chunk.error) {
+          throw new Error(
+            typeof chunk.error === 'string'
+              ? chunk.error
+              : chunk.error.message || 'Provider returned a streaming error'
+          )
+        }
 
         // Track usage
         if (chunk.usage) {
@@ -274,7 +282,9 @@ export class OpenAIClient {
     } catch (err: unknown) {
       if (currentBlock) yield* this.finishBlock(currentBlock, output)
 
-      if (options.signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+      // Only Stop's signal is a user cancellation. A transport can also reject with
+      // AbortError (for example its own timeout); that must remain a visible failure.
+      if (options.signal?.aborted) {
         output.stopReason = 'aborted'
         yield { type: 'done', message: output }
         return
@@ -289,6 +299,19 @@ export class OpenAIClient {
     // Finish any remaining block
     if (currentBlock) yield* this.finishBlock(currentBlock, output)
 
+    const hasAnswer = output.content.some(
+      (block) =>
+        block.type === 'toolCall' || (block.type === 'text' && block.text.trim().length > 0)
+    )
+    if (output.stopReason === 'error' || !hasAnswer) {
+      output.errorMessage ||=
+        output.stopReason === 'length'
+          ? 'Model reached its output token limit before producing an answer. Increase max output tokens or reduce thinking effort, then retry.'
+          : 'Model completed without an answer. Retry the request.'
+      output.stopReason = 'error'
+      yield { type: 'error', error: output.errorMessage, message: output }
+      return
+    }
     yield { type: 'done', message: output }
   }
 
@@ -627,6 +650,7 @@ export class OpenAIClient {
     let dataLines: string[] = []
     let bytes = 0
     let eventSize = 0
+    let completed = false
 
     try {
       while (true) {
@@ -653,7 +677,9 @@ export class OpenAIClient {
               dataLines = []
               eventSize = 0
               try {
-                yield JSON.parse(jsonStr) as StreamChunk
+                const chunk = JSON.parse(jsonStr) as StreamChunk
+                if (chunk?.choices?.[0]?.finish_reason) completed = true
+                yield chunk
               } catch {
                 // Skip malformed JSON chunks
               }
@@ -679,11 +705,19 @@ export class OpenAIClient {
       if (dataLines.length > 0) {
         const jsonStr = dataLines.join('\n')
         try {
-          yield JSON.parse(jsonStr) as StreamChunk
+          const chunk = JSON.parse(jsonStr) as StreamChunk
+          if (chunk?.choices?.[0]?.finish_reason) completed = true
+          yield chunk
         } catch {
           // Skip malformed JSON chunks
         }
       }
+      // A proxy may close HTTP 200 while the model is still reasoning. EOF is not
+      // a successful turn unless it carried a finish reason or the [DONE] sentinel.
+      if (!completed)
+        throw new Error(
+          'Model response ended before completion; the connection may have timed out. Retry the request.'
+        )
     } finally {
       void reader.cancel().catch(() => {})
       reader.releaseLock()

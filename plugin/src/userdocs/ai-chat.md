@@ -30,6 +30,18 @@ The global timeout travels with **AI general** settings; a model's override trav
 **AI providers** entry. Model-list fetching, image generation and voice input keep their
 separate timeouts.
 
+A custom OpenAI-compatible base address uses streaming **chat completions**, just like a
+provider's default address. SSE keep-alive comments count as connection activity. A proxy or
+provider can impose its own shorter limit; increasing Abele's timeout cannot extend a
+connection it has already closed. Timeouts, streamed provider errors and responses cut off
+before completion are shown as chat errors with retry controls, not silently treated as an
+answer. Only pressing **Stop** is treated as a cancellation.
+
+Reasoning also consumes the model's **Max output tokens** budget, independently of time.
+If that budget runs out before any answer, the chat shows a token-limit error. Increase that
+model's output-token limit or lower its thinking effort before retrying; a longer timeout
+alone does not increase the token budget.
+
 ## Node sessions
 
 **Settings → Abele → Nodes** connects this device to a local AbeleNode daemon. Create a
