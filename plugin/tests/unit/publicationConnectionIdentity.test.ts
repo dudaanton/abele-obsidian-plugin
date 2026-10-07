@@ -181,6 +181,34 @@ it('does not apply stored consent from a previous principal to a new binding', a
   second.close()
 })
 
+it.each(['legacy', 'current', 'retired'] as const)(
+  'holds recovery when a %s sentinel outlives its descriptor',
+  async (kind) => {
+    const { app, host, factory, connection, open } = fixture()
+    const runtime = await open()
+    const resources = (host as any).live.resources
+    const binding = (host as any).live.binding
+    const identity = await sha256(new TextEncoder().encode(JSON.stringify(bindingKey(binding))))
+    await resources.meta.setMeta('sample-retained-work', 'invented-pending-intent')
+    runtime.close()
+    app.saveLocalStorage('abele-owner-publication:' + identity, null)
+    if (kind === 'legacy') {
+      app.saveLocalStorage('abele-owner-publication-stores-v1', null)
+      await app.vault.adapter.rename(
+        '.abele-owner-publication-' + identity,
+        '.abele-owner-publication'
+      )
+    }
+    if (kind === 'retired')
+      connection.value = { ...connection.value, deviceId: 'sample-new-device' }
+    await expect(open()).rejects.toThrow(/descriptor.*lost|recovery/i)
+    expect(
+      (await factory.databases()).filter((db) => db.name?.startsWith('abele-link-snapshots-'))
+        .length
+    ).toBe(1)
+  }
+)
+
 it('Forget deletes publication stores including retained unknown recovery work', async () => {
   const { host, factory, app, open } = fixture()
   const runtime = await open()

@@ -22,7 +22,7 @@ function save(app: App, records: StoreRecord[]) {
   if (JSON.stringify(app.loadLocalStorage(CATALOGUE)) !== JSON.stringify(records))
     throw new Error('Publication store catalogue was not persisted; recovery required')
 }
-async function catalogue(app: App): Promise<StoreRecord[]> {
+async function catalogue(app: App, forget = false): Promise<StoreRecord[]> {
   const stored = app.loadLocalStorage(CATALOGUE) as StoreRecord[] | null
   if (stored != null && !Array.isArray(stored))
     throw new Error('Publication store catalogue malformed; recovery required')
@@ -38,8 +38,12 @@ async function catalogue(app: App): Promise<StoreRecord[]> {
     const key =
       PUBLICATION_DESCRIPTOR + sentinel.slice(PUBLICATION_SENTINEL.length).replace('-', ':')
     const descriptor = app.loadLocalStorage(key) as SnapshotDescriptor | null
-    if (descriptor && !records.some((r) => r.key === key))
-      records.push({ key, sentinel, descriptor })
+    const retained = records.find((r) => r.key === key)
+    // A catalogue copy is ownership proof for explicit Forget, not permission to recreate
+    // a lost live descriptor. Only a durable retirement intent permits automatic deletion.
+    if (!descriptor && !retained?.retiring && !(forget && retained))
+      throw new Error('Link snapshot descriptor lost; recovery required')
+    if (descriptor && !retained) records.push({ key, sentinel, descriptor })
   }
   for (const r of records) {
     const suffix = r.key.slice(PUBLICATION_DESCRIPTOR.length)
@@ -166,7 +170,7 @@ export async function retirePublicationStores(
   keep: string | null = null,
   forget = false
 ): Promise<void> {
-  const records = await catalogue(app)
+  const records = await catalogue(app, forget)
   for (const record of [...records]) {
     if (record.key === keep && !record.retiring) continue
     if (!record.retiring && !forget) {
