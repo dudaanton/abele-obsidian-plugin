@@ -300,6 +300,46 @@ it.each(['legacy', 'current', 'retired'] as const)(
   }
 )
 
+it.each(['pending', 'declined'] as const)(
+  'holds a known current store after both markers are lost with a %s decision',
+  async (state) => {
+    const { app, host, factory, open } = fixture()
+    const runtime = await open()
+    const { binding, resources } = (host as any).live
+    const input = await publicationFixture(false)
+    input.binding = binding
+    input.current.binding = binding
+    if (input.baseline.kind === 'complete') input.baseline.binding = binding
+    const proposal = await reducePublication(input)
+    if (proposal.kind !== 'confirm') throw new Error('Expected explicit exposure review')
+    await new PublicationDecisionStore(resources.meta).remember(proposal, state)
+    const identity = await sha256(new TextEncoder().encode(JSON.stringify(bindingKey(binding))))
+    const before = JSON.parse(
+      JSON.stringify(app.loadLocalStorage('abele-owner-publication-stores-v1'))
+    )
+    runtime.close()
+    app.saveLocalStorage('abele-owner-publication:' + identity, null)
+    await app.vault.adapter.remove('.abele-owner-publication-' + identity)
+    await expect(open()).rejects.toThrow(/lost|recovery/i)
+    expect(app.loadLocalStorage('abele-owner-publication-stores-v1')).toEqual(before)
+    expect(
+      (await factory.databases()).filter((db) => db.name?.startsWith('abele-link-snapshots-'))
+        .length
+    ).toBe(1)
+    await host.retirePublication(true)
+    expect(
+      (await factory.databases()).filter((db) => db.name?.startsWith('abele-link-snapshots-'))
+    ).toEqual([])
+    const next = await open()
+    expect(
+      await new PublicationDecisionStore((host as any).live.resources.meta).get(
+        proposal.exposureKey
+      )
+    ).toBeNull()
+    next.close()
+  }
+)
+
 it('Forget deletes publication stores including retained unknown recovery work', async () => {
   const { host, factory, app, open } = fixture()
   const runtime = await open()

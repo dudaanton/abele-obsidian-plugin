@@ -22,6 +22,14 @@ function save(app: App, records: StoreRecord[]) {
   if (JSON.stringify(app.loadLocalStorage(CATALOGUE)) !== JSON.stringify(records))
     throw new Error('Publication store catalogue was not persisted; recovery required')
 }
+async function checkResources(app: App, record: StoreRecord, allowMissing: boolean): Promise<void> {
+  const current = app.loadLocalStorage(record.key)
+  if (current != null && JSON.stringify(current) !== JSON.stringify(record.descriptor))
+    throw new Error('Publication store descriptor changed; recovery required')
+  if (!allowMissing && (current == null || !(await app.vault.adapter.exists(record.sentinel))))
+    throw new Error('Publication store descriptor or sentinel lost; recovery required')
+}
+
 async function catalogue(app: App, forget = false): Promise<StoreRecord[]> {
   const stored = app.loadLocalStorage(CATALOGUE) as StoreRecord[] | null
   if (stored != null && !Array.isArray(stored))
@@ -55,6 +63,9 @@ async function catalogue(app: App, forget = false): Promise<StoreRecord[]> {
       (suffix && suffix.slice(1) !== (await hash(bindingKey(r.descriptor.binding))))
     )
       throw new Error('Publication store catalogue binding changed; recovery required')
+    // Every known store is checked, including the current keep binding. A missing pair
+    // cannot mean fresh allocation when the ownership catalogue still proves prior work.
+    await checkResources(app, r, forget || r.retiring === true)
   }
   save(app, records)
   return records
@@ -182,11 +193,6 @@ export async function retirePublicationStores(
     if (!record.retiring && !forget) {
       let meta: IndexedDbStateStore | null = null
       try {
-        if (
-          JSON.stringify(app.loadLocalStorage(record.key)) !== JSON.stringify(record.descriptor) ||
-          !(await app.vault.adapter.exists(record.sentinel))
-        )
-          continue
         meta = await IndexedDbStateStore.open(
           factory,
           'abele-link-snapshots-' + record.descriptor.id
@@ -207,12 +213,11 @@ export async function retirePublicationStores(
         meta?.close()
       }
     }
-    const current = app.loadLocalStorage(record.key)
-    if (current != null && JSON.stringify(current) !== JSON.stringify(record.descriptor))
-      throw new Error('Publication retirement descriptor changed; recovery required')
+    await checkResources(app, record, true)
     record.retiring = true
     save(app, records) // Durable deletion intent permits retry after any of the following steps.
     await IndexedDbStateStore.delete(factory, 'abele-link-snapshots-' + record.descriptor.id)
+    await checkResources(app, record, true)
     app.saveLocalStorage(record.key, null)
     if (app.loadLocalStorage(record.key) != null)
       throw new Error('Publication descriptor was not cleared')
@@ -234,6 +239,13 @@ export async function rememberPublicationStore(
   descriptor: SnapshotDescriptor
 ): Promise<void> {
   const records = await catalogue(app)
-  if (!records.some((r) => r.key === key)) records.push({ key, sentinel, descriptor })
+  const retained = records.find((r) => r.key === key)
+  if (
+    retained &&
+    (retained.sentinel !== sentinel ||
+      JSON.stringify(retained.descriptor) !== JSON.stringify(descriptor))
+  )
+    throw new Error('Publication store registration changed; recovery required')
+  if (!retained) records.push({ key, sentinel, descriptor })
   save(app, records)
 }
