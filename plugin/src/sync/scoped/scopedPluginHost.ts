@@ -327,14 +327,21 @@ export class ScopedPluginHost {
     if (!c) return
     await this.serial(async () => {
       await this.open(c, false)
-      await this.run()
+      // A verified ledger owns automatic triggers even if the first network request
+      // fails. Otherwise an offline launch can never recover without another reload.
       this.watch()
-      this.status(this.paused.value ? 'paused' : 'idle')
+      try {
+        await this.run()
+        this.status(this.paused.value ? 'paused' : 'idle')
+      } catch (error) {
+        this.status('error', error instanceof Error ? error.message : 'Scoped sync failed')
+        throw error
+      }
     })
   }
   private watch() {
-    if (this.unwatch || this.closed) return
-    const r = this.runtime!
+    if (this.unwatch || this.closed || !this.runtime || !this.held(this.runtime)) return
+    const r = this.runtime
     this.unwatch = r.fs.watch(() => {
       void this.sync().catch(() => {})
     })
@@ -354,6 +361,7 @@ export class ScopedPluginHost {
   }
   sync(): Promise<void> {
     return this.serial(async () => {
+      this.watch()
       if (this.paused.value) return
       this.status('syncing')
       try {
