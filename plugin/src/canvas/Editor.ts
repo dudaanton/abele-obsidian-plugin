@@ -6,6 +6,8 @@ import { linesOf } from './core/primitives'
 import type { CanvasSession, GraphTransform } from './core/session'
 import type { CanvasViewer } from './Viewer'
 import { CanvasInput, type CanvasInputTool } from './input'
+import { WIDTHS } from '../drawing/model'
+import { THICKNESSES, type Thickness } from '../ink/thickness'
 
 export interface CanvasEditorDocument {
   session: CanvasSession
@@ -35,6 +37,9 @@ export class CanvasEditor {
   private multiple = false
   private tool: CanvasInputTool = 'select'
   private readonly palette: HTMLElement
+  private readonly inkControls: HTMLElement
+  private readonly inkColor: HTMLSelectElement
+  private readonly inkSize: HTMLSelectElement
   private readonly shape: HTMLSelectElement
   private readonly shapeColor: HTMLSelectElement
   private readonly properties: HTMLDetailsElement
@@ -89,9 +94,47 @@ export class CanvasEditor {
     this.palette.hidden = true
     viewer.el.insertBefore(this.palette, viewer.stage)
     this.button('Shapes and connections', 'Shapes and lines', () => {
+      this.inputAdapter.cancel()
+      this.inkControls.hidden = true
+      this.tool = 'select'
       this.palette.hidden = !this.palette.hidden
       this.refresh()
     })
+    this.inkControls = make('div')
+    this.inkControls.className = 'abele-canvas-controls abele-canvas-shape-controls'
+    this.inkControls.hidden = true
+    viewer.el.insertBefore(this.inkControls, viewer.stage)
+    this.button('Canvas drawing tools', 'Drawing', () => {
+      this.inputAdapter.cancel()
+      this.inkControls.hidden = !this.inkControls.hidden
+      this.palette.hidden = true
+      if (this.inkControls.hidden) this.tool = 'select'
+      this.refresh()
+    })
+    for (const [tool, label, text] of [
+      ['pan', 'Navigate canvas', 'Navigate'],
+      ['pen', 'Draw with pen', 'Pen'],
+      ['marker', 'Draw with marker', 'Marker'],
+    ] as const)
+      this.button(
+        label,
+        text,
+        () => {
+          this.inputAdapter.cancel()
+          this.selected.clear()
+          this.tool = tool
+          this.multiple = false
+          this.refresh()
+        },
+        this.inkControls
+      )
+    this.inkColor = this.select(this.inkControls, 'Canvas ink color', this.colorOptions())
+    this.inkSize = this.select(
+      this.inkControls,
+      'Canvas ink thickness',
+      THICKNESSES.map((t) => [t, t])
+    )
+    this.inkSize.value = 'medium'
     this.shape = this.select(
       this.palette,
       'Canvas shape',
@@ -195,6 +238,10 @@ export class CanvasEditor {
     this.listen(this.text, 'input', () => this.input())
     this.inputAdapter = new CanvasInput(viewer, {
       tool: () => this.tool,
+      brush: () => ({
+        color: this.inkColor.value,
+        size: WIDTHS[this.tool === 'marker' ? 'marker' : 'pen'][this.inkSize.value as Thickness],
+      }),
       enabled: () => this.canGesture(),
       selection: () => this.selected,
       select: (ids) => {
@@ -705,8 +752,21 @@ export class CanvasEditor {
         document.state.native ||
         !!session?.busy ||
         !!session?.dirty
+    for (const label of [
+      'Shapes and connections',
+      'Add text card',
+      'Add note or attachment',
+      'Add link',
+      'Edit card text',
+      'Open selected card',
+      'Delete selected card',
+      'Toggle multiple selection',
+      'Group selected cards',
+      'Ungroup selected group',
+    ])
+      this.buttons.get(label).hidden = !this.inkControls.hidden
     const connection = this.connection()
-    this.properties.hidden = !connection || active
+    this.properties.hidden = !connection || active || !this.inkControls.hidden
     if (
       connection &&
       (connection.id !== this.propertyId ||
@@ -748,6 +808,8 @@ export class CanvasEditor {
     this.routing.disabled = blocked || !connection || !('fromNode' in connection)
     this.buttons.get('Apply selected shape').disabled = blocked || node?.type !== 'text'
     for (const field of [
+      this.inkColor,
+      this.inkSize,
       this.shape,
       this.shapeColor,
       this.label,
@@ -759,6 +821,9 @@ export class CanvasEditor {
     for (const label of ['Apply connection style', 'Reverse connection arrows'])
       this.buttons.get(label).disabled = blocked || !connection
     for (const [tool, label] of [
+      ['pan', 'Navigate canvas'],
+      ['pen', 'Draw with pen'],
+      ['marker', 'Draw with marker'],
       ['select', 'Select canvas objects'],
       ['connect', 'Draw connection'],
       ['line', 'Draw free line'],
@@ -825,8 +890,12 @@ export class CanvasEditor {
       !!this.geometry || !session?.dirty || !!document?.recovery || !!session?.publicationOutcome
     discard.disabled =
       this.waiting || this.composing || (!!session?.busy && this.ownedDraft !== document)
+    const penHint =
+      'Draw on a card to attach ink; start on the background for free ink. Two fingers navigate.'
     this.status.textContent = this.geometry
-      ? 'Canvas gesture in progress…'
+      ? this.tool === 'pen' || this.tool === 'marker'
+        ? penHint
+        : 'Canvas gesture in progress…'
       : session?.dirty
         ? 'Unsaved canvas work — retained in memory only; not saved. Reloading or crashing can lose it.' +
           (session.conflict || (document.draftPath && document.draftPath !== document.file.path)
@@ -841,11 +910,13 @@ export class CanvasEditor {
             ? this.selected.size === 1
               ? `Selected ${node?.type ?? 'connection'}`
               : `${this.selected.size} cards selected`
-            : this.tool === 'connect'
-              ? 'Drag from a card to another card to connect them.'
-              : this.tool === 'line' || this.tool === 'arrow'
-                ? 'Drag to draw a free line or arrow.'
-                : ''
+            : this.tool === 'pen' || this.tool === 'marker'
+              ? penHint
+              : this.tool === 'connect'
+                ? 'Drag from a card to another card to connect them.'
+                : this.tool === 'line' || this.tool === 'arrow'
+                  ? 'Drag to draw a free line or arrow.'
+                  : ''
   }
   private key(event: KeyboardEvent): boolean {
     if (
@@ -891,6 +962,7 @@ export class CanvasEditor {
     this.panel.remove()
     this.status.remove()
     this.palette.remove()
+    this.inkControls.remove()
     this.properties.remove()
   }
 }

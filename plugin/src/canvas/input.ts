@@ -19,9 +19,12 @@ import {
   type ResizeCorner,
 } from './core/selection'
 import type { CanvasViewer, CanvasViewerInput } from './Viewer'
+import { CanvasInkInput } from './inkAdapter'
+import type { CanvasTheme } from './core/painter'
 
-export type CanvasInputTool = 'select' | 'connect' | 'line' | 'arrow'
-interface InputPorts {
+export type CanvasInputTool = 'select' | 'connect' | 'line' | 'arrow' | 'pen' | 'marker' | 'pan'
+export interface InputPorts {
+  brush(): { color: string; size: number }
   tool(): CanvasInputTool
   enabled(): boolean
   selection(): ReadonlySet<string>
@@ -59,6 +62,7 @@ interface ConnectionGesture {
   active: boolean
 }
 export class CanvasInput implements CanvasViewerInput {
+  private readonly ink: CanvasInkInput
   private connection: ConnectionGesture | null = null
   private gesture: Gesture | null = null
   private readonly overlay: HTMLElement
@@ -67,6 +71,7 @@ export class CanvasInput implements CanvasViewerInput {
     private readonly viewer: CanvasViewer,
     private readonly ports: InputPorts
   ) {
+    this.ink = new CanvasInkInput(viewer, ports)
     this.overlay = viewer.el.ownerDocument.createElementNS(
       'http://www.w3.org/1999/xhtml',
       'div'
@@ -79,8 +84,16 @@ export class CanvasInput implements CanvasViewerInput {
     const rect = this.viewer.stage.getBoundingClientRect()
     return toWorld(this.viewer.camera, event.clientX - rect.left, event.clientY - rect.top)
   }
+  ignores(event: PointerEvent): boolean {
+    return this.ink.ignores(event)
+  }
+  paintInk(ctx: CanvasRenderingContext2D, theme: CanvasTheme): void {
+    this.ink.paint(ctx, theme)
+  }
   down(event: PointerEvent): boolean {
     if (!this.ports.enabled() || event.altKey || event.button !== 0) return false
+    if (this.ports.tool() === 'pen' || this.ports.tool() === 'marker') return this.ink.down(event)
+    if (this.ports.tool() === 'pan') return false
     if (this.connectionDown(event)) return true
     if (this.ports.tool() !== 'select') return false
     const graph = this.viewer.graph,
@@ -116,6 +129,7 @@ export class CanvasInput implements CanvasViewerInput {
     return true
   }
   move(event: PointerEvent): void {
+    this.ink.move(event)
     if (this.connection) {
       this.connectionMove(event)
       return
@@ -173,6 +187,7 @@ export class CanvasInput implements CanvasViewerInput {
     this.viewer.draw()
   }
   up(event: PointerEvent): void {
+    this.ink.up(event)
     if (this.connection) {
       this.connectionUp(event)
       return
@@ -195,6 +210,7 @@ export class CanvasInput implements CanvasViewerInput {
     this.viewer.draw()
   }
   cancel(): void {
+    this.ink.cancel()
     if (this.connection) {
       const g = this.connection
       this.connection = null
@@ -210,6 +226,7 @@ export class CanvasInput implements CanvasViewerInput {
     this.viewer.draw()
   }
   validate(): void {
+    this.ink.validate()
     if ((this.gesture?.active || this.connection?.active) && !this.ports.valid()) this.cancel()
   }
   paint(): void {

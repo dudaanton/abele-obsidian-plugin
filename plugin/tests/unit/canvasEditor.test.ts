@@ -106,6 +106,105 @@ function pointer(s: ReturnType<typeof setup>, type: string, x: number, y: number
   )
 }
 
+describe('human canvas pen', () => {
+  it('gives the pen space on a phone by folding unrelated card controls until Drawing is closed', () => {
+    const s = setup()
+    s.button('Canvas drawing tools').click()
+    expect(s.button('Add text card').hidden).toBe(true)
+    expect(s.button('Shapes and connections').hidden).toBe(true)
+    expect(s.button('Canvas drawing tools').hidden).toBe(false)
+    expect(s.button('Undo canvas change').hidden).toBe(false)
+    s.button('Canvas drawing tools').click()
+    expect(s.button('Add text card').hidden).toBe(false)
+  })
+  it('draws free and attached ink by pointer, with one transaction per stroke and mixed undo', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    expect(s.button('Draw with pen')).not.toBeNull()
+    s.button('Draw with pen').click()
+    pointer(s, 'pointerdown', 20, 20, { pressure: 0.2, pointerType: 'pen', buttons: 1 })
+    pointer(s, 'pointermove', 80, 90, { pressure: 0.8, pointerType: 'pen', buttons: 1 })
+    expect(s.document.session.busy).toBe(true)
+    expect(s.document.session.graph.nodes[0].abele?.ink).toBeUndefined()
+    pointer(s, 'pointerup', 100, 100, { pressure: 0, pointerType: 'pen' })
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledTimes(1))
+    const ink = s.document.session.graph.nodes[0].abele.ink as { points: number[] }[]
+    expect(ink[0].points).toEqual([20, 20, 0.2, 80, 90, 0.8, 100, 100, 0.8])
+    s.button('Draw with marker').click()
+    pointer(s, 'pointerdown', 20, 250, { buttons: 1 })
+    pointer(s, 'pointermove', 100, 250, { buttons: 1 })
+    pointer(s, 'pointerup', 120, 250)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
+    expect(s.document.session.graph.abele.ink).toHaveLength(1)
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.graph.abele?.ink).toBeUndefined()
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(cards()))
+  })
+  it('discards the entire preview on cancellation, second finger, Escape or destruction', () => {
+    for (const cancel of ['pointercancel', 'second', 'escape', 'destroy']) {
+      const s = setup(cards())
+      s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+      expect(s.button('Draw with pen')).not.toBeNull()
+      s.button('Draw with pen').click()
+      pointer(s, 'pointerdown', 30, 30, { buttons: 1 })
+      pointer(s, 'pointermove', 80, 80, { buttons: 1 })
+      if (cancel === 'second') pointer(s, 'pointerdown', 200, 200, { pointerId: 2, buttons: 1 })
+      else if (cancel === 'escape')
+        s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      else if (cancel === 'destroy') s.editor.destroy()
+      else pointer(s, cancel, 80, 80)
+      expect(s.document.session.dirty).toBe(false)
+      expect(s.document.session.busy).toBe(false)
+      expect(s.document.session.graph).toEqual(cards())
+      expect(s.publish).not.toHaveBeenCalled()
+    }
+  })
+  it('ignores a resting finger while a pen is down, and samples without redrawing card layers', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw with pen').click()
+    pointer(s, 'pointerdown', 20, 20, { pointerType: 'pen', buttons: 1, pressure: 0.3 })
+    const draw = vi.spyOn(s.viewer, 'draw')
+    pointer(s, 'pointerdown', 200, 200, { pointerId: 2, buttons: 1 })
+    for (let i = 0; i < 100; i++)
+      pointer(s, 'pointermove', 30 + i, 40 + i, { pointerType: 'pen', buttons: 1, pressure: 0.6 })
+    expect(s.document.session.busy).toBe(true)
+    expect(draw).not.toHaveBeenCalled()
+    pointer(s, 'pointerup', 130, 140, { pointerType: 'pen' })
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    expect(s.document.session.graph.nodes[0].abele.ink).toHaveLength(1)
+  })
+  it('uses coalesced samples, excludes predictions from saved ink and keeps a failed save visible', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    expect(s.button('Draw with pen')).not.toBeNull()
+    s.button('Draw with pen').click()
+    s.publish.mockRejectedValueOnce(new Error('Sample save failure'))
+    pointer(s, 'pointerdown', 10, 20, { buttons: 1 })
+    const move = new PointerEvent('pointermove', {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 40,
+      clientY: 50,
+      buttons: 1,
+      bubbles: true,
+    })
+    Object.assign(move, {
+      getCoalescedEvents: () => [new PointerEvent('pointermove', { clientX: 30, clientY: 40 })],
+      getPredictedEvents: () => [new PointerEvent('pointermove', { clientX: 900, clientY: 900 })],
+    })
+    s.viewer.stage.dispatchEvent(move)
+    pointer(s, 'pointerup', 40, 50)
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+    const ink = s.document.session.graph.abele.ink as { points: number[] }[]
+    expect(ink[0].points).toEqual([10, 20, 0.5, 30, 40, 0.5, 40, 50, 0.5])
+    expect(s.document.session.dirty).toBe(true)
+    expect(s.button('Retry save').hidden).toBe(false)
+  })
+})
+
 describe('human shapes and connections', () => {
   it('adds any of the eight shapes through the controls', async () => {
     const s = setup()

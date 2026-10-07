@@ -1197,6 +1197,18 @@ const probeScript = `(async () => {
           const init={pointerId:1,pointerType:'touch',clientX:r.left+(n.x+n.width/2-c.x)*c.zoom,clientY:r.top+(n.y+n.height/2-c.y)*c.zoom,bubbles:true}
           for(const type of ['pointerdown','pointerup'])viewer.stage.dispatchEvent(new PointerEvent(type,init))
         }
+        root.querySelector('[aria-label="Canvas drawing tools"]').click()
+        root.querySelector('[aria-label="Draw with pen"]').click()
+        await screen('canvas pen controls',root,root)
+        report['canvas pen controls'].clipped=[]
+        for(const field of root.querySelectorAll('select,button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas pen controls'].clipped.push(...ringClipped(field));field.blur()}
+        {const v=leaf.view.viewer,c=v.camera,r=v.stage.getBoundingClientRect(),n=v.graph.nodes.find(n=>n.id==='alpha'),init={pointerId:1,pointerType:'touch',buttons:1,clientX:r.left+(n.x+n.width/2-c.x)*c.zoom,clientY:r.top+(n.y+n.height/2-c.y)*c.zoom,bubbles:true},before=r.top
+          v.stage.dispatchEvent(new PointerEvent('pointerdown',init))
+          v.stage.dispatchEvent(new PointerEvent('pointermove',{...init,clientX:init.clientX+30,clientY:init.clientY+10}));await wait(100)
+          await screen('canvas ink preview',root,root)
+          report['canvas ink preview'].stageTop=[before,v.stage.getBoundingClientRect().top]
+          v.stage.dispatchEvent(new PointerEvent('pointercancel',init))}
+        root.querySelector('[aria-label="Canvas drawing tools"]').click()
         root.querySelector('[aria-label="Shapes and connections"]').click()
         await screen('canvas shapes',root,root)
         report['canvas shapes'].clipped=[]
@@ -1577,6 +1589,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'word document',
     'canvas editor',
     'canvas selection',
+    'canvas pen controls',
+    'canvas ink preview',
     'canvas shapes',
     'canvas connection style',
     'canvas connector preview',
@@ -1626,6 +1640,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(report['canvas editor']?.canvasFits).toBe(true)
   })
 
+  it('canvas ink preview: the toolbar does not shift the captured pointer surface', () => {
+    const top = report['canvas ink preview']?.stageTop
+    expect(top).toHaveLength(2)
+    expect(top?.[1]).toBe(top?.[0])
+  })
   it('canvas connector preview: the toolbar does not shift the captured pointer surface', () => {
     const top = report['canvas connector preview']?.stageTop
     expect(top).toHaveLength(2)
@@ -1649,6 +1668,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas draft discard',
     'canvas creation',
     'canvas group',
+    'canvas pen controls',
     'canvas shapes',
     'canvas connection style',
   ])('%s: every field and action keeps its focus ring', (label) => {

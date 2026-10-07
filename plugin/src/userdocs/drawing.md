@@ -181,6 +181,21 @@ choices together and closes the caption's keyboard so you can navigate by touch 
 and free lines too. Free primitives are kept in the same canvas file; native Canvas may not
 show them, but returning to Abele restores their display.
 
+**Drawing** opens **Pen**, **Marker**, the ordinary Canvas colours and fine/medium/bold
+thicknesses. Draw with the mouse, a finger or a pen. Start over a card or group to attach the
+stroke to it: a dashed outline shows the attachment while you draw. The stroke can continue
+outside that card. Starting on empty background makes free ink. Attached ink follows the
+card when it moves and stretches with it when resized; free ink stays in place. **Navigate**
+lets you pan with one finger without drawing; close Drawing to select/move cards again.
+
+Each finished stroke is one Undo item, saved in the same canvas file. Two fingers interrupt
+drawing and switch to pan/pinch without saving a partial stroke. Escape, Fit and cancelled
+input discard the preview too. A pen ignores a resting finger while drawing; pressure changes
+its width. The marker is translucent. Drawings appear above live note cards and in saved
+embeds, agent pictures and whole-canvas exports. Native Canvas retains the strokes but does
+not draw them; return to Abele to see them. Erasing and selecting individual strokes are not
+available in this increment; Undo removes a recent stroke.
+
 Each finished drag or resize is one shared undo item. Until release the geometry is only a
 preview; an agent or another tab cannot publish over the active gesture. Retry and discard
 controls stay hidden during the gesture so they do not move the canvas under your finger.
@@ -270,7 +285,7 @@ The picture action in the viewer's header offers **Export whole canvas as PNG**,
 only the first walkthrough step. Current-view and each-step PNG/SVG exports remain available.
 Exports capture the current shared content once, including pending cards, without saving drafts
 or changing the canvas. They use the current Obsidian theme and the same picture renderer as
-canvas embeds and agent pictures: note text, shapes, connections and local image attachments.
+canvas embeds and agent pictures: note text, shapes, connections, free/attached ink and local image attachments.
 Interactive note widgets are painted as static content, not copied as running code.
 
 Each export is a new file in the ordinary attachments folder; an existing file is never
@@ -290,8 +305,7 @@ plain vector SVG drawings and static PNG/GIF/WebP work.
 Remote images are never fetched.
 
 The agent has the same whole-canvas export, with its own Ask permission and access only to
-notes and images in the chat's scope. Freehand pen tools on structured diagrams are not
-available yet. SVG drawings retain their existing pen tools and export.
+notes and images in the chat's scope. SVG drawings retain their existing pen tools and export.
 
 ## Where it is kept
 
