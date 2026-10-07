@@ -81,6 +81,7 @@ export function columnSource(text: string, from: number): ColumnSource | null {
     const visit = (node: SyntaxNode) => {
       if (
         node.name === 'Paragraph' ||
+        node.name === 'Task' ||
         /^ATXHeading[1-6]$/.test(node.name) ||
         /^SetextHeading[12]$/.test(node.name)
       ) {
@@ -90,7 +91,7 @@ export function columnSource(text: string, from: number): ColumnSource | null {
           const visible = inlinePositions(node, body).map((n) => positions[n])
           paragraphs.push({
             tag:
-              node.name === 'Paragraph'
+              node.name === 'Paragraph' || node.name === 'Task'
                 ? node.parent?.name === 'ListItem'
                   ? 'li'
                   : 'p'

@@ -31,6 +31,17 @@ describe('source positions inside column callouts', () => {
     expect(paragraph.positions[11]).toBe(text.indexOf('continued.'))
   })
 
+  it('includes checklist passages in the block map without treating their marker as text', () => {
+    const text =
+      '> [!abele-columns]\n> > [!abele-column]\n> > - [ ] Task passage\n>\n> > [!abele-column]\n> > Right.'
+    const p = columnSource(text, 0)!.columns[0].paragraphs
+    expect(p).toHaveLength(1)
+    expect(p[0]).toMatchObject({ tag: 'li', from: text.indexOf('Task passage') })
+    expect(p[0].positions).toEqual(
+      Array.from({ length: 12 }, (_, i) => text.indexOf('Task passage') + i)
+    )
+  })
+
   it('maps escaped syntax and entities while excluding native link and math controls', () => {
     const text =
       '> [!abele-columns]\n> > [!abele-column]\n> > Before [[Sample|Alias]] and [label](https://example.invalid) $x$ &copy; \\* ~~end~~.\n>\n> > [!abele-column]\n> > Right.'
