@@ -5,17 +5,21 @@ import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
 import { SecretStore } from '@/secrets/SecretStore'
 
-it('keeps a completed passphrase change when an older encrypted store read returns', async () => {
+it('keeps a queued passphrase change while an older encrypted store reload finishes', async () => {
   const app = useVault([])
   const disk = new FakeSettings({ refreshDelay: 500 })
   config.init(disk as never)
   await config.loadSettings()
+  const requested = deferred<void>()
+  let capturing = false
   const store = new SecretStore({
     keychain: () => app.secretStorage,
     read: () => config.secretStore,
     write: async (file) => {
       config.secretStore = file
-      await config.saveSettings()
+      const saved = config.saveSettings()
+      if (capturing) requested.resolve()
+      await saved
     },
     ids: () => ['sample-key'],
     conflictCopies: async () => [],
@@ -34,11 +38,15 @@ it('keeps a completed passphrase change when an older encrypted store read retur
   })
   const reading = config.reloadSettings()
   await entered.promise
+  capturing = true
+  const before = disk.saved.length
+  const changing = store.changePassphrase('sample-new-phrase', { iterations: 1000 })
   try {
-    await store.changePassphrase('sample-new-phrase', { iterations: 1000 })
+    await requested.promise
     const saved = JSON.parse(JSON.stringify(config.secretStore))
+    expect(disk.saved).toHaveLength(before) // IO cannot overtake the reload's read/apply.
     release.resolve()
-    await reading
+    await Promise.all([reading, changing])
     await store.load()
     expect(config.secretStore).toEqual(saved)
     expect(store.status.value).toBe('unlocked')
@@ -46,7 +54,7 @@ it('keeps a completed passphrase change when an older encrypted store read retur
     expect(config.refreshDelay).toBe(888)
   } finally {
     release.resolve()
-    await reading
+    await Promise.all([reading, changing])
   }
 })
 
@@ -112,7 +120,7 @@ it('keeps a passphrase save queued while reload waits for tool descriptions', as
   }
 })
 
-it('keeps the written store when reload reads old ciphertext after the save was requested', async () => {
+it('serializes a reload behind a requested passphrase save instead of reading old ciphertext', async () => {
   const app = useVault([])
   const disk = new FakeSettings({ refreshDelay: 500 })
   config.init(disk as never)
@@ -143,10 +151,10 @@ it('keeps the written store when reload reads old ciphertext after the save was 
   const readEntered = deferred<void>()
   vi.spyOn(disk, 'loadData').mockImplementationOnce(async () => {
     const snapshot = JSON.parse(JSON.stringify(disk.stored))
-    expect(snapshot.secretStore).toEqual(old)
-    snapshot.refreshDelay = 888
-    events.push('reload reads old file')
+    events.push('reload reads written file')
     readEntered.resolve()
+    expect(snapshot.secretStore).toEqual(next)
+    snapshot.refreshDelay = 888
     return snapshot
   })
   const apply = config.applySettings.bind(config)
@@ -158,16 +166,16 @@ it('keeps the written store when reload reads old ciphertext after the save was 
   const changing = store.changePassphrase('sample-new-phrase', { iterations: 1000 })
   await write.entered
   const next = JSON.parse(JSON.stringify(config.secretStore))
+  expect(next).not.toEqual(old)
   const reading = config.reloadSettings()
   try {
-    await readEntered.promise
-    expect(events).toEqual(['save requested', 'reload reads old file'])
     write.release()
+    await readEntered.promise
     await Promise.all([changing, reading])
     expect(events.slice(0, 4)).toEqual([
       'save requested',
-      'reload reads old file',
       'save completes',
+      'reload reads written file',
       'reload applies',
     ])
     expect(config.secretStore).toEqual(next)
@@ -214,12 +222,15 @@ it.each(['awaited', 'queued'] as const)(
       // The direct screen path: no editSettings/useSettingsSave registration.
       config.editorSyntaxHighlight = true
       const first = config.saveSettings()
-      if (ordering === 'awaited') await first
+      if (ordering === 'awaited') {
+        release.resolve()
+        await first
+      }
       config.editorSyntaxHighlight = false
       const second = config.saveSettings()
+      release.resolve()
       await Promise.all([first, second])
       expect(disk.saved.at(-1)?.editorSyntaxHighlight).toBe(false)
-      release.resolve()
       await reading
       expect(config.editorSyntaxHighlight).toBe(false)
       expect(config.refreshDelay).toBe(888)

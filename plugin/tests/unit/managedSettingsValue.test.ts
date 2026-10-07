@@ -5,74 +5,66 @@ const original = { ciphertext: 'sample-old', key: { salt: 'sample-old-salt' } }
 const changed = { ciphertext: 'sample-new', key: { salt: 'sample-new-salt' } }
 
 it.each(['read first', 'request first', 'IO first'] as const)(
-  'protects an atomic value across every save/read ordering (%s)',
+  'retains queued atomic intent until its serialized write succeeds (%s)',
   (ordering) => {
     const value = new ManagedSettingsValue()
-    value.beginWrite(original)()
-    let read: object | null
-    let written: () => void
-    if (ordering === 'read first') read = value.beginRead()
+    if (ordering === 'read first') expect(value.retain()).toBeNull()
     value.request(changed)
-    if (ordering === 'request first') read = value.beginRead()
-    written = value.beginWrite(changed)
-    if (ordering === 'IO first') read = value.beginRead()
-    expect(value.retain(read!)?.value).toEqual(changed)
+    if (ordering === 'request first') expect(value.retain()?.value).toEqual(changed)
+    const written = value.beginWrite()
+    if (ordering === 'IO first') expect(value.retain()?.value).toEqual(changed)
+    expect(value.protects()).toBe(true)
+    expect(value.retain()?.value).toEqual(changed)
     written()
-    expect(value.protects(read!)).toBe(true)
-    expect(value.retain(read!)?.value).toEqual(changed)
-    const after = value.beginRead()
-    expect(value.protects(after)).toBe(false)
-    expect(value.retain(after)).toBeNull()
+    // The queue forbids old reads crossing this write. Never pin a completed value
+    // over a genuinely newer external file read by the next queue item.
+    expect(value.protects()).toBe(false)
+    expect(value.retain()).toBeNull()
   }
 )
 
-it('fences an overlapping read with the actual written value, not an older local request', () => {
+it('never retains a completed local value over a later external read', () => {
   const value = new ManagedSettingsValue()
   value.request(original)
-  value.beginWrite(original)()
-  const read = value.beginRead()
-  value.beginWrite(changed)() // A normal settings save after taking in another device's store.
-  expect(value.retain(read)?.value).toEqual(changed)
+  value.beginWrite()()
+  expect(value.retain()).toBeNull()
+  value.beginWrite()() // Ordinary save/no-op: it creates no identity or replacement value.
+  expect(value.retain()).toBeNull()
 })
 
 it('does not retire a newer queued request when an earlier write is acknowledged', () => {
   const value = new ManagedSettingsValue()
   value.request(original)
-  const written = value.beginWrite(original)
-  const read = value.beginRead()
+  const written = value.beginWrite()
   value.request(changed)
   written()
-  expect(value.retain(read)?.value).toEqual(changed)
-  const later = value.beginWrite(changed)
-  later()
-  const latest = value.beginRead()
+  expect(value.retain()?.value).toEqual(changed)
+  value.beginWrite()()
   written() // Duplicate acknowledgment cannot revive the earlier snapshot.
-  expect(value.beginRead()).toBe(latest)
-  expect(value.retain(latest)).toBeNull()
+  expect(value.retain()).toBeNull()
 })
 
 it('retains failed/unacknowledged requests and captures their whole value by copy', () => {
   const value = new ManagedSettingsValue()
   const mutable = structuredClone(changed)
-  const read = value.beginRead()
   value.request(mutable)
-  value.beginWrite(mutable) // IO failed: no receipt.
+  value.beginWrite() // IO failed: no receipt.
   mutable.key.salt = 'sample-mutated-salt'
-  const retained = value.retain(read)!
+  const retained = value.retain()!
   expect(retained.value).toEqual(changed)
   ;(retained.value as typeof changed).key.salt = 'sample-other-salt'
-  expect(value.retain(read)?.value).toEqual(changed)
+  expect(value.retain()?.value).toEqual(changed)
 })
 
-it('protects an accepted no-op and an atomic removal without leaf patches', () => {
+it('acknowledges an accepted no-op and an atomic removal without leaf patches', () => {
   const value = new ManagedSettingsValue()
-  value.beginWrite(original)()
-  const read = value.beginRead()
-  value.beginWrite(original)()
-  expect(value.retain(read)?.value).toEqual(original)
+  value.request(original)
+  expect(value.retain()?.value).toEqual(original)
+  value.beginWrite()()
+  expect(value.retain()).toBeNull()
   value.request(undefined)
-  const removal = value.beginWrite(undefined)
-  const during = value.beginRead()
+  expect(value.retain()).toEqual({ value: undefined })
+  const removal = value.beginWrite()
   removal()
-  expect(value.retain(during)).toEqual({ value: undefined })
+  expect(value.retain()).toBeNull()
 })

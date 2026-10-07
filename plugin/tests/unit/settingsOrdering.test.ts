@@ -8,7 +8,7 @@ import { useVault } from '../helpers/testEnv'
 import { useFakeClock } from '../helpers/fakeClock'
 import { deferred } from '../helpers/deferred'
 
-it('preserves an edit whose debounced save finishes before an older reload returns', async () => {
+it('preserves a debounced edit whose save is queued behind an older reload', async () => {
   useVault([])
   const disk = new FakeSettings()
   const config = AbeleConfig.getInstance()
@@ -32,6 +32,8 @@ it('preserves an edit whose debounced save finishes before an older reload retur
       },
     })
   )
+  const saves = vi.spyOn(config, 'saveSettings')
+  const writtenBefore = disk.saved.length
   const entered = deferred<void>()
   const readDone = deferred<void>()
   const loadData = disk.loadData.bind(disk)
@@ -48,9 +50,12 @@ it('preserves an edit whose debounced save finishes before an older reload retur
     const reload = config.reloadSettings()
     await entered.promise
     await advance(500)
-    expect(disk.saved.at(-1)).toMatchObject({ tasksFolder: 'Sample saved edit' })
+    expect(saves).toHaveBeenCalledOnce()
+    expect(disk.saved).toHaveLength(writtenBefore)
+    const saving = saves.mock.results[0].value as Promise<void>
     readDone.resolve()
-    await reload
+    await Promise.all([reload, saving])
+    expect(disk.saved.at(-1)).toMatchObject({ tasksFolder: 'Sample saved edit', refreshDelay: 777 })
     await nextTick()
     expect(field.value).toBe('Sample saved edit')
     expect(config.tasksFolder).toBe('Sample saved edit')
@@ -60,6 +65,7 @@ it('preserves an edit whose debounced save finishes before an older reload retur
   } finally {
     readDone.resolve()
     load.mockRestore()
+    saves.mockRestore()
     view.unmount()
     config.destroy()
   }

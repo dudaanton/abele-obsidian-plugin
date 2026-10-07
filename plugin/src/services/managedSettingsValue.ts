@@ -7,45 +7,31 @@ const snapshot = (value: unknown): Snapshot => ({
   value: value === undefined ? undefined : settingsSnapshot(value),
 })
 
-/** Atomic settings values: requests protect queued saves; acknowledged write identities fence
- * every read overlapping a successful save, regardless of when that save was requested. */
+/** Only unacknowledged local intent. SettingsKeeper serializes read, apply and write IO;
+ * completed writes never pin a managed value over a subsequently read external file. */
 export class ManagedSettingsValue {
   private pending: Snapshot | null = null
-  private written: Snapshot | null = null
 
   reset(): void {
     this.pending = null
-    this.written = null
   }
 
   request(value: unknown): void {
     this.pending = snapshot(value)
   }
 
-  /** Capture before native IO, never the identity of an unacknowledged request. */
-  beginRead(): object | null {
-    return this.written
+  protects(): boolean {
+    return this.pending !== null
   }
 
-  protects(read: object | null): boolean {
-    return this.pending !== null || (this.written !== null && this.written !== read)
+  retain(): Snapshot | null {
+    return this.pending ? snapshot(this.pending.value) : null
   }
 
-  retain(read: object | null): Snapshot | null {
-    const value = this.pending ?? (this.written !== read ? this.written : null)
-    return value ? snapshot(value.value) : null
-  }
-
-  /** Called before IO; invoke the receipt only after success (including an accepted no-op).
-   * The file queue orders writes. A newer queued request cannot be cleared by this receipt. */
-  beginWrite(value: unknown): () => void {
+  /** A save requested during IO must not be cleared by acknowledgment of an older save. */
+  beginWrite(): () => void {
     const requested = this.pending
-    const written = snapshot(value)
-    let acknowledged = false
     return () => {
-      if (acknowledged) return
-      acknowledged = true
-      this.written = written
       if (this.pending === requested) this.pending = null
     }
   }
