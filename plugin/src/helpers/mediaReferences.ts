@@ -2,6 +2,7 @@ import type { App } from 'obsidian'
 import { parseYaml } from 'obsidian'
 import { markdownLinkTargets } from './markdownLinkTargets'
 import { SCAN_MEDIA_EXTENSIONS as MEDIA_EXTENSIONS } from '@/media/extensions'
+import { decodeThread } from '@/comments/model'
 
 /** Formats whose references are not included in Obsidian's Markdown link index. */
 const STRUCTURED = new Set([
@@ -78,6 +79,15 @@ export function mediaReferencesInText(
   structured = false
 ): Set<string> {
   const paths = new Set<string>()
+  if (structured && source.toLowerCase().endsWith('.abcomment')) {
+    const id = source.split('/').pop()!.slice(0, -'.abcomment'.length)
+    const thread = decodeThread(text, id)
+    // The dialog renders bodies relative to the anchored note, not the system file.
+    for (const entry of thread.entries) {
+      for (const path of referencesInString(app, entry.body, thread.anchor.note)) paths.add(path)
+    }
+    return paths
+  }
   const add = (s: string) => {
     for (const path of referencesInString(app, s, source)) paths.add(path)
   }
