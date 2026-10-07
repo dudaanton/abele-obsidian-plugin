@@ -46,7 +46,9 @@ const NATIVE_TOUCH = `
       await host.tap(target.point.x,target.point.y)
       return control
     }
-    throw new Error('Native formatting action could not be reached by horizontal scrolling')
+    await host.shot(${JSON.stringify(SHOTS)}+'/text-comment-toolbar-scroll.png')
+    const r=control.getBoundingClientRect(), s=scroller.getBoundingClientRect()
+    throw new Error('Native formatting action could not be reached: '+JSON.stringify({selector,item:[r.left,r.right,r.top,r.bottom],scroller:scroller.className,bounds:[s.left,s.right,s.top,s.bottom],offset:scroller.scrollLeft,width:scroller.scrollWidth,client:scroller.clientWidth}))
   }
 `
 let nativeToolbar:
