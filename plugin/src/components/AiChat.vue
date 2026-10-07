@@ -1502,10 +1502,16 @@ interface NavigationPlace {
 }
 const navigationReturns = shallowRef<NavigationPlace[]>([])
 let navigationOpenedAt: NavigationPlace | null = null
+const pruneNavigationReturns = () => {
+  navigationReturns.value = navigationReturns.value.filter(
+    (place) => !place.owner.isDestroyed && place.owner.conversationVersion.value === place.version
+  )
+}
 
 const openNavigation = () => {
   const owner = session.value
   if (!owner) return
+  pruneNavigationReturns()
   const version = owner.conversationVersion.value
   let memory = navigationMemory.get(owner)
   if (!memory || memory.version !== version) {
@@ -1531,13 +1537,15 @@ const openNavigation = () => {
   navigationOpen.value = true
 }
 const saveNavigationReturn = () => {
+  pruneNavigationReturns()
   const place = navigationOpenedAt
   if (
     !place ||
     place.owner !== session.value ||
     place.version !== place.owner.conversationVersion.value
   ) return
-  if (navigationReturns.value.at(-1)?.owner !== place.owner)
+  const previous = navigationReturns.value.at(-1)
+  if (previous?.owner !== place.owner || previous.version !== place.version)
     navigationReturns.value = [...navigationReturns.value, place]
 }
 const navigationJump = async (id: string, part?: FindPart, query?: string) => {
@@ -1581,6 +1589,7 @@ const navigationDiscussion = async (id: string) => {
   if (!opened && isCurrent()) new Notice('Discussion could not be opened — it may be unavailable')
 }
 const navigationBack = async () => {
+  pruneNavigationReturns()
   const saved = navigationReturns.value.at(-1)
   if (!saved) return
   navigationOpen.value = false
@@ -1608,7 +1617,10 @@ const navigationBack = async () => {
 }
 watch(
   () => attachmentOwner.value,
-  () => { navigationOpen.value = false }
+  () => {
+    navigationOpen.value = false
+    pruneNavigationReturns()
+  }
 )
 
 // The command that finds in the chat in front, taken by whichever chat is on screen.

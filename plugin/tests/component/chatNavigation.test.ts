@@ -306,6 +306,42 @@ describe('navigation in the chat header', () => {
     }
   })
 
+  it('drops old-version return places and saves a new place after reloading the same session', async () => {
+    const rows = ref<ChatMessage[]>([...messages])
+    const session = fakeChatSession({ messages: rows, kind: 'chat' })
+    const chats = ChatService.getInstance()
+    vi.spyOn(chats, 'ensureInitialized').mockImplementation(() => {})
+    vi.spyOn(chats, 'activeSession', 'get').mockReturnValue({ value: session } as never)
+    const switchTab = vi.spyOn(chats, 'switchTab')
+    chats.activeTabId.value = session.id
+    try {
+      wrapper = mount(AiChat, { attachTo: document.body })
+      await flushPromises()
+      await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+      await click('Plan a sample garden')
+      await pause(80)
+      await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+      expect(wrapper.findComponent(ChatNavigation).props('canGoBack')).toBe(true)
+      session.conversationVersion.value++
+      await pause(80)
+      await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+      expect(wrapper.findComponent(ChatNavigation).props('canGoBack')).toBe(false)
+      await click('Add some shade')
+      await pause(80)
+      await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+      expect(wrapper.findComponent(ChatNavigation).props('canGoBack')).toBe(true)
+      await click('Back to place')
+      await pause(80)
+      expect(switchTab).toHaveBeenCalledWith(session.id)
+      await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+      expect(wrapper.findComponent(ChatNavigation).props('canGoBack')).toBe(false)
+    } finally {
+      wrapper?.unmount()
+      wrapper = undefined
+      chats.activeTabId.value = null
+    }
+  })
+
   it('opens the selected search part when reasoning and a tool result contain the same words', async () => {
     const rows = ref<ChatMessage[]>([
       { id: 'q', role: 'user', content: 'Read the sample plan', timestamp: 1 },
