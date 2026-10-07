@@ -16,6 +16,7 @@ export const serverTestFixtures = {
   ].map((name) => `tests/integration/${name}.test.ts`),
   ABELE_SCOPED_API_FIXTURE: [
     'tests/integration/ownerHttpApi.test.ts',
+    'tests/integration/ownerSharingContracts.test.ts',
     'tests/integration/replayProbeHttp.test.ts',
     'tests/integration/sponsoredApiAvailability.test.ts',
   ],
@@ -24,10 +25,19 @@ export const serverTestFixtures = {
     'tests/integration/groupOwnerHttp.test.ts',
   ],
   ABELE_GROUP_API_FIXTURE: ['tests/integration/groupJoinHttp.test.ts'],
+  ABELE_OWNER_RELEASE_FIXTURE: ['tests/integration/ownerSharingContracts.test.ts'],
 }
 
+// The installed core/protocol remain pinned independently of the released server contract.
+export const serverTestFixtureRevisions = {
+  ABELE_OWNER_RELEASE_FIXTURE: '019830418a035ba213d737048ba2499c8453da6e',
+}
 export function missingServerTests(env = process.env) {
-  return Object.entries(serverTestFixtures).flatMap(([variable, files]) =>
-    env[variable] ? [] : files
-  )
+  return [
+    ...new Set(
+      Object.entries(serverTestFixtures).flatMap(([variable, files]) =>
+        env[variable] ? [] : files
+      )
+    ),
+  ]
 }

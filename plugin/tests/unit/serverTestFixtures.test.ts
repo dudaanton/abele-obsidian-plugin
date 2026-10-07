@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { missingServerTests, serverTestFixtures } from '../../scripts/server-test-fixtures.mjs'
-import { locateSyncFixture } from '../../scripts/test-server.mjs'
+import { locateSyncFixture, selectServerTests } from '../../scripts/test-server.mjs'
 
 const scratch = fileURLToPath(new URL('../../../.scratch/sync-inputs/', import.meta.url))
 const temporary: string[] = []
@@ -40,7 +40,8 @@ function archive(directory: string, name: string, commit: string) {
 describe('server-backed fast-tier fixture gate', () => {
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(18)
+    expect(skipped).toHaveLength(19)
+    expect(skipped).toContain('tests/integration/ownerSharingContracts.test.ts')
     expect(skipped).toContain('tests/integration/productionSharingBuild.test.ts')
     expect(skipped).toContain('tests/integration/syncService.test.ts')
     expect(skipped).toContain('tests/integration/groupJoinHttp.test.ts')
@@ -66,6 +67,17 @@ describe('server-backed fast-tier fixture gate', () => {
     ])
   })
 
+  it('selects only registered touched tests and requires both owner contract fixtures', () => {
+    const file = 'tests/integration/ownerSharingContracts.test.ts'
+    expect(selectServerTests(['--tests', file])).toEqual({
+      repository: undefined,
+      files: [file],
+      variables: ['ABELE_SCOPED_API_FIXTURE', 'ABELE_OWNER_RELEASE_FIXTURE'],
+    })
+    expect(() => selectServerTests(['--tests', 'tests/e2e/sync.e2e.test.ts'])).toThrow(/registered/)
+    expect(missingServerTests({ ABELE_SCOPED_API_FIXTURE: '/sample/fixture' })).toContain(file)
+    expect(missingServerTests({ ABELE_OWNER_RELEASE_FIXTURE: '/sample/release' })).toContain(file)
+  })
   it('locates only a matching checksum-verified prepared archive', () => {
     const directory = fixtureCache()
     archive(directory, 'old', 'a'.repeat(40))

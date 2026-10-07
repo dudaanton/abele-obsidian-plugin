@@ -19,9 +19,18 @@ Three execution tiers: fast checks, bundle size, and live end-to-end. All comman
 Without fixture variables, `npm test` skips only the server-backed files before collection,
 with one message pointing to `npm run test:server`; explicitly supplied fixtures still undergo
 all existing revision/checksum checks and run the same assertions.
-`npm run test:server -- <sync-repository>` builds the exact pinned clean-archive fixture and
-runs those files with all four fixture variables set automatically (omit the repository to
-reuse a verified matching fixture from `.scratch/sync-inputs/` or `ABELE_SYNC_DIR`).
+`npm run test:server -- <sync-repository>` builds immutable clean-archive fixtures and sets each
+required fixture variable automatically (omit the repository to reuse verified matching archives
+from `.scratch/sync-inputs/` or explicit fixture variables). The installed core/protocol pin stays
+independent of the released-server owner contract fixture: `ABELE_OWNER_RELEASE_FIXTURE` is checked
+against its own exact revision. Both revisions run `ownerSharingContracts.test.ts`.
+Use `--tests` to run only registered touched areas, without selecting unrelated tiers:
+
+```sh
+npm run test:server -- <sync-repository> --tests tests/integration/ownerSharingContracts.test.ts tests/integration/ownerHttpApi.test.ts
+```
+
+Explicit wrong revisions or changed archives are failures, never fallback inputs.
 
 **Do not touch Obsidian while the e2e tier runs.** There is one app and one CLI; a stray
 `obsidian eval` — opening settings, resizing a window — races the probe the tests are waiting

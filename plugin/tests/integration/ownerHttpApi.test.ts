@@ -218,7 +218,12 @@ describe('real disposable folder-management HTTP adapters', () => {
       }),
       flow = new FolderSharingFlow(vaultId, api, () => true)
     await flow.review('Agents/', 'editor', 'Sample retry grant')
-    await expect(flow.confirm('pw')).rejects.toThrow(/response lost/)
+    await expect(flow.confirm('pw')).rejects.toMatchObject({
+      code: 'network_unavailable',
+      status: 0,
+    })
+    expect(dropped).toBe(true)
+    expect(issued).toMatch(/^absk_[A-Za-z0-9_-]{43}$/)
     await new Promise((r) => setTimeout(r, 5))
     const result = await flow.confirm('pw')
     expect(result.token).toBe(issued)
