@@ -68,11 +68,11 @@ const script = `(async () => {
     files.push(await app.vault.create(commentPath, [
       { v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2023-11-14', anchor: { note: path, message: 'a0', quote: 'sample answer' }, comments: [{ id: 'navd02', message: 'du', quote: 'shade' }] },
       { k: 'msg', id: 'du', role: 'user', content: 'Which plants need shade?', timestamp: 1700000005000 },
-    ].map(JSON.stringify).join('\\n') + '\\n')))
+    ].map(JSON.stringify).join('\\n') + '\\n'))
     files.push(await app.vault.create(comments.commentPath('navd02'), [
       { v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2023-11-14', anchor: { note: commentPath, message: 'du', quote: 'shade' } },
       { k: 'msg', id: 'nu', role: 'user', content: 'How much shade?', timestamp: 1700000006000 },
-    ].map(JSON.stringify).join('\\n') + '\\n')))
+    ].map(JSON.stringify).join('\\n') + '\\n'))
     await chats.openChatFile(files[0]); await chats.revealSidebar({ focus: false })
     owner = chats.getSessionByFile(path)
     await until(() => item('a299'))
