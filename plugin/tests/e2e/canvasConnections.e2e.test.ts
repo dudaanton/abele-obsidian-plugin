@@ -75,10 +75,24 @@ const fit = async () => {
 }
 const type = async (text: string) => {
   if (onPhone()) {
-    // DOM focus precedes the native keyboard. Wait for both before submitting input once.
-    await until(`view().contentEl.contains(document.activeElement)&&document.activeElement.matches('input,textarea')&&Math.max(
-      parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,
-      window.visualViewport?Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop):0)>1`)
+    // DOM focus and the keyboard-height notification precede the native responder's
+    // opening animation. Require a settled keyboard before submitting input once.
+    let previous = 0,
+      stable = 0
+    await expect
+      .poll(
+        () => {
+          const height =
+            run<number>(`return view().contentEl.contains(document.activeElement)&&document.activeElement.matches('input,textarea')?Math.max(
+        parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,
+        window.visualViewport?Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop):0):0`)
+          stable = height > 1 && height === previous ? stable + 1 : 0
+          previous = height
+          return stable
+        },
+        { timeout: 15_000, interval: 100 }
+      )
+      .toBeGreaterThanOrEqual(5)
     typeText(text)
   } else
     await withNativeInput(() =>
