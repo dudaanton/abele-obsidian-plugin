@@ -59,17 +59,25 @@ In **Diffs**, choose HEAD/worktree, staged, unstaged, committed branch/base, or 
 change. Branch/base explicitly compares the merge-base with HEAD, not uncommitted files.
 **History** lists commits and opens their change. **Open new snapshot** captures newer work;
 an already open snapshot remains unchanged even when an agent edits the workspace.
+Reopening restores that snapshot's comparison mode and commit. The controls describe the
+next snapshot request; **Current comparison** describes the retained diff actually shown,
+including when a new capture fails.
 Select line numbers (including ranges) in the shared GitHub-style diff, choose **Comment**,
-and **Add to review**. Comments across files or snapshots collect in one batch; remove a
+and **Add to review**. One comment may cover at most 200 lines and contain at most 2000
+characters; a batch holds at most 32 comments. Invalid additions are refused before the
+editor is cleared. Comments across files or snapshots collect in one batch; remove a
 comment before sending if needed. **Send review** submits exactly one session input, including
-retained selections and their comments. If the workspace has changed, acceptance identifies
-stale selections rather than silently moving them onto different lines. A selection keeps
+retained selections and their comments. If the workspace has changed, or its current diff cannot be rechecked, acceptance marks
+retained selections stale rather than silently moving them onto different lines. Failure
+to re-capture a large or unavailable current patch does not discard valid saved context. A selection keeps
 its snapshot identity and original text even if another snapshot is opened while a comment
 is being composed. Add or clear that comment before choosing a different target. Closing
 this browser discards pending read results, so they cannot replace a reopened view.
 Comments in a submitting or queued batch are read-only until its outcome is known.
 Node links ending in `#L12` or `#L12-L20` open the file at the marked line or range;
-the fragment is navigation, not part of its filesystem path.
+the fragment is navigation, not part of its filesystem path. File-link reads and refreshes
+of the previously browsed folder are independent: a removed folder may show an error,
+but it does not prevent opening an existing linked file.
 
 A disconnected review is stored in the same device-local queue as messages. **Check queued
 review** checks the original receipt; it never sends a second batch. A terminal rejection

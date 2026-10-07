@@ -106,6 +106,83 @@ it('splits node line fragments before file reads and supplies the shared code-vi
     wrapper.unmount()
   }
 })
+it('restores the stored comparison and commit when reopening the browser', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('diffs'),
+    commit = 'c'.repeat(40)
+  const capture = props.model.client.captureDiff
+  props.model.client.captureDiff = vi.fn(async (...args) => ({
+    ...(await capture(...args)),
+    commit: args[1] === 'commit' ? (args[2] ?? null) : null,
+  }))
+  await props.model.loadDiff('commit', commit)
+  let wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+  await flushPromises()
+  wrapper.unmount()
+  wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+  try {
+    await flushPromises()
+    expect(
+      (wrapper.find('select[aria-label="Diff mode"]').element as HTMLSelectElement).value
+    ).toBe('commit')
+    expect(
+      (wrapper.find('input[aria-label="Commit identity"]').element as HTMLInputElement).value
+    ).toBe(commit)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Open new snapshot')!
+      .trigger('click')
+    await flushPromises()
+    expect(props.model.client.captureDiff).toHaveBeenLastCalledWith(
+      props.model.workspaceId,
+      'commit',
+      commit
+    )
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('opens a linked resource even if the previously browsed folder no longer exists', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('files')
+  props.model.directory.value = 'removed-folder'
+  props.model.client.listFiles = vi.fn(async () => {
+    throw new Error('not_found')
+  })
+  props.model.client.readFile = vi.fn(props.model.client.readFile)
+  const wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+  try {
+    await flushPromises()
+    expect(props.model.client.readFile).toHaveBeenCalledWith(
+      props.model.workspaceId,
+      props.initialPath
+    )
+    expect(wrapper.find('.sample-code').exists()).toBe(true)
+    expect(wrapper.find('[role="alert"]').text()).toContain('not_found')
+  } finally {
+    wrapper.unmount()
+  }
+})
+it('keeps the editor text when the protocol rejects comment admission', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('review')
+  const wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
+  try {
+    await flushPromises()
+    const text = 'x'.repeat(2001)
+    await wrapper.find('textarea').setValue(text)
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Add to review')!
+      .trigger('click')
+    await flushPromises()
+    expect(props.model.comments.value).toHaveLength(1)
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe(text)
+    expect(wrapper.find('[role="alert"]').text()).toContain('node limits')
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('holds comments on terminal rejection and sends a queued batch only once', async () => {
   useVault([])
   const props = await nodeFilesFixture('review')

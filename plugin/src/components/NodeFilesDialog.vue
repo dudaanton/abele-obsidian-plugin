@@ -84,7 +84,7 @@
         </template>
       </template>
       <template v-else-if="tab === 'diffs'">
-        <Setting name="Compare">
+        <Setting name="Next snapshot comparison">
           <select
             v-model="mode"
             aria-label="Diff mode"
@@ -108,8 +108,12 @@
           @click="loadDiff"
         />
         <p v-if="model.snapshot.value" class="abele-node-files__path">
-          Immutable snapshot · {{ model.snapshot.value.diff_id
-          }}<template v-if="model.snapshot.value.merge_base"
+          Immutable snapshot · {{ model.snapshot.value.diff_id }}<br />
+          Current comparison · {{ diffModeLabels[model.snapshot.value.mode] }}
+          <template v-if="model.snapshot.value.commit"
+            ><br />Commit · {{ model.snapshot.value.commit }}</template
+          >
+          <template v-if="model.snapshot.value.merge_base"
             ><br />Merge-base · {{ model.snapshot.value.merge_base }}</template
           >
         </p>
@@ -209,7 +213,7 @@
           <p>
             {{
               item.stale
-                ? 'Stale · workspace changed. Original selection was sent.'
+                ? 'Stale · workspace changed or could not be rechecked. Original selection was sent.'
                 : 'Selection matched at acceptance.'
             }}
           </p>
@@ -241,7 +245,7 @@
   </Modal>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { DiffMode } from '@abele/node-client'
 import type { DiffSpan } from '@/github/permalinks'
 import type {
@@ -276,10 +280,25 @@ onUnmounted(() => lifetime.abort())
 const tab = ref(props.initialTab || 'files'),
   error = ref(''),
   busy = ref(false),
-  mode = ref<DiffMode>('head'),
-  commit = ref(''),
+  mode = ref<DiffMode>(props.model.snapshot.value?.mode ?? 'head'),
+  commit = ref(props.model.snapshot.value?.commit ?? ''),
   comment = ref(''),
   commenting = ref(!!props.initialSelection)
+const diffModeLabels: Record<DiffMode, string> = {
+  head: 'HEAD / worktree',
+  staged: 'Staged · HEAD / index',
+  unstaged: 'Unstaged · index / worktree',
+  base: 'Branch / base · merge-base to HEAD',
+  commit: 'Commit change',
+}
+watch(
+  () => props.model.snapshot.value,
+  (snapshot) => {
+    if (!snapshot) return
+    mode.value = snapshot.mode
+    commit.value = snapshot.commit ?? ''
+  }
+)
 const selection = shallowRef<ReviewSelection | null>(props.initialSelection || null)
 const offline = computed(() => props.connection.state.value !== 'connected')
 const parent = computed(() => props.model.directory.value.split('/').slice(0, -1).join('/'))
@@ -358,12 +377,19 @@ const addComment = () =>
 onMounted(
   () =>
     void act(async () => {
-      await props.model.list(props.model.directory.value, false, lifetime.signal)
-      if (props.initialPath && !lifetime.signal.aborted) {
-        if (props.initialRange)
-          await props.model.openFile(props.initialPath, lifetime.signal, props.initialRange)
-        else await props.model.openResource(props.initialPath, lifetime.signal)
+      // A requested resource and the cached folder listing are independent reads. A removed
+      // folder must not suppress a valid file link (nor vice versa).
+      const reads: Promise<unknown>[] = []
+      if (props.initialPath) {
+        reads.push(
+          props.initialRange
+            ? props.model.openFile(props.initialPath, lifetime.signal, props.initialRange)
+            : props.model.openResource(props.initialPath, lifetime.signal)
+        )
       }
+      reads.push(props.model.list(props.model.directory.value, false, lifetime.signal))
+      const results = await Promise.allSettled(reads)
+      for (const result of results) if (result.status === 'rejected') throw result.reason
     })
 )
 </script>

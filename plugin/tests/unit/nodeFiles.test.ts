@@ -171,6 +171,39 @@ it('captures selection context from the rendered file rather than whichever snap
   ).join('')
   expect(s.model.comments.value.map((a) => a.context_hash)).toEqual([expected, expected])
 })
+it('refuses a 201-line comment before admitting it into the review draft', async () => {
+  const s = setup()
+  const lines = Array.from({ length: 201 }, (_, i) => '+line ' + (i + 1)).join('\n')
+  const large =
+    'diff --git a/sample.txt b/sample.txt\n--- /dev/null\n+++ b/sample.txt\n@@ -0,0 +1,201 @@\n' +
+    lines +
+    '\n'
+  vi.mocked(s.client.readDiff).mockResolvedValue({
+    offset: 0,
+    total: large.length,
+    base64: btoa(large),
+  })
+  await s.model.loadDiff('head')
+  await expect(
+    addComment(s, 'sample.txt', { side: 'R', start: 1, end: 201 }, 'Too many lines')
+  ).rejects.toThrow()
+  expect(s.model.comments.value).toHaveLength(0)
+  await addComment(s, 'sample.txt', { side: 'R', start: 1, end: 200 }, 'Valid range')
+  expect(s.model.comments.value).toHaveLength(1)
+})
+it('refuses comment 33 before admission and admits a replacement after removal', async () => {
+  const s = setup()
+  await s.model.loadDiff('head')
+  for (let i = 0; i < 32; i++)
+    await addComment(s, 'sample.txt', { side: 'R', start: 2, end: 2 }, 'Comment ' + i)
+  await expect(
+    addComment(s, 'sample.txt', { side: 'R', start: 2, end: 2 }, 'Extra comment')
+  ).rejects.toThrow()
+  expect(s.model.comments.value).toHaveLength(32)
+  s.model.removeComment(0)
+  await addComment(s, 'sample.txt', { side: 'R', start: 2, end: 2 }, 'Replacement')
+  expect(s.model.comments.value).toHaveLength(32)
+})
 it('parses a single line or inclusive line range separately from the resource path', () => {
   expect(nodeResourceTarget('sample.ts#L12')).toEqual({
     path: 'sample.ts',

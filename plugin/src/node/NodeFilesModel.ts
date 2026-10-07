@@ -1,6 +1,11 @@
 import { computed, readonly, ref, shallowRef } from 'vue'
 import type { NodeClient, DiffMode, DiffSnapshot, ReviewAnchor } from '@abele/node-client'
-import { selectedContext, decodePatchPath } from '@abele/node-protocol'
+import {
+  selectedContext,
+  decodePatchPath,
+  ReviewAnchorSchema,
+  ReviewBatchSchema,
+} from '@abele/node-protocol'
 import type { DiffFile } from '@/github/api'
 import type { DiffSpan } from '@/github/permalinks'
 
@@ -231,6 +236,21 @@ export class NodeFilesModel {
     this.logs.value = more ? [...this.logs.value, ...rows] : rows
   }
   selectLines(file: NodeDiffFile, span: DiffSpan): ReviewSelection {
+    // Validate the protocol's actual anchor bounds before exposing a commentable selection.
+    if (
+      !ReviewAnchorSchema.safeParse({
+        node_id: this.nodeId,
+        workspace_id: this.workspaceId,
+        diff_id: file.document.snapshot.diff_id,
+        path: file.path,
+        side: span.side === 'L' ? 'old' : 'new',
+        start_line: span.start,
+        end_line: span.end,
+        context_hash: '0'.repeat(64),
+        comment: 'selection',
+      }).success
+    )
+      throw new Error('invalid_anchor: select no more than 200 lines for one comment')
     const context = selectedContext(file.document.patch, {
       path: file.path,
       side: span.side === 'L' ? 'old' : 'new',
@@ -256,20 +276,29 @@ export class NodeFilesModel {
     const context_hash = await contextHash(selection.context)
     this.assertEditable() // Submission may have started while WebCrypto was pending.
     if (!comment.trim()) throw new Error('Enter a comment')
-    this.draftComments.value = Object.freeze([
-      ...this.draftComments.value,
-      Object.freeze({
-        node_id: this.nodeId,
-        workspace_id: this.workspaceId,
-        diff_id: selection.diffId,
-        path: selection.path,
-        side: selection.span.side === 'L' ? ('old' as const) : ('new' as const),
-        start_line: selection.span.start,
-        end_line: selection.span.end,
-        context_hash,
-        comment: comment.trim(),
-      }),
-    ])
+    const anchor = {
+      node_id: this.nodeId,
+      workspace_id: this.workspaceId,
+      diff_id: selection.diffId,
+      path: selection.path,
+      side: selection.span.side === 'L' ? ('old' as const) : ('new' as const),
+      start_line: selection.span.start,
+      end_line: selection.span.end,
+      context_hash,
+      comment: comment.trim(),
+    }
+    const candidate = [...this.draftComments.value, anchor]
+    if (
+      !ReviewBatchSchema.safeParse({
+        session_id: this.sessionId ?? 'browse-only',
+        observed_seq: 0,
+        anchors: candidate,
+      }).success
+    )
+      throw new Error(
+        'Review exceeds node limits: at most 32 comments, 200 lines and 2000 characters per comment'
+      )
+    this.draftComments.value = Object.freeze([...this.draftComments.value, Object.freeze(anchor)])
   }
   async submit() {
     if (this.submitting.value) return
@@ -306,7 +335,7 @@ export class NodeFilesModel {
         return
       }
       this.reviewStatus.value = result.stale.some(Boolean)
-        ? 'Review accepted · the workspace changed; retained selections were sent and marked stale.'
+        ? 'Review accepted · the workspace changed or could not be rechecked; retained selections were sent and marked stale.'
         : 'Review accepted as one session input.'
       this.submittedReview.value = anchors.map((anchor, i) => ({
         anchor: { ...anchor },
