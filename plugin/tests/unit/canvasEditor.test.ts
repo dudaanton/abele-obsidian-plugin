@@ -213,6 +213,19 @@ describe('human shapes and connections', () => {
       expect(s.document.session.graph.edges).toHaveLength(0)
     }
   )
+  it('refuses a free-line write into an incompatible extension without trapping an active draft', async () => {
+    const graph = { ...emptyCanvas(), abele: { lines: { version: 9, payload: 'opaque' } } }
+    const s = setup(graph)
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw free arrow').click()
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 130, 80)
+    pointer(s, 'pointerup', 230, 130)
+    await vi.waitFor(() => expect(s.document.session.busy).toBe(false))
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.document.session.graph).toEqual(graph)
+    expect(s.publish).not.toHaveBeenCalled()
+  })
   it('applying an unchanged connection style does not write or add history', () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })

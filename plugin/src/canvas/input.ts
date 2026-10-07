@@ -31,6 +31,7 @@ interface InputPorts {
   valid(): boolean
   complete(ops: CanvasOperation[]): void
   cancel(): void
+  invalid(error: unknown): void
 }
 interface Gesture {
   graph: CanvasGraph
@@ -450,11 +451,18 @@ export class CanvasInput implements CanvasViewerInput {
         const line = linesOf(this.viewer.graph).find((l) => l.id === g.id)
         if (line) ops = [{ op: 'add_line', line }]
       }
-      if (
-        ops.length &&
-        canvasFingerprint(editCanvas(g.graph, ops).graph) === canvasFingerprint(g.graph)
-      )
-        ops = []
+      try {
+        if (
+          ops.length &&
+          canvasFingerprint(editCanvas(g.graph, ops).graph) === canvasFingerprint(g.graph)
+        )
+          ops = []
+      } catch (error) {
+        this.ports.cancel()
+        this.ports.invalid(error)
+        this.viewer.draw()
+        return
+      }
     }
     if (ops.length) {
       this.ports.select(new Set([g.id]))

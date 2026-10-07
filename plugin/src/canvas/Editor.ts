@@ -224,6 +224,7 @@ export class CanvasEditor {
         void this.completeGeometry(ops).catch((error) => this.fail(error))
       },
       cancel: () => this.cancelGeometry(),
+      invalid: (error) => this.fail(error),
     })
     viewer.onSelect = (node) => {
       if (this.editing || this.waiting) return
@@ -336,12 +337,17 @@ export class CanvasEditor {
       return
     }
     this.geometry = null
-    this.update(g.document, ops)
-    for (const op of ops) {
-      if (op.op === 'connect') this.selected = new Set([op.edge.id])
-      if (op.op === 'add_line') this.selected = new Set([op.line.id])
+    try {
+      this.update(g.document, ops)
+      for (const op of ops) {
+        if (op.op === 'connect') this.selected = new Set([op.edge.id])
+        if (op.op === 'add_line') this.selected = new Set([op.line.id])
+      }
+      g.document.finishDraft()
+    } catch (error) {
+      if (g.document.session.draft?.active) g.document.discardDraft()
+      throw error
     }
-    g.document.finishDraft()
     await this.saving(() => this.ports.publish())
   }
   private ready(): CanvasEditorDocument {
