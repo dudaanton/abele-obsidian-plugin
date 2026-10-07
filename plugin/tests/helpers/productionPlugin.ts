@@ -110,8 +110,24 @@ export async function bootProductionPlugin(code: string) {
   if (!(window.indexedDB instanceof IDBFactory))
     Object.defineProperty(window, 'indexedDB', { configurable: true, value: new IDBFactory() })
   const native = createRequire(import.meta.url)
+  const network = { loseScopedCommit: false }
+  const sessionFetch: typeof fetch = async (input, init) => {
+    const response = await nativeFetch(input, init)
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (
+      network.loseScopedCommit &&
+      init?.method === 'POST' &&
+      new URL(url).pathname.includes('/scoped/') &&
+      new URL(url).pathname.endsWith('/commit') &&
+      response.ok
+    ) {
+      network.loseScopedCommit = false
+      throw new Error('Sample successful scoped CREATE response lost')
+    }
+    return response
+  }
   const remote = {
-    getCurrentWebContents: () => ({ session: { fetch: nativeFetch } }),
+    getCurrentWebContents: () => ({ session: { fetch: sessionFetch } }),
     require: native,
     getGlobal: (name: string) => (globalThis as any)[name],
   }
@@ -156,6 +172,7 @@ export async function bootProductionPlugin(code: string) {
     app,
     plugin,
     metadata,
+    network,
     close: async () => {
       const sharing = plugin.syncSharing
       plugin.onunload()

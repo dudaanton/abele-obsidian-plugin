@@ -33,6 +33,15 @@ import {
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
+const CREATION_JOURNAL = 'scoped-creation-journal-v1'
+interface CreationJournal {
+  binding: ScopedClient['binding']
+  handle: string
+  path: string
+  sha: string
+  size: number
+  requestId: string | null
+}
 /** Map the existing scoped flow's private proof slots into Obsidian's keychain alphabet.
  * Neither invitation/installation credentials nor their proofs enter the ordinary synced store. */
 function slot(id: string) {
@@ -183,6 +192,45 @@ export class ScopedPluginHost {
             token: () => (this.held(r) ? this.token(c) : null),
           },
         }),
+      }
+      // Every send, including watcher/timer journal replay, must retain the receipt
+      // before core may materialize the result and retire its journal.
+      const commit = client.commit.bind(client)
+      client.commit = async (unit) => {
+        const index = await this.creationJournal(r)
+        const op = unit.ops[0]
+        const matches =
+          index &&
+          unit.ops.length === 1 &&
+          op?.op === 'create' &&
+          op.path === index.path &&
+          op.sha === index.sha &&
+          op.size === index.size
+        if (matches) {
+          if (index.requestId !== null && index.requestId !== unit.request_id)
+            throw new Error('Scoped creation journal request identity changed')
+          index.requestId = unit.request_id
+          await this.saveCreationJournal(r, index)
+        }
+        const reply = await commit(unit)
+        if (matches) {
+          const result = reply.results.find((item: { path?: string }) => item.path === index.path)
+          // Compact filtered acknowledgements are not new creation evidence.
+          if (result) {
+            const value = {
+              binding: client.binding,
+              handle: index.handle,
+              requestId: unit.request_id,
+              op,
+              result,
+            }
+            await r.meta.setMeta(
+              'scoped-creation-receipt-v1:' + index.handle,
+              JSON.stringify({ value, checksum: await digest(value) })
+            )
+          }
+        }
+        return reply
       }
       this.runtime = r
       return r
@@ -460,6 +508,31 @@ export class ScopedPluginHost {
     this.flows.add(flow)
     return markRaw(Object.assign(flow, { roots, sponsors }))
   }
+  private async creationJournal(r: Runtime): Promise<CreationJournal | null> {
+    const raw = await r.meta.getMeta(CREATION_JOURNAL)
+    if (raw === null) return null
+    const envelope = JSON.parse(raw)
+    const value = envelope.value as CreationJournal
+    if (
+      envelope.checksum !== (await digest(value)) ||
+      JSON.stringify(value.binding) !== JSON.stringify(r.client.binding) ||
+      !value.handle ||
+      !value.path ||
+      !/^[a-f0-9]{64}$/.test(value.sha) ||
+      !Number.isSafeInteger(value.size) ||
+      value.size < 0 ||
+      (value.requestId !== null && (typeof value.requestId !== 'string' || !value.requestId))
+    )
+      throw new Error('Scoped creation journal binding changed; recovery required')
+    return value
+  }
+  private async saveCreationJournal(r: Runtime, value: CreationJournal): Promise<void> {
+    if (!this.held(r)) throw new Error('Scoped creation writer lost')
+    const text = JSON.stringify({ value, checksum: await digest(value) })
+    await r.meta.setMeta(CREATION_JOURNAL, text)
+    if ((await r.meta.getMeta(CREATION_JOURNAL)) !== text)
+      throw new Error('Scoped creation journal identity was not retained')
+  }
   private async create(r: Runtime, request: NativeCreationRequest) {
     if (!this.held(r)) throw new Error('Scoped creation writer lost')
     const c = r.connection
@@ -534,36 +607,33 @@ export class ScopedPluginHost {
       )
         return { fileId: entry.fileId, versionId: entry.versionId, created: true }
     }
-    const original = r.client.commit.bind(r.client)
-    const client = Object.create(r.client) as ScopedClient
-    client.commit = async (unit) => {
-      const op = unit.ops[0]
+    const journal = await r.state.getJournal()
+    const retained = await this.creationJournal(r)
+    if (journal) {
+      const op = journal.ops[0]
       if (
-        unit.ops.length !== 1 ||
+        !retained ||
+        retained.handle !== request.handle ||
+        journal.ops.length !== 1 ||
         op?.op !== 'create' ||
         op.path !== request.path ||
         op.sha !== request.sha ||
         op.size !== request.size
       )
         throw new Error('Scoped creation journal belongs to another reviewed operation')
-      const reply = await original(unit)
-      const result = reply.results.find((item: { path?: string }) => item.path === request.path)
-      // A compact filtered acknowledgement is not a new creation receipt. Retain the
-      // exact novel outcome already saved before core materialization/reconciliation.
-      if (result) {
-        const value = {
-          binding: r.client.binding,
-          handle: request.handle,
-          requestId: unit.request_id,
-          op,
-          result,
-        }
-        await r.meta.setMeta(key, JSON.stringify({ value, checksum: await digest(value) }))
-      }
-      return reply
     }
+    // Bind the reviewed handle before core allocates/sends its request. Background
+    // recovery can now attach the same handle to the exact durable core journal.
+    await this.saveCreationJournal(r, {
+      binding: r.client.binding,
+      handle: request.handle,
+      path: request.path,
+      sha: request.sha,
+      size: request.size,
+      requestId: journal?.request_id ?? null,
+    })
     await pushScoped({
-      client,
+      client: r.client,
       state: r.state,
       fs: r.fs,
       ops: [

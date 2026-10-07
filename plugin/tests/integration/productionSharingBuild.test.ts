@@ -226,6 +226,64 @@ it('publishes an existing private target only after the production confirmation 
   expect((window as any).__abeleTest).toBeUndefined()
 }, 30000)
 
+it('retains a creation receipt when background sync replays a successful lost reply', async () => {
+  const host = peer.plugin.syncSharing
+  const flow = await host.createScoped()
+  const review = await flow.review({
+    kind: 'note',
+    path: 'Elsewhere/lost-response.md',
+    text: 'Sample lost-response note',
+    rootId: group.rootId,
+  })
+  host.scoped.setPaused(true)
+  peer.network.loseScopedCommit = true
+  try {
+    await expect(flow.confirm(review)).rejects.toThrow(/never reached|lost|server/i)
+    expect(peer.network.loseScopedCommit).toBe(false)
+    host.scoped.setPaused(false)
+    await expect
+      .poll(
+        async () => {
+          try {
+            await host.scoped.sync()
+            return (await (host.scoped as any).runtime.state.getJournal()) === null
+          } catch (error) {
+            if ((error as { code?: string }).code === 'scope_updating') return false
+            throw error
+          }
+        },
+        { timeout: 10000 }
+      )
+      .toBe(true)
+    const runtime = (host.scoped as any).runtime
+    expect(await runtime.state.getJournal()).toBeNull()
+    expect(await runtime.meta.getMeta('scoped-creation-receipt-v1:' + review.id)).not.toBeNull()
+    // The ordinary timer/watcher entry point already retired the journal. Confirmation
+    // must complete from that exact retained receipt, never another CREATE or byte adoption.
+    await expect
+      .poll(
+        async () => {
+          try {
+            await flow.confirm(review)
+            return true
+          } catch (error) {
+            if ((error as { code?: string }).code === 'scope_updating') return false
+            throw error
+          }
+        },
+        { timeout: 10000 }
+      )
+      .toBe(true)
+    await native.plugin.syncSharing.sync.syncNow()
+    const entry = await native.plugin.syncSharing.sync.entryFor('Elsewhere/lost-response.md')
+    expect(entry).not.toBeNull()
+    expect(await native.plugin.syncSharing.sync.client().versions(entry.fileId)).toHaveLength(1)
+  } finally {
+    peer.network.loseScopedCommit = false
+    host.scoped.setPaused(false)
+  }
+}, 30000)
+
 it('keeps personal sync working through disconnect, re-enrolment, Forget and another vault without sharing', async () => {
   unshared = await bootProductionPlugin(code)
   const host = unshared.plugin.syncSharing

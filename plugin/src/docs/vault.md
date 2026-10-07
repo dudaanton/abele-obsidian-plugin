@@ -1614,7 +1614,11 @@ stores, bound to the exact scoped credential fingerprint and descriptor. `abele-
 is a device-local pause preference. Personal cursors and journals are never reused. An exact
 scoped CREATE receipt is retained under `scoped-creation-receipt-v1:<handle>` before final
 materialization, so delayed certification or a restart cannot become identity adoption by
-matching bytes. Note creation uses the existing no-adoption scoped commit protocol; image
+matching bytes. `scoped-creation-journal-v1` binds the reviewed handle to its exact core request
+before transport. The installed scoped client retains the receipt on every send, including
+watcher/timer journal replay, before core can retire that journal. Compact acknowledgements
+never substitute for an exact creation receipt. Note creation uses the existing no-adoption
+scoped commit protocol; image
 creation uses the existing sponsored-native API and principal-owned upload proof. Received files
 keep their original paths. Scripts stay refused for scoped connections, even when paused.
 
