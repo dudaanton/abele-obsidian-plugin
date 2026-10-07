@@ -29,6 +29,10 @@
           Folder: <code>{{ display.prefix }}</code
           >. Files stay in their current folders.
         </p>
+        <p role="status">
+          Folder checked: {{ display.files.filter((file) => file.eligible).length }} files included;
+          {{ display.files.filter((file) => file.eligibility === 'excluded').length }} excluded.
+        </p>
         <ul>
           <li v-for="file in display.files" :key="file.path">
             <code>{{ file.path }}</code> —

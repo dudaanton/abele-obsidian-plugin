@@ -90,12 +90,12 @@ const revoking = ref<DeviceInfo | null>(null)
 
 const ownId = computed(() => sync.connection.value.deviceId)
 
-/** "Phone or tablet · enrolled by Mac · last seen 3 minutes ago". */
+/** "Phone or tablet · connected by Desktop · last seen 3 minutes ago". */
 function lineOf(one: DeviceInfo): string {
-  let by = 'enrolled with the account password'
+  let by = 'connected with the account password'
   if (one.enrolled_by !== null) {
     const parent = devices.value?.find((other) => other.id === one.enrolled_by)
-    by = parent ? `enrolled by ${parent.name}` : 'enrolled by a device no longer on this vault'
+    by = parent ? `connected by ${parent.name}` : 'connected by a device no longer on this vault'
   }
   const seen =
     one.last_seen_at === null ? 'never seen syncing' : `last seen ${formatWhen(one.last_seen_at)}`

@@ -75,13 +75,13 @@ describe('the devices on this vault', () => {
     await flushPromises()
 
     expect(row(view, 'Mac').props('desc')).toMatch(
-      /^Desktop · enrolled with the account password · last seen/
+      /^Desktop · connected with the account password · last seen/
     )
     expect(row(view, 'Phone').props('desc')).toBe(
-      'Phone or tablet · enrolled by Mac · never seen syncing'
+      'Phone or tablet · connected by Mac · never seen syncing'
     )
     expect(row(view, 'sidings').props('desc')).toBe(
-      'Command-line client · enrolled by a device no longer on this vault · never seen syncing'
+      'Command-line client · connected by a device no longer on this vault · never seen syncing'
     )
   })
 

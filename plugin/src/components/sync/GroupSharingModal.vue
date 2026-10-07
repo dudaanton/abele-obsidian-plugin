@@ -96,7 +96,8 @@
           >.
         </p>
         <p>
-          Notes in this group will be checked before sharing. Images need a separate sharing choice.
+          Group note checked: {{ rootShown.root.path }} is synced and ready to share. The server
+          checks group membership when you share; images need a separate sharing choice.
         </p>
         <label
           >Your email<input

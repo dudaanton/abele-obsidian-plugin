@@ -213,7 +213,7 @@ describe('a device nobody has set up', () => {
     const screen = open(ConnectCard, { serverUrl: '' })
     const buttons = screen.findAllComponents(Button).map((button) => button.props('text'))
     expect(buttons).toContain('Join a shared group…')
-    expect(buttons).toContain('Preview shared file creation…')
+    expect(buttons).toContain('See shared file options…')
     expect(buttons.join(' ')).not.toMatch(/Books|group-only setup/i)
     expect(screen.text()).not.toContain('Untrusted Books reader')
   })
@@ -787,13 +787,14 @@ describe('a device that is set up', () => {
     expect(badgeTexts(screen)).toContain('Fully synced')
   })
 
-  it('names the server, the vault and the device it enrolled as', async () => {
+  it('names the server and device while keeping an unnamed vault ID in its tooltip', async () => {
     connect()
     const screen = open(SyncSettings)
     await flushPromises()
 
     const values = screen.findAll('.abele-sync-settings__value').map((v) => v.text())
-    expect(values).toEqual(['https://sync.example.com', 'v1', 'Desktop — Notes'])
+    expect(values).toEqual(['https://sync.example.com', 'Connected vault', 'Desktop — Notes'])
+    expect(screen.find('.abele-sync-settings__value[title="v1"]').exists()).toBe(true)
   })
 
   /**
@@ -1010,7 +1011,7 @@ describe('a device that is set up', () => {
 
     expect(buttonNamed(screen, 'Sync now')?.props('disabled')).toBe(true)
     expect(buttonNamed(screen, 'Sync now')?.props('tooltip')).toContain('Resume')
-    expect(buttonNamed(screen, 'Rescan')?.props('disabled')).toBe(true)
+    expect(buttonNamed(screen, 'Check all files')?.props('disabled')).toBe(true)
   })
 
   it('says a sync is sending what it found, and what is still waiting once it is over', async () => {

@@ -51,6 +51,7 @@
         :folder-flow="ownerFolderFlow"
         :group-root-flow="ownerGroupFlow"
         :model="ownerPublicationModel"
+        :manager="ownerManagement"
       />
       <!--
         A connection a transfer brought, onto a vault that may hold files, into one that may hold
@@ -63,7 +64,9 @@
         desc="This device is connected, and waits for one answer before it syncs anything."
       >
         <Setting name="Vault" desc="The vault on the server this device was connected to.">
-          <span class="abele-sync-settings__value">{{ device.vaultName || device.vaultId }}</span>
+          <span class="abele-sync-settings__value">{{
+            device.vaultName || 'Connected vault'
+          }}</span>
         </Setting>
 
         <Setting name="Not syncing yet" :desc="joinDesc">
@@ -78,7 +81,7 @@
 
         <Setting
           name="Stop syncing this device"
-          desc="Disconnect tells the server to stop accepting this device and forgets its token; your files are not touched."
+          desc="Disconnect tells the server to stop accepting this device and forgets its connection key; your files are not touched."
         >
           <Button
             text="Disconnect"
@@ -103,12 +106,14 @@
           address, a vault id and a device name are all long enough to push a phone-width pane
           sideways. The badge is kept for the one thing it is for — a short status word.
         -->
-        <Setting name="Server" desc="The address this device enrolled against.">
+        <Setting name="Server" desc="The server this device syncs with.">
           <span class="abele-sync-settings__value">{{ device.serverUrl }}</span>
         </Setting>
 
         <Setting name="Vault" desc="The vault on that server this device belongs to.">
-          <span class="abele-sync-settings__value">{{ device.vaultId }}</span>
+          <span class="abele-sync-settings__value" :title="device.vaultId">{{
+            device.vaultName || 'Connected vault'
+          }}</span>
         </Setting>
 
         <Setting name="This device" desc="What the vault's device list calls it.">
@@ -148,7 +153,7 @@
             @click="pause"
           />
           <Button
-            text="Rescan"
+            text="Check all files"
             :disabled="device.paused"
             :tooltip="
               device.paused
@@ -161,7 +166,7 @@
 
         <Setting
           name="Stop syncing this device"
-          desc="Disconnect tells the server to stop accepting this device and forgets its token; your files and what this device syncs are kept. Forget also throws away the record of what has already been synced."
+          desc="Disconnect tells the server to stop accepting this device and forgets its connection key; your files and what this device syncs are kept. Forget also throws away the record of what has already been synced."
         >
           <Button
             text="Disconnect"
@@ -265,7 +270,7 @@
       <Button
         text="Forget without telling the server"
         warning
-        tooltip="Stop trying, and forget the token kept to tell the server with"
+        tooltip="Stop trying, and forget the connection key kept to tell the server"
         @click="forgetting = entry"
       />
     </Setting>
@@ -275,8 +280,8 @@
       title="Forget without telling the server?"
       :message="forgetMessage"
       confirm-text="Forget"
-      confirm-tooltip="Forget the kept token; the server is not told"
-      cancel-tooltip="Close this and keep the token to tell the server with"
+      confirm-tooltip="Forget the kept connection key; the server is not told"
+      cancel-tooltip="Close this and keep the connection key to tell the server"
       @confirm="forgetPending"
       @close="forgetting = null"
     />
@@ -434,6 +439,14 @@ const ownerFolderFlow = computed(() => {
   })
   return new FolderSharingFlow(binding.vaultId, port)
 })
+const ownerManagement = computed(() => {
+  if (!connected.value || scoped.value) return undefined
+  try {
+    return sync.sharing?.value?.ownerManagement()
+  } catch {
+    return undefined
+  }
+})
 const ownerPublicationModel = computed(() => {
   const c = device.value
   if (!connected.value || !c.vaultId || serverUrlProblem(c.serverUrl) !== null) return undefined
@@ -486,15 +499,15 @@ const confirming = ref<'disconnect' | 'forget' | null>(null)
 /** The waiting revoke whose kept token the person asked to forget, while that is asked. */
 const forgetting = ref<PendingRevoke | null>(null)
 
-const who = (entry: PendingRevoke): string => entry.deviceName || entry.deviceId
+const who = (entry: PendingRevoke): string => entry.deviceName || 'This device'
 
 /** What a waiting revoke's line says: who left where, since when, and what forgetting leaves. */
 function pendingLine(entry: PendingRevoke): string {
   const since = `Since ${formatWhen(entry.since)}.`
   if (entry.plainHttp) {
     return (
-      `${who(entry)} left ${entry.serverUrl}, which cannot be told over plain http: the token ` +
-      `is not sent that way. The server there still has ${who(entry)} enrolled. ${since}`
+      `${who(entry)} left ${entry.serverUrl}, which cannot be told over plain http: the connection key ` +
+      `is not sent that way. The server there still accepts ${who(entry)}. ${since}`
     )
   }
   return (
@@ -507,9 +520,9 @@ const forgetMessage = computed(() => {
   const entry = forgetting.value
   if (entry === null) return ''
   return (
-    `${who(entry)} stays enrolled on ${entry.serverUrl}: anyone holding a copy of its token can ` +
+    `${who(entry)} stays connected to ${entry.serverUrl}: anyone holding a copy of its connection key can ` +
     'still sync that vault until it is revoked there, under Devices on this vault on any device ' +
-    'that still syncs it. This device forgets the token ' +
+    'that still syncs it. This device forgets the connection key ' +
     'it kept to tell the server with.'
   )
 })

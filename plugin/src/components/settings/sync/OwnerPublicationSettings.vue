@@ -13,9 +13,54 @@
           @click="folderOpen = true"
         />
       </Setting>
+      <div v-if="manager" class="abele-sharing-management">
+        <p>Sign in to see shared folders and groups, review their images, or stop sharing.</p>
+        <label
+          >Your email<input
+            v-model="email"
+            type="email"
+            autocomplete="username"
+            aria-label="Sharing account email"
+            :disabled="busy"
+        /></label>
+        <label
+          >Your password<input
+            v-model="password"
+            type="password"
+            autocomplete="current-password"
+            aria-label="Sharing account password"
+            :disabled="busy"
+        /></label>
+        <Button
+          text="Show shared folders and groups"
+          tooltip="Check sharing on the server"
+          :disabled="busy || !enabled || !email || !password"
+          @click="loadShares"
+        />
+        <Setting
+          v-for="share in shares"
+          :key="share.id"
+          :name="share.label"
+          :desc="share.kind === 'folder' ? 'Shared folder: ' + share.prefix : 'Shared group'"
+        >
+          <Button
+            text="Review images"
+            tooltip="See images shared here"
+            :disabled="busy || !model"
+            @click="reviewShare(share)"
+          />
+          <Button
+            text="Stop sharing"
+            tooltip="Stop access for all collaborators and connected apps"
+            :disabled="busy || !enabled"
+            @click="stopping = share"
+          />
+        </Setting>
+        <p v-if="listed && !shares.length" role="status">No folders or groups are shared.</p>
+      </div>
       <p>
         {{ stateLabel }}
-        <span v-if="!cacheComplete">Some links could not be checked yet.</span>
+        <span v-if="cacheComplete === false">Some links could not be checked yet.</span>
       </p>
       <template v-if="view">
         <p :title="view.grantId">Shared with: {{ shareName || 'this folder or group' }}</p>
@@ -101,6 +146,22 @@
       @close="batchOpen = false"
     />
     <ConfirmModal
+      v-if="stopping"
+      title="Stop sharing?"
+      :message="
+        'Stop sharing ' +
+        (stopping.kind === 'folder'
+          ? stopping.prefix + ' (' + stopping.label + ')'
+          : stopping.label) +
+        '? All collaborators and connected apps using this shared ' +
+        stopping.kind +
+        ' will lose access. Files they already downloaded are not deleted. Other sharing is not changed.'
+      "
+      confirm-text="Stop sharing"
+      @confirm="stopShare"
+      @close="stopping = null"
+    />
+    <ConfirmModal
       v-if="unshare"
       title="Unshare this file?"
       :message="
@@ -117,7 +178,9 @@
   </Section>
 </template>
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef, onUnmounted, watch } from 'vue'
+import type { OwnerFolderHttpPort, OwnerSharedGrant } from '@/sync/sharing/ownerHttp'
+import type { OwnerSession } from '@/sync/sharing/folderSharing'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Button from '../../obsidian/Button.vue'
@@ -138,6 +201,7 @@ const props = withDefaults(
     view?: AssetView
     shareName?: string
     model?: PublicationSettingsModel
+    manager?: OwnerFolderHttpPort
     folderFlow?: FolderSharingFlow
     groupRootFlow?: OwnerGroupRootFlow
     batchFlow?: InitialAssetBatch
@@ -149,7 +213,7 @@ const props = withDefaults(
     state?: 'syncing' | 'scope-updating' | 'cache-unknown' | 'awaiting-confirmation' | 'idle'
     enabled?: boolean
   }>(),
-  { owner: true, facet: 'device', enabled: OWNER_SHARING_ENABLED }
+  { owner: true, facet: 'device', enabled: OWNER_SHARING_ENABLED, cacheComplete: undefined }
 )
 const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   ownerContext = computed(() => props.facet !== 'scoped' && (props.owner ?? true)),
@@ -162,8 +226,114 @@ const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   error = ref(''),
   busy = ref(false),
   unshare = ref<UnshareReview | null>(null)
-const extras = computed(() => props.view?.entries.filter((e) => e.kind === 'owner-extra') ?? []),
-  native = computed(() => props.view?.entries.filter((e) => e.kind === 'native-asset') ?? [])
+const email = ref(''),
+  password = ref(''),
+  shares = ref<OwnerSharedGrant[]>([]),
+  listed = ref(false)
+const stopping = ref<OwnerSharedGrant | null>(null),
+  loadedView = ref<AssetView | null>(null),
+  loadedName = ref('')
+const session = shallowRef<OwnerSession | null>(null)
+const view = computed(() => loadedView.value ?? props.view)
+const shareName = computed(() => loadedName.value || props.shareName)
+const extras = computed(() => view.value?.entries.filter((e) => e.kind === 'owner-extra') ?? []),
+  native = computed(() => view.value?.entries.filter((e) => e.kind === 'native-asset') ?? [])
+let closed = false
+watch(
+  () => [props.manager, props.model] as const,
+  (_, previous) => {
+    previous[0]?.close()
+    password.value = ''
+    session.value = null
+    shares.value = []
+    listed.value = false
+    loadedView.value = null
+    loadedName.value = ''
+    stopping.value = null
+    unshare.value = null
+  }
+)
+async function loadView(share: OwnerSharedGrant) {
+  const model = props.model
+  if (!model) return
+  const value = await model.load(share.id)
+  if (closed || props.model !== model) return
+  loadedView.value = value
+  loadedName.value = share.label
+}
+async function reviewShare(share: OwnerSharedGrant) {
+  if (busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await loadView(share)
+  } catch (e) {
+    if (!closed)
+      error.value = sharingErrorMessage(e, 'Could not check the shared images. Try again.')
+  } finally {
+    busy.value = false
+  }
+}
+async function loadShares() {
+  const manager = props.manager
+  if (!manager || busy.value || !enabled) return
+  busy.value = true
+  error.value = ''
+  try {
+    const authorized = await manager.authorize(password.value, email.value)
+    if (closed || props.manager !== manager) {
+      manager.close()
+      return
+    }
+    const rows = await manager.list(authorized)
+    if (closed || props.manager !== manager) {
+      manager.close()
+      return
+    }
+    session.value = authorized
+    shares.value = rows.filter((row) => ['active', 'preparing'].includes(row.state))
+    listed.value = true
+    if (shares.value[0]) await loadView(shares.value[0])
+  } catch (e) {
+    if (!closed && props.manager === manager)
+      error.value = sharingErrorMessage(e, 'Could not check sharing. Try again.')
+  } finally {
+    password.value = ''
+    busy.value = false
+  }
+}
+async function stopShare() {
+  const share = stopping.value,
+    authorized = session.value,
+    manager = props.manager
+  if (!share || !authorized || !manager || busy.value || !enabled) return
+  busy.value = true
+  error.value = ''
+  try {
+    await manager.revoke(authorized, share)
+    if (closed || props.manager !== manager) return
+    shares.value = shares.value.filter((row) => row.id !== share.id)
+    if (loadedView.value?.grantId === share.id) {
+      loadedView.value = null
+      loadedName.value = ''
+    }
+    stopping.value = null
+  } catch (e) {
+    if (!closed && props.manager === manager)
+      error.value = sharingErrorMessage(
+        e,
+        'Could not stop sharing. Sign in again and review the current sharing.'
+      )
+  } finally {
+    busy.value = false
+  }
+}
+onUnmounted(() => {
+  closed = true
+  password.value = ''
+  session.value = null
+  props.manager?.close()
+})
 const stateLabel = computed(
   () =>
     ({
@@ -171,8 +341,8 @@ const stateLabel = computed(
       'scope-updating': 'Getting shared files ready.',
       'cache-unknown': 'Checking which images are linked.',
       'awaiting-confirmation': 'Waiting for your sharing choice.',
-      idle: 'Sharing is up to date.',
-    })[props.state ?? 'cache-unknown']
+      idle: 'Linked images are checked when notes sync.',
+    })[props.state ?? 'idle']
 )
 function reference(id: string) {
   return !props.cacheComplete
@@ -184,7 +354,7 @@ function reference(id: string) {
 function review(id: string) {
   if (!enabled || !props.model) return
   try {
-    if (props.model.view?.grantId !== props.view?.grantId)
+    if (props.model.view?.grantId !== view.value?.grantId)
       throw new Error('The shared folder or group changed. Refresh this view before unsharing.')
     unshare.value = props.model.reviewUnshare(id)
   } catch (e) {
@@ -195,13 +365,22 @@ function review(id: string) {
   }
 }
 async function confirm() {
-  if (!unshare.value || !props.model || !enabled) return
+  const model = props.model
+  if (!unshare.value || !model || !enabled) return
   busy.value = true
   try {
-    await props.model.confirmUnshare(unshare.value)
+    const id = unshare.value.grantId
+    await model.confirmUnshare(unshare.value)
+    if (closed || props.model !== model) return
+    if (props.manager) {
+      const value = await model.load(id)
+      if (closed || props.model !== model) return
+      loadedView.value = value
+    }
     unshare.value = null
   } catch (e) {
-    error.value = sharingErrorMessage(e, 'Could not stop sharing this file. Try again.')
+    if (!closed && props.model === model)
+      error.value = sharingErrorMessage(e, 'Could not stop sharing this file. Try again.')
   } finally {
     busy.value = false
   }
@@ -213,6 +392,12 @@ code {
   overflow-wrap: anywhere;
 }
 li {
+  margin-bottom: var(--size-4-3);
+}
+.abele-sharing-management label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
   margin-bottom: var(--size-4-3);
 }
 </style>

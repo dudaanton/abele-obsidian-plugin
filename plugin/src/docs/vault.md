@@ -1493,6 +1493,20 @@ not another create/PATCH. The review keeps its saved grant and issues no key/app
 preparation is ready. A closed or superseded review cannot adopt a late preparation response.
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports do not substitute credentials between personal and scoped pipelines.
+Owner sign-in in Sharing lists folders/groups and loads their image lists; a missing local link
+cache does not block explicit unsharing. Stop sharing names the folder/group and warns that all
+collaborators and connected apps lose access, without deleting their downloaded copies. It uses
+the existing password-authenticated, revision-checked revoke route and changes no other share.
+Folder reviews report included/excluded file counts; group-root reviews report the exact synced
+note checked, without claiming a certified membership graph before the server prepares it.
+
+`data.json`'s shared `sync.sharing` catalogue carries only server/vault-bound grant IDs.
+It travels with the Sync transfer section and ordinary plugin-settings sync, so a second personal
+device can discover the same audiences. It carries no credentials, consent, local principal or
+ledger identity. Local audience records remain bound to their own device; imported IDs still
+require fresh server visibility and intrinsic sponsor proofs for every publication operation.
+When plugin-settings sync is disabled, signing in under Sharing can refresh this discovery list
+from the owner grant-list route without enabling settings sync.
 
 The publication store keeps existing-private decisions (`pending`, `declined`,
 `approved`) in its own device-local IndexedDB, separate from the personal sync ledger.
@@ -1508,7 +1522,12 @@ a callback cannot overwrite a newer settled version. A locally observed note cre
 its prepared handle until a novel creation receipt proves the empty base. Adopted, collided
 and received creates cannot supply that proof. Late initial indexing can then recover its links.
 A submitted local edit whose cache was not ready keeps its source SHA and proven prior base
-until the exact callback arrives. Receipt version/SHA checks prevent stale callbacks from
+until the exact callback arrives. A link whose image is not in the ledger yet also retains its
+original local base; post-sync revalidation resolves the new image identity without needing
+another cache event. Late cache completion restores an applied native-paste sponsor and schedules
+revalidation through the sync queue, outside the personal transaction. The host also tracks the
+ledger's transaction boundary for automatic engine runs; receipt metadata can settle inside it,
+but publication effects and questions wait until it finishes. Receipt version/SHA checks prevent stale callbacks from
 creating questions, and merged received links are never compared as locally submitted facts.
 A confirmed existing-private decision stores its exact add request and stable intent ID before
 HTTP; a lost reply retries that request, not another publication. Temporarily unavailable
@@ -1524,7 +1543,8 @@ Closing the dialog leaves the question pending without reopening it on every sav
 in the Sync tab opens it explicitly. A delayed Review must still be the latest request,
 foreground and not busy when its read completes; closing or answering invalidates older reads.
 Questions stay pending while an editor, editable field or link suggestion has focus. Leaving
-editing wakes presentation; sync never blurs the editor or interrupts input to show a question.
+editing wakes presentation; returning focus to a desktop window also retries a deferred question.
+Sync never blurs the editor or interrupts input to show a question.
 **Keep private** remembers a refusal for that file/audience.
 Production validates that all four sharing source flags remain enabled and rejects test API
 and test-sharing activation modules from its rendered graph. `npm run build:test` uses the
@@ -1554,7 +1574,11 @@ Device-local `abele-sync-scoped-join` keeps the exact resumable invitation/enrol
 `abele-sync-scoped-connection` is a disjoint scoped installation descriptor with script policy
 `refuse`. Account tokens/passwords are never persisted. Invitation/installation secrets and
 independent issuer/member/credential binding proofs remain in the device-only keychain, not
-in transferred settings. Retained personal state or another scoped connection blocks setup;
+in transferred settings. Proof names losslessly compact UUIDs and their type prefix when needed
+to meet Obsidian's lowercase/digit/dash alphabet and 64-character limit; the host also reads old
+proof slots without changing the descriptor or proof. Forget's exact empty ledger marker is not
+an active personal connection, and dormant script provenance is preserved but never used by the
+scoped installation. Retained personal state or another scoped connection blocks setup;
 missing scoped ledger state requires recovery. Joining publishes no unrelated local file and
 holds unmanaged incoming-path collisions without replacement/remap. Pending/malformed scoped
 context also refuses personal enrolment and vault script execution before credentials/effects.

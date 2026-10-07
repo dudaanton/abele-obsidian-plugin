@@ -29,9 +29,16 @@ classes. The missing work was composition and lifecycle, not another authorizati
 `NativeOwnerPublication`, `openLinkSnapshots`, the foreground prompt, and the existing owner
 HTTP classes. Its metadata lives independently of personal settlement transactions. A missing
 sentinel, descriptor, identity or audience record requires recovery instead of a fresh baseline.
-Audience IDs come from authenticated grant creation/preparation; each exposure still obtains
-fresh server visibility and intrinsic-sponsor proofs. Connection changes invalidate the token
-getter and the host's writer ownership.
+Audience IDs originate in authenticated grant creation/preparation or an owner grant-list read.
+A server/vault-bound discovery catalogue in shared `sync.sharing` settings carries them to other
+personal devices; it is included by the existing whole Sync transfer block. Devices with plugin
+settings sync disabled can refresh the catalogue by signing in under Sharing. IDs are hints,
+never consent or authority: each exposure still obtains fresh server visibility and intrinsic
+sponsor proofs. Connection changes invalidate the token getter and the host's writer ownership.
+Native cache completion schedules coalesced revalidation behind the service's sync queue and the
+public ledger transaction boundary (including automatic engine runs), never from inside settlement.
+Receipt metadata still settles normally; only publication effects/questions wait. Exact local source/base evidence survives a delayed image identity or cache callback;
+no latest-path cache or body parser substitutes for the callback.
 
 The deployed group-management path is an exact root/version review using
 `OwnerFolderHttpPort.createGroup` and `prepareGroup`, as in the stand. It is deliberately not a
@@ -53,7 +60,14 @@ work, not a matching-byte acknowledgement or a different create. Script executio
 Invitation/installation secrets and their proofs use the existing local secret road with
 keychain-safe slot spelling, and are reserved against ordinary reads and transfer.
 
-The settings dialogs receive live production flows. Existing-private consent remains in the
+The settings dialogs receive live production flows. Owner readiness is reactive, so a tab opened
+before engine initialization becomes usable when the owner lifetime starts. Its management port
+is stable for that lifetime; ordinary catalogue saves do not discard a fresh owner session.
+Owner sign-in under Sharing lists registered
+folders/groups, loads their sponsored image views, and offers confirmed Stop sharing through the
+existing owner revision-checked revoke routes. Image withdrawal does not wait on local indexing.
+The publisher's existing 16-audience budget does not prevent listing/revoking larger server lists;
+discovery does not silently choose an arbitrary subset as publication policy. Existing-private consent remains in the
 normal `Views.vue` confirmation dialog. Scope watchers and metadata teardown join the app's
 existing reload barrier, so a successor cannot open a second writer while the old host stops.
 

@@ -403,6 +403,104 @@ it.each([
   }
 })
 
+it('does not pretend an unwired sharing view is still scanning links', () => {
+  const screen = mount(OwnerPublicationSettings, { global })
+  try {
+    expect(screen.text()).not.toContain('Checking which images are linked')
+    expect(screen.text()).not.toContain('Some links could not be checked yet')
+  } finally {
+    screen.unmount()
+  }
+})
+
+it('keeps personal vault IDs and connection jargon out of visible settings', () => {
+  const sync = SyncService.getInstance()
+  const old = sync.connection.value,
+    status = sync.status.value
+  sync.connection.value = {
+    ...old,
+    vaultId: 'opaque-personal-vault',
+    vaultName: 'Sample vault',
+    deviceName: 'Sample device',
+  }
+  sync.status.value = { ...status, state: 'idle' }
+  const screen = mount(SyncSettings, {
+    global: {
+      ...global,
+      stubs: {
+        ...global.stubs,
+        DeviceList: true,
+        VaultPolicy: true,
+        UsageCard: true,
+        SelectiveSync: true,
+      },
+    },
+  })
+  try {
+    expect(screen.text()).not.toContain('opaque-personal-vault')
+    expect(screen.text()).not.toMatch(/\b(?:enrolled|token|Rescan)\b/)
+    expect(screen.text()).toContain('Sample vault')
+  } finally {
+    screen.unmount()
+    sync.connection.value = old
+    sync.status.value = status
+  }
+})
+
+it.each(['folder', 'group'] as const)(
+  'confirms stopping a shared %s by name before revoking it',
+  async (kind) => {
+    const share = {
+      id: 'opaque-grant',
+      kind,
+      label: 'Sample sharing',
+      prefix: kind === 'folder' ? 'Shared/' : null,
+      rootId: kind === 'group' ? 'opaque-root' : null,
+      role: 'editor',
+      revision: 4,
+      state: 'active',
+    }
+    const session = { facet: 'account' }
+    const manager = {
+      authorize: vi.fn(async () => session),
+      list: vi.fn(async () => [share]),
+      revoke: vi.fn(),
+      close: vi.fn(),
+    }
+    const model = { view, load: vi.fn(async () => view) }
+    const screen = mount(OwnerPublicationSettings, { props: { manager, model } as never, global })
+    try {
+      await screen.find('[aria-label="Sharing account email"]').setValue('sample@example.com')
+      await screen.find('[aria-label="Sharing account password"]').setValue('invented-password')
+      await screen
+        .findAll('button')
+        .find((button) => button.text() === 'Show shared folders and groups')!
+        .trigger('click')
+      await flushPromises()
+      expect(screen.text()).toContain(share.label)
+      expect(screen.text()).toContain(target.path)
+      expect(screen.findAll('button').some((button) => button.text() === 'Unshare…')).toBe(true)
+      await screen
+        .findAll('button')
+        .find((button) => button.text() === 'Stop sharing')!
+        .trigger('click')
+      plain(screen.text())
+      expect(screen.text()).toContain('All collaborators and connected apps')
+      expect(screen.text()).toContain(kind === 'folder' ? 'Shared/' : share.label)
+      expect(manager.revoke).not.toHaveBeenCalled()
+      await screen
+        .findAll('button')
+        .filter((button) => button.text() === 'Stop sharing')
+        .at(-1)!
+        .trigger('click')
+      await flushPromises()
+      expect(manager.revoke).toHaveBeenCalledExactlyOnceWith(session, share)
+    } finally {
+      screen.unmount()
+    }
+  }
+)
+
 it('keeps raw diagnostic strings out of a failed sharing review', async () => {
   const folder = {
     ...flow(),

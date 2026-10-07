@@ -1,7 +1,7 @@
 <template>
   <Section
     title="Connect to a server"
-    desc="Sign in once. This device then holds a token of its own, and the password is never stored."
+    desc="Sign in once. This device keeps its own connection key; your password is never stored."
   >
     <Setting name="Server address" :desc="urlProblem ?? ADDRESS_HINT">
       <Input
@@ -50,7 +50,7 @@
     </Setting>
 
     <Setting
-      name="Shared group invitation"
+      name="Join a shared group"
       desc="Download shared notes without sharing your other files or replacing existing ones."
     >
       <Button
@@ -65,11 +65,11 @@
       @close="scopedPreview = false"
     />
     <Setting
-      name="New shared file"
-      desc="Preview how to add notes and images after joining a shared group."
+      name="Adding shared files"
+      desc="After joining a group, use New shared file in Sync to add a note or image. This preview creates nothing."
     >
       <Button
-        text="Preview shared file creation…"
+        text="See shared file options…"
         tooltip="Look at the shared-file options without creating a file"
         @click="creationPreview = true"
       />
@@ -90,7 +90,7 @@
             v-for="vault in vaults"
             :key="vault.id"
             :title="vault.name"
-            :subtitle="vault.id"
+            :subtitle="vault.role === 'owner' ? 'Your vault' : 'Shared vault'"
             :meta="vaultMeta(vault)"
             clickable
             :selected="chosen === vault.id"
@@ -125,7 +125,7 @@
                   ? 'Name the new vault first'
                   : deviceName.trim() === ''
                     ? 'Name this device first'
-                    : 'Make this vault and enrol this device on it'
+                    : 'Make this vault and connect this device to it'
               "
               @click="createVault"
             />
