@@ -159,10 +159,11 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       cm.focus()
       cm.dispatch({selection:{anchor:0,head:6}})
       const sourceBeforeToolbar = view.editor.getValue()
-      const bold = document.querySelector('.mobile-toolbar .lucide-bold')
+      const glyph = document.querySelector('.mobile-toolbar .lucide-bold')
+      const bold = glyph.closest('.mobile-toolbar-option, .mobile-toolbar-item, .clickable-icon, button') ?? glyph.parentElement
       let toolbarClick = false
       bold.addEventListener('click', () => { toolbarClick = true }, {once:true,capture:true})
-      const toolbarContext = { inert: bold.closest('[inert]')?.className ?? '', owner: app.workspace.activeEditor?.editor?.cm === cm, focused: document.activeElement === cm.contentDOM }
+      const toolbarContext = { control: bold.className, inert: bold.closest('[inert]')?.className ?? '', owner: app.workspace.activeEditor?.editor?.cm === cm, focused: document.activeElement === cm.contentDOM }
       await tap(bold)
       await until(() => cm.state.doc.toString().startsWith('**Native**'))
       const formatText = cm.state.doc.toString()

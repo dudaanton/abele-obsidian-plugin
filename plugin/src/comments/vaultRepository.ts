@@ -15,10 +15,17 @@ export class VaultCommentRepository implements CommentRepository {
     if (!COMMENT_ID_RE.test(id)) throw new Error('Invalid comment id')
     return normalizePath(`${this.folder()}/${id}.abcomment`)
   }
+  owns(file: TFile): boolean {
+    return (
+      file.extension === 'abcomment' &&
+      COMMENT_ID_RE.test(file.basename) &&
+      file.path === this.path(file.basename)
+    )
+  }
   async ids(): Promise<string[]> {
     return this.app.vault
       .getFiles()
-      .filter((file) => file.extension === 'abcomment' && file.path === this.path(file.basename))
+      .filter((file) => this.owns(file))
       .map((file) => file.basename)
   }
   async occupied(id: string): Promise<boolean> {

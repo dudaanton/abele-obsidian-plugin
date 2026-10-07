@@ -47,6 +47,19 @@ function open(barTop: number, keyboard = 0) {
   return container
 }
 describe('comment form with the mobile formatting toolbar', () => {
+  it('keeps pinned actions in place until a touch click is delivered after field blur', async () => {
+    const container = open(448, 336)
+    await advance(500)
+    const button = document.createElement('button')
+    container.querySelector('.modal')!.append(button)
+    button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    button.focus()
+    expect(container.classList.contains('abele-keyboard-room')).toBe(true)
+    expect(container.style.getPropertyValue('--abele-room-height')).toBe('448px')
+    button.click()
+    await advance(500)
+    expect(container.classList.contains('abele-keyboard-room')).toBe(false)
+  })
   it('keeps the title and close action below the phone safe area when fitting a tall form', async () => {
     const style = document.createElement('style')
     style.textContent = '.abele-safe-area-probe { padding-top: 30px; }'

@@ -151,6 +151,9 @@ async function save() {
   if (busy.value || !saveable.value) return
   busy.value = true
   error.value = ''
+  const submitted = body.value
+  const chosenAppearance = appearance.value
+  const editedId = editing.value
   try {
     await props.beforeWrite?.()
     if (!saved.value) {
@@ -161,33 +164,35 @@ async function save() {
         selection.source,
         selection.from,
         selection.to,
-        appearance.value,
-        body.value
+        chosenAppearance,
+        submitted
       )
       // A publication retry keeps identity and creation time, even when the draft was edited.
       draft.thread = {
         ...draft.thread,
-        appearance: appearance.value,
-        entries: [{ ...draft.thread.entries[0], body: body.value }],
+        appearance: chosenAppearance,
+        entries: [{ ...draft.thread.entries[0], body: submitted }],
       }
       if (draft.saved)
         draft.saved = await props.service.repository.write(draft.thread, draft.saved.revision)
       saved.value = await props.service.publish(draft)
-    } else if (editing.value) {
-      saved.value = await props.service.edit(
-        saved.value,
-        editing.value,
-        body.value,
-        appearance.value
-      )
-    } else if (body.value.trim()) {
-      saved.value = await props.service.add(saved.value, body.value, appearance.value)
+    } else if (editedId) {
+      saved.value = await props.service.edit(saved.value, editedId, submitted, chosenAppearance)
+    } else if (submitted.trim()) {
+      saved.value = await props.service.add(saved.value, submitted, chosenAppearance)
     } else {
-      saved.value = await props.service.appearance(saved.value, appearance.value)
+      saved.value = await props.service.appearance(saved.value, chosenAppearance)
     }
-    body.value = ''
-    originalBody.value = ''
-    editing.value = null
+    if (body.value === submitted) {
+      body.value = ''
+      originalBody.value = ''
+      editing.value = null
+    } else if (submitted.trim()) {
+      // The editor remains usable during I/O. Continued typing belongs to the entry just
+      // saved, and must stay as an edit draft rather than vanish or create a duplicate.
+      editing.value = editedId ?? saved.value.thread.entries.at(-1)!.id
+      originalBody.value = submitted
+    }
     draft = undefined
     props.changed?.(saved.value)
   } catch (cause) {

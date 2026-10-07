@@ -46,6 +46,35 @@ async function press(text: string) {
 }
 
 describe('free-form comment dialog', () => {
+  it('keeps text typed during a slow save as an edit draft instead of silently clearing it', async () => {
+    const m = memoryComments()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const write = m.repository.write.bind(m.repository)
+    vi.spyOn(m.repository, 'write').mockImplementation(async (thread, expected) => {
+      await gate
+      return write(thread, expected)
+    })
+    open({
+      service: m.service,
+      selection: { note: 'Notes/sample.md', source: 'sample words', from: 0, to: 12 },
+    })
+    await wrapper!.find('textarea').setValue('First version')
+    await press('Save')
+    await wrapper!.find('textarea').setValue('Continued version')
+    release()
+    await flushPromises()
+    expect((await m.repository.read([...m.files.keys()][0]))!.thread.entries[0].body).toBe(
+      'First version'
+    )
+    expect(wrapper!.find('textarea').element.value).toBe('Continued version')
+    await press('Save')
+    const saved = (await m.repository.read([...m.files.keys()][0]))!
+    expect(saved.thread.entries).toHaveLength(1)
+    expect(saved.thread.entries[0].body).toBe('Continued version')
+  })
   it('does not discard an unsaved add-entry draft when deleting the final saved entry', async () => {
     const m = memoryComments()
     const initial = await m.service.publish(

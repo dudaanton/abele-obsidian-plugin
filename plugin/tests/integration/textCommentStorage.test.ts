@@ -22,6 +22,15 @@ function setup() {
   return { fake, app, repository }
 }
 describe('vault human comment repository', () => {
+  it('ignores foreign filenames rather than aborting enumeration of valid thread files', async () => {
+    const m = setup()
+    await m.repository.write(thread(), null)
+    await m.app.vault.create('System/Comments/not-a-thread.abcomment', '{broken')
+    expect(await m.repository.ids()).toEqual(['aaaaaa'])
+    expect(
+      await m.app.vault.read(m.app.vault.getFileByPath('System/Comments/not-a-thread.abcomment')!)
+    ).toBe('{broken')
+  })
   it('reloads from the configured folder without parsing AI siblings', async () => {
     const m = setup()
     const saved = await m.repository.write(thread(), null)

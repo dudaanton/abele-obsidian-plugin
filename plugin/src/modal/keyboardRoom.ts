@@ -98,6 +98,8 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   // Where Obsidian's toolbar stood at the last measurement; null while it did not show.
   let fittedBar: number | null = null
   const timers: number[] = []
+  let holdingAction = false
+  let disposed = false
 
   // Found each time rather than once on mounting: Obsidian may not have finished putting the
   // dialog together when this component mounts inside it.
@@ -308,6 +310,9 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   }
 
   const fit = () => {
+    // A native press focuses a button before delivering its click. Releasing the keyboard
+    // fit on that blur moves the button away from the finger and swallows the action.
+    if (holdingAction) return
     const onTablet = tablet()
     // Measured as Obsidian left it, so that a keyboard going away gives the room back. A
     // tablet's move is only a shift of the dialog, so it is measured through instead.
@@ -480,6 +485,25 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
     }, 30)
   }
 
+  const onActionPress = (event: Event) => {
+    const target = (event.target as Element | null)?.closest?.('button, [role="button"]')
+    if (!target || target.matches(':disabled, [aria-disabled="true"]')) return
+    if (dialog()?.contains(target) && focused()) holdingAction = true
+  }
+  const endActionPress = () => {
+    if (!holdingAction) return
+    queueMicrotask(() => {
+      if (disposed) return
+      holdingAction = false
+      fit()
+    })
+  }
+  doc.addEventListener('pointerdown', onActionPress, true)
+  doc.addEventListener('touchstart', onActionPress, true)
+  doc.addEventListener('mousedown', onActionPress, true)
+  doc.addEventListener('click', endActionPress, true)
+  doc.addEventListener('pointercancel', endActionPress, true)
+
   win.visualViewport?.addEventListener('resize', fit)
   win.visualViewport?.addEventListener('scroll', fit)
   win.addEventListener('resize', fit)
@@ -501,6 +525,12 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   fit()
 
   return () => {
+    disposed = true
+    doc.removeEventListener('pointerdown', onActionPress, true)
+    doc.removeEventListener('touchstart', onActionPress, true)
+    doc.removeEventListener('mousedown', onActionPress, true)
+    doc.removeEventListener('click', endActionPress, true)
+    doc.removeEventListener('pointercancel', endActionPress, true)
     win.visualViewport?.removeEventListener('resize', fit)
     win.visualViewport?.removeEventListener('scroll', fit)
     win.removeEventListener('resize', fit)

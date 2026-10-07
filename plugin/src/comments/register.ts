@@ -72,7 +72,7 @@ export function registerTextComments(plugin: Plugin): TextComments {
     })
   )
   const fileChanged = (file: TAbstractFile) => {
-    if (file instanceof TFile && file.extension === 'abcomment') comments.invalidate(file.basename)
+    if (file instanceof TFile && comments.repository.owns(file)) comments.invalidate(file.basename)
   }
   plugin.registerEvent(plugin.app.vault.on('create', fileChanged))
   plugin.registerEvent(plugin.app.vault.on('modify', fileChanged))
@@ -95,8 +95,7 @@ export function registerTextComments(plugin: Plugin): TextComments {
   )
   plugin.registerEvent(
     plugin.app.workspace.on('file-open', (file) => {
-      if (file?.extension === 'abcomment' && file.path === comments.repository.path(file.basename))
-        void comments.open([file.basename])
+      if (file && comments.repository.owns(file)) void comments.open([file.basename])
     })
   )
   plugin.register(
