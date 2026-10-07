@@ -167,14 +167,16 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
   }
 
   /**
-   * A dialog of the shell whose body is what scrolls — every one but Obsidian's big sheet, which
-   * holds a list or a whole screen and which their own stylesheet already stops above the
-   * keyboard. It is fitted into the room even when it is taller: its body scrolls in less height,
+   * A dialog of the shell whose body is what scrolls. Tall forms with a pinned footer shrink
+   * too: padding the body of a big sheet cannot bring its Save button above the toolbar.
+   * Unfooted big sheets keep Obsidian's existing list/screen behaviour. The form is fitted
+   * into the room even when it is taller: its body scrolls in less height,
    * and its title and buttons stay in sight, where the buttons of a dialog keeping its size stood
    * under the keyboard.
    */
   const shrinks = (panel: HTMLElement) =>
-    panel.classList.contains('abele-modal') && !panel.classList.contains('mod-lg')
+    panel.classList.contains('abele-modal') &&
+    (!panel.classList.contains('mod-lg') || panel.classList.contains('abele-modal_footed'))
 
   /** The typing field that has focus — never a select, button, card or list row. */
   const focused = (): Element | null => {
@@ -336,7 +338,7 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
     }
 
     // Obsidian's editing toolbar stands on the keyboard while a note field is typed into.
-    const bar = typing && keyboardTop !== null ? toolbarTop(doc) : null
+    const bar = typing ? toolbarTop(doc) : null
     fittedBar = bar
     if (bar !== null && bar < bottom) bottom = bar
 

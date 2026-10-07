@@ -123,11 +123,20 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       app.commands.executeCommandById('abele:add-text-comment')
       await until(() => document.querySelector('.abele-text-comments'))
       const host = window.__e2eHost
-      const tap = async el => { el.scrollIntoView({block:'center'}); await wait(400); const r=el.getBoundingClientRect(); await host.tap(r.left+r.width/2,r.top+r.height/2) }
+      const tap = async el => {
+        el.scrollIntoView({block:'center'})
+        let r=el.getBoundingClientRect()
+        for(let i=0;i<30;i++) { await wait(150); const next=el.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; if(stable) break }
+        const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
+        if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing'))
+        await host.tap(x,y)
+      }
+      const keyboardHeight = () => Math.max(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,window.innerHeight-(window.visualViewport?.height??window.innerHeight))
       const field = document.querySelector('.abele-text-comments .cm-content')
+      field.blur(); await wait(200)
       await tap(field)
-      await until(() => window.innerHeight > (window.visualViewport?.height ?? window.innerHeight) + 100)
-      const keyboard = window.innerHeight > (window.visualViewport?.height ?? window.innerHeight) + 100
+      await until(() => keyboardHeight() > 100)
+      const keyboard = keyboardHeight() > 100
       const toolbar = !![...document.querySelectorAll('.mobile-toolbar')].find(el => el.getBoundingClientRect().height > 0)
       await host.type('Native second comment\\nwith another line')
       const shots = [await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard.png')]
@@ -148,6 +157,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await tap(button('Close'))
       return JSON.stringify({keyboard, toolbar, saved, edited, shots})
     `)
+      console.log('Native comment editor:', result)
       expect(result.keyboard).toBe(true)
       expect(result.toolbar).toBe(true)
       expect(result.saved).toBe(true)
