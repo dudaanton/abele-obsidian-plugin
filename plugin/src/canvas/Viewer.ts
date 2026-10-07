@@ -321,7 +321,8 @@ export class CanvasViewer {
       -this.camera.y * ratio * this.camera.zoom
     )
     const theme = this.ports.theme()
-    paintCanvasInk(ctx, this.step === null ? this.graph : this.scene().graph, this.visible(), theme)
+    const scene = this.scene()
+    paintCanvasInk(ctx, scene.graph, this.visible(), theme, scene.highlight)
     if (this.step === null) this.input?.paintInk?.(ctx, theme)
   }
   private paint(): void {

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { bounds, cloneCanvas, descendants, parentsOf, type CanvasGraph, type Rect } from './model'
 import { routeEdge } from './scene'
 import { linesOf, lineBounds } from './primitives'
-import { inkOf, inkEntries, inkBounds } from './ink'
+import { allInkEntries, inkOf, inkEntries, inkBounds } from './ink'
 
 export const cameraRegionSchema = z
   .object({
@@ -101,7 +101,12 @@ export function editCanvasSteps(input: CanvasGraph, ops: unknown): CanvasGraph {
       graph.abele = { ...graph.abele, steps }
       steps = stepsOf(graph)
       const ids = new Set(
-        [...graph.nodes, ...graph.edges, ...linesOf(graph), ...inkOf(graph)].map((e) => e.id)
+        [
+          ...graph.nodes,
+          ...graph.edges,
+          ...linesOf(graph),
+          ...allInkEntries(graph).map((e) => e.stroke),
+        ].map((e) => e.id)
       )
       for (const step of steps)
         for (const id of [
@@ -169,7 +174,7 @@ export function stepScene(graph: CanvasGraph, number: number) {
       graph.nodes.find((n) => n.id === step.focus) ??
       graph.edges.find((e) => e.id === step.focus) ??
       linesOf(graph).find((l) => l.id === step.focus) ??
-      inkOf(graph).find((s) => s.id === step.focus)
+      allInkEntries(graph).find((e) => e.stroke.id === step.focus)?.stroke
     if (!target) throw new Error(`Step ${step.id}: missing focus id ${step.focus}`)
     const rects = rectangles(new Set([step.focus]))
     region = bounds(

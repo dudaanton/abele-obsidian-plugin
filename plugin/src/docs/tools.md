@@ -244,8 +244,13 @@ must be in scope. New diagrams join scope after creation, like `create`.
 - `canvas_read(path, {detail?, region?, step?})`: `step` is a one-based playback number, filtering
   the outline to cumulatively revealed content and returning camera framing and narration.
    `detail` is `outline` (default) or `full`. The outline
-  gives ids, one-line labels, group hierarchy, edges, free line/arrow primitives (`lines`, including geometry and style) and lint; full adds geometry and all extension
-  data. It includes an open native Canvas's pending data and returns an opaque `revision` covering
+  gives ids, one-line labels, group hierarchy, edges, free line/arrow primitives (`lines`,
+  including geometry and style), strokes and lint. `ink` is sorted by stable id and includes
+  each supported stroke's points, tool, colour, size, optional transform/authoring frame,
+  `node` (owner id or null), `world` transform `{x,y,sx,sy}` and world `bounds`. Region reads
+  include strokes intersecting the region even when their owner card is outside it. Step reads
+  omit ink belonging to hidden/collapsed owners; ordinary reads include it for editing.
+  Full adds card geometry and all extension data. It includes an open native Canvas's pending data and returns an opaque `revision` covering
   file bytes and pending native state. Open Abele sessions also return their pending graph and
   `state` (dirty, busy, conflict and native writer presence); their opaque revision includes a
   non-reused session incarnation and generation. Read again after closing/reopening a session.
@@ -259,7 +264,10 @@ must be in scope. New diagrams join scope after creation, like `create`.
   marker kinds are refused rather than silently converted to arrows. Creation fits text and applies layered dagre layout; it never overwrites a file.
 
 Pen/marker strokes can be added with `add_ink {stroke,node?}` using the version-1 payload
-in the vault reference. Attached points are node-local with authoring `frame` dimensions;
+in the vault reference. Omitted `color` uses the theme's text colour for pen and Canvas yellow
+for marker; omitted `size` uses the human medium widths (pen 2.4, marker 14). These are
+authoring defaults, not a migration of opaque stored ink. Attached points are node-local
+with authoring `frame` dimensions;
 free points are world coordinates without a frame. The human pen uses this same operation.
 `update_ink {id,patch}` changes compatible stroke fields (not ID, version or attachment frame);
 `attach_ink {id,node?}` binds to a node, or detaches when node is omitted, preserving the outline.
@@ -293,12 +301,15 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
 - `canvas_steps(path, {revision, ops})`: an atomic batch, guarded by the same revision/scope as
   edits. Ops: `replace {steps}`, `upsert {step,before?}`, `remove {id}`, `move {id,before}`.
   A step is `{id,reveal:ids[],say:string,highlight?:ids[],focus?:id|{x,y,width,height}}`.
-  `id` is the step's stable name; diagram references use node/group/edge ids. `before` is a step
+  `id` is the step's stable name; diagram references use node/group/edge/free-line/ink ids. `before` is a step
   id, or null to append. Upsert without before updates an existing step in place, preserving its
   unknown fields; replace deliberately replaces the list. Groups reveal all their descendants;
   reveals accumulate, backwards navigation recomputes them. Connections appear when both
-  endpoints are visible. Highlights never reveal hidden content. An id focus frames that node
-  or edge; a region gives exact framing; otherwise frame revealed content. `say` is plain text.
+  endpoints are visible. Highlights never reveal hidden content. Attached ink follows its
+  owner's visibility: mentioning an annotation alone never reveals its hidden card. A visible
+  annotation may be focused/highlighted by its own id. An id focus frames that node, edge,
+  free line or stroke; a region gives exact framing; otherwise frame revealed content.
+  `say` is plain text.
 - `canvas_export(path, {output,format,maxSide?})`: captures the complete current revision and
   creates a new attachment, independent of camera or walkthrough step. `format` is `png`, `svg`
   or `pdf`; `output` is an exact safe vault-relative path with that extension and an existing
@@ -340,9 +351,9 @@ agent/chat ownership, original tool's Off/Ask/On setting, scope and write guards
 another tool cannot bypass them. Human drafts are never implicitly committed or discarded.
 
 The local user can also choose **Recover failed canvas change** in the Abele view header,
-then explicitly retry, reapply or discard a retained failed agent change. This is recovery,
-not a human editor. Retention is in the running plugin only: durable crash/plugin-reload
-recovery is not provided yet, and human editing remains disabled.
+then explicitly retry, reapply or discard a retained failed agent change. This recovers a
+failed agent proposal; it is separate from human draft controls. Retention is in the running
+plugin only: durable crash/plugin-reload recovery is not provided.
 
 An issued write with an uncertain outcome is **not** an ordinary retryable failed proposal.
 `canvas_read.state.publicationOutcome` distinguishes `unknown` from
@@ -366,7 +377,7 @@ look again. Native save can reorder keys and elements; never use array position 
 order still defines stacking and is part of the expected revision; a raise/lower action is a change.
 Unknown node types are refused instead of silently erased. The batch is one native undo item
 when a single native Canvas editor is open; close duplicate editor tabs before writing. Native
-Canvas remains available via the viewer's native action. Abele's read-only viewer plays the
+Canvas remains available via the viewer's native action. Abele's viewer plays the
 walkthrough with arrows/Space, Previous/Next buttons, blank-area taps and horizontal swipes;
 Escape/All shows the whole diagram. Use `![[sample.canvas#step=2]]` inside a note for a static
 step picture with Open/Play actions. The viewer never writes camera or playback into the diagram.

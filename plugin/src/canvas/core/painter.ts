@@ -176,10 +176,22 @@ export function paintCanvasInk(
   ctx: CanvasRenderingContext2D,
   graph: CanvasGraph,
   region: Rect,
-  theme: CanvasTheme
+  theme: CanvasTheme,
+  highlight?: ReadonlySet<string>
 ): void {
-  for (const entry of inkEntries(graph))
-    if (overlaps(inkBounds(entry), region)) paintInkEntry(ctx, entry, theme)
+  for (const entry of inkEntries(graph)) {
+    const box = inkBounds(entry)
+    if (!overlaps(box, region)) continue
+    paintInkEntry(ctx, entry, theme)
+    if (highlight?.has(entry.stroke.id)) {
+      ctx.save()
+      ctx.strokeStyle = theme.accent
+      ctx.lineWidth = 2
+      ctx.setLineDash([])
+      ctx.strokeRect(box.x - 3, box.y - 3, box.width + 6, box.height + 6)
+      ctx.restore()
+    }
+  }
 }
 function shapePath(ctx: CanvasRenderingContext2D, node: CanvasNode): void {
   const { x, y, width: w, height: h } = node,
@@ -449,7 +461,7 @@ export function paintCanvas(
     }
     ctx.restore()
   }
-  if (!assets.skipInk) paintCanvasInk(ctx, graph, region, theme)
+  if (!assets.skipInk) paintCanvasInk(ctx, graph, region, theme, assets.highlight)
   ctx.restore()
   return { visible: visible.map((n) => n.id), warnings }
 }

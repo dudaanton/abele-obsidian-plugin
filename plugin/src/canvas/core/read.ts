@@ -1,9 +1,10 @@
 import { labelOf, overlaps, parentsOf, type CanvasGraph, type Rect } from './model'
 import { lintCanvas } from './lint'
 import { linesOf, lineBounds } from './primitives'
+import { allInkEntries, inkEntries, inkBounds, inkTransform } from './ink'
 import { stepScene } from './steps'
 import { defaultMetrics, type TextMetricsPort } from './scene'
-/** Coordinates appear only in full detail. All outline ordering is deterministic by id. */
+/** Card geometry appears in full detail; primitives/ink carry geometry in every read. Sorted by id. */
 export function canvasOutline(
   graph: CanvasGraph,
   options: { detail?: 'outline' | 'full'; region?: Rect; step?: number } = {},
@@ -49,6 +50,15 @@ export function canvasOutline(
     lines: linesOf(graph)
       .filter((l) => !options.region || overlaps(lineBounds(l), options.region))
       .sort((a, b) => a.id.localeCompare(b.id)),
+    ink: (options.step === undefined ? allInkEntries(graph) : inkEntries(graph))
+      .filter((entry) => !options.region || overlaps(inkBounds(entry), options.region))
+      .sort((a, b) => a.stroke.id.localeCompare(b.stroke.id))
+      .map((entry) => ({
+        ...entry.stroke,
+        node: entry.node?.id ?? null,
+        world: inkTransform(entry),
+        bounds: inkBounds(entry),
+      })),
     steps: source.abele?.steps ?? [],
     ...(options.step !== undefined
       ? {

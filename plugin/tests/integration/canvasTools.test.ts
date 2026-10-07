@@ -266,6 +266,139 @@ describe('agent canvas tools and permissions', () => {
       call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'remove', id: 'free-arrow' }] })
     ).rejects.toThrow(/scope/i)
   })
+  it('reads free and attached ink by id with local samples, style, frame and world geometry', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const stroke = {
+      version: 1,
+      id: 'annotation',
+      tool: 'pen',
+      color: '',
+      size: 2.4,
+      points: [10, 20, 0.5, 80, 40, 0.8],
+      frame: { width: 260, height: 160 },
+    }
+    await call('canvas_edit', {
+      path: 'sample.canvas',
+      ops: [
+        { op: 'add_ink', node: 'alpha', stroke },
+        {
+          op: 'add_ink',
+          stroke: { ...stroke, id: 'free', frame: undefined, points: [-600, 0, 0.5] },
+        },
+        { op: 'update', id: 'alpha', patch: { x: 100, y: 200, width: 520, height: 80 } },
+      ],
+    })
+    const data = JSON.parse((await call('canvas_read', { path: 'sample.canvas' })).content[0].text)
+    expect(data.ink.map((s: { id: string }) => s.id)).toEqual(['annotation', 'free'])
+    expect(data.ink[0]).toMatchObject({
+      ...stroke,
+      node: 'alpha',
+      world: { x: 100, y: 200, sx: 2, sy: 0.5 },
+    })
+    expect(data.ink[1]).toMatchObject({ node: null, world: { x: 0, y: 0, sx: 1, sy: 1 } })
+    const crop = JSON.parse(
+      (
+        await call('canvas_read', {
+          path: 'sample.canvas',
+          region: { x: -620, y: -20, width: 40, height: 40 },
+        })
+      ).content[0].text
+    )
+    expect(crop.ink.map((s: { id: string }) => s.id)).toEqual(['free'])
+  })
+  it('uses theme colour and the human medium widths for omitted ink styles', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    await call('canvas_edit', {
+      path: 'sample.canvas',
+      ops: [
+        {
+          op: 'add_ink',
+          stroke: { version: 1, id: 'pen', tool: 'pen', points: [-400, 0, 0.5, -300, 20, 0.5] },
+        },
+        {
+          op: 'add_ink',
+          stroke: {
+            version: 1,
+            id: 'marker',
+            tool: 'marker',
+            points: [-400, 60, 0.5, -300, 80, 0.5],
+          },
+        },
+      ],
+    })
+    const data = await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')
+    expect(data.abele?.ink).toMatchObject([
+      { color: '', size: 2.4 },
+      { color: '', size: 14 },
+    ])
+  })
+  it('edits mixed ink batches through shared operations and refuses malformed, duplicate and stale writes atomically', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const stroke = {
+      version: 1,
+      id: 'ink',
+      tool: 'pen',
+      color: '1',
+      size: 2,
+      points: [0, 0, 0.5, 100, 20, 0.5],
+    }
+    await call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'add_ink', stroke }] })
+    const stale = JSON.parse(
+      (await call('canvas_read', { path: 'sample.canvas' })).content[0].text
+    ).revision
+    await call('canvas_edit', {
+      path: 'sample.canvas',
+      ops: [
+        { op: 'move', ids: ['ink'], dx: 20, dy: 30 },
+        { op: 'scale', ids: ['ink'], x: 0, y: 0, factor: 2 },
+        {
+          op: 'update_ink',
+          id: 'ink',
+          patch: { color: '4', size: 3, points: [0, 0, 0.5, 90, 10, 0.8] },
+        },
+        { op: 'attach_ink', id: 'ink', node: 'alpha' },
+        { op: 'attach_ink', id: 'ink' },
+      ],
+    })
+    const data = await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')
+    expect(data.abele?.ink).toMatchObject([
+      { id: 'ink', color: '4', size: 3, transform: { x: 40, y: 60, sx: 2, sy: 2 } },
+    ])
+    const file = app.vault.getAbstractFileByPath('sample.canvas') as TFile,
+      before = await app.vault.read(file)
+    for (const bad of [
+      { op: 'add_ink', stroke },
+      { op: 'add_ink', stroke: { ...stroke, id: 'alpha' } },
+      { op: 'add_ink', stroke: { ...stroke, id: 'bad', points: [0, 0, 2] } },
+      {
+        op: 'add_ink',
+        stroke: { ...stroke, id: 'bad', node: undefined, frame: { width: 100, height: 100 } },
+      },
+      { op: 'update_ink', id: 'ink', patch: { color: 'invalid' } },
+      { op: 'update_ink', id: 'ink', patch: { frame: { width: 0, height: 100 } } },
+      { op: 'attach_ink', id: 'ink', node: 'missing' },
+    ]) {
+      await expect(
+        call('canvas_edit', {
+          path: 'sample.canvas',
+          ops: [{ op: 'move', ids: ['ink'], dx: 5, dy: 6 }, bad],
+        })
+      ).rejects.toThrow(/op 1/)
+      expect(await app.vault.read(file)).toBe(before)
+    }
+    await expect(
+      call('canvas_edit', {
+        path: 'sample.canvas',
+        revision: stale,
+        ops: [{ op: 'remove', id: 'ink' }],
+      })
+    ).rejects.toThrow(/changed|stale|revision/)
+    expect(await app.vault.read(file)).toBe(before)
+    await call('canvas_edit', { path: 'sample.canvas', ops: [{ op: 'remove', id: 'ink' }] })
+    expect(
+      (await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')).abele?.ink
+    ).toEqual([])
+  })
   it('applies an approved edit with nested patches from a deep reactive tool-call queue', async () => {
     await call('canvas_create', { path: 'sample.canvas', from: { graph } })
     const read = await call('canvas_read', { path: 'sample.canvas' })

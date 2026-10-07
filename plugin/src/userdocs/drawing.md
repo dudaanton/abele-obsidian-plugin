@@ -217,6 +217,15 @@ also deletes its owned ink; Undo restores both. Each completed action uses the s
 history as cards and agent edits. A group containing unrecognized ink cannot be ungrouped
 safely: it is kept intact rather than guessing a new attachment or silently losing that ink.
 
+The agent can read your strokes, change their points, colour or thickness, move/scale them,
+attach or detach them, erase them, and add its own pen or marker strokes. You can select and
+edit those strokes with the same lasso and eraser. An agent batch is one shared Undo item;
+your unfinished gesture or text draft blocks it instead of being saved by the agent. Editing
+still uses the agent's own Ask permission, even when ordinary file writes are allowed.
+New strokes without an explicit style use the theme colours and medium pen/marker widths.
+Walkthroughs can focus and highlight strokes by name; an attached annotation stays hidden
+until its card is visible.
+
 Each finished drag or resize is one shared undo item. Until release the geometry is only a
 preview; an agent or another tab cannot publish over the active gesture. Retry and discard
 controls stay hidden during the gesture so they do not move the canvas under your finger.

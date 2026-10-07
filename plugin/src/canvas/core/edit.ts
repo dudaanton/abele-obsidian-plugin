@@ -14,6 +14,7 @@ import {
   type CanvasNode,
 } from './model'
 import { moveIds } from './selection'
+import { WIDTHS } from '../../drawing/model'
 import { lineSchema, linesOf, rawLines, writeLines, lineIds, type CanvasLine } from './primitives'
 
 import {
@@ -51,6 +52,19 @@ export const inputNodeSchema = z
     color: z.string().optional(),
   })
   .strict()
+// Defaults belong to authoring only: opaque/incomplete persisted strokes stay opaque.
+const inkInputSchema = z.discriminatedUnion('tool', [
+  inkSchema.extend({
+    tool: z.literal('pen'),
+    color: inkSchema.shape.color.default(''),
+    size: inkSchema.shape.size.default(WIDTHS.pen.medium),
+  }),
+  inkSchema.extend({
+    tool: z.literal('marker'),
+    color: inkSchema.shape.color.default(''),
+    size: inkSchema.shape.size.default(WIDTHS.marker.medium),
+  }),
+])
 export const operationSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('add_node'), node: inputNodeSchema }).strict(),
   z.object({ op: z.literal('update'), id, patch: object }).strict(),
@@ -65,7 +79,7 @@ export const operationSchema = z.discriminatedUnion('op', [
     .strict(),
   z.object({ op: z.literal('connect'), edge: edgeSchema }).strict(),
   z.object({ op: z.literal('add_line'), line: lineSchema }).strict(),
-  z.object({ op: z.literal('add_ink'), stroke: inkSchema, node: id.optional() }).strict(),
+  z.object({ op: z.literal('add_ink'), stroke: inkInputSchema, node: id.optional() }).strict(),
   z.object({ op: z.literal('update_ink'), id, patch: object }).strict(),
   z.object({ op: z.literal('attach_ink'), id, node: id.optional() }).strict(),
   z

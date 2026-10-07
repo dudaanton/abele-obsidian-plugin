@@ -1,7 +1,7 @@
 import { contains, descendants, labelOf, overlaps, parentsOf, type CanvasGraph } from './model'
 import { expandedNodeIds, stepsOf } from './steps'
 import { linesOf } from './primitives'
-import { inkOf } from './ink'
+import { allInkEntries } from './ink'
 import {
   contentBox,
   defaultMetrics,
@@ -65,7 +65,12 @@ export function lintCanvas(
     if (node.type !== 'group' && !connected.has(node.id))
       add('isolated', [node.id], `${node.id} has no connection`)
   const ids = new Set(
-    [...graph.nodes, ...graph.edges, ...linesOf(graph), ...inkOf(graph)].map((n) => n.id)
+    [
+      ...graph.nodes,
+      ...graph.edges,
+      ...linesOf(graph),
+      ...allInkEntries(graph).map((e) => e.stroke),
+    ].map((n) => n.id)
   )
   const steps = graph.abele?.steps
   try {

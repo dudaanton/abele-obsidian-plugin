@@ -11,10 +11,11 @@ import {
   type CanvasInk,
 } from '@/canvas/core/ink'
 import { editCanvas } from '@/canvas/core/edit'
-import { parseCanvas, serializeCanvas, type CanvasGraph } from '@/canvas/core/model'
+import { bounds, parseCanvas, serializeCanvas, type CanvasGraph } from '@/canvas/core/model'
 import { pictureRegion, paintCanvas } from '@/canvas/core/painter'
 import { planCanvasExport } from '@/canvas/core/export'
-import { stepScene } from '@/canvas/core/steps'
+import { editCanvasSteps, stepScene } from '@/canvas/core/steps'
+import { canvasOutline } from '@/canvas/core/read'
 import { lintCanvas } from '@/canvas/core/lint'
 
 const stroke = (id = 'sample-ink'): CanvasInk => ({
@@ -111,6 +112,17 @@ describe('canvas ink extension and attachment geometry', () => {
     expect(g.nodes[0].abele.ink).toEqual({ opaque: true })
     expect(parseCanvas(serializeCanvas(g))).toEqual(g)
   })
+  it('does not apply authoring defaults to incomplete persisted ink or reuse its reserved id', () => {
+    const g = graph(),
+      opaque = { version: 1, id: 'incomplete', tool: 'pen', points: [0, 0, 0.5] }
+    g.abele = { ink: [opaque] }
+    expect(canvasOutline(g).ink).toEqual([])
+    expect(() => editCanvas(g, [{ op: 'add_ink', stroke: opaque }])).toThrow(/Duplicate/)
+    const changed = editCanvas(g, [{ op: 'add_ink', stroke: { ...opaque, id: 'complete' } }]).graph
+    expect(rawInk(changed)[0]).toEqual(opaque)
+    expect(inkEntries(changed).map((e) => e.stroke.id)).toEqual(['complete'])
+    expect(g.abele.ink).toEqual([opaque])
+  })
   it('hides attached ink with its collapsed or unrevealed owner, and reveals free ink explicitly', () => {
     const g = graph()
     g.nodes.unshift({
@@ -139,6 +151,46 @@ describe('canvas ink extension and attachment geometry', () => {
       'free',
       'sample-ink',
     ])
+  })
+  it('authors attached ink step references, focuses its transformed bounds and never reveals a hidden owner', () => {
+    const g = graph()
+    addInk(g, { ...stroke('attached'), frame: { width: 100, height: 100 } }, 'card')
+    addInk(g, { ...stroke('free'), points: [-500, 0, 0.5] })
+    const changed = editCanvasSteps(g, [
+      {
+        op: 'replace',
+        steps: [
+          {
+            id: 'hidden',
+            reveal: ['free', 'attached'],
+            focus: 'attached',
+            highlight: ['attached'],
+            say: '',
+          },
+          { id: 'shown', reveal: ['card'], focus: 'attached', highlight: ['attached'], say: '' },
+        ],
+      },
+    ])
+    expect(lintCanvas(changed).filter((w) => w.code === 'missing-step-id')).toEqual([])
+    expect(inkEntries(stepScene(changed, 1).graph).map((e) => e.stroke.id)).toEqual(['free'])
+    expect(stepScene(changed, 1).region.x).toBeLessThan(-500)
+    const b = inkBounds(inkEntries(changed).find((e) => e.stroke.id === 'attached')!)
+    expect(stepScene(changed, 2).region).toEqual(bounds([b], 24))
+    expect([...stepScene(changed, 2).highlight]).toEqual(['attached'])
+    expect(canvasOutline(changed, { step: 1 }).ink.map((s) => s.id)).toEqual(['free'])
+    expect(canvasOutline(changed, { step: 2 }).ink.map((s) => s.id)).toEqual(['attached', 'free'])
+    changed.nodes.unshift({
+      id: 'collapsed-group',
+      type: 'group',
+      collapsed: true,
+      x: 0,
+      y: 0,
+      width: 500,
+      height: 500,
+    })
+    expect(inkEntries(stepScene(changed, 2).graph).map((e) => e.stroke.id)).toEqual(['free'])
+    expect(canvasOutline(changed, { step: 2 }).ink.map((s) => s.id)).toEqual(['free'])
+    expect(canvasOutline(changed).ink.map((s) => s.id)).toEqual(['attached', 'free'])
   })
   it('paints the same pressure outline after card bodies for mixed pictures', () => {
     const g = graph()
@@ -173,7 +225,8 @@ describe('canvas ink extension and attachment geometry', () => {
       lineHeight: 1.4,
       presets: ['red'],
     }
-    paintCanvas(ctx, g, pictureRegion(g), theme)
+    paintCanvas(ctx, g, pictureRegion(g), theme, { highlight: new Set(['sample-ink']) })
+    expect(calls).toContain('strokeRect')
     expect(calls.lastIndexOf('fill')).toBeGreaterThan(calls.lastIndexOf('fillText'))
     expect(calls).toContain('scale')
   })
