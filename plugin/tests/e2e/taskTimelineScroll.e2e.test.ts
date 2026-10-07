@@ -79,7 +79,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
   let leaf
   const config = window.__abeleTest.AbeleConfig.getInstance()
   const remembered = config.rememberNotePlaces
-  const renders = observeTimelineMarkdown(window.__abeleTest.MarkdownRenderer)
+  const renders = observeTimelineMarkdown(window.__abeleTest.rendering.MarkdownRenderer)
   try {
     config.rememberNotePlaces = false
     yield 'fixture creation'

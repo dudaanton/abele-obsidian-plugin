@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { TIMELINE_READY_PROBE } from '../e2e/helpers/timelineReady'
 
 const settle = new Function(TIMELINE_READY_PROBE + 'return settleTimelineUI')()
@@ -160,6 +162,14 @@ it.each(['calendar', 'header'] as const)(
     expect(measured).toHaveReturnedWith(moving === 'calendar' ? -5 : -2)
   }
 )
+
+it('observes the renderer from the existing nested rendering test API', () => {
+  const source = readFileSync(resolve(__dirname, '../e2e/taskTimelineScroll.e2e.test.ts'), 'utf8')
+  const expression = source.match(/observeTimelineMarkdown\(([^)]+)\)/)![1]
+  const renderer = { render: vi.fn() }
+  const page = { __abeleTest: { rendering: { MarkdownRenderer: renderer } } }
+  expect(new Function('window', 'return ' + expression)(page)).toBe(renderer)
+})
 
 it('tracks actual renderer promises through success and rejection and restores the original method', async () => {
   let complete!: () => void, reject!: (error: Error) => void
