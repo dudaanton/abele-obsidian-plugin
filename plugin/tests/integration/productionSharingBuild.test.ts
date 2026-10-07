@@ -74,7 +74,7 @@ it('enables invitation controls rendered by the unmodified production settings U
   await expect.poll(() => !!document.querySelector('.abele-scoped-join')).toBe(true)
   const dialog = document.querySelector('.abele-scoped-join')!
   expect(dialog.textContent).not.toContain('not active')
-  expect(buttonIn(dialog, 'Accept invitation and join').disabled).toBe(false)
+  expect(buttonIn(dialog, 'Join group').disabled).toBe(false)
   for (const input of dialog.querySelectorAll<HTMLInputElement>('input'))
     expect(input.disabled).toBe(false)
   buttonIn(dialog.closest('.modal')!, 'Close').click()
@@ -114,12 +114,12 @@ it('shares a folder and a prepared group through the production owner ports', as
 
 it('enables owner review controls rendered by the unmodified production settings UI', async () => {
   const root = await syncSettings()
-  await expect.poll(() => root.textContent).toContain('Review folder sharing')
+  await expect.poll(() => root.textContent).toContain('Share a folder…')
   expect(root.textContent).not.toContain('Sharing is not active')
-  expect(root.textContent).not.toContain('Review initial asset batch')
+  expect(root.textContent).not.toContain('Review images…')
   for (const [action, selector, review] of [
-    ['Review folder sharing', '.abele-folder-sharing', 'Review current folder'],
-    ['Review group sharing', '.abele-group-review', 'Review root and current scope'],
+    ['Share a folder…', '.abele-folder-sharing', 'Review folder'],
+    ['Share a group…', '.abele-group-review', 'Review group'],
   ] as const) {
     expect(buttonIn(root, action).disabled).toBe(false)
     buttonIn(root, action).click()
@@ -265,7 +265,7 @@ it('publishes an existing private target only after the production confirmation 
   expect(await peer.app.vault.adapter.exists('Assets/private.png')).toBe(false)
   const button = [
     ...document.querySelectorAll<HTMLButtonElement>('.abele-publication-confirm button'),
-  ].find((element) => element.textContent?.trim() === 'Publish')!
+  ].find((element) => element.textContent?.trim() === 'Share')!
   expect(button).toBeDefined()
   button.click()
   await expect.poll(() => host.publicationPrompt.asking.value, { timeout: 10000 }).toBeNull()

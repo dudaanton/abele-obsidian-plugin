@@ -14,7 +14,7 @@ describe('owner folder sharing UI', () => {
     expect(flow.review).not.toHaveBeenCalled()
     w.unmount()
   })
-  it.each(['Role', 'Folder prefix', 'Share name'])(
+  it.each(['Folder access', 'Folder path', 'Share name'])(
     'requires another preview after changing %s',
     async (field) => {
       const flow = {
@@ -36,8 +36,10 @@ describe('owner folder sharing UI', () => {
       await w.find('input[type=password]').setValue('invented-password')
       await w
         .find('[aria-label="' + field + '"]')
-        .setValue(field === 'Role' ? 'reader' : field === 'Folder prefix' ? 'Other/' : 'Other name')
-      expect(w.text()).not.toContain('Create scoped receiver key')
+        .setValue(
+          field === 'Folder access' ? 'reader' : field === 'Folder path' ? 'Other/' : 'Other name'
+        )
+      expect(w.text()).not.toContain('Create connection code')
       expect(w.find('input[type=password]').exists()).toBe(false)
       expect(flow.clear).toHaveBeenCalled()
       expect(flow.confirm).not.toHaveBeenCalled()
@@ -64,12 +66,13 @@ describe('owner folder sharing UI', () => {
     await w.findAll('button')[0].trigger('click')
     await new Promise((r) => setTimeout(r, 0))
     expect(w.text()).toContain('Sample folder/deep/sample.md')
-    expect(w.text()).toContain('no mount or remap')
+    expect(w.text()).toContain('Files stay in their current folders')
     await w.find('input[type=password]').setValue('invented-password')
     await w.findAll('button')[1].trigger('click')
     await new Promise((r) => setTimeout(r, 0))
     expect((w.find('input[type=password]').element as HTMLInputElement).value).toBe('')
-    expect(w.text()).toContain('Rejected confirmation')
+    expect(w.find('[role="alert"]').text()).toContain('Could not share this folder')
+    expect(w.text()).not.toContain('Rejected confirmation')
     w.unmount()
   })
 })

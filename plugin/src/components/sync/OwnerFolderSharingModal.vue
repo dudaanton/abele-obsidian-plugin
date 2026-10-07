@@ -1,14 +1,11 @@
 <template>
   <ObsidianModal title="Share a folder" size="tall" phone-sheet @close="emit('close')">
     <div class="abele-modal__body abele-folder-sharing">
-      <p v-if="!enabled" role="status">
-        Folder sharing is not active. Preview and credential creation are disabled until the scoped
-        activation gates pass.
-      </p>
+      <p v-if="!enabled" role="status">Folder sharing is not active. No files will be shared.</p>
       <label
-        >Folder prefix<input
+        >Folder path<input
           v-model="prefix"
-          aria-label="Folder prefix"
+          aria-label="Folder path"
           placeholder="Sample folder/"
           :disabled="busy || !enabled"
       /></label>
@@ -16,30 +13,36 @@
         >Share name<input v-model="label" aria-label="Share name" :disabled="busy || !enabled"
       /></label>
       <label
-        >Role<select v-model="role" aria-label="Role" :disabled="busy || !enabled">
-          <option value="reader">Reader</option>
-          <option value="editor">Editor</option>
+        >Access<select v-model="role" aria-label="Folder access" :disabled="busy || !enabled">
+          <option value="reader">Can view</option>
+          <option value="editor">Can edit</option>
         </select></label
       >
       <Button
-        text="Review current folder"
-        tooltip="Refresh the exact folder paths and eligibility before any grant is created"
+        text="Review folder"
+        tooltip="Check the folder's files before sharing"
         :disabled="busy || !enabled"
         @click="review"
       />
       <template v-if="display">
         <p>
-          Exact prefix: <code>{{ display.prefix }}</code
-          >. Files keep their existing paths; no mount or remap is created.
+          Folder: <code>{{ display.prefix }}</code
+          >. Files stay in their current folders.
         </p>
         <ul>
           <li v-for="file in display.files" :key="file.path">
             <code>{{ file.path }}</code> —
-            {{ file.eligibility ?? (file.eligible ? 'eligible' : 'excluded code or settings') }}
+            {{
+              file.eligibility === 'excluded'
+                ? 'Scripts and settings are not shared.'
+                : file.eligible
+                  ? 'Included.'
+                  : 'Will be checked before sharing.'
+            }}
           </li>
         </ul>
         <label
-          >Owner account email<input
+          >Your account email<input
             v-model="email"
             type="email"
             autocomplete="username"
@@ -47,7 +50,7 @@
             :disabled="busy || !enabled"
         /></label>
         <label
-          >Current account password<input
+          >Your password<input
             v-model="password"
             type="password"
             autocomplete="current-password"
@@ -55,8 +58,8 @@
             :disabled="busy || !enabled"
         /></label>
         <Button
-          text="Create scoped receiver key"
-          tooltip="Recheck the preview and authenticate the owner before issuing only a scoped machine key"
+          text="Create connection code"
+          tooltip="Confirm this folder and create a code for another app"
           :disabled="busy || !enabled || !password"
           :accent="enabled"
           @click="confirm"
@@ -65,8 +68,7 @@
       <p v-if="error" role="alert">{{ error }}</p>
       <template v-if="secret"
         ><p>
-          This is a scoped machine secret, not a personal device credential. It is shown only in
-          this review session.
+          Use this connection code in the other app to access this folder. Copy it before closing.
         </p>
         <code class="abele-folder-sharing__secret">{{ secret.token }}</code></template
       >
@@ -74,7 +76,7 @@
     <div class="abele-modal__buttons">
       <Button
         text="Close"
-        tooltip="Close this review and discard its password and displayed machine secret"
+        tooltip="Close without keeping the password or connection code on screen"
         @click="emit('close')"
       />
     </div>
@@ -84,6 +86,7 @@
 import { ref, onUnmounted, watch, computed } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
+import { sharingErrorMessage } from './sharingText'
 import {
   OWNER_SHARING_ENABLED,
   type FolderSharingFlow,
@@ -125,7 +128,10 @@ async function review() {
   try {
     preview.value = await props.flow.review(prefix.value, role.value, label.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Folder preview failed'
+    error.value = sharingErrorMessage(
+      e,
+      'Could not review this folder. Check its path and try again.'
+    )
   } finally {
     busy.value = false
   }
@@ -138,7 +144,7 @@ async function confirm() {
     if (!preview.value) throw new Error('Review the displayed folder first')
     secret.value = await props.flow.confirm(password.value, email.value || undefined, preview.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Folder sharing failed'
+    error.value = sharingErrorMessage(e, 'Could not share this folder. Review it and try again.')
   } finally {
     password.value = ''
     busy.value = false

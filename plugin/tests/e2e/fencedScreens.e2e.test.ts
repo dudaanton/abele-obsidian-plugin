@@ -55,6 +55,29 @@ describe.skipIf(!process.env.ABELE_FENCED_UI_STAGE)(
           expect(result.closeVisible).toBe(true)
           expect(result.scrolls.every((s: any) => s.reached && s.lastClear)).toBe(true)
           expect(result.text).not.toContain('undefined')
+          if (
+            [
+              'folder',
+              'group',
+              'initial-batch',
+              'invitation',
+              'creation',
+              'publication',
+              'unshare',
+            ].includes(screen)
+          ) {
+            expect(result.text).not.toMatch(
+              /\b(?:grant|sponsors?|admission|intrinsic|authority|facet|audience|exposure|CAS|SHA|withdrawal generation)\b/i
+            )
+            for (const id of [
+              'sample-image',
+              'sample-version',
+              'sample-note',
+              'sample-root-version',
+              'sample-long-reviewed-audience-identity',
+            ])
+              expect(result.text).not.toContain(id)
+          }
           writeFileSync(
             join(scratch, screen + '-' + state + '.json'),
             JSON.stringify(result, null, 2)

@@ -60,9 +60,7 @@ describe('publication settings UI', () => {
         global,
       })
       try {
-        expect(
-          w.findAll('button').some((button) => button.text() === 'Review initial asset batch')
-        ).toBe(false)
+        expect(w.findAll('button').some((button) => button.text() === 'Review images…')).toBe(false)
       } finally {
         w.unmount()
       }
@@ -83,9 +81,7 @@ describe('publication settings UI', () => {
       global: { stubs: { ...global.stubs, ObsidianModal: { template: '<div><slot/></div>' } } },
     })
     try {
-      const button = w
-        .findAll('button')
-        .find((button) => button.text() === 'Review initial asset batch')!
+      const button = w.findAll('button').find((button) => button.text() === 'Review images…')!
       expect(button.attributes('disabled')).toBeUndefined()
       await button.trigger('click')
       const dialog = w.findComponent(InitialAssetBatchModal)
@@ -103,8 +99,10 @@ describe('publication settings UI', () => {
       global,
     })
     expect(w.text()).toContain('not active')
-    expect(w.text()).toContain('Reference status unknown')
-    expect(w.text()).toContain('sample-note')
+    expect(w.text()).toContain('Links have not been checked yet.')
+    expect(w.text()).toContain('Shared through 1 shared note')
+    expect(w.find('[title="sample-note"]').exists()).toBe(true)
+    expect(w.text()).not.toContain('sample-note')
     await w.findAll('button')[1].trigger('click')
     expect(model.reviewUnshare).not.toHaveBeenCalled()
     w.unmount()
@@ -117,7 +115,7 @@ describe('publication settings UI', () => {
     })
     await w.findAll('button')[1].trigger('click')
     expect(model.reviewUnshare).not.toHaveBeenCalled()
-    expect(w.text()).toContain('audience changed')
+    expect(w.text()).toContain('shared folder or group changed')
     w.unmount()
   })
   it('never renders private asset paths on a scoped connection', () => {
@@ -126,7 +124,7 @@ describe('publication settings UI', () => {
       global,
     })
     expect(w.text()).not.toContain('Assets/sample.png')
-    expect(w.text()).toContain('cannot manage')
+    expect(w.text()).toContain('Only the vault owner can change what is shared')
     w.unmount()
   })
   it('distinguishes a no-longer-referenced publication from revocation', () => {
@@ -134,7 +132,7 @@ describe('publication settings UI', () => {
       props: { view, cacheComplete: true, referencedIds: [] },
       global,
     })
-    expect(w.text()).toContain('no automatic withdrawal')
+    expect(w.text()).toContain('It stays shared until you unshare it')
     w.unmount()
   })
 })

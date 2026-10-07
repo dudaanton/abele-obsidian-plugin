@@ -2,50 +2,45 @@
   <ObsidianModal title="Join a shared group" size="tall" phone-sheet @close="close">
     <div class="abele-modal__body abele-scoped-join">
       <p v-if="!enabled" role="status">
-        Scoped invitation join is not active. No account login, installation or local upload is
-        performed until activation gates pass.
+        Joining shared groups is not active. No connection will be made.
       </p>
       <p>
-        One connection per local vault. Received notes keep their exact paths; unrelated local files
-        are never published by joining. Occupied incoming paths are held for recovery, not replaced
-        or remapped. Vault scripts are refused on a scoped installation.
+        Joining downloads shared notes without sharing your other files. Existing files are not
+        replaced, and scripts from this shared vault cannot run.
       </p>
       <label
         >Server<input v-model="issuer" aria-label="Scoped server" :disabled="busy || !enabled"
       /></label>
       <label
-        >Invitation secret<input
+        >Invitation code<input
           v-model="invitation"
           type="password"
           autocomplete="off"
-          aria-label="Invitation secret"
+          aria-label="Invitation code"
           :disabled="busy || !enabled"
       /></label>
       <label
-        >Recipient account<input
+        >Your email<input
           v-model="email"
           type="email"
           autocomplete="username"
-          aria-label="Recipient account"
+          aria-label="Your email"
           :disabled="busy || !enabled"
       /></label>
       <label
-        >Installation name<input
-          v-model="name"
-          aria-label="Installation name"
-          :disabled="busy || !enabled"
+        >Device name<input v-model="name" aria-label="Device name" :disabled="busy || !enabled"
       /></label>
       <label
-        >Account password<input
+        >Your password<input
           v-model="password"
           type="password"
           autocomplete="current-password"
-          aria-label="Recipient password"
+          aria-label="Your password"
           :disabled="busy || !enabled"
       /></label>
       <Button
-        text="Accept invitation and join"
-        tooltip="Resume the same scoped installation without publishing local files"
+        text="Join group"
+        tooltip="Download the shared notes without sharing your other files"
         :disabled="busy || !enabled || (!flow && !factory)"
         @click="join"
       />
@@ -53,11 +48,7 @@
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <div class="abele-modal__buttons">
-      <Button
-        text="Close"
-        tooltip="Close without forgetting the durable join attempt"
-        @click="close"
-      />
+      <Button text="Close" tooltip="Close and continue joining later" @click="close" />
     </div>
   </ObsidianModal>
 </template>
@@ -66,6 +57,7 @@ import { ref, onUnmounted } from 'vue'
 import { Platform } from 'obsidian'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
+import { sharingErrorMessage } from './sharingText'
 import { SCOPED_JOIN_ENABLED, type ScopedJoinFlow } from '@/sync/scoped/scopedJoin'
 const props = withDefaults(
     defineProps<{
@@ -80,7 +72,7 @@ const props = withDefaults(
 const issuer = ref(''),
   invitation = ref(''),
   email = ref(''),
-  name = ref('Sample scoped device'),
+  name = ref('This device'),
   password = ref(''),
   busy = ref(false),
   result = ref(''),
@@ -109,10 +101,20 @@ async function join() {
       })
     const state = await active.resume(password.value)
     result.value =
-      state.phase +
-      (state.collisions?.length ? ': held local paths ' + state.collisions.join(', ') : '')
+      {
+        accepting: 'Checking the invitation.',
+        enrolling: 'Connecting this device.',
+        pulling: 'Downloading shared notes.',
+        'collision-hold': 'Some files already exist here. They were not replaced.',
+        'waiting-view': 'The group is still getting ready. Try joining again shortly.',
+        joined: 'You have joined the shared group.',
+      }[state.phase] +
+      (state.collisions?.length ? ' Files to review: ' + state.collisions.join(', ') : '')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Scoped join failed'
+    error.value = sharingErrorMessage(
+      e,
+      'Could not join this group. Check the invitation and try again.'
+    )
   } finally {
     password.value = ''
     invitation.value = ''

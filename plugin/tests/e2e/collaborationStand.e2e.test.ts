@@ -228,9 +228,13 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       expect(process.env.ABELE_COLLAB_STAND_STAGE).toBe('disposable')
       const name = process.env.OBSIDIAN_TEST_VAULT
       if (!name) throw new Error('Owned pool required')
+      const leaseOwner = process.env.ABELE_E2E_LEASE_OWNER ?? 'sync-agent-stand'
       expect(
-        readFileSync(join(homedir(), '.local/state/abele/vaults', name + '.lock/owner'), 'utf8')
-      ).toMatch(/^sync-agent-stand /)
+        readFileSync(
+          join(homedir(), '.local/state/abele/vaults', name + '.lock/owner'),
+          'utf8'
+        ).split(' ', 1)[0]
+      ).toBe(leaseOwner)
       fixture = process.env.ABELE_AGENT_STAND_FIXTURE!
       const scratch = join(process.cwd(), '../.scratch/collaboration-stand')
       mkdirSync(scratch, { recursive: true })
@@ -724,7 +728,7 @@ describe.skipIf(!process.env.ABELE_COLLAB_STAND_STAGE)(
       const target = await head(path)
       expect((await ownerApi.visibility(grant.id, target.file_id)).visible).toBe(false)
       await cli!.evalAwait(
-        `(()=>{[...document.querySelectorAll('.abele-publication-confirm button')].find(b=>b.textContent.trim()==='Publish').click();return true})()`
+        `(()=>{[...document.querySelectorAll('.abele-publication-confirm button')].find(b=>b.textContent.trim()==='Share').click();return true})()`
       )
       await waitFor(
         'consented asset publication and peer materialization',

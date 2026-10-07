@@ -2,21 +2,20 @@
   <ObsidianModal title="Share a group" size="tall" phone-sheet @close="close"
     ><div class="abele-modal__body abele-group-review">
       <p v-if="!enabled" role="status">
-        Group sharing is not active. This read-only preview makes no management or publication
-        request.
+        Group sharing is not active. No notes or images will be shared.
       </p>
       <p v-if="display && (!display.preview.certified || !display.preview.complete)" role="status">
-        Scope preparing or incomplete. Root/anchor approval stays held; no inferred exposure.
+        Some linked notes could not be checked. Review them before sharing.
       </p>
       <p>
-        A root is a stable approved note identity, not a folder or matching basename. Notes and
-        images keep their scattered original paths. Received edges and uncertain anchors never
-        become owner approvals on an ordinary re-save.
+        Choose the note that represents your group. Notes stay in their current folders, and linked
+        images are shared only when you choose to share them.
       </p>
       <label
-        >Root identity<input
+        >Group note path<input
           v-model="rootId"
-          aria-label="Group root identity"
+          aria-label="Group note path"
+          placeholder="Notes/project.md"
           :disabled="busy || !enabled" /></label
       ><label
         >Group name<input
@@ -24,98 +23,98 @@
           aria-label="Group share name"
           :disabled="busy || !enabled" /></label
       ><label
-        >Role<select v-model="role" aria-label="Group role" :disabled="busy || !enabled">
-          <option value="reader">Reader</option>
-          <option value="editor">Editor</option>
+        >Access<select v-model="role" aria-label="Group access" :disabled="busy || !enabled">
+          <option value="reader">Can view</option>
+          <option value="editor">Can edit</option>
         </select></label
       >
       <Button
-        text="Review root and current scope"
-        tooltip="Obtain a complete certified exact-version group/anchor preview before creation"
+        text="Review group"
+        tooltip="Check the group note and shared notes before continuing"
         :disabled="busy || !enabled || (!flow && !rootFlow)"
         @click="review"
       />
       <template v-if="display"
         ><p>
-          Root <code>{{ display.preview.root.path }}</code> · {{ display.preview.root.fileId }} /
-          {{ display.preview.root.versionId }}
+          Group note:
+          <code :title="display.preview.root.fileId + ' / ' + display.preview.root.versionId">{{
+            display.preview.root.path
+          }}</code>
         </p>
         <p>
-          Rights: {{ display.role }}. Preview generation {{ display.preview.generation }}.
+          Access: {{ sharingPermission(display.role) }}.
           {{
             display.preview.certified && display.preview.complete
-              ? 'Certified current inventory'
-              : 'Scope preparing or incomplete — approval held'
+              ? 'The shared notes have been checked'
+              : 'Some notes still need to be checked'
           }}.
         </p>
-        <h4>Scattered member notes</h4>
+        <h4>Notes in this group</h4>
         <ul>
           <li v-for="n in display.preview.notes" :key="n.fileId">
-            <code>{{ n.path }}</code> · {{ n.fileId }} / {{ n.versionId }}
+            <code :title="n.fileId + ' / ' + n.versionId">{{ n.path }}</code>
           </li>
         </ul>
-        <h4>Explicit anchors</h4>
+        <h4>Other linked notes</h4>
         <ul>
           <li v-for="a in display.preview.anchors" :key="a.fileId">
-            <code>{{ a.path }}</code> · {{ a.fileId }} / {{ a.versionId }}
+            <code :title="a.fileId + ' / ' + a.versionId">{{ a.path }}</code>
           </li>
         </ul>
         <p v-if="display.preview.uncertain.length" role="status">
-          Uncertain: {{ display.preview.uncertain.join(', ') }}. No inferred authority.
+          Some linked notes could not be checked. They will not be shared yet.
         </p>
         <p>
-          Reviewed relation approvals: {{ display.preview.relations.length }}. Each
-          source/target/token/version is an explicit owner decision, separate from creating the
-          grant.
+          {{ display.preview.relations.length }}
+          {{ display.preview.relations.length === 1 ? 'link needs' : 'links need' }} a separate
+          sharing choice.
         </p>
         <label
-          >Owner email<input
+          >Your email<input
             v-model="email"
             type="email"
             aria-label="Group owner email"
             :disabled="busy || !enabled" /></label
         ><label
-          >Current password<input
+          >Your password<input
             v-model="password"
             type="password"
             aria-label="Group owner password"
             :disabled="busy || !enabled" /></label
         ><Button
-          text="Create this reviewed group"
-          tooltip="Authenticate the owner and recheck the exact root/version/role preview"
+          text="Share this group"
+          tooltip="Confirm the group and its access settings before sharing"
           :disabled="busy || !enabled || !flow || !password"
           @click="confirm"
       /></template>
       <template v-if="rootShown">
         <p>
-          Reviewed root <code>{{ rootShown.root.path }}</code> · {{ rootShown.root.fileId }} /
-          {{ rootShown.root.versionId }}.
+          Group note:
+          <code :title="rootShown.root.fileId + ' / ' + rootShown.root.versionId">{{
+            rootShown.root.path
+          }}</code
+          >.
         </p>
         <p>
-          The server prepares membership from this exact root. This is not a certified client graph
-          preview and does not approve anchors or assets.
+          Notes in this group will be checked before sharing. Images need a separate sharing choice.
         </p>
         <label
-          >Owner email<input
+          >Your email<input
             v-model="email"
             type="email"
             aria-label="Group owner email"
             :disabled="busy"
         /></label>
         <label
-          >Current password<input
+          >Your password<input
             v-model="password"
             type="password"
             aria-label="Group owner password"
             :disabled="busy"
         /></label>
         <Button
-          :text="
-            grant?.state === 'preparing'
-              ? 'Continue group preparation'
-              : 'Create this reviewed group'
-          "
-          tooltip="Use fresh owner authentication and the exact current root version"
+          :text="grant?.state === 'preparing' ? 'Continue setup' : 'Share this group'"
+          tooltip="Confirm your password and the current group note"
           :disabled="busy || !enabled || (!password && !grant)"
           @click="confirm"
         />
@@ -123,21 +122,22 @@
       <Button
         v-if="rootFlow && grant?.state === 'active'"
         text="Create invitation"
-        tooltip="Invite a member with the reviewed role using the fresh owner session"
+        tooltip="Create a code to invite someone with the selected access"
         :disabled="busy"
         @click="invite"
       />
       <p v-if="invitationToken">
-        Invitation token:
-        <input :value="invitationToken" aria-label="Group invitation token" readonly />
+        Invitation code:
+        <input :value="invitationToken" aria-label="Invitation code" readonly />
       </p>
-      <p v-if="grant" role="status">
-        Grant {{ grant.id }}: {{ grant.state }}. No anchor or asset batch is implicitly approved.
+      <p v-if="grant" role="status" :title="grant.id">
+        {{ sharingGroupState(grant.state) }}
+        Images and other linked notes need separate sharing choices.
       </p>
       <Button
         v-if="grant && flow"
-        text="Approve reviewed relations"
-        tooltip="Recheck certified source/target versions before explicit relation approval"
+        text="Share reviewed links"
+        tooltip="Check these linked notes again before sharing them"
         :disabled="busy || !enabled || !flow"
         @click="approve"
       />
@@ -146,7 +146,7 @@
     <div class="abele-modal__buttons">
       <Button
         text="Close"
-        tooltip="Close and discard credentials/review; never create hidden authority"
+        tooltip="Close without keeping the password or invitation code on screen"
         @click="close"
       /></div
   ></ObsidianModal>
@@ -155,6 +155,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
+import { sharingErrorMessage, sharingPermission, sharingGroupState } from './sharingText'
 import { OWNER_SHARING_ENABLED } from '@/sync/sharing/folderSharing'
 import type { GroupSharingFlow, GroupReview, GroupGrant } from '@/sync/sharing/groupSharing'
 import type { OwnerGroupRootFlow, GroupRootReview } from '@/sync/sharing/ownerGroupRoot'
@@ -199,7 +200,10 @@ async function review() {
       rootShown.value = await props.rootFlow.review(rootId.value, role.value, label.value)
     else shown.value = await props.flow!.review(rootId.value, role.value, label.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Group scope held'
+    error.value = sharingErrorMessage(
+      e,
+      'Could not review this group. Check the group note path and try again.'
+    )
   } finally {
     busy.value = false
   }
@@ -222,7 +226,7 @@ async function confirm() {
         email.value || undefined
       )
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Group creation held'
+    error.value = sharingErrorMessage(e, 'Could not share this group. Review it and try again.')
   } finally {
     password.value = ''
     busy.value = false
@@ -234,7 +238,10 @@ async function approve() {
   try {
     await props.flow.approveRelations(shown.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Group approval held'
+    error.value = sharingErrorMessage(
+      e,
+      'Could not share these linked notes. Review them and try again.'
+    )
   } finally {
     busy.value = false
   }
@@ -245,7 +252,7 @@ async function invite() {
   try {
     invitationToken.value = await props.rootFlow.invitation(role.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Invitation held'
+    error.value = sharingErrorMessage(e, 'Could not create an invitation. Try again.')
   } finally {
     busy.value = false
   }

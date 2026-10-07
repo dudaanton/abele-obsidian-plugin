@@ -2,22 +2,56 @@
   <div class="abele-sync-settings">
     <ConnectCard v-if="!connected" :server-url="device.serverUrl" />
 
-    <Section v-if="scoped" title="Shared scoped vault" desc="This installation uses only its scoped credential; scripts and personal enrolment stay unavailable.">
-      <Setting name="Server"><span>{{ scoped.issuer }}</span></Setting>
-      <Setting name="Grant"><span>{{ scoped.grantId }}</span></Setting>
-      <Setting name="Role"><span>{{ scopedRole }}</span></Setting>
+    <Section
+      v-if="scoped"
+      title="Shared group"
+      desc="This vault only syncs shared files. Scripts cannot run here."
+    >
+      <Setting name="Server"
+        ><span>{{ scoped.issuer }}</span></Setting
+      >
+      <Setting name="Connection"><span :title="scoped.grantId">Joined shared group</span></Setting>
+      <Setting name="Access"
+        ><span>{{ sharingPermission(scopedRole || 'reader') }}</span></Setting
+      >
       <Setting name="Sync">
-        <Button text="Sync now" tooltip="Sync only authorized scoped identities" @click="sync.syncNow()" />
-        <Button :text="scopedPaused ? 'Resume' : 'Pause'" tooltip="Pause or resume this scoped installation" @click="scopedPaused ? sync.resume() : sync.pause()" />
+        <Button
+          text="Sync now"
+          tooltip="Sync the files shared with this group"
+          @click="sync.syncNow()"
+        />
+        <Button
+          :text="scopedPaused ? 'Resume' : 'Pause'"
+          tooltip="Pause or resume this shared connection"
+          @click="scopedPaused ? sync.resume() : sync.pause()"
+        />
       </Setting>
-      <Setting name="New scoped file" desc="Review a new path and a current intrinsic root or sponsor; existing files are never adopted or replaced.">
-        <Button text="New scoped file…" tooltip="Open the scoped creation review" :disabled="scopedRole !== 'editor'" @click="openScopedCreation" />
+      <Setting
+        name="New shared file"
+        desc="Add a new note or image without replacing existing files."
+      >
+        <Button
+          text="New shared file…"
+          tooltip="Review a new file before creating it"
+          :disabled="scopedRole !== 'editor'"
+          @click="openScopedCreation"
+        />
       </Setting>
       <p v-if="scopedError" role="alert">{{ scopedError }}</p>
-      <ScopedCreationModal v-if="scopedFlow" :flow="scopedFlow" :roots="scopedFlow.roots" :sponsors="scopedFlow.sponsors" @close="scopedFlow = null" />
+      <ScopedCreationModal
+        v-if="scopedFlow"
+        :flow="scopedFlow"
+        :roots="scopedFlow.roots"
+        :sponsors="scopedFlow.sponsors"
+        @close="scopedFlow = null"
+      />
     </Section>
     <template v-if="connected && !scoped">
-      <OwnerPublicationSettings :folder-flow="ownerFolderFlow" :group-root-flow="ownerGroupFlow" :model="ownerPublicationModel" />
+      <OwnerPublicationSettings
+        :folder-flow="ownerFolderFlow"
+        :group-root-flow="ownerGroupFlow"
+        :model="ownerPublicationModel"
+      />
       <!--
         A connection a transfer brought, onto a vault that may hold files, into one that may hold
         files too: nothing syncs until the join question is answered. The dialog opens by itself;
@@ -153,11 +187,11 @@
           v-for="question in publicationPending"
           :key="question.exposureKey"
           :name="question.observation.target.path"
-          :desc="question.observation.audience.label"
+          :desc="'Share with ' + question.observation.audience.label + '?'"
         >
           <Button
             text="Review"
-            tooltip="Review this pending publication question"
+            tooltip="Decide whether to share this private file"
             @click="sync.publicationPrompt.open(question)"
           />
         </Setting>
@@ -304,6 +338,7 @@ import DeviceList from './sync/DeviceList.vue'
 import UsageCard from './sync/UsageCard.vue'
 import OwnerPublicationSettings from './sync/OwnerPublicationSettings.vue'
 import ScopedCreationModal from '../sync/ScopedCreationModal.vue'
+import { sharingErrorMessage, sharingPermission } from '../sync/sharingText'
 import type { PluginSharing } from '@/sync/pluginSharing'
 import { OwnerFolderHttpPort } from '@/sync/sharing/ownerHttp'
 import { SponsoredAssetsHttpPort } from '@/sync/sharing/sponsoredHttp'
@@ -352,12 +387,18 @@ async function openScopedCreation() {
     if (!host) throw new Error('The sharing host is not ready')
     scopedFlow.value = await host.createScoped()
     scopedError.value = ''
-  } catch (error) { scopedError.value = error instanceof Error ? error.message : 'Scoped creation held' }
+  } catch (error) {
+    scopedError.value = sharingErrorMessage(error, 'Could not open the new file review. Try again.')
+  }
 }
 const connected = computed(() => status.value.state !== 'disconnected' || scoped.value !== null)
 const ownerGroupFlow = computed(() => {
   if (!connected.value || scoped.value) return undefined
-  try { return sync.sharing?.value?.ownerGroup() } catch { return undefined }
+  try {
+    return sync.sharing?.value?.ownerGroup()
+  } catch {
+    return undefined
+  }
 })
 const ownerFolderFlow = computed(() => {
   const c = device.value
@@ -369,7 +410,11 @@ const ownerFolderFlow = computed(() => {
     tokenId: c.deviceTokenId,
   }
   if (sync.sharing?.value) {
-    try { return sync.sharing.value.ownerFolder() } catch { return undefined }
+    try {
+      return sync.sharing.value.ownerFolder()
+    } catch {
+      return undefined
+    }
   }
   const port = new OwnerFolderHttpPort({
     baseUrl: binding.serverUrl,

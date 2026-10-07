@@ -1,32 +1,39 @@
 <template>
-  <ObsidianModal title="Publish linked private file?" phone-sheet @close="emit('close')">
+  <ObsidianModal title="Share this private file?" phone-sheet @close="emit('close')">
     <div class="abele-publication-confirm">
       <p>
-        Publish <strong>{{ question.observation.target.path }}</strong> to
+        This file is private. Share <strong>{{ question.observation.target.path }}</strong> with
         <strong>{{ question.observation.audience.label }}</strong
         >?
       </p>
       <p>
-        Linked from {{ question.observation.sponsor.path }}. Personal sync continues either way.
+        Linked from {{ question.observation.sponsor.path }}. Your own files keep syncing either way.
       </p>
-      <p v-if="error" role="alert">{{ error }}</p>
+      <p v-if="error" role="alert">
+        {{
+          sharingErrorMessage(
+            error,
+            'The file or shared group may have changed. Review it again before sharing.'
+          )
+        }}
+      </p>
       <div class="abele-confirm__actions">
         <Button
           text="Close"
-          tooltip="Leave the question pending without publishing"
+          tooltip="Decide later without sharing the file"
           @click="emit('close')"
         />
         <Button
           text="Keep private"
           :disabled="busy"
-          tooltip="Remember no publication to this audience"
+          tooltip="Keep this file private for this folder or group"
           @click="emit('answer', false)"
         />
         <Button
-          text="Publish"
+          text="Share"
           :accent="true"
           :disabled="busy"
-          tooltip="Publish this file to the displayed audience"
+          tooltip="Share this file with the named folder or group"
           @click="emit('answer', true)"
         />
       </div>
@@ -36,6 +43,7 @@
 <script setup lang="ts">
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
+import { sharingErrorMessage } from './sharingText'
 import type { ExistingPublicationQuestion } from '@/sync/publication/publicationDecision'
 defineProps<{ question: ExistingPublicationQuestion; busy?: boolean; error?: string }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'answer', accepted: boolean): void }>()

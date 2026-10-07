@@ -11,7 +11,7 @@ describe('disabled group/batch preview screens', () => {
         global: { stubs: { ObsidianModal: modal } },
       })
     expect(w.text()).toContain('not active')
-    expect(w.text()).toContain('stable approved note identity')
+    expect(w.text()).toContain('Choose the note that represents your group')
     await w.findAll('button')[0].trigger('click')
     expect(flow.review).not.toHaveBeenCalled()
     w.unmount()
@@ -32,8 +32,11 @@ describe('disabled group/batch preview screens', () => {
         global: { stubs: { ObsidianModal: modal } },
       })
     expect(w.text()).toContain('not active')
-    expect(w.text()).toContain('sample-audience')
-    expect(w.text()).toContain('explicit exact-target decision')
+    expect(w.find('[title="sample-audience"]').exists()).toBe(true)
+    expect(w.text()).not.toContain('sample-audience')
+    expect(w.text()).toContain(
+      'These images are private. Review where they will be shared before confirming.'
+    )
     await w.findAll('button')[0].trigger('click')
     expect(flow.review).not.toHaveBeenCalled()
     expect(flow.confirm).not.toHaveBeenCalled()

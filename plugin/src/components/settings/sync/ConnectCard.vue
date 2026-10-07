@@ -51,22 +51,26 @@
 
     <Setting
       name="Shared group invitation"
-      desc="Join with a scoped installation. Existing personal connections and unmanaged local-file collisions stay protected."
+      desc="Download shared notes without sharing your other files or replacing existing ones."
     >
       <Button
         text="Join a shared group…"
-        tooltip="Accept an invitation and enrol this device with a scoped credential"
+        tooltip="Use an invitation code to join a shared group"
         @click="scopedPreview = true"
       />
     </Setting>
-    <ScopedInvitationModal v-if="scopedPreview" :factory="scopedInvitation" @close="scopedPreview = false" />
+    <ScopedInvitationModal
+      v-if="scopedPreview"
+      :factory="scopedInvitation"
+      @close="scopedPreview = false"
+    />
     <Setting
-      name="Scoped new-file choice"
-      desc="Preview the disabled exact-path/root and native paste protections."
+      name="New shared file"
+      desc="Preview how to add notes and images after joining a shared group."
     >
       <Button
-        text="Preview scoped file creation…"
-        tooltip="Inspect the disabled scoped note/image creation choices without creating a file"
+        text="Preview shared file creation…"
+        tooltip="Look at the shared-file options without creating a file"
         @click="creationPreview = true"
       />
     </Setting>

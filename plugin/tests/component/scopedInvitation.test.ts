@@ -9,8 +9,8 @@ describe('scoped invitation disabled UI', () => {
         global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
       })
     expect(w.text()).toContain('not active')
-    expect(w.text()).toContain('unrelated local files')
-    expect(w.text()).toContain('scripts are refused')
+    expect(w.text()).toContain('without sharing your other files')
+    expect(w.text()).toContain('scripts from this shared vault cannot run')
     await w.findAll('button')[0].trigger('click')
     expect(flow.begin).not.toHaveBeenCalled()
     expect(flow.resume).not.toHaveBeenCalled()

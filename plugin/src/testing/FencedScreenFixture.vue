@@ -31,15 +31,24 @@
   />
   <ObsidianModal
     v-else-if="screen === 'publication'"
-    title="Owner publication state"
+    title="Sharing"
     size="tall"
     phone-sheet
     @close="emit('close')"
     ><div class="abele-modal__body abele-fenced-state">
-      <p>Read-only synthetic inspection. Mutation fences remain false.</p>
-      <p>Connection state: {{ state }}. No private lookup, upload or list mutation.</p>
+      <p>Read-only preview. No files will be shared.</p>
+      <p>
+        {{
+          state === 'offline'
+            ? 'The server is not connected.'
+            : state === 'scope-updating'
+              ? 'Getting shared files ready.'
+              : 'No connection or file changes will be made.'
+        }}
+      </p>
       <OwnerPublicationSettings
         :view="assets"
+        share-name="Sample group"
         :cache-complete="false"
         :state="state === 'scope-updating' ? 'scope-updating' : 'cache-unknown'"
         :enabled="false"
@@ -54,13 +63,11 @@
   ></ObsidianModal>
   <ConfirmModal
     v-else-if="screen === 'unshare'"
-    title="Unshare this exact file?"
+    title="Unshare this file?"
     :message="
-      'File ' +
+      'Stop sharing ' +
       longPath +
-      '. Audience ' +
-      audience +
-      '. Identity sample-image at sample-version. Old retries cannot re-add withdrawn authority. Read-only synthetic inspection.'
+      ' with Sample group? Other folders or groups that share it are not changed. Read-only preview.'
     "
     confirm-text="Unshare"
     :read-only="true"
@@ -200,7 +207,7 @@ const roots = [
   {
     fileId: note.fileId,
     versionId: note.versionId,
-    label: 'Sample shared approved root',
+    label: 'Sample shared group note',
     spelling: 'Sample shared group',
     approved: true,
   },

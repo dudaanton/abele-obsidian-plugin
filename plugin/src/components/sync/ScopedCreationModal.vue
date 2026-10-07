@@ -1,88 +1,90 @@
 <template>
-  <ObsidianModal title="New scoped file" size="tall" phone-sheet @close="close"
+  <ObsidianModal title="New shared file" size="tall" phone-sheet @close="close"
     ><div class="abele-modal__body abele-scoped-create">
       <p v-if="!enabled" role="status">
-        Scoped creation is not active. This preview places or uploads no file.
+        Shared file creation is not active. No file will be created.
       </p>
-      <p>
-        Choose a new allowed path and an approved root or intrinsic sponsor. Received files keep
-        their original paths. A private or occupied destination is never replaced, adopted or
-        remapped.
-      </p>
+      <p>Choose a new file path and a shared group or note. Existing files are never replaced.</p>
       <label
-        >Kind<select v-model="kind" aria-label="Scoped file kind" :disabled="busy || !enabled">
+        >Kind<select v-model="kind" aria-label="File kind" :disabled="busy || !enabled">
           <option value="note">New note</option>
-          <option value="asset">Pasted image</option>
+          <option value="asset">New image</option>
         </select></label
       >
       <label
-        >Exact new-file path<input
+        >File path<input
           v-model="path"
-          aria-label="Scoped new-file path"
+          aria-label="New file path"
           placeholder="Scattered/sample.md"
           :disabled="busy || !enabled"
       /></label>
       <template v-if="kind === 'note'"
         ><label
-          >Approved root<select
-            v-model="rootId"
-            aria-label="Approved group root"
-            :disabled="busy || !enabled"
-          >
-            <option v-for="r in roots" :key="r.fileId" :value="r.fileId">
-              {{ r.label }} — {{ r.fileId }} / {{ r.versionId }}
+          >Group note<select v-model="rootId" aria-label="Group note" :disabled="busy || !enabled">
+            <option
+              v-for="r in roots"
+              :key="r.fileId"
+              :value="r.fileId"
+              :title="r.fileId + ' / ' + r.versionId"
+            >
+              {{ r.label }}
             </option>
           </select></label
         ><label
-          >Note body<textarea
+          >Note text<textarea
             v-model="text"
-            aria-label="New scoped note body"
+            aria-label="Note text"
             :disabled="busy || !enabled"
           /></label
       ></template>
       <template v-if="kind === 'asset'">
         <label
-          >New image bytes<input
+          >Image file<input
             type="file"
             accept="image/*"
-            aria-label="New scoped image"
+            aria-label="Image file"
             :disabled="busy || !enabled"
             @change="chooseAsset"
         /></label>
         <label
-          >Intrinsic sponsor<select
+          >Linked shared note<select
             v-model="sponsorId"
-            aria-label="Scoped image sponsor"
+            aria-label="Linked shared note"
             :disabled="busy || !enabled"
           >
-            <option v-for="sponsor in sponsors" :key="sponsor.fileId" :value="sponsor.fileId">
-              {{ sponsor.label }} — {{ sponsor.versionId }}
+            <option
+              v-for="sponsor in sponsors"
+              :key="sponsor.fileId"
+              :value="sponsor.fileId"
+              :title="sponsor.fileId + ' / ' + sponsor.versionId"
+            >
+              {{ sponsor.label }}
             </option>
           </select></label
         >
-        <p>
-          The selected image's bytes and this exact current intrinsic sponsor are reviewed before
-          upload. Existing paths are never adopted or replaced.
-        </p>
+        <p>The new image will be linked to this shared note. Existing files are not replaced.</p>
       </template>
       <Button
-        text="Review new-file choice"
-        tooltip="Recheck current scope, root and destination before any local file creation"
+        text="Review new file"
+        tooltip="Check the new path and shared group before creating a file"
         :disabled="busy || !enabled || !flow || (kind === 'asset' && !assetBytes)"
         @click="review"
       />
       <template v-if="shown"
         ><p>
-          Exact target: <code>{{ shown.path }}</code
-          >. SHA: <code>{{ shown.sha }}</code>
+          New file: <code>{{ shown.path }}</code
+          >.
         </p>
         <p v-if="shown.root">
-          Approved root: {{ shown.root.label }} — {{ shown.root.fileId }} /
-          {{ shown.root.versionId }}
+          Group note:
+          <span :title="shown.root.fileId + ' / ' + shown.root.versionId">{{
+            shown.root.label
+          }}</span
+          >.
         </p>
         <Button
-          text="Create reviewed file"
-          tooltip="Persist the exact native operation handle before placing or uploading bytes"
+          text="Create file"
+          tooltip="Create this new file without replacing existing files"
           :disabled="busy || !enabled"
           @click="confirm"
       /></template>
@@ -100,6 +102,7 @@
 import { ref, watch, onUnmounted } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
+import { sharingErrorMessage } from './sharingText'
 import {
   SCOPED_CREATION_ENABLED,
   type ScopedCreationFlow,
@@ -152,7 +155,7 @@ async function review() {
     else {
       const selected = sponsors.find((sponsor) => sponsor.fileId === sponsorId.value)
       if (!selected || !assetBytes.value)
-        throw new Error('Choose new image bytes and a current intrinsic sponsor')
+        throw new Error('Choose an image file and a linked shared note')
       const { label: _label, ...sponsor } = selected
       shown.value = await props.flow.review({
         kind: 'asset',
@@ -162,7 +165,10 @@ async function review() {
       })
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Scoped file choice held'
+    error.value = sharingErrorMessage(
+      e,
+      'Could not review this file. Check the path and shared note, then try again.'
+    )
   } finally {
     busy.value = false
   }
@@ -174,7 +180,7 @@ async function confirm() {
   try {
     await props.flow.confirm(shown.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Scoped creation held'
+    error.value = sharingErrorMessage(e, 'Could not create this file. Review it and try again.')
   } finally {
     busy.value = false
   }

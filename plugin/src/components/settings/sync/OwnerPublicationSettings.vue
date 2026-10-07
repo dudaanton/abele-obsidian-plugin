@@ -1,65 +1,58 @@
 <template>
   <Section
-    title="Folder sharing and publication"
-    desc="Owner-reviewed audiences, exact file identities and independent note sponsors."
+    title="Sharing"
+    desc="Share folders, groups and linked images without moving your files."
   >
-    <p v-if="!ownerContext" role="status">
-      Scoped and recipient connections cannot manage owner publication or query private candidates.
-    </p>
+    <p v-if="!ownerContext" role="status">Only the vault owner can change what is shared.</p>
     <template v-else>
-      <p v-if="!enabled" role="status">
-        Sharing is not active. No credential, upload or publication request will be made until
-        activation gates pass.
-      </p>
-      <Setting
-        name="Folder receiver"
-        desc="Review one current folder prefix. The receiver gets a scoped machine key, never this device's personal credential."
-      >
+      <p v-if="!enabled" role="status">Sharing is not active. Your files will stay private.</p>
+      <Setting name="Share a folder" desc="Let another app read or edit notes in a folder.">
         <Button
-          text="Review folder sharing"
-          tooltip="Open the current folder scope preview; creation remains disabled until activation gates pass"
+          text="Share a folder…"
+          tooltip="Check which files will be shared before continuing"
           @click="folderOpen = true"
         />
       </Setting>
       <p>
-        State: {{ stateLabel }}.
-        <span v-if="!cacheComplete"
-          >Link evidence is incomplete; missing-reference counts are unknown.</span
-        >
+        {{ stateLabel }}
+        <span v-if="!cacheComplete">Some links could not be checked yet.</span>
       </p>
       <template v-if="view">
-        <p>
-          Audience: <code>{{ view.grantId }}</code
-          >; publication revision {{ view.revision }}.
-        </p>
-        <h4>Owner-published extras</h4>
-        <p v-if="!extras.length">No owner-published extras in this reviewed view.</p>
+        <p :title="view.grantId">Shared with: {{ shareName || 'this folder or group' }}</p>
+        <h4>Images you shared</h4>
+        <p v-if="!extras.length">No extra images have been shared here.</p>
         <ul>
           <li v-for="entry in extras" :key="entry.target.fileId">
-            <code>{{ entry.target.path }}</code>
-            <p>Identity {{ entry.target.fileId }} · {{ entry.target.versionId }}</p>
-            <p>Sponsors: {{ entry.sponsors.map((s) => s.fileId).join(', ') }}</p>
+            <code :title="entry.target.fileId + ' / ' + entry.target.versionId">{{
+              entry.target.path
+            }}</code>
+            <p :title="entry.sponsors.map((s) => s.fileId).join(', ')">
+              Shared through {{ entry.sponsors.length }} shared
+              {{ entry.sponsors.length === 1 ? 'note' : 'notes' }}.
+            </p>
             <p>{{ reference(entry.target.fileId) }}</p>
             <Button
               text="Unshare…"
-              tooltip="Review the exact published file identity and audiences before withdrawing extra authority"
+              tooltip="Review this file before stopping sharing"
               :disabled="!enabled || busy"
               @click="review(entry.target.fileId)"
             />
           </li>
         </ul>
-        <h4>Grant-native assets</h4>
-        <p>
-          Native assets have their own scoped creator/upload authority. They are not owner
-          attachment approvals.
-        </p>
+        <h4>Images added by collaborators</h4>
+        <p>These images were added directly to the shared folder or group.</p>
         <ul>
           <li v-for="entry in native" :key="entry.target.fileId">
-            <code>{{ entry.target.path }}</code>
-            <p>Sponsors: {{ entry.sponsors.map((s) => s.fileId).join(', ') }}</p>
+            <code :title="entry.target.fileId + ' / ' + entry.target.versionId">{{
+              entry.target.path
+            }}</code>
+            <p :title="entry.sponsors.map((s) => s.fileId).join(', ')">
+              Shared through {{ entry.sponsors.length }} shared
+              {{ entry.sponsors.length === 1 ? 'note' : 'notes' }}.
+            </p>
             <Button
-              text="Remove extra authority…"
-              tooltip="Withdraw this native asset's extra sponsorship without changing independent folder or group access"
+              text="Unshare…"
+              tooltip="Stop sharing this image without changing other shared folders or groups"
               :disabled="!enabled || busy"
               @click="review(entry.target.fileId)"
             />
@@ -68,26 +61,23 @@
       </template>
       <p v-if="error" role="alert">{{ error }}</p>
       <Setting
-        name="Group root and anchors"
-        desc="Review stable group identities and explicit relations; no folder/remap or inferred anchor authority."
+        name="Share a group"
+        desc="Choose the note that represents your group. Notes stay in their current folders."
         ><Button
-          text="Review group sharing"
-          tooltip="Review the exact synced root and authenticate the owner"
+          text="Share a group…"
+          tooltip="Review the group before sharing it"
           @click="groupOpen = true"
       /></Setting>
       <Setting
         v-if="hasBatch"
-        name="Existing-image initial batch"
-        desc="One exact target/sponsor/audience review, never a whole-list replacement."
+        name="Share existing images"
+        desc="Review selected images and where they will be shared."
         ><Button
-          text="Review initial asset batch"
-          tooltip="Inspect the disabled existing-file exposure batch"
+          text="Review images…"
+          tooltip="Review each selected image before sharing"
           @click="batchOpen = true"
       /></Setting>
-      <p>
-        Renames preserve identity; delete/recreate never inherits approval. Removing extra authority
-        does not remove independent folder/group access.
-      </p>
+      <p>Renaming a file keeps its sharing choices. A new file needs a new choice.</p>
     </template>
     <OwnerFolderSharingModal
       v-if="folderOpen"
@@ -111,17 +101,13 @@
     />
     <ConfirmModal
       v-if="unshare"
-      title="Unshare this exact file?"
+      title="Unshare this file?"
       :message="
-        'File ' +
+        'Stop sharing ' +
         unshare.path +
-        '. Audience ' +
-        unshare.grantId +
-        '. Identity ' +
-        unshare.fileId +
-        ' at version ' +
-        unshare.versionId +
-        '. Old retries cannot re-add withdrawn authority.'
+        ' with ' +
+        (shareName || 'this folder or group') +
+        '? Other folders or groups that share it are not changed.'
       "
       confirm-text="Unshare"
       @confirm="confirm"
@@ -143,11 +129,13 @@ import type { AssetView } from '@/sync/sharing/sponsoredAssets'
 import type { PublicationSettingsModel, UnshareReview } from '@/sync/sharing/publicationSettings'
 import type { OwnerGroupRootFlow } from '@/sync/sharing/ownerGroupRoot'
 import type { InitialAssetBatch, BatchEntry } from '@/sync/sharing/groupSharing'
+import { sharingErrorMessage } from '../../sync/sharingText'
 const props = withDefaults(
   defineProps<{
     facet?: 'device' | 'scoped' | 'account'
     owner?: boolean
     view?: AssetView
+    shareName?: string
     model?: PublicationSettingsModel
     folderFlow?: FolderSharingFlow
     groupRootFlow?: OwnerGroupRootFlow
@@ -177,28 +165,31 @@ const extras = computed(() => props.view?.entries.filter((e) => e.kind === 'owne
 const stateLabel = computed(
   () =>
     ({
-      syncing: 'content syncing',
-      'scope-updating': 'scope updating',
-      'cache-unknown': 'cache uncertain',
-      'awaiting-confirmation': 'publication awaiting confirmation',
-      idle: 'no pending publication',
+      syncing: 'Syncing files.',
+      'scope-updating': 'Getting shared files ready.',
+      'cache-unknown': 'Checking which images are linked.',
+      'awaiting-confirmation': 'Waiting for your sharing choice.',
+      idle: 'Sharing is up to date.',
     })[props.state ?? 'cache-unknown']
 )
 function reference(id: string) {
   return !props.cacheComplete
-    ? 'Reference status unknown'
+    ? 'Links have not been checked yet.'
     : props.referencedIds?.includes(id)
-      ? 'Currently referenced'
-      : 'Published, no longer referenced — no automatic withdrawal'
+      ? 'Linked from a shared note.'
+      : 'No longer linked here. It stays shared until you unshare it.'
 }
 function review(id: string) {
   if (!enabled || !props.model) return
   try {
     if (props.model.view?.grantId !== props.view?.grantId)
-      throw new Error('Publication audience changed; refresh the displayed view')
+      throw new Error('The shared folder or group changed. Refresh this view before unsharing.')
     unshare.value = props.model.reviewUnshare(id)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Cannot review unshare'
+    error.value = sharingErrorMessage(
+      e,
+      'The shared folder or group changed. Refresh this view before unsharing.'
+    )
   }
 }
 async function confirm() {
@@ -208,7 +199,7 @@ async function confirm() {
     await props.model.confirmUnshare(unshare.value)
     unshare.value = null
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unshare failed'
+    error.value = sharingErrorMessage(e, 'Could not stop sharing this file. Try again.')
   } finally {
     busy.value = false
   }

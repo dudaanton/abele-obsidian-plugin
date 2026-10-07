@@ -154,7 +154,7 @@ describe('existing-private publication prompt and real dialog content', () => {
       const s = setup()
       await s.prompt.refresh()
       await nextTick()
-      const text = accepted ? 'Publish' : 'Keep private'
+      const text = accepted ? 'Share' : 'Keep private'
       await s.wrapper
         .findAll('button')
         .find((b) => b.text() === text)!

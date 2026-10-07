@@ -18,28 +18,18 @@ it.each([
     'owner settings',
     OwnerPublicationSettings,
     () => ({ folderFlow: flow(), groupRootFlow: flow() }),
-    'Review folder sharing',
+    'Share a folder…',
   ],
-  ['folder sharing', OwnerFolderSharingModal, () => ({ flow: flow() }), 'Review current folder'],
-  [
-    'group sharing',
-    GroupSharingModal,
-    () => ({ rootFlow: flow() }),
-    'Review root and current scope',
-  ],
+  ['folder sharing', OwnerFolderSharingModal, () => ({ flow: flow() }), 'Review folder'],
+  ['group sharing', GroupSharingModal, () => ({ rootFlow: flow() }), 'Review group'],
   [
     'initial image batch',
     InitialAssetBatchModal,
     () => ({ flow: flow() }),
-    'Review selected exposures',
+    'Review selected images',
   ],
-  [
-    'scoped invitation',
-    ScopedInvitationModal,
-    () => ({ factory: vi.fn() }),
-    'Accept invitation and join',
-  ],
-  ['scoped creation', ScopedCreationModal, () => ({ flow: flow() }), 'Review new-file choice'],
+  ['scoped invitation', ScopedInvitationModal, () => ({ factory: vi.fn() }), 'Join group'],
+  ['scoped creation', ScopedCreationModal, () => ({ flow: flow() }), 'Review new file'],
 ] as const)(
   'enables the production %s without an explicit Boolean prop',
   (_name, component, props, action) => {
@@ -73,7 +63,7 @@ it('passes the production root/version flow into the group sharing dialog', asyn
   try {
     await screen
       .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Review group sharing')!
+      .find((button) => button.props('text') === 'Share a group…')!
       .trigger('click')
     expect(toRaw(screen.findComponent(GroupSharingModal).props('rootFlow'))).toBe(rootFlow)
   } finally {

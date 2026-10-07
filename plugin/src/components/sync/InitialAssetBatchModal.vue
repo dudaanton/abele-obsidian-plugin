@@ -1,70 +1,65 @@
 <template>
-  <ObsidianModal title="Review initial shared images" size="tall" phone-sheet @close="close"
+  <ObsidianModal title="Share selected images" size="tall" phone-sheet @close="close"
     ><div class="abele-modal__body abele-initial-batch">
-      <p v-if="!enabled" role="status">
-        Initial publication is not active. This preview creates no exposure or upload.
-      </p>
-      <p>
-        Existing private images need one explicit exact-target decision for every audience. A body
-        link, similar filename or incomplete cache is not publication authority. Independent
-        intrinsic note sponsors are mandatory.
-      </p>
-      <p>
-        Batch state: {{ state }}. Missing link/reference facts remain unknown; no automatic
-        withdrawal.
-      </p>
-      <h4>Audience exposures</h4>
+      <p v-if="!enabled" role="status">Image sharing is not active. No images will be shared.</p>
+      <p>These images are private. Review where they will be shared before confirming.</p>
+      <p>{{ batchState }}</p>
+      <p>Once shared, images stay shared until you unshare them, even if a link is removed.</p>
+      <h4>Shared folders and groups</h4>
       <ul>
-        <li v-for="a in display?.audiences ?? []" :key="a.grantId">
-          <code>{{ a.grantId }}</code> · CAS {{ a.revision }} / withdrawal
-          {{ a.withdrawalGeneration }}
+        <li v-for="a in display?.audiences ?? []" :key="a.grantId" :title="a.grantId">
+          Selected shared folder or group
         </li>
       </ul>
-      <h4>Exact existing targets</h4>
+      <h4>Selected images</h4>
       <ul>
         <li v-for="e in entries" :key="e.target.fileId">
-          <code>{{ e.target.path }}</code>
-          <p>{{ e.target.fileId }} / {{ e.target.versionId }} · {{ e.target.sha }}</p>
+          <code :title="e.target.fileId + ' / ' + e.target.versionId">{{ e.target.path }}</code>
+          <p :title="e.sponsors.map((s) => s.fileId).join(', ')">
+            Shared through {{ e.sponsors.length }} shared
+            {{ e.sponsors.length === 1 ? 'note' : 'notes' }}.
+          </p>
           <p>
-            Sponsors:
             {{
-              e.sponsors
-                .map(
-                  (s) => s.fileId + ' / ' + s.versionId + ' / admission ' + s.admissionGeneration
-                )
-                .join('; ')
+              e.target.eligible ? 'Available to share.' : 'This image still needs to be checked.'
             }}
           </p>
-          <p>{{ e.target.eligible ? 'Known eligible target' : 'Eligibility unknown — hold' }}</p>
         </li>
       </ul>
       <Button
-        text="Review selected exposures"
-        tooltip="Refresh exact targets/sponsors and each audience before recording the batch decision"
+        text="Review selected images"
+        tooltip="Check these images and shared folders or groups before continuing"
         :disabled="busy || !enabled || !flow"
         @click="review"
       /><Button
-        text="Confirm this exact batch"
-        tooltip="Persist stable per-audience deltas; never replace another device’s whole list"
+        text="Share selected images"
+        tooltip="Share only the selected images in this review"
         :disabled="busy || !enabled || !flow || !shown"
         @click="confirm"
       />
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <div class="abele-modal__buttons">
-      <Button
-        text="Close"
-        tooltip="Discard the displayed review without publishing a hidden batch"
-        @click="close"
-      /></div
+      <Button text="Close" tooltip="Close without sharing these images" @click="close" /></div
   ></ObsidianModal>
 </template>
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
+import { sharingErrorMessage } from './sharingText'
 import { OWNER_SHARING_ENABLED } from '@/sync/sharing/folderSharing'
 import type { InitialAssetBatch, BatchReview, BatchEntry } from '@/sync/sharing/groupSharing'
+const batchStateLabels: Record<string, string> = {
+  'awaiting exact confirmation': 'Review the selected images before sharing.',
+  pending: 'Waiting for your sharing choice.',
+  preparing: 'Getting the selected images ready.',
+  'scope-updating': 'Getting shared files ready.',
+  offline: 'Reconnect to the server before sharing images.',
+  'cache-unknown': 'Some images still need to be checked.',
+  'awaiting-confirmation': 'Waiting for your sharing choice.',
+  idle: 'No images are waiting to be shared.',
+}
 const props = withDefaults(
     defineProps<{
       flow?: InitialAssetBatch
@@ -85,6 +80,9 @@ const props = withDefaults(
   ),
   emit = defineEmits<{ close: [] }>(),
   enabled = props.enabled ?? OWNER_SHARING_ENABLED,
+  batchState = computed(
+    () => batchStateLabels[props.state] ?? 'Review the selected images before sharing.'
+  ),
   busy = ref(false),
   error = ref(''),
   shown = ref<BatchReview | null>(null),
@@ -96,7 +94,10 @@ async function review() {
   try {
     shown.value = await props.flow.review(props.entries ?? [], props.audiences ?? [])
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Initial batch held'
+    error.value = sharingErrorMessage(
+      e,
+      'Could not review these images. Check your selection and try again.'
+    )
   } finally {
     busy.value = false
   }
@@ -107,7 +108,7 @@ async function confirm() {
   try {
     await props.flow.confirm(shown.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Initial batch held'
+    error.value = sharingErrorMessage(e, 'Could not share these images. Review them and try again.')
   } finally {
     busy.value = false
   }
