@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { visibleToolbarTarget } from '../helpers/visibleToolbarTarget'
+import { visibleToolbarTarget, findToolbarScroller } from '../helpers/visibleToolbarTarget'
 
 const rect = (left: number, top: number, right: number, bottom: number) => ({
   left,
@@ -8,6 +8,25 @@ const rect = (left: number, top: number, right: number, bottom: number) => ({
   bottom,
 })
 describe('native toolbar touch coordinates', () => {
+  it('uses the actual scrollable viewport, not the overflowing flex list inside it', () => {
+    const bar = document.createElement('div'),
+      viewport = document.createElement('div'),
+      list = document.createElement('div'),
+      button = document.createElement('button')
+    document.body.append(bar)
+    bar.append(viewport)
+    viewport.append(list)
+    list.append(button)
+    viewport.style.overflowX = 'auto'
+    list.style.overflowX = 'visible'
+    for (const node of [viewport, list])
+      Object.defineProperties(node, { scrollWidth: { value: 808 }, clientWidth: { value: 324 } })
+    try {
+      expect(findToolbarScroller(button, bar)).toBe(viewport)
+    } finally {
+      bar.remove()
+    }
+  })
   it('does not tap the off-screen centre of a horizontally clipped item', () => {
     expect(
       visibleToolbarTarget(rect(380, 400, 420, 440), rect(8, 400, 370, 444), rect(0, 0, 390, 844))

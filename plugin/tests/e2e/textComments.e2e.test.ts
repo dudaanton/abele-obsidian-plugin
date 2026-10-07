@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
-import { visibleToolbarTarget } from '../helpers/visibleToolbarTarget'
+import { visibleToolbarTarget, findToolbarScroller } from '../helpers/visibleToolbarTarget'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -25,9 +25,7 @@ const NATIVE_TOUCH = `
     const glyph = toolbar?.querySelector(selector)
     if(!glyph) throw new Error('Native formatting action is missing: '+selector)
     const control = glyph.closest('.mobile-toolbar-option,.mobile-toolbar-item,.clickable-icon,button') ?? glyph.parentElement
-    let scroller = control.parentElement
-    while(scroller && scroller !== toolbar && scroller.scrollWidth <= scroller.clientWidth + 1) scroller=scroller.parentElement
-    scroller ??= toolbar
+    const scroller = (${findToolbarScroller.toString()})(control,toolbar)
     for(let attempt=0;attempt<10;attempt++) {
       await wait(250)
       const bar=toolbar.getBoundingClientRect(), clip=scroller.getBoundingClientRect(), item=control.getBoundingClientRect()
@@ -215,9 +213,13 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const edit = [...document.querySelectorAll('.abele-text-comments button')].find(el => el.textContent.trim() === 'Edit')
       await tap(edit); await wait(400)
       const editor = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
+      editor.focus()
       editor.dispatch({ selection: { anchor: editor.state.doc.length } })
+      await wait(150)
       if(document.activeElement !== editor.contentDOM) throw new Error('Edit did not focus the comment editor')
       await host.type(' Updated')
+      if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+editor.state.doc.toString())
+      await wait(150)
       await tap(button('Save'))
       await until(() => document.querySelector('.abele-text-comments__time')?.textContent.includes('Edited'))
       const id = /%%c:([a-z0-9]{6})/.exec(await app.vault.read(note))[1]

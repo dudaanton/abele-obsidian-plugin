@@ -1,3 +1,20 @@
+/** A flex list may overflow without being the element that accepts horizontal scrolling. */
+export function findToolbarScroller(item: HTMLElement, toolbar: HTMLElement): HTMLElement {
+  for (
+    let parent = item.parentElement;
+    parent && parent !== toolbar;
+    parent = parent.parentElement
+  ) {
+    const overflow = parent.ownerDocument.defaultView!.getComputedStyle(parent).overflowX
+    if (
+      parent.scrollWidth > parent.clientWidth + 1 &&
+      (overflow === 'auto' || overflow === 'scroll')
+    )
+      return parent
+  }
+  return toolbar
+}
+
 interface Box {
   left: number
   top: number
