@@ -166,8 +166,10 @@ export class FolderSharingFlow {
         this.assertCurrent(generation)
         this.grant = created
       }
-      if (this.grant.state === 'preparing' && this.grant.preparation) {
+      let steps = 0
+      while (this.grant.state === 'preparing') {
         if (!this.port.prepare) throw new Error('Grant preparation must be retried')
+        if (++steps > 100) throw new Error('Grant preparing; retry preparation, not creation')
         const prepared = await this.port.prepare(session, copy(this.grant))
         this.assertCurrent(generation)
         if (
@@ -178,8 +180,8 @@ export class FolderSharingFlow {
         )
           throw new Error('Grant preparation identity changed')
         this.grant = prepared
-        if (prepared.state !== 'active')
-          throw new Error('Grant preparing; retry preparation, not creation')
+        if (!['active', 'preparing'].includes(prepared.state ?? ''))
+          throw new Error('Grant preparation state changed')
       }
       const grant = this.grant
       if (

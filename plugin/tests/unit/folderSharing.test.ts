@@ -47,6 +47,25 @@ function setup(enabled = true) {
   }
 }
 describe('disabled owner folder sharing contract', () => {
+  it('completes multi-step preparation on the first confirmation without recreating the share', async () => {
+    const { flow, port } = setup()
+    const grant = {
+      id: 'sample-grant',
+      prefix: 'Agents/',
+      role: 'editor',
+      revision: 1,
+      state: 'preparing',
+      preparation: { ok: true, state: 'preparing' },
+    }
+    port.create.mockResolvedValue(grant as any)
+    port.prepare.mockResolvedValueOnce(grant).mockResolvedValueOnce({ ...grant, state: 'active' })
+    await flow.review('Agents/', 'editor', 'Sample')
+    expect(await flow.confirm('invented-password')).toMatchObject({ grantId: grant.id })
+    expect(port.create).toHaveBeenCalledTimes(1)
+    expect(port.prepare).toHaveBeenCalledTimes(2)
+    expect(port.issue).toHaveBeenCalledTimes(1)
+  })
+
   it('retains a committed grant when preparation fails and retries preparation, not creation', async () => {
     const { flow, port } = setup()
     port.create.mockResolvedValue({
@@ -57,15 +76,13 @@ describe('disabled owner folder sharing contract', () => {
       state: 'preparing',
       preparation: { ok: false, error: { code: 'scope_updating', message: 'try preparation' } },
     } as any)
-    port.prepare
-      .mockRejectedValueOnce(new Error('preparation unavailable'))
-      .mockResolvedValue({
-        id: 'sample-grant',
-        prefix: 'Agents/',
-        role: 'editor',
-        revision: 1,
-        state: 'active',
-      })
+    port.prepare.mockRejectedValueOnce(new Error('preparation unavailable')).mockResolvedValue({
+      id: 'sample-grant',
+      prefix: 'Agents/',
+      role: 'editor',
+      revision: 1,
+      state: 'active',
+    })
     await flow.review('Agents/', 'editor', 'Sample')
     await expect(flow.confirm('invented-password')).rejects.toThrow('preparation unavailable')
     expect(port.issue).not.toHaveBeenCalled()
