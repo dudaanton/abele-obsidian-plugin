@@ -15,15 +15,26 @@ import type { ParsedScript } from './types'
  * with nothing to confirm. What is confirmed is the version shown — the index's, which is the
  * one that runs — not whatever the file holds by the time the button is pressed.
  */
-export async function reviewOne(service: ScriptService, script: ParsedScript): Promise<boolean> {
+export async function reviewOne(
+  service: ScriptService,
+  script: ParsedScript,
+  signal?: AbortSignal
+): Promise<boolean> {
+  signal?.throwIfAborted()
   const verdict = service.verdict(script)
   if (verdict === 'confirmed') return true
   const { app } = GlobalStore.getInstance()
-  const yes = await reviewScript(app, {
-    script,
-    previous: ScriptTrust.getInstance().lastConfirmed(script.path),
-    refused: verdict === 'refused',
-  })
+  const yes = await reviewScript(
+    app,
+    {
+      script,
+      previous: ScriptTrust.getInstance().lastConfirmed(script.path),
+      refused: verdict === 'refused',
+    },
+    signal
+  )
+  // Confirm may have closed the dialog just before the run was cancelled.
+  signal?.throwIfAborted()
   if (!yes || verdict === 'refused') return false
   service.confirm(script)
   return true

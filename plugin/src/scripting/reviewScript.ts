@@ -32,7 +32,12 @@ export type ReviewRequest = (
 }
 
 /** Resolves true only when Confirm was pressed; any other way of closing it is a no. */
-export function reviewScript(app: App, request: ReviewRequest): Promise<boolean> {
+export function reviewScript(
+  app: App,
+  request: ReviewRequest,
+  signal?: AbortSignal
+): Promise<boolean> {
+  signal?.throwIfAborted()
   const { script, template, previous, refused } = request
   const name = template?.name ?? script.meta.name
   const path = template?.path ?? script.path
@@ -43,9 +48,10 @@ export function reviewScript(app: App, request: ReviewRequest): Promise<boolean>
     const modal = new (class extends ShellModal {
       onClose(): void {
         super.onClose()
+        signal?.removeEventListener('abort', abort)
         view?.destroy()
         view = null
-        resolve(confirmed)
+        resolve(confirmed && !signal?.aborted)
       }
     })(app, {
       title: `Confirm ${template ? 'template' : 'script'} "${name}"`,
@@ -54,6 +60,7 @@ export function reviewScript(app: App, request: ReviewRequest): Promise<boolean>
       cls: ['abele-script-review'],
     })
 
+    const abort = () => modal.close()
     const body = modal.bodyEl
     body.createEl('p', {
       cls: 'abele-script-review__why',
@@ -107,12 +114,15 @@ export function reviewScript(app: App, request: ReviewRequest): Promise<boolean>
       modal.addButton(
         'Confirm',
         () => {
+          if (signal?.aborted) return
           confirmed = true
           modal.close()
         },
         { cta: true, tooltip: 'Let this version run on this device' }
       )
     }
-    modal.open()
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
+    else modal.open()
   })
 }

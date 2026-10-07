@@ -102,6 +102,8 @@ lets you change parameter values, not the selection. Scripts can read the captur
 sentence and source link through the read-only `selection` object as well as the existing `book`
 object. Scripts in the library can still use their own variable named `selection`.
 **Run as new** asks you to confirm a script from elsewhere before displaying its parameter form.
+Cancelling a selection run also closes its confirmation dialog, without approving the script or
+opening another confirmation for that cancelled run.
 
 ## The toolbar
 

@@ -593,8 +593,8 @@ export class ScriptService {
   }
 
   /** Shows a script from elsewhere for review; true once this version is confirmed. */
-  review(script: ParsedScript): Promise<boolean> {
-    return reviewOne(this, script)
+  review(script: ParsedScript, signal?: AbortSignal): Promise<boolean> {
+    return reviewOne(this, script, signal)
   }
 
   /** Every waiting script in turn, from the command and the notice. */
@@ -615,14 +615,21 @@ export class ScriptService {
    * as it is *after* the dialog: if the file changed while it was open, the new version is
    * checked again rather than the confirmation of the old one standing for it.
    */
-  async admit(path: string, source: RunSource | 'lint'): Promise<ParsedScript> {
+  async admit(
+    path: string,
+    source: RunSource | 'lint',
+    signal?: AbortSignal
+  ): Promise<ParsedScript> {
     for (;;) {
+      signal?.throwIfAborted()
       const script = this.scripts.get(path)
       if (!script) throw new Error(`Script not found: ${path}`)
       const verdict = this.verdict(script)
       if (verdict === 'confirmed') return script
       if (!ASKS_A_PERSON.has(source)) throw new ScriptWaitingError(script.meta.name, verdict)
-      if (!(await this.review(script))) throw new ScriptWaitingError(script.meta.name, verdict)
+      const confirmed = await this.review(script, signal)
+      signal?.throwIfAborted()
+      if (!confirmed) throw new ScriptWaitingError(script.meta.name, verdict)
     }
   }
 
@@ -696,7 +703,7 @@ export class ScriptService {
    * status bar — since the linter calls what comes back once per note.
    */
   async definition(path: string, signal?: AbortSignal): Promise<unknown> {
-    const script = await this.admit(path, 'lint')
+    const script = await this.admit(path, 'lint', signal)
     const logs: string[] = []
     const ctx = readOnly(
       buildScriptContext({
@@ -867,7 +874,7 @@ export class ScriptService {
       formHandler: given.formHandler ?? formHandler,
     }
     opts.signal?.throwIfAborted()
-    const script = await this.admit(path, opts.source ?? 'agent')
+    const script = await this.admit(path, opts.source ?? 'agent', opts.signal)
     if (script.meta.interceptor) {
       throw new Error(
         `Script "${script.meta.name}" is an interceptor: it runs when a chat sends a message, with that message, and not by itself`
@@ -891,7 +898,7 @@ export class ScriptService {
     input: { message: unknown; chat: unknown },
     signal: AbortSignal
   ): Promise<unknown> {
-    const script = await this.admit(path, 'interceptor')
+    const script = await this.admit(path, 'interceptor', signal)
     if (!script.meta.interceptor) {
       throw new Error(`Script "${script.meta.name}" is not an interceptor (no @interceptor line)`)
     }
@@ -1013,7 +1020,7 @@ export class ScriptService {
       path,
       target,
       {
-        admit: (path, source) => this.admit(path, source),
+        admit: (path, source, signal) => this.admit(path, source, signal),
         showParams: (script, text, signal) => this.showParamForm(script, text, signal),
         execute: (path, params, options) =>
           this.execute(path, params, { ...options, formHandler: showFormModal }),
