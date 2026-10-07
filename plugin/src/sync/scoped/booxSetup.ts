@@ -102,6 +102,7 @@ export class BooxBooksSetup {
         'abele-sync-ledger',
         'abele-sync-ledger-proof',
         'abele-sync-ledger-bootstrap',
+        'abele-sync-ledger-cleanup',
         'abele-script-provenance',
       ].some((k) => this.storage.loadLocalStorage(k) != null)
     )

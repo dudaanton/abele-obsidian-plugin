@@ -11,8 +11,21 @@ export function assertFreshStandBaseline(
     'abele-sync-ledger',
     'abele-sync-ledger-proof',
     'abele-sync-ledger-bootstrap',
+    'abele-sync-ledger-cleanup',
     'abele-script-provenance',
   ])
-    if (local[key] != null) throw new Error('Retained durable sync state left untouched')
+    if (local[key] != null) {
+      const value = local[key] as Record<string, unknown>
+      if (
+        key === 'abele-sync-ledger' &&
+        typeof value === 'object' &&
+        value !== null &&
+        Object.keys(value).length === 2 &&
+        value.stateId === '' &&
+        value.vaultId === ''
+      )
+        continue
+      throw new Error('Retained durable sync state left untouched')
+    }
   if (marker != null) throw new Error('Retained managed sentinel left untouched')
 }

@@ -817,6 +817,77 @@ describe('SyncService — disconnecting', () => {
     expect(ledgerOf().stateId).toBe(stateId)
   })
 
+  it('retries failed forgetting after restart without losing database ownership or recovery markers', async () => {
+    await connect()
+    await synced()
+    const stateId = ledgerOf().stateId
+    const deletion = vi
+      .spyOn(IndexedDbStateStore, 'delete')
+      .mockRejectedValueOnce(new Error('Synthetic database deletion refused'))
+    try {
+      await expect(service.forget()).rejects.toThrow('Synthetic database deletion refused')
+      expect(ledgerOf().stateId).toBe('')
+      expect(app.loadLocalStorage('abele-sync-ledger-cleanup')).toEqual([stateId])
+      expect(app.loadLocalStorage('abele-sync-ledger-proof')).toBeNull()
+      expect(app.loadLocalStorage('abele-sync-ledger-bootstrap')).toBeNull()
+      await service.destroy()
+      service = SyncService.getInstance()
+      start()
+      await service.forget()
+      expect(deletion.mock.calls.map((call) => call[1])).toEqual([
+        stateDatabaseName(stateId),
+        stateDatabaseName(stateId),
+      ])
+      expect(app.loadLocalStorage('abele-sync-ledger-cleanup')).toBeNull()
+      expect(app.loadLocalStorage('abele-sync-ledger')).toBeNull()
+      expect((await indexedDB.databases()).map((db) => db.name)).not.toContain(
+        stateDatabaseName(stateId)
+      )
+    } finally {
+      deletion.mockRestore()
+    }
+  })
+
+  it('keeps failed replacement deletion owned and forgets every retired ledger, not other vault databases', async () => {
+    await connect()
+    await synced()
+    const oldId = ledgerOf().stateId
+    const unrelated = await IndexedDbStateStore.open(indexedDB, 'abele-sync-sample-unrelated')
+    unrelated.close()
+    const deletion = vi
+      .spyOn(IndexedDbStateStore, 'delete')
+      .mockRejectedValueOnce(new Error('Synthetic replacement deletion refused'))
+    try {
+      await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+      await service.chooseVault({ create: 'Sample other server vault' }, 'Sample device')
+      await synced()
+      const currentId = ledgerOf().stateId
+      expect(currentId).not.toBe(oldId)
+      expect(app.loadLocalStorage('abele-sync-ledger-cleanup')).toEqual([oldId])
+      await service.forget()
+      const names = (await indexedDB.databases()).map((db) => db.name)
+      expect(names).not.toContain(stateDatabaseName(oldId))
+      expect(names).not.toContain(stateDatabaseName(currentId))
+      expect(names).toContain('abele-sync-sample-unrelated')
+      expect(app.loadLocalStorage('abele-sync-ledger-cleanup')).toBeNull()
+    } finally {
+      deletion.mockRestore()
+    }
+  })
+
+  it('reclaims a legacy forgotten ledger still named by the local recovery proof', async () => {
+    await connect()
+    await synced()
+    const stateId = ledgerOf().stateId
+    await service.disconnect()
+    app.saveLocalStorage('abele-sync-ledger', { stateId: '', vaultId: '' })
+    await service.forget()
+    expect((await indexedDB.databases()).map((db) => db.name)).not.toContain(
+      stateDatabaseName(stateId)
+    )
+    expect(app.loadLocalStorage('abele-sync-ledger-proof')).toBeNull()
+  })
+
   it('forget drops the ledger and the keychain name as well', async () => {
     await connect()
     await synced()

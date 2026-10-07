@@ -37,8 +37,8 @@ export interface LocalStorage {
  * enrolment may mint a replacement; an existing connection stops for recovery rather than
  * interpreting lost storage as a new vault and manufacturing creates or trust.
  */
-export function readLedgerId(storage: LocalStorage): LedgerId {
-  const raw = storage.loadLocalStorage(LEDGER_KEY)
+export function readLedgerId(storage: LocalStorage, key = LEDGER_KEY): LedgerId {
+  const raw = storage.loadLocalStorage(key)
   if (raw === null || typeof raw !== 'object') return { ...NO_LEDGER }
   const o = raw as Record<string, unknown>
   return {

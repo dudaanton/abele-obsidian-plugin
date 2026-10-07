@@ -19,9 +19,10 @@ import type { DeviceConnection, JoinState } from './connection'
 import { sideOf } from './joinState'
 import { keptLedger } from './join'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
-import { NO_LEDGER, readLedgerId, writeLedgerId } from './ledgerId'
+import { LEDGER_KEY, NO_LEDGER, readLedgerId, writeLedgerId } from './ledgerId'
+import { finishLedgerCleanup, ledgerCleanupIds, rememberLedgerCleanup } from './ledgerCleanup'
 import { newSecretId, newStateId } from './ids'
-import { authorizeLedgerBootstrap, LEDGER_BOOTSTRAP_KEY } from './ledgerRecovery'
+import { authorizeLedgerBootstrap, LEDGER_BOOTSTRAP_KEY, LEDGER_PROOF_KEY } from './ledgerRecovery'
 import { messageOf } from './messages'
 import { USER_AGENT } from './transport'
 import { Revoker, withTimeout } from './revoke'
@@ -393,6 +394,7 @@ export class Enrolment {
     try {
       if (ledger.stateId === '' || ledger.vaultId !== where.vaultId) {
         dropped = ledger.stateId === '' ? null : ledger.stateId
+        if (dropped) rememberLedgerCleanup(app, dropped)
         const minted = { stateId: newStateId(), vaultId: where.vaultId }
         writeLedgerId(app, minted)
         authorizeLedgerBootstrap(app, minted)
@@ -440,7 +442,11 @@ export class Enrolment {
    */
   private async dropLedger(stateId: string): Promise<void> {
     try {
+      const app = this.host.app()
+      if (!app) throw new Error('Vault-local cleanup storage unavailable')
+      rememberLedgerCleanup(app, stateId)
       await IndexedDbStateStore.delete(this.host.factory(), stateDatabaseName(stateId))
+      finishLedgerCleanup(app, stateId)
       this.host.note('dropped the ledger of the vault this device used to sync')
     } catch (error) {
       this.host.note(`the ledger of the previous vault could not be dropped: ${messageOf(error)}`)
@@ -465,61 +471,93 @@ export class Enrolment {
    * costs a scan rather than a download of everything. `forget` is what throws those away.
    */
   async disconnect(): Promise<void> {
-    await this.host.serialise(async () => {
-      await this.host.teardown()
-      const own = this.host.connection()
-      const tokenId = own.deviceTokenId
-      const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
-      const token = boundDeviceToken(secrets().device, tokenId, serverUrl) ?? ''
-      if (token !== '' && serverUrl !== '') {
-        const told = await this.revoker.leave(
-          { serverUrl, deviceId: own.deviceId, deviceName: own.deviceName },
-          token
+    await this.host.serialise(() => this.disconnectLocal())
+  }
+
+  private async disconnectLocal(): Promise<void> {
+    await this.host.teardown()
+    const own = this.host.connection()
+    const tokenId = own.deviceTokenId
+    const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
+    const token = boundDeviceToken(secrets().device, tokenId, serverUrl) ?? ''
+    if (token !== '' && serverUrl !== '') {
+      const told = await this.revoker.leave(
+        { serverUrl, deviceId: own.deviceId, deviceName: own.deviceName },
+        token
+      )
+      if (told.kept === false) {
+        await this.host.reconcile()
+        throw new Error(
+          'the server could not be told, and the keychain would not keep the token to tell it ' +
+            'later, so this device stays connected; try again when the server can be reached'
         )
-        if (told.kept === false) {
-          await this.host.reconcile()
-          throw new Error(
-            'the server could not be told, and the keychain would not keep the token to tell it ' +
-              'later, so this device stays connected; try again when the server can be reached'
-          )
-        }
       }
-      // The secret goes and the id stays: `token()` reads a missing secret as no device, which
-      // is exactly the truth.
-      if (tokenId !== '' && token !== '') {
-        secrets().device.remove(tokenId)
-        secrets().device.remove(tokenServerId(tokenId))
-      }
-      this.host.saveConnection({
-        serverUrl: '',
-        enrolledUrl: '',
-        vaultId: '',
-        vaultName: '',
-        deviceId: '',
-        deviceName: '',
-        paused: false,
-        // A join belongs to the vault it was asked about; connecting again asks again.
-        join: null,
-      })
-      this.account = null
-      this.accountUrl = ''
-      this.host.note('disconnected; the device token is forgotten')
+    }
+    // The secret goes and the id stays: `token()` reads a missing secret as no device, which
+    // is exactly the truth.
+    if (tokenId !== '' && token !== '') {
+      secrets().device.remove(tokenId)
+      secrets().device.remove(tokenServerId(tokenId))
+    }
+    this.host.saveConnection({
+      serverUrl: '',
+      enrolledUrl: '',
+      vaultId: '',
+      vaultName: '',
+      deviceId: '',
+      deviceName: '',
+      paused: false,
+      // A join belongs to the vault it was asked about; connecting again asks again.
+      join: null,
     })
+    this.account = null
+    this.accountUrl = ''
+    this.host.note('disconnected; the device token is forgotten')
+    const app = this.host.app()
+    if (app) {
+      const retained = readLedgerId(app).stateId
+      for (const retired of ledgerCleanupIds(app))
+        if (retired !== retained) await this.dropLedger(retired)
+    }
   }
 
   /** Disconnect and throw away what this device remembered: the ledger and the keychain name. */
   async forget(): Promise<void> {
-    const app = this.host.app()
-    const stateId = app === null ? '' : readLedgerId(app).stateId
-    await this.disconnect()
-    const tokenId = this.host.connection().deviceTokenId
-    if (tokenId !== '') {
-      secrets().device.remove(tokenId)
-      this.host.saveConnection({ deviceTokenId: '' })
-    }
-    if (app !== null) writeLedgerId(app, NO_LEDGER)
-    if (stateId === '') return
-    await IndexedDbStateStore.delete(this.host.factory(), stateDatabaseName(stateId))
-    this.host.note("forgot this device's ledger; the next connect starts from the manifest")
+    await this.host.serialise(async () => {
+      await this.disconnectLocal()
+      const app = this.host.app()
+      const tokenId = this.host.connection().deviceTokenId
+      if (tokenId !== '') {
+        secrets().device.remove(tokenId)
+        this.host.saveConnection({ deviceTokenId: '' })
+      }
+      if (app === null) return
+      // Legacy Forget could clear the descriptor before deletion but leave its proof behind.
+      // Those vault-local records prove ownership; a global database name alone never does.
+      const proof = readLedgerId(app, LEDGER_PROOF_KEY)
+      const bootstrap = readLedgerId(app, LEDGER_BOOTSTRAP_KEY)
+      rememberLedgerCleanup(app, readLedgerId(app).stateId, proof.stateId, bootstrap.stateId)
+      writeLedgerId(app, NO_LEDGER)
+      for (const key of [LEDGER_PROOF_KEY, LEDGER_BOOTSTRAP_KEY]) {
+        app.saveLocalStorage(key, null)
+        if (app.loadLocalStorage(key) != null)
+          throw new Error('Forgotten ledger marker was not cleared')
+      }
+      let failure: unknown
+      for (const stateId of ledgerCleanupIds(app)) {
+        try {
+          await IndexedDbStateStore.delete(this.host.factory(), stateDatabaseName(stateId))
+          finishLedgerCleanup(app, stateId)
+        } catch (error) {
+          failure ??= error
+          this.host.note(`ledger cleanup is still pending: ${messageOf(error)}`)
+        }
+      }
+      if (failure) throw failure
+      app.saveLocalStorage(LEDGER_KEY, null)
+      if (app.loadLocalStorage(LEDGER_KEY) != null)
+        throw new Error('Forgotten ledger descriptor was not cleared')
+      this.host.note("forgot this device's ledger; the next connect starts from the manifest")
+    })
   }
 }

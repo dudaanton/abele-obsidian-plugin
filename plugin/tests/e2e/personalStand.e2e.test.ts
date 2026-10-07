@@ -162,7 +162,7 @@ describe.skipIf(!process.env.ABELE_STAND_STAGE)('personal stand supplement', () 
     const sibling = cli.evalAwaitPrivate<any>(`(async () => {
       const svc = window.__abeleTest.SyncService.getInstance()
       if(svc.connection.value.vaultId) throw new Error('Existing fixture connection left untouched')
-      const keys = ['abele-sync-connection','abele-sync-ledger','abele-sync-ledger-proof','abele-sync-ledger-bootstrap','abele-script-provenance']
+      const keys = ['abele-sync-connection','abele-sync-ledger','abele-sync-ledger-proof','abele-sync-ledger-bootstrap','abele-sync-ledger-cleanup','abele-script-provenance']
       const p = { root: ${JSON.stringify(root)}, local: Object.fromEntries(keys.map(k=>[k,app.loadLocalStorage(k)])),
         ignore: await app.vault.adapter.exists('.abele-sync-ignore') ? await app.vault.adapter.read('.abele-sync-ignore') : null,
         marker: await app.vault.adapter.exists('.abele-script-managed') ? [...new Uint8Array(await app.vault.adapter.readBinary('.abele-script-managed'))] : null }

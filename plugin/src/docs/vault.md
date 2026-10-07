@@ -1207,6 +1207,18 @@ since** whose answer did not arrive, so pressing it again is not a second restor
 in Obsidian's IndexedDB, as a database named `abele-sync-<id>`; it also holds the Obsidian
 settings changes that arrived from other devices and wait for the person to reload or keep this
 device's, so a file in the config folder may be older on disk than on the other devices until then.
+**Disconnect** retains the currently referenced ledger for reconnecting the same server vault;
+it retries deletion of retired ledgers. **Forget** deletes all ledgers named by this vault's
+local descriptor, recovery proof, bootstrap or `abele-sync-ledger-cleanup` tombstones. IDs are
+filed in those tombstones before a descriptor is replaced/cleared; failed or blocked deletions
+remain explicitly pending and retry on Disconnect/Forget, including after restart. Successful
+Forget removes the ledger descriptor, proof, bootstrap and cleanup key. The legacy empty
+`{stateId:'',vaultId:''}` marker is also a clean forgotten state when no recovery/cleanup evidence
+remains. Script provenance and its managed sentinel are independently retained to prevent
+forgetting sync from turning received scripts into trusted local code. The app-wide IndexedDB
+namespace is never swept by prefix: legacy databases with no surviving vault-local ownership
+record require explicit recovery, not inferred deletion of another local vault's state.
+
 Other plugins' code (`main.js`, `manifest.json`, `styles.css`, including new plugins) waits in
 that same durable staging queue but has its own confirmation, **Review plugin code from sync**.
 It names each plugin as new or changed, with the manifest version when available. Applying

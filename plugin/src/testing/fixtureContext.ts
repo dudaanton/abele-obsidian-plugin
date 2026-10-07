@@ -14,6 +14,7 @@ const KEYS = [
   'abele-sync-ledger',
   'abele-sync-ledger-proof',
   'abele-sync-ledger-bootstrap',
+  'abele-sync-ledger-cleanup',
   'abele-script-provenance',
 ]
 const FILES = ['.abele-sync-ignore', '.abele-script-managed']

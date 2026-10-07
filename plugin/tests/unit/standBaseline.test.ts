@@ -26,6 +26,21 @@ describe('stand fixture original-state preservation', () => {
       })
     ).toThrow(/retained|existing/i)
   })
+  it('accepts only the exact clean legacy forgotten marker, never pending deletion or recovery evidence', () => {
+    const forgotten = { 'abele-sync-ledger': { stateId: '', vaultId: '' } }
+    const snapshot = JSON.stringify(forgotten)
+    expect(() => assertFreshStandBaseline(forgotten, null, {})).not.toThrow()
+    expect(JSON.stringify(forgotten)).toBe(snapshot)
+    for (const retained of [
+      { 'abele-sync-ledger-cleanup': ['sample-state'] },
+      { 'abele-sync-ledger-proof': { stateId: 'sample-state', vaultId: 'sample-vault' } },
+      { 'abele-sync-ledger': { stateId: '', vaultId: '', pending: true } },
+      { 'abele-sync-ledger': {} },
+    ])
+      expect(() => assertFreshStandBaseline({ ...forgotten, ...retained }, null, {})).toThrow(
+        /retained/i
+      )
+  })
   it('allows a truly fresh fixture without rewriting any originals', () => {
     expect(() =>
       assertFreshStandBaseline({ 'abele-sync-connection': { vaultId: '', paused: true } }, null, {
