@@ -14,6 +14,11 @@ import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import { evalAsync } from './helpers/githubLive'
 import {
+  SELECTION_MENUS_SETUP,
+  SELECTION_MENUS_OPEN,
+  SELECTION_MENUS_CLEANUP,
+} from './helpers/selectionMenus'
+import {
   PUBLICATION_SETUP,
   PUBLICATION_PRELUDE,
   PUBLICATION_CLEANUP,
@@ -199,6 +204,49 @@ describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', ()
 
   it('no box in any dialog of the plugin cuts the ring off a focused field', () => {
     expect(cuts.map((c) => `${c.screen}: ${c.field} — ${c.by.join(', ')}`)).toEqual([])
+  })
+})
+
+describe.skipIf(!available)('selection-menu focus rings', () => {
+  it('keeps every Books and Chats field and action inside its clipping ancestors', async () => {
+    const cuts = JSON.parse(
+      await evalLong(
+        `(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms))
+      const until = async (fn, ms) => { for (let i = 0; i < ms / 50; i++) { if (fn()) return true; await wait(50) } return false }
+      ${SELECTION_MENUS_SETUP}
+      const cuts = []
+      try {
+        ${SELECTION_MENUS_OPEN}
+        for (const [surface, label] of [['book', 'Books'], ['chat', 'Chats']]) {
+          ;[...menuDoc.querySelectorAll('.abele-settings__selection-menus .abele-tabs__tab')].find(t => t.textContent.trim() === label)?.click()
+          if (!await until(() => menuDoc.querySelector('.abele-selection-scripts-settings[data-surface="' + surface + '"]'), 5000)) throw Error('Surface did not open: ' + surface)
+          await wait(300)
+          const fields = menuDoc.querySelectorAll('.abele-settings__scripts input, .abele-settings__scripts button, .abele-settings__scripts [tabindex="0"]')
+          for (const field of fields) {
+            if (!field.getBoundingClientRect().width) continue
+            field.focus()
+            const style = getComputedStyle(field)
+            const reach = Math.max((${outwardBoxShadowReach.toString()})(style.boxShadow), style.outlineStyle !== 'none' ? parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset || '0') : 0)
+            const r = field.getBoundingClientRect()
+            for (let el = field.parentElement; el && el !== menuDoc.documentElement; el = el.parentElement) {
+              const s = getComputedStyle(el)
+              if (s.overflowX === 'visible' && s.overflowY === 'visible') continue
+              const b = el.getBoundingClientRect(), left = b.left + el.clientLeft
+              if (Math.max(left - (r.left - reach), r.right + reach - (left + el.clientWidth)) > 0.5) cuts.push(surface + ': ' + field.className + ' by ' + el.className)
+            }
+            field.blur()
+          }
+        }
+        return JSON.stringify(cuts)
+      } finally {
+        ${SELECTION_MENUS_CLEANUP}
+      }
+    })()`,
+        30_000
+      )
+    )
+    expect(cuts).toEqual([])
   })
 })
 

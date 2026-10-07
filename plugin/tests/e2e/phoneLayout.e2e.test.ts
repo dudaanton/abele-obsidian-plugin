@@ -39,6 +39,11 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import {
+  SELECTION_MENUS_SETUP,
+  SELECTION_MENUS_OPEN,
+  SELECTION_MENUS_CLEANUP,
+} from './helpers/selectionMenus'
 import { sampleDocx } from '../fixtures/docx/sampleDocx'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import {
@@ -841,6 +846,33 @@ const probeScript = `(async () => {
       await closeDialog()
     }
 
+    // Both selection-menu surfaces with long names and a list longer than the sheet.
+    ${SELECTION_MENUS_SETUP}
+    try {
+      ${SELECTION_MENUS_OPEN}
+      for (const [surface, label] of [['book', 'Books'], ['chat', 'Chats']]) {
+        ;[...menuDoc.querySelectorAll('.abele-settings__selection-menus .abele-tabs__tab')].find(t => t.textContent.trim() === label)?.click()
+        if (!await until(() => menuDoc.querySelector('.abele-selection-scripts-settings[data-surface="' + surface + '"]'), 5000)) throw Error('Selection surface did not open: ' + surface)
+        await wait(300)
+        const modal = menuDoc.querySelector('.modal.mod-settings') || menuDoc.querySelector('.modal')
+        const scroll = modal.querySelector('.vertical-tab-content')
+        if (scroll) scroll.scrollTop = 0
+        await screen('settings selection ' + surface, modal, scroll)
+        const cuts = []
+        for (const field of modal.querySelectorAll('input, button, [tabindex="0"]')) {
+          if (!field.getBoundingClientRect().width) continue
+          field.focus()
+          for (const cut of ringClipped(field)) cuts.push(name(field) + ': ' + cut)
+          field.blur()
+        }
+        report['settings selection ' + surface].clipped = cuts
+        if (scroll) scroll.scrollTop = scroll.scrollHeight
+        await screen('settings selection ' + surface + ' bottom', modal, scroll)
+      }
+    } finally {
+      ${SELECTION_MENUS_CLEANUP}
+    }
+
     // The rewind dialog, over two changes made the way an agent's turn makes them: a skill note
     // rewritten and a note made. The rewritten one is opened to its difference.
     try {
@@ -1476,6 +1508,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'node chat',
     'settings nodes',
     'settings nodes overview',
+    'settings selection book',
+    'settings selection chat',
+    'settings selection book bottom',
+    'settings selection chat bottom',
     'node session picker',
     'chat attachment',
     'chat deferred media',
@@ -1536,6 +1572,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s === 'secrets list' ||
       s === 'mcp server' ||
       s === 'rewind'
+  )
+
+  it.each(['settings selection book', 'settings selection chat'])(
+    '%s: every field and action keeps its focus ring',
+    (label) => {
+      expect(report[label]?.clipped).toEqual([])
+    }
   )
 
   it('deferred media keeps attachment, dictation and editing controls available on a phone', () => {
@@ -1708,7 +1751,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
    * the list, so its list stops a field's height above the bottom by design. Only the count of
    * scrollers is asked of it.
    */
-  const prompts = new Set(['note picker', 'chat picker', 'canvas file picker', 'node session picker'])
+  const prompts = new Set([
+    'note picker',
+    'chat picker',
+    'canvas file picker',
+    'node session picker',
+  ])
 
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
     // A settings page's prompt editors are fields that scroll their own text, by design.

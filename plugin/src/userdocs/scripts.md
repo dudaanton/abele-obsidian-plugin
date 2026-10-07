@@ -73,6 +73,23 @@ and `agent()` to hand the fuzzy part of a job to a model. An AI agent can write 
 - By itself, through an automation.
 - Each time Obsidian starts: see below.
 
+## Selection menus
+
+**Settings → Abele → Scripts → Selection menus** has separate **Books** and **Chats** lists.
+Add a script to pin it to either menu, or to both by adding it to each list. Each list keeps its
+own order, name and icon: choosing a book label does not copy it into chats. Taking a script
+off a list leaves the script itself in the library. The book list is also available under
+**Book reader**.
+
+A header line `// @book` opts in to books only; `// @chat-selection` opts in to chats only.
+Use both lines for both surfaces. Scripts added in settings come first, in your chosen order;
+other header opt-ins follow alphabetically. An empty name uses the script's name; an empty
+icon uses its header icon, or a scroll. A script's header still opts it in after you remove its
+settings entry: remove that header line too to hide it from that menu.
+
+Chat choices can be saved and transferred now, but running scripts on a chat selection is not
+enabled yet. These settings do not change chat messages or add links to cards.
+
 ## Script runs
 
 **Show script runs** lists every run of this session: its status, its log lines, what it returned
