@@ -35,8 +35,11 @@ const NATIVE_TOUCH = `
       const target=(${visibleToolbarTarget.toString()})(item,bounds,screen)
       if('unavailable' in target) throw new Error('Native formatting toolbar is outside the viewport')
       if('scroll' in target) {
-        const left=Math.max(bounds.left,screen.left)+16,right=Math.min(bounds.right,screen.right)-16,y=(bounds.top+bounds.bottom)/2
-        await host.swipe(target.scroll==='left'?right:left,y,target.scroll==='left'?left:right,y,{velocity:1000,hold:0})
+        // Scroll only the native options viewport. scrollIntoView on a toolbar item also
+        // scrolls the note/dialog vertically and invalidates the subsequent touch coordinates.
+        const delta=target.scroll==='left'?item.right-Math.min(bounds.right,screen.right)+8:item.left-Math.max(bounds.left,screen.left)-8
+        scroller.scrollBy({left:delta,behavior:'smooth'})
+        await wait(400)
         continue
       }
       const under=document.elementFromPoint(target.point.x,target.point.y)
