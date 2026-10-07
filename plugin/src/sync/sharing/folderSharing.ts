@@ -169,7 +169,10 @@ export class FolderSharingFlow {
       let steps = 0
       while (this.grant.state === 'preparing') {
         if (!this.port.prepare) throw new Error('Grant preparation must be retried')
-        if (++steps > 100) throw new Error('Grant preparing; retry preparation, not creation')
+        if (++steps > 100)
+          throw Object.assign(new Error('Grant preparing; retry preparation, not creation'), {
+            code: 'scope_updating',
+          })
         const prepared = await this.port.prepare(session, copy(this.grant))
         this.assertCurrent(generation)
         if (

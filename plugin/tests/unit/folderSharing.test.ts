@@ -66,6 +66,26 @@ describe('disabled owner folder sharing contract', () => {
     expect(port.issue).toHaveBeenCalledTimes(1)
   })
 
+  it('reports unfinished bounded preparation without blaming the folder or issuing a key', async () => {
+    const { flow, port } = setup()
+    const grant = {
+      id: 'sample-grant',
+      prefix: 'Agents/',
+      role: 'editor',
+      revision: 1,
+      state: 'preparing',
+      preparation: { ok: true, state: 'preparing' },
+    }
+    port.create.mockResolvedValue(grant as any)
+    port.prepare.mockResolvedValue(grant)
+    await flow.review('Agents/', 'editor', 'Sample')
+    await expect(flow.confirm('invented-password')).rejects.toMatchObject({
+      code: 'scope_updating',
+    })
+    expect(port.create).toHaveBeenCalledTimes(1)
+    expect(port.prepare).toHaveBeenCalledTimes(100)
+    expect(port.issue).not.toHaveBeenCalled()
+  })
   it('retains a committed grant when preparation fails and retries preparation, not creation', async () => {
     const { flow, port } = setup()
     port.create.mockResolvedValue({

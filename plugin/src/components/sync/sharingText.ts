@@ -11,7 +11,7 @@ export function sharingErrorMessage(error: unknown, fallback: string): string {
     return 'Check your email and password, then try again.'
   if (code === 'forbidden') return 'You do not have permission to make this change.'
   if (code === 'scope_updating')
-    return 'The shared group is still getting ready. Try again shortly.'
+    return 'The shared files are still getting ready. Try again shortly.'
   if (code === 'scope_unavailable')
     return 'Sharing could not be checked. Ask the server administrator for help.'
   if (code === 'rate_limited') return 'Too many attempts. Wait a moment, then try again.'
