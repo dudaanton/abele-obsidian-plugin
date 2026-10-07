@@ -71,17 +71,6 @@
       />
     </Setting>
     <ScopedCreationModal v-if="creationPreview" @close="creationPreview = false" />
-    <Setting
-      name="Untrusted Books reader"
-      desc="Reads and writes only the approved Books group with a scoped secret; no personal login or whole-vault discovery."
-    >
-      <Button
-        text="Preview Books group-only setup…"
-        tooltip="Inspect the disabled scoped editor setup and native transport holds"
-        @click="booksPreview = true"
-      />
-    </Setting>
-    <BooxBooksModal v-if="booksPreview" @close="booksPreview = false" />
     <template v-if="vaults !== null">
       <Section
         title="Choose a vault"
@@ -185,10 +174,8 @@
 import { computed, ref } from 'vue'
 import ScopedInvitationModal from '../../sync/ScopedInvitationModal.vue'
 import ScopedCreationModal from '../../sync/ScopedCreationModal.vue'
-import BooxBooksModal from '../../sync/BooxBooksModal.vue'
 const scopedPreview = ref(false),
-  creationPreview = ref(false),
-  booksPreview = ref(false)
+  creationPreview = ref(false)
 import { Platform } from 'obsidian'
 import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import Section from '../../obsidian/Section.vue'

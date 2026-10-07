@@ -6,7 +6,6 @@ export const FENCED_SCREENS = [
   'initial-batch',
   'invitation',
   'creation',
-  'books',
   'publication',
   'unshare',
   'script-approval',

@@ -9,7 +9,6 @@ const screens = [
   'initial-batch',
   'invitation',
   'creation',
-  'books',
   'publication',
   'unshare',
   'script-approval',
@@ -22,9 +21,6 @@ const cases = screens
     { screen: 'group', state: 'scope-updating' },
     { screen: 'publication', state: 'offline' },
     { screen: 'publication', state: 'cache-unknown' },
-    { screen: 'books', state: 'revoked' },
-    { screen: 'books', state: 'unsupported-transport' },
-    { screen: 'books', state: 'recovery' },
   ])
 describe.skipIf(!process.env.ABELE_FENCED_UI_STAGE)(
   'fenced screens native desktop inspection',

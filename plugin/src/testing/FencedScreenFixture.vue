@@ -29,12 +29,6 @@
     :enabled="false"
     @close="emit('close')"
   />
-  <BooxBooksModal
-    v-else-if="screen === 'books'"
-    :status="books"
-    :enabled="false"
-    @close="emit('close')"
-  />
   <ObsidianModal
     v-else-if="screen === 'publication'"
     title="Owner publication state"
@@ -105,7 +99,6 @@ import GroupSharingModal from '@/components/sync/GroupSharingModal.vue'
 import InitialAssetBatchModal from '@/components/sync/InitialAssetBatchModal.vue'
 import ScopedInvitationModal from '@/components/sync/ScopedInvitationModal.vue'
 import ScopedCreationModal from '@/components/sync/ScopedCreationModal.vue'
-import BooxBooksModal from '@/components/sync/BooxBooksModal.vue'
 import OwnerPublicationSettings from '@/components/settings/sync/OwnerPublicationSettings.vue'
 import ScriptApprovalModal from '@/components/ScriptApprovalModal.vue'
 import PluginCodeModal from '@/components/sync/PluginCodeModal.vue'
@@ -113,7 +106,6 @@ import JoinVaultModal from '@/components/settings/sync/JoinVaultModal.vue'
 import type { ChangeItem } from '@abele/sync-protocol'
 import type { GroupReview, BatchReview } from '@/sync/sharing/groupSharing'
 import type { AssetView } from '@/sync/sharing/sponsoredAssets'
-import type { BooksStatus } from '@/sync/scoped/booxSetup'
 import type { ScriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
 import type { JoinQuestion } from '@/sync/join'
 const props = defineProps<{ screen: FencedScreen; state: FencedState }>(),
@@ -208,25 +200,11 @@ const roots = [
   {
     fileId: note.fileId,
     versionId: note.versionId,
-    label: 'Sample books approved root',
-    spelling: 'Sample books',
+    label: 'Sample shared approved root',
+    spelling: 'Sample shared group',
     approved: true,
   },
 ]
-const books = computed<BooksStatus>(() => ({
-  status:
-    props.state === 'pending'
-      ? 'preparing'
-      : props.state === 'scope-updating'
-        ? 'preparing'
-        : props.state === 'cache-unknown'
-          ? 'recovery'
-          : props.state,
-  role: 'editor',
-  known: 64,
-  materialized: 17,
-  omitted: 47,
-}))
 const script: ScriptApprovalDialog = {
   id: 1,
   path: 'Scripts/sample-reviewed-code-with-a-long-name.js',

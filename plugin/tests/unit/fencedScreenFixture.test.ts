@@ -13,7 +13,6 @@ describe('task63 inspection is readonly production-excluded source', () => {
       'initial-batch',
       'invitation',
       'creation',
-      'books',
       'publication',
       'unshare',
       'script-approval',

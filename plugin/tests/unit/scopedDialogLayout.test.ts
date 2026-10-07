@@ -8,7 +8,6 @@ describe('scoped sheet scrolling keeps the fixed close row separate', () => {
     'OwnerFolderSharingModal',
     'GroupSharingModal',
     'InitialAssetBatchModal',
-    'BooxBooksModal',
   ])('%s owns a scroll body rather than letting content overlap footer', (name) => {
     const source = readFileSync(
       new URL('../../src/components/sync/' + name + '.vue', import.meta.url),

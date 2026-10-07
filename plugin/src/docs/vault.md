@@ -1522,7 +1522,7 @@ sharing activation module in its rendered graph. Test HTTPS stand activation sti
 an owned isolated fixture context and bound device; it does not bypass server activation or
 credential/visibility checks.
 
-## Disabled group wizard, initial batch and Books profile
+## Disabled group wizard and initial batch
 
 The owner group wizard requires a certified exact root/member/anchor preview and fresh owner
 account authentication. Relations/anchors are separate explicit version-bound approvals; a
@@ -1533,13 +1533,6 @@ stable per-operation request IDs before publication; stale replacements or lost 
 An existing/resumed review whose journal disappears cannot mint replacement operation IDs.
 Successful relation acknowledgements advance the reviewed ACL revision and retain confirmed
 progress; an uncertain approval reply is recovery, not permission to guess another revision.
-
-The untrusted Books profile writes only a device-local scoped descriptor and independently bound
-keychain secret, with purpose `books-untrusted`, group-only stable root and editor ceiling. It
-never holds an account/personal token or fetches full-vault frontmatter. Known/materialized/omitted
-counts are distinct from deletion; revoke retains downloaded bytes but prevents further network
-writes. Native transport, protected ledger and server manifest host ports stay mandatory while
-the fence is false. iPhone/desktop UI inspection is not native Android/Boox acceptance.
 
 ## Disabled scoped invitation and creation state
 
