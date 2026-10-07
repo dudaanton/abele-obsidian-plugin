@@ -75,7 +75,10 @@ const fit = async () => {
 }
 const type = async (text: string) => {
   if (onPhone()) {
-    await new Promise((r) => setTimeout(r, 500))
+    // DOM focus precedes the native keyboard. Wait for both before submitting input once.
+    await until(`view().contentEl.contains(document.activeElement)&&document.activeElement.matches('input,textarea')&&Math.max(
+      parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,
+      window.visualViewport?Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop):0)>1`)
     typeText(text)
   } else
     await withNativeInput(() =>
@@ -132,6 +135,7 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await press('view().contentEl.querySelector("textarea")')
     await type('A new shape')
     await until('view().contentEl.querySelector("textarea").value==="A new shape"')
+    shot('shape-keyboard')
     await click('Save text')
     await saved()
     expect(
@@ -167,6 +171,10 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await press('view().contentEl.querySelector(".abele-canvas-connection-properties summary")')
     await press('view().contentEl.querySelector(\'[aria-label="Connection label"]\')')
     await type('Next step')
+    await until(
+      'view().contentEl.querySelector(\'[aria-label="Connection label"]\').value==="Next step"'
+    )
+    shot('caption-keyboard')
     await click('Apply connection style')
     await saved()
     await click('Reverse connection arrows')
