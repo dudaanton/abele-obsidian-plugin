@@ -1,5 +1,5 @@
 import { EditorView } from '@codemirror/view'
-import { editorLivePreviewField, type Plugin } from 'obsidian'
+import { editorInfoField, editorLivePreviewField, type Plugin } from 'obsidian'
 import { columnSource } from './source'
 
 interface Entry {
@@ -73,12 +73,14 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
 function reveal(entry: Entry): void {
   // A stale DOM callback must not put a caret into a different version of the note.
   if (entry.view.state.doc.toString() !== entry.document) return
+  const editor = entry.view.state.field(editorInfoField, false)?.editor
+  if (editor) editor.focus()
+  else entry.view.focus()
   entry.view.dispatch({
     selection: { anchor: entry.anchor },
     scrollIntoView: true,
     userEvent: 'select.pointer',
   })
-  entry.view.focus()
 }
 
 export function registerColumnEntry(plugin: Plugin): void {
