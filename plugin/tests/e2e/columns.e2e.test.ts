@@ -226,33 +226,65 @@ describe.skipIf(!available)('note columns foundation', () => {
     await shot('table-gesture')
   })
 
-  // BUG: Obsidian's native callout widget maps every prose click to the outer header.
-  // Keep the no-jump guarantee red until a source-aware click adapter exists.
-  it.fails(
-    'Live Preview expands the whole area, preserves the click line, edits and undoes',
-    async () => {
-      show('source')
-      const point = asyncEval<{ x: number; y: number }>(`
+  it('Live Preview expands the whole area, preserves the click line, edits and undoes', async () => {
+    show('source')
+    const point = asyncEval<{ x: number; y: number }>(`
       const p=[...root().querySelectorAll('.abele-column p')].find(e=>e.textContent.includes('Second column paragraph.'));
       p.scrollIntoView({block:'center'}); await wait(100);const r=p.getBoundingClientRect();return {x:r.x+40,y:r.y+r.height/2};
     `)
-      click(point.x, point.y)
-      const edit = asyncEval<{ line: string; rendered: boolean; raw: boolean; selected: number }>(`
+    click(point.x, point.y)
+    const edit = asyncEval<{ line: string; rendered: boolean; raw: boolean; selected: number }>(`
       await wait(300);const pos=view.editor.getCursor();return {line:view.editor.getLine(pos.line),rendered:!!root().querySelector('.abele-columns'),raw:root().textContent.includes('[!abele-columns|ratio=2:1 mobile=stack]'),selected:view.editor.getSelection().length};
     `)
-      console.log('edit transition', JSON.stringify(edit))
-      await shot('editing')
-      expect(edit.line).toBe('> > Second column paragraph.')
-      expect(edit.rendered).toBe(false)
-      expect(edit.raw).toBe(true)
-      await shot('editing')
-      asyncEval(
-        `view.editor.replaceSelection('sample edit');view.editor.undo();await wait(300);return true`
-      )
-      expect(asyncEval<string>(`return view.editor.getValue()`)).toBe(BODY)
-      expect(show('source')).toBe(true)
-    }
-  )
+    console.log('edit transition', JSON.stringify(edit))
+    await shot('editing')
+    expect(edit.line).toBe('> > Second column paragraph.')
+    expect(edit.selected).toBe(0)
+    expect(edit.rendered).toBe(false)
+    expect(edit.raw).toBe(true)
+    await shot('editing')
+    asyncEval(
+      `view.editor.replaceSelection('sample edit');view.editor.undo();await wait(300);return true`
+    )
+    expect(asyncEval<string>(`return view.editor.getValue()`)).toBe(BODY)
+    expect(show('source')).toBe(true)
+  })
+
+  it('identical formatted passages map to the clicked source character with no selection', async () => {
+    const duplicate = [
+      '> [!abele-columns]',
+      '> > [!abele-column]',
+      '> > Same **bold** passage.',
+      '>',
+      '> > [!abele-column]',
+      '> > Same **bold** passage.',
+      '',
+      'After.',
+      '',
+    ].join('\n')
+    show('source')
+    asyncEval(
+      `view.editor.setValue(${JSON.stringify(duplicate)});view.editor.setCursor({line:8,ch:0});await wait(300);return true`
+    )
+    const point = asyncEval<{ x: number; y: number }>(`
+      const strong=root().querySelectorAll('.abele-column strong')[1];strong.scrollIntoView({block:'center'});await wait(100);
+      const range=document.createRange();range.setStart(strong.firstChild,2);range.setEnd(strong.firstChild,3);
+      const r=range.getBoundingClientRect();return {x:r.x+0.1,y:r.y+r.height/2};
+    `)
+    click(point.x, point.y)
+    const result = asyncEval<{
+      cursor: { line: number; ch: number }
+      selected: number
+      text: string
+    }>(`
+      await wait(400);return {cursor:view.editor.getCursor(),selected:view.editor.getSelection().length,text:view.editor.getValue()};
+    `)
+    expect(result).toEqual({ cursor: { line: 5, ch: 13 }, selected: 0, text: duplicate })
+    await shot('duplicate-entry')
+    asyncEval(
+      `view.editor.setValue(${JSON.stringify(BODY)});view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});await view.save();return true`
+    )
+  })
 
   it('expanded source keeps edits, cursor positions and undo before restoring columns', async () => {
     show('source')

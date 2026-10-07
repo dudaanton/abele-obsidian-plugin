@@ -122,6 +122,7 @@ import { dictate } from '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
 import { registerCheckboxes } from './checkboxes/register'
 import { columnsPostProcessor } from './columns/render'
+import { registerColumnEntry } from './columns/editor'
 import './columns/styles.css'
 import { registerNotePlaces } from './notePlaces/register'
 import { registerGithub } from '@/github/register'
@@ -567,6 +568,7 @@ export default class AbelePlugin extends Plugin {
     installUntrustedGuard()
     registerCheckboxes(this)
     this.registerMarkdownPostProcessor(columnsPostProcessor)
+    registerColumnEntry(this)
     this.registerEditorExtension(taskStateField)
     this.registerEditorExtension(galleryExtensions)
     this.registerEditorExtension(createHeaderExtension())
