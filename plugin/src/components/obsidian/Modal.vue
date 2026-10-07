@@ -20,6 +20,8 @@ import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef, useSlots } from
  */
 const props = defineProps<{
   title?: string
+  /** Dirty forms may refuse Escape, backdrop and the close button alike. */
+  canClose?: () => boolean | Promise<boolean>
   /**
    * `wide` for a form that needs more than Obsidian's default column; `tall` for a body that
    * fills the height the dialog is allowed and scrolls inside it rather than growing it;
@@ -54,6 +56,22 @@ onBeforeMount(() => {
   const { app } = GlobalStore.getInstance()
 
   modal.value = new (class extends ShellModal {
+    checkingClose = false
+    close(): void {
+      if (!props.canClose || destroying) {
+        super.close()
+        return
+      }
+      if (this.checkingClose) return
+      this.checkingClose = true
+      void Promise.resolve(props.canClose())
+        .then((allowed) => {
+          if (allowed) super.close()
+        })
+        .finally(() => {
+          this.checkingClose = false
+        })
+    }
     onClose(): void {
       super.onClose()
       if (!unmounting) emit('close')
@@ -74,8 +92,10 @@ onMounted(() => {
   emit('expose-id', id.value)
 })
 
+let destroying = false
 onUnmounted(() => {
   unmounting = true
+  destroying = true
   modal.value?.close()
   modal.value = null
 })
