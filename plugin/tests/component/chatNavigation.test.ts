@@ -163,6 +163,40 @@ describe('the navigation modal', () => {
 
 describe('navigation in the chat header', () => {
   const pause = useFakeClock()
+  it('opens the selected search part when reasoning and a tool result contain the same words', async () => {
+    const rows = ref<ChatMessage[]>([
+      { id: 'q', role: 'user', content: 'Read the sample plan', timestamp: 1 },
+      {
+        id: 'tool',
+        role: 'tool-call',
+        content: '',
+        toolName: 'read',
+        thinking: 'Sample liner',
+        toolResult: 'Sample liner',
+        toolStatus: 'approved',
+        timestamp: 2,
+      },
+    ])
+    const session = fakeChatSession({ messages: rows, kind: 'chat' })
+    const service = ChatService.getInstance()
+    vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
+    vi.spyOn(service, 'activeSession', 'get').mockReturnValue({ value: session } as never)
+    wrapper = mount(AiChat, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+    await flushPromises()
+    const input = root().querySelector('input')!
+    input.value = 'liner'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    root().querySelectorAll<HTMLElement>('[data-nav-item]')[1].click()
+    await pause(100)
+    expect(wrapper.find('.abele-chat-find__count').text()).toBe('2 of 2')
+    expect(wrapper.find('[data-message-id="tool"] [data-find-part="result"]').text()).toBe(
+      'Sample liner'
+    )
+  })
+
   it('opens beside find and mounts an old question without switching the current branch', async () => {
     const rows = ref<ChatMessage[]>(
       Array.from({ length: 100 }, (_, i) => ({
