@@ -214,7 +214,9 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const saved = document.querySelectorAll('.abele-text-comments__entry').length === 2
       shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-saved.png'))
       const edit = [...document.querySelectorAll('.abele-text-comments button')].find(el => el.textContent.trim() === 'Edit')
-      await tap(edit); await wait(400)
+      await tap(edit)
+      if(!await until(() => keyboardHeight()>100)) throw new Error('Native edit keyboard did not open')
+      await wait(500)
       const editor = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
       editor.focus()
       editor.dispatch({ selection: { anchor: editor.state.doc.length } })
