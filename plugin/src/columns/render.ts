@@ -27,6 +27,7 @@ export function columnsPostProcessor(el: HTMLElement): void {
     const weights = columnWeights(options.ratio, children.length)
     if (!weights) continue
     parent.classList.add('abele-columns')
+    parent.dataset.abeleColumnsMobile = options.mobile
     children.forEach((child, index) => {
       child.classList.add('abele-column')
       ;(child as HTMLElement).style.setProperty('--abele-column-weight', String(weights[index]))

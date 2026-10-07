@@ -10,6 +10,8 @@
 }
 
 .callout.abele-columns {
+  position: relative;
+  padding-top: var(--size-4-8);
   container-type: inline-size;
   container-name: abele-columns;
 }
@@ -41,11 +43,26 @@
 }
 
 @container abele-columns (max-width: 500px) {
-  .callout.abele-columns > .callout-content {
+  .callout.abele-columns[data-abele-columns-mobile='stack'] > .callout-content {
     flex-direction: column;
   }
-  .callout.abele-columns > .callout-content > .abele-column {
+  .callout.abele-columns[data-abele-columns-mobile='stack'] > .callout-content > .abele-column {
     flex: none;
     width: 100%;
   }
+  .callout.abele-columns[data-abele-columns-mobile='keep'] > .callout-content {
+    /* The explicit narrow layout scrolls the row, never shrinks the theme's font. */
+    overflow-x: auto;
+  }
+  .callout.abele-columns[data-abele-columns-mobile='keep'] > .callout-content > .abele-column {
+    min-width: calc(var(--abele-column-weight, 1) * 12rem);
+  }
+}
+
+.abele-columns-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: var(--size-4-1);
 }
