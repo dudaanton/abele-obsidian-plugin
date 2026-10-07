@@ -578,13 +578,17 @@ Images include sent uploads and completed image-tool results: generated and edit
 screenshots, downloads, viewed pictures and drawings, each labelled by origin. Tap a thumbnail
 to preview it. Images have **Open** and **Reveal**, but no unlink or delete action. **Show in chat**
 returns to a source message, switching branches and revealing earlier messages when necessary.
-It is also offered for notes and scripts where saved results prove the source.
+It is also offered for notes and scripts where saved results prove the source, and closes an
+expanded message editor so the conversation is visible.
 
 **Attach to current note** and **Attach to a note…** keep the existing attachment choices.
 Only link changes need a saved chat in the history. Missing files remain visible as
 **Unavailable**, with any source navigation and unlink action still available. Moved images
-are not guessed from filenames. Older chats work with the links and evidence they actually
-saved; no missing links are reconstructed. Delegated sub-agent outputs are not aggregated into
+are not guessed from filenames. Absolute or parent-traversing paths are unavailable, not
+rewritten to another file. Older chats work with the links and evidence they actually saved;
+no missing links are reconstructed. Generated and edited pictures require a saved-file
+confirmation from the tool; older results that saved only text cannot prove creation and are
+not included, even if the text says an image was saved. Delegated sub-agent outputs are not aggregated into
 this view. Switching to another chat closes the view.
 
 ## Chats under a note

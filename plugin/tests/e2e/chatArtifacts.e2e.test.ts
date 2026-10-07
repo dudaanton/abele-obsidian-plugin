@@ -84,6 +84,8 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         config.ai.scriptsEnabled = false
         await chats.revealSidebar()
         await until(() => document.querySelector('.abele-ai-chat__artifacts'))
+        document.querySelector('.abele-chat-input__expand').click()
+        await until(() => document.querySelector('.abele-ai-chat--composing'))
         document.querySelector('.abele-ai-chat__artifacts').click()
         await until(root)
         observations.sections = [...root().querySelectorAll('h3')].map(el => el.textContent)
@@ -119,17 +121,26 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         // A running turn adds a completed result to the already-open view.
         session.isStreaming.value = true
         const extra = await app.vault.createBinary(directory + '/sample-later.png', await blob.arrayBuffer())
-        session.appendChatMessage({ id: 'sample-later', role: 'tool-call', content: '', toolName: 'generate_image', toolStatus: 'approved', toolResult: 'Image saved: ' + extra.path, timestamp: 20 })
+        session.appendChatMessage({ id: 'sample-later', role: 'tool-call', content: '', toolName: 'generate_image', toolStatus: 'approved', toolResult: 'Image saved: ' + extra.path, toolImagePath: extra.path, timestamp: 20 })
         session.updateVisibleMessages()
         await until(() => root().textContent.includes('Images (4)'))
         session.isStreaming.value = false
         observations.live = true
+        const invalidPath = '/' + upload.path
+        session.appendChatMessage({ id: 'sample-invalid-path', role: 'user', content: '', attachments: [invalidPath], timestamp: 21 })
+        session.updateVisibleMessages()
+        await until(() => card(invalidPath))
+        observations.invalidUnavailable = card(invalidPath).textContent.includes('Unavailable') &&
+          [...card(invalidPath).querySelectorAll('button')].find(button => button.textContent.trim() === 'Open')?.disabled &&
+          !card(invalidPath).querySelector('img')
         const missing = app.vault.getAbstractFileByPath(created[1]); await app.vault.rename(missing, directory + '/sample-moved.png')
         await until(() => card(created[1]).textContent.includes('Unavailable'))
         observations.missing = card(created[1]).textContent.includes('Show in chat')
         press(card(upload.path), 'Show in chat')
         await until(() => !root())
         observations.source = !!document.querySelector('[data-message-id="sample-upload"]')
+        observations.sourceVisible = !document.querySelector('.abele-ai-chat--composing') &&
+          getComputedStyle(document.querySelector('.abele-ai-chat__messages')).display !== 'none'
         return JSON.stringify({ ...observations, cuts, over })
       } catch (error) { return JSON.stringify({ error: String(error.stack || error), observations }) }
       finally {
@@ -161,6 +172,8 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
     expect(result.live).toBe(true)
     expect(result.missing).toBe(true)
     expect(result.source).toBe(true)
+    expect(result.sourceVisible).toBe(true)
+    expect(result.invalidUnavailable).toBe(true)
     expect(result.cuts).toEqual([])
     expect(result.over).toEqual([])
   }, 60_000)

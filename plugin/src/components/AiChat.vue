@@ -879,7 +879,10 @@ watch(session, () => {
 const revealArtifactMessage = (messageId: string) => {
   const owner = artifactsSession.value
   artifactsSession.value = null
-  if (owner && session.value === owner) void revealMessage(messageId)
+  if (owner && session.value === owner) {
+    composing.value = false
+    void revealMessage(messageId)
+  }
 }
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')

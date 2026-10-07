@@ -23,7 +23,11 @@ const mountChat = () =>
     shallow: true,
     global: {
       stubs: {
-        AiChatInput: { template: '<div />', methods: { focus: vi.fn(), hasFocus: () => true } },
+        AiChatInput: {
+          name: 'AiChatInput',
+          template: '<div />',
+          methods: { focus: vi.fn(), hasFocus: () => true },
+        },
       },
     },
   })
@@ -48,6 +52,22 @@ describe('the artifacts header entry', () => {
     expect(view.findComponent(ChatArtifacts).props('session')).toBe(active.value)
     active.value = fakeChatSession({ kind: 'chat' }) as ChatSession
     await nextTick()
+    expect(view.findComponent(ChatArtifacts).exists()).toBe(false)
+  })
+  it('leaves the expanded composer before showing a source message', async () => {
+    view = mountChat()
+    const composer = view.findComponent({ name: 'AiChatInput' })
+    composer.vm.$emit('update:expanded', true)
+    await nextTick()
+    expect(view.classes()).toContain('abele-ai-chat--composing')
+    expect(view.find('.abele-ai-chat__messages').attributes('style')).toContain('display: none')
+    await view.find('.abele-ai-chat__artifacts').trigger('click')
+    view.findComponent(ChatArtifacts).vm.$emit('reveal', 'sample-source')
+    await nextTick()
+    expect(view.classes()).not.toContain('abele-ai-chat--composing')
+    expect(view.find('.abele-ai-chat__messages').attributes('style') ?? '').not.toContain(
+      'display: none'
+    )
     expect(view.findComponent(ChatArtifacts).exists()).toBe(false)
   })
   it('closes when the originating session disappears', async () => {
