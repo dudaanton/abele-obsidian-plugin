@@ -19,6 +19,7 @@
  * tool is running: it is recorded as the agent's, and a rewind shows it among the rest.
  */
 import type { App, TAbstractFile } from 'obsidian'
+import { guardTrashRevision, registerRevisionTrash } from '@/services/revisionTrash'
 import { nanoid } from 'nanoid'
 import { contentHash } from '../readGuard'
 import { VaultFs, bytesHash, isTextPath } from './vaultFs'
@@ -115,6 +116,7 @@ export class ChangeTracker {
       FILE_MANAGER_OPS,
       'fileManager'
     )
+    tracker.restores.push(registerRevisionTrash(app.vault.adapter))
     ChangeTracker.instance = tracker
     return tracker
   }
@@ -212,7 +214,12 @@ export class ChangeTracker {
       const own = Object.prototype.hasOwnProperty.call(target, name)
       const bound = (original as AnyFn).bind(target)
       target[name] = (...args: unknown[]) =>
-        this.around(`${layer}.${name}`, spec(args), () => Promise.resolve(bound(...args)))
+        this.around(`${layer}.${name}`, spec(args), () => {
+          const mutate = () => Promise.resolve(bound(...args))
+          return layer === 'adapter' && (name === 'trashLocal' || name === 'trashSystem')
+            ? guardTrashRevision(target, pathOf(args[0]), mutate)
+            : mutate()
+        })
       this.restores.push(() => {
         if (own) target[name] = original
         else delete target[name]

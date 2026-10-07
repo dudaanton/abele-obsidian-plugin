@@ -38,6 +38,7 @@ export interface CommentDraft {
 
 /** Human comments have no model, chat session, vault API or reactive state. */
 export class TextCommentService {
+  private renaming: Promise<void> = Promise.resolve()
   constructor(
     readonly repository: CommentRepository,
     private readonly documents: CommentDocuments,
@@ -95,6 +96,39 @@ export class TextCommentService {
     return draft.saved
   }
 
+  /** Explicit recovery from the persisted thread, without an in-memory creation draft. */
+  async republish(saved: ThreadSnapshot, selection?: CommentSelection): Promise<void> {
+    const current = await this.repository.read(saved.thread.id)
+    if (current?.revision !== saved.revision)
+      throw new Error('The comment changed elsewhere. Reopen it before republishing')
+    await this.documents.change(saved.thread.anchor.note, (text) => {
+      if (parseMarkers(text).some((marker) => marker.ids.includes(saved.thread.id))) return text
+      const quote = saved.thread.anchor.quote
+      let from: number, to: number
+      if (selection) {
+        if (
+          selection.note !== saved.thread.anchor.note ||
+          text !== selection.source ||
+          stripMarkers(text.slice(selection.from, selection.to)) !== quote
+        )
+          throw new Error('The selected passage changed. Select it again')
+        from = selection.from
+        to = selection.to
+      } else {
+        from = text.indexOf(quote)
+        if (from < 0 || text.indexOf(quote, from + 1) !== -1)
+          throw new Error(
+            'Select the exact passage in the note and choose Add comment to restore this thread'
+          )
+        to = from + quote.length
+      }
+      const anchor = anchorFor(text, to)
+      if (!anchor || anchor.quoteTo !== to)
+        throw new Error('Select a construct-safe passage in the note before republishing')
+      return insertMarker(text, anchor.pos, saved.thread.id, from).text
+    })
+  }
+
   async add(
     saved: ThreadSnapshot,
     body: string,
@@ -144,15 +178,20 @@ export class TextCommentService {
     const current = await this.repository.read(saved.thread.id)
     if (current?.revision !== saved.revision)
       throw new Error('The comment changed elsewhere. Reopen it before deleting')
+    await this.repository.remove(saved.thread.id, saved.revision)
     await this.documents.change(saved.thread.anchor.note, (text) =>
       removeMarkerId(text, saved.thread.id)
     )
-    await this.repository.remove(saved.thread.id, saved.revision)
     return null
   }
 
   /** Scan the repository, not the loaded UI cache. Folder moves use path-segment boundaries. */
-  async rename(oldPath: string, newPath: string): Promise<void> {
+  rename(oldPath: string, newPath: string): Promise<void> {
+    const task = this.renaming.then(() => this.renameAnchors(oldPath, newPath))
+    this.renaming = task.catch(() => {})
+    return task
+  }
+  private async renameAnchors(oldPath: string, newPath: string): Promise<void> {
     const errors: unknown[] = []
     for (const id of await this.repository.ids()) {
       try {

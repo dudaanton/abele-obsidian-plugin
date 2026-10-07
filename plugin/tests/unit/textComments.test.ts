@@ -36,6 +36,82 @@ describe('human thread codec', () => {
 })
 
 describe('human comment lifecycle', () => {
+  it('requires an exact current selection to republish an orphan with repeated quotes', async () => {
+    const m = memoryComments()
+    const draft = await m.service.draft(
+      'Notes/sample.md',
+      'sample words',
+      0,
+      12,
+      'yellow',
+      'Retained'
+    )
+    const saved = await m.repository.write(draft.thread, null)
+    const source = 'sample words\n\nsample words'
+    m.notes.set('Notes/sample.md', source)
+    await expect(m.service.republish(saved)).rejects.toThrow('Select')
+    await m.service.republish(saved, { note: 'Notes/sample.md', source, from: 14, to: 26 })
+    expect(m.notes.get('Notes/sample.md')).toBe(
+      `sample words\n\nsample words%%c:${saved.thread.id}%%`
+    )
+    expect(await m.repository.read(saved.thread.id)).toEqual(saved)
+  })
+  it('serializes rapid chained renames through the final note identity', async () => {
+    const m = memoryComments()
+    const saved = await m.service.publish(
+      await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'First')
+    )
+    let release!: () => void, started!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const began = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const read = m.repository.read.bind(m.repository)
+    let hold = true
+    m.repository.read = async (id) => {
+      const value = await read(id)
+      if (hold) {
+        hold = false
+        started()
+        await gate
+      }
+      return value
+    }
+    const first = m.service.rename('Notes/sample.md', 'Notes/moved.md')
+    await began
+    const second = m.service.rename('Notes/moved.md', 'Notes/final.md')
+    await Promise.resolve()
+    release()
+    await Promise.all([first, second])
+    expect((await read(saved.thread.id))!.thread.anchor.note).toBe('Notes/final.md')
+  })
+  it('leaves the marker and prose intact when final-entry deletion loses a revision race', async () => {
+    const m = memoryComments()
+    const saved = await m.service.publish(
+      await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'First')
+    )
+    const source = m.notes.get('Notes/sample.md')
+    m.repository.remove = async () => {
+      m.files.set(
+        saved.thread.id,
+        encodeThread({
+          ...saved.thread,
+          entries: [
+            ...saved.thread.entries,
+            { id: 'cccccc', body: 'Synced reply', createdAt: '2025-01-03T04:05:06.000Z' },
+          ],
+        })
+      )
+      throw new Error('changed')
+    }
+    await expect(m.service.deleteEntry(saved, saved.thread.entries[0].id)).rejects.toThrow(
+      'changed'
+    )
+    expect(m.notes.get('Notes/sample.md')).toBe(source)
+    expect((await m.repository.read(saved.thread.id))!.thread.entries).toHaveLength(2)
+  })
   it('reports malformed files during rename without stranding valid unloaded threads', async () => {
     const m = memoryComments()
     m.files.set('badbad', '{broken')

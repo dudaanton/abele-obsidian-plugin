@@ -1,5 +1,6 @@
 import { TFile, TFolder, normalizePath, type App } from 'obsidian'
 import { COMMENT_ID_RE } from '@/editor/commentMarkers'
+import { trashIfRevision } from '@/services/revisionTrash'
 import { decodeThread, encodeThread, type CommentThread } from './model'
 import type { CommentDocuments, CommentRepository, ThreadSnapshot } from './service'
 
@@ -74,12 +75,7 @@ export class VaultCommentRepository implements CommentRepository {
     return this.own(id, async () => {
       const file = this.app.vault.getAbstractFileByPath(this.path(id))
       if (!(file instanceof TFile)) throw new Error('The comment file is unavailable')
-      await this.app.vault.process(file, (current) => {
-        if (current !== expected)
-          throw new Error('The comment changed elsewhere. Reopen it before deleting')
-        return current
-      })
-      await this.app.fileManager.trashFile(file)
+      await trashIfRevision(this.app, file, expected)
     })
   }
   private async ensureFolder(): Promise<void> {

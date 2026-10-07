@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { App } from 'obsidian'
-import { buildFakeVault } from '../helpers/fakeVault'
+import { queuedCommentVault } from '../helpers/queuedCommentVault'
 import { VaultCommentRepository, vaultCommentDocuments } from '@/comments/vaultRepository'
 import { TextCommentService } from '@/comments/service'
 import { encodeThread, type CommentThread } from '@/comments/model'
+import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
+
+afterEach(() => ChangeTracker.get()?.uninstall())
 
 const thread = (): CommentThread => ({
   version: 1,
@@ -13,15 +16,85 @@ const thread = (): CommentThread => ({
   entries: [{ id: 'bbbbbb', body: 'First', createdAt: '2025-01-02T03:04:05.000Z' }],
 })
 function setup() {
-  const fake = buildFakeVault([
+  const queued = queuedCommentVault([
     { path: 'Notes/sample.md', content: 'words' },
     { path: 'System/Comments/zzzzzz.abchat', content: 'AI sibling' },
   ])
-  const app = fake as unknown as App
+  const { app, fake } = queued
   const repository = new VaultCommentRepository(app, () => 'System/Comments')
-  return { fake, app, repository }
+  return { ...queued, repository }
 }
 describe('vault human comment repository', () => {
+  it('does not acknowledge cancellation as successful deletion', async () => {
+    const m = setup()
+    const saved = await m.repository.write(thread(), null)
+    m.app.fileManager.trashFile = async () => {}
+    await expect(m.repository.remove(saved.thread.id, saved.revision)).rejects.toThrow('not deleted')
+    expect(await m.repository.read(saved.thread.id)).toEqual(saved)
+    expect(m.removed).toEqual([])
+  })
+  it('consumes the revision guard at the real mutation-wrapper leaf, not at file-manager entry', async () => {
+    const m = setup()
+    const saved = await m.repository.write(thread(), null)
+    const file = m.app.vault.getFileByPath(m.repository.path(saved.thread.id))!
+    const trash = m.app.vault.trash.bind(m.app.vault)
+    m.adapter.trashLocal = (path) =>
+      m.adapter.queue(() => trash(m.app.vault.getFileByPath(path)!, true))
+    ChangeTracker.install(m.app)
+    const managedTrash = m.app.fileManager.trashFile.bind(m.app.fileManager)
+    m.app.fileManager.trashFile = async (target) => {
+      await m.app.vault.modify(file, encodeThread({ ...thread(), appearance: 'purple' }))
+      await managedTrash(target)
+    }
+    await expect(m.repository.remove(saved.thread.id, saved.revision)).rejects.toThrow('changed')
+    expect((await m.repository.read(saved.thread.id))!.thread.appearance).toBe('purple')
+  })
+  it('does not trash a synced revision arriving while the file-manager trash request is delayed', async () => {
+    const m = setup()
+    const saved = await m.repository.write(thread(), null)
+    const file = m.app.vault.getFileByPath(m.repository.path(saved.thread.id))!
+    const trash = m.app.fileManager.trashFile.bind(m.app.fileManager)
+    m.app.fileManager.trashFile = async (target) => {
+      await m.app.vault.modify(file, encodeThread({ ...thread(), appearance: 'pink' }))
+      await trash(target)
+    }
+    await expect(m.repository.remove(saved.thread.id, saved.revision)).rejects.toThrow('changed')
+    expect((await m.repository.read(saved.thread.id))!.thread.appearance).toBe('pink')
+    expect(m.removed).toEqual([])
+  })
+  it('keeps sync writes out of the queue item containing the revision read and trash', async () => {
+    const m = setup()
+    const saved = await m.repository.write(thread(), null)
+    const file = m.app.vault.getFileByPath(m.repository.path(saved.thread.id))!
+    let release!: () => void, began!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      began = resolve
+    })
+    const read = m.adapter.read.bind(m.adapter)
+    let hold = true
+    m.adapter.read = (path) =>
+      m.adapter.queue(async () => {
+        // This is the native read action, not another queued adapter operation.
+        const value = await m.app.vault.read(m.app.vault.getFileByPath(path)!)
+        if (hold) {
+          hold = false
+          began()
+          await gate
+        }
+        return value
+      })
+    const deleting = m.repository.remove(saved.thread.id, saved.revision).catch((error) => error)
+    await started
+    const synced = m.app.vault.modify(file, encodeThread({ ...thread(), appearance: 'blue' }))
+    release()
+    await Promise.all([deleting, synced])
+    m.adapter.read = read
+    expect(m.removed).toEqual([saved.revision])
+    expect((await m.repository.read(saved.thread.id))!.thread.appearance).toBe('blue')
+  })
   it('ignores foreign filenames rather than aborting enumeration of valid thread files', async () => {
     const m = setup()
     await m.repository.write(thread(), null)
