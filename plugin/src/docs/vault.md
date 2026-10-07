@@ -1536,6 +1536,10 @@ progress; an uncertain approval reply is recovery, not permission to guess anoth
 
 ## Disabled scoped invitation and creation state
 
+Folder/group sharing is device-neutral: an e-ink reader uses the same grants, reader/editor
+roles and scoped installation rules as any other collaborator device. Books are ordinary
+shared files, not a separate connection profile or attachment policy.
+
 Device-local `abele-sync-scoped-join` keeps the exact resumable invitation/enrolment attempt;
 `abele-sync-scoped-connection` is a disjoint scoped installation descriptor with script policy
 `refuse`. Account tokens/passwords are never persisted. Invitation/installation secrets and

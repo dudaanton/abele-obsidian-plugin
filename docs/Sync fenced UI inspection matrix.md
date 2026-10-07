@@ -13,21 +13,20 @@ identity or runtime authority.
 | Initial existing-image batch | inspected | inspected | exact SHA/versions/sponsors, multiple audiences, confirmation hold |
 | Scoped invitation/join | inspected | inspected | no local publication/remap, credential fields disabled |
 | Scoped new-file/paste choice | inspected | inspected | current root/sponsor, missing native-paste proof, no replacement |
-| Untrusted Books setup | inspected | inspected | editor only; preparing, revoked, recovery, unsupported transport |
 | Owner extras/native settings | inspected | inspected | long audience/path, offline/cache-unknown, no automatic withdrawal |
 | Unshare exact-target review | inspected | inspected | identity/version/audience and retry warning; mutation disabled |
 | Script approval | inspected | inspected | exact identity/hash/inert source, readonly approval disabled |
 | Plugin code staging | inspected | inspected | long code labels, settings/code distinction, install/keep disabled |
 | Personal join choice | inspected | inspected | history-preserving merge choices; readonly/busy connect disabled |
 
-Desktop opt-in `fencedScreens.e2e.test.ts` records geometry/screenshots for 17 cases at a real
+Desktop opt-in `fencedScreens.e2e.test.ts` records geometry/screenshots for 13 cases at a real
 leased window, checks no horizontal overflow, scroll-end/last-content clearance, visible close,
 no undefined text and unchanged exact local connection/scoped keys; window bounds and original
 plugin build are restored. A missing stage skips without resource use. This is not phone emulation
 counted as native evidence; physical iPhone inspection runs separately through `pi-drive` only.
 
 Native inspection found the folder long-list body lacked its own scroller. Added explicit scroll
-body/nonshrinking Close footer, with red executable layout contract first. Books/group preparing
+body/nonshrinking Close footer, with red executable layout contract first. Group preparing
 and recovery/revoke/transport explanations now appear near the top instead of hiding behind long
 credential fields. Readonly irreversible actions use neutral disabled appearance rather than
 active accent/warning presentation. Personal join error/source facts at the initial viewport are

@@ -17,6 +17,10 @@ installation descriptor/token, preventing a changed local descriptor from redire
 or switching the grant. A cancelled UI generation cannot continue installation effects in a
 replacement dialog. Recovery expiry and missing retained ledger hold instead of reminting.
 
+Folder/group sharing is device-neutral, including e-ink reader devices. Books use ordinary
+shared files and the same reader/editor roles; there is no separate device-specific setup
+or attachment policy.
+
 Only one connection may own a local vault. Personal/retained metadata refuses beginning a scoped
 join. A scoped join/installation descriptor also blocks personal sign-in/adoption/engine building
 before credentials/effects and refuses vault script execution independently of the activation
