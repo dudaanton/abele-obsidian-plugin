@@ -14,12 +14,17 @@ describe('concrete fenced owner HTTP port', () => {
         role: 'editor',
         acl_revision: 4,
         state: 'active',
+        revoked_at: null,
       }
       const sends: { path: string; body: any }[] = []
       const fetcher: typeof fetch = async (url, init) => {
         const path = new URL(String(url)).pathname
         expect(new Headers(init?.headers).get('authorization')).toBe(
-          path === '/v1/auth/login' ? null : 'Bearer abst_' + 'a'.repeat(43)
+          path === '/v1/auth/login'
+            ? null
+            : path.includes('/assets/visibility/')
+              ? 'Bearer absd_' + 'b'.repeat(43)
+              : 'Bearer abst_' + 'a'.repeat(43)
         )
         const value =
           path === '/v1/auth/login'
@@ -28,8 +33,26 @@ describe('concrete fenced owner HTTP port', () => {
                 expires_at: new Date(Date.now() + 100000).toISOString(),
               }
             : init?.method === 'PATCH'
-              ? { ...wire, acl_revision: 5, state: 'revoked' }
-              : [wire]
+              ? {
+                  ...wire,
+                  acl_revision: 5,
+                  state: 'unavailable',
+                  revoked_at: new Date(1000).toISOString(),
+                }
+              : path.includes('/assets/visibility/')
+                ? {
+                    grantId: wire.id,
+                    label: wire.label,
+                    targetFileId: wire.root_file_id,
+                    visible: true,
+                    targetVersionId: 'sample-root-version',
+                    revision: 27,
+                    scopeRevision: 3,
+                    withdrawalGeneration: 0,
+                  }
+                : kind === 'folder'
+                  ? [wire]
+                  : []
         if (init?.method === 'PATCH') sends.push({ path, body: JSON.parse(String(init.body)) })
         return new Response(JSON.stringify(value))
       }
@@ -40,7 +63,21 @@ describe('concrete fenced owner HTTP port', () => {
         fetch: fetcher,
       })
       const session = await port.authorize('invented-password', 'sample@example.com')
-      const [share] = await port.list(session)
+      const [share] = await port.list(
+        session,
+        kind === 'group'
+          ? [
+              {
+                id: wire.id,
+                label: wire.label,
+                rootId: wire.root_file_id!,
+                role: 'editor',
+                revision: 4,
+                state: 'active',
+              },
+            ]
+          : []
+      )
       expect(share).toMatchObject({ id: wire.id, label: wire.label, revision: 4, kind })
       await port.revoke(session, share)
       expect(sends).toEqual([
@@ -138,7 +175,7 @@ describe('concrete fenced owner HTTP port', () => {
       )
     }
   )
-  it('reports checked folder files as included or excluded, not permanently unknown', async () => {
+  it('never turns an ordinary manifest kind into a server sharing verdict', async () => {
     const kinds = ['note', 'canvas', 'script', 'settings', 'attachment']
     const files = kinds.map((kind) => ({
       file_id: 'sample-' + kind,
@@ -173,14 +210,9 @@ describe('concrete fenced owner HTTP port', () => {
         ),
     })
     const preview = await port.preview('Shared/')
-    expect(preview.files.map((file) => file.eligibility)).toEqual([
-      'eligible',
-      'eligible',
-      'excluded',
-      'excluded',
-      'eligible',
-    ])
-    expect(preview.files.map((file) => file.eligible)).toEqual([true, true, false, false, true])
+    expect(preview.files.map((file) => file.eligibility)).toEqual(kinds.map(() => 'unknown'))
+    expect(preview.files.map((file) => file.eligible)).toEqual(kinds.map(() => false))
+    expect(preview.files.map((file) => file.path)).toEqual(files.map((file) => file.path))
   })
   it('sends nothing while activation is disabled', async () => {
     const fetch = vi.fn()

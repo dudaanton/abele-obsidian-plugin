@@ -35,6 +35,7 @@ export interface GroupReview {
   fingerprint: string
 }
 export interface GroupGrant {
+  label?: string
   preparation?: import('./grantPreparation').GrantPreparation
   id: string
   rootId: string

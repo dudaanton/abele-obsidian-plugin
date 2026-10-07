@@ -5,10 +5,12 @@ import {
   LoginResponseSchema,
   ManifestResponseSchema,
   VaultStateSchema,
+  TargetVisibilitySchema,
 } from '@abele/sync-protocol'
 import { sha256 } from '@abele/sync-core'
-import { SharingHttp, type SharingHttpOptions } from './sharingHttp'
+import { SharingHttp, SharingHttpError, type SharingHttpOptions } from './sharingHttp'
 import { z } from 'zod'
+import { groupHints, type GroupShareHint } from './sharingCatalogue'
 import { preparationOf } from './grantPreparation'
 import type { GroupGrant, GroupRelation, GroupApprovalReceipt } from './groupSharing'
 import type {
@@ -34,6 +36,10 @@ export interface OwnerSharedGrant {
   role: 'reader' | 'editor'
   revision: number
   state: string
+  /** Remembered group revisions remain CAS hints, not a complete server inventory. */
+  verified?: boolean
+  remembered?: boolean
+  revokedAt?: string | null
 }
 const SharedGrantSchema = z
   .object({
@@ -46,6 +52,7 @@ const SharedGrantSchema = z
     role: z.enum(['reader', 'editor']),
     acl_revision: z.number().int().nonnegative(),
     state: z.string().min(1),
+    revoked_at: z.string().datetime({ offset: true }).nullable().optional(),
   })
   .passthrough()
 const segment = (id: string) => encodeURIComponent(id)
@@ -100,19 +107,14 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
       if (total > 100000) throw new Error('Folder preview inventory is incomplete')
       for (const item of page.items) {
         if (!item.path.startsWith(scope)) continue
-        const excluded =
-          ['script', 'settings'].includes(item.kind) ||
-          item.path.split('/').some((part) => part.startsWith('.')) ||
-          /\.(?:js|mjs|cjs|ts|py|sh|wasm)$/i.test(item.path) ||
-          (this.options.configurationRoots ?? []).some(
-            (root) => item.path === root || item.path.startsWith(root + '/')
-          )
+        // A personal manifest omits immutable security/provenance restrictions. It is
+        // an inventory, not the server's scoped eligibility verdict, even for ordinary names.
         files.push({
           path: item.path,
           fileId: item.file_id,
           versionId: item.version_id,
-          eligible: !excluded,
-          eligibility: excluded ? 'excluded' : 'eligible',
+          eligible: false,
+          eligibility: 'unknown',
         })
       }
       cursor = page.next ?? null
@@ -156,7 +158,10 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
     this.sessions.set(session, login.account_token)
     return session
   }
-  async list(session: OwnerSession): Promise<OwnerSharedGrant[]> {
+  async list(
+    session: OwnerSession,
+    remembered: GroupShareHint[] = []
+  ): Promise<OwnerSharedGrant[]> {
     const rows = z
       .array(SharedGrantSchema)
       .max(1000)
@@ -171,43 +176,97 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
       rows.some(
         (row) =>
           row.vault_id !== this.options.vaultId ||
-          (row.selector_kind === 'folder' ? !row.folder_prefix : !row.root_file_id)
+          row.selector_kind !== 'folder' ||
+          !row.folder_prefix
       )
     )
       throw new Error('Sharing list differs from the bound vault')
-    return rows.map((row) => ({
+    const result = rows.map<OwnerSharedGrant>((row) => ({
       id: row.id,
       label: row.label,
-      kind: row.selector_kind,
-      prefix: row.folder_prefix ?? null,
-      rootId: row.root_file_id ?? null,
+      kind: 'folder',
+      prefix: row.folder_prefix!,
+      rootId: null,
       role: row.role,
       revision: row.acl_revision,
       state: row.state,
+      revokedAt: row.revoked_at ?? null,
+      verified: true,
     }))
+    // The registered list is folder-only. Group identities/revisions must come from
+    // acknowledged management replies, never invented rows or publication revisions.
+    for (const hint of groupHints(remembered)) {
+      const share: OwnerSharedGrant = {
+        ...hint,
+        kind: 'group',
+        prefix: null,
+        remembered: true,
+        verified: false,
+      }
+      try {
+        const token = this.options.deviceToken()
+        if (!token || !/^absd_[A-Za-z0-9_-]{43}$/.test(token))
+          throw new Error('Bound personal group review credential required')
+        const view = TargetVisibilitySchema.parse(
+          await this.http.json(
+            'GET',
+            '/v1/vaults/' +
+              segment(this.options.vaultId) +
+              '/grants/' +
+              segment(hint.id) +
+              '/assets/visibility/' +
+              segment(hint.rootId),
+            token
+          )
+        )
+        if (view.grantId !== hint.id || view.targetFileId !== hint.rootId)
+          throw new Error('Remembered group visibility binding changed')
+        if (view.visible) {
+          share.label = view.label
+          share.state = 'active'
+          share.verified = true
+        }
+      } catch (error) {
+        if (!(error instanceof SharingHttpError)) throw error
+        if (
+          !['not_found', 'scope_updating', 'scope_unavailable', 'network_unavailable'].includes(
+            error.code
+          )
+        )
+          throw error
+      }
+      if (!share.verified) share.state = 'unknown'
+      result.push(share)
+    }
+    return result
   }
   async revoke(session: OwnerSession, share: OwnerSharedGrant): Promise<void> {
-    const request = { expected_revision: share.revision, revoke: true }
-    const result =
-      share.kind === 'folder'
-        ? await this.updateFolder(
-            session,
-            { id: share.id, prefix: share.prefix!, role: share.role, revision: share.revision },
-            request
-          )
-        : await this.updateGroup(
-            session,
-            {
-              id: share.id,
-              rootId: share.rootId!,
-              rootVersion: '',
-              role: share.role,
-              revision: share.revision,
-              state: share.state,
-            },
-            request
-          )
-    if (result.state !== 'revoked') throw new Error('Sharing was not stopped')
+    if (share.verified === false) throw new Error('Review this sharing before stopping it')
+    const request = z
+      .object({ expected_revision: z.number().int().nonnegative().safe(), revoke: z.literal(true) })
+      .parse({ expected_revision: share.revision, revoke: true })
+    const value = SharedGrantSchema.parse(
+      await this.http.json(
+        'PATCH',
+        '/v1/vaults/' +
+          segment(this.options.vaultId) +
+          '/grants/' +
+          (share.kind === 'group' ? 'groups/' : '') +
+          segment(share.id),
+        this.ownerToken(session),
+        request
+      )
+    )
+    if (
+      value.id !== share.id ||
+      value.vault_id !== this.options.vaultId ||
+      value.selector_kind !== share.kind ||
+      value.acl_revision !== share.revision + 1 ||
+      value.state !== 'unavailable' ||
+      !value.revoked_at ||
+      (share.kind === 'folder' ? value.folder_prefix !== share.prefix : !value.root_file_id)
+    )
+      throw new Error('Sharing was not stopped with the reviewed identity and revision')
   }
   async create(
     session: OwnerSession,
@@ -363,6 +422,7 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
       role: body.role,
       revision: Number(r.acl_revision),
       state: r.state,
+      label: body.label,
       preparation: preparationOf(r.preparation),
     }
   }

@@ -62,6 +62,91 @@ it('keeps an unavailable sharing refresh after a settings reload in the deferred
   }
 })
 
+it.each(['overflow', 'settings write', 'stored hints'] as const)(
+  'keeps personal owner startup available when optional discovery has a %s failure',
+  async (failure) => {
+    const app = useVault([])
+    setSecrets(null)
+    const config = AbeleConfig.getInstance(),
+      previous = config.sync,
+      oldAi = config.ai
+    config.ai = { scriptsFolder: 'Scripts' } as never
+    const save = vi.spyOn(config, 'saveSettings').mockResolvedValue()
+    const c = {
+      ...emptyConnection(),
+      serverUrl: 'https://sync.example',
+      vaultId: 'sample-vault',
+      deviceId: 'sample-owner',
+      deviceTokenId: 'abele-sync-device-sample00',
+    }
+    const token = 'absd_' + 'a'.repeat(43)
+    bindDeviceToken(secrets().device, c.deviceTokenId, token, c.serverUrl)
+    app.saveLocalStorage('abele-sync-ledger', { stateId: 'sample-local', vaultId: c.vaultId })
+    const local = Array.from({ length: 9 }, (_, i) => `local-share-${i}`)
+    const imported = Array.from({ length: 8 }, (_, i) => `incoming-share-${i}`)
+    config.sync = {
+      keySignature: null,
+      sharing: [{ issuer: c.serverUrl, vaultId: c.vaultId, grants: local }],
+    }
+    const fetcher = vi.fn() as unknown as typeof fetch
+    const sync = {
+      connection: shallowRef(c),
+      publicationPrompt: new PublicationPrompt(() => false),
+      refreshSharing: vi.fn(async () => {}),
+      scopedStatus: vi.fn(),
+    }
+    const host = new PluginSharing(app as any, sync as any, {
+      indexedDB: new IDBFactory(),
+      fetch: fetcher,
+    })
+    const context = {
+      app: app as any,
+      state: new MemoryStateStore(),
+      client: { commitRaw: vi.fn() } as any,
+      connection: c,
+      token,
+      fetch: fetcher,
+      held: () => true,
+    }
+    let owner: Awaited<ReturnType<typeof host.ownerPublication>> | undefined
+    try {
+      owner = await host.ownerPublication(context)
+      if (failure === 'stored hints')
+        await (host as any).live.resources.meta.setMeta(
+          'owner-publication-audiences-v1',
+          '{invalid optional hints'
+        )
+      owner.close()
+      config.sync = {
+        keySignature: null,
+        sharing: [
+          {
+            issuer: c.serverUrl,
+            vaultId: c.vaultId,
+            grants: failure === 'overflow' ? imported : [],
+          },
+        ],
+      }
+      if (failure === 'settings write')
+        save.mockRejectedValue(new Error('Synthetic optional settings failure'))
+      owner = await host.ownerPublication(context)
+      expect(host.ownerReady).toBe(true)
+      expect(host.ownerManagement()).toBeDefined()
+      expect(host.discoveryWarning.value).toContain('Personal sync continues')
+      expect((host as any).live.runtime.options.grants).toEqual([])
+      expect((host as any).live.grants).toEqual(failure === 'stored hints' ? [] : local)
+      if (failure === 'overflow') expect(config.sync.sharing[0].grants).toEqual(imported)
+      expect(fetcher).not.toHaveBeenCalled()
+    } finally {
+      owner?.close()
+      await host.close()
+      config.sync = previous
+      config.ai = oldAi
+      save.mockRestore()
+    }
+  }
+)
+
 it('imports sharing onto a second owner device at startup and after a settings reload', async () => {
   const app = useVault([])
   setSecrets(null)
@@ -165,10 +250,12 @@ it('imports sharing onto a second owner device at startup and after a settings r
     await sync.refreshSharing.mock.results[0].value
     const rows = Array.from({ length: 17 }, (_, index) => ({
       id: `sample-share-${index}`,
-      label: `Sample group ${index}`,
+      label: `Sample folder ${index}`,
       vault_id: connection.vaultId,
-      selector_kind: 'group',
-      root_file_id: `sample-root-${index}`,
+      selector_kind: 'folder',
+      folder_prefix: `Shared-${index}/`,
+      root_file_id: null,
+      revoked_at: null,
       role: 'editor',
       acl_revision: 1,
       state: 'active',
@@ -190,6 +277,8 @@ it('imports sharing onto a second owner device at startup and after a settings r
     const account = await manager.authorize('invented-password', 'sample@example.com')
     expect(await manager.list(account)).toHaveLength(17)
     expect(host.audiences.value.length).toBeLessThanOrEqual(16)
+    expect((host as any).live.grants).toContain('sample-group')
+    expect(config.sync.sharing[0].grants).toContain('sample-group')
     manager.close()
   } finally {
     owner?.close()
