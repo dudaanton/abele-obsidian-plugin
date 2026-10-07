@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
@@ -24,6 +24,19 @@ const run = <T>(body: string): T => {
 }
 
 describe.skipIf(!available)('ordinary-note text comments', () => {
+  afterEach(() =>
+    expect(
+      run<boolean>(`
+    for(let i=0;i<6 && document.querySelector('.abele-text-comments');i++) {
+      const top=[...document.querySelectorAll('.modal')].at(-1)
+      const buttons=[...top.querySelectorAll('button')]
+      const close=buttons.find(el=>el.textContent.trim()==='Discard') ?? buttons.find(el=>el.textContent.trim()==='Close') ?? buttons.find(el=>el.textContent.trim()==='Cancel')
+      close?.click(); await wait(150)
+    }
+    return JSON.stringify(!document.querySelector('.abele-text-comments'))
+  `)
+    ).toBe(true)
+  )
   beforeAll(() =>
     run(`
     if (!note) await app.vault.create(${JSON.stringify(PATH)}, 'A **sample passage** and another sentence.')
