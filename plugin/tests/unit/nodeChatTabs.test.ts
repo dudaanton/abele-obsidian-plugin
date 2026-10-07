@@ -191,6 +191,7 @@ it('excludes unusable payloads from automatic retry, but a successful manual rea
     expect(f.presenter.messages.value).toEqual([])
     f.request.mockResolvedValue(f.valid)
     await f.presenter.artifact('artifact')
+    expect(f.presenter.error.value).toBe('')
     expect(f.presenter.messages.value.map((m) => m.content)).toEqual(['Recovered answer'])
     await f.presenter.refresh()
     expect(f.request).toHaveBeenCalledTimes(2)

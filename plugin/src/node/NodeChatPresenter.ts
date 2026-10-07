@@ -238,6 +238,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   }
 
   async artifact(artifactId: string): Promise<string> {
+    this.error.value = ''
     const text = await this.readArtifact(artifactId)
     const normalized = await this.connection.client.store.transaction((raw) =>
       (raw.events[this.reference.sessionId] ?? []).some(
