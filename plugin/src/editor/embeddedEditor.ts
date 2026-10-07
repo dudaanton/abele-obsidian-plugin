@@ -125,6 +125,8 @@ export interface EmbeddedEditorOptions {
   onChange?: (value: string) => void
   /** Mod+Enter: what a form does with it is save. */
   onSubmit?: () => void
+  /** A containing dialog may route Escape through its dirty-dismissal guard. */
+  onEscape?: () => void
   /** Focus left the field — where a text box would say `change`. */
   onBlur?: () => void
   /** The field took the focus. */
@@ -202,6 +204,17 @@ export function createEmbeddedEditor(
                 return !!options.onSubmit
               },
             },
+            ...(options.onEscape
+              ? [
+                  {
+                    key: 'Escape',
+                    run: () => {
+                      options.onEscape?.()
+                      return true
+                    },
+                  },
+                ]
+              : []),
             ...(options.keys ?? []).map(({ key, run }) => ({ key, run: () => run() })),
           ])
         )
@@ -237,11 +250,16 @@ export function createEmbeddedEditor(
     // What the editor commands and the suggester look for on whatever is active.
     controller.owner.editMode = controller
     controller.owner.editor = controller.editor
-    if (options.onSubmit) {
+    if (options.onSubmit || options.onEscape) {
       // Obsidian's window-capture hotkeys run before CodeMirror and before a form's
       // capture listener. Shadow follow-link here, in the scope it consults first.
       const scope = new Scope(controller.scope ?? app.scope)
-      scope.register(['Mod'], 'Enter', submit)
+      if (options.onSubmit) scope.register(['Mod'], 'Enter', submit)
+      if (options.onEscape)
+        scope.register([], 'Escape', () => {
+          options.onEscape?.()
+          return false
+        })
       controller.scope = scope
     }
     controller.load?.()

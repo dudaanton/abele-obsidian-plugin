@@ -32,11 +32,14 @@ import { GlobalStore } from '@/stores/GlobalStore'
 const props = defineProps<{
   modelValue: string
   placeholder?: string
+  /** Route Escape to a containing form's dismissal guard rather than the note workspace. */
+  escapeCloses?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'submit'): void
+  (e: 'escape'): void
   (e: 'blur'): void
 }>()
 
@@ -57,6 +60,7 @@ onMounted(() => {
       emit('update:modelValue', value)
     },
     onSubmit: () => emit('submit'),
+    ...(props.escapeCloses ? { onEscape: () => emit('escape') } : {}),
     onBlur: () => emit('blur'),
   })
   if (!editor) fallback.value = true

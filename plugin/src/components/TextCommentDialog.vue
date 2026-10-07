@@ -30,7 +30,14 @@
         </div>
       </article>
       <h3>{{ editing ? 'Edit comment' : saved ? 'Add another comment' : 'Add comment' }}</h3>
-      <NoteEditorField ref="editor" v-model="body" placeholder="Write a comment…" @submit="save" />
+      <NoteEditorField
+        ref="editor"
+        v-model="body"
+        placeholder="Write a comment…"
+        escape-closes
+        @escape="close"
+        @submit="save"
+      />
       <p v-if="error" role="alert">{{ error }}</p>
       <p v-if="error && saved">
         Your draft is kept here. Copy it before closing if you need to reopen an externally changed
@@ -95,16 +102,18 @@ const dirty = computed(() => body.value !== originalBody.value || appearanceDirt
 const saveable = computed(() => !!body.value.trim() || (!!saved.value && appearanceDirty.value))
 const localTime = (value: string) => new Date(value).toLocaleString()
 
+let dismissal: Promise<boolean> | undefined
 async function canClose(): Promise<boolean> {
   if (busy.value) return false
-  return (
-    !dirty.value ||
-    (await confirm({
-      title: 'Discard unsaved comment?',
-      message: 'The text and appearance you have not saved will be lost.',
-      confirmText: 'Discard',
-    }))
-  )
+  if (!dirty.value) return true
+  dismissal ??= confirm({
+    title: 'Discard unsaved comment?',
+    message: 'The text and appearance you have not saved will be lost.',
+    confirmText: 'Discard',
+  }).finally(() => {
+    dismissal = undefined
+  })
+  return dismissal
 }
 async function close() {
   if (await canClose()) emit('close')
@@ -183,6 +192,7 @@ async function save() {
 }
 async function remove(id: string) {
   if (busy.value || !saved.value) return
+  if (saved.value.thread.entries.length === 1 && dirty.value && !(await canClose())) return
   if (
     !(await confirm({
       title: 'Delete comment?',

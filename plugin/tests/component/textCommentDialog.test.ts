@@ -46,6 +46,23 @@ async function press(text: string) {
 }
 
 describe('free-form comment dialog', () => {
+  it('does not discard an unsaved add-entry draft when deleting the final saved entry', async () => {
+    const m = memoryComments()
+    const initial = await m.service.publish(
+      await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'Saved')
+    )
+    const { confirmAction } = await import('@/modal/confirm')
+    open({ service: m.service, initial })
+    await wrapper!.find('textarea').setValue('Unsaved next entry')
+    vi.mocked(confirmAction).mockImplementation(
+      async (_app, options) => options.title !== 'Discard unsaved comment?'
+    )
+    await press('Delete')
+    expect(m.files.size).toBe(1)
+    expect(wrapper!.find('textarea').element.value).toBe('Unsaved next entry')
+    expect(wrapper!.emitted('close')).toBeUndefined()
+    vi.mocked(confirmAction).mockResolvedValue(true)
+  })
   it('saves without AI, reopens and stacks, edits and confirms individual deletion', async () => {
     const m = memoryComments()
     open({
