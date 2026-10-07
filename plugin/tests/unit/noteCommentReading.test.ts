@@ -3,7 +3,9 @@ import {
   paintNoteComments,
   readingCommentSelection,
   noteCommentPostProcessor,
+  selectedReadingComment,
 } from '@/comments/reading'
+import { sourceCharacters } from '@/comments/sourceProjection'
 import type { MarkdownPostProcessorContext, MarkdownRenderChild } from 'obsidian'
 import { setTextCommentInfoSource, setTextCommentClickHandler } from '@/editor/CommentPlugin'
 
@@ -29,6 +31,41 @@ function root(html: string) {
   return el
 }
 describe('ordinary-note reading comments', () => {
+  it('captures selections spanning two rendered source sections', () => {
+    const text = 'first\n\nsecond'
+    const view = root('<div><p>first</p></div><div><p>second</p></div>')
+    const first = view.children[0] as HTMLElement,
+      second = view.children[1] as HTMLElement
+    paintNoteComments(first, text, 0, 5, 'sample.md')
+    paintNoteComments(second, text, 7, 13, 'sample.md')
+    const range = document.createRange()
+    range.setStart(first.querySelector('p')!.firstChild!, 2)
+    range.setEnd(second.querySelector('p')!.firstChild!, 3)
+    expect(selectedReadingComment(view, range)).toEqual({
+      note: 'sample.md',
+      source: text,
+      from: 2,
+      to: 10,
+    })
+  })
+  it('captures an entire source entity when its single rendered character is selected', () => {
+    const text = 'A &amp; B'
+    const el = root('<p>A &amp; B</p>')
+    paintNoteComments(el, text, 0, text.length, 'sample.md')
+    const range = document.createRange(),
+      node = el.querySelector('p')!.firstChild!
+    range.setStart(node, 2)
+    range.setEnd(node, 3)
+    expect(readingCommentSelection(el, range)).toEqual({
+      note: 'sample.md',
+      source: text,
+      from: 2,
+      to: 7,
+    })
+  })
+  it('does not crash on an out-of-range numeric HTML entity in source prose', () => {
+    expect(() => sourceCharacters('&#999999999999;')).not.toThrow()
+  })
   it('registers detached source sections and removes its paint and subscription on unload', () => {
     const text = 'sample%%c:aaaaaa%%'
     source({ aaaaaa: 'sample' })

@@ -80,6 +80,7 @@ export function registerTextComments(plugin: Plugin): TextComments {
   plugin.registerEvent(
     plugin.app.vault.on('rename', (file, oldPath) => {
       if (file instanceof TFolder || (file instanceof TFile && file.extension === 'md')) {
+        comments.followRename(oldPath, file.path)
         void comments.service
           .rename(oldPath, file.path)
           .finally(() => comments.invalidate())

@@ -8,12 +8,18 @@
 export interface SourceCharacter {
   char: string
   source: number
+  sourceTo: number
 }
 export function sourceCharacters(source: string, base = 0): SourceCharacter[] {
   const result: SourceCharacter[] = []
-  const emit = (text: string, from: number) => {
+  const emit = (text: string, from: number, to?: number) => {
     for (let j = 0; j < text.length; j++)
-      if (!/\s/.test(text[j])) result.push({ char: text[j], source: base + from + j })
+      if (!/\s/.test(text[j]))
+        result.push({
+          char: text[j],
+          source: base + from + (to === undefined ? j : 0),
+          sourceTo: base + (to ?? from + j + 1),
+        })
   }
   for (let i = 0; i < source.length; ) {
     const rest = source.slice(i)
@@ -82,15 +88,16 @@ export function sourceCharacters(source: string, base = 0): SourceCharacter[] {
         apos: "'",
         nbsp: ' ',
       }
-      const value = entity[1].startsWith('#')
-        ? String.fromCodePoint(
-            parseInt(
-              entity[1].slice(entity[1][1].toLowerCase() === 'x' ? 2 : 1),
-              entity[1][1].toLowerCase() === 'x' ? 16 : 10
-            )
-          )
-        : names[entity[1].toLowerCase()]
-      emit(value, i)
+      let value = names[entity[1].toLowerCase()]
+      if (entity[1].startsWith('#')) {
+        const hex = entity[1][1].toLowerCase() === 'x'
+        const point = parseInt(entity[1].slice(hex ? 2 : 1), hex ? 16 : 10)
+        value =
+          point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff)
+            ? String.fromCodePoint(point)
+            : '\ufffd'
+      }
+      emit(value, i, i + entity[0].length)
       i += entity[0].length
       continue
     }

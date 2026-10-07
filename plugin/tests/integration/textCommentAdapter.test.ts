@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import type { App } from 'obsidian'
 import { TextComments } from '@/comments/TextComments'
+import { subscribeCommentsChanged } from '@/editor/CommentPlugin'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -33,6 +34,17 @@ function setup() {
   return { app, comments, thread, folder }
 }
 describe('vault human comment presentation adapter', () => {
+  it('repaints the new note paths after a folder rename', async () => {
+    const m = setup()
+    m.comments.touch('Notes/sample.md', ['aaaaaa'])
+    await flushPromises()
+    const changes: string[] = []
+    const stop = subscribeCommentsChanged((note) => changes.push(note))
+    m.comments.followRename('Notes', 'Archive')
+    expect(changes).toContain('Archive/sample.md')
+    stop()
+    m.comments.destroy()
+  })
   it('invalidates external changes, missing/restored files and malformed revisions without losing kind', async () => {
     const m = setup()
     m.comments.touch('Notes/sample.md', ['aaaaaa'])

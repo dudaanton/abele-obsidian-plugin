@@ -1,6 +1,6 @@
 import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian'
 import { appearanceClass } from './model'
-import { sourceCharacters } from './sourceProjection'
+import { sourceCharacters, type SourceCharacter } from './sourceProjection'
 import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
 import {
   commentInfo,
@@ -167,16 +167,16 @@ export function readingCommentSelection(root: HTMLElement, range: Range): Commen
       point.setEnd(char.node, char.offset + 1)
       return range.compareBoundaryPoints(Range.START_TO_START, point) <= 0 &&
         range.compareBoundaryPoints(Range.END_TO_END, point) >= 0
-        ? map.projected[index].source
+        ? map.projected[index]
         : null
     })
-    .filter((value): value is number => value !== null)
+    .filter((value): value is SourceCharacter => value !== null)
   if (!chosen.length) return null
   return {
     note: section.note,
     source: section.text,
-    from: chosen[0],
-    to: chosen[chosen.length - 1] + 1,
+    from: chosen[0].source,
+    to: chosen[chosen.length - 1].sourceTo,
   }
 }
 
@@ -218,5 +218,28 @@ export function selectedReadingComment(view: HTMLElement, range: Range): Comment
     if (sections.has(root)) return readingCommentSelection(root, range)
     root = root.parentElement
   }
-  return null
+  const sectionOf = (node: Node): HTMLElement | null => {
+    let element = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement
+    while (element && view.contains(element)) {
+      if (sections.has(element)) return element
+      element = element.parentElement
+    }
+    return null
+  }
+  const start = sectionOf(range.startContainer),
+    end = sectionOf(range.endContainer)
+  if (!start || !end) return null
+  const a = sections.get(start)!,
+    b = sections.get(end)!
+  // A rerender can leave neighbouring sections on different revisions for a moment.
+  if (a.note !== b.note || a.text !== b.text) return null
+  const first = range.cloneRange(),
+    last = range.cloneRange()
+  first.setEnd(start, start.childNodes.length)
+  last.setStart(end, 0)
+  const from = readingCommentSelection(start, first)?.from
+  const to = readingCommentSelection(end, last)?.to
+  return from !== undefined && to !== undefined && from < to
+    ? { note: a.note, source: a.text, from, to }
+    : null
 }

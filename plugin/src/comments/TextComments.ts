@@ -89,6 +89,14 @@ export class TextComments implements CommentInfoSource {
     }
     for (const note of this.notes) dispatchCommentsChanged(note)
   }
+  followRename(oldPath: string, newPath: string): void {
+    for (const note of [...this.notes]) {
+      if (note !== oldPath && !note.startsWith(oldPath + '/')) continue
+      this.notes.delete(note)
+      this.notes.add(newPath + note.slice(oldPath.length))
+    }
+    this.invalidate()
+  }
   async flushNote(note: string): Promise<void> {
     const saves: Promise<void>[] = []
     this.app.workspace.iterateAllLeaves((leaf) => {
