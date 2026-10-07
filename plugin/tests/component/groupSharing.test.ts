@@ -7,7 +7,7 @@ describe('disabled group/batch preview screens', () => {
   it('does not authorize/create group from readonly roots or anchor names', async () => {
     const flow = { review: vi.fn(), confirm: vi.fn(), close: vi.fn() },
       w = mount(GroupSharingModal, {
-        props: { flow: flow as any },
+        props: { flow: flow as any, enabled: false },
         global: { stubs: { ObsidianModal: modal } },
       })
     expect(w.text()).toContain('not active')
@@ -22,6 +22,7 @@ describe('disabled group/batch preview screens', () => {
       w = mount(InitialAssetBatchModal, {
         props: {
           flow: flow as any,
+          enabled: false,
           preview: {
             id: 'sample',
             entries: [],

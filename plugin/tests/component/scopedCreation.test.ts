@@ -5,7 +5,7 @@ describe('scoped creation disabled UI', () => {
   it('is an exact-path no-effect preview and does not treat missing paste evidence as permission', async () => {
     const flow = { review: vi.fn(), confirm: vi.fn(), close: vi.fn() },
       w = mount(ScopedCreationModal, {
-        props: { flow: flow as any },
+        props: { flow: flow as any, enabled: false },
         global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
       })
     expect(w.text()).toContain('not active')

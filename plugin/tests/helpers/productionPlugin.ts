@@ -141,13 +141,14 @@ export async function bootProductionPlugin(code: string) {
   const Plugin = module.exports.default ?? module.exports
   const plugin = new Plugin()
   const disposals: Array<() => void> = []
+  const settingTabs: obsidian.PluginSettingTab[] = []
   Object.assign(plugin, {
     app,
     manifest: { id: 'abele', version: '1.72.0', dir: '.obsidian/plugins/abele' },
     loadData: async () => null,
     saveData: async () => {},
     addStatusBarItem: () => document.createElement('div'),
-    addSettingTab: () => {},
+    addSettingTab: (tab: obsidian.PluginSettingTab) => settingTabs.push(tab),
     addCommand: () => {},
     removeCommand: () => {},
     register: (fn: () => void) => disposals.push(fn),
@@ -173,6 +174,16 @@ export async function bootProductionPlugin(code: string) {
     plugin,
     metadata,
     network,
+    settings: () => {
+      const tab = settingTabs[0] as any
+      if (!tab) throw new Error('Production plugin did not register its settings tab')
+      tab.containerEl = document.createElement('div')
+      document.body.appendChild(tab.containerEl)
+      const container = tab.containerEl as HTMLElement
+      disposals.push(() => container.remove())
+      tab.display()
+      return tab.containerEl as HTMLElement
+    },
     close: async () => {
       const sharing = plugin.syncSharing
       plugin.onunload()

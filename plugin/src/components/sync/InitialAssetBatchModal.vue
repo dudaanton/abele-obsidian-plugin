@@ -75,6 +75,7 @@ const props = withDefaults(
       state?: string
     }>(),
     {
+      enabled: OWNER_SHARING_ENABLED,
       state: 'awaiting exact confirmation',
       flow: undefined,
       preview: undefined,

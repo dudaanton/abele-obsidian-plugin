@@ -94,7 +94,12 @@
       :enabled="enabled"
       @close="folderOpen = false"
     />
-    <GroupSharingModal v-if="groupOpen" :root-flow="groupRootFlow" :enabled="enabled" @close="groupOpen = false" />
+    <GroupSharingModal
+      v-if="groupOpen"
+      :root-flow="groupRootFlow"
+      :enabled="enabled"
+      @close="groupOpen = false"
+    />
     <InitialAssetBatchModal v-if="batchOpen" :enabled="enabled" @close="batchOpen = false" />
     <ConfirmModal
       v-if="unshare"
@@ -142,7 +147,7 @@ const props = withDefaults(
     state?: 'syncing' | 'scope-updating' | 'cache-unknown' | 'awaiting-confirmation' | 'idle'
     enabled?: boolean
   }>(),
-  { owner: true, facet: 'device' }
+  { owner: true, facet: 'device', enabled: OWNER_SHARING_ENABLED }
 )
 const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   ownerContext = computed(() => props.facet !== 'scoped' && (props.owner ?? true)),

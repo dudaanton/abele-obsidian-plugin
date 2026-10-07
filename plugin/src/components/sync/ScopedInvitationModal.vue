@@ -67,11 +67,14 @@ import { Platform } from 'obsidian'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import { SCOPED_JOIN_ENABLED, type ScopedJoinFlow } from '@/sync/scoped/scopedJoin'
-const props = defineProps<{
-    flow?: ScopedJoinFlow
-    factory?: (issuer: string) => ScopedJoinFlow
-    enabled?: boolean
-  }>(),
+const props = withDefaults(
+    defineProps<{
+      flow?: ScopedJoinFlow
+      factory?: (issuer: string) => ScopedJoinFlow
+      enabled?: boolean
+    }>(),
+    { enabled: SCOPED_JOIN_ENABLED }
+  ),
   emit = defineEmits<{ close: [] }>(),
   enabled = props.enabled ?? SCOPED_JOIN_ENABLED
 const issuer = ref(''),

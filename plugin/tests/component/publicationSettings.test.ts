@@ -39,7 +39,10 @@ const global = {
 describe('publication settings UI', () => {
   it('keeps the activation hold truthful and never unshares with missing cache evidence', async () => {
     const model = { reviewUnshare: vi.fn() }
-    const w = mount(OwnerPublicationSettings, { props: { view, model: model as any }, global })
+    const w = mount(OwnerPublicationSettings, {
+      props: { view, model: model as any, enabled: false },
+      global,
+    })
     expect(w.text()).toContain('not active')
     expect(w.text()).toContain('Reference status unknown')
     expect(w.text()).toContain('sample-note')

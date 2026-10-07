@@ -158,12 +158,15 @@ import Button from '../obsidian/Button.vue'
 import { OWNER_SHARING_ENABLED } from '@/sync/sharing/folderSharing'
 import type { GroupSharingFlow, GroupReview, GroupGrant } from '@/sync/sharing/groupSharing'
 import type { OwnerGroupRootFlow, GroupRootReview } from '@/sync/sharing/ownerGroupRoot'
-const props = defineProps<{
-    flow?: GroupSharingFlow
-    rootFlow?: OwnerGroupRootFlow
-    preview?: GroupReview
-    enabled?: boolean
-  }>(),
+const props = withDefaults(
+    defineProps<{
+      flow?: GroupSharingFlow
+      rootFlow?: OwnerGroupRootFlow
+      preview?: GroupReview
+      enabled?: boolean
+    }>(),
+    { enabled: OWNER_SHARING_ENABLED }
+  ),
   emit = defineEmits<{ close: [] }>(),
   enabled = props.enabled ?? OWNER_SHARING_ENABLED
 const rootId = ref(''),

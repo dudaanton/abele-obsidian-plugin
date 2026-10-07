@@ -50,6 +50,36 @@ it('installs sharing from the production plugin rather than a test API', async (
   expect(typeof native.plugin.syncSharing.createScoped).toBe('function')
 })
 
+function buttonIn(root: ParentNode, text: string) {
+  const button = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
+    (element) => element.textContent?.trim() === text
+  )
+  expect(button).toBeDefined()
+  return button!
+}
+async function syncSettings() {
+  const root = native.settings()
+  const tab = () =>
+    [...root.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+      (element) => element.textContent?.trim() === 'Sync'
+    )
+  await expect.poll(() => !!tab()).toBe(true)
+  tab()!.click()
+  return root
+}
+it('enables invitation controls rendered by the unmodified production settings UI', async () => {
+  const root = await syncSettings()
+  await expect.poll(() => root.textContent).toContain('Join a shared group')
+  buttonIn(root, 'Join a shared group…').click()
+  await expect.poll(() => !!document.querySelector('.abele-scoped-join')).toBe(true)
+  const dialog = document.querySelector('.abele-scoped-join')!
+  expect(dialog.textContent).not.toContain('not active')
+  expect(buttonIn(dialog, 'Accept invitation and join').disabled).toBe(false)
+  for (const input of dialog.querySelectorAll<HTMLInputElement>('input'))
+    expect(input.disabled).toBe(false)
+  buttonIn(dialog.closest('.modal')!, 'Close').click()
+})
+
 it('shares a folder and a prepared group through the production owner ports', async () => {
   const host = native.plugin.syncSharing
   await host.sync.connect(server.url, email, password)
@@ -81,6 +111,26 @@ it('shares a folder and a prepared group through the production owner ports', as
   expect(group.state).toBe('active')
   expect(host.audiences.value).toContain(group.id)
 }, 30000)
+
+it('enables owner review controls rendered by the unmodified production settings UI', async () => {
+  const root = await syncSettings()
+  await expect.poll(() => root.textContent).toContain('Review folder sharing')
+  expect(root.textContent).not.toContain('Sharing is not active')
+  for (const [action, selector, review] of [
+    ['Review folder sharing', '.abele-folder-sharing', 'Review current folder'],
+    ['Review group sharing', '.abele-group-review', 'Review root and current scope'],
+    ['Review initial asset batch', '.abele-initial-batch', null],
+  ] as const) {
+    expect(buttonIn(root, action).disabled).toBe(false)
+    buttonIn(root, action).click()
+    await expect.poll(() => !!document.querySelector(selector)).toBe(true)
+    const dialog = document.querySelector(selector)!
+    expect(dialog.textContent).not.toContain('not active')
+    if (review) expect(buttonIn(dialog, review).disabled).toBe(false)
+    buttonIn(dialog.closest('.modal')!, 'Close').click()
+    await expect.poll(() => !!document.querySelector(selector)).toBe(false)
+  }
+})
 
 it('joins a collaborator with the production scoped host and no personal credential fallback', async () => {
   const collaborator = 'sample-production-collaborator@example.com'

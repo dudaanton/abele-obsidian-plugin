@@ -5,7 +5,7 @@ describe('owner folder sharing UI', () => {
   it('shows a truthful disabled fence and cannot call any management port', async () => {
     const flow = { review: vi.fn(), confirm: vi.fn(), clear: vi.fn() }
     const w = mount(OwnerFolderSharingModal, {
-      props: { flow: flow as any },
+      props: { flow: flow as any, enabled: false },
       global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
     })
     expect(w.text()).toContain('not active')

@@ -5,7 +5,7 @@ describe('scoped invitation disabled UI', () => {
   it('shows no-remap/no-local-publication and script-refuse safeguards without requesting credentials', async () => {
     const flow = { begin: vi.fn(), resume: vi.fn(), close: vi.fn() },
       w = mount(ScopedInvitationModal, {
-        props: { flow: flow as any },
+        props: { flow: flow as any, enabled: false },
         global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
       })
     expect(w.text()).toContain('not active')

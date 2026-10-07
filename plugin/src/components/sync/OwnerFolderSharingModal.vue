@@ -90,11 +90,14 @@ import {
   type FolderPreview,
   type MachineCredential,
 } from '@/sync/sharing/folderSharing'
-const props = defineProps<{
-    flow?: FolderSharingFlow
-    enabled?: boolean
-    preview?: FolderPreview
-  }>(),
+const props = withDefaults(
+    defineProps<{
+      flow?: FolderSharingFlow
+      enabled?: boolean
+      preview?: FolderPreview
+    }>(),
+    { enabled: OWNER_SHARING_ENABLED }
+  ),
   emit = defineEmits<{ close: [] }>()
 const enabled = props.enabled ?? OWNER_SHARING_ENABLED,
   prefix = ref('Sample folder/'),

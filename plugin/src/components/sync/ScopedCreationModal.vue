@@ -107,12 +107,15 @@ import {
   type CreationReview,
   type NativeSponsor,
 } from '@/sync/scoped/scopedCreation'
-const props = defineProps<{
-    flow?: ScopedCreationFlow
-    roots?: ApprovedRoot[]
-    sponsors?: (NativeSponsor & { label: string })[]
-    enabled?: boolean
-  }>(),
+const props = withDefaults(
+    defineProps<{
+      flow?: ScopedCreationFlow
+      roots?: ApprovedRoot[]
+      sponsors?: (NativeSponsor & { label: string })[]
+      enabled?: boolean
+    }>(),
+    { enabled: SCOPED_CREATION_ENABLED }
+  ),
   emit = defineEmits<{ close: [] }>(),
   enabled = props.enabled ?? SCOPED_CREATION_ENABLED,
   roots = props.roots ?? [],
