@@ -110,8 +110,10 @@ function layout(): Layout {
     let scroller=table.parentElement;
     while(scroller !== columns[1] && scroller.scrollWidth <= scroller.clientWidth) scroller=scroller.parentElement;
     scroller.scrollLeft=50;
+    const tableScroll=scroller.scrollLeft;
+    scroller.scrollLeft=0;
     return { width:parent.clientWidth, boxes:columns.map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}}),
-      tableWidth:table?.getBoundingClientRect().width,tableScroll:scroller.scrollLeft,
+      tableWidth:table?.getBoundingClientRect().width,tableScroll,
       list:!!parent.querySelector('ul'),code:!!parent.querySelector('pre code'),math:!!parent.querySelector('.math'),
       picture:!!parent.querySelector('img'),embed:!!columns[1].querySelector('.markdown-embed-content') };
   `)
@@ -166,6 +168,10 @@ describe.skipIf(!available)('note columns foundation', () => {
       expect(l.list && l.code && l.math && l.picture && l.embed).toBe(true)
       expect(l.tableScroll).toBeGreaterThan(0)
       await shot(mode)
+      asyncEval(
+        `root().querySelectorAll('.abele-column')[1].scrollIntoView({block:'center'});await wait(150);return true`
+      )
+      await shot(mode + '-second')
     })
 
     it(`${mode}: the second checkbox changes only its own source line`, async () => {
@@ -261,6 +267,10 @@ describe.skipIf(!available)('note columns foundation', () => {
         expect(l.boxes[1].x).toBeCloseTo(l.boxes[0].x, 0)
         expect(l.tableScroll).toBeGreaterThan(0)
         await shot('mobile-' + mode)
+        asyncEval(
+          `root().querySelectorAll('.abele-column')[1].scrollIntoView({block:'center'});await wait(150);return true`
+        )
+        await shot('mobile-' + mode + '-second')
       }
       await reloadApp('app.emulateMobile(false)')
     },
