@@ -1,5 +1,4 @@
-import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
-import { forceParsing } from '@codemirror/language'
+import { EditorView } from '@codemirror/view'
 import { editorLivePreviewField, type Plugin } from 'obsidian'
 import { columnSource } from './source'
 
@@ -74,7 +73,6 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
 function reveal(entry: Entry): void {
   // A stale DOM callback must not put a caret into a different version of the note.
   if (entry.view.state.doc.toString() !== entry.document) return
-  forceParsing(entry.view, entry.view.state.doc.length, 50)
   entry.view.dispatch({
     selection: { anchor: entry.anchor },
     scrollIntoView: true,
@@ -83,33 +81,7 @@ function reveal(entry: Entry): void {
   entry.view.focus()
 }
 
-/** Structural edits can resize the quote before the native stream parser catches up. */
-const columnParsing = ViewPlugin.fromClass(
-  class {
-    private queued = false
-    private destroyed = false
-    constructor(private readonly view: EditorView) {
-      this.schedule()
-    }
-    update(update: ViewUpdate): void {
-      if (update.docChanged) this.schedule()
-    }
-    private schedule(): void {
-      if (this.queued || !this.view.state.doc.toString().includes('[!abele-columns')) return
-      this.queued = true
-      queueMicrotask(() => {
-        this.queued = false
-        if (!this.destroyed) forceParsing(this.view, this.view.state.doc.length, 50)
-      })
-    }
-    destroy(): void {
-      this.destroyed = true
-    }
-  }
-)
-
 export function registerColumnEntry(plugin: Plugin): void {
-  plugin.registerEditorExtension(columnParsing)
   const attach = (doc: Document) => {
     let touch: { entry: Entry; x: number; y: number; id: number; time: number } | null = null
     let completed: { view: EditorView; x: number; y: number; until: number } | null = null

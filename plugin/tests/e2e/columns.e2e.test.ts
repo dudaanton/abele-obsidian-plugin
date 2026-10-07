@@ -85,7 +85,7 @@ function show(mode: 'preview' | 'source') {
     await leaf.setViewState({type:'markdown', state:{file:${JSON.stringify(NOTE)},mode:${JSON.stringify(mode)},source:false}});
     view=leaf.view;
     app.workspace.setActiveLeaf(leaf,{focus:true});
-    if (${JSON.stringify(mode)} === 'source') view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});
+    if (${JSON.stringify(mode)} === 'source') { view.editor.focus(); view.editor.setCursor({line:view.editor.lineCount()-1,ch:0}); }
     for(let i=0;i<50;i++){if(root().querySelector('.abele-columns')) break; await wait(100)}
     await wait(300);
     return !!root().querySelector('.abele-columns');
@@ -296,15 +296,11 @@ describe.skipIf(!available)('note columns foundation', () => {
     }>(`
       view.editor.setCursor({line:20,ch:10});await wait(200);
       const expanded=!root().querySelector('.abele-columns');
-      const focused=view.editor.cm.hasFocus;
-      view.editor.focus();await wait(200);
-      window.__columnFocus={focused,expanded,afterFocus:!root().querySelector('.abele-columns'),cursor:view.editor.getCursor(),anchor:view.editor.cm.state.selection.main.head};
       view.editor.replaceSelection('sample edit');await wait(200);
       const edited=view.editor.getValue()===${JSON.stringify(BODY)}.replace('> > Second column paragraph.','> > Secondsample edit column paragraph.');
       view.editor.undo();await wait(200);
       return {expanded,edited,undone:view.editor.getValue()===${JSON.stringify(BODY)},cursor:view.editor.getCursor().line};
     `)
-    console.log('source focus', asyncEval(`return window.__columnFocus`))
     expect(result).toEqual({ expanded: true, edited: true, undone: true, cursor: 20 })
     await shot('expanded-source')
     expect(show('source')).toBe(true)
