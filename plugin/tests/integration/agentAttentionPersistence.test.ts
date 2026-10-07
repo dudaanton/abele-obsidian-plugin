@@ -5,7 +5,9 @@ import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
-import { parseChat } from '@/ai/ChatLog'
+import { parseChat, parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { AgentsService } from '@/agents/AgentsService'
 import { useVault } from '../helpers/testEnv'
 
 let session: ChatSession
@@ -20,6 +22,7 @@ afterEach(() => {
   session.destroy()
   ChatService.getInstance().destroy()
   ChatStorage.destroy()
+  AgentsService.destroyCurrent()
 })
 
 describe('persisted attention', () => {
@@ -71,6 +74,30 @@ describe('persisted attention', () => {
     await expect(session.markAttentionSeen(id)).rejects.toThrow('Не удалось сохранить')
     expect(session.attention.value.errors).toHaveLength(2)
     expect(session.attention.value.errors![0].seen).not.toBe(true)
+  })
+  it('does not persist restored approvals during a read-only selection return', async () => {
+    const file = session.currentChatFile.value!
+    const app = GlobalStore.getInstance().app
+    const metadata = parseChatMetadata(await app.vault.read(file))!
+    await app.vault.append(
+      file,
+      serializeMetadata({
+        ...metadata,
+        pendingToolCalls: [
+          { id: 'sample-request', name: 'edit', arguments: { path: 'Notes/sample.md' } },
+        ],
+      })
+    )
+    const write = vi.spyOn(ChatStorage.getInstance(), 'saveChat')
+    vi.useFakeTimers()
+    try {
+      await session.reconcileForSelectionReturn()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(write).not.toHaveBeenCalled()
+      expect(session.pendingToolCalls.value[0].id).toBe('sample-request')
+    } finally {
+      vi.useRealTimers()
+    }
   })
   it('persists transitions to local work even before its first streamed token', async () => {
     await session.save()

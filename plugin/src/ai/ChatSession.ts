@@ -3349,10 +3349,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.summarizer.forgetRecap()
     this.error.value = null
     this.lastModelId = ''
-    await this.restoreLoadedChat(file, result, {
-      keepLeaf: this.activeLeafId,
-      readOnly: true,
-    })
+    const restoring = this.restoringAttention
+    this.restoringAttention = true
+    try {
+      await this.restoreLoadedChat(file, result, {
+        keepLeaf: this.activeLeafId,
+        readOnly: true,
+      })
+    } finally {
+      this.restoringAttention = restoring
+    }
   }
 
   /** Adopt into the reserved empty session without resetting any draft delivered meanwhile. */
