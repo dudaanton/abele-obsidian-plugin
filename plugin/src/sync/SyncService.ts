@@ -529,7 +529,7 @@ export class SyncService {
     void this.serialise(async () => {
       await this.runner.reconcile()
       if (this.sharing.value?.ownerReady) await this.sharing.value.refreshPublication()
-    })
+    }).catch((error) => this.note(`sharing is waiting: ${String(error)}`))
   }
 
   /** Cache completion can lag a personal sync, especially on mobile. Revalidate only after

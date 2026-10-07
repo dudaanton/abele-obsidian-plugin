@@ -38,6 +38,30 @@ it('waits for the sync queue before revalidating links, including an owner with 
   }
 })
 
+it('keeps an unavailable sharing refresh after a settings reload in the deferred-work lane', async () => {
+  useVault([])
+  const sync = SyncService.getInstance(),
+    old = sync.sharing.value
+  const reconcile = vi.spyOn((sync as any).runner, 'reconcile').mockResolvedValue(undefined)
+  const note = vi.spyOn(sync, 'note').mockImplementation(() => {})
+  sync.sharing.value = {
+    scope: shallowRef(null),
+    ownerReady: true,
+    refreshPublication: vi
+      .fn()
+      .mockRejectedValue(new Error('Synthetic sharing transport unavailable')),
+  } as any
+  try {
+    sync.onSettingsSaved()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(note).toHaveBeenCalledWith(expect.stringContaining('sharing is waiting'))
+  } finally {
+    sync.sharing.value = old
+    reconcile.mockRestore()
+    note.mockRestore()
+  }
+})
+
 it('imports sharing onto a second owner device at startup and after a settings reload', async () => {
   const app = useVault([])
   setSecrets(null)
