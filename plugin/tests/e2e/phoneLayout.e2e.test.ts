@@ -141,6 +141,7 @@ interface Screen {
   handles?: number[][]
   stageTop?: number[]
   canvasFits?: boolean
+  ids?: string[]
   /** Where the picture went. */
   shot: string
   error: string
@@ -1387,6 +1388,20 @@ const probeScript = `(async () => {
         await screen('canvas creation',create,create.querySelector('.abele-modal__body'))
         report['canvas creation'].clipped=[]
         for(const field of create.querySelectorAll('input,button')){field.focus();report['canvas creation'].clipped.push(...ringClipped(field));field.blur()}
+        await closeDialog()
+        const scope=new window.__abeleTest.ScopeResolver();scope.setFullVaultAccess(true)
+        const ctx={scope,interactive:true},tools=Object.fromEntries(window.__abeleTest.createAgentTools().map(t=>[t.name,t]))
+        let snapshot=JSON.parse((await tools.canvas_read.execute('read',{path:file.path},undefined,ctx)).content[0].text)
+        await tools.canvas_edit.execute('ink',{path:file.path,revision:snapshot.revision,ops:[
+          {op:'add_ink',node:'alpha',stroke:{version:1,id:'attached-ink',tool:'pen',points:[20,30,0.5,160,30,0.8],frame:{width:200,height:140}}},
+          {op:'add_ink',stroke:{version:1,id:'free-ink',tool:'marker',points:[20,170,0.5,160,170,0.5]}}
+        ]},undefined,ctx)
+        snapshot=JSON.parse((await tools.canvas_read.execute('read',{path:file.path},undefined,ctx)).content[0].text)
+        await tools.canvas_steps.execute('steps',{path:file.path,revision:snapshot.revision,ops:[{op:'replace',steps:[{id:'ink-step',reveal:['alpha','free-ink'],highlight:['attached-ink','free-ink'],say:'Two strokes in the same diagram.',focus:{x:-30,y:-20,width:260,height:230}}]}]},undefined,ctx)
+        root.querySelector('[aria-label="Play walkthrough"]').click();await wait(350)
+        await screen('canvas agent strokes',root,root)
+        const shown=JSON.parse((await tools.canvas_read.execute('read',{path:file.path,step:1},undefined,ctx)).content[0].text)
+        report['canvas agent strokes'].ids=shown.ink.map(s=>s.id)
       } finally {
         await closeDialog()
         leaf.view.documentLease?.document.discardDraft()
@@ -1696,6 +1711,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas selection',
     'canvas pen controls',
     'canvas ink preview',
+    'canvas agent strokes',
     'canvas eraser controls',
     'canvas eraser preview',
     'canvas lasso selection actions',
@@ -1732,7 +1748,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   )
   it('node session chrome leaves space for messages and keeps one compact approval and queue row', () => {
     const header = report['node claude chat'] as Screen & { headerHeight: number }
-    const permission = report['node claude permission'] as Screen & { actionRows: number; accent: boolean; queueCopies: number }
+    const permission = report['node claude permission'] as Screen & {
+      actionRows: number
+      accent: boolean
+      queueCopies: number
+    }
     expect(header.headerHeight).toBeLessThan(60)
     expect(permission.actionRows).toBe(1)
     expect(permission.accent).toBe(true)
@@ -1767,6 +1787,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it('canvas editor: initially frames the diagram after its controls take space', () => {
     expect(report['canvas editor']?.canvasFits).toBe(true)
+  })
+
+  it('canvas agent strokes: free and attached ink remain readable in walkthroughs', () => {
+    expect(report['canvas agent strokes']?.ids).toEqual(['attached-ink', 'free-ink'])
   })
 
   it('canvas ink preview: the toolbar does not shift the captured pointer surface', () => {

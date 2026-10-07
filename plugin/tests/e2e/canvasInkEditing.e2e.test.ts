@@ -281,4 +281,85 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
     expect(run<boolean>('return view().documentLease.document.session.dirty')).toBe(false)
     shot('eraser-pinch')
   }, 120_000)
+  it('lets an agent continue real human ink, then selects both strokes and undoes their shared batches', async () => {
+    await click('Draw with pen')
+    await fit()
+    const start = point(80, 250),
+      end = point(180, 250)
+    if (onPhone()) await input([start, end])
+    else {
+      const during = await withNativeInput(() =>
+        run<{ busy: boolean; refused: boolean; unchanged: boolean }>(`
+        const before=await app.vault.read(app.vault.getAbstractFileByPath(path)),cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached()
+        if(owned)cdp.attach('1.3')
+        try {
+          const start=${JSON.stringify(start)},end=${JSON.stringify(end)}
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x:start[0],y:start[1],button:'left',buttons:1,clickCount:1})
+          const scope=new window.__abeleTest.ScopeResolver();scope.setFullVaultAccess(true)
+          const ctx={scope,interactive:true},tools=Object.fromEntries(window.__abeleTest.createAgentTools().map(t=>[t.name,t]))
+          const snapshot=JSON.parse((await tools.canvas_read.execute('read',{path},undefined,ctx)).content[0].text)
+          let refused=false
+          try {await tools.canvas_edit.execute('blocked',{path,revision:snapshot.revision,ops:[{op:'add_ink',stroke:{version:1,id:'blocked-ink',tool:'pen',points:[0,0,0.5]}}]},undefined,ctx)}catch(error){refused=/busy|pending/i.test(error.message)}
+          const unchanged=before===await app.vault.read(app.vault.getAbstractFileByPath(path))
+          for(let i=1;i<=12;i++){await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:start[0]+(end[0]-start[0])*i/12,y:start[1]+(end[1]-start[1])*i/12,button:'left',buttons:1});await new Promise(r=>setTimeout(r,16))}
+          return {busy:snapshot.state?.busy===true,refused,unchanged}
+        } finally {
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x:${end[0]},y:${end[1]},button:'left',buttons:0,clickCount:1})
+          if(owned)cdp.detach()
+        }
+      `)
+      )
+      expect(during).toEqual({ busy: true, refused: true, unchanged: true })
+    }
+    await saved()
+    const humanId = run<string>('return (await read()).abele.ink.find(s=>s.id!=="free").id'),
+      before = source()
+    const edited = run<{ ids: string[]; picture: boolean }>(`
+      const scope=new window.__abeleTest.ScopeResolver();scope.setFullVaultAccess(true)
+      const ctx={scope,interactive:true},tools=Object.fromEntries(window.__abeleTest.createAgentTools().map(t=>[t.name,t]))
+      const snapshot=JSON.parse((await tools.canvas_read.execute('read',{path},undefined,ctx)).content[0].text)
+      await tools.canvas_edit.execute('edit',{path,revision:snapshot.revision,ops:[
+        {op:'update_ink',id:${JSON.stringify(humanId)},patch:{color:'4'}},
+        {op:'add_ink',stroke:{version:1,id:'agent-ink',tool:'pen',points:[80,280,0.5,180,280,0.5]}}
+      ]},undefined,ctx)
+      const result=JSON.parse((await tools.canvas_read.execute('read',{path},undefined,ctx)).content[0].text)
+      const picture=await tools.look_at_canvas.execute('picture',{path,region:{x:50,y:220,width:160,height:90},maxSide:800},undefined,ctx)
+      return {ids:result.ink.map(s=>s.id),picture:picture.injectMessages[0].content.some(c=>c.type==='image_url'&&c.image_url.url.startsWith('data:image/png;base64,'))}
+    `)
+    expect(edited.ids).toContain(humanId)
+    expect(edited.ids).toContain('agent-ink')
+    expect(edited.picture).toBe(true)
+    await click('Lasso canvas objects')
+    await fit()
+    await actions()
+    await click('Toggle lasso multiple selection')
+    await actions()
+    await input([point(130, 250)])
+    await input([point(130, 280)])
+    await until(
+      `view().viewer.selection.has(${JSON.stringify(humanId)})&&view().viewer.selection.has('agent-ink')`
+    )
+    await actions()
+    await click('Toggle lasso multiple selection')
+    await click('Recolor canvas selection')
+    await saved()
+    expect(
+      run<string[]>(
+        `return (await read()).abele.ink.filter(s=>[${JSON.stringify(humanId)},'agent-ink'].includes(s.id)).map(s=>s.color)`
+      )
+    ).toEqual(['', ''])
+    shot('human-agent-ink-selected')
+    await click('Undo canvas change')
+    await saved()
+    expect(
+      run<string>(
+        `return (await read()).abele.ink.find(s=>s.id===${JSON.stringify(humanId)}).color`
+      )
+    ).toBe('4')
+    await click('Undo canvas change')
+    await saved()
+    expect(source()).toEqual(before)
+    await actions()
+    shot('agent-ink-batch-undone')
+  }, 180_000)
 })
