@@ -114,6 +114,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const result = run<{
         keyboard: boolean
         room: number
+        geometry: unknown
         toolbar: boolean
         saved: boolean
         formatted: boolean
@@ -141,7 +142,11 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await tap(field)
       await until(() => keyboardHeight() > 100)
       const keyboard = keyboardHeight() > 100
-      const room = document.querySelector('.abele-text-comments').closest('.abele-modal__body').clientHeight
+      await wait(500)
+      const body = document.querySelector('.abele-text-comments').closest('.abele-modal__body')
+      const room = body.clientHeight
+      const panel = body.closest('.modal')
+      const geometry = [panel.parentElement, panel, panel.querySelector('.modal-content'), body, panel.querySelector('.abele-modal__footer')].map(el => { const s=getComputedStyle(el); return {class:el.className,height:el.getBoundingClientRect().height,top:el.getBoundingClientRect().top,cssHeight:s.height,max:s.maxHeight,flex:s.flex,keyboard:s.getPropertyValue('--keyboard-height'),room:s.getPropertyValue('--abele-room-height')} })
       const toolbar = !![...document.querySelectorAll('.mobile-toolbar')].find(el => el.getBoundingClientRect().height > 0)
       const shots = [await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard-open.png')]
       await host.type('Native second comment\\nwith another line')
@@ -168,7 +173,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const editedThread = JSON.parse(await app.vault.read(savedFile))
       const edited = !!editedThread.entries[0].editedAt && editedThread.entries[0].body.endsWith(' Updated')
       await tap(button('Close'))
-      return JSON.stringify({keyboard, room, toolbar, formatted, saved, edited, shots})
+      return JSON.stringify({keyboard, room, geometry, toolbar, formatted, saved, edited, shots})
     `)
       console.log('Native comment editor:', result)
       expect(result.keyboard).toBe(true)
