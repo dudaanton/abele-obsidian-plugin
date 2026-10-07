@@ -35,6 +35,7 @@
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
+          <AgentsButton />
           <!-- Only over a comment: the way back to the passage it was written against. It
                points back the way it came rather than being a panel glyph, because what it
                does is scroll a note, not move a pane. -->
@@ -431,6 +432,7 @@
 import { ref, shallowRef, watch, watchEffect, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import AgentsButton from './AgentsButton.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import ChatSelectionBar from './ChatSelectionBar.vue'

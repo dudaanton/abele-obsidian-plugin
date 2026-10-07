@@ -3,6 +3,7 @@
     <div class="abele-ai-chat__header">
       <span class="abele-node-chat__title" :title="title">{{ presenter.label.value }}</span>
       <div class="abele-ai-chat__header-actions">
+        <AgentsButton />
         <span class="abele-node-chat__indicator" role="status" :title="status" :aria-label="status">
           <Icon :icon="statusIcon" no-hover />
           <span class="abele-node-chat__status-label">{{ status }}</span>
@@ -158,6 +159,7 @@ import NodeMessageTree from './NodeMessageTree.vue'
 import NodePermissionCard from './NodePermissionCard.vue'
 import AiChatInput from './AiChatInput.vue'
 import Icon from './obsidian/Icon.vue'
+import AgentsButton from './AgentsButton.vue'
 import Button from './obsidian/Button.vue'
 import { piFailure } from '@/node/piTranscript'
 const props = defineProps<{ presenter: NodeChatPresenter }>()
