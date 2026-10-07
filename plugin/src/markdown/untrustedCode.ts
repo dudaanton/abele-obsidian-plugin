@@ -68,11 +68,12 @@ export function guardInlineCode(text: string): string {
   return out.join('\n')
 }
 
-export function prepareMarkdown(text: string, ownBlocks = false): string {
-  return guardInlineCode(neutraliseFences(text, ownBlocks))
+export function prepareMarkdown(text: string, ownBlocks = false, messageCards = true): string {
+  return guardInlineCode(neutraliseFences(text, ownBlocks, messageCards))
 }
 
-function keepsLanguage(lang: string, ownBlocks: boolean): boolean {
+function keepsLanguage(lang: string, ownBlocks: boolean, messageCards: boolean): boolean {
+  if (!messageCards && lang === 'abele-message') return false
   if (ownBlocks && ABELE_LANGUAGES.has(lang)) return true
   if (!PLAIN_LANGUAGES.has(lang)) return false
   if (lang === 'mermaid' || lang === 'math') return true
@@ -82,7 +83,7 @@ function keepsLanguage(lang: string, ownBlocks: boolean): boolean {
 }
 
 /** Covers raw HTML code and fences a text scanner did not recognise. */
-export function guardCode(root: HTMLElement, ownBlocks = false): void {
+export function guardCode(root: HTMLElement, ownBlocks = false, messageCards = true): void {
   const codes = [
     ...(root.matches('code') ? [root] : []),
     ...Array.from(root.querySelectorAll('code')),
@@ -92,7 +93,7 @@ export function guardCode(root: HTMLElement, ownBlocks = false): void {
     for (const el of pre ? [pre, code] : [code]) {
       for (const cls of Array.from(el.classList)) {
         if (!cls.startsWith('language-')) continue
-        if (!keepsLanguage(cls.slice(9).toLowerCase(), ownBlocks)) {
+        if (!keepsLanguage(cls.slice(9).toLowerCase(), ownBlocks, messageCards)) {
           el.classList.remove(cls)
           // No language at all: even a plugin claiming "text" must not execute the block.
         }

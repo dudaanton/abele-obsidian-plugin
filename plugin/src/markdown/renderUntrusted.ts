@@ -19,6 +19,8 @@ export interface RenderPolicy {
   before?: (el: HTMLElement) => void
   after?: (el: HTMLElement) => void
   github?: boolean
+  /** Non-vault histories show vault-backed message cards as plain code. */
+  messageCards?: boolean
 }
 
 const policies = new WeakMap<Element, RenderPolicy>()
@@ -35,7 +37,7 @@ export const untrustedGuard: MarkdownPostProcessor = (el) => {
   while (host && !policies.has(host)) host = host.parentElement
   if (!host) return
   const policy = policies.get(host)!
-  guardCode(el, !policy.github)
+  guardCode(el, !policy.github, policy.messageCards)
   policy.before?.(el)
 }
 
@@ -68,7 +70,7 @@ export async function renderUntrustedMarkdown(
   installUntrustedGuard()
   await MarkdownRenderer.render(
     GlobalStore.getInstance().app,
-    prepareMarkdown(text, !policy.github),
+    prepareMarkdown(text, !policy.github, policy.messageCards),
     el,
     sourcePath,
     component

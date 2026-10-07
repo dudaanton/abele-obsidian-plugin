@@ -87,6 +87,7 @@ let parts: Part[] = []
 /** The text of what is on the page, and whether a block of it was held back or not yet drawn. */
 let shownText = ''
 let shownPath = ''
+let shownResourceOpener: typeof props.resourceOpener
 let shownPartial = false
 
 const ownersOf = (list: Part[]) => new Set(list.map((p) => p.owner))
@@ -108,6 +109,8 @@ const releaseInside = (owner: Component, nodes: ChildNode[]) => {
 const renderContent = async () => {
   if (!target.value || !component) return
 
+  const resourceOpener = props.resourceOpener
+  if (!props.trusted) markUntrusted(target.value, resourceOpener ? nodeMarkdownPolicy : {})
   const mine = ++generation
   const source = props.text || ''
   const path = props.filePath || ''
@@ -131,7 +134,14 @@ const renderContent = async () => {
   try {
     if (props.trusted)
       await MarkdownRenderer.render(GlobalStore.getInstance().app, text, next, path, own)
-    else await renderUntrustedMarkdown(next, text, own, path, props.resourceOpener ? nodeMarkdownPolicy : undefined)
+    else
+      await renderUntrustedMarkdown(
+        next,
+        text,
+        own,
+        path,
+        resourceOpener ? nodeMarkdownPolicy : undefined
+      )
   } catch (error) {
     own.unload()
     throw error
@@ -140,7 +150,12 @@ const renderContent = async () => {
   }
 
   // Overtaken, or the markdown is gone.
-  if (mine !== generation || !target.value || component !== owner) {
+  if (
+    mine !== generation ||
+    !target.value ||
+    component !== owner ||
+    resourceOpener !== props.resourceOpener
+  ) {
     own.unload()
     return
   }
@@ -151,6 +166,7 @@ const renderContent = async () => {
   let same = 0
   while (
     path === shownPath &&
+    resourceOpener === shownResourceOpener &&
     same < fresh.length &&
     same < parts.length &&
     parts[same].sig !== null &&
@@ -189,6 +205,7 @@ const renderContent = async () => {
   parts = nextParts
   shownText = source
   shownPath = path
+  shownResourceOpener = resourceOpener
   shownPartial = pending !== null
   // For whoever draws over the result — comments on an answer — since this replaced it.
   emit('rendered')
@@ -200,7 +217,8 @@ const renderContent = async () => {
  */
 const adopt = (): boolean => {
   const el = target.value
-  if (!el || props.trusted || props.streaming || !props.text) return false
+  // The handoff cache belongs to local replies, not node resource contexts.
+  if (!el || props.trusted || props.resourceOpener || props.streaming || !props.text) return false
   const offered = take(props.text, el.doc)
   if (!offered) return false
   parts = offered.parts
@@ -218,7 +236,7 @@ let host: HTMLElement | null = null
 
 onMounted(() => {
   host = target.value ?? null
-  if (host && !props.trusted) markUntrusted(host)
+  if (host && !props.trusted) markUntrusted(host, props.resourceOpener ? nodeMarkdownPolicy : {})
   component = new Component()
   component.load()
   if (adopt()) return
@@ -255,7 +273,7 @@ const renderQueue = createRenderQueue(renderContent, {
 })
 
 watch(
-  () => [props.text, props.filePath, props.streaming],
+  () => [props.text, props.filePath, props.streaming, props.resourceOpener],
   () => renderQueue.request(!!props.streaming),
   { deep: true }
 )
@@ -266,7 +284,15 @@ watch(
  */
 onBeforeUnmount(() => {
   const doc = host?.doc
-  if (props.trusted || !props.streaming || !parts.length || !shownText || !doc) return
+  if (
+    props.trusted ||
+    props.resourceOpener ||
+    !props.streaming ||
+    !parts.length ||
+    !shownText ||
+    !doc
+  )
+    return
   const owners = ownersOf(parts)
   // Short of the text if a render for newer text was still to come.
   const partial = shownPartial || shownText !== (props.text || '')

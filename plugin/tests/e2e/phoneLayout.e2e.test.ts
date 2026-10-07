@@ -774,6 +774,19 @@ const probeScript = `(async () => {
         transcriptScroll.scrollTop = transcriptScroll.scrollHeight
         await wait(200)
         await screen('node claude permission', claudeChat, transcriptScroll)
+        const fence = String.fromCharCode(96).repeat(3)
+        const codeReply = { ...claude, id: 'layout-node-code-tab', state: { value: 'idle' }, messages: { value: [{ id: 'reply', role: 'assistant', timestamp: 0, content: [fence + 'abele-message', 'chat: AI/Chats/sample.abchat', 'message: sample', '---', '![[sample-local-note.md]]', '[[sample-local-note]]', fence].join('\\n') }] }, projection: { value: { artifacts: [], unknown: [], children: {}, activeRuns: [], queuedInputs: [], prompts: [] } } }
+        chats.nodeSessions.set(codeReply.id, codeReply)
+        chats.tabOrder.value = [...chats.tabOrder.value, codeReply.id]
+        chats.activeTabId.value = codeReply.id
+        await until(() => document.querySelector('.abele-node-chat pre code'), 5000)
+        await wait(200)
+        const codeChat = document.querySelector('.abele-node-chat')
+        await screen('node message code', codeChat, codeChat.querySelector('.abele-ai-chat__messages'))
+        report['node message code'].cards = codeChat.querySelectorAll('.abele-message-card').length
+        report['node message code'].code = codeChat.querySelector('pre code')?.textContent
+        chats.nodeSessions.delete(codeReply.id)
+        chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== codeReply.id)
         chats.nodeSessions.delete(claude.id)
         chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== claude.id)
         chats.activeTabId.value = presenter.id
@@ -810,8 +823,10 @@ const probeScript = `(async () => {
         app.setting.close()
         nodes.nodes.value = wasNodes
         nodes.connections.delete(registration.id)
-        chats.nodeSessions.delete(presenter.id)
-        chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== presenter.id)
+        for (const id of [presenter.id, 'layout-claude-tab', 'layout-node-code-tab']) {
+          chats.nodeSessions.delete(id)
+          chats.tabOrder.value = chats.tabOrder.value.filter(tab => tab !== id)
+        }
         chats.activeTabId.value = active
       }
     }
@@ -1582,6 +1597,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'node chat',
     'node claude chat',
     'node claude permission',
+    'node message code',
     'node workspace preview',
     'node workspace actions',
     'node workspace registration',
@@ -1665,6 +1681,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(report[label]?.clipped).toEqual([])
     }
   )
+  it('node message blocks remain plain code on a phone rather than vault-backed cards', () => {
+    const code = report['node message code'] as Screen & { cards?: number; code?: string }
+    expect(code?.cards).toBe(0)
+    expect(code?.code).toContain('![[sample-local-note.md]]')
+  })
 
   it('deferred media keeps attachment, dictation and editing controls available on a phone', () => {
     const screen = report['chat deferred media'] as Screen & {

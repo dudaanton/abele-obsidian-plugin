@@ -4,6 +4,37 @@ import { evalAsync } from './helpers/githubLive'
 
 const available = isObsidianRunning() && hasTestApi()
 describe.runIf(available)('untrusted rendering in the app', () => {
+  it('keeps a nested message card and its local note embeds as plain code in a node reply', () => {
+    const result = evalAsync<{ cards: number; embeds: number; exposed: boolean; code: string }>(String.raw`(async () => {
+      const chats = window.__abeleTest.ChatService.getInstance()
+      const path = 'sample-node-render-canary.md', marker = 'SAMPLE LOCAL NOTE CONTENT'
+      if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic canary already exists')
+      const file = await app.vault.create(path, marker), active = chats.activeTabId.value
+      const fence = String.fromCharCode(96).repeat(3)
+      const content = [fence + 'abele-message', 'chat: AI/Chats/sample.abchat', 'message: sample', '---', '![[' + path + ']]', '[[' + path + ']]', fence].join('\n')
+      const presenter = { id: 'sample-node-render-tab', reference: { kind: 'node-session', registrationId: 'sample-render', nodeId: 'sample-node', sessionId: 'sample-session', title: 'Sample node reply' }, label: { value: 'Sample node reply' }, provider: { value: 'claude' }, connection: { state: { value: 'connected' }, error: { value: '' } }, capabilities: { branches: false, rewind: false, editHistory: false, attachments: false, vaultResources: false }, state: { value: 'idle' }, isStreaming: { value: false }, error: { value: '' }, draft: { value: { text: '', attachments: [] } }, queued: { value: [] }, rejected: { value: [] }, messages: { value: [{ id: 'reply', role: 'assistant', content, timestamp: 0 }] }, projection: { value: { artifacts: [], prompts: [], unknown: [], children: {}, activeRuns: [], queuedInputs: [] } }, openResource: () => {}, destroy: () => {} }
+      try {
+        chats.nodeSessions.set(presenter.id, presenter); chats.tabOrder.value = [...chats.tabOrder.value, presenter.id]; chats.activeTabId.value = presenter.id
+        await chats.revealSidebar({ focus: false })
+        for (let i=0;i<100;i++) {
+          const root = document.querySelector('.abele-node-chat')
+          if (root?.querySelector('pre code')) {
+            await new Promise(r => setTimeout(r, 200))
+            return { cards: root.querySelectorAll('.abele-message-card').length, embeds: root.querySelectorAll('.internal-embed').length, exposed: root.textContent.includes(marker), code: root.querySelector('pre code').textContent }
+          }
+          await new Promise(r => setTimeout(r, 50))
+        }
+        throw Error('Node reply code did not render')
+      } finally {
+        chats.nodeSessions.delete(presenter.id); chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== presenter.id); chats.activeTabId.value = active
+        await app.vault.delete(file)
+      }
+    })()`)
+    expect(result.cards).toBe(0)
+    expect(result.embeds).toBe(0)
+    expect(result.exposed).toBe(false)
+    expect(result.code).toContain('![[sample-node-render-canary.md]]')
+  })
   it('runs a sample plugin block in notes, never in replies or GitHub text', () => {
     const result = evalAsync<{
       trusted: number

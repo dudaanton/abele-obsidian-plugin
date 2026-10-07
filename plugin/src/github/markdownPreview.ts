@@ -136,7 +136,7 @@ const FENCE_LINE =
  * with a ```dataviewjs block, rendered here as it is, would run that plugin's code in the vault.
  * Only opening fences are touched — the text inside a block is never changed.
  */
-export function neutraliseFences(text: string, ownBlocks = false): string {
+export function neutraliseFences(text: string, ownBlocks = false, messageCards = true): string {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
   let open: { char: string; length: number } | null = null
   for (let i = 0; i < lines.length; i++) {
@@ -152,8 +152,9 @@ export function neutraliseFences(text: string, ownBlocks = false): string {
     open = { char: fence[0], length: fence.length }
     if (
       lang &&
-      !PLAIN_LANGUAGES.has(lang.toLowerCase()) &&
-      !(ownBlocks && ABELE_LANGUAGES.has(lang.toLowerCase()))
+      ((!messageCards && lang.toLowerCase() === 'abele-message') ||
+        (!PLAIN_LANGUAGES.has(lang.toLowerCase()) &&
+          !(ownBlocks && ABELE_LANGUAGES.has(lang.toLowerCase()))))
     ) {
       lines[i] = `${prefix}${fence}text${rest}`
     }

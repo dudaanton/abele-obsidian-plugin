@@ -39,7 +39,9 @@ session title; an attached session can be reopened instead of starting another o
 chat tabs, message renderer and composer, but never runs the plugin's agents or vault tools.
 It accepts text only; local slash commands, attachments, history editing, branches and rewind
 are not offered. Node file links never open a coincidentally named vault file; file browsing
-will arrive in a later stage. **Projects and workspaces** is also available from a node chat.
+will arrive in a later stage. Nested `abele-message` blocks in node replies remain plain code,
+including their note links and embeds; they do not open vault-backed message cards.
+**Projects and workspaces** is also available from a node chat.
 Its read-only preview lists changed and untracked paths and shows the current unified diff
 of tracked staged/unstaged changes against HEAD. Untracked contents are not included, and
 the preview is not an immutable snapshot. Refresh it to review newer work.

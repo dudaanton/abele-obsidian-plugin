@@ -2,6 +2,7 @@ import type { RenderPolicy } from '@/markdown/renderUntrusted'
 
 /** Node-relative links/embeds cannot read or navigate the vault by coincidentally equal paths. */
 export const nodeMarkdownPolicy: RenderPolicy = {
+  messageCards: false,
   before: (root) => {
     for (const embed of Array.from(root.querySelectorAll('.internal-embed'))) {
       const path =

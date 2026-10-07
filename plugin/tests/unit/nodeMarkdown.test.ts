@@ -2,6 +2,20 @@ import { expect, it, vi } from 'vitest'
 // The renderer adapter uses Obsidian's window-local DOM helpers.
 import 'obsidian'
 import { nodeMarkdownClick, nodeMarkdownPolicy } from '@/node/markdown'
+import { markUntrusted, untrustedGuard } from '@/markdown/renderUntrusted'
+import { useVault } from '../helpers/testEnv'
+
+it('suppresses message cards in raw code markup before processors can resolve nested vault resources', () => {
+  useVault([])
+  const root = document.createElement('div')
+  root.innerHTML =
+    '<pre class="language-ABELE-MESSAGE"><code class="language-abele-message">![[sample-local-note.md]]</code></pre>'
+  markUntrusted(root, nodeMarkdownPolicy)
+  untrustedGuard(root, {} as never)
+  expect(root.querySelector('pre')?.className).toBe('')
+  expect(root.querySelector('code')?.className).toBe('')
+  expect(root.textContent).toContain('![[sample-local-note.md]]')
+})
 
 it('routes internal and relative resources to the node rather than same-named vault files', () => {
   const root = document.createElement('div')
