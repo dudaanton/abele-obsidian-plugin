@@ -11,6 +11,8 @@
  * would end the script.
  */
 
+import { outwardBoxShadowReach } from '../../helpers/focusRingPaint'
+
 /** What one screen says about itself. */
 export interface Screen {
   /** Class names of elements past the right edge of the root, with how far past. */
@@ -102,8 +104,7 @@ export const probePrelude = (shots: string): string => `
   const ringClipped = (field) => {
     const view = field.ownerDocument.defaultView
     const cs = view.getComputedStyle(field)
-    const nums = (cs.boxShadow.match(/-?\\d+(\\.\\d+)?px/g) || []).map(parseFloat)
-    const shadow = nums.length >= 4 ? Math.max(0, nums[2]) + Math.max(0, nums[3]) : 0
+    const shadow = (${outwardBoxShadowReach.toString()})(cs.boxShadow)
     const outline = cs.outlineStyle !== 'none' ? parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset || '0') : 0
     const reach = Math.max(shadow, outline)
     if (reach <= 0) return []
