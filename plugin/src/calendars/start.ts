@@ -31,13 +31,17 @@ export function startCalendars(plugin: Plugin): CalendarService {
         config.editSettings(() => {
           config.calendarCompletion = marks
         })
+        // The checkbox/list updates from local intent, not from queued settings IO.
+        service.state.version++
         try {
           await config.saveSettings()
         } catch (e) {
-          if (config.calendarCompletion === marks)
+          if (config.calendarCompletion === marks) {
             config.editSettings(() => {
               config.calendarCompletion = before
             })
+            service.state.version++
+          }
           throw e
         }
       },

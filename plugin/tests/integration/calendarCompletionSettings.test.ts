@@ -6,6 +6,11 @@ import { completionKey } from '@/calendars/completion'
 import { parseIcs } from '@/calendars/ics'
 import { FakeSettings } from '../helpers/fakeSettings'
 import { useVault } from '../helpers/testEnv'
+import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import CalendarEventView from '@/components/CalendarEvent.vue'
+import { newFeed } from '@/calendars/settings'
+import { deferred } from '../helpers/deferred'
 
 const config = AbeleConfig.getInstance()
 const disposals: Array<() => void> = []
@@ -53,6 +58,78 @@ async function start() {
 
 describe('calendar marks while shared settings are being read', () => {
   it.each([true, false])(
+    'updates the visible done=%s checkbox before a slow settings read can finish',
+    async (done) => {
+      const { disk, service } = await start()
+      if (!done) await service.setDone(events[0], true)
+      const read = disk.delays.holdNext('load')
+      const reading = config.reloadSettings()
+      await read.entered
+      const view = mount(CalendarEventView, {
+        props: {
+          event: events[0],
+          feed: { ...newFeed([]), id: 'sample-feed', name: 'Sample calendar' },
+          day: '2026-04-10',
+        },
+      })
+      const requested = deferred<void>()
+      const save = config.saveSettings.bind(config)
+      vi.spyOn(config, 'saveSettings').mockImplementation(() => {
+        const writing = save()
+        requested.resolve()
+        return writing
+      })
+      const editing = service.setDone(events[0], done)
+      let completed = false
+      void editing.then(() => {
+        completed = true
+      })
+      try {
+        await requested.promise
+        await nextTick()
+        expect(completed).toBe(false) // Persistence is deliberately waiting behind the read.
+        expect(service.isDone(events[0])).toBe(done)
+        expect((view.find('input').element as HTMLInputElement).checked).toBe(done)
+        expect(view.classes().includes('is-checked')).toBe(done)
+        read.release()
+        await Promise.all([reading, editing])
+        expect((view.find('input').element as HTMLInputElement).checked).toBe(done)
+      } finally {
+        read.release()
+        await Promise.all([reading, editing])
+        view.unmount()
+      }
+    }
+  )
+  it('redraws a visible calendar mark when its queued save fails and rolls back', async () => {
+    const { disk, service } = await start()
+    const write = disk.delays.holdNext('save')
+    const view = mount(CalendarEventView, {
+      props: {
+        event: events[0],
+        feed: { ...newFeed([]), id: 'sample-feed', name: 'Sample calendar' },
+        day: '2026-04-10',
+      },
+    })
+    const editing = service.setDone(events[0], true)
+    const failure = expect(editing).rejects.toThrow('Sample save failure')
+    try {
+      await write.entered
+      await nextTick()
+      expect((view.find('input').element as HTMLInputElement).checked).toBe(true)
+      write.reject(new Error('Sample save failure'))
+      await failure
+      await nextTick()
+      expect(service.isDone(events[0])).toBe(false)
+      expect((view.find('input').element as HTMLInputElement).checked).toBe(false)
+    } finally {
+      write.release()
+      await failure
+      view.unmount()
+    }
+  })
+
+  it.each([true, false])(
     'keeps a later local done=%s edit after an older read returns, and on the next save',
     async (done) => {
       const { disk, service } = await start()
@@ -73,11 +150,19 @@ describe('calendar marks while shared settings are being read', () => {
       })
       const reading = config.reloadSettings()
 
-      await service.setDone(events[0], done)
+      const requested = deferred<void>()
+      const save = config.saveSettings.bind(config)
+      vi.spyOn(config, 'saveSettings').mockImplementation(() => {
+        const writing = save()
+        requested.resolve()
+        return writing
+      })
+      const editing = service.setDone(events[0], done)
+      await requested.promise // Local intent is applied; the queued disk write is not awaited.
       expect(service.isDone(events[0])).toBe(done)
-      expect(disk.saved.at(-1)?.calendarCompletion).toEqual(config.calendarCompletion)
       finishRead()
-      await reading
+      await Promise.all([reading, editing])
+      expect(disk.saved.at(-1)?.calendarCompletion).toEqual(config.calendarCompletion)
 
       expect(service.isDone(events[0])).toBe(done)
       expect(service.isDone(events[1])).toBe(false)
