@@ -849,7 +849,35 @@ silently reattaches somebody's conversation to different text. Editing the note 
 marker is fine — surviving that is what it is for. To change the commented passage itself, use
 `edit_selection` rather than `edit`: it moves the stored quote with the text.
 
-Each comment is a chat file of its own at `AI/Comments/<id>.abchat` — the folder is
+### Free-form text comments
+
+Human comments use the same `%%c:<ids>%%` anchor tokens, but are **not chats**. Each thread
+is versioned JSON at `<commentFolder>/<id>.abcomment` (default `AI/Comments`), next to AI
+comments, never in chat history. Only the token enters the Markdown note. One thread owns
+`anchor: { note, quote }`, `appearance` (one of the nine note highlight colours or `underline`)
+and an ordered `entries` array. Every entry has a stable six-character `id`, Markdown `body`,
+immutable full UTC ISO `createdAt` and optional full UTC ISO `editedAt`. The file also stores
+`version: 1` and its six-character thread `id`, which must match its basename. Unsupported
+versions, invalid timestamps, duplicate entry ids and malformed JSON are refused, not rewritten.
+
+The thread file is created before the marker is published. A failure between the writes leaves
+an orphan file which can be reopened and retried; retrying does not duplicate the entry or
+marker. Cancelling an unsaved comment creates neither file nor marker. Writes compare the
+current file revision to the revision read, refusing stale external changes rather than
+silently overwriting them. Note and folder renames update anchors, including unloaded threads.
+Removing one entry preserves its siblings; removing the final entry removes only that thread's
+marker id and trashes its file. Manually removing a marker never collects the thread file.
+
+Anchoring is exact, not fuzzy: text immediately before the marker, then the nearest exact
+quote, otherwise an unresolved point marker. Changes before a passage survive; replacing the
+passage may leave it unresolved. AI and human ids at one marker keep separate icons and counts.
+These files are JSON system files, not ordinary Markdown notes or AI conversations. Media
+cleanup scans their bodies so an image used only in a comment is not considered unused. With
+Obsidian Sync, enable syncing other file types to carry `.abcomment` files to another device.
+
+### AI discussions
+
+Each AI comment is a chat file of its own at `AI/Comments/<id>.abchat` — the folder is
 `commentFolder` in the settings — in the same format as any other `.abchat`. The quoted
 passage lives there, as `anchor.quote` in the file's metadata, together with `anchor.note`,
 the note the marker sits in. The note carries the marker and nothing else. A discussion in a

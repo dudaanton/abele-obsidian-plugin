@@ -75,7 +75,7 @@ export async function mergeMediaFiles(
   const plans: { file: TFile; before: string; after: string }[] = []
   const expectedSources = new Map<string, string>()
   const isSource = (file: TFile) =>
-    ['md', 'svg', 'abchat', 'json', 'jsonl', 'canvas', 'base', 'yaml', 'yml'].includes(
+    ['md', 'svg', 'abchat', 'abcomment', 'json', 'jsonl', 'canvas', 'base', 'yaml', 'yml'].includes(
       file.extension.toLowerCase()
     )
   // Prepare every rewrite before touching anything. Structured attachments and unsupported

@@ -4,7 +4,16 @@ import { markdownLinkTargets } from './markdownLinkTargets'
 import { SCAN_MEDIA_EXTENSIONS as MEDIA_EXTENSIONS } from '@/media/extensions'
 
 /** Formats whose references are not included in Obsidian's Markdown link index. */
-const STRUCTURED = new Set(['abchat', 'json', 'jsonl', 'canvas', 'base', 'yaml', 'yml'])
+const STRUCTURED = new Set([
+  'abchat',
+  'abcomment',
+  'json',
+  'jsonl',
+  'canvas',
+  'base',
+  'yaml',
+  'yml',
+])
 
 export function resolveMediaTarget(app: App, target: string, source: string): string | null {
   const paths = resolveMediaTargets(app, target, source)
