@@ -6,6 +6,10 @@ import { conversationLines, firstQuestion, renderLines } from './chatText'
 import type { ChatMessage, CommentAnchor } from './types'
 import type { ReplyHighlight } from './replyAnnotations'
 import { HIGHLIGHT_COLORS } from '@/reader/highlights'
+import type { RenderedRange, TextProjection } from '@/selection/types'
+import { validRenderedRange } from '@/selection/revisionMapping'
+
+export const CHAT_TEXT_PROJECTION_VERSION = 'chat-text-v1'
 
 /**
  * Comments asked about a passage of an agent's answer, inside a chat.
@@ -239,6 +243,33 @@ export function flashMessagePassage(
       // Repainted or unmounted while the flash was running: only unwrap our own nodes.
       if (root.contains(mark)) mark.replaceWith(...Array.from(mark.childNodes))
     }
+  }, 2500)
+  return first
+}
+
+/** Anchor navigation has no quote-search fallback, even if the same words still exist. */
+export function flashExactSelection(
+  root: HTMLElement,
+  projection: TextProjection,
+  range: RenderedRange
+): HTMLElement | null {
+  for (const el of Array.from(root.querySelectorAll('[data-selection-return]')))
+    el.replaceWith(...Array.from(el.childNodes))
+  root.normalize()
+  if (
+    projection.version !== CHAT_TEXT_PROJECTION_VERSION ||
+    messageRenderedText(root) !== projection.text ||
+    !validRenderedRange(projection.text, range) || range.start === range.end
+  ) return null
+  let first: HTMLElement | null = null
+  wrap(root, range.start, range.end, 'abele-footnote-flash', (span) => {
+    span.dataset.selectionReturn = ''
+    first ??= span
+  })
+  const marks = Array.from(root.querySelectorAll<HTMLElement>('[data-selection-return]'))
+  root.ownerDocument.defaultView?.setTimeout(() => {
+    for (const mark of marks)
+      if (root.contains(mark)) mark.replaceWith(...Array.from(mark.childNodes))
   }, 2500)
   return first
 }

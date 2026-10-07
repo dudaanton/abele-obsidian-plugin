@@ -45,6 +45,20 @@ export class ChatStorage {
     return ChatStorage.instance
   }
 
+  private selectionIdentities = new Map<string, string | undefined>()
+
+  /** Rebuild from all chat files, not history: unopened and nested discussions count too. */
+  async selectionIdentityIndex(): Promise<{ path: string; chatId?: string }[]> {
+    const { app } = GlobalStore.getInstance()
+    const next = new Map<string, string | undefined>()
+    for (const file of app.vault.getFiles().filter((file) => file.extension === 'abchat')) {
+      const metadata = parseChatMetadata(await app.vault.read(file))
+      next.set(file.path, metadata?.type === 'abele-chat' ? metadata.chatId : undefined)
+    }
+    this.selectionIdentities = next
+    return [...this.selectionIdentities].map(([path, chatId]) => ({ path, chatId }))
+  }
+
   private resolveChatPath(title: string): string {
     const template = AbeleConfig.getInstance().ai.chatFolder
     const name = title.replace(/[\\/:*?"<>|]/g, '-')

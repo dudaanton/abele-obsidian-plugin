@@ -18,6 +18,31 @@ export function getPathToLeaf(messages: ChatMessage[], leafId: string): ChatMess
   return path
 }
 
+/** Keep a containing branch; otherwise use a stable oldest descendant, never a quote match. */
+export function selectionReturnLeaf(
+  messages: ChatMessage[],
+  messageId: string,
+  activePath: readonly string[]
+): string | undefined {
+  if (!messages.some((message) => message.id === messageId)) return undefined
+  if (activePath.includes(messageId)) return activePath.at(-1)
+  const byId = new Map(messages.map((message) => [message.id, message]))
+  const contains = (leaf: ChatMessage) => {
+    const seen = new Set<string>()
+    let current: ChatMessage | undefined = leaf
+    while (current && !seen.has(current.id)) {
+      if (current.id === messageId) return true
+      seen.add(current.id)
+      current = current.parentId ? byId.get(current.parentId) : undefined
+    }
+    return false
+  }
+  const parents = new Set(messages.map((message) => message.parentId))
+  return messages
+    .filter((message) => !parents.has(message.id) && contains(message))
+    .sort((a, b) => a.timestamp - b.timestamp || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0]?.id
+}
+
 /**
  * Find all messages that share the same parentId as the given message (including itself).
  * Sorted by timestamp to keep stable ordering.
