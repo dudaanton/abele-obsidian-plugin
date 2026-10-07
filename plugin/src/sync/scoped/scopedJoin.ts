@@ -3,6 +3,15 @@ import type { LocalStorage } from '../ledgerId'
 export const SCOPED_JOIN_ENABLED = true
 export const SCOPED_JOIN_KEY = 'abele-sync-scoped-join'
 export const SCOPED_CONNECTION_KEY = 'abele-sync-scoped-connection'
+export class ScopedJoinError extends Error {
+  constructor(readonly code: 'personal_connected' | 'invalid_invitation') {
+    super(
+      code === 'personal_connected'
+        ? 'This vault is already connected to personal sync or has retained connection records.'
+        : 'The invitation code is invalid or expired.'
+    )
+  }
+}
 export interface ScopedInvitation {
   issuer: string
   token: string
@@ -156,19 +165,26 @@ export class ScopedJoinFlow {
       deviceTokenId?: string
       pendingRevoke?: unknown[]
     } | null
+    const ledger = this.storage.loadLocalStorage('abele-sync-ledger')
+    const forgotten =
+      ledger !== null &&
+      typeof ledger === 'object' &&
+      JSON.stringify(Object.keys(ledger).sort()) === JSON.stringify(['stateId', 'vaultId']) &&
+      (ledger as { stateId?: unknown }).stateId === '' &&
+      (ledger as { vaultId?: unknown }).vaultId === ''
     if (
       c?.vaultId ||
       c?.deviceTokenId ||
       c?.pendingRevoke?.length ||
+      (ledger != null && !forgotten) ||
       [
-        'abele-sync-ledger',
         'abele-sync-ledger-proof',
         'abele-sync-ledger-bootstrap',
         'abele-sync-ledger-cleanup',
         'abele-script-provenance',
       ].some((k) => this.storage.loadLocalStorage(k) != null)
     )
-      throw new Error('Existing personal connection/retained ledger left untouched')
+      throw new ScopedJoinError('personal_connected')
   }
   async begin(invitation: ScopedInvitation): Promise<void> {
     this.fence()
@@ -187,7 +203,7 @@ export class ScopedJoinFlow {
       !i.name.trim() ||
       !['reader', 'editor'].includes(i.role)
     )
-      throw new Error('Invalid scoped invitation')
+      throw new ScopedJoinError('invalid_invitation')
     const invitationId = 'abele-scoped-invitation-' + crypto.randomUUID()
     this.secrets.set(invitationId, i.token)
     if (this.secrets.get(invitationId) !== i.token)

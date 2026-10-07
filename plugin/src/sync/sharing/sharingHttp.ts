@@ -35,12 +35,17 @@ export class SharingHttp {
     const headers: Record<string, string> = { 'cache-control': 'no-cache, no-store' }
     if (token) headers.authorization = 'Bearer ' + token
     if (body !== undefined) headers['content-type'] = 'application/json'
-    const response = await this.options.fetch(this.baseUrl + path, {
-      method,
-      headers,
-      redirect: 'manual',
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    })
+    let response: Response
+    try {
+      response = await this.options.fetch(this.baseUrl + path, {
+        method,
+        headers,
+        redirect: 'manual',
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      })
+    } catch {
+      throw new SharingHttpError('network_unavailable', 0)
+    }
     this.fence()
     if (response.status >= 300 && response.status < 400)
       throw new SharingHttpError('redirect_refused', response.status)

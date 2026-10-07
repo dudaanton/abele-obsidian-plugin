@@ -64,6 +64,22 @@ const invite = {
   platform: 'desktop' as const,
 }
 describe('disabled invitation single-connection join', () => {
+  it('joins after Forget without removing any retained personal evidence', async () => {
+    const s = setup()
+    s.local.set('abele-sync-ledger', { stateId: '', vaultId: '' })
+    await s.make().begin(invite)
+    expect(await s.make().resume('invented-password')).toMatchObject({ phase: 'joined' })
+    expect(s.local.get('abele-sync-ledger')).toEqual({ stateId: '', vaultId: '' })
+  })
+  it.each([{ stateId: '', vaultId: 'retained' }, {}, { stateId: '', vaultId: '', extra: true }])(
+    'refuses ambiguous ledger evidence %j',
+    async (ledger) => {
+      const s = setup()
+      s.local.set('abele-sync-ledger', ledger)
+      await expect(s.make().begin(invite)).rejects.toThrow()
+      expect(s.port.login).not.toHaveBeenCalled()
+    }
+  )
   it('explicitly disabled fence sends/stores nothing', async () => {
     const s = setup(),
       flow = new ScopedJoinFlow(s.storage, s.secrets, s.port, () => false)

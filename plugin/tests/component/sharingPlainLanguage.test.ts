@@ -384,6 +384,25 @@ it('shows a joined connection and its edit permission without its internal ID', 
   }
 })
 
+it.each([
+  [{ code: 'personal_connected' }, 'This vault is already connected to personal sync'],
+  [{ code: 'invalid_invitation' }, 'The invitation code is invalid or expired'],
+  [{ code: 'network_unavailable' }, 'Could not reach the server'],
+])('explains the actual join failure in plain words', async (failure, message) => {
+  const join = { begin: vi.fn(), resume: vi.fn().mockRejectedValue(failure), close: vi.fn() }
+  const screen = mount(ScopedInvitationModal, { props: { flow: join } as never, global })
+  try {
+    await screen
+      .findAll('button')
+      .find((button) => button.text() === 'Join group')!
+      .trigger('click')
+    await flushPromises()
+    expect(screen.find('[role="alert"]').text()).toContain(message)
+  } finally {
+    screen.unmount()
+  }
+})
+
 it('keeps raw diagnostic strings out of a failed sharing review', async () => {
   const folder = {
     ...flow(),

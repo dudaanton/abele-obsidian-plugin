@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { LoginResponseSchema } from '@abele/sync-protocol'
-import { SharingHttp, type SharingHttpOptions } from '../sharing/sharingHttp'
+import { SharingHttp, SharingHttpError, type SharingHttpOptions } from '../sharing/sharingHttp'
 import {
   SCOPED_JOIN_ENABLED,
+  ScopedJoinError,
   type ScopedJoinPort,
   type ScopedMember,
   type ScopedInstallation,
@@ -66,11 +67,19 @@ export class GroupJoinHttp {
     this.issuer(issuer)
     this.account(token)
     if (!/^absinv_[A-Za-z0-9_-]{43}$/.test(invitation)) throw new Error('Invalid scoped invitation')
-    const r = accepted.parse(
-      await this.http.json('POST', '/v1/invitations/accept', token, {
+    const r = await this.http
+      .json('POST', '/v1/invitations/accept', token, {
         invitation_token: invitation,
       })
-    )
+      .then((value) => accepted.parse(value))
+      .catch((error) => {
+        if (
+          error instanceof SharingHttpError &&
+          ['not_found', 'invalid_invitation', 'invitation_expired'].includes(error.code)
+        )
+          throw new ScopedJoinError('invalid_invitation')
+        throw error
+      })
     return { grantId: r.grant_id, memberId: r.member_id, role: r.role }
   }
   async discover(issuer: string, token: string): Promise<ScopedMember[]> {

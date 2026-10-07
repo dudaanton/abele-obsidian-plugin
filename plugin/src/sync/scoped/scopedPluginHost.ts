@@ -32,6 +32,7 @@ import {
   type NativeSponsor,
 } from './scopedCreation'
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
+import { scopedSecretPort } from './scopedSecretSlots'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 const CREATION_JOURNAL = 'scoped-creation-journal-v1'
@@ -42,13 +43,6 @@ interface CreationJournal {
   sha: string
   size: number
   requestId: string | null
-}
-/** Map the existing scoped flow's private proof slots into Obsidian's keychain alphabet.
- * Neither invitation/installation credentials nor their proofs enter the ordinary synced store. */
-function slot(id: string) {
-  if (!/^abele-scoped-(?:invitation|installation)-[a-z0-9-]+(?::(?:binding|accepted))?$/.test(id))
-    throw new Error('Unexpected scoped keychain slot')
-  return id.replaceAll(':', '-')
 }
 interface Runtime {
   connection: ScopedLocalConnection
@@ -98,14 +92,15 @@ export class ScopedPluginHost {
     return task
   }
   private token(c: ScopedLocalConnection) {
-    const token = secrets().getLocal(slot(c.tokenId))
+    const road = scopedSecretPort(secrets())
+    const token = road.get(c.tokenId)
     if (
       c.version !== 4 ||
       c.facet !== 'scoped' ||
       c.principalKind !== 'installation' ||
       c.scriptPolicy !== 'refuse' ||
       !/^absi_[A-Za-z0-9_-]{43}$/.test(token) ||
-      secrets().getLocal(slot(c.tokenId + ':binding')) !== JSON.stringify({ connection: c, token })
+      road.get(c.tokenId + ':binding') !== JSON.stringify({ connection: c, token })
     )
       throw new Error('Scoped installation credential/binding requires recovery')
     return token
@@ -305,14 +300,7 @@ export class ScopedPluginHost {
         })
       },
     }
-    const flow = new ScopedJoinFlow(
-      this.app,
-      {
-        get: (id) => secrets().getLocal(slot(id)),
-        set: (id, value) => secrets().setLocal(slot(id), value),
-      },
-      port
-    )
+    const flow = new ScopedJoinFlow(this.app, scopedSecretPort(secrets()), port)
     const resume = flow.resume.bind(flow)
     flow.resume = (password) =>
       this.serial(async () => {
