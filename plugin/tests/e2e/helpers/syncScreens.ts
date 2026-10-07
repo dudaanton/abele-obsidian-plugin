@@ -74,15 +74,15 @@ export const heldScreens = (suffix: string): string => `
     !!modal.ownerDocument.elementFromPoint(actions.left + actions.width / 2, below)?.closest('.abele-held-deletes__paths')
   out[label].extra = { ...buttonFacts(modal), more: textOf(modal.querySelector('.abele-held-deletes__more')), visibleBelowActions }
   await press(modal, 'Delete everywhere')
-  if (!(await until(() => modalOf('.abele-confirm'), 5000))) throw new Error('no confirmation')
+  if (!(await until(() => modalOf('.abele-confirm__message'), 5000))) throw new Error('no confirmation')
   await wait(300)
-  const confirm = modalOf('.abele-confirm')
+  const confirm = modalOf('.abele-confirm__message')
   const confirmLabel = 'held deletes confirm' + ${JSON.stringify(suffix)}
   out[confirmLabel] = await screen(confirmLabel, confirm, confirm)
-  out[confirmLabel].extra = buttonFacts(confirm, '.abele-confirm__actions button')
+  out[confirmLabel].extra = buttonFacts(confirm, '.abele-modal__footer button')
   await press(confirm, 'Cancel')
   await wait(300)
-  out[confirmLabel].extra.sheetStays = !!modalOf('.abele-held-deletes') && !modalOf('.abele-confirm')
+  out[confirmLabel].extra.sheetStays = !!modalOf('.abele-held-deletes') && !modalOf('.abele-confirm__message')
   await closeDialog()
   return out
 `
@@ -158,12 +158,12 @@ export const restoreSinceScreens = (suffix: string, trashed: number): string => 
   await wait(300)
   const restore = [...row.querySelectorAll('button')].pop()
   restore.click()
-  if (!(await until(() => modalOf('.abele-confirm'), 5000))) throw new Error('no confirmation: ' + textOf(restore))
+  if (!(await until(() => modalOf('.abele-confirm__message'), 5000))) throw new Error('no confirmation: ' + textOf(restore))
   await wait(300)
-  const confirm = modalOf('.abele-confirm')
+  const confirm = modalOf('.abele-confirm__message')
   const confirmLabel = 'restore since confirm' + ${JSON.stringify(suffix)}
   out[confirmLabel] = await screen(confirmLabel, confirm, confirm)
-  out[confirmLabel].extra = buttonFacts(confirm, '.abele-confirm__actions button')
+  out[confirmLabel].extra = buttonFacts(confirm, '.abele-modal__footer button')
   await press(confirm, 'Cancel')
   await closeDialog()
   return out
@@ -216,11 +216,11 @@ export const syncTabScreens = (
     out[${JSON.stringify(label)} + ' ' + i].extra = headerFacts()
   }
   const confirmed = async (name) => {
-    if (!(await until(() => modalOf('.abele-confirm', doc), 5000))) throw new Error('no confirmation for ' + name)
+    if (!(await until(() => modalOf('.abele-confirm__message', doc), 5000))) throw new Error('no confirmation for ' + name)
     await wait(300)
-    const box = modalOf('.abele-confirm', doc)
+    const box = modalOf('.abele-confirm__message', doc)
     out[name] = await screen(name, box, box)
-    out[name].extra = buttonFacts(box, '.abele-confirm__actions button')
+    out[name].extra = buttonFacts(box, '.abele-modal__footer button')
     await press(box, 'Cancel')
     await wait(300)
   }
