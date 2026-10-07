@@ -67,7 +67,11 @@ export async function activateScriptProvenance(
   if (!storage) throw new Error('Durable local script provenance storage is unavailable')
   const raw = storage.loadLocalStorage(SCRIPT_TRUST_KEY) ?? null
   const marker = await app.vault.adapter.exists(SCRIPT_SENTINEL)
-  if (raw === null && marker) throw new Error('Script provenance is missing; recovery is required')
+  if (raw === null && marker && !storage.loadLocalStorage(CONNECTION_KEY))
+    throw new Error('Script provenance is missing; recovery is required')
+  // A copied vault can carry the marker without this device's descriptor. The current
+  // connection below must prove its binding before allocating an independent empty store.
+  // Never read authority from the marker or reuse another device's identities/approvals.
   const fresh = raw === null
   const id = fresh ? newStateId() : descriptor(raw).id
   const value: Descriptor = { id, binding: { ...binding, localVault: id } }

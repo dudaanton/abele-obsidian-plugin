@@ -1140,7 +1140,12 @@ separate device-local IndexedDB database, selected by `abele-script-provenance` 
 local storage—not in `data.json` or a transferable settings section. Rename, restore and
 adoption do not make received bytes into trusted local code. A missing store behind a marker
 requires recovery; never delete the marker to bypass a hold. The marker carries no approval
-and a copied marker does not authorize another vault/device.
+and a copied marker does not authorize another vault/device. If a connected new device has
+only a copied marker and no local descriptor, sync allocates a new empty provenance namespace
+under the verified current connection. The marker's bytes are never read as identity or trust.
+Sync continues; scripts remain blocked until durable file identities arrive and the exact
+script bytes receive this device's ordinary confirmation. A retained descriptor whose database
+is missing still holds recovery rather than inheriting foreign approvals.
 
 A saved sync connection without its ledger descriptor, or with empty/evicted ledger storage,
 stops with **Sync recovery required**, before creating an engine, uploading/deleting files or

@@ -418,3 +418,22 @@ it('does not publish a recipient-planted private link when the owner resaves it'
   await peer.plugin.syncSharing.scoped.sync()
   expect(await peer.app.vault.adapter.exists('Assets/planted-private.png')).toBe(false)
 }, 30000)
+
+it('continues production personal sync with a copied script marker and no local provenance descriptor', async () => {
+  const device = await bootProductionPlugin(code)
+  try {
+    await device.app.vault.adapter.write('.abele-script-managed', 'Untrusted copied marker')
+    await device.app.vault.create('sample-arrived.md', 'Sample arriving vault contents')
+    const sync = device.plugin.syncSharing.sync
+    await sync.connect(server.url, email, password)
+    await sync.chooseVault({ create: 'Sample marker recovery vault' }, 'Sample new device')
+    await sync.syncNow()
+    expect(sync.status.value.state).toBe('idle')
+    expect(await sync.entryFor('sample-arrived.md')).not.toBeNull()
+    expect(device.app.loadLocalStorage('abele-script-provenance')).toMatchObject({
+      binding: { facet: 'personal', principal: sync.connection.value.deviceId },
+    })
+  } finally {
+    await device.close()
+  }
+}, 30000)

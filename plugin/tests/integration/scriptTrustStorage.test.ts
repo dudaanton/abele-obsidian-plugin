@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { sha256 } from '@abele/sync-core'
+import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -43,6 +45,53 @@ describe('script provenance persistence adapter', () => {
       /missing/
     )
   })
+  it('restarts provenance on a connected new device without inheriting a copied marker or approvals', async () => {
+    const factory = new IDBFactory()
+    vi.stubGlobal('indexedDB', factory)
+    const path = 'Scripts/sample.js',
+      source = '// @name Sample\nreturn "sample"'
+    const oldApp = buildFakeVault([{ path, content: source }]) as unknown as App
+    setScriptConnection(oldApp, binding)
+    const old = await activateScriptProvenance(oldApp, binding, factory)
+    await old.provenance.record(path, 'sample-file')
+    const sha = await sha256(new TextEncoder().encode(source))
+    await old.provenance.approve(path, (await old.provenance.lookup(path))!, sha)
+    const copied = oldApp.loadLocalStorage(SCRIPT_TRUST_KEY)
+    old.store.close()
+    const app = buildFakeVault([
+      { path: SCRIPT_SENTINEL, content: JSON.stringify(copied) },
+      { path, content: source },
+    ]) as unknown as App
+    const nextBinding = { ...binding, principal: 'sample-new-device' }
+    setScriptConnection(app, nextBinding)
+    try {
+      await expect(scriptForExecution(app, path)).rejects.toThrow(/provenance.*missing/i)
+      const next = await activateScriptProvenance(app, nextBinding, factory)
+      try {
+        expect(next.provenance.binding.localVault).not.toBe((copied as any).id)
+        expect(await next.provenance.lookup(path)).toBeNull()
+        await expect(scriptForExecution(app, path)).rejects.toThrow(/unknown.*blocked/)
+        await next.provenance.record(path, 'sample-file') // Ordinary durable sync receipt, not the marker.
+      } finally {
+        next.store.close()
+      }
+      await expect(scriptForExecution(app, path)).rejects.toThrow(/approval/)
+      const confirm = vi.fn(async () => true)
+      await expect(scriptForExecution(app, path, confirm)).resolves.toMatchObject({ path })
+      expect(confirm).toHaveBeenCalledOnce()
+      const reopened = await scriptTrustFor(app, factory)
+      try {
+        expect(
+          await reopened!.provenance.approved((await reopened!.provenance.lookup(path))!, sha)
+        ).toBe(true)
+      } finally {
+        reopened!.store.close()
+      }
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('leaves an unconnected ordinary local vault alone', async () => {
     const app = buildFakeVault([]) as unknown as App
     expect(await scriptTrustFor(app, new IDBFactory())).toBeNull()
