@@ -133,6 +133,37 @@ export async function transformChat(
   })
 }
 
+function tornChat(text: string, parsed: ParsedChat): boolean {
+  return (
+    parsed.torn || parsed.damaged > 0 || !text.trim() || (parsed.version === 1 && !parsed.metadata)
+  )
+}
+
+function recoverableChat(text: string, current: ParsedChat, copy: ParsedChat): boolean {
+  return (
+    copy.version === 2 &&
+    !copy.torn &&
+    copy.damaged === 0 &&
+    tornChat(text, current) &&
+    copy.records >= current.records
+  )
+}
+
+/** Read-only discovery: a live writer's safety copy must never be repaired or removed here. */
+export async function inspectChat(app: App, file: TFile): Promise<ParsedChat> {
+  const text = await app.vault.read(file)
+  const current = parseChat(text)
+  if (!tornChat(text, current)) return current
+  const adapter = app.vault.adapter
+  const path = chatCopyPath(app, file.path)
+  if (!(await adapter.exists(path))) return current
+  const raw = await adapter.read(path)
+  const cut = raw.indexOf('\n')
+  if (cut === -1 || raw.slice(0, cut) !== file.path) return current
+  const copy = parseChat(raw.slice(cut + 1))
+  return recoverableChat(text, current, copy) ? copy : current
+}
+
 /**
  * The chat, from its file or from the copy a rewrite left behind — whichever holds it whole.
  *
@@ -146,14 +177,7 @@ export async function readChat(app: App, file: TFile): Promise<ParsedChat> {
   const text = await readChatText(app, file, (text, content) => {
     const parsed = parseChat(text)
     const copy = parseChat(content)
-    // Emptied and killed before the first piece landed reads as no chat at all: torn too.
-    const fileTorn =
-      parsed.torn ||
-      parsed.damaged > 0 ||
-      !text.trim() ||
-      (parsed.version === 1 && !parsed.metadata)
-    const copyWhole = copy.version === 2 && !copy.torn && copy.damaged === 0
-    const recover = copyWhole && fileTorn && copy.records >= parsed.records
+    const recover = recoverableChat(text, parsed, copy)
     result = recover ? copy : parsed
     return recover
   })

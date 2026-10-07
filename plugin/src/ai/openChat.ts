@@ -12,7 +12,7 @@ import { captureChatSelection } from '@/selection/anchors'
 import { parseAnchorLink, resolveAnchorPath } from '@/selection/anchorLinks'
 import { prepareSelectionBacklink, resolveAnchorReturn } from './chatAnchorNavigation'
 import { ChatStorage } from './ChatStorage'
-import { readChat } from './chatCopy'
+import { inspectChat } from './chatCopy'
 import { CHAT_TEXT_PROJECTION_VERSION } from './messageComments'
 import { replyMarkdownText } from './replyMarkdown'
 import type { ChatSession } from './ChatSession'
@@ -132,7 +132,7 @@ export async function openSelectionLink(href: string): Promise<void> {
     // Validate again after a choice: a file can change while a dialog is open.
     if (
       !(file instanceof TFile) ||
-      (await readChat(app, file)).metadata?.chatId !== parsed.address.chatId
+      (await inspectChat(app, file)).metadata?.chatId !== parsed.address.chatId
     ) {
       new Notice('The selection source changed. Open the link again.')
       return

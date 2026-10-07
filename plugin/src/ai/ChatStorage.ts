@@ -7,7 +7,7 @@ import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
 import { RunStorage } from './RunStorage'
-import { readChat, rewriteChat } from './chatCopy'
+import { inspectChat, readChat, rewriteChat } from './chatCopy'
 import { ChatService } from './ChatService'
 import {
   parseChat,
@@ -52,7 +52,7 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
     const next = new Map<string, string | undefined>()
     for (const file of app.vault.getFiles().filter((file) => file.extension === 'abchat')) {
-      const { metadata } = await readChat(app, file)
+      const { metadata } = await inspectChat(app, file)
       next.set(file.path, metadata?.type === 'abele-chat' ? metadata.chatId : undefined)
     }
     this.selectionIdentities = next
