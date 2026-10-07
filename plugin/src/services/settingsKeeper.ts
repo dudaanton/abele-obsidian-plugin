@@ -1,5 +1,6 @@
 import { Notice } from 'obsidian'
 import { SettingsEdits, settingsSnapshot } from './settingsEdits'
+import { ManagedSettingsValue } from './managedSettingsValue'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import type { AiChatHistoryEntry } from '@/ai/types'
 import type AbelePlugin from '@/main'
@@ -128,9 +129,7 @@ export class SettingsKeeper {
    * field patches until every read that could return an older snapshot has been reconciled.
    */
   private fileQueue: Promise<unknown> = Promise.resolve()
-  /** Managed values are retained atomically from request through acknowledgment and old reads. */
-  private managedGeneration = 0
-  private managedWrite: { generation: number; value: unknown; pending: boolean } | null = null
+  private readonly managedStore = new ManagedSettingsValue()
 
   constructor(private readonly host: SettingsHost) {}
 
@@ -140,7 +139,7 @@ export class SettingsKeeper {
     this.onDisk = null
     this.base = null
     this.saveCapture = null
-    this.managedWrite = null
+    this.managedStore.reset()
     this.stamp = null
     this.unannounced = false
   }
@@ -160,6 +159,7 @@ export class SettingsKeeper {
     // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
     // parse, and that is still somebody's settings.
     const finishRead = this.host.edits().beginRead()
+    const managedRead = this.managedStore.beginRead()
     try {
       const stamp = await this.readStamp()
       const stored: unknown = await this.host.plugin().loadData()
@@ -172,7 +172,7 @@ export class SettingsKeeper {
           : null
       const index = await this.host.index.read(this.host.plugin())
       this.host.index.onDisk = index !== null
-      await this.take(stored, stored, () => index ?? [], stamp)
+      await this.take(stored, stored, () => index ?? [], stamp, managedRead)
     } finally {
       finishRead()
     }
@@ -202,7 +202,7 @@ export class SettingsKeeper {
     settings: unknown,
     index: () => AiChatHistoryEntry[],
     stamp: string | null,
-    readGeneration = this.managedGeneration
+    managedRead: object | null
   ): Promise<void> {
     this.loadedSync =
       file === null || file === undefined ? null : { sync: (file as { sync?: unknown }).sync }
@@ -221,7 +221,7 @@ export class SettingsKeeper {
     const tools = Object.keys(candidates).length ? await codeToolDescriptions() : {}
     // Recheck after tool-description loading: a managed save may have been requested
     // during that await and be queued behind this reload. Never apply the old ciphertext.
-    const arrived = this.withManagedWrite(settings, readGeneration)
+    const arrived = this.withManagedWrite(settings, managedRead)
     const migrated = this.host.apply(
       (arrived ?? undefined) as AbeleSettings | undefined,
       tools,
@@ -290,10 +290,10 @@ export class SettingsKeeper {
     const edits = this.host.edits()
     const finishRead = edits.beginRead()
     const base = this.base
-    const generation = this.managedGeneration
+    const managedRead = this.managedStore.beginRead()
     try {
       const read = await this.readReload()
-      return await this.onFile(() => this.reloadNow(read, base, generation))
+      return await this.onFile(() => this.reloadNow(read, base, managedRead))
     } finally {
       finishRead()
     }
@@ -318,7 +318,7 @@ export class SettingsKeeper {
   private async reloadNow(
     { stored, stamp }: { stored: unknown; stamp: string | null },
     readBase: AbeleSettings | null,
-    readGeneration: number
+    managedRead: object | null
   ): Promise<boolean> {
     if (!this.host.plugin()) return false
     if (stored === undefined) {
@@ -355,14 +355,14 @@ export class SettingsKeeper {
         this.pendingLegacySync = JSON.parse(JSON.stringify(stored.sync))
       }
       this.waitingForInitialFile = false
-      await this.take(stored, settings, () => this.host.chatHistory(), stamp, readGeneration)
+      await this.take(stored, settings, () => this.host.chatHistory(), stamp, managedRead)
       // Only the startup load's block is moved: one from another device is never this one's.
       this.loadedSync = null
       // What was put back on top of the file goes into it.
       if (
         settings !== stored ||
         this.host.edits().hasAcknowledged() ||
-        this.managedAfter(readGeneration)
+        this.managedStore.protects(managedRead)
       )
         await this.writeNow()
     }
@@ -371,21 +371,10 @@ export class SettingsKeeper {
     return true
   }
 
-  private managedAfter(generation: number): boolean {
-    return (
-      this.managedWrite !== null &&
-      (this.managedWrite.pending || this.managedWrite.generation > generation)
-    )
-  }
-
-  private withManagedWrite(settings: unknown, generation: number): unknown {
-    if (!isSettingsObject(settings) || !this.managedAfter(generation)) return settings
-    const value = this.managedWrite!.value
-    return { ...settings, secretStore: value === undefined ? undefined : settingsSnapshot(value) }
-  }
-
-  private acknowledgeManaged(generation: number): void {
-    if (this.managedWrite?.generation === generation) this.managedWrite.pending = false
+  private withManagedWrite(settings: unknown, read: object | null): unknown {
+    const retained = this.managedStore.retain(read)
+    if (!retained) return settings
+    return { ...(isSettingsObject(settings) ? settings : {}), secretStore: retained.value }
   }
 
   /**
@@ -456,12 +445,7 @@ export class SettingsKeeper {
       canonicalJson({ store: this.saveCapture.secretStore }) !==
         canonicalJson({ store: current.secretStore })
     ) {
-      this.managedWrite = {
-        generation: ++this.managedGeneration,
-        value:
-          current.secretStore === undefined ? undefined : settingsSnapshot(current.secretStore),
-        pending: true,
-      }
+      this.managedStore.request(current.secretStore)
     }
     if (this.saveCapture !== null) {
       for (const change of localChanges(this.saveCapture, current, ['secretStore'])) {
@@ -486,7 +470,7 @@ export class SettingsKeeper {
     }
     if (!(await this.catchUp(plugin))) return
     const accepted = this.host.export()
-    const generation = this.managedGeneration
+    const managedWritten = this.managedStore.beginWrite(accepted.secretStore)
     const next = accepted
     const text = canonicalJson(next)
     // Nothing changed in meaning: writing would only hand every other device a file to pull
@@ -495,14 +479,14 @@ export class SettingsKeeper {
       // A coalesced direct save can return to its starting value. It still resolves
       // as a successful save and must protect that field against an older read.
       this.host.edits().written()()
-      this.acknowledgeManaged(generation)
+      managedWritten()
       this.base = accepted
       return
     }
     const written = this.host.edits().written()
     await plugin.saveData(settingsSnapshot(next))
     written()
-    this.acknowledgeManaged(generation)
+    managedWritten()
     this.gone = false
     this.onDisk = text
     this.base = accepted
@@ -522,6 +506,7 @@ export class SettingsKeeper {
    * change stays in memory, and the reload that follows says what is wrong with it.
    */
   private async catchUp(plugin: AbelePlugin): Promise<boolean> {
+    const managedRead = this.managedStore.beginRead()
     let stamp = await this.readStamp(plugin)
     if (stamp === this.stamp) return true
     let fresh: unknown = await plugin.loadData()
@@ -546,7 +531,7 @@ export class SettingsKeeper {
     // The startup load's block stays for its one reader; one from another device is never
     // this one's (`reloadNow`).
     const loaded = this.loadedSync
-    await this.take(fresh, settings, () => this.host.chatHistory(), stamp)
+    await this.take(fresh, settings, () => this.host.chatHistory(), stamp, managedRead)
     this.loadedSync = loaded
     this.unannounced = true
     // What reopens the secret store and the AI features on what arrived. The sync asks for it
