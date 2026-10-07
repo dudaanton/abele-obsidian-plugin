@@ -113,8 +113,10 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     () => {
       const result = run<{
         keyboard: boolean
+        room: number
         toolbar: boolean
         saved: boolean
+        formatted: boolean
         edited: boolean
         shots: string[]
       }>(`
@@ -139,11 +141,16 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await tap(field)
       await until(() => keyboardHeight() > 100)
       const keyboard = keyboardHeight() > 100
+      const room = document.querySelector('.abele-text-comments').closest('.abele-modal__body').clientHeight
       const toolbar = !![...document.querySelectorAll('.mobile-toolbar')].find(el => el.getBoundingClientRect().height > 0)
       const shots = [await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard-open.png')]
       await host.type('Native second comment\\nwith another line')
       shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard.png'))
-      await host.swipe(window.innerWidth/2, (window.visualViewport?.height ?? window.innerHeight)-130, window.innerWidth/2, 160)
+      const cm = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
+      cm.dispatch({selection:{anchor:0,head:6}})
+      await tap(document.querySelector('.mobile-toolbar .lucide-bold'))
+      const formatted = cm.state.doc.toString().startsWith('**Native**')
+      await host.swipe(window.innerWidth/2, window.innerHeight-keyboardHeight()-100, window.innerWidth/2, 160)
       await tap(button('Save'))
       await until(() => document.querySelectorAll('.abele-text-comments__entry').length === 2)
       const saved = document.querySelectorAll('.abele-text-comments__entry').length === 2
@@ -152,17 +159,22 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await tap(edit); await wait(400)
       const editor = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
       editor.dispatch({ selection: { anchor: editor.state.doc.length } })
-      await tap(document.querySelector('.abele-text-comments .cm-content'))
+      if(document.activeElement !== editor.contentDOM) throw new Error('Edit did not focus the comment editor')
       await host.type(' Updated')
       await tap(button('Save'))
       await until(() => document.querySelector('.abele-text-comments__time')?.textContent.includes('Edited'))
-      const edited = document.querySelector('.abele-text-comments__time')?.textContent.includes('Edited') ?? false
+      const id = /%%c:([a-z0-9]{6})/.exec(await app.vault.read(note))[1]
+      const savedFile = app.vault.getAbstractFileByPath(window.__abeleTest.ChatStorage.commentsFolder()+'/'+id+'.abcomment')
+      const editedThread = JSON.parse(await app.vault.read(savedFile))
+      const edited = !!editedThread.entries[0].editedAt && editedThread.entries[0].body.endsWith(' Updated')
       await tap(button('Close'))
-      return JSON.stringify({keyboard, toolbar, saved, edited, shots})
+      return JSON.stringify({keyboard, room, toolbar, formatted, saved, edited, shots})
     `)
       console.log('Native comment editor:', result)
       expect(result.keyboard).toBe(true)
+      expect(result.room).toBeGreaterThan(150)
       expect(result.toolbar).toBe(true)
+      expect(result.formatted).toBe(true)
       expect(result.saved).toBe(true)
       expect(result.edited).toBe(true)
       expect(result.shots.every((path) => !path.startsWith('no picture'))).toBe(true)

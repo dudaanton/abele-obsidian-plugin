@@ -141,6 +141,20 @@ body.is-phone .modal.abele-modal_tall {
 }
 
 /*
+ * A tall form with pinned actions uses the measured room too. Obsidian's big-sheet rules
+ * subtract the native keyboard height from their own height; the container has already done
+ * that here. Shadow it only inside this fitted sheet, never on the page/native variable, so
+ * the body is not squeezed twice and its editor still has room between title and footer.
+ */
+.modal-container.abele-keyboard-room > .modal.abele-modal_footed.mod-lg {
+  --keyboard-height: 0px;
+  height: 100%;
+  max-height: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/*
  * One taller than the room stands at the room's top, below the notch, as tall as it was; the
  * keyboard covers its lower part. The box that scrolls the field being typed into gets that
  * much more room at its end, so everything under the keyboard can be scrolled up above it, and
