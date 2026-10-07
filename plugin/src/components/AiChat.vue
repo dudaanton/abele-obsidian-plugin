@@ -1562,16 +1562,23 @@ const navigationLatest = () => {
 }
 const navigationDiscussion = async (id: string) => {
   const owner = session.value
-  const version = owner?.conversationVersion.value
+  if (!owner) return
+  const version = owner.conversationVersion.value
+  const selection = chatService.tabSelectionVersion
+  const isCurrent = () =>
+    !closed &&
+    !owner.isDestroyed &&
+    owner.conversationVersion.value === version &&
+    chatService.tabSelectionVersion === selection
   saveNavigationReturn()
   navigationOpen.value = false
   const comments = CommentService.getInstance()
   // Read first so a delayed file cannot take over a different chat. Opening uses the marker's
   // existing path, including replacing the one contextual tab for a nested discussion.
   const loaded = await comments.load(id)
-  if (session.value !== owner || owner?.conversationVersion.value !== version) return
-  const opened = loaded && (await comments.showInSidebar(id))
-  if (!opened) new Notice('Discussion could not be opened — it may be unavailable')
+  if (!isCurrent() || session.value !== owner) return
+  const opened = loaded && (await comments.showInSidebar(id, isCurrent))
+  if (!opened && isCurrent()) new Notice('Discussion could not be opened — it may be unavailable')
 }
 const navigationBack = async () => {
   const saved = navigationReturns.value.at(-1)

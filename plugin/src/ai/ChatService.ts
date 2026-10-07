@@ -71,6 +71,12 @@ export class ChatService {
       ready: Promise<ChatSession | null>
     }
   >()
+  /** Explicit tab choices invalidate delayed navigation; releasing a contextual tab does not. */
+  private tabSelectionRevision = 0
+  get tabSelectionVersion(): number {
+    return this.tabSelectionRevision
+  }
+
   public readonly activeTabId = ref<string | null>(null)
   public readonly tabOrder = ref<string[]>([])
 
@@ -404,6 +410,7 @@ export class ChatService {
    * that should not pull the cursor out of the note somebody is opening the app to.
    */
   newTab(): string {
+    this.tabSelectionRevision++
     const id = this.createTab()
     this.requestFocus()
     return id
@@ -437,6 +444,7 @@ export class ChatService {
    * one file are two writers on one log.
    */
   async openChatInTab(tabId: string, file: TFile): Promise<void> {
+    this.tabSelectionRevision++
     const previous = this.sessions.get(tabId)
     const session = await this.loadFile(file, () => {
       const holder = this.sessions.get(tabId)
@@ -486,6 +494,7 @@ export class ChatService {
       return false
     }
 
+    this.tabSelectionRevision++
     this.sessions.set(session.id, session)
     this.tabOrder.value = [...this.tabOrder.value, session.id]
     this.activeTabId.value = session.id
@@ -649,10 +658,12 @@ export class ChatService {
 
   switchTab(tabId: string): void {
     if (this.runTabs.has(tabId)) {
+      this.tabSelectionRevision++
       this.activeTabId.value = tabId
       return
     }
     if (this.sessions.has(tabId) || this.nodeSessions.has(tabId)) {
+      this.tabSelectionRevision++
       this.activeTabId.value = tabId
       this.saveTabs()
     }
@@ -672,6 +683,7 @@ export class ChatService {
   }
 
   async openNodeSession(reference: Extract<ChatReference, { kind: 'node-session' }>): Promise<void> {
+    this.tabSelectionRevision++
     const id = `node:${reference.registrationId}:${reference.sessionId}`
     if (this.nodeSessions.has(id)) { this.switchTab(id); return }
     if (!this.canCreateTab) { new Notice(ChatService.TABS_FULL); return }
@@ -700,6 +712,7 @@ export class ChatService {
 
   /** Opens a delegated run in its own tab, or switches to it if already open. */
   async openRun(runId: string): Promise<boolean> {
+    this.tabSelectionRevision++
     for (const [tabId, run] of this.runTabs) {
       if (run.runId === runId) {
         this.activeTabId.value = tabId
@@ -816,6 +829,7 @@ export class ChatService {
 
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
   async openChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
+    this.tabSelectionRevision++
     const previous = this.activeSession.value
     const session = await this.loadFile(file, () => {
       if (selectionReturn && !selectionReturn()) return null

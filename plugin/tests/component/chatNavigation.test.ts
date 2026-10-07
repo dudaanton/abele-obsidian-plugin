@@ -234,6 +234,78 @@ describe('the navigation modal', () => {
 
 describe('navigation in the chat header', () => {
   const pause = useFakeClock()
+  it('cancels a nested discussion jump when another chat is selected while the previous comment saves', async () => {
+    const chats = ChatService.getInstance()
+    const comments = CommentService.getInstance()
+    vi.spyOn(chats, 'ensureInitialized').mockImplementation(() => {})
+    vi.spyOn(chats, 'saveTabs').mockImplementation(() => {})
+    vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
+    vi.spyOn(chats, 'sidebarShowing').mockReturnValue(false)
+    vi.spyOn(comments, 'trail').mockResolvedValue([])
+    vi.spyOn(comments, 'touch').mockImplementation(() => {})
+    let finishSaving!: () => void
+    const saving = new Promise<void>((resolve) => {
+      finishSaving = resolve
+    })
+    const save = vi.fn(() => saving)
+    const lifecycle = {
+      anchor: ref(null),
+      flush: async () => {},
+      destroy: () => {},
+      reconcileForSelectionReturn: async () => {},
+    }
+    const owner = fakeChatSession({
+      messages: ref([...messages]),
+      kind: 'comment',
+      overrides: {
+        ...lifecycle,
+        id: 'source-session',
+        commentId: 'source-comment',
+        save,
+        messageComments: ref([{ id: 'nested-comment', message: 'a1' }]),
+      },
+    })
+    const target = fakeChatSession({
+      messages: ref([
+        { id: 'nested-q', role: 'user', content: 'A nested sample question', timestamp: 1 },
+      ]),
+      overrides: { ...lifecycle, id: 'nested-session', commentId: 'nested-comment' },
+    })
+    const other = fakeChatSession({
+      kind: 'chat',
+      overrides: { ...lifecycle, id: 'other-session' },
+    })
+    comments.sessions.set('source-comment', owner as never)
+    vi.spyOn(comments, 'load').mockImplementation(
+      async (id) => (id === 'source-comment' ? owner : target) as never
+    )
+    vi.spyOn(comments, 'navigationPreview').mockResolvedValue(target as never)
+    const show = vi.spyOn(comments, 'showInSidebar')
+    try {
+      chats.adoptSession(other as never)
+      await comments.showInSidebar('source-comment')
+      wrapper = mount(AiChat, { attachTo: document.body })
+      await flushPromises()
+      await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+      await flushPromises()
+      await click('A nested sample question')
+      expect(save).toHaveBeenCalledOnce()
+      chats.switchTab(other.id)
+      expect(chats.activeTabId.value).toBe(other.id)
+      finishSaving()
+      await flushPromises()
+      expect(chats.activeTabId.value).toBe(other.id)
+      expect(show.mock.lastCall?.[1]).toEqual(expect.any(Function))
+    } finally {
+      finishSaving()
+      await flushPromises()
+      wrapper?.unmount()
+      wrapper = undefined
+      comments.destroy()
+      chats.destroy()
+    }
+  })
+
   it('opens the selected search part when reasoning and a tool result contain the same words', async () => {
     const rows = ref<ChatMessage[]>([
       { id: 'q', role: 'user', content: 'Read the sample plan', timestamp: 1 },
