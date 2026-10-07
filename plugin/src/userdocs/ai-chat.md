@@ -562,9 +562,34 @@ palette uses the same names:
 
 If the agent cannot see the note, this one chat is given access to it.
 
+## Chat artifacts
+
+The **Artifacts** button (boxes) in a local chat’s header opens one view of its **Notes**,
+**Images** and **Scripts**, with counts, paths and available dates. It updates while the chat
+runs and includes saved messages from every retained branch, not unsent drafts or queued messages.
+
+Notes and scripts are the chat’s current links, whether attached by hand or linked by a
+successful write. **Open** opens the note or the script’s code view; it never runs or approves
+code. **Reveal** shows the file in Obsidian’s explorer. **Unlink** removes only the chat’s link,
+not the file. Old calls do not restore an unlinked card; a later successful write links it again.
+Scripts remain listed when script execution is disabled.
+
+Images include sent uploads and completed image-tool results: generated and edited pictures,
+screenshots, downloads, viewed pictures and drawings, each labelled by origin. Tap a thumbnail
+to preview it. Images have **Open** and **Reveal**, but no unlink or delete action. **Show in chat**
+returns to a source message, switching branches and revealing earlier messages when necessary.
+It is also offered for notes and scripts where saved results prove the source.
+
+**Attach to current note** and **Attach to a note…** keep the existing attachment choices.
+Only link changes need a saved chat in the history. Missing files remain visible as
+**Unavailable**, with any source navigation and unlink action still available. Moved images
+are not guessed from filenames. Older chats work with the links and evidence they actually
+saved; no missing links are reconstructed. Delegated sub-agent outputs are not aggregated into
+this view. Switching to another chat closes the view.
+
 ## Chats under a note
 
 A chat that changes a note is listed under that note, in the **Chats** list of its footer. You can
 also put one there yourself: **Attach a chat to note** in the command palette or a note's
-context menu, or the link button in the chat's header. The unlink button on a chat's card
+context menu, or the attachment controls in the chat’s **Artifacts** view. The unlink button on a chat's card
 takes it away again. Scripts can have chats attached the same way.

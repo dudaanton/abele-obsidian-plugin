@@ -3,7 +3,7 @@
  *
  * From a note: *Attach a chat to note* in its file menu — the explorer, a tab's header and its "more
  * options" all build that one menu — and as a command for the note in front. It picks a chat
- * out of the history. From a chat: the link button in its header, whose menu attaches the chat
+ * out of the history. From a chat: the Artifacts view attaches the chat
  * to the note in front or to one picked, and detaches it from the notes it is attached to.
  * Detaching from the note's end is the button on the chat's card under the note.
  *
@@ -78,7 +78,7 @@ export async function attachNoteToChat(note: TFile): Promise<boolean> {
 }
 
 /** Attaches a chat to one note, and says so — the chat's end has no card to show it. */
-async function attachFromChat(chatPath: string, notePath: string): Promise<void> {
+export async function attachFromChat(chatPath: string, notePath: string): Promise<void> {
   if (await attachNote(chatPath, notePath)) new Notice(`Attached to ${nameOf(notePath)}`)
 }
 
@@ -136,7 +136,7 @@ export function chatNotesMenu(session: ChatSession): Menu {
   return menu
 }
 
-async function pickAndAttach(
+export async function pickAndAttach(
   app: App,
   chatPath: string,
   linked: string[],

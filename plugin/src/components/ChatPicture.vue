@@ -1,6 +1,6 @@
 <template>
   <button class="abele-chat-picture" :aria-label="`Preview ${name}`" @click="open = true">
-    <img v-if="url" :src="url" :alt="name" />
+    <img v-if="url" :src="url" :alt="name" loading="lazy" />
     <span>{{ name }}</span>
   </button>
   <GalleryViewer
@@ -11,7 +11,7 @@
     :chat-id="chatId"
     :replace-attachment="pending ? path : undefined"
     @close="open = false"
-    @image-changed="version++"
+    @image-changed="localVersion++"
   />
 </template>
 
@@ -24,22 +24,25 @@ import { ChatService } from '@/ai/ChatService'
 import { fileName } from '@/ai/attachments'
 import { vaultUrl } from '@/helpers/vaultUrl'
 
-const props = defineProps<{ path: string; pending?: boolean }>()
+const props = defineProps<{ path: string; pending?: boolean; chatId?: string; version?: number }>()
 const open = ref(false)
-const version = ref(0)
+const localVersion = ref(0)
 const name = computed(() => fileName(props.path))
 // Capture the originating chat before the drawing tab takes focus.
-const chatId = computed(() => ChatService.getInstance().activeTabId.value ?? '')
+const chatId = computed(() => props.chatId ?? ChatService.getInstance().activeTabId.value ?? '')
 const { app } = GlobalStore.getInstance()
 const url = computed(() => {
-  void version.value
+  void localVersion.value
+  void props.version
   const file = app.vault.getAbstractFileByPath(props.path)
   return file instanceof TFile ? vaultUrl(app, file) : ''
 })
 let modified: EventRef | undefined
 onMounted(() => {
+  // A containing resource view can supply one shared vault subscription.
+  if (props.version !== undefined) return
   modified = app.vault.on('modify', (file) => {
-    if (file.path === props.path) version.value++
+    if (file.path === props.path) localVersion.value++
   })
 })
 onUnmounted(() => {

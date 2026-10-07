@@ -68,21 +68,13 @@
             tooltip="Scope, skills, prompts, permissions and settings"
             @click="openSetup()"
           />
-          <!-- The notes this chat is attached to, by hand or by writing to them: attach it to
-               another, or detach it. Not over a comment, which lives on its note's margin. -->
           <Icon
             v-if="!commentSession"
-            class="abele-ai-chat__notes"
-            icon="link"
+            class="abele-ai-chat__artifacts"
+            icon="boxes"
             with-bg
-            :text-right="linkedCount ? String(linkedCount) : undefined"
-            :disabled="!hasChatFile"
-            :tooltip="
-              hasChatFile
-                ? 'Attach this chat to a note, or detach it'
-                : 'Attach this chat to a note — once it has a message'
-            "
-            @click="openNotesMenu"
+            tooltip="Artifacts — notes, images and scripts"
+            @click="artifactsSession = session"
           />
           <Icon icon="plus" with-bg tooltip="Start a new chat" @click="onNewChatMenu" />
           <Icon
@@ -342,6 +334,12 @@
     </template>
 
     <!-- Modals -->
+    <ChatArtifacts
+      v-if="artifactsSession"
+      :session="artifactsSession"
+      @close="artifactsSession = null"
+      @reveal="revealArtifactMessage"
+    />
     <AiReplyRevisionDialog
       v-if="replyReview"
       :proposal="replyReview.proposal"
@@ -421,7 +419,8 @@ import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 import { isChatLog } from '@/ai/chatText'
 import { insertMessageCard } from '@/ai/messageCards'
-import { chatNotesMenu } from '@/commands/attachChat'
+import ChatArtifacts from './ChatArtifacts.vue'
+import type { ChatSession } from '@/ai/ChatSession'
 
 const chatService = ChatService.getInstance()
 chatService.ensureInitialized()
@@ -873,14 +872,14 @@ const openSetup = (tab = 'scope') => {
   setupOpen.value = true
 }
 
-/** Whether the chat has a file yet — the place a link to a note is written. */
-const hasChatFile = computed(() => !!session.value?.currentChatFile?.value)
-/** How many notes the chat is attached to, beside the link button. */
-const linkedCount = computed(() => session.value?.touched?.value.length ?? 0)
-
-const openNotesMenu = (evt: MouseEvent) => {
-  if (!session.value) return
-  chatNotesMenu(session.value).showAtMouseEvent(evt)
+const artifactsSession = shallowRef<ChatSession | null>(null)
+watch(session, () => {
+  artifactsSession.value = null
+})
+const revealArtifactMessage = (messageId: string) => {
+  const owner = artifactsSession.value
+  artifactsSession.value = null
+  if (owner && session.value === owner) void revealMessage(messageId)
 }
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')
