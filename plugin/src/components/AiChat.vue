@@ -177,6 +177,8 @@
           :capture-link="captureLink"
           :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
           :changed-files="changedTurns.has(msg.id)"
+          :can-clone="!!session"
+          @clone-chat="onCloneChat"
           @create-branch="onCreateBranch"
           @switch-branch="onSwitchBranch"
           @repeat-message="onRepeatMessage"
@@ -556,6 +558,11 @@ const switchRoot = (step: number) => {
   if (!roots) return
   const id = roots.ids[roots.index + step]
   if (id) onSwitchBranch(id)
+}
+
+const onCloneChat = (messageId: string) => {
+  const owner = session.value
+  if (owner) void chatService.cloneChatFromMessage(owner.id, messageId)
 }
 
 const onCreateBranch = (messageId: string) => {

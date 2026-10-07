@@ -108,7 +108,7 @@ const script = `(async () => {
     icon.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
     icon.click()
     await wait(200)
-    const action = [...el.querySelectorAll('.abele-chat-msg__branch-action')].find((a) => a.textContent.trim() === 'Ask here')
+    const action = el.querySelector('button[aria-label="Ask here"]')
     if (!action) throw new Error('no Ask here on message ' + messageId)
     action.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
     const before = chats.activeSession.value

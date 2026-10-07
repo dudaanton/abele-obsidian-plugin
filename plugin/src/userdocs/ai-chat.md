@@ -290,6 +290,34 @@ does not count as a new model reply that has read your latest message or tool re
 Results not yet included in reported usage are estimated; if the provider
 returns no usage, the text of the context is estimated instead.
 
+## Message actions and a new chat from here
+
+Click or tap the icon beside a message to open its actions and details. The icon buttons
+copy the message, edit your own message or retry an answer, insert it into a note, and
+**Ask here** where discussions are available. Each has a tooltip and a keyboard focus target.
+**More message actions** opens Obsidian's own menu, grouped by message, conversation and
+file changes. Repeat, **Branch from here**, **Rewind** and **Undo changes** remain there.
+Selection scripts, highlights, revision review and draft Send/Edit keep their existing places.
+
+**Branch from here** continues inside the same chat. **New chat from here**, next to it in
+the menu, creates a separate chat file and opens it in a new chat tab. It copies the current
+branch from the beginning through that message, including its reasoning, tool results,
+pictures and other attachments, but not sibling branches or later messages. Its title is
+**<original title> (копия)**. The original conversation and its draft stay unchanged.
+Wait for the current turn to finish or stop it before making the copy; unsent drafts cannot
+be copied this way.
+
+The new chat keeps the source agent, model, per-chat settings and reviewer choices. It starts
+idle: nothing is sent, tools are not rerun, and no provider session is resumed. Attached vault
+files are referenced, not duplicated. Delegated transcripts are copied independently, so
+deleting either chat does not remove the other's copied transcripts. Existing side discussions
+and saved selection links belong to the original and are not copied. Reply highlights and
+accepted edit history are retained. Note links are carried only where a write is recorded on
+the copied path; manual links and older links without that evidence are not carried.
+
+This action is for local chats, including side discussions, not node sessions or read-only
+delegated-run tabs. Node histories still expose their read-only message details.
+
 ## Asking the agent to find notes
 
 The agent can search by name, folder path, properties or words in a note's body. Name, path
@@ -405,7 +433,7 @@ an accepted replacement again, select its new words and start a new comment.
 ## Rewind
 
 Everything an agent changes in your vault from a chat is remembered, so you can take it back.
-Press the icon beside one of your messages and pick:
+Press the icon beside one of your messages, open **More message actions**, and pick:
 
 - **Rewind** — shows every file the agent changed from that message on, each with what will
   happen to it: put back as it was, sent to the trash (a file the agent made), made again (one it

@@ -5,8 +5,11 @@
     @click.capture="onMessageClick"
   >
     <!-- Icon — clickable to expand details -->
-    <div
-      class="abele-chat-msg__icon"
+    <button
+      type="button"
+      class="clickable-icon abele-chat-msg__icon"
+      aria-label="Message actions and details"
+      :aria-expanded="expanded"
       @pointerdown="comments.captureFresh"
       @click="expanded = !expanded"
     >
@@ -15,61 +18,70 @@
       <Icon v-else-if="message.role === 'tool-call'" icon="terminal" />
       <Icon v-else-if="message.role === 'tool-result'" icon="check" />
       <Icon v-else icon="info" />
-    </div>
+    </button>
 
     <div class="abele-chat-msg__body">
       <!-- Actions and debug info — toggled by the icon, so they open beside it at the top of the
            message rather than under a long answer. The buttons come first: the params and the
            result below them can be tall. -->
       <div v-if="expanded" class="abele-chat-msg__details">
-        <div v-if="!readOnlyHistory" class="abele-chat-msg__detail-row">
-          <span class="abele-chat-msg__branch-action" @click="emit('create-branch', message.id)"
-            >Branch from here</span
+        <div class="abele-chat-msg__actions" role="group" aria-label="Message actions">
+          <button
+            type="button"
+            class="clickable-icon"
+            aria-label="Copy message"
+            @click="copyMessage"
           >
-          <span
-            v-if="message.role === 'user' || message.role === 'assistant'"
-            class="abele-chat-msg__branch-action"
-            @click="emit('insert-into-note', message.id)"
-            >Insert into note</span
-          >
-          <!-- The words selected in the message, or the whole of it: a comment, as in a note. -->
-          <span
-            v-if="canComment && (message.role === 'assistant' || message.role === 'user')"
-            class="abele-chat-msg__branch-action"
-            @pointerdown="comments.capture"
-            @click="comments.askHere"
-            >Ask here</span
-          >
-        </div>
-        <div v-if="!readOnlyHistory && message.role === 'user'" class="abele-chat-msg__detail-row">
-          <span class="abele-chat-msg__branch-action" @click="emit('repeat-message', message.id)"
-            >Repeat</span
-          >
-          <span class="abele-chat-msg__branch-action" @click="emit('edit-message', message.id)"
-            >Edit</span
-          >
-          <!-- Back to before this message: the files its agent changed from here on, the
-               conversation, or both. -->
-          <span
-            v-if="canRewind"
-            class="abele-chat-msg__branch-action"
-            @click="emit('rewind', message.id, 'since')"
-            >Rewind</span
-          >
-          <span
-            v-if="canRewind && changedFiles"
-            class="abele-chat-msg__branch-action"
-            @click="emit('rewind', message.id, 'turn')"
-            >Undo changes</span
-          >
-        </div>
-        <div
-          v-if="!readOnlyHistory && (message.role === 'assistant' || message.role === 'tool-call')"
-          class="abele-chat-msg__detail-row"
-        >
-          <span class="abele-chat-msg__branch-action" @click="emit('retry-message', message.id)"
-            >Retry</span
-          >
+            <Icon icon="copy" tooltip="Copy message" no-hover />
+          </button>
+          <template v-if="!readOnlyHistory">
+            <button
+              v-if="message.role === 'user'"
+              type="button"
+              class="clickable-icon"
+              aria-label="Edit"
+              @click="emit('edit-message', message.id)"
+            >
+              <Icon icon="pencil" tooltip="Edit" no-hover />
+            </button>
+            <button
+              v-if="message.role === 'assistant' || message.role === 'tool-call'"
+              type="button"
+              class="clickable-icon"
+              aria-label="Retry"
+              @click="emit('retry-message', message.id)"
+            >
+              <Icon icon="rotate-cw" tooltip="Retry" no-hover />
+            </button>
+            <button
+              v-if="message.role === 'user' || message.role === 'assistant'"
+              type="button"
+              class="clickable-icon"
+              aria-label="Insert into note"
+              @click="emit('insert-into-note', message.id)"
+            >
+              <Icon icon="file-input" tooltip="Insert into note" no-hover />
+            </button>
+            <button
+              v-if="canComment && (message.role === 'assistant' || message.role === 'user')"
+              type="button"
+              class="clickable-icon"
+              aria-label="Ask here"
+              @pointerdown="comments.capture"
+              @click="comments.askHere"
+            >
+              <Icon icon="message-square" tooltip="Ask here" no-hover />
+            </button>
+            <button
+              type="button"
+              class="clickable-icon"
+              aria-label="More message actions"
+              aria-haspopup="menu"
+              @click="showActions"
+            >
+              <Icon icon="ellipsis" tooltip="More message actions" no-hover />
+            </button>
+          </template>
         </div>
         <div class="abele-chat-msg__detail-time">{{ formatTime(message.timestamp) }}</div>
         <div v-if="message.usage" class="abele-chat-msg__detail-row">
@@ -437,6 +449,8 @@ import type { FindPart } from '@/ai/chatFind'
 const props = defineProps<{
   message: ChatMessage
   readOnlyHistory?: boolean
+  /** Local chats only; node/provider-native sessions cannot be cloned into a vault chat. */
+  canClone?: boolean
   /** Node histories keep successful tool previews behind the existing detail toggle. */
   compactToolDetails?: boolean
   resourceOpener?: (path: string) => void
@@ -457,6 +471,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'create-branch', messageId: string): void
+  (e: 'clone-chat', messageId: string): void
   (e: 'switch-branch', messageId: string): void
   (e: 'repeat-message', messageId: string): void
   (e: 'retry-message', messageId: string): void
@@ -490,6 +505,37 @@ const comments = useMessageComments(
   (quote, start, text) => !props.message.draft && !props.readOnlyHistory && replyRendered.value
     ? props.captureLink?.(props.message.id, quote, start, text) : undefined
 )
+
+async function copyMessage() {
+  try {
+    await navigator.clipboard.writeText(props.message.content || props.message.toolResult || '')
+    new Notice('Message copied')
+  } catch {
+    new Notice('Could not copy the message')
+  }
+}
+
+function showActions(event: MouseEvent) {
+  const menu = new Menu()
+  const add = (title: string, icon: string, section: string, action: () => void) =>
+    menu.addItem((item) => item.setTitle(title).setIcon(icon).setSection(section).onClick(action))
+  if (props.message.role === 'user')
+    add('Repeat', 'repeat', 'message', () => emit('repeat-message', props.message.id))
+  add('Branch from here', 'git-branch', 'conversation', () => branchFromHere())
+  if (props.canClone && !props.message.draft)
+    add('New chat from here', 'copy-plus', 'conversation', () =>
+      emit('clone-chat', props.message.id)
+    )
+  if (props.message.role === 'user' && props.canRewind) {
+    add('Rewind', 'history', 'changes', () => emit('rewind', props.message.id, 'since'))
+    if (props.changedFiles)
+      add('Undo changes', 'undo-2', 'changes', () => emit('rewind', props.message.id, 'turn'))
+  }
+  const button = event.currentTarget as HTMLElement
+  const rect = button.getBoundingClientRect()
+  menu.onHide(() => button.focus({ preventScroll: true }))
+  menu.showAtPosition({ x: rect.left, y: rect.bottom })
+}
 
 const originalOpen = ref(false)
 const lastRevision = computed(() => props.message.revisions?.at(-1))
@@ -1277,14 +1323,23 @@ body.is-phone
   }
 }
 
-.abele-chat-msg__branch-action {
-  color: var(--text-accent);
-  cursor: pointer;
-  font-size: var(--font-smaller);
+.abele-chat-msg__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  // Theme focus rings paint outside each button, including inside the clipped message body.
+  padding: var(--size-4-1);
+  margin-bottom: var(--size-4-1);
+}
 
-  &:hover {
-    text-decoration: underline;
-  }
+body.is-mobile .abele-chat-msg__actions button,
+body.is-mobile button.abele-chat-msg__icon {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+button.abele-chat-msg__icon {
+  padding: 0;
 }
 
 @container (max-width: 450px) {

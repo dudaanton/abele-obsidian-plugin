@@ -12,6 +12,13 @@ import { mount, flushPromises } from '@vue/test-utils'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+import { Menu } from 'obsidian'
+
+async function actionMenu(wrapper: ReturnType<typeof mount>) {
+  const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
+  await wrapper.get('[aria-label="More message actions"]').trigger('click')
+  return shown.mock.contexts.at(-1) as Menu
+}
 
 // The map draws itself with WebGL, which there is none of here. What is asserted below is
 // that the chat asks for one at all, and with what.
@@ -203,9 +210,7 @@ describe('the actions a message opens from its icon', () => {
     await wrapper.find('.abele-chat-msg__icon').trigger('click')
 
     const details = wrapper.find('.abele-chat-msg__details').element
-    const retry = [...details.querySelectorAll('.abele-chat-msg__branch-action')].find(
-      (el) => el.textContent?.trim() === 'Retry'
-    )
+    const retry = details.querySelector('button[aria-label="Retry"]')
     const params = details.querySelector('pre')
     expect(retry).toBeTruthy()
     expect(params).not.toBeNull()
@@ -215,9 +220,7 @@ describe('the actions a message opens from its icon', () => {
   it('still emit retry', async () => {
     const wrapper = render({ role: 'assistant', content: 'answer' })
     await wrapper.find('.abele-chat-msg__icon').trigger('click')
-    const retry = wrapper
-      .findAll('.abele-chat-msg__branch-action')
-      .find((w) => w.text() === 'Retry')
+    const retry = wrapper.findAll('button').find((w) => w.attributes('aria-label') === 'Retry')
     await retry!.trigger('click')
     expect(wrapper.emitted('retry-message')?.[0]).toEqual(['m1'])
   })
@@ -231,8 +234,8 @@ describe('putting a message into a note', () => {
       await wrapper.find('.abele-chat-msg__icon').trigger('click')
 
       const action = wrapper
-        .findAll('.abele-chat-msg__branch-action')
-        .find((w) => w.text() === 'Insert into note')
+        .findAll('button')
+        .find((w) => w.attributes('aria-label') === 'Insert into note')
       expect(action).toBeTruthy()
       await action!.trigger('click')
       expect(wrapper.emitted('insert-into-note')?.[0]).toEqual(['m1'])
@@ -326,9 +329,7 @@ describe('comments on an answer', () => {
   async function askHere(wrapper: ReturnType<typeof renderAnswer>) {
     await wrapper.find('.abele-chat-msg__icon').trigger('pointerdown')
     await wrapper.find('.abele-chat-msg__icon').trigger('click')
-    const action = wrapper
-      .findAll('.abele-chat-msg__branch-action')
-      .find((a) => a.text() === 'Ask here')!
+    const action = wrapper.findAll('button').find((a) => a.attributes('aria-label') === 'Ask here')!
     await action.trigger('pointerdown')
     await action.trigger('click')
   }
@@ -438,18 +439,13 @@ describe('rewinding from a user message', () => {
   it('offers "Rewind" where the chat keeps a log, and "Undo changes" when the turn changed files', async () => {
     const wrapper = actions({ canRewind: true, changedFiles: true })
     await wrapper.find('.abele-chat-msg__icon').trigger('click')
-    const labels = wrapper.findAll('.abele-chat-msg__branch-action').map((a) => a.text())
+    const menu = await actionMenu(wrapper)
+    const labels = menu.items.map((item) => item.title)
     expect(labels).toContain('Rewind')
     expect(labels).toContain('Undo changes')
 
-    await wrapper
-      .findAll('.abele-chat-msg__branch-action')
-      .find((a) => a.text() === 'Rewind')!
-      .trigger('click')
-    await wrapper
-      .findAll('.abele-chat-msg__branch-action')
-      .find((a) => a.text() === 'Undo changes')!
-      .trigger('click')
+    menu.items.find((item) => item.title === 'Rewind')!.handler!()
+    menu.items.find((item) => item.title === 'Undo changes')!.handler!()
     expect(wrapper.emitted('rewind')).toEqual([
       ['u1', 'since'],
       ['u1', 'turn'],
@@ -459,14 +455,12 @@ describe('rewinding from a user message', () => {
   it('offers no undo for a turn that changed nothing, and nothing at all without a log', async () => {
     const quiet = actions({ canRewind: true, changedFiles: false })
     await quiet.find('.abele-chat-msg__icon').trigger('click')
-    const labels = quiet.findAll('.abele-chat-msg__branch-action').map((a) => a.text())
+    const labels = (await actionMenu(quiet)).items.map((item) => item.title)
     expect(labels).toContain('Rewind')
     expect(labels).not.toContain('Undo changes')
 
     const none = actions({})
     await none.find('.abele-chat-msg__icon').trigger('click')
-    expect(none.findAll('.abele-chat-msg__branch-action').map((a) => a.text())).not.toContain(
-      'Rewind'
-    )
+    expect((await actionMenu(none)).items.map((item) => item.title)).not.toContain('Rewind')
   })
 })

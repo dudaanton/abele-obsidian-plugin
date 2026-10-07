@@ -15,6 +15,8 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
+import { MESSAGE_ACTIONS_SETUP, MESSAGE_ACTIONS_CLEANUP } from './helpers/messageActions'
+import { shotDir } from './helpers/shots'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import { evalAsync, PRELUDE as BASE_PRELUDE, startFakeGithub, enableGithub, restoreGithub } from './helpers/githubLive'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
@@ -102,6 +104,18 @@ const script = `(async () => {
     5000
   )
   await wait(400)
+
+  ${MESSAGE_ACTIONS_SETUP}
+  try {
+    measureAll('message actions', actionRow)
+    const dir = ${JSON.stringify(shotDir('abele-desktop'))}
+    const fs = require('fs'), win = require('@electron/remote').getCurrentWindow()
+    fs.writeFileSync(dir + '/message-actions.png', (await win.webContents.capturePage()).toPNG())
+    actionRow.querySelector('[aria-label="More message actions"]').click()
+    await wait(200)
+    if (!document.querySelector('.menu')) throw Error('Message actions menu did not open')
+    fs.writeFileSync(dir + '/message-actions-menu.png', (await win.webContents.capturePage()).toPNG())
+  } finally { ${MESSAGE_ACTIONS_CLEANUP} }
 
   const chat = [...document.querySelectorAll('.abele-ai-chat')].find(
     (el) => el.getBoundingClientRect().height > 0

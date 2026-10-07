@@ -726,8 +726,9 @@ Queue, pending approvals, recap/summary, discussion anchors/comments, durable se
 identity/bindings and revision proposals are not copied. Message parts, attachments,
 highlights and accepted revision history are retained; source selection version IDs are
 removed. Unmatched provider tool calls beyond the cut are removed from the copied internal
-reply, without executing or resuming them. Unlinked internal records are not guessed into
-the copied path. There is no provider-side session identifier in the local chat format.
+reply, without executing or resuming them. Wholly unlinked legacy history uses the existing
+positional migration first; remaining unlinked records are excluded, never copied wholesale.
+There is no provider-side session identifier in the local chat format.
 
 `touched` copies only source-linked notes with explicit `reads` evidence of `via: write` on
 the retained internal records, using the last retained write time. Chat-wide manual links and

@@ -62,6 +62,7 @@ import {
   PUBLICATION_CLEANUP,
   publicationFault,
 } from './helpers/canvasPublicationReview'
+import { MESSAGE_ACTIONS_SETUP, MESSAGE_ACTIONS_CLEANUP } from './helpers/messageActions'
 const CANVAS_SCREENS = ['canvas publication review', 'canvas publication confirmation']
 const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 
@@ -937,6 +938,18 @@ const probeScript = `(async () => {
       await closeDialog()
     }
 
+    ${MESSAGE_ACTIONS_SETUP}
+    try {
+      await screen('message actions', actionRow, actionRow)
+      report['message actions'].targets = [...actionRow.querySelectorAll('button')].map(button => {
+        const rect = button.getBoundingClientRect(); return [rect.width, rect.height]
+      })
+      actionRow.querySelector('[aria-label="More message actions"]').click()
+      await wait(200)
+      await screen('message actions menu', document.querySelector('.menu'), document.querySelector('.menu'))
+      report['message actions menu'].labels = [...document.querySelectorAll('.menu-item-title')].map(item=>item.textContent.trim())
+    } finally { ${MESSAGE_ACTIONS_CLEANUP} }
+
     // Both selection-menu surfaces with long names and a list longer than the sheet.
     ${SELECTION_MENUS_SETUP}
     try {
@@ -1726,6 +1739,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   const screens = [
     'chat',
+    'message actions',
+    'message actions menu',
     'node chat',
     'node claude chat',
     'node claude permission',
@@ -1820,6 +1835,19 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(report[label]?.clipped).toEqual([])
     }
   )
+  it('message actions have phone-sized targets and keep branching and cloning in the native menu', () => {
+    const actions = report['message actions'] as Screen & { targets: number[][] }
+    expect(actions.clipped).toEqual([])
+    expect(actions.targets.length).toBeGreaterThan(1)
+    for (const [width, height] of actions.targets) {
+      expect(width).toBeGreaterThanOrEqual(44)
+      expect(height).toBeGreaterThanOrEqual(44)
+    }
+    const menu = report['message actions menu'] as Screen & { labels: string[] }
+    expect(menu.labels).toContain('Branch from here')
+    expect(menu.labels).toContain('New chat from here')
+  })
+
   it('node session chrome leaves space for messages and keeps one compact approval and queue row', () => {
     const header = report['node claude chat'] as Screen & { headerHeight: number }
     const permission = report['node claude permission'] as Screen & {
