@@ -1493,20 +1493,32 @@ not another create/PATCH. The review keeps its saved grant and issues no key/app
 preparation is ready. A closed or superseded review cannot adopt a late preparation response.
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports do not substitute credentials between personal and scoped pipelines.
-Owner sign-in in Sharing lists folders/groups and loads their image lists; a missing local link
-cache does not block explicit unsharing. Stop sharing names the folder/group and warns that all
+Owner sign-in in Sharing lists folders from the server and groups remembered by this plugin,
+and loads their image lists; a missing local link cache does not block explicit unsharing.
+The server has no group-list or group-ACL read route. Groups without saved management details
+cannot be listed, and an externally changed group revision refuses revocation instead of being
+guessed. Remembered group names are checked with the owner visibility route; unavailable reviews
+stay visible but cannot be used to stop sharing. Folder-list absence never deletes group hints. Stop sharing names the folder/group and warns that all
 collaborators and connected apps lose access, without deleting their downloaded copies. It uses
 the existing password-authenticated, revision-checked revoke route and changes no other share.
-Folder reviews report included/excluded file counts; group-root reviews report the exact synced
-note checked, without claiming a certified membership graph before the server prepares it.
+Folder reviews count synced inventory files and state that the server decides sharing eligibility:
+current manifest names/kinds cannot reveal immutable executable or namespace provenance. Group-root
+reviews report the exact synced note checked, without claiming a certified membership graph.
 
-`data.json`'s shared `sync.sharing` catalogue carries only server/vault-bound grant IDs.
+`data.json`'s shared `sync.sharing` catalogue carries server/vault-bound grant IDs and optional
+`groups` management hints: group ID, last acknowledged name, root file ID, role, ACL revision and
+state. The same hints are stored in the bound local `owner-publication-audiences-v1` record.
+Hints are not authorization or a fresh group-ACL read. The discovery inventory may contain up to
+64 IDs; the existing 16-audience publication budget is unchanged. An oversized union, unreadable
+discovery or failed settings save pauses new automatic sharing, preserves discovery data and shows
+a warning, without stopping personal sync or management. Consent/receipt metadata remains intact.
 It travels with the Sync transfer section and ordinary plugin-settings sync, so a second personal
 device can discover the same audiences. It carries no credentials, consent, local principal or
 ledger identity. Local audience records remain bound to their own device; imported IDs still
 require fresh server visibility and intrinsic sponsor proofs for every publication operation.
 When plugin-settings sync is disabled, signing in under Sharing can refresh this discovery list
-from the owner grant-list route without enabling settings sync.
+from the folder-only owner grant-list route without enabling settings sync. Remembered group
+management data can travel with the Sync transfer section; no group inventory is fabricated.
 
 The publication store keeps existing-private decisions (`pending`, `declined`,
 `approved`) in its own device-local IndexedDB, separate from the personal sync ledger.
@@ -1521,6 +1533,8 @@ keeps a device-local expected file/version/SHA until its exact callback recovers
 a callback cannot overwrite a newer settled version. A locally observed note creation keeps
 its prepared handle until a novel creation receipt proves the empty base. Adopted, collided
 and received creates cannot supply that proof. Late initial indexing can then recover its links.
+The novel-create base is retained even if the first cache callback itself arrives before the image
+gets its ledger identity, so later resolution can recover the introduction without another edit.
 A submitted local edit whose cache was not ready keeps its source SHA and proven prior base
 until the exact callback arrives. A link whose image is not in the ledger yet also retains its
 original local base; post-sync revalidation resolves the new image identity without needing

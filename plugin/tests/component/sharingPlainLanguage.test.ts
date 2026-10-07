@@ -403,6 +403,42 @@ it.each([
   }
 })
 
+it('calls a folder manifest an inventory, not a server sharing verdict', () => {
+  const screen = mount(OwnerFolderSharingModal, {
+    props: {
+      preview: {
+        prefix: 'Shared/',
+        generation: 'sample-inventory',
+        complete: true,
+        files: [
+          {
+            path: 'Shared/sample-tool.exe',
+            fileId: 'sample-tool',
+            versionId: 'sample-version',
+            eligible: false,
+            eligibility: 'unknown',
+          },
+          {
+            path: 'Shared/renamed-image.png',
+            fileId: 'sample-image',
+            versionId: 'sample-version',
+            eligible: false,
+            eligibility: 'unknown',
+          },
+        ],
+      },
+    } as never,
+    global,
+  })
+  try {
+    expect(screen.text()).toContain('2 synced files found')
+    expect(screen.text()).toContain('The server decides which files can be shared')
+    expect(screen.text()).not.toContain('files included')
+  } finally {
+    screen.unmount()
+  }
+})
+
 it('does not pretend an unwired sharing view is still scanning links', () => {
   const screen = mount(OwnerPublicationSettings, { global })
   try {

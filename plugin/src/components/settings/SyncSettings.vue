@@ -52,6 +52,7 @@
         :group-root-flow="ownerGroupFlow"
         :model="ownerPublicationModel"
         :manager="ownerManagement"
+        :discovery-warning="sync.sharing?.value?.discoveryWarning?.value"
       />
       <!--
         A connection a transfer brought, onto a vault that may hold files, into one that may hold

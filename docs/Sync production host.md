@@ -28,7 +28,11 @@ classes. The missing work was composition and lifecycle, not another authorizati
 `src/sync/pluginSharing.ts` supplies the owner factory to the personal engine. It reuses
 `NativeOwnerPublication`, `openLinkSnapshots`, the foreground prompt, and the existing owner
 HTTP classes. Its metadata lives independently of personal settlement transactions. A missing
-sentinel, descriptor, identity or audience record requires recovery instead of a fresh baseline.
+sentinel, descriptor or publication evidence requires recovery instead of a fresh baseline.
+Discovery is optional: unreadable hints, an oversized union or a settings-save failure pauses new
+automatic image sharing with a visible warning, but never stops personal sync startup or management.
+The existing publication-unit budget remains 16; larger discovery inventories are retained without
+silently selecting a subset or deleting imported/local choices.
 Audience IDs originate in authenticated grant creation/preparation or an owner grant-list read.
 A server/vault-bound discovery catalogue in shared `sync.sharing` settings carries them to other
 personal devices; it is included by the existing whole Sync transfer block. Devices with plugin
@@ -63,9 +67,14 @@ keychain-safe slot spelling, and are reserved against ordinary reads and transfe
 The settings dialogs receive live production flows. Owner readiness is reactive, so a tab opened
 before engine initialization becomes usable when the owner lifetime starts. Its management port
 is stable for that lifetime; ordinary catalogue saves do not discard a fresh owner session.
-Owner sign-in under Sharing lists registered
-folders/groups, loads their sponsored image views, and offers confirmed Stop sharing through the
-existing owner revision-checked revoke routes. Image withdrawal does not wait on local indexing.
+Owner sign-in under Sharing lists folders from the server and groups remembered from acknowledged
+management replies. Group hints (ID, name, root ID, role, ACL revision and state) survive locally and
+in bound `sync.sharing[].groups` settings; current names are checked with the owner visibility route.
+The server exposes neither a group inventory nor a current group-ACL read route. Unknown groups
+cannot be reconstructed from IDs alone, and externally changed group revisions fail closed rather
+than using publication revisions or guessed ACLs. Folder-list absence never retires a group.
+Sponsored image views and confirmed Stop sharing use the existing routes. A revoke is acknowledged
+only by the exact grant/vault/kind, next ACL revision, `state: unavailable` and a valid `revoked_at`. Image withdrawal does not wait on local indexing.
 The publisher's existing 16-audience budget does not prevent listing/revoking larger server lists;
 discovery does not silently choose an arbitrary subset as publication policy. Existing-private consent remains in the
 normal `Views.vue` confirmation dialog. Scope watchers and metadata teardown join the app's
@@ -86,7 +95,12 @@ no test API or publication fixture. It verifies:
 - no `__abeleTest` in the artifact or the running host.
 
 Run it through `npm run test:server`, which prepares/reuses the exact pinned clean-archive server
-fixture. This is offline native-host/HTTP coverage, not physical phone or live Obsidian coverage.
+fixture. `ownerSharingContracts.test.ts` additionally checks owner HTTP against immutable server
+archives for both the installed pin and the released server revision, independently of the core pin.
+It exercises folder-only listing, remembered group visibility, both revoke routes, stable inventory,
+preparation, key issuance/listing, invitations, and executable/inherited security restrictions.
+A manifest review is an inventory only: it cannot certify server eligibility from current names.
+This is offline native-host/HTTP coverage, not physical phone or live Obsidian coverage.
 
 ## Settings ordering
 

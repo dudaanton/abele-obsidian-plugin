@@ -30,8 +30,8 @@
           >. Files stay in their current folders.
         </p>
         <p role="status">
-          Folder checked: {{ display.files.filter((file) => file.eligible).length }} files included;
-          {{ display.files.filter((file) => file.eligibility === 'excluded').length }} excluded.
+          Folder reviewed: {{ display.files.length }} synced files found. The server decides which
+          files can be shared.
         </p>
         <ul>
           <li v-for="file in display.files" :key="file.path">
@@ -41,7 +41,7 @@
                 ? 'Scripts and settings are not shared.'
                 : file.eligible
                   ? 'Included.'
-                  : 'Will be checked before sharing.'
+                  : 'Sharing is decided by the server.'
             }}
           </li>
         </ul>

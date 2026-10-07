@@ -13,8 +13,16 @@
           @click="folderOpen = true"
         />
       </Setting>
+      <p v-if="discoveryWarning" role="status">{{ discoveryWarning }}</p>
       <div v-if="manager" class="abele-sharing-management">
-        <p>Sign in to see shared folders and groups, review their images, or stop sharing.</p>
+        <p>
+          Sign in to see shared folders and groups remembered by this plugin, review their images,
+          or stop sharing.
+        </p>
+        <p>
+          The server lists folders, not groups. Groups created elsewhere or without a saved review
+          may not appear here.
+        </p>
         <label
           >Your email<input
             v-model="email"
@@ -41,18 +49,24 @@
           v-for="share in shares"
           :key="share.id"
           :name="share.label"
-          :desc="share.kind === 'folder' ? 'Shared folder: ' + share.prefix : 'Shared group'"
+          :desc="
+            share.kind === 'folder'
+              ? 'Shared folder: ' + share.prefix
+              : share.verified === false
+                ? 'Remembered group — current sharing could not be checked.'
+                : 'Remembered group — its name was checked with the server.'
+          "
         >
           <Button
             text="Review images"
             tooltip="See images shared here"
-            :disabled="busy || !model"
+            :disabled="busy || !model || share.verified === false"
             @click="reviewShare(share)"
           />
           <Button
             text="Stop sharing"
             tooltip="Stop access for all collaborators and connected apps"
-            :disabled="busy || !enabled"
+            :disabled="busy || !enabled || share.verified === false"
             @click="stopping = share"
           />
         </Setting>
@@ -202,6 +216,7 @@ const props = withDefaults(
     shareName?: string
     model?: PublicationSettingsModel
     manager?: OwnerFolderHttpPort
+    discoveryWarning?: string
     folderFlow?: FolderSharingFlow
     groupRootFlow?: OwnerGroupRootFlow
     batchFlow?: InitialAssetBatch
@@ -291,9 +306,10 @@ async function loadShares() {
       return
     }
     session.value = authorized
-    shares.value = rows.filter((row) => ['active', 'preparing'].includes(row.state))
+    shares.value = rows.filter((row) => ['active', 'preparing', 'unknown'].includes(row.state))
     listed.value = true
-    if (shares.value[0]) await loadView(shares.value[0])
+    const first = shares.value.find((share) => share.verified !== false)
+    if (first) await loadView(first)
   } catch (e) {
     if (!closed && props.manager === manager)
       error.value = sharingErrorMessage(e, 'Could not check sharing. Try again.')
@@ -320,10 +336,13 @@ async function stopShare() {
     stopping.value = null
   } catch (e) {
     if (!closed && props.manager === manager)
-      error.value = sharingErrorMessage(
-        e,
-        'Could not stop sharing. Sign in again and review the current sharing.'
-      )
+      error.value =
+        share.kind === 'group' && (e as { code?: string }).code === 'conflict'
+          ? 'This group changed since its saved review. No new change was made. The server does not provide a fresh group access review.'
+          : sharingErrorMessage(
+              e,
+              'Could not stop sharing. Sign in again and review the current sharing.'
+            )
   } finally {
     busy.value = false
   }
