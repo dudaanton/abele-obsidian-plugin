@@ -95,13 +95,15 @@ export class RunStorage {
     }
   }
 
-  async load(runId: string): Promise<RunFile | null> {
+  async load(runId: string, options: { readOnly?: boolean } = {}): Promise<RunFile | null> {
     const { app } = GlobalStore.getInstance()
     const file = app.vault.getAbstractFileByPath(this.runPath(runId))
     if (!(file instanceof TFile)) return null
 
     try {
-      const run = JSON.parse(await this.readContent(file)) as RunFile
+      // A clone is a reader, not an owner recovering this run or removing its safety copy.
+      const content = options.readOnly ? await app.vault.read(file) : await this.readContent(file)
+      const run = JSON.parse(content) as RunFile
       return this.markInterrupted(run)
     } catch (err) {
       console.error('[Abele] Failed to read run', runId, err)

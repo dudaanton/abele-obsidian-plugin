@@ -714,6 +714,28 @@ A tool result too long to send whole carries `stored`: its key and the whole tex
 sent only the start of it; `read_result` reads the rest by that key, for as long as the chat file
 holds the message — compaction and closing the chat included.
 
+### Copies from a conversation point
+
+**New chat from here** writes another ordinary `.abchat` log, containing only the selected
+message's ancestry on the displayed branch and linked internal records. Message IDs are
+fresh, including the first-message rewind key. The metadata carries the source agent and
+sparse overrides, provider/model, custom prompts, tool discovery and interceptor choices;
+creation date is new and the title adds `(копия)`. No format field is added for provenance:
+`anchor` is a discussion anchor, not a clone-source link, and is not reused.
+Queue, pending approvals, recap/summary, discussion anchors/comments, durable selection
+identity/bindings and revision proposals are not copied. Message parts, attachments,
+highlights and accepted revision history are retained; source selection version IDs are
+removed. Unmatched provider tool calls beyond the cut are removed from the copied internal
+reply, without executing or resuming them. Unlinked internal records are not guessed into
+the copied path. There is no provider-side session identifier in the local chat format.
+
+`touched` copies only source-linked notes with explicit `reads` evidence of `via: write` on
+the retained internal records, using the last retained write time. Chat-wide manual links and
+older links without path-local evidence are omitted, not inferred from tool arguments.
+Attachment paths still reference ordinary vault files. Delegated run sidecars receive new
+run IDs and paths, recursively, and point back to the new chat/run; they are independently
+owned for deletion. The source file, comments and device-local rewind data are not changed.
+
 ## Durable chat selections (storage adapter)
 
 Optional `chatId` in the chat's metadata is a durable identity for selections, independent of

@@ -29,6 +29,7 @@ import type {
   ToolDefinition,
 } from './client'
 import { ChatStorage } from './ChatStorage'
+import { cloneChatPath } from './chatClone'
 import {
   prepareSelectionRevision,
   ensureCapturedAnchor,
@@ -3140,6 +3141,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.isStreaming.value || this.isExecutingTool.value || this.pendingToolCalls.value.length > 0
     if (busy) new Notice(`The chat is busy — stop it or wait for the turn to finish to ${action}`)
     return busy
+  }
+
+  /** Snapshot only: no source save, branch move, model request or tool execution. */
+  cloneSnapshot(messageId: string): ChatSnapshot | null {
+    if (this.kind === 'run' || this.busyFor('create a new chat')) return null
+    if (!this.messages.value.some((message) => message.id === messageId)) return null
+    return cloneChatPath(this.snapshot(), messageId)
   }
 
   createBranch(messageId: string): void {

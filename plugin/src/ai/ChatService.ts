@@ -1,5 +1,9 @@
 import { providerKey } from '@/secrets/destinations'
 import { ref, computed, shallowRef } from 'vue'
+import { nanoid } from 'nanoid'
+import { copyChatData } from './chatClone'
+import { serializeChat } from './ChatLog'
+import type { ChatMessage } from './types'
 import { App, Notice, TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -299,6 +303,84 @@ export class ChatService {
     this.activeTabId.value = session.id
     if (this.tabsRestored) this.saveTabs()
     return session.id
+  }
+
+  /** Create an independent file in a new tab, without sending anything. */
+  async cloneChatFromMessage(tabId: string, messageId: string): Promise<void> {
+    const source = this.sessions.get(tabId)
+    if (!source) return // Node histories have no local-chat clone action.
+    if (!this.canCreateTab) {
+      new Notice(ChatService.TABS_FULL)
+      return
+    }
+    const snapshot = source.cloneSnapshot(messageId)
+    if (!snapshot) return
+    // Reserve the tab before any asynchronous writes: never fall back to the source at limit.
+    const cloneId = this.createTab()
+    const clone = this.sessions.get(cloneId)!
+    const storage = ChatStorage.getInstance()
+    const runs = RunStorage.getInstance()
+    const copies: RunFile[] = []
+    const stillOpen = () => {
+      if (this.sessions.get(cloneId) !== clone) throw new Error('The new chat tab was closed.')
+    }
+    let file: TFile | null = null
+    try {
+      const copyRuns = async (messages: ChatMessage[], parentChat: string) => {
+        for (const message of messages) {
+          const reference = message.subAgentRun
+          if (!reference) continue
+          const original = await runs.load(reference.runId, { readOnly: true })
+          if (!original)
+            throw new Error(
+              'A delegated transcript is unavailable. Reopen the source chat and try again.'
+            )
+          const run = copyChatData(original)
+          run.runId = nanoid()
+          run.parentChat = parentChat
+          run.parentToolCallId = message.toolCallId ?? message.id
+          copies.push(run)
+          for (const branch of run.branches)
+            await copyRuns(branch.messages, runs.runPath(run.runId))
+          message.subAgentRun = {
+            ...reference,
+            runId: run.runId,
+            path: runs.runPath(run.runId),
+            status: run.status,
+          }
+        }
+      }
+      await copyRuns(snapshot.messages, '')
+      stillOpen()
+      for (const run of copies)
+        if (!(await runs.save(run))) throw new Error('Could not save a delegated transcript.')
+      file = await storage.saveChat(snapshot, {
+        kind: 'rewrite',
+        content: serializeChat(snapshot),
+        records: 1 + snapshot.messages.length + (snapshot.internalMessages?.length ?? 0),
+      })
+      if (!file) throw new Error('Could not save the new chat.')
+      stillOpen()
+      for (const run of copies.filter((run) => !run.parentChat)) {
+        run.parentChat = file.path
+        if (!(await runs.save(run))) throw new Error('Could not save a delegated transcript.')
+      }
+      stillOpen()
+      await clone.load(file)
+      stillOpen()
+      clone.mirrorNoteLinks()
+      this.saveTabs()
+    } catch (error) {
+      // Only independent copies: deleting a failed clone cannot delete source transcripts.
+      if (file) await storage.deleteChat(file.path)
+      await runs.deleteRuns(copies.map((run) => run.runId))
+      clone.destroy()
+      this.dropTab(cloneId)
+      if (this.sessions.has(tabId)) this.switchTab(tabId)
+      new Notice(
+        `Could not create a new chat: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
   }
 
   /** Puts the cursor in the composer of the chat in front, once it is on screen. */
