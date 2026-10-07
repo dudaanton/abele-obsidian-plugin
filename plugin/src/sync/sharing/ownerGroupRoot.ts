@@ -47,6 +47,14 @@ export class OwnerGroupRootFlow {
     this.shown = { id: crypto.randomUUID(), root, role, label: label.trim() }
     return structuredClone(this.shown)
   }
+  private matching(grant: GroupGrant, shown: GroupRootReview): void {
+    if (
+      grant.rootId !== shown.root.fileId ||
+      grant.rootVersion !== shown.root.versionId ||
+      grant.role !== shown.role
+    )
+      throw new Error('Grant does not match the reviewed root, version and role')
+  }
   async confirm(shown: GroupRootReview, password: string, email?: string): Promise<GroupGrant> {
     this.check()
     if (this.busy || JSON.stringify(shown) !== JSON.stringify(this.shown))
@@ -54,22 +62,37 @@ export class OwnerGroupRootFlow {
     this.busy = true
     const generation = this.generation
     try {
-      if (!this.session) this.session = await this.port.authorize(password, email)
+      if (!this.session) {
+        const session = await this.port.authorize(password, email)
+        this.check(generation)
+        this.session = session
+      }
       this.check(generation)
       if (JSON.stringify(await this.root(shown.root.fileId)) !== JSON.stringify(shown.root))
         throw new Error('Group root version changed')
       this.check(generation)
-      if (!this.grant)
-        this.grant = await this.port.createGroup(this.session, {
+      if (!this.grant) {
+        const grant = await this.port.createGroup(this.session, {
           label: shown.label,
           rootId: shown.root.fileId,
           rootVersion: shown.root.versionId,
           role: shown.role,
         })
+        this.check(generation)
+        this.matching(grant, shown)
+        this.grant = grant
+      }
       this.check(generation)
-      // Retain a committed grant if preparation fails; retry preparation, not creation.
-      if (this.grant.state !== 'active')
-        this.grant = await this.port.prepareGroup(this.session, this.grant)
+      this.matching(this.grant, shown)
+      // Retain only this review's committed grant if preparation fails. A late reply
+      // belongs to its closed generation and cannot revive the cleared cache.
+      if (this.grant.state !== 'active') {
+        const grant = await this.port.prepareGroup(this.session, this.grant)
+        this.check(generation)
+        this.matching(grant, shown)
+        if (grant.id !== this.grant.id) throw new Error('Prepared grant identity changed')
+        this.grant = grant
+      }
       this.check(generation)
       return structuredClone(this.grant)
     } finally {
@@ -80,6 +103,8 @@ export class OwnerGroupRootFlow {
     this.check()
     if (!this.grant || this.grant.state !== 'active' || !this.session)
       throw new Error('Prepare the reviewed group before inviting a member')
+    if (!this.shown) throw new Error('Review this exact group root first')
+    this.matching(this.grant, this.shown)
     const generation = this.generation
     const token = await this.port.invitation(this.session, this.grant, role)
     this.check(generation)
