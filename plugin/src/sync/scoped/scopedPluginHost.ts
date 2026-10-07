@@ -124,6 +124,14 @@ export class ScopedPluginHost {
   private roots() {
     return [this.app.vault.configDir, AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts']
   }
+  private async identity(store: IndexedDbStateStore, key: string, expected: string): Promise<void> {
+    const stored = await store.getMeta(key)
+    if (stored !== null && stored !== expected)
+      throw new Error('Scoped database identity binding changed')
+    if (stored === null) await store.setMeta(key, expected)
+    if ((await store.getMeta(key)) !== expected)
+      throw new Error('Scoped database identity was not persisted')
+  }
   private async open(c: ScopedLocalConnection, initialize: boolean): Promise<Runtime> {
     if (this.closed) throw new Error('Scoped host is closed')
     if (this.runtime) {
@@ -149,9 +157,13 @@ export class ScopedPluginHost {
     let meta: IndexedDbStateStore | null = null
     try {
       const state = await ScopedState.open(raw, client.binding, { initialize })
+      // The core header has proved this exact scope before adding the stable reconnect
+      // identity (including upgrading ledgers written before these headers existed).
+      await this.identity(raw, 'scoped-plugin-identity-v4', expected)
       meta = await IndexedDbStateStore.open(this.factory, 'abele-scoped-native-' + c.ledgerId, {
         identity: { key: 'scoped-native-identity-v4', value: expected },
       })
+      await this.identity(meta, 'scoped-native-identity-v4', expected)
       if (this.closed) throw new Error('Scoped host closed during database opening')
       const fs = new ObsidianFileSystem(this.app, { ledger: state.placementStore() })
       const r: Runtime = {
