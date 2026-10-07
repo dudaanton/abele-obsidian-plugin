@@ -301,7 +301,7 @@ export function registerColumns(plugin: Plugin): void {
   ] as const)
     plugin.addCommand({
       id: 'insert-columns-' + kind,
-      name,
+      name: name,
       editorCallback: (editor) => insert(editor, kind),
     })
   plugin.addCommand({

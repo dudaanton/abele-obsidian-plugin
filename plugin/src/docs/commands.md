@@ -118,6 +118,8 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Open current canvas in diagram viewer — opens the active `.canvas` in the Abele editor,
   even when the default-opening setting is off. Steps play with camera framing and
   narration; the header's native Canvas action returns that leaf to the editor
+- Insert columns · Insert two equal columns · Insert three equal columns · Insert text with an aside
+- Column options · Remove columns — edit the current quote frame without discarding its content
 - Insert image gallery · Convert images on page to galleries
 - Set cover from first image/video in note
 - Import files to vault · Save remote media to vault
