@@ -135,6 +135,7 @@ interface Screen {
   /** The root's height as a share of the window's. */
   fill: number
   handles?: number[][]
+  stageTop?: number[]
   canvasFits?: boolean
   /** Where the picture went. */
   shot: string
@@ -1213,6 +1214,16 @@ const probeScript = `(async () => {
         select('alpha');await wait(100)
         await screen('canvas selection',root,root)
         report['canvas selection'].handles=[...root.querySelectorAll('.abele-canvas-resize-handle')].map(el=>{const r=el.getBoundingClientRect();return [r.width,r.height]})
+        root.querySelector('[aria-label="Shapes and connections"]').click()
+        root.querySelector('[aria-label="Draw connection"]').click();await wait(100)
+        {const v=leaf.view.viewer,c=v.camera,r=v.stage.getBoundingClientRect(),n=v.graph.nodes.find(n=>n.id==='alpha'),init={pointerId:1,pointerType:'touch',clientX:r.left+(n.x+n.width/2-c.x)*c.zoom,clientY:r.top+(n.y+n.height/2-c.y)*c.zoom,bubbles:true},before=r.top
+          v.stage.dispatchEvent(new PointerEvent('pointerdown',init))
+          v.stage.dispatchEvent(new PointerEvent('pointermove',{...init,clientX:init.clientX+30}));await wait(100)
+          await screen('canvas connector preview',root,root)
+          report['canvas connector preview'].stageTop=[before,v.stage.getBoundingClientRect().top]
+          v.stage.dispatchEvent(new PointerEvent('pointercancel',init))}
+        root.querySelector('[aria-label="Select canvas objects"]').click()
+        root.querySelector('[aria-label="Shapes and connections"]').click()
         root.querySelector('[aria-label="Toggle multiple selection"]').click()
         select('beta');select('gamma')
         root.querySelector('[aria-label="Group selected cards"]').click()
@@ -1568,6 +1579,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas selection',
     'canvas shapes',
     'canvas connection style',
+    'canvas connector preview',
     'canvas group',
     'canvas export menu',
     'canvas file picker',
@@ -1612,6 +1624,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it('canvas editor: initially frames the diagram after its controls take space', () => {
     expect(report['canvas editor']?.canvasFits).toBe(true)
+  })
+
+  it('canvas connector preview: the toolbar does not shift the captured pointer surface', () => {
+    const top = report['canvas connector preview']?.stageTop
+    expect(top).toHaveLength(2)
+    expect(top?.[1]).toBe(top?.[0])
   })
 
   it('canvas connection style: both endpoint targets remain touch-sized at phone width', () => {
