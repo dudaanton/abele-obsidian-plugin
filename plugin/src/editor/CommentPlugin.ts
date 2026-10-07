@@ -22,12 +22,16 @@ import {
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view'
 import { MarkdownView, editorInfoField, editorLivePreviewField } from 'obsidian'
 import { CommentMarkerWidget } from './CommentMarkerWidget'
+import { MixedCommentMarkerWidget } from './MixedCommentMarkerWidget'
+import { appearanceClass, type CommentAppearance } from '@/comments/model'
 import { ParsedMarker, parseMarkers, resolveQuote } from './commentMarkers'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 export type CommentState = 'idle' | 'busy' | 'pending' | 'error'
 
 export interface CommentInfo {
+  kind?: 'human'
+  appearance?: CommentAppearance
   quote?: string
   state: CommentState
   open: boolean
@@ -53,6 +57,48 @@ let commentInfoSource: CommentInfoSource = {
 
 export function setCommentInfoSource(source: CommentInfoSource): void {
   commentInfoSource = source
+}
+
+let textCommentInfoSource: CommentInfoSource = { get: () => undefined, touch: () => {} }
+let textCommentClickHandler: (ids: string[]) => void = () => {}
+export function setTextCommentInfoSource(source: CommentInfoSource): void {
+  textCommentInfoSource = source
+}
+export function setTextCommentClickHandler(handler: (ids: string[]) => void): void {
+  textCommentClickHandler = handler
+}
+export function commentInfo(id: string): CommentInfo | undefined {
+  return textCommentInfoSource.get(id) ?? commentInfoSource.get(id)
+}
+export function touchComments(note: string, ids: string[]): void {
+  textCommentInfoSource.touch(note, ids)
+  commentInfoSource.touch(
+    note,
+    ids.filter((id) => textCommentInfoSource.get(id)?.kind !== 'human')
+  )
+}
+export function openCommentIds(ids: string[]): void {
+  if (ids.some((id) => commentInfo(id)?.kind === 'human')) textCommentClickHandler(ids)
+  else handleMarkerClick(ids)
+}
+
+/** The same kind split is used in Live Preview and reading mode. */
+export function markerGroups(ids: string[]): string[][] {
+  const human = ids.filter((id) => commentInfo(id)?.kind === 'human')
+  const ai = ids.filter((id) => commentInfo(id)?.kind !== 'human')
+  return [ai, human].filter((group) => group.length)
+}
+export function markerWidget(ids: string[], unresolved = false): CommentMarkerWidget {
+  const infos = ids.map(commentInfo)
+  return new CommentMarkerWidget(
+    ids,
+    infos.reduce((sum, info) => sum + (info?.messages ?? 0), 0),
+    markerState(infos),
+    infos.some((info) => info?.open),
+    openCommentIds,
+    infos.some((info) => info?.kind === 'human') ? 'human' : 'ai',
+    unresolved
+  )
 }
 
 /** Dispatched to every view of a note after a load or a state change; forces a rebuild. */
@@ -140,9 +186,9 @@ function buildCommentDecorations(state: EditorState): DecorationSet {
 
   for (const marker of markers) {
     // Every id on screen is reported, which is what starts a load for one nobody has read yet.
-    commentInfoSource.touch(notePath, marker.ids)
+    touchComments(notePath, marker.ids)
 
-    const infos = marker.ids.map((id) => commentInfoSource.get(id))
+    const infos = marker.ids.map(commentInfo)
     const open = infos.some((info) => info?.open === true)
     const iconState = markerState(infos)
     // Everything said at this marker. A marker can carry more than one comment and the icon is
@@ -153,7 +199,7 @@ function buildCommentDecorations(state: EditorState): DecorationSet {
     const quote = infos.find((info) => info?.quote)?.quote
 
     const range = resolveQuote(text, marker, quote)
-    if (range && range.from < range.to) {
+    if (range && range.from < range.to && infos.some((info) => info?.kind !== 'human')) {
       decorations.push(
         Decoration.mark({
           class:
@@ -164,9 +210,29 @@ function buildCommentDecorations(state: EditorState): DecorationSet {
       )
     }
 
+    for (const info of infos.filter((info) => info?.kind === 'human')) {
+      const selected = resolveQuote(text, marker, info?.quote)
+      if (selected && info?.appearance)
+        decorations.push(
+          Decoration.mark({ class: appearanceClass(info.appearance) }).range(
+            selected.from,
+            selected.to
+          )
+        )
+    }
+    const groups = markerGroups(marker.ids)
+    const widgets = groups.map((ids) =>
+      markerWidget(
+        ids,
+        !resolveQuote(text, marker, ids.map(commentInfo).find((info) => info?.quote)?.quote)
+      )
+    )
     decorations.push(
       Decoration.replace({
-        widget: new CommentMarkerWidget(marker.ids, said, iconState, open, handleMarkerClick),
+        widget:
+          groups.length === 1 && !infos.some((info) => info?.kind === 'human')
+            ? new CommentMarkerWidget(marker.ids, said, iconState, open, handleMarkerClick)
+            : new MixedCommentMarkerWidget(widgets),
       }).range(marker.from, marker.to)
     )
   }
@@ -253,7 +319,13 @@ export const commentCursorFilter: Extension = EditorState.transactionFilter.of((
  * Every editor showing this note recomputes its markers. Called by the info source once a
  * comment has been read from disk or its session's state has changed.
  */
+const changeListeners = new Set<(notePath: string) => void>()
+export function subscribeCommentsChanged(listener: (notePath: string) => void): () => void {
+  changeListeners.add(listener)
+  return () => changeListeners.delete(listener)
+}
 export function dispatchCommentsChanged(notePath: string): void {
+  for (const listener of changeListeners) listener(notePath)
   const { app } = GlobalStore.getInstance()
 
   app.workspace.iterateAllLeaves((leaf) => {

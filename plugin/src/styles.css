@@ -449,6 +449,16 @@ body.is-mobile .abele-footnote-ref-link {
   background-color: var(--background-modifier-hover);
 }
 
+.abele-comment-marker:focus-visible {
+  outline: var(--input-border-width) solid var(--background-modifier-border-focus);
+  outline-offset: var(--size-2-1);
+}
+
+body.is-mobile .abele-comment-marker[data-comment-kind='human'] {
+  min-width: var(--size-4-8);
+  min-height: var(--size-4-8);
+}
+
 .abele-comment-marker__icon .svg-icon {
   width: var(--icon-s);
   height: var(--icon-s);

@@ -15,7 +15,9 @@ export class CommentMarkerWidget extends WidgetType {
     private readonly count: number,
     private readonly state: CommentState,
     private readonly open: boolean,
-    private readonly onClick: (ids: string[]) => void
+    private readonly onClick: (ids: string[]) => void,
+    private readonly kind: 'ai' | 'human' = 'ai',
+    private readonly unresolved = false
   ) {
     super()
   }
@@ -23,14 +25,21 @@ export class CommentMarkerWidget extends WidgetType {
   toDOM(): HTMLElement {
     const el = createSpan({
       cls: 'abele-comment-marker',
-      attr: { 'data-comment-ids': this.ids.join(',') },
+      attr: {
+        'data-comment-ids': this.ids.join(','),
+        'data-comment-kind': this.kind,
+        role: 'button',
+        tabindex: '0',
+        'aria-label': `${this.kind === 'human' ? 'Open text comments' : 'Open Ask here'}${this.unresolved ? ' (unresolved passage)' : ''}`,
+      },
     })
 
     if (this.state !== 'idle') el.addClass(`abele-comment-marker_${this.state}`)
     if (this.open) el.addClass('abele-comment-marker_open')
 
     const icon = createSpan({ cls: 'abele-comment-marker__icon', parent: el })
-    setIcon(icon, 'message-circle')
+    setIcon(icon, this.kind === 'human' ? 'message-square' : 'message-circle')
+    if (this.unresolved) el.addClass('abele-comment-marker_orphan')
 
     // A count only earns its space when there is something to count. A comment nobody has
     // said anything in yet is a marker and no digit — a "0" beside an icon is not information.
@@ -48,6 +57,13 @@ export class CommentMarkerWidget extends WidgetType {
       this.onClick(this.ids)
     })
 
+    el.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      event.stopPropagation()
+      this.onClick(this.ids)
+    })
+
     return el
   }
 
@@ -56,7 +72,9 @@ export class CommentMarkerWidget extends WidgetType {
       this.ids.join(',') === other.ids.join(',') &&
       this.count === other.count &&
       this.state === other.state &&
-      this.open === other.open
+      this.open === other.open &&
+      this.kind === other.kind &&
+      this.unresolved === other.unresolved
     )
   }
 

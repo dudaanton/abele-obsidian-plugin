@@ -56,14 +56,13 @@ import { GlobalStore } from '@/stores/GlobalStore'
 const confirm = (options: Parameters<typeof confirmAction>[1]) =>
   confirmAction(GlobalStore.getInstance().app, options)
 import { COMMENT_APPEARANCES, type CommentAppearance } from '@/comments/model'
-import type { CommentDraft, TextCommentService, ThreadSnapshot } from '@/comments/service'
+import type {
+  CommentDraft,
+  CommentSelection,
+  TextCommentService,
+  ThreadSnapshot,
+} from '@/comments/service'
 
-export interface CommentSelection {
-  note: string
-  source: string
-  from: number
-  to: number
-}
 const props = defineProps<{
   service: TextCommentService
   initial?: ThreadSnapshot

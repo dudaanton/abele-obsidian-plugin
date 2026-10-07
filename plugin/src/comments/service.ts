@@ -22,6 +22,12 @@ export interface CommentRepository {
 export interface CommentDocuments {
   change(path: string, transform: (current: string) => string): Promise<void>
 }
+export interface CommentSelection {
+  note: string
+  source: string
+  from: number
+  to: number
+}
 export interface CommentDraft {
   thread: CommentThread
   source: string
