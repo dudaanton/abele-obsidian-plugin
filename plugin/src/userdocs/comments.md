@@ -23,7 +23,7 @@ text in the dialog; a comment changed elsewhere must be reopened before you can 
 
 The mark follows insertions before the passage and note/folder renames. If the words change
 or disappear, the dimmed mark still opens the comment, but no longer claims a highlight over
-different words. Some Markdown rendered by other plugins cannot be mapped safely: the mark
+different words. Some Markdown or content rendered by other plugins cannot be mapped safely: the mark
 remains available without guessing which repeated text to highlight.
 
 Comments are kept in separate `.abcomment` files in the configured comments folder (default

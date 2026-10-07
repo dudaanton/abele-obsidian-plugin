@@ -6,7 +6,11 @@ import {
   selectedReadingComment,
 } from '@/comments/reading'
 import { sourceCharacters } from '@/comments/sourceProjection'
-import type { MarkdownPostProcessorContext, MarkdownRenderChild } from 'obsidian'
+import {
+  sanitizeHTMLToDom,
+  type MarkdownPostProcessorContext,
+  type MarkdownRenderChild,
+} from 'obsidian'
 import { setTextCommentInfoSource, setTextCommentClickHandler } from '@/editor/CommentPlugin'
 
 const source = (quotes: Record<string, string>) =>
@@ -27,7 +31,7 @@ const source = (quotes: Record<string, string>) =>
 afterEach(() => setTextCommentInfoSource({ get: () => undefined, touch() {} }))
 function root(html: string) {
   const el = document.createElement('div')
-  el.innerHTML = html
+  el.appendChild(sanitizeHTMLToDom(html))
   return el
 }
 describe('ordinary-note reading comments', () => {

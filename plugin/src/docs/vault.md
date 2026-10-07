@@ -846,8 +846,10 @@ reach. The body lines of a callout take one normally.
 **Never write, move or edit a marker.** It is an index into a file the plugin owns: an id with
 no file behind it draws an icon that opens nothing, and a marker carried away from its passage
 silently reattaches somebody's conversation to different text. Editing the note *around* a
-marker is fine — surviving that is what it is for. To change the commented passage itself, use
-`edit_selection` rather than `edit`: it moves the stored quote with the text.
+marker is fine — surviving that is what it is for. For an AI discussion, change the commented
+passage with `edit_selection` rather than `edit`: it moves the AI discussion's stored quote
+with the text. Human comments use exact quote resolution; changing their passage can leave an
+unresolved point marker, as described below.
 
 ### Free-form text comments
 

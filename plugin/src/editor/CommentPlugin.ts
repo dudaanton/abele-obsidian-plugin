@@ -189,17 +189,18 @@ function buildCommentDecorations(state: EditorState): DecorationSet {
     touchComments(notePath, marker.ids)
 
     const infos = marker.ids.map(commentInfo)
-    const open = infos.some((info) => info?.open === true)
-    const iconState = markerState(infos)
+    const aiInfos = infos.filter((info) => info?.kind !== 'human')
+    const open = aiInfos.some((info) => info?.open === true)
+    const iconState = markerState(aiInfos)
     // Everything said at this marker. A marker can carry more than one comment and the icon is
     // one icon, so the digit is the sum: it answers "how much is there", which is the question
     // somebody scanning a page of markers is asking.
-    const said = infos.reduce((total, info) => total + (info?.messages ?? 0), 0)
-    // Comments on one marker share a selection, so the first quote anyone knows is the quote.
-    const quote = infos.find((info) => info?.quote)?.quote
+    const said = aiInfos.reduce((total, info) => total + (info?.messages ?? 0), 0)
+    // Preserve Ask here's first-known quote contract independently of human threads.
+    const quote = aiInfos.find((info) => info?.quote)?.quote
 
     const range = resolveQuote(text, marker, quote)
-    if (range && range.from < range.to && infos.some((info) => info?.kind !== 'human')) {
+    if (range && range.from < range.to) {
       decorations.push(
         Decoration.mark({
           class:

@@ -115,7 +115,7 @@ export class TextComments implements CommentInfoSource {
         return
       }
       if (threads.length > 1) {
-        const owner = this
+        const show = (saved: ThreadSnapshot) => this.show({ initial: saved })
         new (class extends SuggestModal<ThreadSnapshot> {
           getSuggestions() {
             return threads
@@ -124,7 +124,7 @@ export class TextComments implements CommentInfoSource {
             el.textContent = saved.thread.anchor.quote
           }
           onChooseSuggestion(saved: ThreadSnapshot) {
-            void owner.show({ initial: saved })
+            void show(saved)
           }
         })(this.app).open()
         return

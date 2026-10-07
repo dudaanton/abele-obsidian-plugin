@@ -16,6 +16,41 @@ afterEach(() => {
   setTextCommentInfoSource(silent)
 })
 describe('mixed human and AI note markers', () => {
+  it('uses the AI quote and busy state independently when a human id comes first', () => {
+    setCommentInfoSource({
+      get: (id) =>
+        id === 'aaaaaa' ? { quote: 'words', state: 'busy', open: false, messages: 1 } : undefined,
+      touch() {},
+    })
+    setTextCommentInfoSource({
+      get: (id) =>
+        id === 'bbbbbb'
+          ? {
+              kind: 'human',
+              quote: 'long words',
+              appearance: 'pink',
+              state: 'error',
+              open: false,
+              messages: 2,
+            }
+          : undefined,
+      touch() {},
+    })
+    const state = EditorState.create({
+      doc: 'long words%%c:bbbbbb,aaaaaa%%',
+      extensions: [
+        editorInfoField.init(() => ({ file: { path: 'sample.md' } })),
+        editorLivePreviewField.init(() => true),
+        commentExtensions,
+      ],
+    })
+    const ai: { from: number; to: number; busy: boolean }[] = []
+    state.field(commentStateField).between(0, state.doc.length, (from, to, deco) => {
+      if (deco.spec.class?.startsWith('abele-comment__quote'))
+        ai.push({ from, to, busy: deco.spec.class.includes('_busy') })
+    })
+    expect(ai).toEqual([{ from: 5, to: 10, busy: true }])
+  })
   it('keeps separate icons, counts and click targets, and paints human appearance', () => {
     const humanClick = vi.fn(),
       aiClick = vi.fn()

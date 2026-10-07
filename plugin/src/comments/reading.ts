@@ -71,7 +71,7 @@ function wrap(root: HTMLElement, chars: DomCharacter[], cls: string): void {
     let piece = node
     if (range.from) piece = node.splitText(range.from)
     if (range.to - range.from < piece.length) piece.splitText(range.to - range.from)
-    const span = root.ownerDocument.createElement('span')
+    const span = root.ownerDocument.win.createSpan()
     span.className = cls
     span.setAttribute(QUOTE, '')
     piece.replaceWith(span)

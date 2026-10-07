@@ -119,6 +119,8 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
         saved: boolean
         formatted: boolean
         formatText: string
+        toolbarClick: boolean
+        toolbarContext: unknown
         sourceUnchanged: boolean
         edited: boolean
         shots: string[]
@@ -157,7 +159,11 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       cm.focus()
       cm.dispatch({selection:{anchor:0,head:6}})
       const sourceBeforeToolbar = view.editor.getValue()
-      await tap(document.querySelector('.mobile-toolbar .lucide-bold'))
+      const bold = document.querySelector('.mobile-toolbar .lucide-bold')
+      let toolbarClick = false
+      bold.addEventListener('click', () => { toolbarClick = true }, {once:true,capture:true})
+      const toolbarContext = { inert: bold.closest('[inert]')?.className ?? '', owner: app.workspace.activeEditor?.editor?.cm === cm, focused: document.activeElement === cm.contentDOM }
+      await tap(bold)
       await until(() => cm.state.doc.toString().startsWith('**Native**'))
       const formatText = cm.state.doc.toString()
       const formatted = formatText.startsWith('**Native**')
@@ -180,13 +186,14 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const editedThread = JSON.parse(await app.vault.read(savedFile))
       const edited = !!editedThread.entries[0].editedAt && editedThread.entries[0].body.endsWith(' Updated')
       await tap(button('Close'))
-      return JSON.stringify({keyboard, room, geometry, toolbar, formatted, formatText, sourceUnchanged, saved, edited, shots})
+      return JSON.stringify({keyboard, room, geometry, toolbar, formatted, formatText, toolbarClick, toolbarContext, sourceUnchanged, saved, edited, shots})
     `)
       console.log('Native comment editor:', result)
       expect(result.keyboard).toBe(true)
       expect(result.room).toBeGreaterThan(150)
       expect(result.toolbar).toBe(true)
       expect(result.sourceUnchanged).toBe(true)
+      expect(result.toolbarClick).toBe(true)
       expect(result.formatted).toBe(true)
       expect(result.saved).toBe(true)
       expect(result.edited).toBe(true)

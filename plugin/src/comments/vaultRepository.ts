@@ -72,7 +72,7 @@ export class VaultCommentRepository implements CommentRepository {
           throw new Error('The comment changed elsewhere. Reopen it before deleting')
         return current
       })
-      await this.app.vault.trash(file, true)
+      await this.app.fileManager.trashFile(file)
     })
   }
   private async ensureFolder(): Promise<void> {
