@@ -1,10 +1,15 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { TIMELINE_FIXTURE_PROBE } from '../e2e/helpers/timelineFixture'
+import { TIMELINE_READY_PROBE } from '../e2e/helpers/timelineReady'
 
 // Execute the fixture's actual page-local helpers, without loading its e2e suite.
 const source = readFileSync(resolve(__dirname, '../e2e/taskTimelineScroll.e2e.test.ts'), 'utf8')
-const prelude = source.match(/ {2}const wait = ms[\s\S]*?(?= {2}const folder =)/)![0]
+const prelude = source
+  .match(/ {2}const wait = ms[\s\S]*?(?= {2}const folder =)/)![0]
+  .replace('${TIMELINE_FIXTURE_PROBE}', TIMELINE_FIXTURE_PROBE)
+  .replace('${TIMELINE_READY_PROBE}', TIMELINE_READY_PROBE)
 
 function fixture() {
   const tasks = new Map<string, { dates: string[] }>()
@@ -54,6 +59,22 @@ describe('timeline native fixture creation', () => {
     await vi.advanceTimersByTimeAsync(100)
     await result
     expect(done).toHaveBeenCalledOnce()
+  })
+
+  it('observes published metadata within 50 ms without overlapping native writes', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    const result = f.writeBatch(
+      ['sample-a.md', 'sample-b.md'].map((path) => () => f.createTask(path, 'sample'))
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.create).toHaveBeenCalledTimes(1)
+    f.ready('sample-a.md')
+    await vi.advanceTimersByTimeAsync(50)
+    expect(f.create).toHaveBeenCalledTimes(2)
+    f.ready('sample-b.md')
+    await vi.advanceTimersByTimeAsync(50)
+    await result
   })
 
   it('reports the exact fixture note whose metadata never becomes ready', async () => {

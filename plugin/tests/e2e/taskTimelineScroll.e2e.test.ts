@@ -66,7 +66,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
   ${TIMELINE_POSITION_PROBE}
   const wait = ms => new Promise(r => setTimeout(r, ms))
   let uiState = () => null
-  const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 150; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline did not become ready: ' + condition + '; state=' + JSON.stringify(uiState())) }
+  const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 300; i++) { const v = fn(); if (v) return v; await wait(50) } throw Error('timeline did not become ready: ' + condition + '; state=' + JSON.stringify(uiState())) }
   ${TIMELINE_FIXTURE_PROBE}
   ${TIMELINE_READY_PROBE}
   const folder = ${JSON.stringify(FOLDER)} + (${short} ? ' short' : '')
