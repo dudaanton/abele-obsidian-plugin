@@ -99,6 +99,17 @@ describe('column frame operations', () => {
     expect(removed.match(/\[!abele-columns/g)).toHaveLength(1)
   })
 
+  it.each(['[!note] Keep', '[!abele-column]-'])(
+    'does not absorb a foreign or collapsible sibling callout: %s',
+    (header) => {
+      const text =
+        '> [!abele-columns]\n> > [!abele-column]\n> > Left\n>\n> > ' +
+        header +
+        '\n> > Important content\n>\n> > [!abele-column]\n> > Right'
+      expect(findColumns(text, text.indexOf('Left'))).toBeNull()
+    }
+  )
+
   it('revalidates the current source instead of trusting a previously parsed frame', () => {
     const text = createColumns('Body', 'two'),
       record = findColumns(text, 0)!

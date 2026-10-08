@@ -142,14 +142,12 @@ export function columnSource(text: string, from: number): ColumnSource | null {
     const m = quote(lines[i])
     if (!m || depthOf(m[1]) < depth) break
     const d = depthOf(m[1])
+    // A callout at the children's depth is a sibling, never the previous column's body.
+    const childHeader = /^\[!abele-column(?:\|[^\]]*)?\](?:\s.*)?$/.test(m[2])
+    if (!fence && d === depth + 1 && /^\[!/.test(m[2]) && !childHeader) return null
     // Every non-frame byte must belong to a child. Never discard parent prose or orphan text.
-    if (
-      (d === depth || !start) &&
-      m[2].trim() &&
-      !(d === depth + 1 && /^\[!abele-column(?:\|[^\]]*)?\](?:\s.*)?$/.test(m[2]))
-    )
-      return null
-    if (!fence && d === depth + 1 && /^\[!abele-column(?:\|[^\]]*)?\](?:\s.*)?$/.test(m[2])) {
+    if ((d === depth || !start) && m[2].trim() && !(d === depth + 1 && childHeader)) return null
+    if (!fence && d === depth + 1 && childHeader) {
       finish()
       start = offsets[i]
       body = ''
