@@ -465,7 +465,7 @@ export class ScopedPluginHost {
       let toldServer = false
       const revocation = new AbortController()
       this.revocation = revocation
-      const timeout = setTimeout(
+      const timeout = window.setTimeout(
         () => revocation.abort(new Error('Self-revocation timed out')),
         SELF_REVOKE_TIMEOUT_MS
       )
@@ -487,7 +487,7 @@ export class ScopedPluginHost {
         // Explicit local departure does not require network access. Report that the
         // server was not told only after all local cleanup has actually succeeded.
       } finally {
-        clearTimeout(timeout)
+        window.clearTimeout(timeout)
         revocation.abort()
         this.revocation = null
       }

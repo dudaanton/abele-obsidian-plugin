@@ -1,10 +1,16 @@
 /** Release the caller even when a transport ignores AbortSignal. Late results never
  * reach the scoped reducer, but the same signal also cancels cooperative network I/O. */
 export async function waitWithAbort<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
-  if (signal.aborted) throw signal.reason ?? new Error('Scoped request was cancelled')
+  const cancellationError = (): Error => {
+    const reason: unknown = signal.reason
+    return reason instanceof Error
+      ? reason
+      : new Error('Scoped request was cancelled', { cause: reason })
+  }
+  if (signal.aborted) throw cancellationError()
   let cancel!: () => void
   const aborted = new Promise<never>((_resolve, reject) => {
-    cancel = () => reject(signal.reason ?? new Error('Scoped request was cancelled'))
+    cancel = () => reject(cancellationError())
     signal.addEventListener('abort', cancel, { once: true })
   })
   try {
