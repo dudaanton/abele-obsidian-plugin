@@ -85,8 +85,8 @@ describe('one list independent of open tabs', () => {
     expect(ChatService.getInstance().getAllSessions()).toHaveLength(2)
     expect(agents.rows.value).toHaveLength(2)
   })
-  it.fails(
-    'BUG: historical rename test requires a forbidden basename alias for the owner',
+  it(
+    'direct discussion file renames preserve tab closure and owner identity',
     async () => {
       const app = useVault([
         {
@@ -113,11 +113,12 @@ describe('one list independent of open tabs', () => {
       await agents.open(renamed, renamed.reasons[0])
       await chats.closeTab(session.id)
       expect(chats.getSession(session.id)).toBeNull()
-      expect(CommentService.getInstance().sessionFor('renamed-discussion')).toBe(session)
+      expect(CommentService.getInstance().sessionFor('sample-discussion')).toBe(session)
+      expect(CommentService.getInstance().sessionFor('renamed-discussion')).toBeNull()
     }
   )
-  it.fails(
-    'BUG: historical restart test requires a forbidden basename alias for the owner',
+  it(
+    'preserves the original note-marker identity through a closed rename and restart',
     async () => {
       const app = useVault([
         {
@@ -144,7 +145,8 @@ describe('one list independent of open tabs', () => {
       const restored = await comments.load('sample-marker')
       expect(restored?.currentChatFile.value?.path).toBe(file.path)
       expect(restored?.commentId).toBe('sample-marker')
-      expect(comments.sessionFor('renamed-marker')).toBe(restored)
+      expect(comments.sessionFor('sample-marker')).toBe(restored)
+      expect(comments.sessionFor('renamed-marker')).toBeNull()
     }
   )
   it('opens copied discussion files without stealing the original marker or writer', async () => {
