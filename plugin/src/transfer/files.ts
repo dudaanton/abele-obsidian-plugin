@@ -129,9 +129,6 @@ export async function applyFiles(
     const { content } = entry.data as TransferFile
 
     try {
-      // Taken in on this device, by the person, from the list they ticked: a script that came
-      // this way is theirs here, and does not wait to be confirmed again; see `ScriptTrust.ts`.
-      await noteLocalScriptWrite(path, content)
       const existing = app.vault.getFileByPath(path)
       if (existing) {
         await app.vault.modify(existing, content)
@@ -139,6 +136,11 @@ export async function applyFiles(
         await ensureFolder(app, path)
         await app.vault.create(path, content)
       }
+      // Apply is the same explicit selection/approval as before. Persist the file first:
+      // native hashing or unavailable approval storage must not prevent it from landing.
+      // Execution still goes through its own trust checks; only these selected bytes are
+      // recorded, never another version that happens to arrive while hashing is pending.
+      await noteLocalScriptWrite(path, content)
       written++
     } catch {
       failed.push(path)
