@@ -74,6 +74,7 @@ export class ChatService {
   private restoreGeneration = 0
   private continueRestore: (() => void) | null = null
   private readonly contextualLoads = new WeakMap<TFile, ContextualOpenRequest>()
+  private readonly sessionReleases = new WeakMap<ChatSession, symbol>()
   private loadingFiles = new Map<
     string,
     {
@@ -640,12 +641,24 @@ export class ChatService {
    * same file as a card, so it is only dropped from the tabs here. Saved first all the same —
    * the tab bar is where its last edits were made.
    */
-  async releaseSession(tabId: string): Promise<void> {
+  async releaseSession(tabId: string, isCurrent?: () => boolean): Promise<boolean> {
     const session = this.sessions.get(tabId)
-    if (!session) return
-
-    await session.save()
-    this.dropTab(tabId)
+    if (!session || (isCurrent && !isCurrent())) return false
+    const token = Symbol('session-release')
+    this.sessionReleases.set(session, token)
+    const current = () =>
+      this.sessionReleases.get(session) === token &&
+      this.sessions.get(tabId) === session &&
+      !session.isDestroyed &&
+      (!isCurrent || isCurrent())
+    try {
+      await session.save()
+      if (!current()) return false
+      this.dropTab(tabId)
+      return true
+    } finally {
+      if (this.sessionReleases.get(session) === token) this.sessionReleases.delete(session)
+    }
   }
 
   /**
@@ -680,6 +693,8 @@ export class ChatService {
     }
     if (this.sessions.has(tabId) || this.nodeSessions.has(tabId)) {
       this.tabSelectionRevision++
+      const session = this.sessions.get(tabId)
+      if (session) this.sessionReleases.delete(session)
       this.activeTabId.value = tabId
       this.saveTabs()
     }
@@ -787,10 +802,22 @@ export class ChatService {
     const pending = this.loadingFiles.get(file.path)
     if (pending !== undefined) return waitFor(pending)
     const existing = this.getSessionByFile(file.path)
-    if (existing)
-      return existing
-        .reconcileForSelectionReturn(request.current)
-        .then(() => request.current && !request.current() ? null : existing)
+    if (existing) {
+      if (request.current && !request.current()) return Promise.resolve(null)
+      // Reopening supersedes an in-flight contextual release before reconciliation waits
+      // for that session's writer. The older save may finish, but may not remove this tab.
+      this.sessionReleases.delete(existing)
+      return existing.reconcileForSelectionReturn(request.current).then(() => {
+        if (request.current && !request.current()) return null
+        if (
+          existing.isDestroyed ||
+          this.sessions.get(existing.id) !== existing ||
+          existing.currentChatFile.value?.path !== file.path
+        )
+          return null
+        return existing
+      })
+    }
 
     let complete!: (session: ChatSession | null) => void
     let fail!: (error: unknown) => void
@@ -883,6 +910,7 @@ export class ChatService {
   }
 
   private selectLoaded(session: ChatSession, previous?: ChatSession | null): void {
+    if (session.isDestroyed || this.sessions.get(session.id) !== session) return
     // Adopting a comment does not use the blank holder supplied by the caller. Remove only
     // a genuinely empty placeholder, never a draft or an existing conversation.
     if (

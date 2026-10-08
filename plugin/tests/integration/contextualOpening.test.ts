@@ -153,7 +153,11 @@ describe('request-local contextual opening', () => {
     const save = storage.saveChat.bind(storage)
     let paused = false
     vi.spyOn(storage, 'saveChat').mockImplementation(async (...args) => {
-      if (args[2]?.path === y && !paused) { paused = true; saving.resolve(); await gate.promise }
+      if (args[2]?.path === y && !paused) {
+        paused = true
+        saving.resolve()
+        await gate.promise
+      }
       return save(...args)
     })
     const reconcile = ownerY.reconcileForSelectionReturn.bind(ownerY)
@@ -180,7 +184,9 @@ describe('request-local contextual opening', () => {
     expect(chats.pendingAnchorReturn.value?.target.anchor.id).toBe('sample-anchor-b')
     expect(chats.openingSelection.value).toBe(false)
     expect(parseChatMetadata(await app.vault.read(app.vault.getFileByPath(y)!))).toMatchObject({
-      commentId: yId, commentLocation: y, title: 'A pending local title',
+      commentId: yId,
+      commentLocation: y,
+      title: 'A pending local title',
     })
   })
 

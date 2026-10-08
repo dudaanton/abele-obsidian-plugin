@@ -258,7 +258,7 @@ export class CommentService implements CommentInfoSource {
   async releaseOtherContextualTabs(id: string, isCurrent?: () => boolean): Promise<boolean> {
     for (const other of [...this.shown]) {
       if (isCurrent && !isCurrent()) return false
-      if (other !== id) await this.hideFromSidebar(other)
+      if (other !== id) await this.hideFromSidebar(other, isCurrent)
     }
     return !isCurrent || isCurrent()
   }
@@ -288,13 +288,18 @@ export class CommentService implements CommentInfoSource {
    * state. Called by `ChatService.closeTab` for the tab's × as well, so both ends of the same
    * act agree.
    */
-  async hideFromSidebar(id: string): Promise<void> {
+  async hideFromSidebar(id: string, isCurrent?: () => boolean): Promise<void> {
     id = this.canonicalId(id)
     const session = this.sessions.get(id)
-    if (!this.shown.delete(id) || !session) return
+    if (!this.shown.has(id) || !session || (isCurrent && !isCurrent())) return
 
+    const chats = ChatService.getInstance()
+    await chats.releaseSession(session.id, isCurrent)
+    // A save can outlive the request, or a reopen can supersede the per-session release.
+    // Update presentation only after the tab really left; never erase the reopened state.
+    if ((isCurrent && !isCurrent()) || chats.getSession(session.id)) return
+    this.shown.delete(id)
     if (this.open.value === id) this.open.value = null
-    await ChatService.getInstance().releaseSession(session.id)
 
     const note = session.anchor.value?.note
     if (note) dispatchCommentsChanged(note)

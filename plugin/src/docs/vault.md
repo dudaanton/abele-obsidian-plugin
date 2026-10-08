@@ -241,7 +241,9 @@ loads and prepares the target before handing the prior contextual tab back. That
 can be reused at the tab limit without closing ordinary chats or stopping the prior discussion.
 Concurrent opens share file I/O, not caller freshness: each waiter has its own request token and
 validity check. Completed contextual tokens are removed rather than restored, so a later
-attention-list open cannot inherit a completed file link's contextual policy. These identifiers travel in chat files, not
+attention-list open cannot inherit a completed file link's contextual policy. Contextual release
+also has a per-session token: a reopen supersedes a pending save/release, and registration and
+caller freshness are checked again before removing the tab or selecting a reconciled session. These identifiers travel in chat files, not
 settings or secrets.
 
 Boundary: bytes alone cannot distinguish an unobserved move from a copy followed by deletion.
