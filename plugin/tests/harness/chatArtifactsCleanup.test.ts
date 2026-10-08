@@ -26,11 +26,16 @@ describe('artifact fixture settings cleanup', () => {
         await config.saveSettings()
       })
       const close = async () => {
-        if (fails) throw new Error('Synthetic close failure')
+        if (fails) {
+          // A view closing can save again: restoration must also be the final boundary.
+          config.ai.scriptsEnabled = false
+          await config.saveSettings()
+          throw new Error('Synthetic close failure')
+        }
       }
       const app = {
         vault: { getAbstractFileByPath: () => null, setConfig: vi.fn() },
-        workspace: { changeLayout: vi.fn() },
+        workspace: { changeLayout: vi.fn(), getLeavesOfType: () => [] },
       }
       const execute = new Function(
         'config',

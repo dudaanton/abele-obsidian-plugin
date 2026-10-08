@@ -149,16 +149,22 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       finally {
         // Tools and code views can save the temporary settings. Restore durably before any
         // workspace cleanup that could fail, so the next file never inherits scripts off.
-        await restoreScriptFixture(scriptFixture)
+        try {
+        config.ai = { ...scriptFixture.ai }
+        await config.saveSettings()
         if (session) { session.isStreaming.value = false; if (getTools) session.getTools = getTools }
         await close()
         if (tab) await chats.closeTab(tab)
         if (priorTab) chats.switchTab(priorTab)
         if (chatFile) { const file = app.vault.getAbstractFileByPath(chatFile.path); if (file) await app.vault.delete(file) }
+        for (const leaf of app.workspace.getLeavesOfType('abele-code')) {
+          if (leaf.view.file?.path.startsWith(directory + '/')) leaf.detach()
+        }
         const dir = app.vault.getAbstractFileByPath(directory); if (dir) await app.vault.delete(dir, true)
         app.vault.setConfig('attachmentFolderPath', oldFolder)
         await app.workspace.changeLayout(layout)
         if (priorLeaf?.containerEl?.isConnected) app.workspace.setActiveLeaf(priorLeaf, { focus: false })
+        } finally { await restoreScriptFixture(scriptFixture) }
       }
     })()`,
         45_000

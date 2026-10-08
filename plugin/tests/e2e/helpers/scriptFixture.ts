@@ -96,7 +96,7 @@ export const SCRIPT_FIXTURE = String.raw`
       })
     }
     T.ScriptTrust.reset()
-    config.ai = snapshot.ai
+    config.ai = fixtureClone(snapshot.ai)
     config.version.value++
     await config.saveSettings()
     await T.ScriptService.getInstance().discover()
