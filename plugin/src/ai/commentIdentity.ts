@@ -6,7 +6,10 @@ export interface DiscussionIdentityData {
   commentLocation?: string
 }
 export class DiscussionIdentityConflict extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly ownerId?: string
+  ) {
     super(message)
     this.name = 'DiscussionIdentityConflict'
   }
@@ -59,7 +62,8 @@ export async function discussionIdentity(
   if (canonicalDiscussionPath(markerPath(historical)) !== path) {
     if (data.commentId && legacyOwnerEstablished) return forkId(historical, path)
     throw new DiscussionIdentityConflict(
-      'Ambiguous legacy discussion. Resolve its identity explicitly before opening it.'
+      'Ambiguous legacy discussion. Resolve its identity explicitly before opening it.',
+      data.commentId
     )
   }
   return historical

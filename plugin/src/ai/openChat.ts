@@ -231,8 +231,8 @@ export async function openChat(file: TFile, selectionReturn?: () => boolean): Pr
   // storage preparation and hands discussions to their owner; basename marker lookup is not
   // a file opener, including for same-basename copies already discovered outside the folder.
   const chatService = ChatService.getInstance()
-  if (selectionReturn) await chatService.openChatFile(file, selectionReturn)
-  else await chatService.openChatFile(file)
+  if (selectionReturn) await chatService.openContextualChatFile(file, selectionReturn)
+  else await chatService.openContextualChatFile(file)
   if (selectionReturn && !selectionReturn()) return
   const session = chatService.getSessionByFile(file.path)
   if (session?.kind === 'comment' && session.commentId) {

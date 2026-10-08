@@ -223,11 +223,7 @@ export class CommentService implements CommentInfoSource {
     // The one before it is handed back exactly as closing its tab would hand it back: alive,
     // still writing the same file, still painting its marker. An *expanded* comment is not
     // touched — that one is a chat, and owns its tab like any other.
-    for (const other of [...this.shown]) {
-      if (selectionReturn && !selectionReturn()) return false
-      if (other !== id) await this.hideFromSidebar(other)
-    }
-    if (selectionReturn && !selectionReturn()) return false
+    if (!(await this.releaseOtherContextualTabs(id, selectionReturn))) return false
 
     const chatService = ChatService.getInstance()
     // It can be refused: the tab bar has a limit and `adoptSession` keeps it. Nothing is
@@ -243,6 +239,28 @@ export class CommentService implements CommentInfoSource {
     const note = session.anchor.value?.note
     if (note) dispatchCommentsChanged(note)
     return true
+  }
+
+  /** UI capacity only: no file ownership is inferred from the contextual tab's ID. */
+  hasContextualTabToReplace(id: string): boolean {
+    const chats = ChatService.getInstance()
+    return [...this.shown].some((other) => {
+      const session = this.sessions.get(other)
+      return (
+        other !== id &&
+        session?.kind === 'comment' &&
+        !session.isDestroyed &&
+        chats.getSession(session.id) === session
+      )
+    })
+  }
+
+  async releaseOtherContextualTabs(id: string, isCurrent?: () => boolean): Promise<boolean> {
+    for (const other of [...this.shown]) {
+      if (isCurrent && !isCurrent()) return false
+      if (other !== id) await this.hideFromSidebar(other)
+    }
+    return !isCurrent || isCurrent()
   }
 
   /** Returns from the attention list without replacing any other discussion tab. */
@@ -590,6 +608,7 @@ export class CommentService implements CommentInfoSource {
     if (!path || storage.discussionIdAt(path) !== id || storage.discussionPathFor(id) !== path)
       throw new Error('The discussion identity was not resolved for this file.')
     this.sessions.set(id, session)
+    this.missing.delete(id)
     this.watchState(id, session)
   }
 

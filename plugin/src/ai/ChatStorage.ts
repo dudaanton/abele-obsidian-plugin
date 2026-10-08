@@ -66,6 +66,8 @@ interface DiscussionObservation {
   discussion: boolean
   normalized: boolean
   failed?: boolean
+  failedOwnerId?: string
+  failedOwners?: string
 }
 
 export class ChatStorage {
@@ -298,6 +300,10 @@ export class ChatStorage {
     return this.discussionIdAt(path) === id ? path : undefined
   }
 
+  private discussionOwnerStamp(id: string): string {
+    return JSON.stringify([id, [...(this.discussionIds.get(id) ?? [])].sort()])
+  }
+
   /** Mandatory before restoration, migration, discovery publication or a session write. */
   prepareDiscussion(
     file: TFile,
@@ -311,7 +317,11 @@ export class ChatStorage {
     ).catch((error) => {
       if (error instanceof DiscussionIdentityConflict) {
         const entry = this.discussionPaths.get(file.path)
-        if (entry) entry.failed = true
+        if (entry) {
+          entry.failed = true
+          entry.failedOwnerId = error.ownerId
+          entry.failedOwners = error.ownerId ? this.discussionOwnerStamp(error.ownerId) : undefined
+        }
       } else this.invalidateDiscussion(file.path)
       throw error
     })
@@ -403,7 +413,8 @@ export class ChatStorage {
         const owners = this.discussionIds.get(identity)
         if (owners && [...owners].some((owner) => owner !== path))
           throw new DiscussionIdentityConflict(
-            'Conflicting discussion owners. Resolve the files explicitly.'
+            'Conflicting discussion owners. Resolve the files explicitly.',
+            identity
           )
       }
       if (file.path !== path) continue
@@ -437,6 +448,10 @@ export class ChatStorage {
         }
         committed = content
       }
+      // The next trusted move starts at this committed checkpoint, even if another rename
+      // arrived while the rewrite's cleanup or the following confirmation was awaiting I/O.
+      if (identity && rename && this.discussionRenames.get(file) === rename)
+        rename.logicalPath = path
       if ((await app.vault.read(file)) !== committed) continue
       // A local observation token, not an identity or a persisted assignment. Exact bytes
       // are checked at the storage boundary; the cache keeps no transcript.
@@ -456,7 +471,8 @@ export class ChatStorage {
         await this.refreshDiscussionIndex()
         if ([...(this.discussionIds.get(identity) ?? [])].some((owner) => owner !== path))
           throw new DiscussionIdentityConflict(
-            'Conflicting discussion owners. Resolve the files explicitly.'
+            'Conflicting discussion owners. Resolve the files explicitly.',
+            identity
           )
       }
       // Index reconciliation itself awaits I/O. A rename or sync replacement during that
@@ -533,7 +549,13 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
     await this.refreshDiscussionIndex(true)
     for (const entry of [...this.discussionPaths.values()]) {
-      if (!entry.discussion || entry.normalized || entry.failed) continue
+      if (!entry.discussion || entry.normalized) continue
+      if (
+        entry.failed &&
+        (!entry.failedOwnerId ||
+          entry.failedOwners === this.discussionOwnerStamp(entry.failedOwnerId))
+      )
+        continue
       try {
         await this.prepareDiscussion(entry.file)
       } catch {

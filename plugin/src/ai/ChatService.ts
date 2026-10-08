@@ -1,5 +1,5 @@
 import { providerKey } from '@/secrets/destinations'
-import { ref, computed, shallowRef } from 'vue'
+import { ref, computed, shallowRef, toRaw } from 'vue'
 import { nanoid } from 'nanoid'
 import { copyChatData } from './chatClone'
 import { serializeChat } from './ChatLog'
@@ -64,6 +64,7 @@ export class ChatService {
   private restoringTabs = false
   private restoreGeneration = 0
   private continueRestore: (() => void) | null = null
+  private readonly contextualLoads = new WeakMap<TFile, { current?: () => boolean }>()
   private loadingFiles = new Map<
     string,
     {
@@ -749,7 +750,11 @@ export class ChatService {
   }
 
   /** Every entry point reserves the file before creating a holder or starting asynchronous I/O. */
-  private loadFile(file: TFile, create: () => ChatSession | null): Promise<ChatSession | null> {
+  private loadFile(
+    file: TFile,
+    create: () => ChatSession | null,
+    contextual?: { current?: () => boolean }
+  ): Promise<ChatSession | null> {
     const pending = this.loadingFiles.get(file.path)
     if (pending !== undefined) return pending.ready
     const existing = this.getSessionByFile(file.path)
@@ -771,7 +776,16 @@ export class ChatService {
         const comments = CommentService.getInstance()
         const prepared = await ChatStorage.getInstance().prepareDiscussion(file)
         const comment = prepared.identity !== undefined
-        if (comment && !this.canCreateTab) {
+        if (contextual?.current && !contextual.current()) {
+          complete(null)
+          return
+        }
+        const replacement =
+          contextual &&
+          prepared.identity &&
+          prepared.snapshot.metadata?.kind !== 'chat' &&
+          comments.hasContextualTabToReplace(prepared.identity)
+        if (comment && !this.canCreateTab && !replacement) {
           new Notice(ChatService.TABS_FULL)
           complete(null)
           return
@@ -784,6 +798,19 @@ export class ChatService {
           return
         }
         if (!comment) await session.load(file)
+        // Loading/normalization must succeed before the previous contextual writer is
+        // handed back. Generic/attention opens keep their existing independent-tab policy.
+        if (contextual && session.kind === 'comment' && session.commentId && !session.moving.value) {
+          if (!(await comments.releaseOtherContextualTabs(session.commentId, contextual.current))) {
+            complete(null)
+            return
+          }
+        }
+        if (comment && !this.sessions.has(session.id) && !this.canCreateTab) {
+          new Notice(ChatService.TABS_FULL)
+          complete(null)
+          return
+        }
         if (
           generation !== this.restoreGeneration ||
           (!comment && this.sessions.get(session.id) !== session)
@@ -833,6 +860,23 @@ export class ChatService {
     return null
   }
 
+  /** A file link may replace a contextual tab instead of requiring additional capacity. */
+  async openContextualChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
+    const raw = toRaw(file)
+    const previous = this.contextualLoads.get(raw)
+    const request = { current: selectionReturn }
+    this.contextualLoads.set(raw, request)
+    try {
+      if (selectionReturn) await this.openChatFile(file, selectionReturn)
+      else await this.openChatFile(file)
+    } finally {
+      if (this.contextualLoads.get(raw) === request) {
+        if (previous) this.contextualLoads.set(raw, previous)
+        else this.contextualLoads.delete(raw)
+      }
+    }
+  }
+
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
   async openChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
     this.tabSelectionRevision++
@@ -847,7 +891,8 @@ export class ChatService {
         return null
       }
       return this.sessions.get(this.createTab()) ?? null
-    })
+    },
+    this.contextualLoads.get(toRaw(file)))
     if (!session || (selectionReturn && !selectionReturn())) return
     if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
     // Loading/reconciliation may finish after a newer link selected another tab.

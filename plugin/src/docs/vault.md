@@ -217,6 +217,8 @@ create/modify/delete/rename events invalidate affected observations; unchanged f
 transcript rereads. Cold inventory/discovery is linear in file count, and a warm discussion save
 reads only its own file. ID opening/deletion checks the inventory and validates the exact
 candidate; file-link openers address the supplied file through the gate, never its basename.
+A rejected legacy normalization caches its conflicting owner-set signature as well as the file
+revision. Removing or re-identifying a competing owner permits a fresh lookup without restart.
 There is no filename fallback and no basename alias.
 Duplicate self-declared owners are conflicts, never first-writer-wins. Legacy discussions can
 retain their stored or historical basename ID only at the old canonical marker path (including
@@ -228,11 +230,15 @@ stored attention evidence: it remains visible as incomplete, without a published
 
 A trusted rename attaches its old logical path synchronously to the file's pending preparation,
 including when discovery or a save is already reading it. Preparation normalizes at that old
-logical path first, then commits the retained ID at the new location. Only exact paths select
+logical path first, then commits the retained ID at the new location. Each successful intermediate
+normalization advances the pending logical checkpoint, so consecutive trusted moves do not
+re-identify an original or fork an already normalized copy again. Only exact paths select
 sessions. Vault deletion invalidates and closes only the deleted file's owner, without flushing
 it back to disk. **Deleting an original leaves its markers
 broken**; a remaining copy cannot open or be deleted through them. Explicit restoration of the
-same persisted identity can restore those links. These identifiers travel in chat files, not
+same persisted identity can restore those links. File-link replacement of a contextual discussion
+loads and prepares the target before handing the prior contextual tab back. That released slot
+can be reused at the tab limit without closing ordinary chats or stopping the prior discussion. These identifiers travel in chat files, not
 settings or secrets.
 
 Boundary: bytes alone cannot distinguish an unobserved move from a copy followed by deletion.
