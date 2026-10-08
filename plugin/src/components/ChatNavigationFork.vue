@@ -80,7 +80,9 @@ const emit = defineEmits<{
 }>()
 const key = `fork:${props.fork.id}`
 const expanded = ref([...props.state.expanded])
-const hasContents = (id: string) => (props.tree.children.get(id)?.length ?? 0) > 0
+const hasContents = (id: string) =>
+  (props.tree.children.get(id)?.length ?? 0) > 0 ||
+  props.comments.some((comment) => comment.message === id)
 const toggle = (event: Event, item: string) => {
   // Native toggle bubbles from nested details in some hosts; only its own element owns it.
   if (event.target !== event.currentTarget) return

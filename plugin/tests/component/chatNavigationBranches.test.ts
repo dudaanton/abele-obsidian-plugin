@@ -116,6 +116,31 @@ describe('forks in the contents list', () => {
     expect(root().textContent).toContain('Alternate result answer')
   })
 
+  it('expands a leaf alternative to reach its discussions without first selecting that branch', async () => {
+    const read = vi.spyOn(CommentService.getInstance(), 'navigationPreview').mockResolvedValue({
+      messages: ref([
+        { id: 'leaf-q', role: 'user', content: 'A leaf discussion question', timestamp: 1 },
+      ]),
+      messageComments: ref([]),
+      isDestroyed: false,
+    } as never)
+    await open({
+      allMessages: rows.slice(0, 3),
+      comments: [{ id: 'leaf-discussion', message: 'b', quote: 'sample alternate passage' }],
+    })
+    expect(read).not.toHaveBeenCalled()
+    await click('Continuations · 2')
+    const disclosure = root().querySelector<HTMLElement>('[data-continuation="b"] summary')
+    expect(disclosure).not.toBeNull()
+    disclosure!.click()
+    await flushPromises()
+    expect(read.mock.calls).toEqual([['leaf-discussion']])
+    expect(root().textContent).toContain('A leaf discussion question')
+    expect(wrapper!.emitted('jump')).toBeUndefined()
+    await click('A leaf discussion question')
+    expect(wrapper!.emitted('discussion')!.at(-1)).toEqual(['leaf-discussion'])
+  })
+
   it('offers all-branch search explicitly, counts shared messages once, and names other continuations', async () => {
     await open()
     const input = root().querySelector<HTMLInputElement>('input')!
