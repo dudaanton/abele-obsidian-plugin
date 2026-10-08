@@ -320,22 +320,17 @@ export class ScriptService {
       this.instance = new ScriptService()
     }
     const service = this.instance
-    // Explicit reader/slide consumers can ask for the index after a reload even when the
-    // background script feature is off. Do not strand their `ready` promise forever.
-    // Before layout, init still owns the first scan; this starts no watchers or toolbar.
-    if (
-      GlobalStore.getInstance().app?.workspace.layoutReady &&
-      !service.initialized &&
-      !service.indexed &&
-      !service.discovering &&
-      !service.disposed
-    ) {
-      void service
-        .discover()
-        .catch((error) =>
-          console.error('[ScriptService] Could not read the standalone script index:', error)
-        )
-        .finally(() => service.markReady())
+    // Restored readers/slides can request the index before OR after layout, even with
+    // background indexing off. A single deferred scan starts no watchers or toolbar.
+    const app = GlobalStore.getInstance().app
+    if (app?.workspace.layoutReady) service.discoverStandalone()
+    else if (app?.workspace.layoutReady === false && !service.standaloneLayoutQueued) {
+      service.standaloneLayoutQueued = true
+      app.workspace.onLayoutReady(() => {
+        service.standaloneLayoutQueued = false
+        if (this.instance === service && GlobalStore.getInstance().app === app)
+          service.discoverStandalone()
+      })
     }
     return service
   }
@@ -349,6 +344,16 @@ export class ScriptService {
 
   private initialized = false
   private disposed = false
+  private standaloneLayoutQueued = false
+
+  private discoverStandalone(): void {
+    if (this.initialized || this.indexed || this.discovering || this.disposed) return
+    void this.discover()
+      .catch((error) =>
+        console.error('[ScriptService] Could not read the standalone script index:', error)
+      )
+      .finally(() => this.markReady())
+  }
 
   init() {
     if (this.initialized || this.disposed) return
