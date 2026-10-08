@@ -23,7 +23,11 @@ all existing revision/checksum checks and run the same assertions.
 required fixture variable automatically (omit the repository to reuse verified matching archives
 from `.scratch/sync-inputs/` or explicit fixture variables). The installed core/protocol pin stays
 independent of the released-server owner contract fixture: `ABELE_OWNER_RELEASE_FIXTURE` is checked
-against its own exact revision. Both revisions run `ownerSharingContracts.test.ts`.
+against its own exact revision. The server-backed tier is pinned independently to `f927e62`,
+which supplies the owner group-list route; the installed core/protocol archives stay unchanged.
+Both revisions run `ownerSharingContracts.test.ts`: the older released server still exercises
+preparation, keys, invitations, revocation and security policy, while complete management listing
+must fail closed there because its group-list route does not exist.
 Use `--tests` to run only registered touched areas, without selecting unrelated tiers:
 
 ```sh

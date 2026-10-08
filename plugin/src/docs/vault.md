@@ -1493,12 +1493,11 @@ not another create/PATCH. The review keeps its saved grant and issues no key/app
 preparation is ready. A closed or superseded review cannot adopt a late preparation response.
 The UI retains no password after confirmation and no long-lived secret setting. Current rows
 and operation ports do not substitute credentials between personal and scoped pipelines.
-Owner sign-in in Sharing lists folders from the server and groups remembered by this plugin,
-and loads their image lists; a missing local link cache does not block explicit unsharing.
-The server has no group-list or group-ACL read route. Groups without saved management details
-cannot be listed, and an externally changed group revision refuses revocation instead of being
-guessed. Remembered group names are checked with the owner visibility route; unavailable reviews
-stay visible but cannot be used to stop sharing. Folder-list absence never deletes group hints. Stop sharing names the folder/group and warns that all
+Owner sign-in in Sharing reads the server's folder and group lists, and loads their image lists;
+a missing local link cache does not block explicit unsharing. Both authenticated list requests
+must succeed before local/portable cache hints are replaced. Group names, roots, roles and current
+ACL revisions come from server rows, including groups created elsewhere. An access change after
+that review causes a conflict and another server review, never a guessed revision. Stop sharing names the folder/group and warns that all
 collaborators and connected apps lose access, without deleting their downloaded copies. It uses
 the existing password-authenticated, revision-checked revoke route and changes no other share.
 Folder reviews count synced inventory files and state that the server decides sharing eligibility:
@@ -1507,18 +1506,25 @@ reviews report the exact synced note checked, without claiming a certified membe
 
 `data.json`'s shared `sync.sharing` catalogue carries server/vault-bound grant IDs and optional
 `groups` management hints: group ID, last acknowledged name, root file ID, role, ACL revision and
-state. The same hints are stored in the bound local `owner-publication-audiences-v1` record.
-Hints are not authorization or a fresh group-ACL read. The discovery inventory may contain up to
+state. The same hints are stored in the bound local `owner-publication-audiences-v1` record,
+with `settingsPending` tracking an unacknowledged settings write. That obligation survives a
+restart and clears only after a later save and durable marker update both succeed. Empty
+`sharing` is omitted from synced settings. Corrupt group entries remain intact, are reported by
+a visible warning and cannot silently erase valid hints beside them. Hints are not authorization;
+the signed-in server lists always replace the cache. The discovery inventory may contain up to
 64 IDs; the existing 16-audience publication budget is unchanged. An oversized union, unreadable
 discovery or failed settings save pauses new automatic sharing, preserves discovery data and shows
-a warning, without stopping personal sync or management. Consent/receipt metadata remains intact.
+a warning, without stopping personal sync or management. All discovered IDs remain persisted,
+not just the subset that fits the publication budget. The pause prevents settled automatic intent
+replay and final asset transport as well as new paste publication. Consent/receipt metadata remains
+intact for resumption; it is not discarded or acknowledged by matching current bytes.
 It travels with the Sync transfer section and ordinary plugin-settings sync, so a second personal
 device can discover the same audiences. It carries no credentials, consent, local principal or
 ledger identity. Local audience records remain bound to their own device; imported IDs still
 require fresh server visibility and intrinsic sponsor proofs for every publication operation.
 When plugin-settings sync is disabled, signing in under Sharing can refresh this discovery list
-from the folder-only owner grant-list route without enabling settings sync. Remembered group
-management data can travel with the Sync transfer section; no group inventory is fabricated.
+from both owner grant-list routes without enabling settings sync. Cached group data can travel
+with the Sync transfer section, but never substitutes for signed-in server truth.
 
 The publication store keeps existing-private decisions (`pending`, `declined`,
 `approved`) in its own device-local IndexedDB, separate from the personal sync ledger.

@@ -32,7 +32,12 @@ sentinel, descriptor or publication evidence requires recovery instead of a fres
 Discovery is optional: unreadable hints, an oversized union or a settings-save failure pauses new
 automatic image sharing with a visible warning, but never stops personal sync startup or management.
 The existing publication-unit budget remains 16; larger discovery inventories are retained without
-silently selecting a subset or deleting imported/local choices.
+silently selecting a subset or deleting imported/local choices. Every discovered ID is persisted,
+even when publication is paused. A durable `settingsPending` marker survives failed settings writes
+and forces a later successful write even if the in-memory object is already equal. Invalid group
+entries stay intact and produce a visible warning instead of becoming an empty inventory.
+The pause also gates settled intent replay and the final asset transport; exact receipt metadata
+remains retained for resumption, not silently acknowledged or discarded.
 Audience IDs originate in authenticated grant creation/preparation or an owner grant-list read.
 A server/vault-bound discovery catalogue in shared `sync.sharing` settings carries them to other
 personal devices; it is included by the existing whole Sync transfer block. Devices with plugin
@@ -67,12 +72,12 @@ keychain-safe slot spelling, and are reserved against ordinary reads and transfe
 The settings dialogs receive live production flows. Owner readiness is reactive, so a tab opened
 before engine initialization becomes usable when the owner lifetime starts. Its management port
 is stable for that lifetime; ordinary catalogue saves do not discard a fresh owner session.
-Owner sign-in under Sharing lists folders from the server and groups remembered from acknowledged
-management replies. Group hints (ID, name, root ID, role, ACL revision and state) survive locally and
-in bound `sync.sharing[].groups` settings; current names are checked with the owner visibility route.
-The server exposes neither a group inventory nor a current group-ACL read route. Unknown groups
-cannot be reconstructed from IDs alone, and externally changed group revisions fail closed rather
-than using publication revisions or guessed ACLs. Folder-list absence never retires a group.
+Owner sign-in under Sharing reads both `/v1/vaults/:v/grants` and
+`/v1/vaults/:v/grants/groups`. Both owner-authenticated requests must succeed before the
+inventory replaces local/portable hints. Group names, roots, roles and ACL revisions come from
+those server rows, including groups created by other clients. Stop sharing uses that fresh ACL
+revision, never publication revisions or guessed counters. Offline discovery remains a cache;
+it cannot resurrect absent server groups while the management session is signed in.
 Sponsored image views and confirmed Stop sharing use the existing routes. A revoke is acknowledged
 only by the exact grant/vault/kind, next ACL revision, `state: unavailable` and a valid `revoked_at`. Image withdrawal does not wait on local indexing.
 The publisher's existing 16-audience budget does not prevent listing/revoking larger server lists;
