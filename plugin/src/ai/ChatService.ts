@@ -51,10 +51,12 @@ interface TabsState {
 interface ContextualOpenRequest {
   token: symbol
   current?: () => boolean
+  cancelled?: boolean
 }
 interface FileOpenRequest extends ContextualOpenRequest {
   contextual: boolean
   create: () => ChatSession | null
+  contextualRequest?: ContextualOpenRequest
 }
 
 export class ChatService {
@@ -785,6 +787,7 @@ export class ChatService {
       token: Symbol('file-open'),
       contextual: contextual !== undefined,
       current: contextual?.current ?? isCurrent,
+      contextualRequest: contextual,
       create,
     }
     const waitFor = async (load: {
@@ -794,7 +797,7 @@ export class ChatService {
       load.requests.set(request.token, request)
       try {
         const session = await load.ready
-        return request.current && !request.current() ? null : session
+        return request.cancelled || (request.current && !request.current()) ? null : session
       } finally {
         load.requests.delete(request.token)
       }
@@ -831,7 +834,9 @@ export class ChatService {
       requests: new Map([[request.token, request]]),
     }
     const currentRequests = () =>
-      [...entry.requests.values()].filter((waiter) => !waiter.current || waiter.current())
+      [...entry.requests.values()].filter(
+        (waiter) => !waiter.cancelled && (!waiter.current || waiter.current())
+      )
     const currentContextual = () => currentRequests().some((waiter) => waiter.contextual)
     this.loadingFiles.set(file.path, entry)
     const generation = this.restoreGeneration
@@ -879,8 +884,24 @@ export class ChatService {
           session.kind === 'comment' &&
           session.commentId &&
           !session.moving.value
-        )
-          await comments.releaseOtherContextualTabs(session.commentId, currentContextual)
+        ) {
+          const releasing = currentRequests().filter((waiter) => waiter.contextual)
+          const isCurrentRelease = () =>
+            releasing.some((waiter) => !waiter.cancelled && (!waiter.current || waiter.current()))
+          if (!(await comments.releaseOtherContextualTabs(session.commentId, isCurrentRelease))) {
+            // These opens lost their contextual claim. Cancel only the participating
+            // callers; another waiter can still complete the shared file load independently.
+            for (const waiter of releasing) {
+              waiter.cancelled = true
+              if (waiter.contextualRequest) waiter.contextualRequest.cancelled = true
+            }
+          }
+        }
+        if (!currentRequests().length && comment && session.commentId && !this.sessions.has(session.id))
+          await comments.hideFromSidebar(
+            session.commentId,
+            () => !currentRequests().length && !this.sessions.has(session.id)
+          )
         if (!currentRequests().length) {
           complete(null)
           return
@@ -941,9 +962,9 @@ export class ChatService {
   }
 
   /** A file link may replace a contextual tab instead of requiring additional capacity. */
-  async openContextualChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
+  async openContextualChatFile(file: TFile, selectionReturn?: () => boolean): Promise<boolean> {
     const raw = toRaw(file)
-    const request = { token: Symbol('contextual-open'), current: selectionReturn }
+    const request: ContextualOpenRequest = { token: Symbol('contextual-open'), current: selectionReturn }
     this.contextualLoads.set(raw, request)
     let opening: Promise<void>
     try {
@@ -956,12 +977,14 @@ export class ChatService {
       if (this.contextualLoads.get(raw) === request) this.contextualLoads.delete(raw)
     }
     await opening
+    return !request.cancelled && (!selectionReturn || selectionReturn())
   }
 
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
   async openChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
     this.tabSelectionRevision++
     const previous = this.activeSession.value
+    const contextual = this.contextualLoads.get(toRaw(file))
     const session = await this.loadFile(file, () => {
       if (selectionReturn && !selectionReturn()) return null
       const active = this.activeSession.value
@@ -973,8 +996,11 @@ export class ChatService {
       }
       return this.sessions.get(this.createTab()) ?? null
     },
-    this.contextualLoads.get(toRaw(file)), selectionReturn)
-    if (!session || (selectionReturn && !selectionReturn())) return
+    contextual, selectionReturn)
+    if (!session || contextual?.cancelled || (selectionReturn && !selectionReturn())) {
+      if (contextual) contextual.cancelled = true
+      return
+    }
     if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
     // Loading/reconciliation may finish after a newer link selected another tab.
     if (!selectionReturn || selectionReturn()) this.selectLoaded(session, previous)

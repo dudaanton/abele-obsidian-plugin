@@ -258,7 +258,7 @@ export class CommentService implements CommentInfoSource {
   async releaseOtherContextualTabs(id: string, isCurrent?: () => boolean): Promise<boolean> {
     for (const other of [...this.shown]) {
       if (isCurrent && !isCurrent()) return false
-      if (other !== id) await this.hideFromSidebar(other, isCurrent)
+      if (other !== id && !(await this.hideFromSidebar(other, isCurrent))) return false
     }
     return !isCurrent || isCurrent()
   }
@@ -288,21 +288,26 @@ export class CommentService implements CommentInfoSource {
    * state. Called by `ChatService.closeTab` for the tab's × as well, so both ends of the same
    * act agree.
    */
-  async hideFromSidebar(id: string, isCurrent?: () => boolean): Promise<void> {
+  async hideFromSidebar(id: string, isCurrent?: () => boolean): Promise<boolean> {
     id = this.canonicalId(id)
     const session = this.sessions.get(id)
-    if (!this.shown.has(id) || !session || (isCurrent && !isCurrent())) return
+    if (isCurrent && !isCurrent()) return false
+    if (!this.shown.has(id) || !session) return true
 
     const chats = ChatService.getInstance()
-    await chats.releaseSession(session.id, isCurrent)
+    // A loaded-but-never-adopted contextual holder has no tab to release. Otherwise a
+    // refused release is terminal for its caller, not permission to retry with a new token.
+    if (chats.getSession(session.id) && !(await chats.releaseSession(session.id, isCurrent)))
+      return false
     // A save can outlive the request, or a reopen can supersede the per-session release.
     // Update presentation only after the tab really left; never erase the reopened state.
-    if ((isCurrent && !isCurrent()) || chats.getSession(session.id)) return
+    if ((isCurrent && !isCurrent()) || chats.getSession(session.id)) return false
     this.shown.delete(id)
     if (this.open.value === id) this.open.value = null
 
     const note = session.anchor.value?.note
     if (note) dispatchCommentsChanged(note)
+    return true
   }
 
   /** True for a comment that has been opened as a chat: `ChatService` owns it now. */
