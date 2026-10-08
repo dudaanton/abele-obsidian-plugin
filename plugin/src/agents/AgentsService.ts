@@ -3,7 +3,7 @@ import { Notice, TFile, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
-import { isDiscussion } from '@/ai/commentIdentity'
+import { DiscussionIdentityConflict, isDiscussion } from '@/ai/commentIdentity'
 import { CommentService } from '@/ai/CommentService'
 import type { ChatSession } from '@/ai/ChatSession'
 import { parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
@@ -157,9 +157,23 @@ export class AgentsService {
   ): Promise<{ metadata: ChatMetadata; committed: boolean } | null> {
     const app = GlobalStore.getInstance().app
     const main = await inspectMainChat(app, file)
-    const parsed = main
-      ? (await ChatStorage.getInstance().prepareDiscussion(file)).snapshot
-      : await inspectChat(app, file)
+    let parsed = main ?? (await inspectChat(app, file))
+    let committed = main !== null
+    if (main) {
+      try {
+        parsed = (await ChatStorage.getInstance().prepareDiscussion(file)).snapshot
+      } catch (error) {
+        if (!(error instanceof DiscussionIdentityConflict)) throw error
+        // Identity is unresolved, not the stored attention evidence. Keep it visible as
+        // incomplete, without granting an ID or accepting disk resolutions as settled truth.
+        committed = false
+        if (parsed.metadata)
+          parsed = {
+            ...parsed,
+            metadata: { ...parsed.metadata, commentId: undefined, commentLocation: undefined },
+          }
+      }
+    }
     if (!parsed.metadata || parsed.damaged || parsed.torn) return null
     const resolved = parsed.messages
       .filter((m) => m.toolCallId && (m.toolResult !== undefined || m.toolStatus === 'rejected'))
@@ -172,7 +186,7 @@ export class AgentsService {
           resolved: [...new Set([...(parsed.metadata.attention?.resolved ?? []), ...resolved])],
         },
       },
-      committed: main !== null,
+      committed,
     }
   }
   private liveRow(session: ChatSession, live = true): AttentionRow | null {

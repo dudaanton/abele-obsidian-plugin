@@ -5,6 +5,13 @@ export interface DiscussionIdentityData {
   commentId?: string
   commentLocation?: string
 }
+export class DiscussionIdentityConflict extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DiscussionIdentityConflict'
+  }
+}
+
 export const isDiscussion = (data: DiscussionIdentityData | null | undefined): boolean =>
   !!data && (data.kind === 'comment' || !!data.anchor || !!data.commentId)
 
@@ -37,7 +44,8 @@ export async function discussionIdentity(
   if (!isDiscussion(data)) return undefined
   const path = canonicalDiscussionPath(logicalPath)
   if (data.commentLocation) {
-    if (!data.commentId) throw new Error('The discussion has a location but no identity.')
+    if (!data.commentId)
+      throw new DiscussionIdentityConflict('The discussion has a location but no identity.')
     return canonicalDiscussionPath(data.commentLocation) === path
       ? data.commentId
       : forkId(data.commentId, path)
@@ -50,7 +58,7 @@ export async function discussionIdentity(
       .replace(/\.abchat$/, '')
   if (canonicalDiscussionPath(markerPath(historical)) !== path) {
     if (data.commentId && legacyOwnerEstablished) return forkId(historical, path)
-    throw new Error(
+    throw new DiscussionIdentityConflict(
       'Ambiguous legacy discussion. Resolve its identity explicitly before opening it.'
     )
   }

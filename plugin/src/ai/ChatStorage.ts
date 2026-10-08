@@ -10,7 +10,12 @@ import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
-import { canonicalDiscussionPath, discussionIdentity, isDiscussion } from './commentIdentity'
+import {
+  canonicalDiscussionPath,
+  discussionIdentity,
+  DiscussionIdentityConflict,
+  isDiscussion,
+} from './commentIdentity'
 import { RunStorage, isRunTranscript } from './RunStorage'
 import { chatCopyPath, inspectChat, readChat, rewriteChat, transformChat } from './chatCopy'
 import { ChatService } from './ChatService'
@@ -186,7 +191,9 @@ export class ChatStorage {
             canonicalDiscussionPath(data.commentLocation) === canonicalDiscussionPath(other.path)
           ) {
             this.invalidateDiscussion(other.path)
-            throw new Error('Conflicting discussion owners. Resolve the files explicitly.')
+            throw new DiscussionIdentityConflict(
+              'Conflicting discussion owners. Resolve the files explicitly.'
+            )
           }
         }
       }

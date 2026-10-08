@@ -214,7 +214,8 @@ retain their stored or historical basename ID only at the old canonical marker p
 an old path established by a trusted rename event). A legacy file with a stored ID can be
 normalized as a copy when an actual discussion at that ID's canonical marker path establishes
 the original owner. Other legacy files require explicit identity resolution; neither scan order
-nor local storage establishes ownership.
+nor local storage establishes ownership. Unresolved legacy/duplicate identity does not hide
+stored attention evidence: it remains visible as incomplete, without a published ID binding.
 
 A trusted rename normalizes at the old logical path first, then commits the retained ID at its
 new location. Only exact paths select sessions. Vault deletion invalidates and closes only the

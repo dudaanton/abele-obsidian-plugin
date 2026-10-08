@@ -37,29 +37,28 @@ afterEach(() => {
 })
 
 describe('one list independent of open tabs', () => {
-  it.fails(
-    'BUG: legacy outside-folder discussions need explicit ownership resolution before discovery',
-    async () => {
-      useVault([
-        { path: 'Chats/sample.abchat', content: content() },
-        {
-          path: 'Comments/sample.abchat',
-          content: content({
-            kind: 'comment',
-            anchor: { note: 'Notes/sample.md', quote: 'An invented passage' },
-          }),
-        },
-      ])
-      const agents = AgentsService.getInstance()
-      await agents.start()
-      expect(agents.rows.value).toHaveLength(2)
-      expect(
-        agents.rows.value.find((r) => r.reference.path === 'Comments/sample.abchat')?.source
-      ).toBe('Обсуждение · Notes/sample.md')
-      expect(ChatService.getInstance().getAllSessions()).toHaveLength(0)
-      expect(agents.badge.value.attention).toBe(2)
-    }
-  )
+  it('finds unopened chats and discussions without creating a session', async () => {
+    useVault([
+      { path: 'Chats/sample.abchat', content: content() },
+      {
+        path: 'Comments/sample.abchat',
+        content: content({
+          kind: 'comment',
+          anchor: { note: 'Notes/sample.md', quote: 'An invented passage' },
+        }),
+      },
+    ])
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    expect(agents.rows.value).toHaveLength(2)
+    expect(
+      agents.rows.value.find((r) => r.reference.path === 'Comments/sample.abchat')?.source
+    ).toBe('Обсуждение · Notes/sample.md')
+    expect(ChatService.getInstance().getAllSessions()).toHaveLength(0)
+    expect(agents.badge.value.attention).toBe(2)
+    expect(agents.incomplete.value).toBe(true)
+    expect(await CommentService.getInstance().load('sample')).toBeNull()
+  })
   it('opens discussions through their owner without replacing another discussion tab', async () => {
     const app = useVault(
       ['first', 'second'].map((name) => ({
