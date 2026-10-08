@@ -12,9 +12,9 @@ const NATIVE_TOUCH = `
   const host = window.__e2eHost
   const tap = async el => {
     const target = el.matches('.cm-content') ? el.querySelector('.cm-line') ?? el : el
-    target.scrollIntoView({block:'center'})
-    let r=target.getBoundingClientRect()
-    for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; if(stable) break }
+    if(!target.closest('.abele-modal__footer')) target.scrollIntoView({block:'center'})
+    let r=target.getBoundingClientRect(), settled=0
+    for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; settled=stable?settled+1:0; if(settled>=4) break }
     const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
     if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing'))
     await host.tap(x,y)
