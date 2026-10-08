@@ -67,6 +67,9 @@ export function recognizeProjection(bytes: Uint8Array): boolean {
   // Size limits belong to schema validation, not recognition. An oversized moved marker
   // must not become an ordinary upload merely because its format field appears late.
   const text = new TextDecoder().decode(bytes)
+  // A projection is a root JSON object, not an example quoted inside an ordinary note.
+  // Known owned paths remain protected independently, even with a destroyed prefix.
+  if (!text.trimStart().startsWith('{')) return false
   if (bytes.byteLength > MAX_PROJECTION_BYTES) return /"format"\s*:\s*"abele\.external"/.test(text)
   try {
     const value: unknown = JSON.parse(text)

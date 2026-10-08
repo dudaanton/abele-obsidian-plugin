@@ -25,6 +25,15 @@ const bytes = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stri
 const owned = { fileId: projection.fileId, projectionPath: path, projectionSha: 'b'.repeat(64) }
 
 describe('external projection schema and local ownership', () => {
+  it('does not recognize an ordinary document merely quoting a projection example', () => {
+    const guide = new TextEncoder().encode(
+      'Sample format:\n```json\n' + JSON.stringify(projection) + '\n```'
+    )
+    expect(recognizeProjection(guide)).toBe(false)
+    expect(
+      inspectProjection(guide, 'Docs/sample-guide.md', { vaultId: projection.vaultId, owned: [] })
+    ).toEqual({ kind: 'ordinary' })
+  })
   it('round trips schema 1 with bounded optional media metadata and MIME fallback', () => {
     const value = { ...projection, width: 800, height: 600, duration: 1.5 }
     expect(parseProjection(serializeProjection(value))).toEqual(value)
