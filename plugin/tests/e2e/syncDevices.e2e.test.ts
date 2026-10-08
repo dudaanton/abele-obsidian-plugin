@@ -142,9 +142,9 @@ describe.skipIf(why !== null)('the devices on a vault', () => {
     expect(rows.map((row) => row.name).sort()).toEqual([DAEMON, DEVICE, SIBLING].sort())
     const self = rows.find((row) => row.name === DEVICE)
     expect(self).toMatchObject({ self: true, revoke: false })
-    expect(rows.find((row) => row.name === SIBLING)?.desc).toContain(`enrolled by ${DEVICE}`)
+    expect(rows.find((row) => row.name === SIBLING)?.desc).toContain(`connected by ${DEVICE}`)
     expect(rows.find((row) => row.name === DAEMON)?.desc).toContain(
-      'enrolled with the account password'
+      'connected with the account password'
     )
   })
 
