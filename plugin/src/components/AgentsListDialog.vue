@@ -22,12 +22,12 @@
             <span>{{ age(row) }}</span>
           </button>
           <button
-            v-for="reason in row.reasons.filter((r) => r.kind === 'error')"
+            v-for="reason in row.reasons.filter(canDismissAttention)"
             :key="reason.id"
             class="abele-agents__seen"
             :disabled="busy"
             @click="seen(row, reason.id)"
-            v-text="'Просмотрено'"
+            v-text="reason.kind === 'error' ? 'Просмотрено' : 'Убрать'"
           />
         </div>
       </section>
@@ -38,7 +38,12 @@
 import { computed, ref } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import { AgentsService } from '@/agents/AgentsService'
-import { needsAttention, reasonLabel, type AttentionRow } from '@/agents/attention'
+import {
+  canDismissAttention,
+  needsAttention,
+  reasonLabel,
+  type AttentionRow,
+} from '@/agents/attention'
 const props = defineProps<{
   source?: Pick<AgentsService, 'rows' | 'incomplete' | 'status' | 'open' | 'markSeen'>
 }>()

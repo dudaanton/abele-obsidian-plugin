@@ -72,7 +72,11 @@ Stopped-run errors remain until **Просмотрено** (Seen) is explicitly 
 belongs only to that error; a later failure returns to the list. Opening or closing a tab does
 not dismiss an error. The list survives restart and includes unopened local chats and
 closed discussion tabs. Interrupted local work is labelled as interrupted and is never
-resumed just by opening the list. Existing saved approvals can be reviewed again; saved
+resumed just by opening the list. Stale or uncertain approval/question/work entries offer
+**Убрать** (Remove): the dismissal is saved first, then the entry disappears; the conversation
+and its history remain. An accepted tool interrupted before its result can also be dismissed,
+or leaves the list when a later run of that chat completes successfully.
+Existing saved approvals can be reviewed again; saved
 questions retain their text and answers, but a lost local process cannot still be waiting.
 Old conversations without explicit execution evidence are not guessed to be failures.
 An interrupted question offers **Continue with a message**: write the answer in the composer
@@ -82,7 +86,9 @@ Local work is identified as being on this device: file sync does not arbitrate s
 answers to local approvals across devices.
 
 Renaming a discussion file preserves its original note-marker identity, owner and tab closure,
-including after restart. Renaming the note it discusses updates its source normally.
+including after restart, even if it had already been expanded into a chat. A copy cannot take
+over the original's note marker simply by being discovered first. Renaming the note it discusses
+updates its source normally.
 
 The local list retains unresolved evidence until a saved answer/acknowledgement proves it is
 resolved, or its file is confirmed deleted. Missing or unreadable data does not mean resolved:

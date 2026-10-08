@@ -326,24 +326,63 @@ export class CommentService implements CommentInfoSource {
   private readonly locations = new Map<string, string>()
   private readonly fileAliases = new Map<string, string>()
   private readonly discussionPaths = new Set<string>()
+  private locationsLoaded = false
+  private ensureLocations(): void {
+    if (this.locationsLoaded) return
+    this.locationsLoaded = true
+    const saved = GlobalStore.getInstance().app.loadLocalStorage('abele-discussion-locations')
+    if (saved && typeof saved === 'object' && !Array.isArray(saved))
+      for (const [id, path] of Object.entries(saved)) {
+        if (typeof path !== 'string') continue
+        this.locations.set(id, path)
+        const basename = idOf(path)
+        if (basename !== id) this.fileAliases.set(basename, id)
+      }
+  }
+  private rememberLocation(id: string, path: string): void {
+    if (this.locations.get(id) === path) return
+    this.locations.set(id, path)
+    GlobalStore.getInstance().app.saveLocalStorage(
+      'abele-discussion-locations',
+      Object.fromEntries(this.locations)
+    )
+  }
   private canonicalId(id: string): string {
+    this.ensureLocations()
     return this.fileAliases.get(id) ?? id
   }
 
   rememberFile(file: TFile, metadata: ChatMetadata): void {
-    if (metadata.kind !== 'comment' && !metadata.commentId) return
+    if (metadata.kind !== 'comment' && !metadata.commentId && !metadata.anchor) return
+    this.ensureLocations()
     const id = metadata.commentId ?? file.basename
     this.discussionPaths.add(file.path)
-    const previous = this.locations.get(id)
+    let previous = this.locations.get(id)
+    const app = GlobalStore.getInstance().app
+    if (!previous || !app.vault.getAbstractFileByPath(previous)) {
+      // A copied record carries the original's locator. Establish that preference before
+      // claiming any candidate, even when the copied file is scanned first.
+      const declared = metadata.commentLocation
+      const markerPath = `${this.folder()}/${id}.abchat`
+      const preferred =
+        declared && app.vault.getAbstractFileByPath(declared)
+          ? declared
+          : app.vault.getAbstractFileByPath(markerPath)
+            ? markerPath
+            : undefined
+      if (preferred) {
+        this.rememberLocation(id, preferred)
+        previous = preferred
+      }
+    }
     // A copied file is not allowed to steal the original note marker's location.
     if (
       previous &&
       previous !== file.path &&
-      GlobalStore.getInstance().app.vault.getAbstractFileByPath(previous) &&
-      file.basename !== id
+      GlobalStore.getInstance().app.vault.getAbstractFileByPath(previous)
     )
       return
-    this.locations.set(id, file.path)
+    this.rememberLocation(id, file.path)
     if (file.basename !== id && !this.locations.has(file.basename))
       this.fileAliases.set(file.basename, id)
     if (this.missing.delete(id) && metadata.anchor?.note && GlobalStore.getInstance().app.workspace)
@@ -351,6 +390,7 @@ export class CommentService implements CommentInfoSource {
   }
 
   async handleConversationRename(file: TFile, oldPath: string): Promise<void> {
+    this.ensureLocations()
     const oldId = [...this.locations].find(([, path]) => path === oldPath)?.[0] ?? idOf(oldPath)
     const owner =
       this.sessionOnFile(file.path) ?? this.sessions.get(oldId) ?? this.expanded.get(oldId)
@@ -367,6 +407,7 @@ export class CommentService implements CommentInfoSource {
       session?.kind !== 'comment' &&
       !session?.anchor.value &&
       metadata?.kind !== 'comment' &&
+      !metadata?.anchor &&
       !metadata?.commentId
     )
       return
@@ -382,14 +423,16 @@ export class CommentService implements CommentInfoSource {
     if (session) {
       session.bindCommentIdentity(id)
       await session.save()
-    } else if (metadata && metadata.commentId !== id) {
+    } else if (metadata && (metadata.commentId !== id || metadata.commentLocation !== file.path)) {
       await transformChat(
         GlobalStore.getInstance().app,
         file,
         (content) => {
           const current = parseChatMetadata(content)
           if (!current) throw new Error('The discussion is unavailable.')
-          return content + serializeMetadata({ ...current, commentId: id })
+          return (
+            content + serializeMetadata({ ...current, commentId: id, commentLocation: file.path })
+          )
         },
         () => {
           if (this.sessionOnFile(file.path))
@@ -1069,6 +1112,10 @@ export class CommentService implements CommentInfoSource {
     const path = this.locations.get(id)
     if (path) this.discussionPaths.delete(path)
     this.locations.delete(id)
+    GlobalStore.getInstance().app.saveLocalStorage(
+      'abele-discussion-locations',
+      Object.fromEntries(this.locations)
+    )
     for (const [alias, identity] of this.fileAliases)
       if (identity === id) this.fileAliases.delete(alias)
     const note = session?.anchor.value?.note ?? null

@@ -64,6 +64,32 @@ describe('agents dialog', () => {
     expect(source.markSeen).toHaveBeenCalledWith(rows[0], 'error-1')
     wrapper.unmount()
   })
+  it('offers dismissals for stale non-error evidence, not live approvals or running work', async () => {
+    const reasons = [
+      { kind: 'approval' as const, id: 'stale-approval', at: 1, uncertain: true },
+      { kind: 'question' as const, id: 'stale-question', at: 2, interrupted: true },
+      { kind: 'interrupted' as const, id: 'stale-work', at: 3 },
+      { kind: 'approval' as const, id: 'live-approval', at: 4 },
+      { kind: 'running' as const, id: 'live-work', at: 5 },
+    ]
+    const source = {
+      rows: ref([{ ...rows[0], reasons }]),
+      incomplete: ref(true),
+      status: ref(''),
+      open: vi.fn(),
+      markSeen: vi.fn().mockResolvedValue(undefined),
+    }
+    const wrapper = mount(AgentsListDialog, {
+      props: { source },
+      global: { stubs: { ObsidianModal: stub } },
+    })
+    const buttons = wrapper.findAll('.abele-agents__seen')
+    expect(buttons).toHaveLength(3)
+    for (const button of buttons) expect(button.text()).toBe('Убрать')
+    await buttons[0].trigger('click')
+    expect(source.markSeen).toHaveBeenCalledWith(source.rows.value[0], 'stale-approval')
+    wrapper.unmount()
+  })
   it('owns one modal and releases it cleanly on command cleanup', async () => {
     useVault([])
     openAgents()

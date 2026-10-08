@@ -42,6 +42,12 @@ export interface AttentionRow {
 }
 export const needsAttention = (r: AttentionReason): boolean =>
   ['approval', 'question', 'error', 'interrupted'].includes(r.kind)
+
+/** A stale/uncertain request may be dismissed, but a live approval is reviewed in its chat. */
+export const canDismissAttention = (reason: AttentionReason): boolean =>
+  reason.kind === 'error' ||
+  reason.kind === 'interrupted' ||
+  (['approval', 'question'].includes(reason.kind) && !!(reason.uncertain || reason.interrupted))
 export function attentionReasons(
   state: LocalAttention,
   approvals: { id: string; name: string }[],

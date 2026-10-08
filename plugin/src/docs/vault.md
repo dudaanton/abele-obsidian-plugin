@@ -163,10 +163,17 @@ to use the existing approval mechanism. Seen flags acknowledge only their specif
 opening or closing a tab is not acknowledgement. `resolved` is a monotonic array of retired
 request/run identities. `tools` records accepted calls as executing/interrupted/done; acceptance
 is saved before a tool starts, and an accepted call found without its process is not re-offered
-as a new approval. Complete metadata records retain positive resolutions across later stale
+as a new approval. The approval path captures the call ID and a deep JSON snapshot of its
+arguments before awaiting persistence; execution never re-reads a different queue head.
+A vanished or changed request cannot transfer that permission to the next call.
+Complete metadata records retain positive resolutions across later stale
 snapshots; ordinary fields remain last-wins. Compaction keeps those resolution identities.
 A Seen action stages its acknowledgement in the write snapshot, leaving reactive state and
-index evidence unchanged until the file confirms the decision.
+index evidence unchanged until the file confirms the decision. Stale approvals/questions/run
+references may also be explicitly dismissed: the same resolution-ID write commits before the
+ledger entry is removed. No conversation file is deleted and no tool is executed by dismissal.
+A later successfully completed local run retires the accepted-but-interrupted tool identities
+captured at its start; a failed, paused or aborted run does not.
 
 Obsidian vault-scoped local storage `abele-agents-index` holds a small array of conversation
 references and reason/request/run IDs, timestamps, expiry and target message references. It
@@ -185,6 +192,14 @@ The index is device-local and does not travel in settings transfer.
 
 Discussion metadata additionally keeps `commentId`, the identity used by note markers, independently
 of the file basename. Legacy discussions acquire their original basename identity on save/rename.
+`commentLocation` records the canonical file location so a copied record can still identify
+its original when discovered first on another installation. Vault-scoped local storage
+`abele-discussion-locations` persists the existing identity-to-location preference independently
+of scan order, without conversation content, settings transfer or secrets. Existing valid
+locations take precedence; otherwise the declared location or a file the marker already names
+is preferred. Copied files receive a fresh identity in their owner when explicitly opened;
+their own location is written on the next ordinary save.
+Legacy migration also covers anchored discussions already expanded to chats.
 The discussion owner rebuilds identity-to-location mappings from metadata and follows renames;
 closed conversations reopen through that owner after restart. Exact-file handover prevents a copied
 discussion from stealing the original marker or writer. These identifiers travel with chat files,

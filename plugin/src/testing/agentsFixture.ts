@@ -10,7 +10,13 @@ export function agentsFixture() {
       title: 'A long invented conversation title about a sample garden and its seasonal plants',
       agent: 'Sample agent',
       source: 'Чат',
-      reasons: ['one', 'two', 'three'].map((id) => ({ kind: 'approval', id, at: 1, text: 'edit' })),
+      reasons: ['one', 'two', 'three'].map((id) => ({
+        kind: 'approval',
+        id,
+        at: 1,
+        text: 'edit',
+        uncertain: true,
+      })),
     },
     {
       key: 'sample-discussion',

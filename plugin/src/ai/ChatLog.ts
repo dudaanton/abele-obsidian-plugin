@@ -196,6 +196,11 @@ function mergeMetadataEvidence(current: ChatMetadata, previous: ChatMetadata | n
     ...(current.commentId === undefined && previous?.commentId
       ? { commentId: previous.commentId }
       : {}),
+    ...(current.commentLocation === undefined &&
+    previous?.commentLocation &&
+    (current.commentId ?? previous.commentId) === previous.commentId
+      ? { commentLocation: previous.commentLocation }
+      : {}),
   }
 }
 

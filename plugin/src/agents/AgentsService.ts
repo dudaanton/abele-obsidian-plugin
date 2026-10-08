@@ -475,6 +475,7 @@ export class AgentsService {
               ...metadata,
               attention: {
                 ...state,
+                resolved: [...new Set([...(state.resolved ?? []), id])],
                 errors: restoreIndexedErrors(state, row.reasons).map((e) =>
                   e.id === id ? { ...e, seen: true } : e
                 ),

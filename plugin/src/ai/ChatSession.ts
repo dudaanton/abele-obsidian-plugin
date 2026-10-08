@@ -167,9 +167,17 @@ interface ToolWriteDetails {
 
 /** The call at the head of the pending queue that the reader has just let through by hand. */
 interface ApprovedCall {
-  /** What they approved it with, when they edited the arguments before saying yes. */
-  args?: Record<string, unknown>
+  /** Approval belongs to this immutable request, never a later queue head. */
+  id: string
+  args: Record<string, unknown>
 }
+
+const copyToolArgs = (args: Record<string, unknown>): Record<string, unknown> =>
+  JSON.parse(JSON.stringify(args)) as Record<string, unknown>
+const copyPendingCall = (call: ToolCallContent): ToolCallContent => ({
+  ...call,
+  arguments: copyToolArgs(call.arguments),
+})
 
 export type SessionKind = 'chat' | 'run' | 'comment'
 
@@ -1625,6 +1633,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async runAgentLoop(): Promise<void> {
     this.activeAgentTurns.value++
     const endBackgroundTurn = mobileBackground.beginTurn()
+    const interruptedTools = Object.entries(this.attention.value.tools ?? {})
+      .filter(([, phase]) => phase === 'interrupted')
+      .map(([id]) => id)
+    const generation = this.generation
+    this.turnAborted = false
     const question = this.attention.value.question
     if (question?.status === 'interrupted') {
       // An explicit new turn ends a lost questionnaire; there is no old resolver to answer.
@@ -1640,6 +1653,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         await this.runAgentLoopOnce()
 
         const failure = this.error.value
+        if (
+          interruptedTools.length &&
+          !failure &&
+          !this.turnAborted &&
+          !this.destroyed &&
+          generation === this.generation &&
+          !this.pendingToolCalls.value.length &&
+          !this.pendingQuestions.value
+        ) {
+          this.attention.value = {
+            ...this.attention.value,
+            tools: {
+              ...this.attention.value.tools,
+              ...Object.fromEntries(interruptedTools.map((id) => [id, 'done' as const])),
+            },
+            resolved: [...new Set([...(this.attention.value.resolved ?? []), ...interruptedTools])],
+          }
+        }
         if (!failure || attempt >= settings.attempts || !isTransient(failure)) return
         // The reader is in charge: a pending tool call or a stopped turn is not retried behind
         // their back.
@@ -1853,7 +1884,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       // answer for a call, and the chat must not read as idle while it does.
       this.isExecutingTool.value = true
       while (this.pendingToolCalls.value.length > 0) {
-        const tc = this.pendingToolCalls.value[0]
+        const tc = copyPendingCall(this.pendingToolCalls.value[0])
+        if (head && head.id !== tc.id) {
+          this.ensurePendingToolCallMessage(tc)
+          this.markDirty()
+          return
+        }
+        const args = head?.args ?? copyToolArgs(tc.arguments)
 
         const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
         if (identityRefusal) {
@@ -1873,6 +1910,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             tc.permissionKey,
             tc.destinationKey
           )
+          if (!this.samePendingCall(tc)) {
+            this.showRemainingPending()
+            return
+          }
           // Stopped or cleared while the script decided: its answer no longer holds.
           if (gen !== this.generation || !this.turnPolicy.active) decided = { kind: 'ask' }
           if (decided.kind === 'deny') {
@@ -1908,6 +1949,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           // Commit the accepted identity before admitting an operation. A crash must not
           // offer the same already-started tool as a fresh approval after restart.
           await this.save()
+          if (!this.samePendingCall(tc)) {
+            this.showRemainingPending()
+            return
+          }
           if (
             this.kind !== 'run' &&
             (this.persistFailed ||
@@ -1928,7 +1973,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             this.markDirty()
             return
           }
-          await this.executeCurrentPendingTool(head?.args, controller.signal, !!head)
+          await this.executeCurrentPendingTool(tc, args, controller.signal, !!head)
         } finally {
           this.toolAbortController = null
         }
@@ -1978,13 +2023,33 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.updateVisibleMessages()
   }
 
+  private samePendingCall(call: ToolCallContent): boolean {
+    const queued = this.pendingToolCalls.value.find((tc) => tc.id === call.id)
+    return (
+      !!queued &&
+      queued.name === call.name &&
+      queued.permissionKey === call.permissionKey &&
+      queued.destinationKey === call.destinationKey &&
+      JSON.stringify(queued.arguments) === JSON.stringify(call.arguments)
+    )
+  }
+
+  private showRemainingPending(): void {
+    const next = this.pendingToolCalls.value[0]
+    if (next) this.ensurePendingToolCallMessage(next)
+    this.markDirty()
+  }
+
   private async executeCurrentPendingTool(
-    modifiedArgs?: Record<string, unknown>,
+    tc: ToolCallContent,
+    args: Record<string, unknown>,
     signal?: AbortSignal,
     approved = false
   ): Promise<void> {
-    const tc = this.pendingToolCalls.value[0]
-    if (!tc) return
+    if (!this.samePendingCall(tc)) {
+      this.showRemainingPending()
+      return
+    }
 
     const tools = this.getTools()
     const tool = tools.find((t) => t.name === tc.name)
@@ -2000,8 +2065,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       )
       return
     }
-    const args = modifiedArgs || tc.arguments
-
     if (!tool) {
       const errText = `Tool "${tc.name}" not found`
       const toolChatMsg = this.allChatMessages.find(
@@ -2020,7 +2083,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         timestamp: Date.now(),
         chatMessageId: toolChatMsg?.id,
       })
-      this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
+      this.pendingToolCalls.value = this.pendingToolCalls.value.filter((next) => next.id !== tc.id)
       return
     }
 
@@ -2424,8 +2487,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     expectedCallId?: string
   ): Promise<void> {
     if (this.isStreaming.value || this.isExecutingTool.value || this.isCompacting.value) return
-    const tc = this.pendingToolCalls.value[0]
-    if (!tc || (expectedCallId !== undefined && tc.id !== expectedCallId)) return
+    const queued = this.pendingToolCalls.value[0]
+    if (!queued || (expectedCallId !== undefined && queued.id !== expectedCallId)) return
+    const tc = copyPendingCall(queued)
+    const args = copyToolArgs(modifiedArgs ?? tc.arguments)
 
     const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
     if (identityRefusal) {
@@ -2440,11 +2505,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
         (m) => ({ ...m, toolStatus: 'approved' as const })
       )
-      this.widenScopeFor(tc.name, modifiedArgs || tc.arguments)
+      this.widenScopeFor(tc.name, args)
     }
 
     try {
-      await this.processAllPendingToolCalls(identityRefusal ? undefined : { args: modifiedArgs })
+      await this.processAllPendingToolCalls(identityRefusal ? undefined : { id: tc.id, args })
       this.markDirty()
     } finally {
       this.endTurnPolicy()
@@ -3262,6 +3327,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           : undefined,
       chatId: this.chatIdentity,
       commentId: this.commentId ?? undefined,
+      commentLocation: this.commentId ? this.currentChatFile.value?.path : undefined,
       bindingRecovery: this.bindingRecovery,
       queuedMessages: this.queuedMessages.value.length
         ? this.queuedMessages.value.map((q) => ({ ...q, attachments: q.attachments?.slice() }))
