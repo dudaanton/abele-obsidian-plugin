@@ -133,6 +133,60 @@ describe.skipIf(!available)('column source and menu safety', () => {
     await shot('trailing-link-caret')
   })
 
+  it('cursor commands never fall outward from a rejected nested quote', () => {
+    const inner = createColumns('Inner', 'two').replace('\n', '\n> <!-- annotation -->\n'),
+      text = textInFrame(inner)
+    show(text)
+    const result = evaluate<{ options: boolean; remove: boolean; text: string }>(
+      `const lines=view.editor.getValue().split('\\n');view.editor.setCursor({line:lines.findIndex(line=>line.includes('Inner')),ch:8});app.workspace.activeEditor=view;return {options:app.commands.commands['abele:column-options'].editorCheckCallback(true,view.editor,view),remove:app.commands.commands['abele:remove-columns'].editorCheckCallback(false,view.editor,view),text:view.editor.getValue()}`
+    )
+    expect(result).toEqual({ options: false, remove: false, text })
+  })
+  it('refuses lazy continuation ranges from both the button and the cursor', async () => {
+    const text =
+      '> [!abele-columns]\n> > [!abele-column]\n> > Left\n>\n> > [!abele-column]\n> > Right\ncontinued\n\nAfter.'
+    for (const mode of ['preview', 'source']) {
+      show(text, mode)
+      click(point('.abele-columns-controls button'))
+      const result = evaluate<{ menu: boolean; text: string }>(
+        `await wait(200);return {menu:!!document.querySelector('.menu'),text:view.getMode()==='source'?view.editor.getValue():await app.vault.read(view.file)}`
+      )
+      expect(result).toEqual({ menu: false, text })
+      if (mode === 'source') {
+        const offered = evaluate<boolean>(
+          `view.editor.setCursor({line:5,ch:8});app.workspace.activeEditor=view;return app.commands.commands['abele:remove-columns'].editorCheckCallback(false,view.editor,view)`
+        )
+        expect(offered).toBe(false)
+        expect(evaluate<string>(`return view.editor.getValue()`)).toBe(text)
+      }
+    }
+    await shot('lazy-range-refused')
+  })
+  it('refuses existing quote nodes reordered after a menu established their ranges', async () => {
+    const text = textInFrame(
+      createColumns('First', 'two') + '\n\n' + createColumns('Second', 'two')
+    )
+    for (const mode of ['preview', 'source']) {
+      show(text, mode)
+      evaluate<{ x: number; y: number }>(
+        `const frames=root().querySelectorAll('.abele-columns .abele-columns');const first=frames[0];first.querySelector('.abele-columns-controls button').click();await wait(200);return {x:0,y:0}`
+      )
+      expect(
+        evaluate<string[]>(
+          `return [...document.querySelectorAll('.menu-item-title')].map(e=>e.textContent)`
+        )
+      ).toContain('Add column')
+      evaluate(`document.body.click();await wait(100);return true`)
+      const result = evaluate<{ menu: boolean; text: string; before: string[]; after: string[] }>(
+        `const frames=root().querySelectorAll('.abele-columns .abele-columns'),first=frames[0],second=frames[1];const before=[first.dataset.abeleFrameFrom,first.dataset.abeleFrameTo,second.dataset.abeleFrameFrom,second.dataset.abeleFrameTo];first.before(second);second.querySelector('.abele-columns-controls button').click();await wait(200);return {menu:!!document.querySelector('.menu'),text:view.getMode()==='source'?view.editor.getValue():await app.vault.read(view.file),before,after:[first.dataset.abeleFrameFrom,first.dataset.abeleFrameTo,second.dataset.abeleFrameFrom,second.dataset.abeleFrameTo]}`
+      )
+      expect(result.menu).toBe(false)
+      expect(result.text).toBe(text)
+      expect(result.after).toEqual(result.before)
+    }
+    await shot('reordered-range-refused')
+  })
+
   it('highlight markers do not shift the caret before following prose', async () => {
     const text = textInFrame('A ==B== C')
     show(text)

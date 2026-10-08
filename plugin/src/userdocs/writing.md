@@ -49,9 +49,14 @@ callouts rather than columns. Frame commands are not offered when parent prose, 
 content, foreign sibling callouts, folding, unmatched weights or unclosed code fences make
 the structure ambiguous.
 Examples inside code fences, including quoted fences, are never treated as editable frames.
-Nested controls and cursor commands target the innermost frame. Rendered controls require
+Nested controls and cursor commands use one resolver for the innermost source frame, including
+frames rejected for editing. Rejection never falls back to an outer frame. Both ends of the
+quote-tree range must match the strict parser; lazy paragraph continuations outside the
+explicit quote frame are not admitted for mutation. Rendered controls require
 verified original quote line ranges, including ranges rejected for editing; if the rendered
 quote tree and source disagree, the operation is refused rather than redirected to a sibling.
+An established rendered binding is immutable: moving existing DOM nodes cannot assign them
+another frame's range.
 
 In Live Preview a click or tap on prose expands the area to source and places a single caret
 at the clicked passage, including formatted or identical passages in different columns.

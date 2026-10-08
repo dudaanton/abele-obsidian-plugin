@@ -152,8 +152,11 @@ range before serializing; unassigned parent content, foreign/collapsible sibling
 code examples are not admitted. Rendered callouts receive source line ranges from the native
 quote-tree grammar before strict admission. Rejected ranges are not removed from identity
 binding, and any DOM/source or range disagreement refuses the operation.
-Code fences close only with a matching delimiter and whitespace-only suffix. Nested-frame
-commands target the innermost frame; the surrounding quote is retained on removal.
+Code fences close only with a matching delimiter and whitespace-only suffix. Cursor commands, rendered controls and mutation revalidation share one target resolver:
+the innermost quote-tree frame is resolved before strict admission, including rejected nodes.
+Rejection never falls outward. Both source-range endpoints must equal the strict frame's,
+so unsupported lazy continuation is refused. Established DOM bindings cannot be reassigned
+after node reordering. The surrounding quote is retained on nested-frame removal.
 See the writing guide for commands and editing limitations; there are no column agent tools.
 
 ## Presentations
