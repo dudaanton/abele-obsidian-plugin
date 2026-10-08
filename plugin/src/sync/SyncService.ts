@@ -20,6 +20,8 @@ import { wireParts, type ServiceParts } from './serviceParts'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
 import type { PluginSharing } from './pluginSharing'
+import { requireExternalLifecycleSafety } from './external/pluginSafety'
+import { factoryOf } from './environment'
 
 export { isWireConfigDir } from './scope'
 export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
@@ -100,6 +102,7 @@ export class SyncService {
    */
   readonly telling: Ref<string | null> = ref(null)
 
+  private closed = false
   private app: App | null = null
   private plugin: AbelePlugin | null = null
   private deps: SyncServiceDeps = {}
@@ -110,6 +113,7 @@ export class SyncService {
 
   /** The runner, the enrolment verbs and the two prompts, wired together (`serviceParts.ts`). */
   private readonly parts: ServiceParts = wireParts({
+    active: () => !this.closed,
     app: () => this.app,
     plugin: () => this.plugin,
     deps: () => this.deps,
@@ -189,7 +193,9 @@ export class SyncService {
       this.note(message)
       this.board.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: message })
     })
-    void this.retryPendingRevokes()
+    void this.retryPendingRevokes().catch((error) =>
+      this.note(error instanceof Error ? error.message : String(error))
+    )
     tellJoinWaiting(this.connection.value)
   }
 
@@ -219,8 +225,19 @@ export class SyncService {
    */
   async updateConnection(patch: ConnectionEdit): Promise<void> {
     await this.previousTeardown
-    this.keeper.save(this.keeper.check(patch))
-    await this.serialise(() => this.runner.reconcile())
+    await this.serialise(async () => {
+      const edit = this.keeper.check(patch)
+      const current = this.connection.value
+      const changesIdentity = (['serverUrl', 'vaultId', 'deviceId', 'deviceTokenId'] as const).some(
+        (key) => key in edit && edit[key] !== current[key]
+      )
+      if (changesIdentity && this.app) {
+        await this.runner.teardown()
+        await requireExternalLifecycleSafety(this.app, factoryOf(this.deps))
+      }
+      this.keeper.save(edit)
+      await this.runner.reconcile()
+    })
   }
 
   /** Stop everything and let the singleton go; the next `getInstance` builds a fresh one. */
@@ -230,6 +247,8 @@ export class SyncService {
     // handed this very instance, queue a build behind the teardown, and then have its `app`
     // and `plugin` taken away underneath the engine it had just started.
     if (SyncService.instance === this) SyncService.instance = null
+    this.closed = true
+    this.runner.invalidate()
     this.unhookSettings?.()
     this.unhookSettings = null
     const sharing = this.sharing.value
@@ -582,6 +601,7 @@ export class SyncService {
     const before = this.previousTeardown
     return this.queue.run(async () => {
       await before
+      if (this.closed) throw new Error('Sync service is closed; recovery required')
       return fn()
     })
   }

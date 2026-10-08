@@ -23,6 +23,7 @@ import {
 } from './stagedSettings'
 import { codePluginIds, pluginCodeNames, stagedLane } from './stagedPluginCode'
 import type { StatusBoard } from './statusBoard'
+import { requireExternalLifecycleSafety } from './external/pluginSafety'
 
 /**
  * The parts `SyncService` is the facade over, made and wired to one another: the engine runner,
@@ -32,6 +33,7 @@ import type { StatusBoard } from './statusBoard'
 
 /** What the parts are wired to: the service's own state, read at the moment it is needed. */
 export interface PartsHost {
+  active?(): boolean
   app(): App | null
   plugin(): AbelePlugin | null
   deps(): SyncServiceDeps
@@ -94,6 +96,7 @@ export function wireParts(host: PartsHost): ServiceParts {
 
   /** Setting this device up and taking it down again (`enrolment.ts`). */
   const enrolment = new Enrolment({
+    stillCurrent: () => host.active?.() ?? true,
     app: () => host.app(),
     transport: () => transportOf(host.deps()),
     factory: () => factoryOf(host.deps()),
@@ -161,9 +164,10 @@ export function wireParts(host: PartsHost): ServiceParts {
     obsidianReloader(() => host.app())
   )
 
-  const joinQuestion = (vault?: VaultInfo): Promise<JoinQuestion> => {
+  const joinQuestion = async (vault?: VaultInfo): Promise<JoinQuestion> => {
     const app = host.app()
     if (app === null) throw new Error('the sync service has not been started yet')
+    await requireExternalLifecycleSafety(app, factoryOf(host.deps()))
     return askJoin({
       app,
       factory: factoryOf(host.deps()),

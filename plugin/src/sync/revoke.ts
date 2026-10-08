@@ -117,6 +117,8 @@ export interface RevokeHost {
   saveConnection(patch: { pendingRevoke: PendingRevoke[] }): void
   /** Who a retry is telling now, for a screen to show while it waits; null once it is done. */
   telling?(line: string | null): void
+  beforeRetirement?(): Promise<void>
+  beforeForget?(): void
 }
 
 /** The device a revoke is about: where it was enrolled, and what it was called there. */
@@ -144,7 +146,9 @@ export class Revoker {
    * under an id of its own.
    */
   async leave(device: Leaving, token: string): Promise<Told> {
+    await this.host.beforeRetirement?.()
     const told = await tellServer(device.serverUrl, token, this.host.transport(), this.timeoutMs)
+    await this.host.beforeRetirement?.()
     const who = `${device.deviceName || device.deviceId} on ${device.serverUrl}`
     if (told.told === 'revoked') this.host.note(`the server stopped accepting ${who}`)
     else if (told.told === 'already') this.host.note(`the server already did not accept ${who}`)
@@ -233,6 +237,7 @@ export class Revoker {
   forget(tokenId: string): void {
     const entry = this.host.connection().pendingRevoke.find((item) => item.tokenId === tokenId)
     if (entry === undefined) return
+    this.host.beforeForget?.()
     secrets().device.remove(tokenId)
     secrets().device.remove(tokenServerId(tokenId))
     this.drop(new Set([tokenId]))
@@ -247,6 +252,7 @@ export class Revoker {
     for (const entry of this.host.connection().pendingRevoke) {
       // Never sent, never given up: the person forgets it, from the line the Sync tab shows.
       if (entry.plainHttp) continue
+      await this.host.beforeRetirement?.()
       const who = `${entry.deviceName || entry.deviceId} on ${entry.serverUrl}`
       const raw = secrets().device.get(entry.tokenId)
       if (raw === '') {
@@ -276,6 +282,7 @@ export class Revoker {
       }
       const told = await tellServer(entry.serverUrl, token, this.host.transport(), this.timeoutMs)
       if (told.told === 'failed') continue
+      await this.host.beforeRetirement?.()
       secrets().device.remove(entry.tokenId)
       secrets().device.remove(tokenServerId(entry.tokenId))
       done.add(entry.tokenId)

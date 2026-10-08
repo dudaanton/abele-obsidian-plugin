@@ -1,5 +1,6 @@
 import { normalizeServerUrl } from '@abele/sync-protocol'
 import type { LocalStorage } from '../ledgerId'
+import { assertNoExternalLifecycleMarker } from '../external/recovery'
 export const SCOPED_JOIN_ENABLED = true
 export const SCOPED_JOIN_KEY = 'abele-sync-scoped-join'
 export const SCOPED_CONNECTION_KEY = 'abele-sync-scoped-connection'
@@ -179,16 +180,15 @@ export class ScopedJoinFlow {
       c?.deviceTokenId ||
       c?.pendingRevoke?.length ||
       (ledger != null && !forgotten) ||
-      [
-        'abele-sync-ledger-proof',
-        'abele-sync-ledger-bootstrap',
-        'abele-sync-ledger-cleanup',
-      ].some((k) => this.storage.loadLocalStorage(k) != null)
+      ['abele-sync-ledger-proof', 'abele-sync-ledger-bootstrap', 'abele-sync-ledger-cleanup'].some(
+        (k) => this.storage.loadLocalStorage(k) != null
+      )
     )
       throw new ScopedJoinError('personal_connected')
   }
   async begin(invitation: ScopedInvitation): Promise<void> {
     this.fence()
+    assertNoExternalLifecycleMarker(this.storage)
     this.noPersonal()
     if (
       this.storage.loadLocalStorage(SCOPED_JOIN_KEY) != null ||

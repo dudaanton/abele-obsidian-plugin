@@ -5,6 +5,7 @@ import { bindingKey, LinkSnapshotStore } from './LinkSnapshotStore'
 import { PublicationDecisionStore } from './publicationDecision'
 import type { SnapshotDescriptor } from './snapshotDatabase'
 import { emptyLocalLinkUnit } from './linkUnit'
+import { requireExternalLifecycleSafety } from '../external/pluginSafety'
 
 export const PUBLICATION_DESCRIPTOR = 'abele-owner-publication'
 export const PUBLICATION_SENTINEL = '.abele-owner-publication'
@@ -216,6 +217,11 @@ export async function retirePublicationStores(
         meta?.close()
       }
     }
+    await requireExternalLifecycleSafety(
+      app,
+      factory,
+      'abele-link-snapshots-' + record.descriptor.id
+    )
     await checkResources(app, record, true)
     record.retiring = true
     save(app, records) // Durable deletion intent permits retry after any of the following steps.

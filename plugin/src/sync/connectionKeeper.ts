@@ -27,6 +27,7 @@ import {
 import { joinOf } from './joinState'
 import type { LocalStorage } from './ledgerId'
 import type { SyncState } from './status'
+import { assertNoExternalLifecycleMarker } from './external/recovery'
 
 /**
  * This device's connection as the service holds it: read out of the vault's local storage,
@@ -91,6 +92,7 @@ export class ConnectionKeeper {
    */
   async open(app: App): Promise<void> {
     this.storage = app
+    if (app.loadLocalStorage(CONNECTION_KEY) == null) assertNoExternalLifecycleMarker(app)
     const config = AbeleConfig.getInstance()
     const loaded = config.takeLoadedSync()
     const migration =
@@ -230,6 +232,13 @@ export class ConnectionKeeper {
    * show a pause, for as long as the app runs and find something else at the next start.
    */
   save(patch: ConnectionPatch): void {
+    if (
+      this.storage &&
+      (['serverUrl', 'vaultId', 'deviceId', 'deviceTokenId', 'enrolledUrl'] as const).some(
+        (key) => key in patch && patch[key] !== this.connection.value[key]
+      )
+    )
+      assertNoExternalLifecycleMarker(this.storage)
     const merged = { ...this.connection.value, ...patch }
     const next: DeviceConnection = {
       ...merged,

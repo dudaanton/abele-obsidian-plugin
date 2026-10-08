@@ -15,7 +15,7 @@ import {
   type Sibling,
   type TransferredConnection,
 } from '@/transfer/connection'
-import type { DeviceConnection, JoinState } from './connection'
+import { inspectConnection, type DeviceConnection, type JoinState } from './connection'
 import { sideOf } from './joinState'
 import { keptLedger } from './join'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
@@ -27,6 +27,8 @@ import { messageOf } from './messages'
 import { USER_AGENT } from './transport'
 import { Revoker, withTimeout } from './revoke'
 import { retirePublicationStores } from './publication/publicationRetirement'
+import { requireExternalLifecycleSafety } from './external/pluginSafety'
+import { assertNoExternalLifecycleMarker } from './external/recovery'
 
 /**
  * Setting this device up and taking it down again: signing in, enrolling on a vault, taking a
@@ -68,6 +70,7 @@ export function enrolledElsewhere(serverUrl: string, enrolledUrl: string): strin
 
 /** What the enrolment verbs are handed by the service that owns the engine. */
 export interface EnrolmentHost {
+  stillCurrent?(): boolean
   /** The app the service was started with, or null before `init` and after `destroy`. */
   app(): App | null
   transport(): typeof fetch
@@ -96,7 +99,62 @@ export class Enrolment {
   readonly revoker: Revoker
 
   constructor(private readonly host: EnrolmentHost) {
-    this.revoker = new Revoker(host)
+    this.revoker = new Revoker({
+      transport: () => host.transport(),
+      connection: () => host.connection(),
+      saveConnection: (patch) => host.saveConnection(patch),
+      note: (text) => host.note(text),
+      telling: (line) => host.telling?.(line),
+      beforeRetirement: async () => {
+        this.assertCurrent()
+        const app = host.app()
+        if (app) await requireExternalLifecycleSafety(app, host.factory())
+        this.assertCurrent()
+      },
+      beforeForget: () => {
+        this.assertCurrent()
+        const app = host.app()
+        if (app) assertNoExternalLifecycleMarker(app)
+      },
+    })
+  }
+
+  private identity(): string {
+    const c = this.host.connection()
+    return JSON.stringify([
+      c.serverUrl,
+      c.vaultId,
+      c.deviceId,
+      c.deviceTokenId,
+      isDeviceSecretId(c.deviceTokenId) ? secrets().device.get(c.deviceTokenId) : '',
+    ])
+  }
+  private assertCurrent(identity?: string, app?: App): void {
+    if (
+      this.host.stillCurrent?.() === false ||
+      (app && this.host.app() !== app) ||
+      (identity !== undefined && identity !== this.identity())
+    )
+      throw new Error('Sync connection changed or closed; recovery required')
+    if (app) {
+      const current = this.host.connection(),
+        durable = inspectConnection(app).connection
+      if (
+        JSON.stringify([
+          current.serverUrl,
+          current.vaultId,
+          current.deviceId,
+          current.deviceTokenId,
+        ]) !==
+        JSON.stringify([
+          durable.serverUrl,
+          durable.vaultId,
+          durable.deviceId,
+          durable.deviceTokenId,
+        ])
+      )
+        throw new Error('Sync connection changed; recovery required')
+    }
   }
 
   /**
@@ -107,6 +165,7 @@ export class Enrolment {
    * is ever written to the log, the connection or `data.json`.
    */
   async connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
+    this.assertCurrent()
     assertPersonalContext(this.host.app())
     const typed = serverUrl.trim()
     if (typed === '') throw new Error('a server address is needed to connect')
@@ -130,6 +189,7 @@ export class Enrolment {
       userAgent: USER_AGENT,
     })
     const vaults = await account.listVaults()
+    this.assertCurrent()
     this.account = account
     this.accountUrl = baseUrl
     this.vaultNames = new Map(vaults.map((vault) => [vault.id, vault.name]))
@@ -182,11 +242,17 @@ export class Enrolment {
     const app = this.host.app()
     if (account === null) throw new Error('sign in to the server before choosing a vault')
     if (app === null) throw new Error('the sync service has not been started yet')
+    this.assertCurrent(undefined, app)
+    const identity = this.identity()
     const name = deviceName.trim()
     if (name === '') throw new Error('this device needs a name to enrol under')
     // A device this one left while offline is told first: most likely the same server, reachable
     // now. Waited on for one revoke's timeout at most; the card says who is being told.
+    await requireExternalLifecycleSafety(app, this.host.factory())
+    await this.host.serialise(() => this.host.teardown())
+    await requireExternalLifecycleSafety(app, this.host.factory())
     await this.revoker.retryWithin(this.revoker.timeoutMs)
+    this.assertCurrent(identity, app)
 
     /** The ledger this enrolment replaces, to be deleted once nothing is holding it. */
     let dropped: string | null = null
@@ -195,12 +261,15 @@ export class Enrolment {
         typeof choice === 'string' ? choice : (await account.createVault(choice.create)).id
       const vaultName =
         typeof choice === 'string' ? (this.vaultNames.get(choice) ?? '') : choice.create
+      this.assertCurrent(identity, app)
       const enrolled = await account.enrolDevice(
         vaultId,
         name,
         Platform.isMobile ? 'mobile' : 'desktop'
       )
 
+      await requireExternalLifecycleSafety(app, this.host.factory())
+      this.assertCurrent(identity, app)
       const held = this.host.connection().deviceTokenId
       const tokenId = isDeviceSecretId(held) ? held : newSecretId()
       dropped = this.enrolAs(app, enrolled.device_token, {
@@ -254,8 +323,11 @@ export class Enrolment {
       throw new Error('the transfer did not carry a whole connection')
     }
 
+    await requireExternalLifecycleSafety(app, this.host.factory())
+    this.assertCurrent(undefined, app)
     const own = this.host.connection()
     if (own.serverUrl !== '' || own.vaultId !== '') await this.disconnect()
+    const identity = this.identity()
     // A vault this device already walked to the end is a reconnect: nothing to choose, so
     // nothing is asked and it syncs at once (task-8 review, #6).
     const reconnect = await keptLedger(app, this.host.factory(), arrived.vaultId).catch(
@@ -265,6 +337,8 @@ export class Enrolment {
       }
     )
 
+    await requireExternalLifecycleSafety(app, this.host.factory())
+    this.assertCurrent(identity, app)
     const tokenId = newSecretId()
     const dropped = this.enrolAs(app, token, {
       serverUrl,
@@ -385,6 +459,8 @@ export class Enrolment {
       join: JoinState | null
     }
   ): string | null {
+    this.assertCurrent(undefined, app)
+    assertNoExternalLifecycleMarker(app)
     const { tokenId, selective, join, ...where } = enrolled
     const before = secrets().device.get(tokenId)
     const beforeServer = secrets().device.get(tokenServerId(tokenId))
@@ -446,6 +522,7 @@ export class Enrolment {
       const app = this.host.app()
       if (!app) throw new Error('Vault-local cleanup storage unavailable')
       rememberLedgerCleanup(app, stateId)
+      await requireExternalLifecycleSafety(app, this.host.factory(), stateDatabaseName(stateId))
       await IndexedDbStateStore.delete(this.host.factory(), stateDatabaseName(stateId))
       finishLedgerCleanup(app, stateId)
       this.host.note('dropped the ledger of the vault this device used to sync')
@@ -476,7 +553,15 @@ export class Enrolment {
   }
 
   private async disconnectLocal(forgetPublication = false): Promise<void> {
+    this.assertCurrent()
+    const identity = this.identity()
+    const before = this.host.app()
+    if (before) await requireExternalLifecycleSafety(before, this.host.factory())
+    this.assertCurrent(identity, before ?? undefined)
     await this.host.teardown()
+    const appForSafety = this.host.app()
+    if (appForSafety) await requireExternalLifecycleSafety(appForSafety, this.host.factory())
+    this.assertCurrent(identity, appForSafety ?? undefined)
     const own = this.host.connection()
     const tokenId = own.deviceTokenId
     const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
@@ -494,6 +579,7 @@ export class Enrolment {
         )
       }
     }
+    this.assertCurrent(identity, appForSafety ?? undefined)
     // The secret goes and the id stays: `token()` reads a missing secret as no device, which
     // is exactly the truth.
     if (tokenId !== '' && token !== '') {

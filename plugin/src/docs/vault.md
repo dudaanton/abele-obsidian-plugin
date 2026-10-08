@@ -32,6 +32,24 @@ held; a known damaged path remains protected. An unrelated `.abele-ref` is an or
 Durable commit receipts require actual database completion; unknown outcomes require reopening
 and inspection. No memory-store fallback or arbitrary power-loss guarantee is provided.
 
+The plugin's generic IndexedDB ledger schema is version 2, preserving the version-1 rows while
+rejecting old version-1 normal opens. Device-local `abele-sync-external-activation-v1` holds
+preparing/active bindings and database-instance identity outside the deletable ledger;
+`abele-sync-external-generation-v1` associates canonical identity/credential fingerprints with
+connection generation. `abele-sync-runtime-owner-v1:<database-name>` is a cooperating runtime
+claim, not a filesystem lock. Retained `abele-sync-external-connection-switch-v1` evidence is a
+recovery hold; completed credential switching/materialization is not implemented yet.
+
+Startup inspects external, installation and publication journals before constructing the
+personal engine or enabling scoped watchers/replay. Nonempty external inventories are held
+connection-wide. Effect guards recheck runtime ownership, durable descriptor and credential/
+generation at state, filesystem/native and HTTP boundaries. Destructive lifecycle operations
+use a shared inventory and existing error handlers; unresolved dependencies cannot authorize
+revoke, token/descriptor replacement or database retirement. Activated connections remain
+conservatively protected until explicit disconnect preparation exists. Old direct Forget/Leave
+can still delete IndexedDB without opening it; the surviving marker makes a new client refuse
+empty bootstrap, not magically undo that unsupported old deletion.
+
 ## Selection-script menu settings
 
 Plugin `data.json` stores independent ordered lists at `reader.selectionScripts` (books) and
