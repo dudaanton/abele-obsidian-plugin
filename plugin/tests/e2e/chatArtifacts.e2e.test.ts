@@ -143,6 +143,16 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         observations.missing = card(created[1]).textContent.includes('Show in chat')
         press(card(upload.path), 'Show in chat')
         await until(() => !root())
+        const sourceState = () => [...document.querySelectorAll('.abele-ai-chat')].map(el => ({
+          composing: el.classList.contains('abele-ai-chat--composing'),
+          display: el.querySelector('.abele-ai-chat__messages') && getComputedStyle(el.querySelector('.abele-ai-chat__messages')).display,
+          source: !!el.querySelector('[data-message-id="sample-upload"]'),
+        }))
+        try {
+          await until(() => !document.querySelector('.abele-ai-chat--composing') &&
+            getComputedStyle(document.querySelector('.abele-ai-chat__messages')).display !== 'none')
+        } catch { /* Preserve the state below when the source never becomes visible. */ }
+        observations.sourceState = sourceState()
         observations.source = !!document.querySelector('[data-message-id="sample-upload"]')
         observations.sourceVisible = !document.querySelector('.abele-ai-chat--composing') &&
           getComputedStyle(document.querySelector('.abele-ai-chat__messages')).display !== 'none'
@@ -185,7 +195,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
     expect(result.live).toBe(true)
     expect(result.missing).toBe(true)
     expect(result.source).toBe(true)
-    expect(result.sourceVisible).toBe(true)
+    expect(result.sourceVisible, JSON.stringify(result.sourceState)).toBe(true)
     expect(result.invalidUnavailable).toBe(true)
     expect(result.cuts).toEqual([])
     expect(result.over).toEqual([])

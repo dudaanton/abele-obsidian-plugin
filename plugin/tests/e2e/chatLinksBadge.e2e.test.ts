@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
@@ -34,9 +34,10 @@ describe.skipIf(!available)('chat Artifacts control and linked-note counts', () 
     await reloadApp('app.emulateMobile(false)')
   })
 
-  const measure = (): BadgeMeasure[] =>
-    evalJson<BadgeMeasure[]>(
-      `(async () => {
+  const measure = async (): Promise<BadgeMeasure[]> =>
+    JSON.parse(
+      await evalLong(
+        `(async () => {
     const chats = window.__abeleTest.ChatService.getInstance()
     const priorTab = chats.activeTabId.value
     if (!chats.canCreateTab) throw new Error('no free synthetic chat tab')
@@ -89,14 +90,15 @@ describe.skipIf(!available)('chat Artifacts control and linked-note counts', () 
       }
       return results
     } finally {
-      root?.closest('.modal')?.querySelector('.modal-close-button')?.click()
+      if (root?.isConnected) document.querySelector('.modal-close-button')?.click()
       session.touched.value = []
       await chats.closeTab(tab)
       if (priorTab) chats.switchTab(priorTab)
     }
   })()`,
-      30_000
-    )
+        30_000
+      )
+    ) as BadgeMeasure[]
 
   const check = (results: BadgeMeasure[]) => {
     expect(results).toHaveLength(3)
@@ -111,15 +113,15 @@ describe.skipIf(!available)('chat Artifacts control and linked-note counts', () 
     }
   }
 
-  it('keeps the desktop header control separate and shows one-, two- and three-digit counts in Artifacts', () => {
-    check(measure())
+  it('keeps the desktop header control separate and shows one-, two- and three-digit counts in Artifacts', async () => {
+    check(await measure())
   })
 
   it('keeps the phone-width header control separate and shows one-, two- and three-digit counts in Artifacts', async () => {
     await reloadApp('app.emulateMobile(true)')
     evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
     await new Promise((resolve) => setTimeout(resolve, 1500))
-    check(measure())
+    check(await measure())
   })
 
   // BUG: Artifacts replaced the link control but no longer displays a count in the header.

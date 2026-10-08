@@ -12,7 +12,7 @@
  * Requires Obsidian running on a vault with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { isObsidianRunning, hasTestApi, evalRaw, activeVaultName } from './helpers/obsidianCli'
+import { isObsidianRunning, hasTestApi, evalLong, activeVaultName } from './helpers/obsidianCli'
 
 const NOTE = 'Attach probe note'
 const CHAT = 'Attach probe chat'
@@ -76,8 +76,11 @@ const script = `(async () => {
     return artifacts()
   }
   const closeArtifacts = async () => {
-    artifacts()?.closest('.modal')?.querySelector('.modal-close-button')?.click()
-    if (!(await until(() => !artifacts()))) throw new Error('Artifacts view did not close')
+    if (!artifacts()) return
+    const button = document.querySelector('.modal-close-button')
+    if (!button) throw new Error('no Artifacts close button')
+    button.click()
+    if (!(await until(() => !artifacts()))) throw new Error('Artifacts view did not close: ' + button.outerHTML)
   }
   const press = async (host, title) => {
     const button = () => [...host.querySelectorAll('button')].find((el) => el.textContent.trim() === title)
@@ -216,8 +219,8 @@ const available = isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('attaching a chat to a note, in the app', () => {
   let report: Report = {}
 
-  beforeAll(() => {
-    const raw = evalRaw(script, 45_000)
+  beforeAll(async () => {
+    const raw = await evalLong(script, 45_000)
     report = JSON.parse(raw) as Report
     console.info(`\n  vault ${activeVaultName()}\n  ${JSON.stringify(report, null, 2)}\n`)
   }, 60_000)
