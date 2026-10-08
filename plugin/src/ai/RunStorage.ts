@@ -151,17 +151,33 @@ export class RunStorage {
     }
   }
 
-  /** Removes the runs a chat started. Called when that chat is deleted. */
+  /** Removes a chat's delegated tree, including work delegated by those runs. */
   async deleteRuns(runIds: string[]): Promise<void> {
     const { app } = GlobalStore.getInstance()
-    for (const runId of runIds) {
+    const pending = [...runIds]
+    const seen = new Set<string>()
+    while (pending.length) {
+      const runId = pending.pop()!
+      if (seen.has(runId)) continue
+      seen.add(runId)
       const file = app.vault.getAbstractFileByPath(this.runPath(runId))
-      if (file instanceof TFile) {
-        try {
-          await app.fileManager.trashFile(file)
-        } catch (err) {
-          console.error('[Abele] Failed to delete run', runId, err)
+      if (!(file instanceof TFile)) continue
+      // Discover children before removing the only transcript that makes them reachable.
+      // A broken transcript still gets deleted, but its unknown children cannot be guessed.
+      try {
+        const run = await this.load(runId, { readOnly: true })
+        for (const branch of run?.branches ?? []) {
+          for (const message of branch.messages) {
+            if (message.subAgentRun) pending.push(message.subAgentRun.runId)
+          }
         }
+      } catch (err) {
+        console.error('[Abele] Failed to read nested runs for deletion', runId, err)
+      }
+      try {
+        await app.fileManager.trashFile(file)
+      } catch (err) {
+        console.error('[Abele] Failed to delete run', runId, err)
       }
     }
   }

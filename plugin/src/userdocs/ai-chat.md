@@ -313,7 +313,8 @@ The new chat keeps the source agent, model, per-chat settings and reviewer choic
 idle: nothing is sent, tools are not rerun, and no provider session is resumed. Attached vault
 files are referenced, not duplicated. Delegated transcripts are copied independently, so
 deleting either chat does not remove the other's copied transcripts. Returning from a nested
-run opens its parent as a read-only run, not as an editable chat. Existing side discussions
+run opens its parent as a read-only run, not as an editable chat. Deleting a chat removes
+its delegated transcripts, including nested ones. Existing side discussions
 and saved selection links belong to the original and are not copied. Reply highlights and
 accepted edit history are retained. Note links are carried only where a write is recorded on
 the copied path; manual links and older links without that evidence are not carried.

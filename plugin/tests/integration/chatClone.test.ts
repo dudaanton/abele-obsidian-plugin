@@ -342,6 +342,25 @@ describe('clone into a new chat tab', () => {
     ).toEqual([...before, replacement.path].sort())
   })
 
+  it('deletes both levels of copied delegated work without deleting either original transcript', async () => {
+    const { app, service, source, runs } = await nestedSource()
+    const parentOriginal = app.vault.getFileByPath(runs.runPath('sample-parent-run'))!
+    const childOriginal = app.vault.getFileByPath(runs.runPath('sample-child-run'))!
+    const parentBefore = await app.vault.read(parentOriginal)
+    const childBefore = await app.vault.read(childOriginal)
+    await service.cloneChatFromMessage(source.id, 'answer')
+    const clone = service.activeSession.value!
+    const parent = (await runs.load(clone.messages.value[1].subAgentRun!.runId))!
+    const childRef = parent.branches[0].messages[0].subAgentRun!
+    expect(childRef.runId).not.toBe('sample-child-run')
+    expect(await runs.load(childRef.runId)).not.toBeNull()
+    await service.deleteChat(clone.id)
+    expect(await runs.load(parent.runId)).toBeNull()
+    expect(await runs.load(childRef.runId)).toBeNull()
+    expect(await app.vault.read(parentOriginal)).toBe(parentBefore)
+    expect(await app.vault.read(childOriginal)).toBe(childBefore)
+  })
+
   it('returns from a nested copied run to its parent run without creating a writable chat', async () => {
     const { app, service, source, runs } = await nestedSource()
     await service.cloneChatFromMessage(source.id, 'answer')
