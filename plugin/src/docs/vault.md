@@ -148,7 +148,10 @@ Removal retains body content, deeper quotes and explicit titles. There are no ne
 sidecars, settings or transfer keys. The renderer never rewrites source. Unknown parent
 metadata, mismatched weights, folding or extra parent content retain native callout rendering.
 Source-mutating commands require a strictly accounted-for frame and revalidate its source
-range before serializing; unassigned parent content and code examples are not admitted.
+range before serializing; unassigned parent content, foreign/collapsible sibling callouts and
+code examples are not admitted. Rendered callouts receive source line ranges from the native
+quote-tree grammar before strict admission. Rejected ranges are not removed from identity
+binding, and any DOM/source or range disagreement refuses the operation.
 Code fences close only with a matching delimiter and whitespace-only suffix. Nested-frame
 commands target the innermost frame; the surrounding quote is retained on removal.
 See the writing guide for commands and editing limitations; there are no column agent tools.

@@ -46,9 +46,12 @@ individually. Ordinary lists, checkboxes, code, math and embeds use Obsidian's r
 The column callout titles are currently hidden; put a heading inside the child for a visible
 heading. Foldable column callouts and extra content outside the children remain ordinary
 callouts rather than columns. Frame commands are not offered when parent prose, orphan
-content, folding, unmatched weights or unclosed code fences make the structure ambiguous.
+content, foreign sibling callouts, folding, unmatched weights or unclosed code fences make
+the structure ambiguous.
 Examples inside code fences, including quoted fences, are never treated as editable frames.
-Nested controls and cursor commands target the innermost frame.
+Nested controls and cursor commands target the innermost frame. Rendered controls require
+verified original quote line ranges, including ranges rejected for editing; if the rendered
+quote tree and source disagree, the operation is refused rather than redirected to a sibling.
 
 In Live Preview a click or tap on prose expands the area to source and places a single caret
 at the clicked passage, including formatted or identical passages in different columns.
