@@ -117,6 +117,13 @@ describe('column frame operations', () => {
     expect(findColumns(text, 0)?.from).toBe(0)
   })
 
+  it('never skips a rejected nested frame with a normalised uppercase callout type', () => {
+    const inner = createColumns('Inner', 'two').replace('[!abele-columns', '[!ABELE-COLUMNS')
+    const text = createColumns(inner, 'two')
+    expect(findColumns(text, text.indexOf('Inner'))).toBeNull()
+    expect(findColumns(text, 0)?.from).toBe(0)
+  })
+
   it('revalidates the current source instead of trusting a previously parsed frame', () => {
     const text = createColumns('Body', 'two'),
       record = findColumns(text, 0)!

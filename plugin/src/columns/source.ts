@@ -85,7 +85,7 @@ export interface QuoteSourceRange {
 }
 
 /** Native quote-tree provenance, independent of whether a column frame admits mutation. */
-export function quoteSourceRange(text: string, from: number): QuoteSourceRange | null {
+export function quoteSourceTree(text: string): QuoteSourceRange[] {
   const tree = markdown.parse(text)
   const build = (node: SyntaxNode): QuoteSourceRange => {
     const start = text.lastIndexOf('\n', node.from - 1) + 1
@@ -111,18 +111,29 @@ export function quoteSourceRange(text: string, from: number): QuoteSourceRange |
       children,
     }
   }
-  let found: QuoteSourceRange | null = null
+  const roots: QuoteSourceRange[] = []
   const visit = (node: SyntaxNode) => {
-    if (found || node.to < from || node.from > from + text.slice(from).split('\n')[0].length) return
-    if (node.name === 'Blockquote' && text.lastIndexOf('\n', node.from - 1) + 1 === from) {
-      found = build(node)
+    if (node.name === 'Blockquote') {
+      roots.push(build(node))
       return
     }
     if (['FencedCode', 'CodeBlock', 'HTMLBlock'].includes(node.name)) return
     for (let child = node.firstChild; child; child = child.nextSibling) visit(child)
   }
   visit(tree.topNode)
-  return found
+  return roots
+}
+
+export function quoteSourceRange(text: string, from: number): QuoteSourceRange | null {
+  const find = (ranges: QuoteSourceRange[]): QuoteSourceRange | null => {
+    for (const range of ranges) {
+      if (range.from === from) return range
+      const child = find(range.children)
+      if (child) return child
+    }
+    return null
+  }
+  return find(quoteSourceTree(text))
 }
 
 /** Parse the quote frame at a known host source position, never search for rendered text. */

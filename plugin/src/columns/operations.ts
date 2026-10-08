@@ -1,4 +1,4 @@
-import { columnSource, quoteSourceRange, type ColumnSource } from './source'
+import { columnSource, quoteSourceTree, type QuoteSourceRange, type ColumnSource } from './source'
 import { columnWeights } from './core'
 
 export type ColumnTemplate = 'two' | 'three' | 'aside'
@@ -26,28 +26,20 @@ export function resolveColumnTarget(
   position: number,
   expected?: { from: number; to: number }
 ): ColumnSource | null {
-  let from = 0,
-    innermost: ReturnType<typeof quoteSourceRange> = null
-  for (const line of text.split('\n')) {
-    if (/^\s*(?:>\s*)+\[!abele-columns(?:\||\])/.test(line)) {
-      const range = quoteSourceRange(text, from)
-      if (
-        range &&
-        range.callout === 'abele-columns' &&
-        position >= range.from &&
-        position <= range.to
-      )
-        innermost = range
+  let innermost: QuoteSourceRange | null = null
+  const visit = (ranges: QuoteSourceRange[]) => {
+    for (const range of ranges) {
+      if (position < range.from || position > range.to) continue
+      if (range.callout === 'abele-columns') innermost = range
+      visit(range.children)
     }
-    from += line.length + 1
   }
-  if (
-    !innermost ||
-    (expected && (innermost.from !== expected.from || innermost.to !== expected.to))
-  )
+  visit(quoteSourceTree(text))
+  const selected = innermost as QuoteSourceRange | null
+  if (!selected || (expected && (selected.from !== expected.from || selected.to !== expected.to)))
     return null
-  const frame = columnSource(text, innermost.from)
-  return frame && frame.from === innermost.from && frame.to === innermost.to ? frame : null
+  const frame = columnSource(text, selected.from)
+  return frame && frame.from === selected.from && frame.to === selected.to ? frame : null
 }
 
 export function findColumns(text: string, position: number): ColumnSource | null {
