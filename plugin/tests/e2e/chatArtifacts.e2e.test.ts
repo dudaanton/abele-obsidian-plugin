@@ -3,6 +3,7 @@ import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 const SHOTS = shotDir('abele-phone')
@@ -12,14 +13,16 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
     const result = JSON.parse(
       await evalLong(
         `(async () => {
+      ${SCRIPT_FIXTURE}
       const wait = ms => new Promise(r => setTimeout(r, ms))
       const until = async fn => { for (let i = 0; i < 100; i++) { const value = fn(); if (value) return value; await wait(50) } throw Error('UI did not appear') }
       const api = window.__abeleTest, chats = api.ChatService.getInstance(), config = api.AbeleConfig.getInstance()
       const priorTab = chats.activeTabId.value, priorLeaf = app.workspace.activeLeaf
-      const oldScripts = { enabled: config.ai.scriptsEnabled, folder: config.ai.scriptsFolder }
       const oldFolder = app.vault.getConfig('attachmentFolderPath')
-      const directory = 'Sample artifact conversation'
+      // Never adopt a stale folder from an interrupted run; keep the ownership guard too.
+      const directory = 'Sample artifact conversation ' + crypto.randomUUID()
       if (app.vault.getAbstractFileByPath(directory)) throw Error('Synthetic folder already exists')
+      const scriptFixture = await saveScriptFixture()
       await app.vault.createFolder(directory)
       await app.vault.createFolder(directory + '/Scripts')
       const layout = app.workspace.getLayout()
@@ -36,7 +39,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         return path
       }
       try {
-        config.ai.scriptsEnabled = true; config.ai.scriptsFolder = directory + '/Scripts'
+        await enableScriptFixture(directory + '/Scripts')
         app.vault.setConfig('attachmentFolderPath', directory)
         const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 24
         canvas.getContext('2d').fillRect(0, 0, 32, 24)
@@ -146,8 +149,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       finally {
         // Tools and code views can save the temporary settings. Restore durably before any
         // workspace cleanup that could fail, so the next file never inherits scripts off.
-        config.ai.scriptsEnabled = oldScripts.enabled; config.ai.scriptsFolder = oldScripts.folder
-        await config.saveSettings()
+        await restoreScriptFixture(scriptFixture)
         if (session) { session.isStreaming.value = false; if (getTools) session.getTools = getTools }
         await close()
         if (tab) await chats.closeTab(tab)

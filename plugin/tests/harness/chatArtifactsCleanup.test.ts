@@ -18,7 +18,13 @@ describe('artifact fixture settings cleanup', () => {
         }),
       }
       let persisted = { ...config.ai }
-      const oldScripts = { enabled: true, folder: 'Scripts' }
+      const scriptFixture = { ai: { scriptsEnabled: true, scriptsFolder: 'Scripts' } }
+      // The helper's durable flags/provenance restoration is exercised with real IDB in
+      // scriptFixtureIsolation; here inject a closing failure into the actual finally body.
+      const restoreScriptFixture = vi.fn(async (snapshot) => {
+        config.ai = { ...snapshot.ai }
+        await config.saveSettings()
+      })
       const close = async () => {
         if (fails) throw new Error('Synthetic close failure')
       }
@@ -28,7 +34,8 @@ describe('artifact fixture settings cleanup', () => {
       }
       const execute = new Function(
         'config',
-        'oldScripts',
+        'scriptFixture',
+        'restoreScriptFixture',
         'close',
         'app',
         `return (async () => {
@@ -37,7 +44,8 @@ describe('artifact fixture settings cleanup', () => {
       ${cleanup}
     })()`
       )
-      await execute(config, oldScripts, close, app).catch(() => {})
+      await execute(config, scriptFixture, restoreScriptFixture, close, app).catch(() => {})
+      expect(restoreScriptFixture).toHaveBeenCalledWith(scriptFixture)
       expect(config.ai).toEqual({ scriptsEnabled: true, scriptsFolder: 'Scripts' })
       expect(persisted).toEqual(config.ai)
       expect(config.saveSettings).toHaveBeenCalled()
