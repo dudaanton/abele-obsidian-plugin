@@ -422,6 +422,9 @@ export default class AbelePlugin extends Plugin {
     this.registerView(ACCOUNTS_SIDEBAR_VIEW_TYPE, (leaf) => new AccountsSidebarView(leaf, this.app))
     this.registerView(SCRIPT_RUNS_VIEW_TYPE, (leaf) => new ScriptRunsView(leaf, this.app))
     this.registerView(SCRIPT_VIEW_TYPE, (leaf) => new ScriptView(leaf))
+    // Reader dashboards, live slides and restored tabs also execute scripts directly.
+    // The leaf host belongs to the registered view type, not to the optional script index.
+    ScriptViewService.getInstance()
     this.registerView(
       TIME_TRACKING_SIDEBAR_VIEW_TYPE,
       (leaf) => new TimeTrackingSidebarView(leaf, this.app)
@@ -1263,8 +1266,6 @@ export default class AbelePlugin extends Plugin {
         if (!this.scriptsStarted || generation !== this.scriptStartGeneration) return
         const atStart = this.starting
         ScriptService.getInstance().init()
-        // The host a script's `view()` reaches for; registered before any script can run.
-        ScriptViewService.getInstance()
         // Automations name their script, so they wait for the index that finds it.
         void ScriptService.getInstance().ready.then(() => {
           // Not after an unload that came first.
