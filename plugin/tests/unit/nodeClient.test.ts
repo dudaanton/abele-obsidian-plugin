@@ -17,6 +17,38 @@ const event = (seq: number, type: string, data: unknown): JournalEvent => ({
 })
 
 describe('node transcript', () => {
+  it('projects committed prompt delivery separately from resolution and refuses mismatched delivery evidence', () => {
+    const prompt = {
+      kind: 'permission',
+      prompt_id: 'sample-prompt',
+      session_id: 'sample-session',
+      run_id: 'sample-run',
+      revision: 1,
+      action_digest: 'a'.repeat(64),
+      expires_at: 1999999999999,
+      state: 'resolved',
+      choice: 'allow',
+      installation_id: 'sample-installation',
+      delivered: false,
+    }
+    const resolved = event(1, 'prompt.resolved', prompt)
+    expect(reduceTranscript([resolved]).prompts[0].delivered).toBe(false)
+    const delivered = event(2, 'prompt.delivered', {
+      prompt_id: prompt.prompt_id,
+      run_id: prompt.run_id,
+      choice: 'allow',
+      evidence: 'sample-worker-ack',
+    })
+    expect(reduceTranscript([resolved, delivered]).prompts[0].delivered).toBe(true)
+    for (const evidence of [
+      { prompt_id: prompt.prompt_id, run_id: 'other-run', choice: 'allow' },
+      { prompt_id: prompt.prompt_id, run_id: prompt.run_id, choice: 'deny' },
+    ]) {
+      const projection = reduceTranscript([resolved, event(2, 'prompt.delivered', evidence)])
+      expect(projection.prompts[0].delivered).toBe(false)
+      expect(projection.unknown).toHaveLength(1)
+    }
+  })
   it('projects replay once, joins streaming chunks and resolves attention without rewriting history', () => {
     const prompt = {
       kind: 'permission',

@@ -94,6 +94,17 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
           size: Number(data.size),
         })
       else current.content += text('text')
+    } else if (event.type === 'prompt.delivered') {
+      const current = prompts.get(text('prompt_id'))
+      // Delivery is a separate committed, identity-bound fact, not a full prompt snapshot.
+      if (
+        current &&
+        current.state !== 'pending' &&
+        current.run_id === text('run_id') &&
+        current.choice === text('choice')
+      )
+        prompts.set(current.prompt_id, { ...current, delivered: true })
+      else unknown.push(event)
     } else if (event.type.startsWith('prompt.')) {
       const parsed = PromptSchema.safeParse(event.data)
       if (parsed.success) prompts.set(parsed.data.prompt_id, parsed.data)
