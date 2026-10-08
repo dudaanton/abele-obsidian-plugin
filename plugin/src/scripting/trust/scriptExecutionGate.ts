@@ -78,6 +78,30 @@ export async function scriptForExecution(
   path: string,
   confirm?: ScriptConfirmation
 ): Promise<ParsedScript> {
+  try {
+    return await checkedScriptForExecution(app, path, confirm)
+  } catch (error) {
+    const original = error instanceof Error ? error : new Error(String(error ?? ''))
+    const failure = original.message.trim()
+      ? original
+      : new Error(
+          `Script execution check failed for "${path}": ${original.name || 'the platform'} supplied no failure reason`,
+          { cause: error }
+        )
+    // WebKit's Error.stack can contain ONLY function@ frames. Preserve the reason for
+    // every caller, including diagnostics that print stack instead of message.
+    const header = `${failure.name}: ${failure.message}`
+    if (!failure.stack?.includes(failure.message))
+      failure.stack = `${header}\n${original.stack ?? ''}`
+    throw failure
+  }
+}
+
+async function checkedScriptForExecution(
+  app: App,
+  path: string,
+  confirm?: ScriptConfirmation
+): Promise<ParsedScript> {
   const read = async () => new Uint8Array(await app.vault.adapter.readBinary(path))
   const connection = scriptConnectionKey(storageOf(app))
   const bytes = await read()
