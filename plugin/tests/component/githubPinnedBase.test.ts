@@ -5,6 +5,11 @@ import { useVault } from '../helpers/testEnv'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { basePins } from '@/github/comparison/pins'
 import { parseGithubUrl } from '@/github/urls'
+import {
+  installFakeIntersectionObserver,
+  resetFakeIntersectionObservers,
+  scrollIntoView,
+} from '../helpers/fakeIntersectionObserver'
 
 const BASE = 'a'.repeat(40),
   TARGET = 'b'.repeat(40),
@@ -58,6 +63,32 @@ beforeEach(() => {
 })
 
 describe('a pinned project tree', () => {
+  it('retries unavailable visible counts after the header refresh without opening the file', async () => {
+    installFakeIntersectionObserver()
+    resetFakeIntersectionObservers()
+    pin()
+    const connection = clientWith(routes)
+    const { wrapper, model, request } = openTab(URL, routes, true, document.body, connection)
+    model.tree = true
+    await vi.waitFor(() =>
+      expect(wrapper.find('.abele-github-tree [data-path="gone.ts"]').exists()).toBe(true)
+    )
+    const row = () => wrapper.find('.abele-github-tree [data-path="gone.ts"]')
+    request.mockImplementationOnce(async () => {
+      throw new Error('Temporary offline')
+    })
+    expect(scrollIntoView(row().element.parentElement!)).toBeGreaterThan(0)
+    await vi.waitFor(() => expect(row().text()).toContain('—'))
+    await wrapper
+      .find('.abele-github-header__actions [aria-label="Load again from GitHub"]')
+      .trigger('click')
+    await flushPromises()
+    expect(scrollIntoView(row().element.parentElement!)).toBeGreaterThan(0)
+    await vi.waitFor(() => expect(row().text()).toContain('+0 −1'))
+    expect(request.mock.calls.filter(([r]) => r.url.endsWith('/git/blobs/gone'))).toHaveLength(2)
+    wrapper.unmount()
+    resetFakeIntersectionObservers()
+  })
   it.each([true, false])(
     'opens all file/folder replacement entries in both project modes (base folder: %s)',
     async (baseFolder) => {

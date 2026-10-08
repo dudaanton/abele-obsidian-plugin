@@ -30,6 +30,7 @@
         :expanded="expanded"
         :current="current"
         :current-kind="currentKind"
+        :count-retry="countRetry"
         :changes="changes"
         @visible="(path: string) => emit('visible', path)"
         @pick="(n: TreeNode, e: MouseEvent) => emit('pick', n, e)"
@@ -57,6 +58,7 @@ const props = defineProps<{
   /** The file or folder the tab shows. */
   current: string | null
   currentKind?: 'file' | 'dir'
+  countRetry?: number
   changes?: Map<string, string>
 }>()
 
@@ -86,7 +88,11 @@ const observe = () => {
   if (el) observer.observe(el)
 }
 onMounted(observe)
-watch(() => props.changes?.has(`${props.node.kind}:${props.node.path}`), observe, { flush: 'post' })
+watch(
+  [() => props.changes?.has(`${props.node.kind}:${props.node.path}`), () => props.countRetry],
+  observe,
+  { flush: 'post' }
+)
 onBeforeUnmount(() => observer?.disconnect())
 const open = computed(() => props.expanded.has(props.node.path))
 /** A folder of thousands of files draws a page at a time, as the panel scrolls. */

@@ -9,6 +9,7 @@
         :current="current"
         :comparison="blob?.comparison?.index"
         :base-sha="projectPin?.baseSha"
+        :retry-counts="countRetry"
         @open="openFromPanel"
         @close="setPanel(false)"
       />
@@ -492,6 +493,7 @@ const commit = computed(() =>
 )
 const blob = computed(() => (shown.value?.kind === 'blob' ? (main.data.value as BlobData) : null))
 const largeBusy = ref(false)
+const countRetry = ref(0)
 const loadLarge = async () => {
   const data = blob.value,
     at = data?.comparison,
@@ -735,6 +737,7 @@ onBeforeUnmount(() => unpin())
 
 const reload = async (retry = false) => {
   retryPrimary = retry
+  if (retry) countRetry.value++
   // A denied capability must not leave previously loaded private provenance in the tab.
   try {
     client().assertCurrent()

@@ -40,6 +40,7 @@
             :current="current?.path ?? null"
             :current-kind="current?.kind"
             :changes="changeLabels"
+            :count-retry="countEpoch"
             @visible="requestCounts"
             @pick="pick"
             @page="(n: TreeNode) => openFolder(n, false)"
@@ -100,6 +101,7 @@ const props = defineProps<{
   current: { path: string; kind: 'file' | 'dir' } | null
   comparison?: ComparisonIndex
   baseSha?: string
+  retryCounts?: number
 }>()
 
 const emit = defineEmits<{
@@ -116,6 +118,16 @@ const error = ref<string | null>(null)
 const query = ref('')
 const comparisonIndex = shallowRef<ComparisonIndex | null>(null)
 const projectMode = ref('all')
+const countEpoch = ref(0)
+watch(
+  () => props.retryCounts,
+  () => {
+    for (const [path, count] of comparisonIndex.value?.counts ?? []) {
+      if (count.state === 'unavailable') comparisonIndex.value?.counts.delete(path)
+    }
+    countEpoch.value++
+  }
+)
 const projectModes = [
   { id: 'all', label: 'All files' },
   { id: 'changed', label: 'Changed files' },
