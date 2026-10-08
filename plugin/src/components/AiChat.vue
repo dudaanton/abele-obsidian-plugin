@@ -1629,6 +1629,15 @@ function consumePendingInput() {
 }
 
 watch(() => chatService.pendingInput.value, consumePendingInput)
+// A pending clone hides the composer without changing tab or conversation lifetime.
+// Retry delivery when its editor mounts; consumePendingInput retains the ownership checks.
+watch(
+  () => chatInput.value,
+  (input) => {
+    if (input) consumePendingInput()
+  },
+  { flush: 'post' }
+)
 
 // On a phone the chat shrinks to sit above the keyboard; see `useChatKeyboardGap`.
 const { measure: measureBottomGap } = useChatKeyboardGap(chatContainer)

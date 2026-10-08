@@ -306,7 +306,8 @@ pictures and other attachments, but not sibling branches or later messages. Its 
 **<original title> (копия)**. The original conversation and its draft stay unchanged.
 Wait for the current turn to finish or stop it before making the copy; unsent drafts cannot
 be copied this way. While copying, the new tab shows **Creating chat copy…** and has no
-editable controls. Any draft delivered to that tab is kept when the copy finishes. Opening
+editable controls. Any draft delivered to that tab is kept when the copy finishes. Text and
+pictures sent there from elsewhere appear as soon as its editor returns, without switching tabs. Opening
 another conversation in that tab cancels the unfinished copy without replacing that conversation.
 
 The new chat keeps the source agent, model, per-chat settings and reviewer choices. It starts
