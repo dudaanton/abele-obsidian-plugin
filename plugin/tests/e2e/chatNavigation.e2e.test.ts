@@ -39,7 +39,7 @@ interface NavigationReport {
 
 const script = `(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms))
-  const until = async fn => { for (let i = 0; i < 300; i++) { if (fn()) return; await wait(30) } throw Error('Navigation destination did not appear') }
+  const until = async fn => { for (let i = 0; i < 300; i++) { if (fn()) return; await wait(30) } throw Error('Navigation destination did not appear: ' + fn.toString()) }
   const chats = window.__abeleTest.ChatService.getInstance()
   const comments = window.__abeleTest.CommentService.getInstance()
   const path = 'sample-navigation.abchat'
