@@ -190,28 +190,46 @@ External file changes update open holders read-only; file writes preserve disk-c
 Opening a row does not write reconstructed index data back into the conversation.
 The index is device-local and does not travel in settings transfer.
 
-Discussion metadata additionally keeps `commentId`, the identity used by note markers, independently
-of the file basename. Legacy discussions acquire their original basename identity on save/rename.
-`commentLocation` records the canonical file location so a copied record can still identify
-its original when discovered first on another installation. Vault-scoped local storage
-`abele-discussion-locations` persists the existing identity-to-location preference independently
-of scan order, without conversation content, settings transfer or secrets. Existing valid
-locations take precedence; otherwise the declared location or a file the marker already names
-is preferred. Copied files receive a fresh identity in their owner when explicitly opened;
-their own location is written on the next ordinary save.
-Legacy migration also covers anchored discussions already expanded to chats.
-The discussion owner rebuilds identity-to-location mappings from metadata and follows renames;
-closed conversations reopen through that owner after restart. One plain identity resolver owns `id → location` and `file path → id` mappings. Load,
-discovery, migration, rename and deletion all resolve the actual path through it; session
-adoption requires the same resolved path. Identity is bound before restoration can save a
-flat-history or permission migration, not as a save-side registration effect. Direct IDs are
-looked up before optional basename aliases; an alias is valid only when no file owns that name
-as its own ID and its basename identifies one recorded location. A copied discussion cannot
-be adopted under the original identity before discovery or after preference restoration. Vault delete notifications
-carry the full file path; only mappings, watchers and owners of that exact file are removed.
-Deleting a same-basename copy elsewhere neither closes nor stops its original, and deletion
-never flushes the deleted conversation back to disk. These identifiers travel with chat files,
-not as new settings or secrets.
+Discussion identity belongs to committed file metadata: `{ commentId, commentLocation }`.
+The location is an exact canonical vault-relative path, not a basename. An anchored `kind: chat`
+is still a discussion. New discussions commit a fresh ID and their location before publishing
+markers. A self-located file retains its ID; a location mismatch means a copy, even when its
+declared original is absent. Preparation commits the copy's own location and deterministic
+`fork-v1-<hex SHA-256>` ID before discovery or opening can expose it. The hash input is UTF-8
+JSON of `["abele.discussion.fork", 1, sourceId, canonicalPath]`. Repeated preparation changes
+nothing. Messages and unrelated metadata are retained; legacy JSON is encoded as a complete log.
+
+`ChatStorage.prepareDiscussion` is the mandatory gate for direct session loads, tab restoration,
+discovery, migrations and writes. Its metadata transform compares exact revisions, rereads a
+concurrently changed file, and publishes nothing from a failed normalization. Storage serializes
+preparation and writes on the same file. A changed incoming self-located identity supersedes
+local observations; obsolete session writes are fenced until the whole snapshot is reconciled.
+Concurrent conversation edits are conflicts, not an identity tie-break.
+
+Only disposable, revision-tagged `path → identity` and `ID → set of paths` indexes are retained.
+Old local `abele-discussion-locations` and aliases are ignored. ID opening/deletion scans files
+and validates the exact candidate; there is no filename fallback and no basename alias.
+Duplicate self-declared owners are conflicts, never first-writer-wins. Legacy discussions can
+retain their stored or historical basename ID only at the old canonical marker path (including
+an old path established by a trusted rename event). A legacy file with a stored ID can be
+normalized as a copy when an actual discussion at that ID's canonical marker path establishes
+the original owner. Other legacy files require explicit identity resolution; neither scan order
+nor local storage establishes ownership.
+
+A trusted rename normalizes at the old logical path first, then commits the retained ID at its
+new location. Only exact paths select sessions. Vault deletion invalidates and closes only the
+deleted file's owner, without flushing it back to disk. **Deleting an original leaves its markers
+broken**; a remaining copy cannot open or be deleted through them. Explicit restoration of the
+same persisted identity can restore those links. These identifiers travel in chat files, not
+settings or secrets.
+
+Boundary: bytes alone cannot distinguish an unobserved move from a copy followed by deletion.
+Without trusted provenance, a location mismatch forks. Identity-preserving synced renames must
+provide final location metadata and the move as one logical revision; reordered intermediate
+states need a sync adapter's pending/conflict protocol, which ordinary vault events do not
+provide. The regression for that missing protocol remains an explicit expected failure.
+Deterministic `(source ID, path)` identifies a fork slot, not successive independent copy births;
+distinguishing those requires a synchronized birth token. Local indexes do not solve either.
 This is not multi-device arbitration for local tool approvals.
 
 ## Node sessions (device-local)

@@ -1,5 +1,4 @@
 import { ref, shallowReactive, watch, type Ref, type WatchStopHandle } from 'vue'
-import { DiscussionIdentityResolver } from './commentIdentity'
 import { Notice, TFile, TFolder } from 'obsidian'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -96,8 +95,8 @@ export class CommentService implements CommentInfoSource {
    */
   async revealChat(id: string): Promise<void> {
     id = this.canonicalId(id)
-    const session = this.expanded.get(id)
-    if (!session) return
+    const session = await this.load(id)
+    if (!session || !this.expanded.has(id)) return
 
     const chatService = ChatService.getInstance()
     if (!chatService.adoptSession(session)) return
@@ -248,7 +247,7 @@ export class CommentService implements CommentInfoSource {
 
   /** Returns from the attention list without replacing any other discussion tab. */
   async revealForAttention(file: TFile): Promise<boolean> {
-    if (!this.isCommentFile(file)) return false
+    if (!(await ChatStorage.getInstance().prepareDiscussion(file)).identity) return false
     const chats = ChatService.getInstance()
     // Every chat-file opener shares one reservation and hands comment files to this owner.
     await chats.openChatFile(file)
@@ -323,27 +322,14 @@ export class CommentService implements CommentInfoSource {
     return ChatStorage.commentsFolder()
   }
 
-  private identityResolver: DiscussionIdentityResolver | null = null
-  private get identities(): DiscussionIdentityResolver {
-    if (!this.identityResolver) {
-      const app = GlobalStore.getInstance().app
-      this.identityResolver = new DiscussionIdentityResolver({
-        exists: (path) => app.vault.getAbstractFileByPath(path) instanceof TFile,
-        markerPath: (id) => `${this.folder()}/${id}.abchat`,
-        freshId: newCommentId,
-        read: () => app.loadLocalStorage('abele-discussion-locations'),
-        write: (locations) => app.saveLocalStorage('abele-discussion-locations', locations),
-      })
-    }
-    return this.identityResolver
-  }
   private canonicalId(id: string): string {
-    return this.identities.canonicalId(id)
+    // IDs are exact persisted identities. There are no implicit basename aliases.
+    return id
   }
 
   /** Discovery and load/migration use the same path binding, never a basename cache claim. */
   rememberFile(file: TFile, metadata: ChatMetadata): string | undefined {
-    const id = this.identities.resolve(file.path, metadata)
+    const id = ChatStorage.getInstance().discussionIdAt(file.path)
     if (
       id &&
       this.missing.delete(id) &&
@@ -363,52 +349,22 @@ export class CommentService implements CommentInfoSource {
       this.loading.delete(oldPath)
     }
     const session = owner ?? (pending ? await pending : null)
-    const metadata = session
-      ? undefined
-      : parseChatMetadata(await GlobalStore.getInstance().app.vault.read(file))
-    if (
-      session?.kind !== 'comment' &&
-      !session?.anchor.value &&
-      metadata?.kind !== 'comment' &&
-      !metadata?.anchor &&
-      !metadata?.commentId
-    )
-      return
-    const data = session
-      ? {
-          kind: session.kind,
-          anchor: session.anchor.value,
-          commentId: session.commentId ?? undefined,
-        }
-      : metadata!
-    const id = this.identities.rename(oldPath, file.path, data)
+    const prepared = await ChatStorage.getInstance().prepareDiscussion(file, oldPath)
+    const id = prepared.identity
     if (!id) return
     if (session) {
-      session.bindCommentIdentity(id)
-      await session.save()
-    } else if (metadata && (metadata.commentId !== id || metadata.commentLocation !== file.path)) {
-      await transformChat(
-        GlobalStore.getInstance().app,
-        file,
-        (content) => {
-          const current = parseChatMetadata(content)
-          if (!current) throw new Error('The discussion is unavailable.')
-          return (
-            content + serializeMetadata({ ...current, commentId: id, commentLocation: file.path })
-          )
-        },
-        () => {
-          if (this.sessionOnFile(file.path))
-            throw new Error('The discussion was opened. Retry the rename.')
-        }
-      )
+      const oldId = session.commentId
+      session.bindCommentIdentity(id, file.path)
+      if (oldId && oldId !== id) this.forget(oldId)
+      this.adopt(id, session)
     }
     ChatService.getInstance().saveTabs()
   }
 
   commentPath(id: string): string {
     id = this.canonicalId(id)
-    return this.identities.pathForId(id)
+    // A missing UI hint is not authority to open/delete this conventional path.
+    return ChatStorage.getInstance().discussionPathFor(id) ?? `${this.folder()}/${id}.abchat`
   }
 
   /**
@@ -419,12 +375,13 @@ export class CommentService implements CommentInfoSource {
    */
   resetMissing(): void {
     this.missing.clear()
+    ChatStorage.getInstance().invalidateDiscussion()
   }
 
   /** True for a file this service owns. A path join, because the name *is* the id. */
   isCommentFile(file: TFile): boolean {
     return (
-      this.identities.idForPath(file.path) !== undefined ||
+      ChatStorage.getInstance().discussionIdAt(file.path) !== undefined ||
       file.path === `${this.folder()}/${file.basename}.abchat`
     )
   }
@@ -444,12 +401,21 @@ export class CommentService implements CommentInfoSource {
    */
   sessionFor(id: string): ChatSession | null {
     id = this.canonicalId(id)
+    const ownerPath = ChatStorage.getInstance().discussionPathFor(id)
     const known = this.sessions.get(id) ?? this.expanded.get(id) ?? null
-    if (known && !known.isDestroyed && known.currentChatFile.value?.path === this.commentPath(id))
-      return known
-    if (known) this.forget(id)
+    if (known) {
+      if (
+        !known.isDestroyed &&
+        ownerPath &&
+        known.commentId === id &&
+        known.currentChatFile.value?.path === ownerPath
+      )
+        return known
+      if (known.isDestroyed) this.forget(id)
+      else return null // Missing/conflicted/transient caches never grant ownership.
+    }
 
-    const restored = ChatService.getInstance().getSessionByFile(this.commentPath(id))
+    const restored = ownerPath ? ChatService.getInstance().getSessionByFile(ownerPath) : null
     if (!restored) return null
 
     this.expanded.set(id, restored)
@@ -596,6 +562,8 @@ export class CommentService implements CommentInfoSource {
       providerId: agent?.providerId || config.activeProviderId,
       modelId: agent?.modelId || config.activeModelId,
       created: dayjs().format('YYYY-MM-DD'),
+      commentId: id,
+      commentLocation: `${this.folder()}/${id}.abchat`,
     }
 
     await ChatStorage.getInstance().ensureFolder(this.folder())
@@ -609,7 +577,7 @@ export class CommentService implements CommentInfoSource {
       agentId: agent?.id,
       anchor,
     })
-    await session.load(file, (metadata) => this.identities.resolve(file.path, metadata ?? {}))
+    await session.load(file)
     this.adopt(session.commentId ?? id, session)
     return session
   }
@@ -617,7 +585,8 @@ export class CommentService implements CommentInfoSource {
   /** Files it and starts watching its state, so the icon follows the conversation. */
   private adopt(id: string, session: ChatSession): void {
     const path = session.currentChatFile.value?.path
-    if (!path || this.identities.idForPath(path) !== id || this.identities.pathForId(id) !== path)
+    const storage = ChatStorage.getInstance()
+    if (!path || storage.discussionIdAt(path) !== id || storage.discussionPathFor(id) !== path)
       throw new Error('The discussion identity was not resolved for this file.')
     this.sessions.set(id, session)
     this.watchState(id, session)
@@ -735,18 +704,36 @@ export class CommentService implements CommentInfoSource {
 
   async load(id: string, sourceFile?: TFile): Promise<ChatSession | null> {
     id = this.canonicalId(id)
-    const path = sourceFile?.path ?? this.commentPath(id)
-    const known = sourceFile ? this.sessionOnFile(path) : this.sessionFor(id)
-    if (known) return known
+    const generation = this.generations.get(id) ?? 0
+    const validated = sourceFile ?? (await ChatStorage.getInstance().findDiscussion(id))
+    if (!validated) {
+      this.missing.add(id)
+      return null
+    }
+    if ((this.generations.get(id) ?? 0) !== generation) return null
+    const path = validated.path
+    const known = this.sessionOnFile(path)
+    if (known) {
+      try {
+        await known.reconcileForSelectionReturn()
+      } catch {
+        return null
+      }
+      const committedId = known.commentId
+      if (!committedId || (!sourceFile && committedId !== id)) return null
+      for (const [key, owner] of [...this.sessions, ...this.expanded])
+        if (owner === known && key !== committedId) this.forget(key)
+      if (!this.sessions.has(committedId) && !this.expanded.has(committedId))
+        this.adopt(committedId, known)
+      return known
+    }
 
     const pending = this.loading.get(path)
     if (pending !== undefined) return pending
 
-    const generation = this.generations.get(id) ?? 0
-
     const task = (async (): Promise<ChatSession | null> => {
       const { app } = GlobalStore.getInstance()
-      const file = sourceFile ?? app.vault.getAbstractFileByPath(this.commentPath(id))
+      const file = validated
       if (!(file instanceof TFile)) {
         this.missing.add(id)
         return null
@@ -755,10 +742,8 @@ export class CommentService implements CommentInfoSource {
       const session = new ChatSession(ChatService.getInstance(), undefined, { kind: 'comment' })
       let resolvedId: string | undefined
       try {
-        await session.load(
-          file,
-          (metadata) => (resolvedId = this.identities.resolve(file.path, metadata ?? {}))
-        )
+        await session.load(file)
+        resolvedId = session.commentId ?? undefined
       } catch (e) {
         // A file that will not parse is a file no repeat will fix, and the marker asks again
         // every repaint — so it is written off here rather than retried for ever, and the
@@ -775,7 +760,11 @@ export class CommentService implements CommentInfoSource {
         return null
       }
 
-      if (!resolvedId || app.vault.getAbstractFileByPath(file.path) !== file) {
+      if (
+        !resolvedId ||
+        (!sourceFile && resolvedId !== id) ||
+        app.vault.getAbstractFileByPath(file.path) !== file
+      ) {
         session.destroy()
         return null
       }
@@ -992,7 +981,7 @@ export class CommentService implements CommentInfoSource {
 
       // Either condition, not just the anchor: a comment can write to a note it is not
       // anchored in, and its own file is the only copy of those links until it is expanded.
-      const loaded = this.sessionFor(child.basename)
+      const loaded = this.sessionOnFile(child.path)
       if (loaded) {
         const anchor = loaded.anchor.value
         const anchored = anchor?.note === oldPath
@@ -1008,8 +997,7 @@ export class CommentService implements CommentInfoSource {
         continue
       }
 
-      await transformChat(
-        app,
+      await ChatStorage.getInstance().transformDiscussion(
         child,
         (content) => {
           const parsed = parseChat(content)
@@ -1041,7 +1029,7 @@ export class CommentService implements CommentInfoSource {
           })
         },
         () => {
-          if (this.sessionFor(child.basename))
+          if (this.sessionOnFile(child.path))
             throw new Error('The comment was opened. Retry the rename.')
         }
       )
@@ -1075,7 +1063,9 @@ export class CommentService implements CommentInfoSource {
   handleFileDeleted(deleted: string): void {
     // Older direct callers name a marker; vault notifications carry the exact path.
     const path = deleted.endsWith('.abchat') ? deleted : this.commentPath(deleted)
-    const ids = new Set(this.identities.remove(path))
+    const storedId = ChatStorage.getInstance().discussionIdAt(path)
+    const ids = new Set(storedId ? [storedId] : [])
+    ChatStorage.getInstance().invalidateDiscussion(path)
     for (const [id, session] of [...this.sessions, ...this.expanded]) {
       if (session.currentChatFile.value?.path === path) ids.add(id)
     }
@@ -1083,11 +1073,6 @@ export class CommentService implements CommentInfoSource {
       const owner = this.sessions.get(id) ?? this.expanded.get(id) ?? null
       // A colliding basename is never enough to destroy an owner of another file.
       if (owner?.currentChatFile.value && owner.currentChatFile.value.path !== path) {
-        this.identities.resolve(owner.currentChatFile.value.path, {
-          kind: owner.kind,
-          anchor: owner.anchor.value,
-          commentId: owner.commentId ?? id,
-        })
         continue
       }
       this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
@@ -1120,6 +1105,8 @@ export class CommentService implements CommentInfoSource {
     // the person left behind must not fetch the file back.
     this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
     this.missing.add(id)
+    const validated = await ChatStorage.getInstance().findDiscussion(id)
+    if (!validated) return
 
     const session = this.sessionFor(id)
     const anchor = session?.anchor.value ?? (await this.anchorOnDisk(id))
@@ -1127,7 +1114,7 @@ export class CommentService implements CommentInfoSource {
 
     // Asked on this comment's own messages, and on theirs: reachable only through it, so they
     // go with it, deepest first, while it can still say which they are.
-    await this.removeCommentsOn(this.commentPath(id))
+    await this.removeCommentsOn(validated.path)
 
     if (anchor?.cfi) {
       // In a book: the book is never written to, and its highlights note is the reader's.
@@ -1157,7 +1144,9 @@ export class CommentService implements CommentInfoSource {
       await ChatService.getInstance().closeTab(session.id)
     }
 
-    await ChatStorage.getInstance().deleteChat(this.commentPath(id))
+    // Revalidate immediately before deletion too: a sync arrival may have changed ownership.
+    if ((await ChatStorage.getInstance().findDiscussion(id)) === validated)
+      await ChatStorage.getInstance().deleteChat(validated.path)
     if (this.open.value === id) this.open.value = null
     if (notePath) dispatchCommentsChanged(notePath)
   }
@@ -1176,13 +1165,15 @@ export class CommentService implements CommentInfoSource {
     const { app } = GlobalStore.getInstance()
     const chat = app.vault.getAbstractFileByPath(chatPath)
     if (!(chat instanceof TFile)) return
-    const metadata = parseChatMetadata(await app.vault.read(chat))
-    if (!metadata?.comments?.some((comment) => comment.id === id)) return
-    const comments = metadata.comments.filter((comment) => comment.id !== id)
-    await app.vault.append(
-      chat,
-      serializeMetadata({ ...metadata, comments: comments.length ? comments : undefined })
-    )
+    await ChatStorage.getInstance().transformDiscussion(chat, (content) => {
+      const metadata = parseChatMetadata(content)
+      if (!metadata?.comments?.some((comment) => comment.id === id)) return content
+      const comments = metadata.comments.filter((comment) => comment.id !== id)
+      return (
+        content +
+        serializeMetadata({ ...metadata, comments: comments.length ? comments : undefined })
+      )
+    })
   }
 
   /**
@@ -1274,8 +1265,7 @@ export class CommentService implements CommentInfoSource {
       if (this.sessionOnFile(proposal.parent))
         throw new Error('The parent chat was opened. Review the proposal again.')
     }
-    await transformChat(
-      app,
+    await ChatStorage.getInstance().transformDiscussion(
       file,
       (content) => {
         const parsed = parseChat(content)
@@ -1337,7 +1327,6 @@ export class CommentService implements CommentInfoSource {
     this.expanded.clear()
     this.shown.clear()
     this.loading.clear()
-    this.identityResolver = null
     this.missing.clear()
     this.generations.clear()
     this.batch.length = 0

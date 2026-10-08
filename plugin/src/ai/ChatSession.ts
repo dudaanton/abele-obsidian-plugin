@@ -57,7 +57,7 @@ import {
   type ParsedChat,
 } from './ChatLog'
 import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
-import { inspectMainChat, readChat, rewriteChat } from './chatCopy'
+import { inspectMainChat, readChat } from './chatCopy'
 import {
   compatibleReplyHistory,
   isReplyCorrection,
@@ -514,14 +514,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.markDirty()
   }
 
-  /** The comment's id, which is its file's basename. Null for anything not anchored. */
+  /** Committed file-owned identity; never inferred from a session's basename. */
   private commentIdentity?: string
-  bindCommentIdentity(id: string): void {
+  bindCommentIdentity(id: string, renamedLocation?: string): void {
     this.commentIdentity = id
+    if (renamedLocation) this.log.relocateDiscussion(id, renamedLocation)
   }
   get commentId(): string | null {
-    if (!this.anchor.value && this.kind !== 'comment') return null
-    return this.commentIdentity ?? this.currentChatFile.value?.basename ?? null
+    return this.commentIdentity ?? null
   }
 
   /**
@@ -3134,7 +3134,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const { app } = GlobalStore.getInstance()
     let attempted = false
     try {
-      await rewriteChat(app, file, written, (content) => {
+      await ChatStorage.getInstance().rewriteDiscussion(file, written, (content) => {
         check?.()
         if (!this.log.matches(parseChat(content)))
           throw new Error('This chat changed elsewhere. Reopen it before making changes.')
@@ -3401,10 +3401,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const file = await ChatStorage.getInstance().saveChat(
       snapshot,
       plan,
-      this.currentChatFile.value || undefined
+      this.currentChatFile.value || undefined,
+      (parsed) => this.log.matchesDiscussionRevision(parsed)
     )
     if (!file) return
 
+    this.commentIdentity = snapshot.metadata.commentId
     this.applyAttentionTruth(snapshot.metadata, false)
     this.log.commit(snapshot, plan)
     this.localRevision++
@@ -3499,7 +3501,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const localRevision = this.localRevision
     // A writer may start during this read. Never inspect or adopt its recovery copy: if the
     // main file is torn, selection return uses the conversation already held in memory.
-    const result = await inspectMainChat(GlobalStore.getInstance().app, file)
+    const main = await inspectMainChat(GlobalStore.getInstance().app, file)
+    const result = main
+      ? (await ChatStorage.getInstance().prepareDiscussion(file, undefined, { recover: false }))
+          .snapshot
+      : null
     if (!isCurrent()) return
     if (
       this.destroyed ||
@@ -3541,26 +3547,38 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     await this.restoreLoadedChat(file, result, { readOnly: true })
   }
 
-  async load(
-    file: TFile,
-    resolveCommentIdentity?: (metadata: ChatMetadata | null) => string | undefined
-  ): Promise<void> {
+  async load(file: TFile): Promise<void> {
     this.restoringAttention = true
     try {
       await this.reset()
       const result = await ChatStorage.getInstance().loadChat(file)
-      // Resolve the path before restoration may publish fields or save a legacy migration.
-      const commentId = resolveCommentIdentity?.(result.metadata)
-      await this.restoreLoadedChat(file, result, { commentId })
+      // Storage preparation is mandatory, including direct loads and migration saves.
+      await this.restoreLoadedChat(file, result)
     } finally {
       this.restoringAttention = false
     }
   }
 
+  /** Sync identity changes cannot be answered by an obsolete writer. Busy holders stay fenced. */
+  private discussionNeedsReconciliation = false
+  async reconcileDiscussionIdentity(metadata: ChatMetadata): Promise<void> {
+    if (
+      !metadata.commentId ||
+      (metadata.commentId === this.commentIdentity && !this.discussionNeedsReconciliation)
+    )
+      return
+    this.discussionNeedsReconciliation = true
+    // A busy holder can display the incoming identity, but its old log revision remains
+    // fenced at storage. Never label or overwrite the arrival with a local assignment.
+    this.commentIdentity = metadata.commentId
+    await this.reconcileForSelectionReturn()
+    this.discussionNeedsReconciliation = false
+  }
+
   private async restoreLoadedChat(
     file: TFile,
     result: ParsedChat,
-    options: { keepLeaf?: string | null; readOnly?: boolean; commentId?: string } = {}
+    options: { keepLeaf?: string | null; readOnly?: boolean } = {}
   ): Promise<void> {
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
@@ -3572,11 +3590,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.chatCreated = result.metadata?.created || ''
     this.chatIdentity = result.metadata?.chatId
     this.delegationWakeStopped = false
-    this.commentIdentity =
-      options.commentId ??
-      (options.readOnly ? this.commentIdentity : undefined) ??
-      result.metadata?.commentId ??
-      (result.metadata?.kind === 'comment' || result.metadata?.anchor ? file.basename : undefined)
+    this.commentIdentity = result.metadata?.commentId
     this.bindingRecovery = result.metadata?.bindingRecovery
     const evidence = result.metadata?.attention ?? {}
     this.committedAttention = evidence

@@ -3,13 +3,16 @@ import { AgentsService } from '@/agents/AgentsService'
 import { mergeAttentionTruth, settledAttention } from '@/agents/attention'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TFile } from 'obsidian'
+import { toRaw } from 'vue'
+import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
+import { canonicalDiscussionPath, discussionIdentity, isDiscussion } from './commentIdentity'
 import { RunStorage, isRunTranscript } from './RunStorage'
-import { chatCopyPath, inspectChat, readChat, rewriteChat } from './chatCopy'
+import { chatCopyPath, inspectChat, readChat, rewriteChat, transformChat } from './chatCopy'
 import { ChatService } from './ChatService'
 import {
   parseChat,
@@ -53,6 +56,257 @@ export class ChatStorage {
   }
 
   private selectionIdentities = new Map<string, string | undefined>()
+  private readonly discussionPaths = new Map<
+    string,
+    { id: string; revision: string; file: TFile; mtime: number; size: number }
+  >()
+  private readonly discussionIds = new Map<string, Set<string>>()
+  private readonly discussionWrites = new WeakMap<TFile, Promise<unknown>>()
+  private discussionRevision = 0
+
+  /** A file reservation shared by preparation, discovery, rename and normal saves. */
+  private async withDiscussionFile<T>(file: TFile, work: () => Promise<T>): Promise<T> {
+    file = toRaw(file)
+    const previous = this.discussionWrites.get(file)
+    const task = (previous ?? Promise.resolve()).catch(() => {}).then(work)
+    this.discussionWrites.set(file, task)
+    try {
+      return await task
+    } finally {
+      if (this.discussionWrites.get(file) === task) this.discussionWrites.delete(file)
+    }
+  }
+
+  invalidateDiscussion(path?: string): void {
+    if (path === undefined) {
+      this.discussionPaths.clear()
+      this.discussionIds.clear()
+      return
+    }
+    const entry = this.discussionPaths.get(path)
+    this.discussionPaths.delete(path)
+    if (entry) {
+      const paths = this.discussionIds.get(entry.id)
+      paths?.delete(path)
+      if (!paths?.size) this.discussionIds.delete(entry.id)
+    }
+  }
+
+  discussionIdAt(path: string): string | undefined {
+    const entry = this.discussionPaths.get(path)
+    const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)
+    return entry &&
+      file === entry.file &&
+      entry.mtime === entry.file.stat.mtime &&
+      entry.size === entry.file.stat.size
+      ? entry.id
+      : undefined
+  }
+
+  /** Synchronous UI hint only; authoritative opening/deletion uses findDiscussion. */
+  discussionPathFor(id: string): string | undefined {
+    const paths = this.discussionIds.get(id)
+    if (paths?.size !== 1) return undefined
+    const path = [...paths][0]
+    return this.discussionIdAt(path) === id ? path : undefined
+  }
+
+  /** Mandatory before restoration, migration, discovery publication or a session write. */
+  prepareDiscussion(
+    file: TFile,
+    oldLogicalPath?: string,
+    options: { recover?: boolean } = {}
+  ): Promise<{ snapshot: ParsedChat; identity?: string; revision: string }> {
+    return this.withDiscussionFile(file, () =>
+      this.prepareDiscussionLocked(file, oldLogicalPath, options.recover ?? true)
+    ).catch((error) => {
+      this.invalidateDiscussion(file.path)
+      throw error
+    })
+  }
+
+  private async prepareDiscussionLocked(
+    file: TFile,
+    oldLogicalPath?: string,
+    recover = true
+  ): Promise<{ snapshot: ParsedChat; identity?: string; revision: string }> {
+    file = toRaw(file)
+    const { app } = GlobalStore.getInstance()
+    if (oldLogicalPath) this.invalidateDiscussion(oldLogicalPath)
+    if (recover) await readChat(app, file)
+    else {
+      const current = parseChat(await app.vault.read(file))
+      if (
+        (current.torn || current.damaged || !current.metadata) &&
+        (await app.vault.adapter.exists(chatCopyPath(app, file.path)))
+      )
+        throw new Error('This chat needs reopening. Reopen it before saving.')
+    }
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const path = canonicalDiscussionPath(file.path)
+      const previous = await app.vault.read(file)
+      const snapshot = parseChat(previous)
+      const metadata = snapshot.metadata
+      if (!metadata) {
+        this.invalidateDiscussion(path)
+        return { snapshot, revision: String(++this.discussionRevision) }
+      }
+      // A synced rename that already carries final self-location is normalized already.
+      const logical = metadata.commentLocation === path ? path : (oldLogicalPath ?? path)
+      const markerPath = (id: string) => `${ChatStorage.commentsFolder()}/${id}.abchat`
+      let legacyOwnerEstablished = false
+      if (
+        !metadata.commentLocation &&
+        metadata.commentId &&
+        markerPath(metadata.commentId) !== logical
+      ) {
+        const original = app.vault.getAbstractFileByPath(markerPath(metadata.commentId))
+        if (original instanceof TFile) {
+          const declared = parseChatMetadata(await app.vault.read(original))
+          legacyOwnerEstablished =
+            isDiscussion(declared) &&
+            (!declared!.commentId || declared!.commentId === metadata.commentId) &&
+            (!declared!.commentLocation || declared!.commentLocation === original.path)
+        }
+      }
+      const identity = await discussionIdentity(
+        metadata,
+        logical,
+        markerPath,
+        legacyOwnerEstablished
+      )
+      if (identity) {
+        // Conflicting self-declarations are errors, including owners not yet discovered locally.
+        for (const other of app.vault.getFiles()) {
+          if (other === file || other.extension !== 'abchat') continue
+          const data = parseChatMetadata(await app.vault.read(other))
+          if (
+            data?.commentId === identity &&
+            data.commentLocation &&
+            canonicalDiscussionPath(data.commentLocation) === canonicalDiscussionPath(other.path)
+          ) {
+            this.invalidateDiscussion(other.path)
+            throw new Error('Conflicting discussion owners. Resolve the files explicitly.')
+          }
+        }
+      }
+      if (file.path !== path) continue
+      if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
+        throw new Error('The discussion was deleted while being prepared.')
+      let committed = previous
+      if (identity && (metadata.commentId !== identity || metadata.commentLocation !== path)) {
+        const next = { ...metadata, commentId: identity, commentLocation: path }
+        // Legacy JSON cannot accept a log record; encode its entire recognized snapshot.
+        const content =
+          snapshot.version === 1
+            ? serializeChat({ ...snapshot, metadata: next })
+            : previous + (previous.endsWith('\n') ? '' : '\n') + serializeMetadata(next)
+        let changed = false
+        try {
+          await rewriteChat(app, file, content, (current) => {
+            if (current !== previous) {
+              changed = true
+              throw new Error('Discussion revision changed.')
+            }
+            if (file.path !== path) {
+              changed = true
+              throw new Error('Discussion revision moved.')
+            }
+            if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
+              throw new Error('The discussion was deleted while being prepared.')
+          })
+        } catch (error) {
+          if (changed) continue
+          throw error
+        }
+        committed = content
+      }
+      if ((await app.vault.read(file)) !== committed) continue
+      // A local observation token, not an identity or a persisted assignment. Exact bytes
+      // are checked at the storage boundary; the cache keeps no transcript.
+      const revision = String(++this.discussionRevision)
+      // No identity is visible until its exact revision was committed and read back.
+      this.invalidateDiscussion(path)
+      if (identity) {
+        this.discussionPaths.set(path, {
+          id: identity,
+          revision,
+          file,
+          mtime: file.stat.mtime,
+          size: file.stat.size,
+        })
+        const paths = this.discussionIds.get(identity) ?? new Set<string>()
+        paths.add(path)
+        this.discussionIds.set(identity, paths)
+      }
+      return { snapshot: parseChat(committed), identity, revision }
+    }
+    throw new Error('The discussion keeps changing. Reopen it after synchronization finishes.')
+  }
+
+  /** Non-session writers use the same reservation and gate as session saves. */
+  async transformDiscussion(
+    file: TFile,
+    change: (content: string) => string,
+    check?: () => void
+  ): Promise<void> {
+    const prepared = await this.withDiscussionFile(file, () =>
+      this.prepareDiscussionLocked(file, undefined, false)
+    )
+    if (!prepared.identity) {
+      await transformChat(GlobalStore.getInstance().app, file, change, check)
+      return
+    }
+    await this.withDiscussionFile(file, async () => {
+      await this.prepareDiscussionLocked(file, undefined, false)
+      await transformChat(GlobalStore.getInstance().app, file, change, check)
+      await this.prepareDiscussionLocked(file)
+    })
+  }
+
+  async rewriteDiscussion(
+    file: TFile,
+    content: string,
+    check: (previous: string) => void
+  ): Promise<void> {
+    const prepared = await this.withDiscussionFile(file, () =>
+      this.prepareDiscussionLocked(file, undefined, false)
+    )
+    if (!prepared.identity) {
+      await rewriteChat(GlobalStore.getInstance().app, file, content, check)
+      return
+    }
+    await this.withDiscussionFile(file, async () => {
+      await this.prepareDiscussionLocked(file, undefined, false)
+      await rewriteChat(GlobalStore.getInstance().app, file, content, check)
+      await this.prepareDiscussionLocked(file)
+    })
+  }
+
+  /** Rebuild disposable caches, then revalidate the exact candidate. Never fall back to names. */
+  async findDiscussion(id: string): Promise<TFile | null> {
+    const { app } = GlobalStore.getInstance()
+    const files = app.vault.getFiles().filter((file) => file.extension === 'abchat')
+    const present = new Set(files.map((file) => file.path))
+    for (const path of this.discussionPaths.keys())
+      if (!present.has(path)) this.invalidateDiscussion(path)
+    for (const file of files) {
+      try {
+        await this.prepareDiscussion(file)
+      } catch {
+        this.invalidateDiscussion(file.path) /* Conflicted/ambiguous files grant no ownership. */
+      }
+    }
+    const path = this.discussionPathFor(id)
+    if (!path) return null
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) return null
+    try {
+      return (await this.prepareDiscussion(file)).identity === id ? file : null
+    } catch {
+      return null
+    }
+  }
 
   /** Rebuild from all chat files, not history: unopened and nested discussions count too. */
   async selectionIdentityIndex(): Promise<{ path: string; chatId?: string }[]> {
@@ -86,6 +340,31 @@ export class ChatStorage {
   async saveChat(
     snapshot: ChatSnapshot,
     plan: ChatWritePlan,
+    existingFile?: TFile,
+    matchesRevision?: (snapshot: ParsedChat) => boolean
+  ): Promise<TFile | null> {
+    if (existingFile)
+      return this.withDiscussionFile(existingFile, async () => {
+        const prepared = await this.prepareDiscussionLocked(
+          existingFile,
+          undefined,
+          plan.kind === 'rewrite'
+        )
+        if (
+          prepared.identity !== snapshot.metadata.commentId &&
+          (prepared.identity || isDiscussion(snapshot.metadata))
+        )
+          throw new Error('Discussion identity changed elsewhere. Reconcile before saving.')
+        if (prepared.identity && matchesRevision && !matchesRevision(prepared.snapshot))
+          throw new Error('This discussion changed elsewhere. Reconcile before saving.')
+        return this.savePreparedChat(snapshot, plan, existingFile)
+      })
+    return this.savePreparedChat(snapshot, plan)
+  }
+
+  private async savePreparedChat(
+    snapshot: ChatSnapshot,
+    plan: ChatWritePlan,
     existingFile?: TFile
   ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
@@ -100,6 +379,13 @@ export class ChatStorage {
       const previous = await app.vault.read(existingFile)
       assertChatTarget(previous)
       const disk = parseChat(previous)
+      if (
+        isDiscussion(metadata) &&
+        (!disk.metadata ||
+          disk.metadata.commentId !== metadata.commentId ||
+          disk.metadata.commentLocation !== existingFile.path)
+      )
+        throw new Error('Discussion identity changed elsewhere. Reconcile before saving.')
       if (
         plan.kind === 'append' &&
         (!disk.metadata ||
@@ -136,13 +422,20 @@ export class ChatStorage {
         } else plan.content = serializeChat({ ...snapshot, metadata: next })
         snapshot.metadata = metadata = next
       }
-      if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
+      if (isDiscussion(metadata) && plan.kind === 'append') {
+        // Checked append: sync may arrive after preparation but before the actual write.
+        await app.vault.process(existingFile, (current) => {
+          if (current !== previous)
+            throw new Error('This discussion changed elsewhere. Reconcile before saving.')
+          return current + plan.data
+        })
+      } else if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
       else
         await rewriteChat(
           app,
           existingFile,
           plan.content,
-          undefined,
+          isDiscussion(metadata) ? () => {} : undefined,
           guarded ? previous : undefined
         )
       const recorded = parseChatMetadata(await app.vault.read(existingFile))
@@ -157,11 +450,14 @@ export class ChatStorage {
         metadata.summary
       )
       this.noteMessageTimes(existingFile.path, snapshot)
-      AgentsService.getInstance().saved(existingFile.path, metadata)
+      const confirmed = await this.prepareDiscussionLocked(existingFile)
+      if (isDiscussion(metadata) && confirmed.identity !== metadata.commentId)
+        throw new Error('Discussion identity changed during saving. Reconcile before saving again.')
+      AgentsService.getInstance().saved(existingFile.path, confirmed.snapshot.metadata ?? metadata)
       return existingFile
     }
 
-    const content = plan.kind === 'rewrite' ? plan.content : serializeChat(snapshot)
+    let content = plan.kind === 'rewrite' ? plan.content : serializeChat(snapshot)
     const title = metadata.title || `Chat ${dayjs().format('YYYY-MM-DD HH-mm')}`
     const desiredPath = this.resolveChatPath(title)
 
@@ -170,7 +466,14 @@ export class ChatStorage {
     if (folder) await this.ensureFolder(folder)
 
     const path = await getAvailablePath(desiredPath)
+    if (isDiscussion(metadata)) {
+      // A new discussion's birth is committed together with its location, before notification.
+      metadata = snapshot.metadata = { ...metadata, commentId: nanoid(), commentLocation: path }
+      content = serializeChat(snapshot)
+      if (plan.kind === 'rewrite') plan.content = content
+    }
     const file = await app.vault.create(path, content)
+    await this.prepareDiscussion(file)
 
     AgentsService.getInstance().saved(file.path, metadata)
     this.addHistoryEntry({
@@ -187,7 +490,7 @@ export class ChatStorage {
   async loadChat(file: TFile): Promise<ParsedChat> {
     const { app } = GlobalStore.getInstance()
     assertChatTarget(await app.vault.read(file))
-    const parsed = await readChat(app, file)
+    const { snapshot: parsed } = await this.prepareDiscussion(file)
 
     if (parsed.damaged) {
       console.warn(`[Abele] ${file.path}: skipped ${parsed.damaged} unreadable record(s)`)
@@ -586,7 +889,17 @@ export class ChatStorage {
       if (!metadata?.touched?.length) continue
       const touched = ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
       if (JSON.stringify(touched) === JSON.stringify(metadata.touched)) continue
-      await app.vault.append(file, serializeMetadata({ ...metadata, touched }))
+      await this.transformDiscussion(file, (content) => {
+        const current = parseChatMetadata(content)
+        if (!current) throw new Error('The chat is unavailable.')
+        return (
+          content +
+          serializeMetadata({
+            ...current,
+            touched: ChatStorage.renamedNotes(current.touched ?? [], oldPath, newPath),
+          })
+        )
+      })
     }
 
     GlobalStore.getInstance().chatLinksVersion.value++

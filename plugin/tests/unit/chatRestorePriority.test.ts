@@ -181,6 +181,8 @@ it('does not publish a conversation that finishes loading after service teardown
     this.currentChatFile.value = file
   })
   const restoring = service.restoreTabs()
+  // The storage preparation gate now precedes the deliberately suspended session load.
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
   service.destroy()
   finish()
   await restoring

@@ -1464,7 +1464,7 @@ export default class AbelePlugin extends Plugin {
       this.app.vault.on('delete', (file) => {
         if (!(file instanceof TFile) || file.extension !== 'abchat') return
         const comments = CommentService.getInstance()
-        if (!comments.isCommentFile(file)) return
+        // Every deletion is exact-path scoped, including an undiscovered outside-folder copy.
         comments.handleFileDeleted(file.path)
       })
     )

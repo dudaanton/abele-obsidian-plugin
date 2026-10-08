@@ -2,10 +2,12 @@ import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { Notice, TFile, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from '@/ai/ChatService'
+import { ChatStorage } from '@/ai/ChatStorage'
+import { isDiscussion } from '@/ai/commentIdentity'
 import { CommentService } from '@/ai/CommentService'
 import type { ChatSession } from '@/ai/ChatSession'
 import { parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
-import { inspectChat, inspectMainChat, transformChat } from '@/ai/chatCopy'
+import { inspectChat, inspectMainChat } from '@/ai/chatCopy'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import type { ChatMetadata } from '@/ai/types'
 import { ShellModal } from '@/modal/ShellModal'
@@ -96,28 +98,11 @@ export class AgentsService {
       reference: {
         kind: 'local',
         path,
-        ...(metadata.kind === 'comment'
-          ? {
-              commentId:
-                metadata.commentId ??
-                (this.files.get(path)?.reference.kind === 'local'
-                  ? (
-                      this.files.get(path)!.reference as Extract<
-                        AttentionRow['reference'],
-                        { kind: 'local' }
-                      >
-                    ).commentId
-                  : undefined) ??
-                path
-                  .split('/')
-                  .pop()
-                  .replace(/\.abchat$/, ''),
-            }
-          : {}),
+        ...(isDiscussion(metadata) && metadata.commentId ? { commentId: metadata.commentId } : {}),
       },
       title: metadata.title || path.split('/').pop() || 'Чат',
       agent: AgentRegistry.getInstance().get(metadata.agentId ?? '')?.name || 'Агент',
-      source: metadata.kind === 'comment' ? `Обсуждение · ${metadata.anchor?.note ?? ''}` : 'Чат',
+      source: isDiscussion(metadata) ? `Обсуждение · ${metadata.anchor?.note ?? ''}` : 'Чат',
       quote: metadata.anchor?.quote,
       reasons: attentionReasons(metadata.attention ?? {}, metadata.pendingToolCalls ?? [], live),
     }
@@ -172,7 +157,9 @@ export class AgentsService {
   ): Promise<{ metadata: ChatMetadata; committed: boolean } | null> {
     const app = GlobalStore.getInstance().app
     const main = await inspectMainChat(app, file)
-    const parsed = main ?? (await inspectChat(app, file))
+    const parsed = main
+      ? (await ChatStorage.getInstance().prepareDiscussion(file)).snapshot
+      : await inspectChat(app, file)
     if (!parsed.metadata || parsed.damaged || parsed.torn) return null
     const resolved = parsed.messages
       .filter((m) => m.toolCallId && (m.toolResult !== undefined || m.toolStatus === 'rejected'))
@@ -353,8 +340,10 @@ export class AgentsService {
         if (this.disposed) return
         if (file.path !== path || (this.revisions.get(path) ?? 0) !== revision) continue
         if (metadata?.metadata.type === 'abele-chat') {
-          if (metadata.committed) this.acceptDisk(file.path, metadata.metadata)
-          else {
+          if (metadata.committed) {
+            await this.reconcileDiscussionOwners(file.path, metadata.metadata)
+            this.acceptDisk(file.path, metadata.metadata)
+          } else {
             this.files.set(path, this.fileRow(path, metadata.metadata))
             this.unknown(path)
             failed = true
@@ -404,6 +393,8 @@ export class AgentsService {
       this.publish()
     }
     const path = file.path
+    ChatStorage.getInstance().invalidateDiscussion(path)
+    if (oldPath) ChatStorage.getInstance().invalidateDiscussion(oldPath)
     const revision = (this.revisions.get(path) ?? 0) + 1
     this.revisions.set(path, revision)
     this.removed.delete(path)
@@ -412,8 +403,10 @@ export class AgentsService {
       const metadata = await this.inspect(file)
       if (this.disposed || file.path !== path || this.revisions.get(path) !== revision) return
       if (metadata?.metadata.type === 'abele-chat') {
-        if (metadata.committed) this.acceptDisk(file.path, metadata.metadata)
-        else {
+        if (metadata.committed) {
+          await this.reconcileDiscussionOwners(file.path, metadata.metadata)
+          this.acceptDisk(file.path, metadata.metadata)
+        } else {
           this.files.set(path, this.fileRow(path, metadata.metadata))
           this.unknown(path)
         }
@@ -424,6 +417,17 @@ export class AgentsService {
     }
     this.publish()
   }
+  private async reconcileDiscussionOwners(path: string, metadata: ChatMetadata): Promise<void> {
+    for (const session of this.live.keys()) {
+      if (session.currentChatFile.value?.path !== path) continue
+      try {
+        await session.reconcileDiscussionIdentity(metadata)
+      } catch {
+        this.unknown(path) /* Storage fences this holder until explicit reconciliation. */
+      }
+    }
+  }
+
   setNodes(nodes: { id: string; label: string; expectedNodeId: string }[]): void {
     this.nodes.value = nodes
     this.publish()
@@ -434,6 +438,7 @@ export class AgentsService {
     this.publish()
   }
   deleted(path: string): void {
+    ChatStorage.getInstance().invalidateDiscussion(path)
     if (GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)) {
       this.unknown(path)
       this.publish()
@@ -441,6 +446,11 @@ export class AgentsService {
     }
     this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1)
     this.removed.add(path)
+    for (const session of [...this.live.keys()]) {
+      if (session.currentChatFile.value?.path !== path) continue
+      ChatService.getInstance().dropTab(session.id)
+      session.destroy()
+    }
     this.files.delete(path)
     this.truths.delete(path)
     this.publish()
@@ -461,9 +471,8 @@ export class AgentsService {
         errors: restoreIndexedErrors(open.attention.value, row.reasons),
       }
       await open.markAttentionSeen(id)
-    } else
-      await transformChat(
-        app,
+    } else {
+      await ChatStorage.getInstance().transformDiscussion(
         file,
         (content) => {
           const metadata = parseChatMetadata(content)
@@ -493,6 +502,7 @@ export class AgentsService {
             throw new Error('Разговор открыт. Повтори действие.')
         }
       )
+    }
     await this.updateFile(file)
   }
   async open(row: AttentionRow, reason: AttentionReason): Promise<boolean> {

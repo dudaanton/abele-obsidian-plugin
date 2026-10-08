@@ -398,6 +398,29 @@ export class ChatLogWriter {
     )
   }
 
+  /** A trusted rename changes only the committed binding, not any conversation records. */
+  relocateDiscussion(id: string, location: string): void {
+    const metadata = parseChatMetadata(this.metaLine)
+    if (metadata)
+      this.metaLine = metaLine({ ...metadata, commentId: id, commentLocation: location })
+  }
+
+  /** Discussion writes merge monotone attention, but never arbitrate concurrent content edits. */
+  matchesDiscussionRevision(parsed: ParsedChat): boolean {
+    const previous = this.legacySnapshot
+      ? (JSON.parse(this.legacySnapshot)[0] as ChatMetadata | null)
+      : parseChatMetadata(this.metaLine)
+    if (!previous || !parsed.metadata) return this.matches(parsed)
+    return this.matches({
+      ...parsed,
+      metadata: {
+        ...parsed.metadata,
+        attention: previous.attention,
+        pendingToolCalls: previous.pendingToolCalls,
+      },
+    })
+  }
+
   /** What the next write should be. Pure: call `commit` once the write has happened. */
   plan(snapshot: ChatSnapshot): ChatWritePlan {
     const live = liveRecords(snapshot)

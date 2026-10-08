@@ -753,7 +753,7 @@ export class ChatService {
     const pending = this.loadingFiles.get(file.path)
     if (pending !== undefined) return pending.ready
     const existing = this.getSessionByFile(file.path)
-    if (existing) return Promise.resolve(existing)
+    if (existing) return existing.reconcileForSelectionReturn().then(() => existing)
 
     let complete!: (session: ChatSession | null) => void
     let fail!: (error: unknown) => void
@@ -769,7 +769,8 @@ export class ChatService {
         // CommentService may already own a writer loaded by a note's editor. All tab entry
         // points use that handover, under the same reservation as ordinary chat loads.
         const comments = CommentService.getInstance()
-        const comment = comments.isCommentFile(file)
+        const prepared = await ChatStorage.getInstance().prepareDiscussion(file)
+        const comment = prepared.identity !== undefined
         if (comment && !this.canCreateTab) {
           new Notice(ChatService.TABS_FULL)
           complete(null)
