@@ -890,12 +890,15 @@ const artifactsSession = shallowRef<ChatSession | null>(null)
 watch(session, () => {
   artifactsSession.value = null
 })
-const revealArtifactMessage = (messageId: string) => {
+const revealArtifactMessage = async (messageId: string) => {
   const owner = artifactsSession.value
   artifactsSession.value = null
   if (owner && session.value === owner) {
     composing.value = false
-    void revealMessage(messageId)
+    // Opening or revealing a file can replace the chat drawer on a phone. Put the
+    // conversation back on screen before measuring and scrolling its source message.
+    await chatService.revealSidebar({ focus: false })
+    if (session.value === owner) await revealMessage(messageId)
   }
 }
 const variablesModalOpen = ref(false)

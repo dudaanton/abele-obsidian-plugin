@@ -36,6 +36,7 @@ beforeEach(() => {
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
   const service = ChatService.getInstance()
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
+  vi.spyOn(service, 'revealSidebar').mockResolvedValue()
   active.value = fakeChatSession({ kind: 'chat' }) as ChatSession
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue(active as never)
 })
@@ -69,6 +70,13 @@ describe('the artifacts header entry', () => {
       'display: none'
     )
     expect(view.findComponent(ChatArtifacts).exists()).toBe(false)
+  })
+  it('reveals the chat panel without focusing input when navigating back from an artifact', async () => {
+    view = mountChat()
+    await view.find('.abele-ai-chat__artifacts').trigger('click')
+    view.findComponent(ChatArtifacts).vm.$emit('reveal', 'sample-source')
+    await nextTick()
+    expect(ChatService.getInstance().revealSidebar).toHaveBeenCalledExactlyOnceWith({ focus: false })
   })
   it('closes when the originating session disappears', async () => {
     view = mountChat()
