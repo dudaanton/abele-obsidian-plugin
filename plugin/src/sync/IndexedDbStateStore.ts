@@ -7,6 +7,14 @@ import {
 } from './idbIdentity'
 import { IndexedDbConnection } from './idbConnection'
 import {
+  checkExternalPhase,
+  prepareExternalLedger,
+  EXTERNAL_STATE_KEY,
+  ExternalStateError,
+  type ExternalPhaseBatch,
+  type ExternalStatePort,
+} from './external/state'
+import {
   copyEntry,
   copyJournal,
   newOverlay,
@@ -110,7 +118,11 @@ interface MetaRow {
  * that evicted the origin's storage, and all of those are `io`. The one failure tried again is
  * WebKit dropping a transaction, which gets one more go on a fresh connection (`once`).
  */
-export class IndexedDbStateStore implements StateStore {
+export class IndexedDbStateStore implements StateStore, ExternalStatePort {
+  readonly externalDurability = 'durable' as const
+  private transactionPending = 0
+  private externalPhasePending = false
+  private externalCommitUnknown = false
   private entryObserver: ((entry: StateEntry) => Promise<void>) | null = null
 
   /** Independent durable provenance must settle before an identity can be filed/adopted. */
@@ -375,6 +387,91 @@ export class IndexedDbStateStore implements StateStore {
     await this.setMetaValue(`cannot record ${key}`, own(key), value)
   }
 
+  private assertExternalBoundary(): void {
+    this.assertRecovery()
+    if (!this.permitsEngineEffects || this.externalCommitUnknown)
+      throw new ExternalStateError('recovery-required')
+    if (this.overlay || this.transactionPending || this.externalPhasePending)
+      throw new ExternalStateError('nested-transaction')
+  }
+
+  /** Read committed external state only: an ordinary overlay is never a durable phase. */
+  async getExternalState(): Promise<string | null> {
+    this.assertRecovery()
+    if (this.overlay || this.transactionPending || this.externalPhasePending)
+      throw new ExternalStateError('nested-transaction')
+    return this.getMeta(EXTERNAL_STATE_KEY)
+  }
+
+  /** Data-only CAS over the existing ledger stores. Never joins an overlay or retries a write. */
+  async commitExternalPhase(batch: ExternalPhaseBatch): Promise<void> {
+    this.assertExternalBoundary()
+    batch = structuredClone(batch)
+    this.externalPhasePending = true
+    let tx: IDBTransaction
+    try {
+      const ledger = prepareExternalLedger(batch.ledger)
+      // Existing independent publication provenance must settle before filing identities.
+      // This may await another store, so it belongs BEFORE the data-only phase transaction.
+      for (const entry of ledger.putEntries ?? []) await this.entryObserver?.({ ...entry })
+      this.assertRecovery()
+      if (!this.permitsEngineEffects) throw new ExternalStateError('recovery-required')
+      tx = this.begin('cannot commit external phase', [ENTRIES, META], 'readwrite')
+    } catch (cause) {
+      this.externalPhasePending = false
+      throw new ExternalStateError('aborted', { cause })
+    }
+    const done = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onabort = () => reject(new ExternalStateError('aborted', { cause: tx.error }))
+      // Requests reject below; an error event is not COMMIT or ABORT acknowledgement.
+      tx.onerror = (): void => undefined
+    })
+    void done.catch((): void => undefined)
+    try {
+      const meta = tx.objectStore(META)
+      const row = await wait<MetaRow | undefined>(meta.get(own(EXTERNAL_STATE_KEY)))
+      if (row && typeof row.value !== 'string') throw new ExternalStateError('recovery-required')
+      const { ledger } = checkExternalPhase(batch, row ? (row.value as string) : null)
+      const entries = tx.objectStore(ENTRIES)
+      for (const path of ledger.deletePaths ?? []) await wait(entries.delete(path))
+      for (const entry of ledger.putEntries ?? []) {
+        for (const path of await clashingKeys(entries, entry, true, true))
+          if (path !== entry.path) await wait(entries.delete(path))
+        await wait(entries.put(entry))
+      }
+      if (ledger.cursor !== undefined)
+        await wait(meta.put({ key: CURSOR_KEY, value: ledger.cursor }))
+      for (const item of ledger.metadata ?? []) {
+        if (item.value === null) await wait(meta.delete(own(item.key)))
+        else await wait(meta.put({ key: own(item.key), value: item.value }))
+      }
+      await wait(meta.put({ key: own(EXTERNAL_STATE_KEY), value: batch.next }))
+      await done
+      if (!this.permitsEngineEffects) throw new ExternalStateError('commit-unknown')
+    } catch (cause) {
+      try {
+        tx.abort()
+      } catch {
+        /* May already have committed: resolve below, never retry. */
+      }
+      let aborted = false
+      try {
+        await done
+      } catch (error) {
+        aborted = error instanceof ExternalStateError && error.reason === 'aborted'
+      }
+      if (!aborted) {
+        this.externalCommitUnknown = true
+        throw new ExternalStateError('commit-unknown', { cause })
+      }
+      if (cause instanceof ExternalStateError) throw cause
+      throw new ExternalStateError('aborted', { cause })
+    } finally {
+      this.externalPhasePending = false
+    }
+  }
+
   /**
    * Buffers everything `fn` writes and commits it in one IDB transaction, or drops it all if
    * `fn` throws. See the class comment for why this cannot be an IDB transaction held open,
@@ -382,6 +479,7 @@ export class IndexedDbStateStore implements StateStore {
    */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
     this.assertRecovery()
+    if (this.externalPhasePending) throw new ExternalStateError('nested-transaction')
     const outer = this.overlay
     if (outer) {
       // Part of the transaction that is already open: no overlay, no commit of its own. The
@@ -391,6 +489,7 @@ export class IndexedDbStateStore implements StateStore {
     // Queued behind whatever was started before this call, and holding the next one back until
     // this one has committed. Both halves are set up synchronously, so the queue is in call
     // order however long each transaction takes.
+    this.transactionPending++
     const previous = this.committed
     let finished = (): void => undefined
     this.committed = new Promise<void>((resolve) => (finished = resolve))
@@ -398,6 +497,7 @@ export class IndexedDbStateStore implements StateStore {
       await previous
       return await this.run(fn)
     } finally {
+      this.transactionPending--
       finished()
     }
   }

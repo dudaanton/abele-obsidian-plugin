@@ -9,6 +9,29 @@ Note frontmatter reads use `js-yaml` 4's default schema. An unquoted time such a
 `0755` are decimal (`755`), not legacy octal. Quote a numeric-looking value when its
 exact text, including leading zeros, matters.
 
+## Device-local external-file state foundation
+
+The sync ledger reserves a schema-1 external-file document at `plugin:external-files` in its
+IndexedDB `meta` store. The SQLite adapter uses `daemon:external-files` in the existing CLI
+ledger. These primitives are not yet activated by production attachment operations: no
+projection files, eviction, automatic policy or UI are introduced by this foundation.
+
+Records bind to the local ledger, normalized endpoint, vault, personal/scoped mode, principal,
+grant, connection generation and credential association. They separate local representation
+(`hydrated`, `remote-only`, `pending-download`), availability (`active`, `deleted`, `detached`,
+`unavailable`), pin and device preference from existing selective-sync participation. Server
+heads remain in the ordinary personal/scoped ledger. Earlier proven local bases, retained
+artifact references and revision-checked operation phases are device-local recovery data;
+they do not travel in settings, manifests, transfers, server device records or projection JSON.
+
+The reserved projection format is `abele.external`, schema 1, at most 16 KiB UTF-8. Its
+`.abele-ref` sidecar contains only vault/file identity, logical path, observed version, SHA-256,
+size, MIME, mtime and optional media dimensions/duration. Strict parsing, placement and local
+ownership are separate: foreign, recognizable moved, malformed or changed projections are
+held; a known damaged path remains protected. An unrelated `.abele-ref` is an ordinary file.
+Durable commit receipts require actual database completion; unknown outcomes require reopening
+and inspection. No memory-store fallback or arbitrary power-loss guarantee is provided.
+
 ## Selection-script menu settings
 
 Plugin `data.json` stores independent ordered lists at `reader.selectionScripts` (books) and
