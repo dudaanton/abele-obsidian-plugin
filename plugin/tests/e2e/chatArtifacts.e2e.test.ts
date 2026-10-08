@@ -150,7 +150,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         // Tools and code views can save the temporary settings. Restore durably before any
         // workspace cleanup that could fail, so the next file never inherits scripts off.
         try {
-        config.ai = { ...scriptFixture.ai }
+        config.ai = fixtureClone(scriptFixture.ai)
         await config.saveSettings()
         if (session) { session.isStreaming.value = false; if (getTools) session.getTools = getTools }
         await close()
