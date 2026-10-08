@@ -28,7 +28,7 @@ function deferred() {
 function content(path: string, id: string, selection = false) {
   const revision = {
     reference: {
-      chatId: 'sample-chat-x',
+      chatId: path === x ? 'sample-chat-x' : 'sample-chat-y',
       messageId: 'sample-reply',
       revisionId: 'sample-revision',
     },
@@ -132,6 +132,57 @@ describe('request-local contextual opening', () => {
       expect(parseChatMetadata(await app.vault.read(file))?.commentId).toBe(xId)
     }
   )
+
+  it('a newer selection link back to a contextual tab supersedes its delayed release', async () => {
+    const app = useVault([
+      { path: x, content: content(x, xId, true) },
+      { path: y, content: content(y, yId, true) },
+    ])
+    const comments = CommentService.getInstance()
+    const chats = ChatService.getInstance()
+    await comments.showInSidebar(yId)
+    const ownerY = chats.activeSession.value!
+    ownerY.chatTitle.value = 'A pending local title'
+    ownerY.draft.value.text = 'An unsent sample thought'
+    const draft = ownerY.draft.value
+    ownerY.isStreaming.value = true
+    const gate = deferred()
+    const saving = deferred()
+    const reopening = deferred()
+    const storage = ChatStorage.getInstance()
+    const save = storage.saveChat.bind(storage)
+    let paused = false
+    vi.spyOn(storage, 'saveChat').mockImplementation(async (...args) => {
+      if (args[2]?.path === y && !paused) { paused = true; saving.resolve(); await gate.promise }
+      return save(...args)
+    })
+    const reconcile = ownerY.reconcileForSelectionReturn.bind(ownerY)
+    vi.spyOn(ownerY, 'reconcileForSelectionReturn').mockImplementation((...args) => {
+      const task = reconcile(...args)
+      reopening.resolve()
+      return task
+    })
+    const stale = openSelectionLink(`${x}#abele-selection=sample-chat-x/sample-anchor-a`)
+    await saving.promise
+    const current = openSelectionLink(`${y}#abele-selection=sample-chat-y/sample-anchor-b`)
+    await reopening.promise
+    gate.resolve()
+    await Promise.all([stale, current])
+    expect(chats.activeSession.value).toBe(ownerY)
+    expect(chats.getSession(ownerY.id)).toBe(ownerY)
+    expect(chats.tabOrder.value.filter((id) => id === ownerY.id)).toHaveLength(1)
+    expect(comments.isShown(yId)).toBe(true)
+    expect(ownerY.isDestroyed).toBe(false)
+    expect(ownerY.isStreaming.value).toBe(true)
+    expect(ownerY.draft.value).toBe(draft)
+    expect(ownerY.draft.value.text).toBe('An unsent sample thought')
+    expect(chats.pendingAnchorReturn.value?.sessionId).toBe(ownerY.id)
+    expect(chats.pendingAnchorReturn.value?.target.anchor.id).toBe('sample-anchor-b')
+    expect(chats.openingSelection.value).toBe(false)
+    expect(parseChatMetadata(await app.vault.read(app.vault.getFileByPath(y)!))).toMatchObject({
+      commentId: yId, commentLocation: y, title: 'A pending local title',
+    })
+  })
 
   it('the latest selection link to the same file survives cancellation of the first shared-load waiter', async () => {
     const app = useVault([
