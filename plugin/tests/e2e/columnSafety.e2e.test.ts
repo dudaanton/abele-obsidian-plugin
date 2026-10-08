@@ -187,6 +187,41 @@ describe.skipIf(!available)('column source and menu safety', () => {
     await shot('reordered-range-refused')
   })
 
+  it('uppercase rejected frame nodes do not redirect cursor commands to the outer frame', () => {
+    const inner = createColumns('Inner', 'two').replace('[!abele-columns', '[!ABELE-COLUMNS'),
+      text = textInFrame(inner)
+    show(text)
+    const result = evaluate<{ options: boolean; remove: boolean; text: string }>(
+      `const lines=view.editor.getValue().split('\\n');view.editor.setCursor({line:lines.findIndex(line=>line.includes('Inner')),ch:8});app.workspace.activeEditor=view;return {options:app.commands.commands['abele:column-options'].editorCheckCallback(true,view.editor,view),remove:app.commands.commands['abele:remove-columns'].editorCheckCallback(false,view.editor,view),text:view.editor.getValue()}`
+    )
+    expect(result).toEqual({ options: false, remove: false, text })
+  })
+  it('a later post-processor cannot reassign a frame before the first menu lookup', async () => {
+    const text = textInFrame(
+      createColumns('First', 'two') + '\n\n' + createColumns('Second', 'two')
+    )
+    evaluate(
+      `window.__columnReorder=false;app.plugins.plugins.abele.registerMarkdownPostProcessor((el,ctx)=>{if(!window.__columnReorder||ctx.sourcePath!==${JSON.stringify(NOTE)})return;const frames=el.querySelectorAll('.abele-columns .abele-columns');if(frames.length>=2){frames[0].before(frames[1]);window.__columnReorders++}},100);return true`
+    )
+    try {
+      for (const mode of ['preview', 'source']) {
+        evaluate(`window.__columnReorders=0;window.__columnReorder=true;return true`)
+        show(text, mode)
+        const reordered = evaluate<boolean>(
+          `const frames=root().querySelectorAll('.abele-columns .abele-columns');return window.__columnReorders>0&&frames[0].textContent.includes('Second')`
+        )
+        expect(reordered).toBe(true)
+        const result = evaluate<{ menu: boolean; text: string }>(
+          `const frames=root().querySelectorAll('.abele-columns .abele-columns'),second=[...frames].find(frame=>frame.textContent.includes('Second'));second.querySelector('.abele-columns-controls button').click();await wait(200);return {menu:!!document.querySelector('.menu'),text:view.getMode()==='source'?view.editor.getValue():await app.vault.read(view.file)}`
+        )
+        expect(result).toEqual({ menu: false, text })
+        await shot('render-time-identity-' + mode)
+      }
+    } finally {
+      evaluate(`window.__columnReorder=false;return true`)
+    }
+  })
+
   it('highlight markers do not shift the caret before following prose', async () => {
     const text = textInFrame('A ==B== C')
     show(text)
