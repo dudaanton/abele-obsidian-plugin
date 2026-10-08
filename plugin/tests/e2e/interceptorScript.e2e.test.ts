@@ -20,6 +20,8 @@ import {
   setBackgroundThrottling,
 } from './helpers/obsidianCli'
 
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
+
 const CHAT = 'AI/Chats/Abele interceptor probe.abchat'
 const SCRIPT_NAME = 'Interceptor probe'
 
@@ -35,6 +37,7 @@ interface Report {
 }
 
 const script = `(async () => {
+  ${SCRIPT_FIXTURE}
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
@@ -47,17 +50,14 @@ const script = `(async () => {
   }
   const T = window.__abeleTest
   const chats = T.ChatService.getInstance()
-  const scripts = T.ScriptService.getInstance()
-  const cfg = T.AbeleConfig.getInstance().ai
+  let scripts = T.ScriptService.getInstance()
   const CHAT = ${JSON.stringify(CHAT)}
   const NAME = ${JSON.stringify(SCRIPT_NAME)}
   const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
   const report = { requests: [], scriptRuns: 0, plainBubble: '', probeBubble: '', probeNote: '', toolStatus: '', pendingAfter: -1, error: '' }
   const createdDirs = []
   const realFetch = window.fetch
-  const oldFolder = cfg.scriptsFolder
-  if (!cfg.scriptsFolder) cfg.scriptsFolder = 'Scripts'
-  const folder = cfg.scriptsFolder.replace(/\\/+$/, '')
+  const folder = 'Sample interceptor scripts'
   const scriptPath = folder + '/abele-interceptor-probe.js'
   const code = [
     '// @name ' + NAME,
@@ -104,16 +104,19 @@ const script = `(async () => {
     return new Response(sse(chunks), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
   }
 
-  let session = null
+  let session = null, fixture
   const checkSession = () => { if (session?.error.value) throw new Error(session.error.value) }
   try {
+    fixture = await saveScriptFixture()
     for (const dir of ['AI', 'AI/Chats', folder]) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); createdDirs.unshift(dir) }
     }
     const staleScript = app.vault.getAbstractFileByPath(scriptPath)
     if (staleScript) await app.vault.delete(staleScript)
     await app.vault.create(scriptPath, code)
-    await scripts.discover()
+    await enableScriptFixture(folder)
+    scripts = T.ScriptService.getInstance()
+    await approveScriptFixture(scriptPath, code)
     if (!scripts.getAll().some((s) => s.meta.name === NAME && s.meta.interceptor))
       throw new Error('the probe script was not indexed as an interceptor')
 
@@ -176,10 +179,9 @@ const script = `(async () => {
         const d = app.vault.getAbstractFileByPath(dir)
         if (d && d.children && !d.children.length) await app.vault.delete(d, true)
       }
-      cfg.scriptsFolder = oldFolder
     } catch (e) {
       report.error = report.error || 'cleanup: ' + String((e && e.message) || e)
-    }
+    } finally { await restoreScriptFixture(fixture) }
   }
   return JSON.stringify(report)
 })()`

@@ -14,6 +14,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalJson, evalRaw } from './helpers/obsidianCli'
 
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
+
 const available = isObsidianRunning() && hasTestApi()
 
 const FOLDER = 'E2E Picker'
@@ -33,6 +35,7 @@ type Probe<T> = { ok: true; value: T } | { ok: false; error: string }
 async function probe<T>(body: string, seconds = 20): Promise<T> {
   const started = evalRaw(`(() => {
     const t = window.__abeleTest
+    ${SCRIPT_FIXTURE}
     t.pickerProbe = null
     const wait = (ms) => new Promise((r) => setTimeout(r, ms))
     const until = async (fn, ms) => {
@@ -81,13 +84,14 @@ const setup = `
     const f = app.vault.getAbstractFileByPath('${FOLDER}/' + n)
     return f && app.metadataCache.getFileCache(f)?.frontmatter?.type
   }), 5000)
-  const folder = t.AbeleConfig.getInstance().ai.scriptsFolder
+  const folder = '${FOLDER}/Scripts'
   if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
   const path = folder + '/${SCRIPT_NAME}.js'
   const existing = app.vault.getAbstractFileByPath(path)
   if (existing) await app.vault.delete(existing)
   await app.vault.create(path, ${JSON.stringify(SCRIPT)})
-  await t.ScriptService.getInstance().discover()
+  await enableScriptFixture(folder)
+  await approveScriptFixture(path, ${JSON.stringify(SCRIPT)})
   return true
 `
 
@@ -100,7 +104,7 @@ const cleanup = `
   }
   const dir = app.vault.getAbstractFileByPath('${FOLDER}')
   if (dir) await app.vault.delete(dir, true)
-  const folder = t.AbeleConfig.getInstance().ai.scriptsFolder
+  const folder = '${FOLDER}/Scripts'
   const f = app.vault.getAbstractFileByPath(folder + '/${SCRIPT_NAME}.js')
   if (f) await app.vault.delete(f)
   const scripts = app.vault.getAbstractFileByPath(folder)
@@ -124,11 +128,14 @@ const walk = `
   const t = window.__abeleTest
   const s = t.ScriptService.getInstance().getAll().find((x) => x.meta.name === '${SCRIPT_NAME}')
   if (!s) throw new Error('the script was not discovered')
-  let output
+  let output, executionError
   t.ScriptService.getInstance()
     .execute(s.path, {}, { formHandler: t.showFormModal, source: 'command' })
-    .then((o) => { output = o }, (e) => { output = 'ERROR ' + e })
-  if (!(await until(() => document.querySelectorAll('.modal .abele-note-picker input').length === 2, 5000))) {
+    .then((o) => { output = o }, (e) => { executionError = e; output = 'ERROR ' + e })
+  if (!(await until(() => {
+    if (executionError) throw executionError
+    return document.querySelectorAll('.modal .abele-note-picker input').length === 2
+  }, 5000))) {
     throw new Error('the form did not show two pickers')
   }
   const modal = document.querySelector('.modal')
@@ -173,12 +180,18 @@ const walk = `
 `
 
 describe.skipIf(!available)('a filtered note picker in a script form', () => {
+  let fixture: ScriptFixtureSnapshot | undefined
   beforeAll(async () => {
+    fixture = await probe<ScriptFixtureSnapshot>('return await saveScriptFixture()')
     await probe(setup)
   }, 60_000)
 
   afterAll(async () => {
-    await probe(cleanup)
+    try {
+      await probe(cleanup)
+    } finally {
+      await probe(`await restoreScriptFixture(${JSON.stringify(fixture)}); return true`)
+    }
   }, 60_000)
 
   it('offers only the notes the filter lets through, and hands back what was taken', async () => {

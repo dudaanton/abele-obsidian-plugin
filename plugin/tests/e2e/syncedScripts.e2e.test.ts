@@ -19,13 +19,13 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { shotDir } from './helpers/shots'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele synced scripts e2e'
 const SCRIPTS = `${DIR}/Scripts`
 const PATH = `${SCRIPTS}/synced.js`
 const SHOTS = shotDir('abele-phone')
-const TRUST_KEY = 'abele-script-trust'
 
 const SCRIPT = (says: string) => `// @name E2E synced script
 // @icon rocket
@@ -64,33 +64,32 @@ const run = <T>(body: string, timeout = 90_000): T =>
   )
 
 describe.skipIf(!available)('scripts from elsewhere wait to be confirmed', () => {
-  let saved: { folder: string; on: boolean; trust: unknown } = {
-    folder: '',
-    on: false,
-    trust: null,
-  }
+  let fixture: ScriptFixtureSnapshot | undefined
   let size: [number, number] = [0, 0]
 
   beforeAll(() => {
     size = evalJson<[number, number]>(
       `require('@electron/remote').getCurrentWindow().getContentSize()`
     )
-    saved = evalJson(
-      `({ folder: window.__abeleTest.AbeleConfig.getInstance().ai.scriptsFolder ?? '',
-          on: !!window.__abeleTest.AbeleConfig.getInstance().ai.confirmForeignScripts,
-          trust: app.loadLocalStorage(${JSON.stringify(TRUST_KEY)}) ?? null })`
+    fixture = evalAsync<ScriptFixtureSnapshot>(
+      `(async () => { ${SCRIPT_FIXTURE}; return await saveScriptFixture() })()`
     )
-    evalRaw(
-      `(async () => {
+    expect(
+      evalRaw(
+        `(async () => {
+        ${SCRIPT_FIXTURE}
         const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (old) await app.vault.delete(old, true)
         for (const f of [${JSON.stringify(DIR)}, ${JSON.stringify(SCRIPTS)}]) await app.vault.createFolder(f)
         await app.vault.create(${JSON.stringify(PATH)}, ${JSON.stringify(SCRIPT('first'))})
+        await enableScriptFixture(${JSON.stringify(SCRIPTS)})
+        await approveScriptFixture(${JSON.stringify(PATH)}, ${JSON.stringify(SCRIPT('first'))})
         const T = window.__abeleTest
         const config = T.AbeleConfig.getInstance()
         config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(SCRIPTS)}, confirmForeignScripts: false }
         await config.saveSettings()
         const scripts = T.ScriptService.getInstance()
+        scripts.setConfirmForeign(false)
         await scripts.discover()
         // Switched on here, the way the settings switch does it: what is there is accepted.
         scripts.setConfirmForeign(true)
@@ -99,8 +98,9 @@ describe.skipIf(!available)('scripts from elsewhere wait to be confirmed', () =>
         await new Promise((r) => setTimeout(r, 300))
         return 'ok'
       })()`,
-      60_000
-    )
+        60_000
+      )
+    ).toBe('ok')
   }, 90_000)
 
   afterAll(async () => {
@@ -110,27 +110,24 @@ describe.skipIf(!available)('scripts from elsewhere wait to be confirmed', () =>
       )
       await reloadApp('app.emulateMobile(false)')
     }
-    evalRaw(
-      `(async () => {
+    expect(
+      evalRaw(
+        `(async () => {
+        ${SCRIPT_FIXTURE}
+        try {
         document.querySelectorAll('.modal.abele-script-review').forEach((m) => m.closest('.modal-container')?.remove())
         document.querySelectorAll('.notice').forEach((n) => n.remove())
         for (const leaf of app.workspace.getLeavesOfType('abele-code')) {
           if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
         }
-        const T = window.__abeleTest
-        const config = T.AbeleConfig.getInstance()
-        config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(saved.folder)}, confirmForeignScripts: ${saved.on} }
-        config.version.value++
-        await config.saveSettings()
-        app.saveLocalStorage(${JSON.stringify(TRUST_KEY)}, ${JSON.stringify(saved.trust)})
-        T.ScriptTrust.reset()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
-        await T.ScriptService.getInstance().discover()
         return 'ok'
+        } finally { await restoreScriptFixture(${JSON.stringify(fixture)}) }
       })()`,
-      60_000
-    )
+        60_000
+      )
+    ).toBe('ok')
   }, 180_000)
 
   it('runs a script that was there when it was switched on', () => {

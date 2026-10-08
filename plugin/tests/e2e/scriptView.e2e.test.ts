@@ -10,6 +10,9 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalJson, evalRaw } from './helpers/obsidianCli'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
+
+const FOLDER = 'Sample counter scripts'
 
 const SCRIPT = `// @name E2E Counter
 // @description A view that counts presses
@@ -71,6 +74,7 @@ async function probe<T>(body: string): Promise<T> {
     t.viewProbe = null
     ;(async () => {
       ${WAIT_FOR_LIVE}
+      ${SCRIPT_FIXTURE}
       try {
         t.viewProbe = { ok: true, value: await (async () => { ${body} })() }
       } catch (e) {
@@ -96,13 +100,14 @@ const setup = `
   // Every probe reads the first script view there is: one another run left in the saved layout
   // was read instead of this one's.
   for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach()
-  const folder = t.AbeleConfig.getInstance().ai.scriptsFolder
+  const folder = ${JSON.stringify(FOLDER)}
   const path = folder + '/E2E Counter.js'
   if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
   const existing = app.vault.getAbstractFileByPath(path)
   if (existing) await app.vault.delete(existing)
   await app.vault.create(path, ${JSON.stringify(SCRIPT)})
-  await t.ScriptService.getInstance().discover()
+  await enableScriptFixture(folder)
+  await approveScriptFixture(path, ${JSON.stringify(SCRIPT)})
   return path
 `
 
@@ -147,7 +152,7 @@ const closeAndRestore = `
 
 const cleanup = `
   for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach()
-  const folder = window.__abeleTest.AbeleConfig.getInstance().ai.scriptsFolder
+  const folder = ${JSON.stringify(FOLDER)}
   const f = app.vault.getAbstractFileByPath(folder + '/E2E Counter.js')
   if (f) await app.vault.delete(f)
   // The folder too, when this made it: the fixture vault holds ScaleTest/ and nothing else.
@@ -158,15 +163,28 @@ const cleanup = `
 `
 
 describe('a script view in the running app', () => {
+  let fixture: ScriptFixtureSnapshot | undefined
   beforeAll(async () => {
     if (!isObsidianRunning() || !hasTestApi()) {
       throw new Error('Obsidian with the development build is not running')
     }
+    fixture = await probe<ScriptFixtureSnapshot>('return await saveScriptFixture()')
+    console.info('script fixture baseline', {
+      enabled: fixture.ai.enabled,
+      scriptsEnabled: fixture.ai.scriptsEnabled,
+      folder: fixture.ai.scriptsFolder,
+      provenance: fixture.local['abele-script-provenance'],
+      marker: fixture.marker !== null,
+    })
     await probe(setup)
   }, 60_000)
 
   afterAll(async () => {
-    await probe(cleanup)
+    try {
+      await probe(cleanup)
+    } finally {
+      await probe(`await restoreScriptFixture(${JSON.stringify(fixture)}); return true`)
+    }
   }, 60_000)
 
   it('opens live, with scoped css, and counts a press', async () => {

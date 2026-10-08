@@ -19,6 +19,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { shotDir } from './helpers/shots'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele script toolbar e2e'
@@ -87,26 +88,20 @@ const run = <T>(body: string, timeout = 90_000): T =>
   )
 
 describe.skipIf(!available)('scripts on the toolbar', () => {
-  let saved: { folder: string; pinned: unknown; phone: unknown; offered: unknown } = {
-    folder: '',
-    pinned: [],
-    phone: null,
-    offered: null,
-  }
+  let fixture: ScriptFixtureSnapshot | undefined
   let size: [number, number] = [0, 0]
 
   beforeAll(() => {
     size = evalJson<[number, number]>(
       `require('@electron/remote').getCurrentWindow().getContentSize()`
     )
-    saved = evalJson(
-      `({ folder: window.__abeleTest.AbeleConfig.getInstance().ai.scriptsFolder ?? '',
-          pinned: window.__abeleTest.AbeleConfig.getInstance().ai.toolbarScripts ?? [],
-          phone: app.vault.config.mobileToolbarCommands ?? null,
-          offered: app.loadLocalStorage(${JSON.stringify(OFFERED)}) })`
+    fixture = evalAsync<ScriptFixtureSnapshot>(
+      `(async () => { ${SCRIPT_FIXTURE}; return await saveScriptFixture() })()`
     )
-    evalRaw(
-      `(async () => {
+    expect(
+      evalRaw(
+        `(async () => {
+        ${SCRIPT_FIXTURE}
         const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (old) await app.vault.delete(old, true)
         await app.vault.createFolder(${JSON.stringify(DIR)})
@@ -117,15 +112,15 @@ describe.skipIf(!available)('scripts on the toolbar', () => {
         app.saveLocalStorage(${JSON.stringify(OFFERED)}, null)
         // A command the person put on the phone's toolbar by hand, which nothing here may touch.
         app.vault.setConfig('mobileToolbarCommands', [${JSON.stringify(HAND)}])
-        const config = window.__abeleTest.AbeleConfig.getInstance()
-        config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(SCRIPTS)}, toolbarScripts: [] }
-        await config.saveSettings()
-        await window.__abeleTest.ScriptService.getInstance().discover()
+        await enableScriptFixture(${JSON.stringify(SCRIPTS)})
+        await approveScriptFixture(${JSON.stringify(`${SCRIPTS}/headed.js`)}, ${JSON.stringify(HEADED)})
+        await approveScriptFixture(${JSON.stringify(`${SCRIPTS}/pinned.js`)}, ${JSON.stringify(PLAIN)})
         await new Promise((r) => setTimeout(r, 300))
         return 'ok'
       })()`,
-      60_000
-    )
+        60_000
+      )
+    ).toBe('ok')
   }, 90_000)
 
   afterAll(async () => {
@@ -135,24 +130,22 @@ describe.skipIf(!available)('scripts on the toolbar', () => {
       )
       await reloadApp('app.emulateMobile(false)')
     }
-    evalRaw(
-      `(async () => {
+    expect(
+      evalRaw(
+        `(async () => {
+        ${SCRIPT_FIXTURE}
+        try {
         for (const leaf of app.workspace.getLeavesOfType('markdown')) {
           if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
         }
-        const config = window.__abeleTest.AbeleConfig.getInstance()
-        config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(saved.folder)}, toolbarScripts: ${JSON.stringify(saved.pinned)} }
-        await config.saveSettings()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
-        await window.__abeleTest.ScriptService.getInstance().discover()
-        await new Promise((r) => setTimeout(r, 300))
-        app.vault.setConfig('mobileToolbarCommands', ${JSON.stringify(saved.phone)} ?? undefined)
-        app.saveLocalStorage(${JSON.stringify(OFFERED)}, ${JSON.stringify(saved.offered)})
         return 'ok'
+        } finally { await restoreScriptFixture(${JSON.stringify(fixture)}) }
       })()`,
-      60_000
-    )
+        60_000
+      )
+    ).toBe('ok')
   }, 180_000)
 
   it('a @toolbar script has an icon on the ribbon, and runs on the note in front and its selection', () => {

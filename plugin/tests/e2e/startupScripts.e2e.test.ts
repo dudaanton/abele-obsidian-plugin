@@ -12,8 +12,9 @@
  * - with "Don't run startup scripts" on, a reload runs none of them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele startup scripts e2e'
@@ -70,15 +71,16 @@ const run = <T>(body: string, timeout = 90_000): T =>
   )
 
 describe.skipIf(!available)('startup scripts', () => {
-  let saved = { folder: '', list: [] as unknown, paused: false }
+  let fixture: ScriptFixtureSnapshot | undefined
 
   beforeAll(() => {
-    saved = evalJson(
-      `(() => { const ai = window.__abeleTest.AbeleConfig.getInstance().ai
-        return { folder: ai.scriptsFolder ?? '', list: ai.startupScripts ?? [], paused: !!ai.startupScriptsPaused } })()`
+    fixture = evalAsync<ScriptFixtureSnapshot>(
+      `(async () => { ${SCRIPT_FIXTURE}; return await saveScriptFixture() })()`
     )
-    evalRaw(
-      `(async () => {
+    expect(
+      evalRaw(
+        `(async () => {
+        ${SCRIPT_FIXTURE}
         const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (old) await app.vault.delete(old, true)
         await app.vault.createFolder(${JSON.stringify(DIR)})
@@ -87,30 +89,33 @@ describe.skipIf(!available)('startup scripts', () => {
         for (const [name, text] of Object.entries(files)) {
           await app.vault.create(${JSON.stringify(SCRIPTS)} + '/' + name, text)
         }
+        await enableScriptFixture(${JSON.stringify(SCRIPTS)})
+        for (const [name, text] of Object.entries(files)) await approveScriptFixture(${JSON.stringify(SCRIPTS)} + '/' + name, text)
         const config = window.__abeleTest.AbeleConfig.getInstance()
         config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(SCRIPTS)},
           startupScripts: ${JSON.stringify(LIST)}, startupScriptsPaused: false }
         await config.saveSettings()
         return 'ok'
       })()`,
-      60_000
-    )
+        60_000
+      )
+    ).toBe('ok')
   }, 90_000)
 
   afterAll(async () => {
-    evalRaw(
-      `(async () => {
-        const config = window.__abeleTest.AbeleConfig.getInstance()
-        config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(saved.folder)},
-          startupScripts: ${JSON.stringify(saved.list)}, startupScriptsPaused: ${saved.paused} }
-        await config.saveSettings()
+    expect(
+      evalRaw(
+        `(async () => {
+        ${SCRIPT_FIXTURE}
+        try {
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
-        await window.__abeleTest.ScriptService.getInstance().discover()
         return 'ok'
+        } finally { await restoreScriptFixture(${JSON.stringify(fixture)}) }
       })()`,
-      60_000
-    )
+        60_000
+      )
+    ).toBe('ok')
   }, 90_000)
 
   it('runs them at startup in order, past one that fails, and skips what cannot run here', async () => {

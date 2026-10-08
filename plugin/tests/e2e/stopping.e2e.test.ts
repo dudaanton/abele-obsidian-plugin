@@ -9,6 +9,7 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 const shots = shotDir('abele-stopping')
@@ -16,12 +17,11 @@ const available = isObsidianRunning() && hasTestApi()
 
 function probe(mode: string) {
   return String.raw`(async () => {
+    ${SCRIPT_FIXTURE}
     const T = window.__abeleTest
-    const scripts = T.ScriptService.getInstance()
+    let scripts = T.ScriptService.getInstance()
     const runs = T.ScriptRuns.getInstance()
     const chats = T.ChatService.getInstance()
-    const cfg = T.AbeleConfig.getInstance().ai
-    const oldFolder = cfg.scriptsFolder
     const oldActive = app.workspace.activeLeaf
     const leftClosed = app.workspace.leftSplit.collapsed
     const rightClosed = app.workspace.rightSplit.collapsed
@@ -33,7 +33,7 @@ function probe(mode: string) {
     const madeDirs = []
     const madeFiles = []
     const report = { error: '', rejected: [], content: '', status: '', visible: false, histories: [], writes: 0, shot: '' }
-    let leaf, session, release, scriptRun
+    let leaf, session, release, scriptRun, fixture
     const realFetch = window.fetch
     const root = 'Sample stop fixture'
     const notePath = root + '/sample-note.md'
@@ -46,10 +46,10 @@ function probe(mode: string) {
       return file
     }
     try {
+      fixture = await saveScriptFixture()
       if (app.vault.getAbstractFileByPath(root)) throw new Error('Fixture folder is occupied')
       await app.vault.createFolder(root); madeDirs.push(root)
       const note = await put(notePath, 'original')
-      cfg.scriptsFolder = root
       const code = [
         '// @name Sample stop fixture',
         'await params.gate',
@@ -62,12 +62,14 @@ function probe(mode: string) {
         'params.finished.value = true',
       ].join('\n')
       await put(scriptPath, code)
-      await scripts.discover()
-      scripts.confirm(scripts.get(scriptPath))
+      await enableScriptFixture(root)
+      scripts = T.ScriptService.getInstance()
+      await approveScriptFixture(scriptPath, code)
       const finished = { value: false }
       const gate = new Promise((r) => { release = r })
-      const running = scripts.execute(scriptPath, { gate, note: notePath, rejected: report.rejected, finished }, { source: 'command' }).catch((e) => String(e))
-      await until(() => runs.runs.value.some((r) => r.path === scriptPath))
+      let executionError
+      const running = scripts.execute(scriptPath, { gate, note: notePath, rejected: report.rejected, finished }, { source: 'command' }).catch((e) => { executionError = e; return String(e) })
+      await until(() => { if (executionError) throw executionError; return runs.runs.value.some((r) => r.path === scriptPath) })
       scriptRun = runs.runs.value.find((r) => r.path === scriptPath)
       leaf = app.workspace.getLeaf('tab')
       await leaf.setViewState({ type: 'abele-script-runs-view', active: true })
@@ -127,13 +129,12 @@ function probe(mode: string) {
       }
     } catch (e) { report.error = String(e && e.stack || e) }
     finally {
+      try {
       window.fetch = realFetch
       release?.()
       if (scriptRun) { runs.stop(scriptRun.id); runs.forget(scriptRun.id) }
       if (session) { session.abort(); await chats.deleteChat(session.id) }
       leaf?.detach()
-      T.AbeleConfig.getInstance().ai.scriptsFolder = oldFolder
-      await T.AbeleConfig.getInstance().saveSettings()
       for (const path of madeFiles.reverse()) {
         const file = app.vault.getAbstractFileByPath(path)
         if (file) await app.vault.delete(file)
@@ -146,6 +147,7 @@ function probe(mode: string) {
       if (leftClosed) app.workspace.leftSplit.collapse(); else app.workspace.leftSplit.expand()
       if (rightClosed) app.workspace.rightSplit.collapse(); else app.workspace.rightSplit.expand()
       if (oldActive) app.workspace.setActiveLeaf(oldActive, { focus: true })
+      } finally { await restoreScriptFixture(fixture) }
     }
     return JSON.stringify(report)
   })()`

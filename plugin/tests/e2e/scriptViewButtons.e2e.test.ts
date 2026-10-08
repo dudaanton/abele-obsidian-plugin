@@ -20,6 +20,9 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
+
+const FOLDER = 'Sample button scripts'
 const SCRIPT = `// @name E2E Buttons
 // @description Buttons with icons, for the look test
 const v = view({ title: 'E2E Buttons', icon: 'sun' })
@@ -36,6 +39,7 @@ type Probe<T> = { ok: true; value: T } | { ok: false; error: string }
 async function probe<T>(body: string): Promise<T> {
   const started = evalRaw(`(() => {
     const t = window.__abeleTest
+    ${SCRIPT_FIXTURE}
     t.viewProbe = null
     ;(async () => {
       try {
@@ -59,13 +63,14 @@ async function probe<T>(body: string): Promise<T> {
 
 const setup = `
   const t = window.__abeleTest
-  const folder = t.AbeleConfig.getInstance().ai.scriptsFolder
+  const folder = ${JSON.stringify(FOLDER)}
   const path = folder + '/E2E Buttons.js'
   if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
   const existing = app.vault.getAbstractFileByPath(path)
   if (existing) await app.vault.delete(existing)
   await app.vault.create(path, ${JSON.stringify(SCRIPT)})
-  await t.ScriptService.getInstance().discover()
+  await enableScriptFixture(folder)
+  await approveScriptFixture(path, ${JSON.stringify(SCRIPT)})
   const s = t.ScriptService.getInstance().getAll().find((x) => x.meta.name === 'E2E Buttons')
   if (!s) throw new Error('E2E Buttons was not discovered')
   await t.ScriptService.getInstance().execute(s.path, {}, { source: 'command' })
@@ -180,12 +185,14 @@ let originalDark = false
 // Once on the desktop and once in a phone's layout, where Obsidian styles its buttons for touch.
 for (const phone of [false, true])
   describe(`buttons in a script view ${phone ? 'as a phone' : 'on the desktop'}`, () => {
+    let fixture: ScriptFixtureSnapshot | undefined
     beforeAll(async () => {
       if (!isObsidianRunning() || !hasTestApi()) {
         throw new Error('Obsidian with the development build is not running')
       }
       if (phone) await reloadApp('app.emulateMobile(true)')
       originalDark = evalJson<boolean>(`document.body.classList.contains('theme-dark')`)
+      fixture = await probe<ScriptFixtureSnapshot>('return await saveScriptFixture()')
       await probe(setup)
     }, 180_000)
 
@@ -195,9 +202,10 @@ for (const phone of [false, true])
       document.body.classList.toggle('theme-light', ${!originalDark})
       return true
     })()`)
-      await probe(`
+      try {
+        await probe(`
       for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach()
-      const folder = window.__abeleTest.AbeleConfig.getInstance().ai.scriptsFolder
+      const folder = ${JSON.stringify(FOLDER)}
       const f = app.vault.getAbstractFileByPath(folder + '/E2E Buttons.js')
       if (f) await app.vault.delete(f)
       const dir = app.vault.getAbstractFileByPath(folder)
@@ -205,7 +213,10 @@ for (const phone of [false, true])
       window.__abeleTest.viewProbe = null
       return true
     `)
-      if (phone) await reloadApp('app.emulateMobile(false)')
+      } finally {
+        await probe(`await restoreScriptFixture(${JSON.stringify(fixture)}); return true`)
+        if (phone) await reloadApp('app.emulateMobile(false)')
+      }
     }, 180_000)
 
     for (const dark of [false, true]) {
