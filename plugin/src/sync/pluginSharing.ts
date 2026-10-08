@@ -30,6 +30,11 @@ import {
 } from './publication/publicationRetirement'
 const AUDIENCES = 'owner-publication-audiences-v1'
 const hash = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
+interface PendingDiscoverySnapshot {
+  grants: string[]
+  groups: GroupShareHint[]
+  authoritative: boolean
+}
 
 /** Production composition of the same bound publication, owner HTTP and scoped core ports
  * used by the stand. No test build marker, fixture identity, credential substitute or parser
@@ -52,6 +57,7 @@ export class PluginSharing {
     settingsPending: boolean
     signedIn: boolean
     serverSnapshot: boolean
+    pendingSnapshot?: PendingDiscoverySnapshot
     held: () => boolean
     settling: () => boolean
     restoreTransaction: () => void
@@ -313,14 +319,16 @@ export class PluginSharing {
       if (this.owner() !== owner) throw new Error('Owner audience connection changed')
       const config = AbeleConfig.getInstance()
       owner.runtime.setAutomaticPaused(true)
-      this.audiences.value = []
-      const useCache = !replace && !(owner.signedIn && owner.serverSnapshot)
+      // Audience display remains the last acknowledged policy during a transient write;
+      // a genuine failure/overflow explicitly clears it through pauseDiscovery().
+      const pending = owner.pendingSnapshot
+      const useCache = !replace && !pending && !(owner.signedIn && owner.serverSnapshot)
       const portable = useCache
         ? audiencesFor(config.sync, owner.binding.issuer, owner.binding.vaultId)
         : []
       const byId = new Map<string, GroupShareHint>()
       for (const group of [
-        ...(replace ? [] : owner.groups),
+        ...(replace ? [] : (pending?.groups ?? owner.groups)),
         ...(useCache ? groupsFor(config.sync, owner.binding.issuer, owner.binding.vaultId) : []),
         ...remembered,
       ]) {
@@ -331,7 +339,7 @@ export class PluginSharing {
       const groups = [...byId.values()]
       const grants = [
         ...new Set([
-          ...(replace ? [] : owner.grants),
+          ...(replace ? [] : (pending?.grants ?? owner.grants)),
           ...portable,
           ...ids,
           ...groups
@@ -339,6 +347,14 @@ export class PluginSharing {
             .map((group) => group.id),
         ]),
       ].filter((id) => !remove.includes(id))
+      // Capture the exact desired snapshot before the first asynchronous write. Until
+      // every write is acknowledged, retries must not rebuild it from the older cache.
+      const snapshot: PendingDiscoverySnapshot = {
+        grants: [...grants],
+        groups: groups.map((group) => ({ ...group })),
+        authoritative: replace || (pending?.authoritative ?? false),
+      }
+      owner.pendingSnapshot = snapshot
       const overflow = grants.length > 16
       const entry = { issuer: owner.binding.issuer, vaultId: owner.binding.vaultId, grants, groups }
       const existing = Array.isArray(config.sync.sharing) ? config.sync.sharing : []
@@ -362,7 +378,7 @@ export class PluginSharing {
       owner.groups = groups
       owner.catalogueReadable = true
       owner.grants.splice(0, owner.grants.length, ...grants)
-      if (replace) owner.serverSnapshot = true
+      if (snapshot.authoritative) owner.serverSnapshot = true
       if (changed)
         config.editSettings(() => {
           const updated = { ...config.sync }
@@ -375,6 +391,7 @@ export class PluginSharing {
         await persist(false)
         owner.settingsPending = false
       }
+      owner.pendingSnapshot = undefined
       if (overflow)
         this.pauseDiscovery(
           'There are more sharing choices than automatic image sharing can currently check'
@@ -555,7 +572,9 @@ export class PluginSharing {
       return
     }
     this.linksDirty = false
-    if (owner.catalogueReadable) {
+    if (owner.pendingSnapshot) {
+      await this.recordAudiences([])
+    } else if (owner.catalogueReadable) {
       try {
         const portable =
           owner.signedIn && owner.serverSnapshot

@@ -145,6 +145,70 @@ it('keeps the settings-save obligation durable across an owner restart', async (
   expect(s.save).toHaveBeenCalledTimes(3)
   expect(s.host.discoveryWarning.value).toBe('')
 })
+it('retries the exact server snapshot after its first metadata write fails, never the old cache', async () => {
+  const s = await setup()
+  const a = {
+    id: 'group-a',
+    label: 'Sample old group',
+    rootId: 'root-a',
+    role: 'editor',
+    revision: 2,
+    state: 'active',
+  }
+  const b = {
+    id: 'group-b',
+    vault_id: 'sample-vault',
+    label: 'Sample current group',
+    selector_kind: 'group',
+    folder_prefix: null,
+    root_file_id: 'root-b',
+    role: 'reader',
+    state: 'active',
+    acl_revision: 7,
+    scope_revision: 1,
+    publication_revision: 0,
+    revoked_at: null,
+    expires_at: null,
+  }
+  const live = (s.host as any).live
+  live.grants = [a.id]
+  live.groups = [a]
+  s.config.sync.sharing![0] = { ...s.config.sync.sharing![0], grants: [a.id], groups: [a] as any }
+  const originalFetch = vi.mocked(s.fetcher).getMockImplementation()!
+  vi.mocked(s.fetcher).mockImplementation(async (url, init) =>
+    String(url).endsWith('/grants/groups')
+      ? new Response(JSON.stringify([b]))
+      : String(url).endsWith('/grants')
+        ? new Response('[]')
+        : originalFetch(url, init)
+  )
+  const meta = live.resources.meta
+  const write = meta.setMeta.bind(meta)
+  let fail = true
+  vi.spyOn(meta, 'setMeta').mockImplementation(async (key: string, value: string | null) => {
+    if (key === 'owner-publication-audiences-v1' && fail) {
+      fail = false
+      throw new Error('Synthetic first snapshot persistence failure')
+    }
+    return write(key, value)
+  })
+  expect((await s.list()).map((row) => row.id)).toEqual([b.id])
+  expect(s.host.discoveryWarning.value).toContain('paused')
+  // Ordinary refresh must retry B; it must not reconstruct A from the unchanged cache.
+  await s.host.refreshPublication()
+  expect(s.host.discoveryWarning.value).toBe('')
+  expect(live.grants).toEqual([b.id])
+  expect(live.groups).toEqual([
+    { id: b.id, label: b.label, rootId: b.root_file_id, role: b.role, revision: 7, state: b.state },
+  ])
+  expect(s.config.sync.sharing![0].grants).toEqual([b.id])
+  expect(s.config.sync.sharing![0].groups).toEqual(live.groups)
+  const persisted = JSON.parse(await meta.getMeta('owner-publication-audiences-v1'))
+  expect(persisted.value.grants).toEqual([b.id])
+  expect(persisted.value.groups).toEqual(live.groups)
+  expect(persisted.value.settingsPending).toBe(false)
+  expect(s.host.audiences.value).toEqual([b.id])
+})
 it('never replaces a cache with a partial folder-only fetch when the group request fails', async () => {
   const s = await setup()
   const before = JSON.stringify(s.config.sync.sharing)

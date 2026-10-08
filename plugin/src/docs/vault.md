@@ -1508,7 +1508,12 @@ reviews report the exact synced note checked, without claiming a certified membe
 `groups` management hints: group ID, last acknowledged name, root file ID, role, ACL revision and
 state. The same hints are stored in the bound local `owner-publication-audiences-v1` record,
 with `settingsPending` tracking an unacknowledged settings write. That obligation survives a
-restart and clears only after a later save and durable marker update both succeed. Empty
+restart and clears only after a later save and durable marker update both succeed. Before the first
+write, the owner lifetime captures the exact desired discovery snapshot (IDs, group details and
+whether it came from the authenticated server lists). A transient metadata write failure retries
+that captured snapshot, not a reconstruction from the older cache. A newer complete server fetch
+may supersede it. If the first write never succeeds, the in-memory snapshot is not a crash-durable
+record; a new lifetime must fetch server truth again. Empty
 `sharing` is omitted from synced settings. Corrupt group entries remain intact, are reported by
 a visible warning and cannot silently erase valid hints beside them. Hints are not authorization;
 the signed-in server lists always replace the cache. The discovery inventory may contain up to
