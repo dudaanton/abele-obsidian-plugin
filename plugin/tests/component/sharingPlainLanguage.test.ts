@@ -363,7 +363,7 @@ it('shows a joined connection and its edit permission without its internal ID', 
   const previous = sync.sharing.value
   sync.sharing.value = {
     scope: ref({ grantId: 'opaque-grant', issuer: 'https://sync.example', role: 'editor' }),
-    scoped: { role: ref('editor'), paused: ref(false) },
+    scoped: { role: ref('editor'), paused: ref(false), accessRemoved: ref(''), leave: vi.fn() },
   } as never
   const screen = mount(SyncSettings, { global })
   try {

@@ -542,7 +542,7 @@ export class SyncService {
 
   /** Status-only callback from the installed scoped host; it never supplies authority. */
   scopedStatus(
-    state: 'idle' | 'syncing' | 'paused' | 'error',
+    state: 'disconnected' | 'idle' | 'syncing' | 'paused' | 'error',
     lastError: string | null = null
   ): void {
     this.board.publish({ ...DISCONNECTED_STATUS, state, lastError })

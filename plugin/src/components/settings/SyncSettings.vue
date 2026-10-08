@@ -10,19 +10,23 @@
       <Setting name="Server"
         ><span>{{ scoped.issuer }}</span></Setting
       >
-      <Setting name="Connection"><span :title="scoped.grantId">Joined shared group</span></Setting>
-      <Setting name="Access"
+      <Setting name="Connection"
+        ><span :title="scoped.grantId">{{ scopedRemoved || 'Joined shared group' }}</span></Setting
+      >
+      <Setting v-if="!scopedRemoved" name="Access"
         ><span>{{ sharingPermission(scopedRole || 'reader') }}</span></Setting
       >
       <Setting name="Sync">
         <Button
           text="Sync now"
           tooltip="Sync the files shared with this group"
+          :disabled="!!scopedRemoved || scopedLeaving"
           @click="sync.syncNow()"
         />
         <Button
           :text="scopedPaused ? 'Resume' : 'Pause'"
           tooltip="Pause or resume this shared connection"
+          :disabled="!!scopedRemoved || scopedLeaving"
           @click="scopedPaused ? sync.resume() : sync.pause()"
         />
       </Setting>
@@ -33,8 +37,20 @@
         <Button
           text="New shared file…"
           tooltip="Review a new file before creating it"
-          :disabled="scopedRole !== 'editor'"
+          :disabled="scopedRole !== 'editor' || !!scopedRemoved || scopedLeaving"
           @click="openScopedCreation"
+        />
+      </Setting>
+      <Setting
+        name="Leave this shared group"
+        desc="Disconnect this device and forget its shared connection. Local files stay."
+      >
+        <Button
+          text="Leave this shared group"
+          warning
+          :disabled="scopedLeaving"
+          tooltip="Review leaving this shared connection"
+          @click="confirming = 'leave'"
         />
       </Setting>
       <p v-if="scopedError" role="alert">{{ scopedError }}</p>
@@ -288,6 +304,17 @@
     />
 
     <ConfirmModal
+      v-if="confirming === 'leave'"
+      title="Leave this shared group?"
+      message="This device stops syncing this shared group and forgets its connection key and local sync state. Local files stay; no file is deleted. The server will be told if it is reachable. Joining again needs a new invitation."
+      confirm-text="Leave this shared group"
+      confirm-tooltip="Disconnect this shared group and keep local files"
+      cancel-tooltip="Keep this shared connection"
+      @confirm="leaveScoped"
+      @close="confirming = null"
+    />
+
+    <ConfirmModal
       v-if="confirming === 'disconnect'"
       title="Disconnect this device?"
       message="The server will stop accepting this device. Connecting again needs the password. Files are not touched."
@@ -387,6 +414,23 @@ const scopedPaused = computed(() => sync.sharing?.value?.scoped.paused.value ?? 
 const scopedRole = computed(() => sync.sharing?.value?.scoped.role.value ?? scoped.value?.role)
 const scopedFlow = shallowRef<Awaited<ReturnType<PluginSharing['createScoped']>> | null>(null)
 const scopedError = ref('')
+const scopedRemoved = computed(() => sync.sharing?.value?.scoped.accessRemoved.value ?? '')
+const scopedLeaving = ref(false)
+async function leaveScoped() {
+  if (scopedLeaving.value) return
+  confirming.value = null
+  scopedLeaving.value = true
+  scopedFlow.value?.close()
+  scopedFlow.value = null
+  try {
+    await sync.sharing?.value?.scoped.leave()
+    scopedError.value = ''
+  } catch (error) {
+    scopedError.value = sharingErrorMessage(error, 'Could not leave this shared group. Try again.')
+  } finally {
+    scopedLeaving.value = false
+  }
+}
 async function openScopedCreation() {
   try {
     const host = sync.sharing?.value
@@ -496,7 +540,7 @@ const ownerPublicationModel = computed(() => {
     }
   )
 })
-const confirming = ref<'disconnect' | 'forget' | null>(null)
+const confirming = ref<'disconnect' | 'forget' | 'leave' | null>(null)
 /** The waiting revoke whose kept token the person asked to forget, while that is asked. */
 const forgetting = ref<PendingRevoke | null>(null)
 

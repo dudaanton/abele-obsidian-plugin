@@ -12,7 +12,7 @@
  * publishes, so a method renamed there fails to compile here.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import SyncSettings from '@/components/settings/SyncSettings.vue'
 import SelectiveSync from '@/components/settings/sync/SelectiveSync.vue'
@@ -73,6 +73,7 @@ const service = {
   log: ref<string[]>([]),
   connection: ref<DeviceConnection>(emptyConnection()),
   connected: false,
+  sharing: shallowRef<any>(null),
   isConnected: vi.fn(() => service.connected),
   client: vi.fn(() => (service.connected ? client : null)),
   connect: vi.fn(),
@@ -154,6 +155,7 @@ beforeEach(() => {
 
   service.chooseVault.mockReset().mockResolvedValue(undefined)
   service.connected = false
+  service.sharing.value = null
   service.heldPrompt.held.value = []
   service.publicationPrompt.pending.value = []
   service.settingsPrompt.staged.value = []
@@ -170,6 +172,49 @@ beforeEach(() => {
   client.updateSettings.mockResolvedValue(VAULT_SETTINGS)
   vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
 })
+
+it.each([false, true])(
+  'offers confirmed local departure even after shared access is removed (%s)',
+  async (removed) => {
+    const leave = vi.fn(async () => {})
+    service.sharing.value = {
+      scope: shallowRef({
+        issuer: 'https://sync.example',
+        grantId: 'sample-grant',
+        role: 'editor',
+      }),
+      scoped: {
+        role: ref('editor'),
+        paused: ref(false),
+        accessRemoved: ref(removed ? 'Access to Sample group was removed by its owner.' : ''),
+        leave,
+      },
+    }
+    const screen = open(SyncSettings)
+    await flushPromises()
+    expect(screen.text().includes('Joined shared group')).toBe(!removed)
+    if (removed) {
+      expect(screen.text()).toContain('Access to Sample group was removed by its owner.')
+      expect(buttonNamed(screen, 'Sync now')?.props('disabled')).toBe(true)
+      expect(buttonNamed(screen, 'New shared file…')?.props('disabled')).toBe(true)
+    }
+    const button = buttonNamed(screen, 'Leave this shared group')
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    expect(leave).not.toHaveBeenCalled()
+    const modal = screen.findComponent(ConfirmModal)
+    expect(modal.props('message')).toContain('Local files stay')
+    expect(modal.props('message')).toContain('connection key')
+    modal.vm.$emit('close')
+    await flushPromises()
+    expect(leave).not.toHaveBeenCalled()
+    await button!.trigger('click')
+    screen.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+    expect(leave).toHaveBeenCalledOnce()
+    screen.unmount()
+  }
+)
 
 afterEach(() => {
   unhook()

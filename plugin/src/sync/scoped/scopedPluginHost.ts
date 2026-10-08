@@ -1,4 +1,5 @@
-import { type App, TFile } from 'obsidian'
+import { type App, TFile, Notice } from 'obsidian'
+import { AbeleError } from '@abele/sync-protocol'
 import { markRaw, ref, shallowRef } from 'vue'
 import {
   createScopedClient,
@@ -20,6 +21,7 @@ import { GroupJoinHttp } from './groupJoinHttp'
 import {
   ScopedJoinFlow,
   SCOPED_CONNECTION_KEY,
+  SCOPED_JOIN_KEY,
   type ScopedJoinPort,
   type ScopedLocalConnection,
 } from './scopedJoin'
@@ -36,6 +38,8 @@ import { scopedSecretPort } from './scopedSecretSlots'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 const CREATION_JOURNAL = 'scoped-creation-journal-v1'
+const ACCESS_REMOVED = 'abele-scoped-access-removed'
+const DISPLAY_NAME = 'abele-scoped-display-name'
 interface CreationJournal {
   binding: ScopedClient['binding']
   handle: string
@@ -57,6 +61,8 @@ interface Runtime {
 export class ScopedPluginHost {
   readonly connection = shallowRef<ScopedLocalConnection | null>(null)
   readonly paused = ref(false)
+  readonly accessRemoved = ref('')
+  private leaving = false
   readonly role = ref<'reader' | 'editor' | null>(null)
   private runtime: Runtime | null = null
   private closed = false
@@ -69,7 +75,7 @@ export class ScopedPluginHost {
     private readonly fetcher: typeof fetch,
     private readonly factory: IDBFactory,
     private readonly status: (
-      state: 'idle' | 'syncing' | 'paused' | 'error',
+      state: 'disconnected' | 'idle' | 'syncing' | 'paused' | 'error',
       error?: string
     ) => void = () => {}
   ) {
@@ -78,6 +84,15 @@ export class ScopedPluginHost {
     if (c) {
       this.connection.value = c
       this.role.value = c.role
+      const removed = app.loadLocalStorage(ACCESS_REMOVED) as {
+        connection?: unknown
+        message?: string
+      } | null
+      if (
+        JSON.stringify(removed?.connection) === JSON.stringify(c) &&
+        typeof removed?.message === 'string'
+      )
+        this.accessRemoved.value = removed.message
     }
   }
   private serial<T>(step: () => Promise<T>): Promise<T> {
@@ -108,6 +123,8 @@ export class ScopedPluginHost {
   private held(r: Runtime) {
     if (
       this.closed ||
+      this.leaving ||
+      !!this.accessRemoved.value ||
       this.runtime !== r ||
       !r.raw.permitsEngineEffects ||
       !r.meta.permitsEngineEffects
@@ -325,6 +342,10 @@ export class ScopedPluginHost {
     if (this.closed) return
     const c = this.connection.value
     if (!c) return
+    if (this.accessRemoved.value) {
+      this.status('error', this.accessRemoved.value)
+      return
+    }
     await this.serial(async () => {
       await this.open(c, false)
       // A verified ledger owns automatic triggers even if the first network request
@@ -334,7 +355,7 @@ export class ScopedPluginHost {
         await this.run()
         this.status(this.paused.value ? 'paused' : 'idle')
       } catch (error) {
-        this.status('error', error instanceof Error ? error.message : 'Scoped sync failed')
+        await this.failure(error)
         throw error
       }
     })
@@ -353,6 +374,7 @@ export class ScopedPluginHost {
     return this.runtime !== null && this.held(this.runtime)
   }
   setPaused(paused: boolean) {
+    if (this.accessRemoved.value || this.leaving) return
     this.app.saveLocalStorage('abele-scoped-paused', paused)
     if (this.app.loadLocalStorage('abele-scoped-paused') !== paused)
       throw new Error('Scoped pause was not persisted')
@@ -361,6 +383,7 @@ export class ScopedPluginHost {
   }
   sync(): Promise<void> {
     return this.serial(async () => {
+      if (!this.connection.value || this.accessRemoved.value || this.leaving) return
       this.watch()
       if (this.paused.value) return
       this.status('syncing')
@@ -368,9 +391,109 @@ export class ScopedPluginHost {
         await this.run()
         this.status('idle')
       } catch (error) {
-        this.status('error', error instanceof Error ? error.message : 'Scoped sync failed')
+        await this.failure(error)
         throw error
       }
+    })
+  }
+  private stopWatching() {
+    this.unwatch?.()
+    this.unwatch = null
+    if (this.clock) window.clearInterval(this.clock)
+    this.clock = null
+  }
+  private async failure(error: unknown) {
+    // Only credential/authority denial means access ended. View preparation, snapshot
+    // expiry and offline failures remain retryable; scope_unavailable is not revocation.
+    if (error instanceof AbeleError && error.code === 'unauthorized' && this.runtime) {
+      const r = this.runtime
+      const display = this.app.loadLocalStorage(DISPLAY_NAME) as {
+        connection?: unknown
+        name?: string
+      } | null
+      const known = await r.state.getKnown(r.connection.rootFileId)
+      const name =
+        JSON.stringify(display?.connection) === JSON.stringify(r.connection)
+          ? display?.name
+          : known?.path
+      const message = `Access to ${name || 'this shared group'} was removed by its owner.`
+      this.accessRemoved.value = message
+      this.stopWatching()
+      this.app.saveLocalStorage(ACCESS_REMOVED, { connection: r.connection, message })
+      for (const flow of this.flows) flow.close()
+      this.flows.clear()
+      new Notice(message)
+      this.status('error', message)
+      return
+    }
+    this.status('error', error instanceof Error ? error.message : 'Scoped sync failed')
+  }
+  /** Explicit local departure, including after revocation. Never removes vault files. */
+  leave(): Promise<void> {
+    this.leaving = true // Fence any in-flight pull/push before waiting behind it.
+    this.stopWatching()
+    for (const flow of this.flows) flow.close()
+    this.flows.clear()
+    return this.serial(async () => {
+      const c = this.connection.value
+      if (!c) {
+        this.leaving = false
+        return
+      }
+      let toldServer = false
+      try {
+        const client =
+          this.runtime?.client ??
+          (await createScopedClient({
+            baseUrl: c.issuer,
+            vaultId: c.vaultId,
+            grantId: c.grantId,
+            principalId: c.principalId,
+            principalKind: 'installation',
+            token: this.token(c),
+            fetch: this.fetcher,
+          }))
+        await client.revokeSelf()
+        toldServer = true
+      } catch {
+        // Explicit local departure does not require network access. Report that the
+        // server was not told only after all local cleanup has actually succeeded.
+      }
+      this.runtime?.raw.close()
+      this.runtime?.meta.close()
+      this.runtime = null
+      await IndexedDbStateStore.delete(this.factory, 'abele-scoped-' + c.ledgerId)
+      await IndexedDbStateStore.delete(this.factory, 'abele-scoped-native-' + c.ledgerId)
+      const road = scopedSecretPort(secrets())
+      const pending = this.app.loadLocalStorage(SCOPED_JOIN_KEY) as { invitationId?: string } | null
+      const keys = [c.tokenId, c.tokenId + ':binding']
+      if (pending?.invitationId)
+        keys.push(...['', ':binding', ':accepted'].map((suffix) => pending.invitationId + suffix))
+      for (const key of keys) {
+        road.set(key, '')
+        if (road.get(key)) throw new Error('Scoped connection key could not be forgotten')
+      }
+      for (const key of [
+        SCOPED_CONNECTION_KEY,
+        SCOPED_JOIN_KEY,
+        'abele-scoped-paused',
+        ACCESS_REMOVED,
+        DISPLAY_NAME,
+      ]) {
+        this.app.saveLocalStorage(key, null)
+        if (this.app.loadLocalStorage(key) != null)
+          throw new Error('Scoped connection state could not be cleared')
+      }
+      this.connection.value = null
+      this.role.value = null
+      this.paused.value = false
+      this.accessRemoved.value = ''
+      this.leaving = false
+      this.status('disconnected')
+      if (!toldServer)
+        new Notice(
+          'Left this shared group on this device. The server could not be told; the local connection key is forgotten.'
+        )
     })
   }
   private async run() {
@@ -379,6 +502,11 @@ export class ScopedPluginHost {
     if (!r || !this.held(r)) throw new Error('Scoped writer ownership lost')
     const remote = await r.client.state()
     this.role.value = remote.role
+    const name =
+      remote.selector.kind === 'folder'
+        ? remote.selector.prefix
+        : (await r.state.getKnown(r.connection.rootFileId))?.path
+    if (name) this.app.saveLocalStorage(DISPLAY_NAME, { connection: r.connection, name })
     if (remote.state !== 'active') return
     if (remote.role === 'editor') {
       // '/' cannot match a normal vault-relative path: group untracked files need explicit
@@ -691,10 +819,7 @@ export class ScopedPluginHost {
     this.closed = true
     for (const flow of this.flows) flow.close()
     this.flows.clear()
-    this.unwatch?.()
-    this.unwatch = null
-    if (this.clock) window.clearInterval(this.clock)
-    this.clock = null
+    this.stopWatching()
     await this.tail
     this.runtime?.raw.close()
     this.runtime?.meta.close()
