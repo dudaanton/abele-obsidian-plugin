@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -19,12 +20,9 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       const api = window.__abeleTest, chats = api.ChatService.getInstance(), config = api.AbeleConfig.getInstance()
       const priorTab = chats.activeTabId.value, priorLeaf = app.workspace.activeLeaf
       const oldFolder = app.vault.getConfig('attachmentFolderPath')
-      // Never adopt a stale folder from an interrupted run; keep the ownership guard too.
-      const directory = 'Sample artifact conversation ' + crypto.randomUUID()
-      if (app.vault.getAbstractFileByPath(directory)) throw Error('Synthetic folder already exists')
+      const directory = ${JSON.stringify('Sample artifact conversation ' + randomUUID())}
+      let ownsDirectory = false
       const scriptFixture = await saveScriptFixture()
-      await app.vault.createFolder(directory)
-      await app.vault.createFolder(directory + '/Scripts')
       const layout = app.workspace.getLayout()
       let tab, session, getTools, chatFile
       const created = [], observations = {}, cuts = [], over = []
@@ -39,6 +37,10 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         return path
       }
       try {
+        if (app.vault.getAbstractFileByPath(directory)) throw Error('Synthetic folder already exists')
+        await app.vault.createFolder(directory)
+        ownsDirectory = true
+        await app.vault.createFolder(directory + '/Scripts')
         await enableScriptFixture(directory + '/Scripts')
         app.vault.setConfig('attachmentFolderPath', directory)
         const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 24
@@ -157,10 +159,10 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         if (tab) await chats.closeTab(tab)
         if (priorTab) chats.switchTab(priorTab)
         if (chatFile) { const file = app.vault.getAbstractFileByPath(chatFile.path); if (file) await app.vault.delete(file) }
-        for (const leaf of app.workspace.getLeavesOfType('abele-code')) {
+        if (ownsDirectory) for (const leaf of app.workspace.getLeavesOfType('abele-code')) {
           if (leaf.view.file?.path.startsWith(directory + '/')) leaf.detach()
         }
-        const dir = app.vault.getAbstractFileByPath(directory); if (dir) await app.vault.delete(dir, true)
+        const dir = ownsDirectory && app.vault.getAbstractFileByPath(directory); if (dir) await app.vault.delete(dir, true)
         app.vault.setConfig('attachmentFolderPath', oldFolder)
         await app.workspace.changeLayout(layout)
         if (priorLeaf?.containerEl?.isConnected) app.workspace.setActiveLeaf(priorLeaf, { focus: false })
