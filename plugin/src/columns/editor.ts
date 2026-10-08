@@ -1,7 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { editorLivePreviewField, type Plugin } from 'obsidian'
 import { columnPath, renderedColumns } from './target'
-import { proseText } from './prose'
+import { proseBlocks, proseText } from './prose'
 
 interface Entry {
   view: EditorView
@@ -43,19 +43,20 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
   const index = columns.indexOf(column)
   const parsed = source.columns[index]
   if (!parsed || columns.length !== source.columns.length) return null
-  const blocks = Array.from(column.querySelectorAll<HTMLElement>('p,h1,h2,h3,h4,h5,h6,li')).filter(
-    (el) =>
-      !el.closest('.internal-embed') &&
-      !el.querySelector('img,.internal-embed,.math') &&
-      !(el.tagName === 'LI' && Array.from(el.children).some((c) => c.matches('p')))
-  )
+  const blocks = proseBlocks(column)
+  const safe: Entry = {
+    view,
+    document,
+    anchor: view.state.doc.lineAt(parsed.from).to,
+    widget: parent,
+  }
   if (
     blocks.length !== parsed.paragraphs.length ||
     blocks.some((el, i) => el.tagName.toLowerCase() !== parsed.paragraphs[i].tag)
   )
-    return null
+    return safe
   const at = blocks.indexOf(block)
-  if (at < 0) return null
+  if (at < 0) return safe
   // These are source coordinates, not text hashes or a search for a repeated passage.
   blocks.forEach((el, i) => {
     el.dataset.abeleSourceFrom = String(parsed.paragraphs[i].from)

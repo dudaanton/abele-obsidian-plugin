@@ -24,7 +24,7 @@ export interface ColumnSource {
   columns: SourceColumn[]
 }
 const nativeInline: MarkdownConfig = {
-  defineNodes: ['NativeLink', 'NativeMath', 'NativeHighlight', 'HighlightMark'],
+  defineNodes: ['NativeLink', 'NativeEmbed', 'NativeMath', 'NativeHighlight', 'HighlightMark'],
   parseInline: [
     {
       name: 'NativeInline',
@@ -52,6 +52,11 @@ const nativeInline: MarkdownConfig = {
               ])
             )
           }
+        }
+        if (next === 33) {
+          const embed = /^!\[\[[^\]\n]+\]\]/.exec(tail)
+          if (embed)
+            return context.addElement(context.elt('NativeEmbed', pos, pos + embed[0].length))
         }
         if (next === 91) {
           const link = /^(?:\[\[[^\]\n]+\]\]|\[\^[^\]\n]+\])/.exec(tail)
@@ -204,6 +209,7 @@ function inlinePositions(node: SyntaxNode, source: string): { positions: number[
     'Link',
     'Image',
     'NativeLink',
+    'NativeEmbed',
     'NativeMath',
     'Autolink',
     'HardBreak',
