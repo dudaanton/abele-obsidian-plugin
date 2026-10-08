@@ -165,6 +165,52 @@ describe('installation-local store', () => {
 })
 
 describe('node registry', () => {
+  it('registers a paired target without a local token and refuses noncanonical remote endpoints', () => {
+    let data: unknown = []
+    const setSecret = () => {
+      throw new Error('must not save paired keys as tokens')
+    }
+    const registry = new NodeRegistry({
+      read: () => data,
+      write: (next) => {
+        data = next
+      },
+      getSecret: () => '',
+      setSecret,
+      removeSecret: () => {},
+    })
+    const node = {
+      id: 'remote',
+      label: 'Sample remote node',
+      url: 'wss://sample.example.ts.net:8443/channel',
+      expectedNodeId: 'sample-node',
+      profile: 'paired-wss-v1' as const,
+      installationId: 'sample-installation',
+      nodeFingerprint: 'a'.repeat(64),
+      publicKey: {
+        kty: 'EC' as const,
+        crv: 'P-256' as const,
+        x: 'a'.repeat(43),
+        y: 'b'.repeat(43),
+      },
+    }
+    registry.addPaired(node)
+    expect(
+      new NodeRegistry({
+        read: () => data,
+        write: () => {},
+        getSecret: () => '',
+        setSecret,
+        removeSecret: () => {},
+      }).list()
+    ).toEqual([node])
+    for (const url of [
+      'ws://127.0.0.1:7777/channel',
+      'wss://sample.example.ts.net:8443/channel?secret=x',
+      'wss://sample.invalid/channel',
+    ])
+      expect(() => registry.addPaired({ ...node, id: 'other', url })).toThrow()
+  })
   it('uses only explicit loopback URLs', () => {
     expect(channelUrl('http://127.0.0.1:7777')).toBe('ws://127.0.0.1:7777/channel')
     for (const url of [

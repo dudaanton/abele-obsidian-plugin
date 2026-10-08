@@ -1,7 +1,7 @@
 <template>
   <Section
     title="Nodes"
-    desc="Connect this device to a local AbeleNode daemon. Choose projects and isolated workspaces, run Claude Code when available, or open non-executing fake sessions. Connections, tokens and history caches stay on this device and are not transferred with settings."
+    desc="Connect to a local daemon or pair a remote AbeleNode over Tailscale. Choose projects and isolated workspaces, run Claude Code or pi when available, or open non-executing fake sessions. Connections, tokens, device keys and history caches stay on this device and never transfer with settings."
   >
     <Setting
       v-for="node in service.nodes.value"
@@ -9,6 +9,12 @@
       :name="node.label"
       :desc="`${node.url} · ${service.connection(node.id).state.value}${service.connection(node.id).error.value ? ' · ' + service.connection(node.id).error.value : ''}`"
     >
+      <Button
+        v-if="isPairedNode(node)"
+        text="Pairing / re-pair"
+        tooltip="Review device pairing or use a fresh invitation"
+        @click="showPairing(node.expectedNodeId)"
+      />
       <Button text="Check" tooltip="Check this device's node connection" @click="check(node.id)" />
       <Button
         text="Open session"
@@ -21,12 +27,27 @@
         @click="remove(node.id)"
       />
     </Setting>
+    <Button
+      text="Pair remote node"
+      tooltip="Scan or paste an invitation; re-pair or verify a changed node key"
+      @click="showPairing()"
+    />
+    <NodePairingDialog
+      v-if="pairing"
+      :service="service"
+      :resume-node-id="resumeNodeId"
+      @close="pairing = false"
+    />
+    <p>
+      For a revoked device, ask the owner for a new invitation bound to the same installation and
+      pair again. Revocation is performed on the node, not by removing this connection.
+    </p>
     <Setting name="Label" desc="A name for this node on this device.">
       <Input v-model="label" placeholder="Local node" aria-label="Node label" />
     </Setting>
     <Setting
       name="URL"
-      desc="Only the explicit loopback address is supported; no remote or phone connection yet."
+      desc="Local-token connections use only the explicit loopback address. Use Pair remote node for a phone or a remote desktop."
     >
       <Input v-model="url" placeholder="http://127.0.0.1:7777" aria-label="Node URL" />
     </Setting>
@@ -55,6 +76,8 @@
 import { ref } from 'vue'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService } from '@/node/NodeService'
+import { isPairedNode } from '@/node/NodeRegistry'
+import NodePairingDialog from '../NodePairingDialog.vue'
 import { pickNodeSession } from '@/node/openSession'
 import type { RegisteredNode } from '@/node/NodeRegistry'
 import Section from '../obsidian/Section.vue'
@@ -62,6 +85,12 @@ import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 const service = NodeService.getInstance()
+const pairing = ref(false)
+const resumeNodeId = ref<string>()
+const showPairing = (nodeId?: string) => {
+  resumeNodeId.value = nodeId
+  pairing.value = true
+}
 const label = ref('Local node')
 const url = ref('http://127.0.0.1:7777')
 const token = ref('')
@@ -86,6 +115,8 @@ const add = async () => {
 const check = async (id: string) => {
   try {
     await service.connection(id).connect()
+    const node = service.nodes.value.find((n) => n.id === id)
+    if (node && isPairedNode(node)) await service.deviceKeys.finishEnrollment(node.expectedNodeId)
     message.value = 'Connected'
   } catch (error) {
     report(error)

@@ -1,8 +1,10 @@
 import { ref, type Ref } from 'vue'
-import { NodeClient } from '@abele/node-client'
+import { NodeClient, PairedWssConnector } from '@abele/node-client'
+import { type PairingInvite, fingerprint } from '@abele/channel-protocol'
+import { NodeDeviceKeyStore } from './NodeDeviceKeyStore'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { secrets } from '@/secrets/SecretStore'
-import { NodeRegistry, channelUrl, type RegisteredNode } from './NodeRegistry'
+import { NodeRegistry, channelUrl, isPairedNode, type RegisteredNode } from './NodeRegistry'
 import { NodeClientStore } from './NodeClientStore'
 
 export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
@@ -74,6 +76,8 @@ export class NodeService {
   private static instance: NodeService | null = null
   readonly nodes: Ref<RegisteredNode[]>
   readonly registry: NodeRegistry
+  readonly deviceKeys = new NodeDeviceKeyStore()
+  readonly pairedConnector = new PairedWssConnector(this.deviceKeys)
   private readonly connections = new Map<string, NodeConnection>()
   private readonly installation: string
   private readonly foreground = () => {
@@ -125,20 +129,64 @@ export class NodeService {
     }
   }
 
+  /** Invitation secrets stay in device-local IndexedDB for lost-response recovery. */
+  async pair(label: string, invite: PairingInvite): Promise<RegisteredNode> {
+    await this.deviceKeys.rememberInvitation(invite, label)
+    await this.pairedConnector.claim(invite)
+    const device = (await this.deviceKeys.load(invite.node_id))!
+    if (!device.installation_id) throw new Error('pairing_required')
+    const existing = this.registry
+      .list()
+      .find((n) => isPairedNode(n) && n.expectedNodeId === invite.node_id)
+    const id = existing?.id ?? crypto.randomUUID()
+    this.registry.addPaired({
+      id,
+      label,
+      url: device.endpoint,
+      expectedNodeId: device.node_id,
+      profile: 'paired-wss-v1',
+      installationId: device.installation_id,
+      nodeFingerprint: device.node_fingerprint,
+      publicKey: device.public_key,
+    })
+    this.connections.get(id)?.destroy()
+    this.connections.delete(id)
+    this.nodes.value = this.registry.list()
+    return this.nodes.value.find((n) => n.id === id)!
+  }
+
+  async deviceFingerprint(nodeId: string): Promise<string> {
+    const device = await this.deviceKeys.load(nodeId)
+    return device ? fingerprint(device.public_key) : ''
+  }
+
   connection(id: string): NodeConnection {
     const existing = this.connections.get(id)
     if (existing) return existing
     const node = this.registry.list().find((node) => node.id === id)
     if (!node) throw new Error('Reconnect this node in Nodes settings')
-    const store = new NodeClientStore(`${this.installation}-${id}`)
+    const paired = isPairedNode(node)
+    const store = new NodeClientStore(
+      paired ? `paired-${node.expectedNodeId}-${node.installationId}` : `${this.installation}-${id}`
+    )
     const client = new NodeClient(
-      {
-        url: channelUrl(node.url),
-        profile: 'local-token-v1',
-        token: this.registry.token(id),
-        expected_node_id: node.expectedNodeId,
-      },
-      store
+      paired
+        ? {
+            profile: 'paired-wss-v1',
+            url: node.url,
+            expected_node_id: node.expectedNodeId,
+            installation_id: node.installationId,
+            node_fingerprint: node.nodeFingerprint,
+            public_key: node.publicKey,
+          }
+        : {
+            url: channelUrl(node.url),
+            profile: 'local-token-v1',
+            token: this.registry.token(id),
+            expected_node_id: node.expectedNodeId,
+          },
+      store,
+      paired ? this.pairedConnector : undefined
     )
     const connection = new NodeConnection(client, store)
     this.connections.set(id, connection)
@@ -158,6 +206,7 @@ export class NodeService {
     window.removeEventListener('focus', this.foreground)
     for (const connection of this.connections.values()) connection.destroy()
     this.connections.clear()
+    this.deviceKeys.close()
     NodeService.instance = null
   }
 }
