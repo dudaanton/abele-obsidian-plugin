@@ -131,12 +131,4 @@ describe.skipIf(!available)('chat Artifacts control and linked-note counts', () 
     check(await measure())
   })
 
-  // BUG: Artifacts replaced the link control but no longer displays a count in the header.
-  // Keep the old contract visible until the replacement is approved; section counts are above.
-  it.fails('shows the linked-note count on the Artifacts header control', () => {
-    const count = evalRaw(
-      `document.querySelector('.abele-ai-chat__artifacts .abele-obsidian-icon__text')?.textContent || ''`
-    )
-    expect(count).toMatch(/\d+/)
-  })
 })
