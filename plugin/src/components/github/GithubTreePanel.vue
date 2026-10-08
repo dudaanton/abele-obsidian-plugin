@@ -153,7 +153,6 @@ const expanded = reactive(new Set<string>())
 const filterOpen = reactive(new Set<string>())
 
 let generation = 0
-let fixedVersion: { key: string; version: { ref: string; sha: string } } | undefined
 const load = async () => {
   const mine = ++generation
   cancellation.abort()
@@ -164,9 +163,7 @@ const load = async () => {
   try {
     const v = props.comparison
       ? { ref: props.comparison.targetSha, sha: props.comparison.targetSha }
-      : props.baseSha && fixedVersion?.key === props.versionKey
-        ? fixedVersion.version
-        : await props.resolve()
+      : await props.resolve()
     const index =
       props.comparison ??
       (props.baseSha
@@ -174,13 +171,8 @@ const load = async () => {
         : null)
     const t = index?.target ?? (await repoTree(props.client, props.repo, v.sha))
     if (mine !== generation) return
-    version.value = v
+    version.value = index ? { ref: index.targetSha, sha: index.targetSha } : v
     comparisonIndex.value = index
-    if (index)
-      fixedVersion = {
-        key: props.versionKey,
-        version: { ref: index.targetSha, sha: index.targetSha },
-      }
     tree.value = t
     void showCurrent()
   } catch (e) {

@@ -58,6 +58,135 @@ beforeEach(() => {
 })
 
 describe('a pinned project tree', () => {
+  const homeRoutes = (branch: () => string) => ({
+    ...routes,
+    '/repos/sample/project': {
+      json: {
+        name: 'project',
+        owner: { login: 'sample' },
+        default_branch: 'main',
+        html_url: 'https://github.com/sample/project',
+      },
+    },
+    '/repos/sample/project/commits/main': () => ({ text: branch() }),
+    '/repos/sample/project/contents': {
+      json: [{ name: 'file.ts', path: 'file.ts', type: 'file', size: 30 }],
+    },
+    '/repos/sample/project/contents/pkg': {
+      json: [{ name: 'file.ts', path: 'pkg/file.ts', type: 'file', size: 30 }],
+    },
+    [`/repos/sample/project/git/trees/${TARGET}`]: {
+      json: {
+        tree: [
+          { path: 'file.ts', type: 'blob', size: 30, sha: 'new' },
+          { path: 'pkg/file.ts', type: 'blob', size: 30, sha: 'new' },
+        ],
+      },
+    },
+  })
+  it.each(['', '/tree/main/pkg'])(
+    'freezes tree links on a project page %s before a branch moves',
+    async (suffix) => {
+      pin()
+      let branch = TARGET
+      const { wrapper, model, onOpen } = openTab(
+        `https://github.com/sample/project${suffix}`,
+        homeRoutes(() => branch)
+      )
+      model.tree = true
+      const path = suffix ? 'pkg/file.ts' : 'file.ts'
+      await vi.waitFor(() =>
+        expect(wrapper.find(`.abele-github-tree [data-path="${path}"]`).exists()).toBe(true)
+      )
+      branch = OTHER
+      await wrapper.find(`.abele-github-tree [data-path="${path}"]`).trigger('click')
+      expect(onOpen).toHaveBeenLastCalledWith(
+        `https://github.com/sample/project/blob/${TARGET}/${path}`,
+        false
+      )
+      wrapper.unmount()
+    }
+  )
+  it('retains the project target after closing and reopening its tree', async () => {
+    pin()
+    let branch = TARGET
+    const { wrapper, model, onOpen, request } = openTab(
+      'https://github.com/sample/project',
+      homeRoutes(() => branch)
+    )
+    model.tree = true
+    await vi.waitFor(() =>
+      expect(wrapper.find('.abele-github-tree [data-path="file.ts"]').exists()).toBe(true)
+    )
+    model.tree = false
+    await flushPromises()
+    expect(wrapper.find('.abele-github-tree').exists()).toBe(false)
+    branch = OTHER
+    model.tree = true
+    await vi.waitFor(() =>
+      expect(wrapper.find('.abele-github-tree [data-path="file.ts"]').exists()).toBe(true)
+    )
+    await wrapper.find('.abele-github-tree [data-path="file.ts"]').trigger('click')
+    expect(onOpen).toHaveBeenLastCalledWith(
+      `https://github.com/sample/project/blob/${TARGET}/file.ts`,
+      false
+    )
+    expect(request.mock.calls.filter(([r]) => r.url.endsWith('/commits/main'))).toHaveLength(1)
+    wrapper.unmount()
+  })
+  it.each([`/pull/7`, `/commit/${TARGET}`, `/compare/${OTHER}...${TARGET}`])(
+    'does not apply the repository base to an explicit page tree %s',
+    async (suffix) => {
+      pin()
+      const { wrapper, model, request } = openTab(`https://github.com/sample/project${suffix}`, {
+        ...routes,
+        '/repos/sample/project/pulls/7': {
+          json: {
+            title: 'Sample change',
+            head: { sha: TARGET },
+            base: { sha: OTHER },
+            user: {},
+            html_url: 'https://github.com/sample/project/pull/7',
+          },
+        },
+        '/repos/sample/project/issues/7/comments': { json: [] },
+        '/repos/sample/project/pulls/7/reviews': { json: [] },
+        '/repos/sample/project/pulls/7/comments': { json: [] },
+        [`/repos/sample/project/commits/${TARGET}`]: {
+          json: {
+            sha: TARGET,
+            commit: { message: 'Sample change', author: {} },
+            parents: [{ sha: OTHER }],
+            files: [],
+          },
+        },
+        [`/repos/sample/project/compare/${OTHER}...${TARGET}`]: {
+          json: {
+            status: 'ahead',
+            files: [],
+            commits: [
+              {
+                sha: TARGET,
+                commit: {
+                  message: 'Sample change',
+                  author: { name: 'Sample', date: '2026-01-01' },
+                },
+              },
+            ],
+            total_commits: 1,
+          },
+        },
+      })
+      model.tree = true
+      await vi.waitFor(() =>
+        expect(wrapper.find('.abele-github-tree [data-path="file.ts"]').exists()).toBe(true)
+      )
+      expect(wrapper.find('.abele-github-tree .abele-tabs').exists()).toBe(false)
+      expect(wrapper.find('.abele-github-tree [data-path="gone.ts"]').exists()).toBe(false)
+      expect(request.mock.calls.some(([r]) => r.url.includes(`/git/trees/${BASE}`))).toBe(false)
+      wrapper.unmount()
+    }
+  )
   it('offers all/changed projections with agreeing counts, includes deletion and keeps its target', async () => {
     pin()
     const { wrapper, onOpen, model } = openTab(URL, routes)

@@ -8,7 +8,7 @@
         :resolve="resolveVersion"
         :current="current"
         :comparison="blob?.comparison?.index"
-        :base-sha="pin?.baseSha"
+        :base-sha="projectPin?.baseSha"
         @open="openFromPanel"
         @close="setPanel(false)"
       />
@@ -393,6 +393,9 @@ let frozenTarget: { key: string; resolved: PinnedLoad['resolved'] } | undefined
  */
 const promoted = ref<GithubTarget | null>(null)
 const shown = computed<GithubTarget>(() => promoted.value ?? target.value)
+const projectPin = computed(() =>
+  ['blob', 'tree', 'repo'].includes(shown.value?.kind ?? '') ? pin.value : null
+)
 
 const client = () => props.clientFor(target.value.host)
 
@@ -424,7 +427,7 @@ const main = useLoad<ItemData>(async () => {
     },
     retryPrimary,
     {
-      base: props.model.originalFile ? undefined : (pin.value ?? undefined),
+      base: props.model.originalFile ? undefined : (projectPin.value ?? undefined),
       signal: cancellation.signal,
       resolved: frozenTarget?.key === key ? frozenTarget.resolved : undefined,
     }
@@ -456,6 +459,7 @@ const {
   shown: computed(() => (target.value ? shown.value : null)),
   data: () => main.data.value,
   client,
+  pinned: () => !!projectPin.value,
   open: (url, pane) => props.onOpen?.(url, pane),
   saved: () => props.onState?.(),
 })
@@ -746,7 +750,7 @@ const reload = async (retry = false) => {
 
 const loadKey = computed(() =>
   target.value
-    ? `${client().cacheNamespace}:${targetKey(target.value)}:${pin.value?.baseSha ?? ''}:${!!props.model.originalFile}`
+    ? `${client().cacheNamespace}:${targetKey(target.value)}:${projectPin.value?.baseSha ?? ''}:${!!props.model.originalFile}`
     : null
 )
 

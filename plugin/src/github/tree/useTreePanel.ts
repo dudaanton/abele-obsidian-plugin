@@ -3,11 +3,11 @@
  * folder, the file tree panel's state, and the version both link at. Kept out of the tab component
  * so that component only says where they go.
  */
-import { computed, type ComputedRef } from 'vue'
+import { computed, watch, type ComputedRef } from 'vue'
 import { Platform, type PaneType } from 'obsidian'
 import type { GithubViewModel } from '../model'
 import type { GithubClient } from '../client'
-import type { GithubTarget } from '../urls'
+import { targetKey, type GithubTarget } from '../urls'
 import { commitSha, type BlobData } from '../api'
 import { defaultBranch } from '../search/source'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -23,6 +23,7 @@ export interface TreePanelOptions {
   shown: ComputedRef<GithubTarget | null>
   data: () => unknown
   client: () => GithubClient
+  pinned?: () => boolean
   open: (url: string, pane: PaneType | false) => void
   /** The tab's state changed in a way worth saving. */
   saved: () => void
@@ -58,15 +59,38 @@ export function useTreePanel(o: TreePanelOptions) {
   const versionKey = computed(() => {
     const r = repoRef.value
     if (!r || !o.data()) return ''
-    return `${o.client().cacheNamespace}:${r.host}/${r.owner}/${r.repo}@${ref() ?? ''}`
+    return `${o.client().cacheNamespace}:${targetKey(o.shown.value!)}@${ref() ?? ''}`
   })
 
+  // The tab owns the frozen target, not the drawer component that is destroyed when closed.
+  let frozenVersion: { key: string; promise: Promise<{ ref: string; sha: string }> } | undefined
+  watch(
+    () => o.pinned?.(),
+    (pinned) => {
+      if (!pinned) frozenVersion = undefined
+    }
+  )
   const resolveVersion = async () => {
     const r = repoRef.value
     if (!r) throw new Error('Nothing is shown.')
-    const client = o.client()
-    const at = ref() ?? (await defaultBranch(client, r))
-    return { ref: at, sha: await commitSha(client, r, at) }
+    const client = o.client(),
+      key = versionKey.value,
+      pinned = o.pinned?.() ?? false
+    client.assertCurrent?.()
+    if (pinned && frozenVersion?.key === key) return frozenVersion.promise
+    const read = (async () => {
+      const at = ref() ?? (await defaultBranch(client, r))
+      const sha = await commitSha(client, r, at)
+      client.assertCurrent?.()
+      return { ref: pinned ? sha : at, sha }
+    })()
+    if (pinned) {
+      frozenVersion = { key, promise: read }
+      void read.catch(() => {
+        if (frozenVersion?.promise === read) frozenVersion = undefined
+      })
+    }
+    return read
   }
 
   /** The file or folder on screen, to mark in the tree. */
