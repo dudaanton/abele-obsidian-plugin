@@ -7,7 +7,11 @@ import { setScriptConnection } from '../helpers/scriptConnection'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { TRUST_KEY, noteLocalScriptWrite } from '@/scripting/ScriptTrust'
-import { preserveLocalScriptVersions } from '@/scripting/trust/localScriptUpgrade'
+import {
+  preserveLocalScriptVersions,
+  LOCAL_SCRIPT_UPGRADE_KEY,
+} from '@/scripting/trust/localScriptUpgrade'
+import { noteManagedLocalScriptWrite } from '@/scripting/trust/localScriptWrite'
 import {
   activateScriptProvenance,
   SCRIPT_TRUST_KEY,
@@ -16,6 +20,7 @@ import {
 import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
 import { CONNECTION_KEY, emptyConnection } from '@/sync/connection'
 import { SCOPED_CONNECTION_KEY } from '@/sync/scoped/scopedJoin'
+import { SCRIPT_CONTEXT_HOLD_FILE } from '@/scripting/trust/scriptContextHold'
 
 const path = 'Scripts/local.js'
 const source = '// @name Local sample\nreturn "local result"'
@@ -87,6 +92,55 @@ describe('device-local script upgrade continuity', () => {
     await preserveLocalScriptVersions(app)
     await expect(scriptForExecution(app, path)).rejects.toThrow(/approval/)
     await expect(scriptForExecution(app, path, async () => true)).resolves.toMatchObject({ path })
+  })
+  it.each(['create', 'edit'] as const)(
+    'keeps an explicit local %s made before first connect in the same session',
+    async (operation) => {
+      await preserveLocalScriptVersions(app)
+      const target = operation === 'create' ? 'Scripts/new-before-connect.js' : path
+      const authored = '// @name Authored sample\nreturn "authored locally"'
+      await noteLocalScriptWrite(target, authored)
+      if (operation === 'create') await app.vault.create(target, authored)
+      else await app.vault.adapter.write(target, authored)
+      // No plugin restart or second whole-folder snapshot before connecting.
+      await connect()
+      const trust = await scriptTrustFor(app, factory)
+      await trust!.provenance.record(target, 'sample-authored-file')
+      trust!.store.close()
+      const confirm = vi.fn(async () => true)
+      await expect(scriptForExecution(app, target, confirm)).resolves.toMatchObject({
+        path: target,
+      })
+      expect(confirm).not.toHaveBeenCalled()
+    }
+  )
+  it('does not treat native incoming bytes before first connect as explicit authoring', async () => {
+    await preserveLocalScriptVersions(app)
+    await app.vault.adapter.write(path, source + '\n// incoming edit')
+    const incoming = 'Scripts/incoming-before-connect.js'
+    await app.vault.create(incoming, '// @name Incoming sample\nreturn "received"')
+    await connect()
+    const trust = await scriptTrustFor(app, factory)
+    await trust!.provenance.record(incoming, 'sample-incoming-file')
+    trust!.store.close()
+    await expect(scriptForExecution(app, path)).rejects.toThrow(/approval/)
+    await expect(scriptForExecution(app, incoming)).rejects.toThrow(/approval/)
+  })
+  it('does not save an authoring approval from an unconnected scoped context', async () => {
+    app.saveLocalStorage(SCOPED_CONNECTION_KEY, { grantId: 'sample-grant' })
+    await expect(noteManagedLocalScriptWrite(app, path, source)).rejects.toThrow(/Scoped/)
+    expect(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)).toBeNull()
+  })
+  it('does not save a local authoring decision if a scoped context enters during the check', async () => {
+    const exists = app.vault.adapter.exists.bind(app.vault.adapter)
+    vi.spyOn(app.vault.adapter, 'exists').mockImplementation(async (target) => {
+      const present = await exists(target)
+      if (target === SCRIPT_CONTEXT_HOLD_FILE)
+        app.saveLocalStorage(SCOPED_CONNECTION_KEY, { grantId: 'sample-grant' })
+      return present
+    })
+    await expect(noteManagedLocalScriptWrite(app, path, source)).rejects.toThrow(/Scoped/)
+    expect(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)).toBeNull()
   })
   it('records genuinely local new scripts before their sync receipt, not native arrival events', async () => {
     await preserveLocalScriptVersions(app)

@@ -1152,8 +1152,11 @@ versions captured before the first managed sync, versions explicitly authored he
 unmanaged versions allowed offline by the retained 1.x local policy after Disconnect. An
 unmanaged fallback requires a healthy former personal store, a fully disconnected personal
 context, and absence of both source and retirement evidence in every binding. It neither
-erases managed facts nor infers trust from a lost store. Old explicit local SHA approvals can
-also authorize the same bytes against an existing personal receipt without another review. It is
+erases managed facts nor infers trust from a lost store. Explicit authoring updates these hashes
+even before a first sync connection, so a create/edit in the same plugin session survives
+connecting without a folder resnapshot. Native arrival events do not update them, and a changed
+or protected authoring context records no transferable decision. Old explicit local SHA approvals
+can also authorize the same bytes against an existing personal receipt without another review. It is
 never a synced setting or a file. Provenance stores keep the corresponding `script-pre-sync:`
 SHA records so those exact local versions can be approved when a personal ledger identity
 arrives or changes on reconnect. Unknown received bytes acquire no approval. Offline personal
