@@ -1,4 +1,4 @@
-import { descendantColumns } from './operations'
+import { columnSource, quoteSourceRange, type QuoteSourceRange } from './source'
 
 export const COLUMN_INTERACTIVE =
   'a,input,button,select,textarea,pre,table,img,svg,.math,.footnote-ref,.internal-embed,[role="button"]'
@@ -9,7 +9,7 @@ export function columnMenuTarget(target: Element): HTMLElement | null {
   return parent && !parent.closest('.internal-embed') ? parent : null
 }
 
-/** Native widget positions identify the outer quote; the DOM nesting path identifies its child. */
+/** Find the outer native widget. The descriptive DOM path is not a source identity. */
 export function columnPath(element: HTMLElement): { root: HTMLElement; path: number[] } {
   let root = element
   const path: number[] = []
@@ -26,6 +26,57 @@ export function columnPath(element: HTMLElement): { root: HTMLElement; path: num
   }
   return { root, path }
 }
+const QUOTE_ELEMENT = '.callout,blockquote,.abele-columns,.abele-column'
+const sourceRanges = new WeakMap<HTMLElement, { text: string; from: number; to: number }>()
+
+/** Bind native quote nodes to the Markdown quote tree's original line ranges, not admitted frames. */
+function bindRanges(text: string, rootFrom: number, root: HTMLElement): boolean {
+  const source = quoteSourceRange(text, rootFrom)
+  if (!source) return false
+  const previous = sourceRanges.get(root)
+  if (previous && (previous.text !== text || previous.from !== rootFrom)) return false
+  const pending: Array<{ element: HTMLElement; range: QuoteSourceRange }> = []
+  const bind = (element: HTMLElement, range: QuoteSourceRange): boolean => {
+    const type =
+      element.dataset.callout ??
+      (element.classList.contains('abele-columns')
+        ? 'abele-columns'
+        : element.classList.contains('abele-column')
+          ? 'abele-column'
+          : null)
+    if (
+      type !== range.callout ||
+      (element.hasAttribute('data-callout-metadata') &&
+        element.dataset.calloutMetadata !== range.metadata)
+    )
+      return false
+    const children = Array.from(element.querySelectorAll<HTMLElement>(QUOTE_ELEMENT)).filter(
+      (child) =>
+        !child.closest('.internal-embed') && child.parentElement?.closest(QUOTE_ELEMENT) === element
+    )
+    if (
+      children.length !== range.children.length ||
+      children.some((child, index) => !bind(child, range.children[index]))
+    )
+      return false
+    pending.push({ element, range })
+    return true
+  }
+  if (!bind(root, source)) return false
+  for (const { element, range } of pending) {
+    sourceRanges.set(element, { text, from: range.from, to: range.to })
+    element.dataset.abeleFrameFrom = String(range.from)
+    element.dataset.abeleFrameTo = String(range.to)
+  }
+  return true
+}
+
 export function renderedColumns(text: string, rootFrom: number, element: HTMLElement) {
-  return descendantColumns(text, rootFrom, columnPath(element).path)
+  const root = columnPath(element).root
+  if (!bindRanges(text, rootFrom, root)) return null
+  const range = sourceRanges.get(element)
+  if (!range || range.text !== text) return null
+  const frame = columnSource(text, range.from)
+  // A rejected source range stays rejected; never substitute a later valid sibling.
+  return frame && frame.from === range.from ? frame : null
 }

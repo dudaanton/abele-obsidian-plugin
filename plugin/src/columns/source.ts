@@ -75,6 +75,55 @@ const markdown = parser.configure([...GFM, nativeInline])
 const quote = (line: string) => /^(\s*(?:>\s?)+)(.*)$/.exec(line)
 const depthOf = (prefix: string) => [...prefix].filter((c) => c === '>').length
 
+export interface QuoteSourceRange {
+  from: number
+  to: number
+  callout: string | null
+  metadata: string
+  children: QuoteSourceRange[]
+}
+
+/** Native quote-tree provenance, independent of whether a column frame admits mutation. */
+export function quoteSourceRange(text: string, from: number): QuoteSourceRange | null {
+  const tree = markdown.parse(text)
+  const build = (node: SyntaxNode): QuoteSourceRange => {
+    const start = text.lastIndexOf('\n', node.from - 1) + 1
+    const line = text.slice(
+      start,
+      text.indexOf('\n', start) < 0 ? text.length : text.indexOf('\n', start)
+    )
+    const header = quote(line)?.[2] ?? ''
+    const marker = /^\[!([^|\]]+)(?:\|([^\]]*))?\]/.exec(header)
+    const children: QuoteSourceRange[] = []
+    const descend = (parent: SyntaxNode) => {
+      for (let child = parent.firstChild; child; child = child.nextSibling) {
+        if (child.name === 'Blockquote') children.push(build(child))
+        else if (!['FencedCode', 'CodeBlock', 'HTMLBlock'].includes(child.name)) descend(child)
+      }
+    }
+    descend(node)
+    return {
+      from: start,
+      to: node.to,
+      callout: marker?.[1].toLowerCase() ?? null,
+      metadata: marker?.[2] ?? '',
+      children,
+    }
+  }
+  let found: QuoteSourceRange | null = null
+  const visit = (node: SyntaxNode) => {
+    if (found || node.to < from || node.from > from + text.slice(from).split('\n')[0].length) return
+    if (node.name === 'Blockquote' && text.lastIndexOf('\n', node.from - 1) + 1 === from) {
+      found = build(node)
+      return
+    }
+    if (['FencedCode', 'CodeBlock', 'HTMLBlock'].includes(node.name)) return
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child)
+  }
+  visit(tree.topNode)
+  return found
+}
+
 /** Parse the quote frame at a known host source position, never search for rendered text. */
 export function columnSource(text: string, from: number): ColumnSource | null {
   const lines = text.split('\n')

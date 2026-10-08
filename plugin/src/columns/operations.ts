@@ -28,33 +28,6 @@ export function findColumns(text: string, position: number): ColumnSource | null
   )
 }
 
-/** Resolve a rendered quote path without equating identical text or metadata. */
-export function descendantColumns(
-  text: string,
-  rootFrom: number,
-  path: number[]
-): ColumnSource | null {
-  const frames = columnFrames(text)
-  let frame = frames.find((candidate) => candidate.from === rootFrom)
-  for (const index of path) {
-    if (!frame) return null
-    const parent = frame
-    const children = frames.filter(
-      (candidate) =>
-        candidate.from > parent.from &&
-        candidate.to <= parent.to &&
-        !frames.some(
-          (between) =>
-            between.from > parent.from &&
-            between.from < candidate.from &&
-            between.to >= candidate.to
-        )
-    )
-    frame = children[index]
-  }
-  return frame ?? null
-}
-
 function quoted(body: string, prefix: string): string {
   return body
     .split('\n')
