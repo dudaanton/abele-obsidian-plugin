@@ -1,4 +1,4 @@
-import { columnSource, type ColumnSource } from './source'
+import { columnSource, quoteSourceRange, type ColumnSource } from './source'
 import { columnWeights } from './core'
 
 export type ColumnTemplate = 'two' | 'three' | 'aside'
@@ -20,12 +20,38 @@ export function columnFrames(text: string): ColumnSource[] {
   return frames
 }
 
-export function findColumns(text: string, position: number): ColumnSource | null {
-  return (
-    columnFrames(text)
-      .filter((frame) => position >= frame.from && position <= frame.to)
-      .at(-1) ?? null
+/** One admission gate for cursor commands, rendered controls and mutation revalidation. */
+export function resolveColumnTarget(
+  text: string,
+  position: number,
+  expected?: { from: number; to: number }
+): ColumnSource | null {
+  let from = 0,
+    innermost: ReturnType<typeof quoteSourceRange> = null
+  for (const line of text.split('\n')) {
+    if (/^\s*(?:>\s*)+\[!abele-columns(?:\||\])/.test(line)) {
+      const range = quoteSourceRange(text, from)
+      if (
+        range &&
+        range.callout === 'abele-columns' &&
+        position >= range.from &&
+        position <= range.to
+      )
+        innermost = range
+    }
+    from += line.length + 1
+  }
+  if (
+    !innermost ||
+    (expected && (innermost.from !== expected.from || innermost.to !== expected.to))
   )
+    return null
+  const frame = columnSource(text, innermost.from)
+  return frame && frame.from === innermost.from && frame.to === innermost.to ? frame : null
+}
+
+export function findColumns(text: string, position: number): ColumnSource | null {
+  return resolveColumnTarget(text, position)
 }
 
 function quoted(body: string, prefix: string): string {
@@ -60,7 +86,7 @@ export function createColumns(selection: string, kind: ColumnTemplate): string {
 }
 
 function checkedFrame(text: string, record: ColumnSource): ColumnSource {
-  const current = columnSource(text, record.from)
+  const current = resolveColumnTarget(text, record.from, record)
   if (
     !current ||
     current.to !== record.to ||

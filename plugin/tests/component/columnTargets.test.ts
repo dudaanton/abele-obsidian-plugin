@@ -29,6 +29,44 @@ describe('column DOM targets', () => {
     )
   })
 
+  it('refuses a rendered range with lazy continuation beyond the strict frame end', () => {
+    const text =
+      '> [!abele-columns]\n> > [!abele-column]\n> > Left\n>\n> > [!abele-column]\n> > Right\ncontinued'
+    const parent = document.createElement('div')
+    parent.className = 'abele-columns'
+    parent.innerHTML =
+      '<div class="abele-column"><p>Left</p></div><div class="abele-column"><p>Right\ncontinued</p></div>'
+    expect(renderedColumns(text, 0, parent)).toBeNull()
+  })
+  it('never reassigns established source ranges after existing DOM nodes are reordered', () => {
+    const text = createColumns(
+      createColumns('First', 'two') + '\n\n' + createColumns('Second', 'two'),
+      'two'
+    )
+    const outer = document.createElement('div')
+    outer.className = 'abele-columns'
+    outer.innerHTML =
+      '<div class="abele-column"><div class="abele-columns"><div class="abele-column"><p>First</p></div><div class="abele-column"></div></div><div class="abele-columns"><div class="abele-column"><p>Second</p></div><div class="abele-column"></div></div></div><div class="abele-column"></div>'
+    const [first, second] = outer.querySelectorAll<HTMLElement>('.abele-columns')
+    expect(renderedColumns(text, 0, first)?.from).toBe(text.indexOf('> > > [!abele-columns'))
+    expect(renderedColumns(text, 0, second)?.from).toBe(text.lastIndexOf('> > > [!abele-columns'))
+    const before = [
+      first.dataset.abeleFrameFrom,
+      first.dataset.abeleFrameTo,
+      second.dataset.abeleFrameFrom,
+      second.dataset.abeleFrameTo,
+    ]
+    first.before(second)
+    expect(renderedColumns(text, 0, second)).toBeNull()
+    expect(renderedColumns(text, 0, first)).toBeNull()
+    expect([
+      first.dataset.abeleFrameFrom,
+      first.dataset.abeleFrameTo,
+      second.dataset.abeleFrameFrom,
+      second.dataset.abeleFrameTo,
+    ]).toEqual(before)
+  })
+
   it('resolves the specific nested toolbar rather than its outer native widget position', () => {
     const parent = document.createElement('div')
     parent.className = 'abele-columns'

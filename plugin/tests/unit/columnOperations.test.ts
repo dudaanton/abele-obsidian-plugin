@@ -110,6 +110,13 @@ describe('column frame operations', () => {
     }
   )
 
+  it('never falls outward from a rejected nested frame under the cursor', () => {
+    const inner = createColumns('Inner', 'two').replace('\n', '\n> <!-- annotation -->\n')
+    const text = createColumns(inner, 'two')
+    expect(findColumns(text, text.indexOf('Inner'))).toBeNull()
+    expect(findColumns(text, 0)?.from).toBe(0)
+  })
+
   it('revalidates the current source instead of trusting a previously parsed frame', () => {
     const text = createColumns('Body', 'two'),
       record = findColumns(text, 0)!

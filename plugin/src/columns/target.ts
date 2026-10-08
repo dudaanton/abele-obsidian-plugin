@@ -1,4 +1,5 @@
-import { columnSource, quoteSourceRange, type QuoteSourceRange } from './source'
+import { quoteSourceRange, type QuoteSourceRange } from './source'
+import { resolveColumnTarget } from './operations'
 
 export const COLUMN_INTERACTIVE =
   'a,input,button,select,textarea,pre,table,img,svg,.math,.footnote-ref,.internal-embed,[role="button"]'
@@ -40,7 +41,10 @@ function bindRanges(text: string, rootFrom: number, root: HTMLElement): boolean 
     const established = sourceRanges.get(element)
     if (
       established &&
-      (element.dataset.abeleFrameFrom !== String(established.from) ||
+      (established.text !== text ||
+        established.from !== range.from ||
+        established.to !== range.to ||
+        element.dataset.abeleFrameFrom !== String(established.from) ||
         element.dataset.abeleFrameTo !== String(established.to))
     )
       return false
@@ -71,6 +75,7 @@ function bindRanges(text: string, rootFrom: number, root: HTMLElement): boolean 
   }
   if (!bind(root, source)) return false
   for (const { element, range } of pending) {
+    if (sourceRanges.has(element)) continue
     sourceRanges.set(element, { text, from: range.from, to: range.to })
     element.dataset.abeleFrameFrom = String(range.from)
     element.dataset.abeleFrameTo = String(range.to)
@@ -83,7 +88,6 @@ export function renderedColumns(text: string, rootFrom: number, element: HTMLEle
   if (!bindRanges(text, rootFrom, root)) return null
   const range = sourceRanges.get(element)
   if (!range || range.text !== text) return null
-  const frame = columnSource(text, range.from)
-  // A rejected source range stays rejected; never substitute a later valid sibling.
-  return frame && frame.from === range.from ? frame : null
+  // The same gate handles the cursor path: both ends must match and rejection never falls outward.
+  return resolveColumnTarget(text, range.from, range)
 }
