@@ -29,6 +29,7 @@ export function verifySyncInputs(root = plugin) {
     ) {
       throw new Error(`Incomplete sync package inventory: ${name}`)
     }
+    const version = `0.0.0-${provenance.commit.slice(0, 12)}`
     const reference = `file:vendor/sync/${input.archive}`
     if (manifest.dependencies[name] !== reference)
       throw new Error(`Unpinned sync dependency: ${name}`)
@@ -44,6 +45,15 @@ export function verifySyncInputs(root = plugin) {
       if (sha(join(installed, path)) !== expected)
         throw new Error(`Installed sync input mismatch: ${name}/${path}`)
     }
+    if (input.archive !== `abele-${name.slice('@abele/'.length)}-${version}.tgz`)
+      throw new Error(`Sync archive revision mismatch: ${name}`)
+    const payload = read(join(installed, 'package.json'))
+    if (
+      payload.name !== name ||
+      payload.version !== version ||
+      (name === '@abele/sync-core' && payload.dependencies?.['@abele/sync-protocol'] !== version)
+    )
+      throw new Error(`Installed sync revision mismatch: ${name}`)
   }
   return provenance
 }
