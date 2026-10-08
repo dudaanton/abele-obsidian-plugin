@@ -331,8 +331,8 @@ describe('timeline scroll ownership', () => {
     }
   })
 
-  it.each([-0.5, 0.5])(
-    'keeps holding through a %s pixel scroll rounding adjustment before late title layout',
+  it.each([-0.5, 0, 0.5])(
+    'keeps holding through repeated owned scroll events with %s pixel rounding before late title layout',
     async (rounding) => {
       const resize = lateResize()
       const p = await pane(50)
@@ -342,6 +342,8 @@ describe('timeline scroll ownership', () => {
       // An editor can quantize our alignment before delivering its scroll event.
       // This is within the deferred align guard's tolerance, not new reader input.
       p.owner.scrollTop += rounding
+      p.owner.dispatchEvent(new Event('scroll'))
+      // CodeMirror and the browser can both report the same restored viewport.
       p.owner.dispatchEvent(new Event('scroll'))
       p.shift(48)
       resize()

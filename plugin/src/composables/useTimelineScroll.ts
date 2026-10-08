@@ -364,8 +364,10 @@ export function useTimelineScroll(
         // half a pixel before this event, while late titles still need the same hold.
         const own =
           alignedScroll?.owner === owner && Math.abs(owner.scrollTop - alignedScroll.top) <= 0.5
-        alignedScroll = null
+        // More than one event can report the same editor-restored position. Retain
+        // ownership until the position changes or fresh reader input releases it.
         if (!own) {
+          alignedScroll = null
           // WebKit can restore its pre-collapse scroll asynchronously after touchend.
           // An explicit drop anchor wins until new reader input releases the short hold.
           // During dragging, real scrolling (including edge scrolling) still wins.
