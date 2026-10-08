@@ -145,7 +145,11 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         await until(() => !root())
         const sourceState = () => [...document.querySelectorAll('.abele-ai-chat')].map(el => ({
           composing: el.classList.contains('abele-ai-chat--composing'),
-          display: el.querySelector('.abele-ai-chat__messages') && getComputedStyle(el.querySelector('.abele-ai-chat__messages')).display,
+          messages: [...el.querySelectorAll('.abele-ai-chat__messages')].map(box => ({
+            display: getComputedStyle(box).display, style: box.getAttribute('style'),
+            symbols: Object.getOwnPropertySymbols(box).map(key => [String(key), String(box[key])]),
+            source: !!box.querySelector('[data-message-id="sample-upload"]'),
+          })),
           source: !!el.querySelector('[data-message-id="sample-upload"]'),
         }))
         try {
@@ -153,6 +157,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
             getComputedStyle(document.querySelector('.abele-ai-chat__messages')).display !== 'none')
         } catch { /* Preserve the state below when the source never becomes visible. */ }
         observations.sourceState = sourceState()
+        observations.sourceShot = await capture('source')
         observations.source = !!document.querySelector('[data-message-id="sample-upload"]')
         observations.sourceVisible = !document.querySelector('.abele-ai-chat--composing') &&
           getComputedStyle(document.querySelector('.abele-ai-chat__messages')).display !== 'none'

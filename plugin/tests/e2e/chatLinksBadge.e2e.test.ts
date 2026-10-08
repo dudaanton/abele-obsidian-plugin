@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 

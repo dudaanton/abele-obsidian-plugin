@@ -11,11 +11,13 @@
  * note and one chat of its own and removes both; the fixture vault is otherwise left as it was.
  * Requires Obsidian running on a vault with the development build — see docs/Testing.md.
  */
+import { randomUUID } from 'node:crypto'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong, activeVaultName } from './helpers/obsidianCli'
 
-const NOTE = 'Attach probe note'
-const CHAT = 'Attach probe chat'
+const RUN = randomUUID()
+const NOTE = `Attach probe note ${RUN}`
+const CHAT = `Attach probe chat ${RUN}`
 
 interface Step {
   /** Titles of the chat cards under the note. */
@@ -153,7 +155,7 @@ const script = `(async () => {
 
     // ── both closed and opened again ──
     const session = svc.getSessionByFile(chatPath)
-    if (session) svc.closeTab(session.id)
+    if (session) await svc.closeTab(session.id)
     await wait(300)
     await svc.openChatFile(chat)
     await wait(300)
@@ -196,10 +198,10 @@ const script = `(async () => {
   } catch (e) {
     report.error = String((e && e.message) || e)
   } finally {
-    await closeArtifacts()
+    try { await closeArtifacts() } catch (e) { report.error = report.error || String(e.message || e) }
     if (document.querySelector('.menu, .prompt')) escape()
     const session = svc.getSessionByFile(chatPath)
-    if (session) svc.closeTab(session.id)
+    if (session) await svc.closeTab(session.id)
     if (leaf) leaf.detach()
     for (const path of created) {
       const f = app.vault.getAbstractFileByPath(path)
