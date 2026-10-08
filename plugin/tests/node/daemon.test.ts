@@ -8,6 +8,7 @@ import {
   chmodSync,
   writeFileSync,
   readFileSync,
+  realpathSync,
 } from 'node:fs'
 import { resolve } from 'node:path'
 import { IDBFactory } from 'fake-indexeddb'
@@ -15,7 +16,7 @@ import { NodeClient } from '@abele/node-client'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import { NodeWorkspaceModel } from '@/node/NodeWorkspaceModel'
-import { NodeFilesModel } from '@/node/NodeFilesModel'
+import { NodeDocumentSource, NodeFilesModel } from '@/node/NodeFilesModel'
 
 const cli = process.env.ABELE_NODE_CLI
 if (!cli)
@@ -168,7 +169,9 @@ it('persists offline outbox, replay/cursor, approval and renderer history across
 }, 20000)
 
 it('provisions two projects, renders gated fake CLI edits, reloads approvals, queues and resumes after daemon restart', async () => {
-  const dir = mkdtempSync('/tmp/abele-plugin-node-')
+  // The daemon's recovery directory checks require a canonical state path, including on
+  // systems where the temporary directory is a symlink.
+  const dir = realpathSync(mkdtempSync('/tmp/abele-plugin-node-'))
   dirs.push(dir)
   copyFileSync(resolve('tests/fixtures/nodeClaude.mjs'), resolve(dir, 'fixture-claude.mjs'))
   chmodSync(resolve(dir, 'fixture-claude.mjs'), 0o700)
@@ -347,6 +350,18 @@ it('provisions two projects, renders gated fake CLI edits, reloads approvals, qu
   expect(files.entries.value.some((e) => e.name === 'sample.txt')).toBe(true)
   await files.openFile('sample.txt')
   expect(files.document.value?.text).toBe('after\n')
+  // A second successful save must reuse the recovery directory after an external conflict.
+  const source = new NodeDocumentSource(client, workspace.workspace_id)
+  const loaded = await source.read('sample.txt')
+  await source.edit('sample.txt', loaded, 'first draft\n')
+  expect((await source.save('sample.txt'))?.status).toBe('saved')
+  expect(readFileSync(resolve(workspace.path, 'sample.txt'), 'utf8')).toBe('first draft\n')
+  await source.edit('sample.txt', await source.read('sample.txt'), 'retained draft\n')
+  writeFileSync(resolve(workspace.path, 'sample.txt'), 'external change\n')
+  expect((await source.save('sample.txt'))?.status).toBe('conflict')
+  await source.rebase('sample.txt', await source.read('sample.txt'))
+  expect(await source.save('sample.txt')).toMatchObject({ status: 'saved', error: undefined })
+  expect(readFileSync(resolve(workspace.path, 'sample.txt'), 'utf8')).toBe('retained draft\n')
   await files.loadDiff('head')
   const snapshot = files.snapshot.value!
   await files.addComment(

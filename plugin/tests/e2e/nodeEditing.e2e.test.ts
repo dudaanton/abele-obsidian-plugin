@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { evalAsync } from './helpers/githubLive'
 import { reloadPlugin, evalRaw } from './helpers/obsidianCli'
@@ -15,7 +15,9 @@ const close=async()=>{const button=[...document.querySelectorAll('.modal button'
 it('edits from the node code view, restores local drafts, and checks a lost save without overwriting an external edit', async () => {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
-  const dir = mkdtempSync('/tmp/abele-edit-'),
+  // The daemon reuses recovery directories only under a canonical state path; the
+  // system temporary directory can itself be a symlink.
+  const dir = realpathSync(mkdtempSync('/tmp/abele-edit-')),
     repo = resolve(dir, 'repo'),
     state = resolve(dir, 'state')
   mkdirSync(repo)
