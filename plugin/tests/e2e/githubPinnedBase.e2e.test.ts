@@ -125,6 +125,55 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
     expect(result.shot).toMatch(/\.png$/)
   }, 120000)
 
+  it('keeps replacement entries distinct in the drawer and opens removed and renamed paths at the same target', () => {
+    const result = evalAsync<{
+      error?: string
+      all?: number
+      changed?: number
+      target?: string
+      renamed?: string
+      over?: string[]
+      shot?: string
+    }>(
+      `(async () => {
+      ${PRELUDE}
+      try {
+        ${openBasePicker(gh.web)}
+        prompt.querySelector('.suggestion-item').click()
+        await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(gh.web)} }, active: true })
+        if (!(await until(() => root.querySelector('.abele-github-home'), 20000))) throw Error('No project page')
+        if (!root.querySelector('.abele-github-tree')) root.querySelector('.abele-github-header__actions .lucide-folder-tree').closest('.abele-obsidian-icon').click()
+        const replacements = () => root.querySelectorAll('.abele-github-tree [data-path="sample-replacement"]')
+        if (!(await until(() => replacements().length === 2, 20000))) throw Error('Replacement entries were lost')
+        const report = { all: replacements().length }
+        const panel = root.querySelector('.abele-github-tree')
+        report.over = [...panel.querySelectorAll('.tree-item-self')].filter(el => el.getBoundingClientRect().right > panel.getBoundingClientRect().right + 1).map(el => el.dataset.path)
+        const shot = ${JSON.stringify(`${SHOTS}/github-pinned-replacements.png`)}
+        if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
+        else { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(shot, image.toPNG()); report.shot = shot }
+        ;[...panel.querySelectorAll('.abele-tabs__tab')].find(t => t.textContent.trim() === 'Changed files').click()
+        await until(() => replacements().length === 2)
+        report.changed = replacements().length
+        panel.querySelector('[data-path="sample-directory"]:not([aria-expanded])').click()
+        if (!(await until(() => root.querySelector('.abele-github-pinned[data-path="sample-directory"]') && leaf.view.model.screen.comparison, 20000))) throw Error('The removed file was interpreted as a target folder')
+        report.target = leaf.view.model.screen.comparison.targetSha
+        await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(`${gh.web}/blob/${HEAD_SHA}/renamed-old.ts`)} }, active: true })
+        if (!(await until(() => root.querySelector('.abele-github-pinned[data-path="renamed-new.ts"]'), 20000))) throw Error('The old rename path did not open')
+        report.renamed = root.querySelector('.abele-github-pinned .abele-github-file__head').textContent
+        return report
+      } catch (error) { return { error: String(error.message || error) } }
+    })()`,
+      90000
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.all).toBe(2)
+    expect(result.changed).toBe(2)
+    expect(result.target).toBe(HEAD_SHA)
+    expect(result.renamed).toContain('renamed-old.ts → renamed-new.ts')
+    expect(result.over).toEqual([])
+    expect(result.shot).toMatch(/\.png$/)
+  }, 120000)
+
   it('computes a larger full-file diff in the bundled worker and preserves original/unpin exits', () => {
     const result = evalAsync<{
       error?: string

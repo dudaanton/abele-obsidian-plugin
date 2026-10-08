@@ -51,6 +51,17 @@ const fixtureFilesAt = (ref: string, web: string) => {
   if (files && mode === 'pinned')
     return {
       ...files,
+      ...(files === HEAD_FILES
+        ? {
+            'sample-replacement': 'new\n',
+            'sample-directory/new.ts': 'new\n',
+            'renamed-new.ts': 'renamed original\n',
+          }
+        : {
+            'sample-replacement/old.ts': 'old\n',
+            'sample-directory': 'old\n',
+            'renamed-old.ts': 'renamed original\n',
+          }),
       'src/worker.ts':
         Array.from(
           { length: 3000 },

@@ -69,7 +69,8 @@ Different server schemes and ports, and different repositories, have independent
 While a base is pinned, file links show a unified, read-only diff from that exact base to the
 commit the link names—not GitHub's merge-base comparison. A mutable target branch is resolved
 once when opened; both the text and project tree use that commit. Each tab keeps its own target,
-even when another tab opens a different commit or you change the base. Linked lines always
+even when another tab opens a different commit, you change the base, or you close and reopen
+the project drawer. Linked lines always
 refer to the target side, including unchanged context far from a change. Identical files remain
 readable and say **No changes in the text of this file**.
 
@@ -78,7 +79,10 @@ The file tree offers **All files** (target files with change markers and deleted
 counts and open the same comparison-aware file view. Deleted entries show the base-side text
 with an empty target; opening one does not change the comparison's target commit. Renames are
 shown only with reliable endpoint metadata or a unique identical blob match. Otherwise the
-old and new paths remain separate removed/added entries.
+old and new paths remain separate removed/added entries. A reliably paired rename also opens
+when a link uses the old name. When a file becomes a folder or a folder becomes a file, both
+endpoint entries remain in the tree, distinguished by their icons and statuses; removed
+folders expand to their deleted files without following a target file as if it were a folder.
 
 **Change base** replaces the frozen base for this repository's tabs. **Unpin** restores the
 existing file views everywhere for that repository. **Original file** escapes the comparison
