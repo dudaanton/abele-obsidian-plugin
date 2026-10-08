@@ -801,6 +801,17 @@ export class CommentService implements CommentInfoSource {
         return null
       }
 
+      // Establish the marker/declared location before assigning an owner. Tab restoration
+      // may arrive before background discovery has populated any locations.
+      const metadata = parseChatMetadata(await app.vault.read(file))
+      if (
+        (this.generations.get(id) ?? 0) !== generation ||
+        app.vault.getAbstractFileByPath(file.path) !== file
+      ) {
+        session.destroy()
+        return null
+      }
+      if (metadata) this.rememberFile(file, metadata)
       const identity = session.commentId ?? id
       const located = this.locations.get(identity)
       if (located && located !== file.path && app.vault.getAbstractFileByPath(located))
@@ -1106,36 +1117,48 @@ export class CommentService implements CommentInfoSource {
    * whatever session was reading the file, so the next `touch` reads it again rather than one
    * that no longer matches what is on disk.
    */
-  handleFileDeleted(id: string): void {
-    id = this.canonicalId(id)
-    const session = this.sessions.get(id) ?? this.expanded.get(id) ?? null
-    const path = this.locations.get(id)
-    if (path) this.discussionPaths.delete(path)
-    this.locations.delete(id)
-    GlobalStore.getInstance().app.saveLocalStorage(
-      'abele-discussion-locations',
-      Object.fromEntries(this.locations)
+  handleFileDeleted(deleted: string): void {
+    this.ensureLocations()
+    // Older direct callers name a marker; vault notifications must carry the exact path.
+    const path = deleted.endsWith('.abchat') ? deleted : this.commentPath(deleted)
+    this.discussionPaths.delete(path)
+    const ids = new Set(
+      [...this.locations].filter(([, location]) => location === path).map(([id]) => id)
     )
-    for (const [alias, identity] of this.fileAliases)
-      if (identity === id) this.fileAliases.delete(alias)
-    const note = session?.anchor.value?.note ?? null
-
-    this.watchers.get(id)?.()
-    this.watchers.delete(id)
-    this.sessions.delete(id)
-    this.expanded.delete(id)
-    // Whatever was showing it is showing a session about to be destroyed; the tab is dropped
-    // rather than closed, since there is no longer a file to save it into.
-    if (this.shown.delete(id) && session) ChatService.getInstance().dropTab(session.id)
-    this.missing.add(id)
-    if (this.open.value === id) this.open.value = null
-
-    if (session) {
-      // Unload is synchronous, so this cannot be awaited — starting the write is the point.
-      void session.flush()
-      session.destroy()
+    for (const [id, session] of [...this.sessions, ...this.expanded]) {
+      if (session.currentChatFile.value?.path === path) ids.add(id)
     }
-    if (note) dispatchCommentsChanged(note)
+    for (const id of ids) {
+      const owner = this.sessions.get(id) ?? this.expanded.get(id) ?? null
+      // A colliding basename is never enough to destroy an owner of another file.
+      if (owner?.currentChatFile.value && owner.currentChatFile.value.path !== path) {
+        this.locations.set(id, owner.currentChatFile.value.path)
+        continue
+      }
+      this.locations.delete(id)
+      for (const [alias, identity] of this.fileAliases)
+        if (identity === id) this.fileAliases.delete(alias)
+      this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
+      const note = owner?.anchor.value?.note
+      this.watchers.get(id)?.()
+      this.watchers.delete(id)
+      this.sessions.delete(id)
+      this.expanded.delete(id)
+      if (owner) {
+        // Deletion is not a close/save: never write the deleted conversation back.
+        ChatService.getInstance().dropTab(owner.id)
+        owner.destroy()
+      }
+      this.shown.delete(id)
+      this.missing.add(id)
+      if (this.open.value === id) this.open.value = null
+      if (note) dispatchCommentsChanged(note)
+    }
+    if (ids.size)
+      GlobalStore.getInstance().app.saveLocalStorage(
+        'abele-discussion-locations',
+        Object.fromEntries(this.locations)
+      )
   }
 
   // ── Removing one ──────────────────────────────────────────────

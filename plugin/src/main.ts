@@ -1465,7 +1465,7 @@ export default class AbelePlugin extends Plugin {
         if (!(file instanceof TFile) || file.extension !== 'abchat') return
         const comments = CommentService.getInstance()
         if (!comments.isCommentFile(file)) return
-        comments.handleFileDeleted(file.basename)
+        comments.handleFileDeleted(file.path)
       })
     )
 

@@ -201,8 +201,12 @@ is preferred. Copied files receive a fresh identity in their owner when explicit
 their own location is written on the next ordinary save.
 Legacy migration also covers anchored discussions already expanded to chats.
 The discussion owner rebuilds identity-to-location mappings from metadata and follows renames;
-closed conversations reopen through that owner after restart. Exact-file handover prevents a copied
-discussion from stealing the original marker or writer. These identifiers travel with chat files,
+closed conversations reopen through that owner after restart. Exact-file handover establishes the marker/declared location before binding any session,
+including tab restoration before background discovery. A copied discussion cannot be adopted
+under the original identity just because no location scan has run. Vault delete notifications
+carry the full file path; only mappings, watchers and owners of that exact file are removed.
+Deleting a same-basename copy elsewhere neither closes nor stops its original, and deletion
+never flushes the deleted conversation back to disk. These identifiers travel with chat files,
 not as new settings or secrets.
 This is not multi-device arbitration for local tool approvals.
 
