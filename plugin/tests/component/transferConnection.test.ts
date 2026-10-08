@@ -412,7 +412,7 @@ describe('receiving the connection', () => {
   it('stores no key for the connection, and does not count its token as one', async () => {
     const screen = await received()
 
-    expect(screen.text()).toContain('No keys came with this transfer.')
+    expect(screen.text()).toContain('No keys to store for the selected items.')
   })
 
   describe('closed without Apply', () => {

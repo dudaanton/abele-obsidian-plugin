@@ -36,8 +36,6 @@
           @update:model-value="onPasted"
         />
 
-        <p v-if="error" class="abele-transfer-scan__error">{{ error }}</p>
-
         <div v-if="progress.total" class="abele-transfer-scan__progress">
           {{ progress.received }} / {{ progress.total }} codes read
           <span v-if="progress.missing.length" class="abele-transfer-scan__missing">
@@ -54,7 +52,6 @@
           This transfer carries a key, so it is locked. Type the code shown on the other device.
         </p>
         <Input :model-value="code" placeholder="8 characters" @update:model-value="code = $event" />
-        <p v-if="error" class="abele-transfer-scan__error">{{ error }}</p>
         <Button text="Unlock" accent tooltip="Open the transfer with this code" @click="unlock" />
       </template>
 
@@ -110,6 +107,8 @@
         </Setting>
       </template>
 
+      <p v-if="error" class="abele-transfer-scan__error">{{ error }}</p>
+
       <ConfirmModal
         v-if="switching"
         title="Switch this device to another vault?"
@@ -139,7 +138,6 @@ import { ScriptService } from '@/scripting/ScriptService'
 import { SyncService } from '@/sync/SyncService'
 import {
   CONNECTION_SECTION,
-  CONNECTION_TOKEN,
   connectionTitle,
   matchConnection,
   isOwnTransferred,
@@ -161,6 +159,7 @@ import {
 } from '@/transfer/entries'
 import { applyFiles, planFiles, readCurrent } from '@/transfer/files'
 import { storeReceivedKeys } from '@/transfer/receivedKeys'
+import { isReservedSecretId } from '@/secrets/SecretStore'
 import { readCodes, readableSize, closerLooks, type Rect } from '@/transfer/scan'
 import type { SectionId, TransferPayload } from '@/transfer/types'
 
@@ -393,15 +392,29 @@ const acceptedSummary = computed(() =>
   accepted.value.size === 1 ? '1 item to apply' : `${accepted.value.size} items to apply`
 )
 
-/** The connection's token is never stored as a key: it is the service's to file, or revoked. */
-const keysCount = computed(
-  () => Object.keys(payload.value?.secrets ?? {}).filter((name) => name !== CONNECTION_TOKEN).length
-)
+/** Count planned key writes, not everything the sender included. Use Apply's normalization
+ * and unique references; missing/empty values and reserved device credentials are not stored.
+ * The sync connection is handled separately by its service, never as an ordinary key write.
+ */
+const keysCount = computed(() => {
+  const opened = payload.value
+  if (!opened) return 0
+  const chosen = acceptedEntries.value.filter((entry) => entry.section !== CONNECTION_SECTION)
+  try {
+    const next = applyEntries(chosen, settings(), mode.value)
+    return arrivingSecretIds(chosen, next).filter(
+      (id) => opened.secrets[id] && !isReservedSecretId(id)
+    ).length
+  } catch {
+    // Apply validates before writing anything. Keep its rejection reviewable, not a render error.
+    return 0
+  }
+})
 
 const keysSummary = computed(() =>
   keysCount.value
-    ? `${keysCount.value === 1 ? 'One key' : `${keysCount.value} keys`} will be stored in this device's keychain.`
-    : 'No keys came with this transfer.'
+    ? `${keysCount.value === 1 ? 'One key' : `${keysCount.value} keys`} to store for the selected items.`
+    : 'No keys to store for the selected items.'
 )
 
 const madeAt = computed(() => {

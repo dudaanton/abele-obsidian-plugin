@@ -177,6 +177,7 @@ describe('receiving key references from settings, not sender metadata', () => {
       await waitFor(() => wrapper.text().includes('to apply'))
       const dropdown = wrapper.findComponent({ name: 'Dropdown' })
       await dropdown.vm.$emit('update:model-value', mode)
+      expect(wrapper.text()).toContain('2 keys to store for the selected items.')
       await clickButton(wrapper, 'Apply')
       expect(wrapper.emitted('applied')?.[0]?.[0]).toMatchObject({ items: 2, keysRefused: 0 })
       expect(config.github.connections.some((c) => c.id === 'sample-arriving-connection')).toBe(
@@ -254,12 +255,96 @@ describe('receiving key references from settings, not sender metadata', () => {
     const frames = toFrames(await encodePayload(payload), 'TEST')
     await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
     await waitFor(() => wrapper.text().includes('to apply'))
+    expect(wrapper.text()).toContain('One key to store for the selected items.')
+    const provider = wrapper.findAll('.abele-transfer-scan__entry')[0]
+    await provider.trigger('click')
+    expect(wrapper.text()).toContain('No keys to store for the selected items.')
+    await provider.trigger('click')
+    expect(wrapper.text()).toContain('One key to store for the selected items.')
     await clickButton(wrapper, 'Apply')
     expect(app.secretStorage.getSecret('sample-key')).toBe('invented-new-value')
     expect(app.secretStorage.getSecret('unrelated-key')).toBe('invented-existing-value')
     expect(app.secretStorage.getSecret('abele-store-key-sample')).toBe(
       'invented-existing-store-key'
     )
+  })
+})
+
+describe('the receiving review key count', () => {
+  it('counts a shared key once and excludes absent, empty and reserved values', async () => {
+    const payload: TransferPayload = {
+      v: 1,
+      at: '',
+      entries: [
+        'sample-shared-key',
+        'sample-shared-key',
+        'sample-absent-key',
+        'sample-empty-key',
+        'abele-sync-device-sample',
+      ].map((keyId, i) => ({
+        section: 'ai-providers',
+        id: `sample-provider-${i}`,
+        label: `Sample provider ${i}`,
+        data: { ...providerNamed(`sample-provider-${i}`, 'sample'), apiKeyId: keyId },
+      })),
+      secrets: {
+        'sample-shared-key': 'invented-shared-value',
+        'sample-empty-key': '',
+        'abele-sync-device-sample': 'invented-device-value',
+        'sample-unrelated-key': 'invented-unrelated-value',
+      },
+    }
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper
+      .findComponent(Input)
+      .vm.$emit('update:model-value', toFrames(await encodePayload(payload), 'TEST').join('\n'))
+    await waitFor(() => wrapper.text().includes('to apply'))
+    expect(wrapper.text()).toContain('One key to store for the selected items.')
+    await wrapper.findAll('.abele-transfer-scan__entry')[0].trigger('click')
+    expect(wrapper.text()).toContain('One key to store for the selected items.')
+    await wrapper.findAll('.abele-transfer-scan__entry')[1].trigger('click')
+    expect(wrapper.text()).toContain('No keys to store for the selected items.')
+    wrapper.unmount()
+  })
+
+  it('keeps a rejected credential binding reviewable without promising any key writes', async () => {
+    const payload: TransferPayload = {
+      v: 1,
+      at: '',
+      entries: [
+        {
+          section: 'github-connections',
+          id: 'sample-invalid',
+          label: 'Sample invalid connection',
+          data: {
+            id: 'sample-invalid',
+            name: 'Sample invalid connection',
+            server: '',
+            keyId: 'sample-bound-key',
+            owners: [],
+            isDefault: true,
+          },
+          secretIds: ['sample-other-key'],
+        },
+      ],
+      secrets: {
+        'sample-bound-key': 'invented-bound-value',
+        'sample-other-key': 'invented-other-value',
+      },
+    }
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper
+      .findComponent(Input)
+      .vm.$emit('update:model-value', toFrames(await encodePayload(payload), 'TEST').join('\n'))
+    await waitFor(() => wrapper.text().includes('to apply'))
+    expect(wrapper.text()).toContain('No keys to store for the selected items.')
+    await clickButton(wrapper, 'Apply')
+    expect(wrapper.text()).toContain('Invalid GitHub connection')
+    expect(wrapper.emitted('applied')).toBeUndefined()
+    expect(app.secretStorage.getSecret('sample-bound-key')).toBe('')
+    wrapper.unmount()
   })
 })
 
