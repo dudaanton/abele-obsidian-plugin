@@ -31,6 +31,34 @@ describe('external-file safety probes (test-only, not an eviction implementation
     expect(new TextDecoder().decode(await adapter.readBinary(backup))).toBe('sample base')
   })
 
+  it('detects a write to the retained copy after the move', async () => {
+    const {
+      vault: { adapter },
+    } = buildFakeVault([{ path, raw: 'sample base' }])
+    const result = await moveAndRetain(adapter, path, backup, undefined, async () => {
+      await adapter.writeBinary(backup, text('sample moved edit'))
+    })
+    expect(result).toEqual({ state: 'local-changed', retained: true, sourceOccupied: false })
+    expect(new TextDecoder().decode(await adapter.readBinary(backup))).toBe('sample moved edit')
+  })
+
+  it('preserves a write after the last backup hash without declaring freed space', async () => {
+    const {
+      vault: { adapter },
+    } = buildFakeVault([{ path, raw: 'sample base' }])
+    const exists = adapter.exists.bind(adapter)
+    adapter.exists = async (name) => {
+      if (name === path) await adapter.writeBinary(backup, text('sample late edit'))
+      return exists(name)
+    }
+    expect(await moveAndRetain(adapter, path, backup)).toEqual({
+      state: 'cleanup-pending',
+      retained: true,
+      sourceOccupied: false,
+    })
+    expect(new TextDecoder().decode(await adapter.readBinary(backup))).toBe('sample late edit')
+  })
+
   it('preserves a new original beside the retained copy', async () => {
     const {
       vault: { adapter },

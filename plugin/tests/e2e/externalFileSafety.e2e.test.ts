@@ -222,6 +222,10 @@ describe.skipIf(!available)('external-file filesystem guarantees on the live ada
       let occupiedRefused=false
       try { await adapter.rename(root+'/sample-editor-incoming.md',original) }
       catch { occupiedRefused=true }
+      let busyCopyRefused=false
+      try { await adapter.copy(root+'/sample-editor-incoming.md',original) }
+      catch { busyCopyRefused=true }
+      const bytesAfterBusyCopy=await read(original)
       await adapter.rename(original,moved)
       for(let i=0;i<30&&!app.vault.getAbstractFileByPath(moved);i++)await wait(100)
       await wait(300)
@@ -231,7 +235,7 @@ describe.skipIf(!available)('external-file filesystem guarantees on the live ada
         if(typeof leaf.view.save==='function')await leaf.view.save()
       }
       await wait(1500)
-      const report={openBefore,openAfter,occupiedRefused,original:await read(original),moved:await read(moved)}
+      const report={openBefore,openAfter,occupiedRefused,busyCopyRefused,bytesAfterBusyCopy,original:await read(original),moved:await read(moved)}
       leaf.detach()
       return report
     })()`)
@@ -239,6 +243,8 @@ describe.skipIf(!available)('external-file filesystem guarantees on the live ada
     console.info('Open editor evidence', JSON.stringify(out))
     expect(out.openBefore.editor).toBe(true)
     expect(out.occupiedRefused).toBe(true)
+    expect(out.busyCopyRefused).toBe(!onPhone())
+    expect(out.bytesAfterBusyCopy).toBe(onPhone() ? 'sample incoming' : 'sample editor base')
     // Busy-source rename is allowed. A live view/use lease is an engine responsibility.
     expect(out.openAfter.editor).toBe(true)
     expect([out.original, out.moved]).toContain('sample editor edit')
