@@ -100,6 +100,8 @@ import {
 import { openFencedScreen, closeFencedScreen, FENCED_SCREENS } from './fencedScreens'
 import { startPhoneReplay, verifyPhoneReplay, clearPhoneReplayEvidence } from './phoneReplay'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { ExternalState } from '@/sync/external/state'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { showScriptApproval, scriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
@@ -208,6 +210,11 @@ interface AbeleTestApi {
   /** Sync's fetch-shaped native transport; network.desktopTransport has a different contract. */
   desktopTransport: typeof syncDesktopTransport
   ObsidianFileSystem: typeof ObsidianFileSystem
+  /** Real IndexedDB phase persistence only; synthetic test databases, no filesystem ports. */
+  externalState: {
+    IndexedDbStateStore: typeof IndexedDbStateStore
+    ExternalState: typeof ExternalState
+  }
   scriptTrust: {
     activate: typeof activateScriptProvenance
     load: typeof scriptForExecution
@@ -779,6 +786,7 @@ export function exposeTestApi(plugin: Plugin): void {
     clearPhoneReplayEvidence,
     desktopTransport: syncDesktopTransport,
     ObsidianFileSystem,
+    externalState: { IndexedDbStateStore, ExternalState },
     scriptTrust: {
       activate: activateScriptProvenance,
       load: scriptForExecution,
