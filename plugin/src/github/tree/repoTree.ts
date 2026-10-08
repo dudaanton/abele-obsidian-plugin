@@ -48,7 +48,8 @@ export class RepoTree {
   }
 
   /** Reads a folder's entries, when they have not been read yet. */
-  expand(node: TreeNode): Promise<void> {
+  async expand(node: TreeNode): Promise<void> {
+    this.client.assertCurrent?.()
     if (node.kind !== 'dir' || node.children) return Promise.resolve()
     const pending = this.reading.get(node.path)
     if (pending !== undefined) return pending
@@ -73,6 +74,7 @@ export class RepoTree {
 
   /** Reads every folder on the way to a path, so that it can be shown open. */
   async reveal(path: string): Promise<void> {
+    this.client.assertCurrent?.()
     for (const folder of ancestors(path)) {
       const node = findNode(this.root, folder)
       if (!node) return
@@ -83,7 +85,10 @@ export class RepoTree {
 
 /** The trees read this session, the oldest dropped past a few. */
 const MAX_TREES = 8
-const trees = new Map<string, Promise<RepoTree>>()
+// A tree carries a reader and mutable lazy children: neither may be borrowed by a
+// different capability wrapper, even when both wrappers use the same credentials.
+const trees = new Map<GithubClient, Map<string, Promise<RepoTree>>>()
+const owners = new Map<Promise<RepoTree>, { client: GithubClient; key: string }>()
 
 const keyOf = (repo: RepoRef, sha: string) =>
   `${repo.origin ?? `https://${repo.host}`}/${repo.owner}/${repo.repo}@${sha}`.toLowerCase()
@@ -115,24 +120,45 @@ async function read(client: GithubClient, repo: RepoRef, sha: string): Promise<R
 export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Promise<RepoTree> {
   client.assertCurrent?.()
   const key = `${client.cacheNamespace}:${keyOf(repo, sha)}`
-  const known = trees.get(key)
+  let cache = trees.get(client)
+  if (!cache) {
+    cache = new Map()
+    trees.set(client, cache)
+    const owned = cache
+    client.onRetire?.(() => {
+      for (const pending of owned.values()) owners.delete(pending)
+      owned.clear()
+      if (trees.get(client) === owned) trees.delete(client)
+    })
+  }
+  const known = cache.get(key)
   if (known !== undefined) {
-    // Most recently used goes to the end, so the oldest is the first dropped.
-    trees.delete(key)
-    trees.set(key, known)
+    owners.delete(known)
+    owners.set(known, { client, key })
     return known
   }
   const pending = read(client, repo, sha)
-  trees.set(key, pending)
-  client.onRetire?.(() => trees.delete(key))
+  cache.set(key, pending)
+  owners.set(pending, { client, key })
   pending.catch(() => {
-    if (trees.get(key) === pending) trees.delete(key)
+    const current = trees.get(client)
+    if (current?.get(key) === pending) current.delete(key)
+    if (!current?.size) trees.delete(client)
+    owners.delete(pending)
   })
-  while (trees.size > MAX_TREES) trees.delete(trees.keys().next().value as string)
+  while (owners.size > MAX_TREES) {
+    const oldest = owners.keys().next().value!
+    const owner = owners.get(oldest)!
+    owners.delete(oldest)
+    const current = trees.get(owner.client)
+    if (current?.get(owner.key) === oldest) current.delete(owner.key)
+    if (!current?.size) trees.delete(owner.client)
+  }
   return pending
 }
 
 /** Forgets every tree read — for the tests, and a token that was just replaced. */
 export function forgetRepoTrees(): void {
   trees.clear()
+  owners.clear()
 }

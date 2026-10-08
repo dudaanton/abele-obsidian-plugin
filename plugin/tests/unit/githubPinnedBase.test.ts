@@ -6,9 +6,9 @@ import { comparisonService } from '@/github/comparison/service'
 import { GithubClient } from '@/github/client'
 import { guardedGithubClient } from '@/github/guardedClient'
 import { endpoints } from '@/github/urls'
-import { buildTree, type TreeNode, type TreeEntry } from '@/github/tree/fileTree'
-import { forgetRepoTrees } from '@/github/tree/repoTree'
-import { clientWith } from '../helpers/githubTab'
+import { buildTree, findNode, type TreeNode, type TreeEntry } from '@/github/tree/fileTree'
+import { forgetRepoTrees, repoTree } from '@/github/tree/repoTree'
+import { clientWith, type Route } from '../helpers/githubTab'
 
 const BASE = 'a'.repeat(40),
   TARGET = 'b'.repeat(40)
@@ -175,6 +175,65 @@ describe('full text and target line maps', () => {
         )
       ).kind
     ).toBe('lfs')
+  })
+})
+
+describe('lazy tree caller authority', () => {
+  const lazyRoutes: Record<string, Route> = {
+    [`/repos/sample/project/git/trees/${BASE}`]: (r) => ({
+      json: r.url.includes('recursive=1')
+        ? { tree: [], truncated: true }
+        : tree([{ path: 'hidden', type: 'tree', sha: 'shared-dir' }]),
+    }),
+    [`/repos/sample/project/git/trees/${TARGET}`]: (r) => ({
+      json: r.url.includes('recursive=1')
+        ? { tree: [], truncated: true }
+        : tree([{ path: 'hidden', type: 'tree', sha: 'shared-dir' }]),
+    }),
+    '/repos/sample/project/git/trees/shared-dir': { json: tree([entry('private.ts', 'private')]) },
+  }
+  it.each([false, true])(
+    'uses the revoked reader’s own capability for lazy expansion (pinned: %s)',
+    async (pinned) => {
+      const { client, request } = clientWith(lazyRoutes)
+      const user = pinned
+        ? (await comparisonService(client, REPO).index(BASE, TARGET)).target
+        : await repoTree(client, REPO, TARGET)
+      let allowed = true
+      const agent = guardedGithubClient(client, () => {
+        if (!allowed) throw new Error('Access revoked')
+      })
+      expect(agent.cacheNamespace).toBe(client.cacheNamespace)
+      const shown = pinned
+        ? (await comparisonService(agent, REPO).index(BASE, TARGET)).target
+        : await repoTree(agent, REPO, TARGET)
+      const hidden = findNode(shown.root, 'hidden')!
+      expect(hidden.children).toBeUndefined()
+      const before = request.mock.calls.length
+      allowed = false
+      await expect((async () => shown.expand(hidden))()).rejects.toThrow('Access revoked')
+      expect(request).toHaveBeenCalledTimes(before)
+      expect(hidden.children).toBeUndefined()
+      await user.expand(findNode(user.root, 'hidden')!)
+      expect(hidden.children).toBeUndefined()
+    }
+  )
+  it('does not inherit the first reader’s revoked capability when another reader expands a folder', async () => {
+    const { client, request } = clientWith(lazyRoutes)
+    let allowed = true
+    const first = guardedGithubClient(client, () => {
+      if (!allowed) throw new Error('Access revoked')
+    })
+    const old = await repoTree(first, REPO, TARGET),
+      current = await repoTree(client, REPO, TARGET)
+    allowed = false
+    const before = request.mock.calls.length
+    await current.expand(findNode(current.root, 'hidden')!)
+    expect(findNode(current.root, 'hidden')?.children?.map((n) => n.path)).toEqual([
+      'hidden/private.ts',
+    ])
+    expect(request).toHaveBeenCalledTimes(before + 1)
+    expect(findNode(old.root, 'hidden')?.children).toBeUndefined()
   })
 })
 
@@ -368,9 +427,22 @@ describe('comparison reads', () => {
     await vi.waitFor(() =>
       expect(get.mock.calls.filter(([path]) => path.includes('/git/blobs/'))).toHaveLength(2)
     )
+    let cancelledBeforeBytes = false,
+      remainingFinished = false
+    void first.then(() => {
+      cancelledBeforeBytes = true
+    })
+    void second.then(() => {
+      remainingFinished = true
+    })
     cancel.abort()
-    release()
-    expect((await first).name).toBe('AbortError')
+    try {
+      await vi.waitFor(() => expect(cancelledBeforeBytes).toBe(true))
+      expect(remainingFinished).toBe(false)
+      expect((await first).name).toBe('AbortError')
+    } finally {
+      release()
+    }
     expect((await second).text).toMatchObject({ additions: 1, deletions: 1 })
     expect(get.mock.calls.filter(([path]) => path.includes('/git/blobs/'))).toHaveLength(2)
   })
