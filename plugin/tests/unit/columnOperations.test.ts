@@ -55,6 +55,26 @@ describe('column frame operations', () => {
     expect(findColumns(text, text.indexOf('Left'))).toBeNull()
   })
 
+  it.each(['```not-a-close', '~~~not-a-close'])(
+    'keeps fence-like content and child markers inside code: %s',
+    (falseClose) => {
+      const delimiter = falseClose[0].repeat(3)
+      const body =
+        delimiter + 'text\n' + falseClose + '\n[!abele-column]\nCode payload\n' + delimiter
+      const text = createColumns(body, 'two')
+      const record = findColumns(text, text.indexOf('Code payload'))!
+      expect(record).not.toBeNull()
+      expect(record.columns).toHaveLength(2)
+      expect(record.columns[0].body.trimEnd()).toBe(body)
+      expect(record.columns[1].from).toBe(text.lastIndexOf('> > [!abele-column]'))
+      for (const changed of [
+        changeColumns(text, record, { type: 'move', index: 0, to: 1 }),
+        changeColumns(text, record, { type: 'options', ratio: [2, 1], mobile: 'stack' }),
+      ])
+        expect(removeColumns(changed, findColumns(changed, 0)!)).toContain(body)
+    }
+  )
+
   it.each([true, false])(
     'does not treat a quoted fenced example as an editable frame (closed=%s)',
     (closed) => {

@@ -139,19 +139,25 @@ export function columnSource(text: string, from: number): ColumnSource | null {
       for (let n = 0; n < rest.length; n++) positions.push(offsets[i] + removed + n)
       body += rest + '\n'
       positions.push(offsets[i] + lines[i].length)
-      const marker = /^\s*(`{3,}|~{3,})/.exec(rest)
-      if (marker)
-        fence = fence
-          ? marker[1][0] === fence[0] && marker[1].length >= fence.length
-            ? ''
-            : fence
-          : marker[1]
+      const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(rest)
+      if (marker) {
+        if (fence) {
+          // A closing fence has no info string or other non-whitespace suffix.
+          if (
+            marker[1][0] === fence[0] &&
+            marker[1].length >= fence.length &&
+            /^[ \t\r]*$/.test(marker[2])
+          )
+            fence = ''
+        } else if (marker[1][0] !== '`' || !marker[2].includes('`')) fence = marker[1]
+      }
     } else if (start) {
       body += '\n'
       positions.push(offsets[i] + lines[i].length)
     }
     end = offsets[i] + lines[i].length
   }
+  if (fence) return null
   finish()
   return columnWeights(options.ratio, columns.length)
     ? { from, to: end, depth, options, columns }
