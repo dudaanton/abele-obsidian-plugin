@@ -38,5 +38,8 @@ describe('column DOM targets', () => {
     const text = createColumns(createColumns('Inner passage', 'two'), 'two')
     expect(columnPath(inner)).toEqual({ root: parent, path: [0] })
     expect(renderedColumns(text, 0, inner)?.from).toBe(text.indexOf('> > > [!abele-columns'))
+    expect(inner.dataset.abeleFrameFrom).toBe(String(text.indexOf('> > > [!abele-columns')))
+    inner.dataset.abeleFrameFrom = '0'
+    expect(renderedColumns(text, 0, inner)).toBeNull()
   })
 })

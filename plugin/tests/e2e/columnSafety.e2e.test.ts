@@ -92,6 +92,47 @@ describe.skipIf(!available)('column source and menu safety', () => {
       await shot('nested-' + mode)
     }
   })
+  it('a rejected first nested frame cannot redirect its button to the second frame', async () => {
+    const first = createColumns('First', 'two').replace('\n', '\n> <!-- annotation -->\n'),
+      second = createColumns('Second', 'two')
+    const text = textInFrame(first + '\n\n' + second)
+    for (const mode of ['preview', 'source']) {
+      show(text, mode)
+      click(point('.abele-columns .abele-columns:first-of-type .abele-columns-controls button'))
+      const unchanged = evaluate<{ menus: number; text: string }>(
+        `await wait(300);return {menus:document.querySelectorAll('.menu').length,text:view.getMode()==='source'?view.editor.getValue():await app.vault.read(view.file)}`
+      )
+      expect(unchanged.menus).toBe(0)
+      expect(unchanged.text).toBe(text)
+      const at = evaluate<{ x: number; y: number }>(
+        `const buttons=root().querySelectorAll('.abele-columns .abele-columns .abele-columns-controls button');const button=buttons[1];button.scrollIntoView({block:'center'});await wait(100);const r=button.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}`
+      )
+      click(at)
+      evaluate(`await wait(200);return true`)
+      expect(menu('Proportions 2:1')).toBe(true)
+      const updated = evaluate<string>(
+        `if(view.getMode()==='source')await view.save();return await app.vault.read(view.file)`
+      )
+      const frames = [...updated.matchAll(/\[!abele-columns\|ratio=([^ ]+)/g)].map((m) => m[1])
+      expect(frames).toEqual(['1:1', '1:1', '2:1'])
+      expect(updated).toContain('<!-- annotation -->')
+      await shot('range-identity-' + mode)
+    }
+  })
+
+  it('a caret before a trailing link stays before that link', async () => {
+    show(textInFrame('Before [[Sample]]'))
+    const at = evaluate<{ x: number; y: number }>(
+      `const p=root().querySelector('.abele-column p');p.scrollIntoView({block:'center'});await wait(100);const range=document.createRange();range.setStart(p.firstChild,5);range.setEnd(p.firstChild,6);const r=range.getBoundingClientRect();return {x:r.right-.1,y:r.y+r.height/2}`
+    )
+    click(at)
+    const result = evaluate<{ line: string; ch: number; selected: number }>(
+      `await wait(300);const pos=view.editor.getCursor();return {line:view.editor.getLine(pos.line),ch:pos.ch,selected:view.editor.getSelection().length}`
+    )
+    expect(result).toEqual({ line: '> > Before [[Sample]]', ch: 10, selected: 0 })
+    await shot('trailing-link-caret')
+  })
+
   it('highlight markers do not shift the caret before following prose', async () => {
     const text = textInFrame('A ==B== C')
     show(text)

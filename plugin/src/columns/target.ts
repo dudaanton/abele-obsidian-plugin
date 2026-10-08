@@ -37,6 +37,13 @@ function bindRanges(text: string, rootFrom: number, root: HTMLElement): boolean 
   if (previous && (previous.text !== text || previous.from !== rootFrom)) return false
   const pending: Array<{ element: HTMLElement; range: QuoteSourceRange }> = []
   const bind = (element: HTMLElement, range: QuoteSourceRange): boolean => {
+    const established = sourceRanges.get(element)
+    if (
+      established &&
+      (element.dataset.abeleFrameFrom !== String(established.from) ||
+        element.dataset.abeleFrameTo !== String(established.to))
+    )
+      return false
     const type =
       element.dataset.callout ??
       (element.classList.contains('abele-columns')
