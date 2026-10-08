@@ -1575,7 +1575,8 @@ Questions stay pending while an editor, editable field or link suggestion has fo
 editing wakes presentation; returning focus to a desktop window also retries a deferred question.
 Sync never blurs the editor or interrupts input to show a question. An already-open question
 stays open across refocus, transient read failures and evidence changes until answered or closed;
-answering still revalidates its exact target, link and audience before any effect.
+answering still revalidates its exact target, link and audience before any effect. A failed older
+foreground read cannot clear a question opened by a newer sync refresh.
 **Keep private** remembers a refusal for that file/audience.
 Production validates that all four sharing source flags remain enabled and rejects test API
 and test-sharing activation modules from its rendered graph. `npm run build:test` uses the
@@ -1607,7 +1608,10 @@ Device-local `abele-sync-scoped-join` keeps the exact resumable invitation/enrol
 independent issuer/member/credential binding proofs remain in the device-only keychain, not
 in transferred settings. Proof names losslessly compact UUIDs and their type prefix when needed
 to meet Obsidian's lowercase/digit/dash alphabet and 64-character limit; the host also reads old
-proof slots without changing the descriptor or proof. Forget's exact empty ledger marker is not
+proof slots without changing the descriptor or proof. Clearing a scoped secret also clears every
+readable pre-release alias, including bindings that contain a copy of the credential. Strict
+keychains that refuse an old overlong name do not block removal of its supported compact slot.
+Forget's exact empty ledger marker is not
 an active personal connection, and dormant script provenance is preserved but never used by the
 scoped installation. Retained personal state or another scoped connection blocks setup;
 missing scoped ledger state requires recovery. Joining publishes no unrelated local file and
@@ -1622,7 +1626,10 @@ for this message; neither record authorizes anything or travels in settings. **L
 group** asks for confirmation, tries the scoped self-revoke endpoint, then forgets the scoped
 connection/join/pause/display records, invitation/installation secret slots and both scoped
 IndexedDB databases. Local files, personal ledger markers and script provenance are untouched.
-Departure works after revocation and offline; if the server cannot be told, a notice says so.
+Departure works after revocation and offline. It aborts in-flight scoped requests (including
+pending response bodies) before waiting for the queue, and gives best-effort self-revocation at
+most five seconds before aborting and continuing local cleanup. An uncooperative transport's late
+result cannot revive the departed connection. If the server cannot be told, a notice says so.
 
 The `scoped-native-create-v1:` metadata records exact new-file reviews, immutable bytes,
 operation handles, root/sponsor and own-upload proof for retry. `ScopedPluginHost` installs the
