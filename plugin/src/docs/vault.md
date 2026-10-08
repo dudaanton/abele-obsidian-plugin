@@ -242,8 +242,12 @@ can be reused at the tab limit without closing ordinary chats or stopping the pr
 Concurrent opens share file I/O, not caller freshness: each waiter has its own request token and
 validity check. Completed contextual tokens are removed rather than restored, so a later
 attention-list open cannot inherit a completed file link's contextual policy. Contextual release
-also has a per-session token: a reopen supersedes a pending save/release, and registration and
-caller freshness are checked again before removing the tab or selecting a reconciled session.
+also uses a per-session presentation generation. Every open/reveal of that session advances
+its generation before deferred I/O; each contextual operation carries the generations it was
+allowed to release through preparation, shared loading and final showing. Releases recheck
+that generation after saving, and every deferred presentation step rechecks the same lease.
+Late shared-load joiners therefore cannot retry a release superseded by a newer open.
+Registration and caller freshness are checked again before removal or selection.
 A superseded release is terminal for the participating contextual opens, including plain file
 links with no selection guard. Its cancellation propagates through tab hand-back and the file
 opener, so it cannot retry with a new token; independent shared-load waiters remain unaffected. These identifiers travel in chat files, not

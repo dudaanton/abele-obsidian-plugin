@@ -326,7 +326,8 @@ describe('pressing a card', () => {
 
     await openMessage({ chat: comment.path, message: 'm1', text: '' })
 
-    expect(shown).toHaveBeenCalledWith('k7d2ph')
+    expect(shown).toHaveBeenCalledWith('k7d2ph', expect.any(Function))
+    expect(shown.mock.calls[0][1]!()).toBe(true)
     expect(expanded).not.toHaveBeenCalled()
     comments.destroy()
     ChatService.getInstance().destroy()

@@ -95,6 +95,7 @@ export class CommentService implements CommentInfoSource {
    */
   async revealChat(id: string): Promise<void> {
     id = this.canonicalId(id)
+    ChatService.getInstance().noteSessionOpen(this.sessions.get(id) ?? this.expanded.get(id))
     const session = await this.load(id)
     if (!session || !this.expanded.has(id)) return
 
@@ -204,6 +205,10 @@ export class CommentService implements CommentInfoSource {
    * Returns whether the comment reached the sidebar, so a caller can say why it did not.
    */
   async showInSidebar(id: string, selectionReturn?: () => boolean): Promise<boolean> {
+    selectionReturn = ChatService.getInstance().contextualOpenGuard(
+      this.sessions.get(id) ?? this.expanded.get(id),
+      selectionReturn
+    )
     const session = await this.load(id)
     if (!session || (selectionReturn && !selectionReturn())) return false
     id = session.commentId ?? this.canonicalId(id)
@@ -265,6 +270,7 @@ export class CommentService implements CommentInfoSource {
 
   /** Returns from the attention list without replacing any other discussion tab. */
   async revealForAttention(file: TFile): Promise<boolean> {
+    ChatService.getInstance().noteSessionOpen(this.sessionOnFile(file.path))
     if (!(await ChatStorage.getInstance().prepareDiscussion(file)).identity) return false
     const chats = ChatService.getInstance()
     // Every chat-file opener shares one reservation and hands comment files to this owner.
@@ -550,6 +556,7 @@ export class CommentService implements CommentInfoSource {
 
   /** Opens a comment wherever it now lives: its chat if it became one, the sidebar otherwise. */
   async reveal(id: string): Promise<boolean> {
+    ChatService.getInstance().noteSessionOpen(this.sessions.get(id) ?? this.expanded.get(id))
     const session = await this.load(id)
     if (!session) return false
     id = session.commentId ?? this.canonicalId(id)
@@ -1227,6 +1234,11 @@ export class CommentService implements CommentInfoSource {
    * nobody is reading still has a session, and writing its file behind that session's back
    * would be undone by its next save.
    */
+  /** Exact live presentation lookup; this does not resolve or grant a marker identity. */
+  getSessionByFile(path: string): ChatSession | null {
+    return this.sessionOnFile(path)
+  }
+
   private sessionOnFile(path: string): ChatSession | null {
     const tab = ChatService.getInstance().getSessionByFile(path)
     if (tab) return tab

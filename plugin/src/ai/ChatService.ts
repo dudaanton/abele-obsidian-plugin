@@ -76,7 +76,7 @@ export class ChatService {
   private restoreGeneration = 0
   private continueRestore: (() => void) | null = null
   private readonly contextualLoads = new WeakMap<TFile, ContextualOpenRequest>()
-  private readonly sessionReleases = new WeakMap<ChatSession, symbol>()
+  private readonly sessionPresentations = new WeakMap<ChatSession, number>()
   private loadingFiles = new Map<
     string,
     {
@@ -464,6 +464,7 @@ export class ChatService {
    */
   async openChatInTab(tabId: string, file: TFile): Promise<void> {
     this.tabSelectionRevision++
+    this.noteSessionOpen(this.getSessionByFile(file.path) ?? CommentService.getInstance().getSessionByFile(file.path))
     const previous = this.sessions.get(tabId)
     const session = await this.loadFile(file, () => {
       const holder = this.sessions.get(tabId)
@@ -503,6 +504,7 @@ export class ChatService {
   }
 
   adoptSession(session: ChatSession): boolean {
+    this.noteSessionOpen(session)
     if (this.sessions.has(session.id)) {
       this.switchTab(session.id)
       return true
@@ -541,6 +543,7 @@ export class ChatService {
    * the history's search — which takes the cursor itself.
    */
   async revealSidebar({ focus = true }: { focus?: boolean } = {}): Promise<void> {
+    this.noteSessionOpen(this.activeSession.value)
     // The shared adapter waits for the reveal and repairs a mobile drawer that finished
     // closing after its leaf was recreated. Returning earlier exposes a hidden, zero-size chat.
     await revealSidebarView(GlobalStore.getInstance().app, AI_SIDEBAR_VIEW_TYPE)
@@ -643,24 +646,47 @@ export class ChatService {
    * same file as a card, so it is only dropped from the tabs here. Saved first all the same —
    * the tab bar is where its last edits were made.
    */
+  /** Presentation generations are UI leases, never file-identity assignments. */
+  noteSessionOpen(session: ChatSession | null | undefined): void {
+    if (session)
+      this.sessionPresentations.set(session, (this.sessionPresentations.get(session) ?? 0) + 1)
+  }
+
+  /** Carry one release decision across all deferred stages and all shared-load waiters. */
+  contextualOpenGuard(
+    target: ChatSession | null | undefined,
+    isCurrent?: () => boolean
+  ): () => boolean {
+    if (isCurrent && !isCurrent()) return () => false
+    this.noteSessionOpen(target)
+    const comments = CommentService.getInstance()
+    const expected = new Map(
+      [...this.sessions.values()]
+        .filter((session) =>
+          session !== target && session.kind === 'comment' && session.commentId && comments.isShown(session.commentId)
+        )
+        .map((session) => [session, this.sessionPresentations.get(session) ?? 0] as const)
+    )
+    return () =>
+      (!isCurrent || isCurrent()) &&
+      [...expected].every(([session, generation]) =>
+        (this.sessionPresentations.get(session) ?? 0) === generation
+      )
+  }
+
   async releaseSession(tabId: string, isCurrent?: () => boolean): Promise<boolean> {
     const session = this.sessions.get(tabId)
     if (!session || (isCurrent && !isCurrent())) return false
-    const token = Symbol('session-release')
-    this.sessionReleases.set(session, token)
+    const generation = this.sessionPresentations.get(session) ?? 0
     const current = () =>
-      this.sessionReleases.get(session) === token &&
+      (this.sessionPresentations.get(session) ?? 0) === generation &&
       this.sessions.get(tabId) === session &&
       !session.isDestroyed &&
       (!isCurrent || isCurrent())
-    try {
-      await session.save()
-      if (!current()) return false
-      this.dropTab(tabId)
-      return true
-    } finally {
-      if (this.sessionReleases.get(session) === token) this.sessionReleases.delete(session)
-    }
+    await session.save()
+    if (!current()) return false
+    this.dropTab(tabId)
+    return true
   }
 
   /**
@@ -696,7 +722,7 @@ export class ChatService {
     if (this.sessions.has(tabId) || this.nodeSessions.has(tabId)) {
       this.tabSelectionRevision++
       const session = this.sessions.get(tabId)
-      if (session) this.sessionReleases.delete(session)
+      this.noteSessionOpen(session)
       this.activeTabId.value = tabId
       this.saveTabs()
     }
@@ -809,7 +835,7 @@ export class ChatService {
       if (request.current && !request.current()) return Promise.resolve(null)
       // Reopening supersedes an in-flight contextual release before reconciliation waits
       // for that session's writer. The older save may finish, but may not remove this tab.
-      this.sessionReleases.delete(existing)
+      this.noteSessionOpen(existing)
       return existing.reconcileForSelectionReturn(request.current).then(() => {
         if (request.current && !request.current()) return null
         if (
@@ -885,15 +911,15 @@ export class ChatService {
           session.commentId &&
           !session.moving.value
         ) {
-          const releasing = currentRequests().filter((waiter) => waiter.contextual)
-          const isCurrentRelease = () =>
-            releasing.some((waiter) => !waiter.cancelled && (!waiter.current || waiter.current()))
-          if (!(await comments.releaseOtherContextualTabs(session.commentId, isCurrentRelease))) {
-            // These opens lost their contextual claim. Cancel only the participating
-            // callers; another waiter can still complete the shared file load independently.
-            for (const waiter of releasing) {
-              waiter.cancelled = true
-              if (waiter.contextualRequest) waiter.contextualRequest.cancelled = true
+          if (!(await comments.releaseOtherContextualTabs(session.commentId, currentContextual))) {
+            // Each contextual waiter carries the generation decision made when it joined.
+            // Reopening a release target invalidates all older leases, including late joiners,
+            // without cancelling independent generic waiters or newer valid generations.
+            for (const waiter of entry.requests.values()) {
+              if (waiter.contextual && waiter.current && !waiter.current()) {
+                waiter.cancelled = true
+                if (waiter.contextualRequest) waiter.contextualRequest.cancelled = true
+              }
             }
           }
         }
@@ -962,9 +988,15 @@ export class ChatService {
   }
 
   /** A file link may replace a contextual tab instead of requiring additional capacity. */
-  async openContextualChatFile(file: TFile, selectionReturn?: () => boolean): Promise<boolean> {
+  async openContextualChatFile(
+    file: TFile,
+    selectionReturn?: () => boolean,
+    scopeCurrent?: () => boolean
+  ): Promise<boolean> {
     const raw = toRaw(file)
-    const request: ContextualOpenRequest = { token: Symbol('contextual-open'), current: selectionReturn }
+    const target = this.getSessionByFile(file.path) ?? CommentService.getInstance().getSessionByFile(file.path)
+    const current = this.contextualOpenGuard(target, scopeCurrent ?? selectionReturn)
+    const request: ContextualOpenRequest = { token: Symbol('contextual-open'), current }
     this.contextualLoads.set(raw, request)
     let opening: Promise<void>
     try {
@@ -977,12 +1009,14 @@ export class ChatService {
       if (this.contextualLoads.get(raw) === request) this.contextualLoads.delete(raw)
     }
     await opening
-    return !request.cancelled && (!selectionReturn || selectionReturn())
+    return !request.cancelled && current()
   }
 
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
   async openChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
+    if (selectionReturn && !selectionReturn()) return
     this.tabSelectionRevision++
+    this.noteSessionOpen(this.getSessionByFile(file.path) ?? CommentService.getInstance().getSessionByFile(file.path))
     const previous = this.activeSession.value
     const contextual = this.contextualLoads.get(toRaw(file))
     const session = await this.loadFile(file, () => {
@@ -997,13 +1031,18 @@ export class ChatService {
       return this.sessions.get(this.createTab()) ?? null
     },
     contextual, selectionReturn)
-    if (!session || contextual?.cancelled || (selectionReturn && !selectionReturn())) {
+    const current = () =>
+      !contextual?.cancelled &&
+      (!contextual?.current || contextual.current()) &&
+      (!selectionReturn || selectionReturn())
+    if (!session || !current()) {
       if (contextual) contextual.cancelled = true
       return
     }
-    if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
-    // Loading/reconciliation may finish after a newer link selected another tab.
-    if (!selectionReturn || selectionReturn()) this.selectLoaded(session, previous)
+    if (selectionReturn) await session.reconcileForSelectionReturn(current)
+    // The same generation decision governs every deferred step, not just file loading.
+    if (current()) this.selectLoaded(session, previous)
+    else if (contextual) contextual.cancelled = true
   }
 
   /**

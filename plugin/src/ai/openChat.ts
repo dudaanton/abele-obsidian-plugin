@@ -231,17 +231,22 @@ export async function openChat(file: TFile, selectionReturn?: () => boolean): Pr
   // storage preparation and hands discussions to their owner; basename marker lookup is not
   // a file opener, including for same-basename copies already discovered outside the folder.
   const chatService = ChatService.getInstance()
+  // One generation decision spans preparation, shared loading and contextual showing.
+  // A late waiter or a second presentation stage must not manufacture a fresh release claim.
+  const current = chatService.contextualOpenGuard(
+    chatService.getSessionByFile(file.path) ?? CommentService.getInstance().getSessionByFile(file.path),
+    selectionReturn
+  )
   const opened = selectionReturn
-    ? await chatService.openContextualChatFile(file, selectionReturn)
-    : await chatService.openContextualChatFile(file)
-  if (!opened || (selectionReturn && !selectionReturn())) return
+    ? await chatService.openContextualChatFile(file, selectionReturn, current)
+    : await chatService.openContextualChatFile(file, undefined, current)
+  if (!opened || !current()) return
   const session = chatService.getSessionByFile(file.path)
   if (session?.kind === 'comment' && session.commentId) {
     // Preserve the single contextual discussion tab (including return from a child), but
     // address it by the identity prepared for this exact file, never the file's basename.
     const comments = CommentService.getInstance()
-    if (selectionReturn) await comments.showInSidebar(session.commentId, selectionReturn)
-    else await comments.showInSidebar(session.commentId)
+    await comments.showInSidebar(session.commentId, current)
     return
   }
   await chatService.revealSidebar()
