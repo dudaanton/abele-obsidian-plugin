@@ -38,23 +38,21 @@ export interface PinnedFile {
   note?: string
   canLoadLarge?: boolean
 }
+interface SharedRead<T> {
+  promise: Promise<T>
+  controller: AbortController
+  readers: number
+  done: boolean
+}
 const cancelled = (signal?: AbortSignal) => {
   if (signal?.aborted) throw new DOMException('Comparison cancelled', 'AbortError')
 }
 
 /** Immutable session data is bounded, deduplicated, and owned by one credential generation. */
 export class ComparisonService {
-  private readonly indexes = new Map<
-    string,
-    {
-      promise: Promise<ComparisonIndex>
-      controller: AbortController
-      readers: number
-      done: boolean
-    }
-  >()
+  private readonly indexes = new Map<string, SharedRead<ComparisonIndex>>()
   private readonly blobs = new Map<string, BlobContent>()
-  private readonly reading = new Map<string, Promise<BlobContent>>()
+  private readonly reading = new Map<string, SharedRead<BlobContent>>()
   private bytes = 0
   private running = 0
   private readonly queue: (() => void)[] = []
@@ -66,6 +64,7 @@ export class ComparisonService {
     for (const entry of this.indexes.values()) entry.controller.abort()
     this.indexes.clear()
     this.blobs.clear()
+    for (const entry of this.reading.values()) entry.controller.abort()
     this.reading.clear()
     this.bytes = 0
   }
@@ -74,7 +73,21 @@ export class ComparisonService {
     cancelled(signal)
   }
   private async limited<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    if (this.running >= 3) await new Promise<void>((resolve) => this.queue.push(resolve))
+    this.check(signal)
+    if (this.running >= 3)
+      await new Promise<void>((resolve, reject) => {
+        const ready = () => {
+          signal?.removeEventListener('abort', abort)
+          resolve()
+        }
+        const abort = () => {
+          const at = this.queue.indexOf(ready)
+          if (at >= 0) this.queue.splice(at, 1)
+          reject(new DOMException('Comparison cancelled', 'AbortError'))
+        }
+        this.queue.push(ready)
+        signal?.addEventListener('abort', abort, { once: true })
+      })
     else this.running++
     try {
       this.check(signal)
@@ -223,8 +236,8 @@ export class ComparisonService {
       /* Refused, divergent or incomplete metadata never replaces exact tree evidence. */
     }
   }
-  private async blob(node?: TreeNode): Promise<BlobContent> {
-    this.client.assertCurrent()
+  private async blob(node?: TreeNode, signal?: AbortSignal): Promise<BlobContent> {
+    this.check(signal)
     if (!node) return { kind: 'text', text: '' }
     if (!node.sha) throw new Error('GitHub sent no blob identity.')
     const known = this.blobs.get(node.sha)
@@ -233,9 +246,10 @@ export class ComparisonService {
       this.blobs.set(node.sha, known)
       return known
     }
-    let pending = this.reading.get(node.sha)
-    if (!pending) {
-      pending = this.limited(async () => {
+    let entry = this.reading.get(node.sha)
+    if (!entry) {
+      const controller = new AbortController()
+      const pending = this.limited(async () => {
         const answer = await this.client.get<{ encoding?: string; content?: string }>(
           `${repoApiPath(this.repo)}/git/blobs/${encodeURIComponent(node.sha!)}`,
           { what: `the immutable file ${node.path}` }
@@ -257,7 +271,7 @@ export class ComparisonService {
           )
         const content = decodeBlob(bytes)
         const size = content.text?.length ? content.text.length * 2 : 0
-        this.client.assertCurrent()
+        this.check(controller.signal)
         this.blobs.set(node.sha!, content)
         this.bytes += size
         while (this.blobs.size > 256 || this.bytes > MAX_CACHE_BYTES) {
@@ -266,11 +280,34 @@ export class ComparisonService {
           this.blobs.delete(oldest)
         }
         return content
-      })
-      this.reading.set(node.sha, pending)
-      void pending.finally(() => this.reading.delete(node.sha!)).catch(() => {})
+      }, controller.signal)
+      entry = { promise: pending, controller, readers: 0, done: false }
+      const owned = entry
+      this.reading.set(node.sha, entry)
+      const settled = () => {
+        owned.done = true
+        if (this.reading.get(node.sha!) === owned) this.reading.delete(node.sha!)
+      }
+      void pending.then(settled, settled)
     }
-    return pending
+    entry.readers++
+    try {
+      const result = await new Promise<BlobContent>((resolve, reject) => {
+        const abort = () => reject(new DOMException('Comparison cancelled', 'AbortError'))
+        signal?.addEventListener('abort', abort, { once: true })
+        void entry.promise
+          .then(resolve, reject)
+          .finally(() => signal?.removeEventListener('abort', abort))
+      })
+      this.check(signal)
+      return result
+    } finally {
+      entry.readers--
+      if (!entry.done && !entry.readers) {
+        entry.controller.abort()
+        if (this.reading.get(node.sha) === entry) this.reading.delete(node.sha)
+      }
+    }
   }
   async file(
     index: ComparisonIndex,
@@ -317,7 +354,10 @@ export class ComparisonService {
       )
     index.counts.set(path, { state: 'pending' })
     try {
-      const [before, after] = await Promise.all([this.blob(change.base), this.blob(change.target)])
+      const [before, after] = await Promise.all([
+        this.blob(change.base, signal),
+        this.blob(change.target, signal),
+      ])
       this.check(signal)
       result.before = before
       result.after = after

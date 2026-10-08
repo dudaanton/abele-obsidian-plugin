@@ -293,6 +293,63 @@ describe('comparison reads', () => {
     expect(uncached.note).toContain('Could not reach')
     expect(uncached.index.counts.get('gone.ts')?.state).toBe('unavailable')
   })
+  it('does not launch queued blob requests after their last reader cancels', async () => {
+    const files = Array.from({ length: 12 }, (_, i) => entry(`file-${i}.ts`, `blob-${i}`))
+    const { client } = clientWith({
+      [`/repos/sample/project/git/trees/${BASE}`]: { json: tree([]) },
+      [`/repos/sample/project/git/trees/${TARGET}`]: { json: tree(files) },
+      ...Object.fromEntries(
+        files.map((f) => [`/repos/sample/project/git/blobs/${f.sha}`, { json: blob('text\n') }])
+      ),
+    })
+    const service = comparisonService(client, REPO),
+      index = await service.index(BASE, TARGET),
+      cancel = new AbortController()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const original = client.get.bind(client)
+    const get = vi.spyOn(client, 'get').mockImplementation(async (path, options) => {
+      if (path.includes('/git/blobs/')) await gate
+      return original(path, options)
+    })
+    const reads = files.map((f) =>
+      service.file(index, f.path, false, cancel.signal).catch((error) => error)
+    )
+    await vi.waitFor(() =>
+      expect(get.mock.calls.filter(([path]) => path.includes('/git/blobs/'))).toHaveLength(3)
+    )
+    cancel.abort()
+    release()
+    expect((await Promise.all(reads)).every((result) => result.name === 'AbortError')).toBe(true)
+    expect(get.mock.calls.filter(([path]) => path.includes('/git/blobs/'))).toHaveLength(3)
+  })
+  it('retains deduplicated blob requests when another reader still needs the bytes', async () => {
+    const { client } = clientWith(routes)
+    const service = comparisonService(client, REPO),
+      index = await service.index(BASE, TARGET),
+      cancel = new AbortController()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const original = client.get.bind(client)
+    const get = vi.spyOn(client, 'get').mockImplementation(async (path, options) => {
+      if (path.includes('/git/blobs/')) await gate
+      return original(path, options)
+    })
+    const first = service.file(index, 'src/file.ts', false, cancel.signal).catch((error) => error)
+    const second = service.file(index, 'src/file.ts')
+    await vi.waitFor(() =>
+      expect(get.mock.calls.filter(([path]) => path.includes('/git/blobs/'))).toHaveLength(2)
+    )
+    cancel.abort()
+    release()
+    expect((await first).name).toBe('AbortError')
+    expect((await second).text).toMatchObject({ additions: 1, deletions: 1 })
+    expect(get.mock.calls.filter(([path]) => path.includes('/git/blobs/'))).toHaveLength(2)
+  })
   it('keeps a shared tree comparison alive when just one tab cancels', async () => {
     const { client } = clientWith(routes)
     const get = client.get.bind(client)
