@@ -196,6 +196,32 @@ describe.skipIf(!available)('column source and menu safety', () => {
     )
     expect(result).toEqual({ options: false, remove: false, text })
   })
+  it('cursor commands refuse list-contained frames and foreign quote barriers', async () => {
+    const inner = createColumns('Nested passage', 'two')
+    for (const body of [
+      ...['ABELE-COLUMNS', 'abele-columns'].map(
+        (type) =>
+          '- > [!' +
+          type +
+          ']\n  > > [!abele-column]\n  > > Nested passage\n  >\n  > > [!abele-column]\n  > > Nested sibling'
+      ),
+      '- > [!note] Annotation\n  > Nested passage',
+      '- > Ordinary quote\n  > Nested passage',
+      '1. List lead\n\n' +
+        inner
+          .split('\n')
+          .map((line) => '   ' + line)
+          .join('\n'),
+    ]) {
+      const text = textInFrame(body)
+      show(text)
+      const result = evaluate<{ options: boolean; remove: boolean; text: string }>(
+        `const lines=view.editor.getValue().split('\\n'),line=lines.findIndex(line=>line.includes('Nested passage'));view.editor.setCursor({line,ch:lines[line].indexOf('Nested passage')});app.workspace.activeEditor=view;return {options:app.commands.commands['abele:column-options'].editorCheckCallback(true,view.editor,view),remove:app.commands.commands['abele:remove-columns'].editorCheckCallback(false,view.editor,view),text:view.editor.getValue()}`
+      )
+      expect(result).toEqual({ options: false, remove: false, text })
+    }
+    await shot('list-quote-barriers-refused')
+  })
   it('a later post-processor cannot reassign a frame before the first menu lookup', async () => {
     const text = textInFrame(
       createColumns('First', 'two') + '\n\n' + createColumns('Second', 'two')

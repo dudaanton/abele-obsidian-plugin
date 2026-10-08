@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columnSource } from '@/columns/source'
+import { columnSource, quoteSourceTree } from '@/columns/source'
 
 describe('source positions inside column callouts', () => {
   it('maps identical passages by syntax position, not by their text', () => {
@@ -66,6 +66,26 @@ describe('source positions inside column callouts', () => {
       text.indexOf(' C'),
       text.indexOf(' C') + 1,
     ])
+  })
+
+  it.each(['ABELE-COLUMNS', 'abele-columns'])(
+    'reads a list-contained callout type from its own paragraph: %s',
+    (type) => {
+      const text =
+        '> [!abele-columns]\n> > [!abele-column]\n> > - > [!' +
+        type +
+        '|ratio=2:1]\n> >   > Nested passage\n>\n> > [!abele-column]\n> > Outside passage'
+      const root = quoteSourceTree(text)[0]
+      expect(root.children[0].children[0]).toMatchObject({
+        callout: 'abele-columns',
+        metadata: 'ratio=2:1',
+      })
+    }
+  )
+
+  it('does not borrow a nested or later paragraph header for a plain quote', () => {
+    for (const text of ['> > [!abele-columns]', '> # Heading\n>\n> [!abele-columns]'])
+      expect(quoteSourceTree(text)[0].callout).toBeNull()
   })
 
   it('does not make columns out of examples in fences or merge separate records', () => {

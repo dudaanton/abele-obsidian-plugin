@@ -81,6 +81,8 @@ export interface QuoteSourceRange {
   to: number
   callout: string | null
   metadata: string
+  /** Immediate syntax container; flattened quote children may be separated by a list. */
+  container: string
   children: QuoteSourceRange[]
 }
 
@@ -89,11 +91,12 @@ export function quoteSourceTree(text: string): QuoteSourceRange[] {
   const tree = markdown.parse(text)
   const build = (node: SyntaxNode): QuoteSourceRange => {
     const start = text.lastIndexOf('\n', node.from - 1) + 1
-    const line = text.slice(
-      start,
-      text.indexOf('\n', start) < 0 ? text.length : text.indexOf('\n', start)
-    )
-    const header = quote(line)?.[2] ?? ''
+    let first = node.firstChild
+    while (first?.name === 'QuoteMark') first = first.nextSibling
+    // Only this quote's first content block can declare its callout, not its container line
+    // or a paragraph borrowed from a nested quote or a later block.
+    const header =
+      first?.name === 'Paragraph' ? text.slice(first.from, first.to).split('\n')[0] : ''
     const marker = /^\[!([^|\]]+)(?:\|([^\]]*))?\]/.exec(header)
     const children: QuoteSourceRange[] = []
     const descend = (parent: SyntaxNode) => {
@@ -108,6 +111,7 @@ export function quoteSourceTree(text: string): QuoteSourceRange[] {
       to: node.to,
       callout: marker?.[1].toLowerCase() ?? null,
       metadata: marker?.[2] ?? '',
+      container: node.parent?.name ?? '',
       children,
     }
   }

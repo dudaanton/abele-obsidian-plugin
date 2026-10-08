@@ -161,8 +161,11 @@ the early post-processor from its original section, never established by a menu 
 Live Preview supplies the full source snapshot and original range before invoking Obsidian's
 Markdown renderer; plain task markers retain their render-time source positions. Missing
 render-time provenance refuses controls. Frame discovery walks the quote-tree nodes with
-normalised callout names, so a rejected uppercase inner header cannot redirect a cursor
-command outward. The surrounding quote is retained on nested-frame removal.
+normalised callout names read from each node's own first paragraph, not its full container
+line. List-contained frames are not admitted. Between the cursor and the chosen frame, only
+that frame's own direct column quotes are transparent; plain or foreign callouts, extra
+quotes and quotes inside lists refuse the command rather than selecting an outer frame.
+The surrounding quote is retained on supported nested-frame removal.
 See the writing guide for commands and editing limitations; there are no column agent tools.
 
 ## Presentations

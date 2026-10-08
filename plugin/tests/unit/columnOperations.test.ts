@@ -124,6 +124,57 @@ describe('column frame operations', () => {
     expect(findColumns(text, 0)?.from).toBe(0)
   })
 
+  it.each(['ABELE-COLUMNS', 'abele-columns'])(
+    'refuses a nested frame whose header shares a list marker line: %s',
+    (type) => {
+      const text = createColumns(
+        '- > [!' +
+          type +
+          ']\n  > > [!abele-column]\n  > > Nested passage\n  >\n  > > [!abele-column]\n  > > Nested sibling',
+        'two'
+      )
+      expect(findColumns(text, text.indexOf('Nested passage'))).toBeNull()
+      expect(findColumns(text, 0)?.from).toBe(0)
+    }
+  )
+
+  it.each(['[!note] Annotation', 'Ordinary quote', '[!abele-column] Impostor'])(
+    'refuses outer commands through a list-contained quote: %s',
+    (header) => {
+      const text = createColumns('- > ' + header + '\n  > Nested passage', 'two')
+      expect(findColumns(text, text.indexOf('Nested passage'))).toBeNull()
+      expect(findColumns(text, 0)?.from).toBe(0)
+    }
+  )
+
+  it('refuses a nested frame on a separate line inside a list item without a table', () => {
+    const inner = createColumns('Nested passage', 'two')
+    const text = createColumns(
+      '1. List lead\n\n' +
+        inner
+          .split('\n')
+          .map((line) => '   ' + line)
+          .join('\n'),
+      'two'
+    )
+    expect(findColumns(text, text.indexOf('Nested passage'))).toBeNull()
+    expect(findColumns(text, 0)?.from).toBe(0)
+  })
+
+  it.each(['> [!note] Annotation\n> Nested passage', '> Nested passage'])(
+    'refuses outer commands through a foreign quote in a column: %s',
+    (body) => {
+      const text = createColumns(body, 'two')
+      expect(findColumns(text, text.indexOf('Nested passage'))).toBeNull()
+      expect(findColumns(text, 0)?.from).toBe(0)
+    }
+  )
+
+  it('still targets its own column for ordinary list prose', () => {
+    const text = createColumns('- Ordinary passage\n  - Nested list passage', 'two')
+    expect(findColumns(text, text.indexOf('Nested list passage'))?.from).toBe(0)
+  })
+
   it('revalidates the current source instead of trusting a previously parsed frame', () => {
     const text = createColumns('Body', 'two'),
       record = findColumns(text, 0)!

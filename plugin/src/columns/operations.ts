@@ -26,20 +26,39 @@ export function resolveColumnTarget(
   position: number,
   expected?: { from: number; to: number }
 ): ColumnSource | null {
-  let innermost: QuoteSourceRange | null = null
-  const visit = (ranges: QuoteSourceRange[]) => {
+  const containingPath = (ranges: QuoteSourceRange[]): QuoteSourceRange[] => {
     for (const range of ranges) {
-      if (position < range.from || position > range.to) continue
-      if (range.callout === 'abele-columns') innermost = range
-      visit(range.children)
+      if (position >= range.from && position <= range.to)
+        return [range, ...containingPath(range.children)]
     }
+    return []
   }
-  visit(quoteSourceTree(text))
-  const selected = innermost as QuoteSourceRange | null
-  if (!selected || (expected && (selected.from !== expected.from || selected.to !== expected.to)))
+  const path = containingPath(quoteSourceTree(text))
+  const index = path.map((range) => range.callout).lastIndexOf('abele-columns')
+  const selected = path[index]
+  if (
+    !selected ||
+    !['Document', 'Blockquote'].includes(selected.container) ||
+    (expected && (selected.from !== expected.from || selected.to !== expected.to))
+  )
     return null
   const frame = columnSource(text, selected.from)
-  return frame && frame.from === selected.from && frame.to === selected.to ? frame : null
+  if (!frame || frame.from !== selected.from || frame.to !== selected.to) return null
+  // From the cursor up to this frame, only its own direct column quotes are transparent.
+  // Foreign/plain quotes and list-contained quotes are barriers, even with a column-like type.
+  if (
+    path
+      .slice(index + 1)
+      .some(
+        (range) =>
+          range.container !== 'Blockquote' ||
+          range.callout !== 'abele-column' ||
+          !selected.children.includes(range) ||
+          !frame.columns.some((column) => column.from === range.from && range.to <= column.to)
+      )
+  )
+    return null
+  return frame
 }
 
 export function findColumns(text: string, position: number): ColumnSource | null {
