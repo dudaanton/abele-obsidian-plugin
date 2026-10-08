@@ -429,13 +429,23 @@ it('settles personal uploads without publication HTTP, then asks and publishes o
     s.p.close()
   }
 })
-it.each(['novel', 'adopted', 'collision'] as const)(
-  'retains a %s new note introduction through a late cache and later image identity',
-  async (creation) => {
+it.each([
+  ['novel', true],
+  ['adopted', true],
+  ['collision', true],
+  ['novel', false],
+  ['adopted', false],
+  ['collision', false],
+] as const)(
+  'retains a %s new note introduction through a late cache and later image identity (discovery=%s)',
+  async (creation, discovery) => {
     const s = await setup()
     try {
       const p = s.p as any,
         app = p.options.app
+      const hint = vi.fn()
+      p.options.pendingWithoutAudiences = hint
+      if (!discovery) s.p.setAudiences([])
       const source = '![[local-image.png]]',
         bytes = new TextEncoder().encode(source),
         sha = await sha256(bytes)
@@ -518,6 +528,16 @@ it.each(['novel', 'adopted', 'collision'] as const)(
         intrinsic: true,
       })
       const add = vi.spyOn(p.assets, 'add').mockResolvedValue({})
+      if (!discovery) {
+        await s.p.refreshPublication()
+        expect(await s.p.confirmation.questions()).toEqual([])
+        expect(add).not.toHaveBeenCalled()
+        if (creation === 'novel') {
+          expect(hint).toHaveBeenCalledOnce()
+          expect(await p.read('existing-candidates')).toHaveLength(1)
+        } else expect(hint).not.toHaveBeenCalled()
+        s.p.setAudiences(['sample-grant'])
+      }
       await s.p.refreshPublication()
       const questions = await s.p.confirmation.questions()
       expect(add).not.toHaveBeenCalled()

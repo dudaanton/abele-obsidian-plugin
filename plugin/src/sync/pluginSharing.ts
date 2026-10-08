@@ -1,4 +1,4 @@
-import type { App } from 'obsidian'
+import { Notice, type App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { markRaw, shallowRef } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -29,6 +29,8 @@ import {
   retirePublicationStores,
 } from './publication/publicationRetirement'
 const AUDIENCES = 'owner-publication-audiences-v1'
+const UNKNOWN_DISCOVERY =
+  "This device doesn't know what you share yet. Sign in under Sharing, or let plugin settings sync from your other device."
 const hash = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 interface PendingDiscoverySnapshot {
   grants: string[]
@@ -65,6 +67,7 @@ export class PluginSharing {
   private catalogueQueue: Promise<void> = Promise.resolve()
   private linkRefreshQueued = false
   private linksDirty = false
+  private readonly discoveryNotices = new Set<string>()
   readonly audiences = shallowRef<string[]>([])
   readonly discoveryWarning = shallowRef('')
   constructor(
@@ -225,6 +228,15 @@ export class PluginSharing {
         held,
         settling,
         linksChanged: () => this.linksChanged(),
+        pendingWithoutAudiences: () => {
+          const owner = this.live
+          if (!owner || !this.discoveryMissing(owner)) return
+          this.discoveryWarning.value = UNKNOWN_DISCOVERY
+          const key = JSON.stringify([owner.binding.issuer, owner.binding.vaultId])
+          if (this.discoveryNotices.has(key)) return
+          this.discoveryNotices.add(key)
+          new Notice(UNKNOWN_DISCOVERY)
+        },
       })
       await runtime.start(resources.fresh)
       runtime.setAutomaticPaused(true)
@@ -400,7 +412,7 @@ export class PluginSharing {
         owner.runtime.setAudiences(grants)
         owner.runtime.setAutomaticPaused(false)
         this.audiences.value = [...grants]
-        this.discoveryWarning.value = ''
+        this.discoveryWarning.value = this.discoveryMissing(owner) ? UNKNOWN_DISCOVERY : ''
       }
     })
     this.catalogueQueue = next.catch(() => {})
@@ -414,6 +426,9 @@ export class PluginSharing {
           : 'Sharing choices could not be saved'
       )
     }
+  }
+  private discoveryMissing(owner: NonNullable<PluginSharing['live']>): boolean {
+    return !owner.grants.length && !owner.groups.length && !owner.serverSnapshot
   }
   private pauseDiscovery(reason: string) {
     this.owner().runtime.setAutomaticPaused(true)

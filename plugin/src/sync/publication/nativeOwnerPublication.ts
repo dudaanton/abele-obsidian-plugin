@@ -91,6 +91,8 @@ interface Options {
   settling?: () => boolean
   /** Schedule outside the engine transaction; cache callbacks themselves never do HTTP. */
   linksChanged?: () => void
+  /** Local introductions wait for discovery; this is a UX hint, never authority. */
+  pendingWithoutAudiences?: () => void
 }
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const hash = (v: unknown) => sha256(new TextEncoder().encode(JSON.stringify(v)))
@@ -978,6 +980,7 @@ export class NativeOwnerPublication {
       if (observation) await this.queue(() => this.recoverLocalLinks(pending.path, observation))
     }
     const candidates = (await this.read<ExistingPrivateCandidate[]>('existing-candidates')) ?? []
+    if (candidates.length && !this.options.grants.length) this.options.pendingWithoutAudiences?.()
     const remaining = await this.confirmation.refresh(candidates)
     const key = (c: ExistingPrivateCandidate) => JSON.stringify([c.sponsorId, c.targetId])
     const keep = new Set(remaining.map(key)),

@@ -1,4 +1,6 @@
 import { expect, it, vi } from 'vitest'
+import { Notice } from 'obsidian'
+import { publicationQuestion } from '../helpers/publicationQuestion'
 import { IDBFactory } from 'fake-indexeddb'
 import { shallowRef, computed } from 'vue'
 import { MemoryStateStore } from '@abele/sync-core'
@@ -149,6 +151,96 @@ it.each(['overflow', 'settings write', 'stored hints'] as const)(
     }
   }
 )
+
+it('explains missing discovery once per vault session and asks retained private files when settings arrive', async () => {
+  const app = useVault([])
+  setSecrets(null)
+  const config = AbeleConfig.getInstance(),
+    old = config.sync,
+    oldAi = config.ai
+  config.ai = { scriptsFolder: 'Scripts' } as never
+  config.sync = { keySignature: null }
+  const save = vi.spyOn(config, 'saveSettings').mockResolvedValue()
+  const connection = {
+    ...emptyConnection(),
+    serverUrl: 'https://sync.example',
+    vaultId: 'sample-vault',
+    deviceId: 'sample-owner',
+    deviceTokenId: 'abele-sync-device-sample00',
+  }
+  app.saveLocalStorage('abele-sync-ledger', {
+    stateId: 'sample-local',
+    vaultId: connection.vaultId,
+  })
+  const token = 'absd_' + 'a'.repeat(43)
+  bindDeviceToken(secrets().device, connection.deviceTokenId, token, connection.serverUrl)
+  const sync = {
+    connection: shallowRef(connection),
+    publicationPrompt: new PublicationPrompt(() => true),
+    refreshSharing: vi.fn(async () => {}),
+    scopedStatus: vi.fn(),
+  }
+  const fetcher = vi.fn() as unknown as typeof fetch
+  const host = new PluginSharing(app as any, sync as any, {
+    indexedDB: new IDBFactory(),
+    fetch: fetcher,
+  })
+  const context = {
+    app: app as any,
+    state: new MemoryStateStore(),
+    client: { commitRaw: vi.fn() } as any,
+    connection,
+    token,
+    fetch: fetcher,
+    held: () => true,
+  }
+  const notices = (Notice as any).shown as string[]
+  const beforeNotices = notices.length
+  let owner = await host.ownerPublication(context)
+  try {
+    expect(host.discoveryWarning.value).toContain("This device doesn't know what you share yet")
+    for (let round = 0; round < 2; round++) {
+      const runtime = (host as any).live.runtime
+      const candidate = {
+        sponsorId: 'sample-note',
+        targetId: 'sample-target',
+        targetPath: 'Assets/sample-image.png',
+      }
+      await runtime.persisted('existing-candidates', [candidate])
+      await host.refreshPublication()
+      await host.refreshPublication()
+      expect(await runtime.read('existing-candidates')).toEqual([candidate])
+      expect(sync.publicationPrompt.asking.value).toBeNull()
+      expect(notices.slice(beforeNotices)).toHaveLength(1)
+      expect(notices[beforeNotices]).toContain('Sign in under Sharing')
+      expect(fetcher).not.toHaveBeenCalled()
+      if (round === 0) {
+        owner.close()
+        owner = await host.ownerPublication(context)
+      }
+    }
+    const runtime = (host as any).live.runtime
+    vi.spyOn(runtime.confirmation.port, 'observe').mockResolvedValue(
+      publicationQuestion.observation
+    )
+    config.sync = {
+      keySignature: null,
+      sharing: [
+        { issuer: connection.serverUrl, vaultId: connection.vaultId, grants: ['sample-grant'] },
+      ],
+    }
+    await host.refreshPublication()
+    expect(host.discoveryWarning.value).toBe('')
+    expect(sync.publicationPrompt.asking.value?.observation.target.fileId).toBe('sample-target')
+    expect(notices.slice(beforeNotices)).toHaveLength(1)
+  } finally {
+    owner.close()
+    await host.close()
+    config.sync = old
+    config.ai = oldAi
+    save.mockRestore()
+  }
+})
 
 it('imports sharing onto a second owner device at startup and after a settings reload', async () => {
   const app = useVault([])
