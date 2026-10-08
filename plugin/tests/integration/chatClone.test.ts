@@ -451,6 +451,7 @@ describe('clone into a new chat tab', () => {
     )
     await source.load(file)
     const backup = chatCopyPath(app as unknown as App, runs.runPath('sample-run'))
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
     await app.vault.adapter.write(backup, 'A source writer safety copy')
     await service.cloneChatFromMessage(source.id, 'answer')
     expect(await app.vault.adapter.read(backup)).toBe('A source writer safety copy')
