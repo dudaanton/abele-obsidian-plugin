@@ -1,6 +1,6 @@
 import { EditorView } from '@codemirror/view'
 import { editorLivePreviewField, type Plugin } from 'obsidian'
-import { columnSource } from './source'
+import { columnPath, renderedColumns } from './target'
 
 interface Entry {
   view: EditorView
@@ -34,7 +34,7 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
   const view = EditorView.findFromDOM(editor)
   if (!view || !view.state.field(editorLivePreviewField, false)) return null
   const document = view.state.doc.toString()
-  const source = columnSource(document, view.posAtDOM(parent))
+  const source = renderedColumns(document, view.posAtDOM(columnPath(parent).root), parent)
   if (!source) return null
   const columns = Array.from(
     parent.querySelectorAll<HTMLElement>(':scope > .callout-content > .abele-column')

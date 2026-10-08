@@ -22,6 +22,7 @@ import {
   type ColumnChange,
 } from './operations'
 import { parseColumnsHeader, columnWeights } from './core'
+import { columnPath, renderedColumns } from './target'
 import type { ColumnSource } from './source'
 
 interface Target {
@@ -198,16 +199,20 @@ export function registerColumns(plugin: Plugin): void {
     const view = leaf.view
     if (view.getMode() === 'source') {
       const cm = (view.editor as Editor & { cm: EditorView }).cm
-      const record = findColumns(view.editor.getValue(), cm.posAtDOM(parent))
+      const record = renderedColumns(
+        view.editor.getValue(),
+        cm.posAtDOM(columnPath(parent).root),
+        parent
+      )
       return record ? editorTarget(view.editor, record) : null
     }
-    const info = ctx.getSectionInfo(parent)
+    const info = ctx.getSectionInfo(columnPath(parent).root)
     if (!info) return null
     const from = info.text
       .split('\n')
       .slice(0, info.lineStart)
       .reduce((n, line) => n + line.length + 1, 0)
-    const record = findColumns(info.text, from)
+    const record = renderedColumns(info.text, from, parent)
     if (!record) return null
     const file = view.file
     return {

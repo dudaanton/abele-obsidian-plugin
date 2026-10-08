@@ -84,6 +84,21 @@ describe('column frame operations', () => {
     }
   )
 
+  it('edits the innermost nested frame and leaves its outer frame intact', () => {
+    const inner = createColumns('Inner passage', 'two')
+    const text = createColumns(inner, 'two')
+    const record = findColumns(text, text.indexOf('Inner passage'))!
+    expect(record.depth).toBe(3)
+    expect(record.from).toBe(text.indexOf('> > > [!abele-columns'))
+    const changed = changeColumns(text, record, { type: 'options', ratio: [2, 1], mobile: 'stack' })
+    expect(changed.split('\n')[0]).toBe(text.split('\n')[0])
+    expect(changed).toContain('> > > [!abele-columns|ratio=2:1')
+    const removed = removeColumns(text, record)
+    expect(removed.split('\n')[0]).toBe(text.split('\n')[0])
+    expect(removed).toContain('> > Inner passage')
+    expect(removed.match(/\[!abele-columns/g)).toHaveLength(1)
+  })
+
   it('does not offer frame edits for a fenced example', () => {
     const text = '```md\n' + createColumns('Example', 'two') + '\n```'
     expect(findColumns(text, text.indexOf('Example'))).toBeNull()

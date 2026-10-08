@@ -7,16 +7,52 @@ export type ColumnChange =
   | { type: 'move'; index: number; to: number }
   | { type: 'options'; ratio: number[]; mobile: 'stack' | 'keep' }
 
-export function findColumns(text: string, position: number): ColumnSource | null {
+export function columnFrames(text: string): ColumnSource[] {
+  const frames: ColumnSource[] = []
   let from = 0
   for (const line of text.split('\n')) {
     if (/^\s*(?:>\s*)+\[!abele-columns(?:\||\])/.test(line)) {
       const record = columnSource(text, from)
-      if (record && position >= record.from && position <= record.to) return record
+      if (record) frames.push(record)
     }
     from += line.length + 1
   }
-  return null
+  return frames
+}
+
+export function findColumns(text: string, position: number): ColumnSource | null {
+  return (
+    columnFrames(text)
+      .filter((frame) => position >= frame.from && position <= frame.to)
+      .at(-1) ?? null
+  )
+}
+
+/** Resolve a rendered quote path without equating identical text or metadata. */
+export function descendantColumns(
+  text: string,
+  rootFrom: number,
+  path: number[]
+): ColumnSource | null {
+  const frames = columnFrames(text)
+  let frame = frames.find((candidate) => candidate.from === rootFrom)
+  for (const index of path) {
+    if (!frame) return null
+    const parent = frame
+    const children = frames.filter(
+      (candidate) =>
+        candidate.from > parent.from &&
+        candidate.to <= parent.to &&
+        !frames.some(
+          (between) =>
+            between.from > parent.from &&
+            between.from < candidate.from &&
+            between.to >= candidate.to
+        )
+    )
+    frame = children[index]
+  }
+  return frame ?? null
 }
 
 function quoted(body: string, prefix: string): string {
