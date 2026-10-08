@@ -6,6 +6,7 @@ import { beforeAll, afterAll, describe, expect, it } from 'vitest'
 import { vaultCli, type VaultCli } from './helpers/obsidianCli'
 import { spawnSyncServer, initDaemon, daemonSyncOnce, type SyncServer } from './helpers/syncServer'
 import { waitFor } from './helpers/syncVault'
+import { assertFreshStandBaseline } from './helpers/standBaseline'
 
 /** Task 14 desktop/daemon supplement. Explicitly NOT a native three-device pass. */
 let cli: VaultCli,
@@ -23,7 +24,9 @@ const localKeys = [
   'abele-sync-ledger',
   'abele-sync-ledger-proof',
   'abele-sync-ledger-bootstrap',
+  'abele-sync-ledger-cleanup',
   'abele-script-provenance',
+  'abele-script-local-upgrade',
 ]
 const service = 'window.__abeleTest.SyncService.getInstance()'
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
@@ -56,11 +59,19 @@ beforeAll(async () => {
       'Baseline requires an unconfigured leased fixture; existing connection left untouched'
     )
   savedState = cli.evalAwait(
-    `Object.fromEntries(${JSON.stringify(localKeys)}.map(key => [key, app.loadLocalStorage(key)]))`
+    `Object.fromEntries(${JSON.stringify(localKeys)}.map(key => [key, app.loadLocalStorage(key) ?? null]))`
   )
   savedMarker = cli.evalAwait(
     `(async () => await app.vault.adapter.exists('.abele-script-managed') ? [...new Uint8Array(await app.vault.adapter.readBinary('.abele-script-managed'))] : null)()`
   )
+  // A missing local key is often undefined; JSON must carry its absence through teardown.
+  console.info(
+    'personal fixture baseline storage types',
+    cli.evalAwait(
+      `Object.fromEntries(${JSON.stringify(localKeys)}.map(key => [key, typeof app.loadLocalStorage(key)]))`
+    )
+  )
+  assertFreshStandBaseline(savedState, savedMarker, cli.evalAwait(`${service}.connection.value`))
   const scratch = fileURLToPath(new URL('../../../.scratch/batch5/personal/', import.meta.url))
   mkdirSync(scratch, { recursive: true })
   work = mkdtempSync(join(scratch, 'sample-'))
